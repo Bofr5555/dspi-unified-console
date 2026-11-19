@@ -693,6 +693,8 @@ pub(crate) fn connected_on(opened: &OpenedCore) -> Result<Connected, OpenError> 
         PinSource::Interface,
     ))));
     c.link = opened.reached.clone();
+    // -- WP PGTM -- once per connection (one platform read), for About
+    c.protocol = crate::protocol_info::read_view(&opened.handle.core);
     Ok(c)
 }
 

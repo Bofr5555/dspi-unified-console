@@ -811,6 +811,11 @@ pub struct Connected {
     /// Over Link, the target as it was reached: at the address that answered,
     /// knowing the hub's id. Keep this one, not the one that was asked for.
     pub link: Option<LinkTarget>,
+    // -- WP PGTM --
+    /// The device's protocol for Settings > About, when the embedder read it
+    /// (the Terminal fills it from the core's `device_protocol`, once per
+    /// connection); `None` here.
+    pub protocol: Option<crate::settings::about::DeviceProtocolView>,
 }
 
 // -- WP TM4 --
@@ -864,6 +869,7 @@ pub fn connected_on(t: Box<dyn Transport>) -> Result<Connected, OpenError> {
         state: DeviceState::new(caps, image.packet),
         ext,
         link: None,
+        protocol: None, // -- WP PGTM --
     })
 }
 

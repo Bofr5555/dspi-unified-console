@@ -8,6 +8,10 @@ use std::sync::{Arc, Mutex};
 
 use dspi_proto::generated::opcodes as op;
 use dspi_transport::fake::{Capture, FakeOptions, FakeRemote};
+// -- WP PGTM --
+use dspi_proto::paged::cmds;
+use dspi_transport::CmdId;
+use dspi_transport::fake::{FakeBoard, FakeGeneration};
 use dspi_transport::{DeviceDescriptor, FakeDevice, NotificationSource, TransportCaps};
 use dspi_transport::{Result as TResult, TransportError};
 use dspi_tui::shell::connect::{LinkTarget, guard_raw};
@@ -20,6 +24,9 @@ mod support;
 use support::{RP2040, RP2040_INFO, RP2350, RP2350_INFO, mount};
 
 const PHRASE: &str = "I ACCEPT THE CORE VOLTAGE RISK";
+// -- WP PGTM -- what an unstamped image on this fork's firmware asks (the
+// fake is our firmware: its extension channel answers)
+const LINEAGE: &str = LINEAGE_PHRASE;
 const WORD: &str = "OVERVOLT";
 /// What the demo device reports.
 const DEMO_VERSION: &str = "1.1.6";
@@ -71,7 +78,33 @@ impl Spy {
     }
 }
 
+// -- WP PGTM -- what the log records for a paged request other than the
+// bootloader entry (which is logged as `REQ_ENTER_BOOTLOADER`)
+const PAGED_LOG: u8 = 0xEE;
+
+impl Spy {
+    fn note_paged(&self, out: bool, id: CmdId) -> TResult<()> {
+        if id == cmds::SYS_ENTER_BOOTLOADER {
+            self.note(out, op::REQ_ENTER_BOOTLOADER)
+        } else {
+            self.note(out, PAGED_LOG)
+        }
+    }
+}
+
 impl Transport for Spy {
+    // -- WP PGTM -- a paged fake's paged calls, logged
+    fn carries_pages(&self) -> bool {
+        self.dev.carries_pages()
+    }
+    fn control_in_paged(&mut self, id: CmdId, value: u16, len: u16) -> TResult<Vec<u8>> {
+        self.note_paged(false, id)?;
+        self.dev.control_in_paged(id, value, len)
+    }
+    fn control_out_paged(&mut self, id: CmdId, value: u16, data: &[u8]) -> TResult<()> {
+        self.note_paged(true, id)?;
+        self.dev.control_out_paged(id, value, data)
+    }
     fn control_in(&mut self, opcode: u8, value: u16, len: u16) -> TResult<Vec<u8>> {
         self.note(false, opcode)?;
         self.dev.control_in(opcode, value, len)
@@ -129,6 +162,11 @@ struct Board {
     refuses_lock: bool,
     opened: u32,
     extra_drive: Option<PathBuf>,
+    // -- WP PGTM --
+    /// The running firmware's generation (`None`: the classic 1.1.6 fake);
+    /// the board that comes back after a write runs the image (1.1.6).
+    generation: Option<FakeGeneration>,
+    board_kind: FakeBoard,
 }
 
 fn capture_with_version(version: &str) -> Capture {
@@ -169,6 +207,8 @@ impl Fake {
                 refuses_lock: false,
                 opened: 0,
                 extra_drive: None,
+                generation: None,            // -- WP PGTM --
+                board_kind: FakeBoard::Pico, // -- WP PGTM --
             })),
             answers: VecDeque::new(),
             asked: Vec::new(),
@@ -256,8 +296,12 @@ impl World for Fake {
             b.capture.clone()
         };
         b.opened += 1;
+        // -- WP PGTM -- the generation and board of the board before its reboot
+        let generation = b.generation.filter(|_| !b.rebooted);
         let options = FakeOptions {
             extensions: true,
+            generation,
+            board: b.board_kind,
             ..FakeOptions::default()
         };
         let dev = FakeDevice::new(capture, options);
@@ -271,8 +315,14 @@ impl World for Fake {
             dev,
             world: Arc::clone(&self.board),
         };
+        // -- WP PGTM -- a generation's fake through the probe, as `Target::open` does
+        let spy: Box<dyn Transport> = if generation.is_some() {
+            dspi_transport::paged::open(Box::new(spy))?
+        } else {
+            Box::new(spy)
+        };
         // The same door `uconsole raw` uses, so a read-only device is guarded here.
-        guard_raw(Box::new(spy))
+        guard_raw(spy)
     }
 
     fn serials(&mut self) -> Vec<String> {
@@ -321,7 +371,7 @@ fn wp_secfix_a_user_file_is_labelled_not_verified_and_not_refused() {
         label.starts_with("Not a verified DSPi Console image: "),
         "{label}"
     );
-    let mut world = Fake::new("secfix_label").answers(&["y"]);
+    let mut world = Fake::new("secfix_label").answers(&[LINEAGE]); // -- WP PGTM --
     assert_eq!(flash(&mut world, &image, &[]), exit::OK);
     assert_eq!(
         world.written(),
@@ -372,22 +422,31 @@ fn nothing_done(w: &Fake) {
 
 #[test]
 fn wp_tm3_a_stock_board_takes_an_image_and_comes_back_confirmed() {
-    let mut w = Fake::new("stock");
+    // -- WP PGTM -- the board runs our firmware and the image is unstamped: the
+    // lineage phrase is the one question --force does not skip
+    let mut w = Fake::new("stock").answers(&[LINEAGE]);
     let image = plain();
     assert_eq!(flash(&mut w, &image, &["--force"]), exit::OK);
     assert_eq!(w.written().as_deref(), Some(image.bytes.as_slice()));
     assert_eq!(w.entered(), 1);
-    assert!(
-        w.asked.is_empty(),
+    assert_eq!(
+        w.asked.len(),
+        1,
         "--force skips the go-ahead: {:?}",
         w.asked
     );
+    assert!(w.asked[0].contains(LINEAGE), "{:?}", w.asked);
     assert_eq!(w.writes(), vec![], "flashing changes no setting");
 }
 
 #[test]
 fn wp_tm3_without_force_it_asks_and_no_means_nothing_happens() {
+    // -- WP PGTM -- with the lineage phrase, the phrase is the go-ahead
     let mut w = Fake::new("go_ahead_y").answers(&["y"]);
+    assert_eq!(flash(&mut w, &stamped("1150"), &[]), exit::OK);
+    assert_eq!(w.asked.len(), 1);
+    assert_eq!(w.entered(), 1);
+    let mut w = Fake::new("go_ahead_lineage").answers(&[LINEAGE]);
     assert_eq!(flash(&mut w, &plain(), &[]), exit::OK);
     assert_eq!(w.asked.len(), 1);
     assert_eq!(w.entered(), 1);
@@ -601,7 +660,7 @@ fn wp_tm3_a_read_only_device_can_update() {
     // when somebody needs this command, and none of them may be written to.
     for wire in [33, 31, 17, 15] {
         let name = format!("read_only_{wire}");
-        let mut w = Fake::new(&name).image(image_as(wire));
+        let mut w = Fake::new(&name).image(image_as(wire)).answers(&[LINEAGE]); // -- WP PGTM --
         let image = plain();
         assert_eq!(flash(&mut w, &image, &["--force"]), exit::OK, "V{wire}");
         assert_eq!(w.entered(), 1, "V{wire}: the request got through the guard");
@@ -677,7 +736,7 @@ fn wp_tm3_only_usb_can_flash() {
 
 #[test]
 fn wp_tm3_no_drive_or_two_drives_write_nothing() {
-    let mut w = Fake::new("no_drive");
+    let mut w = Fake::new("no_drive").answers(&[LINEAGE]); // -- WP PGTM --
     w.board.lock().unwrap().arrives = None;
     assert_eq!(flash(&mut w, &plain(), &["--force"]), exit::TRANSPORT);
     assert_eq!(w.entered(), 1);
@@ -704,19 +763,19 @@ fn wp_tm3_no_drive_or_two_drives_write_nothing() {
 #[test]
 fn wp_tm3_writing_is_not_success_until_the_board_says_so() {
     // Never comes back.
-    let mut w = Fake::new("never_back");
+    let mut w = Fake::new("never_back").answers(&[LINEAGE]); // -- WP PGTM --
     w.board.lock().unwrap().returns = None;
     assert_eq!(flash(&mut w, &plain(), &["--force"]), exit::TRANSPORT);
     assert!(w.written().is_some());
     assert_eq!(w.pauses, POLLS);
 
     // Comes back on something else.
-    let mut w = Fake::new("other_version");
+    let mut w = Fake::new("other_version").answers(&[LINEAGE]); // -- WP PGTM --
     w.board.lock().unwrap().returns = Some("1.1.5");
     assert_eq!(flash(&mut w, &plain(), &["--force"]), exit::REJECTED);
 
     // An image that does not say cannot be confirmed, but the board is back.
-    let mut w = Fake::new("no_version");
+    let mut w = Fake::new("no_version").answers(&[LINEAGE]); // -- WP PGTM --
     let bare = file(support::image(RP2350, "", None));
     assert_eq!(bare.info.firmware_version, "");
     assert_eq!(flash(&mut w, &bare, &["--force"]), exit::OK);
@@ -756,8 +815,13 @@ fn wp_tm3_after_a_mounted_drive_only_the_new_device_is_the_board() {
 
 #[test]
 fn wp_tm3_dry_run_does_nothing_and_says_what_would_happen() {
+    // -- WP PGTM -- an image proven ours is clear; an unstamped one would ask
     let mut w = Fake::new("dry_clear").answers(&["y"]);
-    assert_eq!(flash(&mut w, &plain(), &["--dry-run"]), exit::OK);
+    assert_eq!(flash(&mut w, &stamped("1150"), &["--dry-run"]), exit::OK);
+    nothing_done(&w);
+    assert!(w.asked.is_empty());
+    let mut w = Fake::new("dry_lineage").answers(&[LINEAGE]);
+    assert_eq!(flash(&mut w, &plain(), &["--dry-run"]), exit::REJECTED);
     nothing_done(&w);
     assert!(w.asked.is_empty());
 
@@ -905,7 +969,9 @@ fn wp_tm25_a_refused_reboot_is_said_at_once() {
     // nobody waits for a drive.
     for wire in [None, Some(33)] {
         let fake = |name: &str| {
-            let w = Fake::new(&format!("{name}_{wire:?}")).refuses_lock();
+            let w = Fake::new(&format!("{name}_{wire:?}"))
+                .refuses_lock()
+                .answers(&[LINEAGE]); // -- WP PGTM --
             match wire {
                 Some(wire) => w.image(image_as(wire)),
                 None => w,
@@ -932,4 +998,182 @@ fn wp_tm25_a_refused_reboot_is_said_at_once() {
         )
     );
     assert_eq!(not_rebooted(&DspiError::Denied).0, exit::REJECTED);
+}
+
+// -- WP PGTM -- the update check (PGFWX) on every fake generation and the Zero
+
+impl Fake {
+    fn generation(self, g: FakeGeneration) -> Self {
+        self.board.lock().unwrap().generation = Some(g);
+        self
+    }
+
+    fn zero(self) -> Self {
+        self.board.lock().unwrap().board_kind = FakeBoard::Zero;
+        self
+    }
+}
+
+/// The update check's answer for `image` on the fake's board, as `gate`
+/// reads it (no question asked, nothing sent but reads).
+fn verdict_on(w: &mut Fake, image: &Image) -> (FirmwareTarget, FirmwareUpdateVerdict) {
+    let device = open_device(&usb(), w).ok().expect("the board opens");
+    let target = device.core.firmware_target();
+    let v = check(image, &target, "");
+    device.core.disconnect();
+    (target, v)
+}
+
+#[test]
+fn wp_pgtm_our_firmware_asks_the_lineage_phrase_on_the_terminal() {
+    for g in [
+        FakeGeneration::Bofr116 { page_guard: false },
+        FakeGeneration::Bofr116 { page_guard: true },
+        FakeGeneration::Bofr117,
+    ] {
+        let name = format!("lineage_{g:?}").replace([' ', '{', '}', ':'], "_");
+        let (target, v) = verdict_on(&mut Fake::new(&name).generation(g), &plain());
+        assert_eq!(target.lineage, dspi_core::FirmwareLineage::Bofr, "{g:?}");
+        assert_eq!(v.rule, FirmwareUpdateRule::LineageLoss, "{g:?}");
+        assert_eq!(v.verdict.confirmation_phrase, LINEAGE, "{g:?}");
+        assert!(!v.verdict.allowed);
+
+        // Asked without --accept-core-voltage-risk, and --force does not answer it
+        let mut w = Fake::new(&name).generation(g).answers(&[LINEAGE]);
+        let image = plain();
+        assert_eq!(flash(&mut w, &image, &["--force"]), exit::OK, "{g:?}");
+        assert_eq!(w.asked.len(), 1, "{g:?}: {:?}", w.asked);
+        assert!(w.asked[0].contains(LINEAGE), "{:?}", w.asked);
+        assert_eq!(w.entered(), 1, "{g:?}");
+        assert_eq!(w.written().as_deref(), Some(image.bytes.as_slice()));
+
+        // Never typed for the person: no answer, a near miss or the voltage
+        // phrase, and nothing happens
+        for answers in [
+            &[][..],
+            &["y"],
+            &[PHRASE],
+            &["i accept losing the extensions"],
+        ] {
+            let mut w = Fake::new(&name).generation(g).answers(answers);
+            assert_eq!(
+                flash(&mut w, &plain(), &["--force", "--accept-core-voltage-risk"]),
+                exit::REJECTED,
+                "{g:?} {answers:?}"
+            );
+            nothing_done(&w);
+            assert_eq!(w.asked.len(), 1, "one go");
+        }
+
+        // An image proven ours (the stamp) keeps the extensions: no question
+        let mut w = Fake::new(&name).generation(g);
+        assert_eq!(flash(&mut w, &stamped("1150"), &["--force"]), exit::OK);
+        assert!(w.asked.is_empty(), "{g:?}: {:?}", w.asked);
+    }
+}
+
+#[test]
+fn wp_pgtm_stock_firmware_loses_nothing_and_is_not_asked_about_lineage() {
+    for g in [FakeGeneration::Stock116, FakeGeneration::STOCK117] {
+        let name = format!("stock_{g:?}").replace([' ', '{', '}', ':'], "_");
+        let (target, v) = verdict_on(&mut Fake::new(&name).generation(g), &plain());
+        assert_eq!(
+            target.lineage,
+            dspi_core::FirmwareLineage::Upstream,
+            "{g:?}"
+        );
+        assert_ne!(v.rule, FirmwareUpdateRule::LineageLoss, "{g:?}");
+        assert_ne!(v.verdict.confirmation_phrase, LINEAGE, "{g:?}");
+    }
+}
+
+#[test]
+fn wp_pgtm_the_generation_change_is_said() {
+    // A paged board (1.1.7) and a 1.1.6 image: back to the 1.1.6 protocol
+    for g in [FakeGeneration::STOCK117, FakeGeneration::Bofr117] {
+        let (target, v) = verdict_on(&mut Fake::new("gen_back").generation(g), &plain());
+        assert_eq!(
+            target.generation,
+            dspi_core::FirmwareGeneration::Paged,
+            "{g:?}"
+        );
+        assert_eq!(v.image_generation, dspi_core::FirmwareGeneration::Legacy);
+        assert!(
+            v.generation_change.contains("back to the 1.1.6 protocol"),
+            "{g:?}: {}",
+            v.generation_change
+        );
+    }
+    // A 1.1.6 board and a 1.1.7 image: forward to the paged protocol
+    let up = file(support::image(RP2350, "1.1.7", Some("1150")));
+    for g in [
+        FakeGeneration::Stock116,
+        FakeGeneration::Bofr116 { page_guard: true },
+    ] {
+        let (target, v) = verdict_on(&mut Fake::new("gen_up").generation(g), &up);
+        assert_eq!(
+            target.generation,
+            dspi_core::FirmwareGeneration::Legacy,
+            "{g:?}"
+        );
+        assert!(
+            v.generation_change.contains("paged protocol"),
+            "{g:?}: {}",
+            v.generation_change
+        );
+    }
+    // Same generation: nothing to say
+    let (_, v) = verdict_on(
+        &mut Fake::new("gen_same").generation(FakeGeneration::Stock116),
+        &plain(),
+    );
+    assert_eq!(v.generation_change, "");
+}
+
+#[test]
+fn wp_pgtm_a_board_without_bootsel_is_offered_no_image() {
+    for g in [FakeGeneration::Stock116, FakeGeneration::STOCK117] {
+        let name = format!("zero_{g:?}").replace([' ', '{', '}', ':'], "_");
+        let (target, v) = verdict_on(&mut Fake::new(&name).generation(g).zero(), &plain());
+        assert!(!target.has_bootsel(), "{g:?}");
+        assert_eq!(v.rule, FirmwareUpdateRule::NoBootsel, "{g:?}");
+
+        // Whatever is typed or flagged: refused before any question, nothing sent
+        let args = ["--force", "--accept-core-voltage-risk"];
+        for answers in [&[][..], &[PHRASE], &[LINEAGE]] {
+            let mut w = Fake::new(&name).generation(g).zero().answers(answers);
+            assert_eq!(flash(&mut w, &plain(), &args), exit::REJECTED, "{g:?}");
+            nothing_done(&w);
+            assert!(w.asked.is_empty(), "{g:?}: {:?}", w.asked);
+        }
+        let mut w = Fake::new(&name).generation(g).zero();
+        assert_eq!(flash(&mut w, &plain(), &["--dry-run"]), exit::REJECTED);
+        nothing_done(&w);
+
+        // Nor rebooted into a bootloader it does not have
+        let force = Request {
+            force: true,
+            ..Request::default()
+        };
+        let mut w = Fake::new(&name).generation(g).zero();
+        assert_eq!(run(&usb(), &force, None, &mut w), exit::REJECTED, "{g:?}");
+        nothing_done(&w);
+    }
+}
+
+#[test]
+fn wp_pgtm_a_paged_board_reboots_through_its_paged_entry() {
+    // G2s: stock at its own voltage, an unstamped image: clear, no question
+    // with --force; the bootloader entry goes out as `SYS.ENTER_BOOTLOADER`
+    // (the Spy logs it as 0xF0)
+    let mut w = Fake::new("paged_reboot_v").generation(FakeGeneration::STOCK117);
+    let (_, v) = verdict_on(&mut w, &plain());
+    assert_eq!(v.verdict.decision, FirmwareGuardDecision::Clear);
+    assert!(v.verdict.allowed);
+    let mut w = Fake::new("paged_reboot").generation(FakeGeneration::STOCK117);
+    let image = plain();
+    assert_eq!(flash(&mut w, &image, &["--force"]), exit::OK);
+    assert!(w.asked.is_empty(), "{:?}", w.asked);
+    assert_eq!(w.entered(), 1);
+    assert_eq!(w.written().as_deref(), Some(image.bytes.as_slice()));
 }

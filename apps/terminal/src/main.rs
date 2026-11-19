@@ -93,6 +93,8 @@ mod stdio {
     }
 }
 
+// -- WP PGTM -- `uconsole info` and `uconsole raw --id`: the protocol generation
+mod protocol_info;
 // -- WP TM12 --
 mod autoeq_update;
 // -- WP TM10 --
@@ -239,6 +241,11 @@ fn main() -> ExitCode {
         Some("params") => cmd_params(),
         Some("completions") => cmd_completions(&positional(&flags)),
         Some("doctor") | Some("--doctor") => doctor::run(target),
+        // -- WP PGTM -- a paged command by its id, and the device's protocol
+        Some("raw") if protocol_info::wants_id(&flags) => {
+            protocol_info::cmd_raw_id(target, &flags, json)
+        }
+        Some("info") => protocol_info::cmd_info(target, json),
         Some("raw") => cmd_raw(target, &positional(&flags), json),
         Some("ext") => cmd_ext(
             target,
@@ -306,6 +313,8 @@ fn main() -> ExitCode {
 fn is_command_word(word: &str) -> bool {
     /// What this binary adds to the shared grammar's verbs.
     const TERMINAL_VERBS: &[&str] = &[
+        // -- WP PGTM --
+        "info",
         "ext",
         "autoeq",
         "screenshot",
@@ -669,6 +678,13 @@ USAGE:
     {COMMAND} raw out <op> <v> <hex...>
                              write any vendor opcode with a payload
     {COMMAND} raw war <op> <v> issue a write-as-read and print its status byte
+    {COMMAND} raw --id <id> <len> [v] | raw out --id <id> <v> <hex...>
+                             one paged GET or SET on firmware 1.1.7 and later:
+                             <id> is 0xPPCC or PAGE.NAME (e.g. --id 0x0550);
+                             the core refuses what writes flash, restarts or is
+                             bulk, and a 1.1.6 device, with nothing sent
+    {COMMAND} info            the device's protocol: generation, version, pages,
+                             extension channel and board (--json)
     {COMMAND} ext [list]      list the firmware's extension channel commands
     {COMMAND} ext xfeed-map [p0 p1 p2 p3]
                              read, or set, the crossfeed output pairs:
@@ -1112,7 +1128,8 @@ fn cmd_tui(target: &Target, flags: &[&str], palette: dspi_tui::theme::Palette) -
     // -- WP TM9 -- The target as reached: with the hub's id, for a reconnect.
     let reached = c.link.clone().map_or_else(|| target.clone(), Target::Link);
     let link = Some((&reached, &c.ext));
-    run_tui(
+    // -- WP PGTM -- with the protocol `connected_on` read once, for About
+    run_tui_with(
         &mut c.session,
         c.state,
         link,
@@ -1120,6 +1137,7 @@ fn cmd_tui(target: &Target, flags: &[&str], palette: dspi_tui::theme::Palette) -
         lite,
         no_animation,
         palette,
+        c.protocol.take(),
     )
 }
 
@@ -1149,6 +1167,31 @@ fn run_tui(
     no_animation: bool,
     palette: dspi_tui::theme::Palette,
 ) -> u8 {
+    run_tui_with(
+        session,
+        state,
+        connection,
+        document,
+        lite,
+        no_animation,
+        palette,
+        None,
+    )
+}
+
+// -- WP PGTM --
+/// [`run_tui`], with the device's protocol for Settings > About.
+#[allow(clippy::too_many_arguments)]
+fn run_tui_with(
+    session: &mut Session,
+    state: dspi_session::DeviceState,
+    connection: Option<(&Target, &ExtState)>,
+    document: Option<&str>,
+    lite: bool,
+    no_animation: bool,
+    palette: dspi_tui::theme::Palette,
+    protocol: Option<dspi_tui::settings::about::DeviceProtocolView>,
+) -> u8 {
     let theme = dspi_tui::Theme::new(
         palette,
         dspi_tui::theme::ColorDepth::detect(),
@@ -1175,6 +1218,7 @@ fn run_tui(
         live.set_opener(std::sync::Arc::new(core_route::open_connected));
         live.set_connection(target, ext);
     }
+    live.set_protocol(protocol); // -- WP PGTM --
     if let Some(file) = document {
         live.set_document(file);
     }
@@ -2014,6 +2058,14 @@ fn parse_num(s: &str) -> Option<u32> {
 // (or take `--yes`) and mint the core's token. Checked before anything opens,
 // so the `raw` IN path, which opens the device without a core, refuses too.
 fn raw_refuses_gated(opcode: u32) -> Option<u8> {
+    // -- WP PGTM -- an id with a page would go out as its low byte
+    if opcode > 0xFF {
+        eprintln!(
+            "{COMMAND}: 0x{opcode:X} is not a 1.1.6 opcode; a paged command goes by its id: \
+             `{COMMAND} raw --id 0x{opcode:04X} <len>`"
+        );
+        return Some(exit::USAGE);
+    }
     let call = u8::try_from(opcode)
         .ok()
         .and_then(dspi_core::raw_gated_call)?;

@@ -82,6 +82,11 @@ pub trait Screens {
     /// Read what Settings needs that `DeviceState` does not carry. Called just
     /// before the page opens, so a change made elsewhere is on screen.
     fn refresh_settings(&self, _session: &mut Session) {}
+
+    // -- WP PGTM --
+    /// The open device's protocol for Settings > About, as the embedder read
+    /// it at connect; `None` clears it. Kept until the next connection.
+    fn set_protocol(&self, _protocol: Option<crate::settings::about::DeviceProtocolView>) {}
 }
 
 /// The Console's screens: the dashboard, the input and output pages, every
@@ -225,7 +230,14 @@ impl Screens for ConsoleScreens {
     fn refresh_settings(&self, session: &mut Session) {
         let mut data = SettingsData::read(session);
         data.rta = self.shared.borrow().spectrum.engine.caps().copied();
+        // -- WP PGTM -- read once per connection by the embedder, not here
+        data.protocol = self.settings.borrow().protocol.clone();
         *self.settings.borrow_mut() = data;
+    }
+
+    // -- WP PGTM --
+    fn set_protocol(&self, protocol: Option<crate::settings::about::DeviceProtocolView>) {
+        self.settings.borrow_mut().protocol = protocol;
     }
 }
 
@@ -2844,6 +2856,13 @@ impl Live {
         self.offline = false;
     }
 
+    // -- WP PGTM --
+    /// The open device's protocol for Settings > About, as the embedder read
+    /// it at connect (`Connected::protocol`); `None` clears it.
+    pub fn set_protocol(&mut self, protocol: Option<crate::settings::about::DeviceProtocolView>) {
+        self.screens.set_protocol(protocol);
+    }
+
     // -- WP P1TM --
     /// The session edits a document offline (`uconsole open FILE`): the
     /// title says "File: <name>" and the link reads `file`. No reconnect:
@@ -2893,6 +2912,7 @@ impl Live {
                 let c = *c;
                 *session = c.session;
                 self.adopt(session, c.state);
+                self.set_protocol(c.protocol); // -- WP PGTM --
                 if let Some(target) = self.target.clone() {
                     // -- WP TM9 -- A hub may have come back at another address.
                     let target = c.link.clone().map_or(target, Target::Link);
@@ -3712,6 +3732,7 @@ pub fn run(mut live: Live, session: &mut Session) -> io::Result<()> {
                     Ok(next) => {
                         *session = next.session;
                         live.adopt(session, next.state);
+                        live.set_protocol(next.protocol); // -- WP PGTM --
                         live.set_connection(&target, &next.ext);
                         live.arm_notifications(session);
                         live.connect_analyser(session);
