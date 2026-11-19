@@ -351,6 +351,19 @@ Zero" from `hardware.rs` (shown in caps, the inventory and About, S6), the block
 today; after FWPG4 a dual-stack paged device with its small vendor set on the paged stack and the tunnel. It is a row of
 the compat matrix (section 4).
 
+**How the core tells the sender apart (PGFIX, PGSENDER).** Only after the connect's bulk read failed, and never on
+`Disconnected`. Legacy: its USB product string ("DSPi Audio Link Sender", "DSPi Link Sender"), or without one (MIDI,
+behind a hub) a `REQ_GET_PLATFORM` naming 0 output channels. Paged (`device::is_paged_alink_sender`, on the
+connection's `paged::Discovery`), all of: (1) the same identity rule on `SYS.PLATFORM` (the 1.1.6 layout); (2) the
+tunnel `0xE010` on page 0xE0, i.e. our firmware; (3) no `STORE.ALL_PARAMS` GET in the bitmaps (no bulk image); (4) no
+page but SYS 0x01, STORE 0x02 and 0xE0. **Fail closed:** anything else, and a paged connection without a discovery
+(the hub's `LocalTransport`/`PrincipalTransport`), is not the sender; a paged DSP stays a DSP. Since the sender's
+bitmaps hold nothing of the DSP model, `PagedTransport` refuses every DSP request locally, and the core's
+`AlinkSender` connection refuses them before the adapter. **FWPG4 must present exactly this:** the product string,
+`SYS.PLATFORM` byte 3 = 0, pages SYS, STORE (the output-config save) and 0xE0 only, the tunnel listed in 0xE0's
+bitmap, page 0 kept. Over DSPi Link a paged sender gets no meter poll, not even from the hub's listed channel count;
+behind a 1.2 hub the core speaks legacy only and the dual-stack sender is the legacy sender.
+
 ### 1.10 The firmware port onto 1.1.7 (FWPG0-FWPG6, FWPGHIL)
 
 Plan now, **start FWPG1 when upstream tags 1.1.7** (or after a quiet week on `release/v1.1.7`; its tip moved today).
@@ -731,7 +744,8 @@ length locally. **Deps:** PG-B2; P5SES and P5LIVE merged (else PGMEAS waits; it 
   target), its last check before the write is `DspiCore::firmware_write_check`, never a target kept in Swift. Do not
   offer the bundled DSP image to the alink sender (Qt and Android do not).
 - **Open (owner):** Qt's menus still open the DSP tool windows on the alink sender (the core answers `Unsupported`;
-  nothing of the DSP model is written). A dual-stack sender (FWPG4) is not recognised: its open fails at the bulk read.
+  nothing of the DSP model is written). A dual-stack sender (FWPG4) is not recognised: its open fails at the bulk read
+  (**fixed by PGSENDER**, section 1.9).
 
 **PGFWX: The update check over the bindings.** [DONE] Size 1. Wave PG-D, before the client WPs. **Owns:** the
 bindings of the update check (UniFFI derives and exports in `crates/dspi-core/src/firmware_guard.rs`, new
@@ -795,9 +809,9 @@ uploaded from the page for the session's own DSPi and offers only Cancel on a re
 `no_bootsel` and `lineage_loss`; the alink sender gets its own page (device info, audio link, update check) and no
 DSP screen or meters; a refused open shows its notice (`transfer.newer_protocol`, `transfer.unrecognised_device`).
 E2E over the WebUSB mock, whose engine (`dspi_mock_new_as`) is each fake generation and board: G1s, G1b with and
-without PAGEGUARD, G2s, G2b, Zero on 1.1.6 and 1.1.7, the sender, and probe answers for both notices. Not covered:
-the dual-stack sender (FWPG4) on its paged stack opens as a DSP and fails at the bulk read (the core's
-`DeviceKind::AlinkSender` is legacy-only).
+without PAGEGUARD, G2s, G2b, Zero on 1.1.6 and 1.1.7, the sender, and probe answers for both notices. Not covered at PGWEB:
+the dual-stack sender (FWPG4) on its paged stack opened as a DSP and failed at the bulk read (the core's
+`DeviceKind::AlinkSender` was legacy-only; fixed by PGSENDER, whose e2e covers `sender-dual`).
 
 **PGQT: Qt.** [DONE] Size 0.75. Wave PG-D. **Owns:** the Qt About/device-info controller and view, the raw dialog.
 **Done when:** `ci/check.sh --step qt`, `--step qt-offscreen` with the fake generations. **Deps:** PGCORE. **Did (WP
@@ -840,6 +854,18 @@ on `AlinkSender` a sender page stands in for Home and the DSP routes are closed.
 `DspiCore::firmware_write_check` (the gate's verdict on the core's own kept target, nothing written) instead of
 judging on a target kept in Kotlin, which did not know when the core had opened another board; a dismissed check keeps
 no board; the bundled DSP image is not offered to the sender (as Qt).
+
+**PGSENDER: The dual-stack alink sender on its paged stack.** [DONE] Size 0.5. Wave PG-D (PGWEB's follow-up).
+**Owns:** the sender recognition in `crates/dspi-core/src/device.rs` (`sender_mirror`, new `is_paged_alink_sender`,
+`SENDER_PAGES`), the Link bind's meter gate (`link.rs`, `open_bound`), new `device/tests_wp_pgsender.rs` and
+`link/tests_wp_pgsender.rs`, the sender e2e in `apps/web/test/e2e/device_pgweb.spec.ts`, section 1.9's rule,
+`docs/integrator/protocol-generations.md` section 4. **Did:** a paged device is connected as `DeviceKind::AlinkSender`
+when its bulk read failed and its discovery meets section 1.9's four conditions (identity, tunnel, no bulk image, no
+page but SYS, STORE, 0xE0); fail closed otherwise. Over DSPi Link behind a 1.3 hub it binds as the paged sender with no
+meter poll; behind a 1.2 hub as the legacy sender. Web, Qt, Android and the Terminal key on `device_kind` and needed no
+change (checked); the web e2e runs the sender page on `sender-dual` too. **Not done:** our hub's in-process paths carry
+no discovery, so a paged sender reached through them still fails to open (fail closed, as PGTM's note); the firmware
+(FWPG4) is not written: its fake (`FakeDevice::sender(true)`, PGFAKE2) is the contract.
 
 **PGSWIFT: Swift (coordinator, Mac VM).** [TODO] Size 1. Wave PG-D. **Owns:** the Swift device-info row; the
 core-backed paths' tests against the paged fakes. Its `CoreBackedTransport` needs no code (its opcodes go through the

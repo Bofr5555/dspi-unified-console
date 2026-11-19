@@ -9,8 +9,8 @@ wave PG-D (revised at the PG-D part 2 review). The user's page is [docs/manual/n
 
 | Generation | Firmware | On the wire |
 |---|---|---|
-| legacy | upstream 1.1.6 and older, this fork's `bofr-main` (with or without PAGEGUARD), the DSPi-Zero today, the alink sender | 1.1.6 opcodes on page 0; this fork adds the extension channel `REQ_EXTENSION` 0x00 |
-| paged | upstream 1.1.7, and this fork's later port of it (dual-stack) | commands by id `0xPPCC` (page `PP`, command `CC`, `wIndex = (PP << 8) \| 2`); this fork's extensions on the private page 0xE0, tunnel `0xE010`, `wValue` = the extension id |
+| legacy | upstream 1.1.6 and older, this fork's `bofr-main` (with or without PAGEGUARD), the DSPi-Zero today, the alink sender of the 1.1.6 line | 1.1.6 opcodes on page 0; this fork adds the extension channel `REQ_EXTENSION` 0x00 |
+| paged | upstream 1.1.7, and this fork's later port of it (dual-stack), the alink sender included (FWPG4) | commands by id `0xPPCC` (page `PP`, command `CC`, `wIndex = (PP << 8) \| 2`); this fork's extensions on the private page 0xE0, tunnel `0xE010`, `wValue` = the extension id |
 
 The core decides the generation **once per connection, before anything else is sent** (`dspi_transport::paged::open`):
 the probe `SYS.PROTOCOL_INFO` (GET `0x0110`), which 1.1.6 firmware STALLs; then `REQ_GET_PLATFORM` on a legacy
@@ -62,19 +62,31 @@ fakes only, never a device.
 
 ## 4. The alink sender: `device_kind` `AlinkSender`
 
-The alink sender (`firmware/DSPi-Sender`, legacy only) answers a small vendor set: the extension channel with its alink
-block, the platform, serial and build info, and the bootloader entry. The core connects it with a **limited
-connection**:
+The alink sender (`firmware/DSPi-Sender`) answers a small vendor set: the extension channel with its alink block, the
+platform, serial and build info, its output-config save and the bootloader entry. On the 1.1.6 line it is a legacy
+device (guarded by PAGEGUARD); after the port (FWPG4) it is dual-stack: the same set on the paged stack (pages SYS and
+STORE) and the tunnel on page 0xE0, and page 0 kept for legacy hosts. The core connects it on either generation with a
+**limited connection**:
 
-- recognised after the connect's bulk read failed, never on a paged connection: by its USB product string ("DSPi Audio
-  Link Sender", "DSPi Link Sender"), or without one (MIDI, behind a hub) by `REQ_GET_PLATFORM` naming 0 output channels;
+- recognised only after the connect's bulk read failed (a device whose image reads is a DSP, whatever it is called);
+- **legacy**: by its USB product string ("DSPi Audio Link Sender", "DSPi Link Sender"), or without one (MIDI, behind
+  a hub) by `REQ_GET_PLATFORM` naming 0 output channels;
+- **paged** (WP PGSENDER): by the connection's discovery, all of: (1) the same identity rule on `SYS.PLATFORM` (the
+  1.1.6 layout), (2) the tunnel `0xE010` on page 0xE0 (this fork's firmware), (3) no `STORE.ALL_PARAMS` GET in its
+  command bitmaps (no bulk image), (4) no page listed but SYS (0x01), STORE (0x02) and 0xE0. Anything else is not the
+  sender (fail closed): a paged DSP stays a DSP, a paged device without the tunnel or with any other page fails to open
+  as before, and so does a paged connection that carries no discovery (the hub's in-process and principal
+  connections). Since its command bitmaps hold nothing of the DSP model, the adapter refuses every DSP request
+  locally, so nothing DSP-only reaches the sender's wire even before its kind is settled;
+- behind a 1.2 hub the core speaks legacy only, and a dual-stack sender is the legacy sender (its page-0 stack);
 - works: `device_protocol`, `fetch_all` (re-reads the platform only), `ext_status`, `alink_info`, `fetch_alink_*`,
   `reset_alink_stats`, `firmware_target` and the update check (it is a Pico board, so an update is offered);
 - refused as `Unsupported` with nothing sent: every DSP setter, `apply_all_params`, `refresh_params`, `fetch_status`
   (no meters); over DSPi Link no meter poll is subscribed;
 - a per-item DSP read that a client sends anyway goes out and is STALLed. **Use `device_kind` to show only the sender's
   screens**: the device info, the audio link block and the update.
-- A future dual-stack sender (paged) will not be recognised by this path.
+- `device_protocol` says the generation and the envelope (`Legacy`, or `Tunnel` on the paged stack); the clients' sender
+  pages (web, Qt, Android, Terminal) key on `device_kind` only and need no change per generation.
 
 ## 5. Updates: the update check and the write gate
 

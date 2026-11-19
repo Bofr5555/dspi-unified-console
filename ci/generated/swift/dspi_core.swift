@@ -57825,7 +57825,8 @@ public enum DeviceKind {
      */
     case dsp
     /**
-     * The alink sender build (`firmware/DSPi-Sender`, legacy only): a
+     * The alink sender build (`firmware/DSPi-Sender`), on the legacy
+     * generation or, dual-stack (FWPG4), on the paged one (WP PGSENDER): a
      * connection with limited capabilities. It has the device info
      * (platform, serial, build), the extension channel with its alink block
      * (`alink_info`, `fetch_alink_*`, `reset_alink_stats`) and the update
