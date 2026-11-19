@@ -213,8 +213,9 @@ PRO1's T1 to T5 keep their ids; the owner's requirements add T7 to T12 (T6 is PR
 9. **Noise and trust.** A 1 s pre-roll with the generator idle gives the noise floor; per point, SNR above 20 dB and a
    repeat-to-repeat spread under 1 dB mark it trusted (`Response.valid`); untrusted points are drawn faint and never
    fitted. (WP P5TRUST: the spread is of the repeats' **windowed** responses, the fit's window, beyond the spread their
-   noise explains; the SNR rule judges the noise. WP P5TRUST2: that allowance is at most 2 dB and never more than three
-   repeats would have at the same averaged SNR, so a change of the room of more than 3 dB is seen at every SNR.)
+   noise explains; the SNR rule judges the noise. WP P5TRUST2: that allowance is at most 2 dB, so a change of the room
+   of more than 3 dB is seen at every SNR; below the cap it is the repeats' own noise, so more repeats never leave
+   points untrusted on noise alone above the floor.)
 10. **Memory and analysis** (RC8). Capture at most `MAX_CAPTURE_SAMPLES` = 8 Mi frames (32 MiB); the plan step refuses
     a setup whose planned frames (pre-roll + cycles + post-roll at the capture rate) exceed it, so the largest
     default run (a whole stereo three-way system as one alignment group: 6 outputs × 3 passes × 6.5 s ≈ 117 s, 5.6 M
@@ -352,7 +353,7 @@ before the next, and the user may stop after any step with nothing written.
    applied only after the summed check passed) and never below S6. WP P5TRUST2: the move must also be at least 0.05 dB
    RMS better; each candidate's delay is held within a quarter of its corner's period (at least 0.25 ms) of the
    arrival-based delay, so no candidate takes a half- or whole-cycle-off alignment (delay and polarity standing in for
-   each other at one frequency).
+   each other at one frequency); "align only" (`align`) holds its timing the same way.
 6. **Summed check, mandatory** (RC5f). One summed run per transition with the **current** chain: both ways play the
    generator's correlated copy, `invert_mask` set to the outputs' current net polarities (the generator bypasses the
    crosspoints, RC1). The measured sum is compared with the sum predicted from the walked run's responses and timing. If
@@ -774,8 +775,12 @@ choice and timing, `align.rs`'s pair search (additive), `ir.rs`'s spread allowan
   (`TIMING_HOLD_PERIODS`, `TIMING_HOLD_MIN_MS`), of the arrival-based delay; when the window's best lies further
   (a half or whole cycle off) the polarity and delay are chosen again within the hold, on the same evaluations, and
   a note says so. Inside the hold the result is the old one bit for bit.
-- N3: the noise allowance of the repeat spread is at most 2 dB (`MAX_NOISE_SPREAD_DB`) and never more than three
-  repeats would have at the same averaged SNR (`SPREAD_REFERENCE_REPEATS`).
+- N3: the noise allowance of the repeat spread is at most 2 dB (`MAX_NOISE_SPREAD_DB`). Coordinator: no repeat-count
+  scaling (more repeats must never make points untrusted on noise alone). **Later:** compare group averages of the
+  repeats (each group's noise like three repeats' at the averaged SNR), so many repeats see a change in the room as
+  well as three without their own noise counting against them.
+- N2 also for alignment alone: `align()` holds its timing the same way (`search_held`), with the same note, so "keep
+  the crossover, align only" and the crossover search agree.
 - N1: a corner moves only when at least 1 % **and** 0.05 dB RMS better (`CORNER_MIN_GAIN_DB`).
 - N7: a proposal whose planned verify needs a longer guard than 590 s carries the warning `measure.tune.guard_capped`;
   the guard still caps.

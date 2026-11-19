@@ -462,3 +462,51 @@ proptest! {
         }
     }
 }
+
+// -- WP P5TRUST2 -- alignment alone holds its timing near the arrivals, as
+// the crossover search's candidates do (review P5TRUST N2).
+#[test]
+fn wp_p5trust2_alignment_alone_never_takes_a_timing_far_from_the_arrivals() {
+    let corner = 238.0;
+    let ways = || {
+        vec![
+            way(
+                0,
+                WayRole::Low,
+                chain(vec![band(LR4_LP, corner)]),
+                &Drv::flat(50.85),
+                60.0,
+            ),
+            way(
+                1,
+                WayRole::High,
+                chain(vec![band(LR4_HP, corner)]),
+                &Drv::flat(50.5),
+                60.0,
+            ),
+        ]
+    };
+    // As measured: the timing is the arrivals' and nothing is held.
+    let r = align(&ways(), &pair_group(), &AlignOptions::default()).unwrap();
+    assert!(
+        !r.notes.iter().any(|n| n.contains("measured arrivals")),
+        "{r:?}"
+    );
+    assert!((r.pairs[0].relative_delay_ms - 0.35).abs() < 0.01, "{r:?}");
+    // The arrivals put the tweeter 1.8 ms later than its response does
+    // (0.43 of the corner's period): the responses' best is outside the
+    // hold, and the timing proposed is held within it.
+    let mut w = ways();
+    w[1].arrival_ms -= 1.8;
+    let start = (w[0].arrival_ms - 0.0) - (w[1].arrival_ms - 0.0);
+    let r = align(&w, &pair_group(), &AlignOptions::default()).unwrap();
+    let hold = crate::xover::timing_hold_ms(corner);
+    assert!(
+        (r.pairs[0].relative_delay_ms - start).abs() <= hold + 1e-6,
+        "{r:?} (start {start}, hold {hold})"
+    );
+    assert!(
+        r.notes.iter().any(|n| n.contains("measured arrivals")),
+        "{r:?}"
+    );
+}

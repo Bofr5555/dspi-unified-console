@@ -1240,7 +1240,7 @@ fn wp_p5trust_the_noise_explains_a_spread_that_grows_with_it() {
 // not grow with the repeats.
 
 #[test]
-fn wp_p5trust2_the_noise_allowance_is_capped_and_not_widened_by_more_repeats() {
+fn wp_p5trust2_the_noise_allowance_is_capped_at_2_db() {
     // At the 20 dB trust floor of the averaged response: one repeat's noise
     // is the average's times the repeats.
     let signal = 1.0;
@@ -1248,8 +1248,8 @@ fn wp_p5trust2_the_noise_allowance_is_capped_and_not_widened_by_more_repeats() {
     let uncapped3 = noise_spread_db(avg_noise * 3.0, signal);
     let uncapped8 = noise_spread_db(avg_noise * 8.0, signal);
     assert!((uncapped3 - 3.2).abs() < 0.1 && (uncapped8 - 5.4).abs() < 0.1);
-    let a3 = spread_allowance_db(avg_noise * 3.0, signal, 3);
-    let a8 = spread_allowance_db(avg_noise * 8.0, signal, 8);
+    let a3 = spread_allowance_db(avg_noise * 3.0, signal);
+    let a8 = spread_allowance_db(avg_noise * 8.0, signal);
     assert_eq!(a3, MAX_NOISE_SPREAD_DB);
     assert_eq!(a8, MAX_NOISE_SPREAD_DB);
     // A 4 to 6 dB change between repeats is over the trust rule's 1 dB.
@@ -1258,26 +1258,14 @@ fn wp_p5trust2_the_noise_allowance_is_capped_and_not_widened_by_more_repeats() {
             assert!(change - a > 1.0, "{change} dB less {a} dB");
         }
     }
-    // At any averaged SNR, more repeats never widen it; two keep their own.
-    for snr_db in [20.0, 25.0, 30.0, 40.0, 60.0] {
-        let avg = 10f64.powf(-snr_db / 10.0);
-        let three = spread_allowance_db(avg * 3.0, signal, 3);
-        assert_eq!(three, noise_spread_db(avg * 3.0, signal).min(2.0));
-        for r in [4usize, 8, 16, 1000] {
-            let more = spread_allowance_db(avg * r as f64, signal, r);
-            assert!(
-                (more - three).abs() < 1e-9,
-                "{snr_db} dB, {r}: {more} vs {three}"
-            );
-        }
-        assert_eq!(
-            spread_allowance_db(avg * 2.0, signal, 2),
-            noise_spread_db(avg * 2.0, signal).min(2.0)
-        );
+    // Below the cap the allowance is the noise's own, whatever the repeats.
+    for snr_db in [30.0, 40.0, 60.0] {
+        let n = 10f64.powf(-snr_db / 10.0);
+        assert_eq!(spread_allowance_db(n, signal), noise_spread_db(n, signal));
     }
     // Degenerate input stays finite and bounded.
-    for (n, s, r) in [(f64::NAN, 1.0, 3), (1.0, 0.0, 0), (f64::INFINITY, 1.0, 8)] {
-        let a = spread_allowance_db(n, s, r);
+    for (n, s) in [(f64::NAN, 1.0), (1.0, 0.0), (f64::INFINITY, 1.0)] {
+        let a = spread_allowance_db(n, s);
         assert!(a.is_finite() && (0.0..=MAX_NOISE_SPREAD_DB).contains(&a));
     }
 }
@@ -1285,10 +1273,17 @@ fn wp_p5trust2_the_noise_allowance_is_capped_and_not_widened_by_more_repeats() {
 /// The spread per point where the averaged response's windowed SNR is 20
 /// to 23 dB, of a capture whose middle repeat is `change_db` louder.
 fn spread_near_the_floor(repeats: u16, change_db: f64) -> Vec<f64> {
+    spread_at(repeats, change_db, 1.4, (20.0, 23.0))
+}
+
+/// The spread per point where the averaged response's windowed SNR is in
+/// `snr`, dB, of a capture whose middle repeat is `change_db` louder, with
+/// noise `noise` (scaled with the repeats so the averaged SNR stays put).
+fn spread_at(repeats: u16, change_db: f64, noise: f64, snr: (f64, f64)) -> Vec<f64> {
     let grid = LogGrid::STANDARD.freqs().unwrap();
     let mut world = World::new(vec![delta_way(0, 0.001)]);
     // About 20 to 23 dB of averaged SNR whatever the repeats.
-    world.noise_rms = 1.4 * (f64::from(repeats) / 3.0).sqrt();
+    world.noise_rms = noise * (f64::from(repeats) / 3.0).sqrt();
     let sch = schedule(48_000, 1_000, 300, 1, repeats);
     let mut r = render(&world, &sch);
     let k = usize::from(repeats / 2);
@@ -1325,8 +1320,8 @@ fn spread_near_the_floor(repeats: u16, change_db: f64) -> Vec<f64> {
         .zip(nz)
         .zip(&o.spread_db)
         .filter_map(|((((f, v), s2), n), sp)| {
-            let snr = 10.0 * v.norm_sqr().log10() - n - 10.0 * s2.log10();
-            ((100.0..=20_000.0).contains(f) && (20.0..=23.0).contains(&snr)).then_some(*sp)
+            let x = 10.0 * v.norm_sqr().log10() - n - 10.0 * s2.log10();
+            ((100.0..=20_000.0).contains(f) && (snr.0..=snr.1).contains(&x)).then_some(*sp)
         })
         .collect()
 }
@@ -1349,5 +1344,26 @@ fn wp_p5trust2_a_4_to_6_db_change_between_repeats_near_the_trust_floor_is_seen()
                 sp.len()
             );
         }
+    }
+}
+
+#[test]
+fn wp_p5trust2_more_repeats_leave_no_more_points_untrusted_on_noise_at_30_db() {
+    // Noise alone, about 30 dB of averaged SNR: the capped allowance is the
+    // noise's own there, so eight repeats lose about as few points as three
+    // (coordinator, P5TRUST2).
+    for repeats in [3u16, 8] {
+        let sp = spread_at(repeats, 0.0, 0.5, (28.0, 32.0));
+        let over = sp.iter().filter(|s| **s > 1.0).count();
+        println!(
+            "{repeats} repeats, noise only: {over} of {} points at 28 to 32 dB read over 1 dB",
+            sp.len()
+        );
+        assert!(sp.len() >= 100, "{} points", sp.len());
+        assert!(
+            over * 100 <= 8 * sp.len(),
+            "{repeats}: {over} of {}",
+            sp.len()
+        );
     }
 }

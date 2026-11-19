@@ -84,7 +84,7 @@ Where this page and the code disagree, the code is right and the page is the bug
    is the summed run, mandatory before any timing write is offered.
 9. **Noise and trust:** a 1 s pre-roll gives the noise floor; a point is trusted (`valid`) when its SNR is above 20 dB and
    its repeat-to-repeat spread under 1 dB (the repeats' windowed responses, beyond the spread their noise explains, which
-   is taken as at most 2 dB and never more than with three repeats).
+   is taken as at most 2 dB).
    Untrusted points are drawn faint and never fitted.
 10. **Memory:** a capture holds at most 8 Mi frames (`MAX_CAPTURE_SAMPLES`); a run that would exceed it is refused at the
     plan step. Responses are held on a 1/96-octave grid from 10 Hz to 22 kHz (1066 points).

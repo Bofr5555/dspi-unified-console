@@ -312,17 +312,30 @@ pub fn align(
             ctx.search(db - da, 0.0, 0, 0)
         } else {
             let start = (wa.arrival_ms - da) - (wb.arrival_ms - db);
-            let start = if start.is_finite() && start.abs() <= MAX_DELAY_BOUND_MS {
-                start
+            // -- WP P5TRUST2 -- held near the arrivals, as the crossover
+            // search's candidates (review P5TRUST N2): never a half or whole
+            // cycle off them.
+            let (start, hold) = if start.is_finite() && start.abs() <= MAX_DELAY_BOUND_MS {
+                (start, crate::xover::timing_hold_ms(corner))
             } else {
-                db - da
+                (db - da, f64::INFINITY)
             };
-            ctx.search(
+            let fit = ctx.search_held(
                 start,
                 half_window_ms(corner),
                 ALIGN_COARSE_STEPS,
                 REFINE_ITERS,
-            )
+                hold,
+            );
+            if fit.held {
+                notes.push(format!(
+                    "outputs {} and {}: the best timing at {corner:.0} Hz lay more than {hold:.2} ms \
+                     from the measured arrivals (a half or whole cycle off); the timing proposed is \
+                     the best within that",
+                    wa.output, wb.output
+                ));
+            }
+            fit
         };
         let share = if total == 0 {
             0.0
