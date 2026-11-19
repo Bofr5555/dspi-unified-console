@@ -2901,8 +2901,11 @@ interface DspiCoreApi : AutoCloseable {
 
     /**
      * The open device's protocol: its generation, the paged protocol's
-     * version and pages, and how the extension channel is reached. No
-     * traffic. Errors: [`DspiError::Disconnected`] with nothing open.
+     * version and pages, how the extension channel is reached, and the
+     * board with its name. The board costs one platform read (the rest
+     * sends nothing); a board that cannot be read is an unknown board.
+     * Errors: [`DspiError::Disconnected`] with nothing open or when the
+     * device went.
      */
     @Throws(DspiException::class)
     fun deviceProtocol(): DeviceProtocol

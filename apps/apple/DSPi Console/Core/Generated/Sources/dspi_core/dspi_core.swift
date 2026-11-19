@@ -2186,8 +2186,11 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     
     /**
      * The open device's protocol: its generation, the paged protocol's
-     * version and pages, and how the extension channel is reached. No
-     * traffic. Errors: [`DspiError::Disconnected`] with nothing open.
+     * version and pages, how the extension channel is reached, and the
+     * board with its name. The board costs one platform read (the rest
+     * sends nothing); a board that cannot be read is an unknown board.
+     * Errors: [`DspiError::Disconnected`] with nothing open or when the
+     * device went.
      */
     func deviceProtocol() throws  -> DeviceProtocol
     
@@ -7948,8 +7951,11 @@ open func deviceLockRelease()  {try! rustCall() {
     
     /**
      * The open device's protocol: its generation, the paged protocol's
-     * version and pages, and how the extension channel is reached. No
-     * traffic. Errors: [`DspiError::Disconnected`] with nothing open.
+     * version and pages, how the extension channel is reached, and the
+     * board with its name. The board costs one platform read (the rest
+     * sends nothing); a board that cannot be read is an unknown board.
+     * Errors: [`DspiError::Disconnected`] with nothing open or when the
+     * device went.
      */
 open func deviceProtocol()throws  -> DeviceProtocol  {
     return try  FfiConverterTypeDeviceProtocol_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
@@ -24959,6 +24965,18 @@ public struct DeviceProtocol {
      * How the extension channel is reached.
      */
     public var extEnvelope: ExtEnvelope
+    /**
+     * The board id: 0 a Pico, 1 the DSPi-Zero, other values unknown boards
+     * (0xFF a product string this build does not know, or a board that
+     * could not be read). From the platform's byte 7 and, on board 0, the
+     * USB descriptor (`DspiCore::board`).
+     */
+    public var boardId: UInt8
+    /**
+     * The name clients show for the board in caps and About: "DSPi",
+     * "DSPi Zero" or "Unknown board" (`board_name`).
+     */
+    public var boardName: String
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -24979,12 +24997,24 @@ public struct DeviceProtocol {
          */pages: [DevicePage], 
         /**
          * How the extension channel is reached.
-         */extEnvelope: ExtEnvelope) {
+         */extEnvelope: ExtEnvelope, 
+        /**
+         * The board id: 0 a Pico, 1 the DSPi-Zero, other values unknown boards
+         * (0xFF a product string this build does not know, or a board that
+         * could not be read). From the platform's byte 7 and, on board 0, the
+         * USB descriptor (`DspiCore::board`).
+         */boardId: UInt8, 
+        /**
+         * The name clients show for the board in caps and About: "DSPi",
+         * "DSPi Zero" or "Unknown board" (`board_name`).
+         */boardName: String) {
         self.generation = generation
         self.protocolMajor = protocolMajor
         self.protocolMinor = protocolMinor
         self.pages = pages
         self.extEnvelope = extEnvelope
+        self.boardId = boardId
+        self.boardName = boardName
     }
 }
 
@@ -25010,6 +25040,12 @@ extension DeviceProtocol: Equatable, Hashable {
         if lhs.extEnvelope != rhs.extEnvelope {
             return false
         }
+        if lhs.boardId != rhs.boardId {
+            return false
+        }
+        if lhs.boardName != rhs.boardName {
+            return false
+        }
         return true
     }
 
@@ -25019,6 +25055,8 @@ extension DeviceProtocol: Equatable, Hashable {
         hasher.combine(protocolMinor)
         hasher.combine(pages)
         hasher.combine(extEnvelope)
+        hasher.combine(boardId)
+        hasher.combine(boardName)
     }
 }
 
@@ -25035,7 +25073,9 @@ public struct FfiConverterTypeDeviceProtocol: FfiConverterRustBuffer {
                 protocolMajor: FfiConverterUInt8.read(from: &buf), 
                 protocolMinor: FfiConverterUInt8.read(from: &buf), 
                 pages: FfiConverterSequenceTypeDevicePage.read(from: &buf), 
-                extEnvelope: FfiConverterTypeExtEnvelope.read(from: &buf)
+                extEnvelope: FfiConverterTypeExtEnvelope.read(from: &buf), 
+                boardId: FfiConverterUInt8.read(from: &buf), 
+                boardName: FfiConverterString.read(from: &buf)
         )
     }
 
@@ -25045,6 +25085,8 @@ public struct FfiConverterTypeDeviceProtocol: FfiConverterRustBuffer {
         FfiConverterUInt8.write(value.protocolMinor, into: &buf)
         FfiConverterSequenceTypeDevicePage.write(value.pages, into: &buf)
         FfiConverterTypeExtEnvelope.write(value.extEnvelope, into: &buf)
+        FfiConverterUInt8.write(value.boardId, into: &buf)
+        FfiConverterString.write(value.boardName, into: &buf)
     }
 }
 
@@ -62395,7 +62437,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_device_lock_release() != 10916) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_device_protocol() != 23997) {
+    if (uniffi_dspi_core_checksum_method_dspicore_device_protocol() != 59788) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_diagnostics_file_name() != 50086) {

@@ -7433,8 +7433,9 @@ uint32_t dspi_measure_tune_stop(struct FfiCore *core, char *buf, uint32_t len);
 /**
  * The open device's protocol in JSON: `{ok, generation ("unknown",
  * "legacy" or "paged"), protocolMajor, protocolMinor, pages: [{page,
- * revision}], extEnvelope ("noChannel", "legacy" or "tunnel")}`. No
- * traffic. Returns the bytes needed including the NUL.
+ * revision}], extEnvelope ("noChannel", "legacy" or "tunnel"), boardId,
+ * boardName ("DSPi", "DSPi Zero" or "Unknown board")}`. One platform read
+ * (the board). Returns the bytes needed including the NUL.
  */
 uint32_t dspi_device_protocol(struct FfiCore *core, char *buf, uint32_t len);
 

@@ -1054,10 +1054,11 @@ public enum LinkConstants {
     public static let DEFAULT_PORT: UInt16 = 11915
     /// The protocol major of DSPi Link (spec 10).
     public static let PROTO_MAJOR: UInt32 = 1
-    /// The minor **our hub** sends in its `hello` (`dspi-hub` `server.rs`): 2 until
-    /// WP PGHDEV raises it together with `protocol`, `ext`, `legacy_devices` and
-    /// `denied_ids`, so the hub never claims 1.3 without behaving as one (PLAN-PG
-    /// R4). The client sends [`CLIENT_PROTO_MINOR`].
+    /// The DSPi Link 1.2 minor: the last one before 1.3 (paged devices), and what
+    /// a peer that says no `proto.minor` counts as. Neither side of ours sends it
+    /// any more (PLAN-PG R4): our client sends [`CLIENT_PROTO_MINOR`], our hub
+    /// [`LINK_13_MINOR`] (`dspi-hub` `server.rs` `HUB_PROTO_MINOR`, WP PGHDEV,
+    /// together with `protocol`, `ext`, `legacy_devices` and `denied_ids`).
     public static let PROTO_MINOR: UInt32 = 2
     /// The minor this **client** sends in its `hello`: it speaks DSPi Link 1.3
     /// (paged devices, `denied_ids`, the firmware result codes) and 1.2 (spec 13.1;

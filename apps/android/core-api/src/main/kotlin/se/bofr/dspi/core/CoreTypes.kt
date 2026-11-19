@@ -2398,6 +2398,18 @@ data class DeviceProtocol(
      * How the extension channel is reached.
      */
     val extEnvelope: ExtEnvelope,
+    /**
+     * The board id: 0 a Pico, 1 the DSPi-Zero, other values unknown boards
+     * (0xFF a product string this build does not know, or a board that
+     * could not be read). From the platform's byte 7 and, on board 0, the
+     * USB descriptor (`DspiCore::board`).
+     */
+    val boardId: Int,
+    /**
+     * The name clients show for the board in caps and About: "DSPi",
+     * "DSPi Zero" or "Unknown board" (`board_name`).
+     */
+    val boardName: String,
 )
 
 /**

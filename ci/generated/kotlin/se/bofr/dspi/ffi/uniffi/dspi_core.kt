@@ -5041,7 +5041,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_device_lock_release() != 10916.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_device_protocol() != 23997.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_device_protocol() != 59788.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_diagnostics_file_name() != 50086.toShort()) {
@@ -8697,8 +8697,11 @@ public interface DspiCoreInterface {
     
     /**
      * The open device's protocol: its generation, the paged protocol's
-     * version and pages, and how the extension channel is reached. No
-     * traffic. Errors: [`DspiError::Disconnected`] with nothing open.
+     * version and pages, how the extension channel is reached, and the
+     * board with its name. The board costs one platform read (the rest
+     * sends nothing); a board that cannot be read is an unknown board.
+     * Errors: [`DspiError::Disconnected`] with nothing open or when the
+     * device went.
      */
     fun `deviceProtocol`(): DeviceProtocol
     
@@ -14841,8 +14844,11 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     
     /**
      * The open device's protocol: its generation, the paged protocol's
-     * version and pages, and how the extension channel is reached. No
-     * traffic. Errors: [`DspiError::Disconnected`] with nothing open.
+     * version and pages, how the extension channel is reached, and the
+     * board with its name. The board costs one platform read (the rest
+     * sends nothing); a board that cannot be read is an unknown board.
+     * Errors: [`DspiError::Disconnected`] with nothing open or when the
+     * device went.
      */
     @Throws(DspiException::class)override fun `deviceProtocol`(): DeviceProtocol {
             return FfiConverterTypeDeviceProtocol.lift(
@@ -30636,7 +30642,19 @@ data class DeviceProtocol (
     /**
      * How the extension channel is reached.
      */
-    var `extEnvelope`: ExtEnvelope
+    var `extEnvelope`: ExtEnvelope, 
+    /**
+     * The board id: 0 a Pico, 1 the DSPi-Zero, other values unknown boards
+     * (0xFF a product string this build does not know, or a board that
+     * could not be read). From the platform's byte 7 and, on board 0, the
+     * USB descriptor (`DspiCore::board`).
+     */
+    var `boardId`: kotlin.UByte, 
+    /**
+     * The name clients show for the board in caps and About: "DSPi",
+     * "DSPi Zero" or "Unknown board" (`board_name`).
+     */
+    var `boardName`: kotlin.String
 ) {
     
     companion object
@@ -30653,6 +30671,8 @@ public object FfiConverterTypeDeviceProtocol: FfiConverterRustBuffer<DeviceProto
             FfiConverterUByte.read(buf),
             FfiConverterSequenceTypeDevicePage.read(buf),
             FfiConverterTypeExtEnvelope.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterString.read(buf),
         )
     }
 
@@ -30661,7 +30681,9 @@ public object FfiConverterTypeDeviceProtocol: FfiConverterRustBuffer<DeviceProto
             FfiConverterUByte.allocationSize(value.`protocolMajor`) +
             FfiConverterUByte.allocationSize(value.`protocolMinor`) +
             FfiConverterSequenceTypeDevicePage.allocationSize(value.`pages`) +
-            FfiConverterTypeExtEnvelope.allocationSize(value.`extEnvelope`)
+            FfiConverterTypeExtEnvelope.allocationSize(value.`extEnvelope`) +
+            FfiConverterUByte.allocationSize(value.`boardId`) +
+            FfiConverterString.allocationSize(value.`boardName`)
     )
 
     override fun write(value: DeviceProtocol, buf: ByteBuffer) {
@@ -30670,6 +30692,8 @@ public object FfiConverterTypeDeviceProtocol: FfiConverterRustBuffer<DeviceProto
             FfiConverterUByte.write(value.`protocolMinor`, buf)
             FfiConverterSequenceTypeDevicePage.write(value.`pages`, buf)
             FfiConverterTypeExtEnvelope.write(value.`extEnvelope`, buf)
+            FfiConverterUByte.write(value.`boardId`, buf)
+            FfiConverterString.write(value.`boardName`, buf)
     }
 }
 

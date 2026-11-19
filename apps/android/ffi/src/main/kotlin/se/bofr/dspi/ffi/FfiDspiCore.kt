@@ -2661,6 +2661,8 @@ internal fun se.bofr.dspi.ffi.uniffi.DeviceProtocol.toDomain() =
         protocolMinor = protocolMinor.toInt(),
         pages = pages.map { it.toDomain() },
         extEnvelope = extEnvelope.toDomain(),
+        boardId = boardId.toInt(),
+        boardName = boardName,
     )
 
 internal fun DeviceProtocol.toFfi() =
@@ -2670,6 +2672,8 @@ internal fun DeviceProtocol.toFfi() =
         protocolMinor = protocolMinor.toUByte(),
         pages = pages.map { it.toFfi() },
         extEnvelope = extEnvelope.toFfi(),
+        boardId = boardId.toUByte(),
+        boardName = boardName,
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.AbCompare.toDomain() =
