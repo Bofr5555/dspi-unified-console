@@ -6276,7 +6276,8 @@ uint32_t dspi_apply_guard_begin(struct FfiCore *core,
  * Keep the change. JSON: the state (`kept`; past the timeout the revert's
  * end; `lost` when the hub could not be told), or `invalid` when nothing
  * waits, or for the first Keep of an auto-tune whose verify did not pass
- * (`measure.tune.keep_unverified`, as `dspi_measure_tune_keep`).
+ * (`measure.tune.keep_unverified`, as `dspi_measure_tune_keep`), or while
+ * that tune's verify runs (`measure.tune.keep_during_verify`).
  */
 uint32_t dspi_apply_confirm(struct FfiCore *core, char *buf, uint32_t len);
 
@@ -7411,7 +7412,9 @@ uint32_t dspi_measure_tune_verify(struct FfiCore *core, char *buf, uint32_t len)
 /**
  * Keep the applied tune: Keep's reply, or a failure. After a verify that did
  * not pass the first Keep fails (`invalid`, `measure.tune.keep_unverified`):
- * show it, and keep only with a second Keep the user confirms.
+ * show it, and keep only with a second Keep the user confirms. While a
+ * verify runs Keep fails (`invalid`, `measure.tune.keep_during_verify`):
+ * wait for the verdict.
  */
 uint32_t dspi_measure_tune_keep(struct FfiCore *core, char *buf, uint32_t len);
 
