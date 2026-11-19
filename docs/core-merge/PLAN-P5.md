@@ -819,6 +819,7 @@ extension channel is not used.
 | Aborts on foreign changes | `NOTIFY_EVT_MASTER_VOLUME`, `PARAM_CHANGED`, `BULK_INVALIDATED`, `INPUT_FORMAT` | P5SES | the same |
 | Unmodelled processing (S13) | crossfeed, subharmonic, psychoacoustic bass, tube, loudness, limiter (`bofr-main`) | P5SES | whichever of these the firmware has; the preflight reads what the mirror holds |
 | Delay range | `Platform::max_delay_ms` 21 (RP2040) or 42 ms (RP2350) | P5XO, P5TUNE | the same |
+| Paged firmware (1.1.7 generation, PLAN-PG 1.7) | the same typed calls through the adapter: `SIGGEN_CONTROL` 0xA6 becomes `MEAS.SIGGEN_START`/`STOP`/`STOP_NOW` 0x0948-0x094A (one zero-length SET each, so a START stays one transfer for the cycle identity), `SIGGEN_SET_CONFIG` 0xA4 `MEAS.SIGGEN_CONFIG` 0x0940 (exactly 36 bytes, a wrong length refused locally at the vendored page revision); `NOTIFY_EVT_SIGGEN_STATE` unchanged; `control` through a hub in the 1.2 and the 1.3 table | PGMEAS | stock 1.1.7 (G2s) and our port (G2b) alike; no P5 file changes |
 
 Considered and **not planned**: a generator time stamp or start-at-frame (`EXT_FRAME_COUNTER`/`EXT_APPLY_AT_FRAME` exist
 only on alink USB-direct builds; the START frame and the status poll pin the cycle index); a firmware ceiling on the
