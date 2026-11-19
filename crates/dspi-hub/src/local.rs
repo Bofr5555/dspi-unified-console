@@ -86,6 +86,9 @@ impl LocalTransport {
             serial: device.serial(),
             bus_id: "hub".into(),
             address: device.handle,
+            // -- review PG-C -- the board as the hub's attach read it (byte 7,
+            // or its USB descriptor for a paged DSPi-Zero), for the core on top
+            hub_board: Some(device.board_id()).filter(|b| *b != 0),
             ..Default::default()
         };
         Self {

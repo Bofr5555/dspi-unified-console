@@ -682,6 +682,29 @@ length locally. **Deps:** PG-B2; P5SES and P5LIVE merged (else PGMEAS waits; it 
 
 ### Wave PG-D: the matrix, the clients, the docs
 
+**Carried over from the PG-C review (`work/review-pgc/REPORT.md`); each is part of the named WP's done line:**
+- **A new small WP, before the client WPs (PGFWX, 1 unit; owns the bindings and `WriteGuardedCore`):** export
+  `FirmwareTarget`, `DspiCore::firmware_target` and `firmware_update_check` over UniFFI, C and wasm. After PG-C only the
+  hub rollout calls the update check; every client's flash path (Qt, Android, web, Terminal `uconsole flash`, Swift,
+  `picoboot.rs`) still asks `firmware_guard_check`, the voltage rule alone. So a client does not yet ask the typed
+  confirmation for bofr to upstream on a board the voltage rule clears (a Pico on our firmware at 1.15 V), does not show
+  the generation change, and still offers an image to a board without BOOTSEL (its bootloader entry is refused by the
+  core's gate, so nothing is flashed). **PGQT, PGAND, PGWEB, PGTM, PGSWIFT** switch their update screens to it.
+- **PGSWIFT:** the Swift opt-out paths send `REQ_ENTER_BOOTLOADER` themselves (`Commands.swift`
+  `enterBootloaderForInstall` and `enterBootloader`, the branch without a core) with no board check: a legacy DSPi-Zero
+  on `-CoreTransport NO` is sent 0xF0. Read 8 platform bytes there and refuse a board id that is not 0, or remove the
+  branch with the opt-out (owner decision P2).
+- **PGMAT:** the cells "paged Zero behind our hub" (the core on top knows it through `DeviceDescriptor::hub_board`: the
+  app's local path, a principal's child, our Link client) and "paged Zero behind an upstream 1.3 hub" (unknown: it reads
+  as a Pico and `SYS.ENTER_BOOTLOADER` would go out; the manual says so, PGDOC).
+- **PGDOC:** `hub-api.md`: the device object's additive `board`, the rollout's device state `excluded`, the reasons
+  `no_bootsel` and `lineage_loss`; the manual: a paged Zero behind an upstream hub, and that `raw_set_id` refuses every
+  command flagged `FLASH`, `RESTART` or `BULK` (use the 1.1.6 form through `raw_set`, which the adapter translates).
+- **PGTM, PGQT, PGWEB, PGAND:** `device_protocol()` costs one platform read per call (PG-C merge): call it once per
+  connection, off the UI thread; `raw_set_id` reads `SYS.COMMAND_INFO` per call.
+- **PGTM:** `PrincipalTransport` and `LocalTransport` say the generation but no `paged_discovery()`: a core on them
+  shows a paged device with an empty page list and the ext envelope from the 1.1.6-shaped probe.
+
 **PGMAT: The compat matrix.** [TODO] Size 3. Wave PG-D. **Owns:** new `crates/dspi-core/tests/wp_pgmat_matrix.rs`,
 new `crates/dspi-hub/tests/wp_pgmat_hub.rs`, vendored DSPi-Link fixtures under `tests/fixtures/link/upstream-1.3/`
 (MIT). **Implements:** section 4's matrix, every cell of section 1.11: our core over USB (mock wire), MIDI (pipe fake),

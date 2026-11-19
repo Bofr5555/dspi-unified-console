@@ -371,6 +371,7 @@ impl FakeDevice {
                 address: 0,
                 product: Some(board.product().into()),
                 bcd_device: Some(board.bcd_device()),
+                ..Default::default()
             },
             shared: Arc::new(Shared {
                 state: Mutex::new({

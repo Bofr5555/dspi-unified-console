@@ -178,3 +178,35 @@ mod tests_wp_pgzero {
 
     use crate::fake::Capture;
 }
+
+// -- review PG-C --
+#[cfg(test)]
+mod tests_review_pgc {
+    use super::*;
+    use crate::DeviceDescriptor;
+
+    /// The board a hub passed on wins over the descriptor's own fields, an id this
+    /// build does not know fails closed, and nothing passed on changes nothing.
+    #[test]
+    fn review_pgc_a_board_a_hub_passed_on_comes_first() {
+        let hub = |id: u8| DeviceDescriptor {
+            hub_board: Some(id),
+            ..Default::default()
+        };
+        assert_eq!(hub(1).board(), Some(Board::PiZero2W));
+        assert_eq!(hub(0).board(), Some(Board::Pico));
+        let unknown = hub(9).board().unwrap();
+        assert!(!unknown.has_bootsel());
+        assert_eq!(board_name(unknown), "Unknown board");
+        let named = DeviceDescriptor {
+            product: Some(PICO_PRODUCTS[0].into()),
+            hub_board: Some(1),
+            ..Default::default()
+        };
+        assert_eq!(named.board(), Some(Board::PiZero2W));
+        assert_eq!(DeviceDescriptor::default().board(), None);
+        // The platform reply still names a board first
+        let pico = PlatformInfo::decode(&[1, 1, 0x17, 0, 9, 7, 1]).unwrap();
+        assert_eq!(identify_board(&pico, hub(1).board()), Board::PiZero2W);
+    }
+}

@@ -229,6 +229,14 @@ pub struct DeviceDescriptor {
     pub product: Option<String>,
     /// The USB `bcdDevice`, where the descriptor is at hand (as `product`).
     pub bcd_device: Option<u16>,
+    // -- review PG-C --
+    /// The board id a hub passed on, where the descriptor itself is not at
+    /// hand: our hub's own word for its attachment (`LocalTransport`,
+    /// `PrincipalTransport`) and its device object's additive `board` over
+    /// DSPi Link. `None` everywhere else (an upstream hub says nothing). It
+    /// wins over `product` and `bcd_device` in [`DeviceDescriptor::board`], so
+    /// a paged DSPi-Zero behind our hub is known to the core on top too.
+    pub hub_board: Option<u8>,
 }
 
 impl DeviceDescriptor {
@@ -245,7 +253,12 @@ impl DeviceDescriptor {
     /// What the USB descriptor says about the board
     /// ([`board::board_from_descriptor`] of `product` and `bcd_device`):
     /// `None` when it says nothing (no descriptor at hand, behind a hub).
+    /// -- review PG-C -- A board id a hub passed on ([`Self::hub_board`])
+    /// comes first.
     pub fn board(&self) -> Option<dspi_proto::packets::Board> {
+        if let Some(id) = self.hub_board {
+            return Some(dspi_proto::packets::Board::from_id(id));
+        }
         board::board_from_descriptor(self.product.as_deref(), self.bcd_device)
     }
 }

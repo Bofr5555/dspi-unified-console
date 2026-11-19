@@ -94,6 +94,7 @@ pub fn list_devices() -> Result<Vec<DeviceDescriptor>> {
                 // -- WP PGZERO -- the OS's cached strings, no device I/O
                 product: d.product_string().map(str::to_owned),
                 bcd_device: Some(d.device_version()),
+                ..Default::default()
             })
         })
         .collect();
@@ -154,6 +155,7 @@ impl UsbTransport {
             // -- WP PGZERO -- the OS's cached strings, no device I/O
             product: info.product_string().map(str::to_owned),
             bcd_device: Some(info.device_version()),
+            ..Default::default()
         };
 
         let device = info.open().wait().map_err(map_open_error)?;
@@ -382,6 +384,7 @@ impl UsbTransport {
                 address: 0,
                 product,
                 bcd_device,
+                ..Default::default()
             },
             timeout: DEFAULT_TIMEOUT,
         })

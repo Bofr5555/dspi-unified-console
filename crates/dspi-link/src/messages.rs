@@ -285,8 +285,18 @@ pub struct DeviceInfo {
     /// Zero, the USB descriptor the hub sees and its clients do not. Absent
     /// for a Pico and on every other hub. A `u32` as the other numbers here:
     /// a value past a byte is no board this client knows.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// -- review PG-C -- Read leniently: the name is ours in upstream's
+    /// object, so a hub that gives it another JSON type (a string, an object)
+    /// says nothing about the board instead of failing the device's parse.
+    #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "lenient_u32")]
     pub board: Option<u32>,
+}
+
+// -- review PG-C --
+/// A `u32` when the value is one; `None` for any other JSON value.
+fn lenient_u32<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<u32>, D::Error> {
+    let v = Value::deserialize(d)?;
+    Ok(v.as_u64().and_then(|n| u32::try_from(n).ok()))
 }
 
 // -- WP PGLINKC --
@@ -595,6 +605,23 @@ mod tests_wp_pglinkc {
         assert_eq!(p.denied_ids, vec![[304, 0], [560, 0]]);
         let old: Policy = serde_json::from_str(r#"{"denied": [[83,0]]}"#).unwrap();
         assert!(old.denied_ids.is_empty());
+    }
+
+    // -- review PG-C --
+    /// Our additive `board` is read when it is a number and ignored, without
+    /// failing the device, when a hub gives the name another type.
+    #[test]
+    fn review_pgc_a_board_of_another_type_does_not_fail_the_device() {
+        let of = |board: Value| -> DeviceInfo {
+            serde_json::from_value(json!({"handle": 1, "serial": "S", "board": board})).unwrap()
+        };
+        assert_eq!(of(json!(1)).board, Some(1));
+        assert_eq!(of(json!(4_294_967_296u64)).board, None);
+        assert_eq!(of(json!("zero2w")).board, None);
+        assert_eq!(of(json!({"id": 1})).board, None);
+        assert_eq!(of(Value::Null).board, None);
+        let none: DeviceInfo = serde_json::from_value(json!({"handle": 1})).unwrap();
+        assert_eq!(none.board, None);
     }
 
     /// R4: the client says 1.3; `PROTO_MINOR` is the 1.2 minor (our hub says

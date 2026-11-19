@@ -202,8 +202,8 @@ fn descriptor_board(t: &dyn dspi_transport::Transport) -> Option<Board> {
         return Some(b);
     }
     // -- PG-C merge -- PGZERO line 1
-    let d = t.descriptor();
-    board_from_descriptor(d.product.as_deref(), d.bcd_device)
+    // -- review PG-C -- and the board a hub passed on (`hub_board`)
+    t.descriptor().board()
 }
 
 /// The board of the open connection, read now: `REQ_GET_PLATFORM` asked for

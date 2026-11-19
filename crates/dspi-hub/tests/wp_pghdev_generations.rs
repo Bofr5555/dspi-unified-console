@@ -761,3 +761,138 @@ fn pgc_merge_local_and_principal_transports_say_the_generation() {
         no_violation(g, &remote);
     }
 }
+
+// -- review PG-C --
+/// A paged DSPi-Zero (stock 1.1.7: a 7-byte `SYS.PLATFORM`, so only its USB
+/// descriptor names it) behind our hub is known to the core on top, not only to
+/// the hub: the app's in-process path and our client over DSPi Link both get the
+/// board the hub's attach read (`DeviceDescriptor::hub_board`, the device
+/// object's `board`). So the core names it, offers it no image and refuses the
+/// bootloader entry itself, with nothing but the platform read sent; the hub's
+/// own `DENIED` stays the backstop.
+#[test]
+fn review_pgc_a_paged_zero_behind_our_hub_is_known_to_the_core_on_top() {
+    use dspi_core::{ConfirmOp, DspiCore, DspiError};
+    use dspi_proto::packets::Board;
+    use dspi_transport::{Capture, FakeBoard, FakeOptions};
+    let (hub, url) = hub_on_the_network();
+    let serial = "PGC-PZERO";
+    let dev = FakeDevice::new(
+        Capture::demo(),
+        FakeOptions {
+            board: FakeBoard::Zero,
+            generation: Some(FakeGeneration::STOCK117),
+            ..FakeOptions::default()
+        },
+    )
+    .with_serial(serial);
+    let remote = dev.remote();
+    hub.attach(Box::new(dev), 0).unwrap();
+    assert_eq!(hub.devices()[0].identity.board, 1);
+    let check = |core: &DspiCore, path: &str| {
+        assert_eq!(core.board(), Ok(Board::PiZero2W), "{path}");
+        let p = core.device_protocol().unwrap();
+        assert_eq!(
+            (p.board_id, p.board_name.as_str()),
+            (1, "DSPi Zero"),
+            "{path}"
+        );
+        assert!(!core.firmware_target().has_bootsel(), "{path}");
+        let entry =
+            core.enter_bootloader_confirmed(Some(core.confirm_token(ConfirmOp::EnterBootloader)));
+        assert_eq!(entry, Err(DspiError::Unsupported), "{path}");
+        assert_eq!(remote.rebooted_to(), None, "{path}");
+    };
+
+    // The app's in-process path
+    let local = hub.handle().open_local(serial).unwrap();
+    assert_eq!(local.descriptor().board(), Some(Board::PiZero2W));
+    let core = DspiCore::new();
+    core.open_transport(Box::new(local), serial.into(), 0)
+        .unwrap();
+    check(&core, "local");
+    core.disconnect();
+
+    // Our client over DSPi Link
+    let core = DspiCore::new();
+    core.link_connect(
+        url,
+        "review-pgc".into(),
+        "0".into(),
+        String::new(),
+        String::new(),
+    )
+    .unwrap();
+    let d = core
+        .link_devices()
+        .into_iter()
+        .find(|d| d.serial == serial)
+        .unwrap();
+    core.link_select_device(d.handle, d.serial).unwrap();
+    core.fetch_all().unwrap();
+    check(&core, "link");
+    core.link_close();
+    assert_eq!(remote.violations(), 0, "{:?}", remote.last_violation());
+}
+
+// -- review PG-C --
+/// A core-voltage raise is refused for a network session, an admin's included,
+/// whichever envelope carries it: `REQ_EXTENSION` 0x00 toward a 1.1.6 device, the
+/// same toward a paged one (a 1.2 client, translated to the tunnel), and the tunnel
+/// `0xE010` by page (a 1.3 client). The stored selection is what it was.
+#[test]
+fn review_pgc_a_core_voltage_raise_is_denied_through_either_envelope() {
+    use dspi_proto::ext::VregOp;
+    let hub = hub();
+    let raise = VregOp::Set(0x0F).encode().to_vec();
+    let generations = [
+        FakeGeneration::Bofr116 { page_guard: true },
+        FakeGeneration::Bofr117,
+    ];
+    for (i, g) in generations.into_iter().enumerate() {
+        let (dev, remote) = fake(g, &format!("PGC-VREG{i}"));
+        let h = hub.attach(Box::new(dev), 0).unwrap();
+        let old = session(&hub, Role::Admin, 2);
+        let status_of = |hub: &Hub| {
+            let r = command(
+                hub,
+                &old,
+                legacy(
+                    h,
+                    Dir::Get,
+                    op::REQ_EXTENSION,
+                    gext::EXT_CORE_VREG,
+                    Vec::new(),
+                    64,
+                ),
+            );
+            assert_eq!(r.status, status::OK, "{g:?}");
+            r.payload
+        };
+        let before = status_of(&hub);
+        let r = command(
+            &hub,
+            &old,
+            legacy(
+                h,
+                Dir::Set,
+                op::REQ_EXTENSION,
+                gext::EXT_CORE_VREG,
+                raise.clone(),
+                0,
+            ),
+        );
+        assert_eq!(r.status, status::DENIED, "{g:?}: 0x00");
+        if g.is_paged() {
+            let new = session(&hub, Role::Admin, LINK_13_MINOR);
+            let r = command(
+                &hub,
+                &new,
+                paged(h, Dir::Set, EXT_TUNNEL, gext::EXT_CORE_VREG, raise.clone()),
+            );
+            assert_eq!(r.status, status::DENIED, "{g:?}: 0xE010");
+        }
+        assert_eq!(status_of(&hub), before, "{g:?}: nothing was written");
+        no_violation(g, &remote);
+    }
+}

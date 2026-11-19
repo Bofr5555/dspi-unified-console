@@ -195,6 +195,10 @@ enum Kind {
     Zero,
     /// A Pico build whose byte 7 names a board this build does not know.
     UnknownBoard,
+    // -- review PG-C --
+    /// A DSPi-Zero on stock 1.1.7: `SYS.PLATFORM` is 7 bytes, so only the USB
+    /// descriptor the hub sees at attach names it.
+    PagedZero,
 }
 
 /// What reached one device's wire.
@@ -336,6 +340,7 @@ fn fake(kind: Kind, serial: &str, patch: u8, vreg: u8) -> FakeDevice {
         ),
         Kind::G2b => (FakeGeneration::Bofr117, FakeBoard::Pico),
         Kind::Zero => (FakeGeneration::Stock116, FakeBoard::Zero),
+        Kind::PagedZero => (FakeGeneration::STOCK117, FakeBoard::Zero),
     };
     let options = FakeOptions {
         generation: Some(generation),
@@ -998,7 +1003,11 @@ fn wp_pgfwup_a_board_without_bootsel_is_refused_a_rollout_with_its_reason() {
     let (r, mut admin) = ready("zero");
     r.bench.plug("PGFWUP-Z", (Kind::Zero, 6, 0x0D));
     r.bench.plug("PGFWUP-U", (Kind::UnknownBoard, 6, 0x0D));
-    for serial in ["PGFWUP-Z", "PGFWUP-U"] {
+    // -- review PG-C -- a paged Zero: the hub knows it by its USB descriptor and
+    // says so to the principal's core (`DeviceDescriptor::hub_board`), so step 1
+    // refuses it too, before anything is exported
+    r.bench.plug("PGFWUP-PZ", (Kind::PagedZero, 7, 0x0D));
+    for serial in ["PGFWUP-Z", "PGFWUP-U", "PGFWUP-PZ"] {
         let v = admin.start(json!({"serial": serial, "while_live": true}));
         assert_eq!(code(&v), "unsupported", "{v}");
         assert_eq!(v["reason"], "no_bootsel", "{v}");
@@ -1011,6 +1020,7 @@ fn wp_pgfwup_a_board_without_bootsel_is_refused_a_rollout_with_its_reason() {
     let st = admin.ask(json!({"t": "fw.rollout.status"}));
     assert_eq!(st["rollouts"], json!([]), "a refused start left a record");
     assert!(!r.bench.entered("PGFWUP-Z") && !r.bench.entered("PGFWUP-U"));
+    assert!(!r.bench.entered("PGFWUP-PZ"));
     assert!(r.bench.flashes.lock().unwrap().is_empty());
     r.bench.no_violation();
     r.hub.stop();

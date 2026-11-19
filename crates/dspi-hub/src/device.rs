@@ -279,23 +279,38 @@ impl DeviceShared {
         if id.is_legacy() {
             return crate::limits::admit(self, policy, ctx, req);
         }
-        match crate::policy::judge_view(req) {
-            Some(view) => crate::limits::admit(self, policy, ctx, &view),
-            None => {
-                let exempt = matches!(
-                    ctx.id,
-                    crate::session::LOCAL_SESSION_ID | crate::session::GUARD_SESSION_ID
-                );
-                let profiled = self
-                    .router
-                    .limits()
-                    .is_some_and(|l| l.has_profile(&self.serial()));
-                if !exempt && profiled {
-                    Err((status::DENIED, crate::limits::Refusal::Unknown.payload()))
-                } else {
-                    Ok(())
-                }
+        let unjudged = || {
+            let exempt = matches!(
+                ctx.id,
+                crate::session::LOCAL_SESSION_ID | crate::session::GUARD_SESSION_ID
+            );
+            let profiled = self
+                .router
+                .limits()
+                .is_some_and(|l| l.has_profile(&self.serial()));
+            if !exempt && profiled {
+                Err((status::DENIED, crate::limits::Refusal::Unknown.payload()))
+            } else {
+                Ok(())
             }
+        };
+        match crate::policy::judge_view(req) {
+            // -- review PG-C -- `limits::admit` leaves a request its role may not
+            // send to the router ("the role's own refusal"), by the view's 1.2
+            // class; the router judges a paged request by its 1.3 class. Where
+            // the 1.3 class lets the role through and the view's 1.2 class would
+            // not (no row today; a re-vendored table may have one), nobody would
+            // judge the write: it is refused as one without a view.
+            Some(view)
+                if view_escapes_the_judges(
+                    policy.allows(ctx.role, view.b_request, view.dir),
+                    crate::policy::role_permits(ctx.role, policy.classify_id(id, req.dir)),
+                ) =>
+            {
+                unjudged()
+            }
+            Some(view) => crate::limits::admit(self, policy, ctx, &view),
+            None => unjudged(),
         }
     }
 
@@ -962,6 +977,15 @@ fn read_ext(t: &mut dyn Transport) -> Result<Option<bool>, TransportError> {
             Ok(None)
         }
     }
+}
+
+// -- review PG-C --
+/// Whether a paged write would pass both judges unjudged: the limits judge skips
+/// what the role may not send by the view's 1.2 class (`view_allowed` false),
+/// expecting the router to refuse it, while the router lets the role through by
+/// the request's own 1.3 class (`routed_allowed`).
+fn view_escapes_the_judges(view_allowed: bool, routed_allowed: bool) -> bool {
+    !view_allowed && routed_allowed
 }
 
 // -- WP PGHDEV --
@@ -1650,6 +1674,53 @@ mod tests_wp_pghdev {
         assert!(router.mutates(&req(Dir::Set, cmds::ROUTE_MASTER_VOLUME)));
         // And a paged read is never repeated by the hub's busy window.
         assert!(!router.retries_stall(&req(Dir::Get, cmds::ROUTE_MASTER_VOLUME)));
+    }
+
+    // -- review PG-C --
+    /// The limits judge skips a view its role may not send (1.2 class) and leaves
+    /// it to the router, which judges a paged request by its 1.3 class: a write
+    /// the 1.3 table lets a role send while its view's 1.2 class does not is
+    /// refused as unjudged, and no row of the vendored tables is one today (a
+    /// tripwire for a re-vendored table).
+    #[test]
+    fn review_pgc_no_paged_write_escapes_the_judges_by_its_class() {
+        use dspi_proto::paged::registry;
+        assert!(view_escapes_the_judges(false, true));
+        assert!(!view_escapes_the_judges(true, true));
+        assert!(!view_escapes_the_judges(false, false));
+        assert!(!view_escapes_the_judges(true, false));
+        let p = Policy::embedded();
+        let mut judged = 0usize;
+        for raw in 0x0100u16..=0xFFFF {
+            let id = CmdId(raw);
+            let Some(c) = registry::command(id).filter(|c| c.set) else {
+                continue;
+            };
+            for value in [0u16, 1] {
+                for len in [usize::from(c.set_min), usize::from(c.set_max).min(64)] {
+                    let r = CmdRequest {
+                        w_value: value,
+                        payload: vec![0; len],
+                        ..req(Dir::Set, id)
+                    };
+                    let Some(view) = crate::policy::judge_view(&r) else {
+                        continue;
+                    };
+                    judged += 1;
+                    for role in [crate::session::Role::Viewer, crate::session::Role::Control] {
+                        assert!(
+                            !view_escapes_the_judges(
+                                p.allows(role, view.b_request, view.dir),
+                                crate::policy::role_permits(role, p.classify_id(id, Dir::Set)),
+                            ),
+                            "{id:?} as 0x{:02X}: {role:?} passes the 1.3 class only",
+                            view.b_request
+                        );
+                    }
+                }
+            }
+        }
+        assert!(judged > 50, "{judged} paged writes had a view");
     }
 
     #[test]
