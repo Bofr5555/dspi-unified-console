@@ -72,7 +72,8 @@ class DeviceProtocolWpPgandTest {
                 FirmwareGuardBoard(1200, FirmwareGuardBoardSource.EXT_CORE_VREG),
                 0,
                 FirmwareLineage.BOFR,
-                FirmwareGeneration.LEGACY
+                FirmwareGeneration.LEGACY,
+                DeviceKind.DSP // -- WP IMGKIND --
             )
         }
 

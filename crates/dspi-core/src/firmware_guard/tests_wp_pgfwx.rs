@@ -139,6 +139,7 @@ fn wp_pgfwx_an_unknown_lineage_on_an_open_board_asks() {
         board_id: Some(0),
         lineage: FirmwareLineage::Unknown,
         generation: FirmwareGeneration::Legacy,
+        device_kind: None,
     };
     let v = firmware_update_check(stock(), &open, "");
     assert_eq!(
@@ -184,6 +185,7 @@ fn wp_pgfwx_the_target_round_trips_as_json_and_fails_closed() {
         board_id: Some(Board::PiZero2W.id()),
         lineage: FirmwareLineage::Bofr,
         generation: FirmwareGeneration::Paged,
+        device_kind: None,
     };
     let json = serde_json::to_value(&t).unwrap();
     assert_eq!(

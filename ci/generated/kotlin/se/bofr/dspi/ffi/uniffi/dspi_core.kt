@@ -4825,7 +4825,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_func_firmware_guard_check() != 22496.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_func_firmware_update_check() != 5569.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_func_firmware_update_check() != 57230.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_func_hub_alarm_notice() != 51350.toShort()) {
@@ -33300,7 +33300,13 @@ data class FirmwareTarget (
     /**
      * The protocol generation of the live connection.
      */
-    var `generation`: FirmwareGeneration
+    var `generation`: FirmwareGeneration, 
+    /**
+     * What the open device is (`DeviceProtocol::device_kind`); `None` when
+     * it is not known (no device, a board in BOOTSEL). An image stamped for
+     * another kind is refused; with `None` the kind rule does not apply.
+     */
+    var `deviceKind`: DeviceKind?
 ) {
     
     companion object
@@ -33316,6 +33322,7 @@ public object FfiConverterTypeFirmwareTarget: FfiConverterRustBuffer<FirmwareTar
             FfiConverterOptionalUByte.read(buf),
             FfiConverterTypeFirmwareLineage.read(buf),
             FfiConverterTypeFirmwareGeneration.read(buf),
+            FfiConverterOptionalTypeDeviceKind.read(buf),
         )
     }
 
@@ -33323,7 +33330,8 @@ public object FfiConverterTypeFirmwareTarget: FfiConverterRustBuffer<FirmwareTar
             FfiConverterTypeFirmwareGuardBoard.allocationSize(value.`voltage`) +
             FfiConverterOptionalUByte.allocationSize(value.`boardId`) +
             FfiConverterTypeFirmwareLineage.allocationSize(value.`lineage`) +
-            FfiConverterTypeFirmwareGeneration.allocationSize(value.`generation`)
+            FfiConverterTypeFirmwareGeneration.allocationSize(value.`generation`) +
+            FfiConverterOptionalTypeDeviceKind.allocationSize(value.`deviceKind`)
     )
 
     override fun write(value: FirmwareTarget, buf: ByteBuffer) {
@@ -33331,6 +33339,7 @@ public object FfiConverterTypeFirmwareTarget: FfiConverterRustBuffer<FirmwareTar
             FfiConverterOptionalUByte.write(value.`boardId`, buf)
             FfiConverterTypeFirmwareLineage.write(value.`lineage`, buf)
             FfiConverterTypeFirmwareGeneration.write(value.`generation`, buf)
+            FfiConverterOptionalTypeDeviceKind.write(value.`deviceKind`, buf)
     }
 }
 
@@ -48493,7 +48502,18 @@ enum class FirmwareUpdateRule {
     /**
      * Our firmware would give way to an image that may be upstream's.
      */
-    LINEAGE_LOSS;
+    LINEAGE_LOSS,
+    /**
+     * The image is stamped for another kind of device than the target (a
+     * DSP image on an alink sender, a sender image on a DSP), or its kind
+     * stamp cannot be read: refused, whatever is typed.
+     */
+    KIND_MISMATCH,
+    /**
+     * The target is an alink sender and the image does not say what it is
+     * for, so it may be a DSP image: asks the typed confirmation.
+     */
+    KIND_UNKNOWN;
     companion object
 }
 
@@ -51810,6 +51830,38 @@ public object FfiConverterOptionalTypeAbSide: FfiConverterRustBuffer<AbSide?> {
         } else {
             buf.put(1)
             FfiConverterTypeAbSide.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeDeviceKind: FfiConverterRustBuffer<DeviceKind?> {
+    override fun read(buf: ByteBuffer): DeviceKind? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeDeviceKind.read(buf)
+    }
+
+    override fun allocationSize(value: DeviceKind?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeDeviceKind.allocationSize(value)
+        }
+    }
+
+    override fun write(value: DeviceKind?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeDeviceKind.write(value, buf)
         }
     }
 }
@@ -55401,7 +55453,10 @@ public object FfiConverterSequenceSequenceTypeFilterParams: FfiConverterRustBuff
          * whatever is typed; the typed confirmation when firmware that may be ours
          * would give way to an image that may be upstream's (a lineage that could
          * not be read on an open board counts as ours); the generation change, with
-         * what works afterwards. Pure apart from parsing the image; never panics.
+         * what works afterwards; and (WP IMGKIND) the device kind: an image stamped
+         * for another kind than the target's, or with an unreadable kind stamp, is
+         * refused whatever is typed, and one without a kind stamp asks on a sender
+         * (module docs). Pure apart from parsing the image; never panics.
          */ fun `firmwareUpdateCheck`(`image`: kotlin.ByteArray, `target`: FirmwareTarget, `typedConfirmation`: kotlin.String): FirmwareUpdateVerdict {
             return FfiConverterTypeFirmwareUpdateVerdict.lift(
     uniffiRustCall() { _status ->

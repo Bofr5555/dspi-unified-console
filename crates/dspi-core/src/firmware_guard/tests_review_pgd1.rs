@@ -109,6 +109,7 @@ fn review_pgd1_a_kept_target_never_asks_less_than_no_target() {
                             board_id,
                             lineage,
                             generation,
+                            device_kind: None,
                         };
                         for caller_mv in mvs {
                             let board = FirmwareGuardBoard {
