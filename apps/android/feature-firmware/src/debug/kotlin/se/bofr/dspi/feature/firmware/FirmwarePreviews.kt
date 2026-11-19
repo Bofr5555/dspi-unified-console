@@ -16,11 +16,11 @@ import se.bofr.dspi.ui.DspiTheme
 
 /** Previews never write; the guard answers as the core would for a stock image on a known board. */
 private object PreviewGuard : FirmwareGuarding {
-    override suspend fun recordRunningBoard() = Unit
+    override suspend fun recordRunningBoard() = se.bofr.dspi.bridge.CoreTools.NO_TARGET // -- WP PGAND --
 
     override fun forgetBoard() = Unit
 
-    override fun check(image: ByteArray, typed: String) = se.bofr.dspi.bridge.CoreTools.blocked("Previews do not write.")
+    override fun check(image: ByteArray, typed: String) = se.bofr.dspi.bridge.CoreTools.blockedUpdate("Previews do not write.")
 }
 
 private object PreviewWriter : FirmwareWriter {

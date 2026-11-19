@@ -126,17 +126,41 @@ class FirmwareUpdateModel(
     }
 
     /**
+     * -- WP PGAND -- The Update button: with a device connected, the update
+     * check runs first, on the board as it runs now ([chip] is its chip), and
+     * the confirmation shows its answer ([FirmwareInstaller.entryCheck]).
+     */
+    fun requestUpdate(deviceConnected: Boolean, chip: BootloaderBoard.Chip?) {
+        if (!canChangeSetup) return
+        if (deviceConnected && !rebootRequested && chip != null) installer.checkBeforeEntry(chip)
+        confirmingUpdate = true
+    }
+
+    /** -- WP PGAND -- The confirmation was dismissed: nothing is kept of its check. */
+    fun dismissUpdate() {
+        confirmingUpdate = false
+        if (!confirmed) installer.cancelEntry()
+    }
+
+    /**
      * macOS `start()`: commits to the update. The installer writes as soon as a
      * board is ready; [enterBootloader] restarts a connected device into
-     * BOOTSEL (called once, with the user's ENTER_BOOTLOADER confirmation),
-     * after the firmware guard has read what the running board needs (WP AN18).
+     * BOOTSEL (called once, with the user's ENTER_BOOTLOADER confirmation).
+     * WP PGAND: with a device connected, only once the update check before the
+     * entry cleared the image ([FirmwareInstaller.enterWhenClear]): a board
+     * without BOOTSEL, or one whose phrase was not typed, is not rebooted and
+     * nothing is committed. Returns whether the update was committed.
      */
-    fun start(deviceConnected: Boolean, enterBootloader: () -> Unit) {
+    fun start(deviceConnected: Boolean, enterBootloader: () -> Unit): Boolean {
+        if (!deviceConnected || rebootRequested) {
+            confirmed = true
+            installer.installWhenReady()
+            return true
+        }
+        if (!installer.enterWhenClear(enterBootloader)) return false
         confirmed = true
-        installer.installWhenReady()
-        if (!deviceConnected || rebootRequested) return
         rebootRequested = true
-        installer.recordBoardThen(enterBootloader)
+        return true
     }
 
     /** macOS `resetRun()`: Try Again and Update Another Board. */

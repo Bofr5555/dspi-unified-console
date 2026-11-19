@@ -32,6 +32,8 @@ enum class SettingsCategory(val title: String, val tint: Long, val id: String) {
     fun isAvailable(f: SettingsAvailability): Boolean = when {
         // -- WP P1AN2 -- the locked-user state: About and the installer's note only
         f.lockedUser -> this == GENERAL || this == INSTALLER
+        // -- WP PGAND --
+        f.alinkSender -> this == GENERAL || (this == NETWORKING && f.networkingAvailable)
         this == INSTALLER || this == POWER_ON -> f.installerMode
         else -> availableOnDevice(f)
     }
@@ -82,5 +84,7 @@ data class SettingsAvailability(
     val networkingAvailable: Boolean = false,
     // -- WP P1AN2 -- the UI mode: Installer shows its pages; the locked-user state shows About and the note
     val installerMode: Boolean = false,
-    val lockedUser: Boolean = false
+    val lockedUser: Boolean = false,
+    // -- WP PGAND -- the alink sender: this app's own pages only, no DSP page
+    val alinkSender: Boolean = false
 )

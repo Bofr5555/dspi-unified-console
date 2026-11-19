@@ -10,9 +10,14 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import se.bofr.dspi.core.FirmwareGeneration
 import se.bofr.dspi.core.FirmwareGuardDecision
 import se.bofr.dspi.core.FirmwareGuardReason
 import se.bofr.dspi.core.FirmwareGuardVerdict
+import se.bofr.dspi.core.FirmwareLineage
+import se.bofr.dspi.core.FirmwareTarget
+import se.bofr.dspi.core.FirmwareUpdateRule
+import se.bofr.dspi.core.FirmwareUpdateVerdict
 import se.bofr.dspi.usb.BootloaderDevice
 import se.bofr.dspi.usb.BootloaderLocator
 import se.bofr.dspi.usb.BootloaderPermissionResult
@@ -127,23 +132,37 @@ fun clearance(image: FirmwareImage) = GuardClearance(image.bytes, guardVerdict()
 suspend fun FirmwareWriter.writeCleared(board: BootloaderBoard, image: FirmwareImage, uf2: Uf2Image, progress: (Double) -> Unit) =
     write(board, image, uf2, clearance(image), progress)
 
-/** Answers with [verdict] for what was typed; records every question. */
+/** [verdict] as the update check's answer (-- WP PGAND --). */
+fun updateVerdict(
+    verdict: FirmwareGuardVerdict = guardVerdict(),
+    rule: FirmwareUpdateRule = FirmwareUpdateRule.NONE,
+    generationChange: String = ""
+) = FirmwareUpdateVerdict(verdict, rule, FirmwareLineage.UNKNOWN, FirmwareGeneration.UNKNOWN, generationChange)
+
+/**
+ * Answers with [verdict] for what was typed, as the update check with [rule] and
+ * [generationChange]; records every question. -- WP PGAND -- [update], when set, answers instead.
+ */
 class FakeGuard(var verdict: (typed: String) -> FirmwareGuardVerdict = { guardVerdict() }) : FirmwareGuarding {
     val checks = mutableListOf<String>()
     var boardReads = 0
     var forgotten = 0
+    var rule = FirmwareUpdateRule.NONE
+    var generationChange = ""
+    var update: ((typed: String) -> FirmwareUpdateVerdict)? = null
 
-    override suspend fun recordRunningBoard() {
+    override suspend fun recordRunningBoard(): FirmwareTarget {
         boardReads++
+        return se.bofr.dspi.bridge.CoreTools.targetInBootloader()
     }
 
     override fun forgetBoard() {
         forgotten++
     }
 
-    override fun check(image: ByteArray, typed: String): FirmwareGuardVerdict {
+    override fun check(image: ByteArray, typed: String): FirmwareUpdateVerdict {
         checks += typed
-        return verdict(typed)
+        return update?.invoke(typed) ?: updateVerdict(verdict(typed), rule, generationChange)
     }
 }
 

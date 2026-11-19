@@ -504,6 +504,19 @@ class DspiBridgeImpl(
      * the FFI thread too (StateFlow.value is thread-safe).
      */
     private val _deviceGeneration = MutableStateFlow(0L)
+
+    // -- WP PGAND -- written on [main] only (deviceSelected, setDisconnected)
+    private val _deviceProtocol = MutableStateFlow<se.bofr.dspi.core.DeviceProtocol?>(null)
+    override val deviceProtocol: StateFlow<se.bofr.dspi.core.DeviceProtocol?> = _deviceProtocol.asStateFlow()
+
+    /** The open device is the alink sender (main thread). */
+    private val alinkSender: Boolean get() = _deviceProtocol.value?.deviceKind == se.bofr.dspi.core.DeviceKind.ALINK_SENDER
+
+    override suspend fun fetchAlinkSender(): AlinkSenderView = onFfi {
+        val info = runCatching { core.alinkInfo() }.getOrNull()
+        val status = runCatching { core.fetchAlinkStatus() }
+        AlinkSenderView(info, status.getOrNull(), status.exceptionOrNull()?.let { it.message ?: it.javaClass.simpleName }.orEmpty())
+    }
     override val deviceGeneration: StateFlow<Long> = _deviceGeneration.asStateFlow()
     private val generation: Long get() = _deviceGeneration.value
 
@@ -858,6 +871,7 @@ class DspiBridgeImpl(
     private suspend fun pollStatus() {
         // -- WP AN6 -- Qt keeps reading on read-only firmware and as a viewer; only a dropped link pauses it
         if (!(connected || remoteOpen) || remoteInterrupted) return
+        if (alinkSender) return // -- WP PGAND -- the alink sender has no meters
         val m = map
         val anyLimiter = (0 until current.numOutputChannels).any { current.limiterEnabled[it] }
         val prev = _status.value
@@ -1998,7 +2012,14 @@ class DspiBridgeImpl(
             if (outputEditSerial.isNotEmpty()) clearOutputEdit()
             outputEditSerial = serial
         }
-        class Opened(val snap: Snapshot, val error: String, val pairMap: Boolean, val probesLeft: Boolean)
+        class Opened(
+            val snap: Snapshot,
+            val error: String,
+            val pairMap: Boolean,
+            val probesLeft: Boolean,
+            // -- WP PGAND --
+            val protocol: se.bofr.dspi.core.DeviceProtocol?
+        )
         // -- WP LK4 -- over Link the device is shown as soon as its image is
         // read (the core binds on the snapshot and completes its probe in the
         // background); the analyser start and the pair-map probe follow
@@ -2008,8 +2029,12 @@ class DspiBridgeImpl(
                 clearClipTimes()
                 pendingDirty.clear()
                 val fetched = runCatching { get { core.fetchAll() } }.isSuccess
+                // -- WP PGAND -- once per connection (one platform read), on this thread
+                val protocol = runCatching { core.deviceProtocol() }.getOrNull()
+                // The alink sender has no DSP model: no baseline, no analyser, no pair map
+                val dsp = protocol?.deviceKind != se.bofr.dspi.core.DeviceKind.ALINK_SENDER
                 val st = core.getState()
-                val compatOk = core.isConnected() && st.compat == COMPAT_OK
+                val compatOk = dsp && core.isConnected() && st.compat == COMPAT_OK
                 if (fetched && compatOk) core.captureBaseline()
                 if (!remote && compatOk) runCatching { core.rtaStart() } // probes for the spectrum analyser
                 // K340 fork probe (core patch 0002): upstream firmware STALLs 0x00
@@ -2019,10 +2044,12 @@ class DspiBridgeImpl(
                     snapshot(all = true),
                     if (fetched) "" else "Connected, but the device's settings could not be read. Reconnect it to retry.",
                     pairMap,
-                    remote && fetched && compatOk
+                    remote && fetched && compatOk,
+                    protocol
                 )
             }
         crossfeedPairMapSupported = r.pairMap
+        _deviceProtocol.value = r.protocol // -- WP PGAND -- on main, with the connection
         if (r.probesLeft) {
             val gen = generation
             scope.launch(main) {
@@ -2080,6 +2107,7 @@ class DspiBridgeImpl(
         remoteOpen = false // -- WP LK2 --
         bumpGeneration()
         crossfeedPairMapSupported = false
+        _deviceProtocol.value = null // -- WP PGAND --
         deviceSettings.clear()
         _status.value = _status.value.copy(connected = false, cpu0 = 0, cpu1 = 0, clipFlags = 0, peaks = BridgeStatus().peaks)
         refreshWritesAllowed()
