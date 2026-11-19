@@ -6925,6 +6925,521 @@ data class MeasureLiveState(
 )
 
 /**
+ * One unit of a system measurement and the outputs measured on it.
+ */
+data class MeasureSystemUnit(
+    /**
+     * Its USB serial (as the hub knows it).
+     */
+    val serial: String,
+    /**
+     * Its outputs to measure, 1 to 16, each once (`group` is ignored: the
+     * group is the whole setup).
+     */
+    val outputs: List<MeasureOutput>,
+)
+
+/**
+ * What to measure across units and how (PLAN-AT 1.4). Every number 0 (or
+ * absent) is the plan's default.
+ */
+data class MeasureSystemSetup(
+    /**
+     * The group's units, 2 to 16, in the order the hub opens them.
+     */
+    val units: List<MeasureSystemUnit>,
+    /**
+     * Passes, 2 to 8; 0: 5 where the run fits one capture, else 3.
+     */
+    val passes: Int,
+    /**
+     * The anchor output's unit for runs chained through it; "": the first
+     * unit.
+     */
+    val anchorSerial: String,
+    /**
+     * The anchor output; `None`: the anchor unit's first output.
+     */
+    val anchorOutput: Int?,
+    /**
+     * The microphone's `mic` document's text; "" for an uncalibrated one.
+     */
+    val micDocument: String,
+    /**
+     * One sweep, ms (1000 to 15000; 0: 5500).
+     */
+    val sweepMs: Long,
+    /**
+     * The gap after each cycle, ms (300 to 2000; 0: 1000).
+     */
+    val gapMs: Long,
+    /**
+     * The generator's ceiling, peak dBFS (as P5's).
+     */
+    val ceilingDb: Float?,
+    /**
+     * The SPL cap with a calibrated microphone, dB SPL (as P5's).
+     */
+    val splCapDb: Float?,
+    /**
+     * The capture's rate, Hz (0: 48000).
+     */
+    val captureRateHz: Long,
+    /**
+     * The lead of every START, ms; 0 or less than the units' arm lead plus
+     * 100 ms: that (S-AT3).
+     */
+    val leadMs: Long,
+    /**
+     * The hub's lease, ms (0: the hub's default, 2000; clamped 500..5000).
+     */
+    val leaseMs: Long,
+    /**
+     * The documents' name ("" names them by the date).
+     */
+    val name: String,
+)
+
+/**
+ * One unit judged by its own core (P5's preflight on that unit's mirror),
+ * for the core on the hub session.
+ */
+data class MeasureSystemUnitCheck(
+    /**
+     * The unit's serial.
+     */
+    val serial: String,
+    /**
+     * P5's preflight of its outputs.
+     */
+    val preflight: MeasurePreflight,
+    /**
+     * What the session needs of the unit (its platform, rate, inputs,
+     * limiters, the measured chains), as JSON. Opaque to clients.
+     */
+    val context: String,
+)
+
+/**
+ * An issue of a system measurement, naming its unit.
+ */
+data class MeasureSystemIssue(
+    /**
+     * The unit's serial; "" when it concerns no one unit.
+     */
+    val serial: String,
+    /**
+     * The notice key (`measure.*`, `measure.system.*`).
+     */
+    val key: String,
+    /**
+     * The output it concerns, if one.
+     */
+    val output: Int?,
+    /**
+     * What happened, in words (the unit named).
+     */
+    val message: String,
+)
+
+/**
+ * What stands between a setup and a system measurement.
+ */
+data class MeasureSystemPreflight(
+    /**
+     * Nothing blocks.
+     */
+    val clear: Boolean,
+    /**
+     * What must change first, each naming its unit.
+     */
+    val blockers: List<MeasureSystemIssue>,
+    /**
+     * What to know.
+     */
+    val warnings: List<MeasureSystemIssue>,
+)
+
+/**
+ * One output's level after its ramp.
+ */
+data class MeasureSystemLevel(
+    /**
+     * The unit.
+     */
+    val serial: String,
+    /**
+     * The output.
+     */
+    val output: Int,
+    /**
+     * Its level, peak dBFS.
+     */
+    val levelDb: Float,
+)
+
+/**
+ * A system session's state (no I/O to read it).
+ */
+data class MeasureSystemState(
+    /**
+     * The phase.
+     */
+    val phase: MeasureSystemPhase,
+    /**
+     * What the runs are for.
+     */
+    val purpose: MeasureSystemPurpose,
+    /**
+     * Holds the hub's session or a stage in progress.
+     */
+    val active: Boolean,
+    /**
+     * Push the microphone's capture now.
+     */
+    val wantsCapture: Boolean,
+    /**
+     * The capture's rate, Hz.
+     */
+    val captureRateHz: Long,
+    /**
+     * The unit playing (a ramp step), or "".
+     */
+    val serial: String,
+    /**
+     * The output playing (a ramp step).
+     */
+    val output: Int?,
+    /**
+     * Its level, peak dBFS.
+     */
+    val levelDb: Float?,
+    /**
+     * Every level the ramps found so far.
+     */
+    val rampLevels: List<MeasureSystemLevel>,
+    /**
+     * The timed run in progress, 1-based (0 before the first).
+     */
+    val run: Int,
+    /**
+     * Timed runs in all.
+     */
+    val runs: Int,
+    /**
+     * Capture frames pushed.
+     */
+    val frames: Long,
+    /**
+     * Progress of the stage, 0 to 1.
+     */
+    val progress: Float,
+    /**
+     * Why it stopped or what it asks.
+     */
+    val issue: MeasureSystemIssue?,
+    /**
+     * A result is ready (`measure_system_result`).
+     */
+    val resultReady: Boolean,
+    /**
+     * G5: the timing of every run was reliable.
+     */
+    val timingReliable: Boolean?,
+    /**
+     * What the session waits for, in words ("waiting for the units' clocks
+     * to settle"), or "".
+     */
+    val words: String,
+)
+
+/**
+ * A measured output's arrival, as the proposal would write it.
+ */
+data class MeasureSystemArrival(
+    /**
+     * The unit.
+     */
+    val serial: String,
+    /**
+     * The output.
+     */
+    val output: Int,
+    /**
+     * Its acoustic arrival relative to the group's latest output, us (0 for
+     * that one, negative for an earlier one): WP ATHUBM's
+     * `measuredArrivalUs`.
+     */
+    val arrivalUs: Double,
+    /**
+     * The arrival as measured on the timeline, before the engine's terms
+     * were taken out, relative to the same reference, us.
+     */
+    val measuredUs: Double,
+    /**
+     * The uncertainty of the arrival against the latest output, us (one
+     * standard error; `None` without two clear passes).
+     */
+    val uncertaintyUs: Double?,
+    /**
+     * May be proposed: the gate passed and the delay to the latest output
+     * is offered (within 10 us).
+     */
+    val offered: Boolean,
+    /**
+     * Why not (empty when offered).
+     */
+    val reason: String,
+)
+
+/**
+ * A delay between two outputs on different units of one run.
+ */
+data class MeasureSystemDelay(
+    /**
+     * The earlier output's unit.
+     */
+    val fromSerial: String,
+    /**
+     * Its output.
+     */
+    val fromOutput: Int,
+    /**
+     * The other output's unit.
+     */
+    val toSerial: String,
+    /**
+     * Its output.
+     */
+    val toOutput: Int,
+    /**
+     * `to`'s arrival minus `from`'s, us.
+     */
+    val delayUs: Double,
+    /**
+     * Its uncertainty, us.
+     */
+    val uncertaintyUs: Double?,
+    /**
+     * The analyser offers it.
+     */
+    val offered: Boolean,
+    /**
+     * Why not ("timing unreliable: ..." with the wander).
+     */
+    val reason: String,
+)
+
+/**
+ * An inter-unit transition and its summed check (RC5f, R8d).
+ */
+data class MeasureSystemTransition(
+    /**
+     * One output's unit.
+     */
+    val aSerial: String,
+    /**
+     * Its output.
+     */
+    val aOutput: Int,
+    /**
+     * The other output's unit.
+     */
+    val bSerial: String,
+    /**
+     * Its output.
+     */
+    val bOutput: Int,
+    /**
+     * The check band, Hz.
+     */
+    val bandLoHz: Double,
+    /**
+     * The check band's top, Hz.
+     */
+    val bandHiHz: Double,
+    /**
+     * The summed run was measured and judged.
+     */
+    val checked: Boolean,
+    /**
+     * Within 1.5 dB RMS of the prediction.
+     */
+    val passed: Boolean,
+    /**
+     * The RMS difference, dB.
+     */
+    val rmsDb: Double?,
+    /**
+     * What happened, in words.
+     */
+    val message: String,
+)
+
+/**
+ * One unit's `measurement` document.
+ */
+data class MeasureSystemDocument(
+    /**
+     * The unit.
+     */
+    val serial: String,
+    /**
+     * The document's text (schema 1 with a `system` block). File it with
+     * `measure_doc_put` (or the hub's).
+     */
+    val document: String,
+)
+
+/**
+ * A finished system measurement.
+ */
+data class MeasureSystemResult(
+    /**
+     * One document per unit.
+     */
+    val documents: List<MeasureSystemDocument>,
+    /**
+     * Every measured output's arrival.
+     */
+    val arrivals: List<MeasureSystemArrival>,
+    /**
+     * Every cross-unit delay of every run.
+     */
+    val delays: List<MeasureSystemDelay>,
+    /**
+     * The inter-unit transitions.
+     */
+    val transitions: List<MeasureSystemTransition>,
+    /**
+     * G5 for every run.
+     */
+    val timingReliable: Boolean,
+    /**
+     * Why not reliable, what was not offered, a refused chain.
+     */
+    val reasons: List<String>,
+    /**
+     * The generator runs (`EXT_SIGGEN_TIMELINE.run_id`) the arrivals came
+     * from.
+     */
+    val runIds: List<Long>,
+    /**
+     * Timed runs chained through the anchor (1: none).
+     */
+    val runs: Int,
+)
+
+/**
+ * The alignment a system measurement proposes (OD-ATl): measured arrivals
+ * into the hub's model, applied by `system.align`.
+ */
+data class MeasureSystemProposal(
+    /**
+     * Its id (the apply names it).
+     */
+    val id: Long,
+    /**
+     * The arrivals to write: offered ones only.
+     */
+    val arrivals: List<MeasureSystemArrival>,
+    /**
+     * Arrivals not offered, with why.
+     */
+    val withheld: List<MeasureSystemArrival>,
+    /**
+     * The transitions and their summed checks.
+     */
+    val transitions: List<MeasureSystemTransition>,
+    /**
+     * A summed check is still to run before anything may be applied.
+     */
+    val sumCheckNeeded: Boolean,
+    /**
+     * Every cross-unit delay was withdrawn (a summed check failed).
+     */
+    val withdrawn: Boolean,
+    /**
+     * Something can be applied (after the summed check).
+     */
+    val offered: Boolean,
+    /**
+     * This session's role may apply it (Admin).
+     */
+    val mayApply: Boolean,
+    /**
+     * What stands in the way, if anything.
+     */
+    val notice: MeasureSystemIssue?,
+)
+
+/**
+ * One unit's output delays as filed before an apply.
+ */
+data class MeasureSystemSnapshot(
+    /**
+     * The unit.
+     */
+    val serial: String,
+    /**
+     * `(output, out.delay ms)` read before the apply.
+     */
+    val outDelaysMs: List<MeasureSystemOutDelay>,
+)
+
+/**
+ * One output's delay.
+ */
+data class MeasureSystemOutDelay(
+    /**
+     * The output.
+     */
+    val output: Int,
+    /**
+     * Its delay, ms.
+     */
+    val delayMs: Float,
+)
+
+/**
+ * What an apply, a verify, a Keep or a Revert did.
+ */
+data class MeasureSystemApplied(
+    /**
+     * Where it stands.
+     */
+    val stage: MeasureSystemApplyStage,
+    /**
+     * The hub model's revision filed before the apply.
+     */
+    val revisionBefore: Long,
+    /**
+     * Its revision after the apply (or the revert).
+     */
+    val revisionAfter: Long,
+    /**
+     * Every unit's output delays filed before the apply.
+     */
+    val snapshots: List<MeasureSystemSnapshot>,
+    /**
+     * `system.align`'s writes that were `ok`.
+     */
+    val writesOk: Long,
+    /**
+     * Writes that failed, in words.
+     */
+    val writeFailures: List<String>,
+    /**
+     * The verify's summed runs agreed with the new delays (`None` before).
+     */
+    val verified: Boolean?,
+    /**
+     * What to know, in words.
+     */
+    val message: String,
+)
+
+/**
  * One output of a layout (PLAN-P5 section 1.4 step 1).
  */
 data class MeasureLayoutOutput(
@@ -8707,6 +9222,88 @@ enum class MeasureLiveAdjust {
      * An edit the client asked to preview.
      */
     EDIT,
+}
+
+/**
+ * Where a system measurement is.
+ */
+enum class MeasureSystemPhase {
+    /**
+     * No session.
+     */
+    IDLE,
+    /**
+     * The noise floor is captured (nothing plays).
+     */
+    PRE_ROLL,
+    /**
+     * One output's ramp step plays (S3).
+     */
+    RAMP,
+    /**
+     * The timed run plays.
+     */
+    RUN,
+    /**
+     * The capture is analysed.
+     */
+    ANALYSING,
+    /**
+     * Finished: a result (or a summed check's verdicts) is ready.
+     */
+    DONE,
+    /**
+     * Stopped: by the user, a safety rule or the hub; nothing kept.
+     */
+    ABORTED,
+    /**
+     * Could not finish (no signal, the gate, the ramp); nothing kept.
+     */
+    FAILED,
+}
+
+/**
+ * What a session's runs are for.
+ */
+enum class MeasureSystemPurpose {
+    /**
+     * The walked measurement.
+     */
+    MEASURE,
+    /**
+     * The summed check of every inter-unit transition (RC5f).
+     */
+    SUM_CHECK,
+    /**
+     * The summed runs repeated after an apply (P5's verify).
+     */
+    VERIFY,
+}
+
+/**
+ * Where an applied system alignment stands.
+ */
+enum class MeasureSystemApplyStage {
+    /**
+     * Nothing applied.
+     */
+    NONE,
+    /**
+     * Applied; the summed runs are to be repeated (`measure_system_verify`).
+     */
+    APPLIED,
+    /**
+     * Verified (or not): Keep or Revert.
+     */
+    VERIFIED,
+    /**
+     * Kept.
+     */
+    KEPT,
+    /**
+     * Reverted: the model and the units are as filed.
+     */
+    REVERTED,
 }
 
 /**

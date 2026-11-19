@@ -5729,9 +5729,12 @@ uint32_t dspi_fetch_alink_frame_counter(struct FfiCore *core, char *buf, uint32_
 
 /**
  * Queue `op` (0 cancel all, 1 mute, 2 unmute, 3 preset load, 4 master
- * volume, 5 output delay, 6 rate, 7 click, 8 sync pulse) with `arg` and
- * `value` for alink frame `frame`. Returns a status byte, 0xFF on failure
- * (arguments out of range, a full queue, no lock).
+ * volume, 5 output delay, 6 rate, 7 click, 8 sync pulse; -- WP ATCORE --
+ * 9 generator start: the staged finite config's sample 0 at that frame,
+ * `arg` 0 and `value` 0, refused unless staged since the last stop and
+ * at least the arm lead ahead; 10 generator stop, `arg` 0 fade or 1 now)
+ * with `arg` and `value` for alink frame `frame`. Returns a status byte,
+ * 0xFF on failure (arguments out of range, a full queue, no lock).
  */
 uint8_t dspi_apply_at_frame(struct FfiCore *core,
                             uint64_t frame,
@@ -7429,6 +7432,112 @@ uint32_t dspi_measure_tune_ab(struct FfiCore *core, char *buf, uint32_t len);
  * Stop the tune's runs (and forget it unless applied): its state.
  */
 uint32_t dspi_measure_tune_stop(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Judge this core's own device as `unit_json` of `setup_json`: the check
+ * to hand to the core on the hub session, or a failure.
+ */
+uint32_t dspi_measure_system_unit_check(struct FfiCore *core,
+                                        const char *setup_json,
+                                        const char *unit_json,
+                                        char *buf,
+                                        uint32_t len);
+
+/**
+ * What stands between `setup_json` and a system measurement, each item
+ * naming its unit, from `checks_json`: the preflight, or a failure.
+ */
+uint32_t dspi_measure_system_preflight(struct FfiCore *core,
+                                       const char *setup_json,
+                                       const char *checks_json,
+                                       char *buf,
+                                       uint32_t len);
+
+/**
+ * Start a system measurement: the state, or a failure (`invalid`,
+ * `unsupported` for a hub without `system_measure`, `denied`, the hub's
+ * code).
+ */
+uint32_t dspi_measure_system_start(struct FfiCore *core,
+                                   const char *setup_json,
+                                   const char *checks_json,
+                                   char *buf,
+                                   uint32_t len);
+
+/**
+ * Push `count` mono samples of the microphone's capture from frame
+ * `first_frame` at `rate_hz` (as `dspi_measure_capture_push`): the state,
+ * or a failure.
+ */
+uint32_t dspi_measure_system_capture_push(struct FfiCore *core,
+                                          uint64_t first_frame,
+                                          const float *samples,
+                                          uint32_t count,
+                                          uint32_t rate_hz,
+                                          bool clipped,
+                                          char *buf,
+                                          uint32_t len);
+
+/**
+ * Drive the system session (about every 50 ms, off the UI thread): the
+ * state.
+ */
+uint32_t dspi_measure_system_tick(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * The system session's state, without I/O.
+ */
+uint32_t dspi_measure_system_state(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * The user's Stop: the state.
+ */
+uint32_t dspi_measure_system_stop(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * The finished measurement, or `invalid` while none is ready.
+ */
+uint32_t dspi_measure_system_result(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * The alignment the result proposes, or `invalid` while none is ready.
+ */
+uint32_t dspi_measure_system_proposal(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Start the summed check of every inter-unit transition: the state, or a
+ * failure.
+ */
+uint32_t dspi_measure_system_sum_check(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Apply proposal `proposal_id` (Admin): what was done, or a failure
+ * (`denied`, `invalid`, the hub's code).
+ */
+uint32_t dspi_measure_system_apply(struct FfiCore *core,
+                                   uint32_t proposal_id,
+                                   char *buf,
+                                   uint32_t len);
+
+/**
+ * Repeat the summed runs after an apply: the state, or a failure.
+ */
+uint32_t dspi_measure_system_verify(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Where the applied alignment stands.
+ */
+uint32_t dspi_measure_system_applied(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Keep the applied alignment: what stands, or `invalid`.
+ */
+uint32_t dspi_measure_system_keep(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Revert the applied alignment (Admin): what was done, or a failure.
+ */
+uint32_t dspi_measure_system_revert(struct FfiCore *core, char *buf, uint32_t len);
 
 /**
  * The open device's protocol in JSON: `{ok, generation ("unknown",

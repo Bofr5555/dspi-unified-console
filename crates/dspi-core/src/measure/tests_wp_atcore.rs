@@ -101,6 +101,9 @@ struct Stub {
     revision: u64,
     seed: u64,
     session_open: bool,
+    /// Samples the hub adds to the next run's t0 (settling).
+    settle: u64,
+    settling_seen: bool,
 }
 
 impl Stub {
@@ -124,6 +127,8 @@ impl Stub {
             revision: 7,
             seed: 1,
             session_open: false,
+            settle: 0,
+            settling_seen: false,
         }
     }
 
@@ -359,12 +364,14 @@ impl Stub {
                     .find(|u| u.serial == r.serial)
                     .unwrap();
                 u.staged = Some(c);
-                Ok(json!({}))
+                Ok(json!({"v": 1, "serial": r.serial, "samples": 0}))
             }
             msg::t::RUN => {
                 let r: msg::RunRequest = serde_json::from_value(body).unwrap();
                 let lead = u64::from(r.lead_ms) * u64::from(RATE) / 1000;
-                let t0 = self.t_now() + lead;
+                // The hub holds the first run back until the clocks settle.
+                let t0 = self.t_now() + lead + std::mem::take(&mut self.settle);
+                self.settling_seen = true;
                 let mut placed = Vec::new();
                 let mut segs = Vec::new();
                 for s in &r.segments {
@@ -455,12 +462,14 @@ impl Stub {
                         }
                     })
                     .collect();
-                Ok(serde_json::to_value(StatusReply {
+                // As ATHUB answers: the body under "status", `v` beside it.
+                let body = serde_json::to_value(StatusReply {
                     t: self.t_now(),
                     hub_us: self.frames * 1_000_000 / u64::from(RATE),
                     units,
                 })
-                .unwrap())
+                .unwrap();
+                Ok(json!({"v": 1, "status": body}))
             }
             msg::t::ABORT => {
                 let now = self.t_now();
@@ -468,7 +477,7 @@ impl Stub {
                     u.segs.retain(|s| s.t <= now);
                 }
                 self.future.truncate(self.frames as usize);
-                Ok(serde_json::to_value(AbortReply {
+                let mut v = serde_json::to_value(AbortReply {
                     units: (0..self.units.len())
                         .map(|i| AbortUnit {
                             unit: i as u8,
@@ -477,7 +486,10 @@ impl Stub {
                         })
                         .collect(),
                 })
-                .unwrap())
+                .unwrap();
+                v["broadcast"] = json!("none");
+                v["v"] = json!(1);
+                Ok(v)
             }
             msg::t::CLOSE => {
                 self.session_open = false;
@@ -1324,8 +1336,7 @@ fn wp_atcore_every_notice_key_has_a_row() {
     assert!(keys.len() > 20, "{keys:?}");
     for k in &keys {
         assert!(
-            super::system::NOTICE_KEYS.contains(&k.as_str())
-                || super::NOTICE_KEYS.contains(&k.as_str()),
+            super::NOTICE_KEYS.contains(&k.as_str()),
             "{k} is in no NOTICE_KEYS"
         );
         assert!(crate::notice_text::has_row(k), "no notice row for {k}");
@@ -1370,4 +1381,49 @@ proptest! {
             prop_assert!(c.repeat >= 1 && c.channel_mask != 0);
         }
     }
+}
+
+#[test]
+fn wp_atcore_a_run_the_hub_holds_back_for_settling_says_so_and_finishes() {
+    let s = setup(&[("A", &[0]), ("B", &[0])]);
+    let mut hub = StubHub(Arc::new(Mutex::new(Stub::new(vec![
+        unit("A", 1, 48, &[3.0]),
+        unit("B", 1, 48, &[3.2]),
+    ]))));
+    // The first START waits 8 s more than its lead (ATHUB settles up to 40 s).
+    hub.0.lock().unwrap().settle = 8 * u64::from(RATE);
+    let p = plan_of(&s, &mut hub);
+    let mut sess = SysSession::open(
+        p,
+        MeasureSystemPurpose::Measure,
+        None,
+        &mut hub,
+        Instant::now(),
+    )
+    .unwrap();
+    let mut now = Instant::now();
+    let mut said = false;
+    for _ in 0..4_000 {
+        if sess.finished() {
+            break;
+        }
+        let (frames, block) = {
+            let mut st = hub.0.lock().unwrap();
+            (st.frames, st.block())
+        };
+        sess.push(&mut hub, frames, &block, RATE, false);
+        hub.0.lock().unwrap().frames += BLOCK as u64;
+        now += Duration::from_millis(100);
+        sess.tick(&mut hub, now);
+        said |= sess.state().words.contains("settle");
+    }
+    assert!(hub.0.lock().unwrap().settling_seen);
+    assert!(said, "the wait is said in words");
+    assert_eq!(
+        sess.state().phase,
+        MeasureSystemPhase::Done,
+        "{:?}",
+        sess.state()
+    );
+    assert!(sess.state().words.is_empty());
 }

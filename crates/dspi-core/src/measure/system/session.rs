@@ -432,6 +432,25 @@ impl SysSession {
             result_ready: matches!(self.stage, Stage::Done)
                 && self.purpose == MeasureSystemPurpose::Measure,
             timing_reliable: self.timing_reliable,
+            words: self.words(),
+        }
+    }
+
+    /// What the session waits for, in words: the hub holds a START back
+    /// until every unit's clock has settled (up to 40 s after it first saw
+    /// it locked), so a run may begin long after its lead.
+    fn words(&self) -> String {
+        let waiting = match (&self.stage, self.pin) {
+            (Stage::Ramp { timed: Some(t), .. } | Stage::Run { timed: t }, Some(p)) => {
+                let lead = self.plan.lead_samples(self.lead_ms.saturating_add(1_000));
+                t.schedule.start() > p.t.saturating_add(lead)
+            }
+            _ => false,
+        };
+        if waiting {
+            "waiting for the units' clocks to settle".into()
+        } else {
+            String::new()
         }
     }
 
@@ -633,13 +652,21 @@ impl SysSession {
         };
         let reply = hub
             .request(msg::t::STATUS, to_value(&req))
-            .and_then(|v| parse::<StatusReply>(v, "status"));
+            // ATHUB: the body travels under "status" (the seam's `t` would
+            // collide with the answer's "t": "ok"); at the top level too.
+            .and_then(|mut v| {
+                let body = match v.get_mut("status") {
+                    Some(b) if b.is_object() => b.take(),
+                    _ => v,
+                };
+                parse::<StatusReply>(body, "status")
+            });
         let reply = match reply {
             Ok(r) => r,
             Err(e) => {
                 self.poll_failures = self.poll_failures.saturating_add(1);
                 let gone = matches!(e, DspiError::Disconnected)
-                    || matches!(&e, DspiError::Link { code, .. } if code == "not_found" || code == "closed");
+                    || matches!(&e, DspiError::Link { code, .. } if code == "not_found" || code == "closed" || code == "aborted");
                 if gone || self.poll_failures >= MAX_POLL_FAILURES {
                     let m = format!("the hub does not answer: {e}");
                     self.abort(hub, issue("", "measure.system.abort.disconnected", m));

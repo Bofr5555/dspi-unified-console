@@ -1847,6 +1847,43 @@ uint32_t dspi_measure_tune_keep(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_measure_tune_revert(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_measure_tune_ab(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_measure_tune_stop(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_measure_system_unit_check(struct FfiCore *core,
+const char *setup_json,
+const char *unit_json,
+char *buf,
+uint32_t len);
+uint32_t dspi_measure_system_preflight(struct FfiCore *core,
+const char *setup_json,
+const char *checks_json,
+char *buf,
+uint32_t len);
+uint32_t dspi_measure_system_start(struct FfiCore *core,
+const char *setup_json,
+const char *checks_json,
+char *buf,
+uint32_t len);
+uint32_t dspi_measure_system_capture_push(struct FfiCore *core,
+uint64_t first_frame,
+const float *samples,
+uint32_t count,
+uint32_t rate_hz,
+bool clipped,
+char *buf,
+uint32_t len);
+uint32_t dspi_measure_system_tick(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_measure_system_state(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_measure_system_stop(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_measure_system_result(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_measure_system_proposal(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_measure_system_sum_check(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_measure_system_apply(struct FfiCore *core,
+uint32_t proposal_id,
+char *buf,
+uint32_t len);
+uint32_t dspi_measure_system_verify(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_measure_system_applied(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_measure_system_keep(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_measure_system_revert(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_device_protocol(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_raw_get_id(struct FfiCore *core,
 uint16_t id,

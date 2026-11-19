@@ -169,6 +169,32 @@ pub(crate) const NOTICE_KEYS: &[&str] = &[
     "measure.tune.not_kept",
     // -- WP P5TRUST --
     "measure.tune.keep_unverified",
+    // -- WP ATCORE -- the system measurement across units
+    "measure.system.needs_hub",
+    "measure.system.unit_check",
+    "measure.system.rates",
+    "measure.system.not_one_domain",
+    "measure.system.not_locked",
+    "measure.system.no_timeline",
+    "measure.system.hub_refused",
+    "measure.system.plan",
+    "measure.system.abort.clip",
+    "measure.system.abort.output_peak",
+    "measure.system.abort.limiter",
+    "measure.system.abort.disturbance",
+    "measure.system.abort.time_base",
+    "measure.system.abort.generator",
+    "measure.system.abort.hub",
+    "measure.system.abort.disconnected",
+    "measure.system.abort.overrun",
+    "measure.system.gate",
+    "measure.system.timing_unreliable",
+    "measure.system.chain",
+    "measure.system.sum_check_failed",
+    "measure.system.sum_check_needed",
+    "measure.system.admin",
+    "measure.system.nothing_offered",
+    "measure.system.verify_failed",
 ];
 
 // ── Records ─────────────────────────────────────────────────────────────

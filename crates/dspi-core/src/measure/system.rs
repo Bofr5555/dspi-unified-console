@@ -58,7 +58,7 @@
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
-use serde_json::{Map, Value};
+use serde_json::Value;
 
 use dspi_measure::system::messages::AbortedEvent;
 use dspi_transport::clock::Instant;
@@ -71,37 +71,6 @@ pub(crate) mod proposal;
 pub(crate) mod session;
 
 pub(crate) use session::{SessionOutput, SysSession};
-
-/// Every notice key the system session answers with (its rows in
-/// `assets/notices/notices.json`).
-#[cfg(test)]
-pub(crate) const NOTICE_KEYS: &[&str] = &[
-    "measure.system.needs_hub",
-    "measure.system.unit_check",
-    "measure.system.rates",
-    "measure.system.not_one_domain",
-    "measure.system.not_locked",
-    "measure.system.no_timeline",
-    "measure.system.hub_refused",
-    "measure.system.plan",
-    "measure.system.abort.clip",
-    "measure.system.abort.output_peak",
-    "measure.system.abort.limiter",
-    "measure.system.abort.disturbance",
-    "measure.system.abort.time_base",
-    "measure.system.abort.generator",
-    "measure.system.abort.hub",
-    "measure.system.abort.disconnected",
-    "measure.system.abort.overrun",
-    "measure.system.gate",
-    "measure.system.timing_unreliable",
-    "measure.system.chain",
-    "measure.system.sum_check_failed",
-    "measure.system.sum_check_needed",
-    "measure.system.admin",
-    "measure.system.nothing_offered",
-    "measure.system.verify_failed",
-];
 
 // ── Records ─────────────────────────────────────────────────────────────
 
@@ -304,6 +273,9 @@ pub struct MeasureSystemState {
     pub result_ready: bool,
     /// G5: the timing of every run was reliable.
     pub timing_reliable: Option<bool>,
+    /// What the session waits for, in words ("waiting for the units' clocks
+    /// to settle"), or "".
+    pub words: String,
 }
 
 /// A measured output's arrival, as the proposal would write it.
@@ -558,7 +530,7 @@ impl Hub for CoreHub<'_> {
         {
             let fields = match body {
                 Value::Object(m) => m,
-                _ => Map::new(),
+                _ => serde_json::Map::new(),
             };
             self.core
                 .link_hub_request_within(t, fields, std::time::Duration::from_secs(15))
