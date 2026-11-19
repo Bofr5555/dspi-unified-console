@@ -5,6 +5,7 @@
 
 #include "AppIdentity.h"
 #include "Core.h"
+#include "DeviceInfoController.h"   // -- WP PGQT --
 #include "DeviceModel.h"
 #include "FilesController.h"
 #include "Shell.h"
@@ -58,6 +59,15 @@ QJsonObject guardCheck(const QByteArray &bytes, int requiredMv, const QByteArray
            })).object();
 }
 
+// -- WP PGQT -- The update check on `bytes` for `target` (dspi_firmware_target's
+// JSON), with what was typed. Worker thread.
+QJsonObject updateCheck(const QByteArray &bytes, const QByteArray &target, const QByteArray &typed) {
+    return QJsonDocument::fromJson(readSized([&](char *b, uint32_t n) {
+               return dspi_firmware_update_check(reinterpret_cast<const uint8_t *>(bytes.constData()), uint32_t(bytes.size()),
+                                                 target.constData(), typed.isEmpty() ? nullptr : typed.constData(), b, n);
+           })).object();
+}
+
 // -- WP SECFIX -- The core's manifest on `bytes` named `name` ("" for none):
 // verified, notBundled or mismatch. Worker thread.
 QString verifyBundled(const QByteArray &bytes, const QString &name) {
@@ -105,6 +115,15 @@ FirmwareController::FirmwareController(const AppContext &ctx, QObject *parent)
         if (auto *onboarding = Registrar::instance<OnboardingController>()) onboarding->setInstaller(this);
     });
 #endif
+    // -- WP PGQT -- whether the board has BOOTSEL, read once per connection there
+    QTimer::singleShot(0, this, [this] {
+        if (auto *info = Registrar::instance<DeviceInfoController>())
+            connect(info, &DeviceInfoController::changed, this, [this] {
+                emit deviceChanged();
+                emit imageChanged();
+                emit stateChanged();
+            });
+    });
     m_verifyDeadline.setSingleShot(true);
     m_verifyDeadline.setInterval(kVerifyMs);
     connect(&m_verifyDeadline, &QTimer::timeout, this, [this] {
@@ -166,6 +185,8 @@ void FirmwareController::loadBundled() {
 
 FirmwareController::Image FirmwareController::imageFor(int chip) const {
     if (custom()) return m_customImage;
+    // -- WP PGQT -- the bundled images are the DSP's: none for the alink sender
+    if (senderConnected()) return Image();
     for (const Image &img : m_bundled)
         if (img.chip == chip) return img;
     return Image();
@@ -180,6 +201,7 @@ int FirmwareController::deviceChip() const {
 
 QString FirmwareController::imageName() const {
     if (custom()) return QFileInfo(m_customPath).fileName();
+    if (noUpdate() || senderConnected()) return QString();   // -- WP PGQT --
     const int chip = deviceChip() >= 0 ? deviceChip() : m_lastChip;
     QStringList names;
     for (const Image &img : m_bundled)
@@ -194,6 +216,7 @@ QString FirmwareController::imageVersion() const {
 
 bool FirmwareController::imageChecked() const {
     if (custom()) return m_customImage.valid && m_customProblem.isEmpty();
+    if (noUpdate() || senderConnected()) return false;   // -- WP PGQT -- no bundled image offered
     const int chip = deviceChip() >= 0 ? deviceChip() : m_lastChip;
     bool any = false;
     for (const Image &img : m_bundled) {
@@ -418,6 +441,14 @@ void FirmwareController::resetRun() {
     m_rebootRequested = false;
     m_rebootWanted = false;
     m_boardRead = false;
+    // -- WP PGQT --
+    m_target.clear();
+    m_targetConnection = 0;
+    m_useTarget = false;
+    if (!m_generationChange.isEmpty()) {
+        m_generationChange.clear();
+        emit guardChanged();
+    }
     m_typed.clear();
     m_unconfirmed = false;
     m_driveWait.invalidate();
@@ -473,32 +504,53 @@ void FirmwareController::begin(bool reboot) {
         proceed();
         return;
     }
+    // -- WP PGQT -- a board without BOOTSEL is offered no image: nothing is read or sent
+    if (noUpdate()) {
+        m_installing = true;
+        fail(NoBootsel, imageNote());
+        return;
+    }
     const Image image = imageFor(deviceChip());
     if (image.bytes.isEmpty()) {
         m_installing = true;   // -- WP QPI3 -- the outcome stays until reset
-        fail(ImageMissing, m_ctx.device->platformName());
+        fail(ImageMissing, senderConnected() ? tr("audio link sender") : m_ctx.device->platformName());
         return;
     }
-    // The board's needs, read now: once it is in the bootloader it cannot be asked
+    // -- WP PGQT -- The board as the core reads it (voltage, BOOTSEL, lineage,
+    // generation), and the update check on it, now: once it is in the
+    // bootloader it cannot be asked, and the core's write gate judges by this
+    // same target, so a question it would ask at the write is asked here
     const QByteArray bytes = image.bytes;
     m_reading = true;
     emit stateChanged();
     m_ctx.core->worker()->call(
         this,
         [bytes](FfiCore *c) {
-            const QJsonObject board = QJsonDocument::fromJson(readSized([c](char *b, uint32_t n) {
-                                                                  return dspi_firmware_guard_board(c, b, n);
-                                                              })).object();
-            const int required = board.value(QStringLiteral("requiredMv")).toInt();
-            return std::make_pair(required, guardCheck(bytes, required, QByteArray()));
+            const QByteArray target = readSized([c](char *b, uint32_t n) { return dspi_firmware_target(c, b, n); });
+            const uint64_t connection = dspi_connection_generation(c);
+            return std::make_tuple(target, connection, updateCheck(bytes, target, QByteArray()));
         },
-        [this, proceed](std::pair<int, QJsonObject> r) {
+        [this, proceed](std::tuple<QByteArray, uint64_t, QJsonObject> r) {
             m_reading = false;
-            m_requiredMv = r.first;
+            const QJsonObject target = QJsonDocument::fromJson(std::get<0>(r)).object();
+            const QJsonObject &check = std::get<2>(r);
+            if (!target.value(QStringLiteral("ok")).toBool() || !check.value(QStringLiteral("ok")).toBool()) {
+                m_installing = true;
+                fail(GuardRefused, check.value(QStringLiteral("error")).toString());
+                return;
+            }
+            m_target = std::get<0>(r);
+            m_targetConnection = std::get<1>(r);
+            m_requiredMv = target.value(QStringLiteral("voltage")).toObject().value(QStringLiteral("requiredMv")).toInt();
             m_boardRead = true;
-            const QJsonObject &verdict = r.second;
+            m_generationChange = check.value(QStringLiteral("generationChange")).toString();
+            emit guardChanged();
+            const QJsonObject verdict = check.value(QStringLiteral("verdict")).toObject();
             const QString decision = verdict.value(QStringLiteral("decision")).toString();
-            if (verdict.value(QStringLiteral("allowed")).toBool()) {
+            if (check.value(QStringLiteral("rule")).toString() == QLatin1String("noBootsel")) {
+                m_installing = true;
+                fail(NoBootsel, verdict.value(QStringLiteral("message")).toString());
+            } else if (verdict.value(QStringLiteral("allowed")).toBool()) {
                 proceed();
             } else if (decision == QLatin1String("needsConfirmation")) {
                 askGuard(verdict, proceed);
@@ -545,7 +597,7 @@ void FirmwareController::enterBootloaderForInstall() {
 }
 
 void FirmwareController::enterBootloaderOnly() {
-    if (!m_ctx.device->connected()) return;
+    if (!m_ctx.device->connected() || noUpdate()) return;   // -- WP PGQT -- no BOOTSEL to enter
     m_ctx.device->writeEvenReadOnly(QStringLiteral("enter bootloader"), [](FfiCore *c) { return Confirm::enterBootloader(c); });   // -- WP P1QT2 -- token
 }
 
@@ -576,13 +628,24 @@ void FirmwareController::install(const BootloaderLocator::Board &board) {
         }
     }
     const QByteArray bytes = image.bytes;
-    const int required = m_boardRead ? m_requiredMv : 0;
+    // -- WP PGQT -- This run's target only for the board this run sent to its
+    // bootloader, while the core still keeps it (no other device opened since):
+    // a record kept from another board is never passed; without it the
+    // voltage is unknown, as the core's gate then takes it too
+    const DeviceSnapshot &now = m_ctx.device->snapshot();
+    m_useTarget = m_boardRead && !m_target.isEmpty() && m_rebootRequested &&
+                  !(now.connected && now.generation != m_targetConnection);
+    const QByteArray target = m_useTarget ? m_target : QByteArray();
+    const int required = m_useTarget ? m_requiredMv : 0;
     const QByteArray typed = m_typed.toUtf8();
     m_ctx.core->worker()->call(
-        this, [bytes, required, typed](FfiCore *) { return guardCheck(bytes, required, typed); },
-        [this, board, image](QJsonObject verdict) {
+        this, [bytes, target, required, typed](FfiCore *) { return checkFor(bytes, target, required, typed); },
+        [this, board, image](QJsonObject check) {
+            const QJsonObject verdict = check.value(QStringLiteral("verdict")).toObject();
             const QString decision = verdict.value(QStringLiteral("decision")).toString();
-            if (verdict.value(QStringLiteral("allowed")).toBool()) {
+            if (check.value(QStringLiteral("rule")).toString() == QLatin1String("noBootsel")) {
+                fail(NoBootsel, verdict.value(QStringLiteral("message")).toString());
+            } else if (verdict.value(QStringLiteral("allowed")).toBool()) {
                 write(board, image);
             } else if (decision == QLatin1String("needsConfirmation")) {
                 askGuard(verdict, [this, board] {
@@ -600,7 +663,7 @@ void FirmwareController::write(const BootloaderLocator::Board &board, const Imag
     const QByteArray bytes = image.bytes;
     const QByteArray drive = board.drive.toUtf8();
     const int chip = board.chip;
-    const int required = m_boardRead ? m_requiredMv : 0;
+    const int required = m_useTarget ? m_requiredMv : 0;   // -- WP PGQT -- never another board's record
     const QByteArray typed = m_typed.toUtf8();
     m_ctx.core->worker()->call(
         this,
@@ -840,6 +903,44 @@ QString FirmwareController::errorText() const {
     case VersionMismatch:
         return tr("The device came back running firmware %1 instead of %2.").arg(m_errorDetail, m_writtenVersion);
     case DeviceLocked: return tr("Another console is applying changes. Try again when it has finished.");
+    case NoBootsel: return sentence(m_errorDetail);   // -- WP PGQT --
     }
+    return QString();
+}
+
+// ---- WP PGQT: the update check, BOOTSEL and the alink sender -------------------
+
+QJsonObject FirmwareController::checkFor(const QByteArray &bytes, const QByteArray &target, int requiredMv,
+                                         const QByteArray &typed) {
+    if (!target.isEmpty()) return updateCheck(bytes, target, typed);
+    // No board read by this run: the voltage rule alone, as the core's gate
+    // judges a board it did not read, in the update check's shape
+    return QJsonObject{ { QStringLiteral("ok"), true },
+                        { QStringLiteral("verdict"), guardCheck(bytes, requiredMv, typed) },
+                        { QStringLiteral("rule"), QStringLiteral("none") } };
+}
+
+bool FirmwareController::senderConnected() const {
+    const auto *info = Registrar::instance<DeviceInfoController>();
+    return m_ctx.device->connected() && info && info->sender();
+}
+
+bool FirmwareController::noUpdate() const {
+    const auto *info = Registrar::instance<DeviceInfoController>();
+    return m_ctx.device->connected() && info && info->known() && !info->bootsel();
+}
+
+QString FirmwareController::imageNote() const {
+    if (noUpdate()) {
+        const auto *info = Registrar::instance<DeviceInfoController>();
+        const QString name = info ? info->boardName() : QString();
+        return tr("This board (%1) has no BOOTSEL bootloader that this Console can write, so it is offered no "
+                  "firmware image.")
+            .arg(name.isEmpty() ? tr("unknown") : name);
+    }
+    if (senderConnected() && !custom())
+        return tr("This is the audio link sender. %1 bundles firmware for the DSP only: choose the sender's own "
+                  "image (.uf2).")
+            .arg(AppIdentity::displayName());
     return QString();
 }

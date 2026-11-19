@@ -180,4 +180,15 @@ impl FakeRemote {
     pub fn last_violation(&self) -> Option<String> {
         self.shared.lock().pg.last_violation.clone()
     }
+
+    // -- WP PGQT --
+    /// Let violations through, counted and answered as the firmware would,
+    /// never a panic ([`FakeOptions::allow_violation`]): for a fake opened
+    /// inside a client app (the Qt smoke driver's generations), which reads
+    /// [`FakeRemote::violations`] instead.
+    ///
+    /// [`FakeOptions::allow_violation`]: super::FakeOptions::allow_violation
+    pub fn allow_violations(&self) {
+        self.shared.lock().options.allow_violation = true;
+    }
 }

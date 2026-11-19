@@ -32,6 +32,9 @@ const NOT_EXPORTED: &[&str] = &[
     // read-only fixtures (bridge ReadOnlyTest), and its write guard counts refusals.
     "open_demo_wire",
     "read_only_refusals",
+    // -- WP PGQT -- the Qt smoke driver's fake generations, through the C ABI
+    "open_demo_generation",
+    "demo_generation_violations",
     // -- WP CG23 -- The C drain's too-small buffer; Rust-only (doc(hidden)).
     "notify_tap_note_dropped",
     // -- WP CG32 -- The web's runtime without threads (WB2, WB3): not exported

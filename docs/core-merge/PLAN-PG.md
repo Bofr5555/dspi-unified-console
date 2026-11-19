@@ -779,8 +779,22 @@ connects the sender as `DeviceKind::AlinkSender`: device info, extension channel
 generation. **Done when:** `ci/check.sh --step web` (Chromium and Firefox, 375 px) shows each generation and each
 notice; no paged request in the G1 mock's log. **Deps:** PGCORE.
 
-**PGQT: Qt.** [TODO] Size 0.75. Wave PG-D. **Owns:** the Qt About/device-info controller and view, the raw dialog.
-**Done when:** `ci/check.sh --step qt`, `--step qt-offscreen` with the fake generations. **Deps:** PGCORE.
+**PGQT: Qt.** [DONE] Size 0.75. Wave PG-D. **Owns:** the Qt About/device-info controller and view, the raw dialog.
+**Done when:** `ci/check.sh --step qt`, `--step qt-offscreen` with the fake generations. **Deps:** PGCORE. **Did (WP
+PGQT):** new `DeviceInfoController` (`apps/desktop/qt/src/controllers/`, QML in `qml/deviceinfo/`): Settings > About's
+"Connected Device" rows from `dspi_device_protocol` (board, generation, protocol, pages, extensions), read once per
+connection on the worker (keyed by `dspi_connection_generation`), with the Terminal's notes (empty page list on a
+paged device; the sender; no BOOTSEL); the raw request dialog by id (`dspi_raw_get_id`/`dspi_raw_set_id`, the SET
+through `DeviceModel::write`), the core's refusals in words (`VC_ERR_*` by name), an id, wValue or length above 16
+bits, a byte above 0xFF or a payload past 65535 bytes refused before the core is asked; on `AlinkSender` the main
+window shows `SenderPage` (device info, the audio link status with the admin-only refusal in words, the update) in
+place of the DSP screens. `FirmwareController` judges with `dspi_firmware_target` + `dspi_firmware_update_check`
+before the bootloader entry, asks the phrase the verdict names in the dialog (field empty, never typed for the
+person), shows the generation change, offers no image (nor the bootloader entry) to a board without BOOTSEL and no
+bundled image to the sender, re-checks at the write with the same target and passes its voltage record only for the
+board this run sent to BOOTSEL on the same connection (else unknown, as the gate). For the smoke runs the core gained
+`open_demo_generation` / `dspi_demo_open_generation` (G1s, G1b with and without PAGEGUARD, G2s, G2b, Zero, sender,
+G1b at 1.15 V) and `demo_generation_violations` (C ABI only, `NOT_EXPORTED`).
 
 **PGTM: Terminal and TUI.** [DONE] Size 0.75. Wave PG-D. **Owns:** `apps/terminal/src/main.rs` (`uconsole info`
 generation, `uconsole raw --id 0x0550`), the TUI's About screen. **Done when:** scoped `cargo test -p uconsole` and

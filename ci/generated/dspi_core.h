@@ -4989,6 +4989,21 @@ bool dspi_demo_output_save_status(struct FfiCore *core, uint8_t status);
 bool dspi_demo_open_wire(struct FfiCore *core, uint8_t wire);
 
 /**
+ * Open the demo as fake protocol generation `code` (the Qt smoke driver's
+ * sections per generation): 0 stock 1.1.6, 1 ours 1.1.6 with PAGEGUARD, 2
+ * ours without it, 3 stock 1.1.7, 4 ours dual-stack 1.1.7, 5 the DSPi-Zero,
+ * 6 the alink sender, 7 ours 1.1.6 with PAGEGUARD on a board at the stock
+ * 1.15 V core. False for another code.
+ */
+bool dspi_demo_open_generation(struct FfiCore *core, uint8_t code);
+
+/**
+ * How many requests the fake of `dspi_demo_open_generation` got that its
+ * generation must not get; `u32::MAX` when none was opened on this handle.
+ */
+uint32_t dspi_demo_generation_violations(struct FfiCore *core);
+
+/**
  * How many writes the read-only mode has refused on this handle.
  */
 uint32_t dspi_read_only_refusals(struct FfiCore *core);

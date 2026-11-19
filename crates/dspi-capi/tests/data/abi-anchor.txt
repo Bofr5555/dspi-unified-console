@@ -1136,6 +1136,8 @@ bool dspi_demo_latency_timing(struct FfiCore *core, uint8_t mode, uint8_t reads,
 uint32_t dspi_demo_latency_sets(struct FfiCore *core);
 bool dspi_demo_output_save_status(struct FfiCore *core, uint8_t status);
 bool dspi_demo_open_wire(struct FfiCore *core, uint8_t wire);
+bool dspi_demo_open_generation(struct FfiCore *core, uint8_t code);
+uint32_t dspi_demo_generation_violations(struct FfiCore *core);
 uint32_t dspi_read_only_refusals(struct FfiCore *core);
 uint32_t dspi_wire_features(struct FfiCore *core);
 bool dspi_feature_present(struct FfiCore *core, const char *name);
