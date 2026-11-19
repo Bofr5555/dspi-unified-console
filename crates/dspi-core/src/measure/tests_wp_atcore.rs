@@ -408,7 +408,9 @@ impl Stub {
                     });
                     segs.push((u, t0 + s.offset));
                 }
-                let summed = r.segments.len() > 1 && r.segments.iter().all(|s| s.offset == 0);
+                // WP ATSUMOFF: a summed run's parts may start apart.
+                let summed =
+                    r.summed || (r.segments.len() > 1 && r.segments.iter().all(|s| s.offset == 0));
                 self.render(&segs, summed);
                 Ok(serde_json::to_value(RunReply {
                     t0,
@@ -1480,12 +1482,13 @@ fn sum_session(
     v
 }
 
-/// The sum check is judged only as far up as its window sees both arrivals
-/// (703 Hz for two outputs 8 ms apart), where a walked delay that is wrong
-/// by 100 us still agrees within 1.5 dB. The verify must not inherit that
-/// band: after the apply the arrivals are predicted to coincide, the whole
-/// transition band is judged (up to a quarter of the rate), and the wrong
-/// delay fails it.
+/// At one T the sum check was judged only as far up as its window saw both
+/// arrivals (703 Hz for two outputs 8 ms apart), where a walked delay wrong
+/// by 100 us still agreed within 1.5 dB. WP ATSUMOFF: its parts now start
+/// apart by their predicted arrivals, so it judges the whole transition
+/// band and fails that delay. The verify must not be narrower either: after
+/// the apply the arrivals coincide, the whole band is judged (up to a
+/// quarter of the rate), and a wrong delay fails it.
 #[test]
 fn review_atc_the_verify_judges_the_whole_band_and_fails_a_wrong_delay() {
     let s = setup(&[("A", &[0]), ("B", &[0])]);
@@ -1496,18 +1499,24 @@ fn review_atc_the_verify_judges_the_whole_band_and_fails_a_wrong_delay() {
     let (_, out) = measure(&mut hub, &s);
     let mut o = out.unwrap();
     let top = o.result.transitions[0].band_hi_hz;
-    assert!(
-        (600.0..800.0).contains(&top),
-        "the sum check's reach: {top}"
-    );
+    assert!(top > 5_000.0, "the sum check's reach: {top}");
+    let jobs = o.sum_jobs(MeasureSystemPurpose::SumCheck).unwrap();
+    // A arrives 8 ms (384 samples) earlier: it starts that much later.
+    assert_eq!(jobs[0].starts, (384, 0), "{:?}", jobs[0].starts);
     // B plays 0.1 ms later than the walked run measured it.
     hub.0.lock().unwrap().faults.sum_detune = Some((1, 0.1));
     let v = sum_session(&o, &mut hub, MeasureSystemPurpose::SumCheck);
-    assert!(v[0].passed, "below 703 Hz 100 us is not told: {v:?}");
+    assert!(!v[0].passed, "100 us is told over the whole band: {v:?}");
+    assert!(v[0].rms_db.is_some(), "{v:?}");
+    // Right again: the sum check passes; the apply; then wrong again.
+    hub.0.lock().unwrap().faults.sum_detune = None;
+    let v = sum_session(&o, &mut hub, MeasureSystemPurpose::SumCheck);
+    assert!(v[0].passed, "{v:?}");
     o.absorb_verdicts(MeasureSystemPurpose::SumCheck, v);
     let p = o.proposal("admin");
     assert!(p.offered, "{p:?}");
     o.apply(&mut hub, p.id).unwrap();
+    hub.0.lock().unwrap().faults.sum_detune = Some((1, 0.1));
     let jobs = o.sum_jobs(MeasureSystemPurpose::Verify).unwrap();
     assert!(
         (jobs[0].band.1 - 12_000.0).abs() < 1.0,
@@ -1546,4 +1555,85 @@ fn review_atc_the_verify_judges_the_whole_band_and_fails_a_wrong_delay() {
     assert!(v[0].passed, "{v:?}");
     o.absorb_verdicts(MeasureSystemPurpose::Verify, v);
     assert_eq!(o.keep().unwrap().stage, MeasureSystemApplyStage::Kept);
+}
+
+// -- WP ATSUMOFF --
+/// USB-direct puts the streams' start offsets into `out.delay` (tens of
+/// ms). At one T the two units of a summed run then sounded 30 ms apart, the
+/// band's top (0.375 * 15 / dt, 188 Hz) fell under its floor and every
+/// cross-unit delay was withdrawn. Now the part predicted to arrive earlier
+/// starts that much later: the sum check judges the whole band and passes,
+/// the apply goes through, the verify passes, and the summed run's starts
+/// keep the lead (each at `t0 + offset`, the later at most 1 s after).
+#[test]
+fn wp_atsumoff_out_delays_tens_of_ms_apart_are_checked_over_the_whole_band() {
+    let s = setup(&[("A", &[0]), ("B", &[0])]);
+    let mut a = unit("A", 1, 48, &[3.0]);
+    a.out_delay_ms = vec![30.0];
+    let mut hub = StubHub(Arc::new(Mutex::new(Stub::new(vec![
+        a,
+        unit("B", 1, 48, &[4.2]),
+    ]))));
+    let (_, out) = measure(&mut hub, &s);
+    let mut o = out.unwrap();
+    // The acoustic arrivals: the output delay is out.
+    assert!((arrival(&o, "A", 0).arrival_us + 1_200.0).abs() < 3.0);
+    assert!(o.result.transitions[0].band_hi_hz > 5_000.0);
+    let jobs = o.sum_jobs(MeasureSystemPurpose::SumCheck).unwrap();
+    // A is heard 28.8 ms (1382 samples) after B at one T: B starts later.
+    assert_eq!(jobs[0].starts.0, 0, "{:?}", jobs[0].starts);
+    assert!(
+        (jobs[0].starts.1 as i64 - 1_382).abs() <= 1,
+        "{:?}",
+        jobs[0].starts
+    );
+    assert!(jobs[0].band.1 > 5_000.0, "{:?}", jobs[0].band);
+    let v = sum_session(&o, &mut hub, MeasureSystemPurpose::SumCheck);
+    assert!(v[0].passed, "{v:?}");
+    {
+        // The run asked for a summed run; B's start is its offset after A's.
+        let st = hub.0.lock().unwrap();
+        let (sa, sb) = (
+            st.units[0].segs.last().unwrap().t,
+            st.units[1].segs.last().unwrap().t,
+        );
+        assert_eq!(sb - sa, jobs[0].starts.1);
+    }
+    o.absorb_verdicts(MeasureSystemPurpose::SumCheck, v);
+    let p = o.proposal("admin");
+    assert!(p.offered && !p.withdrawn, "{p:?}");
+    o.apply(&mut hub, p.id).unwrap();
+    let v = sum_session(&o, &mut hub, MeasureSystemPurpose::Verify);
+    assert!(v[0].passed, "{v:?}");
+    o.absorb_verdicts(MeasureSystemPurpose::Verify, v);
+    assert_eq!(o.applied.verified, Some(true), "{}", o.applied.message);
+    // A delay wrong by 100 us (B later than measured) fails the next sum
+    // check over that band: judged, not "too few points".
+    hub.0.lock().unwrap().faults.sum_detune = Some((1, 0.1));
+    let jobs = o.sum_jobs(MeasureSystemPurpose::Verify).unwrap();
+    assert!(jobs[0].band.1 > 5_000.0, "{:?}", jobs[0].band);
+    let v = sum_session(&o, &mut hub, MeasureSystemPurpose::Verify);
+    assert!(!v[0].passed && v[0].rms_db.is_some(), "{v:?}");
+}
+
+#[test]
+fn wp_atsumoff_sum_starts_bring_the_arrivals_together_within_the_spread() {
+    use proposal::sum_starts;
+    // A later by 8 ms: B starts 384 samples later; together to half a sample.
+    let ((a, b), apart) = sum_starts(11.0, 3.0, RATE);
+    assert_eq!((a, b), (0, 384));
+    assert!(apart.abs() < 1e-9, "{apart}");
+    let ((a, b), apart) = sum_starts(3.0, 3.0101, RATE);
+    assert_eq!((a, b), (0, 0));
+    assert!((apart + 0.0101).abs() < 1e-9, "{apart}");
+    let ((a, b), apart) = sum_starts(3.0, 3.03, RATE);
+    assert_eq!((a, b), (1, 0));
+    assert!(apart.abs() < 0.5 / 48.0, "{apart}");
+    // Wider than 1 s: capped, the rest left in (the band narrows).
+    let ((a, b), apart) = sum_starts(0.0, 1_500.0, RATE);
+    assert_eq!((a, b), (48_000, 0));
+    assert!((apart + 500.0).abs() < 1e-9, "{apart}");
+    // Nothing finite: no offset, the difference left in.
+    assert_eq!(sum_starts(f64::NAN, 0.0, RATE).0, (0, 0));
+    assert_eq!(sum_starts(1.0, 0.0, 0).0, (0, 0));
 }

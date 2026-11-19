@@ -21,7 +21,7 @@ use dspi_measure::response::FLOOR_DB;
 use dspi_measure::system::chain::{ChainOptions, ChainRun, ChainedOutput, chain_runs};
 use dspi_measure::system::{
     CrossUnitDelay, GateFinding, MAX_OFFERED_UNCERTAINTY_US, SystemAnalysis, SystemSchedule,
-    UnitIndex, UnitOutput, transition_band,
+    UnitIndex, UnitOutput, max_sum_spread_samples, transition_band,
 };
 use dspi_measure::types::Response;
 use dspi_measure::xover::SUMMED_CHECK_MAX_RMS_DB;
@@ -208,6 +208,49 @@ pub(crate) struct SumJob {
     pub(crate) predicted: Response,
     /// The check band, Hz.
     pub(crate) band: (f64, f64),
+    // -- WP ATSUMOFF --
+    /// Where `a` and `b` start, samples after the run's first start
+    /// ([`sum_starts`]): one of them 0.
+    pub(crate) starts: (u64, u64),
+}
+
+// -- WP ATSUMOFF --
+/// Where a summed run's two parts start, samples after its first start, and
+/// how far apart their arrivals are then, ms (`a` less `b`): the part whose
+/// output is predicted to arrive earlier starts later by the difference, in
+/// whole samples, so both are heard together and the run is judged over its
+/// whole band ([`window_reach`]). `pred_*_ms`: each output's arrival after
+/// its own start as this run plays it (the walked arrival, with a verify's
+/// change of delay): it holds the unit's play-out and `out.delay`, so on
+/// USB-direct the streams' start offsets (tens of ms) are taken out here.
+/// The offset is at most [`max_sum_spread_samples`]; a wider (or a
+/// non-finite) difference is left in and narrows the band, failing closed.
+pub(crate) fn sum_starts(pred_a_ms: f64, pred_b_ms: f64, rate_hz: u32) -> ((u64, u64), f64) {
+    let diff = pred_a_ms - pred_b_ms;
+    let per_ms = f64::from(rate_hz) / 1000.0;
+    let cap = max_sum_spread_samples(rate_hz);
+    let n = if diff.is_finite() && per_ms > 0.0 {
+        // In range: finite, at most `cap` (u64 of a u32 rate in ms).
+        let n = (diff.abs() * per_ms).round();
+        if n >= cap as f64 { cap } else { n as u64 }
+    } else {
+        0
+    };
+    let n_ms = if per_ms > 0.0 { n as f64 / per_ms } else { 0.0 };
+    if diff > 0.0 {
+        ((0, n), diff - n_ms)
+    } else {
+        ((n, 0), diff + n_ms)
+    }
+}
+
+/// Samples as ms at `rate_hz`.
+fn samples_ms(n: u64, rate_hz: u32) -> f64 {
+    if rate_hz == 0 {
+        0.0
+    } else {
+        n as f64 * 1000.0 / f64::from(rate_hz)
+    }
 }
 
 /// A summed run's verdict.
@@ -622,8 +665,10 @@ impl Outcome {
                 let rb = shifted(&b.result.response, b.arrival_ms - b.own_ms);
                 if let Some(whole) = transition_band(&ra, &rb, u) {
                     // Kept whole: each summed run is judged as far up as its
-                    // own window reaches (`window_reach`).
-                    let band = window_reach(whole, a.arrival_ms - b.arrival_ms);
+                    // own window reaches (`window_reach`); WP ATSUMOFF: with
+                    // its parts started so the arrivals come together.
+                    let (_, apart) = sum_starts(a.arrival_ms, b.arrival_ms, setup.rate_hz);
+                    let band = window_reach(whole, apart);
                     transitions.push((i, j, whole));
                     rows.push(MeasureSystemTransition {
                         a_serial: serial(a.unit),
@@ -715,17 +760,30 @@ impl Outcome {
                     _ => 0.0,
                 }
             };
-            let ra = shifted(&a.result.response, a.arrival_ms - a.own_ms + change(a));
-            let rb = shifted(&b.result.response, b.arrival_ms - b.own_ms + change(b));
-            // Review AT-C: the band follows the arrivals this run is predicted
-            // with. After an apply they coincide, so the verify judges the
-            // whole transition band and a delay that was wrong by more than
-            // the band's top allows fails it; with the walked run's distance
-            // it would be judged only as far up as the sum check was.
-            let mut band = window_reach(
-                band,
-                (a.arrival_ms + change(a)) - (b.arrival_ms + change(b)),
+            // WP ATSUMOFF: the part predicted to arrive earlier starts that
+            // much later (whole samples), so the two are heard together as
+            // the programme hears them although the units' play-out and
+            // output delays differ (USB-direct: the streams' start offsets).
+            // T is commanded and proven (G3), so the offset is exact and the
+            // prediction moves each part by its own start.
+            let rate = self.setup.rate_hz;
+            let (starts, apart) =
+                sum_starts(a.arrival_ms + change(a), b.arrival_ms + change(b), rate);
+            let ra = shifted(
+                &a.result.response,
+                a.arrival_ms - a.own_ms + change(a) + samples_ms(starts.0, rate),
             );
+            let rb = shifted(
+                &b.result.response,
+                b.arrival_ms - b.own_ms + change(b) + samples_ms(starts.1, rate),
+            );
+            // Review AT-C: the band follows the arrivals this run is predicted
+            // with. With the starts above they coincide to half a sample, so
+            // a sum check and a verify judge the whole transition band, and a
+            // delay that was wrong by more than the band's top allows fails
+            // them; at one T it would be judged only as far up as the walked
+            // run's distance (or USB-direct's start offsets) allowed.
+            let mut band = window_reach(band, apart);
             if after.is_some() {
                 // A unit plays an output delay in whole samples: an applied
                 // delay is uncertain by half a sample, 45 degrees at a
@@ -741,6 +799,7 @@ impl Outcome {
                 level_db,
                 predicted,
                 band,
+                starts,
             });
         }
         Ok(jobs)

@@ -429,7 +429,7 @@ which ATHUB serves and ATCORE sends; device replies travel raw and are decoded b
 |---|---|---|
 | `system.measure.open {units:[serial], lease_ms?}` | Control | `lease_ms` clamped to 500..5000, default 2000 (R6b, `clamp_lease_ms`). Takes each unit's device lock ("Measuring") for the session; reads every unit's `EXT_LIST`, `EXT_TIME_BASE`, `EXT_SIGGEN_TIMELINE` (arm lead), platform and output count; checks G1. Answers `{session, domain, units:[{serial, time_base, role, state, d, arm_lead_ms, outputs, t, t_minus_output}]}` or `not_one_domain`, `not_locked {serial}`, `no_timeline {serial}`, `offline`, `locked`, `installer_lock` |
 | `system.measure.stage {session, serial, config}` | Control | Validates a 36-byte `SiggenConfig` (a byte array) with P5's static rules (finite, never `RAW`, sweep bounds, level at most the hard cap, the unit's S/PDIF source slots not in the mask; the pure validator in `dspi-measure`, never a copy) and writes 0xA4 |
-| `system.measure.run {session, segments:[{unit, offset}], lead_ms}` | Control | `T0` = the newest T read now + `max(lead_ms, max arm_lead + 100 ms + measured write time)`; each segment's op 9 at `T0 + offset` in the domain numbering, mapped to each unit's own (USB: the per-unit S origin resolved at open, **always written as S, time base 1**, R5); refuses (`bad_schedule`) a unit's segment that starts less than the lead after its previous one ends; **at most one op 9 pending per unit** (R6a), the next written when the previous has started. Answers `{t0, segments:[{unit, t, t_unit}]}` |
+| `system.measure.run {session, segments:[{unit, offset}], lead_ms}` | Control | `T0` = the newest T read now + `max(lead_ms, max arm_lead + 100 ms + measured write time)`; each segment's op 9 at `T0 + offset` in the domain numbering, mapped to each unit's own (USB: the per-unit S origin resolved at open, **always written as S, time base 1**, R5); refuses (`bad_schedule`) a unit's segment that starts less than the lead after its previous one ends; with `summed: true` (ATSUMOFF) the segments are one summed run of distinct units whose starts may differ by at most 1 s; **at most one op 9 pending per unit** (R6a), the next written when the previous has started. Answers `{t0, segments:[{unit, t, t_unit}]}` |
 | `system.measure.status {session}` | Control | Renews the lease. Per unit: `SiggenStatus`, `EXT_SIGGEN_TIMELINE`, the `EXT_TIME_BASE` entry (state, disturbances, `t - output_frames`), output peaks and clip flags, limiter gain reduction, events since open; plus `{t, hub_us}` read in this call (the time pin) |
 | `system.measure.abort {session, reason}` | any Control or Admin principal (stopping test audio is never a privilege; suggestion 3) | `SIGGEN_CTL_STOP_NOW` on every unit, `CANCEL_ALL` on every time-base queue, a broadcast `SIGGEN_STOP` now through the sender or S/PDIF source where there is one and every unit lists `SIGGEN_SYNC`; answers per unit. After it no staged config can start (R4) |
 | `system.measure.close {session}` | owner | `CANCEL_ALL`, releases the locks |
@@ -452,7 +452,8 @@ with the run ids, and `system.align` (the hub's engine, the single writer of `d_
 system units) uses measured arrivals where present instead of distance delays (lip-sync and post-alink latency terms
 unchanged). Applying needs Admin (`system.set` and `system.align` are Admin today); a Control user can measure, see and
 save the proposal. **RC5f applies across units:** before a delay is offered, one summed run per inter-unit transition
-with the current chains (the units of the transition started by op 9 at one T, a `SystemSchedule::summed`,
+with the current chains (the units of the transition started by op 9 at one T, a `SystemSchedule::summed`; ATSUMOFF: each part offset by the
+difference of its predicted arrival, `SystemSchedule::summed_at`,
 `invert_mask` at their current net polarities) must agree with the sum predicted from the walked run within P5's 1.5 dB
 RMS over the transition's check band (section 1.4), else every cross-unit delay is
 withdrawn with the reason. Before applying, the hub's system model revision and every unit's snapshot are filed; after
@@ -809,6 +810,30 @@ within 3x its reported uncertainty and within 10 us of the truth, and every othe
 (R8c); a hub that dies mid-run: each unit plays at most one more segment; three chained runs through
 an anchor; an S/PDIF source with two followers; every case on G1b and G2b fakes. **Done when:** all of those pass;
 `cargo test -p dspi-core --test wp_ate2e_system` and `-p dspi-measure --features sim`. **Deps:** AT-C.
+
+**ATSUMOFF: A summed run starts its parts apart.** [DONE] Size 0.5. Wave AT-D (follow-up to ATE2E's finding for
+ATCORE). **Owns:** `crates/dspi-core/src/measure/system/` (proposal.rs `sum_starts`, `SumJob.starts`; session.rs
+`sum_run`), additively `SystemSchedule::summed_at`, `MAX_SUM_SPREAD_MS` and `RunRequest.summed` in the seam
+(`crates/dspi-measure/src/system.rs`, `system/messages.rs`), the hub's `check_summed` (`crates/dspi-hub/src/system/measure/`),
+ATE2E's USB-direct test (markers). **Problem:** on USB-direct the engine puts the streams' start offsets (tens of ms) into
+`out.delay`; a summed run at one T then played the units 20-42 ms apart, the check's band top `0.375 * 15 / dt` fell
+under its floor and every cross-unit delay was withdrawn (fail closed, but never applicable). **Decision:** each part of a
+summed run (a sum check and a verify) starts later by the difference of the two outputs' predicted arrivals as this run
+plays them (the walked arrival, with a verify's change of delay; whole samples, at most 1 s), so both are heard together;
+the prediction moves each part by its own start (T is commanded and proven by G3, so the offset is exact), and the band is
+`window_reach` of what is left (at most half a sample): the whole transition band of section 1.4, limited above only by
+`1 / (8 u)` and, for a verify, a quarter of the rate. Not "start by the `out.delay` difference": after an apply that would
+cancel the applied alignment too, so the verify's arrivals would again be the walked distance apart and F3's narrow band
+would come back; not "judge on the out.delay in effect": the units really sound tens of ms apart at one T and no window
+can judge both. F1 (play-out from `EXT_TIME_BASE.d`), F2 (fresh checks, the re-ramp, 6 dB under) and F3 (the verify's
+own band) are unchanged; the sum check is stronger (at 8 ms apart it now fails a delay wrong by 100 us that passed at
+703 Hz). **Hub:** `system.measure.run {.., summed: true}` takes the segments as one summed run: distinct units, time
+order, at most `MAX_SUM_SPREAD_MS` (1 s) from the first start to the last, the run at most 120 s; every start is still
+`t0 + offset` with offsets from 0, so never under the lead (S-AT3), one op 9 per unit (R6a), within 110 s. Without
+`summed` the rules are unchanged (an older hub refuses the overlap: fail closed). **Done when:** ATE2E's
+`wp_ate2e_usb_direct_three_units` passes the sum check, apply, verify and Revert; a wrong delay on USB-direct fails the
+sum check judged (`wp_atsumoff_usb_direct_a_wrong_delay_fails_the_sum_check`); checks for dspi-core, dspi-hub,
+dspi-measure. **Deps:** ATE2E.
 
 **ATWEB: Web: measuring several units.** [TODO] Size 1.5. Wave AT-D. **Owns:** new
 `apps/web/src/screens/measure/system/` (an "alignment group across units" step in P5WMS's measure screen through its

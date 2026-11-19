@@ -23,7 +23,8 @@
 //! - P5SPIKE's microphone: "timing unreliable", nothing offered;
 //! - a steady microphone: apply, verify and Revert through the hub's model;
 //! - the summed check failing on a wrong delay (a speaker moved after the
-//!   walk) and the verify failing on one (a unit's delay changed after the
+//!   walk; on S/PDIF, and on USB-direct with its start offsets, WP ATSUMOFF)
+//!   and the verify failing on one (a unit's delay changed after the
 //!   apply), Keep refused once.
 //!
 //! **Time.** The hub and the fakes run in real time, so each test plays its
@@ -976,9 +977,9 @@ fn wp_ate2e_a_wrong_delay_after_the_apply_fails_the_verify() {
 /// the link: every arrival within 2 µs of the world's, although the
 /// engine's output delays (the USB streams' start offsets, which the
 /// units' anchors stagger by the hub's write time) put the units tens of
-/// milliseconds apart on the timeline. The summed check then either passes
-/// or, when those offsets push its band below its floor, cannot judge and
-/// withdraws every delay (fail closed; WP ATE2E's finding for ATCORE).
+/// milliseconds apart on the timeline. WP ATSUMOFF: each summed run starts
+/// its parts apart by their predicted arrivals, so the summed check judges
+/// the whole band and passes; then apply, verify (passes) and Revert.
 #[test]
 fn wp_ate2e_usb_direct_three_units() {
     let _slot = slot();
@@ -1007,23 +1008,53 @@ fn wp_ate2e_usb_direct_three_units() {
         .fold(f64::NEG_INFINITY, f64::max)
         - on_timeline.iter().copied().fold(f64::INFINITY, f64::min))
         / 1000.0;
+    eprintln!("the units are {spread_ms:.1} ms apart on the timeline");
+    assert!(
+        spread_ms > 5.0,
+        "the start offsets are in out.delay: {spread_ms} ms"
+    );
     let p = sum_check(&mut rig);
     assert_eq!(p.transitions.len(), 3, "{p:?}");
-    if p.transitions.iter().all(|t| t.checked && t.passed) {
-        assert!(p.offered && !p.withdrawn, "{p:?}");
-    } else {
-        eprintln!(
-            "FINDING: the units are {spread_ms:.1} ms apart on the timeline; the summed check \
-             cannot judge: {:?}",
-            p.transitions.iter().map(|t| &t.message).collect::<Vec<_>>()
-        );
-        for t in p.transitions.iter().filter(|t| !t.passed) {
-            assert!(t.rms_db.is_none(), "a judged summed run failed: {t:?}");
-            assert!(t.message.contains("too few trusted points"), "{t:?}");
-        }
-        assert!(spread_ms > 5.0, "{spread_ms} ms");
-        assert!(p.withdrawn && !p.offered && p.arrivals.is_empty(), "{p:?}");
+    for t in &p.transitions {
+        assert!(t.checked && t.passed, "{t:?}");
+        // Judged far above the 0.375 * 15 / dt the offsets left at one T.
+        assert!(t.band_hi_hz > 2_000.0, "{t:?}");
     }
+    assert!(p.offered && p.may_apply && !p.withdrawn, "{p:?}");
+    let verified = apply_and_verify(&mut rig, &p);
+    let v = rig.core().measure_system_applied();
+    eprintln!("verify {v:?}");
+    assert_eq!(verified, Some(true), "{v:?}");
+    revert(&mut rig);
+}
+
+// -- WP ATSUMOFF --
+/// Two USB-direct units (G1b), their streams' start offsets in `out.delay`:
+/// after the walk unit 1's speaker is moved 150 µs farther, so the measured
+/// delay is wrong by that. With the parts started together the summed check
+/// now judges it (fail closed on the delay, not on the band): it fails with
+/// an RMS over 1.5 dB and every cross-unit delay is withdrawn.
+#[test]
+fn wp_atsumoff_usb_direct_a_wrong_delay_fails_the_sum_check() {
+    let _slot = slot();
+    let spec = Spec {
+        seed: 9,
+        ..two_usb(G1B)
+    };
+    let mut rig = rig(&spec);
+    let st = measure(&mut rig);
+    assert_eq!(st.phase, MeasureSystemPhase::Done, "{st:?}");
+    check_arrivals(&rig);
+    rig.room.units[1].outputs[0].1 += 0.150;
+    let p = sum_check(&mut rig);
+    assert_eq!(p.transitions.len(), 1, "{p:?}");
+    let t = &p.transitions[0];
+    assert!(t.checked && !t.passed, "{t:?}");
+    assert!(
+        t.rms_db.is_some_and(|r| r > 1.5),
+        "judged, not too few points: {t:?}"
+    );
+    assert!(p.withdrawn && !p.offered && p.arrivals.is_empty(), "{p:?}");
 }
 
 /// An S/PDIF source and two followers with different D: measured within

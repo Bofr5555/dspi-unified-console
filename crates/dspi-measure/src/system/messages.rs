@@ -143,6 +143,13 @@ pub struct RunRequest {
     pub segments: Vec<RunSegment>,
     /// The lead the client asks for, ms (the hub may use more).
     pub lead_ms: u32,
+    // -- WP ATSUMOFF --
+    /// The segments are one summed run whose parts may start apart (each of
+    /// a distinct unit, in time order, at most
+    /// [`super::MAX_SUM_SPREAD_MS`] after the first): the client brings
+    /// the outputs' arrivals together. Absent (false): the rules above.
+    #[serde(default, skip_serializing_if = "core::ops::Not::not")]
+    pub summed: bool,
 }
 
 /// Where the hub put one segment.
@@ -281,11 +288,39 @@ mod tests_wp_planat {
                 },
             ],
             lead_ms: 250,
+            summed: false,
         };
         let j = serde_json::to_string(&r).unwrap_or_default();
         let back: Result<RunRequest, _> = serde_json::from_str(&j);
         assert_eq!(back.ok(), Some(r));
         let extra: Result<OpenRequest, _> = serde_json::from_str(r#"{"units":["A"],"future":1}"#);
         assert_eq!(extra.ok().map(|o| o.units), Some(vec!["A".to_string()]));
+    }
+
+    // -- WP ATSUMOFF --
+    #[test]
+    fn wp_atsumoff_summed_is_absent_unless_set_and_round_trips() {
+        let mut r = RunRequest {
+            session: "s1".into(),
+            segments: vec![
+                RunSegment { unit: 0, offset: 0 },
+                RunSegment {
+                    unit: 1,
+                    offset: 960,
+                },
+            ],
+            lead_ms: 250,
+            summed: false,
+        };
+        let j = serde_json::to_string(&r).unwrap_or_default();
+        assert!(!j.contains("summed"), "{j}");
+        r.summed = true;
+        let j = serde_json::to_string(&r).unwrap_or_default();
+        assert!(j.contains("\"summed\":true"), "{j}");
+        let back: Result<RunRequest, _> = serde_json::from_str(&j);
+        assert_eq!(back.ok(), Some(r));
+        let old: Result<RunRequest, _> =
+            serde_json::from_str(r#"{"session":"s","segments":[],"lead_ms":1}"#);
+        assert_eq!(old.ok().map(|o| o.summed), Some(false));
     }
 }

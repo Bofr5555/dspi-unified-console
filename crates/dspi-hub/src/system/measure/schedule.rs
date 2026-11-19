@@ -155,6 +155,63 @@ pub(crate) fn check_segments(
     Ok(())
 }
 
+// -- WP ATSUMOFF --
+/// The checks of a summed run whose parts may start apart
+/// (`system.measure.run` with `summed`, `bad_schedule`): two to
+/// `MAX_UNITS` segments, each of a distinct unit of the session with a
+/// staged config, in time order, none more than [`MAX_SUM_SPREAD_MS`] after
+/// the first; the run at most [`MAX_RUN_MS`] long. Each unit has one segment, so
+/// one op 9 pending per unit holds (R6a); every start is still `t0 +
+/// offset`, at least the lead ahead (S-AT3).
+///
+/// [`MAX_SUM_SPREAD_MS`]: dspi_measure::system::MAX_SUM_SPREAD_MS
+pub(crate) fn check_summed(
+    segments: &[RunSegment],
+    lens: &[Option<u64>],
+    rate: u32,
+) -> Result<(), String> {
+    use dspi_measure::system::{MAX_SUM_SPREAD_MS, MAX_UNITS, max_sum_spread_samples};
+    if segments.len() < 2 || segments.len() > MAX_UNITS {
+        return Err(format!(
+            "{} segments in a summed run (2 to {MAX_UNITS})",
+            segments.len()
+        ));
+    }
+    let mut units: Vec<u8> = Vec::with_capacity(segments.len());
+    let mut prev: Option<u64> = None;
+    let mut end: u64 = 0;
+    for s in segments {
+        let len = match lens.get(usize::from(s.unit)) {
+            None => return Err(format!("no unit {} in this session", s.unit)),
+            Some(None) => return Err(format!("unit {} has no config staged", s.unit)),
+            Some(Some(l)) => *l,
+        };
+        if units.contains(&s.unit) {
+            return Err(format!("unit {} twice in a summed run", s.unit));
+        }
+        if prev.is_some_and(|p| s.offset < p) {
+            return Err("segments out of time order".into());
+        }
+        prev = Some(s.offset);
+        units.push(s.unit);
+        end = end.max(s.offset.saturating_add(len));
+    }
+    let first = segments.first().map_or(0, |s| s.offset);
+    let last = segments.last().map_or(0, |s| s.offset);
+    if last.saturating_sub(first) > max_sum_spread_samples(rate) {
+        return Err(format!(
+            "a summed run's parts start more than {MAX_SUM_SPREAD_MS} ms apart"
+        ));
+    }
+    if end.saturating_sub(first) > samples_ms(MAX_RUN_MS, rate) {
+        return Err(format!(
+            "the run is longer than {} s",
+            MAX_RUN_MS.saturating_div(1000)
+        ));
+    }
+    Ok(())
+}
+
 /// What the scheduler does with a unit's next op 9 now.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Due {
@@ -312,6 +369,29 @@ mod tests_wp_athub {
         assert!(check_segments(&[seg(0, 0), seg(1, 121 * 48_000)], &l, lead, 48_000).is_err());
     }
 
+    // -- WP ATSUMOFF --
+    #[test]
+    fn wp_atsumoff_a_summed_run_may_start_its_parts_apart_within_the_spread() {
+        let l = [Some(48_000), Some(48_000), Some(48_000)];
+        // Overlapping starts are a summed run only when asked for.
+        assert!(check_segments(&[seg(0, 0), seg(1, 1_000)], &l, 0, 48_000).is_err());
+        assert!(check_summed(&[seg(0, 0), seg(1, 1_000)], &l, 48_000).is_ok());
+        assert!(check_summed(&[seg(0, 0), seg(1, 0), seg(2, 2_000)], &l, 48_000).is_ok());
+        // At most 1 s apart.
+        assert!(check_summed(&[seg(0, 0), seg(1, 48_000)], &l, 48_000).is_ok());
+        let e = check_summed(&[seg(0, 0), seg(1, 48_001)], &l, 48_000);
+        assert!(e.unwrap_err().contains("apart"));
+        // Distinct units, in order, staged, two or more.
+        assert!(check_summed(&[seg(0, 0), seg(0, 10)], &l, 48_000).is_err());
+        assert!(check_summed(&[seg(1, 10), seg(0, 0)], &l, 48_000).is_err());
+        assert!(check_summed(&[seg(0, 0)], &l, 48_000).is_err());
+        assert!(check_summed(&[seg(0, 0), seg(3, 0)], &l, 48_000).is_err());
+        assert!(check_summed(&[seg(0, 0), seg(1, 0)], &[Some(1), None], 48_000).is_err());
+        // Too long.
+        let long = [Some(121 * 48_000), Some(48_000)];
+        assert!(check_summed(&[seg(0, 0), seg(1, 0)], &long, 48_000).is_err());
+    }
+
     #[test]
     fn wp_athub_op9_is_written_within_120_s_and_never_late() {
         let r = 48_000;
@@ -389,6 +469,7 @@ mod tests_wp_athub {
         ) {
             let segs: Vec<RunSegment> = segs.iter().map(|(u, o)| seg(*u, *o)).collect();
             let _ = check_segments(&segs, &lens, lead, rate);
+            let _ = check_summed(&segs, &lens, rate);
             let _ = op9_due(t, now, arm, rate);
             let _ = still_in_grace(t, now, rate);
         }
