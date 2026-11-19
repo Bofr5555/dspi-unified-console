@@ -38,7 +38,7 @@ use super::super::runs::{self, RAMP_SWEEP_MS};
 use super::super::safety::{
     self, LIMITER_ACTS_DB, OUTPUT_PEAK_DBFS, Ramp, RampNext, SplMeter, StepEval,
 };
-use super::plan::{LEAD_MARGIN_MS, SetupPlan};
+use super::plan::{LEAD_MARGIN_MS, RunPlan, SetupPlan};
 use super::proposal::{Outcome, RunDone, SumJob, Terms, Verdict};
 use super::{
     Hub, MeasureSystemIssue, MeasureSystemLevel, MeasureSystemPhase, MeasureSystemPurpose,
@@ -198,6 +198,13 @@ pub(crate) struct SysSession {
     terms_retry: Option<Instant>,
     // -- WP ATLATE -- until when a walked run waits for the terms.
     terms_wait_until: Option<Instant>,
+    // -- WP ATOVL --
+    /// Per walked run: why it is measured interleaved after an overlapped
+    /// attempt could not tell its units apart (`None`: overlapped where
+    /// safe).
+    interleave_only: Vec<Option<String>>,
+    /// How the walked run in flight was laid out.
+    run_plan: Option<RunPlan>,
 }
 
 fn to_value<T: serde::Serialize>(v: &T) -> Value {
@@ -356,8 +363,10 @@ impl SysSession {
             progress: 0.0,
             output: None,
             timing_reliable: None,
-            terms_retry: None,      // -- WP ATDEMO --
-            terms_wait_until: None, // -- WP ATLATE --
+            terms_retry: None,           // -- WP ATDEMO --
+            terms_wait_until: None,      // -- WP ATLATE --
+            interleave_only: Vec::new(), // -- WP ATOVL --
+            run_plan: None,
         })
     }
 
@@ -1117,6 +1126,8 @@ impl SysSession {
             lead_ms: self.lead_ms,
             // WP ATSUMOFF: a summed run's parts may start apart.
             summed: schedule0.is_summed(),
+            // -- WP ATOVL -- the units' segments overlap each other.
+            overlapped: schedule0.overlap_samples().is_some(),
         };
         let reply = hub
             .request(msg::t::RUN, to_value(&req))
@@ -1474,7 +1485,15 @@ impl SysSession {
             }
         }
         let built = match self.purpose {
-            MeasureSystemPurpose::Measure => self.walk_run(self.run_idx),
+            MeasureSystemPurpose::Measure => self.walk_run(self.run_idx).map(|(b, plan)| {
+                log::info!(
+                    "system measurement: run {} with {}",
+                    self.run_idx.saturating_add(1),
+                    plan.words()
+                );
+                self.run_plan = Some(plan);
+                b
+            }),
             _ => self.sum_run(self.run_idx),
         };
         let (kind, configs, schedule) = match built {
@@ -1509,7 +1528,7 @@ impl SysSession {
         }
     }
 
-    fn walk_run(&self, idx: usize) -> Result<Built> {
+    fn walk_run(&self, idx: usize) -> Result<(Built, RunPlan)> {
         let part = self
             .plan
             .runs
@@ -1520,16 +1539,54 @@ impl SysSession {
         // -- WP ATLATE -- the starts planned with each unit's expected
         // lateness (its play-out and output delays, read before the run).
         let lateness = self.plan.lateness(part, &self.terms);
-        let s0 = self.plan.schedule_late(part, self.lead_ms, &lateness)?;
-        let schedule = SystemSchedule::new(self.domain, self.plan.rate_hz, s0.segments().to_vec())
-            .and_then(|s| s.with_lateness(s0.lateness()))
-            .map_err(|e| DspiError::InvalidArgument { msg: e.to_string() })?;
+        // -- WP ATOVL -- overlapped starts where safe, else interleaved;
+        // interleaved after an overlapped attempt could not tell the units
+        // apart.
+        let refused = self.interleave_only.get(idx).cloned().flatten();
+        let (s0, plan) =
+            self.plan
+                .schedule_run(part, self.lead_ms, &lateness, refused.is_none())?;
+        let plan = match (plan, refused) {
+            (RunPlan::Interleaved(_), Some(why)) => RunPlan::Interleaved(format!(
+                "overlapped starts could not tell the units apart: {why}"
+            )),
+            (p, _) => p,
+        };
+        let schedule = match s0.overlap_samples() {
+            Some(o) => SystemSchedule::overlapped(
+                self.domain,
+                self.plan.rate_hz,
+                s0.segments().to_vec(),
+                o,
+            ),
+            None => SystemSchedule::new(self.domain, self.plan.rate_hz, s0.segments().to_vec()),
+        }
+        .and_then(|s| s.with_lateness(s0.lateness()))
+        .map_err(|e| DspiError::InvalidArgument { msg: e.to_string() })?;
+        // -- WP ATOVL -- S-AT4 for overlapped starts: every unit 6 dB under
+        // its own ramp result per doubling of the units that play together
+        // (and so under the hub's bound, the hard cap less as much).
+        let together_db = if schedule.overlap_samples().is_some() {
+            let n = part.units.len();
+            let doublings = n
+                .saturating_sub(1)
+                .checked_ilog2()
+                .map_or(0, |b| b.saturating_add(1));
+            super::proposal::SUM_DOUBLING_DB * f32::from(u8::try_from(doublings).unwrap_or(u8::MAX))
+        } else {
+            0.0
+        };
         let mut configs = Vec::new();
         for (u, outs) in &part.units {
             let Some(pu) = self.plan.units.get(*u) else {
                 continue;
             };
-            let level = self.unit_level(*u, outs);
+            let level = if together_db > 0.0 {
+                (self.unit_level(*u, outs) - together_db)
+                    .min(dspi_measure::stimulus::LEVEL_HARD_CAP_DB - together_db)
+            } else {
+                self.unit_level(*u, outs)
+            };
             let spec = super::super::plan::RunSpec {
                 position: 0,
                 outputs: outs.clone(),
@@ -1539,7 +1596,7 @@ impl SysSession {
             c.repeat = 1;
             configs.push((*u, c));
         }
-        Ok((TimedKind::Walk(idx), configs, schedule))
+        Ok(((TimedKind::Walk(idx), configs, schedule), plan))
     }
 
     fn sum_run(&self, idx: usize) -> Result<Built> {
@@ -1720,14 +1777,53 @@ impl SysSession {
                 let gate = check_gate(&schedule, &facts, &proofs);
                 self.ran(hub, kind, *a, gate, levels, &proofs);
             }
+            // -- WP ATOVL -- an overlapped run whose units could not be told
+            // apart is measured again with interleaved passes (once).
+            Err(TimingError::NotSeparable(why)) if self.retry_interleaved(&why) => {}
             Err(e) => {
                 let key = match e {
-                    TimingError::CycleIdentity(_) => "measure.abort.cycle_identity",
+                    TimingError::CycleIdentity(_) | TimingError::NotSeparable(_) => {
+                        "measure.abort.cycle_identity"
+                    }
                     TimingError::Measure(_) => "measure.no_signal",
                 };
                 self.fail(hub, issue("", key, e.to_string()));
             }
         }
+    }
+
+    // -- WP ATOVL --
+    /// After an overlapped walked run whose units could not be told apart:
+    /// the same run again, interleaved, from a pre-roll of its own; `false`
+    /// when this is no such run or it was interleaved already.
+    fn retry_interleaved(&mut self, why: &str) -> bool {
+        let Stage::Analyse { timed, .. } = &self.stage else {
+            return false;
+        };
+        let TimedKind::Walk(idx) = timed.kind else {
+            return false;
+        };
+        if timed.schedule.overlap_samples().is_none() {
+            return false;
+        }
+        if self.interleave_only.len() <= idx {
+            self.interleave_only.resize(idx.saturating_add(1), None);
+        }
+        let Some(slot) = self.interleave_only.get_mut(idx) else {
+            return false;
+        };
+        if slot.is_some() {
+            return false;
+        }
+        log::warn!(
+            "system measurement: run {} with overlapped starts could not tell the units apart \
+             ({why}): measuring it again with interleaved passes",
+            idx.saturating_add(1)
+        );
+        *slot = Some(why.to_owned());
+        self.buf.clear();
+        self.stage = Stage::PreRoll { after: After::Run };
+        true
     }
 
     /// The unit a gate finding names.
@@ -1783,6 +1879,7 @@ impl SysSession {
                     analysis,
                     levels,
                     run_ids: proofs.iter().map(|p| p.run_id).collect(),
+                    plan: self.run_plan.take().map_or_else(String::new, |p| p.words()), // -- WP ATOVL --
                 });
                 self.run_idx = idx.saturating_add(1);
                 if self.run_idx < self.plan.runs.len() {

@@ -113,6 +113,10 @@ pub struct SystemSchedule {
     /// Each unit's expected lateness over the run's earliest, domain samples
     /// ([`SystemSchedule::with_lateness`]); none: every unit 0.
     lateness: Vec<(UnitIndex, u64)>,
+    // -- WP ATOVL --
+    /// Overlapped starts ([`SystemSchedule::overlapped`]): the offset
+    /// between the units of a group, domain samples.
+    overlap: Option<u64>,
 }
 
 impl SystemSchedule {
@@ -165,6 +169,7 @@ impl SystemSchedule {
             segments,
             summed: false,
             lateness: Vec::new(), // -- WP ATLATE --
+            overlap: None,        // -- WP ATOVL --
         })
     }
 
@@ -260,6 +265,7 @@ impl SystemSchedule {
             segments,
             summed: true,
             lateness: Vec::new(), // -- WP ATLATE --
+            overlap: None,        // -- WP ATOVL --
         })
     }
 
@@ -267,6 +273,97 @@ impl SystemSchedule {
     /// the offsets of [`SystemSchedule::summed_at`]).
     pub fn is_summed(&self) -> bool {
         self.summed
+    }
+
+    // -- WP ATOVL --
+    /// A walked run with **overlapped starts** (PLAN-AT 1.4): the units'
+    /// segments may overlap each other (never a unit's own), each unit's
+    /// next segment at least the lead after its previous one (the hub's
+    /// rule), in time order of their starts. Built by
+    /// [`plan::overlap_late`], which lays the units' sweeps of a group
+    /// `offset` apart where they are heard and checks that the analysis can
+    /// tell them apart.
+    ///
+    /// Errors: [`MeasureError::Invalid`] for no segment or fewer than two
+    /// units, more than [`MAX_SEGMENTS`], a unit index at or past
+    /// [`MAX_UNITS`], a sweep at another rate, starts out of order, a
+    /// unit's segments overlapping, or an offset outside
+    /// [`plan::OVERLAP_MIN_MS`] to [`plan::OVERLAP_MAX_MS`].
+    pub fn overlapped(
+        domain: DomainId,
+        rate_hz: u32,
+        segments: Vec<Segment>,
+        offset: u64,
+    ) -> Result<SystemSchedule, MeasureError> {
+        if segments.is_empty() || segments.len() > MAX_SEGMENTS {
+            return Err(MeasureError::Invalid(format!(
+                "{} segments (1 to {MAX_SEGMENTS})",
+                segments.len()
+            )));
+        }
+        let ms = |m: u32| u64::from(rate_hz).saturating_mul(u64::from(m)) / 1000;
+        if offset < ms(plan::OVERLAP_MIN_MS) || offset > ms(plan::OVERLAP_MAX_MS) {
+            return Err(MeasureError::Invalid(format!(
+                "an overlap of {offset} samples ({} to {} ms)",
+                plan::OVERLAP_MIN_MS,
+                plan::OVERLAP_MAX_MS
+            )));
+        }
+        let mut prev: Option<u64> = None;
+        let mut unit_end: Vec<(UnitIndex, u64)> = Vec::new();
+        for s in &segments {
+            if usize::from(s.unit.0) >= MAX_UNITS {
+                return Err(MeasureError::Invalid(format!(
+                    "unit {} (at most {MAX_UNITS})",
+                    s.unit.0
+                )));
+            }
+            if s.schedule.sweep.rate_hz != rate_hz {
+                return Err(MeasureError::Invalid(format!(
+                    "a segment at {} Hz in a {rate_hz} Hz domain",
+                    s.schedule.sweep.rate_hz
+                )));
+            }
+            if prev.is_some_and(|p| s.start < p) {
+                return Err(MeasureError::Invalid("segments out of order".into()));
+            }
+            prev = Some(s.start);
+            if let Some(&(_, e)) = unit_end.iter().find(|(u, _)| *u == s.unit)
+                && s.start < e
+            {
+                return Err(MeasureError::Invalid(format!(
+                    "unit {}'s segments overlap",
+                    s.unit.0
+                )));
+            }
+            if s.start.checked_add(s.schedule.total_samples()).is_none() {
+                return Err(MeasureError::Invalid("a segment past the counter".into()));
+            }
+            match unit_end.iter_mut().find(|(u, _)| *u == s.unit) {
+                Some(slot) => slot.1 = s.end(),
+                None => unit_end.push((s.unit, s.end())),
+            }
+        }
+        if unit_end.len() < 2 {
+            return Err(MeasureError::Invalid(
+                "overlapped starts need two units or more".into(),
+            ));
+        }
+        Ok(SystemSchedule {
+            domain,
+            rate_hz,
+            segments,
+            summed: false,
+            lateness: Vec::new(),
+            overlap: Some(offset),
+        })
+    }
+
+    // -- WP ATOVL --
+    /// The offset between the units of a group of an overlapped run, domain
+    /// samples; `None` for every other run.
+    pub fn overlap_samples(&self) -> Option<u64> {
+        self.overlap
     }
 
     /// The one-segment schedule of a single unit (the existing single-unit
@@ -331,6 +428,8 @@ pub use gate::{GateFinding, SegmentProof, UnitFacts, check_gate, check_one_domai
 pub use plan::{InterleaveOptions, UnitWalk, check_lead, interleave};
 // -- WP ATLATE --
 pub use plan::interleave_late;
+// -- WP ATOVL --
+pub use plan::{overlap_late, overlap_offset};
 
 impl SystemSchedule {
     /// The same run with every start moved `by` domain samples later (a plan

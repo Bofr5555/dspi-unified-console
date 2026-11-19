@@ -1056,7 +1056,10 @@ fn wp_atcore_two_units_measure_propose_check_apply_verify_and_revert() {
         let b = doc.measurement.system().unwrap();
         assert_eq!(b.group, vec!["A".to_owned(), "B".to_owned()]);
         assert_eq!(b.domain, DOMAIN);
-        assert_eq!(b.run_ids.len(), 6);
+        // -- WP ATOVL -- overlapped starts by default: one interleaved pass
+        // and three overlapped, two units: eight segments (six before).
+        assert_eq!(o.result.plan, "overlapped starts, 50 ms apart");
+        assert_eq!(b.run_ids.len(), 8);
         assert_eq!(doc.measurement.serial, d.serial);
     }
     // Full-range outputs on two units: transitions; the summed check first.
@@ -1125,7 +1128,8 @@ fn wp_atcore_two_units_measure_propose_check_apply_verify_and_revert() {
         let st = hub.0.lock().unwrap();
         let sp = &st.model["units"][1]["speakers"][1];
         assert_eq!(sp["measuredArrivalUs"].as_f64(), Some(0.0));
-        assert_eq!(sp["measuredRuns"].as_array().unwrap().len(), 6);
+        // -- WP ATOVL -- eight segments overlapped (six interleaved).
+        assert_eq!(sp["measuredRuns"].as_array().unwrap().len(), 8);
         // A out 0 now waits 1.1 ms: the room plays aligned.
         assert!(
             (st.units[0].out_delay_ms[0] - 1.1).abs() < 0.005,
@@ -2779,4 +2783,153 @@ fn review_ate_the_runs_last_unit_late_is_captured_whole() {
         let (pass, rms) = sum_check_cell(&o, &mut hub, 50.0, None);
         assert!(!pass && rms.is_some(), "{gap} ms, 50 us wrong: {rms:?}");
     }
+}
+
+// -- WP ATOVL -- overlapped starts (owner 2026-11-19).
+
+/// Two units: overlapped starts by default, the run asks the hub for an
+/// overlapped schedule, the arrivals are offered, and the result says which
+/// plan it used.
+#[test]
+fn wp_atovl_two_units_start_overlapped_by_default_and_the_result_says_so() {
+    let s = setup(&[("A", &[0]), ("B", &[0])]);
+    let mut hub = pair_apart(2.0);
+    let (_, out) = measure(&mut hub, &s);
+    let o = out.expect("an outcome");
+    assert_eq!(
+        o.result.plan, "overlapped starts, 50 ms apart",
+        "{:?}",
+        o.result
+    );
+    assert!(o.result.timing_reliable, "{:?}", o.result.reasons);
+    assert!(
+        o.result.arrivals.iter().all(|a| a.offered),
+        "{:?}",
+        o.result.arrivals
+    );
+    let a = arrival(&o, "A", 0).arrival_us - arrival(&o, "B", 0).arrival_us;
+    assert!((a - 2_000.0).abs() < 2.0, "{a}");
+}
+
+/// Two outputs a unit: what played together is offered, and so are two
+/// outputs of one unit with a steady microphone (the absolute gate passes).
+#[test]
+fn wp_atovl_two_outputs_a_unit_overlapped_offer_every_arrival() {
+    let s = setup(&[("A", &[0, 1]), ("B", &[0, 1])]);
+    let mut hub = two_units();
+    let (_, out) = measure(&mut hub, &s);
+    let o = out.expect("an outcome");
+    assert_eq!(o.result.plan, "overlapped starts, 50 ms apart");
+    assert!(
+        o.result.arrivals.iter().all(|a| a.offered),
+        "{:?} {:?}",
+        o.result.reasons,
+        o.result.arrivals
+    );
+}
+
+/// Three units of a 1 s sweep cannot start overlapped (a harmonic image of
+/// the third would fall on the first's arrival): interleaved, saying why.
+#[test]
+fn wp_atovl_three_units_of_a_short_sweep_interleave_and_say_why() {
+    let s = setup(&[("A", &[0]), ("B", &[0]), ("C", &[0])]);
+    let mut hub = StubHub(Arc::new(Mutex::new(Stub::new(vec![
+        unit("A", 1, 48, &[3.0]),
+        unit("B", 1, 48, &[3.5]),
+        unit("C", 1, 48, &[4.0]),
+    ]))));
+    let (_, out) = measure(&mut hub, &s);
+    let o = out.expect("an outcome");
+    assert!(
+        o.result
+            .plan
+            .starts_with("interleaved passes (overlapped starts do not fit"),
+        "{}",
+        o.result.plan
+    );
+    assert!(o.result.plan.contains("harmonic"), "{}", o.result.plan);
+    assert!(
+        o.result.arrivals.iter().all(|a| a.offered),
+        "{:?}",
+        o.result.arrivals
+    );
+}
+
+/// A unit heard 30 ms further than the plan knows (its path, not in its
+/// terms): the overlapped run cannot tell the units apart, so the session
+/// measures the same run again interleaved, and the result says why.
+#[test]
+fn wp_atovl_units_not_separable_are_measured_again_interleaved() {
+    let s = setup(&[("A", &[0]), ("B", &[0])]);
+    let mut hub = StubHub(Arc::new(Mutex::new(Stub::new(vec![
+        unit("A", 1, 48, &[33.0]),
+        unit("B", 1, 48, &[3.0]),
+    ]))));
+    let (_, out) = measure(&mut hub, &s);
+    let o = out.expect("an outcome");
+    assert!(
+        o.result
+            .plan
+            .starts_with("interleaved passes (overlapped starts could not tell the units apart"),
+        "{}",
+        o.result.plan
+    );
+    let a = arrival(&o, "A", 0).arrival_us - arrival(&o, "B", 0).arrival_us;
+    assert!((a - 30_000.0).abs() < 2.0, "{a}");
+    assert!(
+        o.result.arrivals.iter().all(|a| a.offered),
+        "{:?}",
+        o.result.arrivals
+    );
+}
+
+/// Review AT-E 2: the runs are sized with the lateness the plan expects
+/// (each unit's smallest `out.delay`, from its own check), so a group that
+/// fits one capture without it but not with it is split through the anchor
+/// at the plan, and every run then fits with that lateness; before, the one
+/// run was refused only when it was laid out with the terms.
+#[test]
+fn wp_atovl_split_sizes_the_runs_with_the_expected_lateness() {
+    let names: Vec<String> = (0..16).map(|i| format!("U{i:02}")).collect();
+    let outs: &[u8] = &[0];
+    let units: Vec<(&str, &[u8])> = names.iter().map(|n| (n.as_str(), outs)).collect();
+    let mut s = setup(&units);
+    s.passes = 5;
+    let mut hub = StubHub(Arc::new(Mutex::new(Stub::new(
+        names.iter().map(|n| unit(n, 1, 48, &[3.0])).collect(),
+    ))));
+    // Every other unit's output delayed 0.9 s (a model's out.delay).
+    let checks: Vec<_> = s
+        .units
+        .iter()
+        .enumerate()
+        .map(|(i, u)| {
+            let mut c = check(&s, &u.serial, Vec::new());
+            let mut ctx: UnitContext = serde_json::from_str(&c.context).unwrap();
+            if i % 2 == 1 {
+                for (_, ch) in &mut ctx.chains {
+                    ch.delay_ms = 900.0;
+                }
+            }
+            c.context = serde_json::to_string(&ctx).unwrap();
+            c
+        })
+        .collect();
+    let (pre, plan_units) = plan::preflight(&s, &checks, &mut hub).unwrap();
+    assert!(pre.clear, "{pre:?}");
+    let p = SetupPlan::new(&s, plan_units).unwrap();
+    let whole = p.runs.iter().map(|r| r.units.len()).sum::<usize>();
+    assert!(p.runs.len() >= 2, "split: {:?}", p.runs);
+    assert!(whole >= 16);
+    for r in &p.runs {
+        let late = p.expected_lateness(r);
+        assert!(!late.is_empty());
+        p.schedule_late(r, plan::PLANNING_LEAD_MS, &late)
+            .unwrap_or_else(|e| panic!("{r:?}: {e}"));
+    }
+    // Without the delays the whole group is one run.
+    let plain = plan_of(&s, &mut hub);
+    assert_eq!(plain.runs.len(), 1, "{:?}", plain.runs);
+    let late = plain.expected_lateness(&plain.runs[0]);
+    assert!(late.is_empty(), "the flat chains: {late:?}");
 }

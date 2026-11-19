@@ -150,6 +150,15 @@ pub struct RunRequest {
     /// the outputs' arrivals together. Absent (false): the rules above.
     #[serde(default, skip_serializing_if = "core::ops::Not::not")]
     pub summed: bool,
+    // -- WP ATOVL --
+    /// The segments are a walked run with overlapped starts: different
+    /// units' segments may overlap (never a unit's own), each unit's next
+    /// segment still the lead after its previous one; units that play
+    /// together are staged 6 dB per doubling under the hard cap. Absent
+    /// (false): the rules above (an older hub refuses such a run as
+    /// `bad_schedule`: it fails closed).
+    #[serde(default, skip_serializing_if = "core::ops::Not::not")]
+    pub overlapped: bool,
 }
 
 /// Where the hub put one segment.
@@ -466,6 +475,7 @@ mod tests_wp_planat {
             ],
             lead_ms: 250,
             summed: false,
+            overlapped: false,
         };
         let j = serde_json::to_string(&r).unwrap_or_default();
         let back: Result<RunRequest, _> = serde_json::from_str(&j);
@@ -488,6 +498,7 @@ mod tests_wp_planat {
             ],
             lead_ms: 250,
             summed: false,
+            overlapped: false,
         };
         let j = serde_json::to_string(&r).unwrap_or_default();
         assert!(!j.contains("summed"), "{j}");
@@ -521,5 +532,30 @@ mod tests_wp_planat {
         let s: Result<guard::StatusReply, _> =
             serde_json::from_str(r#"{"active":null,"last":null}"#);
         assert_eq!(s.ok(), Some(guard::StatusReply::default()));
+    }
+
+    // -- WP ATOVL --
+    #[test]
+    fn wp_atovl_overlapped_is_absent_unless_set_and_round_trips() {
+        let mut r = RunRequest {
+            session: "s1".into(),
+            segments: vec![
+                RunSegment { unit: 0, offset: 0 },
+                RunSegment {
+                    unit: 1,
+                    offset: 2_400,
+                },
+            ],
+            lead_ms: 250,
+            summed: false,
+            overlapped: false,
+        };
+        let j = serde_json::to_string(&r).unwrap_or_default();
+        assert!(!j.contains("overlapped"), "{j}");
+        r.overlapped = true;
+        let j = serde_json::to_string(&r).unwrap_or_default();
+        assert!(j.contains("\"overlapped\":true"), "{j}");
+        let back: Result<RunRequest, _> = serde_json::from_str(&j);
+        assert_eq!(back.ok(), Some(r));
     }
 }

@@ -394,6 +394,13 @@ pub struct MeasureSystemResult {
     pub run_ids: Vec<u32>,
     /// Timed runs chained through the anchor (1: none).
     pub runs: u16,
+    // -- WP ATOVL --
+    /// Which plan each run used: "overlapped starts, 50 ms apart" (the
+    /// default where it is safe) or "interleaved passes" with why
+    /// overlapped starts were not used; "run 1: ...; run 2: ..." for
+    /// chained runs.
+    #[serde(default)]
+    pub plan: String,
 }
 
 /// The alignment a system measurement proposes (OD-ATl): measured arrivals

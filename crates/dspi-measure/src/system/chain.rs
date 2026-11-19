@@ -265,28 +265,34 @@ pub fn chain_runs(
             if is_anchor && i > 0 {
                 continue;
             }
+            // -- WP ATOVL -- a cross-unit pair as the analysis offers it
+            // (an overlapped run: what played together, else the absolute
+            // gate), two outputs of one unit by the absolute gate (equal to
+            // the run's for interleaved passes, so nothing changes there).
+            let delay = an.delays.iter().find(|d| {
+                (d.from == m && d.to.unit == anchor.unit && d.to.output == anchor.output)
+                    || (d.to == m && d.from.unit == anchor.unit && d.from.output == anchor.output)
+            });
             let u = if is_anchor {
                 Some(0.0)
             } else {
-                an.delays
-                    .iter()
-                    .find(|d| {
-                        (d.from == m && d.to.unit == anchor.unit && d.to.output == anchor.output)
-                            || (d.to == m
-                                && d.from.unit == anchor.unit
-                                && d.from.output == anchor.output)
-                    })
-                    .map_or_else(
-                        || match (o.uncertainty_us, a.uncertainty_us) {
-                            (Some(x), Some(y)) => Some((x * x + y * y).sqrt()),
-                            _ => None,
-                        },
-                        |d| d.uncertainty_us,
-                    )
+                delay.map_or_else(
+                    || match (o.absolute_uncertainty_us, a.absolute_uncertainty_us) {
+                        (Some(x), Some(y)) => Some((x * x + y * y).sqrt()),
+                        _ => None,
+                    },
+                    |d| d.uncertainty_us,
+                )
             };
             let other_unit = m.unit != anchor.unit;
-            let offered = an.timing_reliable
-                && (!other_unit || u.is_some_and(|u| u <= MAX_OFFERED_UNCERTAINTY_US));
+            let offered = if is_anchor {
+                an.timing_reliable
+            } else if other_unit {
+                delay.is_some_and(|d| d.offered)
+                    && u.is_some_and(|u| u <= MAX_OFFERED_UNCERTAINTY_US)
+            } else {
+                an.absolute_reliable
+            };
             outputs.push(ChainedOutput {
                 run: i,
                 output: m,

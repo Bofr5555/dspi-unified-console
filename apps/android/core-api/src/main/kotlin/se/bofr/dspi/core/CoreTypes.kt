@@ -7534,6 +7534,13 @@ data class MeasureSystemResult(
      * Timed runs chained through the anchor (1: none).
      */
     val runs: Int,
+    /**
+     * Which plan each run used: "overlapped starts, 50 ms apart" (the
+     * default where it is safe) or "interleaved passes" with why
+     * overlapped starts were not used; "run 1: ...; run 2: ..." for
+     * chained runs.
+     */
+    val plan: String,
 )
 
 /**

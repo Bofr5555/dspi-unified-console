@@ -34,8 +34,8 @@
 //! of it, below the trusted band's use).
 
 use crate::ir::{
-    AnalysisOptions, ClockFit, OutputIr, StatusObservation, Step, TimingError, WalkedAnalyser,
-    WalkedAnalysis, WalkedCapture,
+    AnalysisOptions, ClockFit, OutputIr, OverlapParts, OverlapSpec, StatusObservation, Step,
+    TimingError, WalkedAnalyser, WalkedAnalysis, WalkedCapture,
 };
 use crate::stimulus::{Cycle, WalkSchedule};
 use crate::types::{MeasureError, Response};
@@ -136,6 +136,13 @@ pub struct SystemOutput {
     /// ([`SystemAnalysis::output_ir`]) is on the analysis' timeline, so it
     /// is this much early against the arrival.
     pub lateness_ms: f64,
+    // -- WP ATOVL --
+    /// [`SystemOutput::uncertainty_us`] from every cycle of the key against
+    /// the absolute fit, the capture clock's wander left in: what a
+    /// difference to an output it did not play together with carries (an
+    /// output of its own unit). Equal to `uncertainty_us` for every run but
+    /// an overlapped one.
+    pub absolute_uncertainty_us: Option<f64>,
 }
 
 impl SystemOutput {
@@ -197,6 +204,19 @@ pub struct SystemAnalysis {
     /// Why not reliable, and every delay not offered, in words naming units
     /// and outputs.
     pub reasons: Vec<String>,
+    // -- WP ATOVL --
+    /// The run's units started overlapped this far apart, ms (overlapped
+    /// starts); `None`: interleaved passes (or a summed or single run).
+    pub overlap_ms: Option<f64>,
+    /// P5's gate on every cycle against the absolute fit (the wander left
+    /// in): what a difference between outputs that did not play together
+    /// (two of one unit, or two that never shared a group) may rely on.
+    /// Equal to [`SystemAnalysis::timing_reliable`] for every run but an
+    /// overlapped one, whose `timing_reliable` is the gate on what each
+    /// group measures.
+    pub absolute_reliable: bool,
+    /// Why the absolute gate failed (empty when it passed).
+    pub absolute_reasons: Vec<String>,
 }
 
 impl SystemAnalysis {
@@ -216,6 +236,26 @@ impl SystemAnalysis {
     /// The delays a proposal may use.
     pub fn offered(&self) -> impl Iterator<Item = &CrossUnitDelay> {
         self.delays.iter().filter(|d| d.offered)
+    }
+
+    // -- WP ATOVL --
+    /// Whether a difference between two outputs of one unit may be used,
+    /// and why not: the absolute gate (P5's), as an overlapped run never
+    /// plays two outputs of one unit together.
+    pub fn same_unit_offer(&self) -> (bool, String) {
+        if self.absolute_reliable {
+            (true, String::new())
+        } else {
+            (
+                false,
+                format!(
+                    "timing unreliable: {}",
+                    self.absolute_reasons
+                        .first()
+                        .map_or("the timing gate failed", String::as_str)
+                ),
+            )
+        }
     }
 }
 
@@ -261,6 +301,8 @@ struct Layout {
     /// first unit (or a sum) some 0.5 s late was "not heard in the window
     /// the START implies" and one 0.3 s late failed its status polls.
     first_late: u64,
+    // -- WP ATOVL -- overlapped starts: the groups and windows.
+    overlap: Option<OverlapSpec>,
 }
 
 fn invalid(m: impl Into<String>) -> MeasureError {
@@ -278,6 +320,10 @@ fn layout(schedule: &SystemSchedule) -> Result<Layout, MeasureError> {
         .any(|s| s.schedule.sweep != first.schedule.sweep)
     {
         return Err(invalid("every segment of a run must play the same sweep"));
+    }
+    // -- WP ATOVL --
+    if let Some(offset) = schedule.overlap_samples() {
+        return layout_overlapped(schedule, offset);
     }
     if schedule.is_summed() {
         // Every part plays the same walk at once: place j of the walk is the
@@ -331,6 +377,7 @@ fn layout(schedule: &SystemSchedule) -> Result<Layout, MeasureError> {
             t_ref,
             single: None,
             late: vec![0; n],
+            overlap: None,
             first_late: segments
                 .iter()
                 .map(|s| s.start)
@@ -362,6 +409,7 @@ fn layout(schedule: &SystemSchedule) -> Result<Layout, MeasureError> {
             single: Some(only.unit),
             late: vec![0; n],
             first_late: 0,
+            overlap: None,
         });
     }
     let mut keys: Vec<(u8, Vec<UnitOutput>)> = Vec::new();
@@ -442,7 +490,237 @@ fn layout(schedule: &SystemSchedule) -> Result<Layout, MeasureError> {
         single: None,
         late,
         first_late: schedule.lateness_of(first.unit),
+        overlap: None,
     })
+}
+
+// -- WP ATOVL --
+/// The layout of an overlapped run (overlapped starts): every cycle where
+/// it is heard (its segment's start plus its unit's expected lateness, from
+/// the run's first heard sound), in time order; each unit's first segment
+/// (the interleaved first pass) in groups of one, and in every later pass
+/// the units' `j`-th cycles one group. Refused (before anything plays, by
+/// [`overlap_layout_check`]) when the analysis could not tell the units of
+/// a group apart: windows shorter than
+/// [`super::plan::OVERLAP_MIN_TAIL_MS`], an impulse or harmonic image of
+/// one unit in another's window, or a group's cut reaching another group's
+/// sweep.
+fn layout_overlapped(schedule: &SystemSchedule, _offset: u64) -> Result<Layout, MeasureError> {
+    use super::plan::{
+        OVERLAP_GUARD_MS, OVERLAP_HARMONICS, OVERLAP_MIN_TAIL_MS, OVERLAP_SPREAD_MS,
+    };
+    let segments = schedule.segments();
+    let Some(first) = segments.first() else {
+        return Err(invalid("no segment"));
+    };
+    if segments
+        .iter()
+        .any(|s| s.schedule.sweep != first.schedule.sweep)
+    {
+        return Err(invalid("every segment of a run must play the same sweep"));
+    }
+    let sweep = first.schedule.sweep;
+    let t_ref = schedule.start();
+    let heard = |s: &super::Segment| s.start.saturating_add(schedule.lateness_of(s.unit));
+    let base = segments.iter().map(heard).min().unwrap_or(t_ref);
+    let mut keys: Vec<(u8, Vec<UnitOutput>)> = Vec::new();
+    let mut pass_of: Vec<(UnitIndex, u32)> = Vec::new();
+    // (heard position, key, group)
+    let mut raw: Vec<(u64, usize, u32)> = Vec::new();
+    for s in segments {
+        let pass = match pass_of.iter_mut().find(|(u, _)| *u == s.unit) {
+            Some(slot) => {
+                slot.1 = slot.1.saturating_add(1);
+                slot.1
+            }
+            None => {
+                pass_of.push((s.unit, 0));
+                0
+            }
+        };
+        let off = heard(s).saturating_sub(base);
+        for (j, c) in s.schedule.cycles().iter().enumerate() {
+            let uo = UnitOutput {
+                unit: s.unit,
+                output: c.output,
+            };
+            let k = match keys.iter().position(|(_, m)| m.first() == Some(&uo)) {
+                Some(k) => k,
+                None => {
+                    if keys.len() >= MAX_RUN_OUTPUTS {
+                        return Err(invalid(format!(
+                            "more than {MAX_RUN_OUTPUTS} outputs in one run: split it into runs through an anchor output"
+                        )));
+                    }
+                    keys.push((u8::try_from(keys.len()).unwrap_or(u8::MAX), vec![uo]));
+                    keys.len().saturating_sub(1)
+                }
+            };
+            let group = if pass == 0 {
+                (1u32 << 20).saturating_add(u32::try_from(raw.len()).unwrap_or(u32::MAX))
+            } else {
+                pass.saturating_mul(64)
+                    .saturating_add(u32::try_from(j).unwrap_or(63))
+            };
+            raw.push((off.saturating_add(c.start), k, group));
+        }
+    }
+    raw.sort_by_key(|r| r.0);
+    let mut counts = vec![0u16; keys.len()];
+    let mut cycles = Vec::with_capacity(raw.len());
+    let mut group = Vec::with_capacity(raw.len());
+    for (i, &(pos, k, g)) in raw.iter().enumerate() {
+        let pass = counts.get(k).copied().unwrap_or(0);
+        if let Some(slot) = counts.get_mut(k) {
+            *slot = pass.saturating_add(1);
+        }
+        cycles.push(Cycle {
+            index: u32::try_from(i).unwrap_or(u32::MAX),
+            output: u8::try_from(k).unwrap_or(u8::MAX),
+            pass,
+            start: pos,
+        });
+        group.push(g);
+    }
+    let repeat = counts.first().copied().unwrap_or(0);
+    if counts.iter().any(|&c| c != repeat) {
+        return Err(invalid(
+            "every output of a run must be measured the same number of passes",
+        ));
+    }
+    // The windows: the closest members of any group, less the guard.
+    let rate = f64::from(sweep.rate_hz.max(1));
+    let ms = |x: f64| x * 1000.0 / rate;
+    let mut ids: Vec<u32> = group.clone();
+    ids.sort_unstable();
+    ids.dedup();
+    let members = |g: u32| -> Vec<u64> {
+        let mut v: Vec<u64> = cycles
+            .iter()
+            .zip(&group)
+            .filter(|(_, x)| **x == g)
+            .map(|(c, _)| c.start)
+            .collect();
+        v.sort_unstable();
+        v
+    };
+    let closest = ids
+        .iter()
+        .map(|&g| members(g))
+        .filter(|v| v.len() >= 2)
+        .flat_map(|v| {
+            v.windows(2)
+                .map(|w| {
+                    w.get(1)
+                        .copied()
+                        .unwrap_or(0)
+                        .saturating_sub(w.first().copied().unwrap_or(0))
+                })
+                .collect::<Vec<u64>>()
+        })
+        .min()
+        .ok_or_else(|| invalid("an overlapped run without a group of two units"))?;
+    let (pre, p5_tail) = super::plan::overlap_window_ms(&sweep, closest);
+    let tail = p5_tail;
+    let (spread, guard) = (OVERLAP_SPREAD_MS, OVERLAP_GUARD_MS);
+    if tail < OVERLAP_MIN_TAIL_MS || ms(closest as f64) <= pre + spread + guard {
+        return Err(invalid(format!(
+            "units {:.1} ms apart in an overlapped group: too close to tell apart",
+            ms(closest as f64)
+        )));
+    }
+    // Every impulse and harmonic image clear of every other member's window.
+    let ratio = sweep.end_freq_hz() / sweep.start_freq_hz();
+    let leads: Vec<f64> = (2..=OVERLAP_HARMONICS)
+        .map(|k| ms(f64::from(sweep.cycle_samples) * f64::from(k).ln() / ratio.ln()))
+        .collect();
+    for &g in &ids {
+        let v = members(g);
+        for (i, &a) in v.iter().enumerate() {
+            for &b in v.iter().skip(i.saturating_add(1)) {
+                let d = ms(b.saturating_sub(a) as f64);
+                for h in &leads {
+                    let (lo, hi) = (d - h, d - h + spread);
+                    if hi > -pre - guard && lo < tail + guard {
+                        return Err(invalid(format!(
+                            "a harmonic image of a unit {d:.0} ms later in an overlapped group \
+                             falls {lo:.0} ms from an arrival, inside its window"
+                        )));
+                    }
+                }
+            }
+        }
+    }
+    // A group's cut (its members' sweeps whole, the windows, the spread)
+    // never reaches another group's sweep; lone cycles keep P5's rule.
+    let cycle = f64::from(sweep.cycle_samples);
+    let mut spans: Vec<(u64, u64, bool)> = ids
+        .iter()
+        .map(|&g| {
+            let v = members(g);
+            (
+                v.first().copied().unwrap_or(0),
+                v.last().copied().unwrap_or(0),
+                v.len() >= 2,
+            )
+        })
+        .collect();
+    spans.sort_by_key(|x| x.0);
+    let period = f64::from(sweep.cycle_samples) + f64::from(sweep.gap_samples);
+    for w in spans.windows(2) {
+        let (Some(a), Some(b)) = (w.first(), w.get(1)) else {
+            continue;
+        };
+        let apart = b.0.saturating_sub(a.1) as f64;
+        let need = if a.2 || b.2 {
+            cycle + (pre.max(tail) + spread + 2.0 * guard) * rate / 1000.0
+        } else {
+            period
+        };
+        if apart + 0.5 < need {
+            return Err(invalid(
+                "two groups of an overlapped run closer than their sweeps and windows",
+            ));
+        }
+    }
+    let mask = mask_of(keys.len())?;
+    let late: Vec<i64> = keys
+        .iter()
+        .map(|(_, m)| {
+            m.first().map_or(0, |uo| {
+                i64::try_from(schedule.lateness_of(uo.unit)).unwrap_or(0)
+            })
+        })
+        .collect();
+    Ok(Layout {
+        walk: WalkSchedule::from_cycles(sweep, mask, repeat, cycles),
+        keys,
+        t_ref,
+        single: None,
+        late,
+        first_late: base.saturating_sub(t_ref),
+        overlap: Some(OverlapSpec {
+            group,
+            pre_ms: pre,
+            tail_ms: tail,
+            spread_ms: spread,
+            guard_ms: guard,
+            harmonics: OVERLAP_HARMONICS,
+        }),
+    })
+}
+
+// -- WP ATOVL --
+/// Whether the analysis can lay out the overlapped run `schedule`
+/// ([`super::SystemSchedule::overlapped`]); the planner refuses what it
+/// cannot, before anything plays.
+///
+/// Errors: [`MeasureError::Invalid`] naming why.
+pub(crate) fn overlap_layout_check(schedule: &SystemSchedule) -> Result<(), MeasureError> {
+    match schedule.overlap_samples() {
+        Some(o) => layout_overlapped(schedule, o).map(|_| ()),
+        None => Err(invalid("not an overlapped run")),
+    }
 }
 
 fn mask_of(n: usize) -> Result<u16, MeasureError> {
@@ -480,7 +758,16 @@ impl SystemAnalyser {
         options: &AnalysisOptions,
     ) -> Result<SystemAnalyser, MeasureError> {
         let layout = layout(schedule)?;
-        let inner = WalkedAnalyser::new(&layout.walk, capture_rate_hz, options)?;
+        // -- WP ATOVL --
+        let inner = match &layout.overlap {
+            Some(spec) => WalkedAnalyser::new_overlapped(
+                &layout.walk,
+                capture_rate_hz,
+                options,
+                spec.clone(),
+            )?,
+            None => WalkedAnalyser::new(&layout.walk, capture_rate_hz, options)?,
+        };
         let rate = f64::from(capture_rate_hz);
         let nominal = rate / f64::from(schedule.rate_hz.max(1));
         Ok(SystemAnalyser {
@@ -632,7 +919,16 @@ impl SystemAnalyser {
         let Some(fit) = self.inner.fit_parts() else {
             return Err(MeasureError::Invalid("analysis not fitted".into()).into());
         };
-        Ok(build(&self.layout, walked, &fit, pin, self.rate))
+        let parts = self.inner.overlap_parts();
+        Ok(build(
+            &self.layout,
+            walked,
+            &fit,
+            pin,
+            self.rate,
+            parts.as_ref(),
+            self.schedule.overlap_samples(),
+        ))
     }
 }
 
@@ -645,17 +941,30 @@ struct Spread {
 }
 
 fn spread(layout: &Layout, walked: &WalkedAnalysis) -> Spread {
+    // -- WP ATOVL -- (the residuals given: as before, every clear cycle's)
+    let res: Vec<Option<f64>> = walked
+        .cycles
+        .iter()
+        .map(|t| (!t.arrival_ambiguous && t.residual_us.is_finite()).then_some(t.residual_us))
+        .collect();
+    spread_of(layout, walked, &res)
+}
+
+// -- WP ATOVL --
+/// [`spread`] of the residuals `residual` (µs per cycle of the walk; `None`:
+/// left out).
+fn spread_of(layout: &Layout, walked: &WalkedAnalysis, residual: &[Option<f64>]) -> Spread {
     let cycles = layout.walk.cycles();
     let n_keys = layout.keys.len();
     let mut res: Vec<Vec<(f64, f64)>> = vec![Vec::new(); n_keys];
-    for (c, t) in cycles.iter().zip(&walked.cycles) {
-        if t.arrival_ambiguous || !t.residual_us.is_finite() {
+    for ((c, t), r) in cycles.iter().zip(&walked.cycles).zip(residual) {
+        let Some(r) = r else {
             continue;
-        }
+        };
         if let Some(k) = layout.keys.iter().position(|(key, _)| *key == t.output)
             && let Some(v) = res.get_mut(k)
         {
-            v.push((c.start as f64, t.residual_us));
+            v.push((c.start as f64, *r));
         }
     }
     // Per key: its passes, their mean position, the sum of its squared
@@ -713,14 +1022,47 @@ fn spread(layout: &Layout, walked: &WalkedAnalysis) -> Spread {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build(
     layout: &Layout,
     walked: WalkedAnalysis,
     fit: &crate::ir::FitParts,
     pin: TimePin,
     rate: f64,
+    parts: Option<&OverlapParts>,
+    overlap: Option<u64>,
 ) -> SystemAnalysis {
-    let sp = spread(layout, &walked);
+    // -- WP ATOVL -- an overlapped run: the differences each group measures
+    // (its cycles played together) and, beside them, every cycle against
+    // the absolute fit.
+    let sp = match parts {
+        Some(p) => {
+            let res: Vec<Option<f64>> = walked
+                .cycles
+                .iter()
+                .enumerate()
+                .map(|(k, t)| {
+                    let used = p.used.get(k).copied().unwrap_or(false) && multi_at(p, k);
+                    (used && !t.arrival_ambiguous && t.residual_us.is_finite())
+                        .then_some(t.residual_us)
+                })
+                .collect();
+            spread_of(layout, &walked, &res)
+        }
+        None => spread(layout, &walked),
+    };
+    let sp_abs = parts.map(|p| {
+        let res: Vec<Option<f64>> = walked
+            .cycles
+            .iter()
+            .enumerate()
+            .map(|(k, t)| {
+                let r = p.absolute_residual_us.get(k).copied().unwrap_or(f64::NAN);
+                (!t.arrival_ambiguous && r.is_finite()).then_some(r)
+            })
+            .collect();
+        spread_of(layout, &walked, &res)
+    });
     let ms = 1000.0 / rate;
     let earliest = walked
         .outputs
@@ -746,6 +1088,7 @@ fn build(
                 }
             });
             let late = layout.late.get(i).copied().unwrap_or(0) as f64;
+            let uncertainty_us = sp.per_key.get(i).and_then(|p| p.0);
             SystemOutput {
                 key: *key,
                 members: members.clone(),
@@ -758,8 +1101,12 @@ fn build(
                 arrival_ms: arrival_ms + late_ms(i),
                 onset_ms: onset_ms + late_ms(i),
                 passes: ir.map_or(0, |o| o.repeats),
-                uncertainty_us: sp.per_key.get(i).and_then(|p| p.0),
+                uncertainty_us,
                 lateness_ms: late_ms(i),
+                absolute_uncertainty_us: match &sp_abs {
+                    Some(a) => a.per_key.get(i).and_then(|p| p.0),
+                    None => uncertainty_us,
+                },
             }
         })
         .collect();
@@ -785,6 +1132,15 @@ fn build(
         .iter()
         .map(|r| name_keys(r, &outputs))
         .collect();
+    // -- WP ATOVL --
+    let (absolute_reliable, absolute_reasons) = match parts.and_then(|p| p.absolute.as_ref()) {
+        Some(g) => (
+            g.reliable,
+            g.reasons.iter().map(|r| name_keys(r, &outputs)).collect(),
+        ),
+        None if parts.is_some() => (false, vec!["the absolute gate did not run".to_string()]),
+        None => (timing_reliable, reasons.clone()),
+    };
     let mut delays = Vec::new();
     let summed = layout.keys.iter().any(|(_, m)| m.len() > 1);
     if !summed {
@@ -796,22 +1152,35 @@ fn build(
                 if ma.unit == mb.unit {
                     continue;
                 }
-                let mean = |k: usize| sp.per_key.get(k).map_or(0.0, |p| p.1);
-                let u = match (oa.uncertainty_us, ob.uncertainty_us) {
+                let mean = |sp: &Spread, k: usize| sp.per_key.get(k).map_or(0.0, |p| p.1);
+                let plain_u = |sp: &Spread, x: Option<f64>, y: Option<f64>| match (x, y) {
                     (Some(x), Some(y)) => {
-                        let s = sp.slope_us_per_sample.unwrap_or(0.0) * (mean(a) - mean(b));
+                        let s = sp.slope_us_per_sample.unwrap_or(0.0) * (mean(sp, a) - mean(sp, b));
                         Some((x * x + y * y + s * s).sqrt()).filter(|v| v.is_finite())
                     }
                     _ => None,
                 };
-                let (offered, reason) = offer(
-                    timing_reliable,
-                    u,
-                    reasons.first().map(String::as_str),
-                    &oa.name(),
-                    &ob.name(),
-                );
-                if !offered && timing_reliable {
+                // -- WP ATOVL -- played together: what their groups measure;
+                // else as interleaved passes (the absolute gate).
+                let together = parts.and_then(|p| pair_together(layout, &walked, p, a, b));
+                let (u, ok, first_reason) = match (parts, together) {
+                    (Some(_), Some(u)) => (Some(u), timing_reliable, reasons.first().cloned()),
+                    (Some(_), None) => (
+                        sp_abs.as_ref().and_then(|s| {
+                            plain_u(s, oa.absolute_uncertainty_us, ob.absolute_uncertainty_us)
+                        }),
+                        absolute_reliable,
+                        absolute_reasons.first().cloned(),
+                    ),
+                    (None, _) => (
+                        plain_u(&sp, oa.uncertainty_us, ob.uncertainty_us),
+                        timing_reliable,
+                        reasons.first().cloned(),
+                    ),
+                };
+                let (offered, reason) =
+                    offer(ok, u, first_reason.as_deref(), &oa.name(), &ob.name());
+                if !offered && ok {
                     reasons.push(reason.clone());
                 }
                 delays.push(CrossUnitDelay {
@@ -837,7 +1206,87 @@ fn build(
         delays,
         timing_reliable,
         reasons,
+        overlap_ms: overlap.map(|o| o as f64 * device_ms),
+        absolute_reliable,
+        absolute_reasons,
     }
+}
+
+// -- WP ATOVL --
+/// Cycle `k` of an overlapped run plays with its group (a group of two or
+/// more).
+fn multi_at(p: &OverlapParts, k: usize) -> bool {
+    let Some(g) = p.group.get(k) else {
+        return false;
+    };
+    p.group.iter().filter(|x| *x == g).count() >= 2
+}
+
+// -- WP ATOVL --
+/// The uncertainty of the difference of keys `a` and `b` of an overlapped
+/// run from the groups both played in (`None`: fewer than two such groups,
+/// so the pair did not play together): the spread of their residual
+/// differences over those groups (the common delay cancels in each), never
+/// below what the run's pooled scatter gives a pair, with the arrival
+/// estimator's resolution of each in quadrature, µs.
+fn pair_together(
+    layout: &Layout,
+    walked: &WalkedAnalysis,
+    p: &OverlapParts,
+    a: usize,
+    b: usize,
+) -> Option<f64> {
+    let cycles = layout.walk.cycles();
+    let key_of = |k: usize| -> Option<usize> {
+        let out = cycles.get(k)?.output;
+        layout.keys.iter().position(|(key, _)| *key == out)
+    };
+    let clear = |k: usize| {
+        p.used.get(k).copied().unwrap_or(false)
+            && multi_at(p, k)
+            && walked
+                .cycles
+                .get(k)
+                .is_some_and(|t| !t.arrival_ambiguous && t.residual_us.is_finite())
+    };
+    let res = |k: usize| walked.cycles.get(k).map_or(f64::NAN, |t| t.residual_us);
+    let mut diffs = Vec::new();
+    for ka in (0..cycles.len()).filter(|&k| key_of(k) == Some(a) && clear(k)) {
+        let g = p.group.get(ka);
+        if let Some(kb) =
+            (0..cycles.len()).find(|&k| key_of(k) == Some(b) && p.group.get(k) == g && clear(k))
+        {
+            diffs.push(res(ka) - res(kb));
+        }
+    }
+    let n = diffs.len();
+    if n < 2 {
+        return None;
+    }
+    let nf = n as f64;
+    let mean = diffs.iter().sum::<f64>() / nf;
+    let own = diffs.iter().map(|d| (d - mean).powi(2)).sum::<f64>() / (nf - 1.0);
+    // The pooled scatter of one cycle against its group: every clear cycle
+    // played together, less the groups' and the keys' parameters.
+    let used: Vec<usize> = (0..cycles.len()).filter(|&k| clear(k)).collect();
+    let mut groups: Vec<u32> = used
+        .iter()
+        .filter_map(|&k| p.group.get(k).copied())
+        .collect();
+    groups.sort_unstable();
+    groups.dedup();
+    let mut keys: Vec<usize> = used.iter().filter_map(|&k| key_of(k)).collect();
+    keys.sort_unstable();
+    keys.dedup();
+    let dof = used
+        .len()
+        .saturating_sub(groups.len())
+        .saturating_sub(keys.len());
+    let pooled =
+        (dof >= 1).then(|| 2.0 * used.iter().map(|&k| res(k).powi(2)).sum::<f64>() / dof as f64);
+    let var = pooled.map_or(own, |p| own.max(p));
+    let u = (var / nf + 2.0 * ARRIVAL_RESOLUTION_US * ARRIVAL_RESOLUTION_US).sqrt();
+    u.is_finite().then_some(u)
 }
 
 /// Whether a cross-unit delay is offered (G5 and review R8a): only from a
