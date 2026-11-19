@@ -91,6 +91,9 @@ pub fn list_devices() -> Result<Vec<DeviceDescriptor>> {
                 serial: d.serial_number()?.to_string(),
                 bus_id: d.bus_id().to_string(),
                 address: d.device_address(),
+                // -- WP PGZERO -- the OS's cached strings, no device I/O
+                product: d.product_string().map(str::to_owned),
+                bcd_device: Some(d.device_version()),
             })
         })
         .collect();
@@ -148,6 +151,9 @@ impl UsbTransport {
             serial: serial.to_string(),
             bus_id: info.bus_id().to_string(),
             address: info.device_address(),
+            // -- WP PGZERO -- the OS's cached strings, no device I/O
+            product: info.product_string().map(str::to_owned),
+            bcd_device: Some(info.device_version()),
         };
 
         let device = info.open().wait().map_err(map_open_error)?;
@@ -355,6 +361,13 @@ impl UsbTransport {
         if !is_dspi(desc.vendor_id(), desc.product_id()) {
             return Err(TransportError::NotFound);
         }
+        // -- WP PGZERO -- bcdDevice from the descriptor usbfs serves; the
+        // product string with one standard GET_DESCRIPTOR (no vendor request,
+        // so nothing the generation probe must precede), best effort
+        let bcd_device = Some(desc.device_version());
+        let product = desc
+            .product_string_index()
+            .and_then(|i| fd_product_string(&device, i));
 
         let interface = device
             .claim_interface(IFACE)
@@ -367,9 +380,38 @@ impl UsbTransport {
                 serial: serial.to_string(),
                 bus_id: String::new(),
                 address: 0,
+                product,
+                bcd_device,
             },
             timeout: DEFAULT_TIMEOUT,
         })
+    }
+}
+
+// -- WP PGZERO --
+/// How long the product string read on an Android fd may take: the OS has
+/// read it at enumeration, so the device answers at once or not at all.
+#[cfg(any(target_os = "linux", target_os = "android"))]
+const PRODUCT_STRING_TIMEOUT: Duration = Duration::from_millis(250);
+
+// -- WP PGZERO --
+/// The product string of a device opened from an fd, `None` when it cannot
+/// be read (the board then comes from the platform reply and `bcdDevice`).
+#[cfg(any(target_os = "linux", target_os = "android"))]
+fn fd_product_string(device: &nusb::Device, index: std::num::NonZeroU8) -> Option<String> {
+    match device
+        .get_string_descriptor(
+            index,
+            nusb::descriptors::language_id::US_ENGLISH,
+            PRODUCT_STRING_TIMEOUT,
+        )
+        .wait()
+    {
+        Ok(p) => Some(p),
+        Err(e) => {
+            log::debug!("USB product string on an fd: {e}");
+            None
+        }
     }
 }
 

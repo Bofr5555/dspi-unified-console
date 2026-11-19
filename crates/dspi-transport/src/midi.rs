@@ -317,6 +317,7 @@ impl MidiTransport {
                 serial: serial.to_owned(),
                 bus_id: "midi".into(),
                 address: 0,
+                ..Default::default()
             },
             pipe,
             shared: Arc::clone(&shared),

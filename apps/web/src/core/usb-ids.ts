@@ -49,6 +49,10 @@ export interface UsbDeviceLike {
   readonly productId: number;
   readonly serialNumber?: string | null;
   readonly productName?: string | null;
+  /** -- WP PGZERO -- bcdDevice, as WebUSB splits it (absent in older mocks). */
+  readonly deviceVersionMajor?: number;
+  readonly deviceVersionMinor?: number;
+  readonly deviceVersionSubminor?: number;
   readonly opened: boolean;
   readonly configuration: unknown;
   open(): Promise<void>;

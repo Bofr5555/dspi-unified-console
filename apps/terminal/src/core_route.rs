@@ -178,6 +178,7 @@ pub(crate) fn open_core(
                 serial: serial.clone(),
                 bus_id: format!("link:{}", reached.hub_id.clone().unwrap_or_default()),
                 address: 0,
+                ..Default::default()
             };
             (serial, caps, descriptor, Some(reached))
         }

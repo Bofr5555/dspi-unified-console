@@ -102,8 +102,9 @@ fn shape(path: &str, caps: &Capabilities) -> Option<Shape> {
         | "cs.display.page" | "sig.config" => Exact(spec_len(path)?),
         // 16 characters of the USB serial string (vendor_commands.c:2632-2636).
         "dev.serial" => Exact(16),
-        // 4, 6 or 7 bytes by the firmware's age (config.h:325).
-        "dev.platform" => UpTo(PlatformInfo::REQUEST_LEN),
+        // 4, 6 or 7 bytes by the firmware's age (config.h:325); -- WP PGZERO --
+        // 8 on a DSPi-Zero (byte 7 its board id, PLAN-PG section 1.9).
+        "dev.platform" => UpTo(PlatformInfo::FULL_LEN),
         // config.h:326.
         "dev.build" => Exact(BuildInfo::SIZE),
         "preset.startup" => Exact(PresetStartup::SIZE),

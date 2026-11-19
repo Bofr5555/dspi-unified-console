@@ -2860,6 +2860,7 @@ impl LinkSide {
             serial: serial.to_owned(),
             bus_id: format!("link:{}", hello.hub.id),
             address: handle,
+            ..Default::default()
         };
         Self {
             client,

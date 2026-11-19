@@ -135,6 +135,7 @@ impl Dev {
                 serial: serial.into(),
                 bus_id: "test".into(),
                 address: 1,
+                ..Default::default()
             },
             probe: probe.clone(),
             stream: true,

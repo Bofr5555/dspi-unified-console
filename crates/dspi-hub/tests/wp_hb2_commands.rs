@@ -186,6 +186,7 @@ fn plug(hub: &Hub, serial: &str, inner: FakeDevice) -> (u8, Wire, FakeRemote) {
             serial: serial.into(),
             bus_id: "test".into(),
             address: 1,
+            ..Default::default()
         },
     };
     let handle = hub.attach(Box::new(probe), 0).unwrap();

@@ -1687,6 +1687,7 @@ impl Offline {
                 serial: serial.to_owned(),
                 bus_id: "offline".into(),
                 address: 0,
+                ..Default::default()
             },
         }
     }

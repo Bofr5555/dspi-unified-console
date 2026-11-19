@@ -195,6 +195,7 @@ impl Adapter {
                 serial,
                 bus_id: "host".into(),
                 address: 0,
+                ..Default::default()
             },
             hang_limit,
             gone: Arc::new(AtomicBool::new(false)),

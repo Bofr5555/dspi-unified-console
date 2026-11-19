@@ -2135,6 +2135,7 @@ impl Older {
                 serial: serial.into(),
                 bus_id: "test".into(),
                 address: 1,
+                ..Default::default()
             },
         }
     }

@@ -47,6 +47,9 @@ export interface ClaimedDevice {
   device: number;
   serial: string;
   vendorId: number;
+  /** -- WP PGZERO -- the USB product string and bcdDevice: they tell a paged DSPi-Zero from a Pico. */
+  productName?: string;
+  bcdDevice?: number;
 }
 
 type Suspending = new (f: (...a: number[]) => Promise<number>) => unknown;
@@ -109,7 +112,14 @@ export class UsbHost {
     }
     const id = this.next++;
     this.claimed.set(id, { device, serial, gone: false, reading: false, lastError: "", onGone });
-    return { device: id, serial, vendorId: device.vendorId };
+    // -- WP PGZERO -- the product string and bcdDevice, which tell a paged DSPi-Zero from a Pico
+    return {
+      device: id,
+      serial,
+      vendorId: device.vendorId,
+      productName: device.productName ?? undefined,
+      bcdDevice: bcdDeviceOf(device),
+    };
   }
 
   /** Stop reading, give the interface back and close the device. */
@@ -252,3 +262,11 @@ function words(e: unknown): string {
 }
 
 const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// -- WP PGZERO --
+/** `bcdDevice` as the descriptor holds it (BCD: major byte, minor and subminor nibbles); undefined when WebUSB gives no version. */
+export function bcdDeviceOf(d: UsbDeviceLike): number | undefined {
+  const { deviceVersionMajor: major, deviceVersionMinor: minor, deviceVersionSubminor: sub } = d;
+  if (typeof major !== "number" || typeof minor !== "number" || typeof sub !== "number") return undefined;
+  return ((major & 0xff) << 8) | ((minor & 0x0f) << 4) | (sub & 0x0f);
+}
