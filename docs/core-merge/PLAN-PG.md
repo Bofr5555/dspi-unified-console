@@ -712,6 +712,20 @@ length locally. **Deps:** PG-B2; P5SES and P5LIVE merged (else PGMEAS waits; it 
 - **PGTM:** `PrincipalTransport` and `LocalTransport` say the generation but no `paged_discovery()`: a core on them
   shows a paged device with an empty page list and the ext envelope from the 1.1.6-shaped probe.
 
+**Carried over from the PG-D part 1 review (`work/review-pgd1/REPORT.md`); each is part of the named WP's done line:**
+- **PGQT, PGSWIFT, PGAND (before any release of them):** since PGFLASH the core's write gate asks the lineage phrase
+  itself. A client that still judges with `firmware_guard_check` alone (Qt `FirmwareController.cpp`, Swift
+  `FirmwareInstaller.swift`) asks nothing for an image that may be upstream's on a board with this fork's firmware at
+  1.15 V, reboots the board into BOOTSEL, and is then refused the write (`firmware_guard`): nothing is flashed, but the
+  board waits in BOOTSEL until it is power-cycled. Switch the screen to `firmware_target` + `firmware_update_check`
+  **before** the bootloader entry (as `uconsole flash` does), write on the core that read the target, and show the
+  generation change. The K340's own flows are unchanged (the voltage phrase covers both; a stamped image is clear).
+- **PGQT, PGAND, PGWEB, PGSWIFT:** `DeviceProtocol::device_kind` (PGFIX): on `AlinkSender` show the device info, the
+  audio link block and the update only; every DSP call answers `Unsupported`. The Terminal says it in `uconsole info`
+  and Settings > About; its interface itself still needs a DSP.
+- **PGDOC:** the manual: on our hub the extension channel (audio link status, reset info, core voltage) is for admin
+  sessions (section 1.11); `uconsole raw` refuses an opcode above 0xFF and a wValue or length above 16 bits.
+
 **PGFWX: The update check over the bindings.** [DONE] Size 1. Wave PG-D, before the client WPs. **Owns:** the
 bindings of the update check (UniFFI derives and exports in `crates/dspi-core/src/firmware_guard.rs`, new
 `crates/dspi-capi/src/fns_misc/firmware_update.rs`, new `crates/dspi-wasm/src/firmware.rs`), `WriteGuardedCore`,
