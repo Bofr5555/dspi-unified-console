@@ -2900,6 +2900,14 @@ interface DspiCoreApi : AutoCloseable {
     fun fetchClockDiag(): ClockDiag
 
     /**
+     * The open device's protocol: its generation, the paged protocol's
+     * version and pages, and how the extension channel is reached. No
+     * traffic. Errors: [`DspiError::Disconnected`] with nothing open.
+     */
+    @Throws(DspiException::class)
+    fun deviceProtocol(): DeviceProtocol
+
+    /**
      * Step back: write back the value the newest undoable change replaced
      * (then what the device moved with it), through the typed setter for
      * its path. Changes that cannot be undone are stepped over and named in
@@ -4834,6 +4842,55 @@ interface DspiCoreApi : AutoCloseable {
      */
     @Throws(DspiException::class)
     fun rawSet(opcode: Int, value: Int, data: List<Int>)
+
+    /**
+     * One paged GET of command `id` (`page << 8 | command`, e.g. `0x0550`),
+     * `value` as `wValue`, at most `len` bytes back, as the device sent it
+     * (a paged reply may be shorter than asked). Every GET on paged firmware
+     * only reads (the extension tunnel `0xE010` too), so it passes the client
+     * read-only mode; a command outside this build's registry and the tunnel
+     * is refused there, as a hub refuses it.
+     *
+     * Blocks for the transfer with the core's lock held: call it off the UI
+     * thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a page-0 id (use
+     * [`raw_get`](Self::raw_get)), a `len` of 0, and the bulk chunk read
+     * (`STORE.ALL_PARAMS_CHUNK`; nothing is sent); [`DspiError::Unsupported`]
+     * on a 1.1.6-generation device, whose firmware has no pages (nothing is
+     * sent); [`DspiError::Disconnected`]; [`DspiError::ReadOnly`] in the
+     * client read-only mode for a command outside the registry;
+     * [`DspiError::Refused`] with the firmware's result code (`VC_ERR_*`),
+     * or 0 when it is not known; [`DspiError::Denied`], [`DspiError::Locked`]
+     * or [`DspiError::Transfer`] from the link.
+     */
+    @Throws(DspiException::class)
+    fun rawGetId(id: Int, value: Int, len: Int): List<Int>
+
+    /**
+     * One paged SET of command `id`, `value` as `wValue`, `data` as the
+     * payload (empty: an action). Success means the device took it.
+     *
+     * Refused with nothing sent (PLAN-PG section 1.6): a request whose 1.1.6
+     * equivalent is behind a confirmation token or the core's own bulk
+     * session, a core-voltage request (through the tunnel too), and a
+     * command the registry or the device's own `SYS.COMMAND_INFO` flags as
+     * writing flash, restarting the device or bulk; and, with no 1.1.6
+     * equivalent, anything but a plain value SET of a command this build
+     * knows. The mirror follows as for [`raw_set`](Self::raw_set). Blocks
+     * with the core's lock held: call it off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a page-0 id (use
+     * [`raw_set`](Self::raw_set)), each refusal above, or more than 65535
+     * bytes of `data`; [`DspiError::Unsupported`] on a 1.1.6-generation
+     * device; [`DspiError::Disconnected`]; [`DspiError::ReadOnly`] on a
+     * read-only connection or in the client read-only mode;
+     * [`DspiError::Refused`] with the firmware's result code;
+     * [`DspiError::Denied`], [`DspiError::Locked`] or
+     * [`DspiError::Transfer`] from the link.
+     */
+    @Throws(DspiException::class)
+    fun rawSetId(id: Int, value: Int, data: List<Int>)
 
     /**
      * Start or stop the notification tap. While on, every notification
