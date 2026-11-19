@@ -1873,6 +1873,8 @@ bool clipped,
 char *buf,
 uint32_t len);
 uint32_t dspi_measure_system_tick(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_measure_system_sim_set(struct FfiCore *core, bool on, char *buf, uint32_t len);
+uint32_t dspi_measure_system_sim_info(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_measure_system_state(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_measure_system_stop(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_measure_system_result(struct FfiCore *core, char *buf, uint32_t len);
