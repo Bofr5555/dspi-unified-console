@@ -739,9 +739,17 @@ notice; no paged request in the G1 mock's log. **Deps:** PGCORE.
 **PGQT: Qt.** [TODO] Size 0.75. Wave PG-D. **Owns:** the Qt About/device-info controller and view, the raw dialog.
 **Done when:** `ci/check.sh --step qt`, `--step qt-offscreen` with the fake generations. **Deps:** PGCORE.
 
-**PGTM: Terminal and TUI.** [TODO] Size 0.75. Wave PG-D. **Owns:** `apps/terminal/src/main.rs` (`uconsole info`
+**PGTM: Terminal and TUI.** [DONE] Size 0.75. Wave PG-D. **Owns:** `apps/terminal/src/main.rs` (`uconsole info`
 generation, `uconsole raw --id 0x0550`), the TUI's About screen. **Done when:** scoped `cargo test -p uconsole` and
-`-p dspi-tui` with each fake. **Deps:** PGCORE.
+`-p dspi-tui` with each fake. **Deps:** PGCORE. **Did (WP PGTM):** new `apps/terminal/src/protocol_info.rs`:
+`uconsole info` (rows and `--json` from `device_protocol()`, one call per connection; a paged device with an empty
+page list, as on the hub's `LocalTransport`/`PrincipalTransport`, gets a note saying why), `uconsole raw [out] --id
+<0xPPCC|PAGE.NAME>` through `raw_get_id`/`raw_set_id` with the core's refusals in words (`VC_ERR_*` by name); `raw
+<op>` above 0xFF is refused instead of truncated. Settings > About shows the same rows (`DeviceProtocolView` in
+`dspi-tui`, filled by the Terminal's `connected_on`). `uconsole flash` judges with `firmware_target` +
+`firmware_update_check`, flashes only on `verdict.allowed`, asks `LINEAGE_PHRASE` on the terminal without
+`--accept-core-voltage-risk` (never typed for the person), says the generation change, and offers no image (nor a
+bootloader reboot) to a board without BOOTSEL.
 
 **PGAND: Android.** [TODO] Size 0.5. Wave PG-D. **Owns:** the device-info row in the Android settings feature,
 `WriteGuardedCore` entries (if not done by PGCORE's contract step). **Done when:** the module's unit tests through the
