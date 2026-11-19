@@ -40,6 +40,8 @@ use crate::types::{BandSpec, Coeffs, Coupler, MeasureError, SectionModel};
 mod dsp;
 mod render;
 mod worlds;
+// -- WP ATSIM -- the multi-unit world (PLAN-AT): units on a time base, one microphone
+pub mod system;
 
 #[cfg(test)]
 mod tests;
