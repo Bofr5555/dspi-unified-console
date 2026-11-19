@@ -843,6 +843,39 @@ result, proposal shown, apply refused for Control and done for Admin; notices fo
 not share a clock", "unit lost lock", "needs N runs", "this S/PDIF source does not carry a DSPi time base". **Deps:**
 AT-C; P5WMS merged.
 
+**ATDEMO: The demo hub's simulated microphone across units; the hub's abort in words.** [DONE] Size 1. Wave AT-D
+(follow-up to ATWEB's two requests). **Owns:** new `crates/dspi-hub/src/system/measure/demo_room.rs` (feature
+`demo-room`, ATSIM's world), new `crates/dspi-core/src/measure/system/sim.rs`, new `crates/dspi-hub/tests/wp_atdemo_room.rs`;
+under markers: the `demo` block of the seam's `system/messages.rs`, the family's `demo_mic` branch and room slot
+(`system/measure.rs`), the cap in `hello` (`server.rs`), `SystemSlot.sim` and its hooks (`measure/system.rs`), the poll's
+`aborted` answer (`measure/system/session.rs`), the wasm and C calls, `NOT_EXPORTED` (UniFFI), one notices row,
+`uconsole`'s `--with-measure-units` (the room, the units in the model with their own sender), ATWEB's desk, tab and e2e.
+**Problem:** the demo hub's ATFAKE units play arithmetic generators that no microphone hears, so no client could show
+a result, a proposal, apply, verify or Revert end to end. **Decision: the core-side route.** The room is the hub's (only
+the hub sees what the fakes recorded: every op 9 start at its T, the `out.delay` each unit holds), rendered with ATSIM as
+ATE2E's room but in real time and with the clock exact: capture frame `k` is what the microphone hears at the domain's
+`base + k`, delivered up to T now less 40 ms (every start up to that T rendered first). The core reads it with `system.measure.demo_mic {session, from}` on every
+`measure_system_tick` and pushes it into the session itself (`measure_system_sim_set`, `measure_system_sim_info`, label
+"Simulated microphone", as P5DEMO's `measure_sim_info`); a client's pushes are ignored while it is on. So every client
+(web, Qt through the C calls, the Terminal later) gets it with no microphone path of its own, and the page needs no test
+channel. **Fail closed:** the hub offers the cap `system_measure_demo_mic` only with a room, which only `uconsole --demo
+hub --alink --with-measure-units` installs, over its own fakes; it answers only for a session whose every unit is one
+of those attachments (the hub's device object, not the serial: a real DSPi, or a device attached later under a demo
+serial, is refused `unsupported` by name); the core turns it off when its hub lacks the cap, asks the hub before every
+session (refused: nothing opened, nothing staged) and aborts a session the room refuses (`measure.system.sim_refused`).
+**Wording:** a `status` answered `aborted` is the hub's own stop, never "the hub does not answer": a time base disturbed
+or moved is `abort.disturbance`, one no longer locked `abort.time_base`, else `abort.hub`, the unit named from the hub's
+words; the hub's `aborted` event with reason `disturbance` is `abort.disturbance` too. ATWEB's `shownIssue` rewording is
+gone. **Found end to end, fixed:** the hub answers `system.status` once a second per connection, so the session's read
+of the engine's terms is tried again during the run, and the read after an apply waits the limit out (else a verify
+predicted no change of delay and failed a good alignment); ATWEB's "Run the summed check" waited for an offer the core
+makes only after that check (now offered while there are arrivals to write); the demo's time-base units are entered at
+2 m each, so the distance alignment Revert runs again leaves them as filed. **Done when:** `uconsole`'s `tests_wp_atdemo` measures DEMO-TB-A and DEMO-TB-B through the shipped demo (the delay
+within 5 us of the room's 2.37 ms), passes the summed check, applies, verifies, reverts, and a delay moved after an apply
+fails the verify with Keep refused once; `wp_atdemo_room` shows every refusal; the core's `wp_atdemo_*` (the wording,
+the feed, the refusals); the web e2e (Chromium) shows the result, the proposal, the summed check, Apply absent for
+Control (the Admin notice) and done for Admin, the verify, Revert and the two-step Keep. ATQT can use the same option.
+
 **ATQT: Qt: measuring several units.** [TODO] Size 1.5. Wave AT-D. **Owns:** a new Qt controller and view for the group
 step beside P5QUI's measurement pages (registrar line, marker), the S/PDIF transport in Qt's system editor. **Done when:**
 Qt tests on the demo hub as ATWEB's; the same notices. **Deps:** AT-C; P5QUI merged.

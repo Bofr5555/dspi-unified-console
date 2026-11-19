@@ -23,6 +23,7 @@ import type {
   MeasureSystemProposalRecord,
   MeasureSystemResultRecord,
   MeasureSystemSetupRecord,
+  MeasureSystemSimInfoRecord,
   MeasureSystemStateRecord,
   MeasureSystemUnitCheckRecord,
   Method,
@@ -111,6 +112,11 @@ export class SystemDesk {
   /** The browser microphone to use ("" its default) and the calibration document. */
   micDeviceId = "";
   micDocument = "";
+  // -- WP ATDEMO --
+  /** The demo hub's simulated microphone (only `uconsole --demo hub ... --with-measure-units`). */
+  sim: MeasureSystemSimInfoRecord | null = null;
+  /** Measure with it (the default where it is offered, as P5WMS's demo). */
+  useSim = false;
   private readonly cores = new Map<string, UnitCore>();
   private readonly listeners = new Set<() => void>();
   private unsubscribe: (() => void) | null = null;
@@ -185,6 +191,9 @@ export class SystemDesk {
     }
     this.unavailable = "";
     this.errorKey = "";
+    // -- WP ATDEMO -- the demo hub's simulated microphone, where the hub has one
+    this.sim = await this.core.call("measureSystemSimInfo", undefined).catch(() => null);
+    this.useSim = !!this.sim?.available;
     const devices: LinkDeviceRecord[] = await this.core.call("linkDevices", undefined).catch(() => []);
     if (!this.alive) return;
     const own = this.session.deviceId;
@@ -228,6 +237,18 @@ export class SystemDesk {
   }
 
   // ---- the form ----
+
+  // -- WP ATDEMO --
+  /** Measure with the demo hub's simulated microphone (`on`) or the browser's. */
+  setUseSim(on: boolean): void {
+    this.useSim = on && !!this.sim?.available;
+    this.changed();
+  }
+
+  /** The simulated microphone measures now. */
+  get simOn(): boolean {
+    return this.useSim && !!this.sim?.available;
+  }
 
   setDraft(d: SystemDraft): void {
     const before = new Set(this.draft.units.map((u) => u.serial));
@@ -363,7 +384,7 @@ export class SystemDesk {
     this.changed();
     try {
       // Firefox starts an audio context only close to the click: the microphone comes first.
-      const rate = await this.openMic();
+      const rate = await this.micForRun(); // -- WP ATDEMO --
       const setup = setupOf(this.draft, rate, this.micDocument);
       const checks = await this.checksFor(setup);
       this.preflight = await this.core.call("measureSystemPreflight", { setup, checks });
@@ -423,7 +444,7 @@ export class SystemDesk {
     this.busy = kind === "sum" ? "Starting the summed check" : "Starting the verify";
     this.changed();
     try {
-      await this.openMic();
+      await this.micForRun(); // -- WP ATDEMO --
       const checks = await this.checksFor(setup);
       this.state = await this.core.call(kind === "sum" ? "measureSystemSumCheck" : "measureSystemVerify", { checks });
       if (!this.alive || epoch !== this.epoch) {
@@ -571,6 +592,23 @@ export class SystemDesk {
   private async preparePort(): Promise<void> {
     if (this.port || this.capture || !this.alive) return;
     this.port = await this.core.call("measureSystemCaptureOpen", undefined).catch(() => null);
+  }
+
+  // -- WP ATDEMO --
+  /**
+   * The microphone for a run: the demo hub's simulated one (the core hears the hub's room; the
+   * page opens none), or the browser's (first, close to the click; the simulated one then off).
+   * The rate, Hz.
+   */
+  private async micForRun(): Promise<number> {
+    if (this.simOn) {
+      await this.closeMic();
+      this.sim = await this.core.call("measureSystemSimSet", { on: true });
+      return 48_000;
+    }
+    const rate = await this.openMic();
+    if (this.sim?.on) this.sim = await this.core.call("measureSystemSimSet", { on: false });
+    return rate;
   }
 
   /** The browser's microphone, its blocks straight to this core's Worker. The rate, Hz. */

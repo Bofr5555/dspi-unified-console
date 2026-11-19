@@ -85,6 +85,12 @@ export function SystemTabView(props: MeasureTabProps) {
           <span style={{ flex: "1 1 12em" }} aria-label="Phase">
             {phaseWords(d.state)}
           </span>
+          {/* -- WP ATDEMO -- */}
+          {d.simOn ? (
+            <span class="muted" aria-label="Microphone across units">
+              {d.sim?.label}
+            </span>
+          ) : null}
           <button type="button" class="danger" onClick={() => void d.stop()}>
             Stop
           </button>
@@ -109,6 +115,12 @@ export function SystemTabView(props: MeasureTabProps) {
           </span>
         ) : null}
       </label>
+      {/* -- WP ATDEMO -- the demo hub's simulated microphone, where it has one */}
+      {d.sim?.available ? (
+        <label>
+          <input type="checkbox" aria-label="Simulated microphone across units" checked={d.useSim} disabled={busy} onChange={(e) => d.setUseSim((e.currentTarget as HTMLInputElement).checked)} /> Use the {d.sim.label.toLowerCase()} (the demo hub's room hears its demo units; nothing plays anywhere)
+        </label>
+      ) : null}
       <UnitsPicker d={d} busy={busy} openDevice={session.openDevice} />
       <div style={row}>
         <label style={field}>
@@ -387,7 +399,9 @@ function ProposalView(props: { d: SystemDesk; busy: boolean }) {
       ) : null}
       {stage === "none" || stage === "reverted" || stage === "kept" ? (
         <div style={row}>
-          {p.sumCheckNeeded && p.offered ? (
+          {/* -- WP ATDEMO -- the core offers nothing before the summed check passed: the check is
+              offered while there are arrivals to write */}
+          {p.sumCheckNeeded && p.arrivals.length > 0 && !p.withdrawn ? (
             <button type="button" disabled={busy} onClick={() => void d.summed("sum")}>
               Run the summed check
             </button>

@@ -2012,5 +2012,22 @@ export interface MeasureSystemMethods {
   /** The Worker's own (never the core's): a capture port whose blocks go to `measureSystemCapturePush`. */
   measureSystemCaptureOpen: { params: undefined; result: { port: MessagePort; workletUrl: string } };
   measureSystemCaptureClose: { params: undefined; result: null };
+  // -- WP ATDEMO -- the demo hub's simulated microphone (`uconsole --demo hub --alink
+  // --with-measure-units` only): on, the core hears the hub's room on every tick and the page
+  // opens no microphone. `dlink` `unsupported` on any other hub, or for a group with a unit that
+  // is not the demo hub's own.
+  measureSystemSimSet: { params: { on: boolean }; result: MeasureSystemSimInfoRecord };
+  measureSystemSimInfo: { params: undefined; result: MeasureSystemSimInfoRecord };
 }
+
 // -- end WP ATWEB --
+// -- WP ATDEMO --
+/** `dspi_core::MeasureSystemSimInfo`: the demo hub's simulated microphone across units. */
+export interface MeasureSystemSimInfoRecord {
+  available: boolean;
+  on: boolean;
+  label: string;
+  room: string;
+  issue?: string | null;
+}
+// -- end WP ATDEMO --

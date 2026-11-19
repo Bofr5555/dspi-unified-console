@@ -370,6 +370,8 @@ pub use measure::{
     MeasureSystemResult, MeasureSystemSetup, MeasureSystemSnapshot, MeasureSystemState,
     MeasureSystemTransition, MeasureSystemUnit, MeasureSystemUnitCheck,
 };
+// -- WP ATDEMO --
+pub use measure::MeasureSystemSimInfo;
 
 /// The embedder API. Create one per app with [`DspiCore::new`].
 ///

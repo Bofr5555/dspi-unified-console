@@ -13,7 +13,7 @@ import { SYSTEM_TICK_MS, SystemWorkerRoute, isMeasureSystemEvent, type MeasureSy
 import { CoreCallError, type MeasureSystemAppliedRecord, type MeasureSystemProposalRecord, type MeasureSystemResultRecord, type MeasureSystemStateRecord, type NoticeRecord } from "../../src/core/protocol";
 import { MEASURE_TABS } from "../../src/screens/measure/MeasureScreen";
 import { SystemDesk, type SystemSession, type UnitCore } from "../../src/screens/measure/system/desk";
-import { KEYS, draftProblem, initialDraft, issueWords, placementProblem, proposalRights, refusalWords, runsWords, setupOf, withOutput, withUnit } from "../../src/screens/measure/system/model";
+import { KEYS, draftProblem, initialDraft, issueWords, placementProblem, proposalRights, refusalWords, runsWords, setupOf, shownIssue, withOutput, withUnit } from "../../src/screens/measure/system/model";
 import { NO_TIME_BASE, noTimeBase, withSpdifFollower, withSpdifSource, withoutSpdif } from "../../src/screens/system/SpdifUnits";
 import type { SystemModel } from "../../src/screens/system/model";
 
@@ -215,8 +215,10 @@ function proposal(p: Partial<MeasureSystemProposalRecord>): MeasureSystemProposa
 const APPLIED: MeasureSystemAppliedRecord = { stage: "none", revisionBefore: 0, revisionAfter: 0, snapshots: [], writesOk: 0, writeFailures: [], verified: null, message: "" };
 
 /** A hub session's core and the units' own cores, all stand-ins; every call is recorded in order. */
-function deskRig(role: "admin" | "control", opts: { caps?: string[] } = {}) {
+function deskRig(role: "admin" | "control", opts: { caps?: string[]; sim?: boolean } = {}) {
   const calls: Call[] = [];
+  let simOn = false; // -- WP ATDEMO --
+  const simInfo = () => ({ available: !!opts.sim, on: simOn, label: "Simulated microphone", room: "the demo room", issue: null });
   const listeners = new Set<(e: unknown) => void>();
   let applied: MeasureSystemAppliedRecord = { ...APPLIED };
   let keeps = 0;
@@ -270,6 +272,13 @@ function deskRig(role: "admin" | "control", opts: { caps?: string[] } = {}) {
           return applied;
         case "measureDocCurves":
           return { smoothing: 6, timingReliable: true, outputs: [] };
+        // -- WP ATDEMO --
+        case "measureSystemSimInfo":
+          return simInfo();
+        case "measureSystemSimSet":
+          if ((params as { on: boolean }).on && !opts.sim) throw new CoreCallError("dlink", "DSPi Link: the simulated microphone is the demo hub's only", "unsupported");
+          simOn = (params as { on: boolean }).on;
+          return simInfo();
         default:
           return null;
       }
@@ -368,7 +377,7 @@ test("ATWEB: the placement first; then each unit's own core judges it right befo
   assert.equal(rig.desk.mic, 0);
   rig.desk.setDraft({ ...rig.desk.draft, placement: "headphones" });
   assert.equal(await rig.desk.start(), false);
-  assert.ok(!rig.calls.some((c) => c.method.startsWith("measureSystem") && !["measureSystemState", "measureSystemApplied", "measureSystemResult", "measureSystemProposal", "measureSystemCaptureOpen"].includes(c.method)));
+  assert.ok(!rig.calls.some((c) => c.method.startsWith("measureSystem") && !["measureSystemState", "measureSystemApplied", "measureSystemResult", "measureSystemProposal", "measureSystemCaptureOpen", "measureSystemSimInfo" /* -- WP ATDEMO -- no I/O */].includes(c.method)));
   rig.desk.setDraft({ ...rig.desk.draft, placement: "listeningPosition" });
   assert.equal(await rig.desk.start(), true, rig.desk.error);
   const [last] = before(rig.calls, "measureSystemStart", 2);
@@ -462,4 +471,45 @@ test("ATWEB: Admin reverts; leaving the tab stops a running session and closes e
   assert.ok(rig.calls.some((c) => c.method === "measureSystemStop"), "the session stopped");
   assert.deepEqual(rig.disposed, ["B"], "B's own core closed; A's is the screen's");
   assert.equal(rig.desk.mic, 0);
+});
+
+// -- WP ATDEMO --
+test("ATDEMO: with the demo hub's simulated microphone the page opens none; without it, the browser's (and the simulated one goes off)", async () => {
+  const rig = deskRig("admin", { sim: true });
+  await rig.desk.enter();
+  assert.equal(rig.desk.sim?.available, true);
+  assert.equal(rig.desk.useSim, true, "the default where the demo hub offers it");
+  rig.desk.setDraft({ ...withUnit(withUnit(rig.desk.draft, "A", true), "B", true), placement: "listeningPosition" });
+  await until(() => rig.desk.units[1]!.outputs.length === 2);
+  assert.equal(await rig.desk.start(), true, rig.desk.error);
+  assert.equal(rig.desk.mic, 0, "no browser microphone");
+  const order = rig.calls.map((c) => c.method).filter((m) => m === "measureSystemSimSet" || m === "measureSystemStart");
+  assert.deepEqual(order, ["measureSystemSimSet", "measureSystemStart"], "on before the start");
+  const start = rig.calls.find((c) => c.method === "measureSystemStart")!.params as { setup: { captureRateHz: number } };
+  assert.equal(start.setup.captureRateHz, 48_000);
+  await rig.push({ ...STATE, active: false, phase: "done", resultReady: true });
+  assert.equal(await rig.desk.summed("sum"), true, rig.desk.error);
+  assert.equal(rig.desk.mic, 0, "the summed check hears the room too");
+  await rig.push({ ...STATE, purpose: "sum_check", active: false, phase: "done" });
+  // The browser's microphone chosen: opened first, the simulated one off before the start.
+  rig.desk.setUseSim(false);
+  assert.equal(await rig.desk.start(), true, rig.desk.error);
+  assert.equal(rig.desk.mic, 1);
+  const sets = rig.calls.filter((c) => c.method === "measureSystemSimSet").map((c) => (c.params as { on: boolean }).on);
+  assert.deepEqual(sets.slice(-1), [false]);
+  // No room on this hub: never offered, never asked.
+  const plain = deskRig("admin");
+  await plain.desk.enter();
+  assert.equal(plain.desk.useSim, false);
+  plain.desk.setUseSim(true);
+  assert.equal(plain.desk.simOn, false);
+});
+
+test("ATDEMO: a unit's lost lock is the core's own key (no rewording on the page)", () => {
+  const row = (k: string) => ({ key: k, kind: "warning" as const, title: k === "measure.system.abort.disturbance" ? "Unit lost lock" : "The hub stopped the measurement", reason: "", action: "", detail: "" });
+  assert.deepEqual(shownIssue({ key: "measure.system.abort.disturbance", message: "DEMO-TB-C: its time base was disturbed (2 -> 3, last reanchor)" }, row), {
+    key: "measure.system.abort.disturbance",
+    text: "Unit lost lock: DEMO-TB-C: its time base was disturbed (2 -> 3, last reanchor)",
+  });
+  assert.equal(shownIssue({ key: "measure.system.abort.hub", message: "the hub stopped the measurement (lease)" }, row).key, "measure.system.abort.hub");
 });

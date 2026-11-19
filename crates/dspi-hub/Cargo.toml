@@ -38,6 +38,12 @@ test-tls-mode = []
 # The firmware rollout (rollout.rs, PLAN-P3 F6): the parameter API's executor, the
 # core's PICOBOOT writer over its USB. Off by default: `uconsole hub` asks for it.
 rollout = ["api", "usb", "dspi-core/usb"]
+# -- WP ATDEMO --
+# The demo hub's simulated room (system/measure/demo_room.rs): ATSIM's world
+# hears the demo's fake units for `system.measure.demo_mic`. `uconsole` asks for
+# it; it is installed only by `--demo hub --alink --with-measure-units`. No new
+# crate: dspi-measure is a dependency already.
+demo-room = ["dspi-measure/sim"]
 # -- WP SW-M3 --
 # The Swift binding (ffi.rs): the UniFFI namespace `dspi_hub`, which the library
 # `crates/dspi-ffi` carries with its feature `hub` (the Mac app's slices only).

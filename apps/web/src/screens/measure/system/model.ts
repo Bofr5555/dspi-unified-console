@@ -160,13 +160,13 @@ export function refusalWords(e: unknown, row: Row = noticeRow): { key: string; t
  * answered `aborted`, the hub as gone (`abort.disconnected`) with the hub's words. Those words
  * name the unit and its time base: shown as the unit having lost its lock, as they are.
  */
-const LOST_LOCK = /its time base (was disturbed|is [a-z_]+|entry is gone|changed)|timeline moved against its outputs|\(disturbance\)/;
-
-/** The issue a run ended with, in words, under the notice a person reads it by. */
+/**
+ * The issue a run ended with, in words, under its notice. WP ATDEMO: the core names a unit whose
+ * time base moved itself (`abort.disturbance` from the hub's `aborted` answer and event), so the
+ * key is the core's.
+ */
 export function shownIssue(i: Pick<MeasureSystemIssueRecord, "key" | "message">, row: Row = noticeRow): { key: string; text: string } {
-  const hubSide = i.key === "measure.system.abort.hub" || i.key === "measure.system.abort.disconnected";
-  const key = hubSide && LOST_LOCK.test(i.message) ? KEYS.lostLock : i.key;
-  return { key, text: issueWords({ key, message: i.message }, row) };
+  return { key: i.key, text: issueWords(i, row) };
 }
 
 const PURPOSE: Record<string, string> = { measure: "Measuring", sum_check: "The summed check", verify: "Verifying" };

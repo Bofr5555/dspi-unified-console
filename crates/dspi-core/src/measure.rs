@@ -70,6 +70,8 @@ pub use system::{
     MeasureSystemResult, MeasureSystemSetup, MeasureSystemSnapshot, MeasureSystemState,
     MeasureSystemTransition, MeasureSystemUnit, MeasureSystemUnitCheck,
 };
+// -- WP ATDEMO --
+pub use system::MeasureSystemSimInfo;
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_atcore;
@@ -206,6 +208,8 @@ pub(crate) const NOTICE_KEYS: &[&str] = &[
     "measure.system.verify_failed",
     // -- WP P5HOLD --
     "measure.tune.keep_during_verify",
+    // -- WP ATDEMO -- the demo hub's simulated microphone refused
+    "measure.system.sim_refused",
 ];
 
 // ── Records ─────────────────────────────────────────────────────────────

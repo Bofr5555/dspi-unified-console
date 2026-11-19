@@ -1489,6 +1489,11 @@ fn demo_alink(
         if measure_units && let Some(units) = value.get_mut("units").and_then(Value::as_array_mut) {
             units.extend(measure_units_model());
         }
+        // -- WP ATDEMO -- the time-base units in the model too (on their own
+        // sender, in their own room), so a measured alignment can be applied
+        if measure_units {
+            demo_room_model(&mut value);
+        }
         let model = serde_json::from_value(value)
             .map_err(|e| Failure::Failed(format!("the demo's system model: {e}")))?;
         handle
@@ -1535,6 +1540,7 @@ fn demo_measure_units(handle: &HubHandle) -> Result<(), Failure> {
     };
     let line = FakeTimeBase::line(0x21);
     let mut reanchors = None;
+    let mut room = Vec::new(); // -- WP ATDEMO --
     for serial in MEASURE_UNITS {
         let dev =
             FakeDevice::demo_on_time_base(&line, FakeTimeBaseUnit::Line(AlinkSetup::default()))
@@ -1542,8 +1548,19 @@ fn demo_measure_units(handle: &HubHandle) -> Result<(), Failure> {
         if serial == MEASURE_REANCHORS {
             reanchors = Some(dev.remote());
         }
+        room.push((serial, dev.remote())); // -- WP ATDEMO --
         attach(dev, serial)?;
     }
+    // -- WP ATDEMO -- their sender in the model, and the room that hears them
+    attach(
+        FakeDevice::demo_alink_as(AlinkSetup {
+            role: AlinkRole::Sender,
+            ..AlinkSetup::default()
+        })
+        .with_serial(MEASURE_SENDER),
+        MEASURE_SENDER,
+    )?;
+    demo_room(handle, room)?;
     let other = FakeTimeBase::line(0x22);
     attach(
         FakeDevice::demo_on_time_base(&other, FakeTimeBaseUnit::Line(AlinkSetup::default()))
@@ -1582,6 +1599,67 @@ fn demo_measure_units(handle: &HubHandle) -> Result<(), Failure> {
             .map_err(|e| Failure::Failed(format!("the demo's re-anchor timer: {e}")))?;
     }
     Ok(())
+}
+
+// -- WP ATDEMO --
+/// The sender of [`MEASURE_UNITS`] in the demo's model.
+pub(crate) const MEASURE_SENDER: &str = "DEMO-TB-TX";
+// -- WP ATDEMO --
+/// Where [`MEASURE_UNITS`]' outputs are heard in the demo room: each
+/// output's distance to the microphone, ms (DEMO-TB-B's first speaker is the
+/// furthest, so the others are delayed to it).
+pub(crate) const MEASURE_ROOM_MS: [(&str, [f64; 2]); 3] = [
+    ("DEMO-TB-A", [3.0, 3.4]),
+    ("DEMO-TB-B", [5.37, 4.6]),
+    ("DEMO-TB-C", [4.2, 4.5]),
+];
+
+// -- WP ATDEMO --
+/// Give the hub the demo's simulated room over `units` (WP ATDEMO): the
+/// "Several units" step's simulated microphone hears their generators. Only
+/// these fakes: the hub hears nothing else.
+fn demo_room(
+    handle: &HubHandle,
+    units: Vec<(&str, dspi_transport::FakeRemote)>,
+) -> Result<(), Failure> {
+    let units = units
+        .into_iter()
+        .map(|(serial, remote)| dspi_hub::system::measure::DemoRoomUnit {
+            serial: serial.to_owned(),
+            remote,
+            acoustic_ms: MEASURE_ROOM_MS
+                .iter()
+                .find(|(s, _)| *s == serial)
+                .map_or_else(Vec::new, |(_, ms)| ms.to_vec()),
+        })
+        .collect();
+    handle
+        .set_system_measure_demo_room(units, 1)
+        .map_err(|e| Failure::Failed(format!("the demo room: {e}")))
+}
+
+// -- WP ATDEMO --
+/// [`MEASURE_UNITS`] in the demo's model: their own sender and room, two
+/// speakers each, all entered at 2 m (a tape measure's guess: the distance
+/// alignment then delays none of them, which is what the units hold before
+/// anything is applied, so Revert puts back exactly that; the measurement
+/// finds the room's real 2.37 ms).
+fn demo_room_model(value: &mut Value) {
+    if let Some(rooms) = value.get_mut("rooms").and_then(Value::as_array_mut) {
+        rooms.push(json!({"id": "stage", "name": "Measuring stage"}));
+    }
+    if let Some(senders) = value.get_mut("senders").and_then(Value::as_array_mut) {
+        senders.push(json!({"id": "tbtx", "name": "Time-base sender", "serial": MEASURE_SENDER}));
+    }
+    if let Some(units) = value.get_mut("units").and_then(Value::as_array_mut) {
+        for (i, (serial, ms)) in MEASURE_ROOM_MS.iter().enumerate() {
+            let speakers: Vec<Value> = (0..ms.len())
+                .map(|o| json!({"output": o, "distanceM": 2.0}))
+                .collect();
+            units.push(json!({"id": format!("T{i}"), "name": format!("Time base {}", serial.rsplit('-').next().unwrap_or(serial)),
+                "serial": serial, "room": "stage", "upstream": "tbtx", "speakers": speakers}));
+        }
+    }
 }
 
 // -- WP ATWEB --
@@ -4949,5 +5027,245 @@ mod tests_wp_secpair {
         assert_eq!(running.control.tls().pin, None);
         let w = begin_pairing(&running, true).unwrap();
         assert_eq!(running.control.pair_link(&w), None);
+    }
+}
+
+// -- WP ATDEMO --
+/// The demo hub's simulated room end to end (WP ATDEMO): `--demo hub --alink
+/// --with-measure-units` as shipped, a core on its DSPi Link session with the
+/// simulated microphone on, measuring DEMO-TB-A and DEMO-TB-B: the result,
+/// the summed check, apply (Admin), the verify, Revert; then a delay changed
+/// behind the session's back fails the verify, and Keep needs its second
+/// press. What the web's e2e shows (apps/web/test/e2e/measure_atweb.spec.ts).
+#[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects
+)]
+mod tests_wp_atdemo {
+    use super::*;
+    use dspi_core::{
+        DspiCore, MeasureOutput, MeasureRole, MeasureSystemApplyStage, MeasureSystemPhase,
+        MeasureSystemSetup, MeasureSystemState, MeasureSystemUnit,
+    };
+    use std::sync::Arc;
+
+    fn scratch(name: &str) -> PathBuf {
+        // Beside the test binary, in the target directory: never on tmpfs.
+        let dir = std::env::current_exe()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .join("wp_atdemo")
+            .join(name);
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn options(store: &Path, measure_units: bool) -> RunOptions {
+        let mut o = match parse(&["--open", "--alink"], true, Some(store.to_owned())).unwrap() {
+            HubCommand::Run(o) => o,
+            other => panic!("{other:?}"),
+        };
+        o.port = 0;
+        o.loopback = true;
+        o.keep_awake = false;
+        o.with_measure_units = measure_units;
+        o
+    }
+
+    fn connect(port: u16, serial: &str) -> Arc<DspiCore> {
+        let core = DspiCore::new();
+        core.link_connect(
+            format!("ws://127.0.0.1:{port}/dspi/v1"),
+            "wp-atdemo".into(),
+            "0".into(),
+            String::new(),
+            String::new(),
+        )
+        .unwrap();
+        let d = core
+            .link_devices()
+            .into_iter()
+            .find(|d| d.serial == serial)
+            .unwrap();
+        core.link_select_device(d.handle, d.serial).unwrap();
+        core.fetch_all().unwrap();
+        core
+    }
+
+    fn setup() -> MeasureSystemSetup {
+        MeasureSystemSetup {
+            units: ["DEMO-TB-A", "DEMO-TB-B"]
+                .iter()
+                .map(|s| MeasureSystemUnit {
+                    serial: (*s).into(),
+                    outputs: vec![MeasureOutput {
+                        output: 0,
+                        role: MeasureRole::Full,
+                        speaker: format!("{s}/1"),
+                        ..MeasureOutput::default()
+                    }],
+                })
+                .collect(),
+            passes: 3,
+            sweep_ms: 1_000,
+            gap_ms: 300,
+            capture_rate_hz: 48_000,
+            // A debug build's analysis between two status reads (as ATE2E's).
+            lease_ms: 5_000,
+            ..MeasureSystemSetup::default()
+        }
+    }
+
+    /// Tick the session (nothing pushed: the room is the microphone).
+    fn drive(core: &DspiCore, what: &str) -> MeasureSystemState {
+        let start = Instant::now();
+        loop {
+            let t = Instant::now();
+            let st = core.measure_system_tick();
+            if t.elapsed() > Duration::from_millis(700) {
+                eprintln!("{what}: a tick took {:?} ({:?})", t.elapsed(), st.phase);
+            }
+            if !st.active {
+                eprintln!("{what}: {st:?}");
+                return st;
+            }
+            assert!(start.elapsed() < Duration::from_secs(300), "{what}: {st:?}");
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    }
+
+    #[test]
+    fn wp_atdemo_the_demo_room_measures_applies_verifies_and_reverts() {
+        // No room without the measure units.
+        let store = scratch("plain");
+        let running = start(&options(&store, false), false).unwrap();
+        let core = connect(running.control.port(), "DEMO-ALINK-A");
+        assert!(!core.measure_system_sim_info().available);
+        drop(core);
+        drop(running);
+
+        let store = scratch("room");
+        let running = start(&options(&store, true), false).unwrap();
+        let port = running.control.port();
+        let a = connect(port, "DEMO-TB-A");
+        let b = connect(port, "DEMO-TB-B");
+        assert_eq!(a.link_hub_role(), "admin");
+        for c in [&a, &b] {
+            c.set_user_volume(-20.0).unwrap();
+        }
+        let info = a.measure_system_sim_set(true).unwrap();
+        assert!(info.available && info.on, "{info:?}");
+        let s = setup();
+        let checks = |s: &MeasureSystemSetup| {
+            vec![
+                a.measure_system_unit_check(s.clone(), s.units[0].clone())
+                    .unwrap(),
+                b.measure_system_unit_check(s.clone(), s.units[1].clone())
+                    .unwrap(),
+            ]
+        };
+        // A unit outside the room (another time base's, never the room's): refused.
+        let x = MeasureSystemSetup {
+            units: vec![
+                s.units[0].clone(),
+                MeasureSystemUnit {
+                    serial: MEASURE_OTHER.into(),
+                    ..s.units[1].clone()
+                },
+            ],
+            ..s.clone()
+        };
+        let other = connect(port, MEASURE_OTHER);
+        other.set_user_volume(-20.0).unwrap();
+        let xc = vec![
+            a.measure_system_unit_check(x.clone(), x.units[0].clone())
+                .unwrap(),
+            other
+                .measure_system_unit_check(x.clone(), x.units[1].clone())
+                .unwrap(),
+        ];
+        assert!(a.measure_system_start(x, xc).is_err());
+        assert_eq!(running.handle.system_measure_sessions(), 0);
+
+        // Measure.
+        let st = a.measure_system_start(s.clone(), checks(&s)).unwrap();
+        assert!(st.active, "{st:?}");
+        let st = drive(&a, "measure");
+        assert_eq!(st.phase, MeasureSystemPhase::Done, "{st:?}");
+        let r = a.measure_system_result().unwrap();
+        eprintln!("arrivals {:?}\nreasons {:?}", r.arrivals, r.reasons);
+        assert!(r.timing_reliable, "{:?}", r.reasons);
+        let arr = |serial: &str| r.arrivals.iter().find(|x| x.serial == serial).unwrap();
+        assert!(
+            arr("DEMO-TB-A").offered && arr("DEMO-TB-B").offered,
+            "{r:?}"
+        );
+        // DEMO-TB-A's first speaker is 2.37 ms nearer than DEMO-TB-B's.
+        let d = arr("DEMO-TB-A").arrival_us - arr("DEMO-TB-B").arrival_us;
+        assert!((d + 2_370.0).abs() < 5.0, "{d}");
+        let p = a.measure_system_proposal().unwrap();
+        assert!(p.sum_check_needed, "{p:?}");
+
+        // The summed check, then apply, verify and Revert.
+        a.measure_system_sum_check(checks(&s)).unwrap();
+        let st = drive(&a, "sum check");
+        assert_eq!(st.phase, MeasureSystemPhase::Done, "{st:?}");
+        let p = a.measure_system_proposal().unwrap();
+        assert!(p.transitions.iter().all(|t| t.checked && t.passed), "{p:?}");
+        assert!(p.offered && p.may_apply, "{p:?}");
+        let applied = a.measure_system_apply(p.id).unwrap();
+        assert_eq!(
+            applied.stage,
+            MeasureSystemApplyStage::Applied,
+            "{applied:?}"
+        );
+        assert!(applied.write_failures.is_empty(), "{applied:?}");
+        for c in [&a, &b] {
+            c.fetch_all().unwrap();
+            eprintln!("applied delay {:?}", c.get_state().output_delay_ms);
+        }
+        a.measure_system_verify(checks(&s)).unwrap();
+        drive(&a, "verify");
+        eprintln!("verify {:?}", a.measure_system_applied());
+        let v = a.measure_system_applied();
+        assert_eq!(v.verified, Some(true), "{v:?}");
+        let r = a.measure_system_revert().unwrap();
+        assert_eq!(r.stage, MeasureSystemApplyStage::Reverted, "{r:?}");
+        // Every unit's delay as filed (none before the apply).
+        for c in [&a, &b] {
+            c.fetch_all().unwrap();
+            assert!(c.get_state().output_delay_ms[0].abs() < 0.0015, "{r:?}");
+        }
+
+        // Applied again, then DEMO-TB-B's delay moved by 5 samples behind
+        // the session's back: the verify fails; Keep is refused once.
+        let applied = a.measure_system_apply(p.id).unwrap();
+        assert_eq!(
+            applied.stage,
+            MeasureSystemApplyStage::Applied,
+            "{applied:?}"
+        );
+        b.fetch_all().unwrap();
+        let now = b.get_state().output_delay_ms[0];
+        b.set_output_delay(0, now + 5.0 / 48.0).unwrap();
+        a.measure_system_verify(checks(&s)).unwrap();
+        drive(&a, "verify (a delay moved)");
+        let v = a.measure_system_applied();
+        assert_eq!(v.verified, Some(false), "{v:?}");
+        assert!(a.measure_system_keep().is_err(), "the first Keep");
+        assert_ne!(
+            a.measure_system_applied().stage,
+            MeasureSystemApplyStage::Kept
+        );
+        std::thread::sleep(Duration::from_millis(1_100));
+        let k = a.measure_system_keep().unwrap();
+        assert_eq!(k.stage, MeasureSystemApplyStage::Kept, "{k:?}");
+        drop(running);
+        let _ = std::fs::remove_dir_all(&store);
     }
 }

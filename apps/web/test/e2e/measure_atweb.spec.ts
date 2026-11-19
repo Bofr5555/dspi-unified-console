@@ -9,6 +9,10 @@
 // chosen before anything plays, the plan and its run, Stop reaching every unit, each named notice
 // ("needs the DSPi hub", "these units do not share a clock", "unit lost lock", "needs N runs",
 // "this S/PDIF source does not carry a DSPi time base"), Control measuring, and 375 px.
+// -- WP ATDEMO -- the demo hub's room (its simulated microphone, a core-side capture) measures
+// too: the result, the proposal, the summed check, Apply not offered to Control and done for
+// Admin, the verify, Revert, and the two-step Keep after a verify a moved delay fails (the
+// "ATDEMO" tests below). The tests above measure with the browser's microphone (the room off).
 
 import { spawn, type ChildProcess } from "node:child_process";
 import { createInterface } from "node:readline";
@@ -141,8 +145,14 @@ async function onUnit<T>(page: Page, hub: OwnHub, serial: string, calls: [string
 
 const lowerVolume = (page: Page, hub: OwnHub, serial: string) => onUnit(page, hub, serial, [["write", { path: "vol.user", value: { float: -20 } }]]);
 
-/** Choose the listening position, units `serials` (each with its first output). */
-async function chooseGroup(tab: Locator, serials: string[]) {
+/**
+ * Choose the listening position, units `serials` (each with its first output). -- WP ATDEMO --
+ * `sim`: the demo hub's simulated microphone (the default it offers), else the browser's.
+ */
+async function chooseGroup(tab: Locator, serials: string[], sim = false) {
+  const simMic = tab.getByRole("checkbox", { name: "Simulated microphone across units" });
+  await expect(simMic).toBeChecked();
+  await simMic.setChecked(sim);
   await tab.getByLabel("Placement across units").selectOption("listeningPosition");
   for (const s of serials) {
     await tab.getByRole("checkbox", { name: `Measure ${s}` }).check();
@@ -329,4 +339,110 @@ test("ATWEB: the Several units step at 375 px: no sideways scroll", async ({ pag
   } finally {
     hub.child.kill();
   }
+});
+
+// -- WP ATDEMO --
+// The demo hub's simulated microphone (`--with-measure-units` gives the hub a room that hears its
+// demo units' generators; nothing plays anywhere): a run that measures. DEMO-TB-A and DEMO-TB-B
+// (DEMO-TB-C re-anchors every 15 s). The hub's room has DEMO-TB-A's first speaker 2.37 ms nearer
+// than DEMO-TB-B's. Chromium only: the browser's audio plays no part, and each run is a minute.
+test.describe("ATDEMO: measuring several demo units with the simulated microphone", () => {
+  test.skip(!process.env.DSPI_TERM, "needs uconsole (DSPI_TERM)");
+  test.skip(({ browserName }) => browserName !== "chromium", "one browser: the core and the hub do the work");
+  test.use({ permissions: ["microphone"] });
+  let hub: OwnHub | undefined;
+  test.afterEach(() => {
+    hub?.child.kill();
+    hub = undefined;
+  });
+
+  /** Measure A and B with the simulated microphone until the result shows. */
+  async function measureWithRoom(page: Page, own: OwnHub, pair: boolean): Promise<Locator> {
+    // The volume lowered on each unit first (with this page's pairing), then the console opened
+    // again so its own core reads it.
+    if (pair) await openUnit(page, own, A);
+    else await page.goto(`http://127.0.0.1:${own.port}/console/`);
+    for (const s of [A, B]) await lowerVolume(page, own, s);
+    const session = await openUnit(page, own, A, false);
+    const tab = await severalUnits(session, page);
+    await chooseGroup(tab, [A, B], true);
+    await tab.getByLabel("Sweep length across units").fill("1");
+    await tab.getByLabel("Passes across units").selectOption("3");
+    await tab.getByRole("button", { name: "Measure the units" }).click();
+    const banner = tab.getByRole("status", { name: "Measuring across units" });
+    await expect(banner).toBeVisible({ timeout: 20_000 });
+    await expect(banner.getByLabel("Microphone across units")).toHaveText("Simulated microphone");
+    await expect(banner).toHaveCount(0, { timeout: 150_000 });
+    // The result: both arrivals offered, the delay across units within 10 us of the room's.
+    const result = tab.getByRole("region", { name: "Result across units" });
+    await expect(result.getByLabel("Timing across units")).toContainText("The timing of every run was reliable.");
+    const arrivals = result.getByRole("table", { name: "Arrivals" });
+    for (const s of [A, B]) await expect(arrivals.getByRole("row", { name: new RegExp(s) })).toContainText("Yes");
+    const delay = result.getByRole("table", { name: "Delays across units" }).getByRole("row").nth(1);
+    const us = Number(/^(-?[\d.]+) µs/.exec((await delay.getByRole("cell").nth(2).textContent()) ?? "")?.[1] ?? "NaN");
+    expect(Math.abs(Math.abs(us) - 2370), `${await delay.textContent()}`).toBeLessThan(10);
+    // The proposal: the arrivals to write, the summed check still to run.
+    const proposal = tab.getByRole("region", { name: "Proposal across units" });
+    await expect(proposal.getByRole("list", { name: "Arrivals to write" })).toContainText(A);
+    await proposal.getByRole("button", { name: "Run the summed check" }).click();
+    await expect(proposal.getByRole("list", { name: "Transitions" })).toContainText("the summed run agrees with the prediction", { timeout: 150_000 });
+    return tab;
+  }
+
+  test("ATDEMO: Control measures with the simulated microphone: the result, the proposal, the summed check; Apply needs Admin", async ({ page, viewport }) => {
+    test.skip(!desktop(viewport?.width), "desktop width");
+    test.setTimeout(300_000);
+    const errors = errorsOf(page);
+    hub = await measureHub(["--pair"], true);
+    const tab = await measureWithRoom(page, hub, true);
+    const proposal = tab.getByRole("region", { name: "Proposal across units" });
+    await expect(proposal.getByRole("button", { name: "Apply the alignment" })).toHaveCount(0);
+    await expect(proposal.getByLabel("Why not applied")).toHaveAttribute("data-key", "measure.system.admin");
+    await expect(proposal.getByRole("button", { name: "Revert" })).toHaveCount(0);
+    expect(errors).toEqual([]);
+  });
+
+  test("ATDEMO: Admin applies, verifies and reverts; a delay moved after the apply fails the verify and Keep asks twice", async ({ page, viewport }) => {
+    test.skip(!desktop(viewport?.width), "desktop width");
+    test.setTimeout(420_000);
+    const errors = errorsOf(page);
+    hub = await measureHub(["--open", "--forget-clients"]);
+    const tab = await measureWithRoom(page, hub, false);
+    const proposal = tab.getByRole("region", { name: "Proposal across units" });
+    const applied = proposal.getByLabel("Applied alignment");
+    const delays = async () => {
+      const out: number[] = [];
+      for (const s of [A, B]) out.push((await onUnit<{ state: { outputDelayMs: number[] } }>(page, hub!, s, [["state", undefined]]))[0]!.state.outputDelayMs[0]!);
+      return out;
+    };
+    const filed = await delays();
+    // Apply, then the verify with the new delays: it agrees.
+    await proposal.getByRole("button", { name: "Apply the alignment" }).click();
+    await expect(applied.getByRole("status")).toContainText("Applied: the summed runs are measured again");
+    const [a, b0] = await delays();
+    expect(Math.abs(a! - b0! - 2.37), `DEMO-TB-A delayed to DEMO-TB-B: ${a} and ${b0} ms`).toBeLessThan(0.02);
+    await applied.getByRole("button", { name: "Verify" }).click();
+    await expect(applied.getByRole("status")).toContainText("Verified: the summed runs agree with the new delays.", { timeout: 150_000 });
+    // Revert: the installation and the units as filed.
+    await applied.getByRole("button", { name: "Revert" }).click();
+    await expect(proposal.getByRole("status").last()).toContainText("Reverted");
+    const back = await delays();
+    for (const [i, v] of back.entries()) expect(Math.abs(v - filed[i]!), "as filed").toBeLessThan(0.0015);
+    // Applied again; DEMO-TB-B's delay moved by 5 samples behind the session's back.
+    await proposal.getByRole("button", { name: "Apply the alignment" }).click();
+    await expect(applied.getByRole("status")).toContainText("Applied:");
+    const [, b] = await delays();
+    await onUnit(page, hub, B, [["write", { path: "out.delay", indices: [0], value: { float: b! + 5 / 48 } }]]);
+    await applied.getByRole("button", { name: "Verify" }).click();
+    await expect(applied.getByRole("status")).toContainText("did not confirm", { timeout: 150_000 });
+    // Keep: refused once, the core's words in a second question; only a press 1 s later keeps.
+    await applied.getByRole("button", { name: "Keep" }).click();
+    const ask = tab.getByRole("alertdialog", { name: "Keep anyway?" });
+    await expect(ask).toBeVisible();
+    await expect(ask.getByRole("button", { name: /^Keep anyway/ })).toBeDisabled();
+    await expect(ask.getByRole("button", { name: "Keep anyway" })).toBeEnabled({ timeout: 5_000 });
+    await ask.getByRole("button", { name: "Keep anyway" }).click();
+    await expect(proposal.getByRole("status").last()).toHaveText("Kept.");
+    expect(errors).toEqual([]);
+  });
 });
