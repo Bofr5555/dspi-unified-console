@@ -350,9 +350,11 @@ The result gives each output's curve, as for one unit, and the **delay between t
   unreliable".** In simulation, runs passed only when the wander was about a tenth of what we measured on that
   microphone. Use a capture path with a steadier clock, such as an analogue measurement microphone on an audio
   interface.
-- **The outputs must be heard within about 85 ms of each other.** An output heard more than that after the run's first
-  output cannot be measured in the same run, and nothing of that group is offered. This can happen with five or more
-  USB-direct units, or with a large output delay already set.
+- **Units that play later are allowed for, up to a second.** The console knows how much later each unit plays (its
+  output delays, and on USB-direct each stream's start offset) and spaces the sweeps and the listening for it. A unit
+  more than a second later than the others is refused before anything plays: check its alignment. An output heard more
+  than about 85 ms after where the console expects it (a speaker very far away) cannot be measured in that run, and
+  nothing of that group is offered.
 
 ### 10.4 Apply, verify, Keep and Revert
 

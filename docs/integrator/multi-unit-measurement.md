@@ -229,14 +229,20 @@ clock (an analogue measurement microphone on an audio interface) is the remedy t
 sweeps in one deconvolution, so the wander is common to both) is in PLAN-AT's "Later", to be pulled forward if the
 owner's microphone trips the gate on hardware.
 
-**The usable timeline spread is about 85 ms.** The analysis keeps each response from 100 ms before the run's first
-arrival to 100 ms after (its search span, the same whatever gap is set), less the response's own window. An output heard
-more than about 85 ms after the run's first output (its play-out plus the output delay in effect) is cut off: it is "heard
-too long after the run's first output for the gap between sweeps", and **nothing of that group is offered**, since the
-cut output may be the reference. 80 ms apart is still exact. This is reachable on USB-direct, where the engine puts the
-streams' start offsets (about 21 ms per unit on the fakes) into the output delays: five or more units, or a large output
-delay. The hub's own bound for the parts of a summed run (`MAX_SUM_SPREAD_MS`, 1 s) is far wider; the 85 ms limit is the
-analysis'. The real start offsets on hardware are not known yet (ATHIL notes them).
+**Each unit's expected lateness is planned for (WP ATLATE).** The analysis keeps each response from 100 ms before
+where it looks for the run's first arrival to 100 ms after (its search span, the same whatever gap is set), less the
+response's own window. The planner reads the engine's terms before the walked run (each unit's play-out of a domain
+sample and its outputs' `out.delay`, which on USB-direct hold the streams' start offsets, about 21 ms per unit on the
+fakes) and tells the analysis each unit's expected lateness (`interleave_late`, `SystemSchedule::with_lateness`): a
+segment after a unit heard later starts that much later again, so no cycle is heard closer than a sweep and its gap to
+the next, and the analysis looks for each unit's cycles that much later. Units heard up to 1 s apart
+(`MAX_LATENESS_MS`) are measured whole (150 ms apart: within 0.1 us in simulation); more than that is a model or
+alignment fault and the run is refused before it plays, the unit named. While `system.status` is rate limited the run
+waits up to 5 s for the terms; a unit whose terms cannot be read is expected at 0 and its arrivals are not offered anyway.
+What the planner cannot know (a speaker tens of metres away, a wrong term) still meets the old limit: an output heard more
+than about 85 ms after where it was expected is cut off, "heard too long after the run's first output for the gap between
+sweeps", and **nothing of that group is offered**. The hub's own bound for the parts of a summed run
+(`MAX_SUM_SPREAD_MS`, 1 s) is the same size. The real start offsets on hardware are not known yet (ATHIL notes them).
 
 ## 8. The gate and the aborts
 
@@ -411,8 +417,8 @@ Everything above is proven on fakes, simulations and the firmware's unit tests o
   error stays silent, a queued op is cancelled across a source restart; then HS1 (the latency stays `D + constant` across
   power cycles, source restarts and cable pulls, at 48 and 96 kHz) and HS2 (two followers).
 - The two-unit skew (H1, the number the scheme rests on), the generator at one T on two units (H2), the K340's arm lead
-  (H7: 250 ms clean, a short lead refused), the phase error under load (H6), and the real USB-direct start offsets against
-  the 85 ms spread of section 7.
+  (H7: 250 ms clean, a short lead refused), the phase error under load (H6), and the real USB-direct start offsets (the
+  lateness the planner plans for, section 7).
 - Part B: one system measurement with the web or Qt client on two units, a cable pulled mid-run, an Admin apply with the
   summed check, Revert; or, with a wandering microphone, "timing unreliable" with the wander shown.
 
@@ -423,8 +429,6 @@ Everything above is proven on fakes, simulations and the firmware's unit tests o
 - Overlapped starts (section 7), several domains in one group, an S/PDIF relay (mode 3), ADAT, I2S/TDM and PTP time bases,
   cross-unit polarity, crossover and EQ proposals, the ops on RP2040 (PLAN-AT "Later").
 - Scenes at F on the S/PDIF time base (the hub applies S/PDIF units' scenes at once).
-- The planner does not yet tell the analysis each output's expected lateness, which would lift the 85 ms spread (review
-  AT-D part 1, for the coordinator).
 
 ## Reference
 
