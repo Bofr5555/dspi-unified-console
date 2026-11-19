@@ -548,7 +548,7 @@ cargo test -p dspi-transport --lib alink && cargo clippy -p dspi-measure -p dspi
 
 ### Wave FW-A: the contract on paper (firmware repo, docs only)
 
-**FWTB0: The time-base contract, ops 9/10, the S/PDIF carriage and block, the time-base block (docs).** [TODO] Size
+**FWTB0: The time-base contract, ops 9/10, the S/PDIF carriage and block, the time-base block (docs).** [DONE 2026-11-19: `bofr-main` `e18e098`, review fwtb0 `dd4ce4b`] Size
 1.25. Wave FW-A. **Owns:** in `Documentation/Features/`: `alink_protocol_spec.md` (new section "Time bases" with C1-C6,
 the state table, the transport table and the conformance checklist; new section "Carriage on S/PDIF"; 6.3 validity
 "0..10"; 6.4 op table rows 9, 10), `extension_channel_spec.md` (1.2 range rows `0x8020-0x802F` S/PDIF time base,
@@ -567,7 +567,7 @@ and USB 44.1 kHz have no time base. **Deps:** this plan accepted. Short Fable re
 
 ### Wave FW-B: the ops on the line and USB; the S/PDIF carriage
 
-**FWTB1: Ops 9 and 10, `EXT_SIGGEN_TIMELINE`, `EXT_TIME_BASE` and 0xE4 on the line and on USB.** [TODO] Size 5.5. Wave
+**FWTB1: Ops 9 and 10, `EXT_SIGGEN_TIMELINE`, `EXT_TIME_BASE` and 0xE4 on the line and on USB.** [DONE 2026-11-19: `bofr-main` `97929fd`, review/fwbc `957a7c7`; `bofr-main` `4f7114c` (RAM budget)] Size 5.5. Wave
 FW-B. **Owns:** `firmware/DSPi/alink/alink_codec.{c,h}` (op constants, validity), `tools/alink/` (the Python twin's op
 table) and `firmware/tests/alink_vectors.json` (regenerated), `alink_input.c` (`apply_exec` ops 9/10, the line's
 disturbance counter and 0xE4), `alink_usb/alink_usb_core.c` (the same on USB; op 9 refused with time base 2),
@@ -595,7 +595,7 @@ event and `t - output_frames` is identical over 1000 reads in a locked host simu
 with the merge rule; the sender relays op 9 in the superframe and a v1 decoder vector with op 9 is still rejected as
 invalid; K340 `.data` delta at most 512 bytes, RP2040 unchanged; RAM check PASS. **Deps:** FWTB0.
 
-**FWSP1: The S/PDIF carriage: codec, vectors, user bits in and out.** [TODO] Size 3. Wave FW-B. **Owns:** new
+**FWSP1: The S/PDIF carriage: codec, vectors, user bits in and out.** [DONE 2026-11-19: `bofr-main` `4ddc4fe`, review/fwbc `957a7c7`; `bofr-main` `4f7114c`] Size 3. Wave FW-B. **Owns:** new
 `firmware/DSPi/alink/alink_spdif_codec.{c,h}` (portable C11 like `alink_codec`: pack and unpack the 48-byte superframe,
 validity in the line's order plus class 0x10 and F mod 192, the user-bit order, **its own allowed-op mask** from FWTB0's
 numbers, not `alink_codec.h`'s (R9b)), new `tools/alink/alink_spdif.py` (the Python twin), new
@@ -616,7 +616,7 @@ RAM check PASS. **Deps:** FWTB0. (Disjoint from FWTB1: different files; CMake li
 
 ### Wave FW-C: the S/PDIF roles; the generator simulations
 
-**FWSP2: S/PDIF source and follower on the time base.** [TODO] Size 4.75. Wave FW-C. **Owns:** new
+**FWSP2: S/PDIF source and follower on the time base.** [DONE 2026-11-19: `bofr-main` `4e495e7`, review/fwbc fixes `957a7c7`; `bofr-main` `4f7114c`] Size 4.75. Wave FW-C. **Owns:** new
 `firmware/DSPi/alink_spdif.{c,h}` (the roles: the source's counter, epoch and apply queue on time base 3, the superframes
 it fills into FWSP1's table four blocks ahead, `EXT_ALINK_SPDIF_CTRL` with the 896-frame minimum lead; the follower's superframe acceptance, `F_arr` from the DMA
 position, the coast rule of R2d, the `alink_phase` driving: anchor, verify, corrections, PI, holdover, re-anchor, lock
@@ -637,7 +637,7 @@ source-to-follower latency identical (to within 0.1 frame) after a follower relo
 re-anchor; mode 0 is byte-identical to today's S/PDIF input (a regression run of the existing S/PDIF tests); K340
 `.data` delta at most 768 bytes; RAM check PASS. **Deps:** FWTB1, FWSP1.
 
-**FWTB3: The generator on the time base, simulated (line, fan-out, USB).** [TODO] Size 1.25. Wave FW-C. **Owns:**
+**FWTB3: The generator on the time base, simulated (line, fan-out, USB).** [DONE 2026-11-19: `bofr-main` `5ccff2a`, review/fwbc `957a7c7`; `bofr-main` `4f7114c`] Size 1.25. Wave FW-C. **Owns:**
 `tools/alink_phase_sim/`, `tools/alink_usb_sim/` (two and four units with generators started at one T; the simulation
 renders each unit's output samples) and new `tools/alink/siggen_sync_bench.py` (the bench driver ATHIL uses: schedules op 9
 on several units over USB vendor requests, reads the timelines; runs against `midi_ctrl`'s fake in its tests).
@@ -650,7 +650,7 @@ One Fable review for FW-B and FW-C together (1.0).
 
 ### Wave AT-A: the maths and the simulated world (pure; console)
 
-**ATSYS: The analyser over segments.** [TODO] Size 3.5. Wave AT-A. **Owns:** `crates/dspi-measure/src/system.rs` (additive
+**ATSYS: The analyser over segments.** [DONE 2026-11-19: main `11362bb3`, review/atab] Size 3.5. Wave AT-A. **Owns:** `crates/dspi-measure/src/system.rs` (additive
 below the seam's types) and new `crates/dspi-measure/src/system/` (analysis, gate inputs, anchor chaining, tests),
 additive `pub(crate)` visibility in `ir.rs` under a marker where the system analyser reuses P5's per-cycle arrival,
 deconvolution and averaging, new `stimulus::check_config_bounds` (the static S-rules on a `SiggenConfig`'s fields, pure,
@@ -671,7 +671,7 @@ within the sum of their residuals, and a moved microphone (anchor spread 3 dB) r
 public function; `cargo test -p dspi-measure`. **Deps:** this plan's seam; P5-C2 (P5TUNE, P5ARRIVAL) merged. (If the uncertainty work overruns, the anchor chaining
 may move to ATE2E's batch as a follow-up; the coordinator decides at the AT-A review.)
 
-**ATSIM: The multi-unit simulated world.** [TODO] Size 2. Wave AT-A. **Owns:** new `crates/dspi-measure/src/sim/system.rs`
+**ATSIM: The multi-unit simulated world.** [DONE 2026-11-19: main `11362bb3`, review/atab] Size 2. Wave AT-A. **Owns:** new `crates/dspi-measure/src/sim/system.rs`
 (one `mod` line in `sim.rs` under a marker). **Implements:** a `SystemWorld`: N units, each with its outputs, drivers and
 paths (P5SIM's types), a play-out offset (D and post-alink latency), a lock jitter (white plus a slow wander), a per-unit
 start error in samples, faults (a unit that never starts, a holdover or re-anchor at a given T, a whole-sample correction
@@ -684,7 +684,7 @@ appears in the ground truth at its T; memory bounded by P5SIM's constants; `carg
 
 ### Wave AT-B: the wire in the console, the fakes
 
-**ATPROTO: Codecs and session I/O for the new wire.** [TODO] Size 2. Wave AT-B. **Owns:**
+**ATPROTO: Codecs and session I/O for the new wire.** [DONE 2026-11-19: main `11362bb3`, review/atab] Size 2. Wave AT-B. **Owns:**
 `crates/dspi-proto/src/ext/timebase.rs` (codecs below the seam's constants), `ext/alink.rs` (the superframe validity
 to 10, `ApplyOp::MAX` to 10 with the core's typed calls refusing op 9 with time base 2, marker; the variants are the
 seam's), `ext.rs` (`name()` rows for 0x8020-0x8031, marker), new
@@ -697,7 +697,7 @@ locally (not listed) with nothing sent; `proptest_*` for every decoder; `cargo t
 **Deps:** FWTB0 merged (and its review), PG-B2 merged (PGFAKE1, PGADAPT). (Disjoint from ATFAKE: the fakes use the
 seam's `ApplyOp` variants and constants, never ATPROTO's codecs; R9a.)
 
-**ATFAKE: Fake units on one time base.** [TODO] Size 2.5. Wave AT-B. **Owns:** new
+**ATFAKE: Fake units on one time base.** [DONE 2026-11-19: main `11362bb3`, review/atab] Size 2.5. Wave AT-B. **Owns:** new
 `crates/dspi-transport/src/fake/timebase.rs` (and `fake/timebase/`), additive lines under markers in `fake.rs` (one `mod`
 line, one `FakeOptions` field `time_base: Option<FakeTimeBaseHandle>`), `fake/alink.rs`, `fake/alink_usb.rs` (their
 counters read the shared time base when one is set; the superframe broadcast reaches every fake on it),
@@ -739,7 +739,7 @@ One Fable review for AT-A and AT-B together (0.75).
   refused "timing unreliable" (0 of 30 seeds pass P5's gate). Safe, but "overlapped starts" (Later) is probably needed
   before ATHIL Part B with that microphone; the coordinator decides after the Xonar loop-back test.
 
-**ATHUB: The hub family `system.measure.*`.** [TODO] Size 4. Wave AT-C. **Owns:** new
+**ATHUB: The hub family `system.measure.*`.** [DONE 2026-11-19: main `915d1a65`, review/atc] Size 4. Wave AT-C. **Owns:** new
 `crates/dspi-hub/src/system/measure.rs` (and `system/measure/`: sessions, scheduler tick, dead-man, aborts, the USB
 domain), one `mod` line in `system/mod.rs`, `crates/dspi-hub/src/usb.rs` (keep each device's
 `nusb` `DeviceInfo::bus_id()` from the enumeration, marker), `server.rs` (dispatch and role lines for the
@@ -761,7 +761,7 @@ ready (the abort cleared the fresh-config flag on the fakes); the broadcast stop
 and send `system.measure.aborted`; an upstream-shaped client without the cap gets `unsupported`; tests on G1b and G2b
 fakes; `cargo test -p dspi-hub`. **Deps:** AT-A, AT-B.
 
-**ATHUBM: The hub's system model: the S/PDIF transport and measured arrivals.** [TODO] Size 2. Wave AT-C. **Owns:**
+**ATHUBM: The hub's system model: the S/PDIF transport and measured arrivals.** [DONE 2026-11-19: main `915d1a65`, review/atc] Size 2. Wave AT-C. **Owns:**
 `crates/dspi-hub/src/system/{model,align,alarms,run}.rs` (additive under markers), `docs/integrator/audio-link.md`
 (S/PDIF units, measured arrivals). **Implements:** `UnitTransport::Spdif` with `upstream` = the source unit's id and a
 `spdif_source` flag on a unit; the align engine writes `EXT_ALINK_SPDIF` (mode, D, `on_lock_error`) on followers and the
@@ -774,7 +774,7 @@ within every follower's limits, measured arrivals giving the expected `out.delay
 unchanged), distance delays where no measurement exists; an existing model JSON loads unchanged; `cargo test -p
 dspi-hub`. **Deps:** AT-B.
 
-**ATCORE: The client's system measurement session.** [TODO] Size 5. Wave AT-C. **Owns:** new
+**ATCORE: The client's system measurement session.** [DONE 2026-11-19: main `915d1a65`, review/atc] Size 5. Wave AT-C. **Owns:** new
 `crates/dspi-core/src/measure/system.rs` (and `measure/system/`), one `mod` line in `measure.rs` (marker), new
 `crates/dspi-core/src/measure/tests_wp_atcore.rs`, bindings (`dspi-ffi`, `dspi-capi`, `dspi-wasm`, markers), one notices
 block, the additive `system` block in `crates/dspi-measure/src/doc.rs` (marker). It uses the seam's
@@ -798,7 +798,7 @@ One Fable review for AT-C (0.75); the full gate after AT-C.
 
 ### Wave AT-D: end to end, the clients, the docs
 
-**ATE2E: Simulated multi-unit worlds end to end.** [TODO] Size 1.75. Wave AT-D. **Owns:** new
+**ATE2E: Simulated multi-unit worlds end to end.** [DONE 2026-11-19: main `1c5ac8ec`, review/atd1] Size 1.75. Wave AT-D. **Owns:** new
 `crates/dspi-core/tests/wp_ate2e_system.rs`, new `crates/dspi-measure/src/tests_wp_ate2e.rs` (one `mod` line, marker).
 **Implements** the study's 4.3 list against the real hub in-process, ATFAKE's units and ATSIM's world rendering the
 capture from the starts the fakes recorded: two and four units with different D, one behind a fan-out: inter-unit delays
@@ -811,7 +811,7 @@ within 3x its reported uncertainty and within 10 us of the truth, and every othe
 an anchor; an S/PDIF source with two followers; every case on G1b and G2b fakes. **Done when:** all of those pass;
 `cargo test -p dspi-core --test wp_ate2e_system` and `-p dspi-measure --features sim`. **Deps:** AT-C.
 
-**ATSUMOFF: A summed run starts its parts apart.** [DONE] Size 0.5. Wave AT-D (follow-up to ATE2E's finding for
+**ATSUMOFF: A summed run starts its parts apart.** [DONE 2026-11-19: main `1c5ac8ec`, review/atd1] Size 0.5. Wave AT-D (follow-up to ATE2E's finding for
 ATCORE). **Owns:** `crates/dspi-core/src/measure/system/` (proposal.rs `sum_starts`, `SumJob.starts`; session.rs
 `sum_run`), additively `SystemSchedule::summed_at`, `MAX_SUM_SPREAD_MS` and `RunRequest.summed` in the seam
 (`crates/dspi-measure/src/system.rs`, `system/messages.rs`), the hub's `check_summed` (`crates/dspi-hub/src/system/measure/`),
@@ -833,7 +833,9 @@ order, at most `MAX_SUM_SPREAD_MS` (1 s) from the first start to the last, the r
 `summed` the rules are unchanged (an older hub refuses the overlap: fail closed). **Done when:** ATE2E's
 `wp_ate2e_usb_direct_three_units` passes the sum check, apply, verify and Revert; a wrong delay on USB-direct fails the
 sum check judged (`wp_atsumoff_usb_direct_a_wrong_delay_fails_the_sum_check`); checks for dspi-core, dspi-hub,
-dspi-measure. **Deps:** ATE2E.
+dspi-measure. **Deps:** ATE2E. *Limit (review AT-D1 F2; ATDOC):* the walked analysis keeps 100 ms either side of
+the run's first arrival, so the usable timeline spread is about 85 ms, far less than `MAX_SUM_SPREAD_MS`; an output heard
+later is not offered (fail closed).
 
 **ATWEB: Web: measuring several units.** [TODO] Size 1.5. Wave AT-D. **Owns:** new
 `apps/web/src/screens/measure/system/` (an "alignment group across units" step in P5WMS's measure screen through its
