@@ -1183,7 +1183,10 @@ impl SysSession {
             .map(|(_, l)| *l)
             .max()
             .map_or(0, |l| {
-                let ms = l.saturating_mul(1000) / u64::from(self.plan.rate_hz.max(1));
+                let ms = l
+                    .saturating_mul(1000)
+                    .checked_div(u64::from(self.plan.rate_hz))
+                    .unwrap_or(0);
                 u32::try_from(ms.saturating_add(1)).unwrap_or(u32::MAX)
             })
             .min(dspi_measure::system::MAX_LATENESS_MS.saturating_add(1));
