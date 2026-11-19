@@ -127,6 +127,15 @@ pub struct SystemOutput {
     /// `None` with fewer than two clear passes. One standard error from few
     /// passes: an error of three of it is not rare with three passes.
     pub uncertainty_us: Option<f64>,
+    // -- WP ATLATE --
+    /// What [`SystemOutput::arrival_ms`] and [`SystemOutput::onset_ms`] hold
+    /// beyond the analysed response's own timing, ms: the unit's expected
+    /// lateness ([`SystemSchedule::with_lateness`]) as the analysis looked
+    /// for it, less what the run's earliest output's arrival then held (so it
+    /// may be negative). 0 without lateness. The response
+    /// ([`SystemAnalysis::output_ir`]) is on the analysis' timeline, so it
+    /// is this much early against the arrival.
+    pub lateness_ms: f64,
 }
 
 impl SystemOutput {
@@ -235,6 +244,13 @@ struct Layout {
     t_ref: u64,
     /// A single segment: its walk is the run's (status polls go to P5).
     single: Option<UnitIndex>,
+    // -- WP ATLATE --
+    /// Per key (walk order): how much later than the run's first unit its
+    /// unit is expected (negative: earlier), domain samples; its cycles are
+    /// laid out that much later. The first unit's cycles are where they are
+    /// played, so the walk's first cycle is at its START as without
+    /// lateness (the time pin's search, the status polls).
+    late: Vec<i64>,
 }
 
 fn invalid(m: impl Into<String>) -> MeasureError {
@@ -304,6 +320,7 @@ fn layout(schedule: &SystemSchedule) -> Result<Layout, MeasureError> {
             keys,
             t_ref,
             single: None,
+            late: vec![0; n],
         });
     }
     if let [only] = segments {
@@ -321,11 +338,13 @@ fn layout(schedule: &SystemSchedule) -> Result<Layout, MeasureError> {
                 )
             })
             .collect();
+        let n = only.schedule.outputs().len();
         return Ok(Layout {
             walk: only.schedule.clone(),
             keys,
             t_ref,
             single: Some(only.unit),
+            late: vec![0; n],
         });
     }
     let mut keys: Vec<(u8, Vec<UnitOutput>)> = Vec::new();
@@ -333,8 +352,22 @@ fn layout(schedule: &SystemSchedule) -> Result<Layout, MeasureError> {
     let mut cycles: Vec<Cycle> = Vec::new();
     let period = first.schedule.period_samples();
     let mut last_start: Option<u64> = None;
+    // -- WP ATLATE -- each unit's cycles where its sound is expected, against
+    // the run's first unit.
+    let rel = |u: UnitIndex| {
+        i64::try_from(schedule.lateness_of(u))
+            .unwrap_or(i64::MAX)
+            .saturating_sub(i64::try_from(schedule.lateness_of(first.unit)).unwrap_or(i64::MAX))
+    };
     for s in segments {
-        let off = s.start.saturating_sub(t_ref);
+        let off = i128::from(s.start.saturating_sub(t_ref)).saturating_add(i128::from(rel(s.unit)));
+        let off = u64::try_from(off).map_err(|_| {
+            invalid(format!(
+                "unit {} is expected so much earlier than the run's first unit that it would be \
+                 heard before the run",
+                s.unit.0
+            ))
+        })?;
         for c in s.schedule.cycles() {
             let uo = UnitOutput {
                 unit: s.unit,
@@ -381,11 +414,16 @@ fn layout(schedule: &SystemSchedule) -> Result<Layout, MeasureError> {
         ));
     }
     let mask = mask_of(keys.len())?;
+    let late = keys
+        .iter()
+        .map(|(_, m)| m.first().map_or(0, |uo| rel(uo.unit)))
+        .collect();
     Ok(Layout {
         walk: WalkSchedule::from_cycles(first.schedule.sweep, mask, repeat, cycles),
         keys,
         t_ref,
         single: None,
+        late,
     })
 }
 
@@ -666,7 +704,11 @@ fn build(
         .iter()
         .map(|o| o.envelope_index)
         .fold(f64::INFINITY, f64::min);
-    let outputs: Vec<SystemOutput> = layout
+    // -- WP ATLATE -- each key's lateness as laid out, domain samples and ms.
+    let device_ms = 1000.0 / f64::from(layout.walk.sweep.rate_hz.max(1));
+    let late_ms = |i: usize| layout.late.get(i).copied().unwrap_or(0) as f64 * device_ms;
+    let any_late = layout.late.iter().any(|&l| l != 0);
+    let mut outputs: Vec<SystemOutput> = layout
         .keys
         .iter()
         .enumerate()
@@ -680,6 +722,7 @@ fn build(
                     arrival_ms
                 }
             });
+            let late = layout.late.get(i).copied().unwrap_or(0) as f64;
             SystemOutput {
                 key: *key,
                 members: members.clone(),
@@ -688,14 +731,30 @@ fn build(
                     .get(i)
                     .copied()
                     .flatten()
-                    .map_or(f64::NAN, |a| a + fit.first_frame),
-                arrival_ms,
-                onset_ms,
+                    .map_or(f64::NAN, |a| a + fit.first_frame + late * fit.slope),
+                arrival_ms: arrival_ms + late_ms(i),
+                onset_ms: onset_ms + late_ms(i),
                 passes: ir.map_or(0, |o| o.repeats),
                 uncertainty_us: sp.per_key.get(i).and_then(|p| p.0),
+                lateness_ms: late_ms(i),
             }
         })
         .collect();
+    // Arrivals after the run's earliest output, as without lateness.
+    if any_late {
+        let first = outputs
+            .iter()
+            .filter(|o| o.passes > 0)
+            .map(|o| o.arrival_ms)
+            .fold(f64::INFINITY, f64::min);
+        if first.is_finite() {
+            for o in &mut outputs {
+                o.arrival_ms -= first;
+                o.onset_ms -= first;
+                o.lateness_ms -= first;
+            }
+        }
+    }
     let timing_reliable = walked.quality.reliable;
     let mut reasons: Vec<String> = walked
         .quality

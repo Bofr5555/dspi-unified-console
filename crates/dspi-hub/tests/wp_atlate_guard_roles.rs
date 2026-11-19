@@ -187,7 +187,11 @@ fn wp_atlate_viewer_and_control_are_refused_the_system_guard_over_the_wire() {
 
     // Nothing of it touched the guard: still the Admin's, pending, not
     // reverting, nothing ended; every role reads that.
-    for (who, c) in [("viewer", &viewer), ("control", &control), ("admin", &admin)] {
+    for (who, c) in [
+        ("viewer", &viewer),
+        ("control", &control),
+        ("admin", &admin),
+    ] {
         let st = status(c);
         let a = st
             .active

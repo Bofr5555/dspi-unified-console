@@ -68,7 +68,36 @@ pub fn interleave(
     units: &[UnitWalk],
     options: &InterleaveOptions,
 ) -> Result<SystemSchedule, MeasureError> {
+    interleave_late(units, options, &[])
+}
+
+// -- WP ATLATE --
+/// [`interleave`] for units whose sound is expected `lateness` domain
+/// samples after their STARTs, more for some units than for others (see
+/// [`SystemSchedule::with_lateness`]): a segment that follows one of a unit
+/// heard later starts that much later again, so every cycle is *heard* at
+/// least one sweep and its gap after the one before (a unit heard 100 ms
+/// late would otherwise be heard over a third of the next unit's gap). The
+/// schedule carries the lateness for the analysis. With no lateness (or
+/// every unit's the same) the schedule is [`interleave`]'s.
+///
+/// Errors: [`interleave`]'s, and [`SystemSchedule::with_lateness`]'s.
+pub fn interleave_late(
+    units: &[UnitWalk],
+    options: &InterleaveOptions,
+    lateness: &[(UnitIndex, u64)],
+) -> Result<SystemSchedule, MeasureError> {
     let bad = |m: String| Err(MeasureError::Invalid(m));
+    // Checked (and made relative) before anything is laid out.
+    let run_units: Vec<UnitIndex> = units.iter().map(|u| u.unit).collect();
+    let rate = units.first().map_or(0, |u| u.walk.sweep.rate_hz);
+    let lateness = super::relative_lateness(&run_units, lateness, rate)?;
+    let late_of = |u: UnitIndex| {
+        lateness
+            .iter()
+            .find(|(x, _)| *x == u)
+            .map_or(0, |(_, l)| *l)
+    };
     let Some(first) = units.first() else {
         return bad("no unit".into());
     };
@@ -110,10 +139,17 @@ pub fn interleave(
     let build = |passes: u16| -> Result<SystemSchedule, MeasureError> {
         let mut segments = Vec::new();
         let mut prev_end: Option<u64> = None;
+        // -- WP ATLATE -- the lateness of the segment before.
+        let mut prev_late = 0u64;
         let mut unit_end: Vec<(UnitIndex, u64)> = Vec::new();
         for _ in 0..passes {
             for u in units {
-                let mut start = prev_end.map_or(0, |e| e.saturating_add(options.gap_samples));
+                let late = late_of(u.unit);
+                let mut start = prev_end.map_or(0, |e| {
+                    e.saturating_add(options.gap_samples)
+                        .saturating_add(prev_late.saturating_sub(late))
+                });
+                prev_late = late;
                 if let Some(&(_, e)) = unit_end.iter().find(|(x, _)| *x == u.unit) {
                     start = start.max(e.saturating_add(options.lead_samples));
                 }
@@ -136,7 +172,8 @@ pub fn interleave(
                 }
             }
         }
-        SystemSchedule::new(first.domain, first.walk.sweep.rate_hz, segments)
+        SystemSchedule::new(first.domain, first.walk.sweep.rate_hz, segments)?
+            .with_lateness(&lateness)
     };
     let fits = |s: &SystemSchedule| {
         let rate = f64::from(first.walk.sweep.rate_hz);

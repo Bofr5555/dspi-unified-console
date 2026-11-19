@@ -80,6 +80,13 @@ pub(crate) struct Terms {
 }
 
 impl Terms {
+    // -- WP ATLATE --
+    /// What the engine adds to `output`'s sound after a START, us (the
+    /// play-out and its `out.delay`).
+    pub(crate) fn at_us(&self, output: u8) -> Option<f64> {
+        self.of(output)
+    }
+
     fn of(&self, output: u8) -> Option<f64> {
         self.out_delay_ms
             .iter()
@@ -623,7 +630,9 @@ impl Outcome {
                     output: m.output,
                     result,
                     arrival_ms: o.arrival_ms,
-                    own_ms: o.arrival_ms,
+                    // -- WP ATLATE -- the response is on the analysis'
+                    // timeline: the planned lateness earlier.
+                    own_ms: o.arrival_ms - o.lateness_ms,
                     inverted,
                 });
             }
