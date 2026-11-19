@@ -105,6 +105,12 @@ pub struct SettingsData {
     // -- WP TM17 --
     /// The device name, source names and output latency.
     pub extras: global::DeviceExtras,
+    // -- WP PGTM --
+    /// The open device's protocol for Settings > About, as the embedder read
+    /// it once at connect (the Terminal: the core's `device_protocol`).
+    /// `None` when nobody said; [`SettingsData::read`] keeps it `None` and
+    /// the runner carries it over a re-read.
+    pub protocol: Option<about::DeviceProtocolView>,
 }
 
 impl SettingsData {
@@ -168,6 +174,8 @@ impl SettingsData {
             core_vreg: overview::read_core_vreg(session),
             // -- WP TM17 --
             extras: global::DeviceExtras::read(session),
+            // -- WP PGTM -- the embedder's, carried over by the runner
+            protocol: None,
             sample_rate_hz,
             rta: None,
             directory,
@@ -2534,6 +2542,8 @@ pub mod demo {
             core_vreg: None,
             // -- WP TM17 --
             extras: global::DeviceExtras::default(),
+            // -- WP PGTM --
+            protocol: None,
         }
     }
 }

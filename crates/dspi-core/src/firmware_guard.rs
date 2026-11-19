@@ -123,8 +123,9 @@ const BI_MAX_ENTRIES: u32 = 512;
 const BI_MAX_MAPPINGS: u32 = 16;
 const BI_MAX_STRING: u32 = 128;
 
+// -- WP PGFWX -- Deserialize: read back inside a FirmwareTarget (C, wasm)
 /// Where a [`FirmwareGuardBoard`]'s voltage came from.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 #[serde(rename_all = "camelCase")]
 pub enum FirmwareGuardBoardSource {
@@ -141,11 +142,13 @@ pub enum FirmwareGuardBoardSource {
     StatusBlock,
 }
 
+// -- WP PGFWX -- Deserialize: read back inside a FirmwareTarget (C, wasm); a
+// missing field is the safe default (unknown)
 /// What a board needs, read before it enters the bootloader. The default is
 /// the safe one: unknown.
-#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 pub struct FirmwareGuardBoard {
     /// The lowest core voltage this board may be left on, in mV. 1150: not at
     /// risk. Above that: at risk. Anything else, 0 included: unknown.
@@ -273,6 +276,7 @@ pub fn firmware_guard_check(
 ///
 /// Errors: [`DspiError::FirmwareGuardBlocked`] with the guard's message when
 /// the image needs confirmation; otherwise those of [`flash_to_drive`].
+#[cfg(test)] // -- WP PGFLASH -- the API writes through `flash_to_drive_gated`
 pub(crate) fn flash_to_drive_guarded(
     image: Vec<u8>,
     drive: BootloaderDrive,
@@ -292,6 +296,80 @@ pub(crate) fn flash_to_drive_guarded(
             msg: verdict.message,
         }
     })
+}
+
+// -- WP PGFLASH --
+// ── The write gate ─────────────────────────────────────────────────────
+//
+// The last check before any byte reaches a board (`flash_confirmed`,
+// `picoboot_flash_confirmed`): the update check's rules on the target this
+// core read itself from the device (`Inner::flash_target`, set by
+// `firmware_target` and by the bootloader entry), never on a target a caller
+// passes. The caller's voltage record only adds doubt: one that disagrees with
+// the core's own makes the voltage unknown, so the voltage phrase is asked.
+// With no target read by this core (the board was in BOOTSEL before this core
+// saw it, or a fresh core), the voltage rule alone decides, as before.
+
+/// The write gate's verdict for `image` (module comment above).
+pub(crate) fn write_gate(
+    image: &[u8],
+    read: Option<&FirmwareTarget>,
+    board: FirmwareGuardBoard,
+    typed: &str,
+) -> FirmwareUpdateVerdict {
+    let Some(read) = read else {
+        log::info!(
+            "firmware write gate: no target read by this core (the board was in BOOTSEL \
+             already): the voltage rule alone decides"
+        );
+        return FirmwareUpdateVerdict {
+            verdict: firmware_guard_check(image.to_vec(), board, typed.to_owned()),
+            ..FirmwareUpdateVerdict::default()
+        };
+    };
+    let mut target = read.clone();
+    if board.required_mv != read.voltage.required_mv {
+        log::warn!(
+            "firmware write gate: the caller's voltage record ({} mV) is not the one this core \
+             read ({} mV): the voltage is taken as unknown",
+            board.required_mv,
+            read.voltage.required_mv
+        );
+        target.voltage.required_mv = 0;
+    }
+    firmware_update_check(image.to_vec(), &target, typed)
+}
+
+/// The gate's verdict as the error the write returns, `None` when it allows.
+pub(crate) fn write_gate_error(v: FirmwareUpdateVerdict) -> Option<DspiError> {
+    if v.verdict.allowed {
+        return None;
+    }
+    let msg = v.verdict.message;
+    Some(
+        if v.verdict.decision == FirmwareGuardDecision::Refused
+            && v.rule != FirmwareUpdateRule::NoBootsel
+        {
+            DspiError::InvalidArgument { msg }
+        } else {
+            DspiError::FirmwareGuardBlocked { msg }
+        },
+    )
+}
+
+/// [`flash_to_drive`] behind the write gate ([`write_gate`]): nothing reaches
+/// the drive unless it allows.
+pub(crate) fn flash_to_drive_gated(
+    image: Vec<u8>,
+    drive: BootloaderDrive,
+    read: Option<&FirmwareTarget>,
+    board: FirmwareGuardBoard,
+    typed_confirmation: &str,
+) -> Result<()> {
+    match write_gate_error(write_gate(&image, read, board, typed_confirmation)) {
+        None => flash_to_drive(image, drive),
+        Some(e) => Err(e),
+    }
 }
 
 // ── The decision ───────────────────────────────────────────────────────
@@ -399,8 +477,19 @@ fn unknown(source: FirmwareGuardBoardSource) -> FirmwareGuardBoard {
 }
 
 fn read_board(t: &mut dyn Transport) -> FirmwareGuardBoard {
+    let list = sx::list(t);
+    board_from_list(t, &list)
+}
+
+// -- WP PGFWX -- (review PG-C finding 8) the voltage record from an `EXT_LIST`
+// answer already read, so that the update target's lineage and voltage come
+// from the same read.
+fn board_from_list(
+    t: &mut dyn Transport,
+    list: &std::result::Result<Vec<u16>, ExtError>,
+) -> FirmwareGuardBoard {
     let failed = unknown(FirmwareGuardBoardSource::ReadFailed);
-    match sx::list(t) {
+    match list {
         // A stall is the firmware's own answer: no extension channel.
         Err(ExtError::Unsupported { .. }) => from_status(t),
         // A hub refusing a viewer, a timeout, a short reply: no answer at all.
@@ -476,12 +565,19 @@ pub const LINEAGE_PHRASE: &str = "I ACCEPT LOSING THE EXTENSIONS";
 
 /// The board an update is for, read before it enters the bootloader. The
 /// default fails closed: no board known, so no image.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+///
+/// WP PGFWX: exported (UniFFI record; JSON in the C ABI and wasm, where a
+/// missing field is its default: unknown, so it fails closed). Keep the one
+/// [`DspiCore::firmware_target`] read and hand it back unchanged.
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+#[serde(rename_all = "camelCase", default)]
 pub struct FirmwareTarget {
     /// The voltage rule's record ([`DspiCore::firmware_guard_board`]).
     pub voltage: FirmwareGuardBoard,
-    /// The board (PLAN-PG section 1.9); `None` when it could not be read.
-    pub board: Option<dspi_proto::packets::Board>,
+    /// The board id (platform byte 7, PLAN-PG section 1.9; 0 is a Pico, see
+    /// [`FirmwareTarget::board`]); `None` when it could not be read.
+    pub board_id: Option<u8>,
     /// Whose firmware runs on it: ours when the extension channel answers.
     pub lineage: crate::FirmwareLineage,
     /// The protocol generation of the live connection.
@@ -494,20 +590,42 @@ impl FirmwareTarget {
     pub fn in_bootloader() -> Self {
         Self {
             voltage: firmware_guard_board_in_bootloader(),
-            board: Some(dspi_proto::packets::Board::Pico),
+            board_id: Some(dspi_proto::packets::Board::Pico.id()),
             ..Self::default()
         }
     }
 
+    /// The board, from [`FirmwareTarget::board_id`]; `None` when it could not
+    /// be read.
+    pub fn board(&self) -> Option<dspi_proto::packets::Board> {
+        self.board_id.map(dspi_proto::packets::Board::from_id)
+    }
+
     /// Whether an image may be offered at all: only a board with BOOTSEL.
     pub fn has_bootsel(&self) -> bool {
-        self.board
+        self.board()
             .is_some_and(dspi_proto::packets::Board::has_bootsel)
+    }
+
+    // -- WP PGFWX -- (review PG-C finding 8)
+    /// Whether the running firmware may be ours: our lineage, or a lineage
+    /// that could not be read on a board that was open and answered (not a
+    /// board in BOOTSEL and not "no device"). Every doubt asks.
+    pub fn may_be_ours(&self) -> bool {
+        match self.lineage {
+            crate::FirmwareLineage::Bofr => true,
+            crate::FirmwareLineage::Upstream => false,
+            crate::FirmwareLineage::Unknown => !matches!(
+                self.voltage.source,
+                FirmwareGuardBoardSource::NoDevice | FirmwareGuardBoardSource::Bootloader
+            ),
+        }
     }
 }
 
 /// Which rule beyond the voltage rule decided an update verdict.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 #[serde(rename_all = "camelCase")]
 pub enum FirmwareUpdateRule {
     /// None: the voltage rule's verdict stands.
@@ -521,6 +639,7 @@ pub enum FirmwareUpdateRule {
 
 /// [`firmware_update_check`]'s answer. Flash only on `verdict.allowed`.
 #[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[serde(rename_all = "camelCase")]
 pub struct FirmwareUpdateVerdict {
     /// The verdict, as [`firmware_guard_check`]'s with the rules above folded
@@ -536,50 +655,68 @@ pub struct FirmwareUpdateVerdict {
     pub generation_change: String,
 }
 
+// -- WP PGFWX -- exported
+#[cfg_attr(feature = "uniffi", uniffi::export)]
 impl DspiCore {
     /// The open board as an update target, read now: the voltage record, the
     /// board (8 platform bytes and the descriptor), its lineage and the live
     /// connection's generation. Never fails: what cannot be read is unknown,
     /// and an unknown board is offered no image. Call before the bootloader
-    /// entry and keep it for [`firmware_update_check`].
+    /// entry, off the UI thread (up to five control transfers), and keep it
+    /// for [`firmware_update_check`]. `EXT_LIST` is read once, for the
+    /// lineage and the voltage record alike.
     pub fn firmware_target(&self) -> FirmwareTarget {
         let mut inner = self.lock();
-        let inner_state = (
-            inner.state.fw_major,
-            inner.state.fw_minor,
-            inner.state.fw_patch,
-        );
-        let Ok(conn) = inner.conn() else {
-            return FirmwareTarget {
-                voltage: unknown(FirmwareGuardBoardSource::NoDevice),
-                ..FirmwareTarget::default()
-            };
-        };
-        let board = crate::hardware::read_board(conn).ok();
-        let t = conn.transport();
-        // The live connection's generation where the wrappers say it, else the
-        // generation the running firmware's version names (the mirror's
-        // `GET_PLATFORM`, read at connect).
-        let generation = match t.generation() {
-            Some(dspi_transport::Generation::Legacy) => crate::FirmwareGeneration::Legacy,
-            Some(dspi_transport::Generation::Paged(_)) => crate::FirmwareGeneration::Paged,
-            None => {
-                let s = &inner_state;
-                crate::FirmwareGeneration::of_version(&format!("{}.{}.{}", s.0, s.1, s.2))
-            }
-        };
-        let lineage = match sx::list(t) {
-            Ok(ids) if ids.iter().any(|&id| id != g::EXT_LIST) => crate::FirmwareLineage::Bofr,
-            // A stall is the firmware's own answer: no extension channel.
-            Err(ExtError::Unsupported { .. }) => crate::FirmwareLineage::Upstream,
-            _ => crate::FirmwareLineage::Unknown,
-        };
-        FirmwareTarget {
-            voltage: read_board(t),
-            board,
-            lineage,
-            generation,
+        // -- WP PGFLASH -- the core keeps what it read, for its own write gate
+        let target = target_of(&mut inner);
+        if target.voltage.source != FirmwareGuardBoardSource::NoDevice {
+            inner.flash_target = Some(target.clone());
         }
+        target
+    }
+}
+
+// -- WP PGFLASH -- the body of `firmware_target`, for the bootloader entry too
+/// The open board as an update target, read now through `inner`'s connection
+/// ([`DspiCore::firmware_target`]).
+pub(crate) fn target_of(inner: &mut crate::Inner) -> FirmwareTarget {
+    let inner_state = (
+        inner.state.fw_major,
+        inner.state.fw_minor,
+        inner.state.fw_patch,
+    );
+    let Ok(conn) = inner.conn() else {
+        return FirmwareTarget {
+            voltage: unknown(FirmwareGuardBoardSource::NoDevice),
+            ..FirmwareTarget::default()
+        };
+    };
+    let board = crate::hardware::read_board(conn).ok();
+    let t = conn.transport();
+    // The live connection's generation where the wrappers say it, else the
+    // generation the running firmware's version names (the mirror's
+    // `GET_PLATFORM`, read at connect).
+    let generation = match t.generation() {
+        Some(dspi_transport::Generation::Legacy) => crate::FirmwareGeneration::Legacy,
+        Some(dspi_transport::Generation::Paged(_)) => crate::FirmwareGeneration::Paged,
+        None => {
+            let s = &inner_state;
+            crate::FirmwareGeneration::of_version(&format!("{}.{}.{}", s.0, s.1, s.2))
+        }
+    };
+    // -- WP PGFWX -- one EXT_LIST read for both (review PG-C finding 8)
+    let list = sx::list(t);
+    let lineage = match &list {
+        Ok(ids) if ids.iter().any(|&id| id != g::EXT_LIST) => crate::FirmwareLineage::Bofr,
+        // A stall is the firmware's own answer: no extension channel.
+        Err(ExtError::Unsupported { .. }) => crate::FirmwareLineage::Upstream,
+        _ => crate::FirmwareLineage::Unknown,
+    };
+    FirmwareTarget {
+        voltage: board_from_list(t, &list),
+        board_id: board.map(dspi_proto::packets::Board::id),
+        lineage,
+        generation,
     }
 }
 
@@ -621,9 +758,14 @@ fn generation_change(from: crate::FirmwareGeneration, to: crate::FirmwareGenerat
     }
 }
 
-/// The update check (the table above): [`firmware_guard_check`] with the
-/// target's board, lineage and generation. Pure apart from parsing the image;
-/// never panics.
+// -- WP PGFWX -- exported
+/// The update check (PLAN-PG section 1.8): [`firmware_guard_check`]'s voltage
+/// rule on the target's record, plus: no image for a board without BOOTSEL,
+/// whatever is typed; the typed confirmation when firmware that may be ours
+/// would give way to an image that may be upstream's (a lineage that could
+/// not be read on an open board counts as ours); the generation change, with
+/// what works afterwards. Pure apart from parsing the image; never panics.
+#[cfg_attr(feature = "uniffi", uniffi::export)]
 pub fn firmware_update_check(
     image: Vec<u8>,
     target: &FirmwareTarget,
@@ -643,7 +785,7 @@ pub fn firmware_update_check(
     };
     if !target.has_bootsel() {
         let name = target
-            .board
+            .board()
             .map_or("board could not be identified", crate::board_name);
         out.rule = FirmwareUpdateRule::NoBootsel;
         out.verdict = FirmwareGuardVerdict {
@@ -658,7 +800,7 @@ pub fn firmware_update_check(
         return out;
     }
     let mut v = firmware_guard_check(image, target.voltage.clone(), typed_confirmation.to_owned());
-    let loss = target.lineage == crate::FirmwareLineage::Bofr
+    let loss = target.may_be_ours()
         && image_lineage != crate::FirmwareLineage::Bofr
         && v.decision != FirmwareGuardDecision::Refused;
     if loss {
@@ -840,6 +982,15 @@ fn image_stamp(bytes: &[u8], info: &Uf2Info) -> Option<u16> {
 // -- WP PGFWUP --
 #[cfg(test)]
 mod tests_wp_pgfwup;
+// -- WP PGFWX --
+#[cfg(test)]
+mod tests_wp_pgfwx;
+// -- WP PGFLASH --
+#[cfg(test)]
+mod tests_wp_pgflash;
+// -- review PG-D1 --
+#[cfg(test)]
+mod tests_review_pgd1;
 
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]

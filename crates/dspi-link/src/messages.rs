@@ -487,14 +487,51 @@ impl Inbound {
     }
 }
 
+// -- WP PGFIX --
+/// Test-only knobs (`cfg(test)` or the `test-knobs` feature; never in a shipped
+/// build).
+#[cfg(any(test, feature = "test-knobs"))]
+pub mod test_knobs {
+    use std::cell::Cell;
+
+    thread_local! {
+        static HELLO_MINOR: Cell<Option<u32>> = const { Cell::new(None) };
+    }
+
+    /// Run `f` with every `LinkClient` connected on this thread saying
+    /// `minor` in its hello (e.g. [`super::PROTO_MINOR`], a 1.2 client, as
+    /// upstream 1.1.6 consoles and our older apps), then go back to
+    /// [`super::CLIENT_PROTO_MINOR`]. The hello is sent on the connecting
+    /// thread, so other threads' clients are not affected.
+    pub fn with_hello_minor<R>(minor: u32, f: impl FnOnce() -> R) -> R {
+        struct Reset(Option<u32>);
+        impl Drop for Reset {
+            fn drop(&mut self) {
+                HELLO_MINOR.with(|m| m.set(self.0));
+            }
+        }
+        let _reset = Reset(HELLO_MINOR.with(|m| m.replace(Some(minor))));
+        f()
+    }
+
+    /// The minor this thread's next hello says.
+    pub fn hello_minor() -> u32 {
+        HELLO_MINOR.with(Cell::get).unwrap_or(super::CLIENT_PROTO_MINOR)
+    }
+}
+
 /// Requests and the client hello, as JSON text.
 pub mod out {
     use super::*;
 
     pub fn hello(client: &ClientInfo) -> String {
         // -- WP PGLINKC -- the client's own minor (R4), not the hub's
-        json!({"t": "hello", "proto": {"major": PROTO_MAJOR, "minor": CLIENT_PROTO_MINOR}, "client": client})
-            .to_string()
+        #[cfg(not(any(test, feature = "test-knobs")))]
+        let minor = CLIENT_PROTO_MINOR;
+        // -- WP PGFIX -- a test may make this thread's client a 1.2 one
+        #[cfg(any(test, feature = "test-knobs"))]
+        let minor = super::test_knobs::hello_minor();
+        json!({"t": "hello", "proto": {"major": PROTO_MAJOR, "minor": minor}, "client": client}).to_string()
     }
 
     pub fn auth_token(id: u64, token: &str) -> String {
@@ -595,6 +632,24 @@ mod tests_wp_pglinkc {
         assert!(!legacy.is_paged());
         let v = serde_json::to_value(&legacy).unwrap();
         assert!(v.get("protocol").is_none() && v.get("ext").is_none(), "{v}");
+    }
+
+    // -- WP PGFIX --
+    /// The test knob: this thread's hello says minor 2 inside the scope, 3 after it
+    /// and on other threads.
+    #[test]
+    fn wp_pgfix_test_knob_sets_the_hello_minor_on_this_thread() {
+        let info = ClientInfo { name: "n".into(), app: "a".into(), version: "v".into() };
+        let minor = |text: String| serde_json::from_str::<Value>(&text).unwrap()["proto"]["minor"].clone();
+        test_knobs::with_hello_minor(PROTO_MINOR, || {
+            assert_eq!(minor(out::hello(&info)), PROTO_MINOR);
+            let other = std::thread::spawn({
+                let info = info.clone();
+                move || out::hello(&info)
+            });
+            assert_eq!(minor(other.join().unwrap()), CLIENT_PROTO_MINOR);
+        });
+        assert_eq!(minor(out::hello(&info)), CLIENT_PROTO_MINOR);
     }
 
     /// Spec 1.3 section 7.3: `denied_ids` next to `denied`, both optional.

@@ -104,10 +104,12 @@ struct Entry {
 }
 
 // -- WP PGFWUP --
+// -- WP PGFWX -- exported (UniFFI) and read back from JSON (C, wasm) in a FirmwareTarget
 /// Where a firmware comes from (PLAN-PG section 1.8): upstream Weeb Labs, or
 /// this fork's `bofr-main` (extensions, alink, the 1.20 V core setting, our
 /// preset directory).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 #[serde(rename_all = "camelCase")]
 pub enum FirmwareLineage {
     /// Not known: every doubt resolves to "asks".
@@ -119,8 +121,10 @@ pub enum FirmwareLineage {
     Bofr,
 }
 
+// -- WP PGFWX -- exported (UniFFI) and read back from JSON (C, wasm) in a FirmwareTarget
 /// Which protocol generation a firmware speaks (PLAN-PG section 1.1).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 #[serde(rename_all = "camelCase")]
 pub enum FirmwareGeneration {
     /// Not known.

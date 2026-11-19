@@ -1001,7 +1001,9 @@ fn wp_lk4_the_meters_keep_moving_while_the_bind_loads_the_snapshot() {
     .unwrap();
     wait_until("the device list", || !core.link_devices().is_empty());
     // The snapshot (and the poll's grant) are held back: a slow, lossy link
-    hub.hold_replies();
+    // -- WP PGFIX -- the platform read's answer is not: the meter poll goes
+    // out once it has answered (PGMAT F2), before the snapshot is asked
+    hub.hold_json_replies();
     let opener = {
         let core = Arc::clone(&core);
         std::thread::spawn(move || select(&core))

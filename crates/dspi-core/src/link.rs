@@ -1390,16 +1390,18 @@ impl DspiCore {
             dspi_transport::link::LinkRoute::of(client.hello(), device.as_ref()),
             dspi_transport::link::LinkRoute::Paged { .. }
         );
-        if let Some(n) = channels.filter(|_| !paged) {
-            // Sent ahead of the snapshot: the hub answers in order, so its
-            // POLL frames start before the snapshot's bytes, not behind them
-            side.subscribe_ahead(crate::connect::meter_len(n));
-            ahead.set(true);
-            on_channels(n);
-        }
         let mut transport = LinkTransport::new(client.clone(), handle, &serial);
-        // -- WP LK4 -- the snapshot is on its way while the identity is read
-        transport.prefetch_snapshot();
+        // -- WP PGFIX -- (PGMAT F2) on the legacy route nothing but
+        // `REQ_GET_PLATFORM` goes to the device until it says which
+        // generation it is: a paged device behind a 1.2 hub refuses it and the
+        // bind ends in `link_needs_13_hub` with no page-0 meter poll
+        // subscribed. The poll and the snapshot go out once the platform
+        // answered as a legacy device with outputs (not the alink sender,
+        // which has no meters).
+        if paged {
+            // -- WP LK4 -- the snapshot is on its way while the identity is read
+            transport.prefetch_snapshot();
+        }
         // The identity too: the serial is what the hub lists. -- WP PGCORE --
         // The platform is the device's own 8 bytes (`read_platform`), not the
         // hub's 7, so the board id in byte 7 is seen (PLAN-PG R7c); on a
@@ -1420,6 +1422,21 @@ impl DspiCore {
                 _ => None,
             }
         };
+        // -- WP PGFIX -- the generation is known (legacy) from here
+        if !paged {
+            let has_meters = own_platform
+                .as_deref()
+                .is_some_and(|p| !crate::device::is_alink_sender_platform(p, None));
+            if let Some(n) = channels.filter(|_| has_meters) {
+                // Sent ahead of the snapshot: the hub answers in order, so its
+                // POLL frames start before the snapshot's bytes, not behind them
+                side.subscribe_ahead(crate::connect::meter_len(n));
+                ahead.set(true);
+                on_channels(n);
+            }
+            // -- WP LK4 -- the snapshot is on its way while the rest is read
+            transport.prefetch_snapshot();
+        }
         // -- WP PGWIRE -- the generation wrapper (no probe over DSPi Link)
         // -- WP PGCORE -- on a watched wire: a generation change re-attaches
         let watched = Watched {
@@ -1483,10 +1500,14 @@ impl DspiCore {
         };
         conn.side = Some(Arc::clone(&side) as Arc<dyn SideChannel>);
         // -- WP LK2 -- meters from now on, whatever holds the core lock
-        let old_path = self.set_meter_path(Some(crate::MeterPath {
-            num_channels: inner.state.num_channels,
-            side: Arc::clone(&side) as Arc<dyn SideChannel>,
-        }));
+        // -- WP PGFIX -- none on the alink sender (it has no meters)
+        let old_path =
+            self.set_meter_path((conn.kind != crate::DeviceKind::AlinkSender).then(|| {
+                crate::MeterPath {
+                    num_channels: inner.state.num_channels,
+                    side: Arc::clone(&side) as Arc<dyn SideChannel>,
+                }
+            }));
         if let Some(b) = current.bound.as_mut() {
             b.handle = handle;
             b.generation = conn.generation;
@@ -4341,3 +4362,9 @@ mod tests_wp_hwlk1f;
 #[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
 #[path = "link/tests_wp_pgcore.rs"]
 mod tests_wp_pgcore;
+
+// -- WP PGFIX --
+#[cfg(test)]
+#[allow(clippy::indexing_slicing)]
+#[path = "link/tests_wp_pgfix.rs"]
+mod tests_wp_pgfix;

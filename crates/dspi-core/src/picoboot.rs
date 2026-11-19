@@ -32,11 +32,16 @@
 //!
 //! In front of the first byte: the image is fully checked (`uf2_inspect`),
 //! the firmware guard must say **clear** for the board record read before
-//! the board entered BOOTSEL, with nothing typed ([`firmware_guard_check`]
+//! the board entered BOOTSEL, with nothing typed ([`crate::firmware_guard_check`]
 //! with `""`: an image that would ask a person for the phrase or the word is
 //! refused here, a second line behind the caller's own check), the image must
 //! be for the target's chip, and every erased sector must lie in that chip's
-//! XIP window. [`DspiCore::picoboot_flash_confirmed`] also takes a
+//! XIP window. WP PGFLASH: when the flashing core read the board as an
+//! update target itself (`firmware_target`, or its bootloader entry), the
+//! gate is [`crate::firmware_update_check`]'s rules on that target with `""`
+//! (a board without BOOTSEL and a lineage loss are refused too); with none
+//! read (the hub rollout's writer core) the voltage rule alone, as before.
+//! [`DspiCore::picoboot_flash_confirmed`] also takes a
 //! confirmation token ([`ConfirmOp::FirmwareFlash`]) as
 //! [`DspiCore::flash_confirmed`] does.
 //!
@@ -53,8 +58,7 @@ use std::time::Duration;
 
 use crate::firmware::{Page, flash_window_of, uf2_pages};
 use crate::{
-    ConfirmOp, DspiCore, DspiError, FirmwareGuardBoard, FirmwareGuardDecision, Result,
-    firmware_guard_check, uf2_inspect,
+    ConfirmOp, DspiCore, DspiError, FirmwareGuardBoard, FirmwareGuardDecision, Result, uf2_inspect,
 };
 
 // ── The wire (boot/picoboot.h) ─────────────────────────────────────────
@@ -534,9 +538,22 @@ pub(crate) fn sector_plan(
 
 /// Every check before a byte goes out (module docs): the image, the guard
 /// with nothing typed, the target's chip, the window. Pure.
+#[cfg(test)] // -- WP PGFLASH -- the API goes through `prepare_gated`
 pub(crate) fn prepare(
     image: &[u8],
     target: &BootDevice,
+    board: &FirmwareGuardBoard,
+) -> std::result::Result<FlashPlan, FlashError> {
+    prepare_gated(image, target, None, board)
+}
+
+// -- WP PGFLASH --
+/// The checks of `prepare` with the write gate's rules on `read`, the target the flashing
+/// core read itself (`None`: none read, the voltage rule alone decides).
+pub(crate) fn prepare_gated(
+    image: &[u8],
+    target: &BootDevice,
+    read: Option<&crate::FirmwareTarget>,
     board: &FirmwareGuardBoard,
 ) -> std::result::Result<FlashPlan, FlashError> {
     let info = uf2_inspect(image.to_vec());
@@ -546,7 +563,7 @@ pub(crate) fn prepare(
             info.problem
         )));
     }
-    let verdict = firmware_guard_check(image.to_vec(), board.clone(), String::new());
+    let verdict = crate::firmware_guard::write_gate(image, read, board.clone(), "").verdict;
     if verdict.decision != FirmwareGuardDecision::Clear || !verdict.allowed {
         return Err(FlashError::Guard {
             decision: verdict.decision,
@@ -808,7 +825,9 @@ impl DspiCore {
     /// docs). `board` is the record [`DspiCore::firmware_guard_board`] read
     /// before the board entered BOOTSEL; the guard must say clear for it with
     /// nothing typed, so an image that would ask a person anything is
-    /// refused. Takes a [`ConfirmOp::FirmwareFlash`] token as
+    /// refused. WP PGFLASH: on a core that read the board as an update target
+    /// itself, the update check's rules on that target decide instead (module
+    /// docs). Takes a [`ConfirmOp::FirmwareFlash`] token as
     /// [`DspiCore::flash_confirmed`] does (mint it once the board is in
     /// BOOTSEL; it works with no device open), and the installer lock holds.
     /// Blocks for up to 60 s.
@@ -849,7 +868,9 @@ impl DspiCore {
     ) -> Result<FlashReport> {
         crate::limits::lock_check_any(&mut self.lock())?;
         let _ticket = self.confirm_gate(ConfirmOp::FirmwareFlash, token)?;
-        let plan = prepare(image, target, board)?;
+        // -- WP PGFLASH -- the update check's rules on the target this core read
+        let read = self.lock().flash_target.clone();
+        let plan = prepare_gated(image, target, read.as_ref(), board)?;
         let mut pipe = open(target)?;
         let start = dspi_transport::clock::Instant::now();
         let elapsed = move || start.elapsed();
@@ -869,7 +890,9 @@ impl DspiCore {
             ),
             Err(e) => log::warn!("picoboot: flash at {} failed: {e}", target.bus_location),
         }
-        Ok(report?)
+        let report = report?;
+        self.lock().flash_target = None; // -- WP PGFLASH --
+        Ok(report)
     }
 }
 

@@ -71,21 +71,35 @@ function checkGraph(i: Info, browserName: string) {
   if (browserName === "chromium") expect(i.report!.sinkNone).toBe(true);
 }
 
+/**
+ * WCAPFIX: Chromium's fake microphone settles within this long of the capture's first sample.
+ * Before that its start is its own: the first 600 to 1400 samples, frame-contiguous, are near
+ * silence rather than the file (up to 6 codes off the fixture's lead-in), and under load the
+ * source can stall once (one 2176-frame gap seen 640 frames in). Same on 67fa8fff and 915d1a65.
+ * Our code passes both on honestly; the exact checks below hold from here on.
+ */
+const SETTLE_S = 0.2;
+
 function checkFrames(i: Info) {
   const r = i.report!;
   expect(i.blocks.length).toBeGreaterThan(10);
+  const settled = i.blocks[0]!.firstFrame + SETTLE_S * r.rateHz;
+  let startGaps = 0;
   for (const [k, b] of i.blocks.entries()) {
     expect(b.rateHz).toBe(r.rateHz);
     if (k > 0) {
       const p = i.blocks[k - 1]!;
-      expect(b.firstFrame, `block ${k}`).toBe(p.firstFrame + p.len);
+      // Never a repeat; a gap only while the source starts (WCAPFIX), counted below.
+      if (b.firstFrame > p.firstFrame + p.len && p.firstFrame < settled) startGaps++;
+      else expect(b.firstFrame, `block ${k}`).toBe(p.firstFrame + p.len);
     }
   }
+  expect(startGaps, "at most one stall while the source starts").toBeLessThanOrEqual(1);
   // About 20 ms a block.
   const full = i.blocks.filter((b) => b.len === r.blockFrames).length;
   expect(full).toBeGreaterThanOrEqual(i.blocks.length - 2);
   expect(Math.abs(r.blockFrames / r.rateHz - 0.02)).toBeLessThan(0.003);
-  expect(i.continuity).toMatchObject({ gaps: 0, repeats: 0 });
+  expect(i.continuity).toMatchObject({ gaps: startGaps, repeats: 0 });
 }
 
 async function stopAndCheck(page: Page) {
@@ -144,8 +158,9 @@ test.describe("P5WCAP: granted", () => {
       }
     }
     // Compare the whole pass of the file around that point (Chromium's loop restarts at its own
-    // buffer boundary, so the next pass is not exactly one file length later).
-    const from = Math.max(0, loud - best);
+    // buffer boundary, so the next pass is not exactly one file length later), from where the
+    // source has settled (SETTLE_S, WCAPFIX: the first samples are Chromium's start, not ours).
+    const from = Math.max(Math.round(SETTLE_S * i.report!.rateHz), loud - best);
     const to = Math.min(got.length, loud + (L - best));
     expect(to - from, "most of one pass of the file").toBeGreaterThan(L / 2);
     let maxDiff = 0;

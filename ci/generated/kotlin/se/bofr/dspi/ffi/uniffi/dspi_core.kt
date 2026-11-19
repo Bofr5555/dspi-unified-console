@@ -2142,6 +2142,10 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -2210,6 +2214,8 @@ fun uniffi_dspi_core_checksum_func_filter_type_names(
 fun uniffi_dspi_core_checksum_func_firmware_guard_board_in_bootloader(
 ): Short
 fun uniffi_dspi_core_checksum_func_firmware_guard_check(
+): Short
+fun uniffi_dspi_core_checksum_func_firmware_update_check(
 ): Short
 fun uniffi_dspi_core_checksum_func_hub_alarm_notice(
 ): Short
@@ -2574,6 +2580,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_filters_import(
 fun uniffi_dspi_core_checksum_method_dspicore_filters_inspect(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_firmware_guard_board(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_firmware_target(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_firmware_version_matches(
 ): Short
@@ -3672,6 +3680,8 @@ fun uniffi_dspi_core_fn_method_dspicore_filters_inspect(`ptr`: Pointer,`text`: R
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_firmware_guard_board(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_firmware_target(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_firmware_version_matches(`ptr`: Pointer,`version`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Byte
 fun uniffi_dspi_core_fn_method_dspicore_flash_confirmed(`ptr`: Pointer,`image`: RustBuffer.ByValue,`drive`: RustBuffer.ByValue,`board`: RustBuffer.ByValue,`typedConfirmation`: RustBuffer.ByValue,`token`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -4518,6 +4528,8 @@ fun uniffi_dspi_core_fn_func_firmware_guard_board_in_bootloader(uniffi_out_err: 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_firmware_guard_check(`image`: RustBuffer.ByValue,`board`: RustBuffer.ByValue,`typedConfirmation`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_func_firmware_update_check(`image`: RustBuffer.ByValue,`target`: RustBuffer.ByValue,`typedConfirmation`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_hub_alarm_notice(`alarm`: RustBuffer.ByValue,`time`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_hub_rollout_step_notice(`step`: RustBuffer.ByValue,`text`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -4805,6 +4817,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_func_firmware_guard_check() != 22496.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_func_firmware_update_check() != 5569.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_func_hub_alarm_notice() != 51350.toShort()) {
@@ -5197,7 +5212,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_end_group() != 28189.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_enter_bootloader_confirmed() != 20465.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_enter_bootloader_confirmed() != 156.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_event_log_devices() != 55922.toShort()) {
@@ -5353,10 +5368,13 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_firmware_guard_board() != 9275.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_firmware_target() != 6598.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_firmware_version_matches() != 52277.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_flash_confirmed() != 19319.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_flash_confirmed() != 4538.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_get_channel_name() != 25587.toShort()) {
@@ -5938,7 +5956,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_paste_channel() != 43676.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_picoboot_flash_confirmed() != 50736.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_picoboot_flash_confirmed() != 31389.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_pin_check() != 43599.toShort()) {
@@ -8968,6 +8986,11 @@ public interface DspiCoreInterface {
      * [`DspiCore::firmware_version_matches`]; a timeout there is the
      * failure.
      *
+     * WP PGFLASH: unless [`DspiCore::firmware_target`] already read the
+     * board on this connection, the board is read as an update target here
+     * (a few more control transfers) and kept for `flash_confirmed`'s write
+     * gate.
+     *
      * The device lock is taken first and held across the restart (WP CG24),
      * so no other DSPi Link session writes to a device about to vanish; the
      * hub drops it when the device leaves, and the connection's close gives
@@ -9566,6 +9589,17 @@ public interface DspiCoreInterface {
     fun `firmwareGuardBoard`(): FirmwareGuardBoard
     
     /**
+     * The open board as an update target, read now: the voltage record, the
+     * board (8 platform bytes and the descriptor), its lineage and the live
+     * connection's generation. Never fails: what cannot be read is unknown,
+     * and an unknown board is offered no image. Call before the bootloader
+     * entry, off the UI thread (up to five control transfers), and keep it
+     * for [`firmware_update_check`]. `EXT_LIST` is read once, for the
+     * lineage and the voltage record alike.
+     */
+    fun `firmwareTarget`(): FirmwareTarget
+    
+    /**
      * Whether the open device runs firmware `version`: the leading
      * `major.minor.patch[-betaN]` of a UF2's `Uf2Info::firmware_version`
      * (`1.1.6-beta3-16-g557bce7` compares as 1.1.6 beta 3), against the
@@ -9580,7 +9614,9 @@ public interface DspiCoreInterface {
     
     /**
      * Write `image` to the bootloader drive behind the firmware guard
-     * ([`crate::firmware_guard_check`] for `board` and `typed_confirmation`),
+     * ([`crate::firmware_guard_check`] for `board` and `typed_confirmation`;
+     * WP PGFLASH: [`crate::firmware_update_check`]'s rules on the target this
+     * core read itself, see below),
      * with a confirmation token ([`crate::confirm`],
      * [`crate::ConfirmOp::FirmwareFlash`]): the one to use wherever the core
      * does the writing. Mint the token once the bootloader drive is there
@@ -9602,8 +9638,20 @@ public interface DspiCoreInterface {
      * by waiting for the DSPi to re-enumerate and report the image's version
      * (`Uf2Info::firmware_version`); a timeout there is the failure.
      *
+     * WP PGFLASH, the write gate: when this core read the board as an
+     * update target ([`DspiCore::firmware_target`], or on its own in
+     * [`DspiCore::enter_bootloader_confirmed`]), the gate is the update check
+     * on that target, never on one a caller passes: a board without BOOTSEL
+     * is refused, and an image that may be upstream's on our firmware needs
+     * `LINEAGE_PHRASE` (or the voltage phrase, when the voltage rule asks).
+     * `board` only adds doubt: one that is not the core's own record makes
+     * the voltage unknown. With no target read (the board was in BOOTSEL
+     * before this core saw it) the voltage rule alone decides. The target is
+     * forgotten after a write and when another device is opened.
+     *
      * Errors: that; [`DspiError::FirmwareGuardBlocked`] with the guard's
-     * message when the image needs confirmation; then the write's.
+     * message when the image needs confirmation or the board has no BOOTSEL;
+     * then the write's.
      */
     fun `flashConfirmed`(`image`: kotlin.ByteArray, `drive`: BootloaderDrive, `board`: FirmwareGuardBoard, `typedConfirmation`: kotlin.String, `token`: kotlin.String?)
     
@@ -11699,7 +11747,9 @@ public interface DspiCoreInterface {
      * docs). `board` is the record [`DspiCore::firmware_guard_board`] read
      * before the board entered BOOTSEL; the guard must say clear for it with
      * nothing typed, so an image that would ask a person anything is
-     * refused. Takes a [`ConfirmOp::FirmwareFlash`] token as
+     * refused. WP PGFLASH: on a core that read the board as an update target
+     * itself, the update check's rules on that target decide instead (module
+     * docs). Takes a [`ConfirmOp::FirmwareFlash`] token as
      * [`DspiCore::flash_confirmed`] does (mint it once the board is in
      * BOOTSEL; it works with no device open), and the installer lock holds.
      * Blocks for up to 60 s.
@@ -15386,6 +15436,11 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
      * [`DspiCore::firmware_version_matches`]; a timeout there is the
      * failure.
      *
+     * WP PGFLASH: unless [`DspiCore::firmware_target`] already read the
+     * board on this connection, the board is read as an update target here
+     * (a few more control transfers) and kept for `flash_confirmed`'s write
+     * gate.
+     *
      * The device lock is taken first and held across the restart (WP CG24),
      * so no other DSPi Link session writes to a device about to vanish; the
      * hub drops it when the device leaves, and the connection's close gives
@@ -16543,6 +16598,27 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
+     * The open board as an update target, read now: the voltage record, the
+     * board (8 platform bytes and the descriptor), its lineage and the live
+     * connection's generation. Never fails: what cannot be read is unknown,
+     * and an unknown board is offered no image. Call before the bootloader
+     * entry, off the UI thread (up to five control transfers), and keep it
+     * for [`firmware_update_check`]. `EXT_LIST` is read once, for the
+     * lineage and the voltage record alike.
+     */override fun `firmwareTarget`(): FirmwareTarget {
+            return FfiConverterTypeFirmwareTarget.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_firmware_target(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * Whether the open device runs firmware `version`: the leading
      * `major.minor.patch[-betaN]` of a UF2's `Uf2Info::firmware_version`
      * (`1.1.6-beta3-16-g557bce7` compares as 1.1.6 beta 3), against the
@@ -16568,7 +16644,9 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     
     /**
      * Write `image` to the bootloader drive behind the firmware guard
-     * ([`crate::firmware_guard_check`] for `board` and `typed_confirmation`),
+     * ([`crate::firmware_guard_check`] for `board` and `typed_confirmation`;
+     * WP PGFLASH: [`crate::firmware_update_check`]'s rules on the target this
+     * core read itself, see below),
      * with a confirmation token ([`crate::confirm`],
      * [`crate::ConfirmOp::FirmwareFlash`]): the one to use wherever the core
      * does the writing. Mint the token once the bootloader drive is there
@@ -16590,8 +16668,20 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
      * by waiting for the DSPi to re-enumerate and report the image's version
      * (`Uf2Info::firmware_version`); a timeout there is the failure.
      *
+     * WP PGFLASH, the write gate: when this core read the board as an
+     * update target ([`DspiCore::firmware_target`], or on its own in
+     * [`DspiCore::enter_bootloader_confirmed`]), the gate is the update check
+     * on that target, never on one a caller passes: a board without BOOTSEL
+     * is refused, and an image that may be upstream's on our firmware needs
+     * `LINEAGE_PHRASE` (or the voltage phrase, when the voltage rule asks).
+     * `board` only adds doubt: one that is not the core's own record makes
+     * the voltage unknown. With no target read (the board was in BOOTSEL
+     * before this core saw it) the voltage rule alone decides. The target is
+     * forgotten after a write and when another device is opened.
+     *
      * Errors: that; [`DspiError::FirmwareGuardBlocked`] with the guard's
-     * message when the image needs confirmation; then the write's.
+     * message when the image needs confirmation or the board has no BOOTSEL;
+     * then the write's.
      */
     @Throws(DspiException::class)override fun `flashConfirmed`(`image`: kotlin.ByteArray, `drive`: BootloaderDrive, `board`: FirmwareGuardBoard, `typedConfirmation`: kotlin.String, `token`: kotlin.String?)
         = 
@@ -20737,7 +20827,9 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
      * docs). `board` is the record [`DspiCore::firmware_guard_board`] read
      * before the board entered BOOTSEL; the guard must say clear for it with
      * nothing typed, so an image that would ask a person anything is
-     * refused. Takes a [`ConfirmOp::FirmwareFlash`] token as
+     * refused. WP PGFLASH: on a core that read the board as an update target
+     * itself, the update check's rules on that target decide instead (module
+     * docs). Takes a [`ConfirmOp::FirmwareFlash`] token as
      * [`DspiCore::flash_confirmed`] does (mint it once the board is in
      * BOOTSEL; it works with no device open), and the installer lock holds.
      * Blocks for up to 60 s.
@@ -31538,7 +31630,12 @@ data class DeviceProtocol (
      * The name clients show for the board in caps and About: "DSPi",
      * "DSPi Zero" or "Unknown board" (`board_name`).
      */
-    var `boardName`: kotlin.String
+    var `boardName`: kotlin.String, 
+    /**
+     * What the device is, and so what the client may offer: a DSP with its
+     * whole model, or the alink sender with its few commands only.
+     */
+    var `deviceKind`: DeviceKind
 ) {
     
     companion object
@@ -31557,6 +31654,7 @@ public object FfiConverterTypeDeviceProtocol: FfiConverterRustBuffer<DeviceProto
             FfiConverterTypeExtEnvelope.read(buf),
             FfiConverterUByte.read(buf),
             FfiConverterString.read(buf),
+            FfiConverterTypeDeviceKind.read(buf),
         )
     }
 
@@ -31567,7 +31665,8 @@ public object FfiConverterTypeDeviceProtocol: FfiConverterRustBuffer<DeviceProto
             FfiConverterSequenceTypeDevicePage.allocationSize(value.`pages`) +
             FfiConverterTypeExtEnvelope.allocationSize(value.`extEnvelope`) +
             FfiConverterUByte.allocationSize(value.`boardId`) +
-            FfiConverterString.allocationSize(value.`boardName`)
+            FfiConverterString.allocationSize(value.`boardName`) +
+            FfiConverterTypeDeviceKind.allocationSize(value.`deviceKind`)
     )
 
     override fun write(value: DeviceProtocol, buf: ByteBuffer) {
@@ -31578,6 +31677,7 @@ public object FfiConverterTypeDeviceProtocol: FfiConverterRustBuffer<DeviceProto
             FfiConverterTypeExtEnvelope.write(value.`extEnvelope`, buf)
             FfiConverterUByte.write(value.`boardId`, buf)
             FfiConverterString.write(value.`boardName`, buf)
+            FfiConverterTypeDeviceKind.write(value.`deviceKind`, buf)
     }
 }
 
@@ -33057,6 +33157,130 @@ public object FfiConverterTypeFirmwareGuardVerdict: FfiConverterRustBuffer<Firmw
             FfiConverterString.write(value.`confirmationPhrase`, buf)
             FfiConverterUShort.write(value.`imageMv`, buf)
             FfiConverterUShort.write(value.`requiredMv`, buf)
+    }
+}
+
+
+
+/**
+ * The board an update is for, read before it enters the bootloader. The
+ * default fails closed: no board known, so no image.
+ *
+ * WP PGFWX: exported (UniFFI record; JSON in the C ABI and wasm, where a
+ * missing field is its default: unknown, so it fails closed). Keep the one
+ * [`DspiCore::firmware_target`] read and hand it back unchanged.
+ */
+data class FirmwareTarget (
+    /**
+     * The voltage rule's record ([`DspiCore::firmware_guard_board`]).
+     */
+    var `voltage`: FirmwareGuardBoard, 
+    /**
+     * The board id (platform byte 7, PLAN-PG section 1.9; 0 is a Pico, see
+     * [`FirmwareTarget::board`]); `None` when it could not be read.
+     */
+    var `boardId`: kotlin.UByte?, 
+    /**
+     * Whose firmware runs on it: ours when the extension channel answers.
+     */
+    var `lineage`: FirmwareLineage, 
+    /**
+     * The protocol generation of the live connection.
+     */
+    var `generation`: FirmwareGeneration
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeFirmwareTarget: FfiConverterRustBuffer<FirmwareTarget> {
+    override fun read(buf: ByteBuffer): FirmwareTarget {
+        return FirmwareTarget(
+            FfiConverterTypeFirmwareGuardBoard.read(buf),
+            FfiConverterOptionalUByte.read(buf),
+            FfiConverterTypeFirmwareLineage.read(buf),
+            FfiConverterTypeFirmwareGeneration.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: FirmwareTarget) = (
+            FfiConverterTypeFirmwareGuardBoard.allocationSize(value.`voltage`) +
+            FfiConverterOptionalUByte.allocationSize(value.`boardId`) +
+            FfiConverterTypeFirmwareLineage.allocationSize(value.`lineage`) +
+            FfiConverterTypeFirmwareGeneration.allocationSize(value.`generation`)
+    )
+
+    override fun write(value: FirmwareTarget, buf: ByteBuffer) {
+            FfiConverterTypeFirmwareGuardBoard.write(value.`voltage`, buf)
+            FfiConverterOptionalUByte.write(value.`boardId`, buf)
+            FfiConverterTypeFirmwareLineage.write(value.`lineage`, buf)
+            FfiConverterTypeFirmwareGeneration.write(value.`generation`, buf)
+    }
+}
+
+
+
+/**
+ * [`firmware_update_check`]'s answer. Flash only on `verdict.allowed`.
+ */
+data class FirmwareUpdateVerdict (
+    /**
+     * The verdict, as [`firmware_guard_check`]'s with the rules above folded
+     * in (`message` names every risk; `confirmation_phrase` is what to type).
+     */
+    var `verdict`: FirmwareGuardVerdict, 
+    /**
+     * The rule beyond the voltage rule that decided, if any.
+     */
+    var `rule`: FirmwareUpdateRule, 
+    /**
+     * The image's lineage (the manifest, or our stamp; else unknown).
+     */
+    var `imageLineage`: FirmwareLineage, 
+    /**
+     * The image's generation (the manifest, or its version).
+     */
+    var `imageGeneration`: FirmwareGeneration, 
+    /**
+     * A generation change, shown with what works afterwards; "" when none.
+     */
+    var `generationChange`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeFirmwareUpdateVerdict: FfiConverterRustBuffer<FirmwareUpdateVerdict> {
+    override fun read(buf: ByteBuffer): FirmwareUpdateVerdict {
+        return FirmwareUpdateVerdict(
+            FfiConverterTypeFirmwareGuardVerdict.read(buf),
+            FfiConverterTypeFirmwareUpdateRule.read(buf),
+            FfiConverterTypeFirmwareLineage.read(buf),
+            FfiConverterTypeFirmwareGeneration.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: FirmwareUpdateVerdict) = (
+            FfiConverterTypeFirmwareGuardVerdict.allocationSize(value.`verdict`) +
+            FfiConverterTypeFirmwareUpdateRule.allocationSize(value.`rule`) +
+            FfiConverterTypeFirmwareLineage.allocationSize(value.`imageLineage`) +
+            FfiConverterTypeFirmwareGeneration.allocationSize(value.`imageGeneration`) +
+            FfiConverterString.allocationSize(value.`generationChange`)
+    )
+
+    override fun write(value: FirmwareUpdateVerdict, buf: ByteBuffer) {
+            FfiConverterTypeFirmwareGuardVerdict.write(value.`verdict`, buf)
+            FfiConverterTypeFirmwareUpdateRule.write(value.`rule`, buf)
+            FfiConverterTypeFirmwareLineage.write(value.`imageLineage`, buf)
+            FfiConverterTypeFirmwareGeneration.write(value.`imageGeneration`, buf)
+            FfiConverterString.write(value.`generationChange`, buf)
     }
 }
 
@@ -47182,6 +47406,53 @@ public object FfiConverterTypeConfirmOp: FfiConverterRustBuffer<ConfirmOp> {
 
 
 
+/**
+ * What kind of device the open connection is (PLAN-PG section 1.9, PGMAT F1).
+ * A client shows the screens of the kind only.
+ */
+
+enum class DeviceKind {
+    
+    /**
+     * A DSPi: the bulk image, the DSP model, the generator, the meters.
+     */
+    DSP,
+    /**
+     * The alink sender build (`firmware/DSPi-Sender`, legacy only): a
+     * connection with limited capabilities. It has the device info
+     * (platform, serial, build), the extension channel with its alink block
+     * (`alink_info`, `fetch_alink_*`, `reset_alink_stats`) and the update
+     * check's target; no bulk image, no DSP model, no generator, no meters.
+     * Every DSP setter answers [`crate::DspiError::Unsupported`] with nothing
+     * sent, and `get_state` shows the platform's identity only
+     * (`bulk_valid` false, no channels).
+     */
+    ALINK_SENDER;
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeDeviceKind: FfiConverterRustBuffer<DeviceKind> {
+    override fun read(buf: ByteBuffer) = try {
+        DeviceKind.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: DeviceKind) = 4UL
+
+    override fun write(value: DeviceKind, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
 
 
 /**
@@ -47825,6 +48096,49 @@ public object FfiConverterTypeFillBand: FfiConverterRustBuffer<FillBand> {
 
 
 /**
+ * Which protocol generation a firmware speaks (PLAN-PG section 1.1).
+ */
+
+enum class FirmwareGeneration {
+    
+    /**
+     * Not known.
+     */
+    UNKNOWN,
+    /**
+     * 1.1.6 and older: page 0 only.
+     */
+    LEGACY,
+    /**
+     * 1.1.7 and later: paged.
+     */
+    PAGED;
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeFirmwareGeneration: FfiConverterRustBuffer<FirmwareGeneration> {
+    override fun read(buf: ByteBuffer) = try {
+        FirmwareGeneration.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: FirmwareGeneration) = 4UL
+
+    override fun write(value: FirmwareGeneration, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+/**
  * Where a [`FirmwareGuardBoard`]'s voltage came from.
  */
 
@@ -47970,6 +48284,94 @@ public object FfiConverterTypeFirmwareGuardReason: FfiConverterRustBuffer<Firmwa
     override fun allocationSize(value: FirmwareGuardReason) = 4UL
 
     override fun write(value: FirmwareGuardReason, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+/**
+ * Where a firmware comes from (PLAN-PG section 1.8): upstream Weeb Labs, or
+ * this fork's `bofr-main` (extensions, alink, the 1.20 V core setting, our
+ * preset directory).
+ */
+
+enum class FirmwareLineage {
+    
+    /**
+     * Not known: every doubt resolves to "asks".
+     */
+    UNKNOWN,
+    /**
+     * Weeb Labs' firmware (stock).
+     */
+    UPSTREAM,
+    /**
+     * This fork's `bofr-main`.
+     */
+    BOFR;
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeFirmwareLineage: FfiConverterRustBuffer<FirmwareLineage> {
+    override fun read(buf: ByteBuffer) = try {
+        FirmwareLineage.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: FirmwareLineage) = 4UL
+
+    override fun write(value: FirmwareLineage, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+/**
+ * Which rule beyond the voltage rule decided an update verdict.
+ */
+
+enum class FirmwareUpdateRule {
+    
+    /**
+     * None: the voltage rule's verdict stands.
+     */
+    NONE,
+    /**
+     * The board has no BOOTSEL: refused, whatever is typed.
+     */
+    NO_BOOTSEL,
+    /**
+     * Our firmware would give way to an image that may be upstream's.
+     */
+    LINEAGE_LOSS;
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeFirmwareUpdateRule: FfiConverterRustBuffer<FirmwareUpdateRule> {
+    override fun read(buf: ByteBuffer) = try {
+        FirmwareUpdateRule.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: FirmwareUpdateRule) = 4UL
+
+    override fun write(value: FirmwareUpdateRule, buf: ByteBuffer) {
         buf.putInt(value.ordinal + 1)
     }
 }
@@ -54849,6 +55251,23 @@ public object FfiConverterSequenceSequenceTypeFilterParams: FfiConverterRustBuff
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_firmware_guard_check(
         FfiConverterByteArray.lower(`image`),FfiConverterTypeFirmwareGuardBoard.lower(`board`),FfiConverterString.lower(`typedConfirmation`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * The update check (PLAN-PG section 1.8): [`firmware_guard_check`]'s voltage
+         * rule on the target's record, plus: no image for a board without BOOTSEL,
+         * whatever is typed; the typed confirmation when firmware that may be ours
+         * would give way to an image that may be upstream's (a lineage that could
+         * not be read on an open board counts as ours); the generation change, with
+         * what works afterwards. Pure apart from parsing the image; never panics.
+         */ fun `firmwareUpdateCheck`(`image`: kotlin.ByteArray, `target`: FirmwareTarget, `typedConfirmation`: kotlin.String): FirmwareUpdateVerdict {
+            return FfiConverterTypeFirmwareUpdateVerdict.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_firmware_update_check(
+        FfiConverterByteArray.lower(`image`),FfiConverterTypeFirmwareTarget.lower(`target`),FfiConverterString.lower(`typedConfirmation`),_status)
 }
     )
     }

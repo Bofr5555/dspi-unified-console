@@ -116,6 +116,20 @@ impl DspiCore {
         let mut guard = self.lock();
         let inner = &mut *guard;
         let conn = inner.conn.as_mut().ok_or(DspiError::Disconnected)?;
+        // -- WP PGFIX -- the alink sender: its identity, no image
+        if conn.kind == crate::DeviceKind::AlinkSender {
+            let reply = conn.get_upto(op::REQ_GET_PLATFORM, 0, PLATFORM_LEN)?;
+            let mut next = state::default_state();
+            state::apply_platform(&reply, &mut next).map_err(|e| DspiError::Transfer {
+                msg: format!("GET_PLATFORM: {e}"),
+            })?;
+            next.num_channels = 0;
+            next.num_input_channels = 0;
+            next.num_output_channels = 0;
+            next.bulk_valid = false;
+            inner.state = next;
+            return Ok(());
+        }
         let (mut next, wire) = if conn.fresh_image {
             let mut next = inner.state.clone();
             // -- WP LK4 -- (review c82 F1) while a DSPi Link bind's background
@@ -382,6 +396,10 @@ impl DspiCore {
                 None,
             ));
         };
+        // -- WP PGFIX -- the alink sender has no meters: nothing is asked
+        if conn.kind == crate::DeviceKind::AlinkSender {
+            return Err(DspiError::Unsupported);
+        }
         let Some(side) = conn.side.clone() else {
             // n <= 17: at most 41 bytes.
             let want = n.saturating_mul(2).saturating_add(7);
@@ -417,6 +435,10 @@ enum Image {
 /// lock, so nothing lands between the device's change and the re-read.
 pub(crate) fn refresh_params_locked(inner: &mut Inner) -> Result<()> {
     let conn = inner.conn.as_mut().ok_or(DspiError::Disconnected)?;
+    // -- WP PGFIX -- the alink sender has no image
+    if conn.kind == crate::DeviceKind::AlinkSender {
+        return Err(DspiError::Unsupported);
+    }
     let mut next = inner.state.clone();
     match read_image(conn, &mut next)? {
         Image::Read(read) => {
@@ -954,6 +976,10 @@ fn parse_status(data: &[u8], n: usize) -> Option<SystemStatus> {
 
 /// [`DspiCore::apply_all_params`]'s refusals, before any lock or transfer.
 fn check_apply_allowed(inner: &mut Inner) -> Result<()> {
+    // -- WP PGFIX -- the alink sender has no image
+    if inner.conn()?.kind == crate::DeviceKind::AlinkSender {
+        return Err(DspiError::Unsupported);
+    }
     let wire = inner.conn()?.wire;
     crate::read_only::check(inner)?; // -- WP ROMODE --
     if matches!(

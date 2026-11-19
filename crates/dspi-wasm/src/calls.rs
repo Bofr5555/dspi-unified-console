@@ -353,6 +353,10 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
     if let Some(r) = crate::measure_curv::dispatch(&core, &req.method, req.params.clone()) {
         return r;
     }
+    // -- WP PGFWX -- the update target and the update check (src/firmware.rs)
+    if let Some(r) = crate::firmware::dispatch(&core, &req.method, req.params.clone()) {
+        return r;
+    }
     match req.method.as_str() {
         "open" => open(h, &core, params(req.params)?),
         "state" => {

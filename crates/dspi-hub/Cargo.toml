@@ -116,7 +116,7 @@ webpki-roots = "1"
 # (tests/review_seca_tls_cross.rs). -- WP SECSRV -- now a normal dependency too.
 # -- WP SECPAKE -- `fake-hub` for its FakeTlsKey: the MITM proxy's own key
 # (tests/wp_secpake.rs).
-dspi-link = { workspace = true, features = ["tls", "fake-hub"] }
+dspi-link = { workspace = true, features = ["tls", "fake-hub", "test-knobs"] } # -- WP PGFIX -- test-knobs
 dspi-transport = { path = "../dspi-transport", default-features = false, features = ["link"] }
 # -- WP HB2 --
 proptest = "1"

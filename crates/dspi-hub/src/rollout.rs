@@ -150,6 +150,9 @@ impl BootScan for CoreScan {
 /// [`Writer`] over the core's `picoboot_flash_confirmed`, on a core of its own with no
 /// device open: the token is minted and spent inside, as the parameter API's
 /// `"confirm": true` does (P1TK's discipline), and the guard runs again in the writer.
+/// -- WP PGFLASH -- That core read no target (the entry ran on the device's own core), so
+/// its write gate is the voltage rule alone, as before; step 6's update check on the
+/// target read before the entry refuses `no_bootsel` and `lineage_loss` first.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct CoreWriter;
 

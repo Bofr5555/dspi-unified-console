@@ -59,7 +59,8 @@ const NO_BOOTSEL: &str = "no_bootsel";
 /// The refusal of a board without BOOTSEL: `unsupported` with reason
 /// [`NO_BOOTSEL`].
 fn no_bootsel(target: &FirmwareTarget) -> ApiError {
-    let name = target.board.map_or(
+    // -- WP PGFWX -- the board from the exported id
+    let name = target.board().map_or(
         "a board that could not be identified",
         dspi_core::board_name,
     );

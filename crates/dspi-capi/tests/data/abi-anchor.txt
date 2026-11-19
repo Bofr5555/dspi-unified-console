@@ -1926,6 +1926,13 @@ uint32_t dspi_measure_doc_curves(const char *doc,
 const char *options_json,
 char *buf,
 uint32_t len);
+uint32_t dspi_firmware_target(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_firmware_update_check(const uint8_t *image,
+uint32_t image_len,
+const char *target,
+const char *typed,
+char *buf,
+uint32_t len);
 bool dspi_link_browse_start(struct FfiCore *core,
 void (*callback)(void *user_data),
 void *user_data,

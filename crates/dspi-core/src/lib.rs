@@ -537,6 +537,13 @@ pub(crate) struct Inner {
     // -- WP P5SES --
     /// What the notification path saw that a running measurement judges.
     pub(crate) measure_tap: measure::Tap,
+    // -- WP PGFLASH --
+    /// The update target this core last read from the open device
+    /// ([`DspiCore::firmware_target`], or the bootloader entry's own read):
+    /// what the write gate (`flash_confirmed`, `picoboot_flash_confirmed`)
+    /// judges by, never a caller's. Cleared when another device is opened
+    /// and after a write; kept when the device leaves for its bootloader.
+    pub(crate) flash_target: Option<crate::FirmwareTarget>,
 }
 
 /// An open device.
@@ -645,6 +652,11 @@ pub(crate) struct Connection {
     /// The document this connection was opened from (`offline.rs`); `None`
     /// for a device.
     pub(crate) document: Option<offline::Document>,
+    // -- WP PGFIX --
+    /// What the device is (`DeviceProtocol::device_kind`): the alink sender
+    /// has no session (no image, no DSP model); its setters answer
+    /// `Unsupported`.
+    pub(crate) kind: DeviceKind,
 }
 
 /// A remote device reached without the [`Inner`] lock (WP C15).
@@ -771,6 +783,8 @@ impl Connection {
             clip_mask: 0,
             // -- WP P1OF --
             document: None,
+            // -- WP PGFIX --
+            kind: DeviceKind::Dsp,
         }
     }
 
@@ -788,6 +802,8 @@ impl Connection {
     pub(crate) fn session(&mut self) -> Result<&mut Session> {
         match &mut self.link {
             Wire::Session(s) => Ok(s),
+            // -- WP PGFIX -- the alink sender has no DSP model
+            Wire::Raw(_) if self.kind == DeviceKind::AlinkSender => Err(DspiError::Unsupported),
             Wire::Raw(_) => Err(DspiError::Disconnected),
         }
     }
@@ -933,6 +949,7 @@ impl Inner {
             limits: limits::Limits::default(),                      // -- WP P1LM --
             client_read_only: read_only::ClientReadOnly::default(), // -- WP ROMODE --
             measure_tap: measure::Tap::default(),                   // -- WP P5SES --
+            flash_target: None,                                     // -- WP PGFLASH --
         }
     }
 
@@ -944,7 +961,10 @@ impl Inner {
     /// The open connection as a [`Writable`], if its state may be written
     /// ([`DspiError::ReadOnly`] for another wire format).
     pub(crate) fn writable_conn(&mut self) -> Result<Writable<'_>> {
-        self.conn()?;
+        // -- WP PGFIX -- nothing of the DSP model goes to the alink sender
+        if self.conn()?.kind == DeviceKind::AlinkSender {
+            return Err(DspiError::Unsupported);
+        }
         read_only::check(self)?; // -- WP ROMODE -- the client read-only mode
         if !self.conn()?.writable() {
             // -- WP QD6 --
@@ -952,6 +972,20 @@ impl Inner {
             return Err(DspiError::ReadOnly);
         }
         crate::limits::lock_check(self)?; // -- WP P1LK -- the installer's lock
+        Ok(Writable(self.conn()?))
+    }
+
+    // -- WP PGFIX --
+    /// [`Inner::writable_conn`] for an extension-channel write the alink
+    /// sender answers too (its alink block): on the sender, which has no
+    /// image to judge, only the client read-only mode and the installer's
+    /// lock apply.
+    pub(crate) fn ext_writable_conn(&mut self) -> Result<Writable<'_>> {
+        if self.conn()?.kind != DeviceKind::AlinkSender {
+            return self.writable_conn();
+        }
+        read_only::check(self)?;
+        crate::limits::lock_check(self)?;
         Ok(Writable(self.conn()?))
     }
 }
@@ -1066,6 +1100,7 @@ impl DspiCore {
         let mut inner = self.lock();
         let conn = Connection::new(transport, serial.clone(), vid);
         inner.confirm.connected(conn.generation); // -- WP P1BFIX -- F5
+        inner.flash_target = None; // -- WP PGFLASH -- another device's story
         inner.conn = Some(conn);
         inner.selected = Some(serial);
     }
@@ -1217,6 +1252,17 @@ impl DspiCore {
         let probed = match probed {
             Ok(probed) => probed,
             Err(e) => {
+                // -- WP PGFIX -- (PGMAT F1) the alink sender: no image, its
+                // own commands only
+                if let Some(sender) = device::sender_mirror(&mut *transport, &e) {
+                    let (mirror, ext) = sender?;
+                    let mut conn = Connection::new(transport, serial.clone(), vid);
+                    conn.notifications = notifications;
+                    conn.ext = ext;
+                    conn.kind = DeviceKind::AlinkSender;
+                    self.install(conn, mirror, serial, vid);
+                    return Ok(None);
+                }
                 // §1.5 "Unmappable images": a device that identifies itself
                 // but whose image cannot be read is still shown, read-only.
                 let Some(mirror) = device::unmappable_mirror(&mut *transport, &e, vid) else {
