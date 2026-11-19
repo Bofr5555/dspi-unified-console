@@ -30,7 +30,7 @@ dspi-link.workspace = true
 dspi-core = { workspace = true, features = ["link", "measure-sim"] }  # -- WP TMCORE -- a hub's device as a core DSPi Link session; -- WP P5DEMO -- the demo's simulated microphone
 # -- WP TM11 --
 # `uconsole hub`: the hub itself, without `app` (no DspiCore in a headless hub).
-dspi-hub = { workspace = true, features = ["api", "rollout"] }  # -- WP P2TM -- the parameter API, schedules; -- WP P3TM -- the firmware rollout
+dspi-hub = { workspace = true, features = ["api", "rollout", "demo-room"] }  # -- WP P2TM -- the parameter API, schedules; -- WP P3TM -- the firmware rollout; -- WP ATDEMO -- the demo's simulated room
 # -- WP P3TM -- `firmware add` at the prompt uploads in base64 chunks. Already in the graph
 # through dspi-hub and dspi-link.
 data-encoding = "2"

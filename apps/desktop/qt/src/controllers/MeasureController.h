@@ -60,6 +60,9 @@ public:
     // -- WP P5QUI2 -- the passive microphone RTA: the blocks to
     // dspi_measure_rta_passive_push, its frame read about 4 times a second
     std::atomic<bool> passive{ false };
+    // -- WP ATQT -- the several-units step's session on the hub
+    // (dspi_measure_system_tick; the blocks to dspi_measure_system_capture_push)
+    std::atomic<bool> system{ false };
 
     explicit MeasureLoop(FfiCore *core) : m_core(core) {}
     FfiCore *core() const { return m_core; }
@@ -85,6 +88,8 @@ signals:
     void pushRefused(const QByteArray &json);
     // -- WP P5QUI2 -- the passive RTA's frame ({ok, state, rta})
     void passiveFrame(const QByteArray &json);
+    // -- WP ATQT -- the several-units session's state (MeasureSystemState)
+    void systemState(const QByteArray &json);
 
 private:
     void tick();
@@ -97,6 +102,8 @@ private:
     QByteArray m_liveKey;   // seq, pending, active, runs of the last frame read
     bool m_frameWanted = false;
     int m_passiveTicks = 0;   // -- WP P5QUI2 --
+    QByteArray m_lastSystem;   // -- WP ATQT --
+    qint64 m_systemAt = 0;     // -- WP ATQT --
 };
 
 class MeasureController : public QObject {
@@ -440,6 +447,10 @@ public:
     // -- WP P5QUI2 -- the smoke driver's seam: the capture reads from this
     // source instead of an input (null: the inputs again)
     void setCaptureSource(dspi_capture::SourceFactory factory) { m_captureSource = std::move(factory); }
+    // -- WP ATQT -- the several-units step (UnitsMeasureController): while its
+    // session plays, the Stop bar shows its words and Stop (or the window
+    // closed) stops it too
+    void setSystemRun(bool running, const QString &text, std::function<void()> stop);
 
 signals:
     void deviceChanged();
@@ -503,7 +514,8 @@ private:
     std::function<void(bool, int)> m_micOpening;
 
     QVariantList m_setupOutputs;
-    QString m_placement = QStringLiteral("listeningPosition");
+    // -- WP P5FOLLOW -- no default: the person chooses (headphone safety, S3)
+    QString m_placement;
     int m_count = 3;
     QString m_coupler = QStringLiteral("iec60318_4");
     int m_sweepMs = 5500;
@@ -541,6 +553,10 @@ private:
     QString m_passiveAveraging = QStringLiteral("slow");
     bool m_clientReadOnly = false;
     dspi_capture::SourceFactory m_captureSource;
+    // -- WP ATQT --
+    bool m_systemRunning = false;
+    QString m_systemText;
+    std::function<void()> m_systemStop;
 
     QJsonObject m_live;
     QJsonObject m_frame;

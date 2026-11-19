@@ -491,7 +491,21 @@ fn apply_queued(
         // -- WP CG23 --
         inner.notify_tap.record(note, own);
         // -- WP P5SES -- what a running measurement must judge (S5)
-        crate::measure::note_notification(&mut inner.measure_tap, note, own);
+        // -- WP P5FOLLOW -- an own echo that leaves the mirror as it is
+        let unchanged = own
+            && patchable
+            && inner.measure_tap.is_on()
+            && match &note.event {
+                Event::ParamChanged { offset, bytes, .. } => {
+                    let img = image.get_or_insert_with(|| state::encode_bulk(&inner.state));
+                    let at = usize::from(*offset);
+                    at.checked_add(bytes.len())
+                        .and_then(|end| img.get(at..end))
+                        .is_some_and(|held| held == bytes.as_slice())
+                }
+                _ => false,
+            };
+        crate::measure::note_notification_echo(&mut inner.measure_tap, note, own, unchanged);
         // -- WP P0M --
         inner
             .events

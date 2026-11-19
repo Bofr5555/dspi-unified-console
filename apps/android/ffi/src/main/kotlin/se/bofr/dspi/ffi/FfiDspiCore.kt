@@ -5909,6 +5909,8 @@ internal fun se.bofr.dspi.ffi.uniffi.MeasureSystemProposal.toDomain() =
         offered = offered,
         mayApply = mayApply,
         notice = notice?.let { it.toDomain() },
+        guardS = guardS.toLong(),
+        guardNote = guardNote,
     )
 
 internal fun MeasureSystemProposal.toFfi() =
@@ -5922,6 +5924,8 @@ internal fun MeasureSystemProposal.toFfi() =
         offered = offered,
         mayApply = mayApply,
         notice = notice?.let { it.toFfi() },
+        guardS = guardS.toUInt(),
+        guardNote = guardNote,
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.MeasureSystemSnapshot.toDomain() =
@@ -5958,6 +5962,7 @@ internal fun se.bofr.dspi.ffi.uniffi.MeasureSystemApplied.toDomain() =
         writeFailures = writeFailures,
         verified = verified,
         message = message,
+        guardS = guardS.toLong(),
     )
 
 internal fun MeasureSystemApplied.toFfi() =
@@ -5970,6 +5975,7 @@ internal fun MeasureSystemApplied.toFfi() =
         writeFailures = writeFailures,
         verified = verified,
         message = message,
+        guardS = guardS.toUInt(),
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.MeasureLayoutOutput.toDomain() =

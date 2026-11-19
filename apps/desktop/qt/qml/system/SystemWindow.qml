@@ -279,6 +279,8 @@ ToolWindow {
                             property string shownName: modelData.name + ", " + modelData.stateWord
                             // -- WP AUSB1 -- a USB-direct unit's statistics line below its name
                             property bool usb: modelData.transport === "usb_direct"
+                            // -- WP ATQT -- a unit fed by S/PDIF is not on the audio link: its row is the S/PDIF table's
+                            visible: modelData.transport !== "spdif"
                             Layout.fillWidth: true
                             implicitHeight: (usb && modelData.usbStats ? Theme.rowHeight + 24 : Theme.rowHeight + 8)
                                             + (usb && (modelData.usbLockError || modelData.usbPlayUnalignedUnsupported) ? 16 : 0)
@@ -564,6 +566,12 @@ ToolWindow {
                     ToolTip.visible: hovered
                     ToolTip.text: qsTr("When a USB-direct stream's start moves, the hub writes their output delays again by itself")
                 }
+            }
+            // -- WP ATQT -- the S/PDIF units: a follower's source, a source's slots and D
+            SpdifUnitsCard {
+                Layout.fillWidth: true
+                visible: !window.simple && (SystemController.spdifUnits.length > 0 || window.editable)
+                editable: window.editable
             }
             Text {
                 objectName: "SystemWindow.stale"

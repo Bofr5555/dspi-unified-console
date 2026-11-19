@@ -161,6 +161,25 @@ pub(crate) fn playout_us(status: &Value, serial: &str, from: PlayOut) -> Option<
     us.is_finite().then_some(us)
 }
 
+// -- WP ATDEMO --
+/// The hub's `system.status`, waited for when it is rate limited (the hub
+/// answers it once a second per connection, and another view of this
+/// connection may just have read it): after an apply the engine's terms
+/// must be read, never taken as unreadable (a verify would then predict no
+/// change of delay and fail a good alignment).
+pub(crate) fn system_status(hub: &mut dyn Hub) -> Option<Value> {
+    for attempt in 0..3 {
+        match hub.request("system.status", json!({})) {
+            Ok(v) => return Some(v),
+            Err(DspiError::Link { code, .. }) if code == "rate_limited" && attempt < 2 => {
+                dspi_transport::clock::sleep(std::time::Duration::from_millis(1_050));
+            }
+            Err(_) => return None,
+        }
+    }
+    None
+}
+
 /// `(output, ms)` from a `param.get_many` reply of `out.delay` per output.
 pub(crate) fn out_delays_of(reply: &Value, outputs: &[u8]) -> Option<Vec<(u8, f32)>> {
     let values = reply.get("values")?.as_array()?;
@@ -404,7 +423,33 @@ struct Filed {
     model: Value,
     /// The play-out and output delays after the apply, by unit.
     after: Vec<Option<Terms>>,
+    // -- WP ATGUARD --
+    /// The hub's guard of the apply, by id (`None`: an older hub, nothing
+    /// reverts by itself).
+    guard: Option<u64>,
 }
+
+// -- WP ATGUARD -- the hub's guard of a system apply (P5TRUST's decision
+// (c) for its length).
+/// The guard's time beyond the planned verify, s (as P5TRUST's).
+pub(crate) const GUARD_MARGIN_S: u64 = 120;
+/// The planned verify is taken this much longer, percent (as P5TRUST's).
+pub(crate) const GUARD_SLACK_PCT: u64 = 25;
+/// The guard's longest, s (as a single unit's guarded apply).
+pub(crate) const GUARD_MAX_S: u32 = crate::guarded::APPLY_GUARD_MAX_TIMEOUT_S;
+/// Per timed run in the plan beyond its sound: the hub's round trips, the
+/// proofs, the analysis, ms.
+const GUARD_RUN_SLACK_MS: u64 = 1_000;
+/// A timed run's tail after its last sweep, ms (the session's).
+const GUARD_TAIL_MS: u64 = 600;
+
+/// Whether `hub` guards a system apply (the cap).
+pub(crate) fn hub_guards(hub: &dyn Hub) -> bool {
+    hub.caps()
+        .is_some_and(|c| c.iter().any(|x| x == msg_guard::CAP))
+}
+
+use dspi_measure::system::messages::guard as msg_guard;
 
 /// A measurement's outcome, kept for the proposal and its apply.
 #[derive(Debug, Clone)]
@@ -994,6 +1039,9 @@ impl Outcome {
             offered,
             may_apply,
             notice,
+            // -- WP ATGUARD -- set by `proposal_for`
+            guard_s: 0,
+            guard_note: String::new(),
         }
     }
 
@@ -1024,7 +1072,7 @@ impl Outcome {
     }
 
     fn read_after(&self, hub: &mut dyn Hub) -> Vec<Option<Terms>> {
-        let status = hub.request("system.status", json!({})).ok();
+        let status = system_status(hub); // -- WP ATDEMO --
         let snaps = self.snapshot(hub).ok();
         self.setup
             .units
@@ -1047,6 +1095,179 @@ impl Outcome {
             .collect()
     }
 
+    // -- WP ATGUARD --
+    /// The verify's planned length, ms: one pre-roll, each output of a
+    /// transition ramped again from its plan's start to its ceiling (every
+    /// step a timed run), then each transition's summed run.
+    pub(crate) fn verify_planned_ms(&self) -> u64 {
+        let lead = u64::from(
+            self.setup
+                .setup
+                .lead_ms
+                .max(super::plan::PLANNING_LEAD_MS.saturating_add(super::plan::LEAD_MARGIN_MS)),
+        );
+        let mut ms = u64::from(super::super::plan::PREROLL_MS);
+        let mut ramped: Vec<(usize, u8)> = Vec::new();
+        for &(i, j, _) in &self.transitions {
+            for k in [i, j] {
+                let Some(m) = self.measured.get(k) else {
+                    continue;
+                };
+                let Some(p) = self.setup.units.get(m.unit).map(|u| &u.plan) else {
+                    continue;
+                };
+                let gap = u64::from(p.sweep.gap_ms);
+                if !ramped.contains(&(m.unit, m.output)) {
+                    ramped.push((m.unit, m.output));
+                    let span = f64::from(p.ceiling_db - p.start_db).max(0.0);
+                    let steps = ((span / f64::from(super::super::safety::RAMP_STEP_DB)).ceil()
+                        as u64)
+                        .saturating_add(1);
+                    let step = lead
+                        .saturating_add(u64::from(super::super::runs::RAMP_SWEEP_MS))
+                        .saturating_add(gap)
+                        .saturating_add(GUARD_TAIL_MS)
+                        .saturating_add(GUARD_RUN_SLACK_MS);
+                    ms = ms.saturating_add(steps.saturating_mul(step));
+                }
+                if k == j {
+                    let passes = u64::from(super::session::SUM_PASSES);
+                    let sweep = u64::from(p.sweep.duration_ms).saturating_add(gap);
+                    ms = ms.saturating_add(
+                        lead.saturating_add(u64::from(dspi_measure::system::MAX_SUM_SPREAD_MS))
+                            .saturating_add(passes.saturating_mul(sweep))
+                            .saturating_add(GUARD_TAIL_MS)
+                            .saturating_add(GUARD_RUN_SLACK_MS),
+                    );
+                }
+            }
+        }
+        ms
+    }
+
+    /// The guard's planned length before its cap, s (P5TRUST's (c)): the
+    /// planned verify, [`GUARD_SLACK_PCT`] longer, plus [`GUARD_MARGIN_S`].
+    pub(crate) fn guard_planned_s(&self) -> u64 {
+        self.verify_planned_ms()
+            .saturating_mul(100 + GUARD_SLACK_PCT)
+            .div_ceil(100_000)
+            .saturating_add(GUARD_MARGIN_S)
+    }
+
+    /// The guard's length, s: [`Self::guard_planned_s`], at most
+    /// [`GUARD_MAX_S`].
+    pub(crate) fn guard_s(&self) -> u32 {
+        u32::try_from(self.guard_planned_s())
+            .unwrap_or(u32::MAX)
+            .min(GUARD_MAX_S)
+    }
+
+    /// The guard in words, for the proposal.
+    fn guard_note(&self, guarded: bool) -> String {
+        if !guarded {
+            return "this hub has no guard for an alignment across units: nothing reverts by \
+                    itself after the apply (not at a deadline, not when this console's \
+                    connection is lost); verify it, then Keep or Revert"
+                .into();
+        }
+        let s = self.guard_s();
+        let planned = self.guard_planned_s();
+        let mut note = format!(
+            "the hub reverts the alignment by itself unless it is kept within {s} s of the \
+             apply, and at once if this console's connection is lost"
+        );
+        if planned > u64::from(s) {
+            note.push_str(&format!(
+                "; the verify needs about {planned} s with its margin, longer than the guard's \
+                 longest ({s} s): the hub may revert before the verify ends"
+            ));
+        }
+        note
+    }
+
+    /// The proposal for `role` on a hub that does (`guarded`) or does not
+    /// guard a system apply.
+    pub(crate) fn proposal_for(&self, role: &str, guarded: bool) -> MeasureSystemProposal {
+        let mut p = self.proposal(role);
+        p.guard_s = if guarded { self.guard_s() } else { 0 };
+        p.guard_note = self.guard_note(guarded);
+        p
+    }
+
+    // -- review AT-D2 --
+    /// An applied alignment waits for Keep or Revert.
+    pub(crate) fn awaits_keep(&self) -> bool {
+        matches!(
+            self.applied.stage,
+            MeasureSystemApplyStage::Applied | MeasureSystemApplyStage::Verified
+        )
+    }
+
+    /// Whether the hub's guard of what is applied still runs (a verify
+    /// runs inside it). Without a guard: yes. One the hub has ended is
+    /// taken as its outcome says (reverted at its deadline: the stage is
+    /// `Reverted`), and refused.
+    pub(crate) fn guard_alive(&mut self, hub: &mut dyn Hub) -> Result<()> {
+        let Some(g) = self.filed.as_ref().and_then(|f| f.guard) else {
+            return Ok(());
+        };
+        if !matches!(
+            self.applied.stage,
+            MeasureSystemApplyStage::Applied | MeasureSystemApplyStage::Verified
+        ) {
+            return Ok(());
+        }
+        let st: msg_guard::StatusReply =
+            serde_json::from_value(hub.request(msg_guard::STATUS, json!({}))?).map_err(|e| {
+                DspiError::Link {
+                    code: "protocol".into(),
+                    msg: format!("system.guard.status: {e}"),
+                }
+            })?;
+        if st
+            .active
+            .as_ref()
+            .is_some_and(|a| a.guard == g && !a.reverting)
+        {
+            return Ok(());
+        }
+        let why = self.guard_ended(st.last.filter(|o| o.guard == g));
+        Err(invalid(why))
+    }
+
+    /// The hub ended the guard by itself: take its outcome. Its words.
+    fn guard_ended(&mut self, last: Option<msg_guard::Outcome>) -> String {
+        let why = match &last {
+            Some(o) if o.result == "kept" => {
+                self.applied.stage = MeasureSystemApplyStage::Kept;
+                self.applied.message = "kept: the alignment stays".into();
+                return format!("the hub kept the alignment ({})", o.message);
+            }
+            Some(o) if o.result == "reverted" => format!(
+                "the hub ended the guard ({}) and reverted the alignment: {}",
+                o.reason, o.message
+            ),
+            // -- review AT-D2 -- not put back (or not wholly): said first,
+            // never shown as a clean revert
+            Some(o) => format!(
+                "the hub ended the guard ({}), but the alignment was NOT wholly put back ({}): {}; \
+                 check the installation and the units' delays",
+                o.reason, o.result, o.message
+            ),
+            None => "the hub's guard of this apply has ended; what the hub did could not be \
+                     read: check the installation and the units' delays"
+                .into(),
+        };
+        if let Some(o) = &last {
+            self.applied.revision_after = o.revision;
+            self.applied.writes_ok = o.writes_ok;
+            self.applied.write_failures = o.write_failures.clone();
+        }
+        self.applied.stage = MeasureSystemApplyStage::Reverted;
+        self.applied.message = why.clone();
+        why
+    }
+
     /// Apply proposal `id` (Admin).
     pub(crate) fn apply(&mut self, hub: &mut dyn Hub, id: u32) -> Result<MeasureSystemApplied> {
         if hub.role() != "admin" {
@@ -1065,6 +1286,48 @@ impl Outcome {
                     .map_or_else(|| "nothing to apply".to_owned(), |n| n.message),
             ));
         }
+        // -- WP ATGUARD -- the hub's guard first (it files the model too);
+        // an older hub has none: today's apply, nothing reverts by itself.
+        let guard_s = if hub_guards(hub) { self.guard_s() } else { 0 };
+        let guard = if guard_s > 0 {
+            let req = msg_guard::BeginRequest {
+                timeout_ms: Some(guard_s.saturating_mul(1000)),
+            };
+            let reply: msg_guard::BeginReply = serde_json::from_value(hub.request(
+                msg_guard::BEGIN,
+                serde_json::to_value(&req).unwrap_or_else(|_| json!({})),
+            )?)
+            .map_err(|e| DspiError::Link {
+                code: "protocol".into(),
+                msg: format!("system.guard.begin: {e}"),
+            })?;
+            Some(reply.guard)
+        } else {
+            None
+        };
+        // Nothing was changed: the guard ends kept (nothing to revert).
+        let unguard = |hub: &mut dyn Hub| {
+            if let Some(g) = guard {
+                let _ = hub.request(msg_guard::CONFIRM, json!({ "guard": g }));
+            }
+        };
+        let r = self.apply_guarded(hub, &p, guard, guard_s);
+        // The model was set when the filed record names this guard.
+        let set = guard.is_some() && self.filed.as_ref().and_then(|f| f.guard) == guard;
+        if r.is_err() && !set {
+            unguard(hub);
+        }
+        r
+    }
+
+    /// [`Self::apply`] within the hub's guard `guard` (if any).
+    fn apply_guarded(
+        &mut self,
+        hub: &mut dyn Hub,
+        p: &MeasureSystemProposal,
+        guard: Option<u64>,
+        guard_s: u32,
+    ) -> Result<MeasureSystemApplied> {
         // File the model's revision and every unit's output delays first.
         let got = hub.request("system.get", json!({}))?;
         let revision = got.get("revision").and_then(Value::as_u64).unwrap_or(0);
@@ -1130,6 +1393,7 @@ impl Outcome {
         self.filed = Some(Filed {
             model,
             after: Vec::new(),
+            guard, // -- WP ATGUARD --
         });
         let (ok, failures) = report.as_ref().map_or((0, Vec::new()), writes_of);
         self.applied = MeasureSystemApplied {
@@ -1140,10 +1404,17 @@ impl Outcome {
             writes_ok: ok,
             write_failures: failures,
             verified: None,
-            message: match &report {
-                Ok(_) => "applied: verify it with the summed runs, then Keep or Revert".into(),
-                Err(e) => format!("the model was saved but the units were not written: {e}"),
+            message: match (&report, guard) {
+                (Ok(_), Some(_)) => format!(
+                    "applied: verify it with the summed runs, then Keep or Revert; the hub \
+                     reverts it by itself unless it is kept within {guard_s} s"
+                ),
+                (Ok(_), None) => "applied: verify it with the summed runs, then Keep or Revert \
+                                  (this hub has no guard: nothing reverts by itself)"
+                    .into(),
+                (Err(e), _) => format!("the model was saved but the units were not written: {e}"),
             },
+            guard_s, // -- WP ATGUARD --
         };
         let after = self.read_after(hub);
         if let Some(f) = self.filed.as_mut() {
@@ -1160,7 +1431,10 @@ impl Outcome {
     /// (nothing changes; `applied.message` says why) and only a second one,
     /// at least a second later on the user's explicit confirmation, keeps
     /// it. A new verify asks again.
-    pub(crate) fn keep(&mut self) -> Result<MeasureSystemApplied> {
+    ///
+    /// WP ATGUARD: a guarded apply is confirmed on the hub; one the hub
+    /// ended by itself is taken as its outcome says.
+    pub(crate) fn keep(&mut self, hub: &mut dyn Hub) -> Result<MeasureSystemApplied> {
         if !matches!(
             self.applied.stage,
             MeasureSystemApplyStage::Applied | MeasureSystemApplyStage::Verified
@@ -1188,8 +1462,36 @@ impl Outcome {
                 return Err(invalid(why));
             }
         }
+        // -- WP ATGUARD --
+        if let Some(g) = self.filed.as_ref().and_then(|f| f.guard) {
+            match hub.request(msg_guard::CONFIRM, json!({ "guard": g })) {
+                Ok(_) => {}
+                Err(DspiError::Link { code, .. }) if code == "conflict" => {
+                    let last = self.guard_last(hub, g);
+                    let why = self.guard_ended(last);
+                    if self.applied.stage == MeasureSystemApplyStage::Kept {
+                        return Ok(self.applied.clone());
+                    }
+                    return Err(invalid(why));
+                }
+                Err(e) => return Err(e),
+            }
+        }
         self.applied.stage = MeasureSystemApplyStage::Kept;
+        // -- review AT-D2 -- the apply's words ("... the hub reverts it by
+        // itself unless it is kept within N s") are over
+        self.applied.message = "kept: the alignment stays".into();
         Ok(self.applied.clone())
+    }
+
+    // -- WP ATGUARD --
+    /// The hub's last guard outcome, if it is guard `g`'s.
+    fn guard_last(&self, hub: &mut dyn Hub, g: u64) -> Option<msg_guard::Outcome> {
+        hub.request(msg_guard::STATUS, json!({}))
+            .ok()
+            .and_then(|v| serde_json::from_value::<msg_guard::StatusReply>(v).ok())
+            .and_then(|s| s.last)
+            .filter(|o| o.guard == g)
     }
 
     /// Revert what is applied (Admin): the filed model again, aligned, and
@@ -1207,12 +1509,51 @@ impl Outcome {
         let Some(f) = self.filed.clone() else {
             return Err(invalid("nothing was filed"));
         };
-        let mut fields = Map::new();
-        fields.insert("model".into(), f.model.clone());
-        fields.insert("revision".into(), self.applied.revision_after.into());
-        let saved = hub.request("system.set", Value::Object(fields))?;
-        let report = hub.request("system.align", json!({"apply": true}))?;
-        let (ok, failures) = writes_of(&report);
+        // -- WP ATGUARD -- a guarded apply: the hub reverts it (the same
+        // set and alignment) and the guard ends; one the hub has ended
+        // already is read back as it left it.
+        let (revision, ok, failures) = if let Some(g) = f.guard {
+            let outcome = match hub.request(msg_guard::CANCEL, json!({ "guard": g })) {
+                Ok(v) => serde_json::from_value::<msg_guard::Outcome>(v).map_err(|e| {
+                    DspiError::Link {
+                        code: "protocol".into(),
+                        msg: format!("system.guard.cancel: {e}"),
+                    }
+                })?,
+                Err(DspiError::Link { code, .. }) if code == "conflict" => {
+                    match self.guard_last(hub, g) {
+                        Some(o) if o.result == "kept" => {
+                            let _ = self.guard_ended(Some(o));
+                            return Err(invalid(
+                                "the hub kept this alignment already: it cannot be reverted",
+                            ));
+                        }
+                        Some(o) => o,
+                        None => {
+                            return Err(invalid("the hub's guard of this apply has ended"));
+                        }
+                    }
+                }
+                Err(e) => return Err(e),
+            };
+            if outcome.result == "not_written" {
+                self.applied.message = format!("not reverted: {}", outcome.message);
+                return Err(invalid(self.applied.message.clone()));
+            }
+            (
+                Some(outcome.revision),
+                outcome.writes_ok,
+                outcome.write_failures,
+            )
+        } else {
+            let mut fields = Map::new();
+            fields.insert("model".into(), f.model.clone());
+            fields.insert("revision".into(), self.applied.revision_after.into());
+            let saved = hub.request("system.set", Value::Object(fields))?;
+            let report = hub.request("system.align", json!({"apply": true}))?;
+            let (ok, failures) = writes_of(&report);
+            (saved.get("revision").and_then(Value::as_u64), ok, failures)
+        };
         let now = self.snapshot(hub)?;
         let mut differ = Vec::new();
         for s in &self.applied.snapshots {
@@ -1238,10 +1579,7 @@ impl Outcome {
             }
         }
         self.applied.stage = MeasureSystemApplyStage::Reverted;
-        self.applied.revision_after = saved
-            .get("revision")
-            .and_then(Value::as_u64)
-            .unwrap_or(self.applied.revision_after);
+        self.applied.revision_after = revision.unwrap_or(self.applied.revision_after);
         self.applied.writes_ok = ok;
         self.applied.write_failures = failures;
         self.applied.message = if differ.is_empty() {

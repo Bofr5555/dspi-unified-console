@@ -164,6 +164,8 @@ export class SnapshotDesk {
   // -- WP P1DCFIX -- the session's status, to ask the core again when it opens again
   private unwatch: (() => void) | undefined;
   private wasOpen = false;
+  // -- WP P5FOLLOW -- the core's events: a guard the auto-tune started
+  private unsubscribe: (() => void) | undefined;
 
   constructor(
     readonly session: Session,
@@ -187,6 +189,10 @@ export class SnapshotDesk {
         this.wasOpen = open;
       });
     }
+    // -- WP P5FOLLOW -- (review P5-E) a tune's guard is the bar's too: adopted from the Worker's
+    // tune events, its countdown shown; Keep stays the core's gated applyConfirm.
+    const sub = (core as { subscribe?: (fn: (e: unknown) => void) => () => void }).subscribe;
+    if (!this.unsubscribe && typeof sub === "function") this.unsubscribe = sub.call(core, (e) => this.onCoreEvent(e));
     const [guardDefault, ab, guard, waiting, backstop] = await Promise.all([
       core.call("applyGuardDefault", undefined).catch(() => false),
       core.call("abState", undefined).catch(() => NO_COMPARE),
@@ -220,6 +226,30 @@ export class SnapshotDesk {
     this.listeners.clear();
     this.unwatch?.();
     this.unwatch = undefined;
+    this.unsubscribe?.(); // -- WP P5FOLLOW --
+    this.unsubscribe = undefined;
+  }
+
+  // -- WP P5FOLLOW --
+  /** A core event: a waiting guard of the auto-tune that this bar does not drive yet is adopted. */
+  private onCoreEvent(e: unknown): void {
+    const x = e as { event?: unknown; state?: { guard?: GuardedApplyRecord | null } | null } | null;
+    if (!this.alive || !x || x.event !== "measureTune") return;
+    const g = x.state?.guard;
+    if (g) this.adoptGuard(g);
+  }
+
+  /**
+   * Show a guard another part of the page started (the auto-tune's apply): while it waits, with its
+   * countdown, driven as the bar's own (`applyPoll`). Nothing for a guard that does not wait, or the
+   * one the bar already drives (its countdown is the bar's own poll's).
+   */
+  adoptGuard(g: GuardedApplyRecord): void {
+    if (!this.alive || g.phase !== "waiting") return;
+    const now = this.state.guard;
+    if (now && now.phase === "waiting" && now.id === g.id) return;
+    this.set({ guard: g });
+    this.schedule();
   }
 
   watch(fn: () => void): () => void {

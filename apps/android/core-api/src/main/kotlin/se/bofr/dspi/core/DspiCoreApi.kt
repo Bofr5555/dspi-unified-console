@@ -3648,7 +3648,8 @@ interface DspiCoreApi : AutoCloseable {
      * `failed`.
      *
      * Errors: [`DspiError::InvalidArgument`] for a bad setup, a blocker
-     * (named with its unit) or a session already running;
+     * (named with its unit), a session already running, or an applied
+     * alignment still waiting for Keep or Revert (nothing sent);
      * [`DspiError::Unsupported`] for a hub without `system_measure` ("measuring
      * several units together needs the DSPi hub"); [`DspiError::Denied`]
      * for a Viewer; [`DspiError::Link`] with the hub's refusal
@@ -3731,6 +3732,13 @@ interface DspiCoreApi : AutoCloseable {
      * then `system.align` writes the units. Repeat the summed runs next
      * (`measure_system_verify`), then Keep or Revert.
      *
+     * WP ATGUARD: on a hub with the cap `system_apply_guard` the hub's
+     * guard is begun first (`system.guard.begin`, the proposal's
+     * `guard_s`: the planned verify, 25 % longer, plus 120 s, at most
+     * 590 s): the hub reverts by itself at the deadline unless Keep
+     * confirms it, and when this console's connection is lost. Without the
+     * cap nothing reverts by itself (the proposal says so).
+     *
      * Errors: [`DspiError::Denied`] for a role below Admin, nothing sent;
      * [`DspiError::InvalidArgument`] for another id, a summed check not
      * passed, nothing offered; [`DspiError::Link`] with the hub's refusal
@@ -3767,6 +3775,10 @@ interface DspiCoreApi : AutoCloseable {
      *
      * Errors: [`DspiError::InvalidArgument`] with nothing applied, or the
      * first Keep after a failed verify.
+     *
+     * WP ATGUARD: a guarded apply is confirmed on the hub
+     * (`system.guard.confirm`); one the hub has reverted already (its
+     * deadline passed) is shown as reverted, with the hub's words.
      */
     @Throws(DspiException::class)
     fun measureSystemKeep(): MeasureSystemApplied
@@ -3775,6 +3787,10 @@ interface DspiCoreApi : AutoCloseable {
      * Revert the applied alignment (Admin): the filed model is set again
      * (`system.set`) and `system.align` writes the units back; every unit's
      * output delays are read back against the filed ones.
+     *
+     * WP ATGUARD: a guarded apply is reverted by the hub
+     * (`system.guard.cancel`: the same set and alignment), which ends the
+     * guard.
      *
      * Errors: [`DspiError::InvalidArgument`] with nothing applied;
      * [`DspiError::Denied`] below Admin; the hub's refusals.
@@ -6295,7 +6311,8 @@ interface DspiCoreApi : AutoCloseable {
 
     /**
      * A `mic` document from a microphone's calibration file (miniDSP UMIK-1 or
-     * UMIK-2 text with its `Sens Factor` line, REW calibration text, or CSV),
+     * UMIK-2 text with its `Sens Factor` line, Dayton Audio iMM-6C or UMM-6
+     * text with its `*1000Hz` sensitivity line, REW calibration text, or CSV),
      * on the standard grid: the file's format, serial, sensitivity and gain,
      * its angle (90° when the file name or a comment says so), the dB SPL scale
      * its sensitivity implies (labelled approximate until a calibrator step),

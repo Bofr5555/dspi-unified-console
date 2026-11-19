@@ -95,7 +95,20 @@ QString TuneController::stageText() const {
     if (s == QLatin1String("verifying")) return tr("Verifying inside the guard: the tuned outputs, then the sums.");
     if (s == QLatin1String("verified")) return tr("Verified inside the guard: Keep or Revert.");
     if (s == QLatin1String("kept")) return tr("Kept.");
-    if (s == QLatin1String("reverted")) return tr("Reverted: the device is as it was before the tune.");
+    if (s == QLatin1String("reverted")) {
+        // -- WP P5FOLLOW -- (review P5-E W2, as the web) the core's stage is
+        // "reverted" for every guard end but kept; only the guard knows
+        // whether the settings from before are really back
+        const QJsonObject g = m_state.value(QLatin1String("guard")).toObject();
+        const QString phase = str(g, "phase");
+        const QString message = str(g, "message");
+        const QString tail = message.isEmpty() ? QString() : QLatin1Char(' ') + message;
+        if (phase == QLatin1String("lost"))
+            return tr("The connection was lost while the tune waited in its guard: the device may still hold the tune.") + tail;
+        if (phase == QLatin1String("revert_failed"))
+            return tr("The revert failed: the device may still hold part of the tune.") + tail;
+        return tr("Reverted: the device is as it was before the tune.");
+    }
     return tr("No tune yet: measure, then propose one.");
 }
 

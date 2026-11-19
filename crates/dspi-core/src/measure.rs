@@ -70,6 +70,8 @@ pub use system::{
     MeasureSystemResult, MeasureSystemSetup, MeasureSystemSnapshot, MeasureSystemState,
     MeasureSystemTransition, MeasureSystemUnit, MeasureSystemUnitCheck,
 };
+// -- WP ATDEMO --
+pub use system::MeasureSystemSimInfo;
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_atcore;
@@ -206,6 +208,8 @@ pub(crate) const NOTICE_KEYS: &[&str] = &[
     "measure.system.verify_failed",
     // -- WP P5HOLD --
     "measure.tune.keep_during_verify",
+    // -- WP ATDEMO -- the demo hub's simulated microphone refused
+    "measure.system.sim_refused",
 ];
 
 // ── Records ─────────────────────────────────────────────────────────────
@@ -583,7 +587,45 @@ impl Tap {
 
 /// The notification path's hook (`notify.rs`, under `inner`): note what a
 /// running session must judge. `own` is the echo filter's verdict.
+/// WP P5FOLLOW: the notification path calls [`note_notification_echo`];
+/// this is its form without the mirror's verdict, for the tests.
+#[cfg(test)]
 pub(crate) fn note_notification(tap: &mut Tap, note: &Notification, own: bool) {
+    note_notification_echo(tap, note, own, false);
+}
+
+// -- WP P5FOLLOW -- the session's own volume echo (review P5-E, P5TM race)
+impl Tap {
+    /// Whether a session listens now.
+    pub(crate) fn is_on(&self) -> bool {
+        self.on
+    }
+
+    /// A volume write of this core goes out while a session runs: it is a
+    /// volume change during the measurement (S5), noted when it is sent, so
+    /// its echo need not be judged again.
+    pub(crate) fn note_own_volume_write(&mut self) {
+        if self.on {
+            self.push(TapEvent::Volume);
+        }
+    }
+}
+
+// -- WP P5FOLLOW --
+/// [`note_notification`], told whether an own `PARAM_CHANGED` leaves the
+/// mirror as it is (`unchanged`). An own volume echo that changes nothing is
+/// the late echo of a write sent before the session started (the volume a
+/// client lowered for the measurement, its echo delayed under load): not a
+/// change during the measurement. A volume write of this core during the
+/// session is noted when it is sent ([`Tap::note_own_volume_write`]); an own
+/// echo that differs from the mirror (or another app's write on the same USB
+/// path that does) still aborts.
+pub(crate) fn note_notification_echo(
+    tap: &mut Tap,
+    note: &Notification,
+    own: bool,
+    unchanged: bool,
+) {
     if !tap.on {
         return;
     }
@@ -599,7 +641,9 @@ pub(crate) fn note_notification(tap: &mut Tap, note: &Notification, own: bool) {
     }
     match &note.event {
         Event::ParamChanged { offset, .. } if volume(usize::from(*offset)) => {
-            tap.push(TapEvent::Volume);
+            if !(own && unchanged) {
+                tap.push(TapEvent::Volume);
+            }
         }
         Event::ParamChanged { .. } if !own => tap.push(TapEvent::ForeignWrite),
         Event::BulkInvalidated { source } if !own => {

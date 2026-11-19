@@ -247,6 +247,13 @@ void SystemController::setLists(const QJsonObject &o) {
         m_editUnits = edit;
         m_usbUnits = usb;
         emit editUnitsChanged();
+        emit spdifChanged();   // -- WP ATQT -- the candidates follow the units
+    }
+    // -- WP ATQT -- the S/PDIF units of the same reading
+    const QVariantList spdif = o.value(QLatin1String("spdifUnits")).toArray().toVariantList();
+    if (spdif != m_spdifUnits) {
+        m_spdifUnits = spdif;
+        emit spdifChanged();
     }
 }
 
@@ -440,6 +447,14 @@ QByteArray SystemController::draftJson() const {
     }
     edits.insert(QStringLiteral("usbModes"), usb);
     if (m_draftKeep.isValid()) edits.insert(QStringLiteral("keepUsbAligned"), m_draftKeep.toBool());
+    // -- WP ATQT -- the S/PDIF edits, in the same system.set
+    QJsonArray spdif;
+    for (auto it = m_draftSpdif.cbegin(); it != m_draftSpdif.cend(); ++it) {
+        QJsonObject e = QJsonObject::fromVariantMap(it.value());
+        e.insert(QStringLiteral("unitId"), it.key());
+        spdif.append(e);
+    }
+    if (!spdif.isEmpty()) edits.insert(QStringLiteral("spdif"), spdif);
     return QJsonDocument(edits).toJson(QJsonDocument::Compact);
 }
 
@@ -478,6 +493,7 @@ void SystemController::clearDraft() {
     m_draftRooms.clear();
     m_draftUnits.clear();
     m_draftUsb.clear();   // -- WP AUSB2 --
+    m_draftSpdif.clear();   // -- WP ATQT --
     m_draftKeep = QVariant();
     m_draftAuto = systemDelayAuto();
     m_draftFrames = systemDelayFrames();
@@ -488,4 +504,140 @@ void SystemController::reload() {
     clearDraft();
     setAction(QString(), false);
     refresh();
+}
+
+// ---- -- WP ATQT -- The S/PDIF transport ---------------------------------------------
+
+QVariantMap SystemController::spdifRow(const QString &unitId) const { return unitById(m_spdifUnits, unitId); }
+
+QVariantList SystemController::spdifSources() const {
+    QVariantList out;
+    for (const QVariant &v : m_spdifUnits) {
+        const QVariantMap u = v.toMap();
+        if (u.value(QStringLiteral("role")).toString() != QLatin1String("source")) continue;
+        out.append(QVariantMap{ { QStringLiteral("id"), u.value(QStringLiteral("id")) }, { QStringLiteral("name"), u.value(QStringLiteral("name")) } });
+    }
+    return out;
+}
+
+QVariantList SystemController::spdifCandidates() const {
+    QVariantList out;
+    for (const QVariant &v : m_units) {
+        const QVariantMap u = v.toMap();
+        const QString id = u.value(QStringLiteral("id")).toString();
+        if (u.value(QStringLiteral("kind")).toString() != QLatin1String("unit")) continue;
+        if (u.value(QStringLiteral("transport")).toString() == QLatin1String("usb_direct")) continue;
+        if (!spdifRow(id).isEmpty()) continue;
+        out.append(QVariantMap{ { QStringLiteral("id"), id }, { QStringLiteral("name"), u.value(QStringLiteral("name")) } });
+    }
+    return out;
+}
+
+bool SystemController::spdifFed(const QString &unitId) const {
+    return spdifRow(unitId).value(QStringLiteral("role")).toString() == QLatin1String("follower");
+}
+
+bool SystemController::spdifEdit(const QString &unitId, const QVariantMap &change) {
+    if (!mayEdit() || unitId.isEmpty()) return false;
+    if (!m_dirty) m_draftRevision = revision();
+    QVariantMap e = m_draftSpdif.value(unitId);
+    // A new role drops what the old one drafted
+    if (change.contains(QStringLiteral("role"))) e.clear();
+    for (auto it = change.cbegin(); it != change.cend(); ++it) e.insert(it.key(), it.value());
+    m_draftSpdif.insert(unitId, e);
+    m_dirty = true;
+    emit draftChanged();
+    return true;
+}
+
+bool SystemController::setSpdifSource(const QString &unitId, const QString &sourceId) {
+    if (!spdifFed(unitId) || unitById(spdifSources(), sourceId).isEmpty()) return false;
+    return spdifEdit(unitId, { { QStringLiteral("role"), QStringLiteral("follower") }, { QStringLiteral("source"), sourceId } });
+}
+
+bool SystemController::setSpdifSlot(const QString &unitId, int slot, bool on) {
+    if (slot < 0 || slot > 3) return false;
+    const bool source = spdifRow(unitId).value(QStringLiteral("role")).toString() == QLatin1String("source")
+                        || m_draftSpdif.value(unitId).value(QStringLiteral("role")).toString() == QLatin1String("source");
+    if (!source) return false;
+    int mask = spdifMaskOf(unitId);
+    mask = on ? (mask | (1 << slot)) : (mask & ~(1 << slot));
+    // A source carries its time base on one slot at least (the hub says so too)
+    if (mask == 0) return false;
+    return spdifEdit(unitId, { { QStringLiteral("txMask"), mask } });
+}
+
+bool SystemController::setSpdifD(const QString &unitId, const QString &samples) {
+    if (spdifRow(unitId).value(QStringLiteral("role")).toString() != QLatin1String("source")) return false;
+    const QString t = samples.trimmed();
+    if (t.isEmpty()) return spdifEdit(unitId, { { QStringLiteral("setD"), true }, { QStringLiteral("d"), QVariant() } });
+    bool ok = false;
+    const int d = t.toInt(&ok);
+    if (!ok || d < 0 || d > 65535) return false;
+    return spdifEdit(unitId, { { QStringLiteral("setD"), true }, { QStringLiteral("d"), d } });
+}
+
+bool SystemController::addSpdif(const QString &unitId, const QString &as) {
+    if (unitById(spdifCandidates(), unitId).isEmpty()) return false;
+    if (as == QLatin1String("source")) return spdifEdit(unitId, { { QStringLiteral("role"), QStringLiteral("source") } });
+    if (unitById(spdifSources(), as).isEmpty()) return false;
+    return spdifEdit(unitId, { { QStringLiteral("role"), QStringLiteral("follower") }, { QStringLiteral("source"), as } });
+}
+
+bool SystemController::removeSpdif(const QString &unitId) {
+    if (spdifRow(unitId).isEmpty()) return false;
+    return spdifEdit(unitId, { { QStringLiteral("role"), QStringLiteral("off") } });
+}
+
+int SystemController::spdifMaskOf(const QString &unitId) const {
+    const QVariantMap e = m_draftSpdif.value(unitId);
+    if (e.contains(QStringLiteral("txMask"))) return e.value(QStringLiteral("txMask")).toInt();
+    if (e.value(QStringLiteral("role")).toString() == QLatin1String("source") && spdifRow(unitId).isEmpty()) return 0b1000;
+    return spdifRow(unitId).value(QStringLiteral("txMask")).toInt();
+}
+
+QString SystemController::spdifDText(const QString &unitId) const {
+    const QVariantMap e = m_draftSpdif.value(unitId);
+    if (e.value(QStringLiteral("setD")).toBool()) {
+        const QVariant d = e.value(QStringLiteral("d"));
+        return d.isValid() && !d.isNull() ? QString::number(d.toInt()) : QString();
+    }
+    const QVariant d = spdifRow(unitId).value(QStringLiteral("d"));
+    return d.isValid() && !d.isNull() ? QString::number(d.toInt()) : QString();
+}
+
+QString SystemController::spdifSourceOf(const QString &unitId) const {
+    const QVariantMap e = m_draftSpdif.value(unitId);
+    if (e.contains(QStringLiteral("source"))) return e.value(QStringLiteral("source")).toString();
+    return spdifRow(unitId).value(QStringLiteral("source")).toString();
+}
+
+QStringList SystemController::spdifDrafted() const {
+    QStringList out;
+    const auto nameOf = [this](const QString &id) {
+        const QString n = unitById(m_units, id).value(QStringLiteral("name")).toString();
+        return n.isEmpty() ? id : n;
+    };
+    for (auto it = m_draftSpdif.cbegin(); it != m_draftSpdif.cend(); ++it) {
+        const QVariantMap e = it.value();
+        const QString role = e.value(QStringLiteral("role")).toString();
+        const QString name = nameOf(it.key());
+        if (role == QLatin1String("source")) out << tr("%1 becomes an S/PDIF time-base source.").arg(name);
+        else if (role == QLatin1String("follower"))
+            out << tr("%1 is fed by S/PDIF from %2.").arg(name, nameOf(e.value(QStringLiteral("source")).toString()));
+        else if (role == QLatin1String("off")) out << tr("%1 goes back on the audio link.").arg(name);
+        if (e.contains(QStringLiteral("txMask")))
+            out << tr("%1 sends the time base on: %2.").arg(name, [](int mask) {
+                QStringList on;
+                for (int n = 0; n < 4; ++n)
+                    if (mask & (1 << n)) on << QStringLiteral("%1-%2").arg(2 * n + 1).arg(2 * n + 2);
+                return on.join(QStringLiteral(", "));
+            }(e.value(QStringLiteral("txMask")).toInt()));
+        if (e.value(QStringLiteral("setD")).toBool()) {
+            const QVariant d = e.value(QStringLiteral("d"));
+            out << (d.isValid() && !d.isNull() ? tr("%1's D becomes %2 samples.").arg(name).arg(d.toInt())
+                                               : tr("%1's D becomes the hub's.").arg(name));
+        }
+    }
+    return out;
 }

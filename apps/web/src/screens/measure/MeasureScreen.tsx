@@ -39,6 +39,7 @@ import { ResultsTab } from "./results";
 import { RunPanel } from "./run";
 import { SetupPanel } from "./setup";
 import { WAT_TABS } from "./tune"; // -- WP P5WAT --
+import { SYSTEM_TABS } from "./system/SystemTab"; // -- WP ATWEB --
 
 /** The microphone choice: the demo's simulated one, or a browser input ("" its default). */
 export type MicChoice = { kind: "sim" } | { kind: "browser"; deviceId: string };
@@ -515,6 +516,7 @@ export const MEASURE_TABS: MeasureTab[] = [
   { id: "measure", label: "Measure", View: MeasureTabView },
   { id: "results", label: "Results", View: ResultsTab, passive: true },
   { id: "live", label: "Live", View: LiveTab },
+  ...SYSTEM_TABS, // -- WP ATWEB -- several units on one time base
   // -- tab slot: WP P5WAT -- (auto-tune and the documents)
   ...WAT_TABS, // -- WP P5WAT --
 ];

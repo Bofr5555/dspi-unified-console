@@ -72,6 +72,9 @@ use crate::{DspiCore, DspiError, Result};
 pub(crate) mod plan;
 pub(crate) mod proposal;
 pub(crate) mod session;
+// -- WP ATDEMO -- the demo hub's simulated microphone
+pub(crate) mod sim;
+pub use sim::MeasureSystemSimInfo;
 
 pub(crate) use session::{SessionOutput, SysSession};
 
@@ -417,6 +420,15 @@ pub struct MeasureSystemProposal {
     pub may_apply: bool,
     /// What stands in the way, if anything.
     pub notice: Option<MeasureSystemIssue>,
+    // -- WP ATGUARD --
+    /// The hub's guard the apply begins, s: the hub reverts the apply by
+    /// itself unless it is kept within this long (and when this console's
+    /// connection is lost). 0: the hub has no guard for a system apply.
+    #[serde(default)]
+    pub guard_s: u32,
+    /// The guard in words: how long, or that nothing reverts by itself.
+    #[serde(default)]
+    pub guard_note: String,
 }
 
 /// One unit's output delays as filed before an apply.
@@ -480,6 +492,12 @@ pub struct MeasureSystemApplied {
     pub verified: Option<bool>,
     /// What to know, in words.
     pub message: String,
+    // -- WP ATGUARD --
+    /// The hub's guard of this apply, s (0: none, nothing reverts by
+    /// itself): the hub sets the filed model back and aligns at the
+    /// deadline unless Keep confirms it, and when the connection is lost.
+    #[serde(default)]
+    pub guard_s: u32,
 }
 
 // ── The hub, as the session sees it ────────────────────────────────────
@@ -574,6 +592,9 @@ pub(crate) struct SystemSlot {
     pub(crate) session: Option<SysSession>,
     /// The last measurement's outcome, kept for the proposal and its apply.
     pub(crate) outcome: Option<proposal::Outcome>,
+    // -- WP ATDEMO --
+    /// The demo hub's simulated microphone.
+    pub(crate) sim: sim::SystemSim,
     /// A test's scripted hub in place of the core's.
     #[cfg(test)]
     pub(crate) hub: Option<Box<dyn Hub>>,
@@ -684,7 +705,8 @@ impl DspiCore {
     /// `failed`.
     ///
     /// Errors: [`DspiError::InvalidArgument`] for a bad setup, a blocker
-    /// (named with its unit) or a session already running;
+    /// (named with its unit), a session already running, or an applied
+    /// alignment still waiting for Keep or Revert (nothing sent);
     /// [`DspiError::Unsupported`] for a hub without `system_measure` ("measuring
     /// several units together needs the DSPi hub"); [`DspiError::Denied`]
     /// for a Viewer; [`DspiError::Link`] with the hub's refusal
@@ -701,11 +723,28 @@ impl DspiCore {
                     "busy: a system measurement is already running on this console",
                 ));
             }
+            // -- review AT-D2 -- a new measurement would replace the outcome
+            // that holds what was filed (and the hub's guard): the applied
+            // alignment could then be neither kept nor reverted from here,
+            // and the hub would put it back at its deadline unseen
+            if slot
+                .outcome
+                .as_ref()
+                .is_some_and(proposal::Outcome::awaits_keep)
+            {
+                return Err(invalid(
+                    "an applied alignment across units waits for Keep or Revert: keep or revert \
+                     it before measuring again",
+                ));
+            }
             let (pre, units) =
                 self.with_hub(&mut slot, |hub| plan::preflight(&setup, &checks, hub))?;
             if let Some(e) = plan::refusal(&pre) {
                 return Err(e);
             }
+            // -- WP ATDEMO -- the simulated microphone hears every unit, or nothing starts
+            let serials: Vec<String> = setup.units.iter().map(|u| u.serial.clone()).collect();
+            self.system_sim_probe(&mut slot, &serials)?;
             let session = self.with_hub(&mut slot, |hub| {
                 SysSession::open(
                     plan::SetupPlan::new(&setup, units)?,
@@ -746,6 +785,13 @@ impl DspiCore {
         }
         let (state, changed) = {
             let mut slot = self.system_slot();
+            // -- WP ATDEMO -- the simulated microphone is the capture: a client's is ignored
+            if slot.sim.is_on() {
+                return Ok(slot
+                    .session
+                    .as_ref()
+                    .map_or_else(MeasureSystemState::default, SysSession::state));
+            }
             let Some(mut s) = slot.session.take() else {
                 return Ok(MeasureSystemState::default());
             };
@@ -774,6 +820,7 @@ impl DspiCore {
                 return MeasureSystemState::default();
             };
             let before = s.phase_key();
+            self.system_sim_feed(&mut slot, &mut s); // -- WP ATDEMO --
             self.with_hub(&mut slot, |hub| s.tick(hub, Instant::now()));
             let changed = before != s.phase_key();
             let state = s.state();
@@ -833,11 +880,13 @@ impl DspiCore {
     pub fn measure_system_proposal(&self) -> Result<MeasureSystemProposal> {
         let mut slot = self.system_slot();
         let role = self.with_hub(&mut slot, |hub| hub.role());
+        // -- WP ATGUARD -- whether the hub guards the apply
+        let guarded = self.with_hub(&mut slot, |hub| proposal::hub_guards(hub));
         let o = slot
             .outcome
             .as_ref()
             .ok_or_else(|| invalid("no system measurement result is ready"))?;
-        Ok(o.proposal(&role))
+        Ok(o.proposal_for(&role, guarded))
     }
 
     /// Start the summed check of every inter-unit transition (RC5f): one
@@ -864,6 +913,13 @@ impl DspiCore {
     /// are written into the model (`system.set`, guarded by the revision),
     /// then `system.align` writes the units. Repeat the summed runs next
     /// (`measure_system_verify`), then Keep or Revert.
+    ///
+    /// WP ATGUARD: on a hub with the cap `system_apply_guard` the hub's
+    /// guard is begun first (`system.guard.begin`, the proposal's
+    /// `guard_s`: the planned verify, 25 % longer, plus 120 s, at most
+    /// 590 s): the hub reverts by itself at the deadline unless Keep
+    /// confirms it, and when this console's connection is lost. Without the
+    /// cap nothing reverts by itself (the proposal says so).
     ///
     /// Errors: [`DspiError::Denied`] for a role below Admin, nothing sent;
     /// [`DspiError::InvalidArgument`] for another id, a summed check not
@@ -915,18 +971,27 @@ impl DspiCore {
     ///
     /// Errors: [`DspiError::InvalidArgument`] with nothing applied, or the
     /// first Keep after a failed verify.
+    ///
+    /// WP ATGUARD: a guarded apply is confirmed on the hub
+    /// (`system.guard.confirm`); one the hub has reverted already (its
+    /// deadline passed) is shown as reverted, with the hub's words.
     pub fn measure_system_keep(&self) -> Result<MeasureSystemApplied> {
         let mut slot = self.system_slot();
-        let o = slot
-            .outcome
-            .as_mut()
-            .ok_or_else(|| invalid("nothing is applied"))?;
-        o.keep()
+        let Some(mut o) = slot.outcome.take() else {
+            return Err(invalid("nothing is applied"));
+        };
+        let r = self.with_hub(&mut slot, |hub| o.keep(hub));
+        slot.outcome = Some(o);
+        r
     }
 
     /// Revert the applied alignment (Admin): the filed model is set again
     /// (`system.set`) and `system.align` writes the units back; every unit's
     /// output delays are read back against the filed ones.
+    ///
+    /// WP ATGUARD: a guarded apply is reverted by the hub
+    /// (`system.guard.cancel`: the same set and alignment), which ends the
+    /// guard.
     ///
     /// Errors: [`DspiError::InvalidArgument`] with nothing applied;
     /// [`DspiError::Denied`] below Admin; the hub's refusals.
@@ -960,6 +1025,34 @@ impl DspiCore {
         f(&mut hub)
     }
 
+    // -- WP ATDEMO --
+    /// Before a session with the simulated microphone on: the hub's room
+    /// hears every one of `serials`, or the session does not start.
+    fn system_sim_probe(&self, slot: &mut SystemSlot, serials: &[String]) -> Result<()> {
+        let mut sim = std::mem::take(&mut slot.sim);
+        let r = self.with_hub(slot, |hub| {
+            if sim.on(hub) {
+                sim.probe(hub, serials)
+            } else {
+                Ok(())
+            }
+        });
+        slot.sim = sim;
+        r
+    }
+
+    // -- WP ATDEMO --
+    /// The simulated microphone's capture since the last tick, pushed.
+    fn system_sim_feed(&self, slot: &mut SystemSlot, s: &mut SysSession) {
+        let mut sim = std::mem::take(&mut slot.sim);
+        self.with_hub(slot, |hub| {
+            if sim.on(hub) {
+                sim.feed(hub, s);
+            }
+        });
+        slot.sim = sim;
+    }
+
     /// Put a session back; a finished one leaves its outcome.
     fn system_settle(&self, slot: &mut SystemSlot, mut s: SysSession) {
         match s.take_outcome() {
@@ -986,6 +1079,15 @@ impl DspiCore {
                     "busy: a system measurement is already running on this console",
                 ));
             }
+            // -- WP ATGUARD -- a verify runs inside the hub's guard: one
+            // the hub has ended (its deadline) is not verified
+            if purpose == MeasureSystemPurpose::Verify
+                && let Some(mut o) = slot.outcome.take()
+            {
+                let alive = self.with_hub(&mut slot, |hub| o.guard_alive(hub));
+                slot.outcome = Some(o);
+                alive?;
+            }
             let Some(o) = slot.outcome.as_ref() else {
                 return Err(invalid("no system measurement result is ready"));
             };
@@ -1009,6 +1111,9 @@ impl DspiCore {
             for (old, new) in setup.units.iter_mut().zip(units) {
                 old.ctx.limiter_outputs = new.ctx.limiter_outputs;
             }
+            // -- WP ATDEMO -- the simulated microphone hears every unit, or nothing starts
+            let serials: Vec<String> = setup.units.iter().map(|u| u.serial.clone()).collect();
+            self.system_sim_probe(&mut slot, &serials)?;
             let session = self.with_hub(&mut slot, |hub| {
                 SysSession::open(setup, purpose, Some(jobs), hub, Instant::now())
             })?;

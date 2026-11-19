@@ -7510,6 +7510,20 @@ uint32_t dspi_measure_system_capture_push(struct FfiCore *core,
 uint32_t dspi_measure_system_tick(struct FfiCore *core, char *buf, uint32_t len);
 
 /**
+ * Turn the demo hub's simulated microphone on (`on` true) or off for the
+ * next measurements across units: its info (`MeasureSystemSimInfo`
+ * `{available, on, label, room, issue}`), or a failure (`dlink`
+ * `unsupported` on any hub but the demo's, `invalid` while a session runs).
+ * While on, the core reads the hub's room on every tick: push no capture.
+ */
+uint32_t dspi_measure_system_sim_set(struct FfiCore *core, bool on, char *buf, uint32_t len);
+
+/**
+ * The demo hub's simulated microphone's info, without I/O.
+ */
+uint32_t dspi_measure_system_sim_info(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
  * The system session's state, without I/O.
  */
 uint32_t dspi_measure_system_state(struct FfiCore *core, char *buf, uint32_t len);
@@ -7966,6 +7980,10 @@ uint32_t dspi_link_fetch_info(const char *host, uint16_t port, char *buf, uint32
  * unitCount, summary, health, issues, stale}. Asks the hub (at most once
  * a second; sooner gives the last view with `stale`): keep it off a UI
  * thread, and give a buffer of 64 KiB, as a short one means asking again.
+ * -- WP ATQT -- Also `spdifUnits`: [{id, name, serial, role (`source`,
+ * `follower`), source, sourceName, txMask, slotsWord, d, unitD, dMin,
+ * dMax, connected, state, stateWord, lockError, noTimeBase}], the S/PDIF
+ * units of the same reading (`dspi_core::link::AlinkSpdifUnit`).
  * Returns the length needed; 0 for a panic.
  */
 uint32_t dspi_alink_system_view(struct FfiCore *core, char *buf, uint32_t len);
@@ -7974,7 +7992,10 @@ uint32_t dspi_alink_system_view(struct FfiCore *core, char *buf, uint32_t len);
  * Save the Clock-and-audio-links edits made on the view of `revision`:
  * `edits_json` is {setSystemDelay, systemDelayFrames (null: automatic),
  * rooms: [{roomId, lipSyncUs}], units: [{unitId, measuredLatencyUs}],
- * usbModes: [{unitId, mode}], keepUsbAligned (null: unchanged)}.
+ * usbModes: [{unitId, mode}], keepUsbAligned (null: unchanged)}, and
+ * -- WP ATQT -- spdif: [{unitId, role (`source`, `follower`, `off`,
+ * null: unchanged), source, txMask, setD, d}] (the S/PDIF units,
+ * `dspi_core::link::AlinkSpdifEdit`), all in one `system.set`.
  * Replies JSON {ok, revision, warnings} (the new revision; the hub's
  * warnings about the model it kept, one sentence each, `[]` for none),
  * or code `conflict` when the

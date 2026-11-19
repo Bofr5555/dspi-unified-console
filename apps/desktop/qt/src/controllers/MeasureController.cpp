@@ -146,6 +146,15 @@ void MeasureLoop::begin() {
 }
 
 void MeasureLoop::push(const dspi_capture::Block &b) {
+    // -- WP ATQT -- the several-units session takes every block (it runs alone)
+    if (system.load()) {
+        const QByteArray st = once([&](char *buf, uint32_t l) {
+            return dspi_measure_system_capture_push(m_core, uint64_t(b.firstFrame), b.samples.constData(),
+                                                    uint32_t(b.samples.size()), uint32_t(b.rateHz), b.clipped, buf, l);
+        }, kStateBytes);
+        if (!isOk(MeasureController::object(st))) emit pushRefused(st);
+        return;
+    }
     if (!session.load() && !live.load() && !tune.load()) {
         // -- WP P5QUI2 -- the passive RTA's blocks (never beside a run: the
         // core ends the passive RTA when one starts)
@@ -180,6 +189,13 @@ bool MeasureLoop::due(QByteArray *last, qint64 *at, const QByteArray &now, const
 }
 
 void MeasureLoop::tick() {
+    // -- WP ATQT -- the several-units session: its tick drives the hub's side
+    if (system.load()) {
+        const QByteArray st = once([&](char *b, uint32_t l) { return dspi_measure_system_tick(m_core, b, l); }, kStateBytes);
+        const bool active = MeasureController::object(st).value(QLatin1String("active")).toBool();
+        if (!active) system.store(false);
+        if (due(&m_lastSystem, &m_systemAt, st, "phase") || !active) emit systemState(st);
+    }
     // -- WP P5QUI2 -- the passive RTA's frame, every 250 ms (a read)
     if (passive.load() && ++m_passiveTicks % 5 == 0) {
         const QByteArray f = MeasureController::reply([&](char *b, uint32_t l) { return dspi_measure_rta_passive_frame(m_core, b, l); }, 1 << 18);
@@ -236,6 +252,8 @@ void MeasureLoop::finish() {
     if (tune.exchange(false)) MeasureController::reply([&](char *b, uint32_t l) { return dspi_measure_tune_stop(m_core, b, l); });
     if (session.exchange(false)) MeasureController::reply([&](char *b, uint32_t l) { return dspi_measure_stop(m_core, b, l); });
     if (passive.exchange(false)) MeasureController::reply([&](char *b, uint32_t l) { return dspi_measure_rta_passive_stop(m_core, b, l); });
+    // -- WP ATQT -- the several-units session: one system.measure.abort
+    if (system.exchange(false)) MeasureController::reply([&](char *b, uint32_t l) { return dspi_measure_system_stop(m_core, b, l); });
 }
 
 // ---- Helpers ---------------------------------------------------------------------------
@@ -798,6 +816,10 @@ QString MeasureController::setupProblem() const {
         if (v.toMap().value(QStringLiteral("on")).toBool()) ++on;
     if (on == 0) return tr("Choose at least one output to measure.");
     if (on > 16) return tr("At most 16 outputs a run.");
+    // -- WP P5FOLLOW -- (coordinator, headphone safety) no placement is
+    // assumed: the levels are the placement's, much lower for headphones
+    if (m_placement.isEmpty())
+        return tr("Choose the placement first: speakers or headphones on a coupler. Headphones are measured much more quietly.");
     const auto r = countRange(m_placement);
     if (r.first && (m_count < r.first || m_count > r.second))
         return m_placement == QLatin1String("headphones") ? tr("Reseats: 1 to 9.") : tr("Positions: 3 to 9.");
@@ -968,6 +990,8 @@ void MeasureController::nextPosition() {
 
 void MeasureController::stop() {
     ++m_stopEpoch;   // review P5-D: a start still on its way is withdrawn
+    // -- WP ATQT -- the several-units session too
+    if (m_systemStop) m_systemStop();
     if (!m_loop) return;
     MeasureLoop *loop = m_loop;
     const bool tuneRuns = m_tuneRunning;
@@ -1094,16 +1118,26 @@ bool MeasureController::timingReliable() const {
 bool MeasureController::running() const {
     // The simulated microphone may stay on: it hears nothing while no run plays
     return m_state.value(QLatin1String("active")).toBool() || liveActive() || m_tuneRunning || m_passiveOn ||
+           m_systemRunning ||   // -- WP ATQT --
            (m_capture && m_capture->isRunning());
 }
 
 QString MeasureController::runningText() const {
+    if (m_systemRunning) return m_systemText;   // -- WP ATQT --
     if (m_passiveOn) return tr("The microphone is open for the passive RTA; nothing is played.");
     if (liveActive()) return tr("The live view is playing the DSPi's generator.");
     if (m_tuneRunning) return tr("The auto-tune's runs are playing the DSPi's generator.");
     if (m_state.value(QLatin1String("active")).toBool()) return tr("Measuring with the DSPi's generator.");
     if (m_capture && m_capture->isRunning()) return tr("The microphone is open.");
     return {};
+}
+
+// -- WP ATQT --
+void MeasureController::setSystemRun(bool running, const QString &text, std::function<void()> stop) {
+    m_systemRunning = running;
+    m_systemText = text;
+    if (stop) m_systemStop = std::move(stop);
+    setRunning();
 }
 
 void MeasureController::setRunning() {
@@ -1402,6 +1436,11 @@ void MeasureController::liveStart(const QVariantMap &s) {
     }
     if (m_passiveOn || m_passiveStarting) {   // -- WP P5QUI2 --
         fail(tr("Stop the passive RTA first."));
+        return;
+    }
+    // -- WP P5FOLLOW -- (coordinator, headphone safety) never a placement assumed
+    if (s.value(QStringLiteral("placement")).toString().isEmpty()) {
+        fail(tr("Choose the placement first: speakers or headphones on a coupler. Headphones are measured much more quietly."));
         return;
     }
     if (running()) return;

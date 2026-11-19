@@ -369,13 +369,28 @@ fn agrees(delay: f64, flip: bool, truth: (f64, bool, f64, f64), corner: f64) -> 
 ///   the note (`held_unclear`: review P5-D F1 and P5HOLD's polarity guard).
 ///   Never a timing that disagrees with the truth.
 fn wp_p5hold_family(name: &str, lp: u8, hp: u8) {
+    family_check(name, lp, hp, true);
+}
+
+// -- WP P5FOLLOW -- (review P5-E's mutants)
+/// [`wp_p5hold_family`] with the hold anchored on the raw arrivals (as
+/// before WP P5HOLD; `xover::sim_without_onset_anchor`): the guards alone
+/// must then keep what they cannot settle, at any corner, and never propose
+/// a timing that disagrees with the truth. The review saw BW3 at 120 Hz
+/// proposed (+1.03 ms, the truth -2.32 ms) for want of an odd-order guard;
+/// LR8 at 300 Hz is kept by the polarity guard.
+fn wp_p5follow_family_without_the_anchor(name: &str, lp: u8, hp: u8) {
+    dspi_measure::xover::sim_without_onset_anchor(|| family_check(name, lp, hp, false));
+}
+
+fn family_check(name: &str, lp: u8, hp: u8, anchored: bool) {
     let world = room();
     let q = lp == BW3_LP;
     let mut failures = Vec::new();
     for f1 in [300.0f32, 120.0] {
         let chains = family_chains(lp, hp, f1);
         let (_, aligned, xo) = tuned(lp, hp, f1).unwrap();
-        let may_keep = f1 < 200.0;
+        let may_keep = f1 < 200.0 || !anchored;
         let held_note = |notes: &[String], low: u8, high: u8| {
             notes.iter().any(|n| {
                 n.contains(&format!("outputs {low} and {high}"))
@@ -436,7 +451,7 @@ fn wp_p5hold_family(name: &str, lp: u8, hp: u8) {
                 failures.push(format!("{name} {f1} Hz xo {:.0} Hz", x.corner_hz));
             }
         }
-        if !may_keep {
+        if anchored && f1 >= 200.0 {
             for n in aligned.notes.iter().chain(&xo.notes) {
                 if n.contains("arrivals") {
                     failures.push(format!("{name} {f1} Hz held: {n}"));
@@ -467,6 +482,57 @@ family_tests! {
     wp_p5hold_bw3_gets_the_right_timing: "BW3", 44, 45;
     wp_p5hold_bw4_gets_the_right_timing: "BW4", 46, 47;
     wp_p5hold_bessel4_gets_the_right_timing: "BES4", 58, 59;
+}
+
+// -- WP P5FOLLOW --
+macro_rules! unanchored_tests {
+    ($($test:ident: $name:literal, $lp:literal, $hp:literal;)*) => {
+        $(
+            #[test]
+            fn $test() {
+                wp_p5follow_family_without_the_anchor($name, $lp, $hp);
+            }
+        )*
+    };
+}
+
+unanchored_tests! {
+    wp_p5follow_lr2_without_the_anchor_is_right_or_kept: "LR2", 32, 33;
+    wp_p5follow_lr4_without_the_anchor_is_right_or_kept: "LR4", 34, 35;
+    wp_p5follow_lr6_without_the_anchor_is_right_or_kept: "LR6", 36, 37;
+    wp_p5follow_lr8_without_the_anchor_is_right_or_kept: "LR8", 38, 39;
+    wp_p5follow_bw2_without_the_anchor_is_right_or_kept: "BW2", 42, 43;
+    wp_p5follow_bw3_without_the_anchor_is_right_or_kept: "BW3", 44, 45;
+    wp_p5follow_bw4_without_the_anchor_is_right_or_kept: "BW4", 46, 47;
+    wp_p5follow_bessel4_without_the_anchor_is_right_or_kept: "BES4", 58, 59;
+}
+
+// -- WP P5FOLLOW --
+/// The review's case by itself: BW3 at 120 Hz without the anchor is kept
+/// with the note, alone and through the corner search, not proposed.
+#[test]
+fn wp_p5follow_bw3_at_120_hz_without_the_anchor_is_kept() {
+    let (_, aligned, xo) =
+        dspi_measure::xover::sim_without_onset_anchor(|| tuned(44, 45, 120.0)).unwrap();
+    let p = &aligned.pairs[0];
+    assert_eq!((p.relative_delay_ms, p.flipped), (0.0, false), "{p:?}");
+    assert!(
+        aligned
+            .notes
+            .iter()
+            .any(|n| n.contains("outputs 0 and 1") && n.contains("could not be settled")),
+        "{:#?}",
+        aligned.notes
+    );
+    let x = &xo.transitions[0];
+    assert_eq!((x.relative_delay_ms, x.flipped), (0.0, false), "{x:?}");
+    assert!(
+        xo.notes
+            .iter()
+            .any(|n| n.contains("outputs 0 and 1") && n.contains("could not be settled")),
+        "{:#?}",
+        xo.notes
+    );
 }
 
 #[test]

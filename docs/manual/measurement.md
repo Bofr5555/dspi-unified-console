@@ -39,7 +39,8 @@ input is playing, and stops if audio starts.
 
 ### 2.1 Speakers
 
-Pick the placement in the setup:
+Pick the placement in the setup. Nothing is chosen for you: **Measure** stays off until you have picked one, because
+headphones are measured much more quietly than speakers.
 
 | Placement | Where the microphone goes | What it is good for |
 |---|---|---|
@@ -54,7 +55,7 @@ Point the microphone the way its calibration file expects:
   position. The console notices a 90° file from its name (`_90deg`) or its header.
 
 Use **3 passes or more** when you want auto-tune to touch timing. A run of 2 passes is always marked "timing
-unreliable" (section 6).
+unreliable" (section 6); the setup says so under **Passes** when it is 2.
 
 ### 2.2 Headphones and couplers
 
@@ -191,10 +192,11 @@ EQ toward the target. Each step shows its result before the next, and you can st
 1. **Layout.** The console proposes your speakers and their ways (low, mid, high, sub) from the DSPi's settings, and
    which outputs belong together. Check and correct it. You can leave outputs out.
 2. **Checks.** Everything that would stop a run (section 4) is listed in words.
-3. **Measure.** One walked run of each speaker's ways at the listening position, three passes. For headphones choose
-   the headphone placement first (in the web console's Auto-tune tab: **Measured: Headphones on a coupler**; it follows
-   the setup's placement until you choose): the run then uses the lower headphone levels of section 4. In the Qt
-   console the tune uses the measurement you made on the Measure tab, with the placement you chose there.
+3. **Measure.** One walked run of each speaker's ways at the listening position, three passes. Choose where it is
+   measured first: in the web console's Auto-tune tab **Measured: Speakers, at the listening position** or
+   **Headphones on a coupler** (it takes the setup's choice when that is one of the two; nothing is assumed). For
+   headphones the run then uses the lower headphone levels of section 4. In the Qt console the tune uses the
+   measurement you made on the Measure tab, with the placement you chose there.
 4. **Options.** You can keep the crossover (align only), keep the delays, keep the levels, or leave the EQ out (**No EQ
    fit**).
 5. **Summed check, always.** The ways of each crossover play together, and the measured sum is compared with what the
@@ -286,8 +288,109 @@ never plays anything and never writes to the DSPi. You can still open Results an
 It does not run while this console is measuring, in the live view or in auto-tune, so it never shows the test signal as
 if it were your music.
 
+<!-- WP ATDOC -->
+## 10. Measuring several units together
+
+*This is in the web console (Measure, the "Several units" tab) and in the Qt console (Tools > Measure…, the
+"Several units" tab). It has not been tried on real units yet. The technical page is [docs/integrator/multi-unit-measurement.md](../integrator/multi-unit-measurement.md).*
+
+When one room is played by several DSPi units (a subwoofer unit and a mains unit, or one unit per speaker), one
+microphone can measure them all and line them up in time. Each unit plays its own test signal, and every start is set
+on a sample counter the units share, so each unit starts exactly when it was told to.
+
+### 10.1 What you need
+
+- **The DSPi hub.** Measuring several units together runs through our hub. Without it, the console offers one unit at a
+  time and says "Measuring several units needs the DSPi hub".
+- **Units that share one clock.** These can be measured together:
+
+  | Units | Measured together |
+  |---|---|
+  | the units behind one audio link sender (fan-outs and repeaters included) | yes |
+  | the units fed over USB-direct from one USB controller, in phase lock at 48 or 96 kHz, with the hub running where they are plugged in | yes |
+  | one DSPi set as an S/PDIF source and the DSPi units that follow it over S/PDIF | yes |
+  | units on two senders, two USB controllers or two S/PDIF sources, or a mix of them | no: "These units do not share a clock" |
+  | units fed over S/PDIF by a TV or a receiver, over USB at 44.1 kHz or without phase lock, over ADAT or I2S | no: one unit at a time |
+
+  A unit set to follow S/PDIF that is fed by other equipment says "This S/PDIF source does not carry a DSPi time base".
+  An S/PDIF source should not be fed over USB without phase lock: each time playback starts, its followers have to lock
+  again. The outputs that carry the source's S/PDIF are never measured.
+- **The same sample rate on every unit**, and every unit locked to the shared clock.
+- **The Control role** to measure, and **the Admin role** to apply what it finds.
+
+### 10.2 How a run goes
+
+1. **Choose the units and their outputs**, with the microphone at the listening position.
+2. **Each unit is checked on its own**: its volume, its tweeter protection, silent inputs, no processing the measurement
+   cannot model (the rules of section 4, for every unit). The console names the unit that stops it.
+3. **The clocks settle.** Right after the units lock, or after anything disturbed their clock, the hub waits until it
+   has seen them locked for 40 seconds. The console says "waiting for the units' clocks to settle". This can take up to
+   40 seconds; it is normal.
+4. **The run.** Each unit plays its outputs in turn, then the next unit, and the whole round repeats (5 passes when they
+   fit, else 3). The hub schedules every start a little ahead (about a quarter of a second with a K340), so each unit is
+   ready on time.
+5. **A large group is measured in several runs.** One run takes at most 16 outputs and 2 minutes. Each run then repeats
+   one **anchor output** (the first unit's first output unless you choose another), and the runs are joined through it.
+   The console says "The group needs several runs". If the anchor sounds different between runs, the runs do not join
+   and nothing is proposed: "The runs do not chain". **Do not move the microphone, or anything near it, until every run
+   has finished.**
+
+Any of these stops the run at once, on every unit, and names the unit: a unit clips or reaches full scale, a limiter
+acts, a unit loses its clock lock, a unit's start did not happen exactly as scheduled, someone else changes a setting,
+the hub loses a unit, or you press **Stop**. The hub also stops every unit by itself if the console stops answering.
+
+### 10.3 What you get, and its limits
+
+The result gives each output's curve, as for one unit, and the **delay between the units** with how sure it is.
+
+- **A delay between units is offered only when it is known to within 10 µs.** Otherwise the result says **"timing
+  unreliable"** with how far the microphone's clock wandered, and nothing is proposed for those units. The curves are
+  still good.
+- **With a USB microphone whose clock wanders like the one in our own test (section 6), every run reads "timing
+  unreliable".** In simulation, runs passed only when the wander was about a tenth of what we measured on that
+  microphone. Use a capture path with a steadier clock, such as an analogue measurement microphone on an audio
+  interface.
+- **The outputs must be heard within about 85 ms of each other.** An output heard more than that after the run's first
+  output cannot be measured in the same run, and nothing of that group is offered. This can happen with five or more
+  USB-direct units, or with a large output delay already set.
+
+### 10.4 Apply, verify, Keep and Revert
+
+1. **Summed check, always.** Before anything is applied, the outputs where two units meet play together and the sum is
+   compared with the prediction. Each unit is checked on its own again first, and each output is ramped again. Units
+   that play together play quieter: 6 dB less each time their number doubles. If the sum disagrees by more than
+   1.5 dB, every delay between the units is withdrawn: "The summed check failed". A pair that would cancel out is not
+   played at all, and the console says which outputs and why.
+2. **Apply needs Admin.** A Control user sees the proposal and can save the measurement, but "Applying needs Admin". The
+   delays go into the hub's installation, and the hub writes the units. **A countdown starts**: the console shows how
+   long you have (a few minutes, enough for the verify and some margin). If you do not press Keep in that time, the
+   hub puts the installation and the units' delays back by itself. It does the same at once if this console closes or
+   loses its connection. Leaving it alone is always safe.
+3. **Verify.** The summed check runs again with the new delays, each unit checked again first. If it does not agree:
+   "The verify did not confirm the alignment".
+4. **Keep.** After a verify that passed, one press keeps the alignment. **After a verify that failed, Keep takes two
+   steps**: the first press is refused with the reason, and only your second press, at least a second later, keeps it.
+   Nothing presses Keep for you.
+5. **Revert** puts the installation and every unit's delays back as they were, and ends the countdown. If the hub has
+   already put things back when you press Keep or Verify, the console says what the hub did.
+
+An older hub has no countdown for this. The console then says before the apply that nothing reverts by itself: the
+new delays stay until you Keep or Revert.
+
+Only the delays between units are proposed. Polarity, crossovers and EQ are tuned within each unit by its own
+auto-tune (section 7).
+
+### 10.5 Not tried on real units yet
+
+Everything in this section has run on simulated units in a simulated room only. It still has to be shown on real
+boards: that each unit plays exactly by the delay it reports, that real units can be opened together, and the S/PDIF
+clock between real units.
+<!-- /WP ATDOC -->
+
 ## See also
 
 - [docs/integrator/measurement.md](../integrator/measurement.md): the technical contract (signal path, rules, documents)
 - [docs/integrator/hub-api.md section 22](../integrator/hub-api.md#22-measurement-documents): documents on the hub
+- [docs/integrator/multi-unit-measurement.md](../integrator/multi-unit-measurement.md): measuring several units
+  together, the technical page (WP ATDOC)
 - [docs/GLOSSARY.md](../GLOSSARY.md): the words the consoles use

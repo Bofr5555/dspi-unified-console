@@ -3742,6 +3742,8 @@ pub(crate) fn control_plane(
         .or_else(|| hub.service_message(session, value))
         // -- WP ATHUB -- `system.measure.*`, before the model's `system.*`
         .or_else(|| crate::system::measure::handle_message(hub, session, value))
+        // -- WP ATGUARD -- `system.guard.*`, and `system.set` while one is pending
+        .or_else(|| crate::system::guard::handle_message(hub, session, value))
 }
 
 /// `{"t":"ok","id":…, …body}`.
@@ -3885,6 +3887,8 @@ impl Shared {
         caps.push(crate::apply_guard::CAP);
         // -- WP P1HL --
         caps.push(crate::limits::CAP);
+        // -- WP ATGUARD --
+        caps.push(crate::system::guard::CAP);
         // -- WP P2SV -- each service's
         for cap in self.hub.service_caps() {
             if !caps.contains(&cap) {
@@ -3909,6 +3913,10 @@ impl Shared {
         // -- WP ATHUB -- measuring several units, for a Link 1.3 client
         if crate::system::measure::offered_to(link_minor) {
             caps.push(dspi_measure::system::messages::CAP);
+            // -- WP ATDEMO -- the demo hub's simulated microphone, only there
+            if self.hub.system_measure_has_demo_room() {
+                caps.push(dspi_measure::system::messages::demo::CAP);
+            }
         }
         let mode = self.auth.mode();
         // -- WP SECPAIR -- a key rotation's announcement, while it lasts (PLAN-SEC 4.2)

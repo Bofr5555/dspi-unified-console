@@ -122,6 +122,35 @@ pub extern "C" fn dspi_measure_system_tick(core: *mut FfiCore, buf: *mut c_char,
     text(core, buf, len, |c| json_reply(Ok(c.measure_system_tick())))
 }
 
+// -- WP ATDEMO --
+/// Turn the demo hub's simulated microphone on (`on` true) or off for the
+/// next measurements across units: its info (`MeasureSystemSimInfo`
+/// `{available, on, label, room, issue}`), or a failure (`dlink`
+/// `unsupported` on any hub but the demo's, `invalid` while a session runs).
+/// While on, the core reads the hub's room on every tick: push no capture.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_measure_system_sim_set(
+    core: *mut FfiCore,
+    on: bool,
+    buf: *mut c_char,
+    len: u32,
+) -> u32 {
+    text(core, buf, len, |c| json_reply(c.measure_system_sim_set(on)))
+}
+
+// -- WP ATDEMO --
+/// The demo hub's simulated microphone's info, without I/O.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_measure_system_sim_info(
+    core: *mut FfiCore,
+    buf: *mut c_char,
+    len: u32,
+) -> u32 {
+    text(core, buf, len, |c| {
+        json_reply(Ok(c.measure_system_sim_info()))
+    })
+}
+
 /// The system session's state, without I/O.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_measure_system_state(core: *mut FfiCore, buf: *mut c_char, len: u32) -> u32 {

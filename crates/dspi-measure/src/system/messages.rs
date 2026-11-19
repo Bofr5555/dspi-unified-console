@@ -264,6 +264,183 @@ pub struct AbortedEvent {
     pub reason: String,
 }
 
+// -- WP ATGUARD --
+/// The hub's guard of a system apply (`system.guard.*`, hub-api section
+/// 23.4): the hub files the model and its revision, and sets it back and
+/// aligns at a deadline unless the owner confirms; a lost connection or a
+/// stopping hub reverts too. One guard at a time; while it is pending, a
+/// `system.set` from another session is refused `conflict`.
+pub mod guard {
+    use serde::{Deserialize, Serialize};
+
+    /// The hub's `hello.caps` entry: it answers `system.guard.*`.
+    pub const CAP: &str = "system_apply_guard";
+    /// File the model and start the countdown (Admin).
+    pub const BEGIN: &str = "system.guard.begin";
+    /// Keep what was applied (the owner).
+    pub const CONFIRM: &str = "system.guard.confirm";
+    /// Revert now (the owner): the filed model set again, then aligned.
+    pub const CANCEL: &str = "system.guard.cancel";
+    /// The pending guard and the last outcome (any role).
+    pub const STATUS: &str = "system.guard.status";
+    /// Event to every session: a guard ended.
+    pub const ENDED: &str = "system.guard.ended";
+    /// The shortest countdown the hub grants, ms.
+    pub const TIMEOUT_MS_MIN: u32 = 1_000;
+    /// The longest countdown the hub grants, ms (as `apply.begin`'s).
+    pub const TIMEOUT_MS_MAX: u32 = 600_000;
+    /// The countdown when `begin` names none, ms.
+    pub const TIMEOUT_MS_DEFAULT: u32 = 300_000;
+
+    /// The countdown the hub grants for a requested one.
+    pub fn clamp_timeout_ms(requested: Option<u32>) -> u32 {
+        requested
+            .unwrap_or(TIMEOUT_MS_DEFAULT)
+            .clamp(TIMEOUT_MS_MIN, TIMEOUT_MS_MAX)
+    }
+
+    /// `system.guard.begin`.
+    #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+    pub struct BeginRequest {
+        /// The countdown, ms ([`clamp_timeout_ms`]).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub timeout_ms: Option<u32>,
+    }
+
+    /// `begin`'s answer.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    pub struct BeginReply {
+        /// The guard's id.
+        pub guard: u64,
+        /// The model's revision filed.
+        pub revision: u64,
+        /// The countdown granted, ms.
+        pub timeout_ms: u32,
+    }
+
+    /// `confirm` and `cancel`: the guard they end.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    pub struct GuardRequest {
+        /// The guard's id, from `begin`.
+        pub guard: u64,
+    }
+
+    /// How a guard ended: `confirm`'s and `cancel`'s answer, the event
+    /// `system.guard.ended`, `status`'s `last`.
+    #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+    pub struct Outcome {
+        /// The guard's id.
+        pub guard: u64,
+        /// `confirmed`, `timeout`, `session_closed`, `cancelled`,
+        /// `hub_stopping`.
+        pub reason: String,
+        /// `kept`, `reverted`, `revert_failed` (the model was set back but
+        /// a unit's write failed), `not_written` (the model changed on the
+        /// hub meanwhile, or could not be saved: nothing was set back).
+        pub result: String,
+        /// The model's revision filed at `begin`.
+        pub revision_filed: u64,
+        /// The model's revision now (after a revert, the revert's).
+        pub revision: u64,
+        /// The alignment's writes that were `ok` or `unchanged`.
+        #[serde(default)]
+        pub writes_ok: u32,
+        /// The others, in words.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        pub write_failures: Vec<String>,
+        /// What to know, in words.
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        pub message: String,
+        /// Unix seconds.
+        #[serde(default)]
+        pub at: u64,
+    }
+
+    /// The pending guard in `status`.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    pub struct Active {
+        /// The guard's id.
+        pub guard: u64,
+        /// The session that began it.
+        pub session: u64,
+        /// The revision filed.
+        pub revision_filed: u64,
+        /// The revision its owner's last `system.set` left.
+        pub revision_left: u64,
+        /// Until the hub reverts, ms.
+        pub remaining_ms: u64,
+        /// It is being reverted.
+        pub reverting: bool,
+    }
+
+    /// `status`'s answer.
+    #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+    pub struct StatusReply {
+        /// The pending guard, if any.
+        #[serde(default)]
+        pub active: Option<Active>,
+        /// The last guard's outcome, if any.
+        #[serde(default)]
+        pub last: Option<Outcome>,
+    }
+}
+
+// -- WP ATDEMO --
+/// The demo hub's simulated microphone (WP ATDEMO): a room that hears the
+/// demo units' generators, offered only by `uconsole --demo hub --alink
+/// --with-measure-units` and only for a session whose every unit is one of
+/// that hub's own demo units. Never on a hub with real devices in the
+/// session: the hub refuses it (`unsupported`) and the core then plays
+/// nothing.
+pub mod demo {
+    use serde::{Deserialize, Serialize};
+
+    /// The hub's `hello.caps` entry: it has a demo room.
+    pub const CAP: &str = "system_measure_demo_mic";
+    /// `system.measure.demo_mic`: what the room's microphone heard.
+    pub const T: &str = "system.measure.demo_mic";
+    /// The most frames one answer carries (it fits one Link frame).
+    pub const MAX_FRAMES: u32 = 4_096;
+    /// The samples' full scale: 24-bit integers, as a microphone's.
+    pub const FULL_SCALE: f32 = 8_388_608.0;
+
+    /// `system.measure.demo_mic`: either `units` (may the room hear these
+    /// units? nothing is read) or a `session` and the capture frame to read
+    /// from.
+    #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+    pub struct DemoMicRequest {
+        /// The session whose capture is read ("" with `units`).
+        #[serde(default)]
+        pub session: String,
+        /// The units to ask about, without a session.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        pub units: Vec<String>,
+        /// The first capture frame wanted (the session's frames from 0).
+        #[serde(default)]
+        pub from: u64,
+    }
+
+    /// The answer: the capture from `first_frame` (empty when nothing more
+    /// is heard yet), at `rate_hz`, as 24-bit integers ([`FULL_SCALE`]).
+    #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+    pub struct DemoMicReply {
+        /// The room may hear the units (always true in an answer).
+        pub ok: bool,
+        /// What the room is, in words.
+        #[serde(default)]
+        pub room: String,
+        /// The first frame of `samples`.
+        #[serde(default)]
+        pub first_frame: u64,
+        /// The capture's rate, Hz.
+        #[serde(default)]
+        pub rate_hz: u32,
+        /// The samples.
+        #[serde(default)]
+        pub samples: Vec<i32>,
+    }
+}
+
 #[cfg(test)]
 mod tests_wp_planat {
     use super::*;
@@ -322,5 +499,27 @@ mod tests_wp_planat {
         let old: Result<RunRequest, _> =
             serde_json::from_str(r#"{"session":"s","segments":[],"lead_ms":1}"#);
         assert_eq!(old.ok().map(|o| o.summed), Some(false));
+    }
+
+    // -- WP ATGUARD --
+    #[test]
+    fn wp_atguard_timeout_is_clamped_and_bodies_round_trip() {
+        assert_eq!(guard::clamp_timeout_ms(None), guard::TIMEOUT_MS_DEFAULT);
+        assert_eq!(guard::clamp_timeout_ms(Some(0)), guard::TIMEOUT_MS_MIN);
+        assert_eq!(
+            guard::clamp_timeout_ms(Some(u32::MAX)),
+            guard::TIMEOUT_MS_MAX
+        );
+        let j = serde_json::to_string(&guard::BeginRequest::default()).unwrap_or_default();
+        assert_eq!(j, "{}");
+        let o: Result<guard::Outcome, _> = serde_json::from_str(
+            r#"{"guard":3,"reason":"timeout","result":"reverted","revision_filed":4,"revision":6,"future":1}"#,
+        );
+        let o = o.ok();
+        assert_eq!(o.as_ref().map(|o| o.writes_ok), Some(0));
+        assert_eq!(o.map(|o| o.revision), Some(6));
+        let s: Result<guard::StatusReply, _> =
+            serde_json::from_str(r#"{"active":null,"last":null}"#);
+        assert_eq!(s.ok(), Some(guard::StatusReply::default()));
     }
 }

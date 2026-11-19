@@ -118,6 +118,8 @@ pub use alink_system::{
 pub use alink_system::AlinkUnitUsbMode;
 // -- WP P1QT1 --
 pub use alink_system::AlinkSystemSaved;
+// -- WP ATQT --
+pub use alink_system_spdif::{AlinkSpdifEdit, AlinkSpdifUnit};
 use dspi_session::ext_state::ExtState;
 
 /// The role asked for when pairing, as the macOS Console does.
@@ -4344,6 +4346,16 @@ mod tests_wp_lkclose;
 // -- WP LKUI1 --
 #[path = "alink/system.rs"]
 pub mod alink_system;
+
+// -- WP ATQT -- the S/PDIF transport in the native System editor
+#[path = "alink/system_spdif.rs"]
+pub mod alink_system_spdif;
+
+// -- WP ATQT --
+#[cfg(test)]
+#[allow(clippy::indexing_slicing)]
+#[path = "alink/tests_wp_atqt.rs"]
+mod tests_wp_atqt;
 
 // -- WP LKUI1 --
 #[cfg(test)]

@@ -38,6 +38,11 @@
 //! Locks: the family's table, each session's `io` (held across a session's
 //! transfers) above its `st` (a leaf, never held across a transfer or a send).
 
+// -- WP ATDEMO -- the demo hub's simulated room (feature `demo-room`)
+#[cfg(feature = "demo-room")]
+mod demo_room;
+#[cfg(feature = "demo-room")]
+pub use demo_room::DemoRoomUnit;
 mod domain;
 mod io;
 mod schedule;
@@ -173,6 +178,16 @@ pub fn handle_message(hub: &HubHandle, session: &Arc<Session>, msg: &Value) -> O
         wire::t::STATUS => family.status(hub, session, id, msg),
         wire::t::ABORT => family.abort(hub, session, id, msg),
         wire::t::CLOSE => family.close(hub, session, id, msg),
+        // -- WP ATDEMO -- the demo hub's simulated microphone; refused elsewhere
+        #[cfg(feature = "demo-room")]
+        wire::demo::T => family.demo_mic(hub, session, id, msg),
+        #[cfg(not(feature = "demo-room"))]
+        wire::demo::T => err(
+            id,
+            "unsupported",
+            "this hub has no simulated microphone: it is the demo hub's only",
+            None,
+        ),
         _ => err(id, "unknown_type", "", None),
     })
 }
@@ -270,6 +285,10 @@ pub(crate) struct MeasureHub {
     /// clock for each, so noting one never restarts the other's.
     seen: Mutex<BTreeMap<(String, u8), SeenLocked>>,
     next: AtomicU64,
+    // -- WP ATDEMO --
+    /// The demo's simulated room, when `uconsole --demo` gave it one.
+    #[cfg(feature = "demo-room")]
+    demo: Mutex<Option<Arc<demo_room::DemoRoom>>>,
 }
 
 /// The families of the hubs in this process, by hub.
@@ -296,12 +315,33 @@ impl HubHandle {
             settle: Mutex::new(DEFAULT_SETTLE),
             seen: Mutex::new(BTreeMap::new()),
             next: AtomicU64::new(1),
+            // -- WP ATDEMO --
+            #[cfg(feature = "demo-room")]
+            demo: Mutex::new(None),
         });
         self.inner
             .relay
             .add_tap(Arc::new(Tap(Arc::downgrade(&family))));
         all.push((Arc::downgrade(&self.inner), Arc::clone(&family)));
         family
+    }
+
+    // -- WP ATDEMO --
+    /// This hub's family if something made it already (`hello` asks
+    /// without making it).
+    #[cfg(feature = "demo-room")]
+    fn system_measure_existing(&self) -> Option<Arc<MeasureHub>> {
+        let all = guard(&FAMILIES);
+        all.iter()
+            .find(|(w, _)| std::ptr::eq(w.as_ptr(), Arc::as_ptr(&self.inner)))
+            .map(|(_, f)| Arc::clone(f))
+    }
+
+    // -- WP ATDEMO --
+    /// This hub has the demo's simulated room (`hello.caps`).
+    #[cfg(not(feature = "demo-room"))]
+    pub(crate) fn system_measure_has_demo_room(&self) -> bool {
+        false
     }
 
     /// How long after the hub first sees a unit locked a measurement run may
@@ -321,6 +361,26 @@ impl HubHandle {
     pub fn system_measure_lock_exempt(&self, serial: &str) -> bool {
         self.device_by_serial(serial)
             .is_some_and(|d| d.router.lock_holder_exempt(Instant::now()))
+    }
+
+    // -- WP ATGUARD --
+    /// Abort and close every measuring session `owner` holds (`aborted` with
+    /// `reason` sent to it): a system apply's guard reverting stops a verify
+    /// still playing first, so nothing plays and the session's locks do not
+    /// refuse the alignment's writes. How many there were.
+    pub(crate) fn system_measure_end_sessions_of(&self, owner: SessionId, reason: &str) -> usize {
+        let family = self.system_measure();
+        let mine: Vec<Arc<MSession>> = guard(&family.sessions)
+            .values()
+            .filter(|s| s.owner.id() == owner)
+            .cloned()
+            .collect();
+        for s in &mine {
+            let _io = guard(&s.io);
+            family.abort_session(self, s, None, reason, true);
+            family.close_session(self, s);
+        }
+        mine.len()
     }
 
     /// Note a read of unit `serial`'s `EXT_TIME_BASE` entry made elsewhere in

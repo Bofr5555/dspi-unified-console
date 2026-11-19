@@ -93,6 +93,17 @@ struct Faults {
     sum_mic_ppm: Option<f64>,
     /// This unit's drivers are wired with inverted polarity.
     wired_inverted: Option<usize>,
+    // -- WP ATDEMO --
+    /// From this capture frame on, `status` answers `aborted` with these
+    /// words (the hub stopped the session itself).
+    status_aborted: Option<(u64, String)>,
+    /// The simulated microphone: `Some(f)` serves `demo_mic` from the stub's
+    /// capture, refusing it from frame `f` on (`u64::MAX`: never).
+    demo_mic: Option<u64>,
+    /// Blocks the room has heard and not served yet (the clock's pace).
+    demo_ready: u32,
+    /// `system.status` answers `rate_limited` this many times first.
+    status_rate_limited: u32,
 }
 
 struct Stub {
@@ -112,6 +123,11 @@ struct Stub {
     /// Samples the hub adds to the next run's t0 (settling).
     settle: u64,
     settling_seen: bool,
+    // -- WP ATGUARD -- the hub's guard of a system apply (with its cap)
+    /// `(id, filed model, revision filed, timeout_ms)`.
+    guard: Option<(u64, Value, u64, u64)>,
+    guard_last: Option<msg::guard::Outcome>,
+    guard_next: u64,
 }
 
 impl Stub {
@@ -137,6 +153,9 @@ impl Stub {
             session_open: false,
             settle: 0,
             settling_seen: false,
+            guard: None,
+            guard_last: None,
+            guard_next: 0,
         }
     }
 
@@ -440,7 +459,45 @@ impl Stub {
                 })
                 .unwrap())
             }
+            // -- WP ATDEMO -- the demo hub's room: the stub's own capture
+            msg::demo::T => {
+                let Some(refuse_at) = self.faults.demo_mic else {
+                    return Err(link("unsupported", "no room here"));
+                };
+                let req: msg::demo::DemoMicRequest = serde_json::from_value(body).unwrap();
+                if self.frames >= refuse_at || req.units.iter().any(|u| u == "REAL") {
+                    return Err(link("unsupported", "REAL is not a demo unit of this hub"));
+                }
+                if req.session.is_empty() {
+                    return Ok(json!({"ok": true, "room": "the stub's room"}));
+                }
+                assert_eq!(req.from, self.frames, "read from where it was left");
+                if self.faults.demo_ready == 0 {
+                    return Ok(
+                        json!({"ok": true, "first_frame": req.from, "rate_hz": RATE, "samples": []}),
+                    );
+                }
+                self.faults.demo_ready -= 1;
+                let block = self.block();
+                let first = self.frames;
+                self.frames += BLOCK as u64;
+                let samples: Vec<i32> = block
+                    .iter()
+                    .map(|v| (v * msg::demo::FULL_SCALE) as i32)
+                    .collect();
+                Ok(
+                    json!({"ok": true, "room": "the stub's room", "first_frame": first,
+                    "rate_hz": RATE, "samples": samples}),
+                )
+            }
             msg::t::STATUS => {
+                // -- WP ATDEMO --
+                if let Some((f, words)) = self.faults.status_aborted.clone()
+                    && self.frames >= f
+                    && self.session_open
+                {
+                    return Err(link("aborted", &words));
+                }
                 if let Some((u, f)) = self.faults.hub_abort
                     && self.frames >= f
                     && self.session_open
@@ -520,6 +577,14 @@ impl Stub {
                 self.session_open = false;
                 Ok(json!({}))
             }
+            // -- WP ATDEMO -- once a second per connection, as the hub's
+            "system.status" if self.faults.status_rate_limited > 0 => {
+                self.faults.status_rate_limited -= 1;
+                Err(link(
+                    "rate_limited",
+                    "system.status at most once a second per session",
+                ))
+            }
             "system.status" => Ok(json!({
                 "alignment": {
                     "rateHz": RATE,
@@ -578,8 +643,75 @@ impl Stub {
                 }
                 Ok(json!({"applied": true, "writes": writes}))
             }
+            // -- WP ATGUARD -- as the hub's `system.guard.*`
+            msg::guard::BEGIN => {
+                if self.guard.is_some() {
+                    return Err(link("busy", "a guard is pending"));
+                }
+                self.guard_next += 1;
+                let ms = u64::from(msg::guard::clamp_timeout_ms(
+                    body["timeout_ms"].as_u64().map(|v| v as u32),
+                ));
+                self.guard = Some((self.guard_next, self.model.clone(), self.revision, ms));
+                Ok(json!({"guard": self.guard_next, "revision": self.revision, "timeout_ms": ms}))
+            }
+            msg::guard::CONFIRM => match self.guard.take() {
+                Some(g) if body["guard"].as_u64() == Some(g.0) => {
+                    let o = msg::guard::Outcome {
+                        guard: g.0,
+                        reason: "confirmed".into(),
+                        result: "kept".into(),
+                        revision_filed: g.2,
+                        revision: self.revision,
+                        ..Default::default()
+                    };
+                    self.guard_last = Some(o.clone());
+                    Ok(serde_json::to_value(o).unwrap())
+                }
+                other => {
+                    self.guard = other;
+                    Err(link("conflict", "no such guard pending"))
+                }
+            },
+            msg::guard::CANCEL => match &self.guard {
+                Some(g) if body["guard"].as_u64() == Some(g.0) => {
+                    Ok(serde_json::to_value(self.guard_revert("cancelled")).unwrap())
+                }
+                _ => Err(link("conflict", "no such guard pending")),
+            },
+            msg::guard::STATUS => Ok(json!({
+                "active": self.guard.as_ref().map(|g| json!({
+                    "guard": g.0, "session": 1, "revision_filed": g.2,
+                    "revision_left": self.revision, "remaining_ms": g.3, "reverting": false
+                })),
+                "last": self.guard_last,
+            })),
             _ => Err(link("unsupported", t)),
         }
+    }
+
+    // -- WP ATGUARD --
+    /// The hub reverts its guard (`reason`: `cancelled`, `timeout`,
+    /// `session_closed`): the filed model set at the revision now, aligned.
+    fn guard_revert(&mut self, reason: &str) -> msg::guard::Outcome {
+        let (id, model, filed, _) = self.guard.take().unwrap();
+        let revision = self.revision;
+        let set = self
+            .handle("system.set", json!({"model": model, "revision": revision}))
+            .unwrap();
+        let report = self.handle("system.align", json!({"apply": true})).unwrap();
+        let o = msg::guard::Outcome {
+            guard: id,
+            reason: reason.into(),
+            result: "reverted".into(),
+            revision_filed: filed,
+            revision: set["revision"].as_u64().unwrap(),
+            writes_ok: report["writes"].as_array().unwrap().len() as u32,
+            message: "reverted: the filed model is set again and the units aligned".into(),
+            ..Default::default()
+        };
+        self.guard_last = Some(o.clone());
+        o
     }
 }
 
@@ -1552,16 +1684,19 @@ fn review_atc_the_verify_judges_the_whole_band_and_fails_a_wrong_delay() {
     // As P5's Keep: after a verify that did not pass, the first Keep is
     // refused and says why; a second one right away (a double click) too;
     // one after the user had time to read it keeps.
-    assert!(o.keep().is_err());
+    assert!(o.keep(&mut hub).is_err());
     assert_eq!(o.applied.stage, MeasureSystemApplyStage::Verified);
     assert!(
         o.applied.message.contains("did not confirm"),
         "{}",
         o.applied.message
     );
-    assert!(o.keep().is_err(), "a double click");
+    assert!(o.keep(&mut hub).is_err(), "a double click");
     crate::guarded::skew::advance(Duration::from_millis(1_100));
-    assert_eq!(o.keep().unwrap().stage, MeasureSystemApplyStage::Kept);
+    assert_eq!(
+        o.keep(&mut hub).unwrap().stage,
+        MeasureSystemApplyStage::Kept
+    );
     // And a right delay passes it over the same band.
     let mut hub = StubHub(Arc::new(Mutex::new(Stub::new(vec![
         unit("A", 1, 48, &[3.0]),
@@ -1576,7 +1711,10 @@ fn review_atc_the_verify_judges_the_whole_band_and_fails_a_wrong_delay() {
     let v = sum_session(&o, &mut hub, MeasureSystemPurpose::Verify);
     assert!(v[0].passed, "{v:?}");
     o.absorb_verdicts(MeasureSystemPurpose::Verify, v);
-    assert_eq!(o.keep().unwrap().stage, MeasureSystemApplyStage::Kept);
+    assert_eq!(
+        o.keep(&mut hub).unwrap().stage,
+        MeasureSystemApplyStage::Kept
+    );
 }
 
 // -- WP ATSUMOFF --
@@ -1897,4 +2035,504 @@ fn review_atd1_outputs_of_opposite_polarity_are_not_played_as_a_sum() {
             .sum_jobs(MeasureSystemPurpose::SumCheck)
             .is_ok()
     );
+}
+
+// ── WP ATGUARD: the hub's guard of a system apply ──────────────────────
+
+/// Two units measured and summed-checked on a hub with (or without) the
+/// guard's cap: the outcome, ready to apply.
+fn atguard_checked(guarded: bool) -> (StubHub, proposal::Outcome, MeasureSystemSetup) {
+    let s = setup(&[("A", &[0, 1]), ("B", &[0, 1])]);
+    let mut hub = two_units();
+    if guarded {
+        hub.0.lock().unwrap().caps.push(msg::guard::CAP.to_owned());
+    }
+    let (_, out) = measure(&mut hub, &s);
+    let mut o = out.unwrap();
+    let v = sum_session(&o, &mut hub, MeasureSystemPurpose::SumCheck);
+    assert!(v.iter().all(|x| x.passed), "{v:?}");
+    o.absorb_verdicts(MeasureSystemPurpose::SumCheck, v);
+    (hub, o, s)
+}
+
+fn requests_since(hub: &StubHub, from: usize) -> Vec<String> {
+    hub.0.lock().unwrap().requests[from..].to_vec()
+}
+
+/// The proposal names the guard and its length (P5TRUST's (c): the planned
+/// verify, 25 % longer, plus 120 s, at most 590 s); the apply begins the
+/// hub's guard before it files anything; Keep confirms it on the hub.
+#[test]
+fn wp_atguard_a_guarded_apply_begins_the_hubs_guard_and_keep_confirms_it() {
+    let (mut hub, mut o, _) = atguard_checked(true);
+    let planned = o.verify_planned_ms();
+    // Four outputs ramped again (each from its start to its ceiling) and
+    // the transitions' summed runs: tens of seconds, not nothing.
+    assert!(planned > 20_000 && planned < 400_000, "{planned} ms");
+    let want = ((planned * 125).div_ceil(100_000) + 120).min(590) as u32;
+    let p = o.proposal_for("admin", true);
+    assert!(p.offered, "{p:?}");
+    assert_eq!(p.guard_s, want);
+    assert!(p.guard_s >= 120 && p.guard_s <= 590);
+    assert!(
+        p.guard_note.contains(&format!("within {want} s")),
+        "{}",
+        p.guard_note
+    );
+    let from = hub.0.lock().unwrap().requests.len();
+    let applied = o.apply(&mut hub, p.id).unwrap();
+    let sent = requests_since(&hub, from);
+    let begin = sent.iter().position(|r| r == msg::guard::BEGIN).unwrap();
+    let get = sent.iter().position(|r| r == "system.get").unwrap();
+    let set = sent.iter().position(|r| r == "system.set").unwrap();
+    assert!(begin < get && get < set, "{sent:?}");
+    assert_eq!(applied.guard_s, want);
+    assert!(
+        applied.message.contains("reverts it by itself"),
+        "{}",
+        applied.message
+    );
+    {
+        let st = hub.0.lock().unwrap();
+        let g = st.guard.as_ref().unwrap();
+        assert_eq!(g.3, u64::from(want) * 1000, "the countdown asked for");
+        assert_eq!(g.2, 7, "the revision filed");
+    }
+    // The verify runs inside the guard.
+    assert!(o.guard_alive(&mut hub).is_ok());
+    let v = sum_session(&o, &mut hub, MeasureSystemPurpose::Verify);
+    o.absorb_verdicts(MeasureSystemPurpose::Verify, v);
+    assert_eq!(o.applied.verified, Some(true), "{}", o.applied.message);
+    // Keep, before the deadline: confirmed on the hub, the delays stay.
+    let k = o.keep(&mut hub).unwrap();
+    assert_eq!(k.stage, MeasureSystemApplyStage::Kept);
+    let st = hub.0.lock().unwrap();
+    assert!(st.guard.is_none());
+    let last = st.guard_last.as_ref().unwrap();
+    assert_eq!(
+        (last.reason.as_str(), last.result.as_str()),
+        ("confirmed", "kept")
+    );
+    assert!((st.units[0].out_delay_ms[0] - 1.1).abs() < 0.005);
+}
+
+/// Revert ends the guard: the hub sets the filed model back and aligns
+/// (the console sends no `system.set` of its own), and the delays are read
+/// back as filed.
+#[test]
+fn wp_atguard_revert_ends_the_guard_through_the_hub() {
+    let (mut hub, mut o, _) = atguard_checked(true);
+    let p = o.proposal_for("admin", true);
+    o.apply(&mut hub, p.id).unwrap();
+    let from = hub.0.lock().unwrap().requests.len();
+    let r = o.revert(&mut hub).unwrap();
+    assert_eq!(r.stage, MeasureSystemApplyStage::Reverted);
+    assert!(r.message.contains("as filed"), "{}", r.message);
+    let sent = requests_since(&hub, from);
+    assert_eq!(
+        sent.first().map(String::as_str),
+        Some(msg::guard::CANCEL),
+        "{sent:?}"
+    );
+    // The two after the cancel are the stub's own revert (the hub's).
+    assert_eq!(
+        sent.iter().filter(|x| *x == "system.set").count(),
+        1,
+        "only the hub's: {sent:?}"
+    );
+    let st = hub.0.lock().unwrap();
+    assert!(st.guard.is_none());
+    assert_eq!(st.guard_last.as_ref().unwrap().reason, "cancelled");
+    assert!(
+        st.units
+            .iter()
+            .all(|u| u.out_delay_ms.iter().all(|d| *d == 0.0))
+    );
+    assert!(
+        st.model["units"][1]["speakers"][1]
+            .get("measuredArrivalUs")
+            .is_none()
+    );
+    assert_eq!(r.revision_after, st.revision);
+}
+
+/// The hub reverted by itself (its deadline passed, or the connection was
+/// lost and the console came back): the verify is refused, Keep says what
+/// the hub did, and the stage is `Reverted`.
+#[test]
+fn wp_atguard_a_guard_the_hub_ended_is_shown_as_reverted() {
+    let (mut hub, mut o, _) = atguard_checked(true);
+    let p = o.proposal_for("admin", true);
+    o.apply(&mut hub, p.id).unwrap();
+    hub.0.lock().unwrap().guard_revert("timeout");
+    let e = o.guard_alive(&mut hub).unwrap_err().to_string();
+    assert!(e.contains("timeout") && e.contains("reverted"), "{e}");
+    assert_eq!(o.applied.stage, MeasureSystemApplyStage::Reverted);
+    assert!(o.keep(&mut hub).is_err(), "nothing is applied any more");
+    // Keep itself learns it too.
+    let (mut hub, mut o, _) = atguard_checked(true);
+    let p = o.proposal_for("admin", true);
+    o.apply(&mut hub, p.id).unwrap();
+    hub.0.lock().unwrap().guard_revert("session_closed");
+    let e = o.keep(&mut hub).unwrap_err().to_string();
+    assert!(e.contains("session_closed"), "{e}");
+    assert_eq!(o.applied.stage, MeasureSystemApplyStage::Reverted);
+    assert!(
+        hub.0
+            .lock()
+            .unwrap()
+            .units
+            .iter()
+            .all(|u| u.out_delay_ms.iter().all(|d| *d == 0.0))
+    );
+}
+
+/// An older hub without the cap: today's apply (no `system.guard.*` sent),
+/// and the proposal and the applied record say nothing reverts by itself.
+#[test]
+fn wp_atguard_an_old_hub_offers_no_guard_and_says_so() {
+    let (mut hub, o, _) = atguard_checked(false);
+    let core = crate::DspiCore::new();
+    core.measure_system_set_hub(Box::new(hub.clone()));
+    core.system_slot().outcome = Some(o);
+    let p = core.measure_system_proposal().unwrap();
+    assert!(p.offered, "{p:?}");
+    assert_eq!(p.guard_s, 0);
+    assert!(
+        p.guard_note.contains("nothing reverts by itself"),
+        "{}",
+        p.guard_note
+    );
+    let from = hub.0.lock().unwrap().requests.len();
+    let applied = core.measure_system_apply(p.id).unwrap();
+    assert_eq!(applied.guard_s, 0);
+    assert!(
+        applied.message.contains("nothing reverts by itself"),
+        "{}",
+        applied.message
+    );
+    let kept = core.measure_system_keep().unwrap();
+    assert_eq!(kept.stage, MeasureSystemApplyStage::Kept);
+    let sent = requests_since(&hub, from);
+    assert!(
+        !sent.iter().any(|r| r.starts_with("system.guard.")),
+        "{sent:?}"
+    );
+    // And with the cap, the core's own path names the guard.
+    let (hub2, o, _) = atguard_checked(true);
+    let core = crate::DspiCore::new();
+    core.measure_system_set_hub(Box::new(hub2.clone()));
+    core.system_slot().outcome = Some(o);
+    let p = core.measure_system_proposal().unwrap();
+    assert!(p.guard_s >= 120, "{p:?}");
+    let _ = &mut hub;
+}
+
+// ── review AT-D2 ────────────────────────────────────────────────────────
+
+/// While an applied alignment waits for Keep or Revert no new measurement
+/// starts (it would replace what was filed and the guard's id): nothing is
+/// sent. After the Revert a start is judged as before.
+#[test]
+fn review_atd2_no_new_measurement_while_an_applied_alignment_waits() {
+    let (hub, o, setup) = atguard_checked(true);
+    let core = crate::DspiCore::new();
+    core.measure_system_set_hub(Box::new(hub.clone()));
+    core.system_slot().outcome = Some(o);
+    let p = core.measure_system_proposal().unwrap();
+    core.measure_system_apply(p.id).unwrap();
+    let from = hub.0.lock().unwrap().requests.len();
+    let e = core
+        .measure_system_start(setup.clone(), Vec::new())
+        .unwrap_err()
+        .to_string();
+    assert!(e.contains("waits for Keep or Revert"), "{e}");
+    assert!(requests_since(&hub, from).is_empty(), "nothing sent");
+    assert_eq!(
+        core.measure_system_applied().stage,
+        MeasureSystemApplyStage::Applied
+    );
+    assert!(
+        hub.0.lock().unwrap().guard.is_some(),
+        "the guard still runs"
+    );
+    core.measure_system_revert().unwrap();
+    let e = core
+        .measure_system_start(setup, Vec::new())
+        .map(|_| String::new())
+        .unwrap_or_else(|e| e.to_string());
+    assert!(!e.contains("waits for Keep or Revert"), "{e}");
+}
+
+/// A guard the hub ended without putting everything back is never shown as
+/// a clean revert: the words say so first. Keep leaves its own message.
+#[test]
+fn review_atd2_a_guard_ended_not_written_says_so_and_keep_has_its_own_words() {
+    let (mut hub, mut o, _) = atguard_checked(true);
+    let p = o.proposal_for("admin", true);
+    o.apply(&mut hub, p.id).unwrap();
+    {
+        let mut st = hub.0.lock().unwrap();
+        let (id, _, filed, _) = st.guard.take().unwrap();
+        st.guard_last = Some(msg::guard::Outcome {
+            guard: id,
+            reason: "timeout".into(),
+            result: "not_written".into(),
+            revision_filed: filed,
+            message: "nothing was set back: the model changed".into(),
+            ..msg::guard::Outcome::default()
+        });
+    }
+    let e = o.keep(&mut hub).unwrap_err().to_string();
+    assert!(
+        e.contains("NOT wholly put back (not_written)") && e.contains("the model changed"),
+        "{e}"
+    );
+    assert_eq!(
+        o.applied.message,
+        e.trim_start_matches("invalid argument: ")
+    );
+    // Keep's own words replace the apply's "... unless it is kept within N s".
+    let (mut hub, mut o, _) = atguard_checked(true);
+    let p = o.proposal_for("admin", true);
+    o.apply(&mut hub, p.id).unwrap();
+    let k = o.keep(&mut hub).unwrap();
+    assert_eq!(k.stage, MeasureSystemApplyStage::Kept);
+    assert_eq!(k.message, "kept: the alignment stays");
+}
+
+// ── WP ATDEMO ───────────────────────────────────────────────────────────
+
+/// The hub answered `status` with `aborted` (it stopped the session
+/// itself): the core reports why by the hub's words, the unit named, never
+/// "the hub does not answer".
+#[test]
+fn wp_atdemo_a_status_the_hub_aborted_says_why_not_disconnected() {
+    let cases = [
+        (
+            "unit B: its time base was disturbed (5 -> 6, last reanchor)",
+            "measure.system.abort.disturbance",
+            "B",
+        ),
+        (
+            "unit B: its timeline moved against its outputs",
+            "measure.system.abort.disturbance",
+            "B",
+        ),
+        ("disturbance", "measure.system.abort.disturbance", ""),
+        (
+            "unit B: its time base is holdover",
+            "measure.system.abort.time_base",
+            "B",
+        ),
+        ("lease", "measure.system.abort.hub", ""),
+    ];
+    for (words, key, serial) in cases {
+        let (sess, hub) = faulted(|f| f.status_aborted = Some((96_000, words.to_owned())));
+        let st = sess.state();
+        assert_eq!(st.phase, MeasureSystemPhase::Aborted, "{words}: {st:?}");
+        let i = st.issue.unwrap();
+        assert_eq!(i.key, key, "{words}: {i:?}");
+        assert_eq!(i.serial, serial, "{words}: {i:?}");
+        assert!(!i.message.contains("does not answer"), "{i:?}");
+        if !serial.is_empty() {
+            assert!(i.message.starts_with("B: "), "{i:?}");
+        }
+        let reqs = hub.0.lock().unwrap().requests.clone();
+        assert_eq!(reqs.last().map(String::as_str), Some(msg::t::CLOSE));
+    }
+    // The hub's own event for a disturbance: the unit lost its lock too.
+    let (sess, _) = faulted(|f| f.hub_abort = Some((1, 96_000)));
+    assert_eq!(sess.state().issue.unwrap().key, "measure.system.abort.hub");
+}
+
+#[test]
+fn wp_atdemo_a_hub_event_for_a_disturbance_is_the_unit_losing_its_lock() {
+    let s = setup(&[("A", &[0]), ("B", &[0])]);
+    let mut hub = StubHub(Arc::new(Mutex::new(Stub::new(vec![
+        unit("A", 1, 48, &[3.0]),
+        unit("B", 1, 48, &[3.2]),
+    ]))));
+    let p = plan_of(&s, &mut hub);
+    let mut sess = SysSession::open(
+        p,
+        MeasureSystemPurpose::Measure,
+        None,
+        &mut hub,
+        Instant::now(),
+    )
+    .unwrap();
+    hub.0.lock().unwrap().aborted.push(AbortedEvent {
+        session: "s1".into(),
+        unit: Some(1),
+        reason: "disturbance".into(),
+    });
+    sess.tick(&mut hub, Instant::now());
+    let i = sess.state().issue.unwrap();
+    assert_eq!(i.key, "measure.system.abort.disturbance", "{i:?}");
+    assert_eq!(i.serial, "B");
+}
+
+/// Drive a session from the simulated microphone only: the core reads the
+/// hub's room on every tick (nothing pushed by a client).
+fn drive_sim(s: &mut SysSession, hub: &mut StubHub, max_ticks: usize) {
+    let mut sim = super::system::sim::SystemSim::default();
+    let mut now = Instant::now();
+    for _ in 0..max_ticks {
+        if s.finished() {
+            return;
+        }
+        hub.0.lock().unwrap().faults.demo_ready = 1;
+        sim.feed(hub, s);
+        now += Duration::from_millis(100);
+        s.tick(hub, now);
+    }
+    panic!("the session did not end: {:?}", s.state());
+}
+
+/// The simulated microphone's capture measures as a client's would: a
+/// result with every arrival offered, read in order from frame 0.
+#[test]
+fn wp_atdemo_the_simulated_microphone_feeds_the_session() {
+    let s = setup(&[("A", &[0]), ("B", &[0])]);
+    let mut hub = StubHub(Arc::new(Mutex::new(Stub::new(vec![
+        unit("A", 1, 48, &[3.0]),
+        unit("B", 1, 48, &[3.6]),
+    ]))));
+    hub.0.lock().unwrap().faults.demo_mic = Some(u64::MAX);
+    let p = plan_of(&s, &mut hub);
+    let mut sess = SysSession::open(
+        p,
+        MeasureSystemPurpose::Measure,
+        None,
+        &mut hub,
+        Instant::now(),
+    )
+    .unwrap();
+    drive_sim(&mut sess, &mut hub, 4_000);
+    let st = sess.state();
+    assert_eq!(st.phase, MeasureSystemPhase::Done, "{st:?}");
+    let Some(SessionOutput::Measured(o)) = sess.take_outcome() else {
+        panic!("a result")
+    };
+    assert!(
+        o.result.arrivals.iter().all(|a| a.offered),
+        "{:?}",
+        o.result
+    );
+    let a = arrival(&o, "A", 0).arrival_us;
+    assert!((a + 600.0).abs() < 2.0, "A arrives 600 us before B: {a}");
+}
+
+/// The room refusing during a session (a unit that is not the demo's)
+/// aborts it at once, the abort sent.
+#[test]
+fn wp_atdemo_a_refused_simulated_microphone_aborts_the_session() {
+    let s = setup(&[("A", &[0]), ("B", &[0])]);
+    let mut hub = StubHub(Arc::new(Mutex::new(Stub::new(vec![
+        unit("A", 1, 48, &[3.0]),
+        unit("B", 1, 48, &[3.6]),
+    ]))));
+    hub.0.lock().unwrap().faults.demo_mic = Some(48_000);
+    let p = plan_of(&s, &mut hub);
+    let mut sess = SysSession::open(
+        p,
+        MeasureSystemPurpose::Measure,
+        None,
+        &mut hub,
+        Instant::now(),
+    )
+    .unwrap();
+    drive_sim(&mut sess, &mut hub, 4_000);
+    let i = sess.state().issue.unwrap();
+    assert_eq!(i.key, super::system::sim::KEY_REFUSED, "{i:?}");
+    assert!(i.message.contains("not a demo unit"), "{i:?}");
+    let reqs = hub.0.lock().unwrap().requests.clone();
+    assert!(reqs.iter().any(|r| r == msg::t::ABORT), "abort sent");
+}
+
+/// Fail closed through the core's calls: no simulated microphone on a hub
+/// without the demo room; with it, a group with any unit the room does not
+/// hear does not start (nothing opened, nothing staged), and a client's
+/// pushes are ignored while it is on.
+#[test]
+fn wp_atdemo_the_simulated_microphone_is_never_offered_beyond_the_demo_units() {
+    let core = crate::DspiCore::new();
+    let hub = two_units();
+    core.measure_system_set_hub(Box::new(hub.clone()));
+    // A hub without the room (any hub but the demo's).
+    let info = core.measure_system_sim_info();
+    assert!(!info.available && !info.on, "{info:?}");
+    assert!(matches!(
+        core.measure_system_sim_set(true),
+        Err(DspiError::Link { ref code, .. }) if code == "unsupported"
+    ));
+    assert!(!core.measure_system_sim_info().on);
+    // The demo hub's room: on, labelled.
+    hub.0.lock().unwrap().caps.push(msg::demo::CAP.into());
+    hub.0.lock().unwrap().faults.demo_mic = Some(u64::MAX);
+    let info = core.measure_system_sim_set(true).unwrap();
+    assert!(info.available && info.on, "{info:?}");
+    assert_eq!(info.label, crate::SIM_MIC_LABEL);
+    // A real unit in the group: refused before anything is opened.
+    let s = setup(&[("A", &[0]), ("REAL", &[0])]);
+    let checks = vec![check(&s, "A", Vec::new()), check(&s, "REAL", Vec::new())];
+    let r = core.measure_system_start(s, checks);
+    assert!(
+        matches!(r, Err(DspiError::Link { ref code, ref msg }) if code == "unsupported" && msg.contains("REAL")),
+        "{r:?}"
+    );
+    let reqs = hub.0.lock().unwrap().requests.clone();
+    assert!(reqs.iter().any(|r| r == msg::demo::T), "{reqs:?}");
+    assert!(
+        !reqs.iter().any(|r| r == msg::t::OPEN || r == msg::t::STAGE),
+        "nothing opened or staged: {reqs:?}"
+    );
+    assert!(core.measure_system_sim_info().issue.is_some());
+    // The hub loses the room (another hub on this connection): off.
+    hub.0.lock().unwrap().caps.retain(|c| c != msg::demo::CAP);
+    assert!(!core.measure_system_sim_info().on);
+    // Off: turned off always works.
+    assert!(!core.measure_system_sim_set(false).unwrap().on);
+}
+
+/// `system.status` rate limited when the engine's terms are read (another
+/// view of the connection read it just before): read again during the run,
+/// every arrival still offered.
+#[test]
+fn wp_atdemo_a_rate_limited_system_status_is_read_again() {
+    let s = setup(&[("A", &[0]), ("B", &[0])]);
+    let mut hub = StubHub(Arc::new(Mutex::new(Stub::new(vec![
+        unit("A", 1, 48, &[3.0]),
+        unit("B", 1, 48, &[3.6]),
+    ]))));
+    hub.0.lock().unwrap().faults.status_rate_limited = 2;
+    let (sess, out) = measure(&mut hub, &s);
+    assert_eq!(sess.state().phase, MeasureSystemPhase::Done);
+    let o = out.unwrap();
+    assert!(
+        o.result.arrivals.iter().all(|a| a.offered),
+        "{:?}",
+        o.result
+    );
+    let n = hub
+        .0
+        .lock()
+        .unwrap()
+        .requests
+        .iter()
+        .filter(|r| *r == "system.status")
+        .count();
+    assert_eq!(n, 3, "read again until answered");
+}
+
+/// After an apply the engine's terms are read even when `system.status` is
+/// rate limited at first (the verify's prediction needs them).
+#[test]
+fn wp_atdemo_system_status_after_an_apply_waits_out_the_rate_limit() {
+    let mut hub = two_units();
+    hub.0.lock().unwrap().faults.status_rate_limited = 1;
+    let v = super::system::proposal::system_status(&mut hub);
+    assert!(v.is_some_and(|v| v.get("alignment").is_some()));
+    assert_eq!(hub.0.lock().unwrap().requests.len(), 2);
 }
