@@ -33,6 +33,7 @@ fn target(mv: u16, lineage: FirmwareLineage) -> FirmwareTarget {
         board_id: Some(Board::Pico.id()),
         lineage,
         generation: FirmwareGeneration::Legacy,
+        device_kind: None,
     }
 }
 
