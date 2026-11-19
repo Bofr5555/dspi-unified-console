@@ -427,10 +427,12 @@ pub fn expect(fw: Fw, route: Route) -> Expect {
 
         // Our hub, our client.
         (Fw::G1s, Route::Oh) => ex("full, no ext", legacy(Ext::None)),
-        (Fw::G1b | Fw::G1bGuarded, Route::Oh) => ex("full + ext", legacy(Ext::Full)),
-        (Fw::Sender, Route::Oh) => ex("full + ext", sender(Ext::Full)),
+        // -- WP PGFIX -- (F3) the plan's wording: the extension channel is
+        // `config` on our hub, so admin-only for a control session.
+        (Fw::G1b | Fw::G1bGuarded, Route::Oh) => ex("full + ext (admin)", legacy(Ext::AdminOnly)),
+        (Fw::Sender, Route::Oh) => ex("full + ext (admin)", sender(Ext::AdminOnly)),
         (Fw::G2s, Route::Oh) => ex("full (adapter), no ext", paged(Ext::None)),
-        (Fw::G2b, Route::Oh) => ex("full + ext", paged(Ext::Full)),
+        (Fw::G2b, Route::Oh) => ex("full + ext (admin)", paged(Ext::AdminOnly)),
         (Fw::Zero, Route::Oh) => ex(
             "full, no update or rollout; a tunnelled bootloader entry `DENIED`",
             Outcome::full(false, Ext::None, Blocked),
@@ -482,38 +484,10 @@ pub fn expect(fw: Fw, route: Route) -> Expect {
 /// Cells known to differ from section 1.11, each with the reason. Reported by WP
 /// PGMAT as findings; the plan is not changed to match. A listed cell must still
 /// differ (the test fails once it matches, so the entry goes when the cause does).
-pub const FINDINGS: &[(Fw, Route, &str)] = &[
-    (Fw::Sender, Route::Usb, SENDER_FINDING),
-    (Fw::Sender, Route::Midi, SENDER_FINDING),
-    (Fw::Sender, Route::L12Forward, SENDER_FINDING),
-    (Fw::Sender, Route::L12Drop, SENDER_FINDING),
-    (Fw::G2s, Route::L12Forward, L12_POLL_FINDING),
-    (Fw::G2s, Route::L12Drop, L12_POLL_FINDING),
-    (Fw::ZeroPaged, Route::L12Forward, L12_POLL_FINDING),
-    (Fw::ZeroPaged, Route::L12Drop, L12_POLL_FINDING),
-    (Fw::G2sNewer, Route::L12Forward, L12_POLL_FINDING),
-    (Fw::G2sNewer, Route::L12Drop, L12_POLL_FINDING),
-    (Fw::Sender, Route::Oh, SENDER_FINDING),
-    (Fw::G1b, Route::Oh, OH_EXT_FINDING),
-    (Fw::G1bGuarded, Route::Oh, OH_EXT_FINDING),
-    (Fw::G2b, Route::Oh, OH_EXT_FINDING),
-];
-
-pub const OH_EXT_FINDING: &str = "F3: section 1.11 says \"full + ext\" for our client on our hub, but \
-     our hub classes the extension channel (`0x00` and the tunnel `0xE010`) `config` both ways \
-     (`policy.rs`, since HB2; PGHPOL's `private.json`), so a control session gets no \
-     extension channel and only an admin does: \"ext admin-only\", as the L12 cell says. With \
-     open access (every session admin) it is \"full + ext\".";
-
-pub const L12_POLL_FINDING: &str = "F2: through a 1.2 hub the core's DSPi Link bind subscribes the \
-     meter poll (`REQ_GET_STATUS` 9, page 0) before its `REQ_GET_PLATFORM` decides the device \
-     is legacy, so a paged device gets that poll as well (stock 1.1.7 refuses it, page 0): \
-     the plan says only `REQ_GET_PLATFORM` is sent.";
-
-pub const SENDER_FINDING: &str = "F1: the plan's G1b row includes the alink sender as \"full + ext\", but \
-     our core does not connect to it: its connect sequence reads the bulk image, which the \
-     sender's vendor subset STALLs (0xA2 on USB, 0xA0 over MIDI and Link). At the transport \
-     the sender is legacy with its extension channel, as planned; no client can open it.";
+// -- WP PGFIX -- PGMAT's F1 (the sender: the core connects with its own
+// commands), F2 (no meter poll before the generation is known) and F3 (the plan's
+// wording "full + ext (admin)" on our hub) are fixed: no cell differs.
+pub const FINDINGS: &[(Fw, Route, &str)] = &[];
 
 // ── One cell ────────────────────────────────────────────────────────────────
 

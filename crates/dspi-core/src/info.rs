@@ -849,6 +849,7 @@ pub(crate) fn protocol_of(conn: &mut Connection) -> DeviceProtocol {
         protocol_minor,
         pages,
         ext_envelope,
+        device_kind: conn.kind, // -- WP PGFIX --
         // -- PG-C merge -- filled by `device_protocol` (one platform read)
         ..DeviceProtocol::default()
     }

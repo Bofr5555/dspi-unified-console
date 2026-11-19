@@ -2667,6 +2667,7 @@ internal fun se.bofr.dspi.ffi.uniffi.DeviceProtocol.toDomain() =
         extEnvelope = extEnvelope.toDomain(),
         boardId = boardId.toInt(),
         boardName = boardName,
+        deviceKind = deviceKind.toDomain(),
     )
 
 internal fun DeviceProtocol.toFfi() =
@@ -2678,6 +2679,7 @@ internal fun DeviceProtocol.toFfi() =
         extEnvelope = extEnvelope.toFfi(),
         boardId = boardId.toUByte(),
         boardName = boardName,
+        deviceKind = deviceKind.toFfi(),
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.AbCompare.toDomain() =
@@ -6368,6 +6370,18 @@ internal fun ExtEnvelope.toFfi(): se.bofr.dspi.ffi.uniffi.ExtEnvelope =
         ExtEnvelope.NO_CHANNEL -> se.bofr.dspi.ffi.uniffi.ExtEnvelope.NO_CHANNEL
         ExtEnvelope.LEGACY -> se.bofr.dspi.ffi.uniffi.ExtEnvelope.LEGACY
         ExtEnvelope.TUNNEL -> se.bofr.dspi.ffi.uniffi.ExtEnvelope.TUNNEL
+    }
+
+internal fun se.bofr.dspi.ffi.uniffi.DeviceKind.toDomain(): DeviceKind =
+    when (this) {
+        se.bofr.dspi.ffi.uniffi.DeviceKind.DSP -> DeviceKind.DSP
+        se.bofr.dspi.ffi.uniffi.DeviceKind.ALINK_SENDER -> DeviceKind.ALINK_SENDER
+    }
+
+internal fun DeviceKind.toFfi(): se.bofr.dspi.ffi.uniffi.DeviceKind =
+    when (this) {
+        DeviceKind.DSP -> se.bofr.dspi.ffi.uniffi.DeviceKind.DSP
+        DeviceKind.ALINK_SENDER -> se.bofr.dspi.ffi.uniffi.DeviceKind.ALINK_SENDER
     }
 
 internal fun se.bofr.dspi.ffi.uniffi.AbSide.toDomain(): AbSide =

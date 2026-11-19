@@ -158,6 +158,69 @@ pub(crate) fn shut(conn: Connection) {
     drop(link);
 }
 
+// -- WP PGFIX --
+/// The product strings of the alink sender build (`firmware/DSPi/
+/// usb_descriptors.c` with `DSPI_ROLE_SENDER`; its first name too).
+pub(crate) const SENDER_PRODUCTS: [&str; 2] = ["DSPi Audio Link Sender", "DSPi Link Sender"];
+
+// -- WP PGFIX --
+/// Whether a device is the alink sender (`firmware/DSPi-Sender`), from its
+/// `REQ_GET_PLATFORM` reply and, where the descriptor is at hand, its USB
+/// product string, as PGZERO tells boards apart: the product string decides
+/// when there is one; without it (MIDI, behind a hub) a platform that names
+/// no output channels is the sender's (`sender_vendor.c`: byte 3 is 0, "no
+/// output channels: a sender"; every DSPi has outputs). A reply that does not
+/// decode is not the sender's.
+pub(crate) fn is_alink_sender_platform(platform: &[u8], product: Option<&str>) -> bool {
+    let Ok(info) = PlatformInfo::decode(platform) else {
+        return false;
+    };
+    match product.map(str::trim).filter(|p| !p.is_empty()) {
+        Some(p) => SENDER_PRODUCTS.contains(&p),
+        None => info.num_output_channels == 0,
+    }
+}
+
+// -- WP PGFIX --
+/// The connection to an alink sender whose bulk read failed (`err`), or
+/// `None` when the device is not one: the sender's vendor subset has no bulk
+/// image and no DSP model (PGMAT F1). A sender is legacy only. What it has
+/// is read here: `GET_PLATFORM` (the mirror's identity, `bulk_valid` false,
+/// no channels) and the extension channel ([`ExtState::probe`]; refused or
+/// absent, it is empty). `Err(Disconnected)` when the device went meanwhile.
+pub(crate) fn sender_mirror(
+    t: &mut dyn Transport,
+    err: &TransportError,
+) -> Option<Result<(DspState, dspi_session::ext_state::ExtState)>> {
+    if matches!(err, TransportError::Disconnected)
+        || matches!(t.generation(), Some(dspi_transport::Generation::Paged(_)))
+    {
+        return None;
+    }
+    let reply = t
+        .control_in_upto(op::REQ_GET_PLATFORM, 0, PLATFORM_REQUEST_LEN)
+        .ok()?;
+    if !is_alink_sender_platform(&reply, t.descriptor().product.as_deref()) {
+        return None;
+    }
+    let mut mirror = state::default_state();
+    state::apply_platform(&reply, &mut mirror).ok()?;
+    mirror.num_channels = 0;
+    mirror.num_input_channels = 0;
+    mirror.num_output_channels = 0;
+    mirror.bulk_valid = false;
+    let ext = match dspi_session::ext_state::ExtState::probe(t) {
+        Ok(ext) => ext,
+        Err(TransportError::Disconnected) => return Some(Err(DspiError::Disconnected)),
+        Err(e) => {
+            log::warn!("the sender's extension probe failed, continuing without it: {e}");
+            dspi_session::ext_state::ExtState::default()
+        }
+    };
+    log::info!("{err}: the alink sender, connected with its own commands only");
+    Some(Ok((mirror, ext)))
+}
+
 /// The read-only mirror for a device whose image cannot be mapped (PLAN
 /// §1.5, "Unmappable images"), or `None` when `err` is not such a case or the
 /// device does not identify itself (then `err` stands).
@@ -1548,3 +1611,8 @@ impl DspiCore {
 #[allow(clippy::arithmetic_side_effects)]
 #[path = "device/tests_wp_cgswsa.rs"]
 mod tests_wp_cgswsa;
+
+// -- WP PGFIX --
+#[cfg(test)]
+#[path = "device/tests_wp_pgfix.rs"]
+mod tests_wp_pgfix;

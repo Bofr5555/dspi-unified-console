@@ -10,9 +10,9 @@
 //!   pairing), the extension channel also tried by an admin (open access); for the
 //!   paged DSPi-Zero also the app's in-process path and a principal's child, the
 //!   three cores that learn its board through `DeviceDescriptor::hub_board`;
-//! - **an L12-style client**: hello minor 2 (the 1.2 fixture `hello_client.json`
-//!   with the minor our 1.2 hub page and older apps send) and 1.1.6-shaped CMD
-//!   frames encoded by `dspi-link`;
+//! - **an L12-style client**: our own `dspi-link` client with its hello saying
+//!   minor 2 (the minor our 1.2 hub page and older apps send; WP PGFIX's test
+//!   knob `messages::test_knobs`) and 1.1.6-shaped CMD frames;
 //! - **an L13 client**: DSPi-Link 1.3's own fixtures replayed
 //!   (`tests/fixtures/link/upstream-1.3/`, DSPi-Link `4aec5ab`, MIT): its hello, its
 //!   `device.list`, its CMD frames (`ROUTE.MASTER_VOLUME` SET, `SYS.PLATFORM` GET; the
@@ -428,55 +428,60 @@ fn db(v: f32) -> Vec<u8> {
     v.to_le_bytes().to_vec()
 }
 
-/// An L12-style client: section 1.11's "L12 client" row.
+/// An L12-style client: section 1.11's "L12 client" row. -- WP PGFIX -- our own
+/// `dspi-link` client, its hello saying minor 2 through the test knob
+/// (`messages::test_knobs`), sending 1.1.6-shaped requests.
 fn l12_client(fw: Fw) -> Cell {
     let route = Route::OhL12Client;
     let expected = expect(fw, route);
     let mut notes = Notes::default();
     let (b, remote, h) = Bench::start(fw, AccessMode::Open, false);
-    let mut hello = json_fixture("messages/hello_client.json");
-    hello["proto"]["minor"] = json!(dspi_link::messages::PROTO_MINOR);
     assert_eq!(dspi_link::messages::PROTO_MINOR, 2);
-    let (mut ws, _, device) = raw_client(&b, hello);
-    let translated = device.get("protocol").is_some_and(|p| !p.is_null());
+    let options = ConnectOptions {
+        client_name: "wp-pgmat-l12".into(),
+        app: "dspi-hub tests".into(),
+        app_version: "test".into(),
+        token: None,
+    };
+    let (client, state) =
+        dspi_link::messages::test_knobs::with_hello_minor(dspi_link::messages::PROTO_MINOR, || {
+            LinkClient::connect(&TcpConnector::default(), &b.url(), &options, None).unwrap()
+        });
+    assert!(matches!(state, AuthState::Ready), "open access: {state:?}");
+    wait_until("the device list", || !client.devices().is_empty());
+    let device = client.devices().remove(0);
+    assert_eq!(device.handle, u32::from(h), "{fw:?}");
+    let translated = device.protocol.is_some();
     notes.connect = format!(
-        "listed with protocol: {}",
-        device.get("protocol").unwrap_or(&Value::Null)
+        "our client, hello minor 2; listed with protocol: {:?}",
+        device.protocol
     );
+    let cmd = |dir: Dir, opcode: u8, value: u16, payload: Vec<u8>, len: u16| {
+        let req = legacy_req(0, h, dir, opcode, value, payload, len);
+        client.command(
+            req.handle,
+            req.dir,
+            req.b_request,
+            req.w_value,
+            req.w_index,
+            req.w_length,
+            &req.payload,
+        )
+    };
 
-    let platform = command(
-        &mut ws,
-        legacy_req(1, h, Dir::Get, op::REQ_GET_PLATFORM, 0, Vec::new(), 7),
-    );
+    let platform = cmd(Dir::Get, op::REQ_GET_PLATFORM, 0, Vec::new(), 7);
     assert_eq!(platform.status, status::OK, "{fw:?}: GET_PLATFORM");
     assert!(platform.payload.len() >= 4, "{fw:?}");
     if fw != Fw::Sender {
-        let set = command(
-            &mut ws,
-            legacy_req(2, h, Dir::Set, op::REQ_SET_MASTER_VOLUME, 0, db(-21.0), 0),
-        );
+        let set = cmd(Dir::Set, op::REQ_SET_MASTER_VOLUME, 0, db(-21.0), 0);
         assert_eq!(set.status, status::OK, "{fw:?}: SET_MASTER_VOLUME");
-        let get = command(
-            &mut ws,
-            legacy_req(3, h, Dir::Get, op::REQ_GET_MASTER_VOLUME, 0, Vec::new(), 4),
-        );
+        let get = cmd(Dir::Get, op::REQ_GET_MASTER_VOLUME, 0, Vec::new(), 4);
         assert_eq!((get.status, get.payload), (status::OK, db(-21.0)), "{fw:?}");
         notes.write = "SET_MASTER_VOLUME -21 dB, read back".into();
     } else {
         notes.write = "the sender: GET_PLATFORM only".into();
     }
-    let ext = command(
-        &mut ws,
-        legacy_req(
-            4,
-            h,
-            Dir::Get,
-            op::REQ_EXTENSION,
-            gext::EXT_LIST,
-            Vec::new(),
-            64,
-        ),
-    );
+    let ext = cmd(Dir::Get, op::REQ_EXTENSION, gext::EXT_LIST, Vec::new(), 64);
     let has_ext = ext.status == status::OK && !ext.payload.is_empty();
     notes.ext = format!(
         "0x00 EXT_LIST: status 0x{:02X}, {} bytes",
@@ -484,15 +489,13 @@ fn l12_client(fw: Fw) -> Cell {
         ext.payload.len()
     );
     let entry = fw.is_zero().then(|| {
-        let r = command(
-            &mut ws,
-            legacy_req(5, h, Dir::Get, op::REQ_ENTER_BOOTLOADER, 0, Vec::new(), 1),
-        );
+        let r = cmd(Dir::Get, op::REQ_ENTER_BOOTLOADER, 0, Vec::new(), 1);
         assert_eq!(r.status, status::DENIED, "{fw:?}: 0xF0");
         assert_eq!(remote.rebooted_to(), None);
         notes.boot = "0xF0 answered DENIED, nothing sent".into();
         Boot::Blocked
     });
+    client.close();
     no_violation(fw, route, &remote, 0);
     Cell {
         fw,

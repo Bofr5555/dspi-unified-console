@@ -25004,6 +25004,11 @@ public struct DeviceProtocol {
      * "DSPi Zero" or "Unknown board" (`board_name`).
      */
     public var boardName: String
+    /**
+     * What the device is, and so what the client may offer: a DSP with its
+     * whole model, or the alink sender with its few commands only.
+     */
+    public var deviceKind: DeviceKind
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -25034,7 +25039,11 @@ public struct DeviceProtocol {
         /**
          * The name clients show for the board in caps and About: "DSPi",
          * "DSPi Zero" or "Unknown board" (`board_name`).
-         */boardName: String) {
+         */boardName: String, 
+        /**
+         * What the device is, and so what the client may offer: a DSP with its
+         * whole model, or the alink sender with its few commands only.
+         */deviceKind: DeviceKind) {
         self.generation = generation
         self.protocolMajor = protocolMajor
         self.protocolMinor = protocolMinor
@@ -25042,6 +25051,7 @@ public struct DeviceProtocol {
         self.extEnvelope = extEnvelope
         self.boardId = boardId
         self.boardName = boardName
+        self.deviceKind = deviceKind
     }
 }
 
@@ -25073,6 +25083,9 @@ extension DeviceProtocol: Equatable, Hashable {
         if lhs.boardName != rhs.boardName {
             return false
         }
+        if lhs.deviceKind != rhs.deviceKind {
+            return false
+        }
         return true
     }
 
@@ -25084,6 +25097,7 @@ extension DeviceProtocol: Equatable, Hashable {
         hasher.combine(extEnvelope)
         hasher.combine(boardId)
         hasher.combine(boardName)
+        hasher.combine(deviceKind)
     }
 }
 
@@ -25102,7 +25116,8 @@ public struct FfiConverterTypeDeviceProtocol: FfiConverterRustBuffer {
                 pages: FfiConverterSequenceTypeDevicePage.read(from: &buf), 
                 extEnvelope: FfiConverterTypeExtEnvelope.read(from: &buf), 
                 boardId: FfiConverterUInt8.read(from: &buf), 
-                boardName: FfiConverterString.read(from: &buf)
+                boardName: FfiConverterString.read(from: &buf), 
+                deviceKind: FfiConverterTypeDeviceKind.read(from: &buf)
         )
     }
 
@@ -25114,6 +25129,7 @@ public struct FfiConverterTypeDeviceProtocol: FfiConverterRustBuffer {
         FfiConverterTypeExtEnvelope.write(value.extEnvelope, into: &buf)
         FfiConverterUInt8.write(value.boardId, into: &buf)
         FfiConverterString.write(value.boardName, into: &buf)
+        FfiConverterTypeDeviceKind.write(value.deviceKind, into: &buf)
     }
 }
 
@@ -53955,6 +53971,93 @@ public func FfiConverterTypeConfirmOp_lower(_ value: ConfirmOp) -> RustBuffer {
 
 
 extension ConfirmOp: Equatable, Hashable {}
+
+
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
+ * What kind of device the open connection is (PLAN-PG section 1.9, PGMAT F1).
+ * A client shows the screens of the kind only.
+ */
+
+public enum DeviceKind {
+    
+    /**
+     * A DSPi: the bulk image, the DSP model, the generator, the meters.
+     */
+    case dsp
+    /**
+     * The alink sender build (`firmware/DSPi-Sender`, legacy only): a
+     * connection with limited capabilities. It has the device info
+     * (platform, serial, build), the extension channel with its alink block
+     * (`alink_info`, `fetch_alink_*`, `reset_alink_stats`) and the update
+     * check's target; no bulk image, no DSP model, no generator, no meters.
+     * Every DSP setter answers [`crate::DspiError::Unsupported`] with nothing
+     * sent, and `get_state` shows the platform's identity only
+     * (`bulk_valid` false, no channels).
+     */
+    case alinkSender
+}
+
+
+#if compiler(>=6)
+extension DeviceKind: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeDeviceKind: FfiConverterRustBuffer {
+    typealias SwiftType = DeviceKind
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> DeviceKind {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .dsp
+        
+        case 2: return .alinkSender
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: DeviceKind, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .dsp:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .alinkSender:
+            writeInt(&buf, Int32(2))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDeviceKind_lift(_ buf: RustBuffer) throws -> DeviceKind {
+    return try FfiConverterTypeDeviceKind.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDeviceKind_lower(_ value: DeviceKind) -> RustBuffer {
+    return FfiConverterTypeDeviceKind.lower(value)
+}
+
+
+extension DeviceKind: Equatable, Hashable {}
 
 
 
