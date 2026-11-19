@@ -14,7 +14,7 @@
 //! |---|---|---|
 //! | `open {units, lease_ms?}` | Control, Admin | takes each unit's device lock for the session, reads `EXT_LIST`, `EXT_TIME_BASE` (twice), `EXT_SIGGEN_TIMELINE`, the outputs; checks G1 (one entry per unit with the group's time base and domain, R7b; the units' `t` agree within the reads' round trips, R7a; one USB bus where known); the lease clamped (R6b) |
 //! | `stage {session, serial, config}` | the owner | judges the 36-byte config with `stimulus::check_timed_config` (a finite log sweep, never `RAW`, at most the hard cap, no S/PDIF time-base slot, S-AT6), writes `0xA4` |
-//! | `run {session, segments, lead_ms}` | the owner | `t0` = T read now + the lead (at least the largest arm lead + 100 ms + the writes' time, OD-ATn) + whatever the servos still need to settle; each segment's op 9 at `t0 + offset` in each unit's own numbering (USB: S, time base 1, never 2, R5); `bad_schedule` for a unit's segments closer than the lead (R6a), an overlap or a run over 120 s; with `summed` (WP ATSUMOFF) the segments are one summed run of distinct units whose starts may differ by at most 1 s; at most one op 9 pending per unit, the next written once the previous has started and never more than 110 s ahead |
+//! | `run {session, segments, lead_ms}` | the owner | `t0` = T read now + the lead (at least the largest arm lead + 100 ms + the writes' time, OD-ATn) + whatever the servos still need to settle; each segment's op 9 at `t0 + offset` in each unit's own numbering (USB: S, time base 1, never 2, R5); `bad_schedule` for a unit's segments closer than the lead (R6a), an overlap or a run over 120 s; with `summed` (WP ATSUMOFF) the segments are one summed run of distinct units whose starts may differ by at most 1 s; units that play together (`summed`, or one offset) are staged at most 6 dB per doubling under the hard cap (review AT-D1); at most one op 9 pending per unit, the next written once the previous has started and never more than 110 s ahead |
 //! | `status {session}` | the owner | renews the lease; per unit `SiggenStatus`, `EXT_SIGGEN_TIMELINE`, the group's `EXT_TIME_BASE` entry, peaks, clip, limiter, events; the time pin `{t, hub_us}` |
 //! | `abort {session, reason}` | any Control or Admin principal | `STOP_NOW` and `CANCEL_ALL` on every unit, the broadcast stop where every unit has the ops; locks released; nothing staged can start after it (R4) |
 //! | `close {session}` | the owner | `CANCEL_ALL` (and `STOP_NOW` during a run), locks released |
@@ -210,6 +210,8 @@ struct MUnit {
     forbidden: u16,
     /// The staged config's length, samples.
     staged: Option<u64>,
+    /// The staged config's level, dBFS (review AT-D1; read with `staged`).
+    staged_level_db: f32,
     events: VecDeque<UnitEvent>,
 }
 
@@ -687,24 +689,52 @@ impl MeasureHub {
         }
         // The second reads, back to back (one tick, R7a), at least the rate
         // span after the first.
-        if let Some(first) = firsts.first() {
-            let span = Duration::from_micros(u64::from(domain::RATE_SPAN_US).saturating_add(2_000));
-            let wait = first.tb.got.checked_add(span).map_or(Duration::ZERO, |t| {
-                t.saturating_duration_since(Instant::now())
-            });
-            if !wait.is_zero() {
-                std::thread::sleep(wait);
-            }
-        }
+        //
+        // Review AT-D1: counted from the *last* unit's first read (every
+        // unit's own span must be the rate span, and a unit's first read
+        // comes three reads later per unit before it while its second comes
+        // one later: counted from the first unit's, a second unit's span was
+        // 102 ms less three reads, under the span with reads of 0.7 ms). And
+        // read again, over twice the span each time, while some unit's pair
+        // is not timed well enough to tell its rate (a busy host: the flake
+        // "rate is not one a measurement runs at").
         let mut seconds = Vec::with_capacity(devs.len());
-        for (serial, dev) in req.units.iter().zip(devs) {
-            let io = Io {
-                dev,
-                session: who.id(),
-            };
-            match io.time_base() {
-                Ok(t) => seconds.push(t),
-                Err(s) => return fail(transfer_code(s), "no EXT_TIME_BASE".into(), serial),
+        let mut timed = vec![false; devs.len()];
+        for round in 0..=domain::RATE_EXTRA_ROUNDS {
+            if let Some(last) = firsts.last() {
+                let span = Duration::from_micros(
+                    u64::from(domain::RATE_SPAN_US)
+                        .saturating_mul(1u64.checked_shl(round).unwrap_or(u64::MAX))
+                        .saturating_add(2_000),
+                );
+                let wait = last.tb.got.checked_add(span).map_or(Duration::ZERO, |t| {
+                    t.saturating_duration_since(Instant::now())
+                });
+                if !wait.is_zero() {
+                    std::thread::sleep(wait);
+                }
+            }
+            seconds.clear();
+            for (serial, dev) in req.units.iter().zip(devs) {
+                let io = Io {
+                    dev,
+                    session: who.id(),
+                };
+                match io.time_base() {
+                    Ok(t) => seconds.push(t),
+                    Err(s) => return fail(transfer_code(s), "no EXT_TIME_BASE".into(), serial),
+                }
+            }
+            let us = |d: Duration| u64::try_from(d.as_micros()).unwrap_or(u64::MAX);
+            for ((f, s), ok) in firsts.iter().zip(&seconds).zip(&mut timed) {
+                *ok = domain::rate_reads_timed(
+                    us(f.tb.got.saturating_duration_since(f.tb.sent)),
+                    us(s.got.saturating_duration_since(s.sent)),
+                    us(s.sent.saturating_duration_since(f.tb.got)),
+                );
+            }
+            if timed.iter().all(|t| *t) {
+                break;
             }
         }
         let entries: Vec<&[TimeBaseEntry]> =
@@ -726,7 +756,7 @@ impl MeasureHub {
         let tb = group.time_base;
         // Each unit's rate from its two reads, and nothing moved between them.
         let mut rate = None;
-        for ((serial, f), s) in req.units.iter().zip(&firsts).zip(&seconds) {
+        for (i, ((serial, f), s)) in req.units.iter().zip(&firsts).zip(&seconds).enumerate() {
             let (Some(a), Some(b)) = (group_entry(&f.tb.value, tb), group_entry(&s.value, tb))
             else {
                 return fail(
@@ -742,6 +772,16 @@ impl MeasureHub {
                 return fail(
                     wire::code::NOT_LOCKED,
                     "the unit's time base moved while it was read".into(),
+                    serial,
+                );
+            }
+            // Review AT-D1: a pair the hub could not time says nothing of
+            // the rate, neither a wrong one nor none.
+            if !timed.get(i).copied().unwrap_or(false) {
+                return fail(
+                    "device",
+                    "the unit's reads took too long to tell its rate (a busy hub); try again"
+                        .into(),
                     serial,
                 );
             }
@@ -866,6 +906,7 @@ impl MeasureHub {
                 t_minus_output,
                 forbidden,
                 staged: None,
+                staged_level_db: 0.0,
                 events: VecDeque::new(),
             });
         }
@@ -951,6 +992,7 @@ impl MeasureHub {
         }
         if let Some(x) = guard(&s.st).units.get_mut(u.index) {
             x.staged = Some(len);
+            x.staged_level_db = cfg.level_db;
         }
         ok(id, json!({"serial": u.serial, "samples": len}))
     }
@@ -970,7 +1012,7 @@ impl MeasureHub {
             return err(id, wire::code::BAD_SCHEDULE, "a lead of at most 10 s", None);
         }
         let _io = guard(&s.io);
-        let (refs, tb, rate, lens) = {
+        let (refs, tb, rate, lens, levels) = {
             let st = guard(&s.st);
             if let Some(why) = &st.aborted {
                 return err(id, "aborted", why, None);
@@ -979,7 +1021,12 @@ impl MeasureHub {
                 return err(id, "bad_request", "a run is in progress", None);
             }
             let lens: Vec<Option<u64>> = st.units.iter().map(|u| u.staged).collect();
-            (urefs(&st), st.time_base, st.rate, lens)
+            let levels: Vec<Option<f32>> = st
+                .units
+                .iter()
+                .map(|u| u.staged.map(|_| u.staged_level_db))
+                .collect();
+            (urefs(&st), st.time_base, st.rate, lens, levels)
         };
         // Read every unit of the run now: nothing moved, and T.
         let mut used: Vec<usize> = req.segments.iter().map(|x| usize::from(x.unit)).collect();
@@ -1050,6 +1097,10 @@ impl MeasureHub {
         } else {
             schedule::check_segments(&req.segments, &lens, samples_in(lead, rate), rate)
         };
+        // Review AT-D1: units that play together, 6 dB per doubling under
+        // the hard cap (S-AT4's bound; the session's own rule is the client's).
+        let checked =
+            checked.and_then(|()| schedule::check_sum_levels(&req.segments, &levels, req.summed));
         if let Err(why) = checked {
             return err(id, wire::code::BAD_SCHEDULE, &why, None);
         }
