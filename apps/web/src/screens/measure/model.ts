@@ -121,6 +121,16 @@ export function countRange(p: MeasurePlacement | null): [number, number] | null 
 /** WP P5FOLLOW (coordinator, headphone safety): why nothing is measured before the person chose the placement. */
 export const PLACEMENT_FIRST = "Choose the placement first: speakers or headphones on a coupler. Headphones are measured much more quietly.";
 
+/** WP P5FOLLOW: the live view's placements, and why it waits for the person's choice (it plays too). */
+export const LIVE_PLACEMENT_IDS: readonly MeasurePlacement[] = ["listeningPosition", "nearField", "headphones"];
+export const LIVE_PLACEMENT_FIRST = "Choose the placement first: speakers or headphones on a coupler. Headphones are measured much more quietly.";
+
+/** The live view's placement taken from the Setup tab's choice when it is one the live view has; null otherwise (no default). */
+export function livePlaceOf(d: { placement?: MeasurePlacement | null } | null | undefined): MeasurePlacement | null {
+  const p = d?.placement ?? null;
+  return p && LIVE_PLACEMENT_IDS.includes(p) ? p : null;
+}
+
 /** The hint under Passes when it is 2 (review P5-E: a hint, no minimum). */
 export const TWO_PASSES_HINT = "Two passes cannot judge timing; use three or more for auto-tune.";
 

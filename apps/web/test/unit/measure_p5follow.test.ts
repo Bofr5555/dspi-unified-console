@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import type { GuardedApplyRecord } from "../../src/core/protocol";
 import type { Session } from "../../src/ui/session";
 import { SnapshotDesk } from "../../src/screens/snapshots/model";
-import { PLACEMENT_FIRST, TWO_PASSES_HINT, draftProblem, initialDraft, setupOf } from "../../src/screens/measure/model";
+import { LIVE_PLACEMENT_FIRST, PLACEMENT_FIRST, TWO_PASSES_HINT, draftProblem, initialDraft, livePlaceOf, setupOf } from "../../src/screens/measure/model";
 import { PLACE_FIRST, TuneDesk, type TuneHost } from "../../src/screens/measure/tune-model";
 
 test("P5FOLLOW: the Setup tab assumes no placement: its problem says so in words, and no setup is made", () => {
@@ -26,6 +26,14 @@ test("P5FOLLOW: the Setup tab assumes no placement: its problem says so in words
   }
   // The outputs' problem still comes first.
   assert.match(draftProblem({ ...d, outputs: d.outputs.map((o) => ({ ...o, on: false })) }), /at least one output/);
+});
+
+test("P5FOLLOW: the live view takes only a valid Setup choice, else none", () => {
+  assert.equal(livePlaceOf(null), null);
+  assert.equal(livePlaceOf(initialDraft([0])), null, "the Setup tab's draft starts with none");
+  assert.equal(livePlaceOf({ placement: "multiPosition" }), null, "not a live placement");
+  for (const p of ["listeningPosition", "nearField", "headphones"] as const) assert.equal(livePlaceOf({ placement: p }), p);
+  assert.match(LIVE_PLACEMENT_FIRST, /^Choose the placement first/);
 });
 
 test("P5FOLLOW: the 2-pass hint's words (a hint, no minimum: two passes stay allowed)", () => {

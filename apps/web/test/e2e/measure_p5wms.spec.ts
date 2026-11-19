@@ -146,6 +146,39 @@ test("P5FOLLOW: nothing is measured before the placement is chosen; headphones s
   expect(errors).toEqual([]);
 });
 
+// -- WP P5FOLLOW --
+test("P5FOLLOW: the live view assumes no placement, plays nothing until one is chosen, and takes the Setup tab's valid choice", async ({ page, viewport }) => {
+  test.skip(!desktop(viewport?.width), "desktop width");
+  const errors = errorsOf(page);
+  const screen = await measureScreen(page);
+  const tabs = screen.getByRole("tablist", { name: "Measurement" });
+  await tabs.getByRole("tab", { name: "Live" }).click();
+  let live = screen.getByRole("region", { name: "Live response" });
+  await expect(live.getByLabel("Live placement", { exact: true })).toHaveValue("");
+  await expect(live.getByRole("button", { name: "Start live" })).toBeDisabled();
+  await expect(live.getByLabel("Live placement needed")).toHaveText("Choose the placement first: speakers or headphones on a coupler. Headphones are measured much more quietly.");
+  expect((await call<{ active: boolean }>(page, "measureLiveState")).active).toBe(false);
+  expect((await call<{ state: number }>(page, "siggenStatus")).state).toBe(0);
+  // Several positions on the Setup tab is no live placement: still none.
+  await tabs.getByRole("tab", { name: "Measure", exact: true }).click();
+  const setup = screen.getByRole("region", { name: "Measurement setup" });
+  await setup.getByRole("radio", { name: "Several positions" }).check();
+  await tabs.getByRole("tab", { name: "Live" }).click();
+  live = screen.getByRole("region", { name: "Live response" });
+  await expect(live.getByRole("button", { name: "Start live" })).toBeDisabled();
+  // Headphones chosen on the Setup tab: the live view takes it, with its coupler.
+  await tabs.getByRole("tab", { name: "Measure", exact: true }).click();
+  await setup.getByRole("radio", { name: "Headphones on a coupler" }).check();
+  await tabs.getByRole("tab", { name: "Live" }).click();
+  live = screen.getByRole("region", { name: "Live response" });
+  await expect(live.getByLabel("Live placement", { exact: true })).toHaveValue("headphones");
+  await expect(live.getByLabel("Live coupler")).toBeVisible();
+  await expect(live.getByRole("button", { name: "Start live" })).toBeEnabled();
+  await expect(live.getByLabel("Live placement needed")).toHaveCount(0);
+  expect((await call<{ state: number }>(page, "siggenStatus")).state).toBe(0);
+  expect(errors).toEqual([]);
+});
+
 test("P5WMS: Stop stops the generator at once, and the run says nothing was kept", async ({ page, viewport }) => {
   test.skip(!desktop(viewport?.width), "desktop width");
   test.setTimeout(60_000);
@@ -174,6 +207,11 @@ test("P5WMS: the live view: a curve per sweep with the target, 'cut this peak' p
   await screen.getByRole("tablist", { name: "Measurement" }).getByRole("tab", { name: "Live" }).click();
   const live = screen.getByRole("region", { name: "Live response" });
   await live.getByLabel("Smoothing").selectOption("6");
+  // -- WP P5FOLLOW -- no placement assumed: Start live waits for the person, said in words
+  await expect(live.getByRole("button", { name: "Start live" })).toBeDisabled();
+  await expect(live.getByLabel("Live placement needed")).toContainText("Choose the placement first");
+  await live.getByLabel("Live placement", { exact: true }).selectOption("listeningPosition");
+  await expect(live.getByLabel("Live placement needed")).toHaveCount(0);
   await live.getByRole("button", { name: "Start live" }).click();
   await expect.poll(async () => Number(await live.locator("[data-seq]").getAttribute("data-seq")), { timeout: 60_000 }).toBeGreaterThanOrEqual(2);
   const graph = live.getByRole("img", { name: "Live response" });

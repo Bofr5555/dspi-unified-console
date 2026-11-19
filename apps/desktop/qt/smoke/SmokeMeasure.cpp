@@ -330,6 +330,29 @@ void measureSection(SmokeDriver &d) {
         mc->setPasses(3);
         d.spin(100);
         d.check(QStringLiteral("p5follow: two passes show the timing hint, three hide it"), shown && hint && !hint->isVisible());
+        // The live view plays too: no placement assumed there either
+        showTab(d, w, 2);
+        d.spin(100);
+        QQuickItem *liveStartButton = in(d, w, QStringLiteral("MeasureLive.start"));
+        QQuickItem *liveNeeded = in(d, w, QStringLiteral("MeasureLive.placementNeeded"));
+        d.check(QStringLiteral("p5follow: live: Start Live is disabled with no placement, the reason in words"),
+                liveStartButton && !liveStartButton->isEnabled() && liveNeeded && liveNeeded->isVisible() &&
+                    liveNeeded->property("text").toString().contains(QLatin1String("placement")));
+        mc->liveStart({ { QStringLiteral("output"), 0 }, { QStringLiteral("mode"), QStringLiteral("sweep") } });
+        d.spin(200);
+        d.check(QStringLiteral("p5follow: live: a start without a placement is refused in words, nothing plays"),
+                !mc->liveActive() && !mc->running() && mc->error().contains(QLatin1String("placement")) && generatorIdle(d));
+        mc->clearError();
+        // The Setup tab's valid choice is the live view's
+        mc->setPlacement(QStringLiteral("headphones"));
+        d.spin(100);
+        const bool taken = liveStartButton && liveStartButton->isEnabled() && liveNeeded && !liveNeeded->isVisible();
+        mc->setPlacement(QStringLiteral("multiPosition"));
+        d.spin(100);
+        d.check(QStringLiteral("p5follow: live: takes the Setup's headphones, not several positions"),
+                taken && liveStartButton && !liveStartButton->isEnabled());
+        mc->setPlacement(QString());
+        showTab(d, w, 0);
     }
     const QList<int> outs = chooseOutputs(mc);
     std::printf("smoke: p5qui: measuring outputs %s\n",

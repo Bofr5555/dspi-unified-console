@@ -1408,6 +1408,11 @@ void MeasureController::liveStart(const QVariantMap &s) {
         fail(tr("Stop the passive RTA first."));
         return;
     }
+    // -- WP P5FOLLOW -- (coordinator, headphone safety) never a placement assumed
+    if (s.value(QStringLiteral("placement")).toString().isEmpty()) {
+        fail(tr("Choose the placement first: speakers or headphones on a coupler. Headphones are measured much more quietly."));
+        return;
+    }
     if (running()) return;
     m_liveSaid.clear();
     m_pending = {};
