@@ -365,10 +365,14 @@ bitmaps hold nothing of the DSP model, `PagedTransport` refuses every DSP reques
 `SYS.PLATFORM` byte 3 = 0, pages SYS, STORE (the output-config save) and 0xE0 only, the tunnel listed in 0xE0's
 bitmap, page 0 kept. A sender build that lists any further page (a debug build's diagnostics page 0xF0 included) is
 not recognised and fails to open; the firmware's spec (`extension_channel_spec.md` 1.3.5) names the sender's paged
-stack but not this page set, so FWPG4 has to write it there (review PGS-DOC). The update check knows no sender image
-from a DSP image: the sender is judged as a Pico running our firmware (voltage unknown, so the voltage phrase is asked;
-an image not proven ours also names the lineage loss), on both generations alike
-(`firmware_guard/tests_review_pgsdoc.rs`), and the clients do not offer it the bundled DSP image. Over DSPi Link a paged sender gets no meter poll, not even from the hub's listed channel count;
+stack but not this page set, so FWPG4 has to write it there (review PGS-DOC). The update check tells a sender image
+from a DSP image by the image's device-kind stamp (IMGKIND, `image_kind.h`: `dsp` in every DSPi image, `alink_sender`
+in the sender's): an image stamped for the other kind, or with an unreadable stamp, is refused whatever is typed
+(`KindMismatch`); an image with no kind stamp (upstream's, ours before IMGKIND) asks on a sender and says it may be a
+DSP image (`KindUnknown`, or the voltage or lineage phrase where one is asked anyway). The sender's own stamped image on
+a sender is clear with no voltage phrase (INT-R1: the sender has no core-voltage setting and reports no voltage record,
+so there is nothing for the voltage rule to protect); on both generations alike (`firmware_guard/tests_wp_imgkind.rs`,
+`tests_review_pgsdoc.rs`), and the clients do not offer it the bundled DSP image. Over DSPi Link a paged sender gets no meter poll, not even from the hub's listed channel count;
 behind a 1.2 hub the core speaks legacy only and the dual-stack sender is the legacy sender.
 
 ### 1.10 The firmware port onto 1.1.7 (FWPG0-FWPG6, FWPGHIL)

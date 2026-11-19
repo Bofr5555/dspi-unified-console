@@ -89,7 +89,11 @@
 //! rule already asks) with words saying it may be a DSP image. A kind stamp
 //! proves the lineage as the voltage stamp does. The program name is not
 //! consulted (the sender's is `DSPi-Sender`). With no target kind (a board in
-//! BOOTSEL, the write gate's fallback) the kind rule does not apply.
+//! BOOTSEL, the write gate's fallback) the kind rule does not apply. The
+//! sender's own stamped image on a sender needs no voltage phrase (INT-R1): the
+//! sender has no core-voltage setting and reports no voltage record, so the
+//! voltage rule's "needs not known" would ask about nothing; only that case is
+//! cleared.
 //!
 //! A stamped image boots at max(stored, its default) (`core_vreg.c:59-62`), so
 //! a stored selection could hold even under a lower stamp. The guard gives no
@@ -899,6 +903,27 @@ pub fn firmware_update_check(
         v.confirmation_phrase = String::new();
         out.verdict = v;
         return out;
+    }
+    // -- INT-R1 -- (review R1 on IMGKIND's open question) the sender's own
+    // image on an alink sender: the sender has no core-voltage setting (no
+    // `core_vreg.c`, no voltage record), so the voltage rule's "this board's
+    // needs are not known" has nothing to protect there. A stamped
+    // `alink_sender` image runs the sender as it runs today, and no other
+    // image is cleared by this: every other verdict stands (a DSP image is
+    // refused above; an unstamped image still asks).
+    if target.device_kind == Some(crate::DeviceKind::AlinkSender)
+        && kind == ImageKind::Stamped(crate::DeviceKind::AlinkSender)
+        && matches!(
+            v.decision,
+            FirmwareGuardDecision::NeedsConfirmation | FirmwareGuardDecision::Confirmed
+        )
+        && v.reason == FirmwareGuardReason::BoardUnknown
+    {
+        v.allowed = true;
+        v.decision = FirmwareGuardDecision::Clear;
+        v.reason = FirmwareGuardReason::NoRisk;
+        v.message = String::new();
+        v.confirmation_phrase = String::new();
     }
     let loss = target.may_be_ours()
         && image_lineage != crate::FirmwareLineage::Bofr

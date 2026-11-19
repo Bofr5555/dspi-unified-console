@@ -197,7 +197,7 @@ final class SnapshotsP1SW1Tests: XCTestCase, CoreDomainTesting {
     func testP1EFIXRevertStaysAfterALostGuardOverAHub() {
         func g(_ phase: GuardPhase, hub: Bool) -> GuardedApply {
             GuardedApply(id: 7, phase: phase, label: "", hub: hub, timeoutMs: 30_000, remainingMs: 0,
-                         reason: "", message: "", changes: [], notes: [])
+                         reason: "", message: "", changes: [], notes: [], revertNotice: "")
         }
         XCTAssertTrue(CoreSnapshots.offersRevert(g(.lost, hub: true)), "over a hub")
         XCTAssertTrue(CoreSnapshots.offersRevert(g(.lost, hub: false)))

@@ -257,7 +257,7 @@ final class CoreSnapshots: ObservableObject {
 
     static let noCompare = AbCompare(active: false, side: nil, aName: "", bName: "", recall: nil)
     static let idleGuard = GuardedApply(id: 0, phase: .idle, label: "", hub: false, timeoutMs: 0, remainingMs: 0,
-                                        reason: "", message: "", changes: [], notes: [])
+                                        reason: "", message: "", changes: [], notes: [], revertNotice: "")
 
     static func clampTimeout(_ s: Int) -> Int { min(max(s, timeoutRange.lowerBound), timeoutRange.upperBound) }
 

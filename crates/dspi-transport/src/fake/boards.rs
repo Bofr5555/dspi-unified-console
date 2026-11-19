@@ -33,9 +33,9 @@
 //!     paged request STALLs, the probe included (a G1b device).
 //!   - `dual_stack: true` is the sender after FWPG4 ("the sender answers
 //!     `SYS.PROTOCOL_INFO`, `SYS.PLATFORM`, its vendor subset on the paged
-//!     stack and the tunnel, and keeps page 0"). FWPG4 has no spec yet; this
-//!     models its done line with upstream's 1.1.7 rules (migration guide 4 and
-//!     5): pages `SYS` (discovery, `LAST_RESULT`, `PLATFORM`, `SERIAL`,
+//!     stack and the tunnel, and keeps page 0"). FWPG4 wrote it (spec 1.3.5;
+//!     INT-R1 aligned the fake's wire with it); this models it with upstream's
+//!     1.1.7 rules (migration guide 4 and 5): pages `SYS` (discovery, `LAST_RESULT`, `PLATFORM`, `SERIAL`,
 //!     `BUILD_INFO`, `ENTER_BOOTLOADER`), `STORE` (`OUTPUT_CONFIG_SAVE`) and our
 //!     0xE0 (the tunnel `0xE010`, `wValue` = extension id, refusals as
 //!     `VC_ERR_*`), each at the vendored revision (0xE0 at 1). A refusal is a
@@ -58,7 +58,8 @@ use dspi_proto::ext::alink::{self as palink, AlinkRole};
 use dspi_proto::generated::{ext as gext, opcodes as op};
 use dspi_proto::packets::Board;
 use dspi_proto::paged::legacy::{
-    VC_ERR_ADDRESS, VC_ERR_DIRECTION, VC_ERR_LENGTH, VC_ERR_UNKNOWN, VC_ERR_VALUE, VC_OK,
+    VC_ERR_ADDRESS, VC_ERR_DIRECTION, VC_ERR_LENGTH, VC_ERR_PIN_INVALID, VC_ERR_STATE,
+    VC_ERR_UNKNOWN, VC_ERR_UNSUPPORTED, VC_ERR_VALUE, VC_OK,
 };
 use dspi_proto::paged::registry::{self, AddrKind, GetLen};
 use dspi_proto::paged::{
@@ -208,6 +209,81 @@ fn sender_ext_ids() -> Vec<u16> {
     let mut ids = vec![gext::EXT_NOTIFY_FEATURES];
     ids.extend(palink::SENDER_IDS);
     ids
+}
+
+// -- INT-R1 -- the sender's tunnel as FWPG4 wired it (`sender_vc.c`,
+// `sender_vendor.c`; extension channel spec 1.3.2, 1.3.4, 1.3.5).
+
+/// The exact SET length of a sub-command the sender serves, `None` for one
+/// with no OUT form (`sender_vc.c` `snd_ext_set_len`).
+fn sender_tunnel_set_len(id: u16) -> Option<usize> {
+    match id {
+        palink::EXT_ALINK_CONFIG => Some(palink::AlinkConfig::SIZE),
+        palink::EXT_ALINK_TX => Some(palink::AlinkTx::SIZE),
+        palink::EXT_ALINK_CTRL_MSG => Some(palink::ApplyRequest::SIZE),
+        palink::EXT_ALINK_STATS_RESET => Some(1),
+        _ => None,
+    }
+}
+
+/// The code the sender's handler answers for a refused SET of `id` with
+/// `data` (its length already exact), in the firmware's order of checks
+/// (`sender_vendor.c` `set_config`, `set_tx`, `set_ctrl`; spec 1.3.5). The
+/// fake keeps no pin table and no pending apply of its own on `EXT_ALINK_TX`,
+/// so `VC_ERR_PIN_IN_USE` and that `VC_ERR_STATE` never occur here.
+fn sender_tunnel_refusal(id: u16, data: &[u8]) -> u8 {
+    match id {
+        palink::EXT_ALINK_CONFIG => {
+            let Some(c) = palink::AlinkConfig::decode(data) else {
+                return VC_ERR_VALUE;
+            };
+            let bad_field = data.first().is_some_and(|e| *e > 1)
+                || c.class > 3
+                || c.flags & !0b11 != 0
+                || data.get(7).is_some_and(|b| *b != 0);
+            if bad_field {
+                return VC_ERR_VALUE;
+            }
+            let pins = [c.rx_pin, c.tx_pin, c.los_pin, c.txdis_pin];
+            if !pins.iter().all(|p| crate::fake::alink::pin_ok(*p)) {
+                return VC_ERR_PIN_INVALID;
+            }
+            if c.tx_pin != 0xFF {
+                return VC_ERR_UNSUPPORTED; // no repeater output on a sender
+            }
+            let set: Vec<u8> = [c.rx_pin, c.los_pin, c.txdis_pin]
+                .into_iter()
+                .filter(|p| *p != 0xFF)
+                .collect();
+            let twice = set
+                .iter()
+                .enumerate()
+                .any(|(i, p)| set.iter().skip(i.saturating_add(1)).any(|q| q == p));
+            if twice {
+                return VC_ERR_PIN_INVALID;
+            }
+            VC_ERR_VALUE
+        }
+        palink::EXT_ALINK_TX => match palink::AlinkTx::decode(data) {
+            Some(t) if !crate::fake::alink::pin_ok(t.sync_pin) => VC_ERR_PIN_INVALID,
+            _ => VC_ERR_VALUE,
+        },
+        palink::EXT_ALINK_CTRL_MSG => {
+            // A payload outside the rules is VALUE; a schedule the sender
+            // refuses (the lead, one at a time, the RATE fit, an op this
+            // build has no time base for) is STATE.
+            let Some(r) = palink::ApplyRequest::decode(data) else {
+                return VC_ERR_VALUE;
+            };
+            let flags_ok =
+                data.get(12).is_some_and(|f| f & !1 == 0) && data.get(13..) == Some(&[0; 3]);
+            if !flags_ok || !r.args_valid() {
+                return VC_ERR_VALUE;
+            }
+            VC_ERR_STATE
+        }
+        _ => VC_ERR_VALUE,
+    }
 }
 
 impl FakeDevice {
@@ -461,6 +537,14 @@ impl State {
             }
             cmds::SYS_COMMAND_INFO => {
                 let target = CmdId(value);
+                // -- INT-R1 -- the tunnel's row (spec 1.3.2; FWPG4 `sender_vc.c`):
+                // address kind VC_A_INDEX (24), GET length variable, SET 1 to 64
+                // bytes, no flags, both directions.
+                if target == EXT_TUNNEL {
+                    let [max0, max1] = SENDER_MAX.to_le_bytes();
+                    debug_assert_eq!(max1, 0);
+                    return Ok(vec![0x00, 0x00, 0xFF, 0xFF, 0x01, max0, 24, 0x03]);
+                }
                 let c = registry::command(target)
                     .filter(|_| {
                         sender_paged(target, PagedDir::Get) || sender_paged(target, PagedDir::Set)
@@ -471,7 +555,15 @@ impl State {
                     GetLen::Fixed(n) => n,
                     GetLen::Var => 0xFFFF,
                 };
-                let mut r = c.flags.0.to_le_bytes().to_vec();
+                // -- INT-R1 -- ENTER_BOOTLOADER carries VC_F_SET_USB_ONLY on our
+                // firmware (spec 1.3.7; FWPG4): 0x0022, not upstream's 0x0020.
+                let flags = c.flags.0
+                    | if target == cmds::SYS_ENTER_BOOTLOADER {
+                        0x0002
+                    } else {
+                        0
+                    };
+                let mut r = flags.to_le_bytes().to_vec();
                 r.extend(get_len.to_le_bytes());
                 r.extend([
                     c.set_min,
@@ -493,6 +585,11 @@ impl State {
                 let known = value == gext::EXT_LIST || sender_ext_ids().contains(&value);
                 if !known {
                     return Err(VC_ERR_ADDRESS);
+                }
+                // -- INT-R1 -- spec 1.3.2's order: listed, then an IN form
+                // (`sender_vc.c` `snd_ext_has_get`).
+                if value == palink::EXT_ALINK_STATS_RESET {
+                    return Err(VC_ERR_DIRECTION);
                 }
                 self.get(op::REQ_EXTENSION, value, usize::from(want))
                     .map_err(|_| VC_ERR_VALUE)
@@ -521,8 +618,10 @@ impl State {
                 .map(|_| ())
                 .map_err(|_| VC_ERR_UNKNOWN),
             EXT_TUNNEL => {
-                if !palink::SENDER_IDS.contains(&value) {
-                    // EXT_LIST and EXT_NOTIFY_FEATURES are GET only.
+                // -- INT-R1 -- spec 1.3.2's order (FWPG4 `sender_vc.c` `run_set`):
+                // listed (ADDRESS), an OUT form (DIRECTION), exactly its length
+                // (LENGTH), then the handler's own code (1.3.4, 1.3.5).
+                let Some(len) = sender_tunnel_set_len(value) else {
                     return Err(
                         if value == gext::EXT_LIST || sender_ext_ids().contains(&value) {
                             VC_ERR_DIRECTION
@@ -530,9 +629,12 @@ impl State {
                             VC_ERR_ADDRESS
                         },
                     );
+                };
+                if data.len() != len {
+                    return Err(VC_ERR_LENGTH);
                 }
                 self.set(op::REQ_EXTENSION, value, data)
-                    .map_err(|_| VC_ERR_VALUE)
+                    .map_err(|_| sender_tunnel_refusal(value, data))
             }
             _ => Err(VC_ERR_UNKNOWN),
         }
@@ -879,6 +981,86 @@ mod tests_wp_pgfake2 {
             d.control_in_paged(cmds::SYS_PLATFORM, 0, 7),
             Err(TransportError::Disconnected)
         ));
+    }
+
+    // -- INT-R1 -- the fake's wire aligned with the firmware (FWPG4
+    // `firmware/DSPi-Sender/tests/test_vc.c`, spec 1.3.2, 1.3.4, 1.3.5).
+    #[test]
+    fn wp_intr1_sender_wire_matches_fwpg4() {
+        use dspi_proto::paged::legacy::{VC_ERR_PIN_INVALID, VC_ERR_STATE, VC_ERR_UNSUPPORTED};
+        let mut d = FakeDevice::sender(true);
+        let last = |d: &mut FakeDevice| {
+            LastResult::decode(&d.control_in_paged(cmds::SYS_LAST_RESULT, 0, 8).unwrap()).unwrap()
+        };
+        // COMMAND_INFO: the tunnel's row (1.3.2) and ENTER_BOOTLOADER with
+        // VC_F_SET_USB_ONLY (1.3.7).
+        let ci = d
+            .control_in_paged(cmds::SYS_COMMAND_INFO, EXT_TUNNEL.0, 8)
+            .unwrap();
+        assert_eq!(ci, [0x00, 0x00, 0xFF, 0xFF, 0x01, 0x40, 0x18, 0x03]);
+        let ci = d
+            .control_in_paged(cmds::SYS_COMMAND_INFO, cmds::SYS_ENTER_BOOTLOADER.0, 8)
+            .unwrap();
+        assert_eq!(ci, [0x22, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02]);
+        // A listed id with no IN form: DIRECTION, not VALUE.
+        assert!(
+            d.control_in_paged(EXT_TUNNEL, palink::EXT_ALINK_STATS_RESET, 1)
+                .is_err()
+        );
+        let r = last(&mut d);
+        assert!(r.matches(EXT_TUNNEL, PagedDir::Get, palink::EXT_ALINK_STATS_RESET));
+        assert_eq!(r.result, VC_ERR_DIRECTION);
+        // A SET of the wrong exact length: LENGTH (the firmware's data stage).
+        assert!(
+            d.control_out_paged(EXT_TUNNEL, palink::EXT_ALINK_CONFIG, &[0; 7])
+                .is_err()
+        );
+        assert_eq!(last(&mut d).result, VC_ERR_LENGTH);
+        // The handler's codes (1.3.5): a pin off the header, a repeater pin
+        // on a sender, two equal pins, a field outside its range.
+        let config =
+            |rx: u8, tx: u8, los: u8, txdis: u8, flags: u8| [1, rx, 0, tx, los, txdis, flags, 0];
+        for (payload, code) in [
+            (config(40, 0xFF, 0xFF, 0xFF, 0), VC_ERR_PIN_INVALID),
+            (config(2, 3, 0xFF, 0xFF, 0), VC_ERR_UNSUPPORTED),
+            (config(2, 0xFF, 2, 0xFF, 0), VC_ERR_PIN_INVALID),
+            (config(2, 0xFF, 0xFF, 0xFF, 0x80), VC_ERR_VALUE),
+        ] {
+            assert!(
+                d.control_out_paged(EXT_TUNNEL, palink::EXT_ALINK_CONFIG, &payload)
+                    .is_err(),
+                "{payload:?}"
+            );
+            assert_eq!(last(&mut d).result, code, "{payload:?}");
+        }
+        // EXT_ALINK_CTRL_MSG: a payload outside the rules is VALUE, a
+        // schedule the sender refuses (here: no lead) is STATE.
+        let mut too_soon = palink::ApplyRequest {
+            frame: 0,
+            op: palink::ApplyOp::Mute,
+            arg: 0,
+            value: 0,
+        }
+        .encode();
+        assert!(
+            d.control_out_paged(EXT_TUNNEL, palink::EXT_ALINK_CTRL_MSG, &too_soon)
+                .is_err()
+        );
+        assert_eq!(last(&mut d).result, VC_ERR_STATE);
+        too_soon[9] = 7; // Mute takes no argument
+        assert!(
+            d.control_out_paged(EXT_TUNNEL, palink::EXT_ALINK_CTRL_MSG, &too_soon)
+                .is_err()
+        );
+        assert_eq!(last(&mut d).result, VC_ERR_VALUE);
+        // A good write still lands.
+        d.control_out_paged(
+            EXT_TUNNEL,
+            palink::EXT_ALINK_CONFIG,
+            &config(2, 0xFF, 0xFF, 0xFF, 0),
+        )
+        .unwrap();
+        assert_eq!(last(&mut d).result, VC_OK);
     }
 
     proptest::proptest! {

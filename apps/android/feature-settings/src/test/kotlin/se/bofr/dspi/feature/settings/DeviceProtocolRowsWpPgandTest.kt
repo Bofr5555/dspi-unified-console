@@ -43,7 +43,7 @@ class DeviceProtocolRowsWpPgandTest {
         assertEquals("1.3", rows["Protocol version"])
         assertEquals("0x01 r1, 0x05 r2, 0xE0 r1", rows["Pages"])
         assertEquals("Page 0xE0 tunnel", rows["Extension channel"])
-        // A paged device whose transport gave no page list (a hub's local path) says so
+        // A paged device whose transport gave no page list (a relay that passes no discovery on) says so
         assertEquals("Not listed on this connection", pagesLabel(g2b.copy(pages = emptyList())))
     }
 

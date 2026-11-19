@@ -91,7 +91,9 @@ STORE) and the tunnel on page 0xE0, and page 0 kept for legacy hosts. The core c
 - `device_protocol` says the generation and the envelope (`Legacy`, or `Tunnel` on the paged stack); the clients' sender
   pages (web, Qt, Android, Terminal) key on `device_kind` only and need no change per generation.
 - **Updates.** The sender is judged as a Pico running this fork's firmware, the same on both generations (its core
-  voltage is not known, so the voltage phrase is asked, and an image not proven ours also names the lineage loss).
+  voltage is not known, so the voltage phrase is asked for any image but its own stamped `alink_sender` image, which
+  is clear (INT-R1: the sender has no core-voltage setting, so there is nothing for the voltage rule to protect); an
+  image not proven ours also names the lineage loss).
   From IMGKIND the update check and the write gate also tell a sender image from a DSP image by the image's
   **device-kind stamp** (section 5): a DSP image (`dsp`) is refused on a sender, and the sender's image
   (`alink_sender`) on a DSP, whatever is typed. An image with no kind stamp (upstream's, and this fork's from before
@@ -121,7 +123,7 @@ STORE) and the tunnel on page 0xE0, and page 0 kept for legacy hosts. The core c
 
   | Image | Target `DSP` | Target `AlinkSender` | Target kind not known |
   |---|---|---|---|
-  | stamped for the target's kind | the rules above | the rules above | the rules above |
+  | stamped for the target's kind | the rules above | the rules above, but the voltage rule does not ask for the sender's own image (INT-R1: no core-voltage setting on a sender) | the rules above |
   | stamped for the other kind | `rule` `KindMismatch`: refused, whatever is typed | `KindMismatch`: refused | the rules above |
   | kind stamp unreadable (another text, two that disagree) | `KindMismatch`: refused | `KindMismatch`: refused | `KindMismatch`: refused |
   | no kind stamp (upstream, ours before IMGKIND) | the rules above, unchanged | asks: the message says the image may be a DSP image; `rule` `KindUnknown` with `KIND_PHRASE` "I ACCEPT THAT THIS MAY BE A DSP IMAGE" when nothing else asks; when the voltage or lineage rule asks, its phrase covers it (and `LineageLoss` keeps its name) | the rules above |

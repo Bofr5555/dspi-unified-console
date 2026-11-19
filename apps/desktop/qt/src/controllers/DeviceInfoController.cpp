@@ -267,9 +267,11 @@ QStringList DeviceInfoController::notesOf(const QJsonObject &p) {
     if (p.isEmpty()) return notes;
     if (p.value(QStringLiteral("generation")).toString() == QLatin1String("paged") &&
         p.value(QStringLiteral("pages")).toArray().isEmpty())
-        notes << tr("This connection says the device is paged but carries no page list: a hub's in-process or "
-                    "principal connection does not pass the page discovery on. The page list is therefore empty "
-                    "here, and the extension channel is as the 1.1.6-shaped probe found it.");
+        // -- INT-R1 -- (LINKFIX: the hub's in-process and principal connections
+        // pass the discovery on now; this is left for a relay that does not)
+        notes << tr("This connection says the device is paged but carries no page list: the connection to it does "
+                    "not pass the page discovery on. The page list is therefore empty here, and the extension "
+                    "channel is as the 1.1.6-shaped probe found it.");
     if (p.value(QStringLiteral("deviceKind")).toString() == QLatin1String("alinkSender"))
         notes << tr("This device is the audio link sender, not a DSP: it has its device information, its extension "
                     "channel with the audio link settings, and firmware updates. It has no DSP settings, no meters "

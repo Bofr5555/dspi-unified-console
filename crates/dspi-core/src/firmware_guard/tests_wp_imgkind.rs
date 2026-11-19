@@ -175,21 +175,26 @@ fn wp_imgkind_dsp_image_on_a_dsp_and_sender_image_on_a_sender_are_not_refused() 
     assert_eq!(v.image_lineage, FirmwareLineage::Bofr);
     assert!(v.verdict.message.is_empty(), "{v:?}");
     // On the sender as the core reads it (the fake dual-stack sender: no
-    // voltage record), only the voltage rule asks, as for any image there;
-    // the kind rule adds nothing and the lineage rule nothing.
+    // voltage record): -- INT-R1 -- the sender's own stamped image is clear
+    // there too, whatever is typed. The sender has no core-voltage setting,
+    // so the voltage rule's "needs not known" has nothing to protect; the
+    // kind rule adds nothing and the lineage rule nothing.
     let (core, t) = sender_core();
     assert_eq!(t.device_kind, Some(DeviceKind::AlinkSender));
-    let v = firmware_update_check(SENDER.to_vec(), &t, "");
-    assert_eq!(v.rule, FirmwareUpdateRule::None, "{v:?}");
-    assert!(!v.verdict.message.contains("DSP image"), "{v:?}");
-    let phrase = v.verdict.confirmation_phrase.clone();
-    assert_eq!(phrase, CONFIRMATION_PHRASE, "{v:?}");
+    assert_eq!(t.voltage.required_mv, 0, "no voltage record: {t:?}");
     for typed in TYPED {
         let v = firmware_update_check(SENDER.to_vec(), &t, typed);
-        assert_eq!(v.verdict.allowed, typed == phrase, "{typed:?}: {v:?}");
+        assert!(v.verdict.allowed, "{typed:?}: {v:?}");
+        assert_eq!(v.verdict.decision, FirmwareGuardDecision::Clear, "{v:?}");
+        assert_eq!(v.rule, FirmwareUpdateRule::None, "{v:?}");
+        assert!(v.verdict.confirmation_phrase.is_empty(), "{v:?}");
+        assert!(v.verdict.message.is_empty(), "{v:?}");
         let w = core.firmware_write_check(SENDER.to_vec(), t.voltage.clone(), typed.into());
-        assert_eq!(w.verdict.allowed, typed == phrase, "{typed:?}: {w:?}");
+        assert!(w.verdict.allowed, "{typed:?}: {w:?}");
     }
+    // Only that image: a sender image whose kind stamp is gone (an unstamped
+    // image) still asks the voltage phrase there (the test below), and the
+    // DSP image is refused (the test below that).
 }
 
 #[test]
