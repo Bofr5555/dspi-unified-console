@@ -1561,8 +1561,6 @@ fn demo_measure_units(handle: &HubHandle) -> Result<(), Failure> {
         MEASURE_SENDER,
     )?;
     demo_room(handle, room)?;
-        attach(dev, serial)?;
-    }
     let other = FakeTimeBase::line(0x22);
     attach(
         FakeDevice::demo_on_time_base(&other, FakeTimeBaseUnit::Line(AlinkSetup::default()))
