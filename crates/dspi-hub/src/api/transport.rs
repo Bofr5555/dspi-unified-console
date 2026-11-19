@@ -25,6 +25,7 @@ use dspi_transport::link::map_response;
 // -- WP PGCORE --
 use dspi_proto::paged::legacy::{VC_ERR_PIN_IN_USE as VC_ERR_LAST, VC_ERR_UNKNOWN};
 use dspi_transport::CmdId;
+use dspi_transport::paged::Generation; // -- PG-C merge --
 use dspi_transport::{
     Attributed, BUSY_RETRIES, DeviceDescriptor, NotificationSource, Result, Transport,
     TransportCaps, TransportError, TransportKind,
@@ -295,11 +296,20 @@ impl Transport for PrincipalTransport {
     }
 
     // -- WP PGCORE -- the paged calls go to the router with their page in
-    // `wIndex`, judged and routed there by it (PLAN-PG section 1.5). It does
-    // not claim `carries_pages` or a generation: whether the device is paged
-    // is the attachment's (WP PGHDEV's `DeviceShared`), and until a caller
-    // can ask that, a core on top stays on 1.1.6 calls, which the router
-    // translates for a paged device.
+    // `wIndex`, judged and routed there by it (PLAN-PG section 1.5).
+    // -- PG-C merge -- `carries_pages` and the generation are the attachment's
+    // (`DeviceShared::protocol`, PGHDEV), so a core on top sees the device's
+    // generation; its 1.1.6 calls still reach a paged device through the
+    // hub's adapter (hub-originated, PLAN-PG 1.5), and only its paged calls
+    // (`raw_*_id`) go verbatim.
+    fn carries_pages(&self) -> bool {
+        matches!(self.device.protocol, Generation::Paged(_))
+    }
+
+    fn generation(&self) -> Option<Generation> {
+        Some(self.device.protocol)
+    }
+
     fn control_in_paged(&mut self, id: CmdId, value: u16, max_len: u16) -> Result<Vec<u8>> {
         if max_len == 0 {
             return Err(TransportError::Stalled { opcode: id.cmd() });

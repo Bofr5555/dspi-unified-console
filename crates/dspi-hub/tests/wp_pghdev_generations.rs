@@ -702,3 +702,62 @@ fn wp_pghdev_our_client_works_on_every_generation() {
         no_violation(*g, remote);
     }
 }
+
+// -- PG-C merge --
+/// PGCORE's batch note: the app's in-process path (`LocalTransport`) and a
+/// principal's child (`PrincipalTransport`) say the attachment's generation and
+/// carry pages only to a paged device. A core on top shows the generation; its
+/// 1.1.6 calls still work on every generation (the hub's adapter translates them),
+/// and a raw paged read goes verbatim to a paged device and is `Unsupported` with
+/// nothing sent toward a 1.1.6 one.
+#[test]
+fn pgc_merge_local_and_principal_transports_say_the_generation() {
+    use dspi_core::{DspiCore, DspiError, ProtocolGeneration};
+    use dspi_transport::Generation;
+    let hub = hub();
+    let h = hub.handle();
+    for (i, g) in FakeGeneration::ALL.into_iter().enumerate() {
+        let serial = format!("PGC-LOCAL{i}");
+        let (dev, remote) = fake(g, &serial);
+        hub.attach(Box::new(dev), 0).unwrap();
+        let local = h.open_local(&serial).unwrap();
+        assert_eq!(local.carries_pages(), g.is_paged(), "{g:?}");
+        assert_eq!(
+            matches!(local.generation(), Some(Generation::Paged(_))),
+            g.is_paged(),
+            "{g:?}"
+        );
+        let parent = h.open_session(Role::Admin, None).unwrap();
+        let child = h.open_child(&parent).unwrap();
+        let principal = h.open_as(&serial, &child, false).unwrap();
+        assert_eq!(principal.carries_pages(), g.is_paged(), "{g:?}");
+        assert_eq!(principal.generation(), local.generation(), "{g:?}");
+        drop(principal);
+
+        let core = DspiCore::new();
+        core.open_transport(Box::new(local), serial.clone(), 0)
+            .unwrap_or_else(|e| panic!("{g:?}: {e}"));
+        let want = if g.is_paged() {
+            ProtocolGeneration::Paged
+        } else {
+            ProtocolGeneration::Legacy
+        };
+        assert_eq!(core.device_protocol().unwrap().generation, want, "{g:?}");
+        core.set_master_volume(-11.0)
+            .unwrap_or_else(|e| panic!("{g:?}: {e}"));
+        core.fetch_all().unwrap();
+        assert_eq!(core.get_state().master_volume_db, -11.0, "{g:?}");
+        let before = remote.paged_requests();
+        let raw = core.raw_get_id(VOLUME.0, 0, 4);
+        if g.is_paged() {
+            let v = raw.unwrap_or_else(|e| panic!("{g:?}: {e}"));
+            assert_eq!(v, db(-11.0), "{g:?}");
+            assert_eq!(remote.paged_requests(), before + 1, "{g:?}");
+        } else {
+            assert_eq!(raw, Err(DspiError::Unsupported), "{g:?}");
+            assert_eq!(remote.paged_requests(), before, "{g:?}");
+        }
+        core.disconnect();
+        no_violation(g, &remote);
+    }
+}
