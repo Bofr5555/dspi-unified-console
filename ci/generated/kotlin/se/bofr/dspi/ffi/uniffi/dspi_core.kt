@@ -2090,6 +2090,12 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -2406,6 +2412,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_demo_rename_elsewhere(
 fun uniffi_dspi_core_checksum_method_dspicore_device_lock_acquire(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_device_lock_release(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_device_protocol(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_diagnostics_file_name(
 ): Short
@@ -2887,7 +2895,11 @@ fun uniffi_dspi_core_checksum_method_dspicore_protect_all_outputs(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_raw_get(
 ): Short
+fun uniffi_dspi_core_checksum_method_dspicore_raw_get_id(
+): Short
 fun uniffi_dspi_core_checksum_method_dspicore_raw_set(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_raw_set_id(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_redo(
 ): Short
@@ -3454,6 +3466,8 @@ fun uniffi_dspi_core_fn_method_dspicore_device_lock_acquire(`ptr`: Pointer,`reas
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_device_lock_release(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_dspi_core_fn_method_dspicore_device_protocol(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_diagnostics_file_name(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_diagnostics_save(`ptr`: Pointer,`path`: RustBuffer.ByValue,`options`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -3934,7 +3948,11 @@ fun uniffi_dspi_core_fn_method_dspicore_protect_all_outputs(`ptr`: Pointer,`ceil
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_raw_get(`ptr`: Pointer,`opcode`: Byte,`value`: Short,`len`: Short,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_raw_get_id(`ptr`: Pointer,`id`: Short,`value`: Short,`len`: Short,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_raw_set(`ptr`: Pointer,`opcode`: Byte,`value`: Short,`data`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_dspicore_raw_set_id(`ptr`: Pointer,`id`: Short,`value`: Short,`data`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_redo(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
@@ -5023,6 +5041,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_device_lock_release() != 10916.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_device_protocol() != 23997.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_diagnostics_file_name() != 50086.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -5743,7 +5764,13 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_raw_get() != 27846.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_raw_get_id() != 24225.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_raw_set() != 34786.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_raw_set_id() != 19464.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_redo() != 52269.toShort()) {
@@ -8669,6 +8696,13 @@ public interface DspiCoreInterface {
     fun `deviceLockRelease`()
     
     /**
+     * The open device's protocol: its generation, the paged protocol's
+     * version and pages, and how the extension channel is reached. No
+     * traffic. Errors: [`DspiError::Disconnected`] with nothing open.
+     */
+    fun `deviceProtocol`(): DeviceProtocol
+    
+    /**
      * A file name for a bundle saved now: `dspi-diagnostics-` and the UTC
      * date and time, `.zip`. For a Save dialog's suggestion. Never fails.
      */
@@ -11428,6 +11462,29 @@ public interface DspiCoreInterface {
     fun `rawGet`(`opcode`: kotlin.UByte, `value`: kotlin.UShort, `len`: kotlin.UShort): kotlin.ByteArray
     
     /**
+     * One paged GET of command `id` (`page << 8 | command`, e.g. `0x0550`),
+     * `value` as `wValue`, at most `len` bytes back, as the device sent it
+     * (a paged reply may be shorter than asked). Every GET on paged firmware
+     * only reads (the extension tunnel `0xE010` too), so it passes the client
+     * read-only mode; a command outside this build's registry and the tunnel
+     * is refused there, as a hub refuses it.
+     *
+     * Blocks for the transfer with the core's lock held: call it off the UI
+     * thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a page-0 id (use
+     * [`raw_get`](Self::raw_get)), a `len` of 0, and the bulk chunk read
+     * (`STORE.ALL_PARAMS_CHUNK`; nothing is sent); [`DspiError::Unsupported`]
+     * on a 1.1.6-generation device, whose firmware has no pages, and on a
+     * connection that does not say it is paged (the demo; nothing is sent); [`DspiError::Disconnected`]; [`DspiError::ReadOnly`] in the
+     * client read-only mode for a command outside the registry;
+     * [`DspiError::Refused`] with the firmware's result code (`VC_ERR_*`),
+     * or 0 when it is not known; [`DspiError::Denied`], [`DspiError::Locked`]
+     * or [`DspiError::Transfer`] from the link.
+     */
+    fun `rawGetId`(`id`: kotlin.UShort, `value`: kotlin.UShort, `len`: kotlin.UShort): kotlin.ByteArray
+    
+    /**
      * One OUT transfer: `opcode`, `value` as `wValue`, `data` as the
      * payload. Success means the device took the transfer, not that it
      * applied the value; the firmware ignores some invalid ones.
@@ -11445,6 +11502,30 @@ public interface DspiCoreInterface {
      * or [`DspiError::Transfer`] from the link.
      */
     fun `rawSet`(`opcode`: kotlin.UByte, `value`: kotlin.UShort, `data`: kotlin.ByteArray)
+    
+    /**
+     * One paged SET of command `id`, `value` as `wValue`, `data` as the
+     * payload (empty: an action). Success means the device took it.
+     *
+     * Refused with nothing sent (PLAN-PG section 1.6): a request whose 1.1.6
+     * equivalent is behind a confirmation token or the core's own bulk
+     * session, a core-voltage request (through the tunnel too), and a
+     * command the registry or the device's own `SYS.COMMAND_INFO` flags as
+     * writing flash, restarting the device or bulk; and, with no 1.1.6
+     * equivalent, anything but a plain value SET of a command this build
+     * knows. The mirror follows as for [`raw_set`](Self::raw_set). Blocks
+     * with the core's lock held: call it off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a page-0 id (use
+     * [`raw_set`](Self::raw_set)), each refusal above, or more than 65535
+     * bytes of `data`; [`DspiError::Unsupported`] on a 1.1.6-generation
+     * device or a connection that does not say it is paged; [`DspiError::Disconnected`]; [`DspiError::ReadOnly`] on a
+     * read-only connection or in the client read-only mode;
+     * [`DspiError::Refused`] with the firmware's result code;
+     * [`DspiError::Denied`], [`DspiError::Locked`] or
+     * [`DspiError::Transfer`] from the link.
+     */
+    fun `rawSetId`(`id`: kotlin.UShort, `value`: kotlin.UShort, `data`: kotlin.ByteArray)
     
     /**
      * Step forward: write again the change [`DspiCore::undo`] most recently
@@ -14755,6 +14836,24 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 }
     }
     
+    
+
+    
+    /**
+     * The open device's protocol: its generation, the paged protocol's
+     * version and pages, and how the extension channel is reached. No
+     * traffic. Errors: [`DspiError::Disconnected`] with nothing open.
+     */
+    @Throws(DspiException::class)override fun `deviceProtocol`(): DeviceProtocol {
+            return FfiConverterTypeDeviceProtocol.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_device_protocol(
+        it, _status)
+}
+    }
+    )
+    }
     
 
     
@@ -20053,6 +20152,40 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
+     * One paged GET of command `id` (`page << 8 | command`, e.g. `0x0550`),
+     * `value` as `wValue`, at most `len` bytes back, as the device sent it
+     * (a paged reply may be shorter than asked). Every GET on paged firmware
+     * only reads (the extension tunnel `0xE010` too), so it passes the client
+     * read-only mode; a command outside this build's registry and the tunnel
+     * is refused there, as a hub refuses it.
+     *
+     * Blocks for the transfer with the core's lock held: call it off the UI
+     * thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a page-0 id (use
+     * [`raw_get`](Self::raw_get)), a `len` of 0, and the bulk chunk read
+     * (`STORE.ALL_PARAMS_CHUNK`; nothing is sent); [`DspiError::Unsupported`]
+     * on a 1.1.6-generation device, whose firmware has no pages, and on a
+     * connection that does not say it is paged (the demo; nothing is sent); [`DspiError::Disconnected`]; [`DspiError::ReadOnly`] in the
+     * client read-only mode for a command outside the registry;
+     * [`DspiError::Refused`] with the firmware's result code (`VC_ERR_*`),
+     * or 0 when it is not known; [`DspiError::Denied`], [`DspiError::Locked`]
+     * or [`DspiError::Transfer`] from the link.
+     */
+    @Throws(DspiException::class)override fun `rawGetId`(`id`: kotlin.UShort, `value`: kotlin.UShort, `len`: kotlin.UShort): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_raw_get_id(
+        it, FfiConverterUShort.lower(`id`),FfiConverterUShort.lower(`value`),FfiConverterUShort.lower(`len`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * One OUT transfer: `opcode`, `value` as `wValue`, `data` as the
      * payload. Success means the device took the transfer, not that it
      * applied the value; the firmware ignores some invalid ones.
@@ -20075,6 +20208,40 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     uniffiRustCallWithError(DspiException) { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_raw_set(
         it, FfiConverterUByte.lower(`opcode`),FfiConverterUShort.lower(`value`),FfiConverterByteArray.lower(`data`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * One paged SET of command `id`, `value` as `wValue`, `data` as the
+     * payload (empty: an action). Success means the device took it.
+     *
+     * Refused with nothing sent (PLAN-PG section 1.6): a request whose 1.1.6
+     * equivalent is behind a confirmation token or the core's own bulk
+     * session, a core-voltage request (through the tunnel too), and a
+     * command the registry or the device's own `SYS.COMMAND_INFO` flags as
+     * writing flash, restarting the device or bulk; and, with no 1.1.6
+     * equivalent, anything but a plain value SET of a command this build
+     * knows. The mirror follows as for [`raw_set`](Self::raw_set). Blocks
+     * with the core's lock held: call it off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a page-0 id (use
+     * [`raw_set`](Self::raw_set)), each refusal above, or more than 65535
+     * bytes of `data`; [`DspiError::Unsupported`] on a 1.1.6-generation
+     * device or a connection that does not say it is paged; [`DspiError::Disconnected`]; [`DspiError::ReadOnly`] on a
+     * read-only connection or in the client read-only mode;
+     * [`DspiError::Refused`] with the firmware's result code;
+     * [`DspiError::Denied`], [`DspiError::Locked`] or
+     * [`DspiError::Transfer`] from the link.
+     */
+    @Throws(DspiException::class)override fun `rawSetId`(`id`: kotlin.UShort, `value`: kotlin.UShort, `data`: kotlin.ByteArray)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_raw_set_id(
+        it, FfiConverterUShort.lower(`id`),FfiConverterUShort.lower(`value`),FfiConverterByteArray.lower(`data`),_status)
 }
     }
     
@@ -30396,6 +30563,113 @@ public object FfiConverterTypeDeviceInfo: FfiConverterRustBuffer<DeviceInfo> {
     override fun write(value: DeviceInfo, buf: ByteBuffer) {
             FfiConverterString.write(value.`serial`, buf)
             FfiConverterUInt.write(value.`locationId`, buf)
+    }
+}
+
+
+
+/**
+ * One page a paged device implements, from its `SYS.PAGE_LIST`.
+ */
+data class DevicePage (
+    /**
+     * The page number (1 `SYS`, 5 `ROUTE`, `0xE0` our extensions, ...).
+     */
+    var `page`: kotlin.UByte, 
+    /**
+     * The device's revision of it.
+     */
+    var `revision`: kotlin.UByte
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeDevicePage: FfiConverterRustBuffer<DevicePage> {
+    override fun read(buf: ByteBuffer): DevicePage {
+        return DevicePage(
+            FfiConverterUByte.read(buf),
+            FfiConverterUByte.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: DevicePage) = (
+            FfiConverterUByte.allocationSize(value.`page`) +
+            FfiConverterUByte.allocationSize(value.`revision`)
+    )
+
+    override fun write(value: DevicePage, buf: ByteBuffer) {
+            FfiConverterUByte.write(value.`page`, buf)
+            FfiConverterUByte.write(value.`revision`, buf)
+    }
+}
+
+
+
+/**
+ * The open connection's protocol, for a client's device-info row
+ * ([`crate::DspiCore::device_protocol`]). Read once at connect, never
+ * cached across connections.
+ */
+data class DeviceProtocol (
+    /**
+     * The generation the probe decided.
+     */
+    var `generation`: ProtocolGeneration, 
+    /**
+     * The paged protocol's major and minor (`SYS.PROTOCOL_INFO`); 0 and 0
+     * on a legacy device.
+     */
+    var `protocolMajor`: kotlin.UByte, 
+    /**
+     * See `protocol_major`.
+     */
+    var `protocolMinor`: kotlin.UByte, 
+    /**
+     * A paged device's pages with their revisions, ascending; empty on a
+     * legacy device.
+     */
+    var `pages`: List<DevicePage>, 
+    /**
+     * How the extension channel is reached.
+     */
+    var `extEnvelope`: ExtEnvelope
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeDeviceProtocol: FfiConverterRustBuffer<DeviceProtocol> {
+    override fun read(buf: ByteBuffer): DeviceProtocol {
+        return DeviceProtocol(
+            FfiConverterTypeProtocolGeneration.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterSequenceTypeDevicePage.read(buf),
+            FfiConverterTypeExtEnvelope.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: DeviceProtocol) = (
+            FfiConverterTypeProtocolGeneration.allocationSize(value.`generation`) +
+            FfiConverterUByte.allocationSize(value.`protocolMajor`) +
+            FfiConverterUByte.allocationSize(value.`protocolMinor`) +
+            FfiConverterSequenceTypeDevicePage.allocationSize(value.`pages`) +
+            FfiConverterTypeExtEnvelope.allocationSize(value.`extEnvelope`)
+    )
+
+    override fun write(value: DeviceProtocol, buf: ByteBuffer) {
+            FfiConverterTypeProtocolGeneration.write(value.`generation`, buf)
+            FfiConverterUByte.write(value.`protocolMajor`, buf)
+            FfiConverterUByte.write(value.`protocolMinor`, buf)
+            FfiConverterSequenceTypeDevicePage.write(value.`pages`, buf)
+            FfiConverterTypeExtEnvelope.write(value.`extEnvelope`, buf)
     }
 }
 
@@ -45054,6 +45328,49 @@ public object FfiConverterTypeDspiError : FfiConverterRustBuffer<DspiException> 
 
 
 /**
+ * How the open device's extension channel is reached (PLAN-PG section 1.3).
+ */
+
+enum class ExtEnvelope {
+    
+    /**
+     * No extension channel (stock firmware).
+     */
+    NO_CHANNEL,
+    /**
+     * `REQ_EXTENSION` 0x00 on a 1.1.6-generation device.
+     */
+    LEGACY,
+    /**
+     * The tunnel `0xE010` on page `0xE0` of a paged device.
+     */
+    TUNNEL;
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeExtEnvelope: FfiConverterRustBuffer<ExtEnvelope> {
+    override fun read(buf: ByteBuffer) = try {
+        ExtEnvelope.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: ExtEnvelope) = 4UL
+
+    override fun write(value: ExtEnvelope, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+/**
  * How healthy an output fill is.
  */
 
@@ -46536,6 +46853,50 @@ public object FfiConverterTypePinRefusalReason: FfiConverterRustBuffer<PinRefusa
     override fun allocationSize(value: PinRefusalReason) = 4UL
 
     override fun write(value: PinRefusalReason, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+/**
+ * Which protocol generation the open connection's device speaks, as the
+ * connect's probe decided it (PLAN-PG section 1.1).
+ */
+
+enum class ProtocolGeneration {
+    
+    /**
+     * Not said: a path that does not report it (a host-supplied transport).
+     */
+    UNKNOWN,
+    /**
+     * Firmware 1.1.6 and older: the 1.1.6 opcodes only.
+     */
+    LEGACY,
+    /**
+     * Firmware 1.1.7 and later: the paged protocol.
+     */
+    PAGED;
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeProtocolGeneration: FfiConverterRustBuffer<ProtocolGeneration> {
+    override fun read(buf: ByteBuffer) = try {
+        ProtocolGeneration.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: ProtocolGeneration) = 4UL
+
+    override fun write(value: ProtocolGeneration, buf: ByteBuffer) {
         buf.putInt(value.ordinal + 1)
     }
 }
@@ -49056,6 +49417,34 @@ public object FfiConverterSequenceTypeDeviceInfo: FfiConverterRustBuffer<List<De
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeDeviceInfo.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeDevicePage: FfiConverterRustBuffer<List<DevicePage>> {
+    override fun read(buf: ByteBuffer): List<DevicePage> {
+        val len = buf.getInt()
+        return List<DevicePage>(len) {
+            FfiConverterTypeDevicePage.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<DevicePage>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeDevicePage.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<DevicePage>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeDevicePage.write(it, buf)
         }
     }
 }

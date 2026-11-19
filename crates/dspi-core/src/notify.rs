@@ -80,7 +80,19 @@ struct FollowUp {
     /// The re-read state is a preset's (a preset load, a factory reset):
     /// it becomes the baseline of `preset_dirty`.
     rebaseline: bool,
+    // -- WP PGCORE --
+    /// The pin map changed (`NOTIFY_EVT_PIN_MAP_CHANGED`): the pins outside
+    /// the image are read again with it.
+    pins: bool,
 }
+
+// -- WP PGCORE --
+/// `NOTIFY_EVT_PIN_MAP_CHANGED` (firmware 1.1.7, `notification_protocol_v2_spec.md`
+/// event 0x11, `pin_availability_query_spec.md` 9.2): the device's pin map
+/// generation changed (payload: the u32 generation). The pins are read again
+/// (PLAN-PG section 1.2, "Notifications"); the coalesced event carries only
+/// the newest generation, so any one of them means "re-read".
+pub(crate) const EVT_PIN_MAP_CHANGED: u8 = 0x11;
 
 /// `NOTIFY_EVT_INPUT_SOURCE_NAME` and `NOTIFY_EVT_DEVICE_NAME`, which the
 /// session's decoder delivers as `Event::Unknown` (payload from byte 4:
@@ -205,7 +217,7 @@ impl DspiCore {
         // -- WP P0M -- the event log, never written with `Inner` held
         self.events.record_all(records);
         if follow.refresh {
-            self.refresh_after_notifications(follow.rebaseline, now, &mut result);
+            self.refresh_after_notifications(follow.rebaseline, follow.pins, now, &mut result);
         }
         result
     }
@@ -291,6 +303,7 @@ impl DspiCore {
     fn refresh_after_notifications(
         &self,
         rebaseline: bool,
+        pins: bool, // -- WP PGCORE --
         now: Instant,
         result: &mut NotifyResult,
     ) {
@@ -322,6 +335,18 @@ impl DspiCore {
                 crate::info::read_source_names(conn);
                 // -- WP QD4 --
                 crate::info::read_device_name(conn);
+            }
+            // -- WP PGCORE -- the pins the image does not hold: the DAC mute
+            // pin and the control interfaces' (a failed read keeps the last)
+            if pins {
+                if inner.state.dac_mute_supported
+                    && let Err(e) = connect::read_dac_mute(conn, &mut inner.state)
+                {
+                    log::debug!("DAC mute pin not re-read: {e}");
+                }
+                if let Err(e) = connect::read_ctrl_ifaces(conn, &mut inner.state) {
+                    log::debug!("control interface pins not re-read: {e}");
+                }
             }
         }
         if let Some((old, mirror)) = before {
@@ -604,6 +629,12 @@ fn apply_queued(
             Event::Unknown { id, bytes } if *id == dspi_proto::ext::NOTIFY_EVT_EXT_CLIP => {
                 crate::ext_diag::note_clip(conn, *id, bytes);
             }
+            // -- WP PGCORE -- the pin map changed: re-read the pins (the
+            // image holds most of them, the rest follow it)
+            Event::Unknown { id, .. } if *id == EVT_PIN_MAP_CHANGED => {
+                follow.refresh = true;
+                follow.pins = true;
+            }
             // The v1 master volume is deduplicated against its v2 twin (the
             // `PARAM_CHANGED` that follows it); the link states and unknown
             // events are only logged.
@@ -626,6 +657,7 @@ fn apply_queued(
     }
     follow.refresh &= rereadable;
     follow.rebaseline &= follow.refresh;
+    follow.pins &= follow.refresh; // -- WP PGCORE --
     follow
 }
 

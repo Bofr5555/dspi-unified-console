@@ -941,6 +941,11 @@ void uniffi_dspi_core_fn_method_dspicore_device_lock_acquire(void*_Nonnull ptr, 
 void uniffi_dspi_core_fn_method_dspicore_device_lock_release(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_DEVICE_PROTOCOL
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_DEVICE_PROTOCOL
+RustBuffer uniffi_dspi_core_fn_method_dspicore_device_protocol(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_DIAGNOSTICS_FILE_NAME
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_DIAGNOSTICS_FILE_NAME
 RustBuffer uniffi_dspi_core_fn_method_dspicore_diagnostics_file_name(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
@@ -2141,9 +2146,19 @@ void uniffi_dspi_core_fn_method_dspicore_protect_all_outputs(void*_Nonnull ptr, 
 RustBuffer uniffi_dspi_core_fn_method_dspicore_raw_get(void*_Nonnull ptr, uint8_t opcode, uint16_t value, uint16_t len, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_RAW_GET_ID
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_RAW_GET_ID
+RustBuffer uniffi_dspi_core_fn_method_dspicore_raw_get_id(void*_Nonnull ptr, uint16_t id, uint16_t value, uint16_t len, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_RAW_SET
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_RAW_SET
 void uniffi_dspi_core_fn_method_dspicore_raw_set(void*_Nonnull ptr, uint8_t opcode, uint16_t value, RustBuffer data, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_RAW_SET_ID
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_RAW_SET_ID
+void uniffi_dspi_core_fn_method_dspicore_raw_set_id(void*_Nonnull ptr, uint16_t id, uint16_t value, RustBuffer data, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_REDO
@@ -4618,6 +4633,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_device_lock_release(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_DEVICE_PROTOCOL
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_DEVICE_PROTOCOL
+uint16_t uniffi_dspi_core_checksum_method_dspicore_device_protocol(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_DIAGNOSTICS_FILE_NAME
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_DIAGNOSTICS_FILE_NAME
 uint16_t uniffi_dspi_core_checksum_method_dspicore_diagnostics_file_name(void
@@ -6058,9 +6079,21 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_raw_get(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_RAW_GET_ID
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_RAW_GET_ID
+uint16_t uniffi_dspi_core_checksum_method_dspicore_raw_get_id(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_RAW_SET
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_RAW_SET
 uint16_t uniffi_dspi_core_checksum_method_dspicore_raw_set(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_RAW_SET_ID
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_RAW_SET_ID
+uint16_t uniffi_dspi_core_checksum_method_dspicore_raw_set_id(void
     
 );
 #endif

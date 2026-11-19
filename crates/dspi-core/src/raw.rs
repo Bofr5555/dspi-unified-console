@@ -32,6 +32,9 @@ use dspi_transport::TransportError;
 use dspi_transport::clock::{self, Instant};
 
 use crate::{DspiCore, DspiError, Result};
+// -- WP PGCORE --
+use dspi_proto::paged::{CommandInfo, Flags, PagedDir, cmds, legacy_equivalent, registry};
+use dspi_transport::CmdId;
 
 #[cfg_attr(feature = "uniffi", uniffi::export)]
 impl DspiCore {
@@ -169,6 +172,220 @@ impl DspiCore {
         let after = dspi_proto::value::Value::Bytes(data);
         crate::journal::journal(&mut guard, "raw", &[opcode, lo, hi], after);
         Ok(())
+    }
+}
+
+// -- WP PGCORE --
+// Raw paged requests by command id (PLAN-PG sections 1.2 and 1.6), for a
+// binding's raw screen on a paged device: the same three rules as above, the
+// gates judged by the request's 1.1.6 equivalent and the registry's flags.
+#[cfg_attr(feature = "uniffi", uniffi::export)]
+impl DspiCore {
+    /// One paged GET of command `id` (`page << 8 | command`, e.g. `0x0550`),
+    /// `value` as `wValue`, at most `len` bytes back, as the device sent it
+    /// (a paged reply may be shorter than asked). Every GET on paged firmware
+    /// only reads (the extension tunnel `0xE010` too), so it passes the client
+    /// read-only mode; a command outside this build's registry and the tunnel
+    /// is refused there, as a hub refuses it.
+    ///
+    /// Blocks for the transfer with the core's lock held: call it off the UI
+    /// thread.
+    ///
+    /// Errors: [`DspiError::InvalidArgument`] for a page-0 id (use
+    /// [`raw_get`](Self::raw_get)), a `len` of 0, and the bulk chunk read
+    /// (`STORE.ALL_PARAMS_CHUNK`; nothing is sent); [`DspiError::Unsupported`]
+    /// on a 1.1.6-generation device, whose firmware has no pages, and on a
+    /// connection that does not say it is paged (the demo; nothing is sent); [`DspiError::Disconnected`]; [`DspiError::ReadOnly`] in the
+    /// client read-only mode for a command outside the registry;
+    /// [`DspiError::Refused`] with the firmware's result code (`VC_ERR_*`),
+    /// or 0 when it is not known; [`DspiError::Denied`], [`DspiError::Locked`]
+    /// or [`DspiError::Transfer`] from the link.
+    pub fn raw_get_id(&self, id: u16, value: u16, len: u16) -> Result<Vec<u8>> {
+        let id = CmdId(id);
+        check_paged_id(id)?;
+        if len == 0 {
+            return Err(DspiError::InvalidArgument {
+                msg: format!("a GET of 0x{:04X} with length 0 is never sent", id.0),
+            });
+        }
+        if let Some(eq) = legacy_equivalent(id, PagedDir::Get, value, &[]) {
+            check_not_bulk_session(eq.opcode)?;
+        }
+        let mut guard = self.lock();
+        if guard.conn.is_some() {
+            crate::read_only::check_raw_get_id(&mut guard, id)?;
+        }
+        let t = guard.conn()?.transport();
+        check_paged_connection(t)?;
+        t.control_in_paged(id, value, len).map_err(paged_refusal)
+    }
+
+    /// One paged SET of command `id`, `value` as `wValue`, `data` as the
+    /// payload (empty: an action). Success means the device took it.
+    ///
+    /// Refused with nothing sent (PLAN-PG section 1.6): a request whose 1.1.6
+    /// equivalent is behind a confirmation token or the core's own bulk
+    /// session, a core-voltage request (through the tunnel too), and a
+    /// command the registry or the device's own `SYS.COMMAND_INFO` flags as
+    /// writing flash, restarting the device or bulk; and, with no 1.1.6
+    /// equivalent, anything but a plain value SET of a command this build
+    /// knows. The mirror follows as for [`raw_set`](Self::raw_set). Blocks
+    /// with the core's lock held: call it off the UI thread.
+    ///
+    /// Errors: [`DspiError::InvalidArgument`] for a page-0 id (use
+    /// [`raw_set`](Self::raw_set)), each refusal above, or more than 65535
+    /// bytes of `data`; [`DspiError::Unsupported`] on a 1.1.6-generation
+    /// device or a connection that does not say it is paged; [`DspiError::Disconnected`]; [`DspiError::ReadOnly`] on a
+    /// read-only connection or in the client read-only mode;
+    /// [`DspiError::Refused`] with the firmware's result code;
+    /// [`DspiError::Denied`], [`DspiError::Locked`] or
+    /// [`DspiError::Transfer`] from the link.
+    pub fn raw_set_id(&self, id: u16, value: u16, data: Vec<u8>) -> Result<()> {
+        let id = CmdId(id);
+        check_paged_id(id)?;
+        if u16::try_from(data.len()).is_err() {
+            return Err(DspiError::InvalidArgument {
+                msg: format!(
+                    "{} bytes for 0x{:04X} exceed a vendor request",
+                    data.len(),
+                    id.0
+                ),
+            });
+        }
+        let eq = legacy_equivalent(id, PagedDir::Set, value, &data);
+        if let Some(msg) = raw_set_id_refusal(id, eq.as_ref(), &data, None) {
+            return Err(DspiError::InvalidArgument { msg });
+        }
+        let analyser = eq.as_ref().is_some_and(|e| is_analyser(e.opcode));
+        let _analyser = analyser.then(crate::limits::LockScope::allow);
+        let mut guard = self.lock();
+        if guard.conn.is_some() {
+            crate::read_only::check_raw_set(&mut guard)?;
+        }
+        let mut w = guard.writable_conn()?;
+        check_paged_connection(w.conn().transport())?;
+        // The device's own word on what the command does (guide 4.7): a
+        // newer revision may flag what the vendored registry does not
+        let info = w
+            .conn()
+            .transport()
+            .control_in_paged(cmds::SYS_COMMAND_INFO, id.0, 8)
+            .ok()
+            .and_then(|b| CommandInfo::decode(&b));
+        if let Some(msg) = raw_set_id_refusal(id, eq.as_ref(), &data, info.map(|i| i.flags)) {
+            return Err(DspiError::InvalidArgument { msg });
+        }
+        let conn = w.conn();
+        conn.fresh_image = false;
+        if eq
+            .as_ref()
+            .is_some_and(|e| e.opcode == op::REQ_OUTPUT_LATENCY)
+        {
+            conn.ring_target.invalidate();
+        }
+        let t = if analyser {
+            w.conn().transport()
+        } else {
+            w.sending()
+        };
+        t.control_out_paged(id, value, &data)
+            .map_err(paged_refusal)?;
+        let [page, cmd] = id.0.to_be_bytes();
+        let [lo, hi] = value.to_le_bytes();
+        let after = dspi_proto::value::Value::Bytes(data);
+        crate::journal::journal(&mut guard, "raw", &[page, cmd, lo, hi], after);
+        Ok(())
+    }
+}
+
+// -- WP PGCORE --
+/// [`DspiError::InvalidArgument`] for a page-0 id: those are the 1.1.6
+/// opcodes, `raw_get` and `raw_set`'s.
+fn check_paged_id(id: CmdId) -> Result<()> {
+    if id.is_legacy() {
+        return Err(DspiError::InvalidArgument {
+            msg: format!(
+                "0x{:04X} is on page 0: send 1.1.6 opcodes with raw_get or raw_set",
+                id.0
+            ),
+        });
+    }
+    Ok(())
+}
+
+// -- WP PGCORE --
+/// [`DspiError::Unsupported`], with nothing sent, unless the connection's
+/// generation wrapper says the device is paged: a 1.1.6-generation device
+/// (and a path opened without `paged::open`, such as the built-in demo) gets
+/// no paged request (PLAN-PG section 1.1).
+fn check_paged_connection(t: &dyn dspi_transport::Transport) -> Result<()> {
+    match t.generation() {
+        Some(dspi_transport::Generation::Paged(_)) => Ok(()),
+        _ => Err(DspiError::Unsupported),
+    }
+}
+
+// -- WP PGCORE --
+/// Why a raw paged SET must not go out (PLAN-PG section 1.6), `None` when it
+/// may: `eq` is its 1.1.6 equivalent, `device` the flags the device's
+/// `SYS.COMMAND_INFO` gave (when read). The registry's flags count in any
+/// case, so a device that does not answer cannot loosen them.
+pub(crate) fn raw_set_id_refusal(
+    id: CmdId,
+    eq: Option<&dspi_proto::paged::LegacyEquivalent>,
+    data: &[u8],
+    device: Option<Flags>,
+) -> Option<String> {
+    let name = format!("0x{:04X}", id.0);
+    if let Some(eq) = eq {
+        if let Err(DspiError::InvalidArgument { msg }) =
+            check_not_bulk_session(eq.opcode).and_then(|()| check_not_gated(eq.opcode))
+        {
+            return Some(format!(
+                "{name} is the 1.1.6 request 0x{:02X}: {msg}",
+                eq.opcode
+            ));
+        }
+        if dspi_session::overvolt::is_core_vreg_write(eq.opcode, eq.value) {
+            return Some(
+                "core-voltage requests go through core_vreg_op_confirmed, not a raw write".into(),
+            );
+        }
+    }
+    let known = registry::command(id);
+    let gated = Flags::FLASH | Flags::RESTART | Flags::BULK;
+    let flagged = |f: Flags| f.0 & gated != 0;
+    if known.is_some_and(|c| flagged(c.flags)) || device.is_some_and(flagged) {
+        return Some(format!(
+            "{name} writes flash, restarts the device or is a bulk transfer: use its typed call"
+        ));
+    }
+    if eq.is_none() {
+        let plain = known.is_some_and(|c| c.set) && !data.is_empty();
+        if !plain {
+            return Some(format!(
+                "{name} has no 1.1.6 equivalent and is not a plain value SET of a command this build knows"
+            ));
+        }
+    }
+    None
+}
+
+// -- WP PGCORE --
+/// A paged transfer's failure: a firmware refusal is [`DspiError::Refused`]
+/// with its result code (0 when not known); a device without pages is
+/// [`DspiError::Unsupported`].
+fn paged_refusal(e: TransportError) -> DspiError {
+    match e {
+        TransportError::Refused { result, .. } => DspiError::Refused { status: result },
+        TransportError::Stalled { .. } => DspiError::Refused { status: 0 },
+        TransportError::Incompatible(ref text)
+            if text == dspi_transport::paged::LEGACY_REFUSES_PAGES
+                || text == dspi_transport::NO_PAGES =>
+        {
+            DspiError::Unsupported
+        }
+        other => other.into(),
     }
 }
 

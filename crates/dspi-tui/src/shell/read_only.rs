@@ -198,6 +198,19 @@ pub fn allows_in(opcode: u8, value: u16) -> bool {
     READS.contains(&opcode) || HOUSEKEEPING.contains(&opcode)
 }
 
+// -- WP PGCORE --
+/// Whether a paged GET of `id` may go out (PLAN-PG section 1.6): every GET of
+/// a command in this build's registry reads on paged firmware, and so does
+/// the extension tunnel's; one outside both is judged as a write. The bulk
+/// reads only as 1.1.6 calls, which [`ReadOnlyTransport`] maps.
+pub fn allows_paged_in(id: dspi_transport::CmdId) -> bool {
+    use dspi_proto::paged::{EXT_TUNNEL, cmds, registry};
+    if id == cmds::STORE_ALL_PARAMS || id == cmds::STORE_ALL_PARAMS_CHUNK {
+        return false;
+    }
+    id == EXT_TUNNEL || registry::command(id).is_some_and(|c| c.get)
+}
+
 /// Whether this device is read-only: its wire format is not this build's.
 /// `Capabilities::wire_format` is the device's own version, whatever the image
 /// was mapped onto ([`dspi_session::probe::probe_any`]).
@@ -411,6 +424,54 @@ impl Transport for ReadOnlyTransport {
         if self.bulk == BulkReads::AsIs {
             self.inner.unlock();
         }
+    }
+
+    // -- WP PGCORE -- above the generation wrapper: paged GETs that read
+    // pass ([`allows_paged_in`]), every paged SET is refused
+    fn carries_pages(&self) -> bool {
+        self.inner.carries_pages()
+    }
+
+    fn control_in_paged(
+        &mut self,
+        id: dspi_transport::CmdId,
+        value: u16,
+        max_len: u16,
+    ) -> Result<Vec<u8>> {
+        if !allows_paged_in(id) {
+            return Err(self.refuse());
+        }
+        self.inner.control_in_paged(id, value, max_len)
+    }
+
+    fn control_out_paged(
+        &mut self,
+        _id: dspi_transport::CmdId,
+        _value: u16,
+        _data: &[u8],
+    ) -> Result<()> {
+        Err(self.refuse())
+    }
+
+    fn control_in_batch_paged(
+        &mut self,
+        reads: &[dspi_transport::PagedRead],
+    ) -> Vec<Result<Vec<u8>>> {
+        if reads.iter().all(|r| allows_paged_in(r.id)) {
+            return self.inner.control_in_batch_paged(reads);
+        }
+        reads
+            .iter()
+            .map(|r| self.control_in_paged(r.id, r.value, r.len))
+            .collect()
+    }
+
+    fn generation(&self) -> Option<dspi_transport::Generation> {
+        self.inner.generation()
+    }
+
+    fn paged_discovery(&self) -> Option<dspi_transport::paged::Discovery> {
+        self.inner.paged_discovery()
     }
 }
 
@@ -1584,6 +1645,62 @@ mod tests_wp_tm4 {
             let state: &DeviceState = &c.state;
             assert_eq!(state.bulk.as_bytes(), want.packet.as_bytes());
             assert_eq!(connect::ext_label(&c.ext), "");
+        }
+    }
+}
+
+// -- WP PGCORE --
+/// WP PGCORE: above the generation wrapper (PLAN-PG section 1.6), the
+/// read-only guard passes the paged GETs that read and refuses every paged
+/// SET with nothing sent.
+#[cfg(test)]
+mod tests_wp_pgcore {
+    use super::*;
+    use dspi_proto::paged::{EXT_TUNNEL, cmds};
+    use dspi_transport::fake::FakeGeneration;
+    use dspi_transport::{CmdId, FakeDevice, PagedRead};
+
+    fn guarded(generation: FakeGeneration) -> (ReadOnlyTransport, dspi_transport::FakeRemote) {
+        let dev = FakeDevice::demo_generation(generation);
+        let remote = dev.remote();
+        let t = dspi_transport::paged::open(Box::new(dev)).unwrap();
+        (
+            ReadOnlyTransport::new(t, BulkReads::Mapped, None, Some(30)),
+            remote,
+        )
+    }
+
+    #[test]
+    fn wp_pgcore_paged_reads_pass_and_paged_writes_are_refused() {
+        assert!(allows_paged_in(cmds::ROUTE_MASTER_VOLUME));
+        assert!(allows_paged_in(EXT_TUNNEL));
+        assert!(
+            !allows_paged_in(cmds::STORE_ALL_PARAMS),
+            "mapped as 1.1.6 calls"
+        );
+        assert!(!allows_paged_in(CmdId(0x05FF)), "outside the registry");
+        for generation in FakeGeneration::ALL {
+            let (mut t, remote) = guarded(generation);
+            assert_eq!(t.carries_pages(), generation.is_paged());
+            assert_eq!(t.paged_discovery().is_some(), generation.is_paged());
+            assert_eq!(
+                matches!(t.generation(), Some(dspi_transport::Generation::Paged(_))),
+                generation.is_paged()
+            );
+            let r = t.control_in_paged(cmds::ROUTE_MASTER_VOLUME, 0, 4);
+            assert_eq!(r.is_ok(), generation.is_paged(), "{generation:?}: {r:?}");
+            let sent = remote.paged_requests();
+            let w = t.control_out_paged(cmds::ROUTE_MASTER_VOLUME, 0, &[0; 4]);
+            assert!(matches!(w, Err(TransportError::Denied(_))), "{w:?}");
+            let b = t.control_in_batch_paged(&[
+                PagedRead::new(cmds::ROUTE_MASTER_VOLUME, 0, 4),
+                PagedRead::new(CmdId(0x05FF), 0, 4),
+            ]);
+            assert!(matches!(b[1], Err(TransportError::Denied(_))));
+            if !generation.is_paged() {
+                assert_eq!(remote.paged_requests(), sent, "nothing paged sent");
+            }
+            assert_eq!(remote.violations(), 0, "{:?}", remote.last_violation());
         }
     }
 }

@@ -22,6 +22,9 @@ use dspi_link::{Dir, status};
 use dspi_proto::VENDOR_INTERFACE;
 use dspi_proto::generated::notify as nfy;
 use dspi_transport::link::map_response;
+// -- WP PGCORE --
+use dspi_proto::paged::legacy::{VC_ERR_PIN_IN_USE as VC_ERR_LAST, VC_ERR_UNKNOWN};
+use dspi_transport::CmdId;
 use dspi_transport::{
     Attributed, BUSY_RETRIES, DeviceDescriptor, NotificationSource, Result, Transport,
     TransportCaps, TransportError, TransportKind,
@@ -138,6 +141,20 @@ impl PrincipalTransport {
     }
 
     fn command(&self, dir: Dir, opcode: u8, value: u16, len: u16, payload: &[u8]) -> CmdResponse {
+        self.command_at(dir, opcode, VENDOR_INTERFACE, value, len, payload)
+    }
+
+    // -- WP PGCORE -- `w_index`: 2 for a 1.1.6 request, `(page << 8) | 2`
+    // for a paged one (the router judges and routes by it)
+    fn command_at(
+        &self,
+        dir: Dir,
+        opcode: u8,
+        w_index: u16,
+        value: u16,
+        len: u16,
+        payload: &[u8],
+    ) -> CmdResponse {
         let (tx, rx) = mpsc::sync_channel(1);
         let req = CmdRequest {
             tag: 0,
@@ -145,7 +162,7 @@ impl PrincipalTransport {
             dir,
             b_request: opcode,
             w_value: value,
-            w_index: VENDOR_INTERFACE,
+            w_index,
             w_length: len,
             payload: payload.to_vec(),
         };
@@ -171,6 +188,16 @@ impl PrincipalTransport {
         r.payload.truncate(usize::from(len));
         Ok(r.payload)
     }
+}
+
+// -- WP PGCORE --
+/// A paged response as the transport's error: a firmware result code
+/// (`VC_ERR_*`, 0x10..=0x1A) is `Refused` with it, anything else as [`check`].
+fn check_paged(r: &CmdResponse, id: CmdId) -> Result<()> {
+    if (VC_ERR_UNKNOWN..=VC_ERR_LAST).contains(&r.status) {
+        return Err(dspi_transport::link::firmware_refusal(id, r.status));
+    }
+    check(r, id.cmd())
 }
 
 /// A response as the transport's error. A hub's named refusal keeps its name; a timeout
@@ -264,6 +291,36 @@ impl Transport for PrincipalTransport {
         if std::mem::take(&mut self.locked) {
             self.device.router.lock_release(self.session.id());
         }
+    }
+
+    // -- WP PGCORE -- the paged calls go to the router with their page in
+    // `wIndex`, judged and routed there by it (PLAN-PG section 1.5). It does
+    // not claim `carries_pages` or a generation: whether the device is paged
+    // is the attachment's (WP PGHDEV's `DeviceShared`), and until a caller
+    // can ask that, a core on top stays on 1.1.6 calls, which the router
+    // translates for a paged device.
+    fn control_in_paged(&mut self, id: CmdId, value: u16, max_len: u16) -> Result<Vec<u8>> {
+        if max_len == 0 {
+            return Err(TransportError::Stalled { opcode: id.cmd() });
+        }
+        let mut r = self.command_at(Dir::Get, id.cmd(), id.w_index(), value, max_len, &[]);
+        check_paged(&r, id)?;
+        r.payload.truncate(usize::from(max_len));
+        Ok(r.payload)
+    }
+
+    fn control_out_paged(&mut self, id: CmdId, value: u16, data: &[u8]) -> Result<()> {
+        let Ok(len) = u16::try_from(data.len()) else {
+            return Err(TransportError::Remote(format!(
+                "{} bytes for 0x{:04X} exceed a vendor request",
+                data.len(),
+                id.0
+            )));
+        };
+        check_paged(
+            &self.command_at(Dir::Set, id.cmd(), id.w_index(), value, len, data),
+            id,
+        )
     }
 }
 

@@ -1847,6 +1847,20 @@ uint32_t dspi_measure_tune_keep(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_measure_tune_revert(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_measure_tune_ab(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_measure_tune_stop(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_device_protocol(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_raw_get_id(struct FfiCore *core,
+uint16_t id,
+uint16_t value,
+uint16_t want,
+char *buf,
+uint32_t len);
+uint32_t dspi_raw_set_id(struct FfiCore *core,
+uint16_t id,
+uint16_t value,
+const uint8_t *data,
+uint32_t data_len,
+char *buf,
+uint32_t len);
 bool dspi_link_browse_start(struct FfiCore *core,
 void (*callback)(void *user_data),
 void *user_data,
