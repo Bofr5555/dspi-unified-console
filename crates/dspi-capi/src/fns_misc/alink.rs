@@ -109,9 +109,12 @@ pub extern "C" fn dspi_fetch_alink_frame_counter(
 }
 
 /// Queue `op` (0 cancel all, 1 mute, 2 unmute, 3 preset load, 4 master
-/// volume, 5 output delay, 6 rate, 7 click, 8 sync pulse) with `arg` and
-/// `value` for alink frame `frame`. Returns a status byte, 0xFF on failure
-/// (arguments out of range, a full queue, no lock).
+/// volume, 5 output delay, 6 rate, 7 click, 8 sync pulse; -- WP ATCORE --
+/// 9 generator start: the staged finite config's sample 0 at that frame,
+/// `arg` 0 and `value` 0, refused unless staged since the last stop and
+/// at least the arm lead ahead; 10 generator stop, `arg` 0 fade or 1 now)
+/// with `arg` and `value` for alink frame `frame`. Returns a status byte,
+/// 0xFF on failure (arguments out of range, a full queue, no lock).
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_apply_at_frame(
     core: *mut FfiCore,

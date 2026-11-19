@@ -1253,6 +1253,10 @@ pub enum ExtEvent {
     // -- WP AUSB1 --
     /// A USB-direct state change, gap or re-anchor (0xE3, bit 4).
     AlinkUsb(dspi_proto::ext::alink_usb::AlinkUsbEvent),
+    // -- WP ATCORE --
+    /// A time-base contract transition on any transport (0xE4, bit 5;
+    /// PLAN-AT 1.3).
+    TimeBase(dspi_proto::ext::timebase::TimeBaseEvent),
 }
 
 /// Decode a notification the session could not (`Event::Unknown { id,
@@ -1276,6 +1280,10 @@ pub fn decode_ext_event(notify_features: Option<u32>, id: u8, bytes: &[u8]) -> O
     // -- WP AUSB1 --
     if let Some(e) = dspi_proto::ext::alink_usb::alink_usb_event(notify_features, id, bytes) {
         return Some(ExtEvent::AlinkUsb(e));
+    }
+    // -- WP ATCORE -- 0xE4 behind bit 5
+    if let Some(e) = dspi_proto::ext::timebase::time_base_event(notify_features, id, bytes) {
+        return Some(ExtEvent::TimeBase(e));
     }
     // -- WP SW1 --
     alink_event(notify_features, id, bytes).map(|e| match e {
@@ -1354,6 +1362,28 @@ pub fn alink_record(e: &ExtEvent, t: i64) -> Option<EventRecord> {
                 source,
                 format!("Audio link USB-direct {what}"),
                 u.sample_low,
+            )
+        }
+        // -- WP ATCORE --
+        ExtEvent::TimeBase(e) => {
+            use dspi_proto::ext::timebase::{TimeBaseReason as R, time_base_name};
+            let source = match e.reason {
+                R::Reanchor | R::Correction | R::Epoch => "resync",
+                R::Holdover => "holdover",
+                R::Disabled => "off",
+                R::Config | R::LockError => "config",
+                _ if e.state.is_locked() => "locked",
+                _ => "lost",
+            };
+            (
+                source,
+                format!(
+                    "Time base {}: {} ({})",
+                    time_base_name(e.time_base),
+                    e.state.as_str(),
+                    e.reason.as_str()
+                ),
+                e.t_low,
             )
         }
         ExtEvent::Clip { .. } | ExtEvent::Reset { .. } => return None,

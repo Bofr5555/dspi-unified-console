@@ -4407,6 +4407,149 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func measureStop()  -> MeasureState
     
     /**
+     * Where the applied alignment stands.
+     */
+    func measureSystemApplied()  -> MeasureSystemApplied
+    
+    /**
+     * Apply proposal `proposal_id` (Admin): the hub's model revision and
+     * every measured unit's output delays are filed, the offered arrivals
+     * are written into the model (`system.set`, guarded by the revision),
+     * then `system.align` writes the units. Repeat the summed runs next
+     * (`measure_system_verify`), then Keep or Revert.
+     *
+     * Errors: [`DspiError::Denied`] for a role below Admin, nothing sent;
+     * [`DspiError::InvalidArgument`] for another id, a summed check not
+     * passed, nothing offered; [`DspiError::Link`] with the hub's refusal
+     * (`conflict` when the model changed meanwhile).
+     */
+    func measureSystemApply(proposalId: UInt32) throws  -> MeasureSystemApplied
+    
+    /**
+     * Push one block of the microphone's capture (as
+     * `measure_capture_push`): the frame index, a clip and the SPL cap are
+     * checked at once (S4, S5); nothing is analysed here. Ignored with no
+     * session.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for more than 1 Mi samples.
+     */
+    func measureSystemCapturePush(firstFrame: UInt64, samples: [Float], rateHz: UInt32, clipped: Bool) throws  -> MeasureSystemState
+    
+    /**
+     * Keep the applied alignment.
+     *
+     * Errors: [`DspiError::InvalidArgument`] with nothing applied.
+     */
+    func measureSystemKeep() throws  -> MeasureSystemApplied
+    
+    /**
+     * What stands between `setup` and a system measurement, each item
+     * naming its unit: the hub (`system_measure`, a role above Viewer),
+     * every unit's own check (`checks`, one per unit), one rate, a plan
+     * that fits. Talks to no unit.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a setup that is not one.
+     */
+    func measureSystemPreflight(setup: MeasureSystemSetup, checks: [MeasureSystemUnitCheck]) throws  -> MeasureSystemPreflight
+    
+    /**
+     * The alignment the last result proposes: the offered arrivals (the
+     * gate G1 to G4 passed and each one's delay to the group's latest
+     * output within 10 us), what is withheld and why, whether the summed
+     * check is still needed. No I/O but the role.
+     *
+     * Errors: [`DspiError::InvalidArgument`] while no result is ready.
+     */
+    func measureSystemProposal() throws  -> MeasureSystemProposal
+    
+    /**
+     * The finished measurement: per unit its document, every arrival and
+     * cross-unit delay with its uncertainty, the transitions.
+     *
+     * Errors: [`DspiError::InvalidArgument`] while no result is ready.
+     */
+    func measureSystemResult() throws  -> MeasureSystemResult
+    
+    /**
+     * Revert the applied alignment (Admin): the filed model is set again
+     * (`system.set`) and `system.align` writes the units back; every unit's
+     * output delays are read back against the filed ones.
+     *
+     * Errors: [`DspiError::InvalidArgument`] with nothing applied;
+     * [`DspiError::Denied`] below Admin; the hub's refusals.
+     */
+    func measureSystemRevert() throws  -> MeasureSystemApplied
+    
+    /**
+     * Start a system measurement: the preflight, then `system.measure.open`
+     * (the hub takes every unit's device lock and checks one domain), then
+     * the pre-roll. Nothing plays before the client has pushed the pre-roll
+     * (`measure_system_capture_push`) and ticked. Tick about every 50 ms
+     * (`measure_system_tick`) until the phase is `done`, `aborted` or
+     * `failed`.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a bad setup, a blocker
+     * (named with its unit) or a session already running;
+     * [`DspiError::Unsupported`] for a hub without `system_measure` ("measuring
+     * several units together needs the DSPi hub"); [`DspiError::Denied`]
+     * for a Viewer; [`DspiError::Link`] with the hub's refusal
+     * (`not_one_domain`, `not_locked`, `no_timeline`, `locked`, ...).
+     */
+    func measureSystemStart(setup: MeasureSystemSetup, checks: [MeasureSystemUnitCheck]) throws  -> MeasureSystemState
+    
+    /**
+     * The system session's state, without I/O.
+     */
+    func measureSystemState()  -> MeasureSystemState
+    
+    /**
+     * The user's Stop: `system.measure.abort` (every unit stopped, every
+     * START cancelled), the hub's session closed, the run discarded.
+     * Idempotent; never fails.
+     */
+    func measureSystemStop()  -> MeasureSystemState
+    
+    /**
+     * Run the summed check of every inter-unit transition (RC5f): each
+     * transition's units started by op 9 at one T with their outputs at
+     * their current net polarities. Control or Admin. Then tick as for a
+     * measurement; the proposal shows the verdicts.
+     *
+     * Errors: [`DspiError::InvalidArgument`] with no result, nothing to
+     * check, or a session running; the hub's refusals as at the start.
+     */
+    func measureSystemSumCheck() throws  -> MeasureSystemState
+    
+    /**
+     * Drive the system session: the hub's status (about 4 Hz, which renews
+     * its lease), the per-unit judgements, the next step, one analysis
+     * slice. Call it about every 50 ms while active, off the UI thread.
+     */
+    func measureSystemTick()  -> MeasureSystemState
+    
+    /**
+     * Judge this core's own device as one unit of a system measurement:
+     * P5's preflight of `unit`'s outputs on this device's mirror (S2, S6,
+     * S8, S11, S13, S7's bounds) and what the system session needs of it.
+     * Call it on each unit's own core and hand the checks to the core on
+     * the hub session. Reads the device; writes nothing.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a unit that is not this
+     * device, or a setup that is not one; [`DspiError::Disconnected`]; a
+     * transfer failure of the reads.
+     */
+    func measureSystemUnitCheck(setup: MeasureSystemSetup, unit: MeasureSystemUnit) throws  -> MeasureSystemUnitCheck
+    
+    /**
+     * After an apply: the summed runs again with the new delays (P5's
+     * verify). Tick as for a measurement; `measure_system_applied` shows
+     * the verdict.
+     *
+     * Errors: as `measure_system_sum_check`; nothing applied.
+     */
+    func measureSystemVerify() throws  -> MeasureSystemState
+    
+    /**
      * Drive the session: apply queued notifications, judge them (S5), renew
      * the lease, poll the generator and the meters (about 4 Hz), start the
      * next step, run one analysis slice. Call it about every 50 ms while a
@@ -11292,6 +11435,235 @@ open func measureState() -> MeasureState  {
 open func measureStop() -> MeasureState  {
     return try!  FfiConverterTypeMeasureState_lift(try! rustCall() {
     uniffi_dspi_core_fn_method_dspicore_measure_stop(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Where the applied alignment stands.
+     */
+open func measureSystemApplied() -> MeasureSystemApplied  {
+    return try!  FfiConverterTypeMeasureSystemApplied_lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_measure_system_applied(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Apply proposal `proposal_id` (Admin): the hub's model revision and
+     * every measured unit's output delays are filed, the offered arrivals
+     * are written into the model (`system.set`, guarded by the revision),
+     * then `system.align` writes the units. Repeat the summed runs next
+     * (`measure_system_verify`), then Keep or Revert.
+     *
+     * Errors: [`DspiError::Denied`] for a role below Admin, nothing sent;
+     * [`DspiError::InvalidArgument`] for another id, a summed check not
+     * passed, nothing offered; [`DspiError::Link`] with the hub's refusal
+     * (`conflict` when the model changed meanwhile).
+     */
+open func measureSystemApply(proposalId: UInt32)throws  -> MeasureSystemApplied  {
+    return try  FfiConverterTypeMeasureSystemApplied_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_measure_system_apply(self.uniffiClonePointer(),
+        FfiConverterUInt32.lower(proposalId),$0
+    )
+})
+}
+    
+    /**
+     * Push one block of the microphone's capture (as
+     * `measure_capture_push`): the frame index, a clip and the SPL cap are
+     * checked at once (S4, S5); nothing is analysed here. Ignored with no
+     * session.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for more than 1 Mi samples.
+     */
+open func measureSystemCapturePush(firstFrame: UInt64, samples: [Float], rateHz: UInt32, clipped: Bool)throws  -> MeasureSystemState  {
+    return try  FfiConverterTypeMeasureSystemState_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_measure_system_capture_push(self.uniffiClonePointer(),
+        FfiConverterUInt64.lower(firstFrame),
+        FfiConverterSequenceFloat.lower(samples),
+        FfiConverterUInt32.lower(rateHz),
+        FfiConverterBool.lower(clipped),$0
+    )
+})
+}
+    
+    /**
+     * Keep the applied alignment.
+     *
+     * Errors: [`DspiError::InvalidArgument`] with nothing applied.
+     */
+open func measureSystemKeep()throws  -> MeasureSystemApplied  {
+    return try  FfiConverterTypeMeasureSystemApplied_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_measure_system_keep(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * What stands between `setup` and a system measurement, each item
+     * naming its unit: the hub (`system_measure`, a role above Viewer),
+     * every unit's own check (`checks`, one per unit), one rate, a plan
+     * that fits. Talks to no unit.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a setup that is not one.
+     */
+open func measureSystemPreflight(setup: MeasureSystemSetup, checks: [MeasureSystemUnitCheck])throws  -> MeasureSystemPreflight  {
+    return try  FfiConverterTypeMeasureSystemPreflight_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_measure_system_preflight(self.uniffiClonePointer(),
+        FfiConverterTypeMeasureSystemSetup_lower(setup),
+        FfiConverterSequenceTypeMeasureSystemUnitCheck.lower(checks),$0
+    )
+})
+}
+    
+    /**
+     * The alignment the last result proposes: the offered arrivals (the
+     * gate G1 to G4 passed and each one's delay to the group's latest
+     * output within 10 us), what is withheld and why, whether the summed
+     * check is still needed. No I/O but the role.
+     *
+     * Errors: [`DspiError::InvalidArgument`] while no result is ready.
+     */
+open func measureSystemProposal()throws  -> MeasureSystemProposal  {
+    return try  FfiConverterTypeMeasureSystemProposal_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_measure_system_proposal(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * The finished measurement: per unit its document, every arrival and
+     * cross-unit delay with its uncertainty, the transitions.
+     *
+     * Errors: [`DspiError::InvalidArgument`] while no result is ready.
+     */
+open func measureSystemResult()throws  -> MeasureSystemResult  {
+    return try  FfiConverterTypeMeasureSystemResult_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_measure_system_result(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Revert the applied alignment (Admin): the filed model is set again
+     * (`system.set`) and `system.align` writes the units back; every unit's
+     * output delays are read back against the filed ones.
+     *
+     * Errors: [`DspiError::InvalidArgument`] with nothing applied;
+     * [`DspiError::Denied`] below Admin; the hub's refusals.
+     */
+open func measureSystemRevert()throws  -> MeasureSystemApplied  {
+    return try  FfiConverterTypeMeasureSystemApplied_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_measure_system_revert(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Start a system measurement: the preflight, then `system.measure.open`
+     * (the hub takes every unit's device lock and checks one domain), then
+     * the pre-roll. Nothing plays before the client has pushed the pre-roll
+     * (`measure_system_capture_push`) and ticked. Tick about every 50 ms
+     * (`measure_system_tick`) until the phase is `done`, `aborted` or
+     * `failed`.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a bad setup, a blocker
+     * (named with its unit) or a session already running;
+     * [`DspiError::Unsupported`] for a hub without `system_measure` ("measuring
+     * several units together needs the DSPi hub"); [`DspiError::Denied`]
+     * for a Viewer; [`DspiError::Link`] with the hub's refusal
+     * (`not_one_domain`, `not_locked`, `no_timeline`, `locked`, ...).
+     */
+open func measureSystemStart(setup: MeasureSystemSetup, checks: [MeasureSystemUnitCheck])throws  -> MeasureSystemState  {
+    return try  FfiConverterTypeMeasureSystemState_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_measure_system_start(self.uniffiClonePointer(),
+        FfiConverterTypeMeasureSystemSetup_lower(setup),
+        FfiConverterSequenceTypeMeasureSystemUnitCheck.lower(checks),$0
+    )
+})
+}
+    
+    /**
+     * The system session's state, without I/O.
+     */
+open func measureSystemState() -> MeasureSystemState  {
+    return try!  FfiConverterTypeMeasureSystemState_lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_measure_system_state(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * The user's Stop: `system.measure.abort` (every unit stopped, every
+     * START cancelled), the hub's session closed, the run discarded.
+     * Idempotent; never fails.
+     */
+open func measureSystemStop() -> MeasureSystemState  {
+    return try!  FfiConverterTypeMeasureSystemState_lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_measure_system_stop(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Run the summed check of every inter-unit transition (RC5f): each
+     * transition's units started by op 9 at one T with their outputs at
+     * their current net polarities. Control or Admin. Then tick as for a
+     * measurement; the proposal shows the verdicts.
+     *
+     * Errors: [`DspiError::InvalidArgument`] with no result, nothing to
+     * check, or a session running; the hub's refusals as at the start.
+     */
+open func measureSystemSumCheck()throws  -> MeasureSystemState  {
+    return try  FfiConverterTypeMeasureSystemState_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_measure_system_sum_check(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Drive the system session: the hub's status (about 4 Hz, which renews
+     * its lease), the per-unit judgements, the next step, one analysis
+     * slice. Call it about every 50 ms while active, off the UI thread.
+     */
+open func measureSystemTick() -> MeasureSystemState  {
+    return try!  FfiConverterTypeMeasureSystemState_lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_measure_system_tick(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Judge this core's own device as one unit of a system measurement:
+     * P5's preflight of `unit`'s outputs on this device's mirror (S2, S6,
+     * S8, S11, S13, S7's bounds) and what the system session needs of it.
+     * Call it on each unit's own core and hand the checks to the core on
+     * the hub session. Reads the device; writes nothing.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a unit that is not this
+     * device, or a setup that is not one; [`DspiError::Disconnected`]; a
+     * transfer failure of the reads.
+     */
+open func measureSystemUnitCheck(setup: MeasureSystemSetup, unit: MeasureSystemUnit)throws  -> MeasureSystemUnitCheck  {
+    return try  FfiConverterTypeMeasureSystemUnitCheck_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_measure_system_unit_check(self.uniffiClonePointer(),
+        FfiConverterTypeMeasureSystemSetup_lower(setup),
+        FfiConverterTypeMeasureSystemUnit_lower(unit),$0
+    )
+})
+}
+    
+    /**
+     * After an apply: the summed runs again with the new delays (P5's
+     * verify). Tick as for a measurement; `measure_system_applied` shows
+     * the verdict.
+     *
+     * Errors: as `measure_system_sum_check`; nothing applied.
+     */
+open func measureSystemVerify()throws  -> MeasureSystemState  {
+    return try  FfiConverterTypeMeasureSystemState_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_measure_system_verify(self.uniffiClonePointer(),$0
     )
 })
 }
@@ -43337,6 +43709,2359 @@ public func FfiConverterTypeMeasureState_lower(_ value: MeasureState) -> RustBuf
 
 
 /**
+ * What an apply, a verify, a Keep or a Revert did.
+ */
+public struct MeasureSystemApplied {
+    /**
+     * Where it stands.
+     */
+    public var stage: MeasureSystemApplyStage
+    /**
+     * The hub model's revision filed before the apply.
+     */
+    public var revisionBefore: UInt64
+    /**
+     * Its revision after the apply (or the revert).
+     */
+    public var revisionAfter: UInt64
+    /**
+     * Every unit's output delays filed before the apply.
+     */
+    public var snapshots: [MeasureSystemSnapshot]
+    /**
+     * `system.align`'s writes that were `ok`.
+     */
+    public var writesOk: UInt32
+    /**
+     * Writes that failed, in words.
+     */
+    public var writeFailures: [String]
+    /**
+     * The verify's summed runs agreed with the new delays (`None` before).
+     */
+    public var verified: Bool?
+    /**
+     * What to know, in words.
+     */
+    public var message: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Where it stands.
+         */stage: MeasureSystemApplyStage, 
+        /**
+         * The hub model's revision filed before the apply.
+         */revisionBefore: UInt64, 
+        /**
+         * Its revision after the apply (or the revert).
+         */revisionAfter: UInt64, 
+        /**
+         * Every unit's output delays filed before the apply.
+         */snapshots: [MeasureSystemSnapshot], 
+        /**
+         * `system.align`'s writes that were `ok`.
+         */writesOk: UInt32, 
+        /**
+         * Writes that failed, in words.
+         */writeFailures: [String], 
+        /**
+         * The verify's summed runs agreed with the new delays (`None` before).
+         */verified: Bool?, 
+        /**
+         * What to know, in words.
+         */message: String) {
+        self.stage = stage
+        self.revisionBefore = revisionBefore
+        self.revisionAfter = revisionAfter
+        self.snapshots = snapshots
+        self.writesOk = writesOk
+        self.writeFailures = writeFailures
+        self.verified = verified
+        self.message = message
+    }
+}
+
+#if compiler(>=6)
+extension MeasureSystemApplied: Sendable {}
+#endif
+
+
+extension MeasureSystemApplied: Equatable, Hashable {
+    public static func ==(lhs: MeasureSystemApplied, rhs: MeasureSystemApplied) -> Bool {
+        if lhs.stage != rhs.stage {
+            return false
+        }
+        if lhs.revisionBefore != rhs.revisionBefore {
+            return false
+        }
+        if lhs.revisionAfter != rhs.revisionAfter {
+            return false
+        }
+        if lhs.snapshots != rhs.snapshots {
+            return false
+        }
+        if lhs.writesOk != rhs.writesOk {
+            return false
+        }
+        if lhs.writeFailures != rhs.writeFailures {
+            return false
+        }
+        if lhs.verified != rhs.verified {
+            return false
+        }
+        if lhs.message != rhs.message {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(stage)
+        hasher.combine(revisionBefore)
+        hasher.combine(revisionAfter)
+        hasher.combine(snapshots)
+        hasher.combine(writesOk)
+        hasher.combine(writeFailures)
+        hasher.combine(verified)
+        hasher.combine(message)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureSystemApplied: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureSystemApplied {
+        return
+            try MeasureSystemApplied(
+                stage: FfiConverterTypeMeasureSystemApplyStage.read(from: &buf), 
+                revisionBefore: FfiConverterUInt64.read(from: &buf), 
+                revisionAfter: FfiConverterUInt64.read(from: &buf), 
+                snapshots: FfiConverterSequenceTypeMeasureSystemSnapshot.read(from: &buf), 
+                writesOk: FfiConverterUInt32.read(from: &buf), 
+                writeFailures: FfiConverterSequenceString.read(from: &buf), 
+                verified: FfiConverterOptionBool.read(from: &buf), 
+                message: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MeasureSystemApplied, into buf: inout [UInt8]) {
+        FfiConverterTypeMeasureSystemApplyStage.write(value.stage, into: &buf)
+        FfiConverterUInt64.write(value.revisionBefore, into: &buf)
+        FfiConverterUInt64.write(value.revisionAfter, into: &buf)
+        FfiConverterSequenceTypeMeasureSystemSnapshot.write(value.snapshots, into: &buf)
+        FfiConverterUInt32.write(value.writesOk, into: &buf)
+        FfiConverterSequenceString.write(value.writeFailures, into: &buf)
+        FfiConverterOptionBool.write(value.verified, into: &buf)
+        FfiConverterString.write(value.message, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureSystemApplied_lift(_ buf: RustBuffer) throws -> MeasureSystemApplied {
+    return try FfiConverterTypeMeasureSystemApplied.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureSystemApplied_lower(_ value: MeasureSystemApplied) -> RustBuffer {
+    return FfiConverterTypeMeasureSystemApplied.lower(value)
+}
+
+
+/**
+ * A measured output's arrival, as the proposal would write it.
+ */
+public struct MeasureSystemArrival {
+    /**
+     * The unit.
+     */
+    public var serial: String
+    /**
+     * The output.
+     */
+    public var output: UInt8
+    /**
+     * Its acoustic arrival relative to the group's latest output, us (0 for
+     * that one, negative for an earlier one): WP ATHUBM's
+     * `measuredArrivalUs`.
+     */
+    public var arrivalUs: Double
+    /**
+     * The arrival as measured on the timeline, before the engine's terms
+     * were taken out, relative to the same reference, us.
+     */
+    public var measuredUs: Double
+    /**
+     * The uncertainty of the arrival against the latest output, us (one
+     * standard error; `None` without two clear passes).
+     */
+    public var uncertaintyUs: Double?
+    /**
+     * May be proposed: the gate passed and the delay to the latest output
+     * is offered (within 10 us).
+     */
+    public var offered: Bool
+    /**
+     * Why not (empty when offered).
+     */
+    public var reason: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The unit.
+         */serial: String, 
+        /**
+         * The output.
+         */output: UInt8, 
+        /**
+         * Its acoustic arrival relative to the group's latest output, us (0 for
+         * that one, negative for an earlier one): WP ATHUBM's
+         * `measuredArrivalUs`.
+         */arrivalUs: Double, 
+        /**
+         * The arrival as measured on the timeline, before the engine's terms
+         * were taken out, relative to the same reference, us.
+         */measuredUs: Double, 
+        /**
+         * The uncertainty of the arrival against the latest output, us (one
+         * standard error; `None` without two clear passes).
+         */uncertaintyUs: Double?, 
+        /**
+         * May be proposed: the gate passed and the delay to the latest output
+         * is offered (within 10 us).
+         */offered: Bool, 
+        /**
+         * Why not (empty when offered).
+         */reason: String) {
+        self.serial = serial
+        self.output = output
+        self.arrivalUs = arrivalUs
+        self.measuredUs = measuredUs
+        self.uncertaintyUs = uncertaintyUs
+        self.offered = offered
+        self.reason = reason
+    }
+}
+
+#if compiler(>=6)
+extension MeasureSystemArrival: Sendable {}
+#endif
+
+
+extension MeasureSystemArrival: Equatable, Hashable {
+    public static func ==(lhs: MeasureSystemArrival, rhs: MeasureSystemArrival) -> Bool {
+        if lhs.serial != rhs.serial {
+            return false
+        }
+        if lhs.output != rhs.output {
+            return false
+        }
+        if lhs.arrivalUs != rhs.arrivalUs {
+            return false
+        }
+        if lhs.measuredUs != rhs.measuredUs {
+            return false
+        }
+        if lhs.uncertaintyUs != rhs.uncertaintyUs {
+            return false
+        }
+        if lhs.offered != rhs.offered {
+            return false
+        }
+        if lhs.reason != rhs.reason {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(serial)
+        hasher.combine(output)
+        hasher.combine(arrivalUs)
+        hasher.combine(measuredUs)
+        hasher.combine(uncertaintyUs)
+        hasher.combine(offered)
+        hasher.combine(reason)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureSystemArrival: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureSystemArrival {
+        return
+            try MeasureSystemArrival(
+                serial: FfiConverterString.read(from: &buf), 
+                output: FfiConverterUInt8.read(from: &buf), 
+                arrivalUs: FfiConverterDouble.read(from: &buf), 
+                measuredUs: FfiConverterDouble.read(from: &buf), 
+                uncertaintyUs: FfiConverterOptionDouble.read(from: &buf), 
+                offered: FfiConverterBool.read(from: &buf), 
+                reason: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MeasureSystemArrival, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.serial, into: &buf)
+        FfiConverterUInt8.write(value.output, into: &buf)
+        FfiConverterDouble.write(value.arrivalUs, into: &buf)
+        FfiConverterDouble.write(value.measuredUs, into: &buf)
+        FfiConverterOptionDouble.write(value.uncertaintyUs, into: &buf)
+        FfiConverterBool.write(value.offered, into: &buf)
+        FfiConverterString.write(value.reason, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureSystemArrival_lift(_ buf: RustBuffer) throws -> MeasureSystemArrival {
+    return try FfiConverterTypeMeasureSystemArrival.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureSystemArrival_lower(_ value: MeasureSystemArrival) -> RustBuffer {
+    return FfiConverterTypeMeasureSystemArrival.lower(value)
+}
+
+
+/**
+ * A delay between two outputs on different units of one run.
+ */
+public struct MeasureSystemDelay {
+    /**
+     * The earlier output's unit.
+     */
+    public var fromSerial: String
+    /**
+     * Its output.
+     */
+    public var fromOutput: UInt8
+    /**
+     * The other output's unit.
+     */
+    public var toSerial: String
+    /**
+     * Its output.
+     */
+    public var toOutput: UInt8
+    /**
+     * `to`'s arrival minus `from`'s, us.
+     */
+    public var delayUs: Double
+    /**
+     * Its uncertainty, us.
+     */
+    public var uncertaintyUs: Double?
+    /**
+     * The analyser offers it.
+     */
+    public var offered: Bool
+    /**
+     * Why not ("timing unreliable: ..." with the wander).
+     */
+    public var reason: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The earlier output's unit.
+         */fromSerial: String, 
+        /**
+         * Its output.
+         */fromOutput: UInt8, 
+        /**
+         * The other output's unit.
+         */toSerial: String, 
+        /**
+         * Its output.
+         */toOutput: UInt8, 
+        /**
+         * `to`'s arrival minus `from`'s, us.
+         */delayUs: Double, 
+        /**
+         * Its uncertainty, us.
+         */uncertaintyUs: Double?, 
+        /**
+         * The analyser offers it.
+         */offered: Bool, 
+        /**
+         * Why not ("timing unreliable: ..." with the wander).
+         */reason: String) {
+        self.fromSerial = fromSerial
+        self.fromOutput = fromOutput
+        self.toSerial = toSerial
+        self.toOutput = toOutput
+        self.delayUs = delayUs
+        self.uncertaintyUs = uncertaintyUs
+        self.offered = offered
+        self.reason = reason
+    }
+}
+
+#if compiler(>=6)
+extension MeasureSystemDelay: Sendable {}
+#endif
+
+
+extension MeasureSystemDelay: Equatable, Hashable {
+    public static func ==(lhs: MeasureSystemDelay, rhs: MeasureSystemDelay) -> Bool {
+        if lhs.fromSerial != rhs.fromSerial {
+            return false
+        }
+        if lhs.fromOutput != rhs.fromOutput {
+            return false
+        }
+        if lhs.toSerial != rhs.toSerial {
+            return false
+        }
+        if lhs.toOutput != rhs.toOutput {
+            return false
+        }
+        if lhs.delayUs != rhs.delayUs {
+            return false
+        }
+        if lhs.uncertaintyUs != rhs.uncertaintyUs {
+            return false
+        }
+        if lhs.offered != rhs.offered {
+            return false
+        }
+        if lhs.reason != rhs.reason {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(fromSerial)
+        hasher.combine(fromOutput)
+        hasher.combine(toSerial)
+        hasher.combine(toOutput)
+        hasher.combine(delayUs)
+        hasher.combine(uncertaintyUs)
+        hasher.combine(offered)
+        hasher.combine(reason)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureSystemDelay: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureSystemDelay {
+        return
+            try MeasureSystemDelay(
+                fromSerial: FfiConverterString.read(from: &buf), 
+                fromOutput: FfiConverterUInt8.read(from: &buf), 
+                toSerial: FfiConverterString.read(from: &buf), 
+                toOutput: FfiConverterUInt8.read(from: &buf), 
+                delayUs: FfiConverterDouble.read(from: &buf), 
+                uncertaintyUs: FfiConverterOptionDouble.read(from: &buf), 
+                offered: FfiConverterBool.read(from: &buf), 
+                reason: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MeasureSystemDelay, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.fromSerial, into: &buf)
+        FfiConverterUInt8.write(value.fromOutput, into: &buf)
+        FfiConverterString.write(value.toSerial, into: &buf)
+        FfiConverterUInt8.write(value.toOutput, into: &buf)
+        FfiConverterDouble.write(value.delayUs, into: &buf)
+        FfiConverterOptionDouble.write(value.uncertaintyUs, into: &buf)
+        FfiConverterBool.write(value.offered, into: &buf)
+        FfiConverterString.write(value.reason, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureSystemDelay_lift(_ buf: RustBuffer) throws -> MeasureSystemDelay {
+    return try FfiConverterTypeMeasureSystemDelay.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureSystemDelay_lower(_ value: MeasureSystemDelay) -> RustBuffer {
+    return FfiConverterTypeMeasureSystemDelay.lower(value)
+}
+
+
+/**
+ * One unit's `measurement` document.
+ */
+public struct MeasureSystemDocument {
+    /**
+     * The unit.
+     */
+    public var serial: String
+    /**
+     * The document's text (schema 1 with a `system` block). File it with
+     * `measure_doc_put` (or the hub's).
+     */
+    public var document: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The unit.
+         */serial: String, 
+        /**
+         * The document's text (schema 1 with a `system` block). File it with
+         * `measure_doc_put` (or the hub's).
+         */document: String) {
+        self.serial = serial
+        self.document = document
+    }
+}
+
+#if compiler(>=6)
+extension MeasureSystemDocument: Sendable {}
+#endif
+
+
+extension MeasureSystemDocument: Equatable, Hashable {
+    public static func ==(lhs: MeasureSystemDocument, rhs: MeasureSystemDocument) -> Bool {
+        if lhs.serial != rhs.serial {
+            return false
+        }
+        if lhs.document != rhs.document {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(serial)
+        hasher.combine(document)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureSystemDocument: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureSystemDocument {
+        return
+            try MeasureSystemDocument(
+                serial: FfiConverterString.read(from: &buf), 
+                document: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MeasureSystemDocument, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.serial, into: &buf)
+        FfiConverterString.write(value.document, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureSystemDocument_lift(_ buf: RustBuffer) throws -> MeasureSystemDocument {
+    return try FfiConverterTypeMeasureSystemDocument.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureSystemDocument_lower(_ value: MeasureSystemDocument) -> RustBuffer {
+    return FfiConverterTypeMeasureSystemDocument.lower(value)
+}
+
+
+/**
+ * An issue of a system measurement, naming its unit.
+ */
+public struct MeasureSystemIssue {
+    /**
+     * The unit's serial; "" when it concerns no one unit.
+     */
+    public var serial: String
+    /**
+     * The notice key (`measure.*`, `measure.system.*`).
+     */
+    public var key: String
+    /**
+     * The output it concerns, if one.
+     */
+    public var output: UInt8?
+    /**
+     * What happened, in words (the unit named).
+     */
+    public var message: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The unit's serial; "" when it concerns no one unit.
+         */serial: String, 
+        /**
+         * The notice key (`measure.*`, `measure.system.*`).
+         */key: String, 
+        /**
+         * The output it concerns, if one.
+         */output: UInt8?, 
+        /**
+         * What happened, in words (the unit named).
+         */message: String) {
+        self.serial = serial
+        self.key = key
+        self.output = output
+        self.message = message
+    }
+}
+
+#if compiler(>=6)
+extension MeasureSystemIssue: Sendable {}
+#endif
+
+
+extension MeasureSystemIssue: Equatable, Hashable {
+    public static func ==(lhs: MeasureSystemIssue, rhs: MeasureSystemIssue) -> Bool {
+        if lhs.serial != rhs.serial {
+            return false
+        }
+        if lhs.key != rhs.key {
+            return false
+        }
+        if lhs.output != rhs.output {
+            return false
+        }
+        if lhs.message != rhs.message {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(serial)
+        hasher.combine(key)
+        hasher.combine(output)
+        hasher.combine(message)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureSystemIssue: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureSystemIssue {
+        return
+            try MeasureSystemIssue(
+                serial: FfiConverterString.read(from: &buf), 
+                key: FfiConverterString.read(from: &buf), 
+                output: FfiConverterOptionUInt8.read(from: &buf), 
+                message: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MeasureSystemIssue, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.serial, into: &buf)
+        FfiConverterString.write(value.key, into: &buf)
+        FfiConverterOptionUInt8.write(value.output, into: &buf)
+        FfiConverterString.write(value.message, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureSystemIssue_lift(_ buf: RustBuffer) throws -> MeasureSystemIssue {
+    return try FfiConverterTypeMeasureSystemIssue.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureSystemIssue_lower(_ value: MeasureSystemIssue) -> RustBuffer {
+    return FfiConverterTypeMeasureSystemIssue.lower(value)
+}
+
+
+/**
+ * One output's level after its ramp.
+ */
+public struct MeasureSystemLevel {
+    /**
+     * The unit.
+     */
+    public var serial: String
+    /**
+     * The output.
+     */
+    public var output: UInt8
+    /**
+     * Its level, peak dBFS.
+     */
+    public var levelDb: Float
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The unit.
+         */serial: String, 
+        /**
+         * The output.
+         */output: UInt8, 
+        /**
+         * Its level, peak dBFS.
+         */levelDb: Float) {
+        self.serial = serial
+        self.output = output
+        self.levelDb = levelDb
+    }
+}
+
+#if compiler(>=6)
+extension MeasureSystemLevel: Sendable {}
+#endif
+
+
+extension MeasureSystemLevel: Equatable, Hashable {
+    public static func ==(lhs: MeasureSystemLevel, rhs: MeasureSystemLevel) -> Bool {
+        if lhs.serial != rhs.serial {
+            return false
+        }
+        if lhs.output != rhs.output {
+            return false
+        }
+        if lhs.levelDb != rhs.levelDb {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(serial)
+        hasher.combine(output)
+        hasher.combine(levelDb)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureSystemLevel: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureSystemLevel {
+        return
+            try MeasureSystemLevel(
+                serial: FfiConverterString.read(from: &buf), 
+                output: FfiConverterUInt8.read(from: &buf), 
+                levelDb: FfiConverterFloat.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MeasureSystemLevel, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.serial, into: &buf)
+        FfiConverterUInt8.write(value.output, into: &buf)
+        FfiConverterFloat.write(value.levelDb, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureSystemLevel_lift(_ buf: RustBuffer) throws -> MeasureSystemLevel {
+    return try FfiConverterTypeMeasureSystemLevel.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureSystemLevel_lower(_ value: MeasureSystemLevel) -> RustBuffer {
+    return FfiConverterTypeMeasureSystemLevel.lower(value)
+}
+
+
+/**
+ * One output's delay.
+ */
+public struct MeasureSystemOutDelay {
+    /**
+     * The output.
+     */
+    public var output: UInt8
+    /**
+     * Its delay, ms.
+     */
+    public var delayMs: Float
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The output.
+         */output: UInt8, 
+        /**
+         * Its delay, ms.
+         */delayMs: Float) {
+        self.output = output
+        self.delayMs = delayMs
+    }
+}
+
+#if compiler(>=6)
+extension MeasureSystemOutDelay: Sendable {}
+#endif
+
+
+extension MeasureSystemOutDelay: Equatable, Hashable {
+    public static func ==(lhs: MeasureSystemOutDelay, rhs: MeasureSystemOutDelay) -> Bool {
+        if lhs.output != rhs.output {
+            return false
+        }
+        if lhs.delayMs != rhs.delayMs {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(output)
+        hasher.combine(delayMs)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureSystemOutDelay: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureSystemOutDelay {
+        return
+            try MeasureSystemOutDelay(
+                output: FfiConverterUInt8.read(from: &buf), 
+                delayMs: FfiConverterFloat.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MeasureSystemOutDelay, into buf: inout [UInt8]) {
+        FfiConverterUInt8.write(value.output, into: &buf)
+        FfiConverterFloat.write(value.delayMs, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureSystemOutDelay_lift(_ buf: RustBuffer) throws -> MeasureSystemOutDelay {
+    return try FfiConverterTypeMeasureSystemOutDelay.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureSystemOutDelay_lower(_ value: MeasureSystemOutDelay) -> RustBuffer {
+    return FfiConverterTypeMeasureSystemOutDelay.lower(value)
+}
+
+
+/**
+ * What stands between a setup and a system measurement.
+ */
+public struct MeasureSystemPreflight {
+    /**
+     * Nothing blocks.
+     */
+    public var clear: Bool
+    /**
+     * What must change first, each naming its unit.
+     */
+    public var blockers: [MeasureSystemIssue]
+    /**
+     * What to know.
+     */
+    public var warnings: [MeasureSystemIssue]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Nothing blocks.
+         */clear: Bool, 
+        /**
+         * What must change first, each naming its unit.
+         */blockers: [MeasureSystemIssue], 
+        /**
+         * What to know.
+         */warnings: [MeasureSystemIssue]) {
+        self.clear = clear
+        self.blockers = blockers
+        self.warnings = warnings
+    }
+}
+
+#if compiler(>=6)
+extension MeasureSystemPreflight: Sendable {}
+#endif
+
+
+extension MeasureSystemPreflight: Equatable, Hashable {
+    public static func ==(lhs: MeasureSystemPreflight, rhs: MeasureSystemPreflight) -> Bool {
+        if lhs.clear != rhs.clear {
+            return false
+        }
+        if lhs.blockers != rhs.blockers {
+            return false
+        }
+        if lhs.warnings != rhs.warnings {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(clear)
+        hasher.combine(blockers)
+        hasher.combine(warnings)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureSystemPreflight: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureSystemPreflight {
+        return
+            try MeasureSystemPreflight(
+                clear: FfiConverterBool.read(from: &buf), 
+                blockers: FfiConverterSequenceTypeMeasureSystemIssue.read(from: &buf), 
+                warnings: FfiConverterSequenceTypeMeasureSystemIssue.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MeasureSystemPreflight, into buf: inout [UInt8]) {
+        FfiConverterBool.write(value.clear, into: &buf)
+        FfiConverterSequenceTypeMeasureSystemIssue.write(value.blockers, into: &buf)
+        FfiConverterSequenceTypeMeasureSystemIssue.write(value.warnings, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureSystemPreflight_lift(_ buf: RustBuffer) throws -> MeasureSystemPreflight {
+    return try FfiConverterTypeMeasureSystemPreflight.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureSystemPreflight_lower(_ value: MeasureSystemPreflight) -> RustBuffer {
+    return FfiConverterTypeMeasureSystemPreflight.lower(value)
+}
+
+
+/**
+ * The alignment a system measurement proposes (OD-ATl): measured arrivals
+ * into the hub's model, applied by `system.align`.
+ */
+public struct MeasureSystemProposal {
+    /**
+     * Its id (the apply names it).
+     */
+    public var id: UInt32
+    /**
+     * The arrivals to write: offered ones only.
+     */
+    public var arrivals: [MeasureSystemArrival]
+    /**
+     * Arrivals not offered, with why.
+     */
+    public var withheld: [MeasureSystemArrival]
+    /**
+     * The transitions and their summed checks.
+     */
+    public var transitions: [MeasureSystemTransition]
+    /**
+     * A summed check is still to run before anything may be applied.
+     */
+    public var sumCheckNeeded: Bool
+    /**
+     * Every cross-unit delay was withdrawn (a summed check failed).
+     */
+    public var withdrawn: Bool
+    /**
+     * Something can be applied (after the summed check).
+     */
+    public var offered: Bool
+    /**
+     * This session's role may apply it (Admin).
+     */
+    public var mayApply: Bool
+    /**
+     * What stands in the way, if anything.
+     */
+    public var notice: MeasureSystemIssue?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Its id (the apply names it).
+         */id: UInt32, 
+        /**
+         * The arrivals to write: offered ones only.
+         */arrivals: [MeasureSystemArrival], 
+        /**
+         * Arrivals not offered, with why.
+         */withheld: [MeasureSystemArrival], 
+        /**
+         * The transitions and their summed checks.
+         */transitions: [MeasureSystemTransition], 
+        /**
+         * A summed check is still to run before anything may be applied.
+         */sumCheckNeeded: Bool, 
+        /**
+         * Every cross-unit delay was withdrawn (a summed check failed).
+         */withdrawn: Bool, 
+        /**
+         * Something can be applied (after the summed check).
+         */offered: Bool, 
+        /**
+         * This session's role may apply it (Admin).
+         */mayApply: Bool, 
+        /**
+         * What stands in the way, if anything.
+         */notice: MeasureSystemIssue?) {
+        self.id = id
+        self.arrivals = arrivals
+        self.withheld = withheld
+        self.transitions = transitions
+        self.sumCheckNeeded = sumCheckNeeded
+        self.withdrawn = withdrawn
+        self.offered = offered
+        self.mayApply = mayApply
+        self.notice = notice
+    }
+}
+
+#if compiler(>=6)
+extension MeasureSystemProposal: Sendable {}
+#endif
+
+
+extension MeasureSystemProposal: Equatable, Hashable {
+    public static func ==(lhs: MeasureSystemProposal, rhs: MeasureSystemProposal) -> Bool {
+        if lhs.id != rhs.id {
+            return false
+        }
+        if lhs.arrivals != rhs.arrivals {
+            return false
+        }
+        if lhs.withheld != rhs.withheld {
+            return false
+        }
+        if lhs.transitions != rhs.transitions {
+            return false
+        }
+        if lhs.sumCheckNeeded != rhs.sumCheckNeeded {
+            return false
+        }
+        if lhs.withdrawn != rhs.withdrawn {
+            return false
+        }
+        if lhs.offered != rhs.offered {
+            return false
+        }
+        if lhs.mayApply != rhs.mayApply {
+            return false
+        }
+        if lhs.notice != rhs.notice {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+        hasher.combine(arrivals)
+        hasher.combine(withheld)
+        hasher.combine(transitions)
+        hasher.combine(sumCheckNeeded)
+        hasher.combine(withdrawn)
+        hasher.combine(offered)
+        hasher.combine(mayApply)
+        hasher.combine(notice)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureSystemProposal: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureSystemProposal {
+        return
+            try MeasureSystemProposal(
+                id: FfiConverterUInt32.read(from: &buf), 
+                arrivals: FfiConverterSequenceTypeMeasureSystemArrival.read(from: &buf), 
+                withheld: FfiConverterSequenceTypeMeasureSystemArrival.read(from: &buf), 
+                transitions: FfiConverterSequenceTypeMeasureSystemTransition.read(from: &buf), 
+                sumCheckNeeded: FfiConverterBool.read(from: &buf), 
+                withdrawn: FfiConverterBool.read(from: &buf), 
+                offered: FfiConverterBool.read(from: &buf), 
+                mayApply: FfiConverterBool.read(from: &buf), 
+                notice: FfiConverterOptionTypeMeasureSystemIssue.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MeasureSystemProposal, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.id, into: &buf)
+        FfiConverterSequenceTypeMeasureSystemArrival.write(value.arrivals, into: &buf)
+        FfiConverterSequenceTypeMeasureSystemArrival.write(value.withheld, into: &buf)
+        FfiConverterSequenceTypeMeasureSystemTransition.write(value.transitions, into: &buf)
+        FfiConverterBool.write(value.sumCheckNeeded, into: &buf)
+        FfiConverterBool.write(value.withdrawn, into: &buf)
+        FfiConverterBool.write(value.offered, into: &buf)
+        FfiConverterBool.write(value.mayApply, into: &buf)
+        FfiConverterOptionTypeMeasureSystemIssue.write(value.notice, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureSystemProposal_lift(_ buf: RustBuffer) throws -> MeasureSystemProposal {
+    return try FfiConverterTypeMeasureSystemProposal.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureSystemProposal_lower(_ value: MeasureSystemProposal) -> RustBuffer {
+    return FfiConverterTypeMeasureSystemProposal.lower(value)
+}
+
+
+/**
+ * A finished system measurement.
+ */
+public struct MeasureSystemResult {
+    /**
+     * One document per unit.
+     */
+    public var documents: [MeasureSystemDocument]
+    /**
+     * Every measured output's arrival.
+     */
+    public var arrivals: [MeasureSystemArrival]
+    /**
+     * Every cross-unit delay of every run.
+     */
+    public var delays: [MeasureSystemDelay]
+    /**
+     * The inter-unit transitions.
+     */
+    public var transitions: [MeasureSystemTransition]
+    /**
+     * G5 for every run.
+     */
+    public var timingReliable: Bool
+    /**
+     * Why not reliable, what was not offered, a refused chain.
+     */
+    public var reasons: [String]
+    /**
+     * The generator runs (`EXT_SIGGEN_TIMELINE.run_id`) the arrivals came
+     * from.
+     */
+    public var runIds: [UInt32]
+    /**
+     * Timed runs chained through the anchor (1: none).
+     */
+    public var runs: UInt16
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * One document per unit.
+         */documents: [MeasureSystemDocument], 
+        /**
+         * Every measured output's arrival.
+         */arrivals: [MeasureSystemArrival], 
+        /**
+         * Every cross-unit delay of every run.
+         */delays: [MeasureSystemDelay], 
+        /**
+         * The inter-unit transitions.
+         */transitions: [MeasureSystemTransition], 
+        /**
+         * G5 for every run.
+         */timingReliable: Bool, 
+        /**
+         * Why not reliable, what was not offered, a refused chain.
+         */reasons: [String], 
+        /**
+         * The generator runs (`EXT_SIGGEN_TIMELINE.run_id`) the arrivals came
+         * from.
+         */runIds: [UInt32], 
+        /**
+         * Timed runs chained through the anchor (1: none).
+         */runs: UInt16) {
+        self.documents = documents
+        self.arrivals = arrivals
+        self.delays = delays
+        self.transitions = transitions
+        self.timingReliable = timingReliable
+        self.reasons = reasons
+        self.runIds = runIds
+        self.runs = runs
+    }
+}
+
+#if compiler(>=6)
+extension MeasureSystemResult: Sendable {}
+#endif
+
+
+extension MeasureSystemResult: Equatable, Hashable {
+    public static func ==(lhs: MeasureSystemResult, rhs: MeasureSystemResult) -> Bool {
+        if lhs.documents != rhs.documents {
+            return false
+        }
+        if lhs.arrivals != rhs.arrivals {
+            return false
+        }
+        if lhs.delays != rhs.delays {
+            return false
+        }
+        if lhs.transitions != rhs.transitions {
+            return false
+        }
+        if lhs.timingReliable != rhs.timingReliable {
+            return false
+        }
+        if lhs.reasons != rhs.reasons {
+            return false
+        }
+        if lhs.runIds != rhs.runIds {
+            return false
+        }
+        if lhs.runs != rhs.runs {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(documents)
+        hasher.combine(arrivals)
+        hasher.combine(delays)
+        hasher.combine(transitions)
+        hasher.combine(timingReliable)
+        hasher.combine(reasons)
+        hasher.combine(runIds)
+        hasher.combine(runs)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureSystemResult: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureSystemResult {
+        return
+            try MeasureSystemResult(
+                documents: FfiConverterSequenceTypeMeasureSystemDocument.read(from: &buf), 
+                arrivals: FfiConverterSequenceTypeMeasureSystemArrival.read(from: &buf), 
+                delays: FfiConverterSequenceTypeMeasureSystemDelay.read(from: &buf), 
+                transitions: FfiConverterSequenceTypeMeasureSystemTransition.read(from: &buf), 
+                timingReliable: FfiConverterBool.read(from: &buf), 
+                reasons: FfiConverterSequenceString.read(from: &buf), 
+                runIds: FfiConverterSequenceUInt32.read(from: &buf), 
+                runs: FfiConverterUInt16.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MeasureSystemResult, into buf: inout [UInt8]) {
+        FfiConverterSequenceTypeMeasureSystemDocument.write(value.documents, into: &buf)
+        FfiConverterSequenceTypeMeasureSystemArrival.write(value.arrivals, into: &buf)
+        FfiConverterSequenceTypeMeasureSystemDelay.write(value.delays, into: &buf)
+        FfiConverterSequenceTypeMeasureSystemTransition.write(value.transitions, into: &buf)
+        FfiConverterBool.write(value.timingReliable, into: &buf)
+        FfiConverterSequenceString.write(value.reasons, into: &buf)
+        FfiConverterSequenceUInt32.write(value.runIds, into: &buf)
+        FfiConverterUInt16.write(value.runs, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureSystemResult_lift(_ buf: RustBuffer) throws -> MeasureSystemResult {
+    return try FfiConverterTypeMeasureSystemResult.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureSystemResult_lower(_ value: MeasureSystemResult) -> RustBuffer {
+    return FfiConverterTypeMeasureSystemResult.lower(value)
+}
+
+
+/**
+ * What to measure across units and how (PLAN-AT 1.4). Every number 0 (or
+ * absent) is the plan's default.
+ */
+public struct MeasureSystemSetup {
+    /**
+     * The group's units, 2 to 16, in the order the hub opens them.
+     */
+    public var units: [MeasureSystemUnit]
+    /**
+     * Passes, 2 to 8; 0: 5 where the run fits one capture, else 3.
+     */
+    public var passes: UInt8
+    /**
+     * The anchor output's unit for runs chained through it; "": the first
+     * unit.
+     */
+    public var anchorSerial: String
+    /**
+     * The anchor output; `None`: the anchor unit's first output.
+     */
+    public var anchorOutput: UInt8?
+    /**
+     * The microphone's `mic` document's text; "" for an uncalibrated one.
+     */
+    public var micDocument: String
+    /**
+     * One sweep, ms (1000 to 15000; 0: 5500).
+     */
+    public var sweepMs: UInt32
+    /**
+     * The gap after each cycle, ms (300 to 2000; 0: 1000).
+     */
+    public var gapMs: UInt32
+    /**
+     * The generator's ceiling, peak dBFS (as P5's).
+     */
+    public var ceilingDb: Float?
+    /**
+     * The SPL cap with a calibrated microphone, dB SPL (as P5's).
+     */
+    public var splCapDb: Float?
+    /**
+     * The capture's rate, Hz (0: 48000).
+     */
+    public var captureRateHz: UInt32
+    /**
+     * The lead of every START, ms; 0 or less than the units' arm lead plus
+     * 100 ms: that (S-AT3).
+     */
+    public var leadMs: UInt32
+    /**
+     * The hub's lease, ms (0: the hub's default, 2000; clamped 500..5000).
+     */
+    public var leaseMs: UInt32
+    /**
+     * The documents' name ("" names them by the date).
+     */
+    public var name: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The group's units, 2 to 16, in the order the hub opens them.
+         */units: [MeasureSystemUnit], 
+        /**
+         * Passes, 2 to 8; 0: 5 where the run fits one capture, else 3.
+         */passes: UInt8, 
+        /**
+         * The anchor output's unit for runs chained through it; "": the first
+         * unit.
+         */anchorSerial: String, 
+        /**
+         * The anchor output; `None`: the anchor unit's first output.
+         */anchorOutput: UInt8?, 
+        /**
+         * The microphone's `mic` document's text; "" for an uncalibrated one.
+         */micDocument: String, 
+        /**
+         * One sweep, ms (1000 to 15000; 0: 5500).
+         */sweepMs: UInt32, 
+        /**
+         * The gap after each cycle, ms (300 to 2000; 0: 1000).
+         */gapMs: UInt32, 
+        /**
+         * The generator's ceiling, peak dBFS (as P5's).
+         */ceilingDb: Float?, 
+        /**
+         * The SPL cap with a calibrated microphone, dB SPL (as P5's).
+         */splCapDb: Float?, 
+        /**
+         * The capture's rate, Hz (0: 48000).
+         */captureRateHz: UInt32, 
+        /**
+         * The lead of every START, ms; 0 or less than the units' arm lead plus
+         * 100 ms: that (S-AT3).
+         */leadMs: UInt32, 
+        /**
+         * The hub's lease, ms (0: the hub's default, 2000; clamped 500..5000).
+         */leaseMs: UInt32, 
+        /**
+         * The documents' name ("" names them by the date).
+         */name: String) {
+        self.units = units
+        self.passes = passes
+        self.anchorSerial = anchorSerial
+        self.anchorOutput = anchorOutput
+        self.micDocument = micDocument
+        self.sweepMs = sweepMs
+        self.gapMs = gapMs
+        self.ceilingDb = ceilingDb
+        self.splCapDb = splCapDb
+        self.captureRateHz = captureRateHz
+        self.leadMs = leadMs
+        self.leaseMs = leaseMs
+        self.name = name
+    }
+}
+
+#if compiler(>=6)
+extension MeasureSystemSetup: Sendable {}
+#endif
+
+
+extension MeasureSystemSetup: Equatable, Hashable {
+    public static func ==(lhs: MeasureSystemSetup, rhs: MeasureSystemSetup) -> Bool {
+        if lhs.units != rhs.units {
+            return false
+        }
+        if lhs.passes != rhs.passes {
+            return false
+        }
+        if lhs.anchorSerial != rhs.anchorSerial {
+            return false
+        }
+        if lhs.anchorOutput != rhs.anchorOutput {
+            return false
+        }
+        if lhs.micDocument != rhs.micDocument {
+            return false
+        }
+        if lhs.sweepMs != rhs.sweepMs {
+            return false
+        }
+        if lhs.gapMs != rhs.gapMs {
+            return false
+        }
+        if lhs.ceilingDb != rhs.ceilingDb {
+            return false
+        }
+        if lhs.splCapDb != rhs.splCapDb {
+            return false
+        }
+        if lhs.captureRateHz != rhs.captureRateHz {
+            return false
+        }
+        if lhs.leadMs != rhs.leadMs {
+            return false
+        }
+        if lhs.leaseMs != rhs.leaseMs {
+            return false
+        }
+        if lhs.name != rhs.name {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(units)
+        hasher.combine(passes)
+        hasher.combine(anchorSerial)
+        hasher.combine(anchorOutput)
+        hasher.combine(micDocument)
+        hasher.combine(sweepMs)
+        hasher.combine(gapMs)
+        hasher.combine(ceilingDb)
+        hasher.combine(splCapDb)
+        hasher.combine(captureRateHz)
+        hasher.combine(leadMs)
+        hasher.combine(leaseMs)
+        hasher.combine(name)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureSystemSetup: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureSystemSetup {
+        return
+            try MeasureSystemSetup(
+                units: FfiConverterSequenceTypeMeasureSystemUnit.read(from: &buf), 
+                passes: FfiConverterUInt8.read(from: &buf), 
+                anchorSerial: FfiConverterString.read(from: &buf), 
+                anchorOutput: FfiConverterOptionUInt8.read(from: &buf), 
+                micDocument: FfiConverterString.read(from: &buf), 
+                sweepMs: FfiConverterUInt32.read(from: &buf), 
+                gapMs: FfiConverterUInt32.read(from: &buf), 
+                ceilingDb: FfiConverterOptionFloat.read(from: &buf), 
+                splCapDb: FfiConverterOptionFloat.read(from: &buf), 
+                captureRateHz: FfiConverterUInt32.read(from: &buf), 
+                leadMs: FfiConverterUInt32.read(from: &buf), 
+                leaseMs: FfiConverterUInt32.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MeasureSystemSetup, into buf: inout [UInt8]) {
+        FfiConverterSequenceTypeMeasureSystemUnit.write(value.units, into: &buf)
+        FfiConverterUInt8.write(value.passes, into: &buf)
+        FfiConverterString.write(value.anchorSerial, into: &buf)
+        FfiConverterOptionUInt8.write(value.anchorOutput, into: &buf)
+        FfiConverterString.write(value.micDocument, into: &buf)
+        FfiConverterUInt32.write(value.sweepMs, into: &buf)
+        FfiConverterUInt32.write(value.gapMs, into: &buf)
+        FfiConverterOptionFloat.write(value.ceilingDb, into: &buf)
+        FfiConverterOptionFloat.write(value.splCapDb, into: &buf)
+        FfiConverterUInt32.write(value.captureRateHz, into: &buf)
+        FfiConverterUInt32.write(value.leadMs, into: &buf)
+        FfiConverterUInt32.write(value.leaseMs, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureSystemSetup_lift(_ buf: RustBuffer) throws -> MeasureSystemSetup {
+    return try FfiConverterTypeMeasureSystemSetup.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureSystemSetup_lower(_ value: MeasureSystemSetup) -> RustBuffer {
+    return FfiConverterTypeMeasureSystemSetup.lower(value)
+}
+
+
+/**
+ * One unit's output delays as filed before an apply.
+ */
+public struct MeasureSystemSnapshot {
+    /**
+     * The unit.
+     */
+    public var serial: String
+    /**
+     * `(output, out.delay ms)` read before the apply.
+     */
+    public var outDelaysMs: [MeasureSystemOutDelay]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The unit.
+         */serial: String, 
+        /**
+         * `(output, out.delay ms)` read before the apply.
+         */outDelaysMs: [MeasureSystemOutDelay]) {
+        self.serial = serial
+        self.outDelaysMs = outDelaysMs
+    }
+}
+
+#if compiler(>=6)
+extension MeasureSystemSnapshot: Sendable {}
+#endif
+
+
+extension MeasureSystemSnapshot: Equatable, Hashable {
+    public static func ==(lhs: MeasureSystemSnapshot, rhs: MeasureSystemSnapshot) -> Bool {
+        if lhs.serial != rhs.serial {
+            return false
+        }
+        if lhs.outDelaysMs != rhs.outDelaysMs {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(serial)
+        hasher.combine(outDelaysMs)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureSystemSnapshot: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureSystemSnapshot {
+        return
+            try MeasureSystemSnapshot(
+                serial: FfiConverterString.read(from: &buf), 
+                outDelaysMs: FfiConverterSequenceTypeMeasureSystemOutDelay.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MeasureSystemSnapshot, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.serial, into: &buf)
+        FfiConverterSequenceTypeMeasureSystemOutDelay.write(value.outDelaysMs, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureSystemSnapshot_lift(_ buf: RustBuffer) throws -> MeasureSystemSnapshot {
+    return try FfiConverterTypeMeasureSystemSnapshot.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureSystemSnapshot_lower(_ value: MeasureSystemSnapshot) -> RustBuffer {
+    return FfiConverterTypeMeasureSystemSnapshot.lower(value)
+}
+
+
+/**
+ * A system session's state (no I/O to read it).
+ */
+public struct MeasureSystemState {
+    /**
+     * The phase.
+     */
+    public var phase: MeasureSystemPhase
+    /**
+     * What the runs are for.
+     */
+    public var purpose: MeasureSystemPurpose
+    /**
+     * Holds the hub's session or a stage in progress.
+     */
+    public var active: Bool
+    /**
+     * Push the microphone's capture now.
+     */
+    public var wantsCapture: Bool
+    /**
+     * The capture's rate, Hz.
+     */
+    public var captureRateHz: UInt32
+    /**
+     * The unit playing (a ramp step), or "".
+     */
+    public var serial: String
+    /**
+     * The output playing (a ramp step).
+     */
+    public var output: UInt8?
+    /**
+     * Its level, peak dBFS.
+     */
+    public var levelDb: Float?
+    /**
+     * Every level the ramps found so far.
+     */
+    public var rampLevels: [MeasureSystemLevel]
+    /**
+     * The timed run in progress, 1-based (0 before the first).
+     */
+    public var run: UInt16
+    /**
+     * Timed runs in all.
+     */
+    public var runs: UInt16
+    /**
+     * Capture frames pushed.
+     */
+    public var frames: UInt64
+    /**
+     * Progress of the stage, 0 to 1.
+     */
+    public var progress: Float
+    /**
+     * Why it stopped or what it asks.
+     */
+    public var issue: MeasureSystemIssue?
+    /**
+     * A result is ready (`measure_system_result`).
+     */
+    public var resultReady: Bool
+    /**
+     * G5: the timing of every run was reliable.
+     */
+    public var timingReliable: Bool?
+    /**
+     * What the session waits for, in words ("waiting for the units' clocks
+     * to settle"), or "".
+     */
+    public var words: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The phase.
+         */phase: MeasureSystemPhase, 
+        /**
+         * What the runs are for.
+         */purpose: MeasureSystemPurpose, 
+        /**
+         * Holds the hub's session or a stage in progress.
+         */active: Bool, 
+        /**
+         * Push the microphone's capture now.
+         */wantsCapture: Bool, 
+        /**
+         * The capture's rate, Hz.
+         */captureRateHz: UInt32, 
+        /**
+         * The unit playing (a ramp step), or "".
+         */serial: String, 
+        /**
+         * The output playing (a ramp step).
+         */output: UInt8?, 
+        /**
+         * Its level, peak dBFS.
+         */levelDb: Float?, 
+        /**
+         * Every level the ramps found so far.
+         */rampLevels: [MeasureSystemLevel], 
+        /**
+         * The timed run in progress, 1-based (0 before the first).
+         */run: UInt16, 
+        /**
+         * Timed runs in all.
+         */runs: UInt16, 
+        /**
+         * Capture frames pushed.
+         */frames: UInt64, 
+        /**
+         * Progress of the stage, 0 to 1.
+         */progress: Float, 
+        /**
+         * Why it stopped or what it asks.
+         */issue: MeasureSystemIssue?, 
+        /**
+         * A result is ready (`measure_system_result`).
+         */resultReady: Bool, 
+        /**
+         * G5: the timing of every run was reliable.
+         */timingReliable: Bool?, 
+        /**
+         * What the session waits for, in words ("waiting for the units' clocks
+         * to settle"), or "".
+         */words: String) {
+        self.phase = phase
+        self.purpose = purpose
+        self.active = active
+        self.wantsCapture = wantsCapture
+        self.captureRateHz = captureRateHz
+        self.serial = serial
+        self.output = output
+        self.levelDb = levelDb
+        self.rampLevels = rampLevels
+        self.run = run
+        self.runs = runs
+        self.frames = frames
+        self.progress = progress
+        self.issue = issue
+        self.resultReady = resultReady
+        self.timingReliable = timingReliable
+        self.words = words
+    }
+}
+
+#if compiler(>=6)
+extension MeasureSystemState: Sendable {}
+#endif
+
+
+extension MeasureSystemState: Equatable, Hashable {
+    public static func ==(lhs: MeasureSystemState, rhs: MeasureSystemState) -> Bool {
+        if lhs.phase != rhs.phase {
+            return false
+        }
+        if lhs.purpose != rhs.purpose {
+            return false
+        }
+        if lhs.active != rhs.active {
+            return false
+        }
+        if lhs.wantsCapture != rhs.wantsCapture {
+            return false
+        }
+        if lhs.captureRateHz != rhs.captureRateHz {
+            return false
+        }
+        if lhs.serial != rhs.serial {
+            return false
+        }
+        if lhs.output != rhs.output {
+            return false
+        }
+        if lhs.levelDb != rhs.levelDb {
+            return false
+        }
+        if lhs.rampLevels != rhs.rampLevels {
+            return false
+        }
+        if lhs.run != rhs.run {
+            return false
+        }
+        if lhs.runs != rhs.runs {
+            return false
+        }
+        if lhs.frames != rhs.frames {
+            return false
+        }
+        if lhs.progress != rhs.progress {
+            return false
+        }
+        if lhs.issue != rhs.issue {
+            return false
+        }
+        if lhs.resultReady != rhs.resultReady {
+            return false
+        }
+        if lhs.timingReliable != rhs.timingReliable {
+            return false
+        }
+        if lhs.words != rhs.words {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(phase)
+        hasher.combine(purpose)
+        hasher.combine(active)
+        hasher.combine(wantsCapture)
+        hasher.combine(captureRateHz)
+        hasher.combine(serial)
+        hasher.combine(output)
+        hasher.combine(levelDb)
+        hasher.combine(rampLevels)
+        hasher.combine(run)
+        hasher.combine(runs)
+        hasher.combine(frames)
+        hasher.combine(progress)
+        hasher.combine(issue)
+        hasher.combine(resultReady)
+        hasher.combine(timingReliable)
+        hasher.combine(words)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureSystemState: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureSystemState {
+        return
+            try MeasureSystemState(
+                phase: FfiConverterTypeMeasureSystemPhase.read(from: &buf), 
+                purpose: FfiConverterTypeMeasureSystemPurpose.read(from: &buf), 
+                active: FfiConverterBool.read(from: &buf), 
+                wantsCapture: FfiConverterBool.read(from: &buf), 
+                captureRateHz: FfiConverterUInt32.read(from: &buf), 
+                serial: FfiConverterString.read(from: &buf), 
+                output: FfiConverterOptionUInt8.read(from: &buf), 
+                levelDb: FfiConverterOptionFloat.read(from: &buf), 
+                rampLevels: FfiConverterSequenceTypeMeasureSystemLevel.read(from: &buf), 
+                run: FfiConverterUInt16.read(from: &buf), 
+                runs: FfiConverterUInt16.read(from: &buf), 
+                frames: FfiConverterUInt64.read(from: &buf), 
+                progress: FfiConverterFloat.read(from: &buf), 
+                issue: FfiConverterOptionTypeMeasureSystemIssue.read(from: &buf), 
+                resultReady: FfiConverterBool.read(from: &buf), 
+                timingReliable: FfiConverterOptionBool.read(from: &buf), 
+                words: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MeasureSystemState, into buf: inout [UInt8]) {
+        FfiConverterTypeMeasureSystemPhase.write(value.phase, into: &buf)
+        FfiConverterTypeMeasureSystemPurpose.write(value.purpose, into: &buf)
+        FfiConverterBool.write(value.active, into: &buf)
+        FfiConverterBool.write(value.wantsCapture, into: &buf)
+        FfiConverterUInt32.write(value.captureRateHz, into: &buf)
+        FfiConverterString.write(value.serial, into: &buf)
+        FfiConverterOptionUInt8.write(value.output, into: &buf)
+        FfiConverterOptionFloat.write(value.levelDb, into: &buf)
+        FfiConverterSequenceTypeMeasureSystemLevel.write(value.rampLevels, into: &buf)
+        FfiConverterUInt16.write(value.run, into: &buf)
+        FfiConverterUInt16.write(value.runs, into: &buf)
+        FfiConverterUInt64.write(value.frames, into: &buf)
+        FfiConverterFloat.write(value.progress, into: &buf)
+        FfiConverterOptionTypeMeasureSystemIssue.write(value.issue, into: &buf)
+        FfiConverterBool.write(value.resultReady, into: &buf)
+        FfiConverterOptionBool.write(value.timingReliable, into: &buf)
+        FfiConverterString.write(value.words, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureSystemState_lift(_ buf: RustBuffer) throws -> MeasureSystemState {
+    return try FfiConverterTypeMeasureSystemState.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureSystemState_lower(_ value: MeasureSystemState) -> RustBuffer {
+    return FfiConverterTypeMeasureSystemState.lower(value)
+}
+
+
+/**
+ * An inter-unit transition and its summed check (RC5f, R8d).
+ */
+public struct MeasureSystemTransition {
+    /**
+     * One output's unit.
+     */
+    public var aSerial: String
+    /**
+     * Its output.
+     */
+    public var aOutput: UInt8
+    /**
+     * The other output's unit.
+     */
+    public var bSerial: String
+    /**
+     * Its output.
+     */
+    public var bOutput: UInt8
+    /**
+     * The check band, Hz.
+     */
+    public var bandLoHz: Double
+    /**
+     * The check band's top, Hz.
+     */
+    public var bandHiHz: Double
+    /**
+     * The summed run was measured and judged.
+     */
+    public var checked: Bool
+    /**
+     * Within 1.5 dB RMS of the prediction.
+     */
+    public var passed: Bool
+    /**
+     * The RMS difference, dB.
+     */
+    public var rmsDb: Double?
+    /**
+     * What happened, in words.
+     */
+    public var message: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * One output's unit.
+         */aSerial: String, 
+        /**
+         * Its output.
+         */aOutput: UInt8, 
+        /**
+         * The other output's unit.
+         */bSerial: String, 
+        /**
+         * Its output.
+         */bOutput: UInt8, 
+        /**
+         * The check band, Hz.
+         */bandLoHz: Double, 
+        /**
+         * The check band's top, Hz.
+         */bandHiHz: Double, 
+        /**
+         * The summed run was measured and judged.
+         */checked: Bool, 
+        /**
+         * Within 1.5 dB RMS of the prediction.
+         */passed: Bool, 
+        /**
+         * The RMS difference, dB.
+         */rmsDb: Double?, 
+        /**
+         * What happened, in words.
+         */message: String) {
+        self.aSerial = aSerial
+        self.aOutput = aOutput
+        self.bSerial = bSerial
+        self.bOutput = bOutput
+        self.bandLoHz = bandLoHz
+        self.bandHiHz = bandHiHz
+        self.checked = checked
+        self.passed = passed
+        self.rmsDb = rmsDb
+        self.message = message
+    }
+}
+
+#if compiler(>=6)
+extension MeasureSystemTransition: Sendable {}
+#endif
+
+
+extension MeasureSystemTransition: Equatable, Hashable {
+    public static func ==(lhs: MeasureSystemTransition, rhs: MeasureSystemTransition) -> Bool {
+        if lhs.aSerial != rhs.aSerial {
+            return false
+        }
+        if lhs.aOutput != rhs.aOutput {
+            return false
+        }
+        if lhs.bSerial != rhs.bSerial {
+            return false
+        }
+        if lhs.bOutput != rhs.bOutput {
+            return false
+        }
+        if lhs.bandLoHz != rhs.bandLoHz {
+            return false
+        }
+        if lhs.bandHiHz != rhs.bandHiHz {
+            return false
+        }
+        if lhs.checked != rhs.checked {
+            return false
+        }
+        if lhs.passed != rhs.passed {
+            return false
+        }
+        if lhs.rmsDb != rhs.rmsDb {
+            return false
+        }
+        if lhs.message != rhs.message {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(aSerial)
+        hasher.combine(aOutput)
+        hasher.combine(bSerial)
+        hasher.combine(bOutput)
+        hasher.combine(bandLoHz)
+        hasher.combine(bandHiHz)
+        hasher.combine(checked)
+        hasher.combine(passed)
+        hasher.combine(rmsDb)
+        hasher.combine(message)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureSystemTransition: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureSystemTransition {
+        return
+            try MeasureSystemTransition(
+                aSerial: FfiConverterString.read(from: &buf), 
+                aOutput: FfiConverterUInt8.read(from: &buf), 
+                bSerial: FfiConverterString.read(from: &buf), 
+                bOutput: FfiConverterUInt8.read(from: &buf), 
+                bandLoHz: FfiConverterDouble.read(from: &buf), 
+                bandHiHz: FfiConverterDouble.read(from: &buf), 
+                checked: FfiConverterBool.read(from: &buf), 
+                passed: FfiConverterBool.read(from: &buf), 
+                rmsDb: FfiConverterOptionDouble.read(from: &buf), 
+                message: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MeasureSystemTransition, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.aSerial, into: &buf)
+        FfiConverterUInt8.write(value.aOutput, into: &buf)
+        FfiConverterString.write(value.bSerial, into: &buf)
+        FfiConverterUInt8.write(value.bOutput, into: &buf)
+        FfiConverterDouble.write(value.bandLoHz, into: &buf)
+        FfiConverterDouble.write(value.bandHiHz, into: &buf)
+        FfiConverterBool.write(value.checked, into: &buf)
+        FfiConverterBool.write(value.passed, into: &buf)
+        FfiConverterOptionDouble.write(value.rmsDb, into: &buf)
+        FfiConverterString.write(value.message, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureSystemTransition_lift(_ buf: RustBuffer) throws -> MeasureSystemTransition {
+    return try FfiConverterTypeMeasureSystemTransition.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureSystemTransition_lower(_ value: MeasureSystemTransition) -> RustBuffer {
+    return FfiConverterTypeMeasureSystemTransition.lower(value)
+}
+
+
+/**
+ * One unit of a system measurement and the outputs measured on it.
+ */
+public struct MeasureSystemUnit {
+    /**
+     * Its USB serial (as the hub knows it).
+     */
+    public var serial: String
+    /**
+     * Its outputs to measure, 1 to 16, each once (`group` is ignored: the
+     * group is the whole setup).
+     */
+    public var outputs: [MeasureOutput]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Its USB serial (as the hub knows it).
+         */serial: String, 
+        /**
+         * Its outputs to measure, 1 to 16, each once (`group` is ignored: the
+         * group is the whole setup).
+         */outputs: [MeasureOutput]) {
+        self.serial = serial
+        self.outputs = outputs
+    }
+}
+
+#if compiler(>=6)
+extension MeasureSystemUnit: Sendable {}
+#endif
+
+
+extension MeasureSystemUnit: Equatable, Hashable {
+    public static func ==(lhs: MeasureSystemUnit, rhs: MeasureSystemUnit) -> Bool {
+        if lhs.serial != rhs.serial {
+            return false
+        }
+        if lhs.outputs != rhs.outputs {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(serial)
+        hasher.combine(outputs)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureSystemUnit: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureSystemUnit {
+        return
+            try MeasureSystemUnit(
+                serial: FfiConverterString.read(from: &buf), 
+                outputs: FfiConverterSequenceTypeMeasureOutput.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MeasureSystemUnit, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.serial, into: &buf)
+        FfiConverterSequenceTypeMeasureOutput.write(value.outputs, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureSystemUnit_lift(_ buf: RustBuffer) throws -> MeasureSystemUnit {
+    return try FfiConverterTypeMeasureSystemUnit.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureSystemUnit_lower(_ value: MeasureSystemUnit) -> RustBuffer {
+    return FfiConverterTypeMeasureSystemUnit.lower(value)
+}
+
+
+/**
+ * One unit judged by its own core (P5's preflight on that unit's mirror),
+ * for the core on the hub session.
+ */
+public struct MeasureSystemUnitCheck {
+    /**
+     * The unit's serial.
+     */
+    public var serial: String
+    /**
+     * P5's preflight of its outputs.
+     */
+    public var preflight: MeasurePreflight
+    /**
+     * What the session needs of the unit (its platform, rate, inputs,
+     * limiters, the measured chains), as JSON. Opaque to clients.
+     */
+    public var context: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The unit's serial.
+         */serial: String, 
+        /**
+         * P5's preflight of its outputs.
+         */preflight: MeasurePreflight, 
+        /**
+         * What the session needs of the unit (its platform, rate, inputs,
+         * limiters, the measured chains), as JSON. Opaque to clients.
+         */context: String) {
+        self.serial = serial
+        self.preflight = preflight
+        self.context = context
+    }
+}
+
+#if compiler(>=6)
+extension MeasureSystemUnitCheck: Sendable {}
+#endif
+
+
+extension MeasureSystemUnitCheck: Equatable, Hashable {
+    public static func ==(lhs: MeasureSystemUnitCheck, rhs: MeasureSystemUnitCheck) -> Bool {
+        if lhs.serial != rhs.serial {
+            return false
+        }
+        if lhs.preflight != rhs.preflight {
+            return false
+        }
+        if lhs.context != rhs.context {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(serial)
+        hasher.combine(preflight)
+        hasher.combine(context)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureSystemUnitCheck: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureSystemUnitCheck {
+        return
+            try MeasureSystemUnitCheck(
+                serial: FfiConverterString.read(from: &buf), 
+                preflight: FfiConverterTypeMeasurePreflight.read(from: &buf), 
+                context: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MeasureSystemUnitCheck, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.serial, into: &buf)
+        FfiConverterTypeMeasurePreflight.write(value.preflight, into: &buf)
+        FfiConverterString.write(value.context, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureSystemUnitCheck_lift(_ buf: RustBuffer) throws -> MeasureSystemUnitCheck {
+    return try FfiConverterTypeMeasureSystemUnitCheck.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureSystemUnitCheck_lower(_ value: MeasureSystemUnitCheck) -> RustBuffer {
+    return FfiConverterTypeMeasureSystemUnitCheck.lower(value)
+}
+
+
+/**
  * A walked run's timing (PLAN-P5 section 1.1 steps 6 and 7): the clock fit,
  * every cycle's residual and the quality gate's verdict. Non-finite numbers
  * read 0.
@@ -55849,6 +58574,343 @@ extension MeasureRunKind: Equatable, Hashable {}
 // Note that we don't yet support `indirect` for enums.
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
 /**
+ * Where an applied system alignment stands.
+ */
+
+public enum MeasureSystemApplyStage {
+    
+    /**
+     * Nothing applied.
+     */
+    case none
+    /**
+     * Applied; the summed runs are to be repeated (`measure_system_verify`).
+     */
+    case applied
+    /**
+     * Verified (or not): Keep or Revert.
+     */
+    case verified
+    /**
+     * Kept.
+     */
+    case kept
+    /**
+     * Reverted: the model and the units are as filed.
+     */
+    case reverted
+}
+
+
+#if compiler(>=6)
+extension MeasureSystemApplyStage: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureSystemApplyStage: FfiConverterRustBuffer {
+    typealias SwiftType = MeasureSystemApplyStage
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureSystemApplyStage {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .none
+        
+        case 2: return .applied
+        
+        case 3: return .verified
+        
+        case 4: return .kept
+        
+        case 5: return .reverted
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: MeasureSystemApplyStage, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .none:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .applied:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .verified:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .kept:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .reverted:
+            writeInt(&buf, Int32(5))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureSystemApplyStage_lift(_ buf: RustBuffer) throws -> MeasureSystemApplyStage {
+    return try FfiConverterTypeMeasureSystemApplyStage.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureSystemApplyStage_lower(_ value: MeasureSystemApplyStage) -> RustBuffer {
+    return FfiConverterTypeMeasureSystemApplyStage.lower(value)
+}
+
+
+extension MeasureSystemApplyStage: Equatable, Hashable {}
+
+
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
+ * Where a system measurement is.
+ */
+
+public enum MeasureSystemPhase {
+    
+    /**
+     * No session.
+     */
+    case idle
+    /**
+     * The noise floor is captured (nothing plays).
+     */
+    case preRoll
+    /**
+     * One output's ramp step plays (S3).
+     */
+    case ramp
+    /**
+     * The timed run plays.
+     */
+    case run
+    /**
+     * The capture is analysed.
+     */
+    case analysing
+    /**
+     * Finished: a result (or a summed check's verdicts) is ready.
+     */
+    case done
+    /**
+     * Stopped: by the user, a safety rule or the hub; nothing kept.
+     */
+    case aborted
+    /**
+     * Could not finish (no signal, the gate, the ramp); nothing kept.
+     */
+    case failed
+}
+
+
+#if compiler(>=6)
+extension MeasureSystemPhase: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureSystemPhase: FfiConverterRustBuffer {
+    typealias SwiftType = MeasureSystemPhase
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureSystemPhase {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .idle
+        
+        case 2: return .preRoll
+        
+        case 3: return .ramp
+        
+        case 4: return .run
+        
+        case 5: return .analysing
+        
+        case 6: return .done
+        
+        case 7: return .aborted
+        
+        case 8: return .failed
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: MeasureSystemPhase, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .idle:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .preRoll:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .ramp:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .run:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .analysing:
+            writeInt(&buf, Int32(5))
+        
+        
+        case .done:
+            writeInt(&buf, Int32(6))
+        
+        
+        case .aborted:
+            writeInt(&buf, Int32(7))
+        
+        
+        case .failed:
+            writeInt(&buf, Int32(8))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureSystemPhase_lift(_ buf: RustBuffer) throws -> MeasureSystemPhase {
+    return try FfiConverterTypeMeasureSystemPhase.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureSystemPhase_lower(_ value: MeasureSystemPhase) -> RustBuffer {
+    return FfiConverterTypeMeasureSystemPhase.lower(value)
+}
+
+
+extension MeasureSystemPhase: Equatable, Hashable {}
+
+
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
+ * What a session's runs are for.
+ */
+
+public enum MeasureSystemPurpose {
+    
+    /**
+     * The walked measurement.
+     */
+    case measure
+    /**
+     * The summed check of every inter-unit transition (RC5f).
+     */
+    case sumCheck
+    /**
+     * The summed runs repeated after an apply (P5's verify).
+     */
+    case verify
+}
+
+
+#if compiler(>=6)
+extension MeasureSystemPurpose: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureSystemPurpose: FfiConverterRustBuffer {
+    typealias SwiftType = MeasureSystemPurpose
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureSystemPurpose {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .measure
+        
+        case 2: return .sumCheck
+        
+        case 3: return .verify
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: MeasureSystemPurpose, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .measure:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .sumCheck:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .verify:
+            writeInt(&buf, Int32(3))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureSystemPurpose_lift(_ buf: RustBuffer) throws -> MeasureSystemPurpose {
+    return try FfiConverterTypeMeasureSystemPurpose.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureSystemPurpose_lower(_ value: MeasureSystemPurpose) -> RustBuffer {
+    return FfiConverterTypeMeasureSystemPurpose.lower(value)
+}
+
+
+extension MeasureSystemPurpose: Equatable, Hashable {}
+
+
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
  * Where the summed check stands.
  */
 
@@ -58308,6 +61370,30 @@ fileprivate struct FfiConverterOptionTypeMeasureLiveRta: FfiConverterRustBuffer 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeMeasureSystemIssue: FfiConverterRustBuffer {
+    typealias SwiftType = MeasureSystemIssue?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeMeasureSystemIssue.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeMeasureSystemIssue.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeMeasureTiming: FfiConverterRustBuffer {
     typealias SwiftType = MeasureTiming?
 
@@ -60211,6 +63297,256 @@ fileprivate struct FfiConverterSequenceTypeMeasureOutput: FfiConverterRustBuffer
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeMeasureOutput.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeMeasureSystemArrival: FfiConverterRustBuffer {
+    typealias SwiftType = [MeasureSystemArrival]
+
+    public static func write(_ value: [MeasureSystemArrival], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeMeasureSystemArrival.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [MeasureSystemArrival] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [MeasureSystemArrival]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeMeasureSystemArrival.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeMeasureSystemDelay: FfiConverterRustBuffer {
+    typealias SwiftType = [MeasureSystemDelay]
+
+    public static func write(_ value: [MeasureSystemDelay], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeMeasureSystemDelay.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [MeasureSystemDelay] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [MeasureSystemDelay]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeMeasureSystemDelay.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeMeasureSystemDocument: FfiConverterRustBuffer {
+    typealias SwiftType = [MeasureSystemDocument]
+
+    public static func write(_ value: [MeasureSystemDocument], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeMeasureSystemDocument.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [MeasureSystemDocument] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [MeasureSystemDocument]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeMeasureSystemDocument.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeMeasureSystemIssue: FfiConverterRustBuffer {
+    typealias SwiftType = [MeasureSystemIssue]
+
+    public static func write(_ value: [MeasureSystemIssue], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeMeasureSystemIssue.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [MeasureSystemIssue] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [MeasureSystemIssue]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeMeasureSystemIssue.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeMeasureSystemLevel: FfiConverterRustBuffer {
+    typealias SwiftType = [MeasureSystemLevel]
+
+    public static func write(_ value: [MeasureSystemLevel], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeMeasureSystemLevel.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [MeasureSystemLevel] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [MeasureSystemLevel]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeMeasureSystemLevel.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeMeasureSystemOutDelay: FfiConverterRustBuffer {
+    typealias SwiftType = [MeasureSystemOutDelay]
+
+    public static func write(_ value: [MeasureSystemOutDelay], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeMeasureSystemOutDelay.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [MeasureSystemOutDelay] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [MeasureSystemOutDelay]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeMeasureSystemOutDelay.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeMeasureSystemSnapshot: FfiConverterRustBuffer {
+    typealias SwiftType = [MeasureSystemSnapshot]
+
+    public static func write(_ value: [MeasureSystemSnapshot], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeMeasureSystemSnapshot.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [MeasureSystemSnapshot] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [MeasureSystemSnapshot]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeMeasureSystemSnapshot.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeMeasureSystemTransition: FfiConverterRustBuffer {
+    typealias SwiftType = [MeasureSystemTransition]
+
+    public static func write(_ value: [MeasureSystemTransition], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeMeasureSystemTransition.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [MeasureSystemTransition] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [MeasureSystemTransition]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeMeasureSystemTransition.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeMeasureSystemUnit: FfiConverterRustBuffer {
+    typealias SwiftType = [MeasureSystemUnit]
+
+    public static func write(_ value: [MeasureSystemUnit], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeMeasureSystemUnit.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [MeasureSystemUnit] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [MeasureSystemUnit]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeMeasureSystemUnit.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeMeasureSystemUnitCheck: FfiConverterRustBuffer {
+    typealias SwiftType = [MeasureSystemUnitCheck]
+
+    public static func write(_ value: [MeasureSystemUnitCheck], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeMeasureSystemUnitCheck.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [MeasureSystemUnitCheck] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [MeasureSystemUnitCheck]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeMeasureSystemUnitCheck.read(from: &buf))
         }
         return seq
     }
@@ -63023,6 +66359,51 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_measure_stop() != 2867) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_system_applied() != 12184) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_system_apply() != 53350) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_system_capture_push() != 35486) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_system_keep() != 4155) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_system_preflight() != 38600) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_system_proposal() != 22475) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_system_result() != 38290) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_system_revert() != 35695) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_system_start() != 61644) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_system_state() != 26745) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_system_stop() != 33996) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_system_sum_check() != 583) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_system_tick() != 37419) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_system_unit_check() != 61995) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_system_verify() != 36972) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_measure_tick() != 49262) {

@@ -238,6 +238,13 @@ enum Msg {
         epoch: u64,
         event: Box<crate::hub_server::HubServerEvent>,
     },
+    // -- WP ATCORE --
+    /// The hub aborted a system measurement on its own
+    /// (`system.measure.aborted`) on the client with this epoch.
+    MeasureAborted {
+        epoch: u64,
+        event: dspi_measure::system::messages::AbortedEvent,
+    },
 }
 
 /// The client's events, as messages. Safe on any thread, under any lock, and
@@ -277,6 +284,11 @@ impl LinkEvents for Forward {
                 epoch,
                 event: Box::new(event),
             });
+        // -- WP ATCORE --
+        } else if t == dspi_measure::system::messages::t::ABORTED
+            && let Ok(event) = serde_json::from_value(body.clone())
+        {
+            let _ = self.tx.send(Msg::MeasureAborted { epoch, event });
         }
     }
 }
@@ -2090,6 +2102,17 @@ fn on_msg(core: &DspiCore, id: u64, msg: Msg) {
                 .is_some_and(|s| s.id == id && s.instance == epoch);
             if current {
                 core.hub_server_event(*event);
+            }
+        }
+        // -- WP ATCORE --
+        Msg::MeasureAborted { epoch, event } => {
+            let current = core
+                .lock()
+                .link
+                .as_ref()
+                .is_some_and(|s| s.id == id && s.instance == epoch);
+            if current {
+                core.measure_system_on_aborted(event);
             }
         }
     }

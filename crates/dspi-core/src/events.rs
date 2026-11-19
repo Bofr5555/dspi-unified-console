@@ -333,7 +333,9 @@ impl Store {
                     Some(
                         e @ (ExtEvent::AlinkState(_)
                         | ExtEvent::ApplyResult(_)
-                        | ExtEvent::AlinkUsb(_)),
+                        | ExtEvent::AlinkUsb(_)
+                        // -- WP ATCORE -- the time base's 0xE4 (bit 5)
+                        | ExtEvent::TimeBase(_)),
                     ) => {
                         out.extend(alink_record(&e, t));
                         return;

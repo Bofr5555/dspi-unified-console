@@ -116,6 +116,8 @@ pub mod hub_server_measure;
 pub mod measure_sim;
 // -- WP P5TUNE -- the auto-tune
 pub mod measure_tune;
+// -- WP ATCORE -- the system measurement across units
+pub mod measure_system;
 // -- WP WB6I -- the Settings page: names, latency, the core-voltage flow
 pub mod settings;
 // -- WP WB4a --

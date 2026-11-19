@@ -3493,6 +3493,160 @@ interface DspiCoreApi : AutoCloseable {
     fun measureLiveAveraging(averaging: MeasureRtaAveraging): MeasureLiveState
 
     /**
+     * Judge this core's own device as one unit of a system measurement:
+     * P5's preflight of `unit`'s outputs on this device's mirror (S2, S6,
+     * S8, S11, S13, S7's bounds) and what the system session needs of it.
+     * Call it on each unit's own core and hand the checks to the core on
+     * the hub session. Reads the device; writes nothing.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a unit that is not this
+     * device, or a setup that is not one; [`DspiError::Disconnected`]; a
+     * transfer failure of the reads.
+     */
+    @Throws(DspiException::class)
+    fun measureSystemUnitCheck(setup: MeasureSystemSetup, unit: MeasureSystemUnit): MeasureSystemUnitCheck
+
+    /**
+     * What stands between `setup` and a system measurement, each item
+     * naming its unit: the hub (`system_measure`, a role above Viewer),
+     * every unit's own check (`checks`, one per unit), one rate, a plan
+     * that fits. Talks to no unit.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a setup that is not one.
+     */
+    @Throws(DspiException::class)
+    fun measureSystemPreflight(setup: MeasureSystemSetup, checks: List<MeasureSystemUnitCheck>): MeasureSystemPreflight
+
+    /**
+     * Start a system measurement: the preflight, then `system.measure.open`
+     * (the hub takes every unit's device lock and checks one domain), then
+     * the pre-roll. Nothing plays before the client has pushed the pre-roll
+     * (`measure_system_capture_push`) and ticked. Tick about every 50 ms
+     * (`measure_system_tick`) until the phase is `done`, `aborted` or
+     * `failed`.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a bad setup, a blocker
+     * (named with its unit) or a session already running;
+     * [`DspiError::Unsupported`] for a hub without `system_measure` ("measuring
+     * several units together needs the DSPi hub"); [`DspiError::Denied`]
+     * for a Viewer; [`DspiError::Link`] with the hub's refusal
+     * (`not_one_domain`, `not_locked`, `no_timeline`, `locked`, ...).
+     */
+    @Throws(DspiException::class)
+    fun measureSystemStart(setup: MeasureSystemSetup, checks: List<MeasureSystemUnitCheck>): MeasureSystemState
+
+    /**
+     * Push one block of the microphone's capture (as
+     * `measure_capture_push`): the frame index, a clip and the SPL cap are
+     * checked at once (S4, S5); nothing is analysed here. Ignored with no
+     * session.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for more than 1 Mi samples.
+     */
+    @Throws(DspiException::class)
+    fun measureSystemCapturePush(firstFrame: Long, samples: List<Float>, rateHz: Long, clipped: Boolean): MeasureSystemState
+
+    /**
+     * Drive the system session: the hub's status (about 4 Hz, which renews
+     * its lease), the per-unit judgements, the next step, one analysis
+     * slice. Call it about every 50 ms while active, off the UI thread.
+     */
+    fun measureSystemTick(): MeasureSystemState
+
+    /**
+     * The system session's state, without I/O.
+     */
+    fun measureSystemState(): MeasureSystemState
+
+    /**
+     * The user's Stop: `system.measure.abort` (every unit stopped, every
+     * START cancelled), the hub's session closed, the run discarded.
+     * Idempotent; never fails.
+     */
+    fun measureSystemStop(): MeasureSystemState
+
+    /**
+     * The finished measurement: per unit its document, every arrival and
+     * cross-unit delay with its uncertainty, the transitions.
+     *
+     * Errors: [`DspiError::InvalidArgument`] while no result is ready.
+     */
+    @Throws(DspiException::class)
+    fun measureSystemResult(): MeasureSystemResult
+
+    /**
+     * The alignment the last result proposes: the offered arrivals (the
+     * gate G1 to G4 passed and each one's delay to the group's latest
+     * output within 10 us), what is withheld and why, whether the summed
+     * check is still needed. No I/O but the role.
+     *
+     * Errors: [`DspiError::InvalidArgument`] while no result is ready.
+     */
+    @Throws(DspiException::class)
+    fun measureSystemProposal(): MeasureSystemProposal
+
+    /**
+     * Run the summed check of every inter-unit transition (RC5f): each
+     * transition's units started by op 9 at one T with their outputs at
+     * their current net polarities. Control or Admin. Then tick as for a
+     * measurement; the proposal shows the verdicts.
+     *
+     * Errors: [`DspiError::InvalidArgument`] with no result, nothing to
+     * check, or a session running; the hub's refusals as at the start.
+     */
+    @Throws(DspiException::class)
+    fun measureSystemSumCheck(): MeasureSystemState
+
+    /**
+     * Apply proposal `proposal_id` (Admin): the hub's model revision and
+     * every measured unit's output delays are filed, the offered arrivals
+     * are written into the model (`system.set`, guarded by the revision),
+     * then `system.align` writes the units. Repeat the summed runs next
+     * (`measure_system_verify`), then Keep or Revert.
+     *
+     * Errors: [`DspiError::Denied`] for a role below Admin, nothing sent;
+     * [`DspiError::InvalidArgument`] for another id, a summed check not
+     * passed, nothing offered; [`DspiError::Link`] with the hub's refusal
+     * (`conflict` when the model changed meanwhile).
+     */
+    @Throws(DspiException::class)
+    fun measureSystemApply(proposalId: Long): MeasureSystemApplied
+
+    /**
+     * After an apply: the summed runs again with the new delays (P5's
+     * verify). Tick as for a measurement; `measure_system_applied` shows
+     * the verdict.
+     *
+     * Errors: as `measure_system_sum_check`; nothing applied.
+     */
+    @Throws(DspiException::class)
+    fun measureSystemVerify(): MeasureSystemState
+
+    /**
+     * Where the applied alignment stands.
+     */
+    fun measureSystemApplied(): MeasureSystemApplied
+
+    /**
+     * Keep the applied alignment.
+     *
+     * Errors: [`DspiError::InvalidArgument`] with nothing applied.
+     */
+    @Throws(DspiException::class)
+    fun measureSystemKeep(): MeasureSystemApplied
+
+    /**
+     * Revert the applied alignment (Admin): the filed model is set again
+     * (`system.set`) and `system.align` writes the units back; every unit's
+     * output delays are read back against the filed ones.
+     *
+     * Errors: [`DspiError::InvalidArgument`] with nothing applied;
+     * [`DspiError::Denied`] below Admin; the hub's refusals.
+     */
+    @Throws(DspiException::class)
+    fun measureSystemRevert(): MeasureSystemApplied
+
+    /**
      * The layout the device's state suggests (PLAN-P5 section 1.4 step 1):
      * each enabled output that plays an input, its way from its filters
      * (only a low-pass: low, or sub at or below 120 Hz or by name; a

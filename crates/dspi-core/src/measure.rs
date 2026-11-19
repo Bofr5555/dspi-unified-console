@@ -55,6 +55,18 @@ mod session;
 mod live;
 // -- WP P5TUNE -- the auto-tune (PLAN-P5 section 1.4, T10)
 mod tune;
+// -- WP ATCORE -- the system measurement across units (PLAN-AT 1.4, 1.5)
+mod system;
+pub use system::{
+    MeasureSystemApplied, MeasureSystemApplyStage, MeasureSystemArrival, MeasureSystemDelay,
+    MeasureSystemDocument, MeasureSystemIssue, MeasureSystemLevel, MeasureSystemOutDelay,
+    MeasureSystemPhase, MeasureSystemPreflight, MeasureSystemProposal, MeasureSystemPurpose,
+    MeasureSystemResult, MeasureSystemSetup, MeasureSystemSnapshot, MeasureSystemState,
+    MeasureSystemTransition, MeasureSystemUnit, MeasureSystemUnitCheck,
+};
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_atcore;
 pub use live::{
     MeasureLiveAdjust, MeasureLiveBand, MeasureLiveChange, MeasureLiveCurve, MeasureLiveFrame,
     MeasureLiveMode, MeasureLiveProposal, MeasureLiveRta, MeasureLiveSetup, MeasureLiveState,
@@ -157,6 +169,32 @@ pub(crate) const NOTICE_KEYS: &[&str] = &[
     "measure.tune.not_kept",
     // -- WP P5TRUST --
     "measure.tune.keep_unverified",
+    // -- WP ATCORE -- the system measurement across units
+    "measure.system.needs_hub",
+    "measure.system.unit_check",
+    "measure.system.rates",
+    "measure.system.not_one_domain",
+    "measure.system.not_locked",
+    "measure.system.no_timeline",
+    "measure.system.hub_refused",
+    "measure.system.plan",
+    "measure.system.abort.clip",
+    "measure.system.abort.output_peak",
+    "measure.system.abort.limiter",
+    "measure.system.abort.disturbance",
+    "measure.system.abort.time_base",
+    "measure.system.abort.generator",
+    "measure.system.abort.hub",
+    "measure.system.abort.disconnected",
+    "measure.system.abort.overrun",
+    "measure.system.gate",
+    "measure.system.timing_unreliable",
+    "measure.system.chain",
+    "measure.system.sum_check_failed",
+    "measure.system.sum_check_needed",
+    "measure.system.admin",
+    "measure.system.nothing_offered",
+    "measure.system.verify_failed",
 ];
 
 // ── Records ─────────────────────────────────────────────────────────────
@@ -601,6 +639,11 @@ pub(crate) struct MeasureSlot {
     tune: Mutex<tune::Tune>,
     /// What the auto-tune shows (a leaf).
     tune_view: Mutex<MeasureTuneState>,
+    // -- WP ATCORE --
+    /// The system session across units: taken before `inner`, never after.
+    system: Mutex<system::SystemSlot>,
+    /// The hub's `system.measure.aborted` events (a leaf).
+    system_aborted: system::AbortedQueue,
 }
 
 impl MeasureSlot {
