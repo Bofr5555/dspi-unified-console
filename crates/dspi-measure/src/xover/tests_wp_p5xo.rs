@@ -94,7 +94,11 @@ fn wp_p5xo_de_embedding_recovers_the_driver_and_masks_by_snr_minus_attenuation()
     let w = way(3, WayRole::Low, chain(vec![band(LR4_LP, 1000.0)]), &d, 40.0);
     let drv = de_embed(&w, &ProtoModel).unwrap();
     assert_eq!(drv.output, 3);
-    assert!((drv.arrival_ms - 50.05).abs() < 1e-9);
+    // -- WP P5HOLD -- the synthetic arrival holds the chain's onset, as a
+    // measured one does; de-embedding takes off the chain's delay only.
+    let onset = chain_onset_ms(&w.chain, &ProtoModel).unwrap();
+    assert!(onset > 0.1 && onset < 1.0, "{onset}");
+    assert!((drv.arrival_ms - 50.05 - onset).abs() < 1e-9);
     let f = LogGrid::STANDARD.freqs().unwrap();
     let valid = drv.response.valid.as_ref().unwrap();
     let ph = drv.response.phase_deg.as_ref().unwrap();

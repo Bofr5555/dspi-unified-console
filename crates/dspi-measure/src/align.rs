@@ -48,7 +48,7 @@
 //!
 //! Pure and deterministic: no hash maps, no clock, no panics on any input.
 
-use crate::types::{ChannelChain, LogGrid, MeasureError, Response, WayRole};
+use crate::types::{ChannelChain, LogGrid, MeasureError, Response, SectionModel, WayRole};
 use serde::{Deserialize, Serialize};
 
 /// The most ways one alignment group (one walked run) holds: the run's bound
@@ -219,10 +219,17 @@ pub struct AlignResult {
 /// [`MAX_WAYS`], grids that differ, no phase, a transition out of range);
 /// [`MeasureError::NoSignal`] when a transition's window holds fewer than
 /// [`MIN_WINDOW_POINTS`] trusted points.
+///
+/// `model` is the device's filter model (WP P5HOLD, review P5-D D1): the
+/// timing is held near the ways' arrivals each without its measured chain's
+/// onset (see [`crate::xover`]'s `chain_onset_ms`), so a steep low-pass's
+/// late onset does not move the hold off the right alignment. A chain it
+/// cannot model keeps its arrival as it is.
 pub fn align(
     ways: &[Way],
     group: &AlignGroup,
     options: &AlignOptions,
+    model: &dyn SectionModel,
 ) -> Result<AlignResult, MeasureError> {
     check_count(ways.len())?;
     check_options(options)?;
@@ -311,7 +318,16 @@ pub fn align(
         let fit = if options.keep_delays {
             ctx.search(db - da, 0.0, 0, 0)
         } else {
-            let start = (wa.arrival_ms - da) - (wb.arrival_ms - db);
+            // -- WP P5HOLD -- (review P5-D D1) each arrival without its
+            // measured chain's onset: the drivers' own (see xover's
+            // chain_onset_ms).
+            let start = crate::xover::anchored_start_ms(
+                wa.arrival_ms - da,
+                &wa.chain,
+                wb.arrival_ms - db,
+                &wb.chain,
+                model,
+            );
             // -- WP P5TRUST2 -- held near the arrivals, as the crossover
             // search's candidates (review P5TRUST N2): never a half or whole
             // cycle off them.
@@ -901,6 +917,11 @@ impl PairCtx {
     /// `held_unclear`, and the callers then keep the current delay and
     /// polarity and say so: the hold may confirm the polarity there is, it
     /// never changes it.
+    ///
+    /// WP P5HOLD (review P5-D D1): the callers now pass a `start` without
+    /// each measured chain's onset (`xover::anchored_start_ms`), so for a
+    /// steep pair the right alignment lies inside the hold again and this
+    /// fallback is the safety net it was meant to be.
     pub(crate) fn search_held(
         &self,
         start: f64,

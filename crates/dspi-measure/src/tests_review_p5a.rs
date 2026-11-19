@@ -502,6 +502,7 @@ fn wp_p5a_an_odd_order_butterworth_pair_is_aligned_to_quadrature_and_keeps_its_p
                 transitions: pair(),
             },
             &AlignOptions::default(),
+            &ProtoModel,
         )
         .unwrap();
         assert!(
@@ -582,6 +583,7 @@ fn wp_p5a_align_and_align_only_agree_and_a_near_tie_keeps_the_polarity() {
             transitions: tr.clone(),
         },
         &AlignOptions::default(),
+        &ProtoModel,
     )
     .unwrap();
     let drivers: Vec<_> = ways
