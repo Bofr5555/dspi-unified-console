@@ -6075,6 +6075,10 @@ Macros are stored on the device alongside the controls and share their Save and 
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Choose the placement first: speakers or headphones on a coupler. Headphones are measured much more quietly.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Reseats: 1 to 9.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -6562,6 +6566,10 @@ Macros are stored on the device alongside the controls and share their Save and 
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Choose the placement first: speakers or headphones on a coupler. Headphones are measured much more quietly.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Live output</source>
         <translation type="unfinished"></translation>
     </message>
@@ -6571,6 +6579,10 @@ Macros are stored on the device alongside the controls and share their Save and 
     </message>
     <message>
         <source>Placement</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Choose the placement</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -6953,6 +6965,10 @@ Macros are stored on the device alongside the controls and share their Save and 
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Choose the placement</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Reseats</source>
         <translation type="unfinished"></translation>
     </message>
@@ -6962,6 +6978,10 @@ Macros are stored on the device alongside the controls and share their Save and 
     </message>
     <message>
         <source>Coupler</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Where is the microphone? Speakers or headphones on a coupler: the levels depend on it, and headphones are measured much more quietly.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -7010,6 +7030,10 @@ Macros are stored on the device alongside the controls and share their Save and 
     </message>
     <message>
         <source>By the date</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Two passes cannot judge timing; use three or more for auto-tune.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -7288,6 +7312,14 @@ Macros are stored on the device alongside the controls and share their Save and 
     </message>
     <message>
         <source>Placement across units</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Use the simulated microphone (the demo hub&apos;s room hears its demo units; nothing plays anywhere)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Simulated microphone across units</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -13676,6 +13708,14 @@ This wiring is a board-level setting: it is stored on the device, survives prese
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>The connection was lost while the tune waited in its guard: the device may still hold the tune.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The revert failed: the device may still hold part of the tune.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Reverted: the device is as it was before the tune.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -13946,6 +13986,10 @@ This wiring is a board-level setting: it is stored on the device, survives prese
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>The simulated microphone could not be turned on.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Measuring across units.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -14122,11 +14166,7 @@ This wiring is a board-level setting: it is stored on the device, survives prese
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Reverted: %1</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>The hub&apos;s guard has run out: it has put the installation and every unit back by itself. Keep shows what it did.</source>
+        <source>The hub&apos;s guard has run out: unless it was kept, the hub has put the installation back by itself. Keep shows what the hub did.</source>
         <translation type="unfinished"></translation>
     </message>
     <message numerus="yes">
