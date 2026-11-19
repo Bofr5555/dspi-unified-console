@@ -1018,6 +1018,8 @@ impl SysSession {
             session: self.session.clone(),
             segments: segments.clone(),
             lead_ms: self.lead_ms,
+            // WP ATSUMOFF: a summed run's parts may start apart.
+            summed: schedule0.is_summed(),
         };
         let reply = hub
             .request(msg::t::RUN, to_value(&req))
@@ -1414,14 +1416,15 @@ impl SysSession {
         let level_db = (la.min(lb) - super::proposal::SUM_DOUBLING_DB).min(job.level_db);
         let mut parts = Vec::new();
         let mut configs = Vec::new();
-        for &(u, o, inverted) in &[job.a, job.b] {
+        // WP ATSUMOFF: each part at its own start, so both are heard together.
+        for &((u, o, inverted), start) in &[(job.a, job.starts.0), (job.b, job.starts.1)] {
             let Some(pu) = self.plan.units.get(u) else {
                 continue;
             };
             let mask = 1u16.checked_shl(u32::from(o)).unwrap_or(0);
             let walk = WalkSchedule::new(sweep, mask, SUM_PASSES)
                 .map_err(|e| DspiError::InvalidArgument { msg: e.to_string() })?;
-            parts.push((UnitIndex(u8::try_from(u).unwrap_or(u8::MAX)), walk));
+            parts.push((UnitIndex(u8::try_from(u).unwrap_or(u8::MAX)), start, walk));
             configs.push((
                 u,
                 SiggenConfig {
@@ -1437,7 +1440,7 @@ impl SysSession {
                 },
             ));
         }
-        let schedule = SystemSchedule::summed(self.domain, self.plan.rate_hz, 0, parts)
+        let schedule = SystemSchedule::summed_at(self.domain, self.plan.rate_hz, 0, parts)
             .map_err(|e| DspiError::InvalidArgument { msg: e.to_string() })?;
         Ok((TimedKind::Sum(idx), configs, schedule))
     }

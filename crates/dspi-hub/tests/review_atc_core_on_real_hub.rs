@@ -601,15 +601,16 @@ fn whole(world: World, settle: Duration) {
     assert!(p.transitions[0].checked && p.transitions[0].passed, "{p:?}");
     assert!(p.offered && p.may_apply && !p.withdrawn, "{p:?}");
     // S-AT4: after its own ramp steps (one generator at a time), the two
-    // units started at one T, each 6 dB under the lower ramp result, never
-    // above the measurement's.
+    // units started together, each 6 dB under the lower ramp result, never
+    // above the measurement's. WP ATSUMOFF: the unit heard 2 ms (96
+    // samples) earlier starts that much later, so both arrive together.
     let played = &room.heard[walked..];
     let (ramps, summed) = played.split_at(played.len() - 2);
     assert!(ramps.len() >= 2, "{played:?}");
     for w in played[..=ramps.len()].windows(2) {
         assert!(w[1].1 > w[0].1, "the ramp steps never together: {played:?}");
     }
-    assert_eq!(summed[0].1, summed[1].1, "one T");
+    assert_eq!(summed[0].1.abs_diff(summed[1].1), 96, "{summed:?}");
     assert_ne!(summed[0].0, summed[1].0, "two units");
     for s in summed {
         assert!(

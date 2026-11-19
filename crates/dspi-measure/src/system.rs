@@ -21,6 +21,20 @@ pub mod messages;
 pub const MAX_UNITS: usize = 16;
 /// The most segments one schedule holds (passes 1 to 8 over up to 16 units).
 pub const MAX_SEGMENTS: usize = 128;
+// -- WP ATSUMOFF --
+/// The most a summed run's parts may start apart, ms
+/// ([`SystemSchedule::summed_at`]; the hub's `system.measure.run` with
+/// `summed` refuses a wider spread). A part starts later by the difference
+/// of the predicted arrivals it brings together: the units' play-out and
+/// output delays, tens of milliseconds on USB-direct.
+pub const MAX_SUM_SPREAD_MS: u32 = 1_000;
+
+/// [`MAX_SUM_SPREAD_MS`] in samples at `rate_hz`.
+pub fn max_sum_spread_samples(rate_hz: u32) -> u64 {
+    u64::from(rate_hz)
+        .saturating_mul(u64::from(MAX_SUM_SPREAD_MS))
+        .saturating_div(1000)
+}
 
 /// A unit of the alignment group: an index into the group's unit list (the
 /// session keeps the serials).
@@ -144,7 +158,8 @@ impl SystemSchedule {
     }
 
     /// A summed run (RC5f across units): every segment starts at the same
-    /// `start`, each on a different unit, so their outputs play together.
+    /// `start`, each on a different unit, so their outputs play together
+    /// (see [`SystemSchedule::summed_at`] for parts that start apart).
     ///
     /// Errors: [`MeasureError::Invalid`] for fewer than two segments, more than
     /// [`MAX_UNITS`], a unit twice or past [`MAX_UNITS`], or a sweep at another
@@ -155,15 +170,44 @@ impl SystemSchedule {
         start: u64,
         parts: Vec<(UnitIndex, WalkSchedule)>,
     ) -> Result<SystemSchedule, MeasureError> {
+        SystemSchedule::summed_at(
+            domain,
+            rate_hz,
+            start,
+            parts.into_iter().map(|(u, w)| (u, 0, w)).collect(),
+        )
+    }
+
+    // -- WP ATSUMOFF --
+    /// A summed run whose parts start apart: part `(unit, offset, walk)`
+    /// starts at `start + offset`, so that the outputs it brings together
+    /// sound together although their units' play-out and output delays
+    /// differ (on USB-direct the streams' start offsets put tens of
+    /// milliseconds into `out.delay`). The segments are kept in time order
+    /// (by offset; equal offsets in the given order); the analysis takes the
+    /// earliest start as its reference, so a later part's response is its
+    /// offset later in the sum. [`SystemSchedule::summed`] is the case of
+    /// every offset 0.
+    ///
+    /// Errors: as [`SystemSchedule::summed`], plus an offset over
+    /// [`MAX_SUM_SPREAD_MS`], no part at offset 0, or a start past the
+    /// counter.
+    pub fn summed_at(
+        domain: DomainId,
+        rate_hz: u32,
+        start: u64,
+        parts: Vec<(UnitIndex, u64, WalkSchedule)>,
+    ) -> Result<SystemSchedule, MeasureError> {
         if parts.len() < 2 || parts.len() > MAX_UNITS {
             return Err(MeasureError::Invalid(format!(
                 "{} units in a summed run (2 to {MAX_UNITS})",
                 parts.len()
             )));
         }
+        let spread = max_sum_spread_samples(rate_hz);
         let mut seen: Vec<UnitIndex> = Vec::with_capacity(parts.len());
         let mut segments = Vec::with_capacity(parts.len());
-        for (unit, schedule) in parts {
+        for (unit, offset, schedule) in parts {
             if usize::from(unit.0) >= MAX_UNITS || seen.contains(&unit) {
                 return Err(MeasureError::Invalid(format!(
                     "unit {} twice or out of range",
@@ -176,6 +220,15 @@ impl SystemSchedule {
                     schedule.sweep.rate_hz
                 )));
             }
+            if offset > spread {
+                return Err(MeasureError::Invalid(format!(
+                    "a summed run's part {offset} samples after its first (at most {MAX_SUM_SPREAD_MS} ms)"
+                )));
+            }
+            let start = start
+                .checked_add(offset)
+                .filter(|s| s.checked_add(schedule.total_samples()).is_some())
+                .ok_or_else(|| MeasureError::Invalid("a start past the counter".into()))?;
             seen.push(unit);
             segments.push(Segment {
                 unit,
@@ -183,6 +236,13 @@ impl SystemSchedule {
                 schedule,
             });
         }
+        if segments.iter().all(|s| s.start != start) {
+            return Err(MeasureError::Invalid(
+                "no part of the summed run starts at its start".into(),
+            ));
+        }
+        // Stable: equal offsets keep the given order.
+        segments.sort_by_key(|s| s.start);
         Ok(SystemSchedule {
             domain,
             rate_hz,
@@ -191,7 +251,8 @@ impl SystemSchedule {
         })
     }
 
-    /// A summed run: every segment starts together.
+    /// A summed run: every segment plays together (from one start, or from
+    /// the offsets of [`SystemSchedule::summed_at`]).
     pub fn is_summed(&self) -> bool {
         self.summed
     }
@@ -377,5 +438,74 @@ mod tests_wp_planat {
             .is_err()
         );
         assert!(SystemSchedule::summed(D, 48_000, 0, vec![(UnitIndex(0), a)]).is_err());
+    }
+
+    // -- WP ATSUMOFF --
+    #[test]
+    fn wp_atsumoff_summed_parts_may_start_apart_within_the_spread() {
+        let a = walk(48_000, 0b1);
+        let s = SystemSchedule::summed_at(
+            D,
+            48_000,
+            500,
+            vec![
+                (UnitIndex(0), 1_382, a.clone()),
+                (UnitIndex(1), 0, a.clone()),
+                (UnitIndex(2), 0, a.clone()),
+            ],
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+        assert!(s.is_summed());
+        // In time order, equal offsets as given; the first start is the run's.
+        let order: Vec<(u8, u64)> = s.segments().iter().map(|g| (g.unit.0, g.start)).collect();
+        assert_eq!(order, vec![(1, 500), (2, 500), (0, 1_882)]);
+        assert_eq!(s.start(), 500);
+        assert_eq!(s.end(), 1_882 + a.total_samples());
+        // Every offset 0 is `summed`.
+        let same = SystemSchedule::summed_at(
+            D,
+            48_000,
+            7,
+            vec![(UnitIndex(0), 0, a.clone()), (UnitIndex(1), 0, a.clone())],
+        );
+        let plain = SystemSchedule::summed(
+            D,
+            48_000,
+            7,
+            vec![(UnitIndex(0), a.clone()), (UnitIndex(1), a.clone())],
+        );
+        assert_eq!(same.ok(), plain.ok());
+        // At most 1 s apart; one part at the start; distinct units.
+        let at = |o: u64, p: u64| {
+            SystemSchedule::summed_at(
+                D,
+                48_000,
+                0,
+                vec![(UnitIndex(0), o, a.clone()), (UnitIndex(1), p, a.clone())],
+            )
+        };
+        assert!(at(0, 48_000).is_ok());
+        assert!(at(0, 48_001).is_err());
+        assert!(at(10, 20).is_err());
+        assert!(
+            SystemSchedule::summed_at(
+                D,
+                48_000,
+                0,
+                vec![(UnitIndex(0), 0, a.clone()), (UnitIndex(0), 5, a.clone())]
+            )
+            .is_err()
+        );
+        assert!(
+            SystemSchedule::summed_at(
+                D,
+                48_000,
+                u64::MAX - 10,
+                vec![(UnitIndex(0), 0, a.clone()), (UnitIndex(1), 20, a)]
+            )
+            .is_err()
+        );
+        assert_eq!(max_sum_spread_samples(48_000), 48_000);
+        assert_eq!(max_sum_spread_samples(0), 0);
     }
 }

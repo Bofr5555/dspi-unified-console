@@ -85,6 +85,14 @@ struct Faults {
     sum_detune: Option<(usize, f64)>,
     /// Walked runs: this unit's segments wander by up to this, us.
     wander_us: Option<(usize, f64)>,
+    // -- review AT-D1 --
+    /// A hub from before WP ATSUMOFF: it does not know `summed` and refuses
+    /// segments that overlap at different offsets (`bad_schedule`).
+    old_hub: bool,
+    /// Summed runs: the microphone's clock is this fast, ppm.
+    sum_mic_ppm: Option<f64>,
+    /// This unit's drivers are wired with inverted polarity.
+    wired_inverted: Option<usize>,
 }
 
 struct Stub {
@@ -220,6 +228,9 @@ impl Stub {
         let n: usize = self.units.iter().map(|u| usize::from(u.outputs)).sum();
         let mut world = World::flat(n, RATE);
         world.clock.latency_ms = 5.0;
+        if let (true, Some(ppm)) = (summed, self.faults.sum_mic_ppm) {
+            world.clock.ppm = ppm;
+        }
         for (u, unit) in self.units.iter().enumerate() {
             for o in 0..unit.outputs {
                 let mut d = unit.acoustic_ms[usize::from(o)]
@@ -232,6 +243,9 @@ impl Stub {
                     d += ms;
                 }
                 world.outputs[self.global(u, o)].delay_ms = d;
+                if self.faults.wired_inverted == Some(u) {
+                    world.outputs[self.global(u, o)].driver.inverted = true;
+                }
             }
         }
         let mut signals: Vec<(usize, u64, Vec<f32>, f32)> = Vec::new();
@@ -375,6 +389,14 @@ impl Stub {
                 self.settling_seen = true;
                 let mut placed = Vec::new();
                 let mut segs = Vec::new();
+                // Review AT-D1: an older hub's `check_segments`.
+                if self.faults.old_hub
+                    && r.segments.windows(2).any(|w| w[0].offset != w[1].offset)
+                    && r.segments.len() > 1
+                    && self.units.iter().all(|u| u.staged.is_some())
+                {
+                    return Err(link("bad_schedule", "starts before the one before it ends"));
+                }
                 for s in &r.segments {
                     let u = usize::from(s.unit);
                     let cfg = self.units[u]
@@ -408,7 +430,9 @@ impl Stub {
                     });
                     segs.push((u, t0 + s.offset));
                 }
-                let summed = r.segments.len() > 1 && r.segments.iter().all(|s| s.offset == 0);
+                // WP ATSUMOFF: a summed run's parts may start apart.
+                let summed = (r.summed && !self.faults.old_hub)
+                    || (r.segments.len() > 1 && r.segments.iter().all(|s| s.offset == 0));
                 self.render(&segs, summed);
                 Ok(serde_json::to_value(RunReply {
                     t0,
@@ -1480,12 +1504,13 @@ fn sum_session(
     v
 }
 
-/// The sum check is judged only as far up as its window sees both arrivals
-/// (703 Hz for two outputs 8 ms apart), where a walked delay that is wrong
-/// by 100 us still agrees within 1.5 dB. The verify must not inherit that
-/// band: after the apply the arrivals are predicted to coincide, the whole
-/// transition band is judged (up to a quarter of the rate), and the wrong
-/// delay fails it.
+/// At one T the sum check was judged only as far up as its window saw both
+/// arrivals (703 Hz for two outputs 8 ms apart), where a walked delay wrong
+/// by 100 us still agreed within 1.5 dB. WP ATSUMOFF: its parts now start
+/// apart by their predicted arrivals, so it judges the whole transition
+/// band and fails that delay. The verify must not be narrower either: after
+/// the apply the arrivals coincide, the whole band is judged (up to a
+/// quarter of the rate), and a wrong delay fails it.
 #[test]
 fn review_atc_the_verify_judges_the_whole_band_and_fails_a_wrong_delay() {
     let s = setup(&[("A", &[0]), ("B", &[0])]);
@@ -1496,18 +1521,24 @@ fn review_atc_the_verify_judges_the_whole_band_and_fails_a_wrong_delay() {
     let (_, out) = measure(&mut hub, &s);
     let mut o = out.unwrap();
     let top = o.result.transitions[0].band_hi_hz;
-    assert!(
-        (600.0..800.0).contains(&top),
-        "the sum check's reach: {top}"
-    );
+    assert!(top > 5_000.0, "the sum check's reach: {top}");
+    let jobs = o.sum_jobs(MeasureSystemPurpose::SumCheck).unwrap();
+    // A arrives 8 ms (384 samples) earlier: it starts that much later.
+    assert_eq!(jobs[0].starts, (384, 0), "{:?}", jobs[0].starts);
     // B plays 0.1 ms later than the walked run measured it.
     hub.0.lock().unwrap().faults.sum_detune = Some((1, 0.1));
     let v = sum_session(&o, &mut hub, MeasureSystemPurpose::SumCheck);
-    assert!(v[0].passed, "below 703 Hz 100 us is not told: {v:?}");
+    assert!(!v[0].passed, "100 us is told over the whole band: {v:?}");
+    assert!(v[0].rms_db.is_some(), "{v:?}");
+    // Right again: the sum check passes; the apply; then wrong again.
+    hub.0.lock().unwrap().faults.sum_detune = None;
+    let v = sum_session(&o, &mut hub, MeasureSystemPurpose::SumCheck);
+    assert!(v[0].passed, "{v:?}");
     o.absorb_verdicts(MeasureSystemPurpose::SumCheck, v);
     let p = o.proposal("admin");
     assert!(p.offered, "{p:?}");
     o.apply(&mut hub, p.id).unwrap();
+    hub.0.lock().unwrap().faults.sum_detune = Some((1, 0.1));
     let jobs = o.sum_jobs(MeasureSystemPurpose::Verify).unwrap();
     assert!(
         (jobs[0].band.1 - 12_000.0).abs() < 1.0,
@@ -1546,4 +1577,324 @@ fn review_atc_the_verify_judges_the_whole_band_and_fails_a_wrong_delay() {
     assert!(v[0].passed, "{v:?}");
     o.absorb_verdicts(MeasureSystemPurpose::Verify, v);
     assert_eq!(o.keep().unwrap().stage, MeasureSystemApplyStage::Kept);
+}
+
+// -- WP ATSUMOFF --
+/// USB-direct puts the streams' start offsets into `out.delay` (tens of
+/// ms). At one T the two units of a summed run then sounded 30 ms apart, the
+/// band's top (0.375 * 15 / dt, 188 Hz) fell under its floor and every
+/// cross-unit delay was withdrawn. Now the part predicted to arrive earlier
+/// starts that much later: the sum check judges the whole band and passes,
+/// the apply goes through, the verify passes, and the summed run's starts
+/// keep the lead (each at `t0 + offset`, the later at most 1 s after).
+#[test]
+fn wp_atsumoff_out_delays_tens_of_ms_apart_are_checked_over_the_whole_band() {
+    let s = setup(&[("A", &[0]), ("B", &[0])]);
+    let mut a = unit("A", 1, 48, &[3.0]);
+    a.out_delay_ms = vec![30.0];
+    let mut hub = StubHub(Arc::new(Mutex::new(Stub::new(vec![
+        a,
+        unit("B", 1, 48, &[4.2]),
+    ]))));
+    let (_, out) = measure(&mut hub, &s);
+    let mut o = out.unwrap();
+    // The acoustic arrivals: the output delay is out.
+    assert!((arrival(&o, "A", 0).arrival_us + 1_200.0).abs() < 3.0);
+    assert!(o.result.transitions[0].band_hi_hz > 5_000.0);
+    let jobs = o.sum_jobs(MeasureSystemPurpose::SumCheck).unwrap();
+    // A is heard 28.8 ms (1382 samples) after B at one T: B starts later.
+    assert_eq!(jobs[0].starts.0, 0, "{:?}", jobs[0].starts);
+    assert!(
+        (jobs[0].starts.1 as i64 - 1_382).abs() <= 1,
+        "{:?}",
+        jobs[0].starts
+    );
+    assert!(jobs[0].band.1 > 5_000.0, "{:?}", jobs[0].band);
+    let v = sum_session(&o, &mut hub, MeasureSystemPurpose::SumCheck);
+    assert!(v[0].passed, "{v:?}");
+    {
+        // The run asked for a summed run; B's start is its offset after A's.
+        let st = hub.0.lock().unwrap();
+        let (sa, sb) = (
+            st.units[0].segs.last().unwrap().t,
+            st.units[1].segs.last().unwrap().t,
+        );
+        assert_eq!(sb - sa, jobs[0].starts.1);
+    }
+    o.absorb_verdicts(MeasureSystemPurpose::SumCheck, v);
+    let p = o.proposal("admin");
+    assert!(p.offered && !p.withdrawn, "{p:?}");
+    o.apply(&mut hub, p.id).unwrap();
+    let v = sum_session(&o, &mut hub, MeasureSystemPurpose::Verify);
+    assert!(v[0].passed, "{v:?}");
+    o.absorb_verdicts(MeasureSystemPurpose::Verify, v);
+    assert_eq!(o.applied.verified, Some(true), "{}", o.applied.message);
+    // A delay wrong by 100 us (B later than measured) fails the next sum
+    // check over that band: judged, not "too few points".
+    hub.0.lock().unwrap().faults.sum_detune = Some((1, 0.1));
+    let jobs = o.sum_jobs(MeasureSystemPurpose::Verify).unwrap();
+    assert!(jobs[0].band.1 > 5_000.0, "{:?}", jobs[0].band);
+    let v = sum_session(&o, &mut hub, MeasureSystemPurpose::Verify);
+    assert!(!v[0].passed && v[0].rms_db.is_some(), "{v:?}");
+}
+
+#[test]
+fn wp_atsumoff_sum_starts_bring_the_arrivals_together_within_the_spread() {
+    use proposal::sum_starts;
+    // A later by 8 ms: B starts 384 samples later; together to half a sample.
+    let ((a, b), apart) = sum_starts(11.0, 3.0, RATE);
+    assert_eq!((a, b), (0, 384));
+    assert!(apart.abs() < 1e-9, "{apart}");
+    let ((a, b), apart) = sum_starts(3.0, 3.0101, RATE);
+    assert_eq!((a, b), (0, 0));
+    assert!((apart + 0.0101).abs() < 1e-9, "{apart}");
+    let ((a, b), apart) = sum_starts(3.0, 3.03, RATE);
+    assert_eq!((a, b), (1, 0));
+    assert!(apart.abs() < 0.5 / 48.0, "{apart}");
+    // Wider than 1 s: capped, the rest left in (the band narrows).
+    let ((a, b), apart) = sum_starts(0.0, 1_500.0, RATE);
+    assert_eq!((a, b), (48_000, 0));
+    assert!((apart + 500.0).abs() < 1e-9, "{apart}");
+    // Nothing finite: no offset, the difference left in.
+    assert_eq!(sum_starts(f64::NAN, 0.0, RATE).0, (0, 0));
+    assert_eq!(sum_starts(1.0, 0.0, 0).0, (0, 0));
+}
+
+// -- review AT-D1 --
+/// A hub from before WP ATSUMOFF refuses a summed run whose parts start
+/// apart (`bad_schedule`: its segments overlap at different offsets). The
+/// sum check then ends with no verdict, nothing is offered and an apply is
+/// refused: it fails closed.
+#[test]
+fn review_atd1_an_older_hub_refuses_staggered_starts_and_nothing_is_offered() {
+    let s = setup(&[("A", &[0]), ("B", &[0])]);
+    let mut hub = StubHub(Arc::new(Mutex::new(Stub::new(vec![
+        unit("A", 1, 48, &[3.0]),
+        unit("B", 1, 48, &[11.0]),
+    ]))));
+    let (_, out) = measure(&mut hub, &s);
+    let mut o = out.unwrap();
+    hub.0.lock().unwrap().faults.old_hub = true;
+    let jobs = o.sum_jobs(MeasureSystemPurpose::SumCheck).unwrap();
+    assert_eq!(jobs[0].starts, (384, 0));
+    let mut sc = SysSession::open(
+        o.setup.clone(),
+        MeasureSystemPurpose::SumCheck,
+        Some(jobs),
+        &mut hub,
+        Instant::now(),
+    )
+    .unwrap();
+    drive(&mut sc, &mut hub, 4_000);
+    let st = sc.state();
+    assert!(
+        st.issue
+            .as_ref()
+            .is_some_and(|i| i.key == "measure.system.hub_refused"),
+        "{st:?}"
+    );
+    assert!(
+        !matches!(sc.take_outcome(), Some(SessionOutput::Verdicts(_))),
+        "no verdict from a run the hub refused"
+    );
+    let p = o.proposal("admin");
+    assert!(!p.offered, "{p:?}");
+    assert!(o.apply(&mut hub, p.id).is_err());
+}
+
+/// One row of the table: the sum check's verdict for a pair `gap_ms` apart
+/// (`out.delay` on A beyond 8 ms, the acoustics below) when B plays
+/// `detune_us` later than the walked run measured it.
+fn sum_check_cell(
+    o: &proposal::Outcome,
+    hub: &mut StubHub,
+    detune_us: f64,
+    ppm: Option<f64>,
+) -> (bool, Option<f64>) {
+    {
+        let mut st = hub.0.lock().unwrap();
+        st.faults.sum_detune = (detune_us != 0.0).then_some((1, detune_us / 1000.0));
+        st.faults.sum_mic_ppm = ppm;
+    }
+    let jobs = o.sum_jobs(MeasureSystemPurpose::SumCheck).unwrap();
+    let mut sc = SysSession::open(
+        o.setup.clone(),
+        MeasureSystemPurpose::SumCheck,
+        Some(jobs),
+        hub,
+        Instant::now(),
+    )
+    .unwrap();
+    drive(&mut sc, hub, 4_000);
+    match sc.take_outcome() {
+        Some(SessionOutput::Verdicts(v)) => (v[0].passed, v[0].rms_db),
+        _ => (false, None),
+    }
+}
+
+fn pair_apart(gap_ms: f64) -> StubHub {
+    let (mut a, b) = if gap_ms <= 8.0 {
+        (unit("A", 1, 48, &[3.0 + gap_ms]), unit("B", 1, 48, &[3.0]))
+    } else {
+        (unit("A", 1, 48, &[3.0]), unit("B", 1, 48, &[3.0]))
+    };
+    if gap_ms > 8.0 {
+        a.out_delay_ms = vec![gap_ms as f32];
+    }
+    StubHub(Arc::new(Mutex::new(Stub::new(vec![a, b]))))
+}
+
+/// The table's gaps, ms; a negative one: that far apart, unit B wired inverted.
+const GAPS: [f64; 12] = [
+    0.2, 2.0, 8.0, 30.0, 45.0, 60.0, 80.0, 100.0, 150.0, 200.0, -2.0, -30.0,
+];
+
+/// The AT-C review's F3 table again, with WP ATSUMOFF's staggered starts:
+/// the sum check over arrival gaps and wrong delays (`cargo test -p
+/// dspi-core --lib review_atd1_sum_check_table -- --ignored --nocapture`).
+#[test]
+#[ignore = "review AT-D1: the table, a minute or two"]
+fn review_atd1_sum_check_table() {
+    let s = setup(&[("A", &[0]), ("B", &[0])]);
+    let detunes = [
+        0.0, 10.0, -10.0, 20.0, -20.0, 30.0, -30.0, 50.0, -50.0, 100.0, 200.0, 500.0, 5_000.0,
+        100_000.0,
+    ];
+    println!("gap ms | starts | band top Hz | detune us: verdict (dB RMS) ...");
+    // A negative gap: that far apart, and unit B wired with inverted polarity.
+    for gap in GAPS {
+        let mut hub = pair_apart(f64::abs(gap));
+        hub.0.lock().unwrap().faults.wired_inverted = (gap < 0.0).then_some(1);
+        let (sess, out) = measure(&mut hub, &s);
+        let Some(o) = out else {
+            println!(
+                "{gap:>6} | the walked run gave no result: {:?}",
+                sess.state().issue
+            );
+            continue;
+        };
+        let jobs = match o.sum_jobs(MeasureSystemPurpose::SumCheck) {
+            Ok(j) => j,
+            Err(e) => {
+                println!("{gap:>6} | no sum check: {e}; {:?}", o.result.arrivals);
+                continue;
+            }
+        };
+        let mut row = format!(
+            "{gap:>6} | offered {} | {:?} | {:>7.0} |",
+            o.result.arrivals.iter().all(|a| a.offered),
+            jobs[0].starts,
+            jobs[0].band.1
+        );
+        if std::env::var_os("REVIEW_ATD1_DEBUG").is_some() {
+            println!("arrivals {:?}", o.result.arrivals);
+            let f = jobs[0].predicted.grid.freqs().unwrap();
+            for i in (0..f.len()).step_by(f.len() / 12) {
+                println!(
+                    "  predicted {:>8.1} Hz {:>7.2} dB",
+                    f[i], jobs[0].predicted.mag_db[i]
+                );
+            }
+        }
+        for d in detunes {
+            let (pass, rms) = sum_check_cell(&o, &mut hub, d, None);
+            row += &format!(
+                " {d}: {} ({})",
+                if pass { "PASS" } else { "fail" },
+                rms.map_or("-".into(), |r| format!("{r:.2}"))
+            );
+        }
+        for ppm in [31.0, 100.0] {
+            for d in [0.0, 50.0] {
+                let (pass, rms) = sum_check_cell(&o, &mut hub, d, Some(ppm));
+                row += &format!(
+                    " | {ppm} ppm {d}: {} ({})",
+                    if pass { "PASS" } else { "fail" },
+                    rms.map_or("-".into(), |r| format!("{r:.2}"))
+                );
+            }
+        }
+        println!("{row}");
+    }
+}
+
+/// The table's claims, kept in the suite: at every gap the starts can bring
+/// together, a delay wrong by 50 us or more (either way) fails the sum check
+/// as a judged failure and a right one passes, with the microphone's clock
+/// off by 100 ppm too.
+#[test]
+fn review_atd1_staggered_starts_hide_no_wrong_delay() {
+    let s = setup(&[("A", &[0]), ("B", &[0])]);
+    for gap in [2.0, 30.0, 80.0] {
+        let mut hub = pair_apart(gap);
+        let (_, out) = measure(&mut hub, &s);
+        let o = out.unwrap();
+        assert!(o.result.arrivals.iter().all(|a| a.offered), "{gap} ms");
+        for ppm in [None, Some(100.0)] {
+            let (pass, rms) = sum_check_cell(&o, &mut hub, 0.0, ppm);
+            assert!(pass, "{gap} ms, right, {ppm:?}: {rms:?}");
+            for d in [50.0, -50.0, 500.0, 5_000.0] {
+                let (pass, rms) = sum_check_cell(&o, &mut hub, d, ppm);
+                assert!(!pass && rms.is_some(), "{gap} ms, {d} us wrong: {rms:?}");
+            }
+        }
+    }
+}
+
+/// An output heard 100 ms after the run's first lies at the end of what the
+/// walked analysis keeps (100 ms with the 300 ms gap): its arrival came out
+/// clamped (99.98 ms, "uncertainty" 0.35 us), its response cut, and it was
+/// offered. Now nothing of such a group is offered, and the reason says why.
+#[test]
+fn review_atd1_an_arrival_at_the_end_of_the_analysed_span_is_not_offered() {
+    let s = setup(&[("A", &[0]), ("B", &[0])]);
+    let mut hub = pair_apart(100.0);
+    let (_, out) = measure(&mut hub, &s);
+    let o = out.unwrap();
+    assert!(
+        o.result
+            .arrivals
+            .iter()
+            .all(|a| !a.offered && a.reason.contains("too long after the run's first output")),
+        "{:?}",
+        o.result.arrivals
+    );
+    assert!(
+        o.result.reasons.iter().any(|r| r.contains("A output 0")),
+        "{:?}",
+        o.result.reasons
+    );
+    let p = o.proposal("admin");
+    assert!(!p.offered && p.arrivals.is_empty(), "{p:?}");
+}
+
+/// Two outputs of opposite polarity, their arrivals brought together by the
+/// summed run's starts (WP ATSUMOFF), cancel over the whole band. Played,
+/// the run was nearly silent and the session failed on "cycle identity: the
+/// first cycle was not heard" (at one T, 2 ms apart, the comb left points
+/// to judge). Now the sum check is refused before anything plays, naming
+/// the pair and the polarity, and nothing is offered.
+#[test]
+fn review_atd1_outputs_of_opposite_polarity_are_not_played_as_a_sum() {
+    let s = setup(&[("A", &[0]), ("B", &[0])]);
+    let mut hub = pair_apart(2.0);
+    hub.0.lock().unwrap().faults.wired_inverted = Some(1);
+    let (_, out) = measure(&mut hub, &s);
+    let o = out.unwrap();
+    let e = o.sum_jobs(MeasureSystemPurpose::SumCheck).unwrap_err();
+    let e = e.to_string();
+    assert!(
+        e.contains("opposite polarity") && e.contains("A output 0") && e.contains("B output 0"),
+        "{e}"
+    );
+    let p = o.proposal("admin");
+    assert!(p.sum_check_needed && !p.offered, "{p:?}");
+    // The same pair in phase is played and judged.
+    let mut hub = pair_apart(2.0);
+    let (_, out) = measure(&mut hub, &s);
+    assert!(
+        out.unwrap()
+            .sum_jobs(MeasureSystemPurpose::SumCheck)
+            .is_ok()
+    );
 }

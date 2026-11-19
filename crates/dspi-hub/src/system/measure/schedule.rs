@@ -155,6 +155,115 @@ pub(crate) fn check_segments(
     Ok(())
 }
 
+// -- WP ATSUMOFF --
+/// The checks of a summed run whose parts may start apart
+/// (`system.measure.run` with `summed`, `bad_schedule`): two to
+/// `MAX_UNITS` segments, each of a distinct unit of the session with a
+/// staged config, in time order, none more than [`MAX_SUM_SPREAD_MS`] after
+/// the first; the run at most [`MAX_RUN_MS`] long. Each unit has one segment, so
+/// one op 9 pending per unit holds (R6a); every start is still `t0 +
+/// offset`, at least the lead ahead (S-AT3).
+///
+/// [`MAX_SUM_SPREAD_MS`]: dspi_measure::system::MAX_SUM_SPREAD_MS
+pub(crate) fn check_summed(
+    segments: &[RunSegment],
+    lens: &[Option<u64>],
+    rate: u32,
+) -> Result<(), String> {
+    use dspi_measure::system::{MAX_SUM_SPREAD_MS, MAX_UNITS, max_sum_spread_samples};
+    if segments.len() < 2 || segments.len() > MAX_UNITS {
+        return Err(format!(
+            "{} segments in a summed run (2 to {MAX_UNITS})",
+            segments.len()
+        ));
+    }
+    let mut units: Vec<u8> = Vec::with_capacity(segments.len());
+    let mut prev: Option<u64> = None;
+    let mut end: u64 = 0;
+    for s in segments {
+        let len = match lens.get(usize::from(s.unit)) {
+            None => return Err(format!("no unit {} in this session", s.unit)),
+            Some(None) => return Err(format!("unit {} has no config staged", s.unit)),
+            Some(Some(l)) => *l,
+        };
+        if units.contains(&s.unit) {
+            return Err(format!("unit {} twice in a summed run", s.unit));
+        }
+        if prev.is_some_and(|p| s.offset < p) {
+            return Err("segments out of time order".into());
+        }
+        prev = Some(s.offset);
+        units.push(s.unit);
+        end = end.max(s.offset.saturating_add(len));
+    }
+    let first = segments.first().map_or(0, |s| s.offset);
+    let last = segments.last().map_or(0, |s| s.offset);
+    if last.saturating_sub(first) > max_sum_spread_samples(rate) {
+        return Err(format!(
+            "a summed run's parts start more than {MAX_SUM_SPREAD_MS} ms apart"
+        ));
+    }
+    if end.saturating_sub(first) > samples_ms(MAX_RUN_MS, rate) {
+        return Err(format!(
+            "the run is longer than {} s",
+            MAX_RUN_MS.saturating_div(1000)
+        ));
+    }
+    Ok(())
+}
+
+// -- review AT-D1 --
+/// S-AT4 as far as the hub can hold it: in a group of segments that play
+/// together (a `summed` run, or segments at one offset) every unit's staged
+/// level is at most the hard cap less 6 dB for every doubling of the units
+/// (-12 dBFS for two, -18 for three or four, -30 for sixteen). The session's
+/// own rule (6 dB under the lower ramp result) is the client's and always
+/// inside this one, since no ramp ends above the hard cap; the hub does not
+/// know the ramps, so this is only the bound no client can pass.
+/// `levels[unit]`: the staged level, dBFS.
+pub(crate) fn check_sum_levels(
+    segments: &[RunSegment],
+    levels: &[Option<f32>],
+    summed: bool,
+) -> Result<(), String> {
+    use dspi_measure::stimulus::LEVEL_HARD_CAP_DB;
+    let mut from = 0usize;
+    while let Some(first) = segments.get(from) {
+        let n = if summed {
+            segments.len().saturating_sub(from)
+        } else {
+            segments
+                .get(from..)
+                .map_or(1, |r| {
+                    r.iter().take_while(|s| s.offset == first.offset).count()
+                })
+                .max(1)
+        };
+        let to = from.saturating_add(n);
+        if n >= 2 {
+            // ceil(log2 n) doublings.
+            let doublings = n
+                .saturating_sub(1)
+                .checked_ilog2()
+                .map_or(0, |b| b.saturating_add(1));
+            let most =
+                LEVEL_HARD_CAP_DB - 6.0 * f32::from(u8::try_from(doublings).unwrap_or(u8::MAX));
+            for s in segments.get(from..to).unwrap_or(&[]) {
+                let level = levels.get(usize::from(s.unit)).copied().flatten();
+                if !level.is_some_and(|l| l <= most + 0.001) {
+                    return Err(format!(
+                        "unit {}'s staged level is above {most} dBFS, the most for {n} units \
+                         playing together (the hard cap less 6 dB per doubling)",
+                        s.unit
+                    ));
+                }
+            }
+        }
+        from = to;
+    }
+    Ok(())
+}
+
 /// What the scheduler does with a unit's next op 9 now.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Due {
@@ -312,6 +421,65 @@ mod tests_wp_athub {
         assert!(check_segments(&[seg(0, 0), seg(1, 121 * 48_000)], &l, lead, 48_000).is_err());
     }
 
+    // -- WP ATSUMOFF --
+    #[test]
+    fn wp_atsumoff_a_summed_run_may_start_its_parts_apart_within_the_spread() {
+        let l = [Some(48_000), Some(48_000), Some(48_000)];
+        // Overlapping starts are a summed run only when asked for.
+        assert!(check_segments(&[seg(0, 0), seg(1, 1_000)], &l, 0, 48_000).is_err());
+        assert!(check_summed(&[seg(0, 0), seg(1, 1_000)], &l, 48_000).is_ok());
+        assert!(check_summed(&[seg(0, 0), seg(1, 0), seg(2, 2_000)], &l, 48_000).is_ok());
+        // At most 1 s apart.
+        assert!(check_summed(&[seg(0, 0), seg(1, 48_000)], &l, 48_000).is_ok());
+        let e = check_summed(&[seg(0, 0), seg(1, 48_001)], &l, 48_000);
+        assert!(e.unwrap_err().contains("apart"));
+        // Distinct units, in order, staged, two or more.
+        assert!(check_summed(&[seg(0, 0), seg(0, 10)], &l, 48_000).is_err());
+        assert!(check_summed(&[seg(1, 10), seg(0, 0)], &l, 48_000).is_err());
+        assert!(check_summed(&[seg(0, 0)], &l, 48_000).is_err());
+        assert!(check_summed(&[seg(0, 0), seg(3, 0)], &l, 48_000).is_err());
+        assert!(check_summed(&[seg(0, 0), seg(1, 0)], &[Some(1), None], 48_000).is_err());
+        // Too long.
+        let long = [Some(121 * 48_000), Some(48_000)];
+        assert!(check_summed(&[seg(0, 0), seg(1, 0)], &long, 48_000).is_err());
+    }
+
+    // -- review AT-D1 --
+    #[test]
+    fn review_atd1_units_playing_together_are_held_6_db_per_doubling_under_the_cap() {
+        let at = |n: usize, level: f32, summed: bool| {
+            let segs: Vec<RunSegment> = (0..n)
+                .map(|u| seg(u as u8, if summed { u as u64 * 100 } else { 0 }))
+                .collect();
+            check_sum_levels(&segs, &vec![Some(level); n], summed)
+        };
+        for summed in [true, false] {
+            assert!(at(2, -12.0, summed).is_ok());
+            assert!(at(2, -11.9, summed).is_err());
+            assert!(at(3, -18.0, summed).is_ok());
+            assert!(at(3, -17.0, summed).is_err());
+            assert!(at(4, -18.0, summed).is_ok());
+            assert!(at(5, -18.0, summed).is_err());
+            assert!(at(8, -24.0, summed).is_ok());
+            assert!(at(16, -30.0, summed).is_ok());
+            assert!(at(16, -29.0, summed).is_err());
+        }
+        // One generator at a time: the hard cap, as before.
+        let walk = [seg(0, 0), seg(1, 100_000), seg(0, 200_000)];
+        assert!(check_sum_levels(&walk, &[Some(-6.0), Some(-6.0)], false).is_ok());
+        // A group at one offset inside a longer run is judged; the rest is not.
+        let mixed = [seg(0, 0), seg(1, 100_000), seg(2, 100_000)];
+        let l = [Some(-6.0), Some(-12.0), Some(-12.0)];
+        assert!(check_sum_levels(&mixed, &l, false).is_ok());
+        let l = [Some(-6.0), Some(-12.0), Some(-6.0)];
+        let e = check_sum_levels(&mixed, &l, false).unwrap_err();
+        assert!(e.contains("unit 2") && e.contains("-12"), "{e}");
+        // No level known: refused.
+        assert!(check_sum_levels(&[seg(0, 0), seg(1, 0)], &[Some(-30.0), None], false).is_err());
+        assert!(check_sum_levels(&[seg(0, 0), seg(9, 5)], &[Some(-30.0)], true).is_err());
+        assert!(check_sum_levels(&[], &[], true).is_ok());
+    }
+
     #[test]
     fn wp_athub_op9_is_written_within_120_s_and_never_late() {
         let r = 48_000;
@@ -389,6 +557,9 @@ mod tests_wp_athub {
         ) {
             let segs: Vec<RunSegment> = segs.iter().map(|(u, o)| seg(*u, *o)).collect();
             let _ = check_segments(&segs, &lens, lead, rate);
+            let _ = check_summed(&segs, &lens, rate);
+            let levels: Vec<Option<f32>> = lens.iter().map(|l| l.map(|x| -(x as f32))).collect();
+            let _ = check_sum_levels(&segs, &levels, rate % 2 == 0);
             let _ = op9_due(t, now, arm, rate);
             let _ = still_in_grace(t, now, rate);
         }

@@ -21,7 +21,7 @@ use dspi_measure::response::FLOOR_DB;
 use dspi_measure::system::chain::{ChainOptions, ChainRun, ChainedOutput, chain_runs};
 use dspi_measure::system::{
     CrossUnitDelay, GateFinding, MAX_OFFERED_UNCERTAINTY_US, SystemAnalysis, SystemSchedule,
-    UnitIndex, UnitOutput, transition_band,
+    UnitIndex, UnitOutput, max_sum_spread_samples, transition_band,
 };
 use dspi_measure::types::Response;
 use dspi_measure::xover::SUMMED_CHECK_MAX_RMS_DB;
@@ -44,6 +44,16 @@ pub(crate) const SUM_DOUBLING_DB: f32 = 6.0;
 /// part a later arrival must fall in to be judged: the first half of the
 /// window's fall.
 const SUM_WINDOW_REACH: f64 = 0.375;
+// -- review AT-D1 --
+/// The least an output's analysed response must hold after its onset, ms. A
+/// run's responses are kept from `search_ms` before its first arrival to the
+/// gap's rest after (100 ms each side with the 300 ms gap): an output heard
+/// later than that after the run's first (a unit whose play-out and output
+/// delay put it some 100 ms later on the timeline) has its arrival clamped
+/// to the end of that span and its response cut, and was offered all the
+/// same (measured: 100 ms apart read as 99.98 ms with an uncertainty of
+/// 0.35 us; 80 ms apart is still exact to 0.01 us).
+const MIN_ROOM_AFTER_ONSET_MS: f64 = 15.0;
 /// A predicted sum this far below its loudest part is a cancellation, dB.
 const CANCELLATION_DB: f64 = 6.0;
 /// The most run ids written with a speaker (the hub's `MAX_MEASURED_RUNS`).
@@ -208,6 +218,49 @@ pub(crate) struct SumJob {
     pub(crate) predicted: Response,
     /// The check band, Hz.
     pub(crate) band: (f64, f64),
+    // -- WP ATSUMOFF --
+    /// Where `a` and `b` start, samples after the run's first start
+    /// ([`sum_starts`]): one of them 0.
+    pub(crate) starts: (u64, u64),
+}
+
+// -- WP ATSUMOFF --
+/// Where a summed run's two parts start, samples after its first start, and
+/// how far apart their arrivals are then, ms (`a` less `b`): the part whose
+/// output is predicted to arrive earlier starts later by the difference, in
+/// whole samples, so both are heard together and the run is judged over its
+/// whole band ([`window_reach`]). `pred_*_ms`: each output's arrival after
+/// its own start as this run plays it (the walked arrival, with a verify's
+/// change of delay): it holds the unit's play-out and `out.delay`, so on
+/// USB-direct the streams' start offsets (tens of ms) are taken out here.
+/// The offset is at most [`max_sum_spread_samples`]; a wider (or a
+/// non-finite) difference is left in and narrows the band, failing closed.
+pub(crate) fn sum_starts(pred_a_ms: f64, pred_b_ms: f64, rate_hz: u32) -> ((u64, u64), f64) {
+    let diff = pred_a_ms - pred_b_ms;
+    let per_ms = f64::from(rate_hz) / 1000.0;
+    let cap = max_sum_spread_samples(rate_hz);
+    let n = if diff.is_finite() && per_ms > 0.0 {
+        // In range: finite, at most `cap` (u64 of a u32 rate in ms).
+        let n = (diff.abs() * per_ms).round();
+        if n >= cap as f64 { cap } else { n as u64 }
+    } else {
+        0
+    };
+    let n_ms = if per_ms > 0.0 { n as f64 / per_ms } else { 0.0 };
+    if diff > 0.0 {
+        ((0, n), diff - n_ms)
+    } else {
+        ((n, 0), diff + n_ms)
+    }
+}
+
+/// Samples as ms at `rate_hz`.
+fn samples_ms(n: u64, rate_hz: u32) -> f64 {
+    if rate_hz == 0 {
+        0.0
+    } else {
+        n as f64 * 1000.0 / f64::from(rate_hz)
+    }
 }
 
 /// A summed run's verdict.
@@ -310,6 +363,39 @@ impl SumJob {
             ),
         }
     }
+}
+
+// -- review AT-D1 --
+/// Whether `sum` is a cancellation of `a` and `b` over most of `band`: more
+/// than half of the band's points lie [`CANCELLATION_DB`] or more under the
+/// louder part. With the parts of a summed run started so that they arrive
+/// together (WP ATSUMOFF), two outputs of opposite polarity cancel over
+/// their common band: the run is nearly silent at the microphone, its first
+/// cycle is not found and the session fails on "cycle identity" (measured on
+/// the stub; at one T their distance left a comb to judge, and the verify
+/// after the apply met the same silence).
+fn cancels(sum: &Response, a: &Response, b: &Response, band: (f64, f64)) -> bool {
+    let Ok(freqs) = sum.grid.freqs() else {
+        return false;
+    };
+    let (mut all, mut low) = (0usize, 0usize);
+    for (i, f) in freqs.iter().enumerate() {
+        if *f < band.0 || *f > band.1 {
+            continue;
+        }
+        let (Some(s), Some(x), Some(y)) = (sum.mag_db.get(i), a.mag_db.get(i), b.mag_db.get(i))
+        else {
+            continue;
+        };
+        if !(x.is_finite() && y.is_finite()) {
+            continue;
+        }
+        all = all.saturating_add(1);
+        if !s.is_finite() || *s < x.max(*y) - CANCELLATION_DB {
+            low = low.saturating_add(1);
+        }
+    }
+    all > 0 && low.saturating_mul(2) > all
 }
 
 /// What the apply filed and did.
@@ -440,6 +526,7 @@ impl Outcome {
         };
         // Every single-member key's response, on its run's reference.
         let mut measured: Vec<Measured> = Vec::new();
+        let mut cut: Vec<String> = Vec::new();
         for (ri, r) in runs_done.iter().enumerate() {
             for o in &r.analysis.outputs {
                 let [m] = o.members.as_slice() else {
@@ -459,6 +546,17 @@ impl Outcome {
                 let Some(ir) = r.analysis.output_ir(o.key) else {
                     continue;
                 };
+                // Review AT-D1: an arrival at the end of what the analysis
+                // kept is not a measurement.
+                let room_ms = (ir.ir.samples.len() as f64 - ir.onset_index) * 1000.0
+                    / f64::from(ir.ir.rate_hz.max(1));
+                if room_ms.is_nan() || room_ms < MIN_ROOM_AFTER_ONSET_MS {
+                    cut.push(format!(
+                        "{} output {} is heard too long after the run's first output for the gap \
+                         between sweeps: its arrival cannot be measured in this run",
+                        pu.serial, m.output
+                    ));
+                }
                 let level = r
                     .levels
                     .iter()
@@ -486,6 +584,7 @@ impl Outcome {
             }
             reasons.extend(r.analysis.reasons.iter().cloned());
         }
+        reasons.extend(cut.iter().cloned());
         // Chained runs: every arrival through the anchor.
         let mut chained: Option<Vec<ChainedOutput>> = None;
         let mut chain_refused: Option<String> = None;
@@ -584,6 +683,12 @@ impl Outcome {
                 .and_then(|(li, _)| measured.get(li))
                 .map_or(f64::NAN, |l| l.arrival_ms * 1000.0);
             let fin = |v: f64| if v.is_finite() { v } else { 0.0 };
+            // Review AT-D1: the reference may be the output that was cut,
+            // so nothing of the group is offered then.
+            let (offered, reason) = match cut.first() {
+                Some(why) => (false, why.clone()),
+                None => (offered, reason),
+            };
             let offered = may_propose(&gate, offered) && (a - r).is_finite();
             arrivals.push(MeasureSystemArrival {
                 serial: s,
@@ -622,8 +727,10 @@ impl Outcome {
                 let rb = shifted(&b.result.response, b.arrival_ms - b.own_ms);
                 if let Some(whole) = transition_band(&ra, &rb, u) {
                     // Kept whole: each summed run is judged as far up as its
-                    // own window reaches (`window_reach`).
-                    let band = window_reach(whole, a.arrival_ms - b.arrival_ms);
+                    // own window reaches (`window_reach`); WP ATSUMOFF: with
+                    // its parts started so the arrivals come together.
+                    let (_, apart) = sum_starts(a.arrival_ms, b.arrival_ms, setup.rate_hz);
+                    let band = window_reach(whole, apart);
                     transitions.push((i, j, whole));
                     rows.push(MeasureSystemTransition {
                         a_serial: serial(a.unit),
@@ -715,17 +822,30 @@ impl Outcome {
                     _ => 0.0,
                 }
             };
-            let ra = shifted(&a.result.response, a.arrival_ms - a.own_ms + change(a));
-            let rb = shifted(&b.result.response, b.arrival_ms - b.own_ms + change(b));
-            // Review AT-C: the band follows the arrivals this run is predicted
-            // with. After an apply they coincide, so the verify judges the
-            // whole transition band and a delay that was wrong by more than
-            // the band's top allows fails it; with the walked run's distance
-            // it would be judged only as far up as the sum check was.
-            let mut band = window_reach(
-                band,
-                (a.arrival_ms + change(a)) - (b.arrival_ms + change(b)),
+            // WP ATSUMOFF: the part predicted to arrive earlier starts that
+            // much later (whole samples), so the two are heard together as
+            // the programme hears them although the units' play-out and
+            // output delays differ (USB-direct: the streams' start offsets).
+            // T is commanded and proven (G3), so the offset is exact and the
+            // prediction moves each part by its own start.
+            let rate = self.setup.rate_hz;
+            let (starts, apart) =
+                sum_starts(a.arrival_ms + change(a), b.arrival_ms + change(b), rate);
+            let ra = shifted(
+                &a.result.response,
+                a.arrival_ms - a.own_ms + change(a) + samples_ms(starts.0, rate),
             );
+            let rb = shifted(
+                &b.result.response,
+                b.arrival_ms - b.own_ms + change(b) + samples_ms(starts.1, rate),
+            );
+            // Review AT-C: the band follows the arrivals this run is predicted
+            // with. With the starts above they coincide to half a sample, so
+            // a sum check and a verify judge the whole transition band, and a
+            // delay that was wrong by more than the band's top allows fails
+            // them; at one T it would be judged only as far up as the walked
+            // run's distance (or USB-direct's start offsets) allowed.
+            let mut band = window_reach(band, apart);
             if after.is_some() {
                 // A unit plays an output delay in whole samples: an applied
                 // delay is uncertain by half a sample, 45 degrees at a
@@ -735,12 +855,32 @@ impl Outcome {
             let sign = |m: &Measured| if m.inverted { -1.0 } else { 1.0 };
             let predicted = complex_sum(&[(&ra, sign(a)), (&rb, sign(b))])
                 .ok_or_else(|| invalid("the transition's responses are on different grids"))?;
+            // Review AT-D1: a sum that cancels is not played (there would be
+            // nothing to hear and nothing to judge): it is the polarity.
+            if cancels(&predicted, &ra, &rb, band) {
+                let name = |m: &Measured| {
+                    let serial = self
+                        .setup
+                        .units
+                        .get(m.unit)
+                        .map_or("", |u| u.serial.as_str());
+                    format!("{serial} output {}", m.output)
+                };
+                return Err(invalid(format!(
+                    "{} and {} cancel over their common band when they arrive together (opposite \
+                     polarity): the summed run cannot be judged and no cross-unit delay is \
+                     offered; correct the polarity and measure again",
+                    name(a),
+                    name(b)
+                )));
+            }
             jobs.push(SumJob {
                 a: (a.unit, a.output, a.inverted),
                 b: (b.unit, b.output, b.inverted),
                 level_db,
                 predicted,
                 band,
+                starts,
             });
         }
         Ok(jobs)

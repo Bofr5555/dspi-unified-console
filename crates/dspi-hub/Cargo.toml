@@ -132,6 +132,9 @@ mdns-sd = { version = "=0.21.7", default-features = false, features = ["logging"
 # rotation signature checked with ring itself. Both already in the graph (dspi-tui).
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
 ring = "0.17"
+# -- WP ATE2E -- ATSIM's world (dspi-measure's feature `sim`) as the room of
+# tests/wp_ate2e_system.rs. No new crate: dspi-measure is a dependency already.
+dspi-measure = { workspace = true, features = ["sim"] }
 
 [[test]]
 name = "wp_hb0_app_path"
@@ -215,6 +218,12 @@ required-features = ["rollout"]
 # real hub's `system.measure.*` with ATFAKE units; `param.get_many` needs the API.
 [[test]]
 name = "review_atc_core_on_real_hub"
+required-features = ["api"]
+
+# -- WP ATE2E -- ATCORE's session on the real hub with ATFAKE units and ATSIM's
+# room; `param.get_many`/`param.set` need the API.
+[[test]]
+name = "wp_ate2e_system"
 required-features = ["api"]
 
 # -- WP HB7 --

@@ -1246,3 +1246,146 @@ fn wp_athub_a_lapsed_lease_ends_the_exemption() {
     assert_eq!(granted, dspi_hub::lock::LOCK_MAX);
     assert!(!hub.handle().system_measure_lock_exempt(&u.serials[0]));
 }
+
+// ── review AT-D1: the rate at open under read jitter ─────────────────────
+
+/// A fake whose reads are slow or jittered: every read takes `every`, and
+/// the n-th `EXT_TIME_BASE` read's `time_us` is taken `jitter[n]` after its
+/// `t` (a pre-empted fake on a busy host; `always` once the list is used
+/// up). The hub sees the delay as part of that read's round trip.
+struct Jittery {
+    inner: FakeDevice,
+    every: Duration,
+    jitter: std::collections::VecDeque<Duration>,
+    always: Duration,
+}
+
+impl Jittery {
+    fn new(inner: FakeDevice, every: Duration, jitter: Vec<u64>, always: u64) -> Self {
+        Self {
+            inner,
+            every,
+            jitter: jitter.into_iter().map(Duration::from_millis).collect(),
+            always: Duration::from_millis(always),
+        }
+    }
+    fn script(&mut self, opcode: u8, value: u16, mut b: Vec<u8>) -> Vec<u8> {
+        if !self.every.is_zero() {
+            std::thread::sleep(self.every);
+        }
+        if opcode == op::REQ_EXTENSION && value == tbc::EXT_TIME_BASE && b.len() >= 8 {
+            let j = self.jitter.pop_front().unwrap_or(self.always);
+            if !j.is_zero() {
+                std::thread::sleep(j);
+                let us = u32::from_le_bytes([b[4], b[5], b[6], b[7]]);
+                let late = us.wrapping_add(u32::try_from(j.as_micros()).unwrap());
+                b[4..8].copy_from_slice(&late.to_le_bytes());
+            }
+        }
+        b
+    }
+}
+
+impl Transport for Jittery {
+    fn control_in(&mut self, opcode: u8, value: u16, len: u16) -> TResult<Vec<u8>> {
+        let b = self.inner.control_in(opcode, value, len)?;
+        Ok(self.script(opcode, value, b))
+    }
+    fn control_in_upto(&mut self, opcode: u8, value: u16, max_len: u16) -> TResult<Vec<u8>> {
+        let b = self.inner.control_in_upto(opcode, value, max_len)?;
+        Ok(self.script(opcode, value, b))
+    }
+    fn control_out(&mut self, opcode: u8, value: u16, data: &[u8]) -> TResult<()> {
+        self.inner.control_out(opcode, value, data)
+    }
+    fn descriptor(&self) -> &DeviceDescriptor {
+        self.inner.descriptor()
+    }
+    fn max_transfer(&self) -> usize {
+        self.inner.max_transfer()
+    }
+    fn notifications(&self) -> Option<Box<dyn NotificationSource>> {
+        self.inner.notifications()
+    }
+    fn caps(&self) -> TransportCaps {
+        self.inner.caps()
+    }
+    fn generation(&self) -> Option<dspi_transport::Generation> {
+        self.inner.generation()
+    }
+}
+
+/// `n` line units, each behind `Jittery` as `wrap` says.
+fn jittery_open(n: usize, wrap: impl Fn(usize, FakeDevice) -> Jittery) -> Value {
+    let hub = hub();
+    let admin = session(&hub, Role::Admin);
+    let (_tb, devs) = world(World::Line, n, G1B);
+    let mut u = Units {
+        serials: Vec::new(),
+        handles: Vec::new(),
+        remotes: Vec::new(),
+    };
+    for (i, d) in devs.into_iter().enumerate() {
+        u.serials.push(d.descriptor().serial.clone());
+        u.remotes.push(d.remote());
+        u.handles.push(hub.attach(Box::new(wrap(i, d)), 0).unwrap());
+    }
+    open(&hub, &admin, &u)
+}
+
+/// The flake seen in WP ATE2E's 17-output test under host load ("unit
+/// E2E-3's rate is not one a measurement runs at"): one unit's second
+/// `EXT_TIME_BASE` read has its `time_us` 15 ms after its `t`, so the two
+/// reads 100 ms apart name no rate; with 8 ms they name 44.1 kHz for a 48 kHz
+/// unit ("the units run at different rates"). The hub sees that read's round
+/// trip, does not judge by the pair and reads again over a longer span.
+#[test]
+fn review_atd1_open_rides_out_a_jittered_time_base_read() {
+    for ms in [15, 8] {
+        // Unit 1's first read is clean, its second jittered, the rest clean.
+        let v = jittery_open(2, |i, d| {
+            Jittery::new(
+                d,
+                Duration::ZERO,
+                if i == 1 { vec![0, ms] } else { vec![] },
+                0,
+            )
+        });
+        assert_eq!(code(&v), "", "{ms} ms: {v}");
+        assert_eq!(v["units"].as_array().map(Vec::len), Some(2), "{v}");
+    }
+    // The first read jittered: it stays in every pair, the span outgrows it.
+    let v = jittery_open(2, |i, d| {
+        Jittery::new(d, Duration::ZERO, if i == 0 { vec![15] } else { vec![] }, 0)
+    });
+    assert_eq!(code(&v), "", "{v}");
+}
+
+/// Reads of a millisecond each (USB control transfers): the units' first
+/// reads are four reads apart, their second ones one. Every unit's own two
+/// reads must still be the rate span apart (counted from the first unit's
+/// read, the third unit's were 6 reads short of it and its rate was "not
+/// one a measurement runs at").
+#[test]
+fn review_atd1_open_gives_every_unit_the_rate_span_with_slow_reads() {
+    let v = jittery_open(3, |_, d| {
+        Jittery::new(d, Duration::from_millis(1), vec![], 0)
+    });
+    assert_eq!(code(&v), "", "{v}");
+}
+
+/// A unit whose every read is jittered by more than any span allows is
+/// refused as not timed, naming it: never by a rate guessed from such reads,
+/// and never as "not one domain".
+#[test]
+fn review_atd1_open_refuses_a_unit_it_cannot_time() {
+    let v = jittery_open(2, |i, d| {
+        Jittery::new(d, Duration::ZERO, vec![], if i == 1 { 60 } else { 0 })
+    });
+    assert_eq!(
+        (code(&v), v["serial"].as_str()),
+        ("device", Some("ATHUB-1")),
+        "{v}"
+    );
+    assert!(v.to_string().contains("too long"), "{v}");
+}

@@ -20,6 +20,34 @@ pub(crate) const RATE_SPAN_US: u32 = 100_000;
 /// apart).
 pub(crate) const RATE_TOLERANCE_PCT: u128 = 4;
 
+// -- review AT-D1 --
+/// How many more rounds of reads `open` makes, each doubling the span since
+/// the first reads, when a unit's two reads were not timed well enough to
+/// tell its rate ([`rate_reads_timed`]): 0.1 s, then 0.2, 0.4, 0.8 and 1.6 s.
+pub(crate) const RATE_EXTRA_ROUNDS: u32 = 4;
+/// How much of the span between two reads their round trips may be, percent,
+/// for the pair to tell the rate: the estimate is then off by at most that,
+/// inside [`RATE_TOLERANCE_PCT`] with a margin for the unit's own clock.
+pub(crate) const RATE_JITTER_PCT: u128 = 3;
+
+/// Whether two reads of one unit pin its rate, from the hub's own clock:
+/// `rtt_*_us` each read's round trip, `span_us` from the first answer to the
+/// second request. A read's `t` and `time_us` are one instant on firmware
+/// (R7c), but through a busy host, a bridge or a fake they are only known to
+/// lie within the read's round trip, so [`rate_of`]'s estimate may be off by
+/// about `(rtt_first + rtt_second) / span`. [`RATE_TOLERANCE_PCT`] is that
+/// allowance: within it a real rate is named and never taken for its
+/// neighbour (44.1 and 48 kHz are 8.5 % apart); beyond it the estimate says
+/// nothing (15 ms over 100 ms names no rate, 8 ms reads 48 kHz as 44.1 kHz)
+/// and `open` reads again over a longer span rather than judging by it. The
+/// domain check is not loosened: a pair that is not timed is never used, and
+/// a timed pair is judged by [`rate_of`] as before.
+pub(crate) fn rate_reads_timed(rtt_first_us: u64, rtt_second_us: u64, span_us: u64) -> bool {
+    let rtt = u128::from(rtt_first_us).saturating_add(u128::from(rtt_second_us));
+    span_us >= u64::from(RATE_SPAN_US)
+        && rtt.saturating_mul(100) <= u128::from(span_us).saturating_mul(RATE_JITTER_PCT)
+}
+
 /// The rates a measurement runs at (the generator's, `stimulus::SUPPORTED_RATES`).
 pub(crate) const RATES: [u32; 3] = dspi_measure::stimulus::SUPPORTED_RATES;
 
@@ -319,6 +347,54 @@ mod tests_wp_athub {
         assert_eq!(rate_of((0, 0), (100, 5_000)), None, "too short a span");
         assert_eq!(rate_of((0, 0), (6_500, 100_000)), None, "65 kHz");
         assert_eq!(rate_of((5, 0), (4, 200_000)), None, "backwards");
+    }
+
+    // -- review AT-D1 --
+    /// The flake under host load: a read whose `t` and `time_us` were taken
+    /// some ms apart. 15 ms over 100 ms names no rate, 8 ms names the wrong
+    /// one; neither pair counts as timed, and over a longer span the same
+    /// jitter is inside the tolerance and the rate is right.
+    #[test]
+    fn review_atd1_a_jittered_read_is_not_timed_and_a_longer_span_names_the_rate() {
+        // 48 kHz; the second read's `time_us` taken `j` us after its `t`.
+        let pair = |span: u32, j: u32| ((0u64, 0u32), (u64::from(span) * 48 / 1000, span + j));
+        let (a, b) = pair(100_000, 15_000);
+        assert_eq!(rate_of(a, b), None, "the flake");
+        let (a, b) = pair(100_000, 8_000);
+        assert_eq!(rate_of(a, b), Some(44_100), "worse: the wrong rate");
+        // The hub sees such a read's round trip (the jitter is inside it).
+        assert!(!rate_reads_timed(300, 15_300, 100_000));
+        assert!(!rate_reads_timed(300, 8_300, 100_000));
+        assert!(!rate_reads_timed(2_000, 2_000, 100_000));
+        assert!(rate_reads_timed(300, 300, 100_000));
+        assert!(rate_reads_timed(1_500, 1_500, 100_000));
+        assert!(!rate_reads_timed(0, 0, 99_999), "too short a span");
+        // Whatever is timed names the rate right, at the worst jitter it
+        // allows, in either read and in either direction.
+        for span in [100_000u32, 200_000, 400_000, 800_000, 1_600_000] {
+            let worst = span * 3 / 100;
+            assert!(rate_reads_timed(0, u64::from(worst), u64::from(span)));
+            assert!(!rate_reads_timed(1, u64::from(worst), u64::from(span)));
+            for rate in RATES {
+                // Each read's `t` and `time_us` lie somewhere in its round
+                // trip: the samples and the unit's microseconds between the
+                // reads are each the span to the span plus the round trips.
+                for (t_us, own_us) in [
+                    (span, span),
+                    (span, span + worst),
+                    (span + worst, span),
+                    (span + worst, span + worst),
+                ] {
+                    let dt = u64::from(t_us) * u64::from(rate) / 1_000_000;
+                    assert_eq!(rate_of((0, 7), (dt, 7 + own_us)), Some(rate), "{span}");
+                }
+            }
+        }
+        assert!(
+            rate_reads_timed(15_300, 300, 800_000),
+            "the same jitter, a longer span"
+        );
+        assert!(!rate_reads_timed(u64::MAX, u64::MAX, u64::MAX));
     }
 
     #[test]
