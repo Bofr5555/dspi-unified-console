@@ -400,11 +400,18 @@ Our clients (every client, through the core):
 | Firmware \ route | USB | USB MIDI | L12 hub | L13 upstream hub | OH (our hub) |
 |---|---|---|---|---|---|
 | G1s | full, no ext | (no MIDI on stock) | full, no ext | notice: hub serves 1.1.7+ only; nothing sent | full, no ext |
-| G1b (guarded or not), sender | full + ext | full + ext | full; ext admin-only (as today) | notice, nothing sent (a bridge does not list it) | full + ext |
+| G1b (guarded or not), sender | full + ext | full + ext | full; ext admin-only (as today) | notice, nothing sent (a bridge does not list it) | full + ext (admin) |
 | G2s | full (adapter), no ext | (no MIDI on stock) | notice: does not answer 1.1.6, needs a 1.3 hub; only `REQ_GET_PLATFORM` sent | full (adapter), no ext | full (adapter), no ext |
-| G2b | full (adapter) + ext (tunnel) | full + ext (paged over MIDI) | full as a legacy device (its legacy stack) + ext admin-only | full + ext admin-only (0xE0 is `config` there) | full + ext |
+| G2b | full (adapter) + ext (tunnel) | full + ext (paged over MIDI) | full as a legacy device (its legacy stack) + ext admin-only | full + ext admin-only (0xE0 is `config` there) | full + ext (admin) |
 | Zero (G1s today) | full as G1s, named "DSPi Zero", no update | — | full, no update | notice | full, no update or rollout; a tunnelled bootloader entry `DENIED` |
 | G2s at a newer page revision | full; SET lengths judged by the device | — | as G2s | full | full |
+
+"full + ext (admin)" on our hub (PGFIX, PGMAT F3): our hub classes the extension channel (`0x00` and the tunnel
+`0xE010`) `config`, because it carries VREG and other settings that change the hardware, so a control session gets
+no extension channel and an admin does (with open access every session is admin). The sender's row is the alink
+sender's own subset (PGFIX, PGMAT F1): the core connects it as a sender (`DeviceProtocol::device_kind`
+`AlinkSender`) with its device info, extension channel and update check target, and no bulk image, DSP model,
+generator or meters.
 
 OH with upstream clients (best effort):
 

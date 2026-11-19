@@ -383,6 +383,9 @@ struct Faults {
     device_list_times: u32,
     /// Replies wait in the session's `held` until [`FakeHub::release_replies`].
     hold_replies: bool,
+    // -- WP PGFIX --
+    /// Only the JSON replies wait ([`FakeHub::hold_json_replies`]).
+    hold_json_replies: bool,
     /// Replies to swallow.
     drop_replies: u32,
     /// Every queued frame and reply goes out twice.
@@ -1390,10 +1393,19 @@ impl FakeHub {
         lock(&self.state).faults.hold_replies = true;
     }
 
+    // -- WP PGFIX --
+    /// Keep the JSON replies back (the snapshot, a poll grant), not the
+    /// tunnelled commands' answers, until [`Self::release_replies`]: a link
+    /// where the control plane is slow.
+    pub fn hold_json_replies(&self) {
+        lock(&self.state).faults.hold_json_replies = true;
+    }
+
     /// Deliver what [`Self::hold_replies`] kept back, late, and stop holding.
     pub fn release_replies(&self) {
         let mut s = lock(&self.state);
         s.faults.hold_replies = false;
+        s.faults.hold_json_replies = false; // -- WP PGFIX --
         for r in s.sessions.values_mut() {
             for o in r.held.drain(..) {
                 let _ = r.tx.send(o);
@@ -1846,7 +1858,8 @@ fn reply_out(ws: &mut WebSocket<Replay>, state: &Arc<Mutex<State>>, sid: u16, o:
             s.faults.drop_replies -= 1;
             return true;
         }
-        if s.faults.hold_replies {
+        // -- WP PGFIX -- or only the JSON ones
+        if s.faults.hold_replies || (s.faults.hold_json_replies && matches!(o, Out::Text(_))) {
             if let Some(r) = s.sessions.get_mut(&sid) {
                 r.held.push(o);
             }
