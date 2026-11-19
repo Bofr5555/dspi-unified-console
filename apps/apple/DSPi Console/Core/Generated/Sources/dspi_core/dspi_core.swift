@@ -4328,6 +4328,64 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func measureResult() throws  -> String
     
     /**
+     * The averaging preset; the average starts again (the held copy is
+     * kept).
+     *
+     * Errors: [`DspiError::InvalidArgument`] when it does not run.
+     */
+    func measureRtaPassiveAveraging(averaging: MeasureRtaAveraging) throws  -> MeasureRtaPassiveState
+    
+    /**
+     * What the passive RTA shows: the averaged spectrum in fractional-octave
+     * bands (dBFS, or dB SPL), the held copy and their difference. No I/O.
+     */
+    func measureRtaPassiveFrame()  -> MeasureRtaPassiveFrame
+    
+    /**
+     * Hold (`true`) the spectrum for comparison, or drop the held copy
+     * (`false`).
+     *
+     * Errors: [`DspiError::InvalidArgument`] when it does not run, or there
+     * is no spectrum to hold yet.
+     */
+    func measureRtaPassiveHold(on: Bool) throws  -> MeasureRtaPassiveState
+    
+    /**
+     * Push one block of the microphone's capture (mono, full scale ±1, at
+     * `rate_hz`) into the passive RTA, analysed at once (no session, no
+     * safety check waits on it). A push while it does not run is ignored.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a rate other than the
+     * started one, or more than 1 Mi samples in one block (nothing is
+     * analysed).
+     */
+    func measureRtaPassivePush(samples: [Float], rateHz: UInt32) throws  -> MeasureRtaPassiveState
+    
+    /**
+     * Start the passive microphone RTA (programme audio, no generator): it
+     * never touches the device, so it is allowed in the client read-only
+     * mode, on a read-only connection, for a Viewer through a hub and with
+     * no device at all. A running one starts again with `setup` (its held
+     * copy dropped). Then push the microphone's blocks with
+     * `measure_rta_passive_push` and read `measure_rta_passive_frame`.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a bad setup (a rate, a
+     * band count, a microphone document that does not read).
+     */
+    func measureRtaPassiveStart(setup: MeasureRtaPassiveSetup) throws  -> MeasureRtaPassiveState
+    
+    /**
+     * The passive RTA's state. No I/O.
+     */
+    func measureRtaPassiveState()  -> MeasureRtaPassiveState
+    
+    /**
+     * Stop the passive RTA and drop its average and held copy: the state
+     * (inactive; never a failure).
+     */
+    func measureRtaPassiveStop()  -> MeasureRtaPassiveState
+    
+    /**
      * Keep measurement, microphone and target documents in files under
      * `dir`, the client's own data folder (created if missing): a folder per
      * device serial for measurements, `mic/` and `target/`, each with an
@@ -11113,6 +11171,104 @@ open func measurePreflight(setup: MeasureSetup)throws  -> MeasurePreflight  {
 open func measureResult()throws  -> String  {
     return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_measure_result(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * The averaging preset; the average starts again (the held copy is
+     * kept).
+     *
+     * Errors: [`DspiError::InvalidArgument`] when it does not run.
+     */
+open func measureRtaPassiveAveraging(averaging: MeasureRtaAveraging)throws  -> MeasureRtaPassiveState  {
+    return try  FfiConverterTypeMeasureRtaPassiveState_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_measure_rta_passive_averaging(self.uniffiClonePointer(),
+        FfiConverterTypeMeasureRtaAveraging_lower(averaging),$0
+    )
+})
+}
+    
+    /**
+     * What the passive RTA shows: the averaged spectrum in fractional-octave
+     * bands (dBFS, or dB SPL), the held copy and their difference. No I/O.
+     */
+open func measureRtaPassiveFrame() -> MeasureRtaPassiveFrame  {
+    return try!  FfiConverterTypeMeasureRtaPassiveFrame_lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_measure_rta_passive_frame(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Hold (`true`) the spectrum for comparison, or drop the held copy
+     * (`false`).
+     *
+     * Errors: [`DspiError::InvalidArgument`] when it does not run, or there
+     * is no spectrum to hold yet.
+     */
+open func measureRtaPassiveHold(on: Bool)throws  -> MeasureRtaPassiveState  {
+    return try  FfiConverterTypeMeasureRtaPassiveState_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_measure_rta_passive_hold(self.uniffiClonePointer(),
+        FfiConverterBool.lower(on),$0
+    )
+})
+}
+    
+    /**
+     * Push one block of the microphone's capture (mono, full scale ±1, at
+     * `rate_hz`) into the passive RTA, analysed at once (no session, no
+     * safety check waits on it). A push while it does not run is ignored.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a rate other than the
+     * started one, or more than 1 Mi samples in one block (nothing is
+     * analysed).
+     */
+open func measureRtaPassivePush(samples: [Float], rateHz: UInt32)throws  -> MeasureRtaPassiveState  {
+    return try  FfiConverterTypeMeasureRtaPassiveState_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_measure_rta_passive_push(self.uniffiClonePointer(),
+        FfiConverterSequenceFloat.lower(samples),
+        FfiConverterUInt32.lower(rateHz),$0
+    )
+})
+}
+    
+    /**
+     * Start the passive microphone RTA (programme audio, no generator): it
+     * never touches the device, so it is allowed in the client read-only
+     * mode, on a read-only connection, for a Viewer through a hub and with
+     * no device at all. A running one starts again with `setup` (its held
+     * copy dropped). Then push the microphone's blocks with
+     * `measure_rta_passive_push` and read `measure_rta_passive_frame`.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a bad setup (a rate, a
+     * band count, a microphone document that does not read).
+     */
+open func measureRtaPassiveStart(setup: MeasureRtaPassiveSetup)throws  -> MeasureRtaPassiveState  {
+    return try  FfiConverterTypeMeasureRtaPassiveState_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_measure_rta_passive_start(self.uniffiClonePointer(),
+        FfiConverterTypeMeasureRtaPassiveSetup_lower(setup),$0
+    )
+})
+}
+    
+    /**
+     * The passive RTA's state. No I/O.
+     */
+open func measureRtaPassiveState() -> MeasureRtaPassiveState  {
+    return try!  FfiConverterTypeMeasureRtaPassiveState_lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_measure_rta_passive_state(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Stop the passive RTA and drop its average and held copy: the state
+     * (inactive; never a failure).
+     */
+open func measureRtaPassiveStop() -> MeasureRtaPassiveState  {
+    return try!  FfiConverterTypeMeasureRtaPassiveState_lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_measure_rta_passive_stop(self.uniffiClonePointer(),$0
     )
 })
 }
@@ -39791,6 +39947,347 @@ public func FfiConverterTypeLockState_lower(_ value: LockState) -> RustBuffer {
 
 
 /**
+ * One output's curves.
+ */
+public struct MeasureDocCurve {
+    /**
+     * The output, 0-based.
+     */
+    public var output: UInt8
+    /**
+     * Its way.
+     */
+    public var role: MeasureRole
+    /**
+     * The speaker it belongs to ("" when the layout named none).
+     */
+    public var speaker: String
+    /**
+     * The measured response, smoothed (untrusted points flagged).
+     */
+    public var measured: MeasureLiveCurve
+    /**
+     * The target levelled to the measured response, when asked for.
+     */
+    public var target: MeasureLiveCurve?
+    /**
+     * Per point, the spread across positions or reseats, dB; empty when
+     * the document has none.
+     */
+    public var spreadDb: [Double]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The output, 0-based.
+         */output: UInt8, 
+        /**
+         * Its way.
+         */role: MeasureRole, 
+        /**
+         * The speaker it belongs to ("" when the layout named none).
+         */speaker: String, 
+        /**
+         * The measured response, smoothed (untrusted points flagged).
+         */measured: MeasureLiveCurve, 
+        /**
+         * The target levelled to the measured response, when asked for.
+         */target: MeasureLiveCurve?, 
+        /**
+         * Per point, the spread across positions or reseats, dB; empty when
+         * the document has none.
+         */spreadDb: [Double]) {
+        self.output = output
+        self.role = role
+        self.speaker = speaker
+        self.measured = measured
+        self.target = target
+        self.spreadDb = spreadDb
+    }
+}
+
+#if compiler(>=6)
+extension MeasureDocCurve: Sendable {}
+#endif
+
+
+extension MeasureDocCurve: Equatable, Hashable {
+    public static func ==(lhs: MeasureDocCurve, rhs: MeasureDocCurve) -> Bool {
+        if lhs.output != rhs.output {
+            return false
+        }
+        if lhs.role != rhs.role {
+            return false
+        }
+        if lhs.speaker != rhs.speaker {
+            return false
+        }
+        if lhs.measured != rhs.measured {
+            return false
+        }
+        if lhs.target != rhs.target {
+            return false
+        }
+        if lhs.spreadDb != rhs.spreadDb {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(output)
+        hasher.combine(role)
+        hasher.combine(speaker)
+        hasher.combine(measured)
+        hasher.combine(target)
+        hasher.combine(spreadDb)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureDocCurve: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureDocCurve {
+        return
+            try MeasureDocCurve(
+                output: FfiConverterUInt8.read(from: &buf), 
+                role: FfiConverterTypeMeasureRole.read(from: &buf), 
+                speaker: FfiConverterString.read(from: &buf), 
+                measured: FfiConverterTypeMeasureLiveCurve.read(from: &buf), 
+                target: FfiConverterOptionTypeMeasureLiveCurve.read(from: &buf), 
+                spreadDb: FfiConverterSequenceDouble.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MeasureDocCurve, into buf: inout [UInt8]) {
+        FfiConverterUInt8.write(value.output, into: &buf)
+        FfiConverterTypeMeasureRole.write(value.role, into: &buf)
+        FfiConverterString.write(value.speaker, into: &buf)
+        FfiConverterTypeMeasureLiveCurve.write(value.measured, into: &buf)
+        FfiConverterOptionTypeMeasureLiveCurve.write(value.target, into: &buf)
+        FfiConverterSequenceDouble.write(value.spreadDb, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureDocCurve_lift(_ buf: RustBuffer) throws -> MeasureDocCurve {
+    return try FfiConverterTypeMeasureDocCurve.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureDocCurve_lower(_ value: MeasureDocCurve) -> RustBuffer {
+    return FfiConverterTypeMeasureDocCurve.lower(value)
+}
+
+
+/**
+ * A measurement document's curves (`measure_doc_curves`).
+ */
+public struct MeasureDocCurves {
+    /**
+     * The smoothing applied, 1/N octave; 0 none.
+     */
+    public var smoothing: UInt8
+    /**
+     * The run's timing was reliable.
+     */
+    public var timingReliable: Bool
+    /**
+     * One per measured output, in the document's order.
+     */
+    public var outputs: [MeasureDocCurve]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The smoothing applied, 1/N octave; 0 none.
+         */smoothing: UInt8, 
+        /**
+         * The run's timing was reliable.
+         */timingReliable: Bool, 
+        /**
+         * One per measured output, in the document's order.
+         */outputs: [MeasureDocCurve]) {
+        self.smoothing = smoothing
+        self.timingReliable = timingReliable
+        self.outputs = outputs
+    }
+}
+
+#if compiler(>=6)
+extension MeasureDocCurves: Sendable {}
+#endif
+
+
+extension MeasureDocCurves: Equatable, Hashable {
+    public static func ==(lhs: MeasureDocCurves, rhs: MeasureDocCurves) -> Bool {
+        if lhs.smoothing != rhs.smoothing {
+            return false
+        }
+        if lhs.timingReliable != rhs.timingReliable {
+            return false
+        }
+        if lhs.outputs != rhs.outputs {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(smoothing)
+        hasher.combine(timingReliable)
+        hasher.combine(outputs)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureDocCurves: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureDocCurves {
+        return
+            try MeasureDocCurves(
+                smoothing: FfiConverterUInt8.read(from: &buf), 
+                timingReliable: FfiConverterBool.read(from: &buf), 
+                outputs: FfiConverterSequenceTypeMeasureDocCurve.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MeasureDocCurves, into buf: inout [UInt8]) {
+        FfiConverterUInt8.write(value.smoothing, into: &buf)
+        FfiConverterBool.write(value.timingReliable, into: &buf)
+        FfiConverterSequenceTypeMeasureDocCurve.write(value.outputs, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureDocCurves_lift(_ buf: RustBuffer) throws -> MeasureDocCurves {
+    return try FfiConverterTypeMeasureDocCurves.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureDocCurves_lower(_ value: MeasureDocCurves) -> RustBuffer {
+    return FfiConverterTypeMeasureDocCurves.lower(value)
+}
+
+
+/**
+ * How to give a measurement's curves (`measure_doc_curves`).
+ */
+public struct MeasureDocCurvesOptions {
+    /**
+     * The smoothing, 1/N octave (1 to 48); 0 for none.
+     */
+    public var smoothing: UInt8
+    /**
+     * Give the target too, levelled to each output's curve.
+     */
+    public var target: Bool
+    /**
+     * A `target` document's text; "" for the placement's default target.
+     */
+    public var targetDocument: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The smoothing, 1/N octave (1 to 48); 0 for none.
+         */smoothing: UInt8, 
+        /**
+         * Give the target too, levelled to each output's curve.
+         */target: Bool, 
+        /**
+         * A `target` document's text; "" for the placement's default target.
+         */targetDocument: String) {
+        self.smoothing = smoothing
+        self.target = target
+        self.targetDocument = targetDocument
+    }
+}
+
+#if compiler(>=6)
+extension MeasureDocCurvesOptions: Sendable {}
+#endif
+
+
+extension MeasureDocCurvesOptions: Equatable, Hashable {
+    public static func ==(lhs: MeasureDocCurvesOptions, rhs: MeasureDocCurvesOptions) -> Bool {
+        if lhs.smoothing != rhs.smoothing {
+            return false
+        }
+        if lhs.target != rhs.target {
+            return false
+        }
+        if lhs.targetDocument != rhs.targetDocument {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(smoothing)
+        hasher.combine(target)
+        hasher.combine(targetDocument)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureDocCurvesOptions: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureDocCurvesOptions {
+        return
+            try MeasureDocCurvesOptions(
+                smoothing: FfiConverterUInt8.read(from: &buf), 
+                target: FfiConverterBool.read(from: &buf), 
+                targetDocument: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MeasureDocCurvesOptions, into buf: inout [UInt8]) {
+        FfiConverterUInt8.write(value.smoothing, into: &buf)
+        FfiConverterBool.write(value.target, into: &buf)
+        FfiConverterString.write(value.targetDocument, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureDocCurvesOptions_lift(_ buf: RustBuffer) throws -> MeasureDocCurvesOptions {
+    return try FfiConverterTypeMeasureDocCurvesOptions.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureDocCurvesOptions_lower(_ value: MeasureDocCurvesOptions) -> RustBuffer {
+    return FfiConverterTypeMeasureDocCurvesOptions.lower(value)
+}
+
+
+/**
  * One measurement, microphone or target document in a list
  * ([`DspiCore::measure_docs`]).
  */
@@ -42153,6 +42650,378 @@ public func FfiConverterTypeMeasurePreflight_lift(_ buf: RustBuffer) throws -> M
 #endif
 public func FfiConverterTypeMeasurePreflight_lower(_ value: MeasurePreflight) -> RustBuffer {
     return FfiConverterTypeMeasurePreflight.lower(value)
+}
+
+
+/**
+ * What the passive RTA shows (`measure_rta_passive_frame`).
+ */
+public struct MeasureRtaPassiveFrame {
+    /**
+     * Its state.
+     */
+    public var state: MeasureRtaPassiveState
+    /**
+     * The spectrum, the held copy and their difference, as the live view's
+     * RTA gives them; `None` when it does not run.
+     */
+    public var rta: MeasureLiveRta?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Its state.
+         */state: MeasureRtaPassiveState, 
+        /**
+         * The spectrum, the held copy and their difference, as the live view's
+         * RTA gives them; `None` when it does not run.
+         */rta: MeasureLiveRta?) {
+        self.state = state
+        self.rta = rta
+    }
+}
+
+#if compiler(>=6)
+extension MeasureRtaPassiveFrame: Sendable {}
+#endif
+
+
+extension MeasureRtaPassiveFrame: Equatable, Hashable {
+    public static func ==(lhs: MeasureRtaPassiveFrame, rhs: MeasureRtaPassiveFrame) -> Bool {
+        if lhs.state != rhs.state {
+            return false
+        }
+        if lhs.rta != rhs.rta {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(state)
+        hasher.combine(rta)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureRtaPassiveFrame: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureRtaPassiveFrame {
+        return
+            try MeasureRtaPassiveFrame(
+                state: FfiConverterTypeMeasureRtaPassiveState.read(from: &buf), 
+                rta: FfiConverterOptionTypeMeasureLiveRta.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MeasureRtaPassiveFrame, into buf: inout [UInt8]) {
+        FfiConverterTypeMeasureRtaPassiveState.write(value.state, into: &buf)
+        FfiConverterOptionTypeMeasureLiveRta.write(value.rta, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureRtaPassiveFrame_lift(_ buf: RustBuffer) throws -> MeasureRtaPassiveFrame {
+    return try FfiConverterTypeMeasureRtaPassiveFrame.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureRtaPassiveFrame_lower(_ value: MeasureRtaPassiveFrame) -> RustBuffer {
+    return FfiConverterTypeMeasureRtaPassiveFrame.lower(value)
+}
+
+
+/**
+ * What the passive RTA analyses (`measure_rta_passive_start`). Every number
+ * 0 (or absent) is the default.
+ */
+public struct MeasureRtaPassiveSetup {
+    /**
+     * The microphone's `mic` document's text; "" for an uncalibrated one
+     * (dBFS). A calibrated one gives dB SPL when its scale is known.
+     */
+    public var micDocument: String
+    /**
+     * The capture's rate, Hz (8000 to 192000; 0: 48000).
+     */
+    public var captureRateHz: UInt32
+    /**
+     * The averaging preset.
+     */
+    public var averaging: MeasureRtaAveraging
+    /**
+     * Bands per octave (1 to 48; 0: 3).
+     */
+    public var bandsPerOctave: UInt8
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The microphone's `mic` document's text; "" for an uncalibrated one
+         * (dBFS). A calibrated one gives dB SPL when its scale is known.
+         */micDocument: String, 
+        /**
+         * The capture's rate, Hz (8000 to 192000; 0: 48000).
+         */captureRateHz: UInt32, 
+        /**
+         * The averaging preset.
+         */averaging: MeasureRtaAveraging, 
+        /**
+         * Bands per octave (1 to 48; 0: 3).
+         */bandsPerOctave: UInt8) {
+        self.micDocument = micDocument
+        self.captureRateHz = captureRateHz
+        self.averaging = averaging
+        self.bandsPerOctave = bandsPerOctave
+    }
+}
+
+#if compiler(>=6)
+extension MeasureRtaPassiveSetup: Sendable {}
+#endif
+
+
+extension MeasureRtaPassiveSetup: Equatable, Hashable {
+    public static func ==(lhs: MeasureRtaPassiveSetup, rhs: MeasureRtaPassiveSetup) -> Bool {
+        if lhs.micDocument != rhs.micDocument {
+            return false
+        }
+        if lhs.captureRateHz != rhs.captureRateHz {
+            return false
+        }
+        if lhs.averaging != rhs.averaging {
+            return false
+        }
+        if lhs.bandsPerOctave != rhs.bandsPerOctave {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(micDocument)
+        hasher.combine(captureRateHz)
+        hasher.combine(averaging)
+        hasher.combine(bandsPerOctave)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureRtaPassiveSetup: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureRtaPassiveSetup {
+        return
+            try MeasureRtaPassiveSetup(
+                micDocument: FfiConverterString.read(from: &buf), 
+                captureRateHz: FfiConverterUInt32.read(from: &buf), 
+                averaging: FfiConverterTypeMeasureRtaAveraging.read(from: &buf), 
+                bandsPerOctave: FfiConverterUInt8.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MeasureRtaPassiveSetup, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.micDocument, into: &buf)
+        FfiConverterUInt32.write(value.captureRateHz, into: &buf)
+        FfiConverterTypeMeasureRtaAveraging.write(value.averaging, into: &buf)
+        FfiConverterUInt8.write(value.bandsPerOctave, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureRtaPassiveSetup_lift(_ buf: RustBuffer) throws -> MeasureRtaPassiveSetup {
+    return try FfiConverterTypeMeasureRtaPassiveSetup.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureRtaPassiveSetup_lower(_ value: MeasureRtaPassiveSetup) -> RustBuffer {
+    return FfiConverterTypeMeasureRtaPassiveSetup.lower(value)
+}
+
+
+/**
+ * Where the passive RTA stands.
+ */
+public struct MeasureRtaPassiveState {
+    /**
+     * It runs.
+     */
+    public var active: Bool
+    /**
+     * The capture's rate, Hz.
+     */
+    public var captureRateHz: UInt32
+    /**
+     * Bands per octave.
+     */
+    public var bandsPerOctave: UInt8
+    /**
+     * The averaging preset.
+     */
+    public var averaging: MeasureRtaAveraging
+    /**
+     * FFT frames averaged since the start (or the last change of averaging).
+     */
+    public var frames: UInt64
+    /**
+     * Non-finite samples seen (analysed as silence).
+     */
+    public var nonfiniteSamples: UInt64
+    /**
+     * A spectrum is held for comparison.
+     */
+    public var held: Bool
+    /**
+     * The spectrum is dB SPL (a calibrated microphone), else dBFS.
+     */
+    public var spl: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * It runs.
+         */active: Bool, 
+        /**
+         * The capture's rate, Hz.
+         */captureRateHz: UInt32, 
+        /**
+         * Bands per octave.
+         */bandsPerOctave: UInt8, 
+        /**
+         * The averaging preset.
+         */averaging: MeasureRtaAveraging, 
+        /**
+         * FFT frames averaged since the start (or the last change of averaging).
+         */frames: UInt64, 
+        /**
+         * Non-finite samples seen (analysed as silence).
+         */nonfiniteSamples: UInt64, 
+        /**
+         * A spectrum is held for comparison.
+         */held: Bool, 
+        /**
+         * The spectrum is dB SPL (a calibrated microphone), else dBFS.
+         */spl: Bool) {
+        self.active = active
+        self.captureRateHz = captureRateHz
+        self.bandsPerOctave = bandsPerOctave
+        self.averaging = averaging
+        self.frames = frames
+        self.nonfiniteSamples = nonfiniteSamples
+        self.held = held
+        self.spl = spl
+    }
+}
+
+#if compiler(>=6)
+extension MeasureRtaPassiveState: Sendable {}
+#endif
+
+
+extension MeasureRtaPassiveState: Equatable, Hashable {
+    public static func ==(lhs: MeasureRtaPassiveState, rhs: MeasureRtaPassiveState) -> Bool {
+        if lhs.active != rhs.active {
+            return false
+        }
+        if lhs.captureRateHz != rhs.captureRateHz {
+            return false
+        }
+        if lhs.bandsPerOctave != rhs.bandsPerOctave {
+            return false
+        }
+        if lhs.averaging != rhs.averaging {
+            return false
+        }
+        if lhs.frames != rhs.frames {
+            return false
+        }
+        if lhs.nonfiniteSamples != rhs.nonfiniteSamples {
+            return false
+        }
+        if lhs.held != rhs.held {
+            return false
+        }
+        if lhs.spl != rhs.spl {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(active)
+        hasher.combine(captureRateHz)
+        hasher.combine(bandsPerOctave)
+        hasher.combine(averaging)
+        hasher.combine(frames)
+        hasher.combine(nonfiniteSamples)
+        hasher.combine(held)
+        hasher.combine(spl)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureRtaPassiveState: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureRtaPassiveState {
+        return
+            try MeasureRtaPassiveState(
+                active: FfiConverterBool.read(from: &buf), 
+                captureRateHz: FfiConverterUInt32.read(from: &buf), 
+                bandsPerOctave: FfiConverterUInt8.read(from: &buf), 
+                averaging: FfiConverterTypeMeasureRtaAveraging.read(from: &buf), 
+                frames: FfiConverterUInt64.read(from: &buf), 
+                nonfiniteSamples: FfiConverterUInt64.read(from: &buf), 
+                held: FfiConverterBool.read(from: &buf), 
+                spl: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MeasureRtaPassiveState, into buf: inout [UInt8]) {
+        FfiConverterBool.write(value.active, into: &buf)
+        FfiConverterUInt32.write(value.captureRateHz, into: &buf)
+        FfiConverterUInt8.write(value.bandsPerOctave, into: &buf)
+        FfiConverterTypeMeasureRtaAveraging.write(value.averaging, into: &buf)
+        FfiConverterUInt64.write(value.frames, into: &buf)
+        FfiConverterUInt64.write(value.nonfiniteSamples, into: &buf)
+        FfiConverterBool.write(value.held, into: &buf)
+        FfiConverterBool.write(value.spl, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureRtaPassiveState_lift(_ buf: RustBuffer) throws -> MeasureRtaPassiveState {
+    return try FfiConverterTypeMeasureRtaPassiveState.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureRtaPassiveState_lower(_ value: MeasureRtaPassiveState) -> RustBuffer {
+    return FfiConverterTypeMeasureRtaPassiveState.lower(value)
 }
 
 
@@ -59454,6 +60323,31 @@ fileprivate struct FfiConverterSequenceTypeLinkTxtEntry: FfiConverterRustBuffer 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeMeasureDocCurve: FfiConverterRustBuffer {
+    typealias SwiftType = [MeasureDocCurve]
+
+    public static func write(_ value: [MeasureDocCurve], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeMeasureDocCurve.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [MeasureDocCurve] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [MeasureDocCurve]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeMeasureDocCurve.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeMeasureDocInfo: FfiConverterRustBuffer {
     typealias SwiftType = [MeasureDocInfo]
 
@@ -61031,6 +61925,26 @@ public func linkWsUrl(host: String, port: UInt16, path: String) -> String  {
 })
 }
 /**
+ * A measurement document's curves for a graph: each output's response
+ * smoothed by `options.smoothing` (1/N octave, 0 none) and, with
+ * `options.target`, the target (the placement's default, or
+ * `options.target_document`) levelled to it as the live view levels it. On
+ * the standard grid (1/96 octave), with the trusted mask and the spread
+ * carried through. No device, no files.
+ *
+ * Errors: [`DspiError::InvalidArgument`] for a text that is not a valid
+ * measurement document, a smoothing past 1/48 octave, or a target document
+ * that does not read.
+ */
+public func measureDocCurves(text: String, options: MeasureDocCurvesOptions)throws  -> MeasureDocCurves  {
+    return try  FfiConverterTypeMeasureDocCurves_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_func_measure_doc_curves(
+        FfiConverterString.lower(text),
+        FfiConverterTypeMeasureDocCurvesOptions_lower(options),$0
+    )
+})
+}
+/**
  * What a measurement, microphone or target document's text is: validated by
  * its kind's reader (bounded, every number in range), and described as a
  * list row. `bytes` is the text's size; `id` the document's own ("" when
@@ -61518,6 +62432,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_func_link_ws_url() != 18495) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_func_measure_doc_curves() != 12290) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_func_measure_doc_info() != 31814) {
@@ -62409,6 +63326,27 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_measure_result() != 7126) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_rta_passive_averaging() != 35925) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_rta_passive_frame() != 24406) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_rta_passive_hold() != 28388) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_rta_passive_push() != 56865) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_rta_passive_start() != 39424) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_rta_passive_state() != 11846) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_rta_passive_stop() != 20846) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_measure_set_dir() != 18664) {

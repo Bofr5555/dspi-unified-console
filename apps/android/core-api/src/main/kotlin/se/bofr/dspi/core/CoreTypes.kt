@@ -6543,6 +6543,73 @@ data class MeasureState(
 )
 
 /**
+ * How to give a measurement's curves (`measure_doc_curves`).
+ */
+data class MeasureDocCurvesOptions(
+    /**
+     * The smoothing, 1/N octave (1 to 48); 0 for none.
+     */
+    val smoothing: Int,
+    /**
+     * Give the target too, levelled to each output's curve.
+     */
+    val target: Boolean,
+    /**
+     * A `target` document's text; "" for the placement's default target.
+     */
+    val targetDocument: String,
+)
+
+/**
+ * One output's curves.
+ */
+data class MeasureDocCurve(
+    /**
+     * The output, 0-based.
+     */
+    val output: Int,
+    /**
+     * Its way.
+     */
+    val role: MeasureRole,
+    /**
+     * The speaker it belongs to ("" when the layout named none).
+     */
+    val speaker: String,
+    /**
+     * The measured response, smoothed (untrusted points flagged).
+     */
+    val measured: MeasureLiveCurve,
+    /**
+     * The target levelled to the measured response, when asked for.
+     */
+    val target: MeasureLiveCurve?,
+    /**
+     * Per point, the spread across positions or reseats, dB; empty when
+     * the document has none.
+     */
+    val spreadDb: List<Double>,
+)
+
+/**
+ * A measurement document's curves (`measure_doc_curves`).
+ */
+data class MeasureDocCurves(
+    /**
+     * The smoothing applied, 1/N octave; 0 none.
+     */
+    val smoothing: Int,
+    /**
+     * The run's timing was reliable.
+     */
+    val timingReliable: Boolean,
+    /**
+     * One per measured output, in the document's order.
+     */
+    val outputs: List<MeasureDocCurve>,
+)
+
+/**
  * What the live view measures and how (`measure_live_start`). Every number
  * 0 (or absent) is the default.
  */
@@ -6866,6 +6933,83 @@ data class MeasureLiveState(
      * The current run's state.
      */
     val session: MeasureState,
+)
+
+/**
+ * What the passive RTA analyses (`measure_rta_passive_start`). Every number
+ * 0 (or absent) is the default.
+ */
+data class MeasureRtaPassiveSetup(
+    /**
+     * The microphone's `mic` document's text; "" for an uncalibrated one
+     * (dBFS). A calibrated one gives dB SPL when its scale is known.
+     */
+    val micDocument: String,
+    /**
+     * The capture's rate, Hz (8000 to 192000; 0: 48000).
+     */
+    val captureRateHz: Long,
+    /**
+     * The averaging preset.
+     */
+    val averaging: MeasureRtaAveraging,
+    /**
+     * Bands per octave (1 to 48; 0: 3).
+     */
+    val bandsPerOctave: Int,
+)
+
+/**
+ * Where the passive RTA stands.
+ */
+data class MeasureRtaPassiveState(
+    /**
+     * It runs.
+     */
+    val active: Boolean,
+    /**
+     * The capture's rate, Hz.
+     */
+    val captureRateHz: Long,
+    /**
+     * Bands per octave.
+     */
+    val bandsPerOctave: Int,
+    /**
+     * The averaging preset.
+     */
+    val averaging: MeasureRtaAveraging,
+    /**
+     * FFT frames averaged since the start (or the last change of averaging).
+     */
+    val frames: Long,
+    /**
+     * Non-finite samples seen (analysed as silence).
+     */
+    val nonfiniteSamples: Long,
+    /**
+     * A spectrum is held for comparison.
+     */
+    val held: Boolean,
+    /**
+     * The spectrum is dB SPL (a calibrated microphone), else dBFS.
+     */
+    val spl: Boolean,
+)
+
+/**
+ * What the passive RTA shows (`measure_rta_passive_frame`).
+ */
+data class MeasureRtaPassiveFrame(
+    /**
+     * Its state.
+     */
+    val state: MeasureRtaPassiveState,
+    /**
+     * The spectrum, the held copy and their difference, as the live view's
+     * RTA gives them; `None` when it does not run.
+     */
+    val rta: MeasureLiveRta?,
 )
 
 /**

@@ -102,6 +102,8 @@ mod hub_server_measure;
 mod measure_sim;
 // -- WP P5TUNE -- the auto-tune
 mod measure_tune;
+// -- WP P5CURV -- the passive microphone RTA and a measurement document's curves
+mod measure_curv;
 
 // ── Replies ──────────────────────────────────────────────────────────
 

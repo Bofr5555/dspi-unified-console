@@ -7,6 +7,8 @@
 import { CoreCallError, type CoreEvent, type CoreImpl, type FromWorker, type Request } from "./protocol";
 import { SerialCore } from "./serial";
 import { WasmCore, loadWasmModule } from "./wasm";
+// -- WP P5WMS -- the measurement's capture port and ticks (measure-protocol.ts)
+import { MeasureWorkerRoute } from "./measure-protocol";
 
 declare const self: DedicatedWorkerGlobalScope;
 
@@ -36,11 +38,41 @@ const deferred: CoreImpl = {
 
 const serial = new SerialCore(deferred);
 
+// -- WP P5WMS -- the capture worklet's blocks go straight from its port into `measureCapturePush`,
+// and a running measurement is turned here; its states are pushed as `measure` events. The
+// route's own trouble never holds a reply back.
+const route = new MeasureWorkerRoute(
+  (m, p) => serial.call(m as never, p as never),
+  (e) => self.postMessage({ push: e }),
+  { MessageChannel, workletUrl: new URL("./capture-worklet.js", self.location.href).href, setTimeout, clearTimeout },
+);
+const measure = {
+  handles: (m: string) => route.handles(m),
+  answer: (m: string, p: unknown) => route.answer(m, p),
+  after(m: string, ok: boolean, v: unknown) {
+    try {
+      route.after(m, ok, v);
+    } catch {
+      // Ticks stopped; the session's state says the rest.
+    }
+  },
+};
+
 self.onmessage = (ev: MessageEvent<Request>) => {
   const { id, method, params } = ev.data;
+  // -- WP P5WMS -- the Worker's own methods: a port (transferred), never a core call
+  if (measure.handles(method)) {
+    const a = measure.answer(method, params);
+    self.postMessage({ reply: { id, ok: true, value: a.value } }, a.transfer);
+    return;
+  }
   serial.call(method, params).then(
-    (value) => post({ reply: { id, ok: true, value } }),
+    (value) => {
+      measure.after(method, true, value); // -- WP P5WMS --
+      post({ reply: { id, ok: true, value } });
+    },
     (err: unknown) => {
+      measure.after(method, false, null); // -- WP P5WMS --
       const e =
         err instanceof CoreCallError
           ? { code: err.code, message: err.message, ...(err.noticeKey ? { noticeKey: err.noticeKey } : {}) }
