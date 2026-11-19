@@ -28,7 +28,7 @@
 //! use, with the image's stamp as the target and `required_mv` as the current
 //! voltage. It asks on a stock board too: a 1.25 V image on a 1.15 V board asks,
 //! a 1.20 V image on a 1.15 V board does not. An image with no stamp counts as
-//! 1.15 V, so it never asks; today's images have none. On an unknown board the
+//! 1.15 V, so it never asks. On an unknown board the
 //! word takes the place of the phrase: one typed answer per image, and an image
 //! above 1.20 V is not the too-low risk the phrase is about.
 //!
@@ -63,8 +63,9 @@
 //! `ID_AND_STRING` entry with tag `DS` and id [`STAMP_ID`], whose text is the
 //! build's `DSPI_VREG_MV` (`1150`, `1200`, `1250` or `1300`), in an image whose
 //! program name is `DSPi`. No stamp, another value, or stamps that disagree
-//! all mean unknown, treated as 1.15 V. Today's images carry no stamp, so all
-//! count as unknown; nothing here depends on that changing. File names
+//! all mean unknown, treated as 1.15 V. Upstream's images carry no stamp;
+//! our `bofr-main` images do from WP FWSTAMP on (`c6d82b8`, every build, with
+//! its `DSPI_VREG_MV`), older bofr builds do not. File names
 //! (`-vreg1200`), version strings and loose bytes are never believed. A
 //! `core_vreg` marker without a voltage would prove nothing, since such a
 //! build's default can still be 1.15 V. The firmware side, in `core_vreg.c`:
@@ -1027,6 +1028,9 @@ mod tests_review_pgd1;
 
 #[cfg(test)]
 mod tests_review_pgd2;
+// -- WP FWSTAMP --
+#[cfg(test)]
+mod tests_wp_fwstamp;
 
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
