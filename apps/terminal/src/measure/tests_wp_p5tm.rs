@@ -507,3 +507,101 @@ fn wp_p5tm_run_measures_only_the_demo() {
     let outputs = doc["measurement"]["outputs"].as_array().unwrap();
     assert!(!outputs.is_empty());
 }
+
+// -- WP P5HOLD -- (review P5-D D3) the core refuses Keep while the verify
+// runs (`measure.tune.keep_during_verify`); a stand-in for the core.
+
+/// A stand-in whose verify runs for `verify_ticks` looks, then passes; Keep
+/// is refused while it runs; the guard times out after `timeout_after`.
+struct DuringVerify {
+    ticks: Cell<u32>,
+    verify_ticks: u32,
+    timeout_after: u32,
+    keeps: Cell<u32>,
+    kept: Cell<bool>,
+}
+
+impl DuringVerify {
+    fn new(verify_ticks: u32, timeout_after: u32) -> Self {
+        Self {
+            ticks: Cell::new(0),
+            verify_ticks,
+            timeout_after,
+            keeps: Cell::new(0),
+            kept: Cell::new(false),
+        }
+    }
+    fn verifying(&self) -> bool {
+        self.ticks.get() <= self.verify_ticks
+    }
+}
+
+impl TuneDriver for DuringVerify {
+    fn tick(&self) -> MeasureTuneState {
+        self.ticks.set(self.ticks.get() + 1);
+        let mut st = MeasureTuneState {
+            stage: MeasureTuneStage::Verified,
+            ..MeasureTuneState::default()
+        };
+        st.guard.phase = GuardPhase::Waiting;
+        st.guard.label = "Auto-tune".into();
+        st.guard.remaining_ms = 60_000;
+        if self.verifying() {
+            st.stage = MeasureTuneStage::Verifying;
+            st.running = true;
+        }
+        if self.kept.get() {
+            st.stage = MeasureTuneStage::Kept;
+            st.guard.phase = GuardPhase::Kept;
+        } else if self.ticks.get() > self.timeout_after {
+            st.stage = MeasureTuneStage::Reverted;
+            st.guard.phase = GuardPhase::Reverted;
+        }
+        st
+    }
+    fn keep(&self) -> Result<MeasureTuneKeep, DspiError> {
+        self.keeps.set(self.keeps.get() + 1);
+        if self.verifying() {
+            return Err(DspiError::InvalidArgument {
+                msg: format!("{KEEP_DURING_VERIFY}: the verify is still running"),
+            });
+        }
+        self.kept.set(true);
+        let mut k = MeasureTuneKeep::default();
+        k.guard.phase = GuardPhase::Kept;
+        Ok(k)
+    }
+    fn revert(&self) -> Result<GuardedApply, DspiError> {
+        Ok(GuardedApply::default())
+    }
+}
+
+#[test]
+fn wp_p5hold_a_keep_typed_during_the_verify_is_not_its_answer() {
+    // `echo keep | uconsole --demo measure tune`: the keep arrives while the
+    // verify runs, is refused, and what was typed with it is dropped; the
+    // guard runs out.
+    let d = DuringVerify::new(20, 60);
+    let (tx, rx) = answers();
+    tx.send("keep".into()).unwrap();
+    tx.send("keep".into()).unwrap();
+    let (st, keep) = keep_or_revert(&d, &rx, false, false);
+    assert_eq!(d.keeps.get(), 1, "one Keep reached the core, refused");
+    assert!(keep.is_none());
+    assert_eq!(st.guard.phase, GuardPhase::Reverted);
+    assert_eq!(report(&st, None, false), exit::REJECTED);
+    drop(tx);
+    // A Keep after the verdict keeps.
+    let d = DuringVerify::new(4, 10_000);
+    let (tx, rx) = answers();
+    let sender = std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(600));
+        tx.send("keep".into()).unwrap();
+        tx
+    });
+    let (st, keep) = keep_or_revert(&d, &rx, false, false);
+    let _tx = sender.join().unwrap();
+    assert_eq!(d.keeps.get(), 1);
+    assert_eq!(keep.unwrap().guard.phase, GuardPhase::Kept);
+    assert_eq!(st.stage, MeasureTuneStage::Kept);
+}

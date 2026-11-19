@@ -126,7 +126,8 @@ pub const CORNER_TIE_FRACTION: f64 = 0.002;
 // -- WP P5TRUST2 -- (review P5TRUST N2) a candidate's timing is held near
 // the arrival-based one.
 /// A candidate's relative delay is held within this fraction of its corner's
-/// period of the arrival-based delay (the ways' measured arrivals) ...
+/// period of the arrival-based delay (the ways' measured arrivals, each
+/// less its measured chain's onset since WP P5HOLD: [`chain_onset_ms`]) ...
 ///
 /// Why a quarter: delay and polarity stand in for each other at one
 /// frequency, so the nearest wrong alignment is half a period from the right
@@ -286,6 +287,111 @@ impl XoConstraints {
         }
         check_options(&self.align)
     }
+}
+
+// -- WP P5HOLD -- (review P5-D D1) the hold's anchor: the drivers' own
+// arrivals, not the measured ways'.
+/// The longest stretch of a chain's impulse response looked at for its
+/// onset, s ([`chain_onset_ms`]): an LR8 low-pass at 20 Hz peaks within it.
+const CHAIN_ONSET_SPAN_S: f64 = 0.2;
+/// ... and at most this many samples, whatever the sample rate.
+const CHAIN_ONSET_MAX_SAMPLES: usize = 1 << 16;
+
+/// How late a chain's own filters (PEQ and crossover, without its delay and
+/// gain) put a measured arrival, ms: the onset of the cascade's impulse
+/// response by the measurement's own rule (the first sample reaching
+/// [`crate::ir::ONSET_FRACTION`] of the largest, linear between samples).
+/// `None` when the chain has a band the model cannot model, or nothing
+/// finite comes out.
+///
+/// **Why the hold is anchored on this** (review P5-D D1). A way's arrival is
+/// its impulse response's onset, and that onset is the driver's own plus,
+/// roughly, the chain's: a steep low-pass rises slowly (an LR8 at 300 Hz
+/// alone: 1.9 ms; through P5SIM's room the woofer's arrival comes 1.25 ms after
+/// its acoustic offset), a high-pass hardly at all. The right
+/// alignment, though, is the one where the two ways' **phases** agree at the
+/// corner, and a matched pair's filters (a Linkwitz-Riley low-pass and
+/// high-pass, a Butterworth pair) agree there by design, at no delay (with
+/// the inversion the family needs): what is left to align is the drivers'
+/// own time offset. So the anchor is each way's arrival with its chain's
+/// onset taken off, the de-embedded driver's arrival, and the hold of
+/// [`timing_hold_ms`] then lies about the right alignment (through P5SIM's
+/// room, for every family of the review's probe at 300 Hz and 3 kHz: tests
+/// `review_p5d_hold.rs`). What it does not know is the drivers' own phase at
+/// the corner: a driver roll-off on the corner moves the right timing (see
+/// PLAN-P5's P5HOLD entry). Taking off the chains' **group delay at the corner** instead would do
+/// nothing for such a pair: a Linkwitz-Riley low-pass and high-pass have the
+/// same phase there up to the inversion, so the two group delays are equal
+/// and cancel in the difference, while the onsets do not.
+pub(crate) fn chain_onset_ms(chain: &ChannelChain, model: &dyn SectionModel) -> Option<f64> {
+    let fs = check_model(model).ok()?;
+    if check_modelled(chain, model, 0).is_err() {
+        return None;
+    }
+    let mut secs = sections(&chain.peq, model).ok()?;
+    secs.extend(sections(&chain.crossover, model).ok()?);
+    if secs.is_empty() {
+        return Some(0.0);
+    }
+    if secs.len() > MAX_SECTIONS {
+        return None;
+    }
+    // Bounded: fs is at most 768 kHz (check_model), so the span is finite.
+    let n = ((CHAIN_ONSET_SPAN_S * fs).ceil() as usize).clamp(1, CHAIN_ONSET_MAX_SAMPLES);
+    let mut x = vec![0.0f64; n];
+    if let Some(first) = x.first_mut() {
+        *first = 1.0;
+    }
+    // Each section in turn, direct form I.
+    for c in &secs {
+        let (mut x1, mut x2, mut y1, mut y2) = (0.0, 0.0, 0.0, 0.0);
+        for v in &mut x {
+            let x0 = *v;
+            let y0 = c.b0 * x0 + c.b1 * x1 + c.b2 * x2 - c.a1 * y1 - c.a2 * y2;
+            (x2, x1, y2, y1) = (x1, x0, y1, y0);
+            *v = y0;
+        }
+    }
+    let max = x
+        .iter()
+        .map(|v| v.abs())
+        .filter(|v| v.is_finite())
+        .fold(0.0, f64::max);
+    if !(max > 0.0 && x.iter().all(|v| v.is_finite())) {
+        return None;
+    }
+    let threshold = crate::ir::ONSET_FRACTION * max;
+    let i = x.iter().position(|v| v.abs() >= threshold)?;
+    let idx = match i.checked_sub(1).and_then(|j| x.get(j)) {
+        None => 0.0,
+        Some(before) => {
+            let (a, b) = (before.abs(), x.get(i).map_or(threshold, |v| v.abs()));
+            let frac = if b > a {
+                ((threshold - a) / (b - a)).clamp(0.0, 1.0)
+            } else {
+                1.0
+            };
+            i as f64 - 1.0 + frac
+        }
+    };
+    let ms = idx * 1000.0 / fs;
+    ms.is_finite().then_some(ms)
+}
+
+/// The arrival-based relative delay of two ways (low minus high), ms, each
+/// arrival with its measured chain's onset taken off ([`chain_onset_ms`]):
+/// the hold's anchor. A chain the model cannot read keeps its arrival as it
+/// is (the old anchor for that way).
+pub(crate) fn anchored_start_ms(
+    arrival_low_ms: f64,
+    chain_low: &ChannelChain,
+    arrival_high_ms: f64,
+    chain_high: &ChannelChain,
+    model: &dyn SectionModel,
+) -> f64 {
+    let lo = chain_onset_ms(chain_low, model).unwrap_or(0.0);
+    let hi = chain_onset_ms(chain_high, model).unwrap_or(0.0);
+    (arrival_low_ms - lo) - (arrival_high_ms - hi)
 }
 
 /// A driver's own response: a way's measurement divided by its measured
@@ -805,8 +911,10 @@ fn search(
             .collect();
         // -- WP P5TRUST2 -- the timing is held near the arrival-based delay
         // only when it is one (not the current delay as a fallback).
+        // -- WP P5HOLD -- each arrival without its measured chain's onset
+        // (review P5-D D1, see chain_onset_ms).
         let (start, from_arrivals) = {
-            let s = da.arrival_ms - db.arrival_ms;
+            let s = anchored_start_ms(da.arrival_ms, &da.chain, db.arrival_ms, &db.chain, model);
             if s.is_finite() && s.abs() <= crate::align::MAX_DELAY_BOUND_MS {
                 (s, true)
             } else {

@@ -485,7 +485,8 @@ impl DspiCore {
     /// (review P5TRUST) for the first Keep of an auto-tune whose verify did
     /// not pass (`measure.tune.keep_unverified`, as
     /// [`DspiCore::measure_tune_keep`]'s: the guard is the tune's whichever
-    /// call keeps it).
+    /// call keeps it), and (WP P5HOLD) while that tune's verify runs
+    /// (`measure.tune.keep_during_verify`).
     pub fn apply_confirm(&self) -> Result<GuardedApply> {
         // -- review P5TRUST -- the tune's guard is this guard: a client's
         // generic Keep must not pass what the tune's own Keep refuses.

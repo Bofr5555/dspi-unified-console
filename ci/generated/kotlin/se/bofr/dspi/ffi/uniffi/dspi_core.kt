@@ -4990,7 +4990,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_apply_at_time_base() != 14078.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_apply_confirm() != 17097.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_apply_confirm() != 2216.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_apply_guard_begin() != 27268.toShort()) {
@@ -5845,7 +5845,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_tune_apply() != 43151.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_tune_keep() != 22440.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_tune_keep() != 20934.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_tune_proposal() != 54513.toShort()) {
@@ -8164,7 +8164,8 @@ public interface DspiCoreInterface {
      * (review P5TRUST) for the first Keep of an auto-tune whose verify did
      * not pass (`measure.tune.keep_unverified`, as
      * [`DspiCore::measure_tune_keep`]'s: the guard is the tune's whichever
-     * call keeps it).
+     * call keeps it), and (WP P5HOLD) while that tune's verify runs
+     * (`measure.tune.keep_during_verify`).
      */
     fun `applyConfirm`(): GuardedApply
     
@@ -11386,7 +11387,13 @@ public interface DspiCoreInterface {
      * Keep the applied tune (PLAN-P5 section 1.4 step 11): `apply_confirm`,
      * the "after" snapshot filed with its `tune` block (the measurement, the
      * algorithm, the options, the writes), and the tune's row added to the
-     * measurement. A verify still running is stopped first.
+     * measurement.
+     *
+     * **While a verify runs** Keep is refused with
+     * `measure.tune.keep_during_verify` (WP P5HOLD, review P5-D D3; nothing
+     * changes, the verify and the guard run on): wait for the verdict.
+     * Before any verify has started one Keep keeps (the proposal is "Not
+     * verified").
      *
      * **After a verify that did not pass** the first Keep is refused with
      * `measure.tune.keep_unverified` (nothing changes, the guard runs on;
@@ -11394,9 +11401,9 @@ public interface DspiCoreInterface {
      * again, and only a second Keep, on the user's explicit confirmation,
      * keeps it. A new verify, Revert or another apply ask again.
      *
-     * Errors: [`DspiError::InvalidArgument`] when no tune is applied, or the
-     * first Keep after a failed verify; `apply_confirm`'s. Filing failures
-     * are notes, not errors.
+     * Errors: [`DspiError::InvalidArgument`] when no tune is applied, while
+     * a verify runs, or the first Keep after a failed verify;
+     * `apply_confirm`'s. Filing failures are notes, not errors.
      */
     fun `measureTuneKeep`(): MeasureTuneKeep
     
@@ -13879,7 +13886,8 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
      * (review P5TRUST) for the first Keep of an auto-tune whose verify did
      * not pass (`measure.tune.keep_unverified`, as
      * [`DspiCore::measure_tune_keep`]'s: the guard is the tune's whichever
-     * call keeps it).
+     * call keeps it), and (WP P5HOLD) while that tune's verify runs
+     * (`measure.tune.keep_during_verify`).
      */
     @Throws(DspiException::class)override fun `applyConfirm`(): GuardedApply {
             return FfiConverterTypeGuardedApply.lift(
@@ -20108,7 +20116,13 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
      * Keep the applied tune (PLAN-P5 section 1.4 step 11): `apply_confirm`,
      * the "after" snapshot filed with its `tune` block (the measurement, the
      * algorithm, the options, the writes), and the tune's row added to the
-     * measurement. A verify still running is stopped first.
+     * measurement.
+     *
+     * **While a verify runs** Keep is refused with
+     * `measure.tune.keep_during_verify` (WP P5HOLD, review P5-D D3; nothing
+     * changes, the verify and the guard run on): wait for the verdict.
+     * Before any verify has started one Keep keeps (the proposal is "Not
+     * verified").
      *
      * **After a verify that did not pass** the first Keep is refused with
      * `measure.tune.keep_unverified` (nothing changes, the guard runs on;
@@ -20116,9 +20130,9 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
      * again, and only a second Keep, on the user's explicit confirmation,
      * keeps it. A new verify, Revert or another apply ask again.
      *
-     * Errors: [`DspiError::InvalidArgument`] when no tune is applied, or the
-     * first Keep after a failed verify; `apply_confirm`'s. Filing failures
-     * are notes, not errors.
+     * Errors: [`DspiError::InvalidArgument`] when no tune is applied, while
+     * a verify runs, or the first Keep after a failed verify;
+     * `apply_confirm`'s. Filing failures are notes, not errors.
      */
     @Throws(DspiException::class)override fun `measureTuneKeep`(): MeasureTuneKeep {
             return FfiConverterTypeMeasureTuneKeep.lift(

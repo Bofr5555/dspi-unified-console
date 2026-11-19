@@ -204,6 +204,8 @@ pub(crate) const NOTICE_KEYS: &[&str] = &[
     "measure.system.admin",
     "measure.system.nothing_offered",
     "measure.system.verify_failed",
+    // -- WP P5HOLD --
+    "measure.tune.keep_during_verify",
 ];
 
 // ── Records ─────────────────────────────────────────────────────────────

@@ -214,8 +214,10 @@ PRO1's T1 to T5 keep their ids; the owner's requirements add T7 to T12 (T6 is PR
    repeat-to-repeat spread under 1 dB mark it trusted (`Response.valid`); untrusted points are drawn faint and never
    fitted. (WP P5TRUST: the spread is of the repeats' **windowed** responses, the fit's window, beyond the spread their
    noise explains; the SNR rule judges the noise. WP P5TRUST2: that allowance is at most 2 dB, so a change of the room
-   of more than 3 dB is seen at every SNR; below the cap it is the repeats' own noise, so more repeats never leave
-   points untrusted on noise alone above the floor.)
+   of more than 3 dB is seen at every SNR; below the cap it is the repeats' own noise. Near the floor a point then
+   needs about 19 dB of SNR per repeat whatever their number (24 dB averaged with three repeats, 28 dB with eight):
+   more repeats never leave a point untrusted that fewer repeats at the same level per repeat would trust, but
+   between about 20 and 28 dB of averaged SNR they do not make it trusted either (review P5-D).)
 10. **Memory and analysis** (RC8). Capture at most `MAX_CAPTURE_SAMPLES` = 8 Mi frames (32 MiB); the plan step refuses
     a setup whose planned frames (pre-roll + cycles + post-roll at the capture rate) exceed it, so the largest
     default run (a whole stereo three-way system as one alignment group: 6 outputs × 3 passes × 6.5 s ≈ 117 s, 5.6 M
@@ -777,7 +779,8 @@ choice and timing, `align.rs`'s pair search (additive), `ir.rs`'s spread allowan
   a note says so. Inside the hold the result is the old one bit for bit. (Review P5-D: a held choice that flips the
   polarity or lies on the hold's edge is not proposed, the pair's timing is kept; see the wave P5-D review outcomes.)
 - N3: the noise allowance of the repeat spread is at most 2 dB (`MAX_NOISE_SPREAD_DB`). Coordinator: no repeat-count
-  scaling (more repeats must never make points untrusted on noise alone). **Later:** compare group averages of the
+  scaling (more repeats must never make points untrusted on noise alone that fewer repeats at the same level per
+  repeat would trust; near the floor they gain nothing either, review P5-D). **Later:** compare group averages of the
   repeats (each group's noise like three repeats' at the averaged SNR), so many repeats see a change in the room as
   well as three without their own noise counting against them.
 - N2 also for alignment alone: `align()` holds its timing the same way (`search_held`), with the same note, so "keep
@@ -851,7 +854,7 @@ results' smoothing/target), P5QUI.
   coarse step of the hold's edge, the pair's delay and polarity are **kept** and a note says so (`align` and every
   candidate of the corner search; `PairFit.held_unclear`). **Later (a small WP):** anchor the hold on an arrival
   corrected for the measured chain (or on the de-embedded drivers' own delay), so a steep pair gets its timing too;
-  until then an LR8 or LR6 pair whose arrivals are that far off gets no timing proposal, the EQ only.
+  until then an LR8 or LR6 pair whose arrivals are that far off gets no timing proposal, the EQ only. (Done: P5HOLD.)
 - **The passive microphone RTA never runs beside this core's own generator runs:** `measure_rta_passive_start` is `busy`
   while a measurement, the live view or the auto-tune's runs are active, and a run that starts ends it (the core's
   rule, not only the screens').
@@ -865,6 +868,46 @@ results' smoothing/target), P5QUI.
   results through `measure_doc_curves` (smoothing and target, as the web; the C++ copy of the curve decoding then goes),
   the client read-only mode in Qt's `playBlocker`. And for the coordinator: Keep before any verify, or while one runs,
   takes one press in every client (review P5TRUST N5): P5WAT should run the verify by itself after an apply.
+  **Decided (P5HOLD):** the core refuses Keep while a verify runs (`measure.tune.keep_during_verify`); Keep before any
+  verify has started keeps its one press (the proposal is "Not verified"); **P5WAT runs the verify by itself right
+  after an apply** (its Keep is then offered against a verdict), and P5QUI's Verify button and the Terminal stay as
+  they are (the refusal is shown in words through its notice row).
+
+**P5HOLD: The timing hold's anchor; Keep during a verify.** [IMPLEMENTED on wp/P5HOLD, 2026-11-19] Size 1. From main
+67fa8fff (P5-D merged). Review P5-D D1 and D3, and the "more repeats" nit. **Owns:** `align.rs`'s and `xover.rs`'s
+hold anchor, `tests/review_p5d_hold.rs`, the tune's Keep gate, its notice row, this entry.
+**Implemented:**
+- D1: the hold (max(T/4, 0.25 ms)) is anchored on the **drivers' own arrivals**: each way's arrival less the onset of
+  its measured chain's impulse response (PEQ and crossover through the device's section model, the measurement's own
+  onset rule: `xover::chain_onset_ms`, `anchored_start_ms`). Why not the chains' group delay at the corner: a matched
+  pair's low-pass and high-pass have the same phase there up to the inversion, so their group delays cancel in the
+  difference and the late onset of the steep low-pass stays. `align` now takes the `SectionModel` (an interface
+  change: its only callers are tests; the core calls `crossover_corner`, which had the model). F1's `held_unclear`
+  stays the safety net, unchanged.
+- Judged against the simulated speaker's truth (the anechoic ways' phase agreement, `align`'s own rule; quadrature for
+  BW3), on the responses the core gives `align` (`FIT_WINDOW_CYCLES`), the review's probe is now a test per family
+  (LR2, LR4, LR6, LR8, BW2, BW3, BW4, Bessel 4; lower corner 300 and 120 Hz; alignment and corner search): at 300 Hz
+  and 3 kHz every pair gets the truth's polarity and its delay within a tenth of a period, nothing held (LR6 and LR8
+  were kept or flipped). At 120 Hz the room's midrange has its own second-order high-pass on the corner, which moves
+  the right timing about a third of a period earlier and changes the polarity a pair needs (LR2, BW2 none; LR4, BW4,
+  LR8 the inversion); no arrival sees it, so the hold can exclude the right timing.
+- **Polarity guard** (coordinator, after the first hand-back): a held choice whose polarity is not the window's own
+  best's is `held_unclear` too (`search_held`, so `align` and every corner-search candidate): the two lie half a cycle
+  apart and nothing tells which is right; the pair keeps its delay and polarity, and the note says the timing could
+  not be settled at this corner. At 120 Hz every family now gets the truth or keeps its timing with that note (LR6
+  and LR8 alignment, LR8, BW3 and BW4 corner search); none gets a timing that disagrees with the truth (LR8 had one:
+  held, +1.08 ms without the flip the truth needs). The coordinator's first form, comparing the 5-cycle window with a
+  longer one, is not possible here: `align` and `crossover_corner` get one response per way (the document's, 15
+  cycles), not the impulse response.
+- Synthetic arrivals in `align`'s tests now hold the chain's onset as measured ones do; every golden unchanged.
+- D3: Keep (the tune's and the guard's generic one) is refused while a verify runs, `measure.tune.keep_during_verify`
+  (notice row; nothing changes, the verify and the guard run on; the verdict clears the issue). The Terminal says it
+  in words and drops what was typed with it; Qt shows the issue through its notice row, and its raw error line is hidden (one marked line in `TuneController`).
+- The "more repeats" sentence of section 1.1 item 9 and P5TRUST2's entry made exact.
+**Later:** a pair at a corner where a driver's own roll-off sits (LR6, LR8 and others at 120 Hz in P5SIM's room)
+keeps its timing; to propose one it needs an anchor that knows the drivers' own phase (a minimum-phase model of each
+de-embedded driver was tried here and was not accurate enough in the room: its edges are where the de-embedding is
+noisy).
 
 ### Wave P5-E: the web tune, close-out
 
@@ -873,8 +916,8 @@ and uses its `graph.tsx`). **Owns:** new `apps/web/src/screens/measure/{tune.tsx
 `test/unit/measure_p5wat.test.ts`, `test/e2e/measure_p5wat.spec.ts`, one marked line in `MeasureScreen.tsx`'s tab slot.
 **Implements:** the tune wizard of section 1.4 (layout with alignment groups and programme feeds, preflight, measure,
 each step's result, the summed check, the proposal as words with the held and withdrawn lists, apply with the guard's
-countdown, verify, keep or revert, A/B); the documents list (local and hub merged, rename, note, delete by role), the
-microphone and target libraries, REW export. **Done when:** e2e on the demo device with the simulated three-way world: a
+countdown, verify (started by itself right after the apply: P5HOLD), keep or revert, A/B); the documents list
+(local and hub merged, rename, note, delete by role), the microphone and target libraries, REW export. **Done when:** e2e on the demo device with the simulated three-way world: a
 tune proposed, applied, verified and kept; another reverted; a withdrawn timing write shown with its reason; the A/B
 toggles; Control cannot delete a hub document; 375 px. **Deps:** P5WMS (P5-D), P5TUNE, P5HUB.
 
