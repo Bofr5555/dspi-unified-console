@@ -8,7 +8,9 @@
 //! **Shared.** Polls of the same `req`, `val` and `len` form one group, whoever asked:
 //! one read at the fastest rate granted, fanned out to each subscriber at its own rate.
 //! `idx` is not part of it: `wIndex` is not passed on (HUB.md section 8), so polls that
-//! differ only there are one read.
+//! differ only there are one read. -- WP PGHDEV -- except its page (the high byte):
+//! the group is keyed by `(page, req)`, so the same command number on two pages is two
+//! reads (PLAN-PG section 1.5); the low byte (0 from the Mac, 2 elsewhere) still is not.
 //!
 //! **Bounded**, per device, across all sessions, as the bridge does (its spec 7.7): the
 //! group is what costs, once.
@@ -36,7 +38,10 @@ use dspi_transport::TransportError;
 use serde_json::json;
 
 use crate::policy::{Class, Policy};
+// -- WP PGHDEV --
 use crate::session::{Outbound, Outbox, SessionId};
+use dspi_link::messages::LINK_13_MINOR;
+use dspi_proto::paged::{CmdId, PagedDir, legacy_equivalent};
 
 /// `hello.limits.poll_max_hz`: the fastest rate granted.
 pub const POLL_MAX_HZ: u32 = 20;
@@ -81,6 +86,11 @@ pub enum PollRefused {
     /// device, which would run a different command (`unsupported`, spec 7.4).
     #[error("this device does not take paged requests")]
     Unsupported,
+    // -- WP PGHDEV --
+    /// A page-0 poll from a DSPi Link 1.3 session toward a paged (1.1.7) device,
+    /// which refuses page 0 (`unsupported`, as the `0x10` a CMD gets).
+    #[error("this device speaks the paged protocol: poll it by page")]
+    PageZero,
 }
 
 impl PollRefused {
@@ -92,6 +102,7 @@ impl PollRefused {
             PollRefused::Denied => "denied",
             PollRefused::Busy => "busy",
             PollRefused::Unsupported => "unsupported", // -- WP PGHUB0 --
+            PollRefused::PageZero => "unsupported",    // -- WP PGHDEV --
         }
     }
 }
@@ -99,6 +110,10 @@ impl PollRefused {
 /// One read for the worker to run, for every subscriber of its group.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PollJob {
+    // -- WP PGHDEV --
+    /// The page (the `wIndex` high byte): 0 is a 1.1.6-shaped read, anything else
+    /// a paged GET of `(page, req)` on a paged device.
+    pub page: u8,
     /// The GET's `bRequest`.
     pub req: u8,
     /// The GET's `wValue`.
@@ -110,9 +125,52 @@ pub struct PollJob {
 /// What makes two polls one read.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 struct Key {
+    // -- WP PGHDEV --
+    page: u8,
     req: u8,
     val: u16,
     len: u16,
+}
+
+// -- WP PGHDEV --
+impl Key {
+    fn of(r: &PollSpec) -> Self {
+        Self {
+            page: CmdId::from_request(r.req, r.idx).page(),
+            req: r.req,
+            val: r.val,
+            len: r.len,
+        }
+    }
+
+    /// The 1.1.6 opcode this read is, for the analyser's STOP arbitration: itself on
+    /// page 0, a paged read's equivalent otherwise.
+    fn legacy_opcode(self) -> Option<u8> {
+        let id = CmdId::new(self.page, self.req);
+        if id.is_legacy() {
+            return Some(self.req);
+        }
+        legacy_equivalent(id, PagedDir::Get, self.val, &[]).map(|e| e.opcode)
+    }
+}
+
+// -- WP PGHDEV --
+/// What decides how a poll is judged and read (PLAN-PG section 1.5's table, as for
+/// a CMD): the device's generation and the session's `hello` minor.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PollRoute {
+    /// The device answered its attach probe as paged firmware (1.1.7).
+    pub paged: bool,
+    /// The DSPi Link minor of the session's client (`Session::link_minor`).
+    pub link_minor: u32,
+}
+
+impl PollRoute {
+    /// Every device before PGHDEV, and a 1.2 session.
+    pub const LEGACY: Self = Self {
+        paged: false,
+        link_minor: crate::session::LEGACY_LINK_MINOR,
+    };
 }
 
 impl Key {
@@ -221,11 +279,7 @@ impl State {
             .fold(0, u64::saturating_add);
         let mut granted = Vec::with_capacity(requests.len());
         for r in requests {
-            let key = Key {
-                req: r.req,
-                val: r.val,
-                len: r.len,
-            };
+            let key = Key::of(r);
             let running = rates.get(&key).copied().unwrap_or(0);
             let mut hz = r.hz.min(POLL_MAX_HZ);
             if hz > running {
@@ -253,7 +307,7 @@ impl State {
 }
 
 /// Checks that come before anything changes.
-fn check(requests: &[PollSpec], policy: &Policy) -> Result<(), PollRefused> {
+fn check(requests: &[PollSpec], policy: &Policy, route: PollRoute) -> Result<(), PollRefused> {
     let bad = |msg: &str| Err(PollRefused::BadRequest(msg.to_owned()));
     if requests.is_empty() || requests.len() > usize::from(SLOTS) {
         return bad("polls must list 1 to 16 polls");
@@ -271,11 +325,20 @@ fn check(requests: &[PollSpec], policy: &Policy) -> Result<(), PollRefused> {
         if r.len == 0 || r.len > MAX_LEN || r.hz == 0 {
             return bad("len or hz is out of range");
         }
-        // -- WP PGHUB0 -- every attached device is legacy: a page is never polled
-        if crate::device::names_a_page(r.idx) {
-            return Err(PollRefused::Unsupported);
-        }
-        if policy.classify(r.req, Dir::Get) != Class::Read {
+        // -- WP PGHUB0 -- a page is never polled on a legacy device
+        // -- WP PGHDEV -- and page 0 only by a 1.2 session on a paged one, through
+        // the adapter; each judged as its CMD is (`device::Route::class`)
+        let id = CmdId::from_request(r.req, r.idx);
+        let class = match (route.paged, id.is_legacy()) {
+            (false, true) => policy.classify(r.req, Dir::Get),
+            (false, false) => return Err(PollRefused::Unsupported),
+            (true, false) => policy.classify_id(id, Dir::Get),
+            (true, true) if route.link_minor >= LINK_13_MINOR => {
+                return Err(PollRefused::PageZero);
+            }
+            (true, true) => policy.classify_translated(r.req, r.val, Dir::Get),
+        };
+        if class != Class::Read {
             return Err(PollRefused::Denied);
         }
     }
@@ -312,6 +375,7 @@ impl Polls {
             return Vec::new();
         };
         let job = PollJob {
+            page: key.page,
             req: key.req,
             val: key.val,
             len: key.len,
@@ -336,6 +400,7 @@ impl Polls {
     /// `poll.error`, once, and the group slows until a read succeeds.
     pub fn finished(&self, job: &PollJob, reply: Result<Vec<u8>, TransportError>, now: Instant) {
         let key = Key {
+            page: job.page,
             req: job.req,
             val: job.val,
             len: job.len,
@@ -403,7 +468,32 @@ impl Polls {
         specs: &[PollSpec],
         now: Instant,
     ) -> Result<Vec<PollGrant>, PollRefused> {
-        check(specs, policy)?;
+        // -- WP PGHDEV --
+        self.subscribe_routed(
+            PollRoute::LEGACY,
+            handle,
+            session,
+            outbox,
+            policy,
+            specs,
+            now,
+        )
+    }
+
+    // -- WP PGHDEV --
+    /// [`Polls::subscribe`] on a device and for a session as `route` says.
+    #[allow(clippy::too_many_arguments)]
+    pub fn subscribe_routed(
+        &self,
+        route: PollRoute,
+        handle: u8,
+        session: SessionId,
+        outbox: &Arc<Outbox>,
+        policy: &Policy,
+        specs: &[PollSpec],
+        now: Instant,
+    ) -> Result<Vec<PollGrant>, PollRefused> {
+        check(specs, policy, route)?;
         let mut s = self.lock();
         let rates = s.grant(session, specs).ok_or(PollRefused::Busy)?;
         let mut granted = Vec::with_capacity(specs.len());
@@ -412,11 +502,7 @@ impl Polls {
                 (session, r.slot),
                 Subscriber {
                     handle,
-                    key: Key {
-                        req: r.req,
-                        val: r.val,
-                        len: r.len,
-                    },
+                    key: Key::of(r),
                     hz,
                     outbox: Arc::clone(outbox),
                     last_sent: None,
@@ -457,9 +543,16 @@ impl Polls {
 
     /// Whether a session other than `excluding` polls one of these opcodes, for the
     /// analyser's STOP arbitration (spec 7.15).
+    /// -- WP PGHDEV -- A paged poll counts as its 1.1.6 equivalent (`MEAS.RTA_BANDS`
+    /// as `RTA_GET_BANDS`): analyser sharing by id on a paged device (spec 7.15).
     pub fn others_poll(&self, opcodes: &[u8], excluding: SessionId) -> bool {
         self.lock().subscribers.iter().any(|((owner, _), sub)| {
-            *owner != excluding && opcodes.contains(&sub.key.req) && !sub.outbox.is_closed()
+            *owner != excluding
+                && sub
+                    .key
+                    .legacy_opcode()
+                    .is_some_and(|o| opcodes.contains(&o))
+                && !sub.outbox.is_closed()
         })
     }
 }
@@ -779,6 +872,7 @@ mod tests_wp_hb3 {
         let o = Arc::new(Outbox::new());
         sub(&p, 2, &o, &[meter(0, 10)], t);
         let job = PollJob {
+            page: 0,
             req: op::REQ_GET_STATUS,
             val: 9,
             len: 41,
@@ -894,5 +988,116 @@ mod tests_wp_hb3 {
         assert!(!p.take_wake());
         let _ = p.next_due();
         assert!(p.take_wake());
+    }
+}
+
+// -- WP PGHDEV --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_pghdev {
+    use dspi_proto::generated::opcodes as op;
+    use dspi_proto::paged::cmds;
+
+    use super::*;
+
+    const PAGED_13: PollRoute = PollRoute {
+        paged: true,
+        link_minor: LINK_13_MINOR,
+    };
+
+    fn spec(slot: u8, id: CmdId) -> PollSpec {
+        PollSpec {
+            slot,
+            req: id.cmd(),
+            val: 0,
+            idx: id.w_index(),
+            len: 4,
+            hz: 5,
+        }
+    }
+
+    /// The same command number on two pages is two groups, two reads, each with its
+    /// own page; the low byte of `idx` still is not part of the key.
+    #[test]
+    fn wp_pghdev_the_same_command_on_two_pages_is_two_reads() {
+        let (p, o, t) = (Polls::default(), Arc::new(Outbox::new()), Instant::now());
+        let volume = cmds::ROUTE_MASTER_VOLUME;
+        let other = CmdId::new(0x03, volume.cmd());
+        let policy = Policy::embedded();
+        p.subscribe_routed(
+            PAGED_13,
+            0,
+            1,
+            &o,
+            &policy,
+            &[spec(0, volume), spec(1, other)],
+            t,
+        )
+        .unwrap();
+        // The Mac's interface 0 in the low byte: the same read as slot 0's.
+        let mac = PollSpec {
+            idx: volume.w_index() & 0xFF00,
+            ..spec(2, volume)
+        };
+        p.subscribe_routed(PAGED_13, 0, 2, &o, &policy, &[mac], t)
+            .unwrap();
+        let mut pages = Vec::new();
+        let mut now = t;
+        for _ in 0..4 {
+            now = now.max(p.next_due().unwrap());
+            for job in p.take_due(now) {
+                pages.push((job.page, job.req));
+                p.finished(&job, Ok(vec![0; 4]), now);
+            }
+        }
+        pages.sort_unstable();
+        pages.dedup();
+        assert_eq!(pages, vec![(0x03, volume.cmd()), (0x05, volume.cmd())]);
+    }
+
+    /// Each poll is judged as its CMD would be (PLAN-PG section 1.5).
+    #[test]
+    fn wp_pghdev_polls_are_routed_by_generation_and_minor() {
+        let (p, o, t) = (Polls::default(), Arc::new(Outbox::new()), Instant::now());
+        let policy = Policy::embedded();
+        let volume = spec(0, cmds::ROUTE_MASTER_VOLUME);
+        let page0 = PollSpec {
+            req: op::REQ_GET_MASTER_VOLUME,
+            idx: 2,
+            ..volume
+        };
+        let legacy13 = PollRoute {
+            paged: false,
+            link_minor: LINK_13_MINOR,
+        };
+        let paged12 = PollRoute {
+            paged: true,
+            link_minor: 2,
+        };
+        let sub = |route, s: PollSpec| p.subscribe_routed(route, 0, 1, &o, &policy, &[s], t);
+        assert_eq!(sub(legacy13, volume), Err(PollRefused::Unsupported));
+        assert!(sub(legacy13, page0).is_ok());
+        assert!(sub(PAGED_13, volume).is_ok());
+        assert_eq!(sub(PAGED_13, page0), Err(PollRefused::PageZero));
+        assert_eq!(PollRefused::PageZero.code(), "unsupported");
+        assert!(sub(paged12, page0).is_ok(), "translated for a 1.2 session");
+        // A paged write is not polled; neither is one by its page-0 form.
+        let start = spec(0, cmds::MEAS_RTA_START);
+        assert_eq!(sub(PAGED_13, start), Err(PollRefused::Denied));
+    }
+
+    /// The analyser's STOP arbitration sees a paged band poll as `RTA_GET_BANDS`.
+    #[test]
+    fn wp_pghdev_others_poll_counts_a_paged_poll_as_its_equivalent() {
+        let (p, o, t) = (Polls::default(), Arc::new(Outbox::new()), Instant::now());
+        let bands = PollSpec {
+            len: 82,
+            ..spec(0, cmds::MEAS_RTA_BANDS)
+        };
+        p.subscribe_routed(PAGED_13, 0, 7, &o, &Policy::embedded(), &[bands], t)
+            .unwrap();
+        assert!(p.others_poll(&[op::REQ_RTA_GET_BANDS], 1));
+        assert!(!p.others_poll(&[op::REQ_RTA_GET_BANDS], 7), "its own");
+        assert!(!p.others_poll(&[op::REQ_GET_STATUS], 1));
     }
 }

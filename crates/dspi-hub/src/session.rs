@@ -78,6 +78,11 @@ pub struct SessionCtx {
     pub exempt_inflight: bool,
 }
 
+// -- WP PGHDEV --
+/// The DSPi Link minor of a client that speaks 1.2 (spec 13.1), and of every session
+/// the hub opens itself ([`Session::link_minor`]).
+pub const LEGACY_LINK_MINOR: u32 = 2;
+
 /// One session on the hub.
 #[derive(Debug)]
 pub struct Session {
@@ -89,6 +94,9 @@ pub struct Session {
     // -- WP P3RO --
     /// Its connection is TLS (set once, where the server opens it).
     encrypted: std::sync::atomic::AtomicBool,
+    // -- WP PGHDEV --
+    /// The DSPi Link minor its client said in `hello` ([`Session::link_minor`]).
+    link_minor: std::sync::atomic::AtomicU32,
 }
 
 impl Session {
@@ -106,7 +114,27 @@ impl Session {
             exempt_inflight,
             // -- WP P3RO --
             encrypted: std::sync::atomic::AtomicBool::new(false),
+            // -- WP PGHDEV --
+            link_minor: std::sync::atomic::AtomicU32::new(LEGACY_LINK_MINOR),
         })
+    }
+
+    // -- WP PGHDEV --
+    /// The DSPi Link minor the session's client said in its `hello` (PLAN-PG section
+    /// 1.5): 2 or lower is a 1.2 client (upstream 1.1.6 consoles, our older apps, the
+    /// vendored hub page), whose page-0 requests the hub translates for a paged
+    /// device; 3 or higher a 1.3 client, which gets `0x10` for one. Every session
+    /// the hub opens itself, and a client that said no minor, is
+    /// [`LEGACY_LINK_MINOR`]: its requests are 1.1.6-shaped.
+    pub fn link_minor(&self) -> u32 {
+        self.link_minor.load(Ordering::SeqCst)
+    }
+
+    // -- WP PGHDEV --
+    /// Set [`Session::link_minor`]: where the server opens a connection's session,
+    /// from that connection's `hello`; and by tests that play a 1.3 client.
+    pub fn set_link_minor(&self, minor: u32) {
+        self.link_minor.store(minor, Ordering::SeqCst);
     }
 
     // -- WP P3RO -- (doc: WP P3FRZ)
