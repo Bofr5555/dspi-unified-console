@@ -1231,13 +1231,23 @@ impl Outcome {
         let why = match &last {
             Some(o) if o.result == "kept" => {
                 self.applied.stage = MeasureSystemApplyStage::Kept;
+                self.applied.message = "kept: the alignment stays".into();
                 return format!("the hub kept the alignment ({})", o.message);
             }
+            Some(o) if o.result == "reverted" => format!(
+                "the hub ended the guard ({}) and reverted the alignment: {}",
+                o.reason, o.message
+            ),
+            // -- review AT-D2 -- not put back (or not wholly): said first,
+            // never shown as a clean revert
             Some(o) => format!(
-                "the hub ended the guard ({}, {}): {}",
+                "the hub ended the guard ({}), but the alignment was NOT wholly put back ({}): {}; \
+                 check the installation and the units' delays",
                 o.reason, o.result, o.message
             ),
-            None => "the hub's guard of this apply has ended".into(),
+            None => "the hub's guard of this apply has ended; what the hub did could not be \
+                     read: check the installation and the units' delays"
+                .into(),
         };
         if let Some(o) = &last {
             self.applied.revision_after = o.revision;
@@ -1459,6 +1469,9 @@ impl Outcome {
             }
         }
         self.applied.stage = MeasureSystemApplyStage::Kept;
+        // -- review AT-D2 -- the apply's words ("... the hub reverts it by
+        // itself unless it is kept within N s") are over
+        self.applied.message = "kept: the alignment stays".into();
         Ok(self.applied.clone())
     }
 
