@@ -1295,3 +1295,24 @@
 .dspi-web .hub-rollout-result { margin: 0.25rem 0 0.5rem; padding-left: 1.25rem; }
 .dspi-web .hub-rollout-plan ol { padding-left: 1.25rem; }
 .dspi-web .hub-rule-always { color: var(--muted); font-weight: normal; }
+
+/* -- WP PGWEB -- the device-info screen, raw by id, the update check, the sender page */
+.dspi-web .device-screen { display: grid; gap: 0.75rem; }
+.dspi-web .device-facts { display: grid; grid-template-columns: minmax(6rem, max-content) 1fr; gap: 0.25rem 1rem; margin: 0; }
+.dspi-web .device-row { display: contents; }
+.dspi-web .device-row dt { color: var(--muted); }
+.dspi-web .device-row dd { margin: 0; overflow-wrap: anywhere; }
+.dspi-web .raw-form { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: end; }
+.dspi-web .raw-form label { display: grid; gap: 0.2rem; }
+.dspi-web .raw-form input { width: 8rem; max-width: 100%; }
+.dspi-web .raw-form .raw-data input { width: 16rem; }
+.dspi-web .raw-said, .dspi-web .update-verdict p { overflow-wrap: anywhere; }
+.dspi-web .update-verdict { border-left: 3px solid var(--muted); padding-left: 0.75rem; }
+.dspi-web .update-verdict.ok { border-color: var(--ok, green); }
+.dspi-web .update-verdict.bad { border-color: var(--bad, #c33); }
+@media (max-width: 480px) {
+  .dspi-web .device-facts { grid-template-columns: 1fr; }
+  .dspi-web .device-row dd { margin-bottom: 0.35rem; }
+  .dspi-web .raw-form input, .dspi-web .raw-form .raw-data input { width: 100%; }
+  .dspi-web .raw-form label { flex: 1 1 100%; }
+}

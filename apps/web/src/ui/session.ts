@@ -25,6 +25,7 @@ import {
   // -- WP P1WB2 --
   type LockStateRecord,
   type NoticeRecord,
+  type DeviceProtocolRecord, // -- WP PGWEB --
 } from "../core/protocol";
 import type { CoreClient } from "../core/client";
 import { VIEW_ONLY_REASON, type Access, type Source } from "../fleet/types";
@@ -82,6 +83,13 @@ export interface SessionState {
   hubAdminEvent?: HubAdminEventRecord | null;
   /** The recovery code of a PIN just set on the hub, shown once until dismissed; "" for none. */
   hubRecovery?: string;
+  // -- WP PGWEB --
+  /**
+   * The connection's protocol (`deviceProtocol`: generation, pages, extension envelope, board,
+   * kind), read once per connection before the screens show (and again after a reconnect).
+   * Null before it is read, or when the core could not say it.
+   */
+  protocol?: DeviceProtocolRecord | null;
 }
 
 // -- WP WB6a --
@@ -216,14 +224,18 @@ export class Session {
     try {
       await this.load(target);
     } catch (e) {
-      this.set({ status: "failed", error: message(e) });
+      // -- WP PGWEB -- a refused open in its notice's words (the probe's: newer protocol, unrecognised device)
+      await loadNotices(this.core).catch(() => undefined);
+      this.set({ status: "failed", error: message(e), errorNotice: noticeOf(e) });
     }
   }
 
   private async load(target: DeviceTarget): Promise<void> {
     const snapshot = await this.core.call("open", target);
+    // -- WP PGWEB -- the protocol once per connection, before the screens choose what to show
+    const protocol = await this.readProtocol();
     // Tokens are required by the core from the start (P1TZ): nothing to turn on before the page can write
-    this.set({ status: "open", snapshot, error: "" });
+    this.set({ status: "open", snapshot, error: "", protocol });
     // -- WP P1WB2 -- every kind: the notices, the limits this page keeps, the lock
     await this.afterOpen();
   }
@@ -248,6 +260,15 @@ export class Session {
     } catch {
       // Nothing of it is needed to show the device.
     }
+  }
+
+  // -- WP PGWEB --
+  /** `deviceProtocol`, null when the core cannot say it (the tests' stub, a document). */
+  private async readProtocol(): Promise<DeviceProtocolRecord | null> {
+    return this.core.call("deviceProtocol", undefined).then(
+      (p) => (p && typeof p === "object" && typeof p.generation === "string" ? p : null),
+      () => null,
+    );
   }
 
   // -- WP MERGEP1D --
@@ -701,6 +722,8 @@ export class Session {
       // -- WP MERGEP1D -- bound again after a reconnect: the hub's lock again
       if (e.phase === "bound" && this.state.link?.phase === "reconnecting") void this.refreshLock();
       if (e.phase === "bound" && this.state.link?.phase === "reconnecting") void this.readSecurity(); // -- WP SECWEB --
+      // -- WP PGWEB -- a reconnect is a new connection: the generation may have changed (a re-flash behind the hub)
+      if (e.phase === "bound" && this.state.link?.phase === "reconnecting") void this.readProtocol().then((protocol) => this.set({ protocol }));
       this.set({ link: { phase: e.phase, pinSource: e.pinSource } });
       // -- WP WB4b -- the hub's list may have changed (a DSPi came or went)
       if (this.state.status === "choosing") this.refreshDevices();

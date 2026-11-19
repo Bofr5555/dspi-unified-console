@@ -14,6 +14,7 @@ import { aboutData, linkText } from "./texts";
 // -- WP WB6a --
 import { Screens } from "./screens";
 import { meterNames } from "../screens/main/model";
+import { SenderScreen } from "../screens/device/DeviceScreen"; // -- WP PGWEB --
 
 export function useSessionState(s: Session) {
   const [, bump] = useState(0);
@@ -320,7 +321,12 @@ export function SessionView(props: { session: Session; onClose: () => void }) {
           </p>
         )
       ) : null}
-      {snap && st.status === "open" ? (
+      {/* -- WP PGWEB -- the alink sender: its own page, no DSP screen and no meters */}
+      {snap && st.status === "open" && st.protocol?.deviceKind === "alinkSender" ? (
+        <div class="controls">
+          <SenderScreen session={s} />
+        </div>
+      ) : snap && st.status === "open" ? (
         <div class="controls">
           {/* -- WP WB6a -- the session's screens (WB6 slices); the skeleton's volume is the main window's now */}
           <Screens session={s} />
