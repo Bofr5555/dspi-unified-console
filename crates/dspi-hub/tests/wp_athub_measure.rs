@@ -625,6 +625,102 @@ fn wp_athub_the_run_waits_for_the_servos_to_settle() {
     );
 }
 
+// -- review AT-C -- the system model's poll feeds the settling clock
+/// ATHUBM's poll notes every locked `EXT_TIME_BASE` entry it reads
+/// (`system_measure_note_locked`): a unit the hub has watched locked for the
+/// settling time runs at once, where the family alone would start its clock
+/// at `open`.
+#[test]
+fn review_atc_the_system_poll_starts_the_settling_clock() {
+    let hub = hub();
+    let settle = Duration::from_millis(2_000);
+    hub.handle().set_system_measure_settle(settle);
+    let (tb, devs) = world(World::Line, 2, G1B);
+    let u = attach(&hub, devs);
+    let model = json!({
+        "senders": [{"id": "tx", "serial": "ATHUB-TX"}],
+        "units": [
+            {"id": "A", "serial": u.serials[0], "upstream": "tx"},
+            {"id": "B", "serial": u.serials[1], "upstream": "tx"}
+        ]
+    });
+    hub.handle()
+        .system_set_model(serde_json::from_value(model).unwrap())
+        .unwrap();
+    let st = hub.handle().system_status();
+    let noted = Instant::now();
+    assert!(
+        u.serials
+            .iter()
+            .all(|x| st.observed.get(x).is_some_and(|o| o.time_base.is_some())),
+        "the poll read EXT_TIME_BASE"
+    );
+    std::thread::sleep(settle + Duration::from_millis(100));
+    let owner = session(&hub, Role::Admin);
+    let (m, _) = open_ok(&hub, &owner, &u);
+    for serial in &u.serials {
+        assert_eq!(stage(&hub, &owner, &m, serial, &sweep(1))["t"], "ok");
+    }
+    let r = run(&hub, &owner, &m, &[(0, 0), (1, 2 * RATE)]);
+    assert_eq!(r["t"], "ok", "{r}");
+    let ahead = r["t0"].as_u64().unwrap() - tb.t_now();
+    assert!(
+        ahead < RATE * 6 / 10,
+        "t0 {ahead} samples ahead, {:?} after the poll saw the units locked",
+        noted.elapsed()
+    );
+}
+
+/// A unit with two locked entries (R7b) keeps a settling clock per time
+/// base: the poll noting its S/PDIF entry never restarts its USB one.
+#[test]
+fn review_atc_a_two_entry_unit_settles_per_time_base() {
+    let hub = hub();
+    let settle = Duration::from_millis(2_000);
+    hub.handle().set_system_measure_settle(settle);
+    let (tb, devs) = world(World::Usb, 2, G1B);
+    let mut devs = devs.into_iter();
+    let both = Scripted::new(devs.next().unwrap()).with_spdif_source_entry();
+    let mut u = Units {
+        serials: vec!["ATHUB-0".into(), "ATHUB-1".into()],
+        handles: Vec::new(),
+        remotes: vec![both.inner.remote()],
+    };
+    u.handles.push(hub.attach(Box::new(both), 0).unwrap());
+    let second = devs.next().unwrap();
+    u.remotes.push(second.remote());
+    u.handles.push(hub.attach(Box::new(second), 0).unwrap());
+    let model = json!({
+        "units": [
+            {"id": "A", "serial": "ATHUB-0", "transport": "usb_direct", "usbMode": "phase_lock"},
+            {"id": "B", "serial": "ATHUB-1", "transport": "usb_direct", "usbMode": "phase_lock"}
+        ]
+    });
+    hub.handle()
+        .system_set_model(serde_json::from_value(model).unwrap())
+        .unwrap();
+    let st = hub.handle().system_status();
+    let two = st.observed.get("ATHUB-0").unwrap();
+    assert_eq!(two.time_base.as_ref().unwrap().entries.len(), 2);
+    std::thread::sleep(Duration::from_millis(1_200));
+    let _ = hub.handle().system_status();
+    std::thread::sleep(Duration::from_millis(1_000));
+    let owner = session(&hub, Role::Admin);
+    let (m, opened) = open_ok(&hub, &owner, &u);
+    assert_eq!(opened["time_base"], tbc::TB_USB_SAMPLE);
+    for serial in &u.serials {
+        assert_eq!(stage(&hub, &owner, &m, serial, &sweep(1))["t"], "ok");
+    }
+    let r = run(&hub, &owner, &m, &[(0, 0), (1, 2 * RATE)]);
+    assert_eq!(r["t"], "ok", "{r}");
+    let t0 = r["t0"].as_u64().unwrap();
+    // The domain's numbering is the first unit's: its own S.
+    let now = u.remotes[0].time_base_t().unwrap().1;
+    let _ = &tb;
+    let ahead = t0.saturating_sub(now);
+    assert!(ahead < RATE * 6 / 10, "t0 {ahead} samples ahead");
+}
+
 // ── aborts ───────────────────────────────────────────────────────────────
 
 /// After an abort, nothing staged can start: op 9 written directly is

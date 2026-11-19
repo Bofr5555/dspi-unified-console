@@ -246,10 +246,11 @@ struct MSession {
     st: Mutex<SState>,
 }
 
-/// What the hub first saw of a unit locked.
+/// What the hub first saw of one time base of a unit locked: its domain and
+/// disturbance count then.
 #[derive(Debug, Clone, Copy)]
 struct SeenLocked {
-    key: (u8, u32, u16),
+    key: (u32, u16),
     since: Instant,
 }
 
@@ -263,7 +264,9 @@ pub(crate) struct MeasureHub {
     wake: (Mutex<bool>, Condvar),
     epoch: Instant,
     settle: Mutex<Duration>,
-    seen: Mutex<BTreeMap<String, SeenLocked>>,
+    /// By unit and time base: a unit with two locked entries (R7b) keeps a
+    /// clock for each, so noting one never restarts the other's.
+    seen: Mutex<BTreeMap<(String, u8), SeenLocked>>,
     next: AtomicU64,
 }
 
@@ -322,7 +325,6 @@ impl HubHandle {
     /// the hub (the system model's poll, WP ATHUBM, at the batch merge): a
     /// locked one starts or keeps its settling clock, so a run need not
     /// wait the full [`DEFAULT_SETTLE`] after the hub starts.
-    #[allow(dead_code)]
     pub(crate) fn system_measure_note_locked(&self, serial: &str, entry: &TimeBaseEntry) {
         if entry.state.is_locked() {
             self.system_measure()
@@ -467,25 +469,26 @@ impl MeasureHub {
 
     /// Note a locked read of unit `serial`; when the hub first saw it so.
     fn note_locked(&self, serial: &str, e: &TimeBaseEntry, at: Instant) -> Instant {
-        let key = (e.time_base, e.domain, e.disturbances);
+        let key = (e.domain, e.disturbances);
+        let at_key = (serial.to_owned(), e.time_base);
         let mut seen = guard(&self.seen);
-        match seen.get(serial) {
+        match seen.get(&at_key) {
             Some(s) if s.key == key => s.since,
             _ => {
-                seen.insert(serial.to_owned(), SeenLocked { key, since: at });
+                seen.insert(at_key, SeenLocked { key, since: at });
                 at
             }
         }
     }
 
-    /// How long until every unit has settled.
-    fn settle_left(&self, serials: &[String], now: Instant) -> Duration {
+    /// How long until every unit's time base `tb` has settled.
+    fn settle_left(&self, serials: &[String], tb: u8, now: Instant) -> Duration {
         let settle = *guard(&self.settle);
         let seen = guard(&self.seen);
         serials
             .iter()
             .map(|s| {
-                seen.get(s).map_or(settle, |x| {
+                seen.get(&(s.clone(), tb)).map_or(settle, |x| {
                     x.since
                         .checked_add(settle)
                         .map_or(Duration::ZERO, |end| end.saturating_duration_since(now))
@@ -1045,7 +1048,7 @@ impl MeasureHub {
             .filter(|u| used.contains(&u.index))
             .map(|u| u.serial.clone())
             .collect();
-        let settle = self.settle_left(&serials, now);
+        let settle = self.settle_left(&serials, tb, now);
         let t0 = t_now
             .saturating_add(samples_in(now.saturating_duration_since(at), rate))
             .saturating_add(samples_in(lead, rate))

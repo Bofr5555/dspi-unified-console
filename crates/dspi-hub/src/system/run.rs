@@ -679,9 +679,15 @@ fn usb_seen(c: &AlinkUsbConfig, s: &AlinkUsbStatus, d: Option<&AlinkUsbDiag>) ->
 /// `EXT_LIST`: `EXT_TIME_BASE` and the 0xE4 feature bit when listed, and, for a
 /// unit the model has on S/PDIF (`spdif`: a follower or a source), whether
 /// its firmware has the S/PDIF block and `EXT_ALINK_SPDIF` and `_STATUS`.
-/// Nothing is written.
-fn observe_contract(dev: &DeviceShared, o: &mut Observed, spdif: bool) {
+/// Nothing is written. Returns the `EXT_TIME_BASE` entries it read `LOCKED`
+/// (review AT-C: the measurement family's settling clock takes them).
+fn observe_contract(
+    dev: &DeviceShared,
+    o: &mut Observed,
+    spdif: bool,
+) -> Vec<dspi_proto::ext::timebase::TimeBaseEntry> {
     use dspi_proto::ext::timebase as tb;
+    let mut locked = Vec::new();
     let list = match exec(
         dev,
         Dir::Get,
@@ -691,7 +697,7 @@ fn observe_contract(dev: &DeviceShared, o: &mut Observed, spdif: bool) {
         EXT_LIST_LEN,
     ) {
         Ok(b) => dspi_proto::ext::decode_list(&b),
-        Err(_) => return,
+        Err(_) => return locked,
     };
     if spdif {
         o.spdif_block = Some(if list.contains(&tb::EXT_ALINK_SPDIF) {
@@ -723,13 +729,16 @@ fn observe_contract(dev: &DeviceShared, o: &mut Observed, spdif: bool) {
         }
     }
     if list.contains(&tb::EXT_TIME_BASE) {
-        o.time_base = get_ext(
+        let read = get_ext(
             dev,
             tb::EXT_TIME_BASE,
             tb::TIME_BASE_LEN,
             tb::TimeBaseRead::decode,
-        )
-        .map(|r| align::TimeBaseSeen {
+        );
+        if let Some(r) = &read {
+            locked.extend(r.entries.iter().filter(|e| e.state.is_locked()).copied());
+        }
+        o.time_base = read.map(|r| align::TimeBaseSeen {
             output_frames: r.output_frames,
             entries: r
                 .entries
@@ -754,6 +763,7 @@ fn observe_contract(dev: &DeviceShared, o: &mut Observed, spdif: bool) {
         })
         .is_some_and(|f| f & tb::NOTIFY_FEAT_TIME_BASE != 0);
     }
+    locked
 }
 
 // -- WP ATHUBM --
@@ -1232,7 +1242,7 @@ impl HubHandle {
                 let absent = match self.device_by_serial(&u.serial) {
                     Some(dev) => {
                         let mut o = Observed::default();
-                        observe_contract(&dev, &mut o, true);
+                        let _ = observe_contract(&dev, &mut o, true);
                         o.spdif_block
                     }
                     None => self
@@ -1625,7 +1635,11 @@ impl HubHandle {
             if let Some(d) = &dev
                 && unit_serials.contains(serial.as_str())
             {
-                observe_contract(d, &mut o, spdif_roles.contains(&serial));
+                // -- review AT-C -- each locked entry starts or keeps the
+                // measurement family's settling clock (ATHUB's hook)
+                for e in observe_contract(d, &mut o, spdif_roles.contains(&serial)) {
+                    self.system_measure_note_locked(&serial, &e);
+                }
                 if o.spdif_block.is_none() && spdif_roles.contains(&serial) {
                     o.spdif_block = last.as_ref().and_then(|l| l.spdif_block);
                 }
