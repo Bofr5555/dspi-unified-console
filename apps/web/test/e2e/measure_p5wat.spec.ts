@@ -71,7 +71,7 @@ async function measureAndPropose(page: Page, tune: (name: string) => Locator): P
   // -- WP P5FOLLOW -- no placement assumed: the person chooses first, the reason in words
   await expect(m.getByRole("button", { name: "Measure this layout" })).toBeDisabled();
   await expect(m.getByLabel("Tune placement levels")).toContainText("Choose where it is measured first");
-  await m.getByLabel("Tune placement").selectOption("listeningPosition");
+  await m.getByLabel("Tune placement", { exact: true }).selectOption("listeningPosition");
   await expect(m.getByLabel("Tune placement levels")).toContainText("Speakers: the levels are those for speakers.");
   await m.getByRole("button", { name: "Measure this layout" }).click();
   await expect(m.getByLabel("Measurement to tune from")).toHaveAttribute("data-source", "yes", { timeout: 240_000 });

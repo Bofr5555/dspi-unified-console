@@ -137,10 +137,10 @@ test("P5FOLLOW: nothing is measured before the placement is chosen; headphones s
   await expect(setup.getByText("Coupler", { exact: true })).toBeVisible();
   await expect(setup.getByRole("button", { name: "Start measuring" })).toBeEnabled();
   await expect(setup.getByLabel("Passes hint")).toHaveCount(0);
-  await setup.getByLabel("Passes").fill("2");
+  await setup.getByRole("spinbutton", { name: "Passes" }).fill("2");
   await expect(setup.getByLabel("Passes hint")).toHaveText("Two passes cannot judge timing; use three or more for auto-tune.");
   await expect(setup.getByRole("button", { name: "Start measuring" })).toBeEnabled();
-  await setup.getByLabel("Passes").fill("3");
+  await setup.getByRole("spinbutton", { name: "Passes" }).fill("3");
   await expect(setup.getByLabel("Passes hint")).toHaveCount(0);
   expect((await call<{ state: number }>(page, "siggenStatus")).state).toBe(0);
   expect(errors).toEqual([]);
