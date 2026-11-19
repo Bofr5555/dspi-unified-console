@@ -73,6 +73,10 @@ mod tests_wp_p5ses;
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_p5ses_device;
+// -- WP PGMEAS -- P5's session and live view on the paged fakes (PLAN-PG 1.7)
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_pgmeas;
 
 pub(crate) use plan::Plan;
 pub(crate) use preflight::PreflightOptions;
