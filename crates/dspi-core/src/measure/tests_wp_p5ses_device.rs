@@ -1424,3 +1424,75 @@ fn wp_p5rampfix_device_the_start_level_only_must_be_heard() {
     assert!(gen_levels(&r).iter().all(|l| *l == -50.0));
     mic.run(60.0, |_| false);
 }
+
+// -- WP P5FOLLOW -- the session's own volume echo (the P5TM demo race)
+
+/// An own (`HOST_SET`) `PARAM_CHANGED` of the user volume at `db`, as the
+/// echo of a write of ours that the device sends late.
+fn own_user_volume_echo(r: &Rig, db: f32) {
+    let off = u16::try_from(dspi_proto::generated::OFF_USER_VOLUME).unwrap();
+    let mut p = vec![
+        dspi_proto::generated::notify::NOTIFY_V2_VERSION as u8,
+        dspi_proto::generated::notify::NOTIFY_EVT_PARAM_CHANGED as u8,
+        0,
+        0,
+    ];
+    p.extend_from_slice(&off.to_le_bytes());
+    p.extend_from_slice(&4u16.to_le_bytes());
+    p.extend_from_slice(&[dspi_proto::generated::notify::PARAM_SRC_HOST_SET as u8, 0, 0, 0]);
+    p.extend_from_slice(&db.to_le_bytes());
+    r.remote.push(p);
+}
+
+fn stop_nows(r: &Rig, from: usize) -> usize {
+    r.log
+        .lock()
+        .unwrap()
+        .iter()
+        .skip(from)
+        .filter(|q| {
+            q.op == op::REQ_SIGGEN_CONTROL && q.value == crate::consts::SIGGEN_CTL_STOP_NOW
+        })
+        .count()
+}
+
+#[test]
+fn wp_p5follow_a_late_own_echo_of_the_volume_set_before_start_does_not_abort() {
+    let r = rig();
+    // The volume was lowered to -20 dB before the start (`rig`); its echo
+    // arrives only now, under load.
+    let mut mic = into_ramp(&r, walked(&[(0, MeasureRole::Full)]));
+    own_user_volume_echo(&r, -20.0);
+    own_user_volume_echo(&r, -20.0);
+    let st = mic.run(1.5, |_| false);
+    assert_ne!(st.phase, MeasurePhase::Aborted, "{st:#?}");
+    assert!(st.issue.is_none(), "{st:#?}");
+    r.core.measure_stop();
+}
+
+#[test]
+fn wp_p5follow_an_own_echo_that_moves_the_volume_still_aborts() {
+    let r = rig();
+    let mut mic = into_ramp(&r, walked(&[(0, MeasureRole::Full)]));
+    let from = r.log.lock().unwrap().len();
+    // Looks like ours (another app on the same USB path, or an older write
+    // of ours), but the device's volume is not the mirror's: a change.
+    own_user_volume_echo(&r, -25.0);
+    let st = mic.run(5.0, |_| false);
+    assert_eq!(st.phase, MeasurePhase::Aborted, "{st:#?}");
+    assert_eq!(st.issue.unwrap().key, "measure.abort.volume");
+    assert_one_stop_now(&r, from);
+}
+
+#[test]
+fn wp_p5follow_a_volume_write_of_this_core_during_the_session_aborts() {
+    let r = rig();
+    let mut mic = into_ramp(&r, walked(&[(0, MeasureRole::Full)]));
+    let from = r.log.lock().unwrap().len();
+    // Even a lower volume, and its echo equal to the mirror: noted when sent.
+    r.core.set_user_volume(-30.0).unwrap();
+    let st = mic.run(5.0, |_| false);
+    assert_eq!(st.phase, MeasurePhase::Aborted, "{st:#?}");
+    assert_eq!(st.issue.unwrap().key, "measure.abort.volume");
+    assert_eq!(stop_nows(&r, from), 1, "exactly one STOP_NOW");
+}

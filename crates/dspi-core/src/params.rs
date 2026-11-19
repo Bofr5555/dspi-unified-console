@@ -948,6 +948,11 @@ impl BandChange {
 fn send(inner: &mut Inner, path: &str, indices: &[u8], value: Value) -> Result<()> {
     // -- WP P1LM -- a limits profile refuses a value past a limit, unsent
     crate::limits::check_write(inner, path, indices, &value)?;
+    // -- WP P5FOLLOW -- a volume write during a measurement is noted as it
+    // is sent (its echo, equal to the mirror, is then not judged again)
+    if path.starts_with("vol.") && path != "vol.master.save" {
+        inner.measure_tap.note_own_volume_write();
+    }
     let mut w = inner.writable_conn()?;
     w.conn().fresh_image = false;
     w.session()?.send(path, indices, value)?;
