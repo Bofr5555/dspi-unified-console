@@ -203,6 +203,8 @@ mod tests {
             "src/fns_misc/measure_sim.rs",
             // -- WP P5TUNE --
             "src/fns_misc/measure_tune.rs",
+            // -- WP P5CURV --
+            "src/fns_misc/measure_curv.rs",
             "src/fns_browse.rs",
             "src/fns_link.rs",
             "src/fns_hub.rs",

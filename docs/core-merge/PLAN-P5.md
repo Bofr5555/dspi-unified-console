@@ -769,6 +769,26 @@ simulated microphone. No live capture in the Terminal (OD-P5m). **Done when:** c
 mic imported and listed, a demo measurement shown and exported, a tune printed, applied and reverted, exit codes for
 `ReadOnly`, `Denied` and `LimitExceeded`. **Deps:** P5DOCK, P5SES, P5TUNE, P5DEMO.
 
+**P5CURV: Core calls for the screens: the passive microphone RTA and a document's curves.** [TODO] Size 0.5. Wave P5-D
+(asked for by P5WMS, R1: no maths in a client). **Owns:** new `crates/dspi-core/src/measure/passive.rs` (and
+`measure/passive/`), `crates/dspi-core/src/measure/doc_curves.rs`, their `mod`, `pub use` and slot lines under markers,
+`crates/dspi-capi/src/fns_misc/measure_curv.rs`, `crates/dspi-wasm/src/measure_curv.rs`, binding wiring and the
+Android contract under markers. **Implements:** the **passive** microphone RTA of section 1.5 (programme audio, no
+generator): `measure_rta_passive_start(setup {micDocument, captureRateHz, averaging, bandsPerOctave})`,
+`measure_rta_passive_push(samples, rate_hz)`, `measure_rta_passive_frame() -> {state, rta}` (the live frame's
+`MeasureLiveRta`: current, held, compare), `_state`, `_hold(on)`, `_averaging(preset)`, `_stop`; P5LIVE's maths
+(`MicRta`, its FFT length, averaging presets, hold and compare, the mic's calibration and dB SPL scale, the live
+display curve); it never touches the device (no generator, lock, read or write), so it is allowed read-only, on a
+read-only connection, for a Viewer and with no device. And the free `measure_doc_curves(text, {smoothing, target,
+targetDocument})`: each output's stored response smoothed (P5RESP's `smooth`) and, when asked, the target (the
+placement's default or a document) levelled to it as the live view levels it (`levelled_target`), on
+`LogGrid::STANDARD` with the trusted mask and the spread carried through. Both are reads (WriteGuardedCore). **Done
+when:** tests: no request at all reaches the device (USB-kind recorder, client read-only mode on) and nothing is
+written through the fake hub as a Viewer; a calibrated mic reads a full-scale sine at its dB SPL; the curves equal the
+stored curve, P5RESP's smoothing and the live view's levelled target exactly, mask kept; bad input refused, never a
+panic (proptest); C and wasm calls tested. **Deps:** P5LIVE, P5DOCK. **Clients:** P5WMS (its passive RTA tab and
+results' smoothing/target), P5QUI.
+
 ### Wave P5-E: the web tune, close-out
 
 **P5WAT: Web: auto-tune and documents.** [TODO] Size 2.5. Wave P5-E (after P5WMS has merged: it fills P5WMS's tab slot
