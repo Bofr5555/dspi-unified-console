@@ -734,3 +734,35 @@ mod proptests_wp_p5dock {
         }
     }
 }
+
+/// WP P5DAYTON: a Dayton Audio file through `mic_import` gives a `dayton`
+/// document whose dB SPL scale (what the session's plan, the live view and
+/// the passive RTA read through `MicCal::spl_scale`) comes from its 1 kHz
+/// sensitivity; a nonsense sensitivity is refused in words.
+#[test]
+fn wp_p5daytn_mic_import_reads_a_dayton_file() {
+    let doc = MicDoc::from_text(
+        &mic_import(
+            String::new(),
+            "dayton.txt".into(),
+            cal_fixture!("dayton_imm6c_synthetic.txt").into(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(doc.mic.format, dspi_measure::cal::CalFormat::Dayton);
+    assert_eq!(doc.mic.vendor, "Dayton Audio");
+    assert_eq!(doc.mic.name, "Dayton Audio");
+    assert_eq!(doc.mic.sensitivity_db, Some(-38.5));
+    assert!(doc.mic.approximate);
+    let off = doc.mic.spl_scale().offset_db.unwrap();
+    assert!((off - 132.5).abs() < 1e-9);
+    assert!(matches!(
+        mic_import(
+            "m".into(),
+            "f.txt".into(),
+            "*1000Hz\tnan\r\n\r\n20\t1\r\n".into()
+        ),
+        Err(DspiError::InvalidArgument { .. })
+    ));
+}

@@ -405,7 +405,7 @@ standard-grid output with phase is then about 9 KB. **No impulse-response excerp
 | Kind | Holds | Bound | Scope |
 |---|---|---|---|
 | `measurement` | `measurement {serial, platform, savedMs, placement, mic (id, name, serial, sensitivity, approximate, the calibration's hash), stimulus (kind, f1, f2, duration, repeat, gap, level_db, device rate), capture (rate, clock ratio, timing quality: reliable or not, max residual), outputs: [{output, role, speaker, chain (the measured chain and its programme feed), arrival_ms, response (grid, mag, phase?, valid, spl), spread?}], positions, notes}`; after a tune, `tunes: [{at, snapshotBefore, snapshotAfter, kept}]` | **1 MiB** (its own store) | per device serial |
-| `mic` | `mic {name, serial?, vendor?, format (umik, rew, csv), angle (0, 90), sensitivity_db?, gain_db?, splOffset_db?, approximate, response (grid, mag, phase?), sourceName, sourceHash}` | 256 KiB | the user's (hub-wide on a hub) |
+| `mic` | `mic {name, serial?, vendor?, format (umik, rew, csv, dayton: P5DAYTON), angle (0, 90), sensitivity_db?, gain_db?, splOffset_db?, approximate, response (grid, mag, phase?), sourceName, sourceHash}` | 256 KiB | the user's (hub-wide on a hub) |
 | `target` | `target {name, use (speakers, headphones), coupler?, definition (builtin params, or imported points), compensation?, reference band}` | 256 KiB | the user's (hub-wide on a hub) |
 
 The tune's result is not a new kind: it is two **snapshots** (`meta.kind = "snapshot"`), "Before auto-tune" and "After
@@ -988,7 +988,7 @@ Not dropped: each is a small WP after phase 5, only if asked (about 5.5 units in
 | Linear and stepped sweeps in the stimulus model | 0.25 | the runs use log sweeps only |
 | "Psychoacoustic" variable smoothing; minimum and excess phase display | 0.5 | fractional-octave smoothing covers the fit and the graph |
 | An IR excerpt in documents and IR export | 0.75 | RC7's sizes; the responses carry what the tune needs |
-| Dayton-style calibration lines | 0.25 | UMIK, REW and CSV cover the common microphones |
+| Dayton-style calibration lines | 0.25 | UMIK, REW and CSV cover the common microphones. **Done in P5DAYTON (2026-11-19):** `*1000Hz` dBV/Pa line (-70..0), format `dayton`, scale referred to a 0 dBV full scale (approximate) |
 | Left/right match measure for headphones | 0.25 | the fit per side is enough for a first version |
 | REST reads of measurement documents | 0.5 | within frozen v1, additive later |
 | `uconsole measure analyse WAV` (offline analysis of an external recording) and 24/32-bit integer WAV | 0.75 | the Terminal keeps documents and the tune |

@@ -17,6 +17,14 @@
 //!   microphones: the dBFS level at 94 dB SPL).
 //! - **CSV** (`csv`): comma, semicolon (then a decimal comma is allowed) or tab
 //!   separated, with at most one header line before the data.
+//! - **Dayton Audio iMM-6C / UMM-6** (`dayton`, WP P5DAYTON): a first line
+//!   `*1000Hz<TAB>-36.1`, the microphone's sensitivity at 1 kHz in dBV/Pa
+//!   (spaces or tabs, `1000 Hz` and `1kHz` too), usually CRLF and a blank line,
+//!   then `frequency dB` lines as REW text. A UMM-6 file may also carry a
+//!   `Sens Factor =…dB, SERNO: …` line: that is the USB microphone's dBFS
+//!   convention as on a UMIK and wins for the dB SPL scale (the file is then
+//!   read as `umik`, vendor Dayton Audio). A sensitivity that is not finite or
+//!   outside [`DAYTON_MIN_DBV_PA`]..=[`DAYTON_MAX_DBV_PA`] is refused.
 //!
 //! Files are untrusted (PLAN-P5 section 3): at most [`MAX_FILE_BYTES`] and
 //! [`MAX_FILE_LINES`]; a non-finite value is refused with its line number; points
@@ -47,9 +55,19 @@ pub const CALIBRATOR_114_DB: f64 = 114.0;
 pub const MAX_TONE_SAMPLES: usize = 65_536;
 /// The fewest samples a calibrator capture must have.
 pub const MIN_TONE_SAMPLES: usize = 4096;
+/// The lowest Dayton-style 1 kHz sensitivity accepted, dBV/Pa (WP P5DAYTON).
+pub const DAYTON_MIN_DBV_PA: f64 = -70.0;
+/// The highest Dayton-style 1 kHz sensitivity accepted, dBV/Pa.
+pub const DAYTON_MAX_DBV_PA: f64 = 0.0;
+/// The input's full-scale level assumed when only a sensitivity in dBV/Pa is
+/// known, dBV: a full-scale sine (0 dBFS) taken as 1 V RMS. The real input's
+/// full-scale voltage and gain are not known to the host, so the scale it
+/// gives is labelled approximate like every sensitivity scale (WP P5DAYTON).
+pub const ASSUMED_FULL_SCALE_DBV: f64 = 0.0;
 
 /// The calibration file's format, as detected. Serialised `umik`, `rew`,
-/// `csv`: a `mic` document's `format` is this type (`doc::MicFormat`).
+/// `csv`, `dayton`: a `mic` document's `format` is this type
+/// (`doc::MicFormat`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum CalFormat {
@@ -59,6 +77,9 @@ pub enum CalFormat {
     Rew,
     /// Comma, semicolon or tab separated values, optionally with a header line.
     Csv,
+    /// Dayton Audio iMM-6C / UMM-6 text: a `*1000Hz` sensitivity line (dBV/Pa)
+    /// and no `Sens Factor` line (WP P5DAYTON, additive).
+    Dayton,
 }
 
 /// The incidence the calibration is for. Serialised as the number of
@@ -138,12 +159,41 @@ pub struct ParsedCurve {
     pub duplicates_dropped: usize,
     /// A UMIK `Sens Factor` (dB) or a REW `Sensitivity` (dBFS at 94 dB SPL).
     pub sensitivity_db: Option<f64>,
+    /// A Dayton-style `*1000Hz` line: the sensitivity at 1 kHz, dBV/Pa
+    /// (WP P5DAYTON, additive), within
+    /// [`DAYTON_MIN_DBV_PA`]..=[`DAYTON_MAX_DBV_PA`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sensitivity_dbv_pa: Option<f64>,
     /// A UMIK-2 `AGain` (dB): the microphone's gain the sensitivity is for.
     pub gain_db: Option<f64>,
     /// The microphone's serial number (`SERNO`), ASCII letters, digits and `-`.
     pub serial: Option<String>,
     /// The file says it is for 90° incidence (its name or a comment).
     pub angle: MicAngle,
+}
+
+impl ParsedCurve {
+    /// The sensitivity the dB SPL scale uses, as dBFS at 94 dB SPL: the
+    /// `Sens Factor` or `Sensitivity` line when there is one, else a Dayton
+    /// dBV/Pa sensitivity referred to [`ASSUMED_FULL_SCALE_DBV`]
+    /// (`dBV/Pa - full scale dBV`, a 94 dB SPL tone being 1 Pa).
+    pub fn spl_sensitivity_db(&self) -> Option<f64> {
+        self.sensitivity_db.or_else(|| {
+            self.sensitivity_dbv_pa
+                .map(|s| s - ASSUMED_FULL_SCALE_DBV)
+                .filter(|s| s.is_finite())
+        })
+    }
+
+    /// The sensitivity in the file's own convention, as a `mic` document's
+    /// `sensitivityDb` keeps it: dBFS at 94 dB SPL for `umik` and `rew`, dBV/Pa
+    /// for `dayton`.
+    pub fn stated_sensitivity_db(&self) -> Option<f64> {
+        match self.format {
+            CalFormat::Dayton => self.sensitivity_dbv_pa,
+            CalFormat::Umik | CalFormat::Rew | CalFormat::Csv => self.sensitivity_db,
+        }
+    }
 }
 
 /// A microphone calibration: a parsed file and who made it.
@@ -165,7 +215,7 @@ impl MicCalibration {
     /// The dB SPL scale this calibration gives without a calibrator step
     /// (see [`spl_scale`]).
     pub fn spl_scale(&self) -> SplScale {
-        spl_scale(self.curve.sensitivity_db, None)
+        spl_scale(self.curve.spl_sensitivity_db(), None)
     }
 }
 
@@ -190,8 +240,9 @@ pub fn parse_calibration_bytes(
 pub fn parse_calibration(text: &str, source_name: &str) -> Result<MicCalibration, MeasureError> {
     let curve = parse_curve(text, source_name)?;
     let vendor = match curve.format {
+        _ if curve.sensitivity_dbv_pa.is_some() => Some("Dayton Audio".to_string()),
         CalFormat::Umik => Some("miniDSP".to_string()),
-        CalFormat::Rew | CalFormat::Csv => None,
+        CalFormat::Rew | CalFormat::Csv | CalFormat::Dayton => None,
     };
     Ok(MicCalibration { curve, vendor })
 }
@@ -243,6 +294,7 @@ pub fn parse_curve(text: &str, source_name: &str) -> Result<ParsedCurve, Measure
     let mut all_phase = true;
     let mut ignored = 0usize;
     let mut sensitivity_db = None;
+    let mut sensitivity_dbv_pa = None;
     let mut gain_db = None;
     let mut serial = None;
     let mut umik = false;
@@ -282,6 +334,15 @@ pub fn parse_curve(text: &str, source_name: &str) -> Result<ParsedCurve, Measure
             sensitivity_db = Some(finite_after(&lower, "sensitivity", line_no)?.ok_or_else(
                 || MeasureError::Parse(format!("line {line_no}: Sensitivity without a number")),
             )?);
+            continue;
+        }
+        if let Some(s) = dayton_sensitivity(line, line_no)? {
+            if sensitivity_dbv_pa.is_some() {
+                return Err(MeasureError::Parse(format!(
+                    "line {line_no}: a second 1 kHz sensitivity"
+                )));
+            }
+            sensitivity_dbv_pa = Some(s);
             continue;
         }
         if line.starts_with(['*', '#', '"', '\'']) {
@@ -378,6 +439,8 @@ pub fn parse_curve(text: &str, source_name: &str) -> Result<ParsedCurve, Measure
     }
     let format = if umik {
         CalFormat::Umik
+    } else if sensitivity_dbv_pa.is_some() {
+        CalFormat::Dayton
     } else if csv {
         CalFormat::Csv
     } else {
@@ -390,6 +453,7 @@ pub fn parse_curve(text: &str, source_name: &str) -> Result<ParsedCurve, Measure
         ignored_out_of_range: ignored,
         duplicates_dropped,
         sensitivity_db,
+        sensitivity_dbv_pa,
         gain_db,
         serial,
         angle,
@@ -820,6 +884,49 @@ fn finite_after(lower: &str, key: &str, line_no: usize) -> Result<Option<f64>, M
         ))),
         Err(_) => Err(MeasureError::Parse(format!("line {line_no}: not a number"))),
     }
+}
+
+/// A Dayton-style sensitivity line, `*1000Hz<TAB>-36.1` (also `* 1000 Hz`,
+/// `*1kHz`, spaces or tabs, an optional `dBV/Pa` or `dB` after the number):
+/// `Ok(None)` when the line is not one (or names no number: then it stays a
+/// comment), the value in dBV/Pa when it is, an error for a value that is not
+/// finite or outside [`DAYTON_MIN_DBV_PA`]..=[`DAYTON_MAX_DBV_PA`].
+fn dayton_sensitivity(line: &str, line_no: usize) -> Result<Option<f64>, MeasureError> {
+    let Some(rest) = line.strip_prefix('*') else {
+        return Ok(None);
+    };
+    let lower = rest.trim_start().to_ascii_lowercase();
+    let Some(after) = ["1000hz", "1000 hz", "1khz", "1 khz"]
+        .iter()
+        .find_map(|k| lower.strip_prefix(k))
+    else {
+        return Ok(None);
+    };
+    // The frequency must end there (`*1000Hz`, not `*1000Hzx`).
+    if !after.is_empty() && !after.starts_with(|c: char| c.is_whitespace() || c == ':') {
+        return Ok(None);
+    }
+    let after = after.trim_start_matches(|c: char| c.is_whitespace() || c == ':');
+    let token = after.split_whitespace().next().unwrap_or("");
+    let num = ["dbv/pa", "dbv", "db"]
+        .iter()
+        .find_map(|u| token.strip_suffix(u))
+        .unwrap_or(token);
+    let Some(v) = parse_number(num, false) else {
+        return Ok(None);
+    };
+    if !v.is_finite() {
+        return Err(MeasureError::Parse(format!(
+            "line {line_no}: non-finite sensitivity"
+        )));
+    }
+    if !(DAYTON_MIN_DBV_PA..=DAYTON_MAX_DBV_PA).contains(&v) {
+        return Err(MeasureError::Parse(format!(
+            "line {line_no}: a sensitivity of {v} dBV/Pa \
+             ({DAYTON_MIN_DBV_PA} to {DAYTON_MAX_DBV_PA})"
+        )));
+    }
+    Ok(Some(v))
 }
 
 /// The `SERNO` of a UMIK header: ASCII letters, digits and `-`, at most 32.

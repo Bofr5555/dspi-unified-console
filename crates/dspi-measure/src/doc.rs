@@ -243,7 +243,8 @@ pub struct MicRef {
     /// The microphone's serial, when known.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub serial: String,
-    /// The sensitivity used for dB SPL, dB, when calibrated.
+    /// The `mic` document's `sensitivityDb` when calibrated, dB, in its
+    /// format's convention (dBV/Pa for a `dayton` file, WP P5DAYTON).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sensitivity_db: Option<f64>,
     /// The dB SPL scale is approximate (no calibrator step was done).
@@ -494,8 +495,8 @@ pub struct MicDoc {
     pub extra: Map<String, Value>,
 }
 
-/// The calibration file's format it was imported from: `umik`, `rew` or
-/// `csv`. P5CAL's own type (review P5-A: one enum, not a copy).
+/// The calibration file's format it was imported from: `umik`, `rew`,
+/// `csv` or `dayton` (WP P5DAYTON). P5CAL's own type (review P5-A: one enum, not a copy).
 pub type MicFormat = crate::cal::CalFormat;
 
 /// The `mic` block.
@@ -518,7 +519,8 @@ pub struct MicCal {
     /// The calibration's angle of incidence, degrees: 0 or 90.
     #[serde(default)]
     pub angle: u16,
-    /// The file's sensitivity, dB (the vendor's convention).
+    /// The file's sensitivity, dB (the vendor's convention): dBFS at 94 dB
+    /// SPL for `umik` and `rew`, dBV/Pa at 1 kHz for `dayton` (WP P5DAYTON).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sensitivity_db: Option<f64>,
     /// The file's gain, dB.
@@ -778,7 +780,7 @@ impl MicCal {
         calibrator: Option<crate::cal::CalibratorStep>,
         grid: &crate::types::LogGrid,
     ) -> Result<MicCal, MeasureError> {
-        let scale = crate::cal::spl_scale(cal.curve.sensitivity_db, calibrator);
+        let scale = crate::cal::spl_scale(cal.curve.spl_sensitivity_db(), calibrator);
         Ok(MicCal {
             id: String::new(),
             name: name.to_string(),
@@ -786,7 +788,7 @@ impl MicCal {
             vendor: cal.vendor.clone().unwrap_or_default(),
             format: cal.curve.format,
             angle: cal.curve.angle.degrees(),
-            sensitivity_db: cal.curve.sensitivity_db,
+            sensitivity_db: cal.curve.stated_sensitivity_db(),
             gain_db: cal.curve.gain_db,
             spl_offset_db: scale.offset_db,
             approximate: scale.approximate,
