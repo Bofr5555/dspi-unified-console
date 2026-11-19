@@ -713,6 +713,22 @@ One Fable review for AT-A and AT-B together (0.75).
 
 ### Wave AT-C: the hub, the hub's model, the client session
 
+**Carried over from the AT-A/AT-B review (`work/review-atab/REPORT.md`); each is part of the named WP's done line:**
+- **ATHUB:** `system.measure.stage` judges the config with `stimulus::check_timed_config` (log sweep only), never
+  `check_config_bounds` alone (pink is continuous to op 9). Hub tests prove disturbances by the counter, never by counting
+  0xE4 events (the fakes do not merge events within 250 ms; the firmware does). R7b's two-entry unit (USB-direct follower
+  that is also an S/PDIF source) is tested on a scripted transport (ATFAKE has one time base per unit).
+- **ATCORE:** one "may propose" function that ANDs `check_gate` (G1-G4) with `CrossUnitDelay.offered` /
+  `ChainedOutput.offered`; never open P5's gate options for a system run (`delay_ms` is the envelope-peak estimator, only
+  within P5's gate does it agree with the intercepts' uncertainty); decide whether the microphone stays open across
+  chained runs (else the 20 us arrival check never runs) and judge output pairs across chained runs (two outputs offered
+  against the anchor may differ by up to 14 us); update the op list (0-10) in `dspi_apply_at_frame`'s C doc and
+  `apps/web/src/core/protocol.ts`; wire `time_base_event` (0xE4) into `dspi_session::events`.
+- **ATHUBM:** zero `tx_mask` when a source becomes a follower (ATPROTO refuses it locally on a non-source).
+- **Plan risk (section 1.4):** with a P5SPIKE-class USB microphone (55-100 ppm wander bursts) every system run is
+  refused "timing unreliable" (0 of 30 seeds pass P5's gate). Safe, but "overlapped starts" (Later) is probably needed
+  before ATHIL Part B with that microphone; the coordinator decides after the Xonar loop-back test.
+
 **ATHUB: The hub family `system.measure.*`.** [TODO] Size 4. Wave AT-C. **Owns:** new
 `crates/dspi-hub/src/system/measure.rs` (and `system/measure/`: sessions, scheduler tick, dead-man, aborts, the USB
 domain), one `mod` line in `system/mod.rs`, `crates/dspi-hub/src/usb.rs` (keep each device's
