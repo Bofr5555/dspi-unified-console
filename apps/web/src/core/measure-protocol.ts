@@ -370,6 +370,9 @@ export function isMeasureEvent(e: unknown): e is MeasureEvent {
   return !!x && (x.event === "measure" || x.event === "measureLive") && typeof x.state === "object" && x.state !== null;
 }
 
+/** The Worker does not turn a session the page turned itself this recently, ms. */
+const PAGE_TICK_MS = 500;
+
 /** Capture ports the Worker keeps open at once. */
 export const MAX_PORTS = 4;
 
@@ -401,6 +404,8 @@ export class MeasureWorkerRoute {
   private readonly bound: (() => void)[] = [];
   private timer: ReturnType<typeof setTimeout> | undefined;
   private tick: "measureTick" | "measureLiveTick" | null = null;
+  /** When the page last turned the session itself, ms. */
+  private pageTicked = -Infinity;
   /** Blocks pushed and refused since the port opened (the core's refusals are its answers). */
   pushed = 0;
   refused = 0;
@@ -413,6 +418,8 @@ export class MeasureWorkerRoute {
       workletUrl: string;
       setTimeout: typeof setTimeout;
       clearTimeout: typeof clearTimeout;
+      /** The clock, ms (tests); `Date.now` without one. */
+      now?: () => number;
     },
   ) {}
 
@@ -463,6 +470,8 @@ export class MeasureWorkerRoute {
 
   /** After a core call answered: start, keep or end the ticks. */
   after(method: string, ok: boolean, value: unknown): void {
+    // A page that turns the session itself (the P5SPIKE page) keeps it: the Worker then waits.
+    if (method === "measureTick" || method === "measureLiveTick") this.pageTicked = this.env.now?.() ?? Date.now();
     if (ok && method in TICKS) {
       const active = method === "measureLiveStart" ? (value as MeasureLiveStateRecord)?.active : (value as MeasureStateRecord)?.active;
       if (active !== false) this.start(TICKS[method]!);
@@ -491,6 +500,11 @@ export class MeasureWorkerRoute {
   private async turn(): Promise<void> {
     const tick = this.tick;
     if (!tick) return;
+    const now = this.env.now?.() ?? Date.now();
+    if (now - this.pageTicked < PAGE_TICK_MS) {
+      this.timer = setTimer(this.env, () => void this.turn());
+      return;
+    }
     let active = false;
     try {
       const st = await this.call(tick, undefined);
