@@ -340,6 +340,8 @@ fn wp_pghdev_a_cmd_during_the_attach_probe_is_no_device_and_not_sent() {
                 serial: "PGHDEV-GATE".into(),
                 bus_id: "test".into(),
                 address: 1,
+                // -- PG-C merge -- PGZERO's descriptor fields
+                ..Default::default()
             },
             started: started_tx,
             release: Mutex::new(release_rx),
