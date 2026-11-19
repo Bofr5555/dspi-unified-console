@@ -18,7 +18,9 @@ It is one of the clients in the `dspi-unified-console` repository; the root
 [`README.md`](../../README.md) has the project, the status of each client and the credits.
 
 > Status: version **0.12.0** (versionCode 12, tag `android-v0.12.0`), with DSPi Link. It is distributed
-> through Google Play as "DSPi Console for Android" (app ID `se.bofr.dspi_console_android`).
+> through Google Play as "DSPi Console for Android" (app ID `se.bofr.dspi_console_android`), in closed
+> testing. *(2026-11-19: `main` builds 0.13.0, versionCode 13; what it adds is below and in the root
+> README's Status.)*
 
 What you need: an Android phone or tablet with Android 8.0 or newer. **No DSPi required**: the app has a
 Demo mode, so every screen can be tried without hardware. With a DSPi: firmware **v1.1.6** for full
@@ -36,8 +38,19 @@ images or a local `.uf2`) · demo mode without a device.
 
 DSPi Link (optional, off by default; Settings › Networking): control a DSPi through a DSPi Link hub
 on the local network, such as DSPi Console on a Mac, this repository's `uconsole hub` or Qt app, or a DSPi
-ESP32 bridge — hub discovery or address entry, PIN pairing, reconnect. The protocol is plaintext:
-trusted networks only.
+ESP32 bridge — hub discovery or address entry, PIN pairing, reconnect. *(Until 0.12.0 the protocol was
+plaintext. On `main` since 2026-11-16, WP SECAN:)* the connection to this project's hubs is TLS, with the
+hub's key pinned at pairing (compare the fingerprint the hub shows with its PIN); a hub without TLS,
+such as an upstream one, shows as unsecured
+([`docs/integrator/security.md`](../../docs/integrator/security.md)).
+
+On `main` for the next release (2026-11-19), all through the core: the PRO phase 1 screens (snapshots,
+A/B, safe apply, limits profiles, the installer lock and PIN, offline documents and templates, document
+diff and partial import, AutoEQ preview), the hub's limits, PIN and pinned modes (HUBADMIN); shared
+snapshots, the hub's history, the alarm banner and Identify (P2AN); the device info with the firmware
+generation, the update check before the bootloader entry and the core's write gate for firmware 1.1.6
+and 1.1.7 (PGAND); and S/PDIF units in the System screen, view only. Measurement and auto-tune come in a
+later batch (`docs/core-merge/PLAN-P5.md`).
 
 Android specifics: auto-launch on plug-in, a foreground-service notification with volume / mute /
 next preset, and the app claims only the DSPi's vendor control interface, so audio keeps playing
@@ -54,6 +67,9 @@ next preset, and the app claims only the DSPi's vendor control interface, so aud
   - **V17–V31** (v1.1.5-beta3 to v1.1.6-beta3): that firmware's settings. Tools and rows it does not
     have are hidden, and so, for now, are the hardware options under the channel and settings pages.
   - **Newer than V32:** the settings this version of the app understands.
+- *(On `main`, 2026-11-19.)* Upstream firmware **1.1.7**, which speaks the newer paged protocol with the
+  same V32 settings image, is full control through the core's adapter; firmware with a newer protocol
+  major is refused with a notice ([`docs/manual/notices.md`](../../docs/manual/notices.md)).
   - **Older, or a format the app cannot map:** the settings cannot be read, and the banner says the
     values on screen are defaults.
 

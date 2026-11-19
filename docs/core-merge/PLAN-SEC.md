@@ -642,7 +642,9 @@ gets them). `rcgen` is new to `dspi-hub` only.
     - the password redacted in every Debug or log
 - **Deps:** P2WH merged (P2-B) and P2MQC (merged).
 
-**SECREL: Release keys and the Swift updater key.** [DONE 2026-11-15: `69a2848e` into review/seca, main `2c7dc985`; with TEST keys: the real keys wait for the owner, OD-SECj] Size 1 (0.5 Linux, 0.5 Mac VM).
+**SECREL: Release keys and the Swift updater key.** [DONE 2026-11-15: `69a2848e` into review/seca, main `2c7dc985`; with TEST keys: the real keys wait for the owner, OD-SECj. *(WP DOCSYNC, 2026-11-19: the release minisign public key is published as
+`docs/release/minisign.pub`, `caf5479d`, 2026-11-18, its secret half kept by the owner outside the repository; the Swift
+updater's constant in `AppUpdateInstaller.swift` is still the TEST key.)*] Size 1 (0.5 Linux, 0.5 Mac VM).
 - **Owns:**
   - `ci/release-sums.sh` (fail instead of skip)
   - `apps/apple/DSPi Console/AppUpdateInstaller.swift` (the public key constant)
@@ -861,7 +863,7 @@ SEC-B total: **6.5** (7.5 if SECSRV has to do the stream refactor).
   - a `dspi://pair` link with a wrong `k=` refused
 - **Deps:** SECCORE, SECFWV. The end-to-end TLS pairing test is SECPAIR's; the clients test against the core.
 
-**SECSW: Swift, the same, on the VM.** [UNDER REVIEW 2026-11-16: `wp/SECSW` merged into `review/swsec` (`6847e658`, with P2SW), not into main; not done] Size 1.5.
+**SECSW: Swift, the same, on the VM.** [DONE 2026-11-16: `wp/SECSW` merged into `review/swsec` (`6847e658`, with P2SW), main `49cd5370`; marked by WP DOCSYNC, 2026-11-19] Size 1.5.
 - **Owns:** the Swift pairing and hub-list views, `LinkTokenStore.swift` (v2 credential,
   `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`), and the iOS `dspi://` URL handling.
 - **Done when:**
@@ -906,7 +908,8 @@ merged `0aef15b8`, main `948d192e`), and the done-when tests were written by SEC
 `crates/dspi-hub/tests/wp_secdef_upgrade.rs` the upgrade of a pre-TLS store in `off`, `on` and `require`. **What remains:**
 the Mac app's `HubStartOptions` default. On main `HubStartOptions` (`crates/dspi-hub/src/ffi.rs`) has no TLS field;
 P2SW adds it with `require` as the default (`6ccbce1e`), merged into `review/swsec` (`8ab3698f`) and under review. SECDEF
-is done when that merges to main with a test of the default] Size 0.5.
+is done when that merges to main with a test of the default. *(WP DOCSYNC, 2026-11-19: done. `review/swsec` is merged, main `49cd5370`,
+and `crates/dspi-hub/src/ffi/tests_wp_p2sw.rs` `wp_p2sw_default_options` asserts `HubTls::Require` as the default.)*] Size 0.5.
 - **Owns:** the `--tls` default and the Mac `HubStartOptions` default.
 - **Implements:** OD-SECb. The first TLS release ships `on`; this WP is the flip to `require` in the release after all
   clients ship SEC-C. **[Superseded for `uconsole hub` by OD-SECb's reconsideration of 2026-11-15 (section 7): it ships `require` from

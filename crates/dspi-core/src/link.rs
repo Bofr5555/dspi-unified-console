@@ -1456,8 +1456,16 @@ impl DspiCore {
         // -- WP PGCORE -- the side plans with the connection's discovery
         let disc = transport.paged_discovery();
         let own_platform = own_platform.or_else(|| disc.as_ref().map(|d| d.platform.clone()));
+        // -- WP PGSENDER -- the dual-stack alink sender has no meters: no
+        // poll is subscribed for it (its kind is settled at the attach below)
+        let paged_sender = disc
+            .as_ref()
+            .is_some_and(|d| crate::device::is_paged_alink_sender(d, None));
         side.set_discovery(disc);
-        if paged && let Some(n) = channels {
+        if paged
+            && !paged_sender
+            && let Some(n) = channels
+        {
             on_channels(n);
         }
         let listed = device
@@ -4380,3 +4388,9 @@ mod tests_wp_pgcore;
 #[allow(clippy::indexing_slicing)]
 #[path = "link/tests_wp_pgfix.rs"]
 mod tests_wp_pgfix;
+
+// -- WP PGSENDER --
+#[cfg(test)]
+#[allow(clippy::indexing_slicing)]
+#[path = "link/tests_wp_pgsender.rs"]
+mod tests_wp_pgsender;

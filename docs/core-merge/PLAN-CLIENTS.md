@@ -51,14 +51,27 @@ and the web build (section 9).
 
 ---
 
-## Status (2026-11-15)
+## Status (2026-11-19)
 
-*From the status markers in this plan, synced with `git log main` at `f60845ef` (WP DOCSYNC). A hash is the merge that
+*WP DOCSYNC, 2026-11-19, synced with `git log main` at `11625ba5`: the rows below that changed since 2026-11-15 are
+marked again (SW7, SW-M2, SW-M3, SW-M4, WB6 and its slices WB6d to WB6l); the paragraph "Where we are" of 2026-11-15
+is kept below it.*
+
+**Where we are (2026-11-19).** Open in this plan, besides the hardware and owner rows ([HW], [OWNER]): the Swift tail
+(SW19, SW20, SW22 to SW24, SW-V1, and SWS13, the retirement of the opt-out paths), Android's AN21 (localisation), the
+web's WB4c and WB9, the handover HO1, and the optimisation and polish waves (OPT0 to OPT9, PL-*), which have not
+started. The Swift app runs on the core by default for USB, USB MIDI, DSPi Link, firmware updates and the Mac's hub (SW-M1, SW5, SW6, SW-M2,
+SW-M3). The web's UI floor is complete (WB6a to WB6l). Beyond this plan, on `main`: PRO phase 2 (`PLAN-P2.md`), the
+security waves SEC-A to SEC-D (`PLAN-SEC.md`), PRO phase 3 (`PLAN-P3.md`), PRO phase 5 (`PLAN-P5.md`), the multi-unit
+measurement on the alink time base (`PLAN-AT.md`) and both firmware generations (`PLAN-PG.md`); each of those files
+marks its own WPs. Their hardware runs (P3HIL, P5HIL, ATHIL, PGSMOKE, PGHIL) are owed.
+
+*Status of 2026-11-15, from the status markers in this plan, synced with `git log main` at `f60845ef` (WP DOCSYNC). A hash is the merge that
 brought the WP into `main`. **DONE**: merged. **PARTIAL**: merged or partly done; the rest is named. **IN PROGRESS**: on its
 branch, not finished. **TODO**: not started. **MOVED**: moved to later work, folded elsewhere or replaced. **[HW]**: a device
 step is still owed. **[OWNER]**: waits on the owner.*
 
-**Where we are.** PRO phase 1 (section 5.9) is complete: all 26 WPs are merged. The Swift app runs on the core for USB,
+**Where we are (2026-11-15).** PRO phase 1 (section 5.9) is complete: all 26 WPs are merged. The Swift app runs on the core for USB,
 CoreMIDI and DSPi Link (SW-M1, SW5, SW6), and its domains moved to the core (SW8-SW14). The web client has its transports,
 hosting and hardware pass (WB2-WB8) and the first three UI slices (WB6a-WB6c). Qt and Android finished their last-wave WPs
 (QD21a-QD23, AN15, AN20). **The owner's order** still holds: the plan's WPs, then the web, then optimisation (5.7), then
@@ -68,9 +81,10 @@ polish (5.8), per resource.
 
 | State | WPs |
 |---|---|
-| **In progress** (4) | **SW7** Swift Link banner and errors; **SW-M2** Swift firmware through the core (in fixup); **SW-M3** Swift hub over `dspi-hub`; **PLANP2** the PRO phase 2 plan (new `docs/core-merge/PLAN-P2.md`) |
-| **Next** | PRO phase 2 waves, after the plan review. Swift: SW19, SW20, SW22, SW23, SW24, SW-M4, SW-V1 (VM). Web: WB6d-WB6l in the slice order of section 5.5, WB4c (later, OD9), then WB9. Qt, Android and handover: AN16, AN21, AN22, QD35, HO1. Then OPT0-OPT9, then PL-* |
+| **In progress** (2026-11-19) | No WP of this plan. `wp/PGSENDER` (PLAN-PG: the dual-stack alink sender on its paged stack) was reviewed with WP DOCSYNC (`review/pgsdoc`). On 2026-11-15 SW7, SW-M2, SW-M3 and PLANP2 were in progress; all four are merged |
+| **Next** (2026-11-19) | Swift: SWS13 (retire the opt-out paths), PGSWIFT (PLAN-PG), SW19, SW20, SW22, SW23, SW24, SW-V1 (VM). Web: WB4c (later, OD9), then WB9. Android and handover: AN21, HO1. Then OPT0-OPT9, then PL-*. The hardware runs of the later plans (P3HIL, P5HIL, ATHIL, PGSMOKE, PGHIL) with the owner |
 | **Blocked** | **Need hardware or the owner:** SW15 (simulator and relay run), SW16 (iPhone or iPad), SW-M5 (Apple silicon Mac); XC4, XC5 (an ESP32 bridge), XC6 (go for a VREG write); QD35 hand checks; AN16 and AN22 (AN15's release upload, phone checks) |
+| **Done since 2026-11-15** | **Swift:** SW7 and SW-M2 (review batch 2, on `main` from `dc06920a`), SW-M3 (review batch 6, on `main` from `ef0e4095`), SW-M4 (`6d337b34`), SWS4 and SWS7 (review batch 6), P2SW and SECSW (`49cd5370`). **Web:** WB6d to WB6l (`6d337b34`, `5778bae0`, `8634bf02`), so WB6 is done. **Plans beyond this one:** PLANP2 and PRO phase 2, PLAN-SEC, PRO phase 3, PRO phase 5, PLAN-AT, PLAN-PG (their own files) |
 | **Done since the last status (2026-11-08)** | **PRO phase 0 and 1:** P0W, P0W2, P0M, P0U, P0E; all of P1-A to P1-G (P1UG ... P1TZ). **Swift on the core:** SW-M1, SW5, SW6, SW8-SW14, SW17, SW18, SWMAC1. **Web:** WB2-WB5, WB7, WB8, WB6a-WB6c, UIM1. **Qt and Android:** QD21a, QD22, QD23, the Qt swap (POSTSWAP), AN15, AN20, AN42, ANLAST. **Core and hub:** ROMODE, ECHO1, CORENITS, ANDFU, CLEAN1, BULKFIX, HUBADMIN, TMCORE, PAIRBAND; the alink and USB-direct work (ALINK1, AUSB1-AUSB3) |
 
 **Open checks found by the dispatch (not WPs yet):**
@@ -272,7 +286,7 @@ polish (5.8), per resource.
 | AN39 | Android small follow-ups | DONE | 172aa93d (review c5b) | Its overlay item was done in CG30 |
 | AN42 | Undo and redo in the Android app (PRO1 W2) | DONE | 5e355a18 | Before P1AN1 (both touch the app bar) |
 
-**SW: Swift (macOS and iOS)**: 35 WPs: 21 DONE, 3 IN PROGRESS, 10 TODO, 1 MOVED.
+**SW: Swift (macOS and iOS)**: 35 WPs: 25 DONE, 9 TODO, 1 MOVED (2026-11-19; it was 21 DONE, 3 IN PROGRESS, 10 TODO on 2026-11-15).
 
 | ID | Title | Status | Merged in / branch | Next or blocker |
 |---|---|---|---|---|
@@ -282,7 +296,7 @@ polish (5.8), per resource.
 | SW4 | `CoreBackedTransport` | DONE | 23aea616 (review c4n) |  |
 | SW5 | CoreMIDI through the core | DONE | 4e655d0e | VM; [HW] relay run on the K340 |
 | SW6 | Link through the core | DONE | f60845ef | VM; [HW] |
-| SW7 | Banner and errors | IN PROGRESS | wp/SW7 | After SW6 |
+| SW7 | Banner and errors | DONE | review batch 2 (`eecdab08`), on `main` from `dc06920a` |  |
 | SW8 | Reads and the mirror | DONE | 0755bba3 | Merged in review c6b |
 | SW9 | Volume, EQ, crossover, outputs, matrix | DONE | d1b1918a (review sw9 + fixup) | Typed setters and the write lane; Undo works on this domain through the core (PARITY section 4). Cut from wp/SWMAC1 |
 | SW10 | Effects | DONE | 8a33ea09 (review sw10 + fixup) | Loudness to upmixer on the typed setters and SW9's lane; Undo works on each effect through the core (PARITY section 4). Cut from wp/SW9 |
@@ -305,14 +319,14 @@ polish (5.8), per resource.
 | SWF2 | Mac USB beside a held MIDI port, refused writes revert, hub voltage rule | DONE | bc1f9ff4 (review c5e) | Confirmed on the K340 (hw-mac-2) |
 | SWF3 | iOS layout and version | DONE | bc1f9ff4 (review c5e) | Confirmed (hw-mac-2) |
 | SW-M1 | USB through the core | DONE | 30e9b0fe | Core default on the Mac; `-CoreTransport NO` opts out. Hardware check on `macr`: see the WP report |
-| SW-M2 | Firmware through the core | IN PROGRESS | wp/SWM2 | After SW-M1 |
-| SW-M3 | Hub over `dspi-hub` | IN PROGRESS | wp/SWM3 | After SW-M1 |
-| SW-M4 | What stays Swift | TODO |  | After SW14 |
+| SW-M2 | Firmware through the core | DONE | review batch 2 (`eecdab08`), on `main` from `dc06920a` |  |
+| SW-M3 | Hub over `dspi-hub` | DONE | review batch 6 (`2f7a811e`), on `main` from `ef0e4095` | The Swift hub and the opt-out paths still ship; their retirement is SWS13 |
+| SW-M4 | What stays Swift | DONE | `6d337b34` (review batch 3) | `docs/SWIFT-STAYS.md` |
 | SW-M5 | Real Mac hardware pass | TODO |  | [HW][OWNER]: Apple silicon Mac |
 | SW-U1 | Upstream tracking rule | DONE | fc0f2678 (review c4q) |  |
 | SW-V1 | Visual and feel evidence for OD3 | TODO |  | No longer gates OD3 (decided 2026-11-13) |
 
-**WB: web** (section 5.5, after the plan's WPs): 12 WPs (WB6 in slices): 9 DONE, 1 IN PROGRESS, 2 TODO. The old stubs WB2-WB4
+**WB: web** (section 5.5, after the plan's WPs): 12 WPs (WB6 in slices): 10 DONE, 2 TODO (2026-11-19; WB6 was in progress on 2026-11-15). The old stubs WB2-WB4
 (UI, hosting, hardware) are replaced by the WPs below.
 
 | ID | Title | Status | Merged in / branch | Next or blocker |
@@ -325,7 +339,7 @@ polish (5.8), per resource.
 | WB4b | Link transport | DONE | 120a78a3 | After WB3 |
 | WB4c | Web MIDI | TODO |  | Later; public use waits on OD9 |
 | WB5 | Web client skeleton | DONE | 88dc7342 (review c6a) |  |
-| WB6 | UI floor, in slices | IN PROGRESS | WB6a, WB6b, WB6c merged (c7d99131 and before) | WB6d next; the slice table in section 5.5 (order changed by UIM1) |
+| WB6 | UI floor, in slices | DONE | WB6a to WB6c (c7d99131 and before), WB6d, WB6f, WB6g (`6d337b34`), WB6e, WB6h, WB6i (`5778bae0`), WB6j, WB6k, WB6l (`8634bf02`) | The slice table in section 5.5 |
 | WB7 | Hosting | DONE | d51a1c94 | After WB4b |
 | WB8 | Hardware | DONE | 5b108bea | Last; parts [HW][OWNER] |
 | WB9 | Gate (R-Web) | TODO |  | After WB8 |
@@ -1192,7 +1206,7 @@ Owner: **SwiftUI on macOS and iOS over the Rust core; Swift keeps UI only**, wit
 
 **SW6: Link through the core.** [DONE f60845ef, wp/SW6: `Core/CoreLink.swift` drives the core's Link session under `CoreBackedTransport(link: .link)`; the core is the default for DSPi Link on Mac and iOS, `-CoreTransport NO` opts out to Swift's `LinkClient`; checked against the Swift hub in process and the Rust demo hub (see the WP report)] Size 1.5. **Owns:** `Link/LinkClient*.swift` replaced by `Core/CoreLink.swift`; keeps `HubBrowser.swift`, `LinkTokenStore.swift`, the pairing sheet. **Implements:** Bonjour stays in Swift (the entitlement belongs to it); `expected_hub_id`; `link_retry_now` on foreground; `rta_start` after a reconnect. Checks the Local Network prompt with Rust's BSD sockets. **Done when:** the run in `A7-LINK-CLIENT-REPORT.md` passes **[HW]**. **Deps:** SW4, XC1.
 
-**SW7: Banner and errors.** [IN REVIEW wp/SW7] Size 0.5. **Owns:** `Core/LinkBannerView.swift`. **Done when:** the owner's rule holds in a fake-hub run; CG10's wording. **Deps:** SW6, CG10.
+**SW7: Banner and errors.** [DONE 2026-11-16: review batch 2, on `main` from `dc06920a`] Size 0.5. **Owns:** `Core/LinkBannerView.swift`. **Done when:** the owner's rule holds in a fake-hub run; CG10's wording. **Deps:** SW6, CG10.
 
 **SW8: Reads and the mirror.** [DONE 0755bba3, merged in review c6b] Size 3–3.5 (SW3). **SW-V1 and OD3 follow it.** **Owns:** `Commands.swift` "Bulk Parameter Transfer" and "Notification → State Mirroring" (about 840 lines). **Implements:** view-model state from `DspState`, notifications from the core, older firmware read-only. **Done when:** every view shows correct values on the demo device and fixtures; no echo flicker. **Deps:** SW4.
 
@@ -1229,19 +1243,19 @@ Then one WP per domain. Each **owns** its `Commands.swift` sections and wire use
 
 **SW-M1: USB through the core.** [DONE 30e9b0fe, wp/SWM1: the core's `UsbPipe` under `Core/CoreUsb.swift`; USBNotificationReader removed, USBDevice.swift keeps the device model; the core is the Mac's default, `-CoreTransport NO` opts out] Size 1–1.5. **Owns:** `Core/CoreUsb.swift`; reduces `USBDevice.swift` and `USBNotificationReader.swift`. **Implements:** `nusb`'s `macos_iokit` through CG3's `usb` feature, including hot-plug. **Done when:** a demo run and a mock test pass; the macOS target has no IOKit vendor path left outside the hub. **Deps:** SW4.
 
-**SW-M2: Firmware through the core.** [IN REVIEW wp/SWM2] Size 0.5–1. **Owns:** `FirmwareInstaller.swift`, `BootloaderLocator.swift`, reduced to UI over C11's `firmware.rs` and CG8's guard. **Done when:** `FirmwareInstallerTests` pass; a fake drive test; guard cannot be skipped. **No real flash here. Deps:** SW-M1, CG8, CG24.
+**SW-M2: Firmware through the core.** [DONE 2026-11-16: review batch 2, on `main` from `dc06920a`] Size 0.5–1. **Owns:** `FirmwareInstaller.swift`, `BootloaderLocator.swift`, reduced to UI over C11's `firmware.rs` and CG8's guard. **Done when:** `FirmwareInstallerTests` pass; a fake drive test; guard cannot be skipped. **No real flash here. Deps:** SW-M1, CG8, CG24.
 
-**SW-M3: Hub over `dspi-hub`.** [IN PROGRESS wp/SWM3] Size 1–2. **Owns:** a UniFFI wrapper for the hub, `NetworkingSettingsView.swift` re-pointed; Swift hub files removed at the end. **Owner decided: "once it comes into the other versions it should come in here as well".** It does not block R-Mac. The Swift hub stays as the reference harness until HB7 passes, then retires. **Done when:** HB7's Swift client passes against the wrapper from the Mac app. **Deps:** HB7, SW-M1.
+**SW-M3: Hub over `dspi-hub`.** [DONE 2026-11-16: `2f7a811e` into review batch 6, on `main` from `ef0e4095`; the Swift hub files are not removed yet: SWS13, below] Size 1–2. **Owns:** a UniFFI wrapper for the hub, `NetworkingSettingsView.swift` re-pointed; Swift hub files removed at the end. **Owner decided: "once it comes into the other versions it should come in here as well".** It does not block R-Mac. The Swift hub stays as the reference harness until HB7 passes, then retires. **Done when:** HB7's Swift client passes against the wrapper from the Mac app. **Deps:** HB7, SW-M1.
 - <!-- WP SECSW --> **Retiring the Swift hub (SWS13) is blocked by seven items** (review batch 6, 2026-11-16):
   1. `HardwareTestSupport` still runs on `CoreUsb`: port it to the Rust hub's path.
   2. `Link.usb` (the Rust hub's core USB) has never run on a real DSPi: a K340 pass on the Mac VM (owner's standing go to move it; no flash).
   3. Pairings do not carry over: the Rust hub has a new hub id and store. A release note, or import the id from `link-auth.json`.
-  4. TLS: the Mac's Rust hub serves plaintext until P2SW's `HubStartOptions.tls` (default `require`) lands.
+  4. TLS: the Mac's Rust hub serves plaintext until P2SW's `HubStartOptions.tls` (default `require`) lands. *(Resolved: P2SW merged, `49cd5370`; WP DOCSYNC, 2026-11-19.)*
   5. `CoreHub.swift` still depends on Swift hub types: `LinkAuthStore`, `LinkDiscovery`, `LinkAuthMode`, `LinkRole`, `LinkService`.
   6. HB7's conformance client is the opt-out `LinkClient` (`-CoreTransport NO`), which stays plaintext only: it needs the hub's `tls off` loopback mode.
   7. `ownHubID` is unknown before the hub's first start (the browser cannot leave this Mac's own hub out until then).
 
-**SW-M4: What stays Swift.** [TODO] Size 0.5. **Owns:** `docs/SWIFT-STAYS.md`. **Implements:** an audit that each item is UI or OS integration only, with no protocol: menu-bar mode, login item, keep-awake, `AppUpdateChecker` and installer, `HostAudioFormatMonitor`, Metal renderers. **Done when:** Fable has reviewed it, and a grep for opcodes outside `Core/` is empty. **Deps:** SW14.
+**SW-M4: What stays Swift.** [DONE 2026-11-15: `6d337b34`, review batch 3] Size 0.5. **Owns:** `docs/SWIFT-STAYS.md`. **Implements:** an audit that each item is UI or OS integration only, with no protocol: menu-bar mode, login item, keep-awake, `AppUpdateChecker` and installer, `HostAudioFormatMonitor`, Metal renderers. **Done when:** Fable has reviewed it, and a grep for opcodes outside `Core/` is empty. **Deps:** SW14.
 
 **SW-M5: Real Mac hardware pass.** [TODO] Size 0.5. **[HW][OWNER]**: an Apple silicon run has never happened, and the VM and known spare Macs are Intel. **Owns:** `docs/SWIFT-HW.md`. **Done when:** the checklist passes under section 6's rules. Developer ID only if we distribute a binary (OD-DevID). **Deps:** SW-M1, SW-M2.
 
@@ -1328,15 +1342,15 @@ waits for. One slice is one WP; letters give the order.
 | **WB6a** Main window, volume, presets | DONE | The session's main screen: volume (User and Master), bypass, the preset menu with Commit, Revert and Factory Reset, and the unsaved-changes guard (M42-M44, M47, M50 global bypass) |
 | **WB6b** EQ | DONE | The EQ screen: channel pills, the response graph on a canvas with on-graph editing, the band chip and the band list (M21, M58, B5-B7) |
 | **WB6c** Outputs, crossover, matrix | DONE | An output's settings card, its crossover tab and Linkwitz panel, the limiter, and the Matrix screen (M49, M52, B8, B10-B12) |
-| **WB6d** System view | TODO | A read-mostly screen of the whole device as a signal chain: inputs with meters, the routing summary, the processing blocks per channel with their on or off state (EQ, crossover, limiter, effects), and outputs with meters, gain, mute and delay; a block opens its screen. Over today's `DspState` and status, no new core calls |
-| **WB6e** Scene bar | TODO | A bar across the top of a session with the device's ten preset slots as numbered recall buttons, the active one and its unsaved state marked, Store and Recall as explicit verbs, and recall confirmed when there are unsaved changes; it moves to host-side scenes and A/B compare when the core has them |
-| **WB6f** Status rail | TODO | A persistent strip per console (connection, device, preset, mode) and a health panel that keeps problems until they are acknowledged: clipping, limiter gain reduction, the two cores' load (M26), a lost link; alarms from the hub join it when the hub has them |
-| **WB6g** Inputs and channels | TODO | The input pages: preamp trims, the L/R link of a pair with which side to keep (M48), input-source names, the 8-channel matrix's per-input trims; the channel clipboard, Copy and Paste Parameters (M45) |
-| **WB6h** Effects | TODO | Crossfeed, loudness, leveller, psychoacoustic bass, tube, subharmonic and upmixer screens, each with its on or off state in the System view |
-| **WB6i** Settings | TODO | Device name, output latency, GPIO pins, Spectrum and Graphing settings, help links, Reset Channel Names, debug information (M55, M61, M62); core voltage behind the Installer mode, or behind Advanced until the mode model exists (M56) |
-| **WB6j** Analyser, generator and Stats | TODO | The analyser overlay and bar strip (M22, M23), the signal generator and Identify (M46), Stats for nerbs and the Interrupt Monitor (M53, M54), dashboard cards per row (M59) |
-| **WB6k** Files and AutoEQ | TODO | Filter import and export, Save Master Volume and Output Configuration through browser download and upload (M28-M30); AutoEQ with the page supplying the fetch (M31, M32, CG6). `.dspipreset` import (with the apply options) and export are no longer WB6k's: P1WB1 built them (`FilesScreen.tsx`, wasm `configImport`/`configExport`; P1DCFIX's note) |
-| **WB6l** Control surfaces and shortcuts | TODO | The control-surface editor (CG20), the quick strip of effect toggles (M60), and the app shortcuts beyond the graph keys (M24) |
+| **WB6d** System view | DONE (`6d337b34`) | A read-mostly screen of the whole device as a signal chain: inputs with meters, the routing summary, the processing blocks per channel with their on or off state (EQ, crossover, limiter, effects), and outputs with meters, gain, mute and delay; a block opens its screen. Over today's `DspState` and status, no new core calls |
+| **WB6e** Scene bar | DONE (`5778bae0`) | A bar across the top of a session with the device's ten preset slots as numbered recall buttons, the active one and its unsaved state marked, Store and Recall as explicit verbs, and recall confirmed when there are unsaved changes; it moves to host-side scenes and A/B compare when the core has them |
+| **WB6f** Status rail | DONE (`6d337b34`) | A persistent strip per console (connection, device, preset, mode) and a health panel that keeps problems until they are acknowledged: clipping, limiter gain reduction, the two cores' load (M26), a lost link; alarms from the hub join it when the hub has them |
+| **WB6g** Inputs and channels | DONE (`6d337b34`) | The input pages: preamp trims, the L/R link of a pair with which side to keep (M48), input-source names, the 8-channel matrix's per-input trims; the channel clipboard, Copy and Paste Parameters (M45) |
+| **WB6h** Effects | DONE (`5778bae0`) | Crossfeed, loudness, leveller, psychoacoustic bass, tube, subharmonic and upmixer screens, each with its on or off state in the System view |
+| **WB6i** Settings | DONE (`5778bae0`) | Device name, output latency, GPIO pins, Spectrum and Graphing settings, help links, Reset Channel Names, debug information (M55, M61, M62); core voltage behind the Installer mode, or behind Advanced until the mode model exists (M56) |
+| **WB6j** Analyser, generator and Stats | DONE (`8634bf02`) | The analyser overlay and bar strip (M22, M23), the signal generator and Identify (M46), Stats for nerbs and the Interrupt Monitor (M53, M54), dashboard cards per row (M59) |
+| **WB6k** Files and AutoEQ | DONE (`8634bf02`) | Filter import and export, Save Master Volume and Output Configuration through browser download and upload (M28-M30); AutoEQ with the page supplying the fetch (M31, M32, CG6). `.dspipreset` import (with the apply options) and export are no longer WB6k's: P1WB1 built them (`FilesScreen.tsx`, wasm `configImport`/`configExport`; P1DCFIX's note) |
+| **WB6l** Control surfaces and shortcuts | DONE (`8634bf02`) | The control-surface editor (CG20), the quick strip of effect toggles (M60), and the app shortcuts beyond the graph keys (M24) |
 
 ### 5.6 Audit and cross-client tests
 

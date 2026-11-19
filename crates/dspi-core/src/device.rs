@@ -181,21 +181,70 @@ pub(crate) fn is_alink_sender_platform(platform: &[u8], product: Option<&str>) -
     }
 }
 
+// -- WP PGSENDER --
+/// The pages the dual-stack alink sender lists (FWPG4, extension channel spec
+/// 1.3: `SYS.PROTOCOL_INFO`, `SYS.PLATFORM`, its vendor subset on the paged
+/// stack and the tunnel): SYS (identity, discovery, bootloader), STORE (its
+/// output-config save) and our private page 0xE0.
+pub(crate) const SENDER_PAGES: [u8; 3] = [
+    dspi_proto::paged::cmds::SYS_PLATFORM.page(),
+    dspi_proto::paged::cmds::STORE_ALL_PARAMS.page(),
+    dspi_proto::paged::EXT_PAGE,
+];
+
+// -- WP PGSENDER --
+/// Whether a paged device is the dual-stack alink sender, from what
+/// `paged::open` read at connect (PLAN-PG section 1.9). Every condition must
+/// hold; anything else is a DSP or an unrecognised device, never a sender
+/// (fail closed):
+/// 1. it identifies as the sender as on the legacy stack: `SYS.PLATFORM` has
+///    the 1.1.6 `GET_PLATFORM` layout, so [`is_alink_sender_platform`] (the
+///    product string where there is one, else no outputs);
+/// 2. it is our firmware: page 0xE0 with the tunnel `0xE010` (the sender's
+///    alink block lives on the extension channel);
+/// 3. it has no bulk image: `STORE.ALL_PARAMS` GET is not in its bitmaps;
+/// 4. it lists no page but SYS, STORE and 0xE0 ([`SENDER_PAGES`]): a device
+///    with any DSP page is not the sender.
+pub(crate) fn is_paged_alink_sender(
+    disc: &dspi_transport::paged::Discovery,
+    product: Option<&str>,
+) -> bool {
+    use dspi_proto::paged::{PagedDir, cmds};
+    is_alink_sender_platform(&disc.platform, product)
+        && disc.has_extensions()
+        && !disc.pages.contains(cmds::STORE_ALL_PARAMS, PagedDir::Get)
+        && disc.pages.pages().all(|p| SENDER_PAGES.contains(&p.page))
+}
+
 // -- WP PGFIX --
 /// The connection to an alink sender whose bulk read failed (`err`), or
 /// `None` when the device is not one: the sender's vendor subset has no bulk
-/// image and no DSP model (PGMAT F1). A sender is legacy only. What it has
-/// is read here: `GET_PLATFORM` (the mirror's identity, `bulk_valid` false,
-/// no channels) and the extension channel ([`ExtState::probe`]; refused or
-/// absent, it is empty). `Err(Disconnected)` when the device went meanwhile.
+/// image and no DSP model (PGMAT F1). On the legacy generation the platform
+/// and product decide ([`is_alink_sender_platform`]); on the paged one (the
+/// dual-stack sender, FWPG4) the connection's discovery must say so too
+/// ([`is_paged_alink_sender`], WP PGSENDER), and a paged connection without
+/// a discovery is not a sender (fail closed). What it has is read here:
+/// `GET_PLATFORM` (the mirror's identity, `bulk_valid` false, no channels)
+/// and the extension channel ([`ExtState::probe`], through the tunnel on the
+/// paged stack; refused or absent, it is empty). `Err(Disconnected)` when
+/// the device went meanwhile.
 pub(crate) fn sender_mirror(
     t: &mut dyn Transport,
     err: &TransportError,
 ) -> Option<Result<(DspState, dspi_session::ext_state::ExtState)>> {
-    if matches!(err, TransportError::Disconnected)
-        || matches!(t.generation(), Some(dspi_transport::Generation::Paged(_)))
-    {
+    if matches!(err, TransportError::Disconnected) {
         return None;
+    }
+    // -- WP PGSENDER -- the paged stack: the discovery decides first, so
+    // nothing more is sent to a paged device that is not the sender
+    if matches!(t.generation(), Some(dspi_transport::Generation::Paged(_))) {
+        let product = t.descriptor().product.clone();
+        let is_sender = t
+            .paged_discovery()
+            .is_some_and(|d| is_paged_alink_sender(&d, product.as_deref()));
+        if !is_sender {
+            return None;
+        }
     }
     let reply = t
         .control_in_upto(op::REQ_GET_PLATFORM, 0, PLATFORM_REQUEST_LEN)
@@ -1669,3 +1718,8 @@ mod tests_wp_pgfix;
 #[cfg(test)]
 #[path = "device/tests_wp_pgqt.rs"]
 mod tests_wp_pgqt;
+
+// -- WP PGSENDER --
+#[cfg(test)]
+#[path = "device/tests_wp_pgsender.rs"]
+mod tests_wp_pgsender;

@@ -14,6 +14,21 @@ served by a real hub, by `uconsole web` on this machine and by any static host (
 [`DEPLOY.md`](DEPLOY.md)). The screens of the other clients arrive in WB6 slices;
 the main window (WB6a), the EQ (WB6b), the outputs and matrix (WB6c) and the inputs (WB6g) are in. Nothing here is published.
 
+*Status, 2026-11-19 (`main` at `11625ba5`): no longer a skeleton.* Every WB6 slice is merged (WB6a to
+WB6l), so a session has the macOS floor's screens: Main, EQ (an output's card, its crossover and limiter
+there), Inputs, Matrix, Effects, Overview, System (with the scene bar and the status rail), Snapshots,
+Files (and AutoEQ), Control Surfaces, Events, Installer, the tools (Signal Generator, Analyser, Stats
+for nerbs, Interrupt Monitor), Measure, Device and Settings, in the order and modes `src/ui/screens.tsx`
+gives them. On a hub with its services a session also has the **Hub** screen (`src/screens/hub/`: the
+hub's devices, the health board, alarms, history, groups, group writes and bulk apply, the firmware
+rollout; PRO phases 2 and 3) and **Hub Settings** (`src/screens/hub-settings/`: alarm rules,
+schedules, notifications out, MQTT and Home Assistant, API keys). Measure (`src/screens/measure/`, PRO phase 5 and PLAN-AT) has the
+Measure, Results, Live, Auto-tune, Documents and Several units tabs, with the microphone captured by an
+AudioWorklet (`src/core/capture-worklet.ts`). Device (`src/screens/device/`, PLAN-PG) shows the
+firmware generation, raw requests by id and the update check. Hubs are reached over TLS
+([`docs/integrator/security.md`](../../docs/integrator/security.md), The browser). Still to come: Web MIDI
+(WB4c) and the release gate (WB9); nothing is published.
+
 ## What it is for
 
 The owner's decision (2026-11-08): the main use of a web console is **a hub page

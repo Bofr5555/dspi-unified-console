@@ -351,6 +351,24 @@ Zero" from `hardware.rs` (shown in caps, the inventory and About, S6), the block
 today; after FWPG4 a dual-stack paged device with its small vendor set on the paged stack and the tunnel. It is a row of
 the compat matrix (section 4).
 
+**How the core tells the sender apart (PGFIX, PGSENDER).** Only after the connect's bulk read failed, and never on
+`Disconnected`. Legacy: its USB product string ("DSPi Audio Link Sender", "DSPi Link Sender"), or without one (MIDI,
+behind a hub) a `REQ_GET_PLATFORM` naming 0 output channels. Paged (`device::is_paged_alink_sender`, on the
+connection's `paged::Discovery`), all of: (1) the same identity rule on `SYS.PLATFORM` (the 1.1.6 layout); (2) the
+tunnel `0xE010` on page 0xE0, i.e. our firmware; (3) no `STORE.ALL_PARAMS` GET in the bitmaps (no bulk image); (4) no
+page but SYS 0x01, STORE 0x02 and 0xE0. **Fail closed:** anything else, and a paged connection without a discovery
+(the hub's `LocalTransport`/`PrincipalTransport`), is not the sender; a paged DSP stays a DSP. Since the sender's
+bitmaps hold nothing of the DSP model, `PagedTransport` refuses every DSP request locally, and the core's
+`AlinkSender` connection refuses them before the adapter. **FWPG4 must present exactly this:** the product string,
+`SYS.PLATFORM` byte 3 = 0, pages SYS, STORE (the output-config save) and 0xE0 only, the tunnel listed in 0xE0's
+bitmap, page 0 kept. A sender build that lists any further page (a debug build's diagnostics page 0xF0 included) is
+not recognised and fails to open; the firmware's spec (`extension_channel_spec.md` 1.3.5) names the sender's paged
+stack but not this page set, so FWPG4 has to write it there (review PGS-DOC). The update check knows no sender image
+from a DSP image: the sender is judged as a Pico running our firmware (voltage unknown, so the voltage phrase is asked;
+an image not proven ours also names the lineage loss), on both generations alike
+(`firmware_guard/tests_review_pgsdoc.rs`), and the clients do not offer it the bundled DSP image. Over DSPi Link a paged sender gets no meter poll, not even from the hub's listed channel count;
+behind a 1.2 hub the core speaks legacy only and the dual-stack sender is the legacy sender.
+
 ### 1.10 The firmware port onto 1.1.7 (FWPG0-FWPG6, FWPGHIL)
 
 Plan now, **start FWPG1 when upstream tags 1.1.7** (or after a quiet week on `release/v1.1.7`; its tip moved today).
@@ -476,7 +494,7 @@ Sizes are this project's units (about one hour of agent time with review); estim
 
 ### Wave PG-A: the hazards, the wire, the wrapping point, the registry (start now)
 
-**PGHUB0: Our hub refuses a page toward legacy devices.** [TODO] Size 0.75. Wave PG-A. **Priority: first.** **Owns:**
+**PGHUB0: Our hub refuses a page toward legacy devices.** [DONE 2026-11-18: main `a5a32bbb`; accepted at review PG-A; marked by WP DOCSYNC, 2026-11-19] Size 0.75. Wave PG-A. **Priority: first.** **Owns:**
 `crates/dspi-hub/src/device.rs` (`execute` and its tests, incl. `wp_hb0_windex_is_ignored` at `:871`),
 `crates/dspi-hub/src/polls.rs` (the subscribe check), new `crates/dspi-hub/tests/wp_pghub0_page_guard.rs`.
 **Implements:** section 1.5 "PGHUB0". **Done when:** every one of the 15 dangerous reads of the migration guide 4.1
@@ -485,13 +503,13 @@ that counts requests answer `0x86` with **zero** requests reaching the fake; a p
 (`wIndex` 0) still works; a poll on page 0x05 is refused; the old test asserts the new rule; `cargo test -p dspi-hub`
 scoped to the touched tests passes. **Deps:** none.
 
-**PGSWHUB0: The Swift hub refuses a page (coordinator, Mac VM).** [TODO] Size 0.5. Wave PG-A. **Priority: first, with
+**PGSWHUB0: The Swift hub refuses a page (coordinator, Mac VM).** [DONE 2026-11-18: main `589c85d2`; accepted at review PG-A; marked by WP DOCSYNC, 2026-11-19] Size 0.5. Wave PG-A. **Priority: first, with
 PGHUB0.** **Owns:** `apps/apple/DSPi Console/Link/{CommandRouter,USBHubDevice,PollScheduler}.swift`, one new XCTest.
 **Implements:** section 1.5 "PGSWHUB0". **Done when:** the XCTest sends GET `0x0553` and a poll on page 0x05 through the
 Swift hub to its `FakeTransport` and gets `0x86` with no USB call; `wIndex` 0 and 2 pass; `ci/macvm.sh macos` builds.
 **Deps:** none.
 
-**PGWIRE: Every transport carries the page; `paged::open`; the probe; `LegacyGuard`.** [TODO] Size 4. Wave PG-A.
+**PGWIRE: Every transport carries the page; `paged::open`; the probe; `LegacyGuard`.** [DONE 2026-11-18: main `f825b0fd`, review/pga; marked by WP DOCSYNC, 2026-11-19] Size 4. Wave PG-A.
 **Owns:** `crates/dspi-transport/src/{usb,midi,link,mock}.rs` (the paged methods and `carries_pages`), new
 `crates/dspi-transport/src/paged.rs` (`open`, `LegacyGuard`, a placeholder `PagedTransport` that refuses with the
 notice), additive lines in `crates/dspi-transport/src/lib.rs` (the `mod`, `Transport::generation()` default `None`),
@@ -511,7 +529,7 @@ times then fails (never legacy); a `Reusable` made on one generation is refused 
 every paged call with no request on the wire; `cargo test -p dspi-transport -p dspi-session` and the core's connect
 tests; `ci/check.sh --step web` unit tests for the WebUSB index. **Deps:** the seam.
 
-**PGPROTO: The registry, the planner, the reverse view.** [TODO] Size 4. Wave PG-A. **Owns:**
+**PGPROTO: The registry, the planner, the reverse view.** [DONE 2026-11-18: main `f825b0fd`, review/pga; marked by WP DOCSYNC, 2026-11-19] Size 4. Wave PG-A. **Owns:**
 `crates/dspi-proto/src/paged.rs` (beyond the seam) and new `src/paged/` (except `custom.rs`, PGCUST's),
 `crates/dspi-proto/build.rs` (an additive section), `crates/dspi-proto/firmware/protocol/` (new, vendored),
 `crates/dspi-proto/firmware/PROVENANCE.toml` (the new section) and `SHA256SUMS` rows, `crates/dspi-proto/Cargo.toml`
@@ -527,7 +545,7 @@ page 0, no zero-length GET, SET lengths in bounds, planner-then-reverse identity
 tunnels only with 0xE0 in the `PageSet`; `cargo build -p dspi-proto --target wasm32-unknown-unknown` in the cross
 profile. **Deps:** the seam.
 
-**FWPG0: The envelope in the extension spec (firmware repo, docs only).** [TODO] Size 0.5. Wave PG-A. **Owns:** in
+**FWPG0: The envelope in the extension spec (firmware repo, docs only).** [DONE 2026-11-18: firmware `bofr-main`, `ddbe896` (merge `aeb8b4a`), `extension_channel_spec.md` section 1.3; marked at review PGS-DOC, 2026-11-19] Size 0.5. Wave PG-A. **Owns:** in
 `~/prog/DSPi-bofr`, branch `wp/FWPG0` from `bofr-main`: `Documentation/Features/extension_channel_spec.md` (new
 section "Envelopes": 1.1.6 `REQ_EXTENSION` 0x00, 1.1.7 page 0xE0 tunnel `0xE010`, `wValue` = id, payloads unchanged,
 GET and SET, refusals as `VC_ERR_*` never 0x02/0x03, `SYS.PAGE_LIST` lists 0xE0, MIDI and the legacy stack, the FWSEC1
@@ -536,7 +554,7 @@ PGPROTO's ext row and PGFAKE1's tunnel cite it. **Deps:** none.
 
 ### Wave PG-B1: the custom rows, the fakes, the hub's tables
 
-**PGCUST: The 14 custom rows.** [TODO] Size 3. Wave PG-B1. **Owns:** `crates/dspi-proto/src/paged/custom.rs` (and
+**PGCUST: The 14 custom rows.** [DONE 2026-11-19: main `bb1b9850`, review/pgb; marked by WP DOCSYNC, 2026-11-19] Size 3. Wave PG-B1. **Owns:** `crates/dspi-proto/src/paged/custom.rs` (and
 `custom/` for tests). **Implements:** forward and reverse for `GET_CS_DISPLAY_CFG`, `SET_EQ_PARAM`, `GET_EQ_PARAM`,
 `SET_PREAMP` (retired: per-channel `ROUTE.PREAMP` after `SYS.PLATFORM`), `GET_STATUS` (every selector to its paged
 struct and offset; the `DIAG` selectors are absent on a release build and refuse), `SAVE_PARAMS`,
@@ -546,7 +564,7 @@ struct and offset; the `DIAG` selectors are absent on a release build and refuse
 scripted replies including a refusal in the middle (no half-applied write is reported as success); `proptest_*` as the
 shared rules. **Deps:** PGPROTO.
 
-**PGFAKE1: The paged fakes: registry rows, discovery, strict rules, the tunnel.** [TODO] Size 3.5. Wave PG-B1.
+**PGFAKE1: The paged fakes: registry rows, discovery, strict rules, the tunnel.** [DONE 2026-11-19: main `bb1b9850`, review/pgb; marked by WP DOCSYNC, 2026-11-19] Size 3.5. Wave PG-B1.
 **Owns:** new `crates/dspi-transport/src/fake/{paged,generation}.rs`, one `mod` line and one `FakeOptions` field
 (`generation`) in `fake.rs`, `fake/diag.rs` only for the tunnel's ext dispatch. **Implements:**
 `FakeGeneration::{Stock116, Bofr116 { page_guard }, Stock117 { revision }, Bofr117}`. The paged front is **its own
@@ -558,7 +576,7 @@ violation unless `allow_violation`. **Done when:** a cross-test holds the fake's
 on every `direct`, `act_*` and `split` row; each generation answers the guide's vectors; `cargo test -p
 dspi-transport`. **Deps:** PGPROTO.
 
-**PGFAKE2: Custom-row inverse, Zero, Sender, the board id.** [TODO] Size 2.75. Wave PG-B1. **Owns:** new
+**PGFAKE2: Custom-row inverse, Zero, Sender, the board id.** [DONE 2026-11-19: main `bb1b9850`, review/pgb; marked by WP DOCSYNC, 2026-11-19] Size 2.75. Wave PG-B1. **Owns:** new
 `crates/dspi-transport/src/fake/{paged_custom,boards}.rs` (one `mod` line each in `fake/paged.rs`, agreed with PGFAKE1
 by name in this entry), `crates/dspi-proto/src/packets.rs` (`PlatformInfo` up to 8 bytes, the board id, R7d).
 **Implements:** the fake's native handlers for the 14 custom rows (not PGCUST's code), `FakeGeneration::Zero` (8-byte
@@ -567,7 +585,7 @@ violation), `FakeGeneration::Sender` (its vendor subset; guarded on G1, dual-sta
 **Done when:** each custom row answers the guide's vectors; a 4-, 6-, 7- and 8-byte platform reply decodes (byte 7
 absent = board 0); the Zero's bootloader entry fails the test by default. **Deps:** PGPROTO.
 
-**PGHPOL: The hub's tables re-keyed.** [TODO] Size 3.25. Wave PG-B1. **Owns:** `crates/dspi-hub/src/policy.rs`,
+**PGHPOL: The hub's tables re-keyed.** [DONE 2026-11-19: main `bb1b9850`, review/pgb; marked by WP DOCSYNC, 2026-11-19] Size 3.25. Wave PG-B1. **Owns:** `crates/dspi-hub/src/policy.rs`,
 `tests/fixtures/link/policy/` (the 1.2 table renamed `commands-1.2.json`, new `commands-1.3.json` vendored, new
 `private.json`). **Implements:** section 1.6's hub rows as new functions (`classify_id`, `mutates_id`,
 `in_lock_scope_id`, `core_vreg_write_id`, `denied_ids`, `judge_view` = the equivalent fed to limits and the apply
@@ -582,7 +600,7 @@ the policy tests. **Deps:** PGPROTO.
 
 ### Wave PG-B2: the adapter and the Link client
 
-**PGADAPT: `PagedTransport`, wired in.** [TODO] Size 4. Wave PG-B2. **Owns:** `crates/dspi-transport/src/paged.rs`
+**PGADAPT: `PagedTransport`, wired in.** [DONE 2026-11-19: main `bb1b9850`, review/pgb; marked by WP DOCSYNC, 2026-11-19] Size 4. Wave PG-B2. **Owns:** `crates/dspi-transport/src/paged.rs`
 (PGWIRE's placeholder becomes the adapter; `open`'s paged branch does discovery), additive lines in
 `crates/dspi-transport/src/lib.rs` (`TransportError::Refused { id, result }` and its message,
 `control_in_batch_paged` default, `PagedRead`), the notices block (PGWIRE's "cannot control yet" removed).
@@ -593,7 +611,7 @@ registry entry, preset save/load, the gated save, the bootloader entry (to the f
 `LAST_RESULT` yields `Refused`, a non-matching one `Stalled`; a fake at a higher page revision accepts a longer SET
 that the vendored length would refuse; a batch of single-step plans is one paged batch. **Deps:** PG-B1.
 
-**PGLINKC: The DSPi Link client, 1.2 and 1.3.** [TODO] Size 3.5. Wave PG-B2. **Owns:** `crates/dspi-link/src/
+**PGLINKC: The DSPi Link client, 1.2 and 1.3.** [DONE 2026-11-19: main `bb1b9850`, review/pgb; marked by WP DOCSYNC, 2026-11-19] Size 3.5. Wave PG-B2. **Owns:** `crates/dspi-link/src/
 {client.rs,messages.rs,fakehub.rs}`, `crates/dspi-transport/src/link.rs`. **Implements:** section 1.4 and section 1.1
 steps 5, 6 and 8. **Done when:** in both `L12` modes, with a control-role session, a G2s device gets the "needs a 1.3
 hub" notice after one `REQ_GET_PLATFORM` and nothing else, and **no request with a page** leaves the client; a G2b
@@ -638,7 +656,7 @@ with `LAST_RESULT`, a bulk round trip. A difference from the documents becomes a
   refusal with the `VC_ERR_*` code as the frame status (`vc_core.c` `ctrl_dispatch_*`), and the probe is never refused
   `VC_ERR_BUSY` on USB (the adapter reads no `SYS.LAST_RESULT` after a STALLed probe).
 
-**PGHDEV: Our hub serves both generations.** [TODO] Size 5. Wave PG-C. **Owns:** `crates/dspi-hub/src/{router.rs,
+**PGHDEV: Our hub serves both generations.** [DONE 2026-11-19: main `cea53297`, review/pgc; marked by WP DOCSYNC, 2026-11-19] Size 5. Wave PG-C. **Owns:** `crates/dspi-hub/src/{router.rs,
 device.rs,polls.rs,registry.rs,usb.rs,local.rs,snapshot.rs}`, the hello/caps/device-object block of `server.rs` and
 `PROTO_MINOR`'s use there, the analyser-sharing code it touches. **Implements:** section 1.5 after PGHUB0: `open` on
 attach, the generation on the live handle, no forwarding before the attach probe, the forwarding table incl. the
@@ -653,7 +671,7 @@ different pages are two subscriptions; a tunnelled 0xF0 and 0x0130 to the Zero f
 reachable for admin only; the hub's existing suites pass on G1 fakes unchanged; `cargo test -p dspi-hub` scoped.
 **Deps:** PGHUB0, PG-B1, PG-B2.
 
-**PGCORE: The core's surface for the generation.** [TODO] Size 2.5. Wave PG-C. **Owns:** `crates/dspi-core/src/raw.rs`
+**PGCORE: The core's surface for the generation.** [DONE 2026-11-19: main `cea53297`, review/pgc; marked by WP DOCSYNC, 2026-11-19] Size 2.5. Wave PG-C. **Owns:** `crates/dspi-core/src/raw.rs`
 (`raw_get_id`, `raw_set_id`), `read_only.rs` (the raw id rules), `info.rs` (the generation from
 `Transport::generation()`, protocol version, page list and ext envelope in device info; the board name taken from
 `hardware.rs`), `notify.rs` (event 0x11), the forwarding of the paged calls and `generation()` in the production
@@ -665,7 +683,7 @@ raw GET passes in read-only mode; a raw SET does not); the device info shows eac
 every wrapper; a 0x11 notification re-reads the pins; `ci/drift.sh write` clean; the Android contract regenerated and
 classified. **Deps:** PG-B2.
 
-**PGFWUP: Updater and rollout per generation and board.** [TODO] Size 2.5. Wave PG-C. **Owns:**
+**PGFWUP: Updater and rollout per generation and board.** [DONE 2026-11-19: main `cea53297`, review/pgc; marked by WP DOCSYNC, 2026-11-19] Size 2.5. Wave PG-C. **Owns:**
 `crates/dspi-core/src/{firmware_guard.rs,firmware_manifest.rs,firmware.rs,hardware.rs}`, `crates/dspi-hub/src/rollout.rs`
 and `crates/dspi-hub/src/rollout/`. **Implements:** sections 1.8 and 1.9's core and rollout choke points, the board
 name in `hardware.rs`. **Done when:** the bootloader entry reaches each fake generation's reboot (0xF0 on legacy,
@@ -675,13 +693,13 @@ upstream asks the typed confirmation; the manifest refuses a legacy bofr image w
 rollout re-opens after reboot and verifies `EXT_LIST` and the 1.20 V read-back through the new generation's envelope;
 a mixed group rolls out; existing P3RO tests pass. **Deps:** PG-B2.
 
-**PGZERO: DSPi-Zero identification.** [TODO] Size 0.75. Wave PG-C. **Owns:** the `DeviceDescriptor` product and
+**PGZERO: DSPi-Zero identification.** [DONE 2026-11-19: main `cea53297`, review/pgc; marked by WP DOCSYNC, 2026-11-19] Size 0.75. Wave PG-C. **Owns:** the `DeviceDescriptor` product and
 `bcdDevice` fields (`crates/dspi-transport/src/lib.rs` additive, `usb.rs`, `crates/dspi-wasm/src/usb.rs`, the Android
 descriptor read in `apps/android/` where the fd is opened), the inventory row in `crates/dspi-hub/src/inventory.rs`.
 **Done when:** the Zero fake is named "DSPi Zero" in caps, About and the inventory (the name from `hardware.rs`); a Zero
 behind a link is still recognised by byte 7. **Deps:** PG-B1.
 
-**PGMEAS: Measurement on paged firmware.** [TODO] Size 0.75. Wave PG-C. **Owns:** new
+**PGMEAS: Measurement on paged firmware.** [DONE 2026-11-19: main `cea53297`, review/pgc; marked by WP DOCSYNC, 2026-11-19] Size 0.75. Wave PG-C. **Owns:** new
 `crates/dspi-core/src/measure/tests_wp_pgmeas.rs` (one `mod` line in `measure.rs` under a marker),
 `docs/core-merge/PLAN-P5.md` (one row in "Firmware-dependent items"). **Implements:** section 1.7. **Done when:** P5's
 session and live tests run green on the G2s and G2b fakes; START is one transfer; the generator config refuses a wrong
@@ -731,7 +749,8 @@ length locally. **Deps:** PG-B2; P5SES and P5LIVE merged (else PGMEAS waits; it 
   target), its last check before the write is `DspiCore::firmware_write_check`, never a target kept in Swift. Do not
   offer the bundled DSP image to the alink sender (Qt and Android do not).
 - **Open (owner):** Qt's menus still open the DSP tool windows on the alink sender (the core answers `Unsupported`;
-  nothing of the DSP model is written). A dual-stack sender (FWPG4) is not recognised: its open fails at the bulk read.
+  nothing of the DSP model is written). A dual-stack sender (FWPG4) is not recognised: its open fails at the bulk read
+  (**fixed by PGSENDER**, section 1.9).
 
 **PGFWX: The update check over the bindings.** [DONE] Size 1. Wave PG-D, before the client WPs. **Owns:** the
 bindings of the update check (UniFFI derives and exports in `crates/dspi-core/src/firmware_guard.rs`, new
@@ -795,9 +814,9 @@ uploaded from the page for the session's own DSPi and offers only Cancel on a re
 `no_bootsel` and `lineage_loss`; the alink sender gets its own page (device info, audio link, update check) and no
 DSP screen or meters; a refused open shows its notice (`transfer.newer_protocol`, `transfer.unrecognised_device`).
 E2E over the WebUSB mock, whose engine (`dspi_mock_new_as`) is each fake generation and board: G1s, G1b with and
-without PAGEGUARD, G2s, G2b, Zero on 1.1.6 and 1.1.7, the sender, and probe answers for both notices. Not covered:
-the dual-stack sender (FWPG4) on its paged stack opens as a DSP and fails at the bulk read (the core's
-`DeviceKind::AlinkSender` is legacy-only).
+without PAGEGUARD, G2s, G2b, Zero on 1.1.6 and 1.1.7, the sender, and probe answers for both notices. Not covered at PGWEB:
+the dual-stack sender (FWPG4) on its paged stack opened as a DSP and failed at the bulk read (the core's
+`DeviceKind::AlinkSender` was legacy-only; fixed by PGSENDER, whose e2e covers `sender-dual`).
 
 **PGQT: Qt.** [DONE] Size 0.75. Wave PG-D. **Owns:** the Qt About/device-info controller and view, the raw dialog.
 **Done when:** `ci/check.sh --step qt`, `--step qt-offscreen` with the fake generations. **Deps:** PGCORE. **Did (WP
@@ -840,6 +859,19 @@ on `AlinkSender` a sender page stands in for Home and the DSP routes are closed.
 `DspiCore::firmware_write_check` (the gate's verdict on the core's own kept target, nothing written) instead of
 judging on a target kept in Kotlin, which did not know when the core had opened another board; a dismissed check keeps
 no board; the bundled DSP image is not offered to the sender (as Qt).
+
+**PGSENDER: The dual-stack alink sender on its paged stack.** [DONE 2026-11-19: `a80812dc`, review/pgsdoc] Size 0.5. Wave PG-D (PGWEB's follow-up).
+**Owns:** the sender recognition in `crates/dspi-core/src/device.rs` (`sender_mirror`, new `is_paged_alink_sender`,
+`SENDER_PAGES`), the Link bind's meter gate (`link.rs`, `open_bound`), new `device/tests_wp_pgsender.rs` and
+`link/tests_wp_pgsender.rs`, the sender e2e in `apps/web/test/e2e/device_pgweb.spec.ts`, section 1.9's rule,
+`docs/integrator/protocol-generations.md` section 4. **Did:** a paged device is connected as `DeviceKind::AlinkSender`
+when its bulk read failed and its discovery meets section 1.9's four conditions (identity, tunnel, no bulk image, no
+page but SYS, STORE, 0xE0); fail closed otherwise. Over DSPi Link behind a 1.3 hub it binds as the paged sender with no
+meter poll; behind a 1.2 hub as the legacy sender. Web, Qt, Android and the Terminal key on `device_kind` and needed no
+change (checked); the web e2e runs the sender page on `sender-dual` too. **Not done:** our hub's in-process paths carry
+no discovery, so a paged sender reached through them still fails to open (fail closed, as PGTM's note); the firmware
+(FWPG4) is not written: its fake (`FakeDevice::sender(true)`, PGFAKE2) is the contract; our hub (`crates/dspi-hub`)
+does not tell the paged sender apart.
 
 **PGSWIFT: Swift (coordinator, Mac VM).** [TODO] Size 1. Wave PG-D. **Owns:** the Swift device-info row; the
 core-backed paths' tests against the paged fakes. Its `CoreBackedTransport` needs no code (its opcodes go through the

@@ -100,9 +100,9 @@ for (const g of GENERATIONS) {
   });
 }
 
-// The guarded sender, PLAN-PG section 1.11's row (the dual-stack sender after FWPG4 is not yet
-// recognised as a sender by the core on its paged stack: see the WP report).
-for (const kind of ["sender"]) {
+// The guarded sender, PLAN-PG section 1.11's row, and (-- WP PGSENDER --) the dual-stack sender
+// after FWPG4 on its paged stack (PLAN-PG section 1.9's rule): the same page, no DSP screen.
+for (const kind of ["sender", "sender-dual"]) {
   test(`PGWEB alink sender (${kind}): its own page, no DSP screen`, async ({ page }) => {
     const errors = errorsOf(page);
     const serial = "PGSENDER";
@@ -119,7 +119,13 @@ for (const kind of ["sender"]) {
     await expect(session.locator(".volume-value")).toHaveCount(0);
     await noSidewaysScroll(page);
     const seen = await log(page, serial);
-    expect(seen.filter(paged).filter((s) => !isProbe(s))).toEqual([]);
+    if (kind === "sender") {
+      expect(seen.filter(paged).filter((s) => !isProbe(s))).toEqual([]);
+    } else {
+      // -- WP PGSENDER -- paged only: its SYS reads and the tunnel, nothing on page 0 or a DSP page
+      const own = (s: Setup) => s.index >> 8 === 0x01 || (s.index >> 8 === 0xe0 && s.request === 0x10);
+      expect(seen.filter((s) => !own(s))).toEqual([]);
+    }
     expect(errors).toEqual([]);
   });
 }

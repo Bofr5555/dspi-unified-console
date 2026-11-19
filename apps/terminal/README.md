@@ -8,8 +8,9 @@ terminal interface, plus a scriptable one-shot CLI. The command is `uconsole`
 It is one of the clients in this repository. It came from Weeb Labs'
 DSPi-Terminal (see the root [`README.md`](../../README.md), Credits) and uses the
 repository's session crates directly (`crates/dspi-proto`, `dspi-transport`,
-`dspi-session`, `dspi-cmd`, `dspi-tui`), with `dspi-core` for `uconsole flash` and
-`dspi-hub` for `uconsole hub`.
+`dspi-session`, `dspi-cmd`, `dspi-tui`), writes through `dspi-core` (WP TMCORE; also
+`uconsole flash`, the PRO commands and `uconsole measure`) and runs `dspi-hub` for
+`uconsole hub`.
 
 **Status:** the terminal's work packages are done except its hardware pass on a
 real board (TM13 in
@@ -18,6 +19,13 @@ tested against the simulated device, mocks and a fake hub. What it lacks against
 the macOS Console is in [`docs/PARITY.md`](../../docs/PARITY.md), section 5. The
 plan and surveys it was built from, before the merge, are in
 [`docs/terminal/plan/`](../../docs/terminal/plan/).
+
+*Added since (2026-11-19, `main` at `11625ba5`):* the PRO phase 1 commands (snapshots, A/B,
+limits, the installer lock, documents; [PRO commands](#pro-commands-measurement-and-the-protocol)),
+the hub's services, REST, TLS, groups and the firmware rollout (P2TM, SECTM, P3TM;
+[Sharing devices](#sharing-devices-uconsole-hub)), `uconsole measure` (P5TM), and
+`uconsole info` and `raw --id` for both firmware generations (PGTM). `uconsole --help`
+lists everything.
 
 ## The interface
 
@@ -157,6 +165,43 @@ uconsole raw 0x87 41                  # any opcode, hex-dumped
 uconsole completions zsh              # shell completion
 ```
 
+### PRO commands, measurement and the protocol
+
+Each one-shot command is one session of the core, so an unlock lasts for that command.
+The root [`README.md`](../../README.md) (Status) describes the features.
+
+```sh
+uconsole open site.dspipreset         # edit a document with no device, in the interface
+uconsole diff site.dspipreset         # what it would change on the device
+uconsole import site.dspipreset --only eq,crossover --guard 60   # type keep, or it goes back
+uconsole snapshot save "Before" --note "as found"   # also: list | recall | diff | export | import | delete
+uconsole ab "Before" 2 --keep b       # compare two snapshots, end on B
+uconsole limits set profile.dspipreset   # also: show | get | clear
+uconsole lock status                  # also: unlock | set-pin | clear-pin
+uconsole --link hub.local mode status # the modes a hub pins per role (mode pin <role> <mode|none>)
+uconsole status                       # connection, device, limits, lock and audio link
+uconsole autoeq preview <id>          # what applying a profile would do
+
+uconsole measure mic import umik.txt  # a calibration file (UMIK, Dayton, REW, CSV) as a mic document
+uconsole measure target import house.txt --use speakers
+uconsole measure docs                 # the filed documents (over --link: the hub's too)
+uconsole measure show <id>            # one document in words
+uconsole measure export <id> --output 2 out2.txt   # REW text
+uconsole measure tune <id> --dry-run  # the proposal in words; without --dry-run: applied,
+                                      # guarded, keep or revert
+uconsole --demo measure run           # the demo device with its simulated microphone
+
+uconsole info                         # generation, protocol version, pages, extension channel, board
+uconsole raw --id 0x0110 16           # one paged GET by command id (firmware 1.1.7 and later)
+```
+
+`uconsole measure` opens no microphone. Delay, polarity and crossover changes need the
+summed check and a verify, which only the demo's simulated microphone can do here, so off
+the demo device a tune applies its EQ only, unverified, and says so (`uconsole measure
+--help`). `raw --id` refuses, with nothing sent, whatever writes flash, restarts or is a
+bulk session, and any id on a 1.1.6 device
+([`docs/integrator/protocol-generations.md`](../../docs/integrator/protocol-generations.md)).
+
 ### Firmware
 
 ```sh
@@ -173,6 +218,13 @@ raises the voltage above 1.20 V, or the board is already in its bootloader and
 cannot say, it stops. `--force` skips the ordinary "are you sure" and nothing
 else: only `--accept-core-voltage-risk` plus typing the answer it asks for gets
 past this. Success means the board came back running the image's version.
+
+*(2026-11-19, WP PGTM.)* `flash` runs the core's update check first, for both firmware
+generations: a board without BOOTSEL (the DSPi-Zero) gets no image and no reboot; an
+image that would leave this fork's firmware asks for the typed phrase "I ACCEPT LOSING
+THE EXTENSIONS", which `--force` does not answer; and a change of generation (1.1.6 to
+1.1.7 or back) is said with what works afterwards. The write itself goes through the
+core's write gate, which judges the board the core read.
 
 Every command takes `--json` for machine-readable output, `--dry-run` to change
 nothing, `--quiet`, and `--device <serial>` to pick a unit. Exit codes
@@ -251,8 +303,12 @@ uconsole --link host:port dump        # a device behind a hub at that address
 ```
 
 A hub asks for its PIN the first time; `--pin -` or the `DSPI_PIN` environment
-variable gives it to a script. Link traffic, the PIN included, is plain text, so
-use it on a network you trust.
+variable gives it to a script. *(Since 2026-11-16, PLAN-SEC.)* The connection is TLS:
+pairing shows the hub key's fingerprint to compare with the hub's, the key is pinned,
+and a pinned hub is never reached in plaintext. A pasted `dspi://pair?...` link from the
+hub's pairing screen works as `--link` (its key is checked). An unencrypted hub (an
+upstream one, or `--tls off`) shows as "(unsecured)": `uconsole link security` says what
+that means ([`docs/integrator/security.md`](../../docs/integrator/security.md)).
 
 ### Sharing devices: `uconsole hub`
 
@@ -276,6 +332,12 @@ uconsole --demo hub --alink            # a sender, a fan-out, four units, two US
   --with-usb-lock-error               # test option: USB-direct Rear L/R can't lock (host out of range)
   --with-usb                          # test option: this machine's USB DSPis too, to test a
                                       # mixed installation on hardware (add them to the model)
+  --with-measure-units                # test option: units on one time base to measure together
+                                      # (one re-anchors every 15 s), one on another, S/PDIF units,
+                                      # and the demo hub's simulated microphone (WP ATDEMO)
+uconsole --demo hub --rollout --with-rollout-bench
+                                      # test option: a simulated DSPi as if on this machine's USB,
+                                      # with a simulated bootloader and writer (nothing is written)
 ```
 
 The web console (WP WB7, `apps/web`'s built dist; [`apps/web/DEPLOY.md`](../web/DEPLOY.md)):
@@ -300,6 +362,31 @@ uconsole hub api-key new <name> [viewer|control|admin]
 uconsole --hub api inventory.list     # any hub message; the answer's fields as JSON
 uconsole --hub api param.get '{"serial": "E46058388B1A2E2C", "path": "vol.master"}' --json
 ```
+
+Encryption (PLAN-SEC, [`docs/integrator/hub.md`](../../docs/integrator/hub.md)): the
+hub serves TLS on its port, `--tls require` by default (`on` also takes unencrypted
+clients, which cannot pair; `off` encrypts nothing); `--upstream-compat` is the stated
+downgrade for upstream DSPi Link clients.
+
+```sh
+uconsole hub tls fingerprint          # the key's fingerprint, and curl's --pinnedpubkey form
+uconsole hub tls cert                 # the certificate, PEM (curl --cacert, Home Assistant)
+uconsole hub tls rotate               # a new key, which clients follow for 30 days (hub stopped)
+```
+
+The fleet (WP P3TM; hub-api.md sections 19 to 21): groups (`--no-groups` turns them off) and
+the firmware rollout (`--rollout`, off by default, served over TLS only; an Admin updates
+the DSPis on this machine's USB one at a time, the settings exported first):
+
+```sh
+uconsole hub firmware add DSPi.uf2    # store an image for a rollout (hub stopped; or at its prompt)
+uconsole hub firmware list
+```
+
+At the running hub's prompt: `groups`, `group set [<id>] <name> <serial>...`, `group delete
+<id>`, `firmware list`, `firmware add <file.uf2>`, `rollout <serial|group:id> <image>
+[--while-live]` (the device must be muted unless `--while-live`), `rollout status [<id>]`
+and `rollout cancel <id>`.
 
 At the running hub's prompt, `inventory`, `alarms` and `schedule` list those. `uconsole
 api` exits by the hub's answer: 0 ok, 2 not found, 3 another refusal, 4 no hub, 5 denied,
