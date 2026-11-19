@@ -13,7 +13,7 @@ import { SYSTEM_TICK_MS, SystemWorkerRoute, isMeasureSystemEvent, type MeasureSy
 import { CoreCallError, type MeasureSystemAppliedRecord, type MeasureSystemProposalRecord, type MeasureSystemResultRecord, type MeasureSystemStateRecord, type NoticeRecord } from "../../src/core/protocol";
 import { MEASURE_TABS } from "../../src/screens/measure/MeasureScreen";
 import { SystemDesk, type SystemSession, type UnitCore } from "../../src/screens/measure/system/desk";
-import { KEYS, draftProblem, initialDraft, issueWords, placementProblem, proposalRights, refusalWords, runsWords, setupOf, shownIssue, withOutput, withUnit } from "../../src/screens/measure/system/model";
+import { KEYS, draftProblem, endedWords, guardWords, initialDraft, issueWords, placementProblem, proposalRights, refusalWords, runsWords, setupOf, shownIssue, withOutput, withUnit } from "../../src/screens/measure/system/model";
 import { NO_TIME_BASE, noTimeBase, withSpdifFollower, withSpdifSource, withoutSpdif } from "../../src/screens/system/SpdifUnits";
 import type { SystemModel } from "../../src/screens/system/model";
 
@@ -215,7 +215,8 @@ function proposal(p: Partial<MeasureSystemProposalRecord>): MeasureSystemProposa
 const APPLIED: MeasureSystemAppliedRecord = { stage: "none", revisionBefore: 0, revisionAfter: 0, snapshots: [], writesOk: 0, writeFailures: [], verified: null, message: "" };
 
 /** A hub session's core and the units' own cores, all stand-ins; every call is recorded in order. */
-function deskRig(role: "admin" | "control", opts: { caps?: string[]; sim?: boolean } = {}) {
+function deskRig(role: "admin" | "control", opts: { caps?: string[]; sim?: boolean; guardS?: number } = {}) {
+  let guardEnded = ""; // -- review AT-D2 -- the hub ended its guard: its words
   const calls: Call[] = [];
   let simOn = false; // -- WP ATDEMO --
   const simInfo = () => ({ available: !!opts.sim, on: simOn, label: "Simulated microphone", room: "the demo room", issue: null });
@@ -255,12 +256,16 @@ function deskRig(role: "admin" | "control", opts: { caps?: string[]; sim?: boole
         case "measureSystemSumCheck":
           return { ...STATE, purpose: "sum_check" };
         case "measureSystemVerify":
+          if (guardEnded) {
+            applied = { ...applied, stage: "reverted", message: guardEnded };
+            throw new CoreCallError("invalid", `invalid argument: ${guardEnded}`, "invalid");
+          }
           return { ...STATE, purpose: "verify" };
         case "measureSystemStop":
           return { ...STATE, active: false, phase: "aborted" };
         case "measureSystemApply":
           if (role !== "admin") throw new CoreCallError("denied", "this console's role on the hub does not allow that", "denied");
-          applied = { ...APPLIED, stage: "applied", revisionBefore: 4, revisionAfter: 5 };
+          applied = { ...APPLIED, stage: "applied", revisionBefore: 4, revisionAfter: 5, guardS: opts.guardS ?? 0 };
           return applied;
         case "measureSystemKeep":
           keeps++;
@@ -340,6 +345,9 @@ function deskRig(role: "admin" | "control", opts: { caps?: string[]; sim?: boole
     },
     passSumCheck() {
       prop = proposal({ mayApply: role === "admin", sumCheckNeeded: false });
+    },
+    hubEndsGuard(words: string) {
+      guardEnded = words;
     },
   };
 }
@@ -512,4 +520,43 @@ test("ATDEMO: a unit's lost lock is the core's own key (no rewording on the page
     text: "Unit lost lock: DEMO-TB-C: its time base was disturbed (2 -> 3, last reanchor)",
   });
   assert.equal(shownIssue({ key: "measure.system.abort.hub", message: "the hub stopped the measurement (lease)" }, row).key, "measure.system.abort.hub");
+});
+
+// -- review AT-D2 --
+test("review AT-D2: the hub's guard of an apply counts down from the apply, and a guard the hub ended is shown in its words", async () => {
+  const rig = deskRig("admin", { guardS: 300 });
+  await rig.desk.enter();
+  rig.desk.setDraft({ ...withUnit(withUnit(rig.desk.draft, "A", true), "B", true), placement: "listeningPosition" });
+  await until(() => rig.desk.units[1]!.outputs.length === 2);
+  assert.equal(await rig.desk.start(), true);
+  await rig.push({ ...STATE, active: false, phase: "done", resultReady: true });
+  rig.passSumCheck();
+  rig.desk.proposal = await (rig.desk.session.core.call("measureSystemProposal", undefined) as Promise<MeasureSystemProposalRecord>);
+  assert.equal(rig.desk.guarded, false);
+  assert.equal(rig.desk.guardLeftS(), null);
+  assert.equal(await rig.desk.apply(), true, rig.desk.error);
+  assert.equal(rig.desk.guarded, true);
+  assert.equal(rig.desk.guardLeftS(), 300);
+  rig.setNow(rig.now + 100_400);
+  assert.equal(rig.desk.guardLeftS(), 200);
+  assert.match(guardWords(300, rig.desk.guardLeftS()), /Keep or Revert within 200 s: without Keep the hub puts everything back by itself/);
+  // The deadline passed: the page says so, and the verify the core refuses shows the hub's words.
+  rig.setNow(rig.now + 200_000);
+  assert.equal(rig.desk.guardLeftS(), 0);
+  assert.match(guardWords(300, 0), /has run out/);
+  rig.hubEndsGuard("the hub ended the guard (timeout), but the alignment was NOT wholly put back (not_written): nothing was set back");
+  assert.equal(await rig.desk.summed("verify"), false);
+  assert.equal(rig.desk.applied?.stage, "reverted", "the hub's outcome is read, not left as applied");
+  assert.equal(rig.desk.guarded, false);
+  assert.match(rig.desk.error, /NOT wholly put back/);
+  assert.match(endedWords(rig.desk.applied!), /^The hub ended the guard \(timeout\), but the alignment was NOT wholly put back/);
+});
+
+test("review AT-D2: the guard in words: none on an older hub, uncounted when this page did not see the apply; the end in the core's words", () => {
+  assert.match(guardWords(0, null), /no guard .* nothing reverts by itself/);
+  assert.match(guardWords(240, null), /unless it is kept within 240 s of the apply/);
+  assert.equal(endedWords({ stage: "kept", message: "kept: the alignment stays" }), "Kept.");
+  assert.equal(endedWords({ stage: "reverted", message: "" }), "Reverted: the installation and every unit are as they were filed.");
+  assert.equal(endedWords({ stage: "reverted", message: "reverted: the model and every unit's output delays are as filed" }), "Reverted: the model and every unit's output delays are as filed");
+  assert.equal(endedWords({ stage: "applied", message: "x" }), "");
 });

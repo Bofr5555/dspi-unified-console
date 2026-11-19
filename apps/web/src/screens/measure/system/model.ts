@@ -229,3 +229,21 @@ export function proposalRights(p: MeasureSystemProposalRecord | null, role: stri
   }
   return { apply: true, why: "" };
 }
+
+// -- review AT-D2 -- the hub's guard of a system apply (WP ATGUARD), in words
+/** The guard's countdown after an apply: `left` seconds (0: run out; null: not counted here). */
+export function guardWords(guardS: number, left: number | null): string {
+  if (guardS <= 0) return "This hub has no guard for an alignment across units: nothing reverts by itself. Verify it, then Keep or Revert.";
+  if (left == null) return `The hub puts everything back by itself unless it is kept within ${guardS} s of the apply, and at once if this console's connection is lost.`;
+  if (left <= 0) return "The hub's guard has run out: unless it was kept, the hub has put the installation back by itself. Keep shows what the hub did.";
+  return `Keep or Revert within ${left} s: without Keep the hub puts everything back by itself (also if this console's connection is lost).`;
+}
+
+/** What ended an applied alignment, in words: the core's (the hub's own when its guard ended it). */
+export function endedWords(a: { stage: string; message: string }): string {
+  const m = a.message.trim();
+  if (a.stage === "kept") return "Kept.";
+  if (a.stage !== "reverted") return "";
+  if (!m) return "Reverted: the installation and every unit are as they were filed.";
+  return m.charAt(0).toUpperCase() + m.slice(1);
+}

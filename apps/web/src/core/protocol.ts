@@ -2036,6 +2036,11 @@ export interface MeasureSystemProposalRecord {
   offered: boolean;
   mayApply: boolean;
   notice?: MeasureSystemIssueRecord | null;
+  // -- review AT-D2 -- WP ATGUARD's fields
+  /** The hub's guard the apply begins, s (0: the hub has none, nothing reverts by itself). */
+  guardS?: number;
+  /** The guard in words: how long, or that nothing reverts by itself. */
+  guardNote?: string;
 }
 
 export type MeasureSystemApplyStage = "none" | "applied" | "verified" | "kept" | "reverted";
@@ -2049,6 +2054,8 @@ export interface MeasureSystemAppliedRecord {
   writeFailures: string[];
   verified?: boolean | null;
   message: string;
+  /** -- review AT-D2 -- the hub's guard of this apply, s, counted from the apply (0: none). */
+  guardS?: number;
 }
 
 export interface MeasureSystemMethods {

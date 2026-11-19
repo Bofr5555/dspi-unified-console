@@ -417,8 +417,11 @@ test.describe("ATDEMO: measuring several demo units with the simulated microphon
     };
     const filed = await delays();
     // Apply, then the verify with the new delays: it agrees.
+    // -- review AT-D2 -- WP ATGUARD: what the hub does by itself is said before the apply, and counted after it
+    await expect(proposal.getByRole("note", { name: "Guard of the apply" })).toContainText(/The hub reverts the alignment by itself unless it is kept within \d+ s/);
     await proposal.getByRole("button", { name: "Apply the alignment" }).click();
     await expect(applied.getByRole("status")).toContainText("Applied: the summed runs are measured again");
+    await expect(applied.getByRole("timer", { name: "Guard countdown" })).toContainText(/Keep or Revert within \d+ s: without Keep the hub puts everything back by itself/);
     const [a, b0] = await delays();
     expect(Math.abs(a! - b0! - 2.37), `DEMO-TB-A delayed to DEMO-TB-B: ${a} and ${b0} ms`).toBeLessThan(0.02);
     await applied.getByRole("button", { name: "Verify" }).click();

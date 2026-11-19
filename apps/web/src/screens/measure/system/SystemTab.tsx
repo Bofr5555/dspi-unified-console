@@ -18,6 +18,8 @@ import {
   KEYS,
   SYSTEM_PLACEMENTS,
   arrivalWords,
+  endedWords,
+  guardWords,
   issueWords,
   outputLabel,
   phaseWords,
@@ -45,6 +47,13 @@ function useSystemDesk(d: SystemDesk): SystemDesk {
     const t = setInterval(() => bump((n) => n + 1), 250);
     return () => clearInterval(t);
   }, [d, d.question]);
+  // -- review AT-D2 -- and while the hub's guard of an apply counts down
+  const guarded = d.guarded;
+  useEffect(() => {
+    if (!guarded) return;
+    const t = setInterval(() => bump((n) => n + 1), 1000);
+    return () => clearInterval(t);
+  }, [d, guarded]);
   return d;
 }
 
@@ -397,6 +406,12 @@ function ProposalView(props: { d: SystemDesk; busy: boolean }) {
           {issueWords(p.notice)}
         </p>
       ) : null}
+      {/* -- review AT-D2 -- WP ATGUARD: what the hub does by itself after the apply, before it is pressed */}
+      {p.guardNote && p.offered && admin && (stage === "none" || stage === "reverted" || stage === "kept") ? (
+        <p class={(p.guardS ?? 0) > 0 ? "muted" : "error"} role="note" aria-label="Guard of the apply">
+          {p.guardNote.charAt(0).toUpperCase() + p.guardNote.slice(1)}.
+        </p>
+      ) : null}
       {stage === "none" || stage === "reverted" || stage === "kept" ? (
         <div style={row}>
           {/* -- WP ATDEMO -- the core offers nothing before the summed check passed: the check is
@@ -425,6 +440,10 @@ function ProposalView(props: { d: SystemDesk; busy: boolean }) {
               : a.verified
                 ? "Verified: the summed runs agree with the new delays."
                 : issueWords({ key: KEYS.verifyFailed, message: a.message || "the summed runs did not agree with the new delays" })}
+          </p>
+          {/* -- review AT-D2 -- the hub's guard, counting down (or that this hub has none) */}
+          <p class={(a.guardS ?? 0) > 0 && d.guardLeftS() !== 0 ? "muted" : "error"} role="timer" aria-label="Guard countdown">
+            {guardWords(a.guardS ?? 0, d.guardLeftS())}
           </p>
           <div style={row}>
             {stage === "applied" ? (
@@ -457,8 +476,12 @@ function ProposalView(props: { d: SystemDesk; busy: boolean }) {
           ) : null}
         </div>
       ) : null}
-      {a && stage === "kept" ? <p role="status">Kept.</p> : null}
-      {a && stage === "reverted" ? <p role="status">Reverted: the installation and every unit are as they were filed.</p> : null}
+      {/* -- review AT-D2 -- the core's words: the hub's own when its guard ended it (it may not have put everything back) */}
+      {a && (stage === "kept" || stage === "reverted") ? (
+        <p role="status" aria-label="How the apply ended" class={stage === "reverted" && (a.writeFailures.length > 0 || /NOT wholly|but /.test(a.message)) ? "error" : undefined}>
+          {endedWords(a)}
+        </p>
+      ) : null}
     </section>
   );
 }

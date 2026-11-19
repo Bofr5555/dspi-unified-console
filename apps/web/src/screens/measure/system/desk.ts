@@ -88,6 +88,10 @@ function defaultSpawn(): UnitCore {
   return CoreClient.spawn(new URL("./worker.js", import.meta.url)) as unknown as UnitCore;
 }
 
+// -- review AT-D2 -- when each core's guarded apply was made (the hub's guard counts from it). By
+// core, so the countdown survives leaving the tab and coming back (the desk is made anew then).
+const GUARD_SINCE = new WeakMap<object, { since: number; revision: number }>();
+
 export class SystemDesk {
   draft: SystemDraft = initialDraft();
   units: UnitInfo[] = [];
@@ -154,6 +158,25 @@ export class SystemDesk {
   /** A run, a summed check or a verify holds the hub's session. */
   get running(): boolean {
     return !!this.state?.active;
+  }
+
+  // -- review AT-D2 -- the hub's guard of the apply (WP ATGUARD)
+  /** The applied alignment waits for Keep or Revert under the hub's guard. */
+  get guarded(): boolean {
+    const a = this.applied;
+    return !!a && (a.stage === "applied" || a.stage === "verified") && (a.guardS ?? 0) > 0;
+  }
+
+  /**
+   * Seconds the hub's guard still has (0: it has run out), or null when nothing is guarded or
+   * this page did not see the apply (the guard's length is then said without a count).
+   */
+  guardLeftS(): number | null {
+    const a = this.applied;
+    if (!a || !this.guarded) return null;
+    const g = GUARD_SINCE.get(this.core as object);
+    if (!g || g.revision !== a.revisionAfter) return null;
+    return Math.max(0, Math.ceil((g.since + (a.guardS ?? 0) * 1000 - this.now()) / 1000));
   }
 
   /** The second Keep may be pressed now. */
@@ -455,6 +478,9 @@ export class SystemDesk {
       return true;
     } catch (e) {
       await this.closeMic();
+      // -- review AT-D2 -- a verify refused because the hub's guard has ended: the core then has
+      // the hub's outcome (reverted, in the hub's words); shown instead of Verify and Keep.
+      if (kind === "verify") this.applied = await this.core.call("measureSystemApplied", undefined).catch(() => this.applied);
       this.fail(e);
       return false;
     } finally {
@@ -479,6 +505,9 @@ export class SystemDesk {
     this.changed();
     try {
       this.applied = await this.core.call("measureSystemApply", { proposalId: p.id });
+      // -- review AT-D2 -- the hub's guard counts from now
+      if ((this.applied.guardS ?? 0) > 0) GUARD_SINCE.set(this.core as object, { since: this.now(), revision: this.applied.revisionAfter });
+      else GUARD_SINCE.delete(this.core as object);
       this.said = this.applied.message || "Applied: measure the summed runs again to verify it, then Keep or Revert.";
       return true;
     } catch (e) {
@@ -516,7 +545,7 @@ export class SystemDesk {
     try {
       this.applied = await this.core.call("measureSystemKeep", undefined);
       this.question = null;
-      this.said = this.applied.message || "Kept.";
+      this.said = this.applied.stage === "kept" ? "Kept." : this.applied.message;
       return this.applied.stage === "kept";
     } catch (e) {
       const a = await this.core.call("measureSystemApplied", undefined).catch(() => null);
