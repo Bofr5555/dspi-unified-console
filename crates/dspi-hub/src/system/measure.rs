@@ -310,6 +310,25 @@ impl HubHandle {
     pub fn system_measure_sessions(&self) -> usize {
         guard(&self.system_measure().sessions).len()
     }
+
+    /// Whether the online unit `serial`'s device lock is a measuring
+    /// session's, exempt from the lock budget.
+    pub fn system_measure_lock_exempt(&self, serial: &str) -> bool {
+        self.device_by_serial(serial)
+            .is_some_and(|d| d.router.lock_holder_exempt(Instant::now()))
+    }
+
+    /// Note a read of unit `serial`'s `EXT_TIME_BASE` entry made elsewhere in
+    /// the hub (the system model's poll, WP ATHUBM, at the batch merge): a
+    /// locked one starts or keeps its settling clock, so a run need not
+    /// wait the full [`DEFAULT_SETTLE`] after the hub starts.
+    #[allow(dead_code)]
+    pub(crate) fn system_measure_note_locked(&self, serial: &str, entry: &TimeBaseEntry) {
+        if entry.state.is_locked() {
+            self.system_measure()
+                .note_locked(serial, entry, Instant::now());
+        }
+    }
 }
 
 /// A plain copy of what a transfer on a unit needs, taken under `st`.
@@ -538,6 +557,10 @@ impl MeasureHub {
                 }
                 return err(id, "locked", "another console holds the unit", Some(serial));
             }
+            // The session's own lock leaves the router's budget while its lease
+            // lives: the dead-man bounds it (coordinator, AT-C). Every other
+            // lock keeps the budget.
+            dev.router.lock_exempt(who.id(), Instant::now());
             taken.push(dev.handle);
         }
         let release = |answer: String| {
@@ -1546,9 +1569,14 @@ impl MeasureHub {
                 self.abort_session(hub, s, Some(u.index), "offline", true);
                 return;
             }
-            if renew && hub.lock_request(&s.owner, u.handle, LOCK_HOLD).is_err() {
-                self.abort_session(hub, s, Some(u.index), "lock", true);
-                return;
+            if renew {
+                // Renewed only here, after the lease was found live.
+                if hub.lock_request(&s.owner, u.handle, LOCK_HOLD).is_err()
+                    || !u.dev.router.lock_exempt(s.owner.id(), Instant::now())
+                {
+                    self.abort_session(hub, s, Some(u.index), "lock", true);
+                    return;
+                }
             }
         }
         if !read_now {

@@ -1042,3 +1042,111 @@ impl Transport for Scripted {
         self.inner.generation()
     }
 }
+
+// ── The lock budget (coordinator's decision, AT-C) ────────────────────────
+
+/// A measuring session's own locks are exempt from the router's budget (120
+/// s, then 30 s cooling) while its lease lives: settling (40 s) and runs for
+/// more than 120 s in all, never aborted `lock`. Real time: about 2 minutes.
+#[test]
+fn wp_athub_a_session_longer_than_the_lock_budget_is_not_aborted() {
+    let hub = hub();
+    hub.handle()
+        .set_system_measure_settle(dspi_hub::system::measure::DEFAULT_SETTLE);
+    let (tb, devs) = world(World::Line, 2, G1B);
+    let u = attach(&hub, devs);
+    let owner = session(&hub, Role::Control);
+    let started = Instant::now();
+    let (m, _) = open_ok(&hub, &owner, &u);
+    for serial in &u.serials {
+        assert!(hub.handle().system_measure_lock_exempt(serial), "{serial}");
+        assert_eq!(stage(&hub, &owner, &m, serial, &sweep(1))["t"], "ok");
+    }
+    let mut runs = 0;
+    while started.elapsed() < Duration::from_secs(130) {
+        let r = run(&hub, &owner, &m, &[(0, 0), (1, 48_000)]);
+        if r["t"] != "ok" {
+            assert!(
+                r["msg"].as_str().unwrap_or("").contains("in progress"),
+                "{r}"
+            );
+            assert_eq!(status_of(&hub, &owner, &m)["t"], "ok");
+            std::thread::sleep(Duration::from_millis(250));
+            continue;
+        }
+        runs += 1;
+        let end = r["t0"].as_u64().unwrap() + 2 * RATE;
+        let wait = Instant::now();
+        while tb.t_now() < end {
+            assert!(
+                wait.elapsed() < Duration::from_secs(60),
+                "run {runs} never ended"
+            );
+            let st = status_of(&hub, &owner, &m);
+            assert_eq!(st["t"], "ok", "after {:?}: {st}", started.elapsed());
+            std::thread::sleep(Duration::from_millis(300));
+        }
+        while u.remotes[1].measure_timed_starts().len() < runs {
+            assert_eq!(status_of(&hub, &owner, &m)["t"], "ok");
+            std::thread::sleep(Duration::from_millis(100));
+        }
+    }
+    assert!(runs >= 3, "{runs} runs");
+    assert_eq!(
+        status_of(&hub, &owner, &m)["t"],
+        "ok",
+        "still alive after {:?}",
+        started.elapsed()
+    );
+    for serial in &u.serials {
+        assert!(hub.handle().system_measure_lock_exempt(serial));
+    }
+    // Still the session's: nobody else gets the units.
+    let other = session(&hub, Role::Control);
+    assert!(
+        hub.lock_request(&other, u.handles[0], Duration::from_secs(1))
+            .is_err()
+    );
+    let c = ask(
+        &hub,
+        &owner,
+        json!({"t": "system.measure.close", "session": m}),
+    );
+    assert_eq!(c["t"], "ok");
+    assert!(!hub.handle().system_measure_lock_exempt(&u.serials[0]));
+}
+
+/// When the lease lapses the session is aborted, its locks are released and
+/// lose the exemption; anyone's next lock (a non-measurement one) is
+/// budgeted as before.
+#[test]
+fn wp_athub_a_lapsed_lease_ends_the_exemption() {
+    let hub = hub();
+    let (_tb, devs) = world(World::Line, 2, G1B);
+    let u = attach(&hub, devs);
+    let owner = session(&hub, Role::Control);
+    let v = ask(
+        &hub,
+        &owner,
+        json!({"t": "system.measure.open", "units": u.serials, "lease_ms": 500}),
+    );
+    assert_eq!(v["t"], "ok", "{v}");
+    assert!(hub.handle().system_measure_lock_exempt(&u.serials[0]));
+    let ev = aborted_event(&owner);
+    assert_eq!(ev["reason"], "lease");
+    for (serial, h) in u.serials.iter().zip(&u.handles) {
+        assert!(!hub.handle().system_measure_lock_exempt(serial), "{serial}");
+        // Released: another console takes it, without the exemption.
+        let other = session(&hub, Role::Control);
+        hub.lock_request(&other, *h, Duration::from_secs(5))
+            .unwrap();
+        assert!(!hub.handle().system_measure_lock_exempt(serial));
+        hub.lock_release(&other, *h);
+    }
+    // The measuring session's own plain lock is budgeted too.
+    let granted = hub
+        .lock_request(&owner, u.handles[0], Duration::from_secs(3600))
+        .unwrap();
+    assert_eq!(granted, dspi_hub::lock::LOCK_MAX);
+    assert!(!hub.handle().system_measure_lock_exempt(&u.serials[0]));
+}

@@ -1950,9 +1950,10 @@ them, and the client decodes them with `dspi_proto::ext::timebase`.*
   two reads (44.1, 48 or 96 kHz, one for all), and nothing may move between them.
 - **The device locks.** `open` takes each unit's device lock for the session (a viewer never; another console's lock is
   `locked`; a unit under its installer lock is `installer_lock` for a control client, section 1.6); the hub renews them
-  every 2 s while the session lives and releases them at `abort` and `close`. A lock lost aborts all (S-AT5). The lock's
-  budget is the hub's (spec 7.7, `lock.rs`: at most 120 s at a stretch): a session that holds its units longer is aborted
-  `lock`.
+  every 2 s while the session lives and releases them at `abort` and `close`. A lock lost aborts all (S-AT5). While the
+  lease is live, these locks (the session's own, none other) are exempt from the per-device lock budget (spec 7.7,
+  `lock.rs`: 120 s at a stretch, then 30 s cooling): the dead-man bounds them instead. Once the session is aborted or
+  closed (a lapsed lease included) they are released, and every later lock is budgeted as before.
 - **Every transfer is the session's** (its id, so its lock lets it through and every write is attributed to it); the
   family is judged by its own roles, as `system.scene.apply` is, so a control client measures without raw extension
   access. Nothing else is written: the generator's config, its stop, the apply queue's op 9 and `CANCEL_ALL`, and the
