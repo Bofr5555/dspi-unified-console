@@ -52,6 +52,8 @@ pub(crate) fn view_of(p: &DeviceProtocol) -> DeviceProtocolView {
         },
         board_id: p.board_id,
         board_name: p.board_name.clone(),
+        // -- review PG-D1 -- (WP PGFIX) the alink sender is said
+        alink_sender: p.device_kind == dspi_core::DeviceKind::AlinkSender,
     }
 }
 

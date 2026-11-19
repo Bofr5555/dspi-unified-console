@@ -744,7 +744,7 @@ unchanged (no parameter added); wasm has no write. **Done when:** a forged C/was
 unstamped image on a G1b board without the phrase is refused at the write gate with the update check skipped; a Zero is
 refused at the write gate; TM3, P3RO and PGFWX tests pass.
 
-**PGMAT: The compat matrix.** [TODO] Size 3. Wave PG-D. **Owns:** new `crates/dspi-core/tests/wp_pgmat_matrix.rs`,
+**PGMAT: The compat matrix.** [DONE] Size 3. Wave PG-D. **Owns:** new `crates/dspi-core/tests/wp_pgmat_matrix.rs`,
 new `crates/dspi-hub/tests/wp_pgmat_hub.rs`, vendored DSPi-Link fixtures under `tests/fixtures/link/upstream-1.3/`
 (MIT). **Implements:** section 4's matrix, every cell of section 1.11: our core over USB (mock wire), MIDI (pipe fake),
 the fake hub's `L12Forward`, `L12Drop` and `L13` modes and OH in-process, against each fake generation incl. Zero,
@@ -752,7 +752,13 @@ sender and a higher page revision; OH against an L12-style client (our `dspi-lin
 client replaying DSPi-Link's 1.3 fixtures. Per cell: connect, the expected notice or state read, one control write,
 an ext read where expected, a bulk round trip, the bootloader offered or blocked, a generator START where expected.
 **Done when:** the matrix table is generated from the test run (`work/wp-PGMAT/matrix.md`) and equals section 1.11;
-no fake panicked. **Deps:** PG-C.
+no fake panicked. **Deps:** PG-C. **Did (WP PGMAT, then WP PGFIX):** 9 firmware rows (section 1.11's, the G1b row
+split by guard and sender, and the paged Zero) by 8 routes, 72 cells of which 5 are "no such route"; PGMAT found three
+differences (F1 the core could not open the alink sender, F2 a page-0 meter poll went out before the platform read
+through a 1.2 hub, F3 "full + ext" on our hub is admin-only for a control session). **PGFIX** fixed F1 (the core
+connects the sender as `DeviceKind::AlinkSender`: device info, extension channel, update target; every DSP call
+`Unsupported`) and F2 (nothing but `REQ_GET_PLATFORM` on the legacy route until it answered), and changed section
+1.11's wording for F3 ("full + ext (admin)"). The table of the merged batch: `work/review-pgd1/matrix.md`.
 
 **PGWEB: Web.** [TODO] Size 1. Wave PG-D. **Owns:** the device-info and raw screens in `apps/web/src/screens/`
 (generation row, raw by id on paged devices), Playwright e2e with the WebUSB mock answering the probe as each

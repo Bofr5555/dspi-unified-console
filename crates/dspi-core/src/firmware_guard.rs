@@ -988,6 +988,9 @@ mod tests_wp_pgfwx;
 // -- WP PGFLASH --
 #[cfg(test)]
 mod tests_wp_pgflash;
+// -- review PG-D1 --
+#[cfg(test)]
+mod tests_review_pgd1;
 
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]

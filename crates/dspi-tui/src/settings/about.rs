@@ -377,7 +377,17 @@ pub struct DeviceProtocolView {
     pub board_id: u8,
     /// The board's name as the core gives it ("DSPi", "DSPi Zero", ...).
     pub board_name: String,
+    // -- review PG-D1 --
+    /// The device is the alink sender (`dspi_core::DeviceKind::AlinkSender`,
+    /// WP PGFIX): [`SENDER_NOTE`] is said under the rows.
+    pub alink_sender: bool,
 }
+
+// -- review PG-D1 --
+/// Said when the open device is the alink sender (WP PGFIX): what it has.
+pub const SENDER_NOTE: &str = "This device is the audio link sender, not a DSP: it has its device \
+     information, its extension channel with the audio link settings, and firmware updates. It has \
+     no DSP settings, no meters and no signal generator.";
 
 // -- WP PGTM --
 /// Said when a paged device's page list is empty (PG-C review carry-over):
@@ -452,11 +462,15 @@ impl DeviceProtocolView {
     /// What the rows need said under them: on a paged device with no page
     /// list, why ([`NO_PAGE_LIST_NOTE`]).
     pub fn notes(&self) -> Vec<&'static str> {
+        let mut notes = Vec::new();
         if self.generation == GenerationView::Paged && self.pages.is_empty() {
-            vec![NO_PAGE_LIST_NOTE]
-        } else {
-            Vec::new()
+            notes.push(NO_PAGE_LIST_NOTE);
         }
+        // -- review PG-D1 --
+        if self.alink_sender {
+            notes.push(SENDER_NOTE);
+        }
+        notes
     }
 }
 
@@ -912,6 +926,7 @@ mod tests_wp_pgtm {
             ext: ExtView::Tunnel,
             board_id: 0,
             board_name: "DSPi".into(),
+            alink_sender: false,
         }
     }
 
