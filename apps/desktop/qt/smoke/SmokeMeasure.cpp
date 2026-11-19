@@ -7,7 +7,17 @@
 // again and kept through the second confirmation the core asks for after a
 // verify that did not pass, and the A/B compare. Each section leaves the demo
 // as it found it (the volume back, every write undone or reverted).
+//
+// -- WP P5QUI2 -- Results through the core's curves (smoothing, the levelled
+// target); review P5-D's three fixes: a Stop or a closed window withdraws a
+// start on its way (F5), a hub's Viewer is offered no tab that plays (F6, on
+// a fake hub), Revert withdraws a delayed "Keep Anyway" (F7); the passive
+// microphone RTA in the client read-only mode, fed by a sine source through
+// AudioCapture's seam (frames arrive, the generator idle, nothing written).
 #include "SmokeDriver.h"
+
+#include "LinkController.h"
+#include "LinkFakeHub.h"
 
 #include "Core.h"
 #include "CoreWorker.h"
@@ -20,8 +30,11 @@
 
 #include "CoreApi.h"
 
+#include <QAudioFormat>
 #include <QDir>
 #include <QElapsedTimer>
+#include <QIODevice>
+#include <QTimer>
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -31,6 +44,7 @@
 #include <QSignalSpy>
 #include <cmath>
 #include <cstring>
+#include <memory>
 #include <utility>
 
 namespace {
@@ -185,6 +199,95 @@ bool generatorIdle(SmokeDriver &d) {
     return idle;
 }
 
+// -- WP P5QUI2 -- how many series of `kind` a graph has
+int kindCount(const QVariantMap &graph, const char *kind) {
+    int n = 0;
+    for (const QVariant &v : graph.value(QStringLiteral("series")).toList())
+        if (v.toMap().value(QStringLiteral("kind")).toString() == QLatin1String(kind)) ++n;
+    return n;
+}
+
+QVariantList firstPoints(const QVariantMap &graph) {
+    for (const QVariant &v : graph.value(QStringLiteral("series")).toList())
+        if (v.toMap().value(QStringLiteral("kind")).toString() == QLatin1String("measured")) return v.toMap().value(QStringLiteral("points")).toList();
+    return {};
+}
+
+// -- WP P5QUI2 -- Results through dspi_measure_doc_curves: 1/6 octave and the
+// levelled target by default; another smoothing and the target off are the
+// core's answers too; back to the defaults at the end
+void resultCurvesChecks(SmokeDriver &d, QQuickWindow *w, MeasureController *mc, int outs) {
+    QQuickItem *graph = in(d, w, QStringLiteral("MeasureResults.graph"));
+    d.check(QStringLiteral("p5qui2: Results are the core's curves: 1/6 octave and the target levelled to each output by default"),
+            mc->resultSmoothing() == 6 && mc->resultTarget() && mc->resultCurvesSmoothing() == 6 &&
+                kindCount(mc->resultGraph(), "target") == outs && graph &&
+                d.waitFor(2000, [&] { return graph->property("drawnKinds").toStringList().contains(QLatin1String("target")); }));
+    QQuickItem *note = in(d, w, QStringLiteral("MeasureResults.curvesNote"));
+    d.check(QStringLiteral("p5qui2: Results say the core's smoothing in words"),
+            note && note->property("text").toString() == QLatin1String("Smoothed by the core: 1/6 octave."));
+    const QVariantList sixth = firstPoints(mc->resultGraph());
+    // The choice from the window's own control
+    QQuickItem *combo = in(d, w, QStringLiteral("MeasureResults.smoothing"));
+    if (combo) QMetaObject::invokeMethod(combo, "activated", Q_ARG(int, 0));
+    d.check(QStringLiteral("p5qui2: no smoothing: the core's curves as stored, drawn"),
+            combo && d.waitFor(8000, [&] { return mc->resultCurvesSmoothing() == 0; }) && mc->resultSmoothing() == 0 &&
+                kindCount(mc->resultGraph(), "measured") == outs && firstPoints(mc->resultGraph()) != sixth && !sixth.isEmpty());
+    mc->setResultSmoothing(3);
+    d.check(QStringLiteral("p5qui2: 1/3 octave from the core"), d.waitFor(8000, [&] { return mc->resultCurvesSmoothing() == 3; }));
+    QQuickItem *target = in(d, w, QStringLiteral("MeasureResults.target"));
+    if (target) {
+        target->setProperty("checked", false);
+        QMetaObject::invokeMethod(target, "toggled");
+    }
+    d.check(QStringLiteral("p5qui2: the target switched off: none drawn"),
+            target && d.waitFor(8000, [&] { return !mc->resultTarget() && mc->resultCurvesSmoothing() == 3 && kindCount(mc->resultGraph(), "target") == 0 &&
+                                                   kindCount(mc->resultGraph(), "measured") == outs; }) &&
+                d.waitFor(2000, [&] { return !graph->property("drawnKinds").toStringList().contains(QLatin1String("target")); }));
+    mc->setResultTarget(true);
+    mc->setResultSmoothing(6);
+    d.check(QStringLiteral("p5qui2: back to 1/6 octave with the target"),
+            d.waitFor(8000, [&] { return mc->resultCurvesSmoothing() == 6 && kindCount(mc->resultGraph(), "target") == outs; }) &&
+                firstPoints(mc->resultGraph()) == sixth);
+}
+
+// -- WP P5QUI2 -- the tune's state as the core has it now
+QJsonObject tuneStateOf(SmokeDriver &d) {
+    QByteArray out;
+    d.app().core->worker()->call(d.app().device, [](FfiCore *c) {
+        QByteArray b(1 << 18, '\0');
+        const uint32_t n = dspi_measure_tune_state(c, b.data(), uint32_t(b.size()));
+        if (n > 0 && n <= uint32_t(b.size())) b.truncate(int(n) - 1);
+        else b.clear();
+        return b;
+    }, [&out](QByteArray r) { out = r; });
+    d.waitIdle();
+    d.spin(50);
+    return QJsonDocument::fromJson(out).object();
+}
+
+// -- WP P5QUI2 -- a JSON call of the core on its worker (the smoke's reads)
+QJsonObject coreJson(SmokeDriver &d, std::function<uint32_t(FfiCore *, char *, uint32_t)> call) {
+    QByteArray out;
+    d.app().core->worker()->call(d.app().device, [call](FfiCore *c) {
+        QByteArray b(1 << 18, '\0');
+        const uint32_t n = call(c, b.data(), uint32_t(b.size()));
+        if (n > 0 && n <= uint32_t(b.size())) b.truncate(int(n) - 1);
+        else b.clear();
+        return b;
+    }, [&out](QByteArray r) { out = r; });
+    d.waitIdle();
+    d.spin(50);
+    return QJsonDocument::fromJson(out).object();
+}
+
+bool coreBool(SmokeDriver &d, std::function<bool(FfiCore *)> call) {
+    bool v = false;
+    d.app().core->worker()->call(d.app().device, [call](FfiCore *c) { return call(c); }, [&v](bool r) { v = r; });
+    d.waitIdle();
+    d.spin(50);
+    return v;
+}
+
 // A measurement through the window: Check, then Measure, to its result
 bool measure(SmokeDriver &d, QQuickWindow *w, MeasureController *mc, int limitMs) {
     showTab(d, w, 0);
@@ -241,12 +344,16 @@ void measureSection(SmokeDriver &d) {
     d.check(QStringLiteral("p5qui: the result is taken and the microphone closed"),
             d.waitFor(5000, [&] { return mc->hasResult() && !mc->running(); }) && mc->resultFrom() == QLatin1String("run"));
 
-    // The results: one curve an output, drawn
+    // The results: one curve an output, drawn (-- WP P5QUI2 -- the core's
+    // curves, asked for when the result came: wait for its answer)
     showTab(d, w, 1);
-    const QVariantList series = mc->resultGraph().value(QStringLiteral("series")).toList();
     QQuickItem *graph = in(d, w, QStringLiteral("MeasureResults.graph"));
+    const bool curves = d.waitFor(8000, [&] { return mc->resultCurvesSmoothing() >= 0; });
+    const QVariantList series = mc->resultGraph().value(QStringLiteral("series")).toList();
     d.check(QStringLiteral("p5qui: Results draw one measured curve an output"),
-            series.size() == outs.size() && graph && d.waitFor(2000, [&] { return graph->property("drawnSeries").toInt() == outs.size(); }));
+            curves && kindCount(mc->resultGraph(), "measured") == outs.size() && graph &&
+                d.waitFor(2000, [&] { return graph->property("drawnSeries").toInt() == series.size(); }));
+    resultCurvesChecks(d, w, mc, int(outs.size()));
     d.check(QStringLiteral("p5qui: Results say the placement, the microphone and the timing"),
             mc->resultSummary().contains(QLatin1String("Listening position")) && !mc->resultTiming().isEmpty() &&
                 mc->resultOutputs().size() == outs.size());
@@ -254,10 +361,10 @@ void measureSection(SmokeDriver &d) {
     d.check(QStringLiteral("p5qui: screenshot of the results"), d.grab(w, QStringLiteral("p5qui/results.png")));
     // An output hidden and shown again
     mc->setOutputShown(outs.first(), false);
-    const int hiddenCount = mc->resultGraph().value(QStringLiteral("series")).toList().size();
+    const int hiddenCount = kindCount(mc->resultGraph(), "measured");
     mc->setOutputShown(outs.first(), true);
     d.check(QStringLiteral("p5qui: an output can be hidden from the graph"),
-            hiddenCount == outs.size() - 1 && mc->resultGraph().value(QStringLiteral("series")).toList().size() == outs.size());
+            hiddenCount == outs.size() - 1 && kindCount(mc->resultGraph(), "measured") == outs.size());
 
     // The document: filed here, listed, exported as REW text
     QSignalSpy stored(mc, &MeasureController::stored);
@@ -474,9 +581,49 @@ void tuneSection(SmokeDriver &d) {
     if (!(after == before)) std::printf("smoke: p5qui: tune: after Revert: %s\n", qPrintable(diff(before, after)));
     d.check(QStringLiteral("p5qui: Revert puts the device back as it was before the tune"), reverted && after == before);
 
+    // -- WP P5QUI2 -- review P5-D F7: "Keep Anyway" pressed within the core's
+    // second waits for it (a timer); a Revert pressed meanwhile withdraws it,
+    // so no Keep is sent at all and the device is as before
+    steps.clear();
+    tc->propose();
+    const bool reproposed = step(QStringLiteral("propose"), 30000) && stepOk(QStringLiteral("propose"));
+    if (reproposed && tc->needsSumCheck()) {
+        tc->sumCheckRun();
+        step(QStringLiteral("sumCheck"), 110000);
+        d.waitFor(5000, [&] { return !mc->running(); });
+    }
+    steps.clear();
+    tc->apply(0);
+    const bool raceApplied = reproposed && step(QStringLiteral("apply"), 15000) && stepOk(QStringLiteral("apply")) && d.waitIdle() && tc->applied();
+    d.check(QStringLiteral("p5qui2: f7: the tune applied for the race"), raceApplied);
+    if (raceApplied) {
+        const QString why = QStringLiteral("measure.tune.keep_unverified: the verify did not confirm the tune");
+        QJsonObject st = tuneStateOf(d);
+        st.insert(QStringLiteral("issue"), QJsonObject{ { QStringLiteral("key"), QStringLiteral("measure.tune.keep_unverified") },
+                                                        { QStringLiteral("message"), why } });
+        tc->keepAnswered(QJsonObject{ { QStringLiteral("ok"), false }, { QStringLiteral("code"), QStringLiteral("invalid") },
+                                      { QStringLiteral("error"), why } },
+                         st);
+        steps.clear();
+        // Keep Anyway at once (the core's second has not passed: it waits),
+        // then Revert before it is sent
+        tc->confirmKeep();
+        tc->revert();
+        const bool revertedRace = step(QStringLiteral("revert"), 15000) && stepOk(QStringLiteral("revert"));
+        d.spin(2000);   // past the delayed Keep's 1.2 s
+        bool keepSent = false;
+        for (const QList<QVariant> &a : steps)
+            if (a.value(0).toString() == QLatin1String("keep")) keepSent = true;
+        const Chain raced = freshChain(d);
+        d.check(QStringLiteral("p5qui2: f7: Revert withdraws a delayed Keep Anyway: no Keep sent, the device as before"),
+                revertedRace && !keepSent && tc->stage() == QLatin1String("reverted") && !tc->applied() && raced == before &&
+                    !tc->keepConfirmNeeded());
+    }
+
     // Applied again, then Keep after a verify that did not pass: the core's
     // refusal (fed through the seam, as the core answers it) opens the
     // question; Keep again asks again; nothing keeps until the person answers
+    const int baseRefusals = tc->keepRefusals();   // -- WP P5QUI2 -- after F7's synthetic one
     steps.clear();
     tc->propose();
     if (!step(QStringLiteral("propose"), 30000) || !stepOk(QStringLiteral("propose")))
@@ -526,7 +673,7 @@ void tuneSection(SmokeDriver &d) {
             question = overlay->findChild<QObject *>(QStringLiteral("MeasureTune.keepQuestion"));
     const auto questionOpen = [&] { return question && question->property("opened").toBool(); };
     d.check(QStringLiteral("p5qui: a refused Keep opens a clear second question, and nothing is kept"),
-            tc->keepConfirmNeeded() && tc->keepRefusals() == 1 && d.waitFor(2000, questionOpen) &&
+            tc->keepConfirmNeeded() && tc->keepRefusals() == baseRefusals + 1 && d.waitFor(2000, questionOpen) &&
                 tc->stage() != QLatin1String("kept") && tc->applied() && !tc->keepConfirmText().isEmpty());
     d.check(QStringLiteral("p5qui: screenshot of the second question"), d.grab(w, QStringLiteral("p5qui/tune-keep-question.png")));
     // "Not Now": the guard runs on; Keep pressed again asks again, never keeps by itself
@@ -537,7 +684,7 @@ void tuneSection(SmokeDriver &d) {
     d.spin(400);
     d.check(QStringLiteral("p5qui: Not Now keeps nothing; Keep again asks again instead of keeping"),
             stillApplied && tc->keepConfirmNeeded() && questionOpen() && tc->applied() && tc->stage() != QLatin1String("kept") &&
-                tc->keepRefusals() == 1);
+                tc->keepRefusals() == baseRefusals + 1);
     // The person's explicit answer keeps it. After a real verify that did not
     // pass the core refuses that Keep itself (its first): the question comes
     // again, and the person's second answer keeps it
@@ -546,7 +693,7 @@ void tuneSection(SmokeDriver &d) {
     bool keptNow = step(QStringLiteral("keep"), 15000) && stepOk(QStringLiteral("keep"));
     if (!keptNow && !tc->verifyPassed()) {
         d.check(QStringLiteral("p5qui: the core's own refusal after the failed verify asks again"),
-                tc->keepConfirmNeeded() && tc->keepRefusals() == 2 && d.waitFor(2000, questionOpen) && tc->applied());
+                tc->keepConfirmNeeded() && tc->keepRefusals() == baseRefusals + 2 && d.waitFor(2000, questionOpen) && tc->applied());
         steps.clear();
         QMetaObject::invokeMethod(question, "finish", Q_ARG(QVariant, QStringLiteral("accept")));
         keptNow = step(QStringLiteral("keep"), 15000) && stepOk(QStringLiteral("keep"));
@@ -577,8 +724,326 @@ void tuneSection(SmokeDriver &d) {
     restoreVolume(d);
 }
 
+// ---- WP P5QUI2 ----------------------------------------------------------------
+
+// A sequential device the sine source appends to (readyRead on each append)
+class PushDevice : public QIODevice {
+public:
+    PushDevice() { open(QIODevice::ReadOnly); }
+    void push(const QByteArray &bytes) {
+        m_buf.append(bytes);
+        emit readyRead();
+    }
+    bool isSequential() const override { return true; }
+    qint64 bytesAvailable() const override { return m_buf.size() + QIODevice::bytesAvailable(); }
+
+protected:
+    qint64 readData(char *data, qint64 max) override {
+        const qint64 n = qMin<qint64>(max, m_buf.size());
+        std::memcpy(data, m_buf.constData(), size_t(n));
+        m_buf.remove(0, n);
+        return n;
+    }
+    qint64 writeData(const char *, qint64) override { return -1; }
+
+private:
+    QByteArray m_buf;
+};
+
+// "Programme audio" for the passive RTA: a 1 kHz sine at -12 dBFS, mono f32
+// at 48 kHz, 10 ms every 10 ms, through AudioCapture's reader (its seam). No
+// audio device is opened.
+class SineSource final : public dspi_capture::Source {
+public:
+    bool open(dspi_capture::Failure *, QString *) override {
+        m_format.setSampleRate(48000);
+        m_format.setChannelCount(1);
+        m_format.setSampleFormat(QAudioFormat::Float);
+        m_device = std::make_unique<PushDevice>();
+        m_timer = std::make_unique<QTimer>();
+        m_timer->setInterval(10);
+        QObject::connect(m_timer.get(), &QTimer::timeout, m_timer.get(), [this] { next(); });
+        m_timer->start();
+        return true;
+    }
+    QIODevice *device() override { return m_device.get(); }
+    QAudioFormat format() const override { return m_format; }
+    qint64 producedFrames() const override { return m_produced; }
+    QString name() const override { return QStringLiteral("Smoke sine"); }
+    void close() override {
+        m_timer.reset();
+        m_device.reset();
+    }
+
+private:
+    void next() {
+        constexpr int n = 480;
+        QByteArray bytes(n * int(sizeof(float)), '\0');
+        auto *f = reinterpret_cast<float *>(bytes.data());
+        for (int i = 0; i < n; ++i) f[i] = float(0.25 * std::sin(2 * 3.14159265358979323846 * 1000.0 * double(m_produced + i) / 48000.0));
+        m_produced += n;
+        m_device->push(bytes);
+    }
+    QAudioFormat m_format;
+    std::unique_ptr<PushDevice> m_device;
+    std::unique_ptr<QTimer> m_timer;
+    qint64 m_produced = 0;
+};
+
+bool coreMeasureActive(SmokeDriver &d) {
+    return coreJson(d, [](FfiCore *c, char *b, uint32_t l) { return dspi_measure_state(c, b, l); }).value(QStringLiteral("active")).toBool();
+}
+
+bool corePassiveActive(SmokeDriver &d) {
+    return coreJson(d, [](FfiCore *c, char *b, uint32_t l) { return dspi_measure_rta_passive_state(c, b, l); }).value(QStringLiteral("active")).toBool();
+}
+
+bool tabEnabled(SmokeDriver &d, QQuickWindow *w, const char *tab) {
+    QQuickItem *t = in(d, w, QStringLiteral("Measure.tab.") + QLatin1String(tab));
+    return t && t->isEnabled();
+}
+
+bool tabVisible(SmokeDriver &d, QQuickWindow *w, const char *tab) {
+    QQuickItem *t = in(d, w, QStringLiteral("Measure.tab.") + QLatin1String(tab));
+    return t && t->isVisible();
+}
+
+// Review P5-D F5: a Stop, or the window closed, while a start is on its way
+// withdraws it: after it, nothing plays. Several timings, so the Stop lands
+// before the microphone answers, while the start is with the core, and after.
+void racesSection(SmokeDriver &d) {
+    auto *mc = Registrar::instance<MeasureController>();
+    if (!mc || !readyDemo(d)) {
+        d.check(QStringLiteral("p5qui2: races: the demo is ready"), false);
+        return;
+    }
+    QQuickWindow *w = measureWindow(d);
+    d.check(QStringLiteral("p5qui2: races: the Measure window"), w != nullptr);
+    if (!w) return;
+    d.waitFor(5000, [&] { return mc->simAvailable() && mc->micChoice() == QLatin1String("sim"); });
+    chooseOutputs(mc);
+    bool allStopped = true;
+    QStringList seen;
+    for (int delay : { 0, 2, 10, 40, 150 }) {
+        showTab(d, w, 0);
+        mc->start();
+        if (delay) d.spin(delay);
+        mc->stop();
+        const bool settled = d.waitFor(10000, [&] { return !mc->running() && !mc->busy(); });
+        d.spin(300);
+        const bool idle = settled && !mc->running() && !coreMeasureActive(d) && generatorIdle(d);
+        seen << QStringLiteral("%1 ms: %2").arg(delay).arg(mc->phase());
+        allStopped = allStopped && idle;
+    }
+    std::printf("smoke: p5qui2: f5: Stop after Measure: %s\n", qPrintable(seen.join(QStringLiteral(", "))));
+    d.check(QStringLiteral("p5qui2: f5: a Stop while Measure is on its way withdraws it: nothing plays after it"),
+            allStopped && !mc->measuring());
+    // The live view, the window closed right after its start
+    int output = 0;
+    for (const QVariant &v : mc->setupOutputs())
+        if (v.toMap().value(QStringLiteral("on")).toBool()) {
+            output = v.toMap().value(QStringLiteral("output")).toInt();
+            break;
+        }
+    bool liveStopped = true;
+    seen.clear();
+    for (int delay : { 0, 10, 60 }) {
+        if (!w->isVisible()) w = measureWindow(d);
+        if (!w) break;
+        mc->liveStart({ { QStringLiteral("output"), output },
+                        { QStringLiteral("role"), QStringLiteral("full") },
+                        { QStringLiteral("mode"), QStringLiteral("sweep") },
+                        { QStringLiteral("placement"), QStringLiteral("listeningPosition") },
+                        { QStringLiteral("smoothing"), 6 } });
+        if (delay) d.spin(delay);
+        w->close();
+        const bool settled = d.waitFor(10000, [&] { return !mc->running() && !mc->busy(); });
+        d.spin(300);
+        seen << QStringLiteral("%1 ms: live %2").arg(delay).arg(mc->liveActive() ? QStringLiteral("on") : QStringLiteral("off"));
+        liveStopped = liveStopped && settled && !mc->liveActive() && !coreMeasureActive(d) && generatorIdle(d);
+    }
+    std::printf("smoke: p5qui2: f5: window closed after Live: %s\n", qPrintable(seen.join(QStringLiteral(", "))));
+    d.check(QStringLiteral("p5qui2: f5: closing the window while the live view starts withdraws it: nothing plays after it"), liveStopped);
+    if (w && w->isVisible()) w->close();
+    restoreVolume(d);
+}
+
+// The passive microphone RTA in the client read-only mode (P5CURV's calls):
+// the tabs that play are not offered, the passive one is; frames arrive from
+// the capture, hold and compare work, the generator stays idle and nothing is
+// written. Then the mode off: the tabs back, and the passive RTA refused
+// beside the live view.
+void passiveSection(SmokeDriver &d) {
+    auto *mc = Registrar::instance<MeasureController>();
+    if (!mc || !readyDemo(d)) {
+        d.check(QStringLiteral("p5qui2: passive: the demo is ready"), false);
+        return;
+    }
+    QQuickWindow *w = measureWindow(d);
+    d.check(QStringLiteral("p5qui2: passive: the Measure window"), w != nullptr);
+    if (!w) return;
+    d.check(QStringLiteral("p5qui2: a connection that may play gets no passive tab"),
+            mc->playBlocker().isEmpty() && !tabVisible(d, w, "passive") && tabEnabled(d, w, "measure"));
+    showTab(d, w, 0);
+    const bool on = coreBool(d, [](FfiCore *c) { return dspi_set_client_read_only(c, true); });
+    mc->refreshAccess();
+    d.check(QStringLiteral("p5qui2: the client read-only mode blocks the generator, said in words (playBlocker)"),
+            on && d.waitFor(3000, [&] { return mc->playBlocker().contains(QLatin1String("read-only mode")); }));
+    d.spin(200);
+    QQuickItem *tabs = in(d, w, QStringLiteral("Measure.tabs"));
+    d.check(QStringLiteral("p5qui2: read-only mode: no tab that plays, the passive RTA offered and shown"),
+            !tabEnabled(d, w, "measure") && !tabEnabled(d, w, "live") && !tabEnabled(d, w, "tune") && tabEnabled(d, w, "results") &&
+                tabVisible(d, w, "passive") && tabs && tabs->property("currentIndex").toInt() == 5);
+    // Nothing that plays starts: the controller refuses with the same words
+    mc->start();
+    d.spin(200);
+    d.check(QStringLiteral("p5qui2: read-only mode: Measure is refused in words, nothing starts"),
+            mc->error() == mc->playBlocker() && !mc->measuring() && !coreMeasureActive(d));
+    mc->clearError();
+    uint32_t refusedBefore = 0;
+    d.app().core->worker()->call(d.app().device, [](FfiCore *c) { return dspi_client_read_only_refusals(c); },
+                                 [&refusedBefore](uint32_t n) { refusedBefore = n; });
+    d.waitIdle();
+    d.spin(50);
+
+    // The microphone: a sine through the capture's seam (no audio device)
+    mc->setCaptureSource([]() -> std::unique_ptr<dspi_capture::Source> { return std::make_unique<SineSource>(); });
+    press(in(d, w, QStringLiteral("MeasurePassive.start")));
+    const bool frames = d.waitFor(15000, [&] { return mc->passiveActive() && mc->passiveReady() && mc->passiveFrames() > 0; });
+    if (!frames) std::printf("smoke: p5qui2: passive: %s\n", qPrintable(mc->error()));
+    QQuickItem *graph = in(d, w, QStringLiteral("MeasurePassive.graph"));
+    d.check(QStringLiteral("p5qui2: the passive RTA's frames arrive from the microphone and are drawn"),
+            frames && corePassiveActive(d) && graph &&
+                d.waitFor(3000, [&] { return graph->property("drawnKinds").toStringList().contains(QLatin1String("measured")); }));
+    d.check(QStringLiteral("p5qui2: the Stop bar shows that the microphone listens and nothing plays"),
+            mc->running() && mc->runningText().contains(QLatin1String("passive RTA")) &&
+                d.waitFor(1000, [&] { return in(d, w, QStringLiteral("Measure.stopBar"))->isVisible(); }));
+    d.check(QStringLiteral("p5qui2: while the passive RTA listens the generator is idle and no run is active"),
+            generatorIdle(d) && !coreMeasureActive(d));
+    const int framesNow = mc->passiveFrames();
+    d.check(QStringLiteral("p5qui2: the frames go on arriving"), d.waitFor(5000, [&] { return mc->passiveFrames() > framesNow; }));
+    press(in(d, w, QStringLiteral("MeasurePassive.hold")));
+    d.check(QStringLiteral("p5qui2: Hold keeps a copy, and the compare is drawn"),
+            d.waitFor(5000, [&] { return mc->passiveHeld() && mc->passiveCompareGraph().contains(QStringLiteral("series")); }) &&
+                d.waitFor(3000, [&] { return graph->property("drawnKinds").toStringList().contains(QLatin1String("held")); }));
+    mc->setPassiveAveraging(QStringLiteral("fast"));
+    d.check(QStringLiteral("p5qui2: the averaging changes in the core"), d.waitFor(5000, [&] { return mc->passiveAveraging() == QLatin1String("fast"); }));
+    QDir().mkpath(d.outDir() + QStringLiteral("/p5qui"));
+    d.check(QStringLiteral("p5qui2: screenshot of the passive RTA"), d.grab(w, QStringLiteral("p5qui/passive.png")));
+    uint32_t refusedAfter = 0;
+    d.app().core->worker()->call(d.app().device, [](FfiCore *c) { return dspi_client_read_only_refusals(c); },
+                                 [&refusedAfter](uint32_t n) { refusedAfter = n; });
+    d.waitIdle();
+    d.spin(50);
+    d.check(QStringLiteral("p5qui2: the passive RTA writes nothing (no write refused by the read-only mode)"), refusedAfter == refusedBefore);
+    press(in(d, w, QStringLiteral("Measure.stop")));
+    d.check(QStringLiteral("p5qui2: Stop ends the passive RTA and closes the microphone"),
+            d.waitFor(5000, [&] { return !mc->passiveActive() && !mc->running() && !mc->capture()->isRunning(); }) && !corePassiveActive(d) &&
+                generatorIdle(d));
+
+    // The mode off: the tabs that play again, the passive tab gone
+    const bool off = coreBool(d, [](FfiCore *c) { return dspi_set_client_read_only(c, false); });
+    mc->refreshAccess();
+    d.check(QStringLiteral("p5qui2: read-only mode off: the tabs that play are offered again"),
+            off && d.waitFor(3000, [&] { return mc->playBlocker().isEmpty(); }) && d.waitFor(1000, [&] {
+                return tabEnabled(d, w, "measure") && tabEnabled(d, w, "live") && !tabVisible(d, w, "passive") &&
+                       tabs->property("currentIndex").toInt() != 5;
+            }));
+    // Never beside the generator: refused while the live view plays
+    int output = 0;
+    for (const QVariant &v : mc->setupOutputs())
+        if (v.toMap().value(QStringLiteral("on")).toBool()) {
+            output = v.toMap().value(QStringLiteral("output")).toInt();
+            break;
+        }
+    mc->setCaptureSource(nullptr);
+    mc->liveStart({ { QStringLiteral("output"), output },
+                    { QStringLiteral("role"), QStringLiteral("full") },
+                    { QStringLiteral("mode"), QStringLiteral("sweep") },
+                    { QStringLiteral("placement"), QStringLiteral("listeningPosition") },
+                    { QStringLiteral("smoothing"), 6 } });
+    const bool live = d.waitFor(10000, [&] { return mc->liveActive(); });
+    mc->setCaptureSource([]() -> std::unique_ptr<dspi_capture::Source> { return std::make_unique<SineSource>(); });
+    mc->passiveStart(QStringLiteral("slow"));
+    d.spin(500);
+    d.check(QStringLiteral("p5qui2: the passive RTA is not offered while the live view plays, said in words"),
+            live && !mc->passiveBlocker().isEmpty() && mc->error() == mc->passiveBlocker() && !mc->passiveActive() && !corePassiveActive(d));
+    // And the core refuses it too (`busy`), whatever a screen thinks
+    const QByteArray setup = R"({"captureRateHz":48000})";
+    const QJsonObject refused = coreJson(d, [setup](FfiCore *c, char *b, uint32_t l) { return dspi_measure_rta_passive_start(c, setup.constData(), b, l); });
+    d.check(QStringLiteral("p5qui2: the core refuses the passive RTA beside the live view (busy), in words"),
+            !refused.value(QStringLiteral("ok")).toBool() && refused.value(QStringLiteral("error")).toString().contains(QLatin1String("busy")) &&
+                !MeasureController::failureText(refused).isEmpty() && !corePassiveActive(d));
+    mc->setCaptureSource(nullptr);
+    mc->liveStop();
+    d.check(QStringLiteral("p5qui2: passive: Stop Live, the generator idle"), d.waitFor(8000, [&] { return !mc->liveActive() && !mc->running(); }) && generatorIdle(d));
+    mc->clearError();
+    w->close();
+    restoreVolume(d);
+}
+
+// Review P5-D F6: a hub's Viewer (a fake hub granting Viewer) is offered no
+// tab that plays; the passive RTA, the results and the documents only
+void viewerSection(SmokeDriver &d) {
+    auto *mc = Registrar::instance<MeasureController>();
+    auto *link = Registrar::instance<LinkController>();
+    DeviceModel *device = d.app().device;
+    if (!mc || !link) {
+        d.check(QStringLiteral("p5qui2: viewer: the controllers"), false);
+        return;
+    }
+    linksmoke::FakeHubProcess hub;
+    const QString pin = QStringLiteral("731864");
+    const bool up = hub.start({ "--auth", QStringLiteral("window:") + pin, "--role", "viewer", "--name", "P5QUI2 hub" });
+    d.check(QStringLiteral("p5qui2: viewer: the fake hub runs (DSPI_SMOKE_FAKEHUB)"), up);
+    if (!up) return;
+    const auto settled = [&] { return d.waitFor(30000, [link] { return !link->busy(); }); };
+    link->connectToHub(hub.url, hub.id);
+    const bool asks = settled() && d.waitFor(5000, [&] { return link->phase() == QLatin1String("needs_pairing"); });
+    link->pair(pin);
+    const bool listed = asks && settled() && d.waitFor(5000, [&] { return link->phase() == QLatin1String("choose_device") && link->devices().size() == 1; });
+    const QVariantMap row = link->devices().value(0).toMap();
+    if (listed) link->bindDevice(row.value(QStringLiteral("handle")).toInt(), row.value(QStringLiteral("serial")).toString());
+    const bool bound = listed && settled() && d.waitFor(10000, [&] {
+        return link->phase() == QLatin1String("bound") && device->remote() && device->connected();
+    });
+    std::printf("smoke: p5qui2: viewer: phase %s, role %s\n", qPrintable(link->phase()), qPrintable(link->role()));
+    d.check(QStringLiteral("p5qui2: viewer: bound to the hub's device as a Viewer"), bound && link->role() == QLatin1String("viewer"));
+    QQuickWindow *w = bound ? measureWindow(d) : nullptr;
+    if (w) {
+        d.check(QStringLiteral("p5qui2: f6: a Viewer is told why, in words"),
+                d.waitFor(3000, [&] { return mc->playBlocker().contains(QLatin1String("Viewer")); }));
+        d.spin(200);
+        QQuickItem *tabs = in(d, w, QStringLiteral("Measure.tabs"));
+        d.check(QStringLiteral("p5qui2: f6: a Viewer gets no tab that plays; the passive RTA, results and documents"),
+                !tabEnabled(d, w, "measure") && !tabEnabled(d, w, "live") && !tabEnabled(d, w, "tune") && tabEnabled(d, w, "results") &&
+                    tabEnabled(d, w, "documents") && tabVisible(d, w, "passive") && tabs && tabs->property("currentIndex").toInt() == 5);
+        mc->start();
+        d.spin(200);
+        const bool measureRefused = mc->error() == mc->playBlocker() && !mc->measuring();
+        mc->clearError();
+        mc->liveStart({ { QStringLiteral("output"), 0 }, { QStringLiteral("mode"), QStringLiteral("sweep") } });
+        d.spin(200);
+        const bool liveRefused = mc->error() == mc->playBlocker() && !mc->liveActive();
+        mc->clearError();
+        d.check(QStringLiteral("p5qui2: f6: a Viewer's Measure and Live are refused in words, nothing starts"),
+                measureRefused && liveRefused && !mc->running());
+        d.grab(w, QStringLiteral("p5qui/viewer.png"));
+        w->close();
+    }
+    link->closeSession();
+    d.waitFor(10000, [&] { return !link->busy() && !link->inSession(); });
+    device->openDemo();
+    d.check(QStringLiteral("p5qui2: viewer: back on the demo, the generator offered again"),
+            d.waitFor(10000, [&] { return device->connected() && device->demo() && !device->remote(); }) &&
+                d.waitFor(3000, [&] { return mc->playBlocker().isEmpty(); }));
+}
+
 const SmokeDriver::Section measureS("p5qui-measure", 210, &measureSection);
 const SmokeDriver::Section liveS("p5qui-live", 211, &liveSection);
 const SmokeDriver::Section tuneS("p5qui-tune", 212, &tuneSection);
+const SmokeDriver::Section racesS("p5qui2-races", 213, &racesSection);
+const SmokeDriver::Section passiveS("p5qui2-passive", 214, &passiveSection);
+const SmokeDriver::Section viewerS("p5qui2-viewer", 215, &viewerSection);
 
 } // namespace

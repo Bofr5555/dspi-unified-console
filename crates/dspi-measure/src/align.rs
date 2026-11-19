@@ -48,7 +48,7 @@
 //!
 //! Pure and deterministic: no hash maps, no clock, no panics on any input.
 
-use crate::types::{ChannelChain, LogGrid, MeasureError, Response, WayRole};
+use crate::types::{ChannelChain, LogGrid, MeasureError, Response, SectionModel, WayRole};
 use serde::{Deserialize, Serialize};
 
 /// The most ways one alignment group (one walked run) holds: the run's bound
@@ -219,10 +219,17 @@ pub struct AlignResult {
 /// [`MAX_WAYS`], grids that differ, no phase, a transition out of range);
 /// [`MeasureError::NoSignal`] when a transition's window holds fewer than
 /// [`MIN_WINDOW_POINTS`] trusted points.
+///
+/// `model` is the device's filter model (WP P5HOLD, review P5-D D1): the
+/// timing is held near the ways' arrivals each without its measured chain's
+/// onset (see [`crate::xover`]'s `chain_onset_ms`), so a steep low-pass's
+/// late onset does not move the hold off the right alignment. A chain it
+/// cannot model keeps its arrival as it is.
 pub fn align(
     ways: &[Way],
     group: &AlignGroup,
     options: &AlignOptions,
+    model: &dyn SectionModel,
 ) -> Result<AlignResult, MeasureError> {
     check_count(ways.len())?;
     check_options(options)?;
@@ -311,7 +318,16 @@ pub fn align(
         let fit = if options.keep_delays {
             ctx.search(db - da, 0.0, 0, 0)
         } else {
-            let start = (wa.arrival_ms - da) - (wb.arrival_ms - db);
+            // -- WP P5HOLD -- (review P5-D D1) each arrival without its
+            // measured chain's onset: the drivers' own (see xover's
+            // chain_onset_ms).
+            let start = crate::xover::anchored_start_ms(
+                wa.arrival_ms - da,
+                &wa.chain,
+                wb.arrival_ms - db,
+                &wb.chain,
+                model,
+            );
             // -- WP P5TRUST2 -- held near the arrivals, as the crossover
             // search's candidates (review P5TRUST N2): never a half or whole
             // cycle off them.
@@ -901,6 +917,15 @@ impl PairCtx {
     /// `held_unclear`, and the callers then keep the current delay and
     /// polarity and say so: the hold may confirm the polarity there is, it
     /// never changes it.
+    ///
+    /// WP P5HOLD (review P5-D D1): the callers now pass a `start` without
+    /// each measured chain's onset (`xover::anchored_start_ms`), so for a
+    /// steep pair the right alignment lies inside the hold again and this
+    /// fallback is the safety net it was meant to be. And a held choice whose
+    /// polarity is not the window's own best's is `held_unclear` too: the two
+    /// are half a cycle apart, and the arrivals cannot say which is right (a
+    /// driver's own roll-off on the corner moves the right timing by a third
+    /// of a period, which no arrival sees).
     pub(crate) fn search_held(
         &self,
         start: f64,
@@ -967,6 +992,8 @@ impl PairCtx {
         };
         let (mut best, mut best_other) = pick(per);
         let was_held = (best.0 - start).abs() > hold;
+        // -- WP P5HOLD -- the window's own best polarity, before the hold.
+        let window_flip = best.1;
         let (lo_bound, hi_bound) = if was_held {
             (best, best_other) = pick(held);
             (start - hold, start + hold)
@@ -1015,8 +1042,17 @@ impl PairCtx {
         };
         // Review P5-D: a held choice that flips, or sits on the hold's edge,
         // is no timing to propose.
-        let held_unclear =
-            was_held && (best.1 || (step > 0.0 && (best.0 - start).abs() >= hold - step));
+        // WP P5HOLD (coordinator, after review P5-D D1): nor when the
+        // window's own best has the other polarity than the held choice.
+        // Then the two disagree by half a cycle, not a whole one, and either
+        // the anchor or the window's best is the wrong one; nothing here
+        // tells which (P5SIM's room, LR8 at 120 Hz: the midrange's own
+        // high-pass on the corner moves the right timing outside the hold,
+        // and the hold left the half-cycle-off timing without a flip).
+        let held_unclear = was_held
+            && (best.1
+                || best.1 != window_flip
+                || (step > 0.0 && (best.0 - start).abs() >= hold - step));
         PairFit {
             delta_ms: best.0,
             flip: best.1,
@@ -1050,7 +1086,8 @@ pub(crate) fn held_unclear_note(low: u8, high: u8, corner_hz: f64, hold_ms: f64)
     format!(
         "outputs {low} and {high}: the best timing at {corner_hz:.0} Hz lay more than {hold_ms:.2} ms \
          from the measured arrivals (a half or whole cycle off), and within that none is clearly \
-         right (it would flip the polarity, or lies on the edge): the delay and polarity are kept"
+         right (it would flip the polarity, disagrees with the best's polarity, or lies on the \
+         edge): the timing could not be settled at this corner; the delay and polarity are kept"
     )
 }
 

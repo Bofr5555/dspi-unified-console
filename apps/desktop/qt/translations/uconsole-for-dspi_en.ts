@@ -5712,6 +5712,7 @@ Macros are stored on the device alongside the controls and share their Save and 
     </message>
     <message>
         <source>%1: %2</source>
+        <extracomment>A refusal of the core: %1 its notice&apos;s title, %2 the core&apos;s words</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -5748,11 +5749,15 @@ Macros are stored on the device alongside the controls and share their Save and 
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>This connection is read-only: measuring plays the DSPi&apos;s generator, so only the documents and saved measurements are offered.</source>
+        <source>This connection is read-only: measuring plays the DSPi&apos;s generator, so only the passive microphone RTA, the documents and saved measurements are offered.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>This connection has the hub&apos;s Viewer role: measuring needs Control. Only the documents and saved measurements are offered.</source>
+        <source>The read-only mode is on: measuring plays the DSPi&apos;s generator, so only the passive microphone RTA, the documents and saved measurements are offered.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This connection has the hub&apos;s Viewer role: measuring needs Control. Only the passive microphone RTA, the documents and saved measurements are offered.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -5809,6 +5814,10 @@ Macros are stored on the device alongside the controls and share their Save and 
     </message>
     <message>
         <source>Passes: 2 to 8.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Stop the passive RTA first.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -5872,6 +5881,10 @@ Macros are stored on the device alongside the controls and share their Save and 
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>The microphone is open for the passive RTA; nothing is played.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>The live view is playing the DSPi&apos;s generator.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -5920,6 +5933,10 @@ Macros are stored on the device alongside the controls and share their Save and 
     </message>
     <message>
         <source>Timing reliable.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Target for %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -6063,6 +6080,14 @@ Macros are stored on the device alongside the controls and share their Save and 
     </message>
     <message>
         <source>Target imported: %1. It is used from the next live start and by the auto-tune.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>A measurement, the live view or the auto-tune plays the generator now: the passive RTA would show the test signal.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>dBFS</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -6399,6 +6424,76 @@ Macros are stored on the device alongside the controls and share their Save and 
     </message>
 </context>
 <context>
+    <name>MeasurePassiveTab</name>
+    <message>
+        <source>Fast (125 ms)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Slow (1 s)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Infinite</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The system&apos;s default input</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Passive microphone RTA</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Listen</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Stop Listening</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The microphone listens to what is playing; nothing is played and nothing on the DSPi changes.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Microphone</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Averaging</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hold</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Clear Hold</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message numerus="yes">
+        <source>%n frame(s) averaged</source>
+        <translation type="unfinished">
+            <numerusform></numerusform>
+            <numerusform></numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Not listening.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Calibration: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Compared with the held spectrum</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>MeasureResultsTab</name>
     <message>
         <source>Measurement</source>
@@ -6414,6 +6509,38 @@ Macros are stored on the device alongside the controls and share their Save and 
     </message>
     <message>
         <source>No timing: a single sweep is magnitude only.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Results smoothing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>1/%1 octave</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>None</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Target (%1), levelled to each output</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Target (the placement&apos;s default), levelled to each output</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Asking the core for the curves…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The curves as stored (1/96 octave), from the core.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Smoothed by the core: 1/%1 octave.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -6855,6 +6982,10 @@ Macros are stored on the device alongside the controls and share their Save and 
     </message>
     <message>
         <source>Documents</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Passive RTA</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

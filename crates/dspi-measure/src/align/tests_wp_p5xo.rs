@@ -142,10 +142,14 @@ pub(crate) fn way(output: u8, role: WayRole, c: ChannelChain, d: &Drv, snr_db: f
             snr_db - (-shape.db()).max(0.0)
         })
         .collect();
+    // -- WP P5HOLD -- a measured arrival is the response's onset: the
+    // driver's, the chain's delay and its filters' own onset (review P5-D
+    // D1; the hold takes the last off again).
+    let onset = crate::xover::chain_onset_ms(&c, &ProtoModel).unwrap_or(0.0);
     Way {
         output,
         role,
-        arrival_ms: d.arrival_ms + f64::from(c.delay_ms) + 0.05,
+        arrival_ms: d.arrival_ms + f64::from(c.delay_ms) + 0.05 + onset,
         chain: c,
         response: to_response(grid, &h),
         snr_db: snr,
@@ -181,6 +185,7 @@ fn wp_p5xo_a_0_35_ms_offset_is_recovered_within_10_us() {
         &two_way((0.0, 0.0)),
         &pair_group(),
         &AlignOptions::default(),
+        &ProtoModel,
     )
     .unwrap();
     let (w, t) = (r.ways[0], r.ways[1]);
@@ -201,6 +206,7 @@ fn wp_p5xo_an_existing_common_delay_of_3_ms_is_kept_as_the_smallest() {
         &two_way((3.0, 3.0)),
         &pair_group(),
         &AlignOptions::default(),
+        &ProtoModel,
     )
     .unwrap();
     let smallest = r.ways.iter().map(|w| w.delay_ms).fold(f32::MAX, f32::min);
@@ -214,6 +220,7 @@ fn wp_p5xo_an_existing_common_delay_of_3_ms_is_kept_as_the_smallest() {
         &two_way((3.0, 3.5)),
         &pair_group(),
         &AlignOptions::default(),
+        &ProtoModel,
     )
     .unwrap();
     assert!((r.ways[0].delay_ms - 3.0).abs() < 1e-6, "{r:?}");
@@ -227,7 +234,7 @@ fn wp_p5xo_an_existing_common_delay_of_3_ms_is_kept_as_the_smallest() {
 fn wp_p5xo_timing_unreliable_gets_no_alignment() {
     let mut ways = two_way((0.0, 0.0));
     ways[1].timing_reliable = false;
-    let e = align(&ways, &pair_group(), &AlignOptions::default()).unwrap_err();
+    let e = align(&ways, &pair_group(), &AlignOptions::default(), &ProtoModel).unwrap_err();
     assert!(
         matches!(&e, MeasureError::Invalid(m) if m.starts_with("timing unreliable")),
         "{e:?}"
@@ -271,7 +278,7 @@ fn wp_p5xo_an_inverted_tweeter_is_flipped_through_the_feed() {
             },
         ],
     };
-    let r = align(&ways, &group, &AlignOptions::default()).unwrap();
+    let r = align(&ways, &group, &AlignOptions::default(), &ProtoModel).unwrap();
     assert_eq!(
         r.ways.iter().map(|w| w.inverted).collect::<Vec<_>>(),
         vec![false, false, true],
@@ -297,7 +304,7 @@ fn wp_p5xo_the_programme_feed_polarity_is_part_of_the_sum() {
     // root keeps its polarity).
     let mut ways = two_way((0.0, 0.0));
     ways[0].chain.feed.inverted = true;
-    let r = align(&ways, &pair_group(), &AlignOptions::default()).unwrap();
+    let r = align(&ways, &pair_group(), &AlignOptions::default(), &ProtoModel).unwrap();
     assert!(r.ways[0].inverted && r.ways[1].inverted, "{r:?}");
     assert!(r.pairs[0].flipped);
 }
@@ -310,7 +317,7 @@ fn wp_p5xo_keep_delays_judges_polarity_only() {
         keep_delays: true,
         ..AlignOptions::default()
     };
-    let r = align(&ways, &pair_group(), &opts).unwrap();
+    let r = align(&ways, &pair_group(), &opts, &ProtoModel).unwrap();
     assert_eq!((r.ways[0].delay_ms, r.ways[1].delay_ms), (0.0, 0.35));
     assert!(!r.ways[1].inverted, "{r:?}");
 }
@@ -321,7 +328,7 @@ fn wp_p5xo_a_delay_outside_the_range_is_refused() {
         max_delay_ms: 0.2,
         ..AlignOptions::default()
     };
-    let e = align(&two_way((0.0, 0.0)), &pair_group(), &opts).unwrap_err();
+    let e = align(&two_way((0.0, 0.0)), &pair_group(), &opts, &ProtoModel).unwrap_err();
     assert!(matches!(e, MeasureError::Invalid(m) if m.contains("outside")));
 }
 
@@ -330,7 +337,7 @@ fn wp_p5xo_too_few_trusted_points_is_no_signal() {
     let mut ways = two_way((0.0, 0.0));
     ways[0].response.valid = Some(vec![false; ways[0].response.mag_db.len()]);
     assert!(matches!(
-        align(&ways, &pair_group(), &AlignOptions::default()),
+        align(&ways, &pair_group(), &AlignOptions::default(), &ProtoModel),
         Err(MeasureError::NoSignal(_))
     ));
 }
@@ -345,14 +352,22 @@ fn wp_p5xo_malformed_input_is_refused() {
             corner_hz: None,
         }],
     };
-    assert!(align(&ways, &bad_t, &AlignOptions::default()).is_err());
-    assert!(align(&[], &pair_group(), &AlignOptions::default()).is_err());
+    assert!(align(&ways, &bad_t, &AlignOptions::default(), &ProtoModel).is_err());
+    assert!(align(&[], &pair_group(), &AlignOptions::default(), &ProtoModel).is_err());
     let mut no_phase = ways.clone();
     no_phase[0].response.phase_deg = None;
-    assert!(align(&no_phase, &pair_group(), &AlignOptions::default()).is_err());
+    assert!(
+        align(
+            &no_phase,
+            &pair_group(),
+            &AlignOptions::default(),
+            &ProtoModel
+        )
+        .is_err()
+    );
     let mut nan = ways.clone();
     nan[0].chain.delay_ms = f32::NAN;
-    assert!(align(&nan, &pair_group(), &AlignOptions::default()).is_err());
+    assert!(align(&nan, &pair_group(), &AlignOptions::default(), &ProtoModel).is_err());
 }
 
 #[test]
@@ -361,12 +376,14 @@ fn wp_p5xo_alignment_is_deterministic() {
         &two_way((0.5, 0.0)),
         &pair_group(),
         &AlignOptions::default(),
+        &ProtoModel,
     )
     .unwrap();
     let b = align(
         &two_way((0.5, 0.0)),
         &pair_group(),
         &AlignOptions::default(),
+        &ProtoModel,
     )
     .unwrap();
     assert_eq!(a, b);
@@ -449,7 +466,7 @@ proptest! {
         keep in any::<bool>(),
     ) {
         let opts = AlignOptions { min_delay_ms: 0.0, max_delay_ms: max, keep_delays: keep };
-        if let Ok(r) = align(&ways, &AlignGroup { transitions: ts }, &opts) {
+        if let Ok(r) = align(&ways, &AlignGroup { transitions: ts }, &opts, &ProtoModel) {
             prop_assert_eq!(r.ways.len(), ways.len());
             for w in &r.ways {
                 prop_assert!(w.delay_ms.is_finite());
@@ -487,7 +504,13 @@ fn wp_p5trust2_alignment_alone_never_takes_a_timing_far_from_the_arrivals() {
         ]
     };
     // As measured: the timing is the arrivals' and nothing is held.
-    let r = align(&ways(), &pair_group(), &AlignOptions::default()).unwrap();
+    let r = align(
+        &ways(),
+        &pair_group(),
+        &AlignOptions::default(),
+        &ProtoModel,
+    )
+    .unwrap();
     assert!(
         !r.notes.iter().any(|n| n.contains("measured arrivals")),
         "{r:?}"
@@ -500,7 +523,7 @@ fn wp_p5trust2_alignment_alone_never_takes_a_timing_far_from_the_arrivals() {
     // no timing to propose: the delay and the polarity are kept, and said.
     let mut w = ways();
     w[1].arrival_ms -= 1.8;
-    let r = align(&w, &pair_group(), &AlignOptions::default()).unwrap();
+    let r = align(&w, &pair_group(), &AlignOptions::default(), &ProtoModel).unwrap();
     assert!(!r.pairs[0].flipped, "{r:?}");
     assert_eq!(r.pairs[0].relative_delay_ms, 0.0, "{r:?}");
     assert!(

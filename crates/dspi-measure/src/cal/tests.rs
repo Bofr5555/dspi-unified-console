@@ -469,3 +469,245 @@ proptest! {
         if let Some(l) = level_dbfs(&samples) { prop_assert!(l.is_finite()); }
     }
 }
+
+// ── WP P5DAYTON: Dayton Audio iMM-6C / UMM-6 files ───────────────────────
+
+fn dayton(text: &str) -> Result<MicCalibration, MeasureError> {
+    parse_calibration(text, "dayton.txt")
+}
+
+#[test]
+fn wp_p5daytn_imm6c_fixture_yields_sensitivity_and_256_points() {
+    let c = parse_calibration_bytes(
+        fixture!("dayton_imm6c_synthetic.txt").as_bytes(),
+        "dayton_imm6c_synthetic.txt",
+    )
+    .unwrap();
+    assert_eq!(c.curve.format, CalFormat::Dayton);
+    assert_eq!(c.vendor.as_deref(), Some("Dayton Audio"));
+    assert_eq!(c.curve.sensitivity_dbv_pa, Some(-38.5));
+    assert_eq!(c.curve.sensitivity_db, None);
+    assert_eq!(c.curve.serial, None);
+    assert_eq!(c.curve.points.len(), 256);
+    assert_eq!(c.curve.ignored_out_of_range, 0);
+    assert_eq!(c.curve.duplicates_dropped, 0);
+    assert!(!c.curve.has_phase);
+    assert_eq!(c.curve.points.first().map(|p| p.freq_hz), Some(20.0));
+    assert_eq!(c.curve.points.last().map(|p| p.freq_hz), Some(20000.0));
+    assert_eq!(c.curve.stated_sensitivity_db(), Some(-38.5));
+    // dBV/Pa referred to a 0 dBV full scale: 94 - (-38.5).
+    let s = c.spl_scale();
+    assert!(s.approximate);
+    assert_eq!(s.basis, SplBasis::Sensitivity);
+    assert!((s.offset_db.unwrap() - 132.5).abs() < 1e-12);
+}
+
+#[test]
+fn wp_p5daytn_header_variants_parse() {
+    for (text, want) in [
+        ("*1000Hz\t-36.1\r\n\r\n20\t1.0\r\n1000\t0.0\r\n", -36.1),
+        ("*1000Hz -36.1\n20 1.0\n1000 0.0\n", -36.1),
+        ("* 1000 Hz\t\t-40.25\n\n20\t1\n", -40.25),
+        ("*1000HZ   -12\n20 1\n", -12.0),
+        ("*1kHz -36.1dBV/Pa\n20 1\n", -36.1),
+        ("*1000Hz: -0.5 dB\n20 1\n", -0.5),
+        ("*1000Hz\t-70\n20 1\n", -70.0),
+        ("*1000Hz\t0\n20 1\n", 0.0),
+        ("\u{feff}*1000Hz\t-36.1\r\n20\t1\r\n", -36.1),
+    ] {
+        let c = dayton(text).unwrap();
+        assert_eq!(c.curve.format, CalFormat::Dayton, "{text:?}");
+        assert_eq!(c.curve.sensitivity_dbv_pa, Some(want), "{text:?}");
+    }
+}
+
+#[test]
+fn wp_p5daytn_crlf_and_blank_line_keep_every_point() {
+    let lf = "*1000Hz\t-36.1\n\n20\t1.5\n100\t0.5\n1000\t0.0\n20000\t-3.0\n";
+    let crlf = lf.replace('\n', "\r\n");
+    let a = dayton(lf).unwrap();
+    let b = dayton(&crlf).unwrap();
+    assert_eq!(a, b);
+    assert_eq!(
+        pts(&b.curve),
+        vec![
+            (20.0, 1.5, None),
+            (100.0, 0.5, None),
+            (1000.0, 0.0, None),
+            (20000.0, -3.0, None),
+        ]
+    );
+}
+
+#[test]
+fn wp_p5daytn_umm6_sens_factor_wins_for_the_scale() {
+    let c = parse_calibration(
+        fixture!("dayton_umm6_synthetic.txt"),
+        "dayton_umm6_synthetic.txt",
+    )
+    .unwrap();
+    // The USB microphone's dBFS convention, as on a UMIK.
+    assert_eq!(c.curve.format, CalFormat::Umik);
+    assert_eq!(c.vendor.as_deref(), Some("Dayton Audio"));
+    assert_eq!(c.curve.sensitivity_db, Some(-17.5));
+    assert_eq!(c.curve.sensitivity_dbv_pa, Some(-37.2));
+    assert_eq!(c.curve.serial.as_deref(), Some("000-0001"));
+    assert_eq!(c.curve.stated_sensitivity_db(), Some(-17.5));
+    assert_eq!(c.curve.points.len(), 5);
+    let s = c.spl_scale();
+    assert!((s.offset_db.unwrap() - (94.0 + 17.5)).abs() < 1e-12);
+    // A calibrator step still wins over both.
+    let step = CalibratorStep {
+        offset_db: 120.0,
+        reference_db: 94.0,
+    };
+    let s = spl_scale(c.curve.spl_sensitivity_db(), Some(step));
+    assert_eq!(s.offset_db, Some(120.0));
+    assert!(!s.approximate);
+}
+
+#[test]
+fn wp_p5daytn_refuses_nonsense_sensitivities() {
+    for text in [
+        "*1000Hz\tnan\n20 1\n",
+        "*1000Hz\tNaN\n20 1\n",
+        "*1000Hz\tinf\n20 1\n",
+        "*1000Hz\t-inf\n20 1\n",
+        "*1000Hz\t-70.01\n20 1\n",
+        "*1000Hz\t0.01\n20 1\n",
+        "*1000Hz\t36.1\n20 1\n",
+        "*1000Hz\t-1e300\n20 1\n",
+        "*1000Hz\t-36.1\n*1000Hz\t-36.1\n20 1\n",
+    ] {
+        let r = dayton(text);
+        assert!(is_parse_err(r.clone()), "{text:?}: {r:?}");
+        let Err(MeasureError::Parse(m)) = r else {
+            unreachable!()
+        };
+        assert!(m.starts_with("line "), "{m}");
+    }
+}
+
+#[test]
+fn wp_p5daytn_other_star_lines_stay_comments() {
+    // No number, another frequency, or a longer word: a REW comment as before.
+    for text in [
+        "*1000Hz\n20 1\n",
+        "*1000Hz reference\n20 1\n",
+        "*500Hz -36.1\n20 1\n",
+        "*10000Hz -36.1\n20 1\n",
+        "*1000Hzx -36.1\n20 1\n",
+        "* Freq(Hz) dB\n20 1\n",
+    ] {
+        let c = dayton(text).unwrap();
+        assert_eq!(c.curve.format, CalFormat::Rew, "{text:?}");
+        assert_eq!(c.curve.sensitivity_dbv_pa, None, "{text:?}");
+        assert_eq!(c.vendor, None, "{text:?}");
+        let s = c.spl_scale();
+        assert_eq!(s.basis, SplBasis::Relative);
+        assert_eq!(s.offset_db, None);
+    }
+}
+
+// Review P5-E: the sensitivity line counts only in the file's head.
+#[test]
+fn review_p5e_a_1khz_star_line_after_the_data_began_is_a_comment() {
+    for text in [
+        "20 1\n*1000Hz 0 dB\n1000 0\n",
+        "20 1\n*1000Hz\t-36.1\n1000 0\n",
+        // Out of range or not finite: in the head a refusal, here a comment.
+        "20 1\n1000 0\n*1000Hz 5\n",
+        "20 1\n*1000Hz nan\n1000 0\n",
+        // Two of them: no "second sensitivity" either.
+        "20 1\n*1000Hz -36.1\n*1000Hz -36.1\n1000 0\n",
+    ] {
+        let c = dayton(text).unwrap_or_else(|e| panic!("{text:?}: {e}"));
+        assert_eq!(c.curve.format, CalFormat::Rew, "{text:?}");
+        assert_eq!(c.curve.sensitivity_dbv_pa, None, "{text:?}");
+        assert_eq!(c.spl_scale().offset_db, None, "{text:?}");
+        assert_eq!(c.curve.points.len(), 2, "{text:?}");
+    }
+    // In the head it is the sensitivity, as before, also after other
+    // comments and a blank line.
+    let c = dayton("* a note\n\n*1000Hz -36.1\n20 1\n1000 0\n").unwrap();
+    assert_eq!(c.curve.sensitivity_dbv_pa, Some(-36.1));
+    assert_eq!(c.curve.format, CalFormat::Dayton);
+}
+
+#[test]
+fn wp_p5daytn_mic_document_keeps_the_sensitivity_and_its_scale() {
+    use crate::doc::{MicCal, MicDoc};
+    let c = dayton(fixture!("dayton_imm6c_synthetic.txt")).unwrap();
+    let mic = MicCal::from_calibration("iMM-6C", &c, None, &LogGrid::STANDARD).unwrap();
+    assert_eq!(mic.format, CalFormat::Dayton);
+    assert_eq!(mic.vendor, "Dayton Audio");
+    assert_eq!(mic.sensitivity_db, Some(-38.5));
+    assert!(mic.approximate);
+    assert!((mic.spl_offset_db.unwrap() - 132.5).abs() < 1e-12);
+    let s = mic.spl_scale();
+    assert_eq!(s.basis, SplBasis::Sensitivity);
+    assert!((s.to_spl(-38.5).unwrap() - 94.0).abs() < 1e-9);
+    // `format: dayton` round-trips through the document's text.
+    let text = serde_json::to_string(&CalFormat::Dayton).unwrap();
+    assert_eq!(text, "\"dayton\"");
+    let doc = MicDoc {
+        schema_version: crate::doc::SCHEMA_VERSION,
+        meta: crate::doc::Meta::new(
+            crate::doc::DocKind::Mic,
+            "iMM-6C",
+            "2026-11-19T00:00:00Z",
+            "test",
+        ),
+        mic,
+        extra: Default::default(),
+    };
+    let back = MicDoc::from_text(&doc.to_text().unwrap()).unwrap();
+    assert_eq!(back.mic.format, CalFormat::Dayton);
+    assert_eq!(back.mic.sensitivity_db, Some(-38.5));
+    assert_eq!(back.mic.spl_scale().offset_db, back.mic.spl_offset_db);
+}
+
+#[test]
+fn wp_p5daytn_without_a_sensitivity_nothing_changes() {
+    // The REW fixtures without a sensitivity line still give relative dB.
+    let c = parse_calibration(fixture!("rew_phase.txt"), "rew_phase.txt").unwrap();
+    assert_eq!(c.curve.sensitivity_dbv_pa, None);
+    assert_eq!(c.curve.spl_sensitivity_db(), c.curve.sensitivity_db);
+    assert_eq!(c.spl_scale(), spl_scale(c.curve.sensitivity_db, None));
+    // Serialised without the new key.
+    let json = serde_json::to_value(&c.curve).unwrap();
+    assert!(json.get("sensitivityDbvPa").is_none());
+}
+
+proptest! {
+    #[test]
+    fn proptest_wp_p5daytn_dayton_text_never_panics(
+        head in "\\*[ \\t]{0,2}(1000|1k)[ ]?(Hz|HZ|hz)[ \\t:]{0,3}[-+0-9.eEnaif]{0,12}(dBV/Pa|dB)?",
+        sep in "(\r\n|\n)",
+        body in ".{0,400}",
+        rows in proptest::collection::vec((any::<f64>(), any::<f64>()), 0..40),
+    ) {
+        let mut text = format!("{head}{sep}{sep}");
+        for (f, d) in rows {
+            text.push_str(&format!("{f}\t{d}{sep}"));
+        }
+        text.push_str(&body);
+        if let Ok(c) = dayton(&text) {
+            if let Some(s) = c.curve.sensitivity_dbv_pa {
+                prop_assert!((DAYTON_MIN_DBV_PA..=DAYTON_MAX_DBV_PA).contains(&s));
+            }
+            let _ = c.spl_scale();
+            let _ = c.to_response(&LogGrid::STANDARD);
+        }
+    }
+
+    #[test]
+    fn proptest_wp_p5daytn_in_range_values_parse_exactly(v in DAYTON_MIN_DBV_PA..=DAYTON_MAX_DBV_PA, crlf in any::<bool>()) {
+        let nl = if crlf { "\r\n" } else { "\n" };
+        let text = format!("*1000Hz\t{v}{nl}{nl}20\t1{nl}1000\t0{nl}");
+        let c = dayton(&text).unwrap();
+        prop_assert_eq!(c.curve.sensitivity_dbv_pa, Some(v));
+        let off = c.spl_scale().offset_db.unwrap();
+        prop_assert!((off - (94.0 - v)).abs() < 1e-9);
+    }
+}

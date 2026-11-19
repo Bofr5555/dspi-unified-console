@@ -229,6 +229,7 @@ fn wp_p5a_three_way_room_end_to_end() {
             transitions: transitions(),
         },
         &AlignOptions::default(),
+        &ProtoModel,
     )
     .unwrap();
     println!("align: {:?}", aligned.ways);
@@ -610,6 +611,7 @@ fn wp_p5a_a_0_35_ms_offset_is_recovered_within_10_us_end_to_end() {
                 transitions: transitions(),
             },
             &AlignOptions::default(),
+            &ProtoModel,
         )
         .unwrap();
         aligned_rel.push(a.pairs[1].relative_delay_ms);

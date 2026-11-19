@@ -6,9 +6,10 @@ import UConsole
 // -- WP P5QUI -- Tools > Measure… (PLAN-P5; the web's Measure screen): the
 // setup and the run, the results, the live view, the auto-tune and the
 // documents, in tabs. The Stop bar shows whenever anything plays or listens,
-// above every tab. A connection that may not play the generator (read-only)
-// gets the results and the documents only, and says why. This window plays
-// nothing: the DSPi's generator is the only stimulus.
+// above every tab. A connection that may not play the generator (read-only,
+// the client read-only mode, a hub's Viewer) gets the passive microphone RTA,
+// the results and the documents only, and says why (-- WP P5QUI2 --). This
+// window plays nothing: the DSPi's generator is the only stimulus.
 ToolWindow {
     id: window
     objectName: "MeasureWindow"
@@ -24,6 +25,15 @@ ToolWindow {
     // Closing the window stops what it started (the guard of an applied tune runs on)
     // (review P5-D: always, so a start still on its way is withdrawn too)
     onClosing: MeasureController.stop()
+    // -- WP P5QUI2 -- the client read-only mode read again when it shows
+    onVisibleChanged: if (visible) MeasureController.refreshAccess()
+    // The tabs that play go when the connection may no longer play; the
+    // passive RTA goes (and stops) when it may again
+    onBlockedChanged: {
+        if (blocked) tabs.currentIndex = 5
+        else if (!blocked && tabs.currentIndex === 5) tabs.currentIndex = 1
+        if (!blocked && MeasureController.passiveActive) MeasureController.passiveStop()
+    }
 
     ColumnLayout {
         anchors.fill: parent
@@ -95,7 +105,11 @@ ToolWindow {
             AppTabButton { objectName: "Measure.tab.live"; text: qsTr("Live"); enabled: !window.blocked }
             AppTabButton { objectName: "Measure.tab.tune"; text: qsTr("Auto-tune"); enabled: !window.blocked }
             AppTabButton { objectName: "Measure.tab.documents"; text: qsTr("Documents") }
-            Component.onCompleted: if (window.blocked) currentIndex = 1
+            // -- WP P5QUI2 -- only for a connection that may not play
+            AppTabButton { objectName: "Measure.tab.passive"; text: qsTr("Passive RTA"); visible: window.blocked; width: visible ? implicitWidth : 0 }
+            Component.onCompleted: if (window.blocked) currentIndex = 5
+            // Leaving the passive RTA's tab stops it (it gives the microphone back)
+            onCurrentIndexChanged: if (currentIndex !== 5 && MeasureController.passiveActive) MeasureController.passiveStop()
         }
         StackLayout {
             Layout.fillWidth: true
@@ -106,6 +120,7 @@ ToolWindow {
             MeasureLiveTab {}
             MeasureTuneTab {}
             MeasureDocsTab { onShowResults: tabs.currentIndex = 1 }
+            MeasurePassiveTab {}
         }
     }
 }

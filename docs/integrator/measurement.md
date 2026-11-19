@@ -1,8 +1,9 @@
 # Measurement and auto-tune
 
-*WP P5MDOC, 2026-11-16: the contract of PRO phase 5 ([`docs/core-merge/PLAN-P5.md`](../core-merge/PLAN-P5.md)). Status:
-**draft**. Section 7 (the documents) is **built** (P5MDOC, `crates/dspi-measure/src/doc.rs`); every other section is the
-shape the WP named in it implements, not a promise that a client does it today. P5FIN marks each section built.*
+*WP P5MDOC, 2026-11-16: the contract of PRO phase 5 ([`docs/core-merge/PLAN-P5.md`](../core-merge/PLAN-P5.md)). Status
+(WP P5FIN, 2026-11-19): **built**, every section, on `main` (waves P5-A to P5-D). The P5-E batch (P5WAT, P5HOLD,
+P5QUI2, P5DAYTON) is built too (reviewed 2026-11-19, `work/review-p5e/REPORT.md`). Section 10 says which client offers what. The user's
+page is [docs/manual/measurement.md](../manual/measurement.md).*
 
 A DSPi is tuned with a calibrated measurement microphone instead of by ear. The **device's own test signal generator**
 plays the stimulus, so no client ever plays test audio; the client contributes only the microphone's samples and its
@@ -16,21 +17,23 @@ Where this page and the code disagree, the code is right and the page is the bug
 
 | § | Covers | Built by | State |
 |---|---|---|---|
-| 1 | [The signal path](#1-the-signal-path) | P5TIME, P5RESP, P5SES | draft |
-| 2 | [Safety](#2-safety) | P5SES, P5TUNE | draft |
-| 3 | [Placements and couplers](#3-placements-and-couplers) | P5CAL, P5SES | draft |
-| 4 | [Auto-tune, step by step](#4-auto-tune-step-by-step) | P5XO, P5FIT, P5TUNE | draft |
-| 5 | [The live view and direct adjustments](#5-the-live-view-and-direct-adjustments) | P5LIVE | draft |
-| 6 | [Locks, read-only and other clients](#6-locks-read-only-and-other-clients) | P5SES | draft |
-| 7 | [The documents](#7-the-documents) | P5MDOC (model), P5DOCK (stores and calls) | built (7.1 to 7.6); 7.7 draft |
+| 1 | [The signal path](#1-the-signal-path) | P5TIME, P5RESP, P5SES, P5ARRIVAL, P5RAMPFIX | built |
+| 2 | [Safety](#2-safety) | P5SES, P5RAMPFIX, P5TUNE | built |
+| 3 | [Placements and couplers](#3-placements-and-couplers) | P5CAL, P5SES | built |
+| 4 | [Auto-tune, step by step](#4-auto-tune-step-by-step) | P5XO, P5FIT, P5TUNE, P5TRUST, P5TRUST2 | built (the hold's anchor and Keep during a verify: P5HOLD) |
+| 5 | [The live view and direct adjustments](#5-the-live-view-and-direct-adjustments) | P5LIVE, P5CURV | built |
+| 6 | [Locks, read-only and other clients](#6-locks-read-only-and-other-clients) | P5SES, P5CURV | built |
+| 7 | [The documents](#7-the-documents) | P5MDOC (model), P5DOCK (stores and calls) | built (the `dayton` format: P5DAYTON) |
 | 8 | [On the hub](#8-on-the-hub) | P5HUB | built ([hub-api.md section 22](hub-api.md#22-measurement-documents)) |
-| 9 | [What the core never does](#9-what-the-core-never-does) | all | draft |
+| 9 | [What the core never does](#9-what-the-core-never-does) | all | built (the S-rules' tests) |
+| 10 | [In the clients](#10-in-the-clients) | P5WCAP, P5QCAP, P5WMS, P5QUI, P5TM, P5DEMO; P5WAT, P5QUI2 | built |
 
 ---
 
 ## 1. The signal path
 
-*State: draft (P5TIME: stimulus and timing; P5RESP: responses; P5SES: the run).*
+*State: built (P5TIME: stimulus and timing; P5RESP: responses; P5SES: the run; P5ARRIVAL: the arrival and the gate's
+findings, after P5SPIKE).*
 
 1. **Stimulus: the device's generator** (firmware v1.1.5 and later). It **replaces the matrix mix** on the outputs it
    plays, then passes through each output's crossover, PEQ, delay, trim and volumes. So an output's *measured chain* is
@@ -91,7 +94,7 @@ Where this page and the code disagree, the code is right and the page is the bug
 
 ## 2. Safety
 
-*State: draft (P5SES, P5TUNE). S1 to S13 are those WPs' tests.*
+*State: built (P5SES, P5RAMPFIX, P5TUNE). S1 to S13 are those WPs' tests.*
 
 | Rule | What it means |
 |---|---|
@@ -111,7 +114,7 @@ Where this page and the code disagree, the code is right and the page is the bug
 
 ## 3. Placements and couplers
 
-*State: draft (P5CAL, P5SES). The JSON shape is `dspi_measure::types::Placement`, as stored in section 7.3.*
+*State: built (P5CAL, P5SES). The JSON shape is `dspi_measure::types::Placement`, as stored in section 7.3.*
 
 | Placement (`mode`) | Runs | Stored | Used for |
 |---|---|---|---|
@@ -126,7 +129,7 @@ curve data is bundled, any other target or compensation is imported from a file.
 
 ## 4. Auto-tune, step by step
 
-*State: draft (P5XO, P5FIT, P5TUNE).* Each step shows its result before the next; the user may stop after any step with
+*State: built (P5XO, P5FIT, P5TUNE, P5TRUST, P5TRUST2, P5HOLD).* Each step shows its result before the next; the user may stop after any step with
 nothing written.
 
 1. **Layout:** speakers and ways proposed from the device's state and the matrix's pairing, each output's programme feed
@@ -137,7 +140,14 @@ nothing written.
 4. **Delay and polarity**, only from a timing-reliable run; delays normalised so the group's smallest delay keeps its
    current value; polarity as the net invert of the feeding crosspoints.
 5. **Crossover:** corner (1/12-octave steps, within the drivers' trusted ranges, never below S6), levels cut only, the
-   current family and order kept, each candidate scored by the predicted sum against the target.
+   current family and order kept, each candidate scored by the predicted sum against the target. A `High` way's
+   high-pass is never lowered on the magnitude sum alone: with the delays kept no lower corner is a candidate, and
+   every crossover write is a timing write. Each candidate's (and `align`'s) timing is held within a quarter of the
+   corner's period, at least 0.25 ms, of the arrival-based delay; a held choice that would flip the polarity, disagrees
+   with the window's own best polarity or lies on the hold's edge keeps the pair's delay and polarity, with the note
+   "the timing could not be settled at this corner". P5HOLD: the hold is anchored on the drivers' own
+   arrivals (each way's arrival less its measured chain's onset), so steep pairs at 300 Hz and 3 kHz get their timing;
+   at a low corner (120 Hz) LR6, LR8 and some BW3/BW4 searches still keep theirs with that note.
 6. **Summed check (mandatory):** one summed run per transition with the current chain. More than 1.5 dB RMS between the
    measured and the predicted sum withdraws every delay, polarity and crossover write.
 7. **Target fit:** the free PEQ bands toward the target, within the range and caps of S9.
@@ -152,20 +162,25 @@ nothing written.
     the two snapshots; Revert or the timeout reverts. After a verify that did not pass, the first Keep is refused with
     `measure.tune.keep_unverified`; show it and keep only on a second Keep the user confirms. `apply_confirm` on the
     tune's guard is refused the same way (a guard banner's Keep is no way round it), a Keep within 1 s of the refusal is
-    refused again (a double click is one press), and stopping the verify does not clear it. The measurement document
+    refused again (a double click is one press), and stopping the verify does not clear it. While a verify runs, Keep
+    (the tune's and `apply_confirm` on its guard) is refused with `measure.tune.keep_during_verify`: wait for the
+    verdict (P5HOLD). Keep before any verify has started keeps at once; say "Not verified". The measurement document
     records the tune (section 7.3, `tunes`).
 
 ## 5. The live view and direct adjustments
 
-*State: draft (P5LIVE).* One output's short sweeps repeated (one magnitude result per sweep) or finite pink noise with the
+*State: built (P5LIVE; the passive RTA and a document's curves P5CURV).* One output's short sweeps repeated (one magnitude result per sweep) or finite pink noise with the
 microphone RTA, shown with the target and with the predicted curve of a pending change. "Cut this peak" and "fit this
 range" act on a point or span of the measured curve; each is previewed, then applied as one undo group (unguarded, as a
 manual edit of one band). The microphone RTA (Welch, pink-referenced, 1/1 to 1/48 octave, fast, slow or infinite
-averaging, hold and compare) is the client's; the **device analyser** is the firmware's and unchanged.
+averaging, hold and compare) is the client's; the **device analyser** is the firmware's and unchanged. The passive
+microphone RTA (`measure_rta_passive_*`, P5CURV) is the same maths over programme audio and touches no device (section
+6). A screen draws a stored measurement through `measure_doc_curves(text, {smoothing, target, targetDocument})`: each
+output's curve smoothed, the target levelled to it, on the standard grid with the mask; no curve maths in a client.
 
 ## 6. Locks, read-only and other clients
 
-*State: draft (P5SES).*
+*State: built (P5SES; the passive RTA P5CURV).*
 
 - A run holds the device lock (`device_lock_acquire("Measuring", 30 s)`, renewed while the session is active, released
   at the end, on abort and on drop). Over DSPi Link every other session's writes get `locked`; over USB a foreign write
@@ -306,9 +321,9 @@ A short example (one output, the 10-point grid of 7.2):
 | `id` | string, optional | the store's id |
 | `name` | string | the microphone's name, at most 256 characters |
 | `serial`, `vendor` | string, optional | as the file names them |
-| `format` | string | the file it was imported from: `umik` (miniDSP UMIK-1/UMIK-2 text with a sensitivity line), `rew` (frequency, dB, optional phase), `csv` |
+| `format` | string | the file it was imported from: `umik` (miniDSP UMIK-1/UMIK-2 text with a sensitivity line), `rew` (frequency, dB, optional phase), `csv`; P5DAYTON: `dayton` (a `*1000Hz` sensitivity line in dBV/Pa, -70 to 0; a UMM-6 file with a `Sens Factor` line is `umik`, vendor Dayton Audio) |
 | `angle` | integer | the calibration's angle of incidence: 0 or 90 (default 0) |
-| `sensitivityDb`, `gainDb` | number, optional | the file's values, in the vendor's convention (P5CAL cites it) |
+| `sensitivityDb`, `gainDb` | number, optional | the file's values, in the vendor's convention (P5CAL cites it): dBFS at 94 dB SPL for `umik` and `rew`; dBV/Pa for `dayton`, whose `splOffsetDb` assumes a full-scale sine of 1 V RMS (0 dBV, `cal::ASSUMED_FULL_SCALE_DBV`) and is approximate |
 | `splOffsetDb` | number, optional | the offset from dBFS to dB SPL, when known: dB SPL = dBFS + `splOffsetDb`, with the level convention below |
 | `approximate` | boolean | the dB SPL scale is approximate (no calibrator step was done) |
 | `response` | curve | the correction (magnitude, and phase when the file had it) |
@@ -393,7 +408,7 @@ refused when read back.
 
 ### 7.7 The calls and the stores
 
-*State: draft (P5DOCK, P5HUB).* The core's calls take and give document text, as snapshots do: `measure_docs(kind,
+*State: built (P5DOCK, P5HUB).* The core's calls take and give document text, as snapshots do: `measure_docs(kind,
 serial?)`, `measure_doc_get(id)`, `measure_doc_put(text)`, `measure_doc_rename`, `measure_doc_note`,
 `measure_doc_delete`; `mic_import(name, file_text)`, `target_import(name, file_text, use, coupler?)`,
 `target_builtins()`, `measurement_export_rew(id or text, output)` (REW text, not a document). The local store keeps a
@@ -425,6 +440,20 @@ measurement itself needs only the generator opcodes, which a hub forwards by its
 - Open an audio device, start a thread for measuring, or use an FFT whose results depend on the machine.
 - Act on a document: a measurement proposes, a person applies.
 
+## 10. In the clients
+
+*State: built.* The user's description of the
+screens is [docs/manual/measurement.md](../manual/measurement.md); the feature table is
+[PARITY.md section J](../PARITY.md#j-measurement-and-auto-tune-pro-phase-5).
+
+| Client | Capture | Screens and commands |
+|---|---|---|
+| Web (`apps/web/src/screens/measure/`) | P5WCAP: an AudioWorklet with no output node, frame-indexed blocks to the Worker | P5WMS: setup (microphone, calibration import, placement, coupler, outputs, passes), preflight in words, the ramp and the run with Stop, Results through `measure_doc_curves` (smoothing, target), Live with "cut this peak" and "fit this range", the microphone RTA, the passive RTA tab for a Viewer or a read-only connection. P5WAT: the Auto-tune tab (layout, measure (the placement the user's: speakers at the listening position, or headphones on a coupler with their lower levels; three passes), summed check, proposal in words, apply with the guard's countdown, the verify started by itself after an apply, Keep's two steps, Revert, A/B, the snapshots downloadable) and the Documents tab (local and hub merged, rename, note, delete by role, mic and target import, REW export) |
+| Qt (`apps/desktop/qt/qml/measure/`) | P5QCAP: `QAudioSource` off the UI thread | P5QUI: Tools > Measure… with Measure, Results (REW export), Live, Auto-tune (Verify by a button, Keep, Keep Anyway, Revert, A/B) and Documents; a Viewer is told so and the tabs that play are not offered. P5QUI2: the Passive RTA tab, Results through `measure_doc_curves`, the client read-only mode in `playBlocker` |
+| Terminal (`apps/terminal/src/measure.rs`) | none (OD-P5m) | P5TM: `uconsole measure mic import`, `target import`, `docs`, `show`, `export --output N`, `tune ID [--dry-run] [--guard S]`, `run` (demo only). Timing writes need the summed check, so off the demo only an EQ-only tune is applied, unverified, said so |
+| Demo device, every client | P5DEMO: the "Simulated microphone", demo connections only | the whole flow without hardware |
+| Android, Swift | | later batch (PLAN-P5, "Later batch") |
+
 ## Reference
 
 | What | Where |
@@ -434,3 +463,4 @@ measurement itself needs only the generator opcodes, which a hub forwards by its
 | The documents | `crates/dspi-measure/src/doc.rs`, `doc/curve.rs` |
 | The family's other kinds | [preset-format.md](../terminal/preset-format.md), [document-format.md](document-format.md) |
 | The words clients show | [`docs/GLOSSARY.md`](../GLOSSARY.md) section 3.4 |
+| The user manual | [docs/manual/measurement.md](../manual/measurement.md) |

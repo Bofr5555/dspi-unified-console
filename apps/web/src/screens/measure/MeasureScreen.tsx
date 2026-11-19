@@ -38,6 +38,7 @@ import { playBlocker, type MeasureDraft } from "./model";
 import { ResultsTab } from "./results";
 import { RunPanel } from "./run";
 import { SetupPanel } from "./setup";
+import { WAT_TABS } from "./tune"; // -- WP P5WAT --
 
 /** The microphone choice: the demo's simulated one, or a browser input ("" its default). */
 export type MicChoice = { kind: "sim" } | { kind: "browser"; deviceId: string };
@@ -515,6 +516,7 @@ export const MEASURE_TABS: MeasureTab[] = [
   { id: "results", label: "Results", View: ResultsTab, passive: true },
   { id: "live", label: "Live", View: LiveTab },
   // -- tab slot: WP P5WAT -- (auto-tune and the documents)
+  ...WAT_TABS, // -- WP P5WAT --
 ];
 
 const PASSIVE_TAB: MeasureTab = { id: "passive", label: "Passive RTA", View: PassiveTab, passive: true };

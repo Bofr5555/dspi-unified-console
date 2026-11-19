@@ -120,19 +120,6 @@ std::pair<int, int> countRange(const QString &p) {
     return { 0, 0 };
 }
 
-// `n` little-endian integers of `width` bytes in `bytes`, each times `step`
-bool ints(const QByteArray &bytes, int width, int n, double step, QJsonArray *out) {
-    if (bytes.size() != qsizetype(n) * width) return false;
-    const auto *b = reinterpret_cast<const uchar *>(bytes.constData());
-    for (int i = 0; i < n; ++i) {
-        qint64 v = 0;
-        if (width == 2) v = qint16(quint16(b[2 * i]) | quint16(b[2 * i + 1]) << 8);
-        else v = qint32(quint32(b[4 * i]) | quint32(b[4 * i + 1]) << 8 | quint32(b[4 * i + 2]) << 16 | quint32(b[4 * i + 3]) << 24);
-        out->append(double(v) * step);
-    }
-    return true;
-}
-
 // A call that changes something, never called twice to fit its answer:
 // once, with room for any answer (an answer past it reads as none)
 QByteArray once(const std::function<uint32_t(char *, uint32_t)> &call, int bytes = kOnceBytes) {
@@ -159,7 +146,16 @@ void MeasureLoop::begin() {
 }
 
 void MeasureLoop::push(const dspi_capture::Block &b) {
-    if (!session.load() && !live.load() && !tune.load()) return;
+    if (!session.load() && !live.load() && !tune.load()) {
+        // -- WP P5QUI2 -- the passive RTA's blocks (never beside a run: the
+        // core ends the passive RTA when one starts)
+        if (!passive.load()) return;
+        const QByteArray st = once([&](char *buf, uint32_t l) {
+            return dspi_measure_rta_passive_push(m_core, b.samples.constData(), uint32_t(b.samples.size()), uint32_t(b.rateHz), buf, l);
+        }, kStateBytes);
+        if (!isOk(MeasureController::object(st))) emit pushRefused(st);
+        return;
+    }
     const QByteArray st = once([&](char *buf, uint32_t l) {
         return dspi_measure_capture_push(m_core, uint64_t(b.firstFrame), b.samples.constData(), uint32_t(b.samples.size()),
                                          uint32_t(b.rateHz), b.clipped, buf, l);
@@ -184,6 +180,13 @@ bool MeasureLoop::due(QByteArray *last, qint64 *at, const QByteArray &now, const
 }
 
 void MeasureLoop::tick() {
+    // -- WP P5QUI2 -- the passive RTA's frame, every 250 ms (a read)
+    if (passive.load() && ++m_passiveTicks % 5 == 0) {
+        const QByteArray f = MeasureController::reply([&](char *b, uint32_t l) { return dspi_measure_rta_passive_frame(m_core, b, l); }, 1 << 18);
+        const QJsonObject st = MeasureController::object(f).value(QLatin1String("state")).toObject();
+        if (!st.value(QLatin1String("active")).toBool()) passive.store(false);
+        emit passiveFrame(f);
+    }
     if (tune.load()) {
         const QByteArray st = once([&](char *b, uint32_t l) { return dspi_measure_tune_tick(m_core, b, l); }, kStateBytes);
         const QJsonObject o = MeasureController::object(st);
@@ -232,6 +235,7 @@ void MeasureLoop::finish() {
     if (live.exchange(false)) MeasureController::reply([&](char *b, uint32_t l) { return dspi_measure_live_stop(m_core, b, l); });
     if (tune.exchange(false)) MeasureController::reply([&](char *b, uint32_t l) { return dspi_measure_tune_stop(m_core, b, l); });
     if (session.exchange(false)) MeasureController::reply([&](char *b, uint32_t l) { return dspi_measure_stop(m_core, b, l); });
+    if (passive.exchange(false)) MeasureController::reply([&](char *b, uint32_t l) { return dspi_measure_rta_passive_stop(m_core, b, l); });
 }
 
 // ---- Helpers ---------------------------------------------------------------------------
@@ -257,7 +261,24 @@ QString MeasureController::failureText(const QJsonObject &reply) {
     if (reply.isEmpty()) return tr("The core did not answer.");
     const QString key = str(reply, "noticeKey");
     QString error = str(reply, "error");
-    if (auto *notices = Registrar::instance<NoticeCenter>()) {
+    auto *notices = Registrar::instance<NoticeCenter>();
+    // -- WP P5QUI2 -- a refusal that names its notice ("measure.tune.x: why",
+    // the measurement's and the tune's refusals): that notice's title when the
+    // table has a row for it, else the core's words without the key. Any such
+    // key, so a new refusal needs no code here.
+    // Review P5-E: after the error's own prefix ("invalid argument: measure.x:
+    // why" is what the core says; without it this never matched), and only a
+    // key the table has: any other text stays the core's, whole.
+    static const QRegularExpression keyed(QStringLiteral("^(?:[a-z][a-z ]*: )?([a-z][a-z0-9_]*(?:\\.[a-z0-9_]+)+): (.+)$"),
+                                          QRegularExpression::DotMatchesEverythingOption);
+    if (const QRegularExpressionMatch m = keyed.match(error); m.hasMatch()) {
+        QString why = m.captured(2).trimmed();
+        if (!why.isEmpty()) why[0] = why[0].toUpper();
+        const QString title = notices ? notices->row(m.captured(1)).value(QStringLiteral("title")).toString() : QString();
+        //: A refusal of the core: %1 its notice's title, %2 the core's words
+        if (!title.isEmpty()) return tr("%1: %2").arg(title, why);
+    }
+    if (notices) {
         const QString title = notices->row(key).value(QStringLiteral("title")).toString();
         if (!title.isEmpty() && !key.startsWith(QLatin1String("core."))) return error.isEmpty() ? title : tr("%1: %2").arg(title, error);
     }
@@ -360,36 +381,6 @@ QVariantMap MeasureController::graph(const QVariantList &list, const QString &un
     return { { QStringLiteral("series"), list }, { QStringLiteral("yMin"), a }, { QStringLiteral("yMax"), b }, { QStringLiteral("unit"), unit } };
 }
 
-QJsonObject MeasureController::decodeCurve(const QJsonObject &c) {
-    const QJsonObject g = c.value(QLatin1String("grid")).toObject();
-    const double minHz = g.value(QLatin1String("minHz")).toDouble(), maxHz = g.value(QLatin1String("maxHz")).toDouble();
-    const int ppo = g.value(QLatin1String("pointsPerOctave")).toInt();
-    if (!(minHz > 0) || !(maxHz > minHz) || !std::isfinite(maxHz) || ppo < 1 || ppo > 384) return {};
-    const int n = int(std::floor(std::log2(maxHz / minHz) * ppo)) + 1;
-    if (n < 1 || n > 2048) return {};
-    QJsonArray freqs;
-    for (int i = 0; i < n; ++i) freqs.append(minHz * std::pow(2.0, double(i) / ppo));
-    QJsonArray mag;
-    if (!ints(QByteArray::fromBase64(c.value(QLatin1String("mag")).toString().toLatin1()), 2, n, 0.01, &mag)) return {};
-    QJsonArray valid;
-    if (c.contains(QLatin1String("valid"))) {
-        const QByteArray b = QByteArray::fromBase64(c.value(QLatin1String("valid")).toString().toLatin1());
-        if (b.size() != (n + 7) / 8) return {};
-        for (int i = 0; i < n; ++i) valid.append(((uchar(b.at(i >> 3)) >> (i & 7)) & 1) == 1);
-    } else {
-        for (int i = 0; i < n; ++i) valid.append(true);
-    }
-    QJsonObject out{ { QStringLiteral("freqsHz"), freqs },
-                     { QStringLiteral("magDb"), mag },
-                     { QStringLiteral("valid"), valid },
-                     { QStringLiteral("spl"), c.value(QLatin1String("spl")).toBool() } };
-    QJsonArray spread;
-    if (c.contains(QLatin1String("spread")) &&
-        ints(QByteArray::fromBase64(c.value(QLatin1String("spread")).toString().toLatin1()), 2, n, 0.01, &spread))
-        out.insert(QStringLiteral("spreadDb"), spread);
-    return out;
-}
-
 // ---- Life ------------------------------------------------------------------------------
 
 MeasureController::MeasureController(const AppContext &ctx, QObject *parent) : QObject(parent), m_ctx(ctx) {
@@ -405,6 +396,7 @@ MeasureController::MeasureController(const AppContext &ctx, QObject *parent) : Q
         connect(m_loop, &MeasureLoop::liveState, this, &MeasureController::onLiveState);
         connect(m_loop, &MeasureLoop::liveFrame, this, &MeasureController::onLiveFrame);
         connect(m_loop, &MeasureLoop::pushRefused, this, [this](const QByteArray &json) { fail(failureText(object(json))); });
+        connect(m_loop, &MeasureLoop::passiveFrame, this, &MeasureController::onPassiveFrame);
         // The blocks go from the capture straight to the loop, in order
         connect(m_capture, &AudioCapture::block, m_loop, &MeasureLoop::push);
         m_thread->start();
@@ -424,9 +416,14 @@ MeasureController::MeasureController(const AppContext &ctx, QObject *parent) : Q
         case dspi_capture::Failure::None: break;
         }
         if (!why.isEmpty()) fail(why);
-        if (auto done = std::exchange(m_micOpening, nullptr)) done(false, 0);
-        // A lost microphone ends what it fed (the core aborts on the gap too)
-        if (running()) stop();
+        // -- WP P5QUI2 -- answered after AudioCapture's own `failed` returns:
+        // the answer closes the capture (closeMic), and a stop from inside
+        // `failed` deletes the reader thread its finish() then touches
+        QMetaObject::invokeMethod(this, [this] {
+            if (auto done = std::exchange(m_micOpening, nullptr)) done(false, 0);
+            // A lost microphone ends what it fed (the core aborts on the gap too)
+            if (running()) stop();
+        }, Qt::QueuedConnection);
     });
     connect(m_capture, &AudioCapture::stopped, this, [this] {
         emit micChanged();
@@ -533,14 +530,28 @@ bool MeasureController::connected() const { return m_ctx.device->connected(); }
 QString MeasureController::playBlocker() const {
     if (!connected()) return tr("No device connected.");
     if (m_ctx.device->readOnly())
-        return tr("This connection is read-only: measuring plays the DSPi's generator, so only the documents and saved "
-                  "measurements are offered.");
+        return tr("This connection is read-only: measuring plays the DSPi's generator, so only the passive microphone "
+                  "RTA, the documents and saved measurements are offered.");
+    // -- WP P5QUI2 -- the client read-only mode (the core refuses every write)
+    if (m_clientReadOnly)
+        return tr("The read-only mode is on: measuring plays the DSPi's generator, so only the passive microphone RTA, "
+                  "the documents and saved measurements are offered.");
     // Review P5-D: a Viewer through a hub may not play the generator (the
     // core refuses it, S11): said here, the tabs that play are not offered
     if (auto *link = Registrar::instance<LinkController>(); link && link->inSession() && link->role() == QLatin1String("viewer"))
-        return tr("This connection has the hub's Viewer role: measuring needs Control. Only the documents and saved "
-                  "measurements are offered.");
+        return tr("This connection has the hub's Viewer role: measuring needs Control. Only the passive microphone RTA, "
+                  "the documents and saved measurements are offered.");
     return {};
+}
+
+// -- WP P5QUI2 -- the client read-only mode, read on the core worker (the
+// core's lock may wait for a call in flight)
+void MeasureController::refreshAccess() {
+    m_ctx.core->worker()->call(this, [](FfiCore *c) { return dspi_client_read_only(c); }, [this](bool on) {
+        if (on == m_clientReadOnly) return;
+        m_clientReadOnly = on;
+        emit deviceChanged();
+    });
 }
 
 void MeasureController::onSnapshot() {
@@ -577,6 +588,7 @@ void MeasureController::onSnapshot() {
         emit setupChanged();
     }
     emit deviceChanged();
+    refreshAccess();
     if (changedDevice) {
         refreshSim();
         if (connected()) proposeLayout();
@@ -634,10 +646,17 @@ void MeasureController::openMic(std::function<void(bool, int)> done) {
                });
         return;
     }
+    openCapture(std::move(done));
+}
+
+// -- WP P5QUI2 -- the chosen input (the system's default when the simulated
+// microphone is chosen), the simulated one off first
+void MeasureController::openCapture(std::function<void(bool, int)> done) {
     const auto capture = [this, done] {
         if (m_capture->isRunning()) m_capture->stop();
         m_micOpening = done;
-        if (!m_capture->start(QByteArray::fromHex(m_micChoice.toLatin1()))) {
+        const QByteArray id = m_micChoice == QLatin1String("sim") ? QByteArray() : QByteArray::fromHex(m_micChoice.toLatin1());
+        if (!(m_captureSource ? m_capture->startWith(m_captureSource, id) : m_capture->start(id))) {
             m_micOpening = nullptr;
             fail(tr("The microphone could not be opened."));
             done(false, 0);
@@ -879,13 +898,19 @@ void MeasureController::preflight() {
 
 void MeasureController::start() {
     clearError();
+    // -- WP P5QUI2 -- who may play first: a Viewer's setup does not matter
+    if (!playBlocker().isEmpty()) {
+        fail(playBlocker());
+        return;
+    }
     const QString problem = setupProblem();
     if (!problem.isEmpty()) {
         fail(problem);
         return;
     }
-    if (!playBlocker().isEmpty()) {
-        fail(playBlocker());
+    // -- WP P5QUI2 -- said in words (running() covers it too)
+    if (m_passiveOn || m_passiveStarting) {
+        fail(tr("Stop the passive RTA first."));
         return;
     }
     if (running()) return;
@@ -946,18 +971,39 @@ void MeasureController::stop() {
     if (!m_loop) return;
     MeasureLoop *loop = m_loop;
     const bool tuneRuns = m_tuneRunning;
+    // -- WP P5QUI2 -- a connection that may not play has no run to stop: it
+    // sends nothing (as the web's), unless the core says a run is active
+    const bool passiveOnly = !playBlocker().isEmpty() && !m_state.value(QLatin1String("active")).toBool() && !tuneRuns;
+    const bool passive = m_passiveOn || m_passiveStarting;
     onLoop(this,
-           [loop, tuneRuns](FfiCore *c) {
-               QByteArray st;
-               if (loop->live.exchange(false)) reply([&](char *b, uint32_t l) { return dspi_measure_live_stop(c, b, l); });
+           [loop, tuneRuns, passiveOnly](FfiCore *c) {
+               QByteArray live;
+               if (loop->passive.exchange(false)) reply([&](char *b, uint32_t l) { return dspi_measure_rta_passive_stop(c, b, l); });
+               if (loop->live.exchange(false)) live = reply([&](char *b, uint32_t l) { return dspi_measure_live_stop(c, b, l); });
                // The tune's runs (a proposal and an applied tune stay: its guard runs on)
                if (tuneRuns) reply([&](char *b, uint32_t l) { return dspi_measure_tune_stop(c, b, l); });
-               st = reply([&](char *b, uint32_t l) { return dspi_measure_stop(c, b, l); });
-               loop->session.store(false);
-               return st;
+               // Review P5-E: a run this loop was told of is stopped whatever the
+               // page thinks (a start withdrawn while the connection became one
+               // that may not play still had its run in the core)
+               const bool ours = loop->session.exchange(false);
+               const QByteArray st = reply(
+                   [&](char *b, uint32_t l) { return passiveOnly && !ours ? dspi_measure_state(c, b, l) : dspi_measure_stop(c, b, l); });
+               // -- WP P5QUI2 -- the live view's state after its stop too: the
+               // loop ticks it no more, so this is its last word (before, a
+               // live view stopped here stayed "active" on the screen)
+               return QByteArray("[") + (st.isEmpty() ? QByteArray("{}") : st) + "," + (live.isEmpty() ? QByteArray("{}") : live) + "]";
            },
-           [this](const QByteArray &r) {
-               onSessionState(r);
+           [this, passive](const QByteArray &r) {
+               const QJsonArray both = QJsonDocument::fromJson(r).array();
+               if (passive) passiveEnded();
+               const QJsonObject live = both.at(1).toObject();
+               if (!live.isEmpty()) onLiveState(compact(live));
+               else if (liveActive()) {
+                   // Stopped by the core's own Stop (measure_stop ends the live view too)
+                   m_live.insert(QStringLiteral("active"), false);
+                   emit liveChanged();
+               }
+               onSessionState(compact(both.at(0).toObject()));
                closeMic();
            });
 }
@@ -1047,10 +1093,12 @@ bool MeasureController::timingReliable() const {
 
 bool MeasureController::running() const {
     // The simulated microphone may stay on: it hears nothing while no run plays
-    return m_state.value(QLatin1String("active")).toBool() || liveActive() || m_tuneRunning || (m_capture && m_capture->isRunning());
+    return m_state.value(QLatin1String("active")).toBool() || liveActive() || m_tuneRunning || m_passiveOn ||
+           (m_capture && m_capture->isRunning());
 }
 
 QString MeasureController::runningText() const {
+    if (m_passiveOn) return tr("The microphone is open for the passive RTA; nothing is played.");
     if (liveActive()) return tr("The live view is playing the DSPi's generator.");
     if (m_tuneRunning) return tr("The auto-tune's runs are playing the DSPi's generator.");
     if (m_state.value(QLatin1String("active")).toBool()) return tr("Measuring with the DSPi's generator.");
@@ -1080,6 +1128,8 @@ void MeasureController::setResultDocument(const QByteArray &text, const QString 
     if (str(meta, "kind").trimmed().toLower() != QLatin1String("measurement") || m.isEmpty()) {
         m_result.clear();
         m_resultGraph.clear();
+        m_curves = {};
+        ++m_curvesAsk;
         emit resultChanged();
         return;
     }
@@ -1137,28 +1187,98 @@ void MeasureController::setResultDocument(const QByteArray &text, const QString 
                                 { QStringLiteral("timing"), timing },
                                 { QStringLiteral("reliable"), reliable },
                                 { QStringLiteral("outputs"), outs } };
-    // The graph: each shown output's response as the document holds it
+    // -- WP P5QUI2 -- the graph is the core's curves (dspi_measure_doc_curves:
+    // smoothed, the target levelled), drawn when they come
+    m_curves = {};
+    m_resultGraph.clear();
+    emit resultChanged();
+    requestCurves();
+}
+
+// -- WP P5QUI2 -- asks the core for the result's curves with the choices now;
+// only the last ask's answer is drawn
+void MeasureController::requestCurves() {
+    const quint64 ask = ++m_curvesAsk;
+    if (m_result.isEmpty()) return;
+    const QByteArray doc = m_result;
+    const QByteArray options = compact(QJsonObject{ { QStringLiteral("smoothing"), m_resultSmoothing },
+                                                    { QStringLiteral("target"), m_resultTarget },
+                                                    { QStringLiteral("targetDocument"), QString::fromUtf8(m_targetDocument) } });
+    track(1);
+    m_ctx.core->worker()->call(this,
+                               [doc, options](FfiCore *) {
+                                   return reply([&](char *b, uint32_t l) { return dspi_measure_doc_curves(doc.constData(), options.constData(), b, l); }, 1 << 20);
+                               },
+                               [this, ask](QByteArray r) {
+                                   track(-1);
+                                   if (ask != m_curvesAsk) return;
+                                   const QJsonObject o = object(r);
+                                   if (!isOk(o)) {
+                                       fail(failureText(o));
+                                       m_curves = {};
+                                   } else {
+                                       m_curves = o;
+                                   }
+                                   buildResultGraph();
+                                   emit resultChanged();
+                               });
+}
+
+// The graph of the core's curves: each shown output's measured response
+// (its spread as a band) and, when asked, its levelled target (dashed)
+void MeasureController::buildResultGraph() {
     QVariantList list;
     bool spl = false;
-    colour = 0;
-    for (const QJsonValue &v : m.value(QLatin1String("outputs")).toArray()) {
+    int colour = 0;
+    for (const QJsonValue &v : m_curves.value(QLatin1String("outputs")).toArray()) {
         const QJsonObject o = v.toObject();
         const int n = o.value(QLatin1String("output")).toInt();
         const int c = colour++;
         if (m_hidden.contains(n)) continue;
-        const QJsonObject curve = decodeCurve(o.value(QLatin1String("response")).toObject());
-        if (curve.isEmpty()) continue;
-        spl = spl || curve.value(QLatin1String("spl")).toBool();
-        list.append(series(curve, QStringLiteral("measured"), outputName(n), c));
+        QJsonObject measured = o.value(QLatin1String("measured")).toObject();
+        if (measured.isEmpty()) continue;
+        if (!o.value(QLatin1String("spreadDb")).toArray().isEmpty()) measured.insert(QStringLiteral("spreadDb"), o.value(QLatin1String("spreadDb")));
+        spl = spl || measured.value(QLatin1String("spl")).toBool();
+        list.append(series(measured, QStringLiteral("measured"), outputName(n), c));
+        const QJsonObject target = o.value(QLatin1String("target")).toObject();
+        if (!target.isEmpty()) list.append(series(target, QStringLiteral("target"), tr("Target for %1").arg(outputName(n)), c));
     }
-    m_resultGraph = graph(list, spl ? tr("dB SPL") : tr("dB (relative)"));
+    m_resultGraph = m_curves.isEmpty() ? QVariantMap() : graph(list, spl ? tr("dB SPL") : tr("dB (relative)"));
+}
+
+int MeasureController::resultCurvesSmoothing() const {
+    return m_curves.isEmpty() ? -1 : m_curves.value(QLatin1String("smoothing")).toInt();
+}
+
+void MeasureController::setResultSmoothing(int n) {
+    n = std::clamp(n, 0, 48);
+    if (n == m_resultSmoothing) return;
+    m_resultSmoothing = n;
     emit resultChanged();
+    requestCurves();
+}
+
+void MeasureController::setResultTarget(bool on) {
+    if (on == m_resultTarget) return;
+    m_resultTarget = on;
+    emit resultChanged();
+    requestCurves();
 }
 
 void MeasureController::setOutputShown(int output, bool shown) {
     if (shown) m_hidden.removeAll(output);
     else if (!m_hidden.contains(output)) m_hidden.append(output);
-    if (!m_result.isEmpty()) setResultDocument(m_result, m_resultFrom);
+    if (m_result.isEmpty()) return;
+    // The outputs' rows and the graph again, from the curves the core gave
+    QVariantList outs = m_resultView.value(QStringLiteral("outputs")).toList();
+    for (QVariant &v : outs) {
+        QVariantMap m = v.toMap();
+        m.insert(QStringLiteral("shown"), !m_hidden.contains(m.value(QStringLiteral("output")).toInt()));
+        v = m;
+    }
+    m_resultView.insert(QStringLiteral("outputs"), outs);
+    buildResultGraph();
+    emit resultChanged();
 }
 
 void MeasureController::chooseResultFile() {
@@ -1250,6 +1370,8 @@ void MeasureController::clearResult() {
     m_result.clear();
     m_resultView.clear();
     m_resultGraph.clear();
+    m_curves = {};
+    ++m_curvesAsk;
     emit resultChanged();
 }
 
@@ -1276,6 +1398,10 @@ void MeasureController::liveStart(const QVariantMap &s) {
     clearError();
     if (!playBlocker().isEmpty()) {
         fail(playBlocker());
+        return;
+    }
+    if (m_passiveOn || m_passiveStarting) {   // -- WP P5QUI2 --
+        fail(tr("Stop the passive RTA first."));
         return;
     }
     if (running()) return;
@@ -1554,6 +1680,7 @@ void MeasureController::importTargetFile(const QString &path, const QString &use
                   m_targetDocument = doc;
                   m_targetName = file;
                   emit targetChanged();
+                  requestCurves();   // -- WP P5QUI2 -- the result's target too
                   say(tr("Target imported: %1. It is used from the next live start and by the auto-tune.").arg(file));
                   fileImported(doc);
               });
@@ -1563,6 +1690,152 @@ void MeasureController::clearTarget() {
     m_targetDocument.clear();
     m_targetName.clear();
     emit targetChanged();
+    requestCurves();   // -- WP P5QUI2 --
+}
+
+// ---- The passive microphone RTA (-- WP P5QUI2 --) ---------------------------------------
+
+QString MeasureController::passiveBlocker() const {
+    // Never beside this console's generator: it would show the test signal
+    // as programme audio (the core refuses it too, `busy`)
+    if (m_state.value(QLatin1String("active")).toBool() || liveActive() || m_tuneRunning)
+        return tr("A measurement, the live view or the auto-tune plays the generator now: the passive RTA would show "
+                  "the test signal.");
+    return {};
+}
+
+void MeasureController::passiveStart(const QString &averaging) {
+    clearError();
+    if (!passiveBlocker().isEmpty()) {
+        fail(passiveBlocker());
+        return;
+    }
+    if (m_passiveOn || m_passiveStarting || !m_loop) return;
+    m_passiveAveraging = averaging;
+    m_passiveStarting = true;
+    emit passiveChanged();
+    // Review P5-D's rule: a Stop (or the window closed) meanwhile withdraws it
+    const quint64 epoch = m_stopEpoch;
+    openCapture([this, epoch](bool ok, int rateHz) {
+        if (!ok || epoch != m_stopEpoch) {
+            m_passiveStarting = false;
+            closeMic();
+            emit passiveChanged();
+            return;
+        }
+        const QByteArray setup = compact(QJsonObject{ { QStringLiteral("micDocument"), QString::fromUtf8(m_micDocument) },
+                                                      { QStringLiteral("captureRateHz"), rateHz },
+                                                      { QStringLiteral("averaging"), m_passiveAveraging } });
+        onLoop(this,
+               [setup](FfiCore *c) { return once([&](char *b, uint32_t l) { return dspi_measure_rta_passive_start(c, setup.constData(), b, l); }, kStateBytes); },
+               [this, epoch](const QByteArray &r) {
+                   m_passiveStarting = false;
+                   const QJsonObject o = object(r);
+                   if (!isOk(o)) {
+                       closeMic();
+                       fail(failureText(o));
+                       emit passiveChanged();
+                       return;
+                   }
+                   if (epoch != m_stopEpoch) {
+                       m_loop->passive.store(true);
+                       stop();
+                       return;
+                   }
+                   m_passiveOn = true;
+                   m_passiveFrames = int(o.value(QLatin1String("frames")).toDouble());
+                   m_loop->passive.store(true);
+                   emit passiveChanged();
+                   setRunning();
+               });
+    });
+}
+
+void MeasureController::passiveStop() {
+    MeasureLoop *loop = m_loop;
+    ++m_stopEpoch;   // a start on its way too
+    if (!loop) return;
+    onLoop(this,
+           [loop](FfiCore *c) {
+               loop->passive.store(false);
+               return reply([&](char *b, uint32_t l) { return dspi_measure_rta_passive_stop(c, b, l); });
+           },
+           [this](const QByteArray &) {
+               passiveEnded();
+               closeMic();
+           });
+}
+
+// The passive RTA is over (stopped, or the core ended it): its views go
+void MeasureController::passiveEnded() {
+    m_passiveOn = false;
+    m_passiveStarting = false;
+    m_passiveGraph.clear();
+    m_passiveCompareGraph.clear();
+    m_passiveHeld = m_passiveReady = false;
+    m_passiveFrames = 0;
+    emit passiveChanged();
+    setRunning();
+}
+
+void MeasureController::onPassiveFrame(const QByteArray &json) {
+    const QJsonObject f = object(json);
+    if (!m_passiveOn || f.isEmpty() || !isOk(f)) return;
+    const QJsonObject st = f.value(QLatin1String("state")).toObject();
+    if (!st.value(QLatin1String("active")).toBool()) {
+        // The core ended it (a run of this core started): the microphone with
+        // it, unless that run uses it now
+        passiveEnded();
+        if (!passiveBlocker().isEmpty()) return;
+        closeMic();
+        return;
+    }
+    const QJsonObject rta = f.value(QLatin1String("rta")).toObject();
+    const QJsonObject current = rta.value(QLatin1String("current")).toObject();
+    const QJsonObject held = rta.value(QLatin1String("held")).toObject();
+    const QJsonObject compare = rta.value(QLatin1String("compare")).toObject();
+    QVariantList list;
+    if (!current.isEmpty()) list.append(series(current, QStringLiteral("measured"), tr("Microphone RTA")));
+    if (!held.isEmpty()) list.append(series(held, QStringLiteral("held"), tr("Held")));
+    m_passiveGraph = graph(list, st.value(QLatin1String("spl")).toBool() ? tr("dB SPL") : tr("dBFS"));
+    m_passiveCompareGraph = compare.isEmpty() ? QVariantMap()
+                                              : graph({ series(compare, QStringLiteral("compare"), tr("Now minus held")) }, tr("dB"));
+    m_passiveReady = !current.isEmpty();
+    m_passiveHeld = st.value(QLatin1String("held")).toBool();
+    m_passiveFrames = int(st.value(QLatin1String("frames")).toDouble());
+    m_passiveAveraging = str(st, "averaging").isEmpty() ? m_passiveAveraging : str(st, "averaging");
+    emit passiveChanged();
+}
+
+void MeasureController::passiveHold(bool on) {
+    if (!m_passiveOn) return;
+    onLoop(this, [on](FfiCore *c) { return reply([&](char *b, uint32_t l) { return dspi_measure_rta_passive_hold(c, on ? 1 : 0, b, l); }); },
+           [this](const QByteArray &r) {
+               const QJsonObject o = object(r);
+               if (!isOk(o)) fail(failureText(o));
+               else {
+                   m_passiveHeld = o.value(QLatin1String("held")).toBool();
+                   emit passiveChanged();
+               }
+           });
+}
+
+void MeasureController::setPassiveAveraging(const QString &averaging) {
+    if (averaging == m_passiveAveraging && !m_passiveOn) return;
+    m_passiveAveraging = averaging;
+    emit passiveChanged();
+    if (!m_passiveOn) return;
+    // A JSON string: "fast", "slow", "infinite"
+    const QByteArray word = QJsonDocument(QJsonArray{ averaging }).toJson(QJsonDocument::Compact).mid(1).chopped(1);
+    onLoop(this, [word](FfiCore *c) { return reply([&](char *b, uint32_t l) { return dspi_measure_rta_passive_averaging(c, word.constData(), b, l); }); },
+           [this](const QByteArray &r) {
+               const QJsonObject o = object(r);
+               if (!isOk(o)) fail(failureText(o));
+               else {
+                   m_passiveAveraging = str(o, "averaging");
+                   emit passiveChanged();
+               }
+           });
 }
 
 // ---- The documents ---------------------------------------------------------------------
@@ -1618,6 +1891,7 @@ void MeasureController::openDocument(const QString &id, const QString &where) {
                       m_targetDocument = text;
                       m_targetName = name;
                       emit targetChanged();
+                      requestCurves();   // -- WP P5QUI2 --
                       say(tr("Target in use: %1.").arg(name));
                   }
               });

@@ -143,7 +143,9 @@ pub extern "C" fn dspi_measure_tune_verify(core: *mut FfiCore, buf: *mut c_char,
 
 /// Keep the applied tune: Keep's reply, or a failure. After a verify that did
 /// not pass the first Keep fails (`invalid`, `measure.tune.keep_unverified`):
-/// show it, and keep only with a second Keep the user confirms.
+/// show it, and keep only with a second Keep the user confirms. While a
+/// verify runs Keep fails (`invalid`, `measure.tune.keep_during_verify`):
+/// wait for the verdict.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_measure_tune_keep(core: *mut FfiCore, buf: *mut c_char, len: u32) -> u32 {
     text(core, buf, len, |c| json_reply(c.measure_tune_keep()))

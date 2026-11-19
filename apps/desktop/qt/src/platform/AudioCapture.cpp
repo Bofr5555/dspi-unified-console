@@ -354,6 +354,7 @@ void AudioCapture::onReaderOpened(int rateHz, int channels, const QString &name)
 void AudioCapture::onReaderFailed(Failure failure, const QString &detail) {
     if (!m_thread || m_stopping) return;
     emit failed(failure, detail);
+    if (!m_thread || m_stopping) return;   // a listener stopped it (review P5-E)
     finish();
 }
 
@@ -368,6 +369,7 @@ void AudioCapture::onInputsChanged() {
     emit deviceLost(lost);
     if (!m_thread || m_stopping) return;   // a listener stopped it
     emit failed(Failure::DeviceLost, QStringLiteral("the audio input left the list"));
+    if (!m_thread || m_stopping) return;   // a listener stopped it (review P5-E)
     finish();
 }
 
