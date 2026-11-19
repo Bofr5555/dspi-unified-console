@@ -291,7 +291,9 @@ fn wp_pgfwup_the_entry_reaches_each_generations_reboot() {
         // The board read first, 8 bytes asked; on a paged device the adapter
         // answers it from the `SYS.PLATFORM` its discovery read (8 asked) on
         // this connection, so nothing more is sent.
-        let want: &[u16] = if g.is_paged() { &[] } else { &[8] };
+        // -- WP PGFLASH -- and once more for the update target the write gate
+        // judges by
+        let want: &[u16] = if g.is_paged() { &[] } else { &[8, 8] };
         assert_eq!(s.platform_reads, want, "{g:?}");
         no_violation(&remote);
     }

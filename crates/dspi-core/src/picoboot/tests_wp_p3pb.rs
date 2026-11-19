@@ -749,7 +749,7 @@ fn wp_p3pb_an_image_the_guard_does_not_clear_sends_nothing() {
     for (image, board) in cases {
         let mut rom = FakeRom::new();
         let e = flash(&mut rom, &image, &rp2350(), &board).unwrap_err();
-        let expected = firmware_guard_check(image.clone(), board.clone(), String::new());
+        let expected = crate::firmware_guard_check(image.clone(), board.clone(), String::new());
         assert_eq!(
             e,
             FlashError::Guard {

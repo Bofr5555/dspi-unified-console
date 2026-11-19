@@ -209,6 +209,8 @@ mod tests {
             "src/fns_misc/protocol.rs",
             // -- WP P5CURV --
             "src/fns_misc/measure_curv.rs",
+            // -- WP PGFWX --
+            "src/fns_misc/firmware_update.rs",
             "src/fns_browse.rs",
             "src/fns_link.rs",
             "src/fns_hub.rs",

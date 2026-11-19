@@ -404,7 +404,8 @@ impl DspiCore {
         self.ensure_probed();
         let mut inner = self.lock();
         alink_conn(&mut inner, alink::EXT_ALINK_STATS_RESET)?;
-        let mut w = inner.writable_conn()?;
+        // -- WP PGFIX -- the alink sender answers it too
+        let mut w = inner.ext_writable_conn()?;
         sx::reset_alink_stats(w.sending()).map_err(write_error)?;
         // -- fixup sw1 (F1) -- an action: history, never undone
         journal::journal(&mut inner, journal::ALINK_STATS_RESET, &[], Value::Trigger);

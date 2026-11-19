@@ -2410,6 +2410,11 @@ data class DeviceProtocol(
      * "DSPi Zero" or "Unknown board" (`board_name`).
      */
     val boardName: String,
+    /**
+     * What the device is, and so what the client may offer: a DSP with its
+     * whole model, or the alink sender with its few commands only.
+     */
+    val deviceKind: DeviceKind,
 )
 
 /**
@@ -4024,6 +4029,61 @@ data class FirmwareGuardVerdict(
      * The board record's `required_mv`, as given.
      */
     val requiredMv: Int,
+)
+
+/**
+ * The board an update is for, read before it enters the bootloader. The
+ * default fails closed: no board known, so no image.
+ *
+ * WP PGFWX: exported (UniFFI record; JSON in the C ABI and wasm, where a
+ * missing field is its default: unknown, so it fails closed). Keep the one
+ * [`DspiCore::firmware_target`] read and hand it back unchanged.
+ */
+data class FirmwareTarget(
+    /**
+     * The voltage rule's record ([`DspiCore::firmware_guard_board`]).
+     */
+    val voltage: FirmwareGuardBoard,
+    /**
+     * The board id (platform byte 7, PLAN-PG section 1.9; 0 is a Pico, see
+     * [`FirmwareTarget::board`]); `None` when it could not be read.
+     */
+    val boardId: Int?,
+    /**
+     * Whose firmware runs on it: ours when the extension channel answers.
+     */
+    val lineage: FirmwareLineage,
+    /**
+     * The protocol generation of the live connection.
+     */
+    val generation: FirmwareGeneration,
+)
+
+/**
+ * [`firmware_update_check`]'s answer. Flash only on `verdict.allowed`.
+ */
+data class FirmwareUpdateVerdict(
+    /**
+     * The verdict, as [`firmware_guard_check`]'s with the rules above folded
+     * in (`message` names every risk; `confirmation_phrase` is what to type).
+     */
+    val verdict: FirmwareGuardVerdict,
+    /**
+     * The rule beyond the voltage rule that decided, if any.
+     */
+    val rule: FirmwareUpdateRule,
+    /**
+     * The image's lineage (the manifest, or our stamp; else unknown).
+     */
+    val imageLineage: FirmwareLineage,
+    /**
+     * The image's generation (the manifest, or its version).
+     */
+    val imageGeneration: FirmwareGeneration,
+    /**
+     * A generation change, shown with what works afterwards; "" when none.
+     */
+    val generationChange: String,
 )
 
 /**
@@ -8970,6 +9030,28 @@ enum class ExtEnvelope {
 }
 
 /**
+ * What kind of device the open connection is (PLAN-PG section 1.9, PGMAT F1).
+ * A client shows the screens of the kind only.
+ */
+enum class DeviceKind {
+    /**
+     * A DSPi: the bulk image, the DSP model, the generator, the meters.
+     */
+    DSP,
+    /**
+     * The alink sender build (`firmware/DSPi-Sender`, legacy only): a
+     * connection with limited capabilities. It has the device info
+     * (platform, serial, build), the extension channel with its alink block
+     * (`alink_info`, `fetch_alink_*`, `reset_alink_stats`) and the update
+     * check's target; no bulk image, no DSP model, no generator, no meters.
+     * Every DSP setter answers [`crate::DspiError::Unsupported`] with nothing
+     * sent, and `get_state` shows the platform's identity only
+     * (`bulk_valid` false, no channels).
+     */
+    ALINK_SENDER,
+}
+
+/**
  * One side of a compare.
  */
 enum class AbSide {
@@ -9111,6 +9193,24 @@ enum class FirmwareGuardReason {
 }
 
 /**
+ * Which rule beyond the voltage rule decided an update verdict.
+ */
+enum class FirmwareUpdateRule {
+    /**
+     * None: the voltage rule's verdict stands.
+     */
+    NONE,
+    /**
+     * The board has no BOOTSEL: refused, whatever is typed.
+     */
+    NO_BOOTSEL,
+    /**
+     * Our firmware would give way to an image that may be upstream's.
+     */
+    LINEAGE_LOSS,
+}
+
+/**
  * [`verify_bundled`]'s answer: is this the firmware image the app bundles?
  */
 enum class BundledFirmware {
@@ -9128,6 +9228,44 @@ enum class BundledFirmware {
      * other bytes: a mixed-up or damaged copy. Flashing it is refused.
      */
     MISMATCH,
+}
+
+/**
+ * Where a firmware comes from (PLAN-PG section 1.8): upstream Weeb Labs, or
+ * this fork's `bofr-main` (extensions, alink, the 1.20 V core setting, our
+ * preset directory).
+ */
+enum class FirmwareLineage {
+    /**
+     * Not known: every doubt resolves to "asks".
+     */
+    UNKNOWN,
+    /**
+     * Weeb Labs' firmware (stock).
+     */
+    UPSTREAM,
+    /**
+     * This fork's `bofr-main`.
+     */
+    BOFR,
+}
+
+/**
+ * Which protocol generation a firmware speaks (PLAN-PG section 1.1).
+ */
+enum class FirmwareGeneration {
+    /**
+     * Not known.
+     */
+    UNKNOWN,
+    /**
+     * 1.1.6 and older: page 0 only.
+     */
+    LEGACY,
+    /**
+     * 1.1.7 and later: paged.
+     */
+    PAGED,
 }
 
 /**

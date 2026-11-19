@@ -661,7 +661,9 @@ impl DspiCore {
 
     // -- WP P1TK --
     /// Write `image` to the bootloader drive behind the firmware guard
-    /// ([`crate::firmware_guard_check`] for `board` and `typed_confirmation`),
+    /// ([`crate::firmware_guard_check`] for `board` and `typed_confirmation`;
+    /// WP PGFLASH: [`crate::firmware_update_check`]'s rules on the target this
+    /// core read itself, see below),
     /// with a confirmation token ([`crate::confirm`],
     /// [`crate::ConfirmOp::FirmwareFlash`]): the one to use wherever the core
     /// does the writing. Mint the token once the bootloader drive is there
@@ -683,8 +685,20 @@ impl DspiCore {
     /// by waiting for the DSPi to re-enumerate and report the image's version
     /// (`Uf2Info::firmware_version`); a timeout there is the failure.
     ///
+    /// WP PGFLASH, the write gate: when this core read the board as an
+    /// update target ([`DspiCore::firmware_target`], or on its own in
+    /// [`DspiCore::enter_bootloader_confirmed`]), the gate is the update check
+    /// on that target, never on one a caller passes: a board without BOOTSEL
+    /// is refused, and an image that may be upstream's on our firmware needs
+    /// `LINEAGE_PHRASE` (or the voltage phrase, when the voltage rule asks).
+    /// `board` only adds doubt: one that is not the core's own record makes
+    /// the voltage unknown. With no target read (the board was in BOOTSEL
+    /// before this core saw it) the voltage rule alone decides. The target is
+    /// forgotten after a write and when another device is opened.
+    ///
     /// Errors: that; [`DspiError::FirmwareGuardBlocked`] with the guard's
-    /// message when the image needs confirmation; then the write's.
+    /// message when the image needs confirmation or the board has no BOOTSEL;
+    /// then the write's.
     pub fn flash_confirmed(
         &self,
         image: Vec<u8>,
@@ -698,7 +712,17 @@ impl DspiCore {
         crate::limits::lock_check_any(&mut self.lock())?;
         // Nothing to re-check later: the write is to the drive, not the device.
         let _ticket = self.confirm_gate(crate::ConfirmOp::FirmwareFlash, token.as_deref())?;
-        crate::flash_to_drive_guarded(image, drive, board, typed_confirmation)
+        // -- WP PGFLASH -- the update check's rules on the target this core read
+        let read = self.lock().flash_target.clone();
+        crate::firmware_guard::flash_to_drive_gated(
+            image,
+            drive,
+            read.as_ref(),
+            board,
+            &typed_confirmation,
+        )?;
+        self.lock().flash_target = None;
+        Ok(())
     }
 }
 

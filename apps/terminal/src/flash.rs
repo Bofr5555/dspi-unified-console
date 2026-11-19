@@ -5,7 +5,7 @@
 //! read and judged, and any answer asked for, before the reboot. Each doubt
 //! ends in nothing being done.
 //!
-//! - **The guard decides** ([`firmware_guard_check`], WP CG8 and CG14). It names
+//! - **The guard decides** ([`dspi_core::firmware_guard_check`], WP CG8 and CG14). It names
 //!   the answer it wants: the phrase for a voltage too low or unknown, the word
 //!   `OVERVOLT` for a raising image. `--force` only skips the ordinary "are you
 //!   sure", and overrides neither. `--accept-core-voltage-risk` lets the question
@@ -15,7 +15,7 @@
 //!   answer counts only for the risk it was asked about: if the re-read shows
 //!   another one, that takes its own.
 //! - **A drive that was already mounted** belongs to a board nobody can ask
-//!   ([`firmware_guard_board_in_bootloader`]), even with a DSPi on the bus, since
+//!   ([`dspi_core::firmware_guard_board_in_bootloader`]), even with a DSPi on the bus, since
 //!   that DSPi need not be the board behind the drive. With `--device` naming a
 //!   unit it is refused outright, as the file would not go where it was sent.
 //! - **The demo device is not a board.** With `--demo` a drive is a board nobody
@@ -32,6 +32,20 @@
 //!   during it, which is assumed to be the board rebooting and which a pulled
 //!   cable looks like too. Only the board
 //!   coming back with the image's version is success.
+//!
+//! - **-- WP PGTM -- The update check decides** ([`firmware_update_check`] on
+//!   the core's [`DspiCore::firmware_target`], PLAN-PG section 1.8): the
+//!   voltage rule above, plus no image at all for a board without BOOTSEL (the
+//!   DSPi-Zero, a board that could not be identified), and the typed phrase it
+//!   names ([`LINEAGE_PHRASE`]) when this fork's firmware would give way to an
+//!   image that may be upstream's. That phrase is asked on the terminal without
+//!   `--accept-core-voltage-risk` (it is not a voltage risk), and is never typed
+//!   for the person; a voltage phrase still needs the flag. A change of
+//!   protocol generation (1.1.6 to 1.1.7 or back) is said before any question.
+//!   Only `verdict.allowed` flashes. -- WP PGFLASH -- The write goes out on
+//!   the core that read the target, so the core's own write gate applies the
+//!   same rules to the target it read; a board already in BOOTSEL is written
+//!   from a fresh core, where the voltage rule alone decides.
 //!
 //! The device side goes through [`DspiCore`], the one owner of the guard's board
 //! read; the core is otherwise for `firmware.rs`, and the rest of the terminal
@@ -54,14 +68,18 @@ use std::time::Duration;
 
 use dspi_core::{
     BootloaderDrive, DspState, DspiCore, DspiError, FirmwareGuardBoard, FirmwareGuardDecision,
-    FirmwareGuardVerdict, Uf2Info, bootloader_drives, firmware_guard_board_in_bootloader,
-    firmware_guard_check, info_platform, uf2_inspect,
+    FirmwareGuardVerdict, Uf2Info, bootloader_drives, info_platform, uf2_inspect,
 };
+// -- WP PGTM -- the update check (PGFWX's export) instead of the voltage rule alone
 use dspi_core::{
     BundledFirmware,
     NOTICE_FIRMWARE_NOT_VERIFIED,
     notice_for_key,
     verify_bundled, // -- WP SECFIX --
+};
+use dspi_core::{
+    FirmwareTarget, FirmwareUpdateRule, FirmwareUpdateVerdict, LINEAGE_PHRASE,
+    firmware_update_check,
 };
 use dspi_proto::Platform;
 use dspi_proto::packets::FirmwareVersion;
@@ -536,13 +554,42 @@ fn volts(mv: u16) -> String {
 
 /// What was answered and what the guard thinks now.
 struct Passed {
+    /// The voltage rule's record of the target, for the guarded write.
     board: FirmwareGuardBoard,
     typed: String,
     verdict: FirmwareGuardVerdict,
+    // -- WP PGTM --
+    /// The board as the update check judged it, and its whole answer.
+    target: FirmwareTarget,
+    update: FirmwareUpdateVerdict,
 }
 
-fn check(image: &Image, board: &FirmwareGuardBoard, typed: &str) -> FirmwareGuardVerdict {
-    firmware_guard_check(image.bytes.clone(), board.clone(), typed.to_owned())
+// -- WP PGTM -- the update check: the voltage rule, BOOTSEL, the lineage
+fn check(image: &Image, target: &FirmwareTarget, typed: &str) -> FirmwareUpdateVerdict {
+    firmware_update_check(image.bytes.clone(), target, typed)
+}
+
+// -- WP PGTM --
+/// A board the update check offers no image: said, with nothing done.
+fn no_bootsel(req: &Request, update: &FirmwareUpdateVerdict) -> u8 {
+    let message = format!("{} Nothing was changed", printable(&update.verdict.message));
+    eprintln!("{COMMAND}: {message}");
+    if req.json {
+        println!(
+            "{}",
+            json!({ "flashed": false, "error": message, "update": update })
+        );
+    }
+    exit::REJECTED
+}
+
+// -- WP PGTM --
+/// Whether the answer wanted is the lineage phrase alone (no voltage risk),
+/// which is asked without `--accept-core-voltage-risk`.
+fn lineage_only(update: &FirmwareUpdateVerdict) -> bool {
+    update.rule == FirmwareUpdateRule::LineageLoss
+        && update.verdict.decision == FirmwareGuardDecision::NeedsConfirmation
+        && update.verdict.confirmation_phrase == LINEAGE_PHRASE
 }
 
 fn yes(answer: Option<String>) -> bool {
@@ -570,28 +617,42 @@ fn gate(
     image: &Image,
     go_ahead: &str,
     world: &mut dyn World,
-    read: &mut dyn FnMut() -> FirmwareGuardBoard,
+    read: &mut dyn FnMut() -> FirmwareTarget,
 ) -> Result<Passed, u8> {
-    let mut board = read();
+    let mut target = read();
     let mut typed = String::new();
-    let mut verdict = check(image, &board, &typed);
-    if req.dry_run {
-        return dry_run(req, image, &board, &verdict);
+    let mut update = check(image, &target, &typed);
+    // -- WP PGTM -- no image for a board without BOOTSEL, whatever is typed
+    if update.rule == FirmwareUpdateRule::NoBootsel {
+        return Err(no_bootsel(req, &update));
     }
+    if !update.generation_change.is_empty() {
+        req.note(&printable(&update.generation_change));
+    }
+    if req.dry_run {
+        return dry_run(req, image, &target, &update);
+    }
+    let mut verdict = update.verdict.clone();
     if verdict.allowed && !req.force {
         if !yes(world.ask(go_ahead)) {
             return Err(refuse(req, &verdict, "not confirmed"));
         }
-        board = read();
-        verdict = check(image, &board, &typed);
+        target = read();
+        update = check(image, &target, &typed);
+        verdict = update.verdict.clone();
     }
     let mut questions: u32 = 0;
     while !verdict.allowed {
+        // -- WP PGTM -- a board re-read as one without BOOTSEL
+        if update.rule == FirmwareUpdateRule::NoBootsel {
+            return Err(no_bootsel(req, &update));
+        }
         if verdict.decision == FirmwareGuardDecision::Refused {
             return Err(req.fail(exit::USAGE, &printable(&verdict.message)));
         }
         eprintln!("{COMMAND}: {}", printable(&verdict.message));
-        if !req.accept_risk {
+        // -- WP PGTM -- the lineage phrase is not a voltage risk: asked without the flag
+        if !req.accept_risk && !lineage_only(&update) {
             return Err(refuse(
                 req,
                 &verdict,
@@ -609,13 +670,16 @@ fn gate(
             return Err(refuse(req, &verdict, "that was not the answer"));
         }
         typed = answer;
-        board = read();
-        verdict = check(image, &board, &typed);
+        target = read();
+        update = check(image, &target, &typed);
+        verdict = update.verdict.clone();
     }
     Ok(Passed {
-        board,
+        board: target.voltage.clone(),
         typed,
         verdict,
+        target,
+        update,
     })
 }
 
@@ -624,11 +688,20 @@ fn gate(
 fn dry_run(
     req: &Request,
     image: &Image,
-    board: &FirmwareGuardBoard,
-    verdict: &FirmwareGuardVerdict,
+    target: &FirmwareTarget,
+    update: &FirmwareUpdateVerdict,
 ) -> Result<Passed, u8> {
+    let verdict = &update.verdict;
     let text = if verdict.allowed {
         format!("{} would install. Nothing was changed.", image.name)
+    } else if lineage_only(update) {
+        // -- WP PGTM --
+        format!(
+            "{} would need `{}` typed: {} Nothing was changed.",
+            image.name,
+            verdict.confirmation_phrase,
+            printable(&verdict.message)
+        )
     } else {
         format!(
             "{} would need `{}` typed, with --accept-core-voltage-risk: {} Nothing was changed.",
@@ -642,9 +715,12 @@ fn dry_run(
         json!({
             "flashed": false,
             "dryRun": true,
-            "board": board,
+            "board": target.voltage,
             "guard": verdict,
             "verified": image.bundled == BundledFirmware::Verified, // -- WP SECFIX --
+            // -- WP PGTM --
+            "target": target,
+            "update": update,
         }),
     );
     Err(if verdict.allowed {
@@ -680,11 +756,12 @@ fn onto_mounted(
     ));
     let go_ahead = format!("Install this image on the board at {path}? [y/N] ");
     let passed = gate(req, image, &go_ahead, world, &mut || {
-        firmware_guard_board_in_bootloader()
+        // -- WP PGTM -- a board in BOOTSEL: it has BOOTSEL, nothing else known
+        FirmwareTarget::in_bootloader()
     })?;
     // Anything on the bus already is not the board that is about to arrive.
     let back = Back::New(world.serials().into_iter().collect());
-    write(req, image, drive, &passed)?;
+    write(req, None, image, drive, &passed)?; // -- WP PGFLASH -- already in BOOTSEL
     if matches!(target, Target::Demo) {
         // A real path may just have been written, and no board can say it took.
         req.result(
@@ -698,6 +775,7 @@ fn onto_mounted(
                 "confirmed": false,
                 "board": passed.board,
                 "guard": passed.verdict,
+                "update": passed.update, // -- WP PGTM --
             }),
         );
         return Ok(());
@@ -726,7 +804,7 @@ fn onto_device(
         image,
         "Reboot this board into its bootloader and install this image? [y/N] ",
         world,
-        &mut || core.firmware_guard_board(),
+        &mut || core.firmware_target(), // -- WP PGTM --
     )?;
     if passed.board.required_mv > 0 {
         req.note(&format!(
@@ -737,7 +815,8 @@ fn onto_device(
     let back = Back::Known(target.pinned(&device.serial));
     enter_bootloader(req, &device)?;
     let drive = wait_for_drive(req, world)?;
-    write(req, image, &drive, &passed)?;
+    // -- WP PGFLASH -- on the core that read the target: its write gate judges
+    write(req, Some(&device.core), image, &drive, &passed)?;
     confirm(target, req, image, &drive, &passed, &back, world)
 }
 
@@ -778,6 +857,21 @@ fn not_rebooted(e: &DspiError) -> (u8, String) {
 fn reboot_only(target: &Target, req: &Request, world: &mut dyn World) -> Result<(), u8> {
     let device = open_for_flash(req, target, world)?;
     req.note(&format!("Board: running {}.", running(&device.state)));
+    // -- WP PGTM -- a board without BOOTSEL is not sent into a bootloader it lacks
+    let board = device.core.firmware_target();
+    if !board.has_bootsel() {
+        let name = board.board().map_or(
+            "a board that could not be identified",
+            dspi_core::board_name,
+        );
+        return Err(req.fail(
+            exit::REJECTED,
+            &format!(
+                "this device ({name}) has no BOOTSEL bootloader this app can update it \
+                 through. Nothing was changed"
+            ),
+        ));
+    }
     if req.dry_run {
         req.result(
             "This would reboot the board into its bootloader. Nothing was changed.",
@@ -833,13 +927,28 @@ fn wait_for_drive(req: &Request, world: &mut dyn World) -> Result<BootloaderDriv
 }
 
 /// Through the guard, with the board record the answers were given against.
-fn write(req: &Request, image: &Image, drive: &BootloaderDrive, passed: &Passed) -> Result<(), u8> {
+/// WP PGFLASH: `core` is the one that read the board (its write gate judges by
+/// the target it read itself), or `None` for a board already in BOOTSEL, which
+/// gets a fresh core (the voltage rule alone, as before).
+fn write(
+    req: &Request,
+    core: Option<&Arc<DspiCore>>,
+    image: &Image,
+    drive: &BootloaderDrive,
+    passed: &Passed,
+) -> Result<(), u8> {
     req.note(&format!("Writing to {}...", printable(&drive.path)));
     // -- WP P1TM -- the write is a gated call (P1TK): the person has said yes
     // (or --force), so its token is minted here, with the drive there and no
     // device open on this core.
-    let core = DspiCore::new();
-    crate::core_route::apply_read_only(&core); // -- WP ROMODE --
+    let core = core.map_or_else(
+        || {
+            let core = DspiCore::new();
+            crate::core_route::apply_read_only(&core); // -- WP ROMODE --
+            core
+        },
+        Arc::clone,
+    );
     let token = core.confirm_token(dspi_core::ConfirmOp::FirmwareFlash);
     let written = core.flash_confirmed(
         image.bytes.clone(),
@@ -917,6 +1026,8 @@ fn confirm(
             "confirmed": confirmed,
             "board": passed.board,
             "guard": passed.verdict,
+            "update": passed.update, // -- WP PGTM --
+            "target": passed.target,
         })
     };
     req.note("Waiting for the board to come back...");

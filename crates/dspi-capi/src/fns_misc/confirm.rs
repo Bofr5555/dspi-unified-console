@@ -261,6 +261,13 @@ pub extern "C" fn dspi_core_vreg_manual_set_confirmed(
 /// retired `dspi_flash_to_drive` and `dspi_flash_to_drive_guarded`, WP P1TZF
 /// the unguarded `dspi_flash_to_drive_confirmed`. A board in BOOTSEL: pass
 /// `board_required_mv` 0 (unknown) and the phrase the guard's verdict asks for.
+/// -- WP PGFLASH -- When this `core` read the board itself
+/// (`dspi_firmware_target`, or its bootloader entry), the gate is
+/// `dspi_firmware_update_check`'s rules on that target, whatever target JSON
+/// the caller checked with: no BOOTSEL is `firmware_guard`, and an image that
+/// may be upstream's on this fork's firmware needs the lineage phrase in
+/// `typed`. A `board_required_mv` that is not the core's own reading makes the
+/// voltage unknown. With no target read by this core, the voltage rule alone.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_flash_confirmed(
     core: *mut FfiCore,

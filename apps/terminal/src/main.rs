@@ -93,6 +93,8 @@ mod stdio {
     }
 }
 
+// -- WP PGTM -- `uconsole info` and `uconsole raw --id`: the protocol generation
+mod protocol_info;
 // -- WP TM12 --
 mod autoeq_update;
 // -- WP TM10 --
@@ -241,6 +243,11 @@ fn main() -> ExitCode {
         Some("params") => cmd_params(),
         Some("completions") => cmd_completions(&positional(&flags)),
         Some("doctor") | Some("--doctor") => doctor::run(target),
+        // -- WP PGTM -- a paged command by its id, and the device's protocol
+        Some("raw") if protocol_info::wants_id(&flags) => {
+            protocol_info::cmd_raw_id(target, &flags, json)
+        }
+        Some("info") => protocol_info::cmd_info(target, json),
         Some("raw") => cmd_raw(target, &positional(&flags), json),
         Some("ext") => cmd_ext(
             target,
@@ -310,6 +317,8 @@ fn main() -> ExitCode {
 fn is_command_word(word: &str) -> bool {
     /// What this binary adds to the shared grammar's verbs.
     const TERMINAL_VERBS: &[&str] = &[
+        // -- WP PGTM --
+        "info",
         "ext",
         "autoeq",
         "screenshot",
@@ -682,6 +691,13 @@ USAGE:
     {COMMAND} raw out <op> <v> <hex...>
                              write any vendor opcode with a payload
     {COMMAND} raw war <op> <v> issue a write-as-read and print its status byte
+    {COMMAND} raw --id <id> <len> [v] | raw out --id <id> <v> <hex...>
+                             one paged GET or SET on firmware 1.1.7 and later:
+                             <id> is 0xPPCC or PAGE.NAME (e.g. --id 0x0550);
+                             the core refuses what writes flash, restarts or is
+                             bulk, and a 1.1.6 device, with nothing sent
+    {COMMAND} info            the device's protocol: generation, version, pages,
+                             extension channel and board (--json)
     {COMMAND} ext [list]      list the firmware's extension channel commands
     {COMMAND} ext xfeed-map [p0 p1 p2 p3]
                              read, or set, the crossfeed output pairs:
@@ -1125,7 +1141,8 @@ fn cmd_tui(target: &Target, flags: &[&str], palette: dspi_tui::theme::Palette) -
     // -- WP TM9 -- The target as reached: with the hub's id, for a reconnect.
     let reached = c.link.clone().map_or_else(|| target.clone(), Target::Link);
     let link = Some((&reached, &c.ext));
-    run_tui(
+    // -- WP PGTM -- with the protocol `connected_on` read once, for About
+    run_tui_with(
         &mut c.session,
         c.state,
         link,
@@ -1133,6 +1150,7 @@ fn cmd_tui(target: &Target, flags: &[&str], palette: dspi_tui::theme::Palette) -
         lite,
         no_animation,
         palette,
+        c.protocol.take(),
     )
 }
 
@@ -1162,6 +1180,31 @@ fn run_tui(
     no_animation: bool,
     palette: dspi_tui::theme::Palette,
 ) -> u8 {
+    run_tui_with(
+        session,
+        state,
+        connection,
+        document,
+        lite,
+        no_animation,
+        palette,
+        None,
+    )
+}
+
+// -- WP PGTM --
+/// [`run_tui`], with the device's protocol for Settings > About.
+#[allow(clippy::too_many_arguments)]
+fn run_tui_with(
+    session: &mut Session,
+    state: dspi_session::DeviceState,
+    connection: Option<(&Target, &ExtState)>,
+    document: Option<&str>,
+    lite: bool,
+    no_animation: bool,
+    palette: dspi_tui::theme::Palette,
+    protocol: Option<dspi_tui::settings::about::DeviceProtocolView>,
+) -> u8 {
     let theme = dspi_tui::Theme::new(
         palette,
         dspi_tui::theme::ColorDepth::detect(),
@@ -1188,6 +1231,7 @@ fn run_tui(
         live.set_opener(std::sync::Arc::new(core_route::open_connected));
         live.set_connection(target, ext);
     }
+    live.set_protocol(protocol); // -- WP PGTM --
     if let Some(file) = document {
         live.set_document(file);
     }
@@ -2027,6 +2071,14 @@ fn parse_num(s: &str) -> Option<u32> {
 // (or take `--yes`) and mint the core's token. Checked before anything opens,
 // so the `raw` IN path, which opens the device without a core, refuses too.
 fn raw_refuses_gated(opcode: u32) -> Option<u8> {
+    // -- WP PGTM -- an id with a page would go out as its low byte
+    if opcode > 0xFF {
+        eprintln!(
+            "{COMMAND}: 0x{opcode:X} is not a 1.1.6 opcode; a paged command goes by its id: \
+             `{COMMAND} raw --id 0x{opcode:04X} <len>`"
+        );
+        return Some(exit::USAGE);
+    }
     let call = u8::try_from(opcode)
         .ok()
         .and_then(dspi_core::raw_gated_call)?;
@@ -2035,6 +2087,15 @@ fn raw_refuses_gated(opcode: u32) -> Option<u8> {
          which `raw` cannot carry; use the typed command (the core's {call}), not `raw`"
     );
     Some(exit::USAGE)
+}
+
+// -- review PG-D1 -- a wValue or a length above 16 bits went out truncated,
+// as an opcode above 0xFF did before PGTM: refused, with nothing opened
+fn raw_u16(what: &str, n: u32) -> Result<u16, u8> {
+    u16::try_from(n).map_err(|_| {
+        eprintln!("{COMMAND}: {what} 0x{n:X} does not fit the request's 16 bits");
+        exit::USAGE
+    })
 }
 
 fn raw_in(target: &Target, args: &[&str], json: bool) -> u8 {
@@ -2050,7 +2111,11 @@ fn raw_in(target: &Target, args: &[&str], json: bool) -> u8 {
     if let Some(code) = raw_refuses_gated(opcode) {
         return code;
     }
-    let value = args.get(2).and_then(|v| parse_num(v)).unwrap_or(0) as u16;
+    let value = args.get(2).and_then(|v| parse_num(v)).unwrap_or(0);
+    let (value, len) = match (raw_u16("wValue", value), raw_u16("length", len)) {
+        (Ok(v), Ok(l)) => (v, l),
+        (Err(c), _) | (_, Err(c)) => return c,
+    };
 
     // -- WP TM4 --
     let mut t = match target.open_raw(&prompt_pin) {
@@ -2058,7 +2123,7 @@ fn raw_in(target: &Target, args: &[&str], json: bool) -> u8 {
         Err(e) => return fail_open(e),
     };
 
-    match t.control_in(opcode as u8, value, len as u16) {
+    match t.control_in(opcode as u8, value, len) {
         Ok(d) => {
             if json {
                 println!(
@@ -2118,8 +2183,12 @@ fn raw_out(target: &Target, args: &[&str], json: bool) -> u8 {
     if let Some(code) = raw_refuses_gated(opcode) {
         return code;
     }
+    let value = match raw_u16("wValue", value) {
+        Ok(v) => v,
+        Err(c) => return c,
+    };
     // WP CG14: this path could not carry the confirmation word.
-    if dspi_session::overvolt::is_core_vreg_write(opcode as u8, value as u16) {
+    if dspi_session::overvolt::is_core_vreg_write(opcode as u8, value) {
         eprintln!(
             "{COMMAND}: core-voltage requests go through `{COMMAND} ext vreg`, not `raw out`"
         );
@@ -2135,16 +2204,10 @@ fn raw_out(target: &Target, args: &[&str], json: bool) -> u8 {
     };
 
     // -- WP TMCOREF2 -- (N4) the PIN only when the lock refuses it
-    let mut sent = t
-        .transport
-        .control_out(opcode as u8, value as u16, &payload);
+    let mut sent = t.transport.control_out(opcode as u8, value, &payload);
     if let Err(e) = &sent {
         match t.again(e) {
-            Ok(true) => {
-                sent = t
-                    .transport
-                    .control_out(opcode as u8, value as u16, &payload)
-            }
+            Ok(true) => sent = t.transport.control_out(opcode as u8, value, &payload),
             Ok(false) => {}
             Err(c) => return c,
         }
@@ -2189,7 +2252,13 @@ fn raw_war(target: &Target, args: &[&str], json: bool) -> u8 {
     if let Some(code) = raw_refuses_gated(opcode) {
         return code;
     }
-    let value = args.get(1).and_then(|v| parse_num(v)).unwrap_or(0) as u16;
+    let value = match raw_u16(
+        "wValue",
+        args.get(1).and_then(|v| parse_num(v)).unwrap_or(0),
+    ) {
+        Ok(v) => v,
+        Err(c) => return c,
+    };
 
     // -- WP TM4 --
     // -- WP TMCORE -- a write goes through the console core (its lock and
@@ -3832,5 +3901,64 @@ mod tests_wp_ausb2 {
             ),
             (Some(2), Some(1))
         );
+    }
+}
+
+// -- review PG-D1 --
+#[cfg(test)]
+mod tests_review_pgd1 {
+    use super::*;
+
+    /// `raw` sends nothing it would have to truncate: an opcode above 0xFF
+    /// (PGTM: a paged id went out as its low byte), a wValue or a length above
+    /// 16 bits. Refused before anything is opened; the demo would answer.
+    #[test]
+    fn review_pgd1_raw_refuses_what_would_go_out_truncated() {
+        assert_eq!(raw_refuses_gated(0x0550), Some(exit::USAGE));
+        assert_eq!(raw_refuses_gated(0x0100), Some(exit::USAGE));
+        // 0x01F0 would have gone out as the bootloader entry's 0xF0
+        assert_eq!(raw_refuses_gated(0x01F0), Some(exit::USAGE));
+        assert_eq!(raw_refuses_gated(0x7F), None);
+        assert_eq!(raw_u16("wValue", 0xFFFF), Ok(0xFFFF));
+        assert_eq!(raw_u16("wValue", 0x1_8003), Err(exit::USAGE));
+        let demo = Target::Demo;
+        assert_eq!(raw_in(&demo, &["0x7F", "7"], true), exit::OK);
+        assert_eq!(raw_in(&demo, &["0x017F", "8"], true), exit::USAGE);
+        assert_eq!(raw_in(&demo, &["0x7F", "8", "0x10000"], true), exit::USAGE);
+        assert_eq!(raw_in(&demo, &["0x7F", "0x10008"], true), exit::USAGE);
+        assert_eq!(raw_out(&demo, &["0x0150", "0", "00"], true), exit::USAGE);
+        // 0x1_8003 would have gone out as the extension id 0x8003
+        assert_eq!(
+            raw_out(&demo, &["0x00", "0x18003", "00"], true),
+            exit::USAGE
+        );
+        assert_eq!(raw_war(&demo, &["0x01C2", "0"], true), exit::USAGE);
+        assert_eq!(raw_war(&demo, &["0xC2", "0x1010E"], true), exit::USAGE);
+    }
+
+    /// `uconsole info` and Settings > About say when the device is the alink
+    /// sender (WP PGFIX's `device_kind`), and only then.
+    #[test]
+    fn review_pgd1_info_says_the_alink_sender() {
+        use dspi_tui::settings::about::SENDER_NOTE;
+        let open = |dev: dspi_transport::FakeDevice| {
+            let serial = dspi_transport::Transport::descriptor(&dev).serial.clone();
+            let core = dspi_core::DspiCore::new();
+            let t = dspi_transport::paged::open(Box::new(dev)).unwrap();
+            core.open_transport(t, serial, 0).unwrap();
+            core
+        };
+        let sender = open(dspi_transport::FakeDevice::sender(false));
+        let p = sender.device_protocol().unwrap();
+        let view = protocol_info::view_of(&p);
+        assert_eq!(view.notes(), [SENDER_NOTE]);
+        let text = protocol_info::info_text("S", &view);
+        assert!(text.contains("audio link sender"), "{text}");
+        let json = protocol_info::info_json("S", &p);
+        assert_eq!(json["protocol"]["deviceKind"], "alinkSender", "{json}");
+        assert!(json["notes"][0].as_str().unwrap().contains("sender"));
+        let dsp = open(dspi_transport::FakeDevice::demo());
+        let view = protocol_info::view_of(&dsp.device_protocol().unwrap());
+        assert!(view.notes().is_empty());
     }
 }

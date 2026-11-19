@@ -32,6 +32,11 @@ mdns = ["dep:mdns-sd", "dep:windows-sys"]
 # never has it even with the feature on. Off by default; the core turns it on
 # for native targets (SECCORE).
 tls = ["dep:rustls", "dep:rustls-webpki", "dep:ring", "dep:spake2"]
+# -- WP PGFIX --
+# Test-only knobs (`messages::test_knobs`): the hello minor a client on this
+# thread sends, so a test's own `LinkClient` can be a 1.2 (minor 2) client.
+# Never in a shipped build.
+test-knobs = []
 
 [dependencies]
 # Sync WebSocket over std::net::TcpStream (RFC 6455), no TLS: the protocol is

@@ -1633,7 +1633,11 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "measureRtaPassiveHold",
             "measureRtaPassiveAveraging",
             "measureRtaPassiveStop",
-            "measureDocCurves"
+            "measureDocCurves",
+            // -- WP PGFWX -- the update target (reads, before the bootloader
+            // entry) and the update check (stateless, on the image)
+            "firmwareTarget",
+            "firmwareUpdateCheck"
         )
 
         /** Control-surface operations that only read the device (`cs.rs`, `cs_op`). */

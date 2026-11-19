@@ -1601,4 +1601,29 @@ pub struct DeviceProtocol {
     /// The name clients show for the board in caps and About: "DSPi",
     /// "DSPi Zero" or "Unknown board" (`board_name`).
     pub board_name: String,
+    // -- WP PGFIX --
+    /// What the device is, and so what the client may offer: a DSP with its
+    /// whole model, or the alink sender with its few commands only.
+    pub device_kind: DeviceKind,
+}
+
+// -- WP PGFIX --
+/// What kind of device the open connection is (PLAN-PG section 1.9, PGMAT F1).
+/// A client shows the screens of the kind only.
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum DeviceKind {
+    /// A DSPi: the bulk image, the DSP model, the generator, the meters.
+    #[default]
+    Dsp,
+    /// The alink sender build (`firmware/DSPi-Sender`, legacy only): a
+    /// connection with limited capabilities. It has the device info
+    /// (platform, serial, build), the extension channel with its alink block
+    /// (`alink_info`, `fetch_alink_*`, `reset_alink_stats`) and the update
+    /// check's target; no bulk image, no DSP model, no generator, no meters.
+    /// Every DSP setter answers [`crate::DspiError::Unsupported`] with nothing
+    /// sent, and `get_state` shows the platform's identity only
+    /// (`bulk_valid` false, no channels).
+    AlinkSender,
 }
