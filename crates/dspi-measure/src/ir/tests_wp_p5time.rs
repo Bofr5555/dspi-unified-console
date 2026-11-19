@@ -1161,3 +1161,77 @@ fn proptest_wp_p5time_analysis_never_panics_or_returns_non_finite() {
         },
     );
 }
+
+// -- WP P5TRUST -- the repeat spread on the windowed responses, beyond what
+// their noise explains (review P5-C2, cause 2: 106 to 113 of 192 points of a
+// transition with 25 to 49 dB of SNR read a spread above 1 dB).
+
+#[test]
+fn wp_p5trust_the_repeat_spread_is_the_windowed_responses_beyond_their_noise() {
+    let grid = LogGrid::STANDARD.freqs().unwrap();
+    let spread_vs_snr = |noise: f64| -> Vec<(f64, f64)> {
+        let mut world = World::new(vec![delta_way(0, 0.001)]);
+        world.noise_rms = noise;
+        let a = analyse(
+            &world,
+            &schedule(48_000, 1_000, 300, 1, 3),
+            &AnalysisOptions::default(),
+        )
+        .unwrap();
+        let o = &a.outputs[0];
+        let w = fdw_response(&o.ir, o.onset_index, &grid, FIT_WINDOW_CYCLES).unwrap();
+        let nz = o.noise_db.as_ref().unwrap();
+        w.values
+            .iter()
+            .zip(&w.sum_w2)
+            .zip(nz)
+            .zip(&o.spread_db)
+            .map(|(((v, s2), n), sp)| (10.0 * v.norm_sqr().log10() - n - 10.0 * s2.log10(), *sp))
+            .collect()
+    };
+    // A quiet capture: the repeats agree everywhere.
+    // (Inside the sweep's band: below it the deconvolution is regularised,
+    // and the trust mask never trusts it.)
+    let in_band = |v: Vec<(f64, f64)>| -> Vec<(f64, f64)> {
+        grid.iter()
+            .zip(v)
+            .filter(|(f, _)| (20.0..=20_000.0).contains(*f))
+            .map(|(_, x)| x)
+            .collect()
+    };
+    let quiet = in_band(spread_vs_snr(1e-5));
+    assert!(quiet.iter().all(|(_, sp)| *sp < 0.1), "{quiet:?}");
+    // A noisy one: where the windowed response holds 25 to 50 dB of SNR, the
+    // spread (beyond the noise) stays within the trust mask's 1 dB.
+    let noisy = in_band(spread_vs_snr(0.05));
+    let band: Vec<&(f64, f64)> = noisy
+        .iter()
+        .filter(|(snr, _)| (25.0..=50.0).contains(snr))
+        .collect();
+    assert!(band.len() > 100, "{} points at 25 to 50 dB", band.len());
+    let over = band.iter().filter(|(_, sp)| *sp > 1.0).count();
+    println!(
+        "{over} of {} points at 25 to 50 dB read more than 1 dB",
+        band.len()
+    );
+    assert!(over * 50 <= band.len(), "{over} of {}", band.len());
+}
+
+#[test]
+fn wp_p5trust_the_noise_explains_a_spread_that_grows_with_it() {
+    assert_eq!(noise_spread_db(0.0, 1.0), 0.0);
+    assert_eq!(noise_spread_db(f64::NAN, 1.0), 0.0);
+    assert_eq!(noise_spread_db(1.0, 0.0), 200.0);
+    assert_eq!(noise_spread_db(1.0, 1.0), 200.0);
+    let mut last = 0.0;
+    for snr_db in [60.0, 40.0, 30.0, 20.0, 10.0] {
+        let d = noise_spread_db(1.0, 10f64.powf(snr_db / 10.0));
+        assert!(d > last && d.is_finite(), "{snr_db}: {d}");
+        last = d;
+    }
+    // Small noise: NOISE_SPREAD_SIGMAS standard deviations of 20·log10|1 + ε z|'s in-phase
+    // part, ε/√2 · 8.686 dB each.
+    let eps = 10f64.powf(-40.0 / 20.0);
+    let want = NOISE_SPREAD_SIGMAS * 8.685_889_6 * eps / std::f64::consts::SQRT_2;
+    assert!((noise_spread_db(1.0, 1e4) - want).abs() < 0.01 * want);
+}

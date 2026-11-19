@@ -884,3 +884,42 @@ fn wp_p5live_device_no_write_without_a_preview_of_the_chain_it_has() {
     r.core.measure_live_stop();
 }
 mod tests_review_p5c1;
+
+// -- WP P5TRUST -- review P5-C2's follow-up 3 for "fit this range": the
+// level anchored in the reference band (the target as the graph shows it),
+// so a broad bass excess is cut (and a dip the boost cap cannot fill is left
+// out, so it does not pull the level down).
+#[test]
+fn wp_p5trust_fit_this_range_sees_a_broad_bass_excess() {
+    let r = rig();
+    let mut world = free_world();
+    // 12 dB below 150 Hz: about 6 dB above the house target's own shelf.
+    world.outputs[0].driver.breakup = Some(SimFilter::LowShelf {
+        freq: 150.0,
+        q: 0.7,
+        gain_db: 12.0,
+    });
+    let mut mic = Mic::new(&r, world);
+    r.core.measure_live_start(sweep_setup()).unwrap();
+    first_frame(&mut mic, &r.core);
+    let m = r.core.measure_live_frame().measured.unwrap();
+    let p = r.core.measure_live_fit_range(0, 30.0, 300.0).unwrap();
+    assert!(p.issue.is_none(), "{p:#?}");
+    let pred = p.predicted.clone().unwrap();
+    // What the proposal changes, without its headroom cut.
+    let cut = |f: f64| at(&pred, f) - at(&m, f) - f64::from(p.gain_after_db - p.gain_before_db);
+    println!(
+        "{:#?}\nchange at 50 Hz {:.2} dB, 1 kHz {:.2} dB",
+        p.changes,
+        cut(50.0),
+        cut(1_000.0)
+    );
+    assert!(cut(50.0) < -3.0, "the excess is cut: {}", cut(50.0));
+    assert!(cut(1_000.0).abs() < 0.5, "the reference band stays");
+    assert!(
+        p.changes.iter().all(|c| c.after.filter_type != 3),
+        "no high shelf: {p:#?}"
+    );
+    assert!(p.rms_after_db < p.rms_before_db);
+    r.core.measure_live_stop();
+}

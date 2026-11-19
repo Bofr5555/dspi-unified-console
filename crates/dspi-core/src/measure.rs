@@ -151,6 +151,8 @@ pub(crate) const NOTICE_KEYS: &[&str] = &[
     "measure.tune.sum_check_needed",
     "measure.tune.mic",
     "measure.tune.not_kept",
+    // -- WP P5TRUST --
+    "measure.tune.keep_unverified",
 ];
 
 // ── Records ─────────────────────────────────────────────────────────────

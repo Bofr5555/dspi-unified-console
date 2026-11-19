@@ -83,7 +83,8 @@ Where this page and the code disagree, the code is right and the page is the bug
 8. **No loopback, no reference speaker, no firmware time stamp.** The one check that does not depend on the capture clock
    is the summed run, mandatory before any timing write is offered.
 9. **Noise and trust:** a 1 s pre-roll gives the noise floor; a point is trusted (`valid`) when its SNR is above 20 dB and
-   its repeat-to-repeat spread under 1 dB. Untrusted points are drawn faint and never fitted.
+   its repeat-to-repeat spread under 1 dB (the repeats' windowed responses, beyond the spread their noise explains).
+   Untrusted points are drawn faint and never fitted.
 10. **Memory:** a capture holds at most 8 Mi frames (`MAX_CAPTURE_SAMPLES`); a run that would exceed it is refused at the
     plan step. Responses are held on a 1/96-octave grid from 10 Hz to 22 kHz (1066 points).
 
@@ -102,7 +103,7 @@ Where this page and the code disagree, the code is right and the page is the bug
 | **S7** Finite runs | Every run ends on its own: `repeat` at least 1, pink at most 60 s, a run at most 120 s |
 | **S8** Silence first | Refused while any input peaks above -70 dBFS |
 | **S9** Bounded proposals | Inside the registry, the limits profile and the platform; PEQ boost at most +3 dB (speakers) or +6 dB (headphones), cuts at most -15 dB, Q 0.3 to 10; crossover and level changes cut only; the EQ's net boost offset by an output-gain cut |
-| **S10** Guarded and reversible | A tune is applied only after a second preflight, a "before" snapshot, inside a guarded apply (300 s) as one undo group |
+| **S10** Guarded and reversible | A tune is applied only after a second preflight, a "before" snapshot, inside a guarded apply (the planned verify plus a margin, at most 590 s) as one undo group |
 | **S11** Locks and roles | A writable connection, read-only mode off, Control or Admin through a hub, the `measure` screen not locked by an installer |
 | **S12** Privacy | Raw microphone audio stays in the core's memory for the run only; documents hold derived curves only; a WAV is written only when the user exports one |
 | **S13** No unmodelled processing | Refused while crossfeed, psychoacoustic bass, tube, subharmonic, loudness or an engaging limiter acts on a measured output |
@@ -131,7 +132,7 @@ nothing written.
    read; the user confirms it.
 2. **Preflight** (section 2): every blocker in words.
 3. **Measure:** one walked run per alignment group; each driver's own response is the measurement divided by its known
-   chain, trusted only where the SNR minus the chain's attenuation is at least 20 dB.
+   chain, trusted only where the measurement's SNR at that point (which carries the chain's attenuation) is at least 20 dB.
 4. **Delay and polarity**, only from a timing-reliable run; delays normalised so the group's smallest delay keeps its
    current value; polarity as the net invert of the feeding crosspoints.
 5. **Crossover:** corner (1/12-octave steps, within the drivers' trusted ranges, never below S6), levels cut only, the
@@ -140,12 +141,15 @@ nothing written.
    measured and the predicted sum withdraws every delay, polarity and crossover write.
 7. **Target fit:** the free PEQ bands toward the target, within the range and caps of S9.
 8. **Proposal:** every write in words, the curves before and predicted, the limits held to. Nothing is written yet.
-9. **Apply:** the preflight again, "Before auto-tune" snapshot filed, `apply_guard_begin("Auto-tune", 300)`, one undo
+9. **Apply:** the preflight again, "Before auto-tune" snapshot filed, `apply_guard_begin("Auto-tune", <the planned verify plus a margin>)`, one undo
    group of typed writes, each judged as any write.
 10. **Verify** inside the guard: a walked run and a summed run per transition.
 11. **Keep or revert:** Keep confirms the guard, files "After auto-tune" with a `tune` block and offers the A/B compare of
-    the two snapshots; Revert or the timeout reverts. The measurement document records the tune (section 7.3,
-    `tunes`).
+    the two snapshots; Revert or the timeout reverts. After a verify that did not pass, the first Keep is refused with
+    `measure.tune.keep_unverified`; show it and keep only on a second Keep the user confirms. `apply_confirm` on the
+    tune's guard is refused the same way (a guard banner's Keep is no way round it), a Keep within 1 s of the refusal is
+    refused again (a double click is one press), and stopping the verify does not clear it. The measurement document
+    records the tune (section 7.3, `tunes`).
 
 ## 5. The live view and direct adjustments
 

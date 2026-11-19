@@ -422,3 +422,28 @@ proptest! {
         }
     }
 }
+
+// -- WP P5TRUST -- "fit this range" anchors its level in the reference band
+// where the output plays there.
+#[test]
+fn wp_p5trust_the_live_fit_anchors_only_where_the_output_plays_the_reference_band() {
+    let flat_target = flat_resp(0.0, 20.0);
+    let m = flat_resp(-30.0, 20.0);
+    // A full-range output: the measurement's level in 500 Hz to 2 kHz.
+    let full = chain(vec![flat_band(); 10], 0.0);
+    let a = live_anchor(&m, &flat_target, &full).unwrap();
+    assert!((a + 30.0).abs() < 1e-9, "{a}");
+    // A woofer crossed at 300 Hz measures its stopband there: no anchor.
+    let mut woofer = full.clone();
+    woofer.crossover = vec![BandSpec {
+        filter_type: 34,
+        bypass: false,
+        freq: 300.0,
+        q: 0.707,
+        gain: 0.0,
+        qp: 0.0,
+    }];
+    assert!(live_anchor(&m, &flat_target, &woofer).is_none());
+    // Nothing trusted in the band: no anchor.
+    assert!(live_anchor(&flat_resp(-30.0, 5_000.0), &flat_target, &full).is_none());
+}

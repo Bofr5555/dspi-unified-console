@@ -3,7 +3,7 @@
     "output": 0,
     "kind": "headroom",
     "timing": false,
-    "words": "Output 1 (L low): output gain 0.0 → -1.3 dB (headroom for the EQ -1.3 dB)",
+    "words": "Output 1 (L low): output gain 0.0 → -3.0 dB (headroom for the EQ -3.0 dB)",
     "params": [
       {
         "path": "out.gain",
@@ -11,7 +11,7 @@
           0
         ],
         "value": {
-          "float": -1.3
+          "float": -3.0
         }
       }
     ]
@@ -20,7 +20,7 @@
     "output": 0,
     "kind": "crossover",
     "timing": true,
-    "words": "Output 1 (L low): crossover LR4 low-pass 378 Hz → 337 Hz",
+    "words": "Output 1 (L low): crossover LR4 low-pass 378 Hz → 300 Hz",
     "params": [
       {
         "path": "eq.freq",
@@ -29,7 +29,7 @@
           20
         ],
         "value": {
-          "float": 336.8
+          "float": 300.0
         }
       }
     ]
@@ -38,7 +38,7 @@
     "output": 0,
     "kind": "delay",
     "timing": true,
-    "words": "Output 1 (L low): delay 3.0000 → 3.0885 ms",
+    "words": "Output 1 (L low): delay 3.0000 → 3.0707 ms",
     "params": [
       {
         "path": "out.delay",
@@ -46,7 +46,7 @@
           0
         ],
         "value": {
-          "float": 3.0885
+          "float": 3.0707
         }
       }
     ]
@@ -55,7 +55,7 @@
     "output": 0,
     "kind": "eq",
     "timing": false,
-    "words": "Output 1 (L low): PEQ band 1: flat → peak -4.9 dB at 42 Hz, Q 2.00",
+    "words": "Output 1 (L low): PEQ band 1: flat → peak +0.5 dB at 31 Hz, Q 9.99",
     "params": [
       {
         "path": "eq.type",
@@ -74,7 +74,7 @@
           0
         ],
         "value": {
-          "float": 42.5
+          "float": 31.1
         }
       },
       {
@@ -82,54 +82,6 @@
         "indices": [
           4,
           0
-        ],
-        "value": {
-          "float": 2.0
-        }
-      },
-      {
-        "path": "eq.gain",
-        "indices": [
-          4,
-          0
-        ],
-        "value": {
-          "float": -4.9
-        }
-      }
-    ]
-  },
-  {
-    "output": 0,
-    "kind": "eq",
-    "timing": false,
-    "words": "Output 1 (L low): PEQ band 2: flat → peak +2.8 dB at 68 Hz, Q 9.99",
-    "params": [
-      {
-        "path": "eq.type",
-        "indices": [
-          4,
-          1
-        ],
-        "value": {
-          "choice": 1
-        }
-      },
-      {
-        "path": "eq.freq",
-        "indices": [
-          4,
-          1
-        ],
-        "value": {
-          "float": 68.1
-        }
-      },
-      {
-        "path": "eq.q",
-        "indices": [
-          4,
-          1
         ],
         "value": {
           "float": 9.99
@@ -139,27 +91,27 @@
         "path": "eq.gain",
         "indices": [
           4,
+          0
+        ],
+        "value": {
+          "float": 0.5
+        }
+      }
+    ]
+  },
+  {
+    "output": 0,
+    "kind": "eq",
+    "timing": false,
+    "words": "Output 1 (L low): PEQ band 2: flat → peak +3.0 dB at 32 Hz, Q 6.40",
+    "params": [
+      {
+        "path": "eq.type",
+        "indices": [
+          4,
           1
         ],
         "value": {
-          "float": 2.8
-        }
-      }
-    ]
-  },
-  {
-    "output": 0,
-    "kind": "eq",
-    "timing": false,
-    "words": "Output 1 (L low): PEQ band 3: flat → peak -3.5 dB at 94 Hz, Q 5.80",
-    "params": [
-      {
-        "path": "eq.type",
-        "indices": [
-          4,
-          2
-        ],
-        "value": {
           "choice": 1
         }
       },
@@ -167,171 +119,27 @@
         "path": "eq.freq",
         "indices": [
           4,
-          2
+          1
         ],
         "value": {
-          "float": 93.8
+          "float": 32.2
         }
       },
       {
         "path": "eq.q",
         "indices": [
           4,
-          2
+          1
         ],
         "value": {
-          "float": 5.8
+          "float": 6.4
         }
       },
       {
         "path": "eq.gain",
         "indices": [
           4,
-          2
-        ],
-        "value": {
-          "float": -3.5
-        }
-      }
-    ]
-  },
-  {
-    "output": 0,
-    "kind": "eq",
-    "timing": false,
-    "words": "Output 1 (L low): PEQ band 4: flat → peak -2.9 dB at 132 Hz, Q 6.70",
-    "params": [
-      {
-        "path": "eq.type",
-        "indices": [
-          4,
-          3
-        ],
-        "value": {
-          "choice": 1
-        }
-      },
-      {
-        "path": "eq.freq",
-        "indices": [
-          4,
-          3
-        ],
-        "value": {
-          "float": 131.7
-        }
-      },
-      {
-        "path": "eq.q",
-        "indices": [
-          4,
-          3
-        ],
-        "value": {
-          "float": 6.7
-        }
-      },
-      {
-        "path": "eq.gain",
-        "indices": [
-          4,
-          3
-        ],
-        "value": {
-          "float": -2.9
-        }
-      }
-    ]
-  },
-  {
-    "output": 0,
-    "kind": "eq",
-    "timing": false,
-    "words": "Output 1 (L low): PEQ band 5: flat → peak -5.9 dB at 187 Hz, Q 2.00",
-    "params": [
-      {
-        "path": "eq.type",
-        "indices": [
-          4,
-          4
-        ],
-        "value": {
-          "choice": 1
-        }
-      },
-      {
-        "path": "eq.freq",
-        "indices": [
-          4,
-          4
-        ],
-        "value": {
-          "float": 186.9
-        }
-      },
-      {
-        "path": "eq.q",
-        "indices": [
-          4,
-          4
-        ],
-        "value": {
-          "float": 2.0
-        }
-      },
-      {
-        "path": "eq.gain",
-        "indices": [
-          4,
-          4
-        ],
-        "value": {
-          "float": -5.9
-        }
-      }
-    ]
-  },
-  {
-    "output": 0,
-    "kind": "eq",
-    "timing": false,
-    "words": "Output 1 (L low): PEQ band 6: flat → peak +3.0 dB at 258 Hz, Q 6.08",
-    "params": [
-      {
-        "path": "eq.type",
-        "indices": [
-          4,
-          5
-        ],
-        "value": {
-          "choice": 1
-        }
-      },
-      {
-        "path": "eq.freq",
-        "indices": [
-          4,
-          5
-        ],
-        "value": {
-          "float": 257.7
-        }
-      },
-      {
-        "path": "eq.q",
-        "indices": [
-          4,
-          5
-        ],
-        "value": {
-          "float": 6.08
-        }
-      },
-      {
-        "path": "eq.gain",
-        "indices": [
-          4,
-          5
+          1
         ],
         "value": {
           "float": 3.0
@@ -340,10 +148,394 @@
     ]
   },
   {
+    "output": 0,
+    "kind": "eq",
+    "timing": false,
+    "words": "Output 1 (L low): PEQ band 3: flat → peak -3.6 dB at 43 Hz, Q 4.56",
+    "params": [
+      {
+        "path": "eq.type",
+        "indices": [
+          4,
+          2
+        ],
+        "value": {
+          "choice": 1
+        }
+      },
+      {
+        "path": "eq.freq",
+        "indices": [
+          4,
+          2
+        ],
+        "value": {
+          "float": 42.8
+        }
+      },
+      {
+        "path": "eq.q",
+        "indices": [
+          4,
+          2
+        ],
+        "value": {
+          "float": 4.56
+        }
+      },
+      {
+        "path": "eq.gain",
+        "indices": [
+          4,
+          2
+        ],
+        "value": {
+          "float": -3.6
+        }
+      }
+    ]
+  },
+  {
+    "output": 0,
+    "kind": "eq",
+    "timing": false,
+    "words": "Output 1 (L low): PEQ band 4: flat → peak +3.0 dB at 68 Hz, Q 6.26",
+    "params": [
+      {
+        "path": "eq.type",
+        "indices": [
+          4,
+          3
+        ],
+        "value": {
+          "choice": 1
+        }
+      },
+      {
+        "path": "eq.freq",
+        "indices": [
+          4,
+          3
+        ],
+        "value": {
+          "float": 68.4
+        }
+      },
+      {
+        "path": "eq.q",
+        "indices": [
+          4,
+          3
+        ],
+        "value": {
+          "float": 6.26
+        }
+      },
+      {
+        "path": "eq.gain",
+        "indices": [
+          4,
+          3
+        ],
+        "value": {
+          "float": 3.0
+        }
+      }
+    ]
+  },
+  {
+    "output": 0,
+    "kind": "eq",
+    "timing": false,
+    "words": "Output 1 (L low): PEQ band 5: flat → peak -2.6 dB at 95 Hz, Q 9.12",
+    "params": [
+      {
+        "path": "eq.type",
+        "indices": [
+          4,
+          4
+        ],
+        "value": {
+          "choice": 1
+        }
+      },
+      {
+        "path": "eq.freq",
+        "indices": [
+          4,
+          4
+        ],
+        "value": {
+          "float": 95.1
+        }
+      },
+      {
+        "path": "eq.q",
+        "indices": [
+          4,
+          4
+        ],
+        "value": {
+          "float": 9.12
+        }
+      },
+      {
+        "path": "eq.gain",
+        "indices": [
+          4,
+          4
+        ],
+        "value": {
+          "float": -2.6
+        }
+      }
+    ]
+  },
+  {
+    "output": 0,
+    "kind": "eq",
+    "timing": false,
+    "words": "Output 1 (L low): PEQ band 6: flat → peak +1.2 dB at 112 Hz, Q 5.22",
+    "params": [
+      {
+        "path": "eq.type",
+        "indices": [
+          4,
+          5
+        ],
+        "value": {
+          "choice": 1
+        }
+      },
+      {
+        "path": "eq.freq",
+        "indices": [
+          4,
+          5
+        ],
+        "value": {
+          "float": 111.5
+        }
+      },
+      {
+        "path": "eq.q",
+        "indices": [
+          4,
+          5
+        ],
+        "value": {
+          "float": 5.22
+        }
+      },
+      {
+        "path": "eq.gain",
+        "indices": [
+          4,
+          5
+        ],
+        "value": {
+          "float": 1.2
+        }
+      }
+    ]
+  },
+  {
+    "output": 0,
+    "kind": "eq",
+    "timing": false,
+    "words": "Output 1 (L low): PEQ band 7: flat → peak -2.1 dB at 130 Hz, Q 8.32",
+    "params": [
+      {
+        "path": "eq.type",
+        "indices": [
+          4,
+          6
+        ],
+        "value": {
+          "choice": 1
+        }
+      },
+      {
+        "path": "eq.freq",
+        "indices": [
+          4,
+          6
+        ],
+        "value": {
+          "float": 130.5
+        }
+      },
+      {
+        "path": "eq.q",
+        "indices": [
+          4,
+          6
+        ],
+        "value": {
+          "float": 8.32
+        }
+      },
+      {
+        "path": "eq.gain",
+        "indices": [
+          4,
+          6
+        ],
+        "value": {
+          "float": -2.1
+        }
+      }
+    ]
+  },
+  {
+    "output": 0,
+    "kind": "eq",
+    "timing": false,
+    "words": "Output 1 (L low): PEQ band 8: flat → peak -3.4 dB at 183 Hz, Q 2.19",
+    "params": [
+      {
+        "path": "eq.type",
+        "indices": [
+          4,
+          7
+        ],
+        "value": {
+          "choice": 1
+        }
+      },
+      {
+        "path": "eq.freq",
+        "indices": [
+          4,
+          7
+        ],
+        "value": {
+          "float": 183.2
+        }
+      },
+      {
+        "path": "eq.q",
+        "indices": [
+          4,
+          7
+        ],
+        "value": {
+          "float": 2.19
+        }
+      },
+      {
+        "path": "eq.gain",
+        "indices": [
+          4,
+          7
+        ],
+        "value": {
+          "float": -3.4
+        }
+      }
+    ]
+  },
+  {
+    "output": 0,
+    "kind": "eq",
+    "timing": false,
+    "words": "Output 1 (L low): PEQ band 9: flat → peak +3.0 dB at 245 Hz, Q 9.99",
+    "params": [
+      {
+        "path": "eq.type",
+        "indices": [
+          4,
+          8
+        ],
+        "value": {
+          "choice": 1
+        }
+      },
+      {
+        "path": "eq.freq",
+        "indices": [
+          4,
+          8
+        ],
+        "value": {
+          "float": 245.0
+        }
+      },
+      {
+        "path": "eq.q",
+        "indices": [
+          4,
+          8
+        ],
+        "value": {
+          "float": 9.99
+        }
+      },
+      {
+        "path": "eq.gain",
+        "indices": [
+          4,
+          8
+        ],
+        "value": {
+          "float": 3.0
+        }
+      }
+    ]
+  },
+  {
+    "output": 0,
+    "kind": "eq",
+    "timing": false,
+    "words": "Output 1 (L low): PEQ band 10: flat → peak +2.3 dB at 294 Hz, Q 9.99",
+    "params": [
+      {
+        "path": "eq.type",
+        "indices": [
+          4,
+          9
+        ],
+        "value": {
+          "choice": 1
+        }
+      },
+      {
+        "path": "eq.freq",
+        "indices": [
+          4,
+          9
+        ],
+        "value": {
+          "float": 294.1
+        }
+      },
+      {
+        "path": "eq.q",
+        "indices": [
+          4,
+          9
+        ],
+        "value": {
+          "float": 9.99
+        }
+      },
+      {
+        "path": "eq.gain",
+        "indices": [
+          4,
+          9
+        ],
+        "value": {
+          "float": 2.3
+        }
+      }
+    ]
+  },
+  {
     "output": 1,
     "kind": "level",
     "timing": true,
-    "words": "Output 2 (L mid): output gain 0.0 → -6.2 dB (level -4.9 dB, headroom for the EQ -1.3 dB)",
+    "words": "Output 2 (L mid): output gain 0.0 → -7.9 dB (level -4.9 dB, headroom for the EQ -3.0 dB)",
     "params": [
       {
         "path": "out.gain",
@@ -351,7 +543,7 @@
           1
         ],
         "value": {
-          "float": -6.2
+          "float": -7.9
         }
       }
     ]
@@ -360,7 +552,7 @@
     "output": 1,
     "kind": "crossover",
     "timing": true,
-    "words": "Output 2 (L mid): crossover LR4 high-pass 378 Hz → 337 Hz",
+    "words": "Output 2 (L mid): crossover LR4 high-pass 378 Hz → 300 Hz",
     "params": [
       {
         "path": "eq.freq",
@@ -369,25 +561,7 @@
           20
         ],
         "value": {
-          "float": 336.8
-        }
-      }
-    ]
-  },
-  {
-    "output": 1,
-    "kind": "crossover",
-    "timing": true,
-    "words": "Output 2 (L mid): crossover LR4 low-pass 2.52 kHz → 2.83 kHz",
-    "params": [
-      {
-        "path": "eq.freq",
-        "indices": [
-          5,
-          21
-        ],
-        "value": {
-          "float": 2831.6
+          "float": 300.0
         }
       }
     ]
@@ -396,7 +570,7 @@
     "output": 1,
     "kind": "delay",
     "timing": true,
-    "words": "Output 2 (L mid): delay 3.0000 → 3.1670 ms",
+    "words": "Output 2 (L mid): delay 3.0000 → 3.1649 ms",
     "params": [
       {
         "path": "out.delay",
@@ -404,7 +578,7 @@
           1
         ],
         "value": {
-          "float": 3.167
+          "float": 3.1649
         }
       }
     ]
@@ -440,7 +614,7 @@
     "output": 1,
     "kind": "eq",
     "timing": false,
-    "words": "Output 2 (L mid): PEQ band 1: flat → peak -4.9 dB at 42 Hz, Q 2.00",
+    "words": "Output 2 (L mid): PEQ band 1: flat → peak +0.5 dB at 31 Hz, Q 9.99",
     "params": [
       {
         "path": "eq.type",
@@ -459,7 +633,7 @@
           0
         ],
         "value": {
-          "float": 42.5
+          "float": 31.1
         }
       },
       {
@@ -467,54 +641,6 @@
         "indices": [
           5,
           0
-        ],
-        "value": {
-          "float": 2.0
-        }
-      },
-      {
-        "path": "eq.gain",
-        "indices": [
-          5,
-          0
-        ],
-        "value": {
-          "float": -4.9
-        }
-      }
-    ]
-  },
-  {
-    "output": 1,
-    "kind": "eq",
-    "timing": false,
-    "words": "Output 2 (L mid): PEQ band 2: flat → peak +2.8 dB at 68 Hz, Q 9.99",
-    "params": [
-      {
-        "path": "eq.type",
-        "indices": [
-          5,
-          1
-        ],
-        "value": {
-          "choice": 1
-        }
-      },
-      {
-        "path": "eq.freq",
-        "indices": [
-          5,
-          1
-        ],
-        "value": {
-          "float": 68.1
-        }
-      },
-      {
-        "path": "eq.q",
-        "indices": [
-          5,
-          1
         ],
         "value": {
           "float": 9.99
@@ -524,27 +650,27 @@
         "path": "eq.gain",
         "indices": [
           5,
+          0
+        ],
+        "value": {
+          "float": 0.5
+        }
+      }
+    ]
+  },
+  {
+    "output": 1,
+    "kind": "eq",
+    "timing": false,
+    "words": "Output 2 (L mid): PEQ band 2: flat → peak +3.0 dB at 32 Hz, Q 6.40",
+    "params": [
+      {
+        "path": "eq.type",
+        "indices": [
+          5,
           1
         ],
         "value": {
-          "float": 2.8
-        }
-      }
-    ]
-  },
-  {
-    "output": 1,
-    "kind": "eq",
-    "timing": false,
-    "words": "Output 2 (L mid): PEQ band 3: flat → peak -3.5 dB at 94 Hz, Q 5.80",
-    "params": [
-      {
-        "path": "eq.type",
-        "indices": [
-          5,
-          2
-        ],
-        "value": {
           "choice": 1
         }
       },
@@ -552,171 +678,27 @@
         "path": "eq.freq",
         "indices": [
           5,
-          2
+          1
         ],
         "value": {
-          "float": 93.8
+          "float": 32.2
         }
       },
       {
         "path": "eq.q",
         "indices": [
           5,
-          2
+          1
         ],
         "value": {
-          "float": 5.8
+          "float": 6.4
         }
       },
       {
         "path": "eq.gain",
         "indices": [
           5,
-          2
-        ],
-        "value": {
-          "float": -3.5
-        }
-      }
-    ]
-  },
-  {
-    "output": 1,
-    "kind": "eq",
-    "timing": false,
-    "words": "Output 2 (L mid): PEQ band 4: flat → peak -2.9 dB at 132 Hz, Q 6.70",
-    "params": [
-      {
-        "path": "eq.type",
-        "indices": [
-          5,
-          3
-        ],
-        "value": {
-          "choice": 1
-        }
-      },
-      {
-        "path": "eq.freq",
-        "indices": [
-          5,
-          3
-        ],
-        "value": {
-          "float": 131.7
-        }
-      },
-      {
-        "path": "eq.q",
-        "indices": [
-          5,
-          3
-        ],
-        "value": {
-          "float": 6.7
-        }
-      },
-      {
-        "path": "eq.gain",
-        "indices": [
-          5,
-          3
-        ],
-        "value": {
-          "float": -2.9
-        }
-      }
-    ]
-  },
-  {
-    "output": 1,
-    "kind": "eq",
-    "timing": false,
-    "words": "Output 2 (L mid): PEQ band 5: flat → peak -5.9 dB at 187 Hz, Q 2.00",
-    "params": [
-      {
-        "path": "eq.type",
-        "indices": [
-          5,
-          4
-        ],
-        "value": {
-          "choice": 1
-        }
-      },
-      {
-        "path": "eq.freq",
-        "indices": [
-          5,
-          4
-        ],
-        "value": {
-          "float": 186.9
-        }
-      },
-      {
-        "path": "eq.q",
-        "indices": [
-          5,
-          4
-        ],
-        "value": {
-          "float": 2.0
-        }
-      },
-      {
-        "path": "eq.gain",
-        "indices": [
-          5,
-          4
-        ],
-        "value": {
-          "float": -5.9
-        }
-      }
-    ]
-  },
-  {
-    "output": 1,
-    "kind": "eq",
-    "timing": false,
-    "words": "Output 2 (L mid): PEQ band 6: flat → peak +3.0 dB at 258 Hz, Q 6.08",
-    "params": [
-      {
-        "path": "eq.type",
-        "indices": [
-          5,
-          5
-        ],
-        "value": {
-          "choice": 1
-        }
-      },
-      {
-        "path": "eq.freq",
-        "indices": [
-          5,
-          5
-        ],
-        "value": {
-          "float": 257.7
-        }
-      },
-      {
-        "path": "eq.q",
-        "indices": [
-          5,
-          5
-        ],
-        "value": {
-          "float": 6.08
-        }
-      },
-      {
-        "path": "eq.gain",
-        "indices": [
-          5,
-          5
+          1
         ],
         "value": {
           "float": 3.0
@@ -725,10 +707,394 @@
     ]
   },
   {
+    "output": 1,
+    "kind": "eq",
+    "timing": false,
+    "words": "Output 2 (L mid): PEQ band 3: flat → peak -3.6 dB at 43 Hz, Q 4.56",
+    "params": [
+      {
+        "path": "eq.type",
+        "indices": [
+          5,
+          2
+        ],
+        "value": {
+          "choice": 1
+        }
+      },
+      {
+        "path": "eq.freq",
+        "indices": [
+          5,
+          2
+        ],
+        "value": {
+          "float": 42.8
+        }
+      },
+      {
+        "path": "eq.q",
+        "indices": [
+          5,
+          2
+        ],
+        "value": {
+          "float": 4.56
+        }
+      },
+      {
+        "path": "eq.gain",
+        "indices": [
+          5,
+          2
+        ],
+        "value": {
+          "float": -3.6
+        }
+      }
+    ]
+  },
+  {
+    "output": 1,
+    "kind": "eq",
+    "timing": false,
+    "words": "Output 2 (L mid): PEQ band 4: flat → peak +3.0 dB at 68 Hz, Q 6.26",
+    "params": [
+      {
+        "path": "eq.type",
+        "indices": [
+          5,
+          3
+        ],
+        "value": {
+          "choice": 1
+        }
+      },
+      {
+        "path": "eq.freq",
+        "indices": [
+          5,
+          3
+        ],
+        "value": {
+          "float": 68.4
+        }
+      },
+      {
+        "path": "eq.q",
+        "indices": [
+          5,
+          3
+        ],
+        "value": {
+          "float": 6.26
+        }
+      },
+      {
+        "path": "eq.gain",
+        "indices": [
+          5,
+          3
+        ],
+        "value": {
+          "float": 3.0
+        }
+      }
+    ]
+  },
+  {
+    "output": 1,
+    "kind": "eq",
+    "timing": false,
+    "words": "Output 2 (L mid): PEQ band 5: flat → peak -2.6 dB at 95 Hz, Q 9.12",
+    "params": [
+      {
+        "path": "eq.type",
+        "indices": [
+          5,
+          4
+        ],
+        "value": {
+          "choice": 1
+        }
+      },
+      {
+        "path": "eq.freq",
+        "indices": [
+          5,
+          4
+        ],
+        "value": {
+          "float": 95.1
+        }
+      },
+      {
+        "path": "eq.q",
+        "indices": [
+          5,
+          4
+        ],
+        "value": {
+          "float": 9.12
+        }
+      },
+      {
+        "path": "eq.gain",
+        "indices": [
+          5,
+          4
+        ],
+        "value": {
+          "float": -2.6
+        }
+      }
+    ]
+  },
+  {
+    "output": 1,
+    "kind": "eq",
+    "timing": false,
+    "words": "Output 2 (L mid): PEQ band 6: flat → peak +1.2 dB at 112 Hz, Q 5.22",
+    "params": [
+      {
+        "path": "eq.type",
+        "indices": [
+          5,
+          5
+        ],
+        "value": {
+          "choice": 1
+        }
+      },
+      {
+        "path": "eq.freq",
+        "indices": [
+          5,
+          5
+        ],
+        "value": {
+          "float": 111.5
+        }
+      },
+      {
+        "path": "eq.q",
+        "indices": [
+          5,
+          5
+        ],
+        "value": {
+          "float": 5.22
+        }
+      },
+      {
+        "path": "eq.gain",
+        "indices": [
+          5,
+          5
+        ],
+        "value": {
+          "float": 1.2
+        }
+      }
+    ]
+  },
+  {
+    "output": 1,
+    "kind": "eq",
+    "timing": false,
+    "words": "Output 2 (L mid): PEQ band 7: flat → peak -2.1 dB at 130 Hz, Q 8.32",
+    "params": [
+      {
+        "path": "eq.type",
+        "indices": [
+          5,
+          6
+        ],
+        "value": {
+          "choice": 1
+        }
+      },
+      {
+        "path": "eq.freq",
+        "indices": [
+          5,
+          6
+        ],
+        "value": {
+          "float": 130.5
+        }
+      },
+      {
+        "path": "eq.q",
+        "indices": [
+          5,
+          6
+        ],
+        "value": {
+          "float": 8.32
+        }
+      },
+      {
+        "path": "eq.gain",
+        "indices": [
+          5,
+          6
+        ],
+        "value": {
+          "float": -2.1
+        }
+      }
+    ]
+  },
+  {
+    "output": 1,
+    "kind": "eq",
+    "timing": false,
+    "words": "Output 2 (L mid): PEQ band 8: flat → peak -3.4 dB at 183 Hz, Q 2.19",
+    "params": [
+      {
+        "path": "eq.type",
+        "indices": [
+          5,
+          7
+        ],
+        "value": {
+          "choice": 1
+        }
+      },
+      {
+        "path": "eq.freq",
+        "indices": [
+          5,
+          7
+        ],
+        "value": {
+          "float": 183.2
+        }
+      },
+      {
+        "path": "eq.q",
+        "indices": [
+          5,
+          7
+        ],
+        "value": {
+          "float": 2.19
+        }
+      },
+      {
+        "path": "eq.gain",
+        "indices": [
+          5,
+          7
+        ],
+        "value": {
+          "float": -3.4
+        }
+      }
+    ]
+  },
+  {
+    "output": 1,
+    "kind": "eq",
+    "timing": false,
+    "words": "Output 2 (L mid): PEQ band 9: flat → peak +3.0 dB at 245 Hz, Q 9.99",
+    "params": [
+      {
+        "path": "eq.type",
+        "indices": [
+          5,
+          8
+        ],
+        "value": {
+          "choice": 1
+        }
+      },
+      {
+        "path": "eq.freq",
+        "indices": [
+          5,
+          8
+        ],
+        "value": {
+          "float": 245.0
+        }
+      },
+      {
+        "path": "eq.q",
+        "indices": [
+          5,
+          8
+        ],
+        "value": {
+          "float": 9.99
+        }
+      },
+      {
+        "path": "eq.gain",
+        "indices": [
+          5,
+          8
+        ],
+        "value": {
+          "float": 3.0
+        }
+      }
+    ]
+  },
+  {
+    "output": 1,
+    "kind": "eq",
+    "timing": false,
+    "words": "Output 2 (L mid): PEQ band 10: flat → peak +2.3 dB at 294 Hz, Q 9.99",
+    "params": [
+      {
+        "path": "eq.type",
+        "indices": [
+          5,
+          9
+        ],
+        "value": {
+          "choice": 1
+        }
+      },
+      {
+        "path": "eq.freq",
+        "indices": [
+          5,
+          9
+        ],
+        "value": {
+          "float": 294.1
+        }
+      },
+      {
+        "path": "eq.q",
+        "indices": [
+          5,
+          9
+        ],
+        "value": {
+          "float": 9.99
+        }
+      },
+      {
+        "path": "eq.gain",
+        "indices": [
+          5,
+          9
+        ],
+        "value": {
+          "float": 2.3
+        }
+      }
+    ]
+  },
+  {
     "output": 2,
     "kind": "level",
     "timing": true,
-    "words": "Output 3 (L high): output gain 0.0 → -5.5 dB (level -4.2 dB, headroom for the EQ -1.3 dB)",
+    "words": "Output 3 (L high): output gain 0.0 → -7.2 dB (level -4.2 dB, headroom for the EQ -3.0 dB)",
     "params": [
       {
         "path": "out.gain",
@@ -736,25 +1102,7 @@
           2
         ],
         "value": {
-          "float": -5.5
-        }
-      }
-    ]
-  },
-  {
-    "output": 2,
-    "kind": "crossover",
-    "timing": true,
-    "words": "Output 3 (L high): crossover LR4 high-pass 2.52 kHz → 2.83 kHz",
-    "params": [
-      {
-        "path": "eq.freq",
-        "indices": [
-          6,
-          20
-        ],
-        "value": {
-          "float": 2831.6
+          "float": -7.2
         }
       }
     ]

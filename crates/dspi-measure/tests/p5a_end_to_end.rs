@@ -271,9 +271,34 @@ fn wp_p5a_three_way_room_end_to_end() {
         );
     }
     let (t0, t1) = (&proposal.transitions[0], &proposal.transitions[1]);
-    assert!(octaves(t0.corner_hz, F1) <= 1.0 / 6.0 + 1e-9, "{t0:?}");
+    // -- WP P5TRUST -- through the woofer-mid transition this room's sum
+    // against the flat target falls all the way to the half-octave window's
+    // lower edge (267 Hz); with the trust rules fixed every candidate there
+    // is trusted, so the search no longer stops at the trusted range's edge
+    // near 300 Hz (what this test read as the design before). The edge is
+    // no minimum: the corner is kept, the edge said, the timing proposed.
+    assert!(t0.best_at_edge, "{t0:?}");
+    assert_eq!(t0.corner_hz, t0.corner_before_hz);
+    assert!(t0.kept_reason.is_none(), "{t0:?}");
+    // A window wide enough holds the minimum: inside it, below the default
+    // window's edge.
+    let wide = crossover_corner(
+        &drivers,
+        &transitions(),
+        &target,
+        &XoConstraints {
+            window_octaves: 1.0,
+            ..XoConstraints::default()
+        },
+        &ProtoModel,
+    )
+    .unwrap();
+    let w0 = &wide.transitions[0];
+    println!("xo, one octave: {w0:?}");
+    assert!(!w0.best_at_edge, "{w0:?}");
+    assert!(w0.corner_hz < 267.3 && w0.corner_hz > 189.0, "{w0:?}");
+    assert!(w0.cost_db.unwrap() < w0.cost_before_db.unwrap());
     assert!(octaves(t1.corner_hz, F2) <= 1.0 / 6.0 + 1e-9, "{t1:?}");
-    assert!(t0.cost_db.unwrap() < t0.cost_before_db.unwrap());
     assert!(t1.cost_db.unwrap() < t1.cost_before_db.unwrap());
     assert_eq!(
         proposal

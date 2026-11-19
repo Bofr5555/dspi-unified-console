@@ -89,9 +89,10 @@ pub struct Way {
     /// The measured response, **with phase** on the run's common timing
     /// reference, and its `valid` mask (`None` reads as all trusted).
     pub response: Response,
-    /// The measurement's signal-to-noise ratio per grid point, dB (the noise
-    /// floor from the pre-roll); used by the de-embedding's validity mask
-    /// (review RC12).
+    /// The measurement's signal-to-noise ratio per grid point, dB: the
+    /// measured response (the chain's attenuation in it) over the noise floor
+    /// from the pre-roll there. It is the de-embedding's validity mask as it
+    /// is (review RC12, review P5-C2: no attenuation is subtracted again).
     pub snr_db: Vec<f64>,
     /// The coarse arrival (the impulse response's onset) relative to the
     /// way's own cycle start, ms; it includes the chain's current delay.

@@ -267,7 +267,7 @@ fn timeout_of(timeout_s: u32) -> Duration {
 }
 
 /// The clock seam's now (with a test's skew).
-fn now() -> Instant {
+pub(crate) fn now() -> Instant {
     let n = Instant::now();
     #[cfg(test)]
     let n = n.checked_add(skew::get()).unwrap_or(n);
@@ -481,32 +481,16 @@ impl DspiCore {
     /// the timeout, the revert's end; or [`GuardPhase::Lost`] when the Keep
     /// could not reach the hub (it is not sent again: the hub reverts).
     ///
-    /// Errors: [`DspiError::InvalidArgument`] when nothing is waiting.
+    /// Errors: [`DspiError::InvalidArgument`] when nothing is waiting, or
+    /// (review P5TRUST) for the first Keep of an auto-tune whose verify did
+    /// not pass (`measure.tune.keep_unverified`, as
+    /// [`DspiCore::measure_tune_keep`]'s: the guard is the tune's whichever
+    /// call keeps it).
     pub fn apply_confirm(&self) -> Result<GuardedApply> {
-        let _op = lock(&self.guarded.op);
-        let r = self.running().ok_or_else(|| invalid(NOTHING_WAITING))?;
-        if r.lost {
-            return Ok(self.resolve_lost(r));
-        }
-        if now() >= r.deadline {
-            return Ok(self.revert_now(r, "timeout"));
-        }
-        if self.connection_changed(&r) {
-            return Ok(self.on_lost(r));
-        }
-        if r.hub.is_none() {
-            return Ok(self.finish(r, GuardPhase::Kept, "confirmed", "Kept.", Vec::new()));
-        }
-        match self.hub_end(&r, "apply.confirm") {
-            Ok(_) => Ok(self.finish(r, GuardPhase::Kept, "confirmed", "Kept.", Vec::new())),
-            // The hub ended it first (its timeout, another console's lock).
-            Err(DspiError::Link { code, .. })
-                if matches!(code.as_str(), "no_guard" | "conflict" | "denied") =>
-            {
-                Ok(self.after_hub_refusal(r))
-            }
-            Err(_) => Ok(self.on_lost(r)),
-        }
+        // -- review P5TRUST -- the tune's guard is this guard: a client's
+        // generic Keep must not pass what the tune's own Keep refuses.
+        self.tune_confirm_gate()?;
+        self.apply_confirm_ungated()
     }
 
     /// Put the settings from before back now. Returns the state:
@@ -621,6 +605,35 @@ impl DspiCore {
 // ─── The flow ───────────────────────────────────────────────────────────
 
 impl DspiCore {
+    /// [`DspiCore::apply_confirm`] without the auto-tune's gate (the tune's
+    /// own Keep has passed it).
+    pub(crate) fn apply_confirm_ungated(&self) -> Result<GuardedApply> {
+        let _op = lock(&self.guarded.op);
+        let r = self.running().ok_or_else(|| invalid(NOTHING_WAITING))?;
+        if r.lost {
+            return Ok(self.resolve_lost(r));
+        }
+        if now() >= r.deadline {
+            return Ok(self.revert_now(r, "timeout"));
+        }
+        if self.connection_changed(&r) {
+            return Ok(self.on_lost(r));
+        }
+        if r.hub.is_none() {
+            return Ok(self.finish(r, GuardPhase::Kept, "confirmed", "Kept.", Vec::new()));
+        }
+        match self.hub_end(&r, "apply.confirm") {
+            Ok(_) => Ok(self.finish(r, GuardPhase::Kept, "confirmed", "Kept.", Vec::new())),
+            // The hub ended it first (its timeout, another console's lock).
+            Err(DspiError::Link { code, .. })
+                if matches!(code.as_str(), "no_guard" | "conflict" | "denied") =>
+            {
+                Ok(self.after_hub_refusal(r))
+            }
+            Err(_) => Ok(self.on_lost(r)),
+        }
+    }
+
     /// The running guard, if any (a copy: the state lock is never held
     /// across I/O).
     fn running(&self) -> Option<Running> {

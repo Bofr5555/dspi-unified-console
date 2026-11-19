@@ -212,7 +212,8 @@ PRO1's T1 to T5 keep their ids; the owner's requirements add T7 to T12 (T6 is PR
    (section 1.4 step 6), which is mandatory before any timing write is offered (RC5f).
 9. **Noise and trust.** A 1 s pre-roll with the generator idle gives the noise floor; per point, SNR above 20 dB and a
    repeat-to-repeat spread under 1 dB mark it trusted (`Response.valid`); untrusted points are drawn faint and never
-   fitted.
+   fitted. (WP P5TRUST: the spread is of the repeats' **windowed** responses, the fit's window, beyond the spread their
+   noise explains; the SNR rule judges the noise.)
 10. **Memory and analysis** (RC8). Capture at most `MAX_CAPTURE_SAMPLES` = 8 Mi frames (32 MiB); the plan step refuses
     a setup whose planned frames (pre-roll + cycles + post-roll at the capture rate) exceed it, so the largest
     default run (a whole stereo three-way system as one alignment group: 6 outputs × 3 passes × 6.5 s ≈ 117 s, 5.6 M
@@ -281,8 +282,8 @@ The owner's rule, R5, item by item, and what enforces it. **S1 to S13 are the te
   changes **cut only** relative to the speaker, re-normalised so the loudest way keeps its previous gain (no gain ever
   raised, and repeated tunes do not ratchet levels down, S-f); the EQ's net boost offset by an equal output-gain cut. A
   proposal with a write the core would refuse is not offered.
-- **S10. Guarded and reversible.** A tune is applied only inside `apply_guard_begin` (default 300 s, enough for the
-  verifying runs), as one undo group, after a "before" snapshot is filed and **after the preflight is run again**
+- **S10. Guarded and reversible.** A tune is applied only inside `apply_guard_begin` (by default as long as the planned
+  verifying runs plus a margin, at most the guard's 590 s; WP P5TRUST, before a flat 300 s), as one undo group, after a "before" snapshot is filed and **after the preflight is run again**
   (silence, locks, roles, and every output's chain still the one the proposal was computed for; RC11). Keep, Revert, the
   timeout, a failed write or a lost connection behave as every guarded apply does. A direct adjustment is one undo
   group, unguarded (one band, as a manual edit).
@@ -327,7 +328,9 @@ before the next, and the user may stop after any step with nothing written.
 3. **Measure.** One walked run per **alignment group** (step 4) at the listening position, after S3's ramp; with several
    positions, the further runs. The measured responses hold the measured chain each way had, so **each driver's own
    response is the measurement divided by its known chain** (de-embedding through `SectionModel`), with its **own
-   validity mask**: trusted only where the measurement's SNR minus the chain's attenuation is at least 20 dB (RC12).
+   validity mask**: trusted only where the measurement's SNR minus the chain's attenuation is at least 20 dB (RC12; review
+   P5-C2: that is the measured SNR **per point**, which already is lower by the chain's attenuation, taken as it is:
+   subtracting the attenuation from it again asked 69 dB in the passband an octave past an LR4 corner).
 4. **Delay and polarity** (T2), only if the run passed the timing quality gate. The **alignment group** is the set of
    outputs aligned to each other, measured in one walked run: by default one speaker's ways; "align the whole system"
    puts both sides and the subwoofer in one run when S7's 120 s and the capture bound allow, else it is refused with the
@@ -339,7 +342,13 @@ before the next, and the user may stop after any step with nothing written.
    responses are trusted one octave each side**, RC12; never below S6's high-pass rule), keeping the current family and
    order, with the ways' levels (cut only, S9), delay and polarity, each candidate scored by the predicted acoustic sum
    (including the programme feed) against the target through the transition. "Keep the crossover, align only" is an
-   option.
+   option. WP P5TRUST: "trusted one octave each side" is 85 % of the span's points in both drivers, half of every third
+   of an octave, the corner's own third of an octave as the span, no hole wider than 1/12 octave, and a driver at least
+   20 dB down in its candidate's stopband needs no trust of its own there; a corner moves only when its sum is at least
+   1 % better than the current one's; a best corner on the edge of the search (the window's or the trusted range's) is
+   no minimum, so the corner is kept and only the timing proposed; a tweeter's high-pass is never lowered on the
+   magnitude sum alone (with the delays kept no lower corner is a candidate; every crossover write is a timing write,
+   applied only after the summed check passed) and never below S6.
 6. **Summed check, mandatory** (RC5f). One summed run per transition with the **current** chain: both ways play the
    generator's correlated copy, `invert_mask` set to the outputs' current net polarities (the generator bypasses the
    crosspoints, RC1). The measured sum is compared with the sum predicted from the walked run's responses and timing. If
@@ -347,12 +356,14 @@ before the next, and the user may stop after any step with nothing written.
    trusted: every delay, polarity and crossover write is withdrawn from the proposal with the reason; the EQ fit may
    remain. The proposed timing is checked again by the summed runs of step 10, inside the guard.
 7. **Target fit** (T4): per speaker side, the free PEQ bands toward the target, on the predicted response with the new
-   crossover, within the fit's range and caps (S9).
+   crossover, within the fit's range and caps (S9). WP P5TRUST: on a whole speaker the fit's level is anchored to the
+   target levelled in the reference band, dips deeper than the boost cap plus 1 dB are left out of the fit and its level,
+   and bands of Q 0.7 or more and low shelves are allowed (never a high shelf; at most 0.5 dB into the reference band).
 8. **Proposal.** One list: every write in words ("Output 2 (L high): crossover 2.8 kHz LR4 → 3.1 kHz LR4; delay 0 →
    0.21 ms; PEQ band 6: peak -3.5 dB at 1.9 kHz Q 2.1"), the curves before and predicted, the limits it was held to.
    Nothing is written yet.
 9. **Apply.** The preflight again (S10); `snapshot_capture_document` "Before auto-tune <date>" filed (the hub's store
-   through the hub, else the local one); `apply_guard_begin("Auto-tune", 300)`; `begin_group("Auto-tune")`; the writes
+   through the hub, else the local one); `apply_guard_begin("Auto-tune", <the planned verify plus a margin>)`; `begin_group("Auto-tune")`; the writes
    through `write_param` (each judged by read-only, limits and the lock as any write); `end_group`. A refused write stops
    the apply and the guard reverts.
 10. **Verify** inside the guard: one walked run of the tuned outputs **and one summed run per transition** with the new
@@ -360,7 +371,11 @@ before the next, and the user may stop after any step with nothing written.
     shown.
 11. **Keep or revert.** Keep: `apply_confirm`, "After auto-tune <date>" filed with a `tune` block (the measurement's id,
     the algorithm version, the options), and the A/B compare of the two snapshots offered (`ab_start`). Revert or the
-    timeout: the guard's revert; nothing else changes.
+    timeout: the guard's revert; nothing else changes. After a verify that did not pass, the first Keep is refused with
+    `measure.tune.keep_unverified` and only a second Keep, the user's explicit confirmation, keeps it (WP P5TRUST).
+    Review P5TRUST: the rule is the guard's, so the generic `apply_confirm` of the tune's guard is held to it as the
+    tune's own Keep is; the second Keep counts from 1 s after the refusal (a double click is one press); and the failed
+    verdict holds through a Stop and a new verify without a verdict, until a verify passes or another apply.
 
 ### 1.5 Locks, read-only, other clients, the hub
 
