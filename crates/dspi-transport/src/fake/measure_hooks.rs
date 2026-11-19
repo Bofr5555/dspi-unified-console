@@ -109,6 +109,20 @@ impl FakeRemote {
         self.shared.wake.notify_all();
         SiggenConfig::decode(&bytes).ok()
     }
+
+    // -- WP ATFAKE --
+    /// Every generator start this unit made on its time base (op 9, and plain
+    /// starts stamped with the T of their sample 0), oldest first, at most
+    /// 256: what a test renders the simulated world from. Empty without a
+    /// time base.
+    pub fn measure_timed_starts(&self) -> Vec<super::TimedStart> {
+        let mut s = self.shared.lock();
+        s.tb_service();
+        let v = s.tb_starts();
+        drop(s);
+        self.shared.wake.notify_all();
+        v
+    }
 }
 
 #[cfg(test)]

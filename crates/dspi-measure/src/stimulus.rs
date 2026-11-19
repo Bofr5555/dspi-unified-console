@@ -587,5 +587,134 @@ fn mask_outputs(mask: u16) -> Vec<u8> {
         .collect()
 }
 
+// -- WP ATSYS -- the system analyser's timeline walk, and the static rules on
+// a generator configuration for the hub and the core (PLAN-AT section 1.5).
+impl WalkSchedule {
+    /// A walk over arbitrary cycles (WP ATSYS): the system analyser's
+    /// timeline of several segments, each cycle's `output` a key of the run
+    /// and its `start` the domain sample after the run's first. Only
+    /// [`crate::ir::WalkedAnalyser`] reads it: [`WalkSchedule::status_at`],
+    /// [`WalkSchedule::period_samples`] and [`WalkSchedule::total_samples`]
+    /// assume a regular walk and mean nothing for it.
+    pub(crate) fn from_cycles(
+        sweep: LogSweep,
+        channel_mask: u16,
+        repeat: u16,
+        cycles: Vec<Cycle>,
+    ) -> WalkSchedule {
+        WalkSchedule {
+            sweep,
+            channel_mask,
+            repeat,
+            cycles,
+        }
+    }
+}
+
+/// The generator's signal type of a log sweep (`siggen.h`).
+pub const SIGNAL_LOG_SWEEP: u8 = 4;
+/// The generator's signal type of pink noise (`siggen.h`).
+pub const SIGNAL_PINK: u8 = 3;
+/// The longest pink noise a measurement plays, ms.
+pub const PINK_MAX_MS: u32 = 60_000;
+/// The highest level any measurement configuration may carry, peak dBFS: the
+/// speakers' hard cap (S3; `dspi-core`'s `HARD_CAP_SPEAKERS_DB`). A session's
+/// own ceiling is lower; this bound is what a hub can judge without knowing
+/// the session.
+pub const LEVEL_HARD_CAP_DB: f32 = -6.0;
+/// The lowest level a configuration may carry, peak dBFS.
+pub const LEVEL_MIN_DB: f32 = -120.0;
+
+/// The static rules on a generator configuration (P5's S7 and S3, PLAN-AT
+/// S-AT6), pure, so that the hub (`system.measure.stage`) and the core judge
+/// a `SiggenConfig` alike: version 1; never `RAW`; a log sweep of
+/// [`MIN_SWEEP_MS`] to [`MAX_SWEEP_MS`] with 1 to [`MAX_REPEAT`] passes and
+/// finite frequencies in [`SWEEP_FREQ_RANGE_HZ`], `p1 < p2`, or pink noise of
+/// 1 ms to [`PINK_MAX_MS`] on one output without the walk; never another type
+/// (so never an infinite one); a level from [`LEVEL_MIN_DB`] to
+/// [`LEVEL_HARD_CAP_DB`]; some output, the inverted ones among them; and no
+/// output in `forbidden_mask` (an S/PDIF source's time-base slots, S-AT6).
+///
+/// Errors: [`MeasureError::Invalid`] naming the first rule broken.
+pub fn check_config_bounds(
+    config: &dspi_proto::packets::SiggenConfig,
+    forbidden_mask: u16,
+) -> Result<(), MeasureError> {
+    use dspi_proto::packets::SiggenConfig as C;
+    let bad = |m: &str| {
+        Err(MeasureError::Invalid(format!(
+            "refused generator configuration: {m}"
+        )))
+    };
+    let c = config;
+    if c.version != 1 {
+        return bad("version is not 1");
+    }
+    if c.flags & C::FLAG_RAW != 0 {
+        return bad("RAW bypasses the protective filters");
+    }
+    if c.flags & !(C::FLAG_RAW | C::FLAG_DECORR | C::FLAG_WALK) != 0 {
+        return bad("undefined flags");
+    }
+    if !c.level_db.is_finite() || !(LEVEL_MIN_DB..=LEVEL_HARD_CAP_DB).contains(&c.level_db) {
+        return bad("level outside -120 dBFS to the hard cap");
+    }
+    if c.channel_mask == 0 {
+        return bad("no output");
+    }
+    if c.invert_mask & !c.channel_mask != 0 {
+        return bad("an inverted output that does not play");
+    }
+    if c.channel_mask & forbidden_mask != 0 {
+        return bad("an output that carries the time base to other units");
+    }
+    match c.signal_type {
+        SIGNAL_LOG_SWEEP => {
+            if !(MIN_SWEEP_MS..=MAX_SWEEP_MS).contains(&c.duration_ms)
+                || !(1..=MAX_REPEAT).contains(&c.repeat_count)
+            {
+                return bad("a sweep of 1 to 15 s, 1 to 8 repeats");
+            }
+            let (lo, hi) = SWEEP_FREQ_RANGE_HZ;
+            let in_range = |f: f32| f.is_finite() && (lo..=hi).contains(&f);
+            if !in_range(c.p1) || !in_range(c.p2) || c.p1 >= c.p2 {
+                return bad("sweep frequencies outside 1 Hz to 40 kHz or not rising");
+            }
+        }
+        SIGNAL_PINK => {
+            if !(1..=PINK_MAX_MS).contains(&c.duration_ms) {
+                return bad("pink noise of 1 ms to 60 s");
+            }
+            if c.flags & C::FLAG_WALK != 0 || c.channel_mask.count_ones() != 1 {
+                return bad("pink noise on one output");
+            }
+        }
+        _ => return bad("only a log sweep or pink noise"),
+    }
+    Ok(())
+}
+
+// -- review AT-A/AT-B --
+/// [`check_config_bounds`] for a configuration that an apply op 9
+/// (`SIGGEN_START` at a sample) will start: a log sweep only. The firmware
+/// starts only a finite type there (`extension_channel_spec.md` 2.8.7.1,
+/// review R4), and pink noise is a continuous type to it even with a
+/// duration: staged, it would complete every START `refused`. The hub's
+/// `system.measure.stage` judges with this one.
+///
+/// Errors: [`MeasureError::Invalid`] naming the first rule broken.
+pub fn check_timed_config(
+    config: &dspi_proto::packets::SiggenConfig,
+    forbidden_mask: u16,
+) -> Result<(), MeasureError> {
+    check_config_bounds(config, forbidden_mask)?;
+    if config.signal_type != SIGNAL_LOG_SWEEP {
+        return Err(MeasureError::Invalid(
+            "refused generator configuration: only a log sweep starts on the time base".into(),
+        ));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests_wp_p5time;

@@ -38,6 +38,11 @@
 //!   refused at 1 by a unit made with [`UsbDirectSetup::usb3b`] off (firmware
 //!   before WP USB3b, which also answers DIAG layout version 1).
 //!
+//! - **Time base** (-- WP ATFAKE --): on a [`super::FakeTimeBase`] the bus is the
+//!   domain's (its clock, not the process-wide one), ops 9 and 10 run on the
+//!   generator (op 9 by S only), and every state change is also a contract
+//!   transition (`EXT_TIME_BASE`, `0xE4`, `fake/timebase.rs`).
+//!
 //! Not modelled: the 250 ms rate limit on 0xE3, the servo's dynamics (the
 //! phase error is a small slow function of the clock), 44.1 kHz (the fake runs
 //! 48 kHz), the input source (the fake is always on USB).
@@ -104,9 +109,12 @@ fn bus_epoch() -> Instant {
 
 /// Bus frames since [`bus_epoch`], and the sample within the frame.
 fn bus_now() -> (u64, u16) {
-    let us = Instant::now()
-        .saturating_duration_since(bus_epoch())
-        .as_micros();
+    bus_since(bus_epoch())
+}
+
+/// Bus frames since `epoch`, and the sample within the frame.
+fn bus_since(epoch: Instant) -> (u64, u16) {
+    let us = Instant::now().saturating_duration_since(epoch).as_micros();
     let frames = u64::try_from(us.checked_div(1000).unwrap_or(0)).unwrap_or(u64::MAX);
     let k = us
         .checked_rem(1000)
@@ -183,6 +191,11 @@ pub(super) struct AlinkUsb {
     diag: Option<AlinkUsbDiag>,
     queue: Vec<ApplyRequest>,
     last: Option<ApplyStatus>,
+    // -- WP ATFAKE --
+    /// The domain's clock origin, on a time base: the host's first SOF.
+    tb_origin: Option<Instant>,
+    /// Whole-sample corrections on S ([`super::TimeBaseFault::Correction`]).
+    tb_adj: i64,
 }
 
 fn packet(id: u8, payload: &[u8]) -> Vec<u8> {
@@ -278,15 +291,26 @@ impl AlinkUsb {
 
     /// N now, on this unit's own count.
     fn frames(&self) -> (u64, u16) {
-        let (n, k) = bus_now();
+        // -- WP ATFAKE -- the domain's bus on a time base
+        let (n, k) = match self.tb_origin {
+            Some(o) => bus_since(o),
+            None => bus_now(),
+        };
         (n.saturating_add(self.origin()), k)
     }
 
     /// S now.
     fn sample(&self) -> u64 {
         let (n, k) = self.frames();
-        n.saturating_mul(u64::from(SPF))
-            .saturating_add(u64::from(k))
+        let s = n
+            .saturating_mul(u64::from(SPF))
+            .saturating_add(u64::from(k));
+        // -- WP ATFAKE --
+        if self.tb_adj >= 0 {
+            s.saturating_add(self.tb_adj.unsigned_abs())
+        } else {
+            s.saturating_sub(self.tb_adj.unsigned_abs())
+        }
     }
 
     /// The state now, with the pull-in or anchor finished if it is due.
@@ -499,6 +523,7 @@ impl State {
         if !self.alink_usb.on {
             return None;
         }
+        self.tb_service(); // -- WP ATFAKE --
         let shared = matches!(value, alink::EXT_FRAME_COUNTER | alink::EXT_APPLY_AT_FRAME);
         if !usb::ALINK_USB_IDS.contains(&value)
             && !(shared && (self.usb_time_base() || !self.options.alink))
@@ -533,7 +558,10 @@ impl State {
                         counter: FrameCounter {
                             frame: s,
                             time_us,
-                            output_frames: low32(s.saturating_sub(48_000)),
+                            // -- WP ATFAKE -- the outputs' own count on a time base
+                            output_frames: self
+                                .tb_output_frames_at(TB_USB, s)
+                                .unwrap_or_else(|| low32(s.saturating_sub(48_000))),
                         },
                         time_base: TimeBase::UsbSample,
                         bus_frame: bus_of(n),
@@ -578,6 +606,7 @@ impl State {
         if !self.alink_usb.on {
             return None;
         }
+        self.tb_service(); // -- WP ATFAKE --
         match value {
             usb::EXT_ALINK_USB => Some(self.write_usb_config(data)),
             usb::EXT_ALINK_USB_DIAG => Some(match *data {
@@ -661,6 +690,7 @@ impl State {
             }
         }
         self.lock_error_since(was_error);
+        self.tb_sync(); // -- WP ATFAKE --
         true
     }
 
@@ -694,11 +724,14 @@ impl State {
     /// a bad bus form or bad arguments; late (run now) when its sample has
     /// passed. `CANCEL_ALL` cancels the queue in any state.
     fn queue_usb_op(&mut self, r: ApplyRequest, tb: TimeBase) -> bool {
-        // -- WP PLANAT -- ops 9 and 10 are refused until ATFAKE models them.
-        if matches!(r.op, ApplyOp::SiggenStart | ApplyOp::SiggenStop) {
+        // -- WP ATFAKE -- ops 9 and 10 on a time base (firmware with FWTB1),
+        // refused at the write without one; op 9 never in the bus-frame form.
+        let siggen = matches!(r.op, ApplyOp::SiggenStart | ApplyOp::SiggenStop);
+        if siggen && (!self.tb_on() || (r.op == ApplyOp::SiggenStart && tb == TimeBase::BusFrame)) {
             return false;
         }
         if r.op == ApplyOp::CancelAll {
+            self.tb_on_cancel_all(TB_USB); // -- WP ATFAKE --
             for q in std::mem::take(&mut self.alink_usb.queue) {
                 self.usb_op_done(q, ApplyResult::Cancelled);
             }
@@ -736,6 +769,10 @@ impl State {
             }
         };
         let req = ApplyRequest { frame: target, ..r };
+        // -- WP ATFAKE --
+        if siggen {
+            return self.tb_write_siggen_op(TB_USB, req);
+        }
         // A sample already written to the rings (about a frame behind the arrival).
         if target <= now.saturating_sub(u64::from(SPF)) {
             self.usb_op_done(req, ApplyResult::Late);
@@ -749,7 +786,7 @@ impl State {
     }
 
     /// Run the queued ops whose sample has come.
-    fn run_due_usb_ops(&mut self) {
+    pub(super) fn run_due_usb_ops(&mut self) {
         let now = self.alink_usb.sample();
         let mut due = Vec::new();
         self.alink_usb.queue.retain(|r| {
@@ -764,6 +801,8 @@ impl State {
             // No click injection or GPIO in the demo: refused at apply time.
             let result = match r.op {
                 ApplyOp::Click | ApplyOp::SyncPulse => ApplyResult::Refused,
+                // -- WP ATFAKE --
+                ApplyOp::SiggenStart | ApplyOp::SiggenStop => self.tb_siggen_due(TB_USB, r),
                 _ => ApplyResult::Applied,
             };
             self.usb_op_done(r, result);
@@ -798,6 +837,30 @@ impl State {
     }
 
     fn usb_sim(&mut self, op: u8) -> bool {
+        // -- WP ATFAKE -- what is due before the fault runs first; the
+        // contract sees the transitions after it
+        self.tb_service();
+        let ok = self.usb_sim_raw(op);
+        if ok && self.tb_on() {
+            if op == USB_SIM_HOLDOVER {
+                // A holdover that resumed on the same timeline.
+                self.tb_emit(
+                    TB_USB,
+                    dspi_proto::ext::timebase::TB_STATE_HOLDOVER,
+                    tb_reason::HOLDOVER,
+                );
+                self.tb_emit(
+                    TB_USB,
+                    dspi_proto::ext::timebase::TB_STATE_LOCKED,
+                    tb_reason::RESUMED,
+                );
+            }
+            self.tb_sync();
+        }
+        ok
+    }
+
+    fn usb_sim_raw(&mut self, op: u8) -> bool {
         match op {
             USB_SIM_HOLDOVER => {
                 if let Some(d) = self.alink_usb.diag.as_mut() {
@@ -865,6 +928,102 @@ impl State {
             _ => return false,
         }
         true
+    }
+}
+
+// -- WP ATFAKE -- what `fake/timebase.rs` reads of the USB time base
+use dspi_proto::ext::timebase::{TB_USB_SAMPLE as TB_USB, reason as tb_reason};
+
+impl State {
+    /// The USB-direct `EXT_TIME_BASE` entry (`alink_protocol_spec.md` 11.2):
+    /// mode 1 or 2.
+    pub(super) fn alink_usb_tb_entry(&mut self) -> Option<super::timebase::Entry> {
+        use dspi_proto::ext::timebase as tbc;
+        if !self.usb_time_base() {
+            return None;
+        }
+        let st = self.alink_usb.status();
+        let state = if self.alink_usb.lock_error() {
+            tbc::TB_STATE_LOCK_ERROR
+        } else {
+            match st.state {
+                UsbState::PullIn => tbc::TB_STATE_ACQUIRING,
+                UsbState::Anchoring => tbc::TB_STATE_ANCHORING,
+                UsbState::PhaseLocked if st.flags & usb::USB_FLAG_HOLDOVER != 0 => {
+                    tbc::TB_STATE_HOLDOVER
+                }
+                UsbState::PhaseLocked => tbc::TB_STATE_LOCKED,
+                _ => tbc::TB_STATE_NONE,
+            }
+        };
+        let has_t = st.flags & usb::USB_FLAG_TIME_BASE != 0;
+        Some(super::timebase::Entry {
+            tb: TB_USB,
+            role: tbc::TB_ROLE_FOLLOWER,
+            state,
+            domain: u32::from(TB_USB) << 24,
+            t: if has_t { st.sample } else { 0 },
+            d: self.alink_usb.config().d,
+            phase_error: st.phase_error,
+        })
+    }
+
+    /// S now.
+    pub(super) fn alink_usb_sample(&self) -> u64 {
+        self.alink_usb.sample()
+    }
+
+    /// The domain's clock reading at which S is `s`.
+    pub(super) fn alink_usb_dom_samples(&self, s: u64) -> Option<u64> {
+        let u = &self.alink_usb;
+        u.tb_origin?;
+        let s = if u.tb_adj >= 0 {
+            s.saturating_sub(u.tb_adj.unsigned_abs())
+        } else {
+            s.saturating_add(u.tb_adj.unsigned_abs())
+        };
+        let origin = u.origin().saturating_mul(u64::from(SPF));
+        Some(s.saturating_sub(origin))
+    }
+
+    /// The instant S reaches `s` on the domain's clock.
+    pub(super) fn alink_usb_instant_of(&self, s: u64) -> Option<Instant> {
+        let samples = self.alink_usb_dom_samples(s)?;
+        self.tb_instant_of_samples(samples)
+    }
+
+    /// The USB apply queue.
+    pub(super) fn alink_usb_queue(&mut self) -> &mut Vec<ApplyRequest> {
+        &mut self.alink_usb.queue
+    }
+
+    /// An op of the USB queue completed.
+    pub(super) fn alink_usb_op_done(&mut self, r: ApplyRequest, result: ApplyResult) {
+        self.usb_op_done(r, result);
+    }
+
+    /// Count the bus on the domain's clock from `origin`.
+    pub(super) fn alink_usb_set_clock(&mut self, origin: Option<Instant>) {
+        self.alink_usb.tb_origin = origin;
+        if self.alink_usb.config().mode == usb::MODE_PHASE_LOCK {
+            self.alink_usb.stream_start = Some(
+                self.alink_usb
+                    .origin()
+                    .saturating_sub(STREAM_BEFORE)
+                    .saturating_add(u64::from(self.alink_usb.setup().stream_lag_frames)),
+            );
+        }
+    }
+
+    /// Whole samples inserted (positive) or dropped on S.
+    pub(super) fn alink_usb_correct(&mut self, n: i64) {
+        self.alink_usb.tb_adj = self.alink_usb.tb_adj.saturating_add(n);
+    }
+
+    /// A re-anchor (`reanchors`, DIAG's end of cause 7).
+    pub(super) fn alink_usb_count_reanchor(&mut self) {
+        self.alink_usb.reanchors = self.alink_usb.reanchors.saturating_add(1);
+        self.bump_end(7);
     }
 }
 

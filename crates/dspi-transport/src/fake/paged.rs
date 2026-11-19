@@ -586,8 +586,11 @@ impl State {
         {
             return Err(lm::VC_ERR_LENGTH);
         }
+        // -- WP ATFAKE -- a time-base handler names its own code (STATE,
+        // DIRECTION, ...; extension_channel_spec.md 2.8.7.1, 2.10, 2.11)
+        let _ = self.tb_take_refusal();
         self.set(op::REQ_EXTENSION, ext, data)
-            .map_err(|_| lm::VC_ERR_VALUE)
+            .map_err(|_| self.tb_take_refusal().unwrap_or(lm::VC_ERR_VALUE))
     }
 
     // -------------------------------------------------- WP PGFAKE2's hook

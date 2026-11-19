@@ -15,6 +15,8 @@ pub mod cs_model;
 pub mod cs_rows;
 pub mod ext;
 pub mod ext_state;
+// -- WP ATPROTO -- the time-base contract's I/O (PLAN-AT 1.3)
+pub mod ext_timebase;
 // -- WP P0M --
 pub mod events;
 mod fast;

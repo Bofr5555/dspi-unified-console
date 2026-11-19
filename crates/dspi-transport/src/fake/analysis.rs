@@ -256,8 +256,10 @@ impl State {
     /// The analyser's and generator's GETs: `None` for another opcode or a
     /// device without them, `Some(None)` to stall.
     pub(super) fn get_analysis(&mut self, opcode: u8, value: u16) -> Option<Option<Vec<u8>>> {
-        let now = Instant::now();
         self.analysis.as_ref()?;
+        // -- WP ATFAKE -- timed starts and stops that are due come first
+        self.tb_service();
+        let now = Instant::now();
         self.settle_analysis(now);
         Some(match opcode {
             op::REQ_RTA_GET_CONFIG => {
@@ -313,6 +315,10 @@ impl State {
                 let outputs = self.num_outputs();
                 let a = self.analysis()?;
                 let ok = a.siggen.control(value, now, outputs);
+                // -- WP ATFAKE --
+                if ok {
+                    self.siggen_after_control(u16::from(value as u8));
+                }
                 self.flush_siggen_events();
                 ok.then(|| vec![1])
             }
@@ -323,15 +329,22 @@ impl State {
     /// The analyser's and generator's SETs: `None` for another opcode or a
     /// device without them, `Some(false)` to refuse.
     pub(super) fn set_analysis(&mut self, opcode: u8, data: &[u8]) -> Option<bool> {
-        let now = Instant::now();
         self.analysis.as_ref()?;
+        // -- WP ATFAKE --
+        self.tb_service();
+        let now = Instant::now();
         self.settle_analysis(now);
         Some(match opcode {
             op::REQ_RTA_SET_CONFIG => self.rta_set_config(data, now),
             op::REQ_SIGGEN_SET_CONFIG => {
                 let outputs = self.num_outputs();
                 let a = self.analysis()?;
+                let was_running = a.siggen.running();
                 let ok = a.siggen.stage(data, now, outputs);
+                // -- WP ATFAKE --
+                if ok {
+                    self.siggen_after_stage(was_running);
+                }
                 self.flush_siggen_events();
                 ok
             }
@@ -357,8 +370,12 @@ impl State {
                 a.rta.arm(now, live);
             }
             a.siggen.stop_now(now, sg::SIGGEN_STOP_PRESET as u8);
+            // -- WP ATFAKE -- a preset load clears the fresh-config flag
+            a.siggen.timed.fresh = false;
         }
         self.flush_siggen_events();
+        // -- WP ATFAKE -- and restarts an S/PDIF source's outputs (an epoch)
+        self.tb_on_preset();
     }
 
     fn settle_analysis(&mut self, now: Instant) {
@@ -1002,6 +1019,9 @@ struct Siggen {
     stop_reason: u8,
     /// `[state, reason, type, channel]` to announce.
     events: Vec<[u8; 4]>,
+    // -- WP ATFAKE --
+    /// Its place on a time base (ops 9 and 10, `EXT_SIGGEN_TIMELINE`).
+    timed: Timed,
 }
 
 #[derive(Clone)]
@@ -1357,6 +1377,319 @@ impl Siggen {
                 tilt: 0.0,
             },
         })
+    }
+}
+
+// -- WP ATFAKE -- the generator on a time base (PLAN-AT 1.3; the fork's
+// `test_signals_spec.md` section 15, `extension_channel_spec.md` 2.8.7.1 and
+// 2.11.2). The queues and the time bases are `fake/timebase.rs`'s.
+
+/// A pending op 9 (at most one per unit, over all its time bases).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct PendingStart {
+    /// Its time base.
+    pub(super) tb: u8,
+    /// T of generator sample 0, the unit's numbering.
+    pub(super) t: u64,
+    /// Taken from a superframe (not the unit's own queue).
+    pub(super) broadcast: bool,
+}
+
+/// What `EXT_SIGGEN_TIMELINE` reports, and the fresh-config flag.
+struct Timed {
+    /// A config written by `SET_CONFIG` since the last boot, host stop, op
+    /// 10, `CANCEL_ALL`, preset load or loss.
+    fresh: bool,
+    pending: Option<PendingStart>,
+    last_result: u8,
+    discontinuities: u16,
+    start: u64,
+    start_tb: u8,
+    run_id: u32,
+    /// The current or last run was started by op 9.
+    op9_run: bool,
+}
+
+impl Default for Timed {
+    fn default() -> Self {
+        Self {
+            fresh: false,
+            pending: None,
+            last_result: dspi_proto::ext::timebase::timeline_result::NONE,
+            discontinuities: 0,
+            start: 0,
+            start_tb: dspi_proto::ext::timebase::TB_NONE,
+            run_id: 0,
+            op9_run: false,
+        }
+    }
+}
+
+/// Generator samples in `d` at the demo's rate.
+fn samples_in(d: Duration) -> u32 {
+    let s = d
+        .as_nanos()
+        .saturating_mul(u128::from(SAMPLE_RATE))
+        .checked_div(1_000_000_000)
+        .unwrap_or(0);
+    u32::try_from(s).unwrap_or(u32::MAX)
+}
+
+impl Siggen {
+    /// Precondition (a) and (b) of 2.8.7.1: a finite config (a sweep or a
+    /// pattern, `repeat` at least 1, never `RAW`), written since the last of
+    /// the events that clear the flag.
+    fn finite_fresh(&self) -> bool {
+        let Some(c) = self.cfg.as_ref() else {
+            return false;
+        };
+        let finite = matches!(timing(c.signal_type), TIMING_SWEEP | TIMING_PATTERN)
+            && c.repeat_count >= 1
+            && c.flags & SiggenConfig::FLAG_RAW == 0;
+        finite && self.timed.fresh
+    }
+}
+
+impl State {
+    fn siggen_mut(&mut self) -> Option<&mut Siggen> {
+        self.analysis.as_mut().map(|a| &mut a.siggen)
+    }
+
+    /// Whether the unit has a generator.
+    pub(super) fn siggen_present(&self) -> bool {
+        self.analysis.is_some()
+    }
+
+    /// The pending op 9.
+    pub(super) fn siggen_pending(&self) -> Option<PendingStart> {
+        self.analysis.as_ref()?.siggen.timed.pending
+    }
+
+    pub(super) fn siggen_set_pending(&mut self, p: PendingStart) {
+        if let Some(g) = self.siggen_mut() {
+            g.timed.pending = Some(p);
+        }
+    }
+
+    /// The pending op 9 ends with `result` (`timeline_result`).
+    pub(super) fn siggen_take_pending(&mut self, result: u8) -> Option<PendingStart> {
+        let g = self.siggen_mut()?;
+        g.timed.last_result = result;
+        g.timed.pending.take()
+    }
+
+    /// An op 9 that never became pending ended with `result`.
+    pub(super) fn siggen_note_result(&mut self, result: u8) {
+        if let Some(g) = self.siggen_mut() {
+            g.timed.last_result = result;
+        }
+    }
+
+    /// The staged config is no longer fresh.
+    pub(super) fn siggen_unfresh(&mut self) {
+        if let Some(g) = self.siggen_mut() {
+            g.timed.fresh = false;
+        }
+    }
+
+    /// The check at `T - arm_lead`.
+    pub(super) fn siggen_ready_to_arm(&self) -> bool {
+        self.analysis
+            .as_ref()
+            .is_some_and(|a| a.siggen.finite_fresh())
+    }
+
+    /// `REQ_SET_USER_MUTE` is on.
+    fn user_muted(&self) -> bool {
+        super::section("user_volume")
+            .and_then(|(base, _)| self.bytes(base.saturating_add(super::UV_MUTE.1), 1))
+            .is_some_and(|b| b.first() == Some(&1))
+    }
+
+    /// Op 9 on `tb` reached `t`, which played at `at`: the generator starts on
+    /// it if it is ready (locked, not muted, idle, a finite fresh config);
+    /// else the op is refused. True: started.
+    pub(super) fn siggen_timed_start(&mut self, tb: u8, t: u64, at: Instant, locked: bool) -> bool {
+        use dspi_proto::ext::timebase::timeline_result as tr;
+        let outputs = self.num_outputs();
+        let muted = self.user_muted();
+        let Some(g) = self.siggen_mut() else {
+            return false;
+        };
+        g.timed.pending = None;
+        g.settle_with(at, outputs);
+        if !locked || muted || g.running() || !g.finite_fresh() {
+            g.timed.last_result = tr::REFUSED_NOT_READY;
+            self.flush_siggen_events();
+            return false;
+        }
+        let cfg = g.config();
+        g.start(cfg.clone(), at, outputs);
+        let tm = &mut g.timed;
+        tm.start = t;
+        tm.start_tb = tb;
+        tm.run_id = tm.run_id.wrapping_add(1);
+        tm.last_result = tr::STARTED;
+        tm.discontinuities = 0;
+        tm.op9_run = true;
+        let run_id = tm.run_id;
+        self.flush_siggen_events();
+        self.tb_log_start(super::timebase::TimedStart {
+            run_id,
+            time_base: tb,
+            t,
+            timed: true,
+            config: cfg,
+        });
+        true
+    }
+
+    /// Op 10 at `at`: `arg` 0 as `SIGGEN_CTL_STOP`, 1 as `STOP_NOW`; the
+    /// staged config is no longer fresh.
+    pub(super) fn siggen_timed_stop(&mut self, arg: u8, at: Instant) {
+        let outputs = self.num_outputs();
+        let Some(g) = self.siggen_mut() else {
+            return;
+        };
+        g.timed.fresh = false;
+        g.settle_with(at, outputs);
+        let ctl = if arg == dspi_proto::ext::timebase::SIGGEN_STOP_NOW {
+            sg::SIGGEN_CTL_STOP_NOW
+        } else {
+            sg::SIGGEN_CTL_STOP
+        };
+        g.control(ctl, at, outputs);
+        self.flush_siggen_events();
+    }
+
+    /// Time base `tb` left `LOCKED`: the config is no longer fresh; a run
+    /// op 9 started on it stops (`STOPPED_LOSS`), any run counts it.
+    pub(super) fn siggen_loss(&mut self, tb: u8) {
+        let now = Instant::now();
+        let outputs = self.num_outputs();
+        let Some(g) = self.siggen_mut() else {
+            return;
+        };
+        g.timed.fresh = false;
+        g.settle_with(now, outputs);
+        if g.running() {
+            g.timed.discontinuities = g.timed.discontinuities.saturating_add(1);
+            if g.timed.op9_run && g.timed.start_tb == tb {
+                g.stop_now(now, sg::SIGGEN_STOP_HOST as u8);
+                g.timed.last_result = dspi_proto::ext::timebase::timeline_result::STOPPED_LOSS;
+            }
+        }
+        self.flush_siggen_events();
+    }
+
+    /// A disturbance (holdover, re-anchor, correction, epoch) while running.
+    pub(super) fn siggen_disturbed(&mut self) {
+        let now = Instant::now();
+        let outputs = self.num_outputs();
+        if let Some(g) = self.siggen_mut() {
+            g.settle_with(now, outputs);
+            if g.running() {
+                g.timed.discontinuities = g.timed.discontinuities.saturating_add(1);
+            }
+        }
+        self.flush_siggen_events();
+    }
+
+    /// A plain start (`SIGGEN_CTL_START`, or `SET_CONFIG` restarting a
+    /// running generator): stamped with the first locked time base's T.
+    fn siggen_stamp_plain(&mut self) {
+        let stamp = self.tb_first_locked();
+        let on = self.tb_on();
+        let Some(g) = self.siggen_mut() else {
+            return;
+        };
+        let (tb, t) = stamp.unwrap_or((dspi_proto::ext::timebase::TB_NONE, 0));
+        let tm = &mut g.timed;
+        tm.run_id = tm.run_id.wrapping_add(1);
+        tm.op9_run = false;
+        tm.discontinuities = 0;
+        tm.start_tb = tb;
+        tm.start = t;
+        let run_id = tm.run_id;
+        let config = g.config();
+        if on {
+            self.tb_log_start(super::timebase::TimedStart {
+                run_id,
+                time_base: tb,
+                t,
+                timed: false,
+                config,
+            });
+        }
+    }
+
+    /// After an accepted `SIGGEN_CONTROL`.
+    fn siggen_after_control(&mut self, ctl: u16) {
+        use dspi_proto::ext::timebase::timeline_result as tr;
+        match ctl {
+            sg::SIGGEN_CTL_START => self.siggen_stamp_plain(),
+            sg::SIGGEN_CTL_STOP | sg::SIGGEN_CTL_STOP_NOW => {
+                self.siggen_unfresh();
+                self.tb_cancel_pending(tr::CANCELLED_HOST, None);
+            }
+            _ => {}
+        }
+    }
+
+    /// After an accepted `SET_CONFIG`: a pending op 9 is cancelled, the
+    /// config is fresh; a running generator restarted with it.
+    fn siggen_after_stage(&mut self, restarted: bool) {
+        use dspi_proto::ext::timebase::timeline_result as tr;
+        self.tb_cancel_pending(tr::CANCELLED_CONFIG, None);
+        if let Some(g) = self.siggen_mut() {
+            g.timed.fresh = true;
+        }
+        if restarted {
+            self.siggen_stamp_plain();
+        }
+    }
+
+    /// `EXT_SIGGEN_TIMELINE` (2.11.2), 40 bytes.
+    pub(super) fn siggen_timeline_reply(&mut self) -> Vec<u8> {
+        use dspi_proto::ext::timebase as tbc;
+        let now = Instant::now();
+        let outputs = self.num_outputs();
+        let arm_lead_ms = self.tb_arm_lead_ms();
+        let armed = self.tb_pending_armed();
+        let mut b = vec![0u8; tbc::SIGGEN_TIMELINE_LEN];
+        let put = |b: &mut Vec<u8>, at: usize, bytes: &[u8]| {
+            if let Some(x) = b.get_mut(at..at.saturating_add(bytes.len())) {
+                x.copy_from_slice(bytes);
+            }
+        };
+        put(&mut b, 0, &[tbc::TIME_BASE_LAYOUT_VERSION, tbc::TB_NONE]);
+        put(&mut b, 6, &arm_lead_ms.to_le_bytes());
+        let Some(g) = self.siggen_mut() else {
+            return b;
+        };
+        g.settle_with(now, outputs);
+        let running = g.running();
+        let samples = g.run.as_ref().map_or(0, |r| samples_in(r.elapsed(now)));
+        let tm = &g.timed;
+        let state = match (running, tm.pending) {
+            (true, _) => tbc::TL_RUNNING,
+            (false, Some(_)) if armed => tbc::TL_ARMED,
+            (false, Some(_)) => tbc::TL_PENDING,
+            (false, None) => tbc::TL_IDLE,
+        };
+        let tb = tm.pending.map_or(tm.start_tb, |p| p.tb);
+        let tb = if tm.start == 0 && tm.pending.is_none() {
+            tbc::TB_NONE
+        } else {
+            tb
+        };
+        put(&mut b, 1, &[tb, state, tm.last_result]);
+        put(&mut b, 4, &tm.discontinuities.to_le_bytes());
+        put(&mut b, 8, &tm.start.to_le_bytes());
+        put(&mut b, 16, &tm.pending.map_or(0, |p| p.t).to_le_bytes());
+        put(&mut b, 24, &samples.to_le_bytes());
+        put(&mut b, 32, &tm.run_id.to_le_bytes());
+        b
     }
 }
 

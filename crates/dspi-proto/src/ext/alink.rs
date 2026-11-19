@@ -157,6 +157,9 @@ pub mod feature {
     pub const FAN_OUT: u32 = 1 << 3;
     pub const TEST_PATTERNS: u32 = 1 << 4;
     pub const LOS_PIN: u32 = 1 << 5;
+    // -- WP ATPROTO --
+    /// Apply ops 9 and 10 (2.8.7.1): `timebase::FEATURE_SIGGEN_SYNC`.
+    pub const SIGGEN_SYNC: u32 = super::super::timebase::FEATURE_SIGGEN_SYNC;
 }
 
 fn u16_at(b: &[u8], i: usize) -> Option<u16> {
@@ -378,9 +381,9 @@ pub enum ApplyOp {
     Click,
     /// Toggle the unit's sync GPIO.
     SyncPulse,
-    // -- WP PLANAT -- (seam; PLAN-AT 1.3) ops 9 and 10. Nothing sends them yet:
-    // `MAX` stays 8 (the core's typed calls refuse above it) and the fakes
-    // refuse them at the write until ATFAKE.
+    // -- WP PLANAT -- (seam; PLAN-AT 1.3) ops 9 and 10. -- WP ATPROTO -- `MAX`
+    // is 10 now (the core's typed calls take them; op 9 never in the bus-frame
+    // form); the fakes refuse them at the write until ATFAKE.
     /// Start the staged generator config on the sample carried as T (op 9).
     SiggenStart,
     /// Stop the generator at T: `arg` 0 fade, 1 now (op 10).
@@ -443,8 +446,18 @@ impl ApplyOp {
         }
     }
 
-    /// The highest op this build knows.
-    pub const MAX: u8 = 8;
+    /// The highest op this build knows. -- WP ATPROTO -- 10 (was 8): ops 9
+    /// `SIGGEN_START` and 10 `SIGGEN_STOP` (`extension_channel_spec.md`
+    /// 2.8.7.1); the seam's `timebase::APPLY_OP_MAX`.
+    pub const MAX: u8 = super::timebase::APPLY_OP_MAX;
+}
+
+// -- WP ATPROTO --
+/// Whether `op` is a valid `apply_op` in a line superframe: 0..=10
+/// (`alink_protocol_spec.md` 6.3, "0..8 before WP FWTB1"). The S/PDIF
+/// superframe has its own set (`timebase::spdif_op_allowed`).
+pub fn superframe_op_valid(op: u8) -> bool {
+    op <= ApplyOp::MAX
 }
 
 /// How an apply-at-frame op ended (`EXT_APPLY_AT_FRAME` IN, event 0xE2).

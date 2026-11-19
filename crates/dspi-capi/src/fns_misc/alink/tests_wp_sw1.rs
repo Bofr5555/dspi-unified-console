@@ -76,7 +76,8 @@ fn wp_sw1_the_link_through_c() {
         (st["lastOp"].as_str(), st["lastResult"].as_str()),
         (Some("click"), Some("cancelled"))
     );
-    assert_eq!(dspi_apply_at_frame(h, 0, 9, 0, 0), 0xFF);
+    // -- WP ATPROTO -- op 11 is the first unknown op (9 and 10 are known).
+    assert_eq!(dspi_apply_at_frame(h, 0, 11, 0, 0), 0xFF);
     assert_eq!(dspi_reset_alink_stats(h), 0);
     free(h);
 }
