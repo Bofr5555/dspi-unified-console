@@ -228,7 +228,8 @@ void UnitsMeasureController::fail(const QJsonObject &reply, const QString &step)
 }
 
 void UnitsMeasureController::say(const QString &text) {
-    m_said = text;
+    // -- WP ATQTSIM -- the core's words begin in lower case ("applied: verify it ..."): a sentence here
+    m_said = sentence(text);
     m_error.clear();
     m_errorKey.clear();
     emit wordsChanged();
@@ -249,7 +250,9 @@ QString UnitsMeasureController::issueWords(const QJsonObject &i) const {
     const QString title = noticeTitle(str(i, "key"));
     const QString msg = sentence(str(i, "message"));
     // The core's words may begin with the title already
-    return !title.isEmpty() && !msg.startsWith(title) ? tr("%1: %2").arg(title, msg) : msg;
+    // -- WP ATQTSIM -- or say it further on (a verify that did not pass: "...; the verify did not
+    // confirm the alignment; Keep it only if ..."): then the title is not said twice
+    return !title.isEmpty() && !msg.contains(title, Qt::CaseInsensitive) ? tr("%1: %2").arg(title, msg) : msg;
 }
 
 QString UnitsMeasureController::arrivalWords(const QJsonObject &a) const {
@@ -1290,6 +1293,9 @@ QVariantList UnitsMeasureController::transitions() const {
     return out;
 }
 
+// -- WP ATQTSIM --
+QString UnitsMeasureController::guardNote() const { return sentence(m_proposal.value(QLatin1String("guardNote")).toString()); }
+
 QString UnitsMeasureController::proposalNotice() const { return issueWords(m_proposal.value(QLatin1String("notice")).toObject()); }
 
 bool UnitsMeasureController::mayApply() const {
@@ -1448,7 +1454,8 @@ void UnitsMeasureController::keepAnswered(const QJsonObject &reply, const QJsonO
         ++m_keepRefusals;
         m_refusedAt.start();
         m_question = true;
-        m_questionText = str(m_applied, "message").isEmpty() ? MeasureController::failureText(reply) : str(m_applied, "message");
+        // -- WP ATQTSIM -- the core's words as a sentence
+        m_questionText = str(m_applied, "message").isEmpty() ? MeasureController::failureText(reply) : sentence(str(m_applied, "message"));
         m_keepTimer.start();
         emit keepChanged();
         emit stepDone(QStringLiteral("keep"), false);

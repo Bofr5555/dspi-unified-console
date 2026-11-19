@@ -6,6 +6,12 @@ Sections (`smoke/SmokeMeasureUnits.cpp`): `atqt-units` (order 216) and
 `units-settling`, `units-runs`, `units-applied`, `units-keep-question`,
 `units-reverted-by-hub`, `system-spdif`.
 
+-- WP ATQTSIM -- Section `atqtsim-units` (218, same file) measures DEMO-TB-A and
+DEMO-TB-B to a result on the demo hub's simulated microphone and runs the summed
+check, Admin's apply, a verify that passes, Revert, and Keep asked twice after a
+verify that fails; every core call is the real one. Screenshots in
+`<out>/atqtsim/`: `result`, `control`, `applied`, `verified`, `keep-question`, `kept`.
+
 | Name | What |
 |---|---|
 | `Measure.tab.units` | the "Several units" tab (not for a connection that may not play) |

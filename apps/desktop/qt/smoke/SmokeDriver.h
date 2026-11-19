@@ -84,6 +84,10 @@ public:
     // Saves a screenshot as <DSPI_SMOKE_OUT>/<file>; false if it came out empty
     bool grab(QQuickWindow *window, const QString &file);
     QString outDir() const { return m_out; }
+    // -- WP ATQTSIM -- This section may run up to `seconds` (a whole measurement
+    // across units); the run's limit still applies when it is longer. Ends with
+    // the section.
+    void allowSectionTime(int seconds);
 
 private:
     void run();
