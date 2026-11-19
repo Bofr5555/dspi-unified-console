@@ -41,6 +41,12 @@
 //! passes it, `EXT_ALINK_TX` kept as written). An id the role does not list
 //! stalls. The superframe does not reach other fakes: a test checks what the
 //! sender was asked.
+//!
+//! WP ATFAKE: on a [`super::FakeTimeBase`] (`fake/timebase.rs`) the counter is
+//! the domain's (every receiver of it reads the same F), the superframe's apply
+//! reaches every receiver of the domain, `EXT_ALINK_INFO.features` has bit 6
+//! `SIGGEN_SYNC`, ops 9 and 10 run on the generator, and every state change
+//! of the alink is also a contract transition (`EXT_TIME_BASE`, `0xE4`).
 #![warn(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -327,6 +333,10 @@ impl State {
         if !master && !matches!(self.alink.state, AlinkState::Locked | AlinkState::Holdover) {
             return 0;
         }
+        // -- WP ATFAKE -- the domain's counter
+        if let Some(t) = self.tb_line_t() {
+            return t;
+        }
         let ms = Instant::now()
             .saturating_duration_since(self.started)
             .as_millis();
@@ -398,7 +408,12 @@ impl State {
     /// The alink's `EXT_ALINK_INFO` now.
     fn alink_info(&self) -> AlinkInfo {
         let l = &self.alink;
-        info_as(&l.config, &l.setup, self.latency_for_alink())
+        let mut i = info_as(&l.config, &l.setup, self.latency_for_alink());
+        // -- WP ATFAKE -- ops 9 and 10
+        if self.tb_on() {
+            i.feature_bits |= dspi_proto::ext::timebase::FEATURE_SIGGEN_SYNC;
+        }
+        i
     }
 
     /// `EXT_ALINK_PHASE` as read: `D_BELOW_MIN` and a free state while the
@@ -442,6 +457,7 @@ impl State {
             return None;
         }
         self.run_due_ops();
+        self.tb_service(); // -- WP ATFAKE --
         // -- WP SW2 -- an id this build does not list stalls (2.8).
         if !self.alink_ids().contains(&value) {
             return Some(None);
@@ -463,12 +479,16 @@ impl State {
                     .saturating_duration_since(self.started)
                     .as_micros();
                 let frame = self.alink_frame();
+                // -- WP ATFAKE -- the outputs' own count on a time base
+                let output_frames = self
+                    .tb_output_frames_at(TB_LINE, frame)
+                    .unwrap_or_else(|| low32(frame.saturating_sub(FRAME_BASE)));
                 Some(
                     FrameCounter {
                         frame,
                         // Both wrap, as the firmware's do.
                         time_us: (us & u128::from(u32::MAX)) as u32,
-                        output_frames: low32(frame.saturating_sub(FRAME_BASE)),
+                        output_frames,
                     }
                     .encode()
                     .to_vec(),
@@ -522,7 +542,7 @@ impl State {
     pub(super) fn set_alink(&mut self, value: u16, data: &[u8]) -> Option<bool> {
         if value == EXT_FAKE_ALINK_SIM {
             return Some(match *data {
-                [op] if self.options.alink => self.alink_sim(op),
+                [op] if self.options.alink => self.alink_sim_op(op),
                 _ => false,
             });
         }
@@ -531,6 +551,7 @@ impl State {
             return None;
         }
         self.run_due_ops();
+        self.tb_service(); // -- WP ATFAKE --
         // -- WP SW2 --
         if !self.alink_ids().contains(&value) {
             return Some(false);
@@ -572,6 +593,7 @@ impl State {
                     } else if !was && c.enable && self.alink.state == AlinkState::Off {
                         self.lock(AlinkEventReason::Locked);
                     }
+                    self.tb_sync(); // -- WP ATFAKE --
                     true
                 }
                 _ => false,
@@ -631,7 +653,12 @@ impl State {
         };
         if changed && locked && old.mode == alink::PHASE_MODE_LOCK {
             self.alink_event(AlinkEventReason::Reanchor);
+            // -- WP ATFAKE -- the outputs drain and restart: anchoring, locked
+            if self.tb_on() && self.alink.phase.mode == alink::PHASE_MODE_LOCK {
+                self.tb_emit(TB_LINE, TB_ANCHORING, reason::REANCHOR);
+            }
         }
+        self.tb_sync(); // -- WP ATFAKE --
         true
     }
 
@@ -639,14 +666,19 @@ impl State {
     /// cancels the queue. Refused: arguments out of range, a full queue, no
     /// lock.
     fn queue_op(&mut self, r: ApplyRequest) -> bool {
-        // -- WP PLANAT -- ops 9 and 10 are refused until ATFAKE models them.
+        // -- WP ATFAKE -- ops 9 and 10 on a time base (firmware with FWTB1);
+        // refused at the write without one (a build without them).
         if matches!(r.op, ApplyOp::SiggenStart | ApplyOp::SiggenStop) {
-            return false;
+            if !self.tb_on() || self.alink.state != AlinkState::Locked {
+                return false;
+            }
+            return self.tb_write_siggen_op(TB_LINE, r);
         }
         if !r.args_valid() || self.alink.state != AlinkState::Locked {
             return false;
         }
         if r.op == ApplyOp::CancelAll {
+            self.tb_on_cancel_all(TB_LINE); // -- WP ATFAKE --
             for q in std::mem::take(&mut self.alink.queue) {
                 self.op_done(q, ApplyResult::Cancelled);
             }
@@ -664,7 +696,7 @@ impl State {
     }
 
     /// Run the queued ops whose frame has come, in frame order.
-    fn run_due_ops(&mut self) {
+    pub(super) fn run_due_ops(&mut self) {
         let now = self.alink_frame();
         let mut due: Vec<ApplyRequest> = Vec::new();
         self.alink.queue.retain(|r| {
@@ -676,7 +708,12 @@ impl State {
         });
         due.sort_by_key(|r| r.frame);
         for r in due {
-            self.op_done(r, ApplyResult::Applied);
+            // -- WP ATFAKE -- ops 9 and 10 act on the generator
+            let result = match r.op {
+                ApplyOp::SiggenStart | ApplyOp::SiggenStop => self.tb_siggen_due(TB_LINE, r),
+                _ => ApplyResult::Applied,
+            };
+            self.op_done(r, result);
         }
     }
 
@@ -776,12 +813,16 @@ impl State {
         }
         let lead_ok = alink::ctrl_msg_min_frame(now).is_some_and(|min| r.frame >= min);
         let rate_ok = r.op != ApplyOp::Rate || r.frame % alink::SUPERFRAME_FRAMES == 0;
-        // -- WP PLANAT -- the sender carries ops 9 and 10 once ATFAKE models them.
-        let op_ok = !matches!(r.op, ApplyOp::SiggenStart | ApplyOp::SiggenStop);
+        // -- WP ATFAKE -- the sender carries ops 9 and 10 on a time base (FWTB1).
+        let op_ok = !matches!(r.op, ApplyOp::SiggenStart | ApplyOp::SiggenStop) || self.tb_on();
         if !op_ok || !r.args_valid() || !lead_ok || !rate_ok || self.alink.ctrl.is_some() {
             return false;
         }
         self.alink.ctrl = Some(r);
+        // -- WP ATFAKE -- the superframe reaches every receiver of the domain
+        if self.tb_on() {
+            self.tb_broadcast(r);
+        }
         // As the firmware's `set_ctrl`: every accepted write sets the bit.
         self.set_system_mute(flags);
         true
@@ -791,6 +832,27 @@ impl State {
     fn set_system_mute(&mut self, flags: u8) {
         let tx = &mut self.alink.tx;
         tx.flags = (tx.flags & !1) | (flags & 1);
+    }
+
+    pub(super) fn alink_sim_op(&mut self, op: u8) -> bool {
+        // -- WP ATFAKE -- what is due before the fault runs first
+        self.tb_service();
+        let was = self.alink.state;
+        let ok = self.alink_sim(op);
+        if ok && self.tb_on() {
+            match (op, was) {
+                (ALINK_SIM_LOSE, _) => self.tb_note(TB_LINE, reason::HOLDOVER),
+                (ALINK_SIM_LOCK, AlinkState::Holdover) => self.tb_note(TB_LINE, reason::RESUMED),
+                (ALINK_SIM_LOCK, _) => self.tb_note(TB_LINE, reason::LOCKED),
+                // The outputs drain and restart: anchoring, then locked.
+                (ALINK_SIM_REANCHOR, _) => {
+                    self.tb_emit(TB_LINE, TB_ANCHORING, reason::REANCHOR);
+                    self.tb_note(TB_LINE, reason::LOCKED);
+                }
+                _ => {}
+            }
+        }
+        ok
     }
 
     fn alink_sim(&mut self, op: u8) -> bool {
@@ -821,6 +883,71 @@ impl State {
             _ => return false,
         }
         true
+    }
+}
+
+// -- WP ATFAKE -- what `fake/timebase.rs` reads of the line
+use dspi_proto::ext::timebase::{
+    TB_ALINK_LINE as TB_LINE, TB_STATE_ANCHORING as TB_ANCHORING, reason,
+};
+
+impl State {
+    /// The line's `EXT_TIME_BASE` entry (`alink_protocol_spec.md` 11.2): a
+    /// receiver build with the alink enabled.
+    pub(super) fn alink_tb_entry(&self) -> Option<super::timebase::Entry> {
+        use dspi_proto::ext::timebase as tbc;
+        let l = &self.alink;
+        if !self.options.alink || l.setup.is_sender_build() || !l.config.enable {
+            return None;
+        }
+        let p = self.alink_phase_read();
+        let state = match l.state {
+            AlinkState::Searching => tbc::TB_STATE_ACQUIRING,
+            AlinkState::Holdover => tbc::TB_STATE_HOLDOVER,
+            AlinkState::Locked if p.mode != alink::PHASE_MODE_LOCK => tbc::TB_STATE_NONE,
+            // -- FWTB1 -- the delay out of range is lock error
+            AlinkState::Locked if p.flags & alink::PHASE_FLAG_D_BELOW_MIN != 0 => {
+                tbc::TB_STATE_LOCK_ERROR
+            }
+            AlinkState::Locked => match p.state {
+                1 => tbc::TB_STATE_ANCHORING,
+                2 => tbc::TB_STATE_LOCKED,
+                3 => tbc::TB_STATE_LOCK_ERROR,
+                _ => tbc::TB_STATE_NONE,
+            },
+            _ => tbc::TB_STATE_NONE,
+        };
+        let has_t = matches!(state, tbc::TB_STATE_LOCKED | tbc::TB_STATE_HOLDOVER);
+        Some(super::timebase::Entry {
+            tb: TB_LINE,
+            role: tbc::TB_ROLE_FOLLOWER,
+            state,
+            domain: u32::from(l.setup.sender_id),
+            t: if has_t { self.alink_frame() } else { 0 },
+            d: u16::try_from(p.effective().max(0)).unwrap_or(u16::MAX),
+            phase_error: if state == tbc::TB_STATE_LOCKED {
+                self.alink_phase_error()
+            } else {
+                0.0
+            },
+        })
+    }
+
+    /// The receiver's apply queue.
+    pub(super) fn alink_queue(&mut self) -> &mut Vec<ApplyRequest> {
+        &mut self.alink.queue
+    }
+
+    /// An op of the receiver's queue completed.
+    pub(super) fn alink_op_done(&mut self, r: ApplyRequest, result: ApplyResult) {
+        self.op_done(r, result);
+    }
+
+    /// A receiving unit (it hears the superframe).
+    pub(super) fn alink_receives(&self) -> bool {
+        self.options.alink
+            && !self.alink.setup.is_sender_build()
+            && self.alink.setup.role.receives()
     }
 }
 

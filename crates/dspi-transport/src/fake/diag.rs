@@ -60,6 +60,11 @@ impl State {
         }
         // -- WP AUSB1 --
         f |= self.alink_usb_features();
+        // -- WP ATFAKE -- 0xE4, and 0xE2 on an S/PDIF unit's queue
+        if self.tb_on() {
+            f |= dspi_proto::ext::timebase::NOTIFY_FEAT_TIME_BASE
+                | dspi_proto::ext::alink::NOTIFY_FEAT_APPLY_RESULT;
+        }
         f
     }
 

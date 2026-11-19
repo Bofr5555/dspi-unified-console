@@ -163,8 +163,15 @@ mod generation;
 mod paged;
 pub use generation::FakeGeneration;
 // -- WP PGFAKE2 -- `mod boards; mod paged_custom;` are in fake/paged.rs
+// -- WP ATFAKE -- fake units on one time base
+mod timebase;
 pub use paged::boards::{
     DSPI_PID, DSPI_VID, FakeBoard, RebootTarget, ZERO_LOADER_PID, ZERO_LOADER_VID,
+};
+pub use timebase::{
+    DEFAULT_ARM_LEAD_MS, FakeTimeBase, FakeTimeBaseHandle, FakeTimeBaseUnit, OP9_LEAD_MAX_MS,
+    SPDIF_D_DEFAULT, SPDIF_D_MAX, SPDIF_D_MIN, SpdifSetup, TIME_BASE_RATE_HZ, TimeBaseFault,
+    TimeBaseKind, TimedStart,
 };
 
 use crate::{
@@ -296,6 +303,11 @@ pub struct FakeOptions {
     /// id 1 in an 8-byte platform reply, no BOOTSEL: a bootloader entry is a
     /// violation) or the alink sender (its vendor subset; guarded, or dual-stack).
     pub board: FakeBoard,
+    // -- WP ATFAKE --
+    /// This unit's place on a shared [`FakeTimeBase`] (`fake/timebase.rs`):
+    /// firmware with the time-base contract and apply ops 9 and 10. `None`:
+    /// firmware before them.
+    pub time_base: Option<FakeTimeBaseHandle>,
 }
 
 /// `wLength` is 16 bits.
@@ -1800,7 +1812,11 @@ impl State {
             op::REQ_RESET_USB_ERROR_STATS => Some(vec![1]),
             // -- WP AUSB1 -- the USB-direct block first: it answers 0x8005/0x8006 on its time base
             op::REQ_EXTENSION if self.options.extensions => {
-                match self.get_alink_usb(value).or_else(|| self.get_alink(value)) {
+                match self
+                    .get_timebase(value) // -- WP ATFAKE --
+                    .or_else(|| self.get_alink_usb(value))
+                    .or_else(|| self.get_alink(value))
+                {
                     // -- WP SW1 --
                     Some(link) => link,
                     None => self.get_ext(value),
@@ -2062,6 +2078,7 @@ impl State {
                     || self.options.diag_ext
                     || self.options.alink
                     || self.alink_usb.on
+                    || self.tb_on()
                 {
                     ids.push(gext::EXT_NOTIFY_FEATURES);
                 }
@@ -2072,6 +2089,7 @@ impl State {
                 ids.extend(self.alink_ids());
                 // -- WP AUSB1 -- ascending, once each
                 ids.extend(self.alink_usb_ids());
+                ids.extend(self.tb_ids()); // -- WP ATFAKE --
                 ids.sort_unstable();
                 ids.dedup();
                 Some(ids.iter().flat_map(|id| id.to_le_bytes()).collect())
@@ -2081,7 +2099,8 @@ impl State {
                 if self.options.bulk_source
                     || self.options.diag_ext
                     || self.options.alink
-                    || self.alink_usb.on =>
+                    || self.alink_usb.on
+                    || self.tb_on() =>
             {
                 Some(self.notify_features().to_le_bytes().to_vec())
             }
@@ -2337,6 +2356,10 @@ impl State {
     fn set_ext(&mut self, value: u16, data: &[u8]) -> bool {
         // -- WP FWX --
         if let Some(ok) = self.set_diag(value, data) {
+            return ok;
+        }
+        // -- WP ATFAKE --
+        if let Some(ok) = self.set_timebase(value, data) {
             return ok;
         }
         // -- WP AUSB1 --
