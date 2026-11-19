@@ -367,8 +367,10 @@ fn wp_pgfwup_a_paged_zero_never_enters_its_bootloader() {
         matches!(generation, Some(Generation::Paged(_))),
         "{generation:?}"
     );
-    assert_eq!(core.board(), Ok(Board::Pico), "no descriptor: board 0");
-    // The descriptor identifies it (PGZERO's fields; here the seam).
+    // -- PG-C merge -- the fake's own descriptor (PGZERO's product string and
+    // bcdDevice) names it now, with no stand-in: the PARTIAL point closed
+    assert_eq!(core.board(), Ok(Board::PiZero2W), "by its descriptor");
+    // The seam still decides when set (as before the merge).
     let _d = DescriptorSays::board(zero_descriptor());
     assert_eq!(core.board(), Ok(Board::PiZero2W));
     assert_eq!(enter(&core), Err(DspiError::Unsupported));

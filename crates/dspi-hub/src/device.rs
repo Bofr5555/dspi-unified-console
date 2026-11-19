@@ -940,7 +940,9 @@ pub(crate) fn read_identity(
         // -- WP HB3 --
         board_name: read_board_name(t)?,
         // -- WP PGHDEV --
-        board: info.board_id,
+        // -- PG-C merge -- PGZERO line 2: on board 0 the USB descriptor decides
+        // (a paged Zero answers a 7-byte `SYS.PLATFORM`)
+        board: dspi_transport::board::identify_board(&info, t.descriptor().board()).id(),
         protocol,
         ext,
     })

@@ -321,9 +321,9 @@ impl From<&RegisteredDevice> for Seen {
             fw: d.identity.firmware.clone(),
             fw_beta: d.identity.firmware_beta,
             outputs: d.identity.outputs,
-            // -- WP PGZERO -- the registry's identity has no board on this
-            // base; after PGHDEV: `Some(d.identity.board)` (see the report)
-            board: None,
+            // -- WP PGZERO -- -- PG-C merge -- PGZERO line 3: the identity's
+            // board (PGHDEV's, from byte 7 and the descriptor)
+            board: Some(d.identity.board),
         }
     }
 }

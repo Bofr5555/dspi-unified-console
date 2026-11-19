@@ -185,73 +185,25 @@ pub(crate) fn version_matches(s: &DspState, version: &str) -> bool {
 // the descriptor is at hand ([`board_from_descriptor`]). Behind an upstream hub
 // it is unknown.
 
-/// The product string of the DSPi-Zero (upstream DSPi-Zero `192df73`,
-/// `uac2/usb_descriptors.c`).
-pub const ZERO_PRODUCT: &str = "Weeb Labs DSPi Zero";
-/// The DSPi-Zero's `bcdDevice` (`uac2/usb_descriptors.h`).
-pub const ZERO_BCD_DEVICE: u16 = 0x0300;
-/// The product strings of the Pico builds this build knows: upstream and our
-/// DSPi, the alink sender (current and first name). Older firmware on the
-/// Raspberry Pi VID names itself `Pico DSP ...` ([`PICO_PRODUCT_PREFIX`]).
-pub const PICO_PRODUCTS: [&str; 3] = [
-    "Weeb Labs DSPi",
-    "DSPi Audio Link Sender",
-    "DSPi Link Sender",
-];
-/// The product prefix of the pre-DSPi firmware (`Pico DSP 2.1 (WinUSB)`).
-pub const PICO_PRODUCT_PREFIX: &str = "Pico DSP";
-/// The [`Board::Unknown`] id for a board known only by a product string this
-/// build does not know (no platform byte names it).
-pub const UNKNOWN_PRODUCT_BOARD: u8 = 0xFF;
+// -- PG-C merge -- one table: PGZERO's `dspi_transport::board` (the hub's
+// headless build needs it too, and has no `dspi-core`), re-exported here.
+pub use dspi_transport::board::{
+    PICO_PRODUCT_PREFIX, PICO_PRODUCTS, UNKNOWN_PRODUCT_BOARD, ZERO_BCD_DEVICE, ZERO_PRODUCT,
+    board_from_descriptor, board_name, identify_board,
+};
 
-/// The name the clients show for a board (caps, About, the inventory: S6).
-pub fn board_name(board: Board) -> &'static str {
-    match board {
-        Board::Pico => "DSPi",
-        Board::PiZero2W => "DSPi Zero",
-        Board::Unknown(_) => "Unknown board",
-    }
-}
-
-/// What a USB device descriptor says about the board: `None` when it says
-/// nothing (no product string, and not the Zero's `bcdDevice`). A product
-/// string this build does not know is an unknown board
-/// ([`UNKNOWN_PRODUCT_BOARD`]): it fails closed. For PGZERO's descriptor
-/// fields (`product`, `bcdDevice`).
-pub fn board_from_descriptor(product: Option<&str>, bcd_device: Option<u16>) -> Option<Board> {
-    let product = product.map(str::trim).filter(|p| !p.is_empty());
-    if product == Some(ZERO_PRODUCT) || bcd_device == Some(ZERO_BCD_DEVICE) {
-        return Some(Board::PiZero2W);
-    }
-    let p = product?;
-    if PICO_PRODUCTS.contains(&p) || p.starts_with(PICO_PRODUCT_PREFIX) {
-        Some(Board::Pico)
-    } else {
-        Some(Board::Unknown(UNKNOWN_PRODUCT_BOARD))
-    }
-}
-
-/// The board, from the platform reply (byte 7) and what the descriptor says:
-/// a board the platform names is that board; on board 0 the descriptor
-/// decides, if it says anything, else it is a Pico.
-pub fn identify_board(platform: &PlatformInfo, descriptor: Option<Board>) -> Board {
-    match platform.board() {
-        Board::Pico => descriptor.unwrap_or(Board::Pico),
-        other => other,
-    }
-}
-
-/// What this transport's descriptor says about the board. PGZERO fills
-/// `DeviceDescriptor`'s product string and `bcdDevice` (USB, WebUSB, Android,
-/// our hub's own attach) and returns [`board_from_descriptor`] of them here;
-/// until then the descriptor says nothing, and a paged Zero reads as board 0.
+/// What this transport's descriptor says about the board: PGZERO's
+/// `DeviceDescriptor` product string and `bcdDevice` (USB, WebUSB, Android,
+/// our hub's own attach), [`board_from_descriptor`] of them; `None` where the
+/// descriptor says nothing (behind a link).
 fn descriptor_board(t: &dyn dspi_transport::Transport) -> Option<Board> {
-    let _ = t.descriptor();
     #[cfg(test)]
     if let Some(b) = tests_wp_pgfwup::descriptor_override() {
         return Some(b);
     }
-    None
+    // -- PG-C merge -- PGZERO line 1
+    let d = t.descriptor();
+    board_from_descriptor(d.product.as_deref(), d.bcd_device)
 }
 
 /// The board of the open connection, read now: `REQ_GET_PLATFORM` asked for
