@@ -1850,6 +1850,8 @@ There are two kinds of client:
 
 DSPi Link works only on your local network. Do not forward its port (11915) on your router. To reach your devices away from home, use a VPN such as Tailscale or WireGuard.
 
+**Encryption (2026-11-16).** This Mac's hub is the project's shared hub, and it encrypts DSPi Link with TLS by default. **Settings > Networking** shows its **Encryption** state and its **Key fingerprint** in the **Security** section. A client checks the fingerprint when it pairs and from then on refuses a hub whose key changed. The **Hub page** link opens the hub's page with `https://`; it uses the hub's own certificate, so your browser asks once whether to trust it. **Upstream compatibility mode** lets DSPi Link clients that cannot encrypt connect too; leave it off unless you need it. A connection that is not encrypted, such as one to a hub without TLS, shows **(unsecured)** after the device's name. The details are in [`docs/integrator/security.md`](../../docs/integrator/security.md). Where the steps below say `http://`, a hub with encryption on takes `https://`.
+
 The first time Console uses the network, macOS asks whether it may find devices on your local network. Choose **Allow**. If you chose otherwise, turn Console on under **System Settings > Privacy & Security > Local Network**.
 
 ### Sharing a DSPi from This Mac
