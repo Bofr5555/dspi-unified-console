@@ -5641,6 +5641,1220 @@ Macros are stored on the device alongside the controls and share their Save and 
     </message>
 </context>
 <context>
+    <name>MeasureController</name>
+    <message>
+        <source>%1 could not be read.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 is too large to be a measurement file.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 kHz</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 Hz</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Full range</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Subwoofer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Low (woofer)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Mid</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>High (tweeter)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Listening position</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Several positions</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Near-field</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Headphones on a coupler</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>IEC 60318-4 ear simulator (711)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Flat-plate coupler</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>HATS or another coupler with pinna</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The core did not answer.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1: %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The call was refused.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1. %2%3</source>
+        <extracomment>A measurement&apos;s issue: %1 its title, %2 the output it is about, %3 the core&apos;s words</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Output %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The microphone is not connected.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The microphone&apos;s audio format is not supported.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The microphone could not be opened.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The microphone went away: the measurement was stopped.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No device connected.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This connection is read-only: measuring plays the DSPi&apos;s generator, so only the documents and saved measurements are offered.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Import a Microphone Calibration</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Calibration files (*.txt *.cal *.frd *.csv);;All files (*)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Microphone</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>sensitivity %1 dB</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>90° calibration</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>dB SPL approximate (no calibrator step)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>dB SPL calibrated</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Calibration imported: %1.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Choose at least one output to measure.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>At most 16 outputs a run.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reseats: 1 to 9.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Positions: 3 to 9.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>A sweep is 1 to 15 s.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Passes: 2 to 8.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The measurement is complete: see Results.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source> at %1 dBFS</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source> (position %1 of %2)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Listening to the room&apos;s noise (the generator is idle)%1.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Finding the level%1%2: quiet first, louder in steps%3.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source> of %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Measuring: run %1 of %2%3%4.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Analysing%1.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Move the microphone (or reseat the headphones) to position %1 of %2, then choose Next Position.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The measurement is complete.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Stopped: nothing was kept.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Stopped, with a question: nothing was kept.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not measuring.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Timing reliable: largest cycle residual %1 µs (bound %2 µs), microphone clock %3 ppm.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Timing unreliable: the magnitudes are kept, but no delay, polarity or crossover change is offered from this measurement.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The live view is playing the DSPi&apos;s generator.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The auto-tune&apos;s runs are playing the DSPi&apos;s generator.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Measuring with the DSPi&apos;s generator.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The microphone is open.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message numerus="yes">
+        <source>, %n reseat(s)</source>
+        <translation type="unfinished">
+            <numerusform></numerusform>
+            <numerusform></numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>%1 positions averaged (the band is their spread)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Uncalibrated (relative dB)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source> (dB SPL approximate)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>played at %1 dBFS</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Timing reliable: largest cycle residual %1 µs.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Timing reliable.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>dB SPL</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>dB (relative)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open a Measurement</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Measurements (*.dspipreset *.json);;All files (*)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 is not a measurement document.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Saved in this console as &quot;%1&quot;.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Saved on the hub as &quot;%1&quot;.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The hub already holds &quot;%1&quot;.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Measurement</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Export the Measurement</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Measurements (*.dspipreset)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Exported to %1.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 could not be written.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Export as REW Text</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Text (*.txt)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not running.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pink noise%1: the microphone RTA.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message numerus="yes">
+        <source>Sweeping%1: %n curve(s) measured.</source>
+        <translation type="unfinished">
+            <numerusform></numerusform>
+            <numerusform></numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Microphone RTA</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 measured</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Held</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Target</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Target (%1)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Predicted</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Now minus held</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>dB</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Output gain %1 → %2 dB (headroom)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Error to the target: %1 dB RMS now, %2 dB RMS predicted (dotted).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Nothing to change there.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Type the frequency of the peak, or click it on the graph.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Type the range (from below to), or drag across it on the graph.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Applied: %1. Undo takes it back as one step.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Import a Target Curve</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Target files (*.txt *.csv *.frd);;All files (*)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Target imported: %1. It is used from the next live start and by the auto-tune.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Opened &quot;%1&quot;: see Results.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Calibration in use: %1.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Target in use: %1.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>MeasureDocsTab</name>
+    <message>
+        <source>Every kind</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Measurements</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Microphones</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Targets</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Measurement</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Microphone</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Target</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>On the hub</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Here and on the hub</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This console</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Kind</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reload</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Import Calibration…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No documents yet: save a measurement from Results.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Name</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Use</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Delete…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Note</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>A note</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Delete &quot;%1&quot;?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The hub&apos;s copy is deleted for every console (the hub lets its Admin do that). It cannot be undone.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>It is deleted from this console. It cannot be undone.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Delete</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>MeasureGraph</name>
+    <message>
+        <source> (dashed)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source> (dotted)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No curve yet</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>MeasureLiveTab</name>
+    <message>
+        <source>Full range</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Subwoofer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Low (woofer)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Mid</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>High (tweeter)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Listening position</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Near-field</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Headphones on a coupler</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>IEC 60318-4 ear simulator (711)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Flat-plate coupler</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>HATS or another coupler with pinna</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Fast (125 ms)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Slow (1 s)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Infinite</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Live response</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Start Live</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Stop Live</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Live output</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Way</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Placement</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Coupler</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Plays</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sweeps</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pink noise (RTA)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Smoothing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>1/%1 octave</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>None</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Target: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Target: the placement&apos;s default (our own curve)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Import Target…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Default Target</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Averaging</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hold</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Clear Hold</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message numerus="yes">
+        <source>%n frame(s) averaged</source>
+        <translation type="unfinished">
+            <numerusform></numerusform>
+            <numerusform></numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Compared with the held spectrum</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Direct adjustments</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Peak at, Hz</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Peak frequency</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Find the Highest Peak</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The highest trusted point from 100 Hz to 5 kHz</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cut This Peak</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>From, Hz</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Range from</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>to</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Range to</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Fit This Range</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Undo</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Apply</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Discard</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>MeasureResultsTab</name>
+    <message>
+        <source>Measurement</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No measurement yet: run one on the Measure tab, or open a measurement file.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No timing: a single sweep is magnitude only.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Measured responses</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>, speaker %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>, arrives at %1 ms</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>REW Text…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Save in This Console</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Save on the Hub</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Export…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Auto-tune From This…</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>MeasureSetupTab</name>
+    <message>
+        <source>Full range</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Subwoofer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Low (woofer)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Mid</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>High (tweeter)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Listening position</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Speakers: one position, with timing (alignment, crossover, EQ).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Several positions</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Speakers: 3 to 9 positions averaged; position 1 is the timing reference.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Near-field</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Speakers: the microphone close to each driver; kept as a labelled near-field measurement.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Headphones on a coupler</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>On the coupler, not on a head: 1 to 9 reseats averaged.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>IEC 60318-4 ear simulator (711)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Flat-plate coupler</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>HATS or another coupler with pinna</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Simulated microphone</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The system&apos;s default input</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Microphone</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Refresh</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The demo DSPi&apos;s simulated room: nothing is played or captured, the microphone is arithmetic in the core.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Uncalibrated: levels are relative dB.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Import Calibration…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Uncalibrated</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Placement</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reseats</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Positions</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Coupler</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Outputs</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The outputs measured together in one walked run are an alignment group: their delays and polarity are compared within the run only.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Way</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Speaker</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Group</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Propose from the Device</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sweep</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sweep length</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>s</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Passes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Name</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>By the date</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The level is the core&apos;s: it starts quiet and rises in steps until the microphone hears the output well, never past the ceiling.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Check</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Measure</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Next Position</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Clear to measure.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not clear to measure:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Warning: </source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Run</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show the Results</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>MeasureTuneTab</name>
+    <message>
+        <source>Full range</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Subwoofer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Low (woofer)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Mid</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>High (tweeter)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>1. Layout</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>From &quot;%1&quot;.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>the measurement</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No measurement yet: measure on the Measure tab, or open one on Results.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Way</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Speaker</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Group</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keep the crossover, align only</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keep the delays</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keep the levels</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No EQ fit</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Propose from the Device</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Propose a Tune</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>2. Proposal</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Timing unreliable: the measurement&apos;s timing is not trusted, so no delay, polarity or crossover change is offered.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Warning: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Changes (%1):</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No change proposed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source> (a timing change: after the summed check)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Held to:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Withdrawn:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Before and predicted</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Run the Summed Check</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Apply with a Way Back…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Forget It</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>3. Applied</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Verify</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keep</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Revert</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Compare Before and After (A/B)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Switch A/B</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keep the Tune (A)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Go Back (B)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Apply the auto-tune?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Every change above is written as one undo step, after a snapshot &quot;Before auto-tune&quot; is filed and the checks are run again. It goes back by itself unless you Keep it.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Apply</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keep a tune the verify did not confirm?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keep Anyway</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not Now</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>MeasureWindow</name>
+    <message>
+        <source>Measure</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Stop</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Measurement</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Results</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Live</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Auto-tune</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Documents</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>MenuTable</name>
     <message>
         <source>&amp;File</source>
@@ -5792,6 +7006,10 @@ Macros are stored on the device alongside the controls and share their Save and 
     </message>
     <message>
         <source>Spectrum Analyser…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Measure…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -11591,6 +12809,144 @@ This wiring is a board-level setting: it is stored on the device, survives prese
     </message>
     <message>
         <source>Where the loudspeaker resonates in its enclosure, which is where the bell sits. Q is fixed at 0.707, so the bump is broad. 85 Hz suits a typical small to medium woofer; larger drivers sit lower.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>TuneController</name>
+    <message>
+        <source>no programme feed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>from input %1 at %2 dB</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>, inverted</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Proposed: nothing is written yet.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The summed check plays: both ways of each transition at once.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Applied inside the guard: verify it, then Keep or Revert.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Verifying inside the guard: the tuned outputs, then the sums.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Verified inside the guard: Keep or Revert.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Kept.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reverted: the device is as it was before the tune.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No tune yet: measure, then propose one.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Run %1 of %2.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message numerus="yes">
+        <source>Keep or Revert within %n s; without Keep it goes back by itself.</source>
+        <translation type="unfinished">
+            <numerusform></numerusform>
+            <numerusform></numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>The verify confirmed the tune: measured and predicted agree.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The verify did not confirm the tune: measured and predicted differ. Revert it, unless you are sure.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Recognised as the template &quot;%1&quot;.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No measurement: measure on the Measure tab, or open one on Results or Documents.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Speaker</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Speaker %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 before</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 predicted</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Target</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>dB SPL</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>dB (relative)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The summed check has not run: the delay, polarity and crossover changes are applied only after it passed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The summed check passed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The summed check failed: the timing changes it did not confirm are withdrawn.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No timing change: nothing needs the summed check.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Stop the measurement or the live view first.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&quot;Before auto-tune&quot; and &quot;After auto-tune&quot; are filed as snapshots: compare them with A/B.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The verify did not confirm this tune: what was measured differs from what was predicted. Keep it only if you are sure; Revert puts everything back as it was.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>A/B: the device holds B, as before the tune.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>A/B: the device holds A, with the tune.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

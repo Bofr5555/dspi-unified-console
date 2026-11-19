@@ -114,6 +114,8 @@ QtObject {
                 { id: "tools.signalGenerator", text: qsTr("Signal Generator…"), shortcut: "Ctrl+Shift+G" },
                 { id: "tools.spectrum", text: qsTr("Spectrum Analyser…"), shortcut: "Ctrl+Shift+A" },
                 { id: "tools.stats", text: qsTr("Stats for nerbs"), shortcut: "Ctrl+Shift+T" },
+                // -- WP P5QUI -- the measurement, live view and auto-tune (MeasureController)
+                { id: "tools.measure", text: qsTr("Measure…") },
                 { separator: true },
                 { id: "tools.interruptMonitor", text: qsTr("Interrupt Monitor…"), shortcut: "Ctrl+Shift+I" }
             ]
