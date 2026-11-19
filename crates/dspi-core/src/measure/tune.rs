@@ -128,6 +128,15 @@ pub(crate) const ALGORITHM: &str = "dspi-core p5tune 1";
 /// The verify's per-way comparison: points within this of the way's loudest
 /// predicted level, dB.
 const VERIFY_SPAN_DB: f64 = 30.0;
+// -- WP P5TRUST2 -- (P5TM's finding) each verified output is judged too.
+/// A verified output whose measured response is further than this from its
+/// prediction (RMS, dB, 100 Hz to 10 kHz within 30 dB of its loudest) fails
+/// the verify. RC5f's bound for a summed run against its prediction: the same
+/// question (does the run confirm what the maths predicted?) for one way.
+/// Before, a layout without transitions (no summed run, no verified sum)
+/// always passed, even 6.4 dB off (P5TM). The simulated rooms' verifies read
+/// 0.003 to 0.18 dB per output.
+pub(crate) const VERIFY_OUTPUT_MAX_RMS_DB: f64 = dspi_measure::xover::SUMMED_CHECK_MAX_RMS_DB;
 /// The verify's whole-speaker comparison band, Hz.
 const VERIFY_SUM_HZ: (f64, f64) = (200.0, 10_000.0);
 /// The graph's smoothing of the proposal's curves, 1/N octave.
@@ -442,7 +451,8 @@ pub struct MeasureTuneVerify {
     pub transitions: Vec<MeasureTuneTransition>,
     /// The verify's walked run passed the timing quality gate.
     pub timing_reliable: bool,
-    /// Every summed run and verified sum within 1.5 dB RMS of the prediction.
+    /// Every summed run, verified sum and verified output within 1.5 dB RMS
+    /// of the prediction.
     pub passed: bool,
     /// Remarks in words.
     pub notes: Vec<String>,
@@ -1518,6 +1528,17 @@ impl DspiCore {
                                     };
                                     rms_between(&measured, &pred, 100.0, 10_000.0, &keep)
                                 });
+                        // -- WP P5TRUST2 --
+                        if let Some(r) = rms
+                            && r > VERIFY_OUTPUT_MAX_RMS_DB
+                        {
+                            passed = false;
+                            v.notes.push(format!(
+                                "{} is {r:.2} dB RMS off its prediction (at most \
+                                 {VERIFY_OUTPUT_MAX_RMS_DB:.1} dB)",
+                                maths::who(w)
+                            ));
+                        }
                         v.outputs.push(MeasureTuneVerifyOutput {
                             output: w.output,
                             rms_db: rms,
@@ -1569,6 +1590,15 @@ impl DspiCore {
                 }
                 Purpose::SumCheck { .. } => {}
             }
+        }
+        // -- WP P5TRUST2 -- a verify that judged nothing confirms nothing.
+        if v.sums.is_empty()
+            && v.transitions.is_empty()
+            && v.outputs.iter().all(|o| o.rms_db.is_none())
+        {
+            passed = false;
+            v.notes
+                .push("the verify could compare nothing with its prediction".into());
         }
         v.passed = passed;
         t.verify_failed = !passed;

@@ -44392,7 +44392,8 @@ public struct MeasureTuneVerify {
      */
     public var timingReliable: Bool
     /**
-     * Every summed run and verified sum within 1.5 dB RMS of the prediction.
+     * Every summed run, verified sum and verified output within 1.5 dB RMS
+     * of the prediction.
      */
     public var passed: Bool
     /**
@@ -44416,7 +44417,8 @@ public struct MeasureTuneVerify {
          * The verify's walked run passed the timing quality gate.
          */timingReliable: Bool, 
         /**
-         * Every summed run and verified sum within 1.5 dB RMS of the prediction.
+         * Every summed run, verified sum and verified output within 1.5 dB RMS
+         * of the prediction.
          */passed: Bool, 
         /**
          * Remarks in words.

@@ -372,7 +372,9 @@ before the next, and the user may stop after any step with nothing written.
    the apply and the guard reverts.
 10. **Verify** inside the guard: one walked run of the tuned outputs **and one summed run per transition** with the new
     net polarities (a walked run cannot see polarity or delay, RC1); measured against predicted; the guard's countdown
-    shown.
+    shown. WP P5TRUST2: the verify passes only when every summed run, verified sum **and verified output** is within
+    1.5 dB RMS of its prediction (each output 100 Hz to 10 kHz within 30 dB of its loudest), and something was compared:
+    a layout without transitions is judged on its outputs.
 11. **Keep or revert.** Keep: `apply_confirm`, "After auto-tune <date>" filed with a `tune` block (the measurement's id,
     the algorithm version, the options), and the A/B compare of the two snapshots offered (`ab_start`). Revert or the
     timeout: the guard's revert; nothing else changes. After a verify that did not pass, the first Keep is refused with
@@ -778,6 +780,9 @@ choice and timing, `align.rs`'s pair search (additive), `ir.rs`'s spread allowan
 - N7: a proposal whose planned verify needs a longer guard than 590 s carries the warning `measure.tune.guard_capped`;
   the guard still caps.
 - N6: this entry and P5TRUST's.
+- P5TM's finding: the verify also judges each verified output against its prediction (1.5 dB RMS, RC5f's bound,
+  `VERIFY_OUTPUT_MAX_RMS_DB`) and fails when nothing could be compared, so the two-step Keep arms for a layout without
+  transitions too.
 
 ### Wave P5-D: screens and the Terminal
 
