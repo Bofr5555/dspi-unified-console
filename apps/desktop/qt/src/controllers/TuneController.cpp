@@ -601,6 +601,7 @@ void TuneController::keepAnswered(const QJsonObject &reply, const QJsonObject &s
         emit stepDone(QStringLiteral("keep"), false);
         return;
     }
+    if (str(issue, "key") == QLatin1String("measure.tune.keep_during_verify")) { emit stepDone(QStringLiteral("keep"), false); return; } // -- WP P5HOLD -- the issue line says it
     fail(MeasureController::failureText(reply));
     emit stepDone(QStringLiteral("keep"), false);
 }

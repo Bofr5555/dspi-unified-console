@@ -38,8 +38,8 @@ mod common;
 
 use common::{analyse, walked_run, ways_of};
 use dspi_measure::align::{AlignGroup, AlignOptions, AlignResult, Transition, Way, align};
-use dspi_measure::ir::{ALIGNMENT_WINDOW_CYCLES, AnalysisOptions, C64};
-use dspi_measure::sim::{Acoustics, ProtoModel, SimFilter, World, three_way_chains};
+use dspi_measure::ir::{AnalysisOptions, C64, FIT_WINDOW_CYCLES};
+use dspi_measure::sim::{ProtoModel, SimFilter, World, three_way_chains};
 use dspi_measure::stimulus::SweepConfig;
 use dspi_measure::target::{Builtin, DEFAULT_REFERENCE_BAND, Target, TargetDefinition, TargetUse};
 use dspi_measure::types::{ChannelChain, Coeffs, LogGrid, Response, SectionModel, WayRole};
@@ -104,19 +104,16 @@ fn room() -> World {
     world
 }
 
-/// P5SIM's three-way room (or the same speaker in free field), every driver
-/// wired right (acoustic offsets 0.25, 0.12 and 0 ms), measured through a
-/// crossover of the family `(lp, hp)` with the lower corner at `f1`; aligned
-/// alone, and through the corner search.
-fn tuned_in(lp: u8, hp: u8, f1: f32, free: bool) -> Option<(Vec<Way>, AlignResult, XoProposal)> {
-    let mut world = room();
-    if free {
-        world.acoustics = Acoustics::Free;
-    }
+/// P5SIM's three-way room, every driver wired right (acoustic offsets 0.25,
+/// 0.12 and 0 ms), measured through a crossover of the family `(lp, hp)`
+/// with the lower corner at `f1`; aligned alone, and through the corner
+/// search, on the responses the core gives them (`FIT_WINDOW_CYCLES`).
+fn tuned(lp: u8, hp: u8, f1: f32) -> Option<(Vec<Way>, AlignResult, XoProposal)> {
+    let world = room();
     let chains = family_chains(lp, hp, f1);
     let run = walked_run(&world, &chains, 0b111, 3, &CFG, -12.0, 1_000);
     let a = analyse(&run, &world, &AnalysisOptions::default()).ok()?;
-    let ways = ways_of(&a, &chains, &ROLES, ALIGNMENT_WINDOW_CYCLES, None);
+    let ways = ways_of(&a, &chains, &ROLES, FIT_WINDOW_CYCLES, None);
     let aligned = align(
         &ways,
         &AlignGroup {
@@ -139,10 +136,6 @@ fn tuned_in(lp: u8, hp: u8, f1: f32, free: bool) -> Option<(Vec<Way>, AlignResul
     )
     .ok()?;
     Some((ways, aligned, xo))
-}
-
-fn tuned(lp: u8, hp: u8, f1: f32) -> Option<(Vec<Way>, AlignResult, XoProposal)> {
-    tuned_in(lp, hp, f1, false)
 }
 
 #[test]
@@ -363,19 +356,18 @@ fn agrees(delay: f64, flip: bool, truth: (f64, bool, f64, f64), corner: f64) -> 
 }
 
 /// One family of the review's probe (review P5-D D1) as a test: the lower
-/// corner at 300 and at 120 Hz, alignment alone and the corner search.
+/// corner at 300 and at 120 Hz, alignment alone and the corner search, on
+/// the responses the core gives them (`FIT_WINDOW_CYCLES`, as
+/// `dspi-core`'s `runs::output_response`).
 ///
 /// - At 300 Hz and 3 kHz every pair's timing is the truth's (polarity, and
 ///   the delay within a tenth of a period), and nothing is held (the review
 ///   saw LR6 and LR8 kept, and before it flipped).
-/// - At 120 Hz the midrange's own high-pass sits on the corner, and with
-///   the steeper filters the two ways ring longer than the alignment window
-///   holds (ALIGNMENT_WINDOW_CYCLES, 5 cycles, review S-c): the windowed
-///   phase may agree best half a period from the truth, or nearly as well
-///   at both. A pair there gets the truth's timing, or the timing the same
-///   speaker gets **in free field** (the window's own answer: neither the
-///   room nor the hold moved it), or keeps its timing with the note
-///   (`held_unclear`, review P5-D F1: the safety net).
+/// - At 120 Hz the midrange's own high-pass sits on the corner and moves the
+///   right timing about a third of a period earlier, which the arrivals do
+///   not see: a pair there gets the truth's timing or keeps its timing with
+///   the note (`held_unclear`: review P5-D F1 and P5HOLD's polarity guard).
+///   Never a timing that disagrees with the truth.
 fn wp_p5hold_family(name: &str, lp: u8, hp: u8) {
     let world = room();
     let q = lp == BW3_LP;
@@ -383,28 +375,19 @@ fn wp_p5hold_family(name: &str, lp: u8, hp: u8) {
     for f1 in [300.0f32, 120.0] {
         let chains = family_chains(lp, hp, f1);
         let (_, aligned, xo) = tuned(lp, hp, f1).unwrap();
-        let free = (f1 < 200.0).then(|| tuned_in(lp, hp, f1, true).unwrap());
+        let may_keep = f1 < 200.0;
         let held_note = |notes: &[String], low: u8, high: u8| {
-            notes
-                .iter()
-                .any(|n| n.contains(&format!("outputs {low} and {high}")) && n.contains("are kept"))
+            notes.iter().any(|n| {
+                n.contains(&format!("outputs {low} and {high}"))
+                    && n.contains("could not be settled")
+            })
         };
-        // Per transition: alignment alone gave the window's own answer (the
-        // free field's), at its corner.
-        let mut windows_own = [false; 2];
-        for (k, (p, t)) in aligned.pairs.iter().zip(transitions()).enumerate() {
+        for (p, t) in aligned.pairs.iter().zip(transitions()) {
             let tr = truth(&world, &chains, t.low, t.high, p.corner_hz, q);
-            let mut ok = agrees(p.relative_delay_ms, p.flipped, tr, p.corner_hz);
-            if let Some((_, fa, _)) = &free {
-                let fp = &fa.pairs[k];
-                windows_own[k] = p.flipped == fp.flipped
-                    && (p.relative_delay_ms - fp.relative_delay_ms).abs()
-                        <= 0.1 * 1000.0 / p.corner_hz;
-                ok |= windows_own[k];
-                ok |= p.relative_delay_ms == 0.0
-                    && !p.flipped
-                    && held_note(&aligned.notes, p.low_output, p.high_output);
-            }
+            let kept = p.relative_delay_ms == 0.0
+                && !p.flipped
+                && held_note(&aligned.notes, p.low_output, p.high_output);
+            let ok = agrees(p.relative_delay_ms, p.flipped, tr, p.corner_hz) || (may_keep && kept);
             println!(
                 "{name} {f1} Hz align {:.0} Hz: {:+.3} ms flip {} | truth {:+.3} ms flip {} | {}",
                 p.corner_hz,
@@ -412,37 +395,27 @@ fn wp_p5hold_family(name: &str, lp: u8, hp: u8) {
                 p.flipped,
                 tr.0,
                 tr.1,
-                if ok { "ok" } else { "WRONG" }
+                if !ok {
+                    "WRONG"
+                } else if kept {
+                    "kept"
+                } else {
+                    "ok"
+                }
             );
             if !ok {
                 failures.push(format!("{name} {f1} Hz align {:.0} Hz", p.corner_hz));
             }
         }
         let corners = proposal_corners(&xo, &chains);
-        for (k, (x, t)) in xo.transitions.iter().zip(transitions()).enumerate() {
+        for (x, t) in xo.transitions.iter().zip(transitions()) {
             let tr = truth(&world, &corners, t.low, t.high, x.corner_hz, q);
-            let mut ok =
-                x.kept_reason.is_none() && agrees(x.relative_delay_ms, x.flipped, tr, x.corner_hz);
-            if let Some((_, _, fx)) = &free {
-                // The window's own answer: the free field's corner search at
-                // the same corner, or alignment alone where it gave the free
-                // field's answer at the same corner (in free field the search
-                // may take other corners: no room modes).
-                let fxt = &fx.transitions[k];
-                ok |= (x.corner_hz - fxt.corner_hz).abs() < 1.0
-                    && x.flipped == fxt.flipped
-                    && (x.relative_delay_ms - fxt.relative_delay_ms).abs()
-                        <= 0.1 * 1000.0 / x.corner_hz;
-                let p = &aligned.pairs[k];
-                ok |= windows_own[k]
-                    && (x.corner_hz - p.corner_hz).abs() < 1.0
-                    && x.flipped == p.flipped
-                    && (x.relative_delay_ms - p.relative_delay_ms).abs()
-                        <= 0.1 * 1000.0 / x.corner_hz;
-                ok |= x.relative_delay_ms == 0.0
-                    && !x.flipped
-                    && held_note(&xo.notes, x.low_output, x.high_output);
-            }
+            let kept = x.relative_delay_ms == 0.0
+                && !x.flipped
+                && held_note(&xo.notes, x.low_output, x.high_output);
+            let ok = (x.kept_reason.is_none()
+                && agrees(x.relative_delay_ms, x.flipped, tr, x.corner_hz))
+                || (may_keep && kept);
             println!(
                 "{name} {f1} Hz xo {:.0} -> {:.0} Hz: {:+.3} ms flip {} | truth {:+.3} ms flip {} | {}",
                 x.corner_before_hz,
@@ -451,20 +424,19 @@ fn wp_p5hold_family(name: &str, lp: u8, hp: u8) {
                 x.flipped,
                 tr.0,
                 tr.1,
-                if ok { "ok" } else { "WRONG" }
+                if !ok {
+                    "WRONG"
+                } else if kept {
+                    "kept"
+                } else {
+                    "ok"
+                }
             );
             if !ok {
-                failures.push(format!(
-                    "{name} {f1} Hz xo {:.0} Hz (free field: {:?})",
-                    x.corner_hz,
-                    free.as_ref().map(|f| {
-                        let t = &f.2.transitions[k];
-                        (t.corner_hz, t.relative_delay_ms, t.flipped)
-                    })
-                ));
+                failures.push(format!("{name} {f1} Hz xo {:.0} Hz", x.corner_hz));
             }
         }
-        if f1 > 200.0 {
+        if !may_keep {
             for n in aligned.notes.iter().chain(&xo.notes) {
                 if n.contains("arrivals") {
                     failures.push(format!("{name} {f1} Hz held: {n}"));

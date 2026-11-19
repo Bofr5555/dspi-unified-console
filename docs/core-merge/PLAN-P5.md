@@ -885,21 +885,27 @@ hold anchor, `tests/review_p5d_hold.rs`, the tune's Keep gate, its notice row, t
   change: its only callers are tests; the core calls `crossover_corner`, which had the model). F1's `held_unclear`
   stays the safety net, unchanged.
 - Judged against the simulated speaker's truth (the anechoic ways' phase agreement, `align`'s own rule; quadrature for
-  BW3), the review's probe is now a test per family (LR2, LR4, LR6, LR8, BW2, BW3, BW4, Bessel 4; lower corner 300 and
-  120 Hz; alignment and corner search): at 300 Hz and 3 kHz every pair gets the truth's polarity and its delay within
-  a tenth of a period, nothing held (LR6 and LR8 were kept or flipped). At 120 Hz the room's midrange has its own
-  second-order high-pass on the corner, which moves the right timing about a third of a period earlier and changes
-  the polarity a pair needs (LR2, BW2 none; LR4, BW4, LR8 the inversion): LR2, BW2, BW3, Bessel 4 and LR4's alignment
-  get the truth; LR6, LR8, BW4 (and LR4's corner search, a near tie) get the answer the same speaker gets in free
-  field, half a period from the truth: the 5-cycle alignment window (review S-c) does not hold those pairs' ringing,
-  and the windowed phase agrees best there (unheld, so not the hold's choice). Left for later (below).
+  BW3), on the responses the core gives `align` (`FIT_WINDOW_CYCLES`), the review's probe is now a test per family
+  (LR2, LR4, LR6, LR8, BW2, BW3, BW4, Bessel 4; lower corner 300 and 120 Hz; alignment and corner search): at 300 Hz
+  and 3 kHz every pair gets the truth's polarity and its delay within a tenth of a period, nothing held (LR6 and LR8
+  were kept or flipped). At 120 Hz the room's midrange has its own second-order high-pass on the corner, which moves
+  the right timing about a third of a period earlier and changes the polarity a pair needs (LR2, BW2 none; LR4, BW4,
+  LR8 the inversion); no arrival sees it, so the hold can exclude the right timing.
+- **Polarity guard** (coordinator, after the first hand-back): a held choice whose polarity is not the window's own
+  best's is `held_unclear` too (`search_held`, so `align` and every corner-search candidate): the two lie half a cycle
+  apart and nothing tells which is right; the pair keeps its delay and polarity, and the note says the timing could
+  not be settled at this corner. At 120 Hz every family now gets the truth or keeps its timing with that note (LR6
+  and LR8 alignment, LR8, BW3 and BW4 corner search); none gets a timing that disagrees with the truth (LR8 had one:
+  held, +1.08 ms without the flip the truth needs). The coordinator's first form, comparing the 5-cycle window with a
+  longer one, is not possible here: `align` and `crossover_corner` get one response per way (the document's, 15
+  cycles), not the impulse response.
 - Synthetic arrivals in `align`'s tests now hold the chain's onset as measured ones do; every golden unchanged.
 - D3: Keep (the tune's and the guard's generic one) is refused while a verify runs, `measure.tune.keep_during_verify`
   (notice row; nothing changes, the verify and the guard run on; the verdict clears the issue). The Terminal says it
-  in words and drops what was typed with it; Qt shows the issue through its notice row (no Qt change).
+  in words and drops what was typed with it; Qt shows the issue through its notice row, and its raw error line is hidden (one marked line in `TuneController`).
 - The "more repeats" sentence of section 1.1 item 9 and P5TRUST2's entry made exact.
-**Later:** a steep pair at a corner where a driver's own roll-off sits (LR6, LR8, BW4 at 120 Hz in P5SIM's room)
-needs a longer alignment window, or an anchor that knows the drivers' own phase (a minimum-phase model of each
+**Later:** a pair at a corner where a driver's own roll-off sits (LR6, LR8 and others at 120 Hz in P5SIM's room)
+keeps its timing; to propose one it needs an anchor that knows the drivers' own phase (a minimum-phase model of each
 de-embedded driver was tried here and was not accurate enough in the room: its edges are where the de-embedding is
 noisy).
 
