@@ -7470,6 +7470,33 @@ uint32_t dspi_raw_set_id(struct FfiCore *core,
                          uint32_t len);
 
 /**
+ * The open board as an update target, in JSON: `{ok, voltage: {requiredMv,
+ * source}, boardId (null: not read), lineage ("unknown", "upstream" or
+ * "bofr"), generation ("unknown", "legacy" or "paged")}`. Never a failure
+ * for the device: what cannot be read is unknown, and an unknown board is
+ * offered no image. Blocks for up to five control transfers: call it off
+ * the UI thread. Returns the bytes needed including the NUL.
+ */
+uint32_t dspi_firmware_target(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * The update check on `image_len` bytes of `image` for `target` (the JSON
+ * `dspi_firmware_target` gave; null: nothing known, so no image), with what
+ * the user `typed` (null: nothing), in JSON: `{ok, verdict: {allowed,
+ * decision, reason, message, confirmationPhrase, imageMv, requiredMv}, rule
+ * ("none", "noBootsel" or "lineageLoss"), imageLineage, imageGeneration,
+ * generationChange ("" when none)}`. Flash only when `verdict.allowed`. A
+ * target that is not that JSON is `invalid`. Pure apart from parsing the
+ * image.
+ */
+uint32_t dspi_firmware_update_check(const uint8_t *image,
+                                    uint32_t image_len,
+                                    const char *target,
+                                    const char *typed,
+                                    char *buf,
+                                    uint32_t len);
+
+/**
  * Start looking for hubs on the local network, replacing any browse running.
  * Returns at once; false only with a null handle, in a build without the
  * feature, or when a thread cannot start. A network failure shows in

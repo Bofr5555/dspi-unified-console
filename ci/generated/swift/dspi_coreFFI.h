@@ -1226,6 +1226,11 @@ RustBuffer uniffi_dspi_core_fn_method_dspicore_filters_inspect(void*_Nonnull ptr
 RustBuffer uniffi_dspi_core_fn_method_dspicore_firmware_guard_board(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FIRMWARE_TARGET
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FIRMWARE_TARGET
+RustBuffer uniffi_dspi_core_fn_method_dspicore_firmware_target(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FIRMWARE_VERSION_MATCHES
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FIRMWARE_VERSION_MATCHES
 int8_t uniffi_dspi_core_fn_method_dspicore_firmware_version_matches(void*_Nonnull ptr, RustBuffer version, RustCallStatus *_Nonnull out_status
@@ -3237,6 +3242,11 @@ RustBuffer uniffi_dspi_core_fn_func_firmware_guard_board_in_bootloader(RustCallS
 RustBuffer uniffi_dspi_core_fn_func_firmware_guard_check(RustBuffer image, RustBuffer board, RustBuffer typed_confirmation, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_FIRMWARE_UPDATE_CHECK
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_FIRMWARE_UPDATE_CHECK
+RustBuffer uniffi_dspi_core_fn_func_firmware_update_check(RustBuffer image, RustBuffer target, RustBuffer typed_confirmation, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_HUB_ALARM_NOTICE
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_HUB_ALARM_NOTICE
 RustBuffer uniffi_dspi_core_fn_func_hub_alarm_notice(RustBuffer alarm, RustBuffer time, RustCallStatus *_Nonnull out_status
@@ -3886,6 +3896,12 @@ uint16_t uniffi_dspi_core_checksum_func_firmware_guard_board_in_bootloader(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_FIRMWARE_GUARD_CHECK
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_FIRMWARE_GUARD_CHECK
 uint16_t uniffi_dspi_core_checksum_func_firmware_guard_check(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_FIRMWARE_UPDATE_CHECK
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_FIRMWARE_UPDATE_CHECK
+uint16_t uniffi_dspi_core_checksum_func_firmware_update_check(void
     
 );
 #endif
@@ -4972,6 +4988,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_filters_inspect(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FIRMWARE_GUARD_BOARD
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FIRMWARE_GUARD_BOARD
 uint16_t uniffi_dspi_core_checksum_method_dspicore_firmware_guard_board(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FIRMWARE_TARGET
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FIRMWARE_TARGET
+uint16_t uniffi_dspi_core_checksum_method_dspicore_firmware_target(void
     
 );
 #endif

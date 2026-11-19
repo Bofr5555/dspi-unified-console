@@ -705,6 +705,22 @@ length locally. **Deps:** PG-B2; P5SES and P5LIVE merged (else PGMEAS waits; it 
 - **PGTM:** `PrincipalTransport` and `LocalTransport` say the generation but no `paged_discovery()`: a core on them
   shows a paged device with an empty page list and the ext envelope from the 1.1.6-shaped probe.
 
+**PGFWX: The update check over the bindings.** [DONE] Size 1. Wave PG-D, before the client WPs. **Owns:** the
+bindings of the update check (UniFFI derives and exports in `crates/dspi-core/src/firmware_guard.rs`, new
+`crates/dspi-capi/src/fns_misc/firmware_update.rs`, new `crates/dspi-wasm/src/firmware.rs`), `WriteGuardedCore`,
+`dspi-ffi`'s `NOT_EXPORTED`. **Did:** exported `FirmwareTarget` (a record; its board is now `board_id: Option<u8>`,
+platform byte 7, with `FirmwareTarget::board()` for Rust, so no remote type is needed), `FirmwareUpdateVerdict`,
+`FirmwareUpdateRule`, `FirmwareLineage`, `FirmwareGeneration`, `DspiCore::firmware_target` and
+`firmware_update_check` over UniFFI; `dspi_firmware_target` and `dspi_firmware_update_check` (the target as the JSON
+`dspi_firmware_target` gave; null or missing fields are unknown, so no image) in the C ABI; `firmwareTarget` and
+`firmwareUpdateCheck {image, target, typed}` in wasm. Both classified as reads (`PASS_THROUGH`). The Android contract
+generator types a record taken by reference (`&FirmwareTarget`) as the record. Review PG-C finding 8:
+`firmware_target` reads `EXT_LIST` once for the lineage and the voltage record, and `FirmwareTarget::may_be_ours`
+treats a lineage that could not be read on an open board (not BOOTSEL, not "no device") as ours, so the typed
+confirmation is asked. **Not done (by scope):** no client's update screen switched (PGQT, PGAND, PGWEB, PGTM,
+PGSWIFT); `dspi_firmware_flash_confirmed` and `flash_confirmed` still gate the drive write on the voltage record
+alone, so a client that switches its screen must flash only on the update check's `allowed`.
+
 **PGMAT: The compat matrix.** [TODO] Size 3. Wave PG-D. **Owns:** new `crates/dspi-core/tests/wp_pgmat_matrix.rs`,
 new `crates/dspi-hub/tests/wp_pgmat_hub.rs`, vendored DSPi-Link fixtures under `tests/fixtures/link/upstream-1.3/`
 (MIT). **Implements:** section 4's matrix, every cell of section 1.11: our core over USB (mock wire), MIDI (pipe fake),

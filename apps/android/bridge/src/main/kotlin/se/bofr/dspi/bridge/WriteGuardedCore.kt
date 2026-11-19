@@ -1576,7 +1576,11 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             // -- WP PGCORE -- a raw paged GET (every paged GET reads) and the
             // connection's protocol generation (no traffic)
             "rawGetId",
-            "deviceProtocol"
+            "deviceProtocol",
+            // -- WP PGFWX -- the update target (reads, before the bootloader
+            // entry) and the update check (stateless, on the image)
+            "firmwareTarget",
+            "firmwareUpdateCheck"
         )
 
         /** Control-surface operations that only read the device (`cs.rs`, `cs_op`). */

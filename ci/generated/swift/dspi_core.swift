@@ -2848,6 +2848,17 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func firmwareGuardBoard()  -> FirmwareGuardBoard
     
     /**
+     * The open board as an update target, read now: the voltage record, the
+     * board (8 platform bytes and the descriptor), its lineage and the live
+     * connection's generation. Never fails: what cannot be read is unknown,
+     * and an unknown board is offered no image. Call before the bootloader
+     * entry, off the UI thread (up to five control transfers), and keep it
+     * for [`firmware_update_check`]. `EXT_LIST` is read once, for the
+     * lineage and the voltage record alike.
+     */
+    func firmwareTarget()  -> FirmwareTarget
+    
+    /**
      * Whether the open device runs firmware `version`: the leading
      * `major.minor.patch[-betaN]` of a UF2's `Uf2Info::firmware_version`
      * (`1.1.6-beta3-16-g557bce7` compares as 1.1.6 beta 3), against the
@@ -8904,6 +8915,22 @@ open func filtersInspect(text: String, inputs: UInt8) -> String  {
 open func firmwareGuardBoard() -> FirmwareGuardBoard  {
     return try!  FfiConverterTypeFirmwareGuardBoard_lift(try! rustCall() {
     uniffi_dspi_core_fn_method_dspicore_firmware_guard_board(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * The open board as an update target, read now: the voltage record, the
+     * board (8 platform bytes and the descriptor), its lineage and the live
+     * connection's generation. Never fails: what cannot be read is unknown,
+     * and an unknown board is offered no image. Call before the bootloader
+     * entry, off the UI thread (up to five control transfers), and keep it
+     * for [`firmware_update_check`]. `EXT_LIST` is read once, for the
+     * lineage and the voltage record alike.
+     */
+open func firmwareTarget() -> FirmwareTarget  {
+    return try!  FfiConverterTypeFirmwareTarget_lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_firmware_target(self.uniffiClonePointer(),$0
     )
 })
 }
@@ -28085,6 +28112,255 @@ public func FfiConverterTypeFirmwareGuardVerdict_lift(_ buf: RustBuffer) throws 
 #endif
 public func FfiConverterTypeFirmwareGuardVerdict_lower(_ value: FirmwareGuardVerdict) -> RustBuffer {
     return FfiConverterTypeFirmwareGuardVerdict.lower(value)
+}
+
+
+/**
+ * The board an update is for, read before it enters the bootloader. The
+ * default fails closed: no board known, so no image.
+ *
+ * WP PGFWX: exported (UniFFI record; JSON in the C ABI and wasm, where a
+ * missing field is its default: unknown, so it fails closed). Keep the one
+ * [`DspiCore::firmware_target`] read and hand it back unchanged.
+ */
+public struct FirmwareTarget {
+    /**
+     * The voltage rule's record ([`DspiCore::firmware_guard_board`]).
+     */
+    public var voltage: FirmwareGuardBoard
+    /**
+     * The board id (platform byte 7, PLAN-PG section 1.9; 0 is a Pico, see
+     * [`FirmwareTarget::board`]); `None` when it could not be read.
+     */
+    public var boardId: UInt8?
+    /**
+     * Whose firmware runs on it: ours when the extension channel answers.
+     */
+    public var lineage: FirmwareLineage
+    /**
+     * The protocol generation of the live connection.
+     */
+    public var generation: FirmwareGeneration
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The voltage rule's record ([`DspiCore::firmware_guard_board`]).
+         */voltage: FirmwareGuardBoard, 
+        /**
+         * The board id (platform byte 7, PLAN-PG section 1.9; 0 is a Pico, see
+         * [`FirmwareTarget::board`]); `None` when it could not be read.
+         */boardId: UInt8?, 
+        /**
+         * Whose firmware runs on it: ours when the extension channel answers.
+         */lineage: FirmwareLineage, 
+        /**
+         * The protocol generation of the live connection.
+         */generation: FirmwareGeneration) {
+        self.voltage = voltage
+        self.boardId = boardId
+        self.lineage = lineage
+        self.generation = generation
+    }
+}
+
+#if compiler(>=6)
+extension FirmwareTarget: Sendable {}
+#endif
+
+
+extension FirmwareTarget: Equatable, Hashable {
+    public static func ==(lhs: FirmwareTarget, rhs: FirmwareTarget) -> Bool {
+        if lhs.voltage != rhs.voltage {
+            return false
+        }
+        if lhs.boardId != rhs.boardId {
+            return false
+        }
+        if lhs.lineage != rhs.lineage {
+            return false
+        }
+        if lhs.generation != rhs.generation {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(voltage)
+        hasher.combine(boardId)
+        hasher.combine(lineage)
+        hasher.combine(generation)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFirmwareTarget: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FirmwareTarget {
+        return
+            try FirmwareTarget(
+                voltage: FfiConverterTypeFirmwareGuardBoard.read(from: &buf), 
+                boardId: FfiConverterOptionUInt8.read(from: &buf), 
+                lineage: FfiConverterTypeFirmwareLineage.read(from: &buf), 
+                generation: FfiConverterTypeFirmwareGeneration.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FirmwareTarget, into buf: inout [UInt8]) {
+        FfiConverterTypeFirmwareGuardBoard.write(value.voltage, into: &buf)
+        FfiConverterOptionUInt8.write(value.boardId, into: &buf)
+        FfiConverterTypeFirmwareLineage.write(value.lineage, into: &buf)
+        FfiConverterTypeFirmwareGeneration.write(value.generation, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFirmwareTarget_lift(_ buf: RustBuffer) throws -> FirmwareTarget {
+    return try FfiConverterTypeFirmwareTarget.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFirmwareTarget_lower(_ value: FirmwareTarget) -> RustBuffer {
+    return FfiConverterTypeFirmwareTarget.lower(value)
+}
+
+
+/**
+ * [`firmware_update_check`]'s answer. Flash only on `verdict.allowed`.
+ */
+public struct FirmwareUpdateVerdict {
+    /**
+     * The verdict, as [`firmware_guard_check`]'s with the rules above folded
+     * in (`message` names every risk; `confirmation_phrase` is what to type).
+     */
+    public var verdict: FirmwareGuardVerdict
+    /**
+     * The rule beyond the voltage rule that decided, if any.
+     */
+    public var rule: FirmwareUpdateRule
+    /**
+     * The image's lineage (the manifest, or our stamp; else unknown).
+     */
+    public var imageLineage: FirmwareLineage
+    /**
+     * The image's generation (the manifest, or its version).
+     */
+    public var imageGeneration: FirmwareGeneration
+    /**
+     * A generation change, shown with what works afterwards; "" when none.
+     */
+    public var generationChange: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The verdict, as [`firmware_guard_check`]'s with the rules above folded
+         * in (`message` names every risk; `confirmation_phrase` is what to type).
+         */verdict: FirmwareGuardVerdict, 
+        /**
+         * The rule beyond the voltage rule that decided, if any.
+         */rule: FirmwareUpdateRule, 
+        /**
+         * The image's lineage (the manifest, or our stamp; else unknown).
+         */imageLineage: FirmwareLineage, 
+        /**
+         * The image's generation (the manifest, or its version).
+         */imageGeneration: FirmwareGeneration, 
+        /**
+         * A generation change, shown with what works afterwards; "" when none.
+         */generationChange: String) {
+        self.verdict = verdict
+        self.rule = rule
+        self.imageLineage = imageLineage
+        self.imageGeneration = imageGeneration
+        self.generationChange = generationChange
+    }
+}
+
+#if compiler(>=6)
+extension FirmwareUpdateVerdict: Sendable {}
+#endif
+
+
+extension FirmwareUpdateVerdict: Equatable, Hashable {
+    public static func ==(lhs: FirmwareUpdateVerdict, rhs: FirmwareUpdateVerdict) -> Bool {
+        if lhs.verdict != rhs.verdict {
+            return false
+        }
+        if lhs.rule != rhs.rule {
+            return false
+        }
+        if lhs.imageLineage != rhs.imageLineage {
+            return false
+        }
+        if lhs.imageGeneration != rhs.imageGeneration {
+            return false
+        }
+        if lhs.generationChange != rhs.generationChange {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(verdict)
+        hasher.combine(rule)
+        hasher.combine(imageLineage)
+        hasher.combine(imageGeneration)
+        hasher.combine(generationChange)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFirmwareUpdateVerdict: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FirmwareUpdateVerdict {
+        return
+            try FirmwareUpdateVerdict(
+                verdict: FfiConverterTypeFirmwareGuardVerdict.read(from: &buf), 
+                rule: FfiConverterTypeFirmwareUpdateRule.read(from: &buf), 
+                imageLineage: FfiConverterTypeFirmwareLineage.read(from: &buf), 
+                imageGeneration: FfiConverterTypeFirmwareGeneration.read(from: &buf), 
+                generationChange: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FirmwareUpdateVerdict, into buf: inout [UInt8]) {
+        FfiConverterTypeFirmwareGuardVerdict.write(value.verdict, into: &buf)
+        FfiConverterTypeFirmwareUpdateRule.write(value.rule, into: &buf)
+        FfiConverterTypeFirmwareLineage.write(value.imageLineage, into: &buf)
+        FfiConverterTypeFirmwareGeneration.write(value.imageGeneration, into: &buf)
+        FfiConverterString.write(value.generationChange, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFirmwareUpdateVerdict_lift(_ buf: RustBuffer) throws -> FirmwareUpdateVerdict {
+    return try FfiConverterTypeFirmwareUpdateVerdict.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFirmwareUpdateVerdict_lower(_ value: FirmwareUpdateVerdict) -> RustBuffer {
+    return FfiConverterTypeFirmwareUpdateVerdict.lower(value)
 }
 
 
@@ -54244,6 +54520,95 @@ extension FillBand: Equatable, Hashable {}
 // Note that we don't yet support `indirect` for enums.
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
 /**
+ * Which protocol generation a firmware speaks (PLAN-PG section 1.1).
+ */
+
+public enum FirmwareGeneration {
+    
+    /**
+     * Not known.
+     */
+    case unknown
+    /**
+     * 1.1.6 and older: page 0 only.
+     */
+    case legacy
+    /**
+     * 1.1.7 and later: paged.
+     */
+    case paged
+}
+
+
+#if compiler(>=6)
+extension FirmwareGeneration: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFirmwareGeneration: FfiConverterRustBuffer {
+    typealias SwiftType = FirmwareGeneration
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FirmwareGeneration {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .unknown
+        
+        case 2: return .legacy
+        
+        case 3: return .paged
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: FirmwareGeneration, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .unknown:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .legacy:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .paged:
+            writeInt(&buf, Int32(3))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFirmwareGeneration_lift(_ buf: RustBuffer) throws -> FirmwareGeneration {
+    return try FfiConverterTypeFirmwareGeneration.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFirmwareGeneration_lower(_ value: FirmwareGeneration) -> RustBuffer {
+    return FfiConverterTypeFirmwareGeneration.lower(value)
+}
+
+
+extension FirmwareGeneration: Equatable, Hashable {}
+
+
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
  * Where a [`FirmwareGuardBoard`]'s voltage came from.
  */
 
@@ -54563,6 +54928,186 @@ public func FfiConverterTypeFirmwareGuardReason_lower(_ value: FirmwareGuardReas
 
 
 extension FirmwareGuardReason: Equatable, Hashable {}
+
+
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
+ * Where a firmware comes from (PLAN-PG section 1.8): upstream Weeb Labs, or
+ * this fork's `bofr-main` (extensions, alink, the 1.20 V core setting, our
+ * preset directory).
+ */
+
+public enum FirmwareLineage {
+    
+    /**
+     * Not known: every doubt resolves to "asks".
+     */
+    case unknown
+    /**
+     * Weeb Labs' firmware (stock).
+     */
+    case upstream
+    /**
+     * This fork's `bofr-main`.
+     */
+    case bofr
+}
+
+
+#if compiler(>=6)
+extension FirmwareLineage: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFirmwareLineage: FfiConverterRustBuffer {
+    typealias SwiftType = FirmwareLineage
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FirmwareLineage {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .unknown
+        
+        case 2: return .upstream
+        
+        case 3: return .bofr
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: FirmwareLineage, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .unknown:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .upstream:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .bofr:
+            writeInt(&buf, Int32(3))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFirmwareLineage_lift(_ buf: RustBuffer) throws -> FirmwareLineage {
+    return try FfiConverterTypeFirmwareLineage.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFirmwareLineage_lower(_ value: FirmwareLineage) -> RustBuffer {
+    return FfiConverterTypeFirmwareLineage.lower(value)
+}
+
+
+extension FirmwareLineage: Equatable, Hashable {}
+
+
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
+ * Which rule beyond the voltage rule decided an update verdict.
+ */
+
+public enum FirmwareUpdateRule {
+    
+    /**
+     * None: the voltage rule's verdict stands.
+     */
+    case none
+    /**
+     * The board has no BOOTSEL: refused, whatever is typed.
+     */
+    case noBootsel
+    /**
+     * Our firmware would give way to an image that may be upstream's.
+     */
+    case lineageLoss
+}
+
+
+#if compiler(>=6)
+extension FirmwareUpdateRule: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFirmwareUpdateRule: FfiConverterRustBuffer {
+    typealias SwiftType = FirmwareUpdateRule
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FirmwareUpdateRule {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .none
+        
+        case 2: return .noBootsel
+        
+        case 3: return .lineageLoss
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: FirmwareUpdateRule, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .none:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .noBootsel:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .lineageLoss:
+            writeInt(&buf, Int32(3))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFirmwareUpdateRule_lift(_ buf: RustBuffer) throws -> FirmwareUpdateRule {
+    return try FfiConverterTypeFirmwareUpdateRule.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFirmwareUpdateRule_lower(_ value: FirmwareUpdateRule) -> RustBuffer {
+    return FfiConverterTypeFirmwareUpdateRule.lower(value)
+}
+
+
+extension FirmwareUpdateRule: Equatable, Hashable {}
 
 
 
@@ -61414,6 +61959,23 @@ public func firmwareGuardCheck(image: Data, board: FirmwareGuardBoard, typedConf
 })
 }
 /**
+ * The update check (PLAN-PG section 1.8): [`firmware_guard_check`]'s voltage
+ * rule on the target's record, plus: no image for a board without BOOTSEL,
+ * whatever is typed; the typed confirmation when firmware that may be ours
+ * would give way to an image that may be upstream's (a lineage that could
+ * not be read on an open board counts as ours); the generation change, with
+ * what works afterwards. Pure apart from parsing the image; never panics.
+ */
+public func firmwareUpdateCheck(image: Data, target: FirmwareTarget, typedConfirmation: String) -> FirmwareUpdateVerdict  {
+    return try!  FfiConverterTypeFirmwareUpdateVerdict_lift(try! rustCall() {
+    uniffi_dspi_core_fn_func_firmware_update_check(
+        FfiConverterData.lower(image),
+        FfiConverterTypeFirmwareTarget_lower(target),
+        FfiConverterString.lower(typedConfirmation),$0
+    )
+})
+}
+/**
  * What to tell the user about `alarm`: its row `alarm.<code>`, with
  * `{time}` the client's own rendering of [`HubAlarm::raised_at`] (`time`;
  * "" leaves the hub's ISO time) and `{reason}` the reset's cause in words.
@@ -62065,6 +62627,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_func_firmware_guard_check() != 22496) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_func_firmware_update_check() != 5569) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_func_hub_alarm_notice() != 51350) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -62606,6 +63171,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_firmware_guard_board() != 9275) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_firmware_target() != 6598) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_firmware_version_matches() != 52277) {

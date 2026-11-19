@@ -460,7 +460,10 @@ QUALIFIED = {
 
 
 def norm(t: str) -> str:
-    return t.strip().replace("crate::", "").replace("&str", "String")
+    t = t.strip().replace("crate::", "").replace("&str", "String")
+    # -- WP PGFWX -- a record by reference (`firmware_update_check`'s target):
+    # UniFFI lifts it as by value, so both sides type it as the record.
+    return re.sub(r"^&(\w+)$", r"\1", t)
 
 
 def unwrap_result(t: str) -> tuple[str, bool]:

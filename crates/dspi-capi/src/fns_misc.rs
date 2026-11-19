@@ -104,6 +104,8 @@ mod measure_sim;
 mod measure_tune;
 // -- WP PGCORE -- the protocol generation and raw paged requests
 mod protocol;
+// -- WP PGFWX -- the update target and the update check
+mod firmware_update;
 
 // ── Replies ──────────────────────────────────────────────────────────
 

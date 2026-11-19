@@ -1277,6 +1277,17 @@ interface DspiCoreApi : AutoCloseable {
     fun firmwareGuardBoard(): FirmwareGuardBoard
 
     /**
+     * The open board as an update target, read now: the voltage record, the
+     * board (8 platform bytes and the descriptor), its lineage and the live
+     * connection's generation. Never fails: what cannot be read is unknown,
+     * and an unknown board is offered no image. Call before the bootloader
+     * entry, off the UI thread (up to five control transfers), and keep it
+     * for [`firmware_update_check`]. `EXT_LIST` is read once, for the
+     * lineage and the voltage record alike.
+     */
+    fun firmwareTarget(): FirmwareTarget
+
+    /**
      * Import `text` (a `.dspipreset` document) with a way back: capture a
      * snapshot, apply the blocks `options` and `eq_channels` choose (as
      * [`DspiCore::config_import_confirmed`] takes them), then wait
@@ -5761,6 +5772,18 @@ interface DspiCoreApi : AutoCloseable {
      * Stateless (a free function in dspi-core); needs no device.
      */
     fun firmwareGuardCheck(image: List<Int>, board: FirmwareGuardBoard, typedConfirmation: String): FirmwareGuardVerdict
+
+    /**
+     * The update check (PLAN-PG section 1.8): [`firmware_guard_check`]'s voltage
+     * rule on the target's record, plus: no image for a board without BOOTSEL,
+     * whatever is typed; the typed confirmation when firmware that may be ours
+     * would give way to an image that may be upstream's (a lineage that could
+     * not be read on an open board counts as ours); the generation change, with
+     * what works afterwards. Pure apart from parsing the image; never panics.
+     *
+     * Stateless (a free function in dspi-core); needs no device.
+     */
+    fun firmwareUpdateCheck(image: List<Int>, target: FirmwareTarget, typedConfirmation: String): FirmwareUpdateVerdict
 
     /**
      * Whether `image` is the bundled file `name` (a file name; a leading path

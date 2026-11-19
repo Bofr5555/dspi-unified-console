@@ -127,6 +127,8 @@ pub mod write;
 pub mod sws_a;
 // -- WP PGCORE -- the protocol generation and raw paged requests
 pub mod protocol;
+// -- WP PGFWX -- the update target and the update check
+pub mod firmware;
 
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 #[allow(unsafe_code)]
