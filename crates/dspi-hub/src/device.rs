@@ -24,8 +24,6 @@ use dspi_link::messages::LINK_13_MINOR;
 use dspi_proto::packets::Board;
 use dspi_proto::paged::{CmdId, cmds};
 use dspi_transport::paged::Generation;
-use dspi_transport::{DeviceDescriptor, InRead, PagedRead, TransportCaps};
-use std::sync::Mutex;
 
 use crate::policy::Policy;
 use crate::polls::{PollRefused, Polls};
@@ -508,13 +506,10 @@ fn worker_loop(
         generation: shared.generation,
     };
     let mut busy = BusyWindow::default();
-    // -- WP PGHDEV -- one generation wrapper, reached by both paths: the 1.1.6-shaped
-    // one through the gain guard, and the paged one verbatim
-    let wire = Arc::new(Mutex::new(transport));
-    let mut paged = Wire::new(&wire);
     // -- WP BULKFIX -- (fixup bf F1, F4: the guard sees every relayed unmute)
-    let (mut transport, guard) =
-        dspi_session::bulk_gain::GainGuard::wrap(Box::new(Wire::new(&wire)), true);
+    // -- PG-C merge -- one wrapper again: the gain guard forwards the paged calls
+    // and `generation()` (PGCORE), so both paths go through it
+    let (mut transport, guard) = dspi_session::bulk_gain::GainGuard::wrap(transport, true);
     let mut chunks = crate::bulk_gain::BulkRelay::new(guard);
     loop {
         let next = match shared.polls.next_due() {
@@ -527,11 +522,7 @@ fn worker_loop(
                 if is_chunk(&job.req) {
                     shared.polls.hold_for_chunks(Instant::now());
                 }
-                let wires = Wires {
-                    legacy: &mut *transport,
-                    paged: &mut paged,
-                };
-                run_command(wires, shared, &sup, &mut busy, &mut chunks, job);
+                run_command(&mut *transport, shared, &sup, &mut busy, &mut chunks, job);
             }
             Ok(Job::SnapshotRead) => read_snapshot(&mut *transport, shared),
             Ok(Job::Wake) | Err(RecvTimeoutError::Timeout) => {}
@@ -542,7 +533,7 @@ fn worker_loop(
             let reply = if job.page == 0 {
                 transport.control_in_upto(job.req, job.val, job.len)
             } else {
-                paged.control_in_paged(CmdId::new(job.page, job.req), job.val, job.len)
+                transport.control_in_paged(CmdId::new(job.page, job.req), job.val, job.len)
             };
             if matches!(reply, Err(TransportError::Disconnected)) {
                 let _ = sup.send(SupMsg::Lost {
@@ -613,14 +604,13 @@ impl BusyWindow {
 }
 
 fn run_command(
-    wires: Wires<'_>,
+    t: &mut dyn Transport,
     shared: &DeviceShared,
     sup: &Sender<SupMsg>,
     busy: &mut BusyWindow,
     chunks: &mut crate::bulk_gain::BulkRelay,
     job: CmdJob,
 ) {
-    let Wires { legacy: t, paged } = wires;
     let CmdJob {
         ctx,
         req,
@@ -660,7 +650,7 @@ fn run_command(
     let started = Instant::now();
     let result = match route {
         // -- WP PGHDEV --
-        Route::Paged(id) => run_paged(t, paged, chunks, req, id),
+        Route::Paged(id) => run_paged(t, chunks, req, id),
         Route::Legacy | Route::Translated => match chunks.take(t, req, write_bulk) {
             Some(held) => held,
             None => execute(t, req, busy_retry),
@@ -1035,15 +1025,6 @@ pub(crate) fn is_bootloader_entry(req: &CmdRequest) -> bool {
 }
 
 // -- WP PGHDEV --
-/// The worker's two ways to the device's generation wrapper.
-struct Wires<'a> {
-    /// 1.1.6-shaped calls, through the gain guard.
-    legacy: &'a mut dyn Transport,
-    /// Paged calls, verbatim.
-    paged: &'a mut Wire,
-}
-
-// -- WP PGHDEV --
 /// A paged request on a paged device. Forwarded verbatim (`control_*_paged`), a
 /// refusal with its firmware code ([`status_of`]; on USB the adapter explains a
 /// STALL by `SYS.LAST_RESULT`), except two that are relayed as their 1.1.6
@@ -1055,7 +1036,6 @@ struct Wires<'a> {
 ///   gain guard must see first.
 fn run_paged(
     t: &mut dyn Transport,
-    paged: &mut Wire,
     chunks: &mut crate::bulk_gain::BulkRelay,
     req: &CmdRequest,
     id: CmdId,
@@ -1069,8 +1049,8 @@ fn run_paged(
         };
     }
     match req.dir {
-        Dir::Get => paged.control_in_paged(id, req.w_value, req.w_length),
-        Dir::Set => paged
+        Dir::Get => t.control_in_paged(id, req.w_value, req.w_length),
+        Dir::Set => t
             .control_out_paged(id, req.w_value, &req.payload)
             .map(|()| Vec::new()),
     }
@@ -1085,119 +1065,6 @@ fn is_guarded_unmute(view: &CmdRequest) -> bool {
             || (view.b_request == op::REQ_EXTENSION
                 && view.w_value == EXT_APPLY_AT_FRAME
                 && view.payload.get(8) == Some(&ApplyOp::Unmute.raw())))
-}
-
-// -- WP PGHDEV --
-/// The device worker's generation wrapper, shared by the gain guard (which forwards
-/// only the 1.1.6-shaped calls) and the worker's paged path. Only the worker uses it,
-/// so the lock is never contended; it is held for one call at a time.
-struct Wire {
-    shared: Arc<Mutex<Box<dyn Transport>>>,
-    /// The transport's, copied: the trait hands out a reference, which a lock
-    /// guard cannot.
-    descriptor: DeviceDescriptor,
-}
-
-impl Wire {
-    fn new(shared: &Arc<Mutex<Box<dyn Transport>>>) -> Self {
-        let descriptor = shared
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .descriptor()
-            .clone();
-        Self {
-            shared: Arc::clone(shared),
-            descriptor,
-        }
-    }
-
-    fn inner(&self) -> std::sync::MutexGuard<'_, Box<dyn Transport>> {
-        self.shared.lock().unwrap_or_else(PoisonError::into_inner)
-    }
-}
-
-impl Transport for Wire {
-    fn control_in(&mut self, opcode: u8, value: u16, len: u16) -> dspi_transport::Result<Vec<u8>> {
-        self.inner().control_in(opcode, value, len)
-    }
-
-    fn control_in_upto(
-        &mut self,
-        opcode: u8,
-        value: u16,
-        max_len: u16,
-    ) -> dspi_transport::Result<Vec<u8>> {
-        self.inner().control_in_upto(opcode, value, max_len)
-    }
-
-    fn control_out(&mut self, opcode: u8, value: u16, data: &[u8]) -> dspi_transport::Result<()> {
-        self.inner().control_out(opcode, value, data)
-    }
-
-    fn descriptor(&self) -> &DeviceDescriptor {
-        &self.descriptor
-    }
-
-    fn max_transfer(&self) -> usize {
-        self.inner().max_transfer()
-    }
-
-    fn notifications(&self) -> Option<Box<dyn NotificationSource>> {
-        self.inner().notifications()
-    }
-
-    fn caps(&self) -> TransportCaps {
-        self.inner().caps()
-    }
-
-    fn session_id(&self) -> Option<u16> {
-        self.inner().session_id()
-    }
-
-    fn lock(&mut self, reason: &str, timeout: Duration) -> dspi_transport::Result<()> {
-        self.inner().lock(reason, timeout)
-    }
-
-    fn unlock(&mut self) {
-        self.inner().unlock();
-    }
-
-    fn control_in_batch(&mut self, reads: &[InRead]) -> Vec<dspi_transport::Result<Vec<u8>>> {
-        self.inner().control_in_batch(reads)
-    }
-
-    fn carries_pages(&self) -> bool {
-        self.inner().carries_pages()
-    }
-
-    fn control_in_paged(
-        &mut self,
-        id: CmdId,
-        value: u16,
-        max_len: u16,
-    ) -> dspi_transport::Result<Vec<u8>> {
-        self.inner().control_in_paged(id, value, max_len)
-    }
-
-    fn control_out_paged(
-        &mut self,
-        id: CmdId,
-        value: u16,
-        data: &[u8],
-    ) -> dspi_transport::Result<()> {
-        self.inner().control_out_paged(id, value, data)
-    }
-
-    fn generation(&self) -> Option<Generation> {
-        self.inner().generation()
-    }
-
-    fn control_in_batch_paged(
-        &mut self,
-        reads: &[PagedRead],
-    ) -> Vec<dspi_transport::Result<Vec<u8>>> {
-        self.inner().control_in_batch_paged(reads)
-    }
 }
 
 // -- WP HB3 --
