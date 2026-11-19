@@ -605,6 +605,32 @@ with `LAST_RESULT`, a bulk round trip. A difference from the documents becomes a
 
 ### Wave PG-C: the hub's devices, the core surface, the updater, the Zero, measurement
 
+**Carried over from the PG-B review (`work/review-pgb/REPORT.md`); each is part of the named WP's done line:**
+- **PGCORE:** the three DSPi Link notices `transfer.link_needs_13_hub`, `transfer.link_hub_paged_only` and
+  `transfer.link_generation_changed` in `assets/notices/notices.json`, mapped in `crates/dspi-core/src/error.rs` through
+  `dspi_transport::link::LinkNotice::of` (the `tests_wp_p1nt` "transfer" family then covers `paged::Refusal` and
+  `LinkNotice`); on `LinkNotice::GenerationChanged` (`LinkTransport::needs_reattach`) the core's Link attach builds a
+  new `LinkTransport` and calls `paged::open` again, never a retry on the old one (section 1.1 step 8); the listed
+  identity uses `LinkTransport::read_platform` (8 bytes) for the board id, not the hub's 7-byte `platform` (R7c);
+  meter and analyser polls on a paged device are planned with `dspi_transport::link::paged_poll` and their payloads
+  fed through the same plan; `ProbeKey`/`Reusable` gains the page list (section 1.1 step 7; today it has the
+  generation and the protocol version only).
+- **PGHDEV:** the router gates on the original request (`mutates_id`), not on `mutates(judge_view)` (a paged status
+  read whose equivalent is a 1.2 `config` row would be refused for a locked Control session); a mutating paged SET
+  whose `judge_view` is `None` is refused whenever a limits profile is set (a `STORE.ALL_PARAMS` SET of another
+  length has no view); a page-0 request toward a paged device is never classed by `classify_id` alone: branch on the
+  generation and the hello minor first, then `classify_translated`; `mutates_id` treats a GET of an id outside the
+  registry and the tunnel as a write (upstream's "every GET is a read" covers its own pages); `status_of` forwards a
+  `TransportError::Refused` code (0x10-0x1A) verbatim instead of `ERROR`.
+- **PGZERO, PGFWUP:** a paged Zero cannot be told from a Pico by `SYS.PLATFORM` (the registry fixes it at 7 bytes;
+  PGFAKE2's paged Zero answers 7): the product string and `bcdDevice` identify it where the descriptor is at hand
+  (USB, WebUSB, Android, our hub's own attach), and our hub passes the board on in its device object; behind an
+  upstream hub it is unknown, which the manual says. The legacy readers ask `PlatformInfo::FULL_LEN` (8) everywhere
+  (`REQUEST_LEN` is still 7 after PG-B, so a legacy Zero reads as board 0 until then).
+- **PGSMOKE:** the two things PG-B took from upstream's source and not from a device: USB MIDI answers a paged
+  refusal with the `VC_ERR_*` code as the frame status (`vc_core.c` `ctrl_dispatch_*`), and the probe is never refused
+  `VC_ERR_BUSY` on USB (the adapter reads no `SYS.LAST_RESULT` after a STALLed probe).
+
 **PGHDEV: Our hub serves both generations.** [TODO] Size 5. Wave PG-C. **Owns:** `crates/dspi-hub/src/{router.rs,
 device.rs,polls.rs,registry.rs,usb.rs,local.rs,snapshot.rs}`, the hello/caps/device-object block of `server.rs` and
 `PROTO_MINOR`'s use there, the analyser-sharing code it touches. **Implements:** section 1.5 after PGHUB0: `open` on

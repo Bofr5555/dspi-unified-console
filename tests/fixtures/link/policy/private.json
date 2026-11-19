@@ -1,0 +1,7 @@
+{
+  "spec_version": "1.3",
+  "source": "Ours (dspi-unified-console, WP PGHPOL): rows for our private pages 0xE0-0xEF (PLAN-PG sections 1.3 and 1.6). Same row shape as commands-1.3.json; merged with it, never overriding one of its rows.",
+  "commands": [
+    {"id": 57360, "name": "EXT.TUNNEL", "classes": {"get": "config", "set": "config"}, "note": "0xE010, our extension channel on paged firmware (wValue = extension id); admin only both ways, as REQ_EXTENSION 0x00 is (absent from the 1.2 table). Its GET only reads; the core-voltage rule judges its SET as 0x00's."}
+  ]
+}

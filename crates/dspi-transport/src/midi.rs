@@ -474,6 +474,16 @@ fn unexpected(opcode: u8, frame: &Frame) -> TransportError {
     ))
 }
 
+// -- WP PGADAPT --
+/// A paged request's refusal names its whole id (the status mapping knows
+/// only the command number).
+fn paged_refusal(id: CmdId, e: TransportError) -> TransportError {
+    match e {
+        TransportError::Refused { result, .. } => TransportError::Refused { id, result },
+        other => other,
+    }
+}
+
 /// The error for a final non-OK status.
 fn status_error(opcode: u8, code: u8, retries: u32) -> TransportError {
     match code {
@@ -491,6 +501,15 @@ fn status_error(opcode: u8, code: u8, retries: u32) -> TransportError {
         status::BLOCKED => TransportError::Denied(format!(
             "opcode 0x{opcode:02X} is refused on this link (BLOCKED)"
         )),
+        // -- WP PGADAPT -- paged firmware answers a refusal off USB with its
+        // `VC_ERR_*` code in the status byte (upstream `vc_core.c`
+        // `ctrl_dispatch_*`); the paged calls put the id in (`paged_refusal`).
+        code if dspi_proto::paged::result_name(code).is_some() && code >= 0x10 => {
+            TransportError::Refused {
+                id: CmdId(u16::from(opcode)),
+                result: code,
+            }
+        }
         other => TransportError::Remote(format!(
             "opcode 0x{opcode:02X}: the device answered {} (0x{other:02X})",
             status::name(other)
@@ -565,7 +584,9 @@ impl Transport for MidiTransport {
             index: id.w_index(),
             length: max_len,
         };
-        let mut data = self.transact_within(id.cmd(), &frame, true, self.paged_timeout(id))?;
+        let mut data = self
+            .transact_within(id.cmd(), &frame, true, self.paged_timeout(id))
+            .map_err(|e| paged_refusal(id, e))?;
         data.truncate(usize::from(max_len));
         Ok(data)
     }
@@ -585,6 +606,7 @@ impl Transport for MidiTransport {
         })?;
         self.transact_within(id.cmd(), &frame, false, self.paged_timeout(id))
             .map(|_| ())
+            .map_err(|e| paged_refusal(id, e))
     }
 
     fn descriptor(&self) -> &DeviceDescriptor {
@@ -1682,6 +1704,50 @@ mod tests_wp_t2 {
                 index: 0x0802,
                 ..
             }]
+        ));
+    }
+
+    // -- WP PGADAPT --
+    /// Paged firmware answers a refusal off USB with its `VC_ERR_*` code in
+    /// the status byte: a paged call gets `Refused` with the whole id; a
+    /// 1.1.6 status keeps its old meaning.
+    #[test]
+    fn wp_pgadapt_a_vc_status_over_midi_is_a_typed_refusal() {
+        let (mut t, dev, _input) = connect(FakeMidiDevice::new());
+        dev.dev().inject.push_back(Box::new(|tag| {
+            sysex(tag, &Frame::SetResponse { status: 0x13 })
+        }));
+        let id = CmdId(0x0521);
+        let e = t.control_out_paged(id, 99, &[0; 4]).unwrap_err();
+        assert!(
+            matches!(e, TransportError::Refused { id: i, result: 0x13 } if i == id),
+            "{e:?}"
+        );
+        dev.dev().inject.push_back(Box::new(|tag| {
+            sysex(
+                tag,
+                &Frame::GetResponse {
+                    status: 0x10,
+                    payload: Vec::new(),
+                },
+            )
+        }));
+        let e = t.control_in_paged(id, 0, 4).unwrap_err();
+        assert!(
+            matches!(e, TransportError::Refused { result: 0x10, .. }),
+            "{e:?}"
+        );
+        dev.dev().inject.push_back(Box::new(|tag| {
+            sysex(
+                tag,
+                &Frame::SetResponse {
+                    status: status::ERROR,
+                },
+            )
+        }));
+        assert!(matches!(
+            t.control_out_paged(id, 0, &[0; 4]),
+            Err(TransportError::Stalled { .. })
         ));
     }
 

@@ -185,8 +185,8 @@ fn requests_match_the_fixtures() {
         version: "0.1".into(),
     }))
     .unwrap();
-    // We speak 1.2; the fixture is a 1.1 client
-    assert_eq!(hello["proto"]["minor"], 2);
+    // -- WP PGLINKC -- we speak 1.3 (CLIENT_PROTO_MINOR); the fixture is a 1.1 client
+    assert_eq!(hello["proto"]["minor"], 3);
     hello["proto"]["minor"] = 1.into();
     assert_eq!(hello, serde_json::from_str::<Value>(&msg("hello_client.json")).unwrap());
     let sub: Value = serde_json::from_str(&msg("poll_subscribe.json")).unwrap();

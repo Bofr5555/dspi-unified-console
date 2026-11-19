@@ -50,6 +50,8 @@ const OPEN_ACCESS_PIN: &str = "000000";
 pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 pub const BULK_TIMEOUT: Duration = Duration::from_secs(15);
 const BULK_OPCODES: [u8; 4] = [0xA0, 0xA1, 0xA2, 0xA3];
+// -- WP PGLINKC -- `STORE.ALL_PARAMS` and `STORE.ALL_PARAMS_CHUNK` (firmware 1.1.7)
+const BULK_IDS: [u16; 2] = [0x0240, 0x0241];
 /// WP LK2 (LK1-c): often enough that a weak Wi-Fi link carries something from
 /// us every few seconds. The ESP32 bridge closes a session that has had nothing
 /// inbound for 30 s (`hub.c`), so six of our pings must be lost in a row before
@@ -402,6 +404,8 @@ struct Session {
     session: Option<u16>,
     role: String,
     denied: Vec<(u8, u8)>,
+    // -- WP PGLINKC -- `policy.denied_ids` as `(command id, dir)`
+    denied_ids: Vec<(u16, u8)>,
     ready: bool,
     devices: Vec<DeviceInfo>,
     /// `devices` is what `device.list` said, not just what events added.
@@ -760,7 +764,7 @@ impl LinkClient {
                 Ok(v) => c.became_ready(&v),
                 Err(LinkError::Rejected { .. }) => {
                     log::warn!("dspi-link: open hub refused the session probe; own echoes cannot be recognised");
-                    c.mark_ready(None, "admin".into(), Vec::new());
+                    c.mark_ready(None, "admin".into(), Vec::new(), Vec::new());
                 }
                 Err(e) => {
                     c.close();
@@ -970,19 +974,26 @@ impl LinkClient {
 
     fn became_ready(&self, v: &Value) {
         let ok: AuthOk = serde_json::from_value(v.clone()).unwrap_or_default();
-        let denied = ok
-            .policy
-            .map(|p| p.denied.iter().filter(|d| d[0] <= 0xFF && d[1] <= 1).map(|d| (d[0] as u8, d[1] as u8)).collect())
-            .unwrap_or_default();
+        let policy = ok.policy.unwrap_or_default();
+        let denied =
+            policy.denied.iter().filter(|d| d[0] <= 0xFF && d[1] <= 1).map(|d| (d[0] as u8, d[1] as u8)).collect();
+        // -- WP PGLINKC -- `[id, dir]`; anything that is not a command id or a
+        // direction is dropped, as `denied`'s out-of-range rows are
+        let denied_ids = policy
+            .denied_ids
+            .iter()
+            .filter_map(|d| Some((u16::try_from(d[0]).ok()?, u8::try_from(d[1]).ok().filter(|&dir| dir <= 1)?)))
+            .collect();
         let session = u16::try_from(ok.session).ok().filter(|&s| s != 0);
-        self.mark_ready(session, ok.role, denied);
+        self.mark_ready(session, ok.role, denied, denied_ids);
     }
 
-    fn mark_ready(&self, session: Option<u16>, role: String, denied: Vec<(u8, u8)>) {
+    fn mark_ready(&self, session: Option<u16>, role: String, denied: Vec<(u8, u8)>, denied_ids: Vec<(u16, u8)>) {
         let mut s = lock(&self.inner.session);
         s.session = session;
         s.role = if role.is_empty() { "admin".into() } else { role };
         s.denied = denied;
+        s.denied_ids = denied_ids;
         s.ready = true;
     }
 
@@ -1040,6 +1051,34 @@ impl LinkClient {
     /// `policy.denied` as `(bRequest, dir)` (dir 0 = SET, 1 = GET).
     pub fn denied(&self) -> Vec<(u8, u8)> {
         lock(&self.inner.session).denied.clone()
+    }
+
+    // -- WP PGLINKC --
+    /// `policy.denied_ids` as `(command id, dir)` (dir 0 = SET, 1 = GET; spec
+    /// 1.3 section 7.3). Empty from a 1.2 hub.
+    pub fn denied_ids(&self) -> Vec<(u16, u8)> {
+        lock(&self.inner.session).denied_ids.clone()
+    }
+
+    // -- WP PGLINKC --
+    /// What to grey out for `device`, as `(command, dir)`: `policy.denied` (a
+    /// `bRequest`, page 0) for a legacy device, `policy.denied_ids` (a command
+    /// id) for a paged one (PLAN-PG section 1.4). An upstream 1.3 hub sends
+    /// `denied` empty, so a legacy device greys out nothing there (it is sent
+    /// nothing anyway).
+    pub fn denied_for(&self, device: &DeviceInfo) -> Vec<(u16, u8)> {
+        let s = lock(&self.inner.session);
+        if device.is_paged() {
+            s.denied_ids.clone()
+        } else {
+            s.denied.iter().map(|&(r, d)| (u16::from(r), d)).collect()
+        }
+    }
+
+    // -- WP PGLINKC --
+    /// The hub's current record of `handle`, if it lists one.
+    pub fn device(&self, handle: u32) -> Option<DeviceInfo> {
+        lock(&self.inner.session).devices.iter().find(|d| d.handle == handle).cloned()
     }
 
     pub fn is_ready(&self) -> bool {
@@ -1130,7 +1169,7 @@ impl LinkClient {
         payload: &[u8],
     ) -> CmdResponse {
         let spec = CmdSpec { handle, dir, b_request, w_value, w_index, w_length, payload: payload.to_vec() };
-        let deadline = Instant::now() + self.timeout_of(b_request);
+        let deadline = Instant::now() + self.timeout_of(b_request, w_index);
         if !self.is_ready() {
             return CmdResponse { tag: 0, status: status::NO_DEVICE, payload: Vec::new() };
         }
@@ -1175,7 +1214,7 @@ impl LinkClient {
                     next += 1;
                     continue;
                 }
-                let deadline = Instant::now() + self.timeout_of(spec.b_request);
+                let deadline = Instant::now() + self.timeout_of(spec.b_request, spec.w_index);
                 // With answers of our own outstanding, only a free slot: never
                 // wait for one we hold ourselves
                 if !self.take_slot(sent.is_empty().then_some(deadline)) {
@@ -1210,9 +1249,15 @@ impl LinkClient {
         self.inner.hello.limits.max_inflight.max(1)
     }
 
-    fn timeout_of(&self, b_request: u8) -> Duration {
+    fn timeout_of(&self, b_request: u8, w_index: u16) -> Duration {
         let timing = &self.inner.timing;
-        if BULK_OPCODES.contains(&b_request) {
+        // -- WP PGLINKC -- a paged request's bulk is `STORE.ALL_PARAMS` (and its chunk
+        // form, which a client never sends over Link: spec 1.3 section 8.2)
+        let bulk = match w_index >> 8 {
+            0 => BULK_OPCODES.contains(&b_request),
+            page => BULK_IDS.contains(&((page << 8) | u16::from(b_request))),
+        };
+        if bulk {
             timing.bulk_timeout
         } else {
             timing.request_timeout
@@ -1363,6 +1408,7 @@ impl LinkClient {
     /// snapshot, so the hub's first POLL frames come before the snapshot's
     /// bytes on the stream instead of behind them.
     pub fn poll_subscribe_begin(&self, handle: u8, polls: &[PollSpec]) -> Result<PendingPolls, LinkError> {
+        self.check_poll_pages(handle, polls)?; // -- WP PGLINKC --
         let id = self.inner.next_id.fetch_add(1, Ordering::SeqCst);
         let text = out::poll_subscribe(id, handle, polls);
         self.request_begin(id, text, self.inner.timing.request_timeout).map(PendingPolls)
@@ -1381,6 +1427,7 @@ impl LinkClient {
     }
 
     pub fn poll_subscribe(&self, handle: u8, polls: &[PollSpec]) -> Result<Vec<PollGrant>, LinkError> {
+        self.check_poll_pages(handle, polls)?; // -- WP PGLINKC --
         let v = self.request(|id| out::poll_subscribe(id, handle, polls), self.inner.timing.request_timeout)?;
         v.get("granted")
             .cloned()
@@ -1388,6 +1435,26 @@ impl LinkClient {
             .transpose()
             .map_err(|e| LinkError::Protocol(e.to_string()))
             .map(Option::unwrap_or_default)
+    }
+
+    // -- WP PGLINKC --
+    /// Refuse, before anything is sent, a poll whose page does not fit the
+    /// device as the hub lists it (spec 1.3 section 7.4, PLAN-PG section 1.1):
+    /// a page to a device that is not paged, or page 0 to a paged one. The
+    /// refusal is `unsupported`, the code a 1.3 hub answers itself.
+    fn check_poll_pages(&self, handle: u8, polls: &[PollSpec]) -> Result<(), LinkError> {
+        let paged = self.device(u32::from(handle)).is_some_and(|d| d.is_paged());
+        match polls.iter().find(|p| (p.idx >> 8 != 0) != paged) {
+            None => Ok(()),
+            Some(p) => Err(LinkError::Rejected {
+                code: "unsupported".into(),
+                msg: if paged {
+                    format!("a page-0 poll (bRequest 0x{:02X}) to a paged device", p.req)
+                } else {
+                    format!("a paged poll (wIndex 0x{:04X}) to a legacy device", p.idx)
+                },
+            }),
+        }
     }
 
     pub fn poll_unsubscribe(&self, handle: u8, slots: &[u8]) {

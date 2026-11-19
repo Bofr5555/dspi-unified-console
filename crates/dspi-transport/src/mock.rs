@@ -180,7 +180,9 @@ impl MockTransport {
         self
     }
 
-    /// What a paged request for `id` answers. An unscripted paged id stalls;
+    /// What a paged request for `id` answers. An unscripted paged id stalls,
+    /// GET and SET alike (WP PGADAPT made the SET stall too); a scripted
+    /// SET is ACKed unless its reply is a stall, a disconnect or an error;
     /// [`MockTransport::answering_everything`] answers page 0 only.
     pub fn paged(mut self, id: CmdId, reply: Reply) -> Self {
         self.replies.insert(id.0, reply);
@@ -261,6 +263,10 @@ impl MockTransport {
             Some(Reply::Stall) => Err(TransportError::Stalled { opcode }),
             Some(Reply::Disconnect) => Err(TransportError::Disconnected),
             Some(Reply::Error(e)) => Err(e.clone()),
+            // -- WP PGADAPT (review/pga note 4) -- an unscripted paged SET
+            // stalls, as `paged()` says; an unscripted page-0 OUT is ACKed
+            // as before.
+            None if !CmdId(key).is_legacy() => Err(TransportError::Stalled { opcode }),
             _ => Ok(()),
         }
     }
