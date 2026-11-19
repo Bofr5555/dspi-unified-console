@@ -424,6 +424,7 @@ impl Transport for MockTransport {
                 serial: "MOCK000000000000".into(),
                 bus_id: "mock".into(),
                 address: 0,
+                ..Default::default()
             })
         })
     }

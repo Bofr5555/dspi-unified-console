@@ -597,11 +597,12 @@ type Identity = (PlatformInfo, String, Vec<u8>, Vec<Result<Vec<u8>>>);
 fn identify_with(t: &mut dyn Transport, extra: &[InRead]) -> Result<Identity> {
     // GET_PLATFORM is the canonical liveness read; do it first so a dead or
     // wrongly-bound device fails here with a clear message rather than midway
-    // through a 6136-byte transfer. Ask for 7 bytes and take what comes: older
-    // firmware answers 4 or 6, and the decode follows the spec's fallback
-    // rule (firmware_versioning_spec.md:109).
+    // through a 6136-byte transfer. Ask for 8 bytes and take what comes: older
+    // firmware answers 4, 6 or 7, and the decode follows the spec's fallback
+    // rule (firmware_versioning_spec.md:109). -- WP PGZERO -- the 8th byte is
+    // a DSPi-Zero's board id (PLAN-PG section 1.9: `PlatformInfo::FULL_LEN`).
     let kind = t.caps().kind;
-    let platform_read = InRead::upto(op::REQ_GET_PLATFORM, 0, PlatformInfo::REQUEST_LEN as u16);
+    let platform_read = InRead::upto(op::REQ_GET_PLATFORM, 0, PlatformInfo::FULL_LEN as u16);
     let (plat, serial_raw, extra) = if kind == TransportKind::Link {
         // WP LK4: all in one round trip. The batch retries a busy answer
         // itself, and a dead link fails them all quickly.
@@ -1146,6 +1147,7 @@ mod tests {
                     serial: "TEST".into(),
                     bus_id: "001".into(),
                     address: 1,
+                    ..Default::default()
                 },
                 asked: Vec::new(),
             }

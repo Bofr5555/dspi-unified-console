@@ -46,6 +46,8 @@ pub mod paged;
 pub use paged::LegacyGuard;
 // -- WP PGADAPT --
 pub use paged::PagedTransport;
+// -- WP PGZERO -- the board from the USB descriptor and from the platform reply
+pub mod board;
 
 /// How long to wait on a single control transfer before treating it as timed out.
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_millis(1000);
@@ -212,11 +214,21 @@ fn permission_help() -> String {
 pub type Result<T> = std::result::Result<T, TransportError>;
 
 /// Identity of a connected device, as shown in the device picker.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct DeviceDescriptor {
     pub serial: String,
     pub bus_id: String,
     pub address: u8,
+    // -- WP PGZERO --
+    /// The USB product string (`iProduct`), where the link has the device's
+    /// descriptor at hand: USB (the OS's cached string, or one standard
+    /// `GET_DESCRIPTOR` on an Android fd), WebUSB (`USBDevice.productName`),
+    /// the fakes. `None` over DSPi Link, MIDI and anywhere it is unknown. It
+    /// tells a paged DSPi-Zero from a Pico, which `SYS.PLATFORM`'s 7 bytes
+    /// cannot (PLAN-PG section 1.9); see [`DeviceDescriptor::board`].
+    pub product: Option<String>,
+    /// The USB `bcdDevice`, where the descriptor is at hand (as `product`).
+    pub bcd_device: Option<u16>,
 }
 
 impl DeviceDescriptor {
@@ -227,6 +239,14 @@ impl DeviceDescriptor {
         // may hold any UTF-8.
         let n = self.serial.chars().count();
         self.serial.chars().skip(n.saturating_sub(8)).collect()
+    }
+
+    // -- WP PGZERO --
+    /// What the USB descriptor says about the board
+    /// ([`board::board_from_descriptor`] of `product` and `bcd_device`):
+    /// `None` when it says nothing (no descriptor at hand, behind a hub).
+    pub fn board(&self) -> Option<dspi_proto::packets::Board> {
+        board::board_from_descriptor(self.product.as_deref(), self.bcd_device)
     }
 }
 
@@ -659,6 +679,7 @@ mod tests {
             serial: "E6614C311B8B4E3A".into(),
             bus_id: "001".into(),
             address: 7,
+            ..Default::default()
         };
         assert_eq!(d.short_name(), "1B8B4E3A");
     }
@@ -730,6 +751,7 @@ mod tests {
             serial: "ÅÄÖåäöÉé€x".into(),
             bus_id: "001".into(),
             address: 1,
+            ..Default::default()
         };
         assert_eq!(d.short_name(), "ÖåäöÉé€x");
     }
@@ -740,6 +762,7 @@ mod tests {
             serial: "ABC".into(),
             bus_id: "001".into(),
             address: 1,
+            ..Default::default()
         };
         assert_eq!(d.short_name(), "ABC");
     }

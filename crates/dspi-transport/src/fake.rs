@@ -361,12 +361,16 @@ impl FakeDevice {
     /// channels where the header is missing), never a panic.
     pub fn new(capture: Capture, options: FakeOptions) -> Self {
         let max_transfer = options.max_transfer.unwrap_or(MAX_W_LENGTH);
+        // -- WP PGZERO -- the board's USB product string and bcdDevice
+        let board = options.board;
         Self {
             max_transfer,
             descriptor: DeviceDescriptor {
                 serial: SERIAL.into(),
                 bus_id: "demo".into(),
                 address: 0,
+                product: Some(board.product().into()),
+                bcd_device: Some(board.bcd_device()),
             },
             shared: Arc::new(Shared {
                 state: Mutex::new({

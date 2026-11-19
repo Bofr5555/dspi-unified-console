@@ -1238,6 +1238,7 @@ mod tests_wp_c9 {
                         serial: "RTA".into(),
                         bus_id: String::new(),
                         address: 0,
+                        ..Default::default()
                     },
                 },
                 dev,
@@ -1333,6 +1334,7 @@ mod tests_wp_c9 {
                     serial: "S".into(),
                     bus_id: "link:x".into(),
                     address: 0,
+                    ..Default::default()
                 },
             })
         }

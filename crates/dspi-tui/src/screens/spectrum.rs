@@ -1988,6 +1988,7 @@ mod tests {
                 serial: "CG30".into(),
                 bus_id: String::new(),
                 address: 0,
+                ..Default::default()
             },
         );
         for _ in 0..3 {

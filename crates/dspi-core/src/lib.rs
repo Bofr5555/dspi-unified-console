@@ -701,6 +701,7 @@ impl Transport for NoTransport {
             serial: String::new(),
             bus_id: String::new(),
             address: 0,
+            ..Default::default()
         })
     }
 }

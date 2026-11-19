@@ -2079,6 +2079,7 @@ mod tests_wp_anlastf {
                         serial: "MODEL".into(),
                         bus_id: String::new(),
                         address: 0,
+                        ..Default::default()
                     },
                 },
                 view: None,

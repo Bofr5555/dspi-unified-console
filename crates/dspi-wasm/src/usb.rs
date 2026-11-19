@@ -85,8 +85,19 @@ impl WebUsbTransport {
                 serial,
                 bus_id: "webusb".into(),
                 address: 0,
+                ..Default::default()
             },
         }
+    }
+
+    // -- WP PGZERO --
+    /// With the `USBDevice`'s `productName` and `bcdDevice`, which tell a
+    /// paged DSPi-Zero from a Pico (PLAN-PG section 1.9). An empty product
+    /// name is none.
+    pub fn with_usb_descriptor(mut self, product: Option<String>, bcd_device: Option<u16>) -> Self {
+        self.descriptor.product = product.filter(|p| !p.trim().is_empty());
+        self.descriptor.bcd_device = bcd_device;
+        self
     }
 
     fn alive(&self) -> Result<()> {
@@ -340,6 +351,13 @@ pub struct UsbTarget {
     pub device: Option<u32>,
     #[serde(default)]
     pub vendor_id: u16,
+    // -- WP PGZERO --
+    /// `USBDevice.productName`, absent when the browser gives none.
+    #[serde(default)]
+    pub product_name: Option<String>,
+    /// `bcdDevice` from `USBDevice.deviceVersion{Major,Minor,Subminor}`.
+    #[serde(default)]
+    pub bcd_device: Option<u16>,
 }
 
 /// `open` over USB on session `h`: the connect sequence over the claimed
@@ -355,7 +373,15 @@ pub fn open(h: u32, core: &DspiCore, t: UsbTarget) -> std::result::Result<(), Ca
         ));
     };
     let host = new_host(device)?;
-    open_with(h, core, host, t.serial, t.vendor_id)
+    // -- WP PGZERO -- with the descriptor fields the Worker read
+    open_described(
+        h,
+        core,
+        host,
+        t.serial,
+        t.vendor_id,
+        (t.product_name, t.bcd_device),
+    )
 }
 
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
@@ -380,8 +406,22 @@ pub fn open_with(
     serial: String,
     vid: u16,
 ) -> std::result::Result<(), CallError> {
+    open_described(h, core, host, serial, vid, (None, None))
+}
+
+// -- WP PGZERO --
+/// [`open_with`] with the device's product string and `bcdDevice`.
+pub fn open_described(
+    h: u32,
+    core: &DspiCore,
+    host: Box<dyn UsbHost>,
+    serial: String,
+    vid: u16,
+    (product, bcd_device): (Option<String>, Option<u16>),
+) -> std::result::Result<(), CallError> {
     let gone = Arc::new(AtomicBool::new(false));
-    let transport = WebUsbTransport::new(host, serial.clone(), Arc::clone(&gone));
+    let transport = WebUsbTransport::new(host, serial.clone(), Arc::clone(&gone))
+        .with_usb_descriptor(product, bcd_device);
     // Replaces any open device, as `open_transport` does; the old switch goes.
     forget(h);
     // -- WP PGWIRE -- the generation probe first, on the raw wire
@@ -952,5 +992,40 @@ mod tests {
         assert_eq!(snap["device"]["serial"], "");
         assert!(forget(h).is_none());
         calls::session_free(h).unwrap();
+    }
+
+    // -- WP PGZERO --
+    /// WebUSB's `productName` and `bcdDevice` reach the descriptor through
+    /// `open`'s target and the generation wrapper, and name the Zero.
+    #[test]
+    fn wp_pgzero_webusb_descriptor_names_the_zero() {
+        let t: UsbTarget = serde_json::from_value(json!({
+            "serial": "Z1", "device": 3, "vendorId": 0x2E8B,
+            "productName": "Weeb Labs DSPi Zero", "bcdDevice": 0x0300
+        }))
+        .unwrap();
+        assert_eq!(t.product_name.as_deref(), Some("Weeb Labs DSPi Zero"));
+        assert_eq!(t.bcd_device, Some(0x0300));
+        // Older Workers send neither: nothing is known from the descriptor
+        let old: UsbTarget =
+            serde_json::from_value(json!({ "serial": "P1", "device": 1 })).unwrap();
+        assert_eq!((old.product_name, old.bcd_device), (None, None));
+
+        let (host, _remote, _) = fake();
+        let t = WebUsbTransport::new(host, "Z1".into(), Arc::default())
+            .with_usb_descriptor(t.product_name, t.bcd_device);
+        let t = dspi_transport::paged::open(Box::new(t)).unwrap();
+        let board = t.descriptor().board();
+        assert_eq!(board, Some(dspi_proto::packets::Board::PiZero2W));
+        assert_eq!(
+            board.map(dspi_transport::board::board_name),
+            Some("DSPi Zero")
+        );
+        // An empty product name is none
+        let (host, _remote, _) = fake();
+        let t = WebUsbTransport::new(host, "P1".into(), Arc::default())
+            .with_usb_descriptor(Some(" ".into()), Some(0x0204));
+        assert_eq!(t.descriptor().product, None);
+        assert_eq!(t.descriptor().board(), None);
     }
 }

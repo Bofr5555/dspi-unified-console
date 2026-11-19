@@ -495,6 +495,7 @@ impl LinkTransport {
             serial: serial.to_owned(),
             bus_id: format!("link:{}", hello.hub.id),
             address: handle,
+            ..Default::default()
         };
         // -- WP PGLINKC --
         let device = client.device(u32::from(handle));

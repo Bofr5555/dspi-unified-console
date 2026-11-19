@@ -112,6 +112,7 @@ fn rig() -> Rig {
             serial: SERIAL.into(),
             bus_id: "test".into(),
             address: 1,
+            ..Default::default()
         },
     };
     hub.attach(Box::new(probe), 0).unwrap();

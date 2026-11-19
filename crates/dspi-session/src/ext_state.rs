@@ -505,6 +505,7 @@ mod tests_wp_s3 {
                     serial: "S3TEST".into(),
                     bus_id: "0".into(),
                     address: 0,
+                    ..Default::default()
                 },
             }
         }

@@ -568,6 +568,7 @@ mod tests {
             serial: "FAKE".into(),
             bus_id: "fake".into(),
             address: 0,
+            ..Default::default()
         };
         let s = Session::new(Box::new(Fake(device.clone(), descriptor)), caps).unwrap();
         (s, device)

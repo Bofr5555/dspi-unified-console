@@ -91,6 +91,7 @@ fn plug(hub: &Hub, serial: &str) -> (u8, Wire) {
             serial: serial.into(),
             bus_id: "test".into(),
             address: 1,
+            ..Default::default()
         },
     };
     (hub.attach(Box::new(probe), 0).unwrap(), wire)

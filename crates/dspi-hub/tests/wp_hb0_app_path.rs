@@ -57,6 +57,7 @@ impl Dev {
                 serial: serial.into(),
                 bus_id: "test".into(),
                 address: 1,
+                ..Default::default()
             },
             usb: false,
             claim: Arc::clone(&claim),
@@ -171,6 +172,7 @@ impl DeviceBus for TestBus {
                 serial: serial.into(),
                 bus_id: "test".into(),
                 address: 1,
+                ..Default::default()
             },
             usb: true,
             claim: Arc::clone(&s.claim),

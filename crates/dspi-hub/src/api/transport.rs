@@ -115,6 +115,7 @@ impl HubHandle {
                 serial: device.serial(),
                 bus_id: "hub".into(),
                 address: device.handle,
+                ..Default::default()
             },
             device: Arc::clone(&device),
             session: Arc::clone(child.session()),
