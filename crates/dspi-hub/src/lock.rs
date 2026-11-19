@@ -37,6 +37,10 @@ pub struct LockTable {
     settled_at: Option<Instant>,
     /// The budget ran out and has not drained yet.
     cooling: bool,
+    // -- WP ATHUB --
+    /// The holder's lock is a live `system.measure` session's: its time held
+    /// does not fill the budget (its lease and dead-man bound it instead).
+    exempt: bool,
 }
 
 impl LockTable {
@@ -59,9 +63,13 @@ impl LockTable {
         let now = now.max(at);
         self.settled_at = Some(now);
         let held_until = self.holder.map_or(at, |(_, until)| until.max(at).min(now));
-        let filled = self
-            .used
-            .saturating_add(held_until.saturating_duration_since(at));
+        // -- WP ATHUB -- an exempt holder's time fills nothing
+        let held = if self.exempt {
+            Duration::ZERO
+        } else {
+            held_until.saturating_duration_since(at)
+        };
+        let filled = self.used.saturating_add(held);
         if filled >= LOCK_BUDGET {
             self.cooling = true;
         }
@@ -87,9 +95,16 @@ impl LockTable {
         if !self.permits(session, now) || self.cooling {
             return None;
         }
-        let granted = timeout
-            .min(LOCK_MAX)
-            .min(LOCK_BUDGET.saturating_sub(self.used));
+        // -- WP ATHUB -- a renewal keeps the holder's exemption; anyone else's
+        // lock, or the same session's after a release or expiry, has none
+        self.exempt = self.exempt && self.holder(now) == Some(session);
+        let granted = if self.exempt {
+            timeout.min(LOCK_MAX)
+        } else {
+            timeout
+                .min(LOCK_MAX)
+                .min(LOCK_BUDGET.saturating_sub(self.used))
+        };
         let until = now.checked_add(granted).unwrap_or(now);
         self.holder = Some((session, until));
         Some(granted)
@@ -100,7 +115,28 @@ impl LockTable {
         if self.holder.is_some_and(|(h, _)| h == session) {
             self.settle(now);
             self.holder = None;
+            self.exempt = false; // -- WP ATHUB --
         }
+    }
+
+    // -- WP ATHUB --
+    /// Exempt `session`'s live lock from the budget from `now` on, while it
+    /// holds and renews it: a `system.measure` session's own locks only
+    /// (`system/measure.rs`, while its lease is live). False if it does not
+    /// hold the lock.
+    pub fn exempt_holder(&mut self, session: SessionId, now: Instant) -> bool {
+        self.settle(now);
+        let holds = self.holder(now) == Some(session);
+        if holds {
+            self.exempt = true;
+        }
+        holds
+    }
+
+    // -- WP ATHUB --
+    /// Whether the live holder's lock is exempt from the budget.
+    pub fn holder_exempt(&self, now: Instant) -> bool {
+        self.exempt && self.holder(now).is_some()
     }
 }
 
@@ -337,5 +373,68 @@ mod tests_wp_hb2 {
                 now += Duration::from_millis(wait_ms);
             }
         }
+    }
+}
+
+// -- WP ATHUB --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_athub {
+    use super::*;
+
+    const SEC: Duration = Duration::from_secs(1);
+
+    /// A measurement session renewing every 2 s for ten minutes is never
+    /// refused; once it releases, the same session is budgeted again.
+    #[test]
+    fn wp_athub_an_exempt_lock_outlives_the_budget_until_released() {
+        let t0 = Instant::now();
+        let mut l = LockTable::default();
+        assert!(l.acquire(2, 10 * SEC, t0).is_some());
+        assert!(l.exempt_holder(2, t0));
+        let mut now = t0;
+        while now - t0 < 600 * SEC {
+            now += 2 * SEC;
+            assert_eq!(
+                l.acquire(2, 10 * SEC, now),
+                Some(10 * SEC),
+                "at {:?}",
+                now - t0
+            );
+            assert!(l.holder_exempt(now));
+        }
+        l.release(2, now);
+        assert!(!l.holder_exempt(now));
+        // Budgeted again: refused once 120 s are held.
+        let start = now;
+        while l.acquire(2, 60 * SEC, now).is_some() && now - start < 10 * LOCK_BUDGET {
+            now += SEC;
+        }
+        assert_eq!(now - start, LOCK_BUDGET);
+    }
+
+    /// Only the holder can be exempted, and a lock that lapses loses it.
+    #[test]
+    fn wp_athub_the_exemption_is_the_holders_and_ends_with_its_lock() {
+        let t0 = Instant::now();
+        let mut l = LockTable::default();
+        assert!(!l.exempt_holder(2, t0), "nobody holds it");
+        assert!(l.acquire(3, 10 * SEC, t0).is_some());
+        assert!(!l.exempt_holder(2, t0), "another session's lock");
+        assert!(!l.holder_exempt(t0));
+        l.release(3, t0);
+        assert!(l.acquire(2, 5 * SEC, t0).is_some());
+        assert!(l.exempt_holder(2, t0));
+        // Not renewed: it lapses, and the next grant (anyone's) is budgeted.
+        let later = t0 + 10 * SEC;
+        assert!(!l.holder_exempt(later));
+        assert_eq!(l.acquire(4, 60 * SEC, later), Some(60 * SEC));
+        assert!(!l.holder_exempt(later));
+        assert_eq!(l.acquire(4, 60 * SEC, later + 59 * SEC), Some(60 * SEC));
+        assert_eq!(
+            l.acquire(4, 60 * SEC, later + 100 * SEC),
+            Some(20 * SEC),
+            "budgeted"
+        );
     }
 }

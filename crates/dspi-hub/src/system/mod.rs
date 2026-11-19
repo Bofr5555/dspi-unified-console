@@ -14,6 +14,8 @@
 
 pub mod alarms;
 pub mod align;
+// -- WP ATHUB -- the `system.measure.*` family
+pub mod measure;
 pub mod model;
 mod run;
 pub mod scene;
