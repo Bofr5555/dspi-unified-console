@@ -82,7 +82,7 @@ internal fun healthColor(c: DspiColors, health: String): Color = when (health) {
     else -> c.gray
 }
 
-private fun stateColor(c: DspiColors, u: AlinkSystemUnit): Color = when {
+private fun stateColor(c: DspiColors, u: AlinkSystemUnit): Color = spdifHealth(u)?.let { healthColor(c, it) } ?: when {
     !u.connected -> c.gray
     // -- WP AUSB2 -- asked to be in step and cannot: muted or unaligned
     u.usbLockError -> c.red
@@ -96,6 +96,25 @@ private fun stateColor(c: DspiColors, u: AlinkSystemUnit): Color = when {
     u.state == "holdover" -> c.red
     u.state == "searching" || u.state == "off" || u.state == "unknown" -> c.orange
     else -> c.green
+}
+
+// -- review AT-D2 -- a unit fed by S/PDIF (the core's row has transport "spdif" since WP ATQT; its
+// state is the S/PDIF time base's): never green unless it is locked
+/** The health of a unit fed by S/PDIF, as [healthColor] takes it; null for any other unit. */
+internal fun spdifHealth(u: AlinkSystemUnit): String? = when {
+    u.transport != "spdif" -> null
+    !u.connected -> ""
+    u.state == "locked" -> "ok"
+    u.state == "lock_error" || u.state == "holdover" -> "problem"
+    // acquiring, anchoring, no DSPi time base on its input, not read yet, anything newer
+    else -> "warning"
+}
+
+/** A unit's state as its row says it: a unit fed by S/PDIF is named as such. */
+internal fun unitStateText(u: AlinkSystemUnit): String = when {
+    u.transport == "spdif" -> "S/PDIF: ${u.stateWord}"
+    u.pending -> "${u.stateWord}, audio link delay pending"
+    else -> u.stateWord
 }
 
 private fun ms(v: Double?) = v?.let { "%.2f ms".format(it) }.orEmpty()
@@ -217,7 +236,7 @@ private fun SectionTitle(text: String) {
 
 @Composable
 private fun UnitRow(u: AlinkSystemUnit, c: DspiColors) {
-    val state = if (u.pending) "${u.stateWord}, audio link delay pending" else u.stateWord
+    val state = unitStateText(u) // -- review AT-D2 --
     Column(
         Modifier.fillMaxWidth().padding(12.dp).semantics(mergeDescendants = true) {
             contentDescription = listOf(u.name, u.role, state).joinToString(", ")
