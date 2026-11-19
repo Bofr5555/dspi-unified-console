@@ -199,10 +199,13 @@ fn notice<T>(r: &Result<T>) -> Option<LinkNotice> {
 }
 
 #[test]
-fn wp_pglinkc_the_client_says_minor_3_and_the_hub_constant_stays_2() {
-    use dspi_link::messages::{CLIENT_PROTO_MINOR, PROTO_MINOR};
+fn wp_pglinkc_the_client_says_minor_3_and_proto_minor_is_the_1_2_one() {
+    use dspi_link::messages::{CLIENT_PROTO_MINOR, LINK_13_MINOR, PROTO_MINOR};
     assert_eq!(CLIENT_PROTO_MINOR, 3);
-    assert_eq!(PROTO_MINOR, 2, "our hub's minor rises with PGHDEV (R4)");
+    // -- PG-C merge -- our hub says LINK_13_MINOR since PGHDEV (dspi-hub
+    // HUB_PROTO_MINOR); PROTO_MINOR stays the 1.2 minor (R4)
+    assert_eq!(LINK_13_MINOR, 3);
+    assert_eq!(PROTO_MINOR, 2, "the DSPi Link 1.2 minor");
     let hello = dspi_link::messages::out::hello(&dspi_link::messages::ClientInfo {
         name: "n".into(),
         app: "a".into(),

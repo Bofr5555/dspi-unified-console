@@ -464,6 +464,8 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun fetchClockDiag(): ClockDiag = throw NotImplementedError("fetch_clock_diag")
 
+    override fun deviceProtocol(): DeviceProtocol = throw NotImplementedError("device_protocol")
+
     override fun undo(): HistoryMove = throw NotImplementedError("undo")
 
     override fun redo(): HistoryMove = throw NotImplementedError("redo")
@@ -793,6 +795,10 @@ open class UnimplementedDspiCore : DspiCoreApi {
     override fun rawGet(opcode: Int, value: Int, len: Int): List<Int> = throw NotImplementedError("raw_get")
 
     override fun rawSet(opcode: Int, value: Int, data: List<Int>): Unit = throw NotImplementedError("raw_set")
+
+    override fun rawGetId(id: Int, value: Int, len: Int): List<Int> = throw NotImplementedError("raw_get_id")
+
+    override fun rawSetId(id: Int, value: Int, data: List<Int>): Unit = throw NotImplementedError("raw_set_id")
 
     override fun notifyTapSet(enabled: Boolean): Unit = throw NotImplementedError("notify_tap_set")
 

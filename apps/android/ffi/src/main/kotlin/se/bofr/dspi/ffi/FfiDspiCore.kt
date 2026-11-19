@@ -535,6 +535,8 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun fetchClockDiag(): ClockDiag = call { core.fetchClockDiag().toDomain() }
 
+    override fun deviceProtocol(): DeviceProtocol = call { core.deviceProtocol().toDomain() }
+
     override fun undo(): HistoryMove = call { core.undo().toDomain() }
 
     override fun redo(): HistoryMove = call { core.redo().toDomain() }
@@ -864,6 +866,10 @@ class FfiDspiCore : DspiCoreApi {
     override fun rawGet(opcode: Int, value: Int, len: Int): List<Int> = call { core.rawGet(opcode.toUByte(), value.toUShort(), len.toUShort()).map { it.toInt() and 0xFF } }
 
     override fun rawSet(opcode: Int, value: Int, data: List<Int>) = call { core.rawSet(opcode.toUByte(), value.toUShort(), ByteArray(data.size) { data[it].toByte() }) }
+
+    override fun rawGetId(id: Int, value: Int, len: Int): List<Int> = call { core.rawGetId(id.toUShort(), value.toUShort(), len.toUShort()).map { it.toInt() and 0xFF } }
+
+    override fun rawSetId(id: Int, value: Int, data: List<Int>) = call { core.rawSetId(id.toUShort(), value.toUShort(), ByteArray(data.size) { data[it].toByte() }) }
 
     override fun notifyTapSet(enabled: Boolean) = core.notifyTapSet(enabled)
 
@@ -2634,6 +2640,40 @@ internal fun LinkTxtRecord.toFfi() =
         serials = serials,
         path = path,
         tlsAdvertised = tlsAdvertised,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.DevicePage.toDomain() =
+    DevicePage(
+        page = page.toInt(),
+        revision = revision.toInt(),
+    )
+
+internal fun DevicePage.toFfi() =
+    se.bofr.dspi.ffi.uniffi.DevicePage(
+        page = page.toUByte(),
+        revision = revision.toUByte(),
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.DeviceProtocol.toDomain() =
+    DeviceProtocol(
+        generation = generation.toDomain(),
+        protocolMajor = protocolMajor.toInt(),
+        protocolMinor = protocolMinor.toInt(),
+        pages = pages.map { it.toDomain() },
+        extEnvelope = extEnvelope.toDomain(),
+        boardId = boardId.toInt(),
+        boardName = boardName,
+    )
+
+internal fun DeviceProtocol.toFfi() =
+    se.bofr.dspi.ffi.uniffi.DeviceProtocol(
+        generation = generation.toFfi(),
+        protocolMajor = protocolMajor.toUByte(),
+        protocolMinor = protocolMinor.toUByte(),
+        pages = pages.map { it.toFfi() },
+        extEnvelope = extEnvelope.toFfi(),
+        boardId = boardId.toUByte(),
+        boardName = boardName,
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.AbCompare.toDomain() =
@@ -6262,6 +6302,34 @@ internal fun FillBand.toFfi(): se.bofr.dspi.ffi.uniffi.FillBand =
         FillBand.GOOD -> se.bofr.dspi.ffi.uniffi.FillBand.GOOD
         FillBand.WARN -> se.bofr.dspi.ffi.uniffi.FillBand.WARN
         FillBand.BAD -> se.bofr.dspi.ffi.uniffi.FillBand.BAD
+    }
+
+internal fun se.bofr.dspi.ffi.uniffi.ProtocolGeneration.toDomain(): ProtocolGeneration =
+    when (this) {
+        se.bofr.dspi.ffi.uniffi.ProtocolGeneration.UNKNOWN -> ProtocolGeneration.UNKNOWN
+        se.bofr.dspi.ffi.uniffi.ProtocolGeneration.LEGACY -> ProtocolGeneration.LEGACY
+        se.bofr.dspi.ffi.uniffi.ProtocolGeneration.PAGED -> ProtocolGeneration.PAGED
+    }
+
+internal fun ProtocolGeneration.toFfi(): se.bofr.dspi.ffi.uniffi.ProtocolGeneration =
+    when (this) {
+        ProtocolGeneration.UNKNOWN -> se.bofr.dspi.ffi.uniffi.ProtocolGeneration.UNKNOWN
+        ProtocolGeneration.LEGACY -> se.bofr.dspi.ffi.uniffi.ProtocolGeneration.LEGACY
+        ProtocolGeneration.PAGED -> se.bofr.dspi.ffi.uniffi.ProtocolGeneration.PAGED
+    }
+
+internal fun se.bofr.dspi.ffi.uniffi.ExtEnvelope.toDomain(): ExtEnvelope =
+    when (this) {
+        se.bofr.dspi.ffi.uniffi.ExtEnvelope.NO_CHANNEL -> ExtEnvelope.NO_CHANNEL
+        se.bofr.dspi.ffi.uniffi.ExtEnvelope.LEGACY -> ExtEnvelope.LEGACY
+        se.bofr.dspi.ffi.uniffi.ExtEnvelope.TUNNEL -> ExtEnvelope.TUNNEL
+    }
+
+internal fun ExtEnvelope.toFfi(): se.bofr.dspi.ffi.uniffi.ExtEnvelope =
+    when (this) {
+        ExtEnvelope.NO_CHANNEL -> se.bofr.dspi.ffi.uniffi.ExtEnvelope.NO_CHANNEL
+        ExtEnvelope.LEGACY -> se.bofr.dspi.ffi.uniffi.ExtEnvelope.LEGACY
+        ExtEnvelope.TUNNEL -> se.bofr.dspi.ffi.uniffi.ExtEnvelope.TUNNEL
     }
 
 internal fun se.bofr.dspi.ffi.uniffi.AbSide.toDomain(): AbSide =

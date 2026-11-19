@@ -13,7 +13,8 @@ use std::time::{Duration, Instant};
 
 use dspi_core::{
     BootDevice, ConfirmOp, FirmwareGuardBoard, FirmwareGuardBoardSource, FirmwareGuardDecision,
-    FirmwareGuardReason, ParamValue, firmware_guard_check,
+    FirmwareGuardReason, FirmwareTarget, FirmwareUpdateRule, FirmwareUpdateVerdict, ParamValue,
+    firmware_update_check,
 };
 use dspi_session::events::{EventKind, EventRecord};
 use serde_json::{Value, json};
@@ -44,8 +45,51 @@ pub(super) struct Image {
 /// What steps 1 and 2 of a device found.
 struct Cleared {
     board: FirmwareGuardBoard,
+    // -- WP PGFWUP -- the whole target (board, lineage, generation), for step 6
+    target: FirmwareTarget,
     check_text: String,
     guard_text: String,
+}
+
+// -- WP PGFWUP --
+/// The reason of a board without BOOTSEL (PLAN-PG section 1.9): excluded from a
+/// group's rollout, refused for a single device.
+const NO_BOOTSEL: &str = "no_bootsel";
+
+/// The refusal of a board without BOOTSEL: `unsupported` with reason
+/// [`NO_BOOTSEL`].
+fn no_bootsel(target: &FirmwareTarget) -> ApiError {
+    let name = target.board.map_or(
+        "a board that could not be identified",
+        dspi_core::board_name,
+    );
+    ApiError::new(
+        "unsupported",
+        format!(
+            "this device is {name}, which has no BOOTSEL bootloader: it is never flashed by a \
+             rollout"
+        ),
+    )
+    .with("reason", json!(NO_BOOTSEL))
+}
+
+/// Whether `e` is [`no_bootsel`]'s refusal: an exclusion, not a failure.
+fn is_exclusion(e: &ApiError) -> bool {
+    e.code == "unsupported" && e.extra.get("reason") == Some(&json!(NO_BOOTSEL))
+}
+
+/// The reason key of an update verdict: the voltage rule's when it asks (its message
+/// then names the lineage loss too), `lineage_loss` when only the lineage rule asks.
+fn verdict_reason(v: &FirmwareUpdateVerdict) -> &'static str {
+    match v.rule {
+        FirmwareUpdateRule::NoBootsel => NO_BOOTSEL,
+        FirmwareUpdateRule::LineageLoss
+            if v.verdict.confirmation_phrase == dspi_core::LINEAGE_PHRASE =>
+        {
+            "lineage_loss"
+        }
+        _ => reason_name(v.verdict.reason),
+    }
 }
 
 /// One rollout as its thread runs it.
@@ -57,6 +101,9 @@ struct Run {
     image: Image,
     while_live: bool,
     serials: Vec<String>,
+    // -- WP PGFWUP --
+    /// The members excluded at the start (no BOOTSEL), by index.
+    skip: Vec<usize>,
 }
 
 fn volts(mv: u16) -> String {
@@ -215,14 +262,32 @@ fn begin(
         .open_principal(Role::Admin, session.client_id(), &by)
         .map_err(|_| ApiError::internal("the hub is stopping"))?;
     hub.inner.relay.remove_session(principal.id());
-    let first = serials.first().cloned().unwrap_or_default();
-    let cleared = match check_and_guard(sh, hub, &principal, &image, while_live, &first) {
-        Ok(c) => c,
-        Err((_, e)) => {
-            hub.close_session(principal.id());
-            hub.wake_services();
-            return Err(e);
+    // -- WP PGFWUP -- a group member without BOOTSEL is excluded with its reason;
+    // the first member that is not is the one steps 1 and 2 run for here
+    let mut excluded: Vec<(usize, String)> = Vec::new();
+    let mut cleared = None;
+    for (i, serial) in serials.iter().enumerate() {
+        match check_and_guard(sh, hub, &principal, &image, while_live, serial) {
+            Ok(c) => {
+                cleared = Some((i, c));
+                break;
+            }
+            Err((_, e)) if serials.len() > 1 && is_exclusion(&e) => excluded.push((i, e.msg)),
+            Err((_, e)) => {
+                hub.close_session(principal.id());
+                hub.wake_services();
+                return Err(e);
+            }
         }
+    }
+    let Some((first, cleared)) = cleared else {
+        hub.close_session(principal.id());
+        hub.wake_services();
+        return Err(ApiError::new(
+            "unsupported",
+            "no member of this group has a BOOTSEL bootloader: none is flashed by a rollout",
+        )
+        .with("reason", json!(NO_BOOTSEL)));
     };
     let now = sh.now_iso();
     let record = {
@@ -231,7 +296,13 @@ fn begin(
         st.next_id = st.next_id.saturating_add(1);
         let mut devices: Vec<DeviceEntry> =
             serials.iter().map(|s| DeviceEntry::pending(s)).collect();
-        if let Some(d) = devices.first_mut() {
+        // -- WP PGFWUP --
+        for (i, text) in &excluded {
+            if let Some(d) = devices.get_mut(*i) {
+                exclude(d, &now, text);
+            }
+        }
+        if let Some(d) = devices.get_mut(first) {
             d.state = "running".into();
             d.step = "export".into();
             d.steps = vec![
@@ -285,10 +356,12 @@ fn begin(
         image,
         while_live,
         serials,
+        // -- WP PGFWUP --
+        skip: excluded.iter().map(|(i, _)| *i).collect(),
     };
     let spawned = std::thread::Builder::new()
         .name("hub-rollout".into())
-        .spawn(move || run.run(cleared.board));
+        .spawn(move || run.run(first, cleared));
     match spawned {
         Ok(handle) => {
             let old = lock(&sh.worker).replace(handle);
@@ -315,6 +388,25 @@ fn begin(
     Ok(json!({"rollout": record.to_json()}))
 }
 
+// -- WP PGFWUP --
+/// Mark a member without BOOTSEL excluded: never tried, with its reason.
+fn exclude(d: &mut DeviceEntry, at: &str, text: &str) {
+    d.state = "excluded".into();
+    d.step = "check".into();
+    d.steps.push(StepDone {
+        step: "check".into(),
+        at: at.into(),
+        ok: false,
+        text: cut(text),
+        session: None,
+    });
+    d.failed = Some(Failed {
+        step: "check".into(),
+        code: Some(NO_BOOTSEL.into()),
+        text: cut(text),
+    });
+}
+
 fn step_ok(step: &str, at: &str, text: &str) -> StepDone {
     StepDone {
         step: step.into(),
@@ -336,11 +428,12 @@ fn check_and_guard(
     while_live: bool,
     serial: &str,
 ) -> Result<Cleared, (&'static str, ApiError)> {
-    let check_text =
+    let (check_text, target) =
         check(sh, hub, principal, image, while_live, serial).map_err(|e| ("check", e))?;
-    let (board, guard_text) = guard(sh, hub, principal, image, serial).map_err(|e| ("guard", e))?;
+    let (board, guard_text) = guard(image, &target, serial).map_err(|e| ("guard", e))?;
     Ok(Cleared {
         board,
+        target,
         check_text,
         guard_text,
     })
@@ -379,7 +472,7 @@ fn check(
     image: &Image,
     while_live: bool,
     serial: &str,
-) -> Result<String, ApiError> {
+) -> Result<(String, FirmwareTarget), ApiError> {
     sh.refresh_health();
     let devices = hub.devices();
     let d = devices
@@ -402,6 +495,15 @@ fn check(
         ));
     }
     locks_clear(hub, serial, d.handle)?;
+    // -- WP PGFWUP -- the board read now, as the principal's child: a board without
+    // BOOTSEL (the DSPi-Zero, an unknown or unread board) is never in a rollout
+    let target = sh.exec.run(hub, principal, serial, |cx| {
+        Ok(cx.core()?.firmware_target())
+    })?;
+    if !target.has_bootsel() {
+        log::warn!("hub rollout: {serial} has no BOOTSEL; excluded");
+        return Err(no_bootsel(&target));
+    }
     let platform = i8::try_from(d.identity.platform).unwrap_or(-1);
     if image.info.platform_id() != platform {
         return Err(image_refused(
@@ -457,34 +559,40 @@ fn check(
             ));
         }
     }
-    Ok("The device and the image can go ahead".into())
+    Ok(("The device and the image can go ahead".into(), target))
 }
 
-/// Step 2: the board read as the principal's child, the guard asked with nothing typed.
+/// Step 2: the guard asked with nothing typed, on the board step 1 read as the
+/// principal's child. -- WP PGFWUP -- the update check: the voltage rule, no image for
+/// a board without BOOTSEL, and our lineage never given away to an image that may be
+/// upstream's (that asks a typed confirmation, which nobody gives here).
 fn guard(
-    sh: &Shared,
-    hub: &HubHandle,
-    principal: &Arc<Session>,
     image: &Image,
+    target: &FirmwareTarget,
     serial: &str,
 ) -> Result<(FirmwareGuardBoard, String), ApiError> {
-    let board = sh.exec.run(hub, principal, serial, |cx| {
-        Ok(cx.core()?.firmware_guard_board())
-    })?;
-    let verdict = firmware_guard_check(image.bytes.clone(), board.clone(), String::new());
+    let board = target.voltage.clone();
+    let checked = firmware_update_check(image.bytes.clone(), target, "");
+    let verdict = &checked.verdict;
     if verdict.decision != FirmwareGuardDecision::Clear || !verdict.allowed {
         log::warn!(
             "hub rollout: the guard refused {} for {serial}: {}",
             image.info.name,
             verdict.message
         );
-        return Err(image_refused(reason_name(verdict.reason), verdict.message));
+        return Err(image_refused(
+            verdict_reason(&checked),
+            verdict.message.clone(),
+        ));
     }
-    let text = if board.required_mv >= STOCK_MV {
+    let mut text = if board.required_mv >= STOCK_MV {
         format!("The image suits this board ({})", volts(board.required_mv))
     } else {
         "The image suits this board".to_owned()
     };
+    if !checked.generation_change.is_empty() {
+        text = format!("{text}. {}", checked.generation_change);
+    }
     Ok((board, text))
 }
 
@@ -493,6 +601,9 @@ fn guard(
 /// How a device's part ended.
 enum End {
     Ok(String),
+    // -- WP PGFWUP --
+    /// Excluded at its check: no BOOTSEL. The rollout goes on with the next.
+    Excluded(String),
     Failed {
         step: &'static str,
         code: Option<String>,
@@ -540,10 +651,14 @@ impl Run {
         })
     }
 
-    fn run(self, first: FirmwareGuardBoard) {
-        let mut board = Some(first);
+    fn run(self, first: usize, cleared: Cleared) {
+        let mut cleared = Some((first, cleared));
         let mut ok = true;
         for i in 0..self.serials.len() {
+            // -- WP PGFWUP -- excluded at the start
+            if self.skip.contains(&i) {
+                continue;
+            }
             let serial = self.serials.get(i).cloned().unwrap_or_default();
             // A new device: a cancel holds again until its bootloader entry.
             if let Some(r) = lock(&self.sh.state)
@@ -553,9 +668,18 @@ impl Run {
             {
                 r.past_entry = false;
             }
-            let end = self.device(i, &serial, board.take());
+            let mine = cleared.take_if(|(at, _)| *at == i).map(|(_, c)| c);
+            let end = self.device(i, &serial, mine);
             match end {
                 End::Ok(text) => self.finish_device(i, &serial, None, &text),
+                End::Excluded(text) => {
+                    let at = self.sh.now_iso();
+                    let _ = self.sh.update(&self.hub, &self.id, |r| {
+                        if let Some(d) = r.devices.get_mut(i) {
+                            exclude(d, &at, &text);
+                        }
+                    });
+                }
                 End::Failed { step, code, text } => {
                     self.finish_device(i, &serial, Some((step, code)), &text);
                     ok = false;
@@ -666,14 +790,14 @@ impl Run {
     }
 
     /// One device, steps 1 (for a later member) to 8.
-    fn device(&self, i: usize, serial: &str, cleared: Option<FirmwareGuardBoard>) -> End {
+    fn device(&self, i: usize, serial: &str, cleared: Option<Cleared>) -> End {
         let fail = |step: &'static str, e: ApiError| End::Failed {
             step,
             code: Some(e.code.to_owned()),
             text: e.msg,
         };
-        let board = match cleared {
-            Some(b) => b,
+        let (board, cleared_target) = match cleared {
+            Some(c) => (c.board, c.target),
             None => {
                 if self.cancelled() || self.stopping() || !self.at(i, "check") {
                     return End::Stopped;
@@ -692,8 +816,10 @@ impl Run {
                         {
                             return End::Stopped;
                         }
-                        c.board
+                        (c.board, c.target)
                     }
+                    // -- WP PGFWUP --
+                    Err((_, e)) if is_exclusion(&e) => return End::Excluded(e.msg),
                     Err((step, e)) => return fail(step, e),
                 }
             }
@@ -764,7 +890,8 @@ impl Run {
         );
         // Step 6.
         let _ = self.at(i, "flash");
-        let verdict = firmware_guard_check(self.image.bytes.clone(), board.clone(), String::new());
+        // -- WP PGFWUP -- the update check again, on the target read before the entry
+        let verdict = firmware_update_check(self.image.bytes.clone(), &cleared_target, "").verdict;
         if !verdict.allowed || verdict.decision != FirmwareGuardDecision::Clear {
             return End::Failed {
                 step: "flash",

@@ -19,6 +19,11 @@ use dspi_proto::packets::PlatformInfo;
 use dspi_transport::{
     NotificationSource, Transport, TransportError, TransportKind, with_busy_retry,
 };
+// -- WP PGHDEV --
+use dspi_link::messages::LINK_13_MINOR;
+use dspi_proto::packets::Board;
+use dspi_proto::paged::{CmdId, cmds};
+use dspi_transport::paged::Generation;
 
 use crate::policy::Policy;
 use crate::polls::{PollRefused, Polls};
@@ -36,10 +41,11 @@ const READ_TIMEOUT: Duration = Duration::from_millis(100);
 const BUSY_WINDOW: Duration = Duration::from_secs(1);
 /// Longest control transfer of a bulk chunk (`bulk_params_chunking.md`).
 const BULK_CHUNK: usize = 2048;
-/// `wLength` of the platform read.
+/// `wLength` of the platform read. -- WP PGHDEV -- 8 bytes: the board id is byte 7
+/// (PLAN-PG section 1.9; older firmware answers 4 to 7).
 const PLATFORM_LEN: u16 = {
-    assert!(PlatformInfo::REQUEST_LEN <= u16::MAX as usize);
-    PlatformInfo::REQUEST_LEN as u16
+    assert!(PlatformInfo::FULL_LEN <= u16::MAX as usize);
+    PlatformInfo::FULL_LEN as u16
 };
 
 /// What the workers and readers tell the hub's supervisor.
@@ -65,6 +71,9 @@ pub(crate) enum SupMsg {
 struct CmdJob {
     ctx: SessionCtx,
     req: CmdRequest,
+    // -- WP PGHDEV --
+    /// How it reaches the device, decided when it was admitted.
+    route: Route,
     done: Completion,
     /// When the caller gives up waiting. A command still queued past it does not run:
     /// its caller was told `TIMEOUT`, and a write must not land after that. `None` for a
@@ -98,6 +107,11 @@ pub(crate) struct DeviceShared {
     // -- WP P2HS --
     /// What `hub.stats` reports of this attachment.
     pub(crate) counters: DeviceCounters,
+    // -- WP PGHDEV --
+    /// The protocol generation of this attachment's transport, as its attach probe
+    /// decided it (`dspi_transport::paged::open`): it belongs to the live handle,
+    /// never to the registry or inventory record, and a re-attach decides it again.
+    pub(crate) protocol: Generation,
 }
 
 // -- WP P2HS --
@@ -183,17 +197,52 @@ impl DeviceShared {
         done: Completion,
         deadline: Option<Instant>,
     ) {
-        // -- WP PGHUB0 -- a page never reaches a legacy device, before anything else
-        if names_a_page(req.w_index) {
-            done.answer(status::UNSUPPORTED, Vec::new());
+        // -- WP PGHDEV -- the hub's own requests and its child sessions: 1.1.6-shaped
+        self.submit_link(ctx, crate::session::LEGACY_LINK_MINOR, req, done, deadline);
+    }
+
+    // -- WP PGHDEV --
+    /// [`DeviceShared::submit`] for a request of a session whose client said DSPi
+    /// Link minor `minor` in its `hello` ([`Session::link_minor`]). PLAN-PG section
+    /// 1.5's table decides, before anything else, whether and how the request
+    /// reaches the device ([`route`]), and with it the class it is judged by.
+    pub(crate) fn submit_link(
+        &self,
+        ctx: SessionCtx,
+        minor: u32,
+        req: CmdRequest,
+        done: Completion,
+        deadline: Option<Instant>,
+    ) {
+        // -- WP PGHDEV -- a board without BOOTSEL never enters its bootloader
+        if is_bootloader_entry(&req) && !self.has_bootsel() {
+            log::warn!(
+                "hub: a bootloader entry toward device {} ({:?}), which has no BOOTSEL: \
+                 refused",
+                self.handle,
+                Board::from_id(self.board_id())
+            );
+            done.answer(status::DENIED, Vec::new());
             return;
         }
+        // -- WP PGHUB0 -- a page never reaches a legacy device, before anything else
+        // -- WP PGHDEV -- and a 1.3 client's page 0 never reaches a paged one
+        let route = match route(&req, self.protocol, minor) {
+            Ok(route) => route,
+            Err(refused) => {
+                done.answer(refused, Vec::new());
+                return;
+            }
+        };
+        let policy = self.router.policy();
         // -- WP P1HL -- the device's limits profile and lock, before the queue
-        if let Err((refused, why)) = crate::limits::admit(self, self.router.policy(), &ctx, &req) {
+        // -- WP PGHDEV -- judged by the request's 1.1.6 equivalent (OD-PGi)
+        if let Err((refused, why)) = self.admit_limits(policy, &ctx, &req) {
             done.answer(refused, why);
             return;
         }
-        if let Err(refused) = self.router.admit(&ctx, &req, Instant::now()) {
+        let class = route.class(policy, &req);
+        if let Err(refused) = self.router.admit_class(&ctx, &req, class, Instant::now()) {
             done.answer(refused, Vec::new());
             return;
         }
@@ -202,9 +251,83 @@ impl DeviceShared {
         let _ = self.tx.send(Job::Cmd(CmdJob {
             ctx,
             req,
+            route,
             done,
             deadline,
         }));
+    }
+
+    // -- WP PGHDEV --
+    /// The limits judge (`limits::admit`) on the request's 1.1.6 equivalent
+    /// ([`crate::policy::judge_view`]). A paged write that has none (a
+    /// `STORE.ALL_PARAMS` SET of another length, a `ROUTE.MASTER_VOLUME` SET with
+    /// `wValue` not 0, a command 1.1.6 never had) cannot be judged, so it is refused
+    /// `limits_unknown` whenever the device has a limits profile (PLAN-PG section 1.6).
+    fn admit_limits(
+        &self,
+        policy: &Policy,
+        ctx: &SessionCtx,
+        req: &CmdRequest,
+    ) -> Result<(), (u8, Vec<u8>)> {
+        // Gated on the request as sent: a paged read whose equivalent is a 1.2
+        // `config` row (`CS.IR_LEARN_STATUS`) is still a read, which neither the
+        // lock nor the profile judges (PG-B review, finding 8).
+        let id = CmdId::from_request(req.b_request, req.w_index);
+        if !policy.mutates_id(id, req.dir) {
+            return Ok(());
+        }
+        if id.is_legacy() {
+            return crate::limits::admit(self, policy, ctx, req);
+        }
+        let unjudged = || {
+            let exempt = matches!(
+                ctx.id,
+                crate::session::LOCAL_SESSION_ID | crate::session::GUARD_SESSION_ID
+            );
+            let profiled = self
+                .router
+                .limits()
+                .is_some_and(|l| l.has_profile(&self.serial()));
+            if !exempt && profiled {
+                Err((status::DENIED, crate::limits::Refusal::Unknown.payload()))
+            } else {
+                Ok(())
+            }
+        };
+        match crate::policy::judge_view(req) {
+            // -- review PG-C -- `limits::admit` leaves a request its role may not
+            // send to the router ("the role's own refusal"), by the view's 1.2
+            // class; the router judges a paged request by its 1.3 class. Where
+            // the 1.3 class lets the role through and the view's 1.2 class would
+            // not (no row today; a re-vendored table may have one), nobody would
+            // judge the write: it is refused as one without a view.
+            Some(view)
+                if view_escapes_the_judges(
+                    policy.allows(ctx.role, view.b_request, view.dir),
+                    crate::policy::role_permits(ctx.role, policy.classify_id(id, req.dir)),
+                ) =>
+            {
+                unjudged()
+            }
+            Some(view) => crate::limits::admit(self, policy, ctx, &view),
+            None => unjudged(),
+        }
+    }
+
+    // -- WP PGHDEV --
+    /// Byte 7 of the platform read at attach: 0 when absent (PLAN-PG section 1.9).
+    pub(crate) fn board_id(&self) -> u8 {
+        self.identity
+            .read()
+            .unwrap_or_else(PoisonError::into_inner)
+            .board
+    }
+
+    // -- WP PGHDEV --
+    /// Whether the board has the RP2040/RP2350 BOOTSEL ROM: board id 0 only, an
+    /// unknown id fails closed (`Board::has_bootsel`, R7a).
+    pub(crate) fn has_bootsel(&self) -> bool {
+        Board::from_id(self.board_id()).has_bootsel()
     }
 
     /// Have the worker read the image into the snapshot cache. Coalesced: while one is
@@ -225,7 +348,12 @@ impl DeviceShared {
         policy: &Policy,
         specs: &[PollSpec],
     ) -> Result<Vec<PollGrant>, PollRefused> {
-        let granted = self.polls.subscribe(
+        // -- WP PGHDEV -- by the device's generation and the client's minor
+        let granted = self.polls.subscribe_routed(
+            crate::polls::PollRoute {
+                paged: matches!(self.protocol, Generation::Paged(_)),
+                link_minor: session.link_minor(),
+            },
             self.handle,
             session.id(),
             session.outbox(),
@@ -285,6 +413,8 @@ impl Attachment {
     ) -> std::io::Result<Self> {
         let (handle, generation, identity, router) = shared_parts;
         let kind = transport.caps().kind;
+        // -- WP PGHDEV -- a transport that does not say is never sent a page
+        let protocol = transport.generation().unwrap_or(Generation::Legacy);
         let (tx, rx) = mpsc::channel();
         let shared = Arc::new(DeviceShared {
             handle,
@@ -298,6 +428,8 @@ impl Attachment {
             snapshot_read_queued: AtomicBool::new(false),
             // -- WP P2HS --
             counters: DeviceCounters::new(relay.notify_dropped(handle)),
+            // -- WP PGHDEV --
+            protocol,
         });
         // -- WP HB3 --
         if source.is_none() {
@@ -390,6 +522,8 @@ fn worker_loop(
     };
     let mut busy = BusyWindow::default();
     // -- WP BULKFIX -- (fixup bf F1, F4: the guard sees every relayed unmute)
+    // -- PG-C merge -- one wrapper again: the gain guard forwards the paged calls
+    // and `generation()` (PGCORE), so both paths go through it
     let (mut transport, guard) = dspi_session::bulk_gain::GainGuard::wrap(transport, true);
     let mut chunks = crate::bulk_gain::BulkRelay::new(guard);
     loop {
@@ -400,7 +534,7 @@ fn worker_loop(
         match next {
             Ok(Job::Cmd(job)) => {
                 // -- WP HB3 --
-                if is_chunk(job.req.b_request) {
+                if is_chunk(&job.req) {
                     shared.polls.hold_for_chunks(Instant::now());
                 }
                 run_command(&mut *transport, shared, &sup, &mut busy, &mut chunks, job);
@@ -410,7 +544,12 @@ fn worker_loop(
             Ok(Job::Stop) | Err(RecvTimeoutError::Disconnected) => return,
         }
         for job in shared.polls.take_due(Instant::now()) {
-            let reply = transport.control_in_upto(job.req, job.val, job.len);
+            // -- WP PGHDEV -- a paged poll goes verbatim, a page-0 one as before
+            let reply = if job.page == 0 {
+                transport.control_in_upto(job.req, job.val, job.len)
+            } else {
+                transport.control_in_paged(CmdId::new(job.page, job.req), job.val, job.len)
+            };
             if matches!(reply, Err(TransportError::Disconnected)) {
                 let _ = sup.send(SupMsg::Lost {
                     handle: shared.handle,
@@ -423,7 +562,13 @@ fn worker_loop(
 }
 
 /// A client's own bulk chunk: part of a session any other vendor request would tear.
-fn is_chunk(opcode: u8) -> bool {
+/// -- WP PGHDEV -- `STORE.ALL_PARAMS_CHUNK` (0x0241) on a paged device as well.
+fn is_chunk(req: &CmdRequest) -> bool {
+    let id = CmdId::from_request(req.b_request, req.w_index);
+    if !id.is_legacy() {
+        return id == cmds::STORE_ALL_PARAMS_CHUNK;
+    }
+    let opcode = req.b_request;
     opcode == op::REQ_GET_ALL_PARAMS_CHUNK || opcode == op::REQ_SET_ALL_PARAMS_CHUNK
 }
 
@@ -484,6 +629,7 @@ fn run_command(
     let CmdJob {
         ctx,
         req,
+        route,
         done,
         deadline,
     } = job;
@@ -517,9 +663,13 @@ fn run_command(
     let busy_retry = shared.router.retries_stall(req) && busy.is_open(now);
     // -- WP BULKFIX --
     let started = Instant::now();
-    let result = match chunks.take(t, req, write_bulk) {
-        Some(held) => held,
-        None => execute(t, req, busy_retry),
+    let result = match route {
+        // -- WP PGHDEV --
+        Route::Paged(id) => run_paged(t, chunks, req, id),
+        Route::Legacy | Route::Translated => match chunks.take(t, req, write_bulk) {
+            Some(held) => held,
+            None => execute(t, req, busy_retry),
+        },
     };
     // -- WP P2HS --
     shared.counters.ran(started.elapsed(), result.is_err());
@@ -577,10 +727,18 @@ pub(crate) fn status_of(e: &TransportError) -> u8 {
         | TransportError::Incompatible(_)
         | TransportError::Malformed(_)
         | TransportError::Remote(_) => status::ERROR,
-        // -- WP PGADAPT -- a typed paged refusal (PGHDEV forwards its code)
+        // -- WP PGHDEV -- a firmware result code is forwarded verbatim (spec 1.3
+        // section 8.1: statuses 0x08-0x7F are the firmware's), from `SYS.LAST_RESULT`
+        // on USB or decided locally by the adapter
+        TransportError::Refused { result, .. } if FIRMWARE_STATUSES.contains(result) => *result,
         TransportError::Refused { .. } => status::ERROR,
     }
 }
+
+// -- WP PGHDEV --
+/// The Link statuses that are the firmware's own result codes (spec 1.3 section
+/// 8.1), forwarded verbatim: `VC_ERR_*` is 0x10-0x1A today.
+const FIRMWARE_STATUSES: std::ops::RangeInclusive<u8> = 0x08..=0x7F;
 
 /// Run one tunnelled request on the transport.
 ///
@@ -770,6 +928,12 @@ pub(crate) fn read_identity(
     let reply = t.control_in_upto(op::REQ_GET_PLATFORM, 0, PLATFORM_LEN)?;
     let info = PlatformInfo::decode(&reply)
         .map_err(|e| TransportError::Malformed(format!("GET_PLATFORM: {e}")))?;
+    // -- WP PGHDEV -- the probe's answer, as the generation wrapper kept it
+    let protocol = match t.generation() {
+        Some(Generation::Paged(info)) => Some((info.major, info.minor)),
+        Some(Generation::Legacy) | None => None,
+    };
+    let ext = read_ext(t)?;
     Ok(DeviceIdentity {
         serial: t.descriptor().serial.clone(),
         vid,
@@ -780,7 +944,151 @@ pub(crate) fn read_identity(
         outputs: info.num_output_channels,
         // -- WP HB3 --
         board_name: read_board_name(t)?,
+        // -- WP PGHDEV --
+        // -- PG-C merge -- PGZERO line 2: on board 0 the USB descriptor decides
+        // (a paged Zero answers a 7-byte `SYS.PLATFORM`)
+        board: dspi_transport::board::identify_board(&info, t.descriptor().board()).id(),
+        protocol,
+        ext,
     })
+}
+
+// -- WP PGHDEV --
+/// Whether a paged device has our extension channel, for the device object's
+/// additive `ext` (PLAN-PG section 1.5): `SYS.PAGE_LIST` names our page `0xE0` (G2b)
+/// or not (G2s), one paged read the generation wrapper lets through only to a device
+/// that answered the probe as paged. `None` for a legacy device, which is read
+/// nothing more at attach than before (its clients probe `EXT_LIST` themselves), and
+/// when the read failed some other way: the field is then left out.
+fn read_ext(t: &mut dyn Transport) -> Result<Option<bool>, TransportError> {
+    let Some(Generation::Paged(info)) = t.generation() else {
+        return Ok(None);
+    };
+    let len = u16::from(info.pages).saturating_mul(2).max(2);
+    match t.control_in_paged(cmds::SYS_PAGE_LIST, 0, len) {
+        Ok(list) => Ok(Some(
+            dspi_proto::paged::decode_page_list(&list)
+                .iter()
+                .any(|p| p.page == dspi_proto::paged::EXT_PAGE),
+        )),
+        Err(e @ TransportError::Disconnected) => Err(e),
+        Err(e) => {
+            log::debug!("SYS.PAGE_LIST at attach: {e}");
+            Ok(None)
+        }
+    }
+}
+
+// -- review PG-C --
+/// Whether a paged write would pass both judges unjudged: the limits judge skips
+/// what the role may not send by the view's 1.2 class (`view_allowed` false),
+/// expecting the router to refuse it, while the router lets the role through by
+/// the request's own 1.3 class (`routed_allowed`).
+fn view_escapes_the_judges(view_allowed: bool, routed_allowed: bool) -> bool {
+    !view_allowed && routed_allowed
+}
+
+// -- WP PGHDEV --
+/// How a client's request reaches the device: PLAN-PG section 1.5's table, by the
+/// request's page, the device's generation and the session's `hello` minor.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Route {
+    /// Page 0 to a legacy device: forwarded as before, judged by the 1.2 table.
+    Legacy,
+    /// Page 0 from a 1.2 session or the hub itself to a paged device: through the
+    /// device's adapter (`PagedTransport`'s legacy path), judged by the stricter of
+    /// the 1.2 class and the 1.3 classes of what its plan reaches (OD-PGh).
+    Translated,
+    /// A page to a paged device: forwarded verbatim (`control_*_paged`), judged by
+    /// the 1.3 table and our private rows.
+    Paged(CmdId),
+}
+
+impl Route {
+    /// The class the request is judged by on this route.
+    pub(crate) fn class(self, policy: &Policy, req: &CmdRequest) -> crate::policy::Class {
+        match self {
+            Route::Legacy => policy.classify(req.b_request, req.dir),
+            Route::Translated => policy.classify_translated(req.b_request, req.w_value, req.dir),
+            Route::Paged(id) => policy.classify_id(id, req.dir),
+        }
+    }
+}
+
+// -- WP PGHDEV --
+/// The route of `req` to a device of `protocol`, from a session whose client said
+/// `minor`; `Err` is the status to answer with nothing sent:
+/// - a page toward a legacy device: `0x86 UNSUPPORTED` (PGHUB0's rule, kept);
+/// - page 0 from a 1.3 session toward a paged device: `0x10` (`VC_ERR_UNKNOWN`, what
+///   page 0 answers on firmware 1.1.7, as an upstream 1.3 hub forwards it), so a 1.3
+///   client's lost or zeroed page never becomes a different command, and our own
+///   client sees a generation change instead of riding the translation (R5a).
+pub(crate) fn route(req: &CmdRequest, protocol: Generation, minor: u32) -> Result<Route, u8> {
+    let id = CmdId::from_request(req.b_request, req.w_index);
+    match (protocol, id.is_legacy()) {
+        (Generation::Legacy, true) => Ok(Route::Legacy),
+        (Generation::Legacy, false) => Err(status::UNSUPPORTED),
+        (Generation::Paged(_), false) => Ok(Route::Paged(id)),
+        (Generation::Paged(_), true) if minor >= LINK_13_MINOR => {
+            Err(dspi_proto::paged::legacy::VC_ERR_UNKNOWN)
+        }
+        (Generation::Paged(_), true) => Ok(Route::Translated),
+    }
+}
+
+// -- WP PGHDEV --
+/// A bootloader entry in either generation's form: `REQ_ENTER_BOOTLOADER` 0xF0 on
+/// page 0, `SYS.ENTER_BOOTLOADER` 0x0130, or anything whose 1.1.6 equivalent is 0xF0.
+pub(crate) fn is_bootloader_entry(req: &CmdRequest) -> bool {
+    let id = CmdId::from_request(req.b_request, req.w_index);
+    if id.is_legacy() {
+        return req.b_request == op::REQ_ENTER_BOOTLOADER;
+    }
+    id == cmds::SYS_ENTER_BOOTLOADER
+        || crate::policy::judge_view(req).is_some_and(|v| v.b_request == op::REQ_ENTER_BOOTLOADER)
+}
+
+// -- WP PGHDEV --
+/// A paged request on a paged device. Forwarded verbatim (`control_*_paged`), a
+/// refusal with its firmware code ([`status_of`]; on USB the adapter explains a
+/// STALL by `SYS.LAST_RESULT`), except two that are relayed as their 1.1.6
+/// equivalent through the device's adapter, so they get what the 1.1.6 forms get:
+/// - `STORE.ALL_PARAMS` (0x0240), the whole image either way: the bulk relay (chunked
+///   where the transport is, repaired against the bulk dB bug where the firmware
+///   lacks the fix) exactly as `0xA0`/`0xA1`; the blob is the same (wire format 32);
+/// - an unmute (`OUTPUT.MUTE` to 0, the audio link's apply-at-frame UNMUTE), which the
+///   gain guard must see first.
+fn run_paged(
+    t: &mut dyn Transport,
+    chunks: &mut crate::bulk_gain::BulkRelay,
+    req: &CmdRequest,
+    id: CmdId,
+) -> Result<Vec<u8>, TransportError> {
+    if let Some(view) = crate::policy::judge_view(req)
+        && (id == cmds::STORE_ALL_PARAMS || is_guarded_unmute(&view))
+    {
+        return match chunks.take(t, &view, write_bulk) {
+            Some(held) => held,
+            None => execute(t, &view, false),
+        };
+    }
+    match req.dir {
+        Dir::Get => t.control_in_paged(id, req.w_value, req.w_length),
+        Dir::Set => t
+            .control_out_paged(id, req.w_value, &req.payload)
+            .map(|()| Vec::new()),
+    }
+}
+
+// -- WP PGHDEV --
+/// An unmute the gain guard (`dspi_session::bulk_gain`) acts on, in its 1.1.6 form.
+fn is_guarded_unmute(view: &CmdRequest) -> bool {
+    use dspi_proto::ext::alink::{ApplyOp, EXT_APPLY_AT_FRAME};
+    view.dir == Dir::Set
+        && ((view.b_request == op::REQ_SET_OUTPUT_MUTE && view.payload.first() == Some(&0))
+            || (view.b_request == op::REQ_EXTENSION
+                && view.w_value == EXT_APPLY_AT_FRAME
+                && view.payload.get(8) == Some(&ApplyOp::Unmute.raw())))
 }
 
 // -- WP HB3 --
@@ -999,6 +1307,7 @@ mod tests_wp_hb0 {
             stopping: AtomicBool::new(false),
             snapshot_read_queued: AtomicBool::new(false),
             counters: DeviceCounters::default(),
+            protocol: Generation::Legacy,
         };
         for _ in 0..1000 {
             shared.queue_snapshot_read();
@@ -1066,6 +1375,7 @@ mod tests_wp_hb0 {
             stopping: AtomicBool::new(false),
             snapshot_read_queued: AtomicBool::new(false),
             counters: DeviceCounters::default(),
+            protocol: Generation::Legacy,
         };
         let ctx = SessionCtx {
             id: 9,
@@ -1215,5 +1525,212 @@ mod tests_wp_p2hs {
         c.ran(Duration::MAX, false);
         c.ran(Duration::MAX, false);
         assert_eq!(c.counts().rtt_us, u64::MAX);
+    }
+}
+
+// -- WP PGHDEV --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_pghdev {
+    use dspi_proto::paged::legacy::{VC_ERR_LENGTH, VC_ERR_UNKNOWN};
+    use dspi_proto::paged::{EXT_TUNNEL, ProtocolInfo};
+
+    use super::*;
+
+    const PAGED: Generation = Generation::Paged(ProtocolInfo {
+        major: 1,
+        minor: 0,
+        pages: 12,
+        max_set: 64,
+        max_get: 64,
+    });
+
+    fn req(dir: Dir, id: CmdId) -> CmdRequest {
+        CmdRequest {
+            tag: 1,
+            handle: 0,
+            dir,
+            b_request: id.cmd(),
+            w_value: 0,
+            w_index: id.w_index(),
+            w_length: 4,
+            payload: Vec::new(),
+        }
+    }
+
+    /// PLAN-PG section 1.5's table, row by row.
+    #[test]
+    fn wp_pghdev_the_forwarding_table() {
+        let volume = req(Dir::Get, cmds::ROUTE_MASTER_VOLUME);
+        let page0 = req(Dir::Get, CmdId::new(0, op::REQ_GET_MASTER_VOLUME));
+        let mac = CmdRequest {
+            w_index: 0,
+            ..page0.clone()
+        };
+        for minor in [0, 1, 2, 3, 4] {
+            assert_eq!(route(&page0, Generation::Legacy, minor), Ok(Route::Legacy));
+            assert_eq!(route(&mac, Generation::Legacy, minor), Ok(Route::Legacy));
+            assert_eq!(
+                route(&volume, Generation::Legacy, minor),
+                Err(status::UNSUPPORTED)
+            );
+            assert_eq!(
+                route(&volume, PAGED, minor),
+                Ok(Route::Paged(cmds::ROUTE_MASTER_VOLUME))
+            );
+            let expect = if minor >= LINK_13_MINOR {
+                Err(VC_ERR_UNKNOWN)
+            } else {
+                Ok(Route::Translated)
+            };
+            assert_eq!(route(&page0, PAGED, minor), expect, "minor {minor}");
+            assert_eq!(route(&mac, PAGED, minor), expect, "minor {minor}, wIndex 0");
+        }
+    }
+
+    /// The class each route judges by: the 1.2 table, the stricter-of, the 1.3 table.
+    #[test]
+    fn wp_pghdev_each_route_has_its_class() {
+        use crate::policy::Class;
+        let p = Policy::embedded();
+        let ext_get = CmdRequest {
+            b_request: op::REQ_EXTENSION,
+            ..req(Dir::Get, CmdId::new(0, 0))
+        };
+        assert_eq!(Route::Legacy.class(&p, &ext_get), Class::Config);
+        assert_eq!(Route::Translated.class(&p, &ext_get), Class::Config);
+        let tunnel = req(Dir::Get, EXT_TUNNEL);
+        assert_eq!(Route::Paged(EXT_TUNNEL).class(&p, &tunnel), Class::Config);
+        let volume = req(Dir::Get, cmds::ROUTE_MASTER_VOLUME);
+        assert_eq!(
+            Route::Paged(cmds::ROUTE_MASTER_VOLUME).class(&p, &volume),
+            Class::Read
+        );
+        // ROUTE.MASTER_VOLUME_SAVED (0x0553) is a read by page, never FACTORY_RESET.
+        let saved = CmdId(0x0553);
+        assert_eq!(
+            Route::Paged(saved).class(&p, &req(Dir::Get, saved)),
+            Class::Read
+        );
+    }
+
+    #[test]
+    fn wp_pghdev_a_firmware_refusal_keeps_its_code() {
+        for (result, want) in [
+            (VC_ERR_UNKNOWN, VC_ERR_UNKNOWN),
+            (VC_ERR_LENGTH, VC_ERR_LENGTH),
+            (0x08, 0x08),
+            (0x7F, 0x7F),
+            (0x02, status::ERROR),
+            (0x80, status::ERROR),
+        ] {
+            let e = TransportError::Refused {
+                id: cmds::ROUTE_MASTER_VOLUME,
+                result,
+            };
+            assert_eq!(status_of(&e), want, "{result:#04x}");
+        }
+    }
+
+    #[test]
+    fn wp_pghdev_bootloader_entries_in_both_forms() {
+        let f0 = req(Dir::Get, CmdId::new(0, op::REQ_ENTER_BOOTLOADER));
+        assert!(is_bootloader_entry(&f0));
+        assert!(is_bootloader_entry(&CmdRequest {
+            w_index: 0,
+            ..f0.clone()
+        }));
+        assert!(is_bootloader_entry(&req(
+            Dir::Set,
+            cmds::SYS_ENTER_BOOTLOADER
+        )));
+        assert!(!is_bootloader_entry(&req(
+            Dir::Get,
+            cmds::ROUTE_MASTER_VOLUME
+        )));
+        // Command 0xF0 on another page is not 1.1.6's 0xF0.
+        assert!(!is_bootloader_entry(&req(Dir::Get, CmdId::new(0x05, 0xF0))));
+    }
+
+    /// "Every GET only reads" covers the registry and the tunnel; a GET of any other
+    /// paged id is unknown, and unknown counts as a write (PG-B review, finding 8).
+    #[test]
+    fn wp_pghdev_a_get_of_an_unknown_paged_id_counts_as_a_write() {
+        let p = Policy::embedded();
+        let unknown = (0u16..=0xFFFF)
+            .map(CmdId)
+            .find(|id| {
+                !id.is_legacy()
+                    && *id != EXT_TUNNEL
+                    && dspi_proto::paged::registry::command(*id).is_none()
+            })
+            .unwrap();
+        assert!(p.mutates_id(unknown, Dir::Get), "{unknown:?}");
+        assert!(!p.mutates_id(cmds::ROUTE_MASTER_VOLUME, Dir::Get));
+        assert!(!p.mutates_id(EXT_TUNNEL, Dir::Get));
+        let router = Router::new(Arc::new(Policy::embedded()), 8);
+        assert!(router.mutates(&req(Dir::Get, unknown)));
+        assert!(!router.mutates(&req(Dir::Get, cmds::ROUTE_MASTER_VOLUME)));
+        assert!(router.mutates(&req(Dir::Set, cmds::ROUTE_MASTER_VOLUME)));
+        // And a paged read is never repeated by the hub's busy window.
+        assert!(!router.retries_stall(&req(Dir::Get, cmds::ROUTE_MASTER_VOLUME)));
+    }
+
+    // -- review PG-C --
+    /// The limits judge skips a view its role may not send (1.2 class) and leaves
+    /// it to the router, which judges a paged request by its 1.3 class: a write
+    /// the 1.3 table lets a role send while its view's 1.2 class does not is
+    /// refused as unjudged, and no row of the vendored tables is one today (a
+    /// tripwire for a re-vendored table).
+    #[test]
+    fn review_pgc_no_paged_write_escapes_the_judges_by_its_class() {
+        use dspi_proto::paged::registry;
+        assert!(view_escapes_the_judges(false, true));
+        assert!(!view_escapes_the_judges(true, true));
+        assert!(!view_escapes_the_judges(false, false));
+        assert!(!view_escapes_the_judges(true, false));
+        let p = Policy::embedded();
+        let mut judged = 0usize;
+        for raw in 0x0100u16..=0xFFFF {
+            let id = CmdId(raw);
+            let Some(c) = registry::command(id).filter(|c| c.set) else {
+                continue;
+            };
+            for value in [0u16, 1] {
+                for len in [usize::from(c.set_min), usize::from(c.set_max).min(64)] {
+                    let r = CmdRequest {
+                        w_value: value,
+                        payload: vec![0; len],
+                        ..req(Dir::Set, id)
+                    };
+                    let Some(view) = crate::policy::judge_view(&r) else {
+                        continue;
+                    };
+                    judged += 1;
+                    for role in [crate::session::Role::Viewer, crate::session::Role::Control] {
+                        assert!(
+                            !view_escapes_the_judges(
+                                p.allows(role, view.b_request, view.dir),
+                                crate::policy::role_permits(role, p.classify_id(id, Dir::Set)),
+                            ),
+                            "{id:?} as 0x{:02X}: {role:?} passes the 1.3 class only",
+                            view.b_request
+                        );
+                    }
+                }
+            }
+        }
+        assert!(judged > 50, "{judged} paged writes had a view");
+    }
+
+    #[test]
+    fn wp_pghdev_a_bulk_chunk_by_page_holds_the_polls() {
+        assert!(is_chunk(&req(Dir::Set, cmds::STORE_ALL_PARAMS_CHUNK)));
+        assert!(is_chunk(&req(
+            Dir::Get,
+            CmdId::new(0, op::REQ_GET_ALL_PARAMS_CHUNK)
+        )));
+        // 0x0541 is not 0xA... nor 0x0241.
+        assert!(!is_chunk(&req(Dir::Set, CmdId::new(0x05, 0x41))));
     }
 }

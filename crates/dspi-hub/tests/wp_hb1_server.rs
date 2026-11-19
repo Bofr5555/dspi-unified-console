@@ -682,7 +682,8 @@ fn wp_hb1_hello_says_what_the_hub_is_and_leaves_out_fw_install() {
     let h = hello(&mut raw);
     assert_eq!(h["auth"], "pin");
     assert_eq!(h["pin_source"], "window", "no fixed PIN here");
-    assert_eq!(h["proto"], json!({"major": 1, "minor": 2}));
+    // -- WP PGHDEV -- DSPi Link 1.3 (PLAN-PG R4), with our cap `legacy_devices`
+    assert_eq!(h["proto"], json!({"major": 1, "minor": 3}));
     let caps: Vec<&str> = h["caps"]
         .as_array()
         .unwrap()
@@ -693,6 +694,7 @@ fn wp_hb1_hello_says_what_the_hub_is_and_leaves_out_fw_install() {
         assert!(caps.contains(&cap), "{caps:?}");
     }
     assert!(!caps.contains(&"fw_install"));
+    assert!(caps.contains(&"legacy_devices"), "{caps:?}"); // -- WP PGHDEV --
     assert_eq!(h["hub"]["id"], b.hub.hub_id());
     b.hub.stop();
 
@@ -2135,6 +2137,7 @@ impl Older {
                 serial: serial.into(),
                 bus_id: "test".into(),
                 address: 1,
+                ..Default::default()
             },
         }
     }
@@ -2425,5 +2428,66 @@ fn wp_hb1_hostile_lock_poll_and_rename_messages_are_answered() {
         request(&mut raw, json!({"t": "device.list", "id": 2}))["t"],
         "ok"
     );
+    b.hub.stop();
+}
+
+// -- WP PGHDEV --
+/// The client's `hello` minor reaches its session: on an open hub with a paged
+/// (1.1.7) device, a page-0 CMD from a minor-2 client is translated and answered,
+/// the same CMD from a minor-3 client is `0x10`. The device object says `protocol`;
+/// a Viewer's `ok` carries `policy.denied_ids` next to `denied`.
+#[test]
+fn wp_pghdev_the_hello_minor_decides_page_0_on_a_paged_device() {
+    use dspi_transport::fake::FakeGeneration;
+
+    let open = bench(AccessMode::Open, ServerLimits::default());
+    let paged = FakeDevice::demo_generation(FakeGeneration::STOCK117).with_serial("PGHDEV-WS");
+    let h = open.hub.attach(Box::new(paged), 0).unwrap();
+    let read = Frame::CmdRequest(CmdRequest {
+        tag: 11,
+        handle: h,
+        dir: Dir::Get,
+        b_request: op::REQ_GET_MASTER_VOLUME,
+        w_value: 0,
+        w_index: 2,
+        w_length: 4,
+        payload: Vec::new(),
+    });
+    for (minor, want) in [(2u32, status::OK), (3, 0x10)] {
+        let mut raw = ws(open.port);
+        raw.send(Message::text(
+            json!({"t": "hello", "proto": {"major": 1, "minor": minor}, "client": {"name": "raw"}})
+                .to_string(),
+        ))
+        .unwrap();
+        let h = next_text(&mut raw, &["hello"]);
+        assert_eq!(h["proto"]["minor"], 3);
+        let list = request(&mut raw, json!({"t": "device.list", "id": 1}));
+        let device = list["devices"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|d| d["serial"] == "PGHDEV-WS")
+            .unwrap()
+            .clone();
+        assert_eq!(
+            device["protocol"],
+            json!({"major": 1, "minor": 0}),
+            "{device}"
+        );
+        assert_eq!(device["ext"], json!(false));
+        raw.send(Message::binary(read.encode())).unwrap();
+        assert_eq!(binary_response(&mut raw).status, want, "minor {minor}");
+    }
+    open.hub.stop();
+
+    let b = pin_hub();
+    let mut raw = ws(b.port);
+    let pair = json!({"t": "auth.pair", "id": 1, "pin": b.pin(), "name": "x", "role": "viewer"});
+    let ok = request(&mut raw, pair);
+    let ids = ok["policy"]["denied_ids"].as_array().unwrap();
+    // ROUTE.MASTER_VOLUME SET is `control`: denied to a Viewer, by id.
+    assert!(ids.contains(&json!([0x0550, Dir::Set as u16])), "{ok}");
+    assert!(!ok["policy"]["denied"].as_array().unwrap().is_empty());
     b.hub.stop();
 }

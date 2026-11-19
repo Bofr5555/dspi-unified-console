@@ -12,10 +12,12 @@ use serde_json::{json, Value};
 
 /// The protocol major of DSPi Link (spec 10).
 pub const PROTO_MAJOR: u32 = 1;
-/// The minor **our hub** sends in its `hello` (`dspi-hub` `server.rs`): 2 until
-/// WP PGHDEV raises it together with `protocol`, `ext`, `legacy_devices` and
-/// `denied_ids`, so the hub never claims 1.3 without behaving as one (PLAN-PG
-/// R4). The client sends [`CLIENT_PROTO_MINOR`].
+// -- PG-C merge -- doc reworded (PGHDEV's hub says LINK_13_MINOR); the value stays 2
+/// The DSPi Link 1.2 minor: the last one before 1.3 (paged devices), and what
+/// a peer that says no `proto.minor` counts as. Neither side of ours sends it
+/// any more (PLAN-PG R4): our client sends [`CLIENT_PROTO_MINOR`], our hub
+/// [`LINK_13_MINOR`] (`dspi-hub` `server.rs` `HUB_PROTO_MINOR`, WP PGHDEV,
+/// together with `protocol`, `ext`, `legacy_devices` and `denied_ids`).
 pub const PROTO_MINOR: u32 = 2;
 
 // -- WP PGLINKC --
@@ -277,6 +279,24 @@ pub struct DeviceInfo {
     /// Our hub only (additive): whether the device has our extension channel.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ext: Option<bool>,
+    // -- PG-C merge --
+    /// Our hub only (additive): the board id (PLAN-PG section 1.9: 1 the
+    /// DSPi-Zero) when it is not 0, from the platform's byte 7 or, for a paged
+    /// Zero, the USB descriptor the hub sees and its clients do not. Absent
+    /// for a Pico and on every other hub. A `u32` as the other numbers here:
+    /// a value past a byte is no board this client knows.
+    /// -- review PG-C -- Read leniently: the name is ours in upstream's
+    /// object, so a hub that gives it another JSON type (a string, an object)
+    /// says nothing about the board instead of failing the device's parse.
+    #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "lenient_u32")]
+    pub board: Option<u32>,
+}
+
+// -- review PG-C --
+/// A `u32` when the value is one; `None` for any other JSON value.
+fn lenient_u32<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<u32>, D::Error> {
+    let v = Value::deserialize(d)?;
+    Ok(v.as_u64().and_then(|n| u32::try_from(n).ok()))
 }
 
 // -- WP PGLINKC --
@@ -587,7 +607,25 @@ mod tests_wp_pglinkc {
         assert!(old.denied_ids.is_empty());
     }
 
-    /// R4: the client says 1.3, our hub's constant stays 1.2 until PGHDEV.
+    // -- review PG-C --
+    /// Our additive `board` is read when it is a number and ignored, without
+    /// failing the device, when a hub gives the name another type.
+    #[test]
+    fn review_pgc_a_board_of_another_type_does_not_fail_the_device() {
+        let of = |board: Value| -> DeviceInfo {
+            serde_json::from_value(json!({"handle": 1, "serial": "S", "board": board})).unwrap()
+        };
+        assert_eq!(of(json!(1)).board, Some(1));
+        assert_eq!(of(json!(4_294_967_296u64)).board, None);
+        assert_eq!(of(json!("zero2w")).board, None);
+        assert_eq!(of(json!({"id": 1})).board, None);
+        assert_eq!(of(Value::Null).board, None);
+        let none: DeviceInfo = serde_json::from_value(json!({"handle": 1})).unwrap();
+        assert_eq!(none.board, None);
+    }
+
+    /// R4: the client says 1.3; `PROTO_MINOR` is the 1.2 minor (our hub says
+    /// `LINK_13_MINOR` since PGHDEV).
     #[test]
     fn wp_pglinkc_hello_minor_and_hub_kinds() {
         let v: Value =

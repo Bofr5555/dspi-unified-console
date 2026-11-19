@@ -269,8 +269,8 @@ impl Policy {
     }
 }
 
-/// Roles are cumulative (spec 6.3).
-fn role_permits(role: Role, class: Class) -> bool {
+/// Roles are cumulative (spec 6.3). -- WP PGHDEV -- the router's, for a route's class.
+pub(crate) fn role_permits(role: Role, class: Class) -> bool {
     match role {
         Role::Viewer => class == Class::Read,
         Role::Control => class != Class::Config,
@@ -389,7 +389,12 @@ impl Policy {
         if id.is_legacy() {
             return self.mutates(id.cmd(), dir);
         }
+        // -- WP PGHDEV -- "every GET only reads" is upstream's word for its own
+        // registry and ours for the tunnel; a GET of any other id is unknown, and
+        // unknown counts as a write, as on page 0 (PG-B review, finding 8)
         dir == Dir::Set
+            || (dspi_proto::paged::registry::command(id).is_none()
+                && id != dspi_proto::paged::EXT_TUNNEL)
     }
 
     /// Whether this role may issue this command, by `(page, cmd)`.

@@ -20,7 +20,9 @@
 //!   ([`dspi_proto::registry::is_pure_read`]: the `GET` table and the
 //!   extension channel's IN side); the write-as-read housekeeping a read-only
 //!   connection may still send raw (clear clips, the stats resets) is refused
-//!   too;
+//!   too; -- WP PGCORE -- likewise every [`DspiCore::raw_set_id`], while a
+//!   [`DspiCore::raw_get_id`] passes (every GET of the paged registry and the
+//!   extension tunnel reads; a command outside both is refused);
 //! - a hub request ([`DspiCore::link_hub_request`], and through it the hub's
 //!   admin API, its limits and lock; and the audio link's System view's own
 //!   `system.*` requests, -- WP ROMODEF --) goes out only when it reads
@@ -124,6 +126,20 @@ pub(crate) fn check(inner: &mut Inner) -> Result<()> {
 /// Refuse a raw IN transfer of `opcode` unless it is a pure read.
 pub(crate) fn check_raw_get(inner: &mut Inner, opcode: u8) -> Result<()> {
     if !inner.client_read_only.on || dspi_proto::registry::is_pure_read(opcode) {
+        return Ok(());
+    }
+    refuse(inner)
+}
+
+// -- WP PGCORE --
+/// Refuse a raw paged GET of `id` unless it reads (PLAN-PG section 1.6):
+/// every GET of a command in this build's registry reads on paged firmware,
+/// and so does the extension tunnel's; one outside both is judged as a write,
+/// as a hub judges it. `raw_set_id` is refused by [`check_raw_set`].
+pub(crate) fn check_raw_get_id(inner: &mut Inner, id: dspi_transport::CmdId) -> Result<()> {
+    use dspi_proto::paged::{EXT_TUNNEL, registry};
+    let reads = id == EXT_TUNNEL || registry::command(id).is_some_and(|c| c.get);
+    if !inner.client_read_only.on || reads {
         return Ok(());
     }
     refuse(inner)

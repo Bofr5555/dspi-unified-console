@@ -41,6 +41,7 @@ fn seen(serial: &str, handle: u8, fw: &str) -> Seen {
         fw: fw.into(),
         fw_beta: Some(0),
         outputs: 9,
+        board: None, // -- WP PGZERO --
     }
 }
 
@@ -717,4 +718,41 @@ fn wp_p2in_an_in_process_hub_keeps_it_in_memory_and_off_by_default() {
     );
     assert!(!h.service_caps().contains(&CAP));
     hub.stop();
+}
+
+// -- WP PGZERO --
+/// The inventory row names the board: a Zero is "DSPi Zero" (`model`) with
+/// board id 1; a Pico "DSPi"; a record without a board shows neither, and a
+/// later sighting that does not say keeps what was known. The record
+/// survives the file.
+#[test]
+fn wp_pgzero_inventory_row_names_the_zero() {
+    use dspi_proto::packets::Board;
+    let mut book = Book::new();
+    let mut zero = seen("Z1", 0, "1.1.6");
+    zero.board = Some(Board::PI_ZERO_2W_ID);
+    let mut pico = seen("P1", 1, "1.1.6");
+    pico.board = Some(0);
+    book.reconcile(&[zero.clone(), pico, seen("U1", 2, "1.1.6")], T0);
+    let z = book.json("Z1", T0).unwrap();
+    assert_eq!(
+        z["model"],
+        dspi_transport::board::board_name(Board::PiZero2W)
+    );
+    assert_eq!(z["model"], "DSPi Zero");
+    assert_eq!(z["board_id"], 1);
+    assert_eq!(book.json("P1", T0).unwrap()["model"], "DSPi");
+    let u = book.json("U1", T0).unwrap();
+    assert!(u.get("model").is_none() && u.get("board_id").is_none());
+    // A sighting without a board keeps the one known
+    zero.board = None;
+    book.seen(&zero, T0 + 1);
+    assert_eq!(book.get("Z1").unwrap().board_id, Some(1));
+    // Through the file format
+    let text = serde_json::to_string(book.get("Z1").unwrap()).unwrap();
+    let back: Record = serde_json::from_str(&text).unwrap();
+    assert_eq!(back.board_id, Some(1));
+    // An old file without the field reads as unknown
+    let old: Record = serde_json::from_str(r#"{"serial":"O1"}"#).unwrap();
+    assert_eq!(old.board_id, None);
 }

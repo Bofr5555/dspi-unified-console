@@ -20,6 +20,11 @@ use dspi_transport::{
     TransportCaps, TransportError, TransportKind,
 };
 
+// -- PG-C merge --
+use dspi_proto::paged::legacy::{VC_ERR_PIN_IN_USE as VC_ERR_LAST, VC_ERR_UNKNOWN};
+use dspi_transport::CmdId;
+use dspi_transport::paged::Generation;
+
 use crate::device::DeviceShared;
 use crate::hub::{HubHandle, HubInner};
 use crate::relay::Relay;
@@ -81,6 +86,10 @@ impl LocalTransport {
             serial: device.serial(),
             bus_id: "hub".into(),
             address: device.handle,
+            // -- review PG-C -- the board as the hub's attach read it (byte 7,
+            // or its USB descriptor for a paged DSPi-Zero), for the core on top
+            hub_board: Some(device.board_id()).filter(|b| *b != 0),
+            ..Default::default()
         };
         Self {
             device,
@@ -109,6 +118,20 @@ impl LocalTransport {
     }
 
     fn command(&self, dir: Dir, opcode: u8, value: u16, len: u16, payload: &[u8]) -> CmdResponse {
+        self.command_at(dir, opcode, VENDOR_INTERFACE, value, len, payload)
+    }
+
+    // -- PG-C merge -- `w_index`: 2 for a 1.1.6 request, `(page << 8) | 2` for a
+    // paged one, as `PrincipalTransport` (the router judges and routes by it)
+    fn command_at(
+        &self,
+        dir: Dir,
+        opcode: u8,
+        w_index: u16,
+        value: u16,
+        len: u16,
+        payload: &[u8],
+    ) -> CmdResponse {
         let (tx, rx) = mpsc::sync_channel(1);
         let req = CmdRequest {
             tag: 0,
@@ -116,7 +139,7 @@ impl LocalTransport {
             dir,
             b_request: opcode,
             w_value: value,
-            w_index: VENDOR_INTERFACE,
+            w_index,
             w_length: len,
             payload: payload.to_vec(),
         };
@@ -159,6 +182,16 @@ fn check(st: u8, opcode: u8) -> Result<()> {
         Some(e) => Err(e),
         None => Ok(()),
     }
+}
+
+// -- PG-C merge --
+/// A paged status as the transport's error: a firmware result code (`VC_ERR_*`,
+/// 0x10..=0x1A) is `Refused` with it, anything else as [`check`].
+fn check_paged(st: u8, id: CmdId) -> Result<()> {
+    if (VC_ERR_UNKNOWN..=VC_ERR_LAST).contains(&st) {
+        return Err(dspi_transport::link::firmware_refusal(id, st));
+    }
+    check(st, id.cmd())
 }
 
 impl Transport for LocalTransport {
@@ -239,6 +272,44 @@ impl Transport for LocalTransport {
         if std::mem::take(&mut self.locked) {
             self.device.router.lock_release(self.session.id());
         }
+    }
+
+    // -- PG-C merge -- the attachment's generation (`DeviceShared::protocol`,
+    // PGHDEV), so the app's core sees it. The core's 1.1.6 calls stay
+    // hub-originated (the hub's adapter translates them for a paged device,
+    // PLAN-PG 1.5); its paged calls (`raw_*_id`) go verbatim, the page in
+    // `wIndex`, as `PrincipalTransport`'s.
+    fn carries_pages(&self) -> bool {
+        matches!(self.device.protocol, Generation::Paged(_))
+    }
+
+    fn generation(&self) -> Option<Generation> {
+        Some(self.device.protocol)
+    }
+
+    fn control_in_paged(&mut self, id: CmdId, value: u16, max_len: u16) -> Result<Vec<u8>> {
+        if max_len == 0 {
+            return Err(TransportError::Stalled { opcode: id.cmd() });
+        }
+        let mut r = self.command_at(Dir::Get, id.cmd(), id.w_index(), value, max_len, &[]);
+        check_paged(r.status, id)?;
+        r.payload.truncate(usize::from(max_len));
+        Ok(r.payload)
+    }
+
+    fn control_out_paged(&mut self, id: CmdId, value: u16, data: &[u8]) -> Result<()> {
+        let Ok(len) = u16::try_from(data.len()) else {
+            return Err(TransportError::Remote(format!(
+                "{} bytes for 0x{:04X} exceed a vendor request",
+                data.len(),
+                id.0
+            )));
+        };
+        check_paged(
+            self.command_at(Dir::Set, id.cmd(), id.w_index(), value, len, data)
+                .status,
+            id,
+        )
     }
 }
 

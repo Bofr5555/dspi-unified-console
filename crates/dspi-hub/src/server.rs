@@ -58,7 +58,9 @@ use std::time::{Duration, Instant};
 
 use dspi_link::discovery::AdvertiseScope;
 use dspi_link::frames::{CmdResponse, Frame, NotifyFrame, PollFrame, kind};
-use dspi_link::messages::{PROTO_MAJOR, PROTO_MINOR, PollSpec};
+use dspi_link::messages::{PROTO_MAJOR, PollSpec};
+// -- WP PGHDEV --
+use dspi_link::messages::{CAP_LEGACY_DEVICES, LINK_13_MINOR};
 use dspi_link::socket::{Pipe, server_pipes, server_ws_config};
 // -- WP SECSRV --
 use dspi_link::status;
@@ -2390,6 +2392,8 @@ fn upgrade<S: IntoWire>(
         pair2: None,
         pair2_starts: 0,
         live_cid: None,
+        // -- WP PGHDEV --
+        link_minor: crate::session::LEGACY_LINK_MINOR,
     };
     if !encrypted && !shared.policy.serves_plaintext() {
         log::debug!("hub: closed a plaintext WebSocket: TLS is required");
@@ -2848,6 +2852,10 @@ struct Connection {
     pair2_starts: u32,
     /// The console whose session this connection holds, told to the store at the end.
     live_cid: Option<u32>,
+    // -- WP PGHDEV --
+    /// The DSPi Link minor the client said in its `hello`; 2 (a 1.2 client) when it
+    /// said none. Its session gets it (`Session::link_minor`).
+    link_minor: u32,
 }
 
 // -- WP SECPAKE --
@@ -3007,7 +3015,7 @@ impl Connection {
         };
         let id = message.get("id").and_then(Value::as_u64);
         match t {
-            "hello" => self.on_hello(),
+            "hello" => self.on_hello(message),
             "auth.token" => self.on_auth_token(id, message),
             "auth.pair" => self.on_auth_pair(id, message),
             // -- WP SECPAKE --
@@ -3040,7 +3048,13 @@ impl Connection {
         }
     }
 
-    fn on_hello(&mut self) {
+    fn on_hello(&mut self, message: &Map<String, Value>) {
+        // -- WP PGHDEV -- the client's minor decides how its page-0 requests to a
+        // paged device go (PLAN-PG section 1.5); a missing or odd one is a 1.2 client
+        self.link_minor = client_link_minor(message);
+        if let Some(session) = &self.session {
+            session.set_link_minor(self.link_minor);
+        }
         self.reply(self.shared.hello());
         if self.shared.auth.mode() == AccessMode::Open && self.session.is_none() {
             // Open access: the session opens with this answer, and no auth message follows
@@ -3288,6 +3302,8 @@ impl Connection {
         self.session = Some(Arc::clone(&session));
         // -- WP P3RO -- what a `tls_only` family checks (hub-api.md 21.1)
         session.set_encrypted(self.encrypted);
+        // -- WP PGHDEV --
+        session.set_link_minor(self.link_minor);
         shared.set_session(self.id, &session);
         // -- WP SECPAKE -- in use while it lasts (idle expiry)
         if let Some(cid) = cid {
@@ -3800,10 +3816,13 @@ fn auth_ok(
 ) -> String {
     let role = session.role();
     let denied = shared.hub.denied(role);
+    // -- WP PGHDEV -- by command id for paged devices, next to the 1.2 list a 1.2
+    // client keeps reading (spec 1.3 section 7.3; hub-api v1, additive)
+    let denied_ids = shared.hub.denied_ids(role);
     let mut body = json!({
         "session": session.id(),
         "role": role_name(role),
-        "policy": {"denied": denied},
+        "policy": {"denied": denied, "denied_ids": denied_ids},
     });
     if let (Some(token), Some(map)) = (token, body.as_object_mut()) {
         map.insert("token".into(), token.into());
@@ -3813,6 +3832,25 @@ fn auth_ok(
         map.insert("hub_key".into(), key.to_b64url().into());
     }
     ok(id, body)
+}
+
+// -- WP PGHDEV --
+/// The DSPi Link minor this hub says in its `hello` and `GET /dspi/v1/info`: 3, DSPi
+/// Link 1.3 (PLAN-PG R4): `protocol` in the device object, `policy.denied_ids`, paged
+/// requests forwarded to paged devices and the firmware's result codes, plus our
+/// cap `legacy_devices`. `dspi_link::messages::PROTO_MINOR` stays the 1.2 one.
+pub const HUB_PROTO_MINOR: u32 = LINK_13_MINOR;
+
+// -- WP PGHDEV --
+/// The minor in a client's `hello` (`{"proto": {"major": 1, "minor": n}}`):
+/// [`crate::session::LEGACY_LINK_MINOR`] when it says none, or nothing a u32 holds.
+fn client_link_minor(message: &Map<String, Value>) -> u32 {
+    message
+        .get("proto")
+        .and_then(|p| p.get("minor"))
+        .and_then(Value::as_u64)
+        .and_then(|m| u32::try_from(m).ok())
+        .unwrap_or(crate::session::LEGACY_LINK_MINOR)
 }
 
 // -- WP SECPAKE --
@@ -3862,6 +3900,9 @@ impl Shared {
         if self.rest.is_on() {
             caps.push(crate::rest::CAP_REST);
         }
+        // -- WP PGHDEV -- it lists and forwards to 1.1.6-generation devices, which a
+        // 1.3 hub does not (OD-PGg)
+        caps.push(CAP_LEGACY_DEVICES);
         let mode = self.auth.mode();
         // -- WP SECPAIR -- a key rotation's announcement, while it lasts (PLAN-SEC 4.2)
         let mut hub = self.hub_info();
@@ -3870,7 +3911,7 @@ impl Shared {
         }
         let mut hello = json!({
             "t": "hello",
-            "proto": {"major": PROTO_MAJOR, "minor": PROTO_MINOR},
+            "proto": {"major": PROTO_MAJOR, "minor": HUB_PROTO_MINOR},
             "hub": hub,
             "auth": mode.wire_name(),
             "caps": caps,
@@ -3900,7 +3941,7 @@ impl Shared {
             .map(|d| json!({"serial": d.identity.serial, "name": d.name}))
             .collect();
         let mut info = json!({
-            "proto": {"major": PROTO_MAJOR, "minor": PROTO_MINOR},
+            "proto": {"major": PROTO_MAJOR, "minor": HUB_PROTO_MINOR},
             "hub": self.hub_info(),
             "auth": self.auth.mode().wire_name(),
             // -- WP SECSRV -- served, and the key a client can pin (base64url, as a QR

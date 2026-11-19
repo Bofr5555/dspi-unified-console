@@ -707,7 +707,8 @@ impl HubHandle {
             .get(&req.handle)
             .map(|a| Arc::clone(&a.shared));
         match device {
-            Some(d) => d.submit(session.ctx(), req, done, None),
+            // -- WP PGHDEV -- routed by the client's `hello` minor too
+            Some(d) => d.submit_link(session.ctx(), session.link_minor(), req, done, None),
             None => done.answer(status::NO_DEVICE, Vec::new()),
         }
     }
@@ -761,6 +762,13 @@ impl HubHandle {
     /// `policy.denied` for a role (spec 7.3).
     pub fn denied(&self, role: Role) -> Vec<[u16; 2]> {
         self.inner.policy.denied(role)
+    }
+
+    // -- WP PGHDEV --
+    /// The effective denial list for a role by command id (`policy.denied_ids`,
+    /// spec 1.3 section 7.3), as `[id, dir]` pairs, for paged devices.
+    pub fn denied_ids(&self, role: Role) -> Vec<[u16; 2]> {
+        self.inner.policy.denied_ids(role)
     }
 
     /// The app's way to the online device with this serial, for
@@ -1105,11 +1113,20 @@ impl HubInner {
     /// lock held for the reads.
     fn attach(
         &self,
-        mut transport: Box<dyn Transport>,
+        transport: Box<dyn Transport>,
         vid: u16,
         location_id: u32,
         from_bus: bool,
     ) -> Result<u8, HubError> {
+        // -- WP PGHDEV -- the generation probe first, on the raw wire, before the
+        // device is listed or anything else is sent (PLAN-PG section 1.5). The bus
+        // opens through `paged::open` already; an embedder's transport (the demo, a
+        // MIDI port) is opened here unless it is a generation wrapper.
+        let mut transport = if transport.generation().is_some() {
+            transport
+        } else {
+            dspi_transport::paged::open(transport).map_err(|e| HubError::Identity(e.to_string()))?
+        };
         let mut last = TransportError::NotFound;
         let mut identity = None;
         for delay in IDENTITY_DELAYS {

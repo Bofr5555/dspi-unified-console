@@ -2185,6 +2185,16 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func deviceLockRelease() 
     
     /**
+     * The open device's protocol: its generation, the paged protocol's
+     * version and pages, how the extension channel is reached, and the
+     * board with its name. The board costs one platform read (the rest
+     * sends nothing); a board that cannot be read is an unknown board.
+     * Errors: [`DspiError::Disconnected`] with nothing open or when the
+     * device went.
+     */
+    func deviceProtocol() throws  -> DeviceProtocol
+    
+    /**
      * A file name for a bundle saved now: `dspi-diagnostics-` and the UTC
      * date and time, `.zip`. For a Save dialog's suggestion. Never fails.
      */
@@ -4944,6 +4954,29 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func rawGet(opcode: UInt8, value: UInt16, len: UInt16) throws  -> Data
     
     /**
+     * One paged GET of command `id` (`page << 8 | command`, e.g. `0x0550`),
+     * `value` as `wValue`, at most `len` bytes back, as the device sent it
+     * (a paged reply may be shorter than asked). Every GET on paged firmware
+     * only reads (the extension tunnel `0xE010` too), so it passes the client
+     * read-only mode; a command outside this build's registry and the tunnel
+     * is refused there, as a hub refuses it.
+     *
+     * Blocks for the transfer with the core's lock held: call it off the UI
+     * thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a page-0 id (use
+     * [`raw_get`](Self::raw_get)), a `len` of 0, and the bulk chunk read
+     * (`STORE.ALL_PARAMS_CHUNK`; nothing is sent); [`DspiError::Unsupported`]
+     * on a 1.1.6-generation device, whose firmware has no pages, and on a
+     * connection that does not say it is paged (the demo; nothing is sent); [`DspiError::Disconnected`]; [`DspiError::ReadOnly`] in the
+     * client read-only mode for a command outside the registry;
+     * [`DspiError::Refused`] with the firmware's result code (`VC_ERR_*`),
+     * or 0 when it is not known; [`DspiError::Denied`], [`DspiError::Locked`]
+     * or [`DspiError::Transfer`] from the link.
+     */
+    func rawGetId(id: UInt16, value: UInt16, len: UInt16) throws  -> Data
+    
+    /**
      * One OUT transfer: `opcode`, `value` as `wValue`, `data` as the
      * payload. Success means the device took the transfer, not that it
      * applied the value; the firmware ignores some invalid ones.
@@ -4961,6 +4994,30 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * or [`DspiError::Transfer`] from the link.
      */
     func rawSet(opcode: UInt8, value: UInt16, data: Data) throws 
+    
+    /**
+     * One paged SET of command `id`, `value` as `wValue`, `data` as the
+     * payload (empty: an action). Success means the device took it.
+     *
+     * Refused with nothing sent (PLAN-PG section 1.6): a request whose 1.1.6
+     * equivalent is behind a confirmation token or the core's own bulk
+     * session, a core-voltage request (through the tunnel too), and a
+     * command the registry or the device's own `SYS.COMMAND_INFO` flags as
+     * writing flash, restarting the device or bulk; and, with no 1.1.6
+     * equivalent, anything but a plain value SET of a command this build
+     * knows. The mirror follows as for [`raw_set`](Self::raw_set). Blocks
+     * with the core's lock held: call it off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a page-0 id (use
+     * [`raw_set`](Self::raw_set)), each refusal above, or more than 65535
+     * bytes of `data`; [`DspiError::Unsupported`] on a 1.1.6-generation
+     * device or a connection that does not say it is paged; [`DspiError::Disconnected`]; [`DspiError::ReadOnly`] on a
+     * read-only connection or in the client read-only mode;
+     * [`DspiError::Refused`] with the firmware's result code;
+     * [`DspiError::Denied`], [`DspiError::Locked`] or
+     * [`DspiError::Transfer`] from the link.
+     */
+    func rawSetId(id: UInt16, value: UInt16, data: Data) throws 
     
     /**
      * Step forward: write again the change [`DspiCore::undo`] most recently
@@ -7890,6 +7947,21 @@ open func deviceLockRelease()  {try! rustCall() {
     uniffi_dspi_core_fn_method_dspicore_device_lock_release(self.uniffiClonePointer(),$0
     )
 }
+}
+    
+    /**
+     * The open device's protocol: its generation, the paged protocol's
+     * version and pages, how the extension channel is reached, and the
+     * board with its name. The board costs one platform read (the rest
+     * sends nothing); a board that cannot be read is an unknown board.
+     * Errors: [`DspiError::Disconnected`] with nothing open or when the
+     * device went.
+     */
+open func deviceProtocol()throws  -> DeviceProtocol  {
+    return try  FfiConverterTypeDeviceProtocol_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_device_protocol(self.uniffiClonePointer(),$0
+    )
+})
 }
     
     /**
@@ -12023,6 +12095,37 @@ open func rawGet(opcode: UInt8, value: UInt16, len: UInt16)throws  -> Data  {
 }
     
     /**
+     * One paged GET of command `id` (`page << 8 | command`, e.g. `0x0550`),
+     * `value` as `wValue`, at most `len` bytes back, as the device sent it
+     * (a paged reply may be shorter than asked). Every GET on paged firmware
+     * only reads (the extension tunnel `0xE010` too), so it passes the client
+     * read-only mode; a command outside this build's registry and the tunnel
+     * is refused there, as a hub refuses it.
+     *
+     * Blocks for the transfer with the core's lock held: call it off the UI
+     * thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a page-0 id (use
+     * [`raw_get`](Self::raw_get)), a `len` of 0, and the bulk chunk read
+     * (`STORE.ALL_PARAMS_CHUNK`; nothing is sent); [`DspiError::Unsupported`]
+     * on a 1.1.6-generation device, whose firmware has no pages, and on a
+     * connection that does not say it is paged (the demo; nothing is sent); [`DspiError::Disconnected`]; [`DspiError::ReadOnly`] in the
+     * client read-only mode for a command outside the registry;
+     * [`DspiError::Refused`] with the firmware's result code (`VC_ERR_*`),
+     * or 0 when it is not known; [`DspiError::Denied`], [`DspiError::Locked`]
+     * or [`DspiError::Transfer`] from the link.
+     */
+open func rawGetId(id: UInt16, value: UInt16, len: UInt16)throws  -> Data  {
+    return try  FfiConverterData.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_raw_get_id(self.uniffiClonePointer(),
+        FfiConverterUInt16.lower(id),
+        FfiConverterUInt16.lower(value),
+        FfiConverterUInt16.lower(len),$0
+    )
+})
+}
+    
+    /**
      * One OUT transfer: `opcode`, `value` as `wValue`, `data` as the
      * payload. Success means the device took the transfer, not that it
      * applied the value; the firmware ignores some invalid ones.
@@ -12042,6 +12145,37 @@ open func rawGet(opcode: UInt8, value: UInt16, len: UInt16)throws  -> Data  {
 open func rawSet(opcode: UInt8, value: UInt16, data: Data)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_raw_set(self.uniffiClonePointer(),
         FfiConverterUInt8.lower(opcode),
+        FfiConverterUInt16.lower(value),
+        FfiConverterData.lower(data),$0
+    )
+}
+}
+    
+    /**
+     * One paged SET of command `id`, `value` as `wValue`, `data` as the
+     * payload (empty: an action). Success means the device took it.
+     *
+     * Refused with nothing sent (PLAN-PG section 1.6): a request whose 1.1.6
+     * equivalent is behind a confirmation token or the core's own bulk
+     * session, a core-voltage request (through the tunnel too), and a
+     * command the registry or the device's own `SYS.COMMAND_INFO` flags as
+     * writing flash, restarting the device or bulk; and, with no 1.1.6
+     * equivalent, anything but a plain value SET of a command this build
+     * knows. The mirror follows as for [`raw_set`](Self::raw_set). Blocks
+     * with the core's lock held: call it off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a page-0 id (use
+     * [`raw_set`](Self::raw_set)), each refusal above, or more than 65535
+     * bytes of `data`; [`DspiError::Unsupported`] on a 1.1.6-generation
+     * device or a connection that does not say it is paged; [`DspiError::Disconnected`]; [`DspiError::ReadOnly`] on a
+     * read-only connection or in the client read-only mode;
+     * [`DspiError::Refused`] with the firmware's result code;
+     * [`DspiError::Denied`], [`DspiError::Locked`] or
+     * [`DspiError::Transfer`] from the link.
+     */
+open func rawSetId(id: UInt16, value: UInt16, data: Data)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_raw_set_id(self.uniffiClonePointer(),
+        FfiConverterUInt16.lower(id),
         FfiConverterUInt16.lower(value),
         FfiConverterData.lower(data),$0
     )
@@ -24715,6 +24849,260 @@ public func FfiConverterTypeDeviceInfo_lift(_ buf: RustBuffer) throws -> DeviceI
 #endif
 public func FfiConverterTypeDeviceInfo_lower(_ value: DeviceInfo) -> RustBuffer {
     return FfiConverterTypeDeviceInfo.lower(value)
+}
+
+
+/**
+ * One page a paged device implements, from its `SYS.PAGE_LIST`.
+ */
+public struct DevicePage {
+    /**
+     * The page number (1 `SYS`, 5 `ROUTE`, `0xE0` our extensions, ...).
+     */
+    public var page: UInt8
+    /**
+     * The device's revision of it.
+     */
+    public var revision: UInt8
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The page number (1 `SYS`, 5 `ROUTE`, `0xE0` our extensions, ...).
+         */page: UInt8, 
+        /**
+         * The device's revision of it.
+         */revision: UInt8) {
+        self.page = page
+        self.revision = revision
+    }
+}
+
+#if compiler(>=6)
+extension DevicePage: Sendable {}
+#endif
+
+
+extension DevicePage: Equatable, Hashable {
+    public static func ==(lhs: DevicePage, rhs: DevicePage) -> Bool {
+        if lhs.page != rhs.page {
+            return false
+        }
+        if lhs.revision != rhs.revision {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(page)
+        hasher.combine(revision)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeDevicePage: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> DevicePage {
+        return
+            try DevicePage(
+                page: FfiConverterUInt8.read(from: &buf), 
+                revision: FfiConverterUInt8.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: DevicePage, into buf: inout [UInt8]) {
+        FfiConverterUInt8.write(value.page, into: &buf)
+        FfiConverterUInt8.write(value.revision, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDevicePage_lift(_ buf: RustBuffer) throws -> DevicePage {
+    return try FfiConverterTypeDevicePage.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDevicePage_lower(_ value: DevicePage) -> RustBuffer {
+    return FfiConverterTypeDevicePage.lower(value)
+}
+
+
+/**
+ * The open connection's protocol, for a client's device-info row
+ * ([`crate::DspiCore::device_protocol`]). Read once at connect, never
+ * cached across connections.
+ */
+public struct DeviceProtocol {
+    /**
+     * The generation the probe decided.
+     */
+    public var generation: ProtocolGeneration
+    /**
+     * The paged protocol's major and minor (`SYS.PROTOCOL_INFO`); 0 and 0
+     * on a legacy device.
+     */
+    public var protocolMajor: UInt8
+    /**
+     * See `protocol_major`.
+     */
+    public var protocolMinor: UInt8
+    /**
+     * A paged device's pages with their revisions, ascending; empty on a
+     * legacy device.
+     */
+    public var pages: [DevicePage]
+    /**
+     * How the extension channel is reached.
+     */
+    public var extEnvelope: ExtEnvelope
+    /**
+     * The board id: 0 a Pico, 1 the DSPi-Zero, other values unknown boards
+     * (0xFF a product string this build does not know, or a board that
+     * could not be read). From the platform's byte 7 and, on board 0, the
+     * USB descriptor (`DspiCore::board`).
+     */
+    public var boardId: UInt8
+    /**
+     * The name clients show for the board in caps and About: "DSPi",
+     * "DSPi Zero" or "Unknown board" (`board_name`).
+     */
+    public var boardName: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The generation the probe decided.
+         */generation: ProtocolGeneration, 
+        /**
+         * The paged protocol's major and minor (`SYS.PROTOCOL_INFO`); 0 and 0
+         * on a legacy device.
+         */protocolMajor: UInt8, 
+        /**
+         * See `protocol_major`.
+         */protocolMinor: UInt8, 
+        /**
+         * A paged device's pages with their revisions, ascending; empty on a
+         * legacy device.
+         */pages: [DevicePage], 
+        /**
+         * How the extension channel is reached.
+         */extEnvelope: ExtEnvelope, 
+        /**
+         * The board id: 0 a Pico, 1 the DSPi-Zero, other values unknown boards
+         * (0xFF a product string this build does not know, or a board that
+         * could not be read). From the platform's byte 7 and, on board 0, the
+         * USB descriptor (`DspiCore::board`).
+         */boardId: UInt8, 
+        /**
+         * The name clients show for the board in caps and About: "DSPi",
+         * "DSPi Zero" or "Unknown board" (`board_name`).
+         */boardName: String) {
+        self.generation = generation
+        self.protocolMajor = protocolMajor
+        self.protocolMinor = protocolMinor
+        self.pages = pages
+        self.extEnvelope = extEnvelope
+        self.boardId = boardId
+        self.boardName = boardName
+    }
+}
+
+#if compiler(>=6)
+extension DeviceProtocol: Sendable {}
+#endif
+
+
+extension DeviceProtocol: Equatable, Hashable {
+    public static func ==(lhs: DeviceProtocol, rhs: DeviceProtocol) -> Bool {
+        if lhs.generation != rhs.generation {
+            return false
+        }
+        if lhs.protocolMajor != rhs.protocolMajor {
+            return false
+        }
+        if lhs.protocolMinor != rhs.protocolMinor {
+            return false
+        }
+        if lhs.pages != rhs.pages {
+            return false
+        }
+        if lhs.extEnvelope != rhs.extEnvelope {
+            return false
+        }
+        if lhs.boardId != rhs.boardId {
+            return false
+        }
+        if lhs.boardName != rhs.boardName {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(generation)
+        hasher.combine(protocolMajor)
+        hasher.combine(protocolMinor)
+        hasher.combine(pages)
+        hasher.combine(extEnvelope)
+        hasher.combine(boardId)
+        hasher.combine(boardName)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeDeviceProtocol: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> DeviceProtocol {
+        return
+            try DeviceProtocol(
+                generation: FfiConverterTypeProtocolGeneration.read(from: &buf), 
+                protocolMajor: FfiConverterUInt8.read(from: &buf), 
+                protocolMinor: FfiConverterUInt8.read(from: &buf), 
+                pages: FfiConverterSequenceTypeDevicePage.read(from: &buf), 
+                extEnvelope: FfiConverterTypeExtEnvelope.read(from: &buf), 
+                boardId: FfiConverterUInt8.read(from: &buf), 
+                boardName: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: DeviceProtocol, into buf: inout [UInt8]) {
+        FfiConverterTypeProtocolGeneration.write(value.generation, into: &buf)
+        FfiConverterUInt8.write(value.protocolMajor, into: &buf)
+        FfiConverterUInt8.write(value.protocolMinor, into: &buf)
+        FfiConverterSequenceTypeDevicePage.write(value.pages, into: &buf)
+        FfiConverterTypeExtEnvelope.write(value.extEnvelope, into: &buf)
+        FfiConverterUInt8.write(value.boardId, into: &buf)
+        FfiConverterString.write(value.boardName, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDeviceProtocol_lift(_ buf: RustBuffer) throws -> DeviceProtocol {
+    return try FfiConverterTypeDeviceProtocol.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDeviceProtocol_lower(_ value: DeviceProtocol) -> RustBuffer {
+    return FfiConverterTypeDeviceProtocol.lower(value)
 }
 
 
@@ -53678,6 +54066,95 @@ extension DspiError: Foundation.LocalizedError {
 // Note that we don't yet support `indirect` for enums.
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
 /**
+ * How the open device's extension channel is reached (PLAN-PG section 1.3).
+ */
+
+public enum ExtEnvelope {
+    
+    /**
+     * No extension channel (stock firmware).
+     */
+    case noChannel
+    /**
+     * `REQ_EXTENSION` 0x00 on a 1.1.6-generation device.
+     */
+    case legacy
+    /**
+     * The tunnel `0xE010` on page `0xE0` of a paged device.
+     */
+    case tunnel
+}
+
+
+#if compiler(>=6)
+extension ExtEnvelope: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeExtEnvelope: FfiConverterRustBuffer {
+    typealias SwiftType = ExtEnvelope
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ExtEnvelope {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .noChannel
+        
+        case 2: return .legacy
+        
+        case 3: return .tunnel
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: ExtEnvelope, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .noChannel:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .legacy:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .tunnel:
+            writeInt(&buf, Int32(3))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeExtEnvelope_lift(_ buf: RustBuffer) throws -> ExtEnvelope {
+    return try FfiConverterTypeExtEnvelope.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeExtEnvelope_lower(_ value: ExtEnvelope) -> RustBuffer {
+    return FfiConverterTypeExtEnvelope.lower(value)
+}
+
+
+extension ExtEnvelope: Equatable, Hashable {}
+
+
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
  * How healthy an output fill is.
  */
 
@@ -56425,6 +56902,96 @@ extension PinRefusalReason: Equatable, Hashable {}
 // Note that we don't yet support `indirect` for enums.
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
 /**
+ * Which protocol generation the open connection's device speaks, as the
+ * connect's probe decided it (PLAN-PG section 1.1).
+ */
+
+public enum ProtocolGeneration {
+    
+    /**
+     * Not said: a path that does not report it (a host-supplied transport).
+     */
+    case unknown
+    /**
+     * Firmware 1.1.6 and older: the 1.1.6 opcodes only.
+     */
+    case legacy
+    /**
+     * Firmware 1.1.7 and later: the paged protocol.
+     */
+    case paged
+}
+
+
+#if compiler(>=6)
+extension ProtocolGeneration: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeProtocolGeneration: FfiConverterRustBuffer {
+    typealias SwiftType = ProtocolGeneration
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ProtocolGeneration {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .unknown
+        
+        case 2: return .legacy
+        
+        case 3: return .paged
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: ProtocolGeneration, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .unknown:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .legacy:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .paged:
+            writeInt(&buf, Int32(3))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeProtocolGeneration_lift(_ buf: RustBuffer) throws -> ProtocolGeneration {
+    return try FfiConverterTypeProtocolGeneration.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeProtocolGeneration_lower(_ value: ProtocolGeneration) -> RustBuffer {
+    return FfiConverterTypeProtocolGeneration.lower(value)
+}
+
+
+extension ProtocolGeneration: Equatable, Hashable {}
+
+
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
  * Where a run is: [`VregCalView::phase`]. The details are in the view.
  */
 
@@ -58594,6 +59161,31 @@ fileprivate struct FfiConverterSequenceTypeDeviceInfo: FfiConverterRustBuffer {
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeDeviceInfo.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeDevicePage: FfiConverterRustBuffer {
+    typealias SwiftType = [DevicePage]
+
+    public static func write(_ value: [DevicePage], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeDevicePage.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [DevicePage] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [DevicePage]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeDevicePage.read(from: &buf))
         }
         return seq
     }
@@ -61845,6 +62437,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_device_lock_release() != 10916) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_dspicore_device_protocol() != 59788) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_dspicore_diagnostics_file_name() != 50086) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -62565,7 +63160,13 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_raw_get() != 27846) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_dspicore_raw_get_id() != 24225) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_dspicore_raw_set() != 34786) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_raw_set_id() != 19464) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_redo() != 52269) {

@@ -101,6 +101,20 @@ pub struct DeviceIdentity {
     /// The board's own name: `None` if the firmware cannot store one, empty if
     /// unnamed.
     pub board_name: Option<String>,
+    // -- WP PGHDEV --
+    /// Byte 7 of the platform read (8 bytes asked): the board id, 0 when the firmware
+    /// answers fewer bytes (PLAN-PG section 1.9). The router refuses a bootloader entry
+    /// toward any board but 0.
+    pub board: u8,
+    /// The vendor protocol version (`major`, `minor`) of a paged (1.1.7) device, from
+    /// its attach probe; `None` for a legacy one. Read again at every attach and only
+    /// shown: what the hub forwards is decided by the live transport's generation
+    /// (`DeviceShared::protocol`), never by this record.
+    pub protocol: Option<(u8, u8)>,
+    /// Whether a paged device has our extension channel (page `0xE0` in its
+    /// `SYS.PAGE_LIST`); `None` for a legacy device (its clients probe `EXT_LIST`
+    /// themselves, as before) and when the read at attach did not say.
+    pub ext: Option<bool>,
 }
 
 /// A device's state (spec 7.4).
@@ -166,6 +180,23 @@ impl RegisteredDevice {
         });
         if let (Some(beta), Some(map)) = (id.firmware_beta, device.as_object_mut()) {
             map.insert("fw_beta".into(), beta.into());
+        }
+        // -- WP PGHDEV -- spec 1.3 section 7.4 for a paged device; absent for a
+        // legacy one, which this hub still lists and forwards to (OD-PGg, cap
+        // `legacy_devices`); `ext` is ours, additive
+        if let Some(map) = device.as_object_mut() {
+            if let Some((major, minor)) = id.protocol {
+                map.insert("protocol".into(), json!({"major": major, "minor": minor}));
+            }
+            if let Some(ext) = id.ext {
+                map.insert("ext".into(), ext.into());
+            }
+            // -- PG-C merge -- PGZERO line 5: our additive `board` (PLAN-PG 1.9),
+            // when not 0: a paged Zero is known only by its USB descriptor, which
+            // a client behind the hub cannot see
+            if id.board != 0 {
+                map.insert("board".into(), id.board.into());
+            }
         }
         device
     }
@@ -467,6 +498,9 @@ mod tests_wp_hb0 {
             firmware_beta: Some(0),
             outputs: 9,
             board_name: None,
+            board: 0,
+            protocol: None,
+            ext: None,
         }
     }
 
@@ -593,6 +627,9 @@ mod tests_wp_hb3 {
             firmware_beta: Some(0),
             outputs: 9,
             board_name: board.map(str::to_owned),
+            board: 0,
+            protocol: None,
+            ext: None,
         }
     }
 
@@ -772,5 +809,70 @@ mod tests_wp_hb3 {
         p[1] = nfy::NOTIFY_EVT_INPUT_SOURCE_NAME as u8;
         assert_eq!(board_name_event(&p), None, "a source's name");
         assert_eq!(board_name_event(&[]), None);
+    }
+}
+
+// -- WP PGHDEV --
+#[cfg(test)]
+mod tests_wp_pghdev {
+    use super::*;
+
+    fn device(protocol: Option<(u8, u8)>, ext: Option<bool>) -> RegisteredDevice {
+        RegisteredDevice {
+            handle: 3,
+            identity: DeviceIdentity {
+                serial: "PGHDEV".into(),
+                vid: 0x2E8B,
+                location_id: 0,
+                platform: 1,
+                firmware: "1.1.7".into(),
+                firmware_beta: None,
+                outputs: 9,
+                board_name: None,
+                board: 0,
+                protocol,
+                ext,
+            },
+            name: "DSPi".into(),
+            state: DeviceState::Online,
+            locked_by: None,
+        }
+    }
+
+    /// Spec 1.3 section 7.4: `protocol` for a paged device only; a legacy device is
+    /// listed without it (OD-PGg). `ext` is ours, left out when unknown.
+    #[test]
+    fn wp_pghdev_the_device_object_says_protocol_and_ext() {
+        let paged = device(Some((1, 0)), Some(true)).to_json();
+        assert_eq!(paged["protocol"], json!({"major": 1, "minor": 0}));
+        assert_eq!(paged["ext"], json!(true));
+        let legacy = device(None, Some(false)).to_json();
+        assert!(legacy.get("protocol").is_none(), "{legacy}");
+        assert_eq!(legacy["ext"], json!(false));
+        let unknown = device(None, None).to_json();
+        assert!(unknown.get("ext").is_none(), "{unknown}");
+        // The client's own parser reads it back.
+        let info: dspi_link::messages::DeviceInfo = serde_json::from_value(paged).unwrap();
+        assert!(info.is_paged());
+        assert_eq!(info.ext, Some(true));
+        let info: dspi_link::messages::DeviceInfo = serde_json::from_value(legacy).unwrap();
+        assert!(!info.is_paged());
+    }
+
+    // -- PG-C merge --
+    /// PGZERO line 5: the board id is listed when not 0 (a Pico lists none), and
+    /// our client's parser reads it.
+    #[test]
+    fn pgc_merge_the_device_object_says_a_board_that_is_not_0() {
+        let pico = device(Some((1, 0)), None).to_json();
+        assert!(pico.get("board").is_none(), "{pico}");
+        let info: dspi_link::messages::DeviceInfo = serde_json::from_value(pico).unwrap();
+        assert_eq!(info.board, None);
+        let mut zero = device(Some((1, 0)), None);
+        zero.identity.board = 1;
+        let zero = zero.to_json();
+        assert_eq!(zero["board"], json!(1));
+        let info: dspi_link::messages::DeviceInfo = serde_json::from_value(zero).unwrap();
+        assert_eq!(info.board, Some(1u32));
     }
 }

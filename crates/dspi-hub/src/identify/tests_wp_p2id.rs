@@ -138,6 +138,7 @@ impl Rig {
                 serial: serial.into(),
                 bus_id: "test".into(),
                 address: 1,
+                ..Default::default()
             },
         };
         (self.hub.attach(Box::new(probe), 0).unwrap(), wire)

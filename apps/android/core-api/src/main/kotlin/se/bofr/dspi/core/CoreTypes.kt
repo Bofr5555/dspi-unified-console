@@ -2357,6 +2357,62 @@ data class LinkTxtRecord(
 )
 
 /**
+ * One page a paged device implements, from its `SYS.PAGE_LIST`.
+ */
+data class DevicePage(
+    /**
+     * The page number (1 `SYS`, 5 `ROUTE`, `0xE0` our extensions, ...).
+     */
+    val page: Int,
+    /**
+     * The device's revision of it.
+     */
+    val revision: Int,
+)
+
+/**
+ * The open connection's protocol, for a client's device-info row
+ * ([`crate::DspiCore::device_protocol`]). Read once at connect, never
+ * cached across connections.
+ */
+data class DeviceProtocol(
+    /**
+     * The generation the probe decided.
+     */
+    val generation: ProtocolGeneration,
+    /**
+     * The paged protocol's major and minor (`SYS.PROTOCOL_INFO`); 0 and 0
+     * on a legacy device.
+     */
+    val protocolMajor: Int,
+    /**
+     * See `protocol_major`.
+     */
+    val protocolMinor: Int,
+    /**
+     * A paged device's pages with their revisions, ascending; empty on a
+     * legacy device.
+     */
+    val pages: List<DevicePage>,
+    /**
+     * How the extension channel is reached.
+     */
+    val extEnvelope: ExtEnvelope,
+    /**
+     * The board id: 0 a Pico, 1 the DSPi-Zero, other values unknown boards
+     * (0xFF a product string this build does not know, or a board that
+     * could not be read). From the platform's byte 7 and, on board 0, the
+     * USB descriptor (`DspiCore::board`).
+     */
+    val boardId: Int,
+    /**
+     * The name clients show for the board in caps and About: "DSPi",
+     * "DSPi Zero" or "Unknown board" (`board_name`).
+     */
+    val boardName: String,
+)
+
+/**
  * Where a compare stands ([`DspiCore::ab_state`] and every A/B call).
  */
 data class AbCompare(
@@ -8214,6 +8270,43 @@ enum class FillBand {
      * At or past an edge.
      */
     BAD,
+}
+
+/**
+ * Which protocol generation the open connection's device speaks, as the
+ * connect's probe decided it (PLAN-PG section 1.1).
+ */
+enum class ProtocolGeneration {
+    /**
+     * Not said: a path that does not report it (a host-supplied transport).
+     */
+    UNKNOWN,
+    /**
+     * Firmware 1.1.6 and older: the 1.1.6 opcodes only.
+     */
+    LEGACY,
+    /**
+     * Firmware 1.1.7 and later: the paged protocol.
+     */
+    PAGED,
+}
+
+/**
+ * How the open device's extension channel is reached (PLAN-PG section 1.3).
+ */
+enum class ExtEnvelope {
+    /**
+     * No extension channel (stock firmware).
+     */
+    NO_CHANNEL,
+    /**
+     * `REQ_EXTENSION` 0x00 on a 1.1.6-generation device.
+     */
+    LEGACY,
+    /**
+     * The tunnel `0xE010` on page `0xE0` of a paged device.
+     */
+    TUNNEL,
 }
 
 /**

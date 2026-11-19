@@ -795,6 +795,45 @@ impl Transport for PollTransport<'_> {
     fn session_id(&self) -> Option<u16> {
         self.t.session_id()
     }
+
+    // -- WP PGCORE -- the paged calls pass (the poll's own reads are
+    // 1.1.6-shaped and planned below it)
+    fn carries_pages(&self) -> bool {
+        self.t.carries_pages()
+    }
+
+    fn control_in_paged(
+        &mut self,
+        id: dspi_transport::CmdId,
+        value: u16,
+        max_len: u16,
+    ) -> dspi_transport::Result<Vec<u8>> {
+        self.t.control_in_paged(id, value, max_len)
+    }
+
+    fn control_out_paged(
+        &mut self,
+        id: dspi_transport::CmdId,
+        value: u16,
+        data: &[u8],
+    ) -> dspi_transport::Result<()> {
+        self.t.control_out_paged(id, value, data)
+    }
+
+    fn control_in_batch_paged(
+        &mut self,
+        reads: &[dspi_transport::PagedRead],
+    ) -> Vec<dspi_transport::Result<Vec<u8>>> {
+        self.t.control_in_batch_paged(reads)
+    }
+
+    fn generation(&self) -> Option<dspi_transport::Generation> {
+        self.t.generation()
+    }
+
+    fn paged_discovery(&self) -> Option<dspi_transport::paged::Discovery> {
+        self.t.paged_discovery()
+    }
 }
 
 // ── The worker ─────────────────────────────────────────────────────────
@@ -1199,6 +1238,7 @@ mod tests_wp_c9 {
                         serial: "RTA".into(),
                         bus_id: String::new(),
                         address: 0,
+                        ..Default::default()
                     },
                 },
                 dev,
@@ -1294,6 +1334,7 @@ mod tests_wp_c9 {
                     serial: "S".into(),
                     bus_id: "link:x".into(),
                     address: 0,
+                    ..Default::default()
                 },
             })
         }
@@ -2548,5 +2589,37 @@ mod tests_wp_cg5 {
         until("a following b again", &[&a, &b], || {
             a.rta_get_ownership().following && a.rta_get_ownership().origin == sid_b
         });
+    }
+}
+
+// -- WP PGCORE --
+#[cfg(test)]
+mod tests_wp_pgcore {
+    use super::*;
+    use dspi_transport::FakeDevice;
+    use dspi_transport::fake::FakeGeneration;
+
+    /// The analyser poll's view says the generation and passes the paged
+    /// calls.
+    #[test]
+    fn wp_pgcore_the_poll_transport_passes_the_generation_and_the_paged_calls() {
+        for generation in FakeGeneration::ALL {
+            let mut t =
+                dspi_transport::paged::open(Box::new(FakeDevice::demo_generation(generation)))
+                    .unwrap();
+            let want = t.generation();
+            let mut refused = false;
+            let p = PollTransport {
+                t: &mut *t,
+                mask: 1,
+                refused: &mut refused,
+            };
+            assert_eq!(p.generation(), want);
+            assert_eq!(p.carries_pages(), generation.is_paged());
+            assert_eq!(p.paged_discovery().is_some(), generation.is_paged());
+            let mut p = p;
+            let r = p.control_in_paged(dspi_proto::paged::cmds::ROUTE_MASTER_VOLUME, 0, 4);
+            assert_eq!(r.is_ok(), generation.is_paged(), "{generation:?}");
+        }
     }
 }

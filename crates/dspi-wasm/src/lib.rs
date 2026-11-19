@@ -125,6 +125,8 @@ pub mod tools;
 pub mod write;
 // -- WP CG-SWS-a -- small stateless facts from the core
 pub mod sws_a;
+// -- WP PGCORE -- the protocol generation and raw paged requests
+pub mod protocol;
 
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 #[allow(unsafe_code)]

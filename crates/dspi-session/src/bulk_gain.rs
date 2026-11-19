@@ -27,6 +27,10 @@ use dspi_transport::clock::{self, Instant};
 use dspi_transport::{
     DeviceDescriptor, InRead, NotificationSource, Transport, TransportCaps, TransportError,
 };
+// -- WP PGCORE --
+use dspi_proto::paged::{PagedDir, UsbDir, legacy_equivalent};
+use dspi_transport::paged::Discovery;
+use dspi_transport::{CmdId, Generation, PagedRead};
 
 use crate::WriteError;
 
@@ -412,5 +416,120 @@ impl Transport for Guarded {
             self.after_in(r.opcode, reply);
         }
         replies
+    }
+
+    // -- WP PGCORE -- the paged calls, judged by their 1.1.6 equivalent
+    // (PLAN-PG section 1.6): a paged unmute re-sends the suspect gains first
+    // as the 1.1.6 one does, and a paged preset load or factory reset that
+    // the device took clears them. Every 1.1.7 GET only reads.
+    fn carries_pages(&self) -> bool {
+        self.inner.carries_pages()
+    }
+
+    fn control_in_paged(
+        &mut self,
+        id: CmdId,
+        value: u16,
+        max_len: u16,
+    ) -> Result<Vec<u8>, TransportError> {
+        self.inner.control_in_paged(id, value, max_len)
+    }
+
+    fn control_out_paged(
+        &mut self,
+        id: CmdId,
+        value: u16,
+        data: &[u8],
+    ) -> Result<(), TransportError> {
+        let eq = legacy_equivalent(id, PagedDir::Set, value, data);
+        if let Some(eq) = eq.as_ref().filter(|e| e.dir == UsbDir::Out) {
+            if eq.opcode == op::REQ_SET_OUTPUT_MUTE && eq.data.first() == Some(&0) {
+                self.before_unmute(usize::from(eq.value))?;
+            }
+            if is_apply_unmute(eq.opcode, eq.value, &eq.data) {
+                self.before_unmute_all()?;
+            }
+        }
+        let r = self.inner.control_out_paged(id, value, data);
+        if r.is_ok()
+            && eq.as_ref().is_some_and(|e| {
+                e.dir == UsbDir::In
+                    && matches!(e.opcode, op::REQ_PRESET_LOAD | op::REQ_FACTORY_RESET)
+            })
+        {
+            self.guard.clear_all();
+        }
+        r
+    }
+
+    fn control_in_batch_paged(
+        &mut self,
+        reads: &[PagedRead],
+    ) -> Vec<Result<Vec<u8>, TransportError>> {
+        self.inner.control_in_batch_paged(reads)
+    }
+
+    fn generation(&self) -> Option<Generation> {
+        self.inner.generation()
+    }
+
+    fn paged_discovery(&self) -> Option<Discovery> {
+        self.inner.paged_discovery()
+    }
+}
+
+// -- WP PGCORE --
+/// WP PGCORE: the gain guard on paged firmware (PLAN-PG sections 1.2, 1.6):
+/// the paged calls pass through it, judged by their 1.1.6 equivalent.
+#[cfg(test)]
+mod tests_wp_pgcore {
+    use super::*;
+    use dspi_proto::paged::cmds;
+    use dspi_transport::FakeDevice;
+    use dspi_transport::fake::FakeGeneration;
+
+    fn guarded(generation: FakeGeneration) -> (Box<dyn Transport>, GainGuard) {
+        let t =
+            dspi_transport::paged::open(Box::new(FakeDevice::demo_generation(generation))).unwrap();
+        GainGuard::wrap(t, false)
+    }
+
+    #[test]
+    fn wp_pgcore_the_guard_says_the_generation_and_passes_the_paged_calls() {
+        for generation in FakeGeneration::ALL {
+            let (t, _) = guarded(generation);
+            assert_eq!(t.carries_pages(), generation.is_paged(), "{generation:?}");
+            assert_eq!(
+                matches!(t.generation(), Some(Generation::Paged(_))),
+                generation.is_paged()
+            );
+            assert_eq!(t.paged_discovery().is_some(), generation.is_paged());
+        }
+        let (mut t, _) = guarded(FakeGeneration::STOCK117);
+        t.control_out_paged(cmds::ROUTE_MASTER_VOLUME, 0, &(-9.0f32).to_le_bytes())
+            .unwrap();
+        let back = t.control_in_paged(cmds::ROUTE_MASTER_VOLUME, 0, 4).unwrap();
+        assert_eq!(back, (-9.0f32).to_le_bytes());
+        let batch = t.control_in_batch_paged(&[PagedRead::new(cmds::ROUTE_MASTER_VOLUME, 0, 4)]);
+        assert_eq!(batch.len(), 1);
+        assert!(batch[0].is_ok());
+    }
+
+    #[test]
+    fn wp_pgcore_a_paged_unmute_resends_a_suspect_gain_first() {
+        let (mut t, guard) = guarded(FakeGeneration::STOCK117);
+        guard.suspect(bit(0) | bit(1));
+        // ROUTE.OUTPUT_MUTE of output 0 to 0: an unmute, as SET_OUTPUT_MUTE
+        t.control_out_paged(cmds::ROUTE_OUTPUT_MUTE, 0, &[0])
+            .unwrap();
+        assert_eq!(guard.suspects(), bit(1), "output 0's gains re-sent first");
+        // A mute is not an unmute
+        t.control_out_paged(cmds::ROUTE_OUTPUT_MUTE, 1, &[1])
+            .unwrap();
+        assert_eq!(guard.suspects(), bit(1));
+        // A paged preset load the device took converts every gain anew
+        t.control_out_paged(cmds::STORE_PRESET_LOAD, 0, &[])
+            .unwrap();
+        assert_eq!(guard.suspects(), 0);
     }
 }

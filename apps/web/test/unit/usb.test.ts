@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { CoreCallError, type CoreEvent } from "../../src/core/protocol";
-import { UsbHost, setup } from "../../src/core/usb";
+import { UsbHost, bcdDeviceOf, setup } from "../../src/core/usb";
 import { USB_IDS } from "../../src/core/usb-ids";
 import { WasmCore, loadWasmModule } from "../../src/core/wasm";
 import { pageEnv, usbAccess } from "../../src/fleet/env";
@@ -150,4 +150,14 @@ test("PGWIRE: wIndex comes from the core's call: the interface, with a page in i
   assert.equal(setup(0x10, 0xe0, 0xe002)?.index, 0xe002, "our extension tunnel on page 0xE0");
   // Anything whose low byte is not interface 2 is never sent.
   for (const bad of [0, 1, 3, 0x0100, 0x0103, 0x10002, -1, 2.5]) assert.equal(setup(0x10, 0, bad), null, `wIndex ${bad}`);
+});
+
+// -- WP PGZERO --
+test("wp_pgzero bcdDevice from WebUSB's version fields", () => {
+  const d = (major?: number, minor?: number, sub?: number) =>
+    ({ deviceVersionMajor: major, deviceVersionMinor: minor, deviceVersionSubminor: sub }) as unknown as Parameters<typeof bcdDeviceOf>[0];
+  assert.equal(bcdDeviceOf(d(3, 0, 0)), 0x0300);
+  assert.equal(bcdDeviceOf(d(2, 0, 4)), 0x0204);
+  assert.equal(bcdDeviceOf(d(2, 8, 0)), 0x0280);
+  assert.equal(bcdDeviceOf(d()), undefined);
 });

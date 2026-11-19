@@ -72,6 +72,7 @@ impl GuardTransport {
             serial: dev.serial(),
             bus_id: "hub".into(),
             address: dev.handle,
+            ..Default::default()
         };
         Self {
             dev,

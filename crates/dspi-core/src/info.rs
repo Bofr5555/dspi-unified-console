@@ -761,3 +761,95 @@ impl DspiCore {
             .map_err(DspiError::from)
     }
 }
+
+// -- WP PGCORE --
+// The connection's protocol generation for a client's device info (PLAN-PG
+// sections 1.1 and 1.3): from the generation wrapper `paged::open` made,
+// through every wrapper above it, with no traffic.
+#[cfg_attr(feature = "uniffi", uniffi::export)]
+impl DspiCore {
+    /// The open device's protocol: its generation, the paged protocol's
+    /// version and pages, how the extension channel is reached, and the
+    /// board with its name. The board costs one platform read (the rest
+    /// sends nothing); a board that cannot be read is an unknown board.
+    /// Errors: [`DspiError::Disconnected`] with nothing open or when the
+    /// device went.
+    pub fn device_protocol(&self) -> Result<DeviceProtocol> {
+        let mut inner = self.lock();
+        let conn = inner.conn()?;
+        let mut p = protocol_of(conn);
+        // -- PG-C merge -- the board name from hardware.rs (PGZERO line 5)
+        let board = match crate::hardware::read_board(conn) {
+            Ok(board) => board,
+            Err(DspiError::Disconnected) => return Err(DspiError::Disconnected),
+            Err(e) => {
+                log::debug!("the board could not be read: {e}");
+                dspi_proto::packets::Board::Unknown(crate::UNKNOWN_PRODUCT_BOARD)
+            }
+        };
+        p.board_id = board.id();
+        p.board_name = crate::board_name(board).into();
+        Ok(p)
+    }
+}
+
+impl DspiCore {
+    // -- WP PGCORE --
+    /// The open connection's generation as its transport reports it
+    /// (`Transport::generation`), `None` with nothing open or a path that
+    /// does not say. For a binding's own transport over the core (the
+    /// Terminal's); not exported.
+    #[doc(hidden)]
+    pub fn connection_protocol_generation(&self) -> Option<dspi_transport::Generation> {
+        let mut inner = self.lock();
+        inner.conn().ok()?.transport().generation()
+    }
+
+    // -- WP PGCORE --
+    /// The open connection's paged discovery (`Transport::paged_discovery`),
+    /// `None` on a legacy device or with nothing open. Not exported.
+    #[doc(hidden)]
+    pub fn connection_paged_discovery(&self) -> Option<dspi_transport::paged::Discovery> {
+        let mut inner = self.lock();
+        inner.conn().ok()?.transport().paged_discovery()
+    }
+}
+
+// -- WP PGCORE --
+/// [`DspiCore::device_protocol`] of `conn`.
+pub(crate) fn protocol_of(conn: &mut Connection) -> DeviceProtocol {
+    use dspi_transport::Generation;
+    let has_ext = !conn.ext.supported.is_empty();
+    let t = conn.transport();
+    let (generation, protocol_major, protocol_minor) = match t.generation() {
+        Some(Generation::Legacy) => (ProtocolGeneration::Legacy, 0, 0),
+        Some(Generation::Paged(info)) => (ProtocolGeneration::Paged, info.major, info.minor),
+        None => (ProtocolGeneration::Unknown, 0, 0),
+    };
+    let pages = t
+        .paged_discovery()
+        .map(|d| {
+            d.pages
+                .pages()
+                .map(|p| DevicePage {
+                    page: p.page,
+                    revision: p.revision,
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    let ext_envelope = match (has_ext, generation) {
+        (false, _) => ExtEnvelope::NoChannel,
+        (true, ProtocolGeneration::Paged) => ExtEnvelope::Tunnel,
+        (true, _) => ExtEnvelope::Legacy,
+    };
+    DeviceProtocol {
+        generation,
+        protocol_major,
+        protocol_minor,
+        pages,
+        ext_envelope,
+        // -- PG-C merge -- filled by `device_protocol` (one platform read)
+        ..DeviceProtocol::default()
+    }
+}

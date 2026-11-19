@@ -91,6 +91,16 @@ impl Transport for RealKind {
         self.calls.fetch_add(1, Ordering::SeqCst);
         self.dev.control_in(opcode, value, len)
     }
+    // -- WP PGZERO -- the probe asks 8 platform bytes and takes what comes
+    fn control_in_upto(
+        &mut self,
+        opcode: u8,
+        value: u16,
+        max_len: u16,
+    ) -> dspi_transport::Result<Vec<u8>> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        self.dev.control_in_upto(opcode, value, max_len)
+    }
     fn control_out(&mut self, opcode: u8, value: u16, data: &[u8]) -> dspi_transport::Result<()> {
         self.calls.fetch_add(1, Ordering::SeqCst);
         self.dev.control_out(opcode, value, data)

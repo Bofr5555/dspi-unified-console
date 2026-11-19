@@ -1508,6 +1508,22 @@ mod tests {
                 }
                 self.fake.control_in(opcode, value, len)
             }
+            // -- WP PGZERO -- the probe asks 8 platform bytes and takes what comes
+            fn control_in_upto(
+                &mut self,
+                opcode: u8,
+                value: u16,
+                max_len: u16,
+            ) -> TransportResult<Vec<u8>> {
+                if opcode != op::REQ_GET_PLATFORM {
+                    return self.control_in(opcode, value, max_len);
+                }
+                self.knobs.transfers.fetch_add(1, Ordering::SeqCst);
+                if self.knobs.down.load(Ordering::SeqCst) {
+                    return Err(TransportError::Disconnected);
+                }
+                self.fake.control_in_upto(opcode, value, max_len)
+            }
             fn control_out(&mut self, opcode: u8, value: u16, data: &[u8]) -> TransportResult<()> {
                 self.fake.control_out(opcode, value, data)
             }

@@ -61,6 +61,7 @@ fn device(serial: &str) -> (Counted, FakeRemote, Arc<Mutex<usize>>) {
                 serial: serial.into(),
                 bus_id: "test".into(),
                 address: 1,
+                ..Default::default()
             },
             meter_reads: Arc::clone(&reads),
         },

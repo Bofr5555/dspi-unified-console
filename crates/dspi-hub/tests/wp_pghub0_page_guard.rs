@@ -63,6 +63,7 @@ impl Counting {
                 serial: "PGHUB0".into(),
                 bus_id: "test".into(),
                 address: 1,
+                ..Default::default()
             },
             log: Arc::clone(&log),
         };

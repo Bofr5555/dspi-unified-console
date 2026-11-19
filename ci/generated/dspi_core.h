@@ -7431,6 +7431,45 @@ uint32_t dspi_measure_tune_ab(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_measure_tune_stop(struct FfiCore *core, char *buf, uint32_t len);
 
 /**
+ * The open device's protocol in JSON: `{ok, generation ("unknown",
+ * "legacy" or "paged"), protocolMajor, protocolMinor, pages: [{page,
+ * revision}], extEnvelope ("noChannel", "legacy" or "tunnel"), boardId,
+ * boardName ("DSPi", "DSPi Zero" or "Unknown board")}`. One platform read
+ * (the board). Returns the bytes needed including the NUL.
+ */
+uint32_t dspi_device_protocol(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * One paged GET of command `id` (`page << 8 | command`), `value` as
+ * `wValue`, at most `want` bytes, in JSON: `{ok, value: [bytes]}` or the
+ * failure reply (`refused` with the firmware's result code as `status` in
+ * the error, `unsupported` on a 1.1.6-generation device, `invalid` for a
+ * page-0 id or a length of 0).
+ */
+uint32_t dspi_raw_get_id(struct FfiCore *core,
+                         uint16_t id,
+                         uint16_t value,
+                         uint16_t want,
+                         char *buf,
+                         uint32_t len);
+
+/**
+ * One paged SET of command `id`, `value` as `wValue`, `data_len` bytes of
+ * `data` as the payload (null: none, an action), in JSON: `{ok}` or the
+ * failure reply (`invalid` with nothing sent for a request behind a
+ * confirmation token, a core-voltage request, a flash or restart command,
+ * a page-0 id, or one with no 1.1.6 equivalent that is not a plain value
+ * SET).
+ */
+uint32_t dspi_raw_set_id(struct FfiCore *core,
+                         uint16_t id,
+                         uint16_t value,
+                         const uint8_t *data,
+                         uint32_t data_len,
+                         char *buf,
+                         uint32_t len);
+
+/**
  * Start looking for hubs on the local network, replacing any browse running.
  * Returns at once; false only with a null handle, in a build without the
  * feature, or when a thread cannot start. A network failure shows in

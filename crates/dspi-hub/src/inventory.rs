@@ -157,6 +157,13 @@ pub struct Record {
     /// The last reset it reported.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_reset: Option<LastReset>,
+    // -- WP PGZERO --
+    /// The board id (PLAN-PG section 1.9: 0 a Pico, 1 the DSPi-Zero), from the
+    /// platform reply's byte 7 and the USB descriptor at attach; `None` until
+    /// the hub has said. Shown as `board_id` and the name clients show as
+    /// `model` ("DSPi", "DSPi Zero", [`dspi_transport::board::board_name`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub board_id: Option<u8>,
 }
 
 fn cut(text: &str, chars: usize) -> String {
@@ -191,6 +198,7 @@ impl Record {
             first_seen_s: now_s,
             last_seen_s: now_s,
             last_reset: None,
+            board_id: None, // -- WP PGZERO --
         }
     }
 
@@ -259,6 +267,15 @@ impl Record {
             if let Some(rev) = self.chip_rev {
                 map.insert("chip_rev".into(), rev.into());
             }
+            // -- WP PGZERO -- the board and the name clients show for it
+            if let Some(id) = self.board_id {
+                let board = dspi_proto::packets::Board::from_id(id);
+                map.insert("board_id".into(), id.into());
+                map.insert(
+                    "model".into(),
+                    dspi_transport::board::board_name(board).into(),
+                );
+            }
             if let Some(r) = &self.last_reset {
                 let mut reset = json!({"reason": r.reason, "at": iso8601(r.at_s)});
                 if let (Some(prev), Some(m)) = (r.prev_uptime_s, reset.as_object_mut()) {
@@ -288,6 +305,10 @@ pub struct Seen {
     pub fw_beta: Option<u8>,
     /// Output channels.
     pub outputs: u8,
+    // -- WP PGZERO --
+    /// The board id ([`Record::board_id`]), `None` when the registry does
+    /// not say.
+    pub board: Option<u8>,
 }
 
 impl From<&RegisteredDevice> for Seen {
@@ -300,6 +321,9 @@ impl From<&RegisteredDevice> for Seen {
             fw: d.identity.firmware.clone(),
             fw_beta: d.identity.firmware_beta,
             outputs: d.identity.outputs,
+            // -- WP PGZERO -- -- PG-C merge -- PGZERO line 3: the identity's
+            // board (PGHDEV's, from byte 7 and the descriptor)
+            board: Some(d.identity.board),
         }
     }
 }
@@ -475,6 +499,10 @@ impl Book {
         r.fw = fw;
         r.fw_beta = d.fw_beta;
         r.outputs = d.outputs;
+        // -- WP PGZERO -- a board the registry names; kept when it says nothing
+        if let Some(board) = d.board {
+            r.board_id = Some(board);
+        }
         if came_online {
             r.last_seen_s = now_s.max(r.first_seen_s);
         }

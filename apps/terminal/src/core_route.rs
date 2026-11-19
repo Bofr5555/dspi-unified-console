@@ -178,6 +178,7 @@ pub(crate) fn open_core(
                 serial: serial.clone(),
                 bus_id: format!("link:{}", reached.hub_id.clone().unwrap_or_default()),
                 address: 0,
+                ..Default::default()
             };
             (serial, caps, descriptor, Some(reached))
         }
@@ -954,6 +955,57 @@ impl Transport for CoreTransport {
         u16::try_from(self.core().link_status().session)
             .ok()
             .filter(|s| *s != 0)
+    }
+
+    // -- WP PGCORE -- the paged calls through the core's raw-id calls, so
+    // they meet the same gates (PLAN-PG section 1.6)
+    fn carries_pages(&self) -> bool {
+        matches!(
+            self.generation(),
+            Some(dspi_transport::Generation::Paged(_))
+        )
+    }
+
+    fn control_in_paged(
+        &mut self,
+        id: dspi_transport::CmdId,
+        value: u16,
+        max_len: u16,
+    ) -> dspi_transport::Result<Vec<u8>> {
+        self.core()
+            .raw_get_id(id.0, value, max_len)
+            .map_err(|e| paged_error(id, e))
+    }
+
+    fn control_out_paged(
+        &mut self,
+        id: dspi_transport::CmdId,
+        value: u16,
+        data: &[u8],
+    ) -> dspi_transport::Result<()> {
+        self.core()
+            .raw_set_id(id.0, value, data.to_vec())
+            .map_err(|e| paged_error(id, e))
+    }
+
+    fn generation(&self) -> Option<dspi_transport::Generation> {
+        self.core().connection_protocol_generation()
+    }
+
+    fn paged_discovery(&self) -> Option<dspi_transport::paged::Discovery> {
+        self.core().connection_paged_discovery()
+    }
+}
+
+// -- WP PGCORE --
+/// A raw-id call's failure as a transport error: a firmware result code
+/// stays typed.
+fn paged_error(id: dspi_transport::CmdId, e: DspiError) -> TransportError {
+    match e {
+        DspiError::Refused { status } if status != 0 => {
+            TransportError::Refused { id, result: status }
+        }
+        other => transport_error(other),
     }
 }
 
@@ -2371,5 +2423,55 @@ mod tests_wp_sectm {
         assert_eq!(defaults.badge, badge.title);
         assert_eq!(defaults.info, info.reason);
         assert_eq!(defaults.action, info.action);
+    }
+}
+
+// -- WP PGCORE --
+/// WP PGCORE: the Terminal's transport over the core says the core's
+/// generation and sends paged calls through the core's raw-id calls, so they
+/// meet the same gates (PLAN-PG section 1.6).
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
+mod tests_wp_pgcore {
+    use super::*;
+    use dspi_proto::paged::cmds;
+    use dspi_transport::FakeDevice;
+    use dspi_transport::fake::FakeGeneration;
+
+    fn over_core(generation: FakeGeneration) -> (CoreTransport, dspi_transport::FakeRemote) {
+        let dev = FakeDevice::demo_generation(generation);
+        let remote = dev.remote();
+        let descriptor = dev.descriptor().clone();
+        let t = dspi_transport::paged::open(Box::new(dev)).unwrap();
+        let caps = t.caps();
+        let core = DspiCore::new();
+        core.open_transport(t, descriptor.serial.clone(), 0)
+            .unwrap();
+        let handle = CoreHandle {
+            core,
+            serial: descriptor.serial.clone(),
+            caps,
+            descriptor,
+        };
+        (CoreTransport::new(Arc::new(handle)), remote)
+    }
+
+    #[test]
+    fn wp_pgcore_the_core_transport_says_the_generation_and_gates_the_paged_calls() {
+        for generation in FakeGeneration::ALL {
+            let (mut t, remote) = over_core(generation);
+            assert_eq!(t.carries_pages(), generation.is_paged(), "{generation:?}");
+            assert_eq!(t.paged_discovery().is_some(), generation.is_paged());
+            let r = t.control_in_paged(cmds::ROUTE_MASTER_VOLUME, 0, 4);
+            assert_eq!(r.is_ok(), generation.is_paged(), "{generation:?}: {r:?}");
+            // The bootloader by its paged id: the core's gate, nothing sent
+            let sent = remote.paged_requests();
+            assert!(
+                t.control_out_paged(cmds::SYS_ENTER_BOOTLOADER, 0, &[])
+                    .is_err()
+            );
+            assert_eq!(remote.paged_requests(), sent);
+            assert_eq!(remote.violations(), 0, "{:?}", remote.last_violation());
+        }
     }
 }

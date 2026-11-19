@@ -362,6 +362,22 @@ impl PagedTransport {
         })
     }
 
+    // -- WP PGCORE --
+    /// A second view of a connection [`open`] already made, with nothing
+    /// sent: `disc` is that connection's discovery
+    /// ([`Transport::paged_discovery`]) and `inner` another raw path to the
+    /// same device on the same connection (the DSPi Link side channel's
+    /// background and analyser reads). Never for another connection: a
+    /// discovery describes only the one it was read on (PLAN-PG section 1.1
+    /// step 7).
+    pub fn with_discovery(inner: Box<dyn Transport>, disc: Discovery) -> Self {
+        Self {
+            inner,
+            disc,
+            command_info: std::collections::BTreeMap::new(),
+        }
+    }
+
     /// What [`open`] read at connect.
     pub fn discovery(&self) -> &Discovery {
         &self.disc
@@ -955,6 +971,11 @@ impl Transport for PagedTransport {
 
     fn generation(&self) -> Option<Generation> {
         Some(Generation::Paged(self.disc.info))
+    }
+
+    // -- WP PGCORE --
+    fn paged_discovery(&self) -> Option<Discovery> {
+        Some(self.disc.clone())
     }
 }
 

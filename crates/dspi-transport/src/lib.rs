@@ -46,6 +46,8 @@ pub mod paged;
 pub use paged::LegacyGuard;
 // -- WP PGADAPT --
 pub use paged::PagedTransport;
+// -- WP PGZERO -- the board from the USB descriptor and from the platform reply
+pub mod board;
 
 /// How long to wait on a single control transfer before treating it as timed out.
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_millis(1000);
@@ -212,11 +214,29 @@ fn permission_help() -> String {
 pub type Result<T> = std::result::Result<T, TransportError>;
 
 /// Identity of a connected device, as shown in the device picker.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct DeviceDescriptor {
     pub serial: String,
     pub bus_id: String,
     pub address: u8,
+    // -- WP PGZERO --
+    /// The USB product string (`iProduct`), where the link has the device's
+    /// descriptor at hand: USB (the OS's cached string, or one standard
+    /// `GET_DESCRIPTOR` on an Android fd), WebUSB (`USBDevice.productName`),
+    /// the fakes. `None` over DSPi Link, MIDI and anywhere it is unknown. It
+    /// tells a paged DSPi-Zero from a Pico, which `SYS.PLATFORM`'s 7 bytes
+    /// cannot (PLAN-PG section 1.9); see [`DeviceDescriptor::board`].
+    pub product: Option<String>,
+    /// The USB `bcdDevice`, where the descriptor is at hand (as `product`).
+    pub bcd_device: Option<u16>,
+    // -- review PG-C --
+    /// The board id a hub passed on, where the descriptor itself is not at
+    /// hand: our hub's own word for its attachment (`LocalTransport`,
+    /// `PrincipalTransport`) and its device object's additive `board` over
+    /// DSPi Link. `None` everywhere else (an upstream hub says nothing). It
+    /// wins over `product` and `bcd_device` in [`DeviceDescriptor::board`], so
+    /// a paged DSPi-Zero behind our hub is known to the core on top too.
+    pub hub_board: Option<u8>,
 }
 
 impl DeviceDescriptor {
@@ -227,6 +247,19 @@ impl DeviceDescriptor {
         // may hold any UTF-8.
         let n = self.serial.chars().count();
         self.serial.chars().skip(n.saturating_sub(8)).collect()
+    }
+
+    // -- WP PGZERO --
+    /// What the USB descriptor says about the board
+    /// ([`board::board_from_descriptor`] of `product` and `bcd_device`):
+    /// `None` when it says nothing (no descriptor at hand, behind a hub).
+    /// -- review PG-C -- A board id a hub passed on ([`Self::hub_board`])
+    /// comes first.
+    pub fn board(&self) -> Option<dspi_proto::packets::Board> {
+        if let Some(id) = self.hub_board {
+            return Some(dspi_proto::packets::Board::from_id(id));
+        }
+        board::board_from_descriptor(self.product.as_deref(), self.bcd_device)
     }
 }
 
@@ -446,6 +479,18 @@ pub trait Transport: Send {
             .map(|r| self.control_in_paged(r.id, r.value, r.len))
             .collect()
     }
+
+    // -- WP PGCORE --
+    /// What [`paged::open`] read from a paged device at connect (its probe
+    /// answer, the page list with revisions and command bitmaps,
+    /// `SYS.PLATFORM`), for the layers above that show it or plan with it:
+    /// the core's device info, the DSPi Link side channel's polls, the
+    /// probe's reuse key. `None` for a legacy device, a raw wire and a
+    /// wrapper that does not say. It belongs to this connection only (PLAN-PG
+    /// section 1.1 step 7).
+    fn paged_discovery(&self) -> Option<paged::Discovery> {
+        None
+    }
 }
 
 // -- WP PGADAPT --
@@ -647,6 +692,7 @@ mod tests {
             serial: "E6614C311B8B4E3A".into(),
             bus_id: "001".into(),
             address: 7,
+            ..Default::default()
         };
         assert_eq!(d.short_name(), "1B8B4E3A");
     }
@@ -718,6 +764,7 @@ mod tests {
             serial: "ÅÄÖåäöÉé€x".into(),
             bus_id: "001".into(),
             address: 1,
+            ..Default::default()
         };
         assert_eq!(d.short_name(), "ÖåäöÉé€x");
     }
@@ -728,6 +775,7 @@ mod tests {
             serial: "ABC".into(),
             bus_id: "001".into(),
             address: 1,
+            ..Default::default()
         };
         assert_eq!(d.short_name(), "ABC");
     }

@@ -234,6 +234,25 @@ fn wp_p1nt_codes_refine_the_key_where_the_table_has_a_row() {
                 );
                 continue;
             }
+            // -- WP PGCORE -- the DSPi Link client's notices, by their words
+            // (a build without DSPi Link never makes them)
+            if family == "transfer"
+                && dspi_transport::paged::Refusal::ALL
+                    .into_iter()
+                    .all(|r| r.code() != code)
+            {
+                #[cfg(feature = "link")]
+                {
+                    let notice = dspi_transport::link::LinkNotice::ALL
+                        .into_iter()
+                        .find(|l| l.code() == code)
+                        .unwrap_or_else(|| {
+                            panic!("{}: neither a paged::open refusal nor a LinkNotice", n.key)
+                        });
+                    assert_eq!(DspiError::from(notice.error()).notice_key(), n.key);
+                }
+                continue;
+            }
             let e = match family {
                 // -- WP PGWIRE -- `paged::open`'s refusals, by their words
                 "transfer" => DspiError::from(

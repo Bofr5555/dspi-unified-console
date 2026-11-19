@@ -491,13 +491,25 @@ impl LinkTransport {
         let notes = Mutex::new(Some(client.notifications(handle)));
         let hello = client.hello();
         let snapshot_unused = hello.has_cap(CAP_SNAPSHOT);
+        // -- WP PGLINKC --
+        let device = client.device(u32::from(handle));
         let descriptor = DeviceDescriptor {
             serial: serial.to_owned(),
             bus_id: format!("link:{}", hello.hub.id),
             address: handle,
+            // -- review PG-C -- the board our hub lists (its additive `board`,
+            // left out for board 0): a paged DSPi-Zero is known only to the hub
+            // that sees its USB descriptor. A value that fits no board id is an
+            // unknown board, which fails closed. Only our hub's word (its cap
+            // `legacy_devices`): the field is ours, and another hub's `board`
+            // may mean something else.
+            hub_board: device
+                .as_ref()
+                .filter(|_| hello.has_cap(dspi_link::messages::CAP_LEGACY_DEVICES))
+                .and_then(|d| d.board)
+                .map(|b| u8::try_from(b).unwrap_or(crate::board::UNKNOWN_PRODUCT_BOARD)),
+            ..Default::default()
         };
-        // -- WP PGLINKC --
-        let device = client.device(u32::from(handle));
         let route = LinkRoute::of(hello, device.as_ref());
         let listed_protocol = device.and_then(|d| d.protocol);
         Self {
