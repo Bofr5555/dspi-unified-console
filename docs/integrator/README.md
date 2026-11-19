@@ -34,6 +34,7 @@ Licensing of the software described here: see [`NOTICE.md`](../../NOTICE.md).
 | [measurement.md](measurement.md) | Measurement and auto-tune (PRO phase 5): the signal path through the device's generator, the safety rules, placements and couplers, the auto-tune's steps, the `measurement`, `mic` and `target` documents and their compact curves, the hub's store (WP P5MDOC) | draft; the documents (section 7) built |
 <!-- WP PGDOC -->
 | [protocol-generations.md](protocol-generations.md) | Firmware 1.1.6 and 1.1.7 (PLAN-PG) for a client of the core: the generation and `device_protocol`, raw requests by id and what they refuse, the alink sender's limited connection, the update check and the core's write gate, known limits; the user's side is [the manual's notices page](../manual/notices.md) | built (WP PGDOC) |
+| [multi-unit-measurement.md](multi-unit-measurement.md) | Measuring several units together with one microphone (PLAN-AT): topologies that align (the line, USB-direct mode 2 on one controller, S/PDIF between DSPi units) and those that do not, the hub requirement and roles, leads, runs and the anchor, the summed check, apply, verify, Keep and Revert inside the hub's guard (WP ATDOC; the guard: WP ATGUARD, [hub-api.md section 23.4](hub-api.md#234-the-guard-of-a-system-apply)) | built |
 
 ## Ways in, today
 

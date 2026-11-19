@@ -14,6 +14,8 @@
 
 pub mod alarms;
 pub mod align;
+// -- WP ATGUARD -- the guard of a system apply (`system.guard.*`)
+pub mod guard;
 // -- WP ATHUB -- the `system.measure.*` family
 pub mod measure;
 pub mod model;
