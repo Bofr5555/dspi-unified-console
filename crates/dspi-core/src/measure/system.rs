@@ -47,10 +47,13 @@
 //! **Arrivals** (WP ATHUBM's contract): `measuredArrivalUs` is the acoustic
 //! part only, relative to the group's latest output. The session takes out
 //! what the alignment engine adds itself: the unit's play-out on the time
-//! base (`pathDelayFrames + effective + latencyFrames` of the alignment the
-//! hub reports in `system.status`, which hold the lip-sync term; a S/PDIF
-//! source plays T at once, its lag is in its output delays) and the output
-//! delay in effect during the run (read with `param.get_many` before it).
+//! base (the path and the latency of the alignment the hub reports in
+//! `system.status`, which are the model's, plus the unit's own play-out
+//! delay D, `EXT_TIME_BASE.d` at `open`, which holds the lip-sync term; a
+//! source plays T at once, D = 0, its lag is in its output delays) and the
+//! output delay in effect during the run (read with `param.get_many` before
+//! it). Review AT-C: never the alignment's `effective` during a session;
+//! its locks keep the hub from reading the units it is computed from.
 //!
 //! Privacy (S12): the microphone's samples stay in this module's memory for
 //! the run; the documents hold derived curves only.
@@ -837,15 +840,23 @@ impl DspiCore {
         Ok(o.proposal(&role))
     }
 
-    /// Run the summed check of every inter-unit transition (RC5f): each
-    /// transition's units started by op 9 at one T with their outputs at
-    /// their current net polarities. Control or Admin. Then tick as for a
-    /// measurement; the proposal shows the verdicts.
+    /// Start the summed check of every inter-unit transition (RC5f): one
+    /// summed run per transition, the two units started at one T, compared
+    /// with the sum the walked run predicts. **A session under every S-rule
+    /// of its own** (review AT-C, as P5's summed check): `checks` are each
+    /// unit's fresh [`DspiCore::measure_system_unit_check`] (the preflight
+    /// S2, S6, S8, S11, S13 is judged again, a blocker names its unit and
+    /// nothing plays), and each output of a transition is ramped again (S3)
+    /// before the summed run plays 6 dB below the lower of the two levels
+    /// (S-AT4), never above the measurement's.
     ///
-    /// Errors: [`DspiError::InvalidArgument`] with no result, nothing to
-    /// check, or a session running; the hub's refusals as at the start.
-    pub fn measure_system_sum_check(&self) -> Result<MeasureSystemState> {
-        self.system_runs_start(MeasureSystemPurpose::SumCheck)
+    /// Errors: as [`DspiCore::measure_system_start`]; [`DspiError::
+    /// InvalidArgument`] with no result or no transition.
+    pub fn measure_system_sum_check(
+        &self,
+        checks: Vec<MeasureSystemUnitCheck>,
+    ) -> Result<MeasureSystemState> {
+        self.system_runs_start(MeasureSystemPurpose::SumCheck, &checks)
     }
 
     /// Apply proposal `proposal_id` (Admin): the hub's model revision and
@@ -871,13 +882,18 @@ impl DspiCore {
         r
     }
 
-    /// After an apply: the summed runs again with the new delays (P5's
-    /// verify). Tick as for a measurement; `measure_system_applied` shows
-    /// the verdict.
+    /// Repeat the summed runs after an apply (P5's verify step), predicted
+    /// with each output's applied change. A session under every S-rule of
+    /// its own, as [`DspiCore::measure_system_sum_check`]: `checks` are each
+    /// unit's fresh check, and each output is ramped again.
     ///
-    /// Errors: as `measure_system_sum_check`; nothing applied.
-    pub fn measure_system_verify(&self) -> Result<MeasureSystemState> {
-        self.system_runs_start(MeasureSystemPurpose::Verify)
+    /// Errors: as [`DspiCore::measure_system_sum_check`]; [`DspiError::
+    /// InvalidArgument`] with nothing applied.
+    pub fn measure_system_verify(
+        &self,
+        checks: Vec<MeasureSystemUnitCheck>,
+    ) -> Result<MeasureSystemState> {
+        self.system_runs_start(MeasureSystemPurpose::Verify, &checks)
     }
 
     /// Where the applied alignment stands.
@@ -891,7 +907,14 @@ impl DspiCore {
 
     /// Keep the applied alignment.
     ///
-    /// Errors: [`DspiError::InvalidArgument`] with nothing applied.
+    /// **After a verify that did not pass** the first Keep is refused
+    /// (nothing changes; the applied record's `message` says why): the
+    /// client shows it and asks the user again, and only a second Keep, at
+    /// least a second later, keeps it (as `measure_tune_keep`). A new
+    /// verify asks again.
+    ///
+    /// Errors: [`DspiError::InvalidArgument`] with nothing applied, or the
+    /// first Keep after a failed verify.
     pub fn measure_system_keep(&self) -> Result<MeasureSystemApplied> {
         let mut slot = self.system_slot();
         let o = slot
@@ -951,7 +974,11 @@ impl DspiCore {
         slot.session = Some(s);
     }
 
-    fn system_runs_start(&self, purpose: MeasureSystemPurpose) -> Result<MeasureSystemState> {
+    fn system_runs_start(
+        &self,
+        purpose: MeasureSystemPurpose,
+        checks: &[MeasureSystemUnitCheck],
+    ) -> Result<MeasureSystemState> {
         let state = {
             let mut slot = self.system_slot();
             if slot.session.as_ref().is_some_and(SysSession::active) {
@@ -963,7 +990,25 @@ impl DspiCore {
                 return Err(invalid("no system measurement result is ready"));
             };
             let jobs = o.sum_jobs(purpose)?;
-            let setup = o.setup.clone();
+            let mut setup = o.setup.clone();
+            // Review AT-C: the per-unit preflight again, on fresh checks
+            // (S2, S6, S8, S11, S13 as they are now, not as they were when
+            // the walked run was measured); what the limiters are now.
+            let (pre, units) =
+                self.with_hub(&mut slot, |hub| plan::preflight(&setup.setup, checks, hub))?;
+            if let Some(e) = plan::refusal(&pre) {
+                return Err(e);
+            }
+            if units.len() != setup.units.len()
+                || units.iter().any(|u| u.ctx.device_rate_hz != setup.rate_hz)
+            {
+                return Err(invalid(
+                    "the units changed since the measurement (their rate): measure again",
+                ));
+            }
+            for (old, new) in setup.units.iter_mut().zip(units) {
+                old.ctx.limiter_outputs = new.ctx.limiter_outputs;
+            }
             let session = self.with_hub(&mut slot, |hub| {
                 SysSession::open(setup, purpose, Some(jobs), hub, Instant::now())
             })?;

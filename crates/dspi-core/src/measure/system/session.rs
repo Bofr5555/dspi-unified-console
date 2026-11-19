@@ -268,21 +268,34 @@ impl SysSession {
             .saturating_add(LEAD_MARGIN_MS)
             .max(plan.setup.lead_ms);
         let jobs = jobs.unwrap_or_default();
-        let after = match purpose {
-            MeasureSystemPurpose::Measure => After::Ramp,
-            _ => After::Run,
-        };
+        // Every session ramps (S3): a sum check or a verify its own
+        // outputs again (review AT-C), not at the levels an earlier
+        // session's ramps found.
+        let after = After::Ramp;
         let spl = plan
             .units
             .first()
             .and_then(|u| u.plan.spl_cap_db)
             .map(|_| SplMeter::new(plan.capture_rate_hz));
-        let ramp_queue = plan
-            .units
-            .iter()
-            .enumerate()
-            .flat_map(|(i, u)| u.plan.outputs.iter().map(move |o| (i, o.output)))
-            .collect();
+        let ramp_queue: Vec<(usize, u8)> = match purpose {
+            MeasureSystemPurpose::Measure => plan
+                .units
+                .iter()
+                .enumerate()
+                .flat_map(|(i, u)| u.plan.outputs.iter().map(move |o| (i, o.output)))
+                .collect(),
+            _ => {
+                let mut q: Vec<(usize, u8)> = Vec::new();
+                for j in &jobs {
+                    for x in [(j.a.0, j.a.1), (j.b.0, j.b.1)] {
+                        if !q.contains(&x) {
+                            q.push(x);
+                        }
+                    }
+                }
+                q
+            }
+        };
         let n = plan.units.len();
         Ok(SysSession {
             domain: DomainId {
@@ -1244,7 +1257,8 @@ impl SysSession {
     }
 
     /// What the alignment engine adds per unit (WP ATHUBM's contract): the
-    /// play-out from `system.status`'s alignment and each measured output's
+    /// play-out (the unit's own D from `open`, the model's path and latency
+    /// from `system.status`'s alignment) and each measured output's
     /// `out.delay` in effect. A unit whose terms cannot be read gets none:
     /// its arrivals are then not offered.
     fn read_terms(&mut self, hub: &mut dyn Hub) {
@@ -1254,9 +1268,16 @@ impl SysSession {
         let status = hub.request("system.status", json!({})).ok();
         for (i, u) in self.plan.units.iter().enumerate() {
             let outputs: Vec<u8> = u.plan.outputs.iter().map(|o| o.output).collect();
+            // The unit's own D (review AT-C): the hub cannot read the units
+            // this session has locked, so its alignment is not asked for it.
+            let own = self.units.get(i).map(|x| super::proposal::PlayOut::Own {
+                d: x.open.d,
+                rate_hz: self.plan.rate_hz,
+            });
             let t = status
                 .as_ref()
-                .and_then(|s| super::proposal::playout_us(s, &u.serial))
+                .zip(own)
+                .and_then(|(s, own)| super::proposal::playout_us(s, &u.serial, own))
                 .and_then(|playout_us| {
                     let items: Vec<Value> = outputs
                         .iter()
@@ -1377,6 +1398,20 @@ impl SysSession {
                 msg: "no such summed run".into(),
             })?;
         let sweep = self.plan.sweep()?;
+        // S-AT4: 6 dB below the lower of the two levels this session's own
+        // ramps found, never above the measurement's.
+        let ramped = |x: (usize, u8, bool)| {
+            self.levels
+                .iter()
+                .find(|(u, o, _)| *u == x.0 && *o == x.1)
+                .map(|(_, _, l)| *l)
+        };
+        let (Some(la), Some(lb)) = (ramped(job.a), ramped(job.b)) else {
+            return Err(DspiError::InvalidArgument {
+                msg: "a summed run's output was not ramped".into(),
+            });
+        };
+        let level_db = (la.min(lb) - super::proposal::SUM_DOUBLING_DB).min(job.level_db);
         let mut parts = Vec::new();
         let mut configs = Vec::new();
         for &(u, o, inverted) in &[job.a, job.b] {
@@ -1394,7 +1429,7 @@ impl SysSession {
                     channel_mask: mask,
                     invert_mask: if inverted { mask } else { 0 },
                     flags: 0,
-                    level_db: job.level_db.min(pu.plan.ceiling_db),
+                    level_db: level_db.min(pu.plan.ceiling_db),
                     duration_ms: pu.plan.sweep.duration_ms,
                     repeat: SUM_PASSES,
                     gap_ms: pu.plan.sweep.gap_ms,
@@ -1609,6 +1644,10 @@ impl SysSession {
                     std::mem::take(&mut self.done_runs),
                     std::mem::take(&mut self.terms),
                     self.levels.clone(),
+                    self.units
+                        .iter()
+                        .map(|u| u.open.role == dspi_proto::ext::timebase::TB_ROLE_SOURCE)
+                        .collect(),
                 );
                 self.close(hub);
                 self.buf = Vec::new();
@@ -1631,7 +1670,15 @@ impl SysSession {
                         if let Some(g) = gate.first() {
                             Verdict::failed(idx, format!("the summed run is discarded: {g}"))
                         } else {
-                            job.judge(idx, &analysis, &self.plan)
+                            // The level it played at (both units the same).
+                            let played =
+                                levels.iter().map(|(_, l)| *l).fold(f32::INFINITY, f32::min);
+                            let played = if played.is_finite() {
+                                played
+                            } else {
+                                job.level_db
+                            };
+                            job.judge(idx, &analysis, &self.plan, played)
                         }
                     }
                     None => Verdict::failed(idx, "no such summed run".into()),

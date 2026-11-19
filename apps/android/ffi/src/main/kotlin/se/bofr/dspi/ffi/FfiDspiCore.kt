@@ -661,11 +661,11 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun measureSystemProposal(): MeasureSystemProposal = call { core.measureSystemProposal().toDomain() }
 
-    override fun measureSystemSumCheck(): MeasureSystemState = call { core.measureSystemSumCheck().toDomain() }
+    override fun measureSystemSumCheck(checks: List<MeasureSystemUnitCheck>): MeasureSystemState = call { core.measureSystemSumCheck(checks.map { it.toFfi() }).toDomain() }
 
     override fun measureSystemApply(proposalId: Long): MeasureSystemApplied = call { core.measureSystemApply(proposalId.toUInt()).toDomain() }
 
-    override fun measureSystemVerify(): MeasureSystemState = call { core.measureSystemVerify().toDomain() }
+    override fun measureSystemVerify(checks: List<MeasureSystemUnitCheck>): MeasureSystemState = call { core.measureSystemVerify(checks.map { it.toFfi() }).toDomain() }
 
     override fun measureSystemApplied(): MeasureSystemApplied = core.measureSystemApplied().toDomain()
 

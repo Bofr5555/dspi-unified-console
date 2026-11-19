@@ -39,7 +39,7 @@ use crate::{DspiError, Result};
 const MIN_SUM_POINTS: usize = 12;
 /// Each doubling of the outputs a summed run starts together lowers its
 /// level by this, dB (S-AT4).
-const SUM_DOUBLING_DB: f32 = 6.0;
+pub(crate) const SUM_DOUBLING_DB: f32 = 6.0;
 /// Of the fit window (`cycles / f`, three quarters after the onset), the
 /// part a later arrival must fall in to be judged: the first half of the
 /// window's fall.
@@ -78,12 +78,45 @@ impl Terms {
     }
 }
 
-/// A unit's play-out of a domain sample, us, from `system.status`'s
-/// alignment (`alignment.units[]` by serial): the sum of `pathDelayFrames`,
-/// `effective` and `latencyFrames` at the alignment's rate (the effective
-/// delay holds the lip-sync term); a S/PDIF source plays T at once (its lag is in its
-/// output delays), so its latency only.
-pub(crate) fn playout_us(status: &Value, serial: &str) -> Option<f64> {
+/// Where a unit's play-out delay D comes from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PlayOut {
+    /// The unit's own word: `EXT_TIME_BASE.d` of the group's entry as the
+    /// hub read it at `system.measure.open` (contract C2: a follower plays
+    /// the sample carried as T exactly D samples after it arrived; a source
+    /// plays T as it emits it, D = 0), at the units' rate, Hz.
+    Own {
+        /// D, samples.
+        d: u16,
+        /// The units' rate, Hz.
+        rate_hz: u32,
+    },
+    /// The hub's alignment (`effective`), read with no session open right
+    /// after `system.align` wrote it; `source`: the unit is the source of
+    /// the group's time base (it plays T at once; its lag is in its output
+    /// delays).
+    Engine {
+        /// The unit is the source of the group's time base.
+        source: bool,
+    },
+}
+
+/// A unit's play-out of a sample of the group's time base, us: T reaches
+/// the unit `pathDelayFrames` after the source emits it, the unit plays it
+/// its D later, and it is heard `latencyFrames` after that. The path and the
+/// latency are the model's, from `system.status`'s alignment
+/// (`alignment.units[]` by serial); D is `from`.
+///
+/// Review AT-C: during a measurement D is the unit's own
+/// ([`PlayOut::Own`]), never the alignment's `effective`. The session's
+/// device locks keep the hub from reading the units, so the alignment it
+/// reports then is computed without their limits and need not be what they
+/// run (an S/PDIF follower read 192 where it ran 150: its speakers were
+/// placed 875 us early against the source's). The unit's own D is also
+/// right for a unit not yet aligned as the model says, and for a line or
+/// USB-direct unit that is an S/PDIF source besides (R7b: D of the group's
+/// entry, 0 only on the S/PDIF time base).
+pub(crate) fn playout_us(status: &Value, serial: &str, from: PlayOut) -> Option<f64> {
     let a = status.get("alignment")?;
     let rate = a
         .get("rateHz")
@@ -101,18 +134,20 @@ pub(crate) fn playout_us(status: &Value, serial: &str) -> Option<f64> {
             .and_then(Value::as_f64)
             .unwrap_or(0.0)
     };
-    let latency = num("latencyFrames", "latency_frames");
-    let source = u
-        .get("spdif")
-        .and_then(|s| s.get("mode"))
-        .and_then(Value::as_str)
-        == Some("source");
-    let frames = if source {
-        latency
-    } else {
-        num("pathDelayFrames", "path_delay_frames") + num("effective", "effective") + latency
+    let latency_us = num("latencyFrames", "latency_frames") * 1e6 / rate;
+    let path = num("pathDelayFrames", "path_delay_frames");
+    let us = match from {
+        PlayOut::Own { d, rate_hz } => {
+            if rate_hz == 0 {
+                return None;
+            }
+            (path + f64::from(d)) * 1e6 / f64::from(rate_hz) + latency_us
+        }
+        PlayOut::Engine { source: true } => latency_us,
+        PlayOut::Engine { source: false } => {
+            (path + num("effective", "effective")) * 1e6 / rate + latency_us
+        }
     };
-    let us = frames * 1e6 / rate;
     us.is_finite().then_some(us)
 }
 
@@ -165,7 +200,9 @@ pub(crate) struct SumJob {
     /// `(unit, output, inverted)`.
     pub(crate) a: (usize, u8, bool),
     pub(crate) b: (usize, u8, bool),
-    /// The level both play at (S-AT4).
+    /// The most both play at: 6 dB below the lower of the measurement's
+    /// two ramp levels (S-AT4). The session ramps them again and plays 6 dB
+    /// below what it finds, never above this.
     pub(crate) level_db: f32,
     /// The sum the walked run predicts.
     pub(crate) predicted: Response,
@@ -225,7 +262,14 @@ fn rms_over(measured: &Response, predicted: &Response, band: (f64, f64)) -> Opti
 impl SumJob {
     /// The summed run's verdict: its one key's response against the
     /// prediction, at most 1.5 dB RMS over the transition's band.
-    pub(crate) fn judge(&self, job: usize, a: &SystemAnalysis, plan: &SetupPlan) -> Verdict {
+    /// `level_db`: the level the run played at.
+    pub(crate) fn judge(
+        &self,
+        job: usize,
+        a: &SystemAnalysis,
+        plan: &SetupPlan,
+        level_db: f32,
+    ) -> Verdict {
         let Some(key) = a.outputs.first().filter(|o| o.members.len() == 2) else {
             return Verdict::failed(job, "the summed run has no sum".into());
         };
@@ -235,7 +279,7 @@ impl SumJob {
         let Some(pu) = plan.units.get(self.a.0) else {
             return Verdict::failed(job, "no such unit".into());
         };
-        let measured = match runs::output_response(ir, a.walked.band_hz, self.level_db, &pu.plan) {
+        let measured = match runs::output_response(ir, a.walked.band_hz, level_db, &pu.plan) {
             Ok(r) => r.response,
             Err(e) => return Verdict::failed(job, format!("the summed run: {e}")),
         };
@@ -285,12 +329,32 @@ pub(crate) struct Outcome {
     terms: Vec<Option<Terms>>,
     /// `(unit, output, level)` from the ramps.
     levels: Vec<(usize, u8, f32)>,
-    /// Per transition: `(a index, b index)` into `measured`, its band.
+    /// Per transition: `(a index, b index)` into `measured`, its whole
+    /// check band (PLAN-AT 1.4; a summed run judges it up to its
+    /// [`window_reach`]).
     transitions: Vec<(usize, usize, (f64, f64))>,
     verdicts: Vec<Option<Verdict>>,
     proposal_id: u32,
     filed: Option<Filed>,
     pub(crate) applied: MeasureSystemApplied,
+    /// Per unit: it is the source of the group's time base (for the terms
+    /// read after an apply).
+    sources: Vec<bool>,
+    /// When a Keep after a verify that did not pass was first refused.
+    keep_refused_at: Option<dspi_transport::clock::Instant>,
+}
+
+/// A transition's check band as far up as a summed run can be judged whose
+/// two arrivals are `apart_ms` apart: its response is windowed about the
+/// first arrival, and above `0.375 * cycles / apart` the later one falls
+/// outside the window. Two arrivals that coincide (after an apply) are
+/// judged over the whole band.
+fn window_reach(band: (f64, f64), apart_ms: f64) -> (f64, f64) {
+    let dt = (apart_ms.abs() / 1000.0).max(1e-9);
+    (
+        band.0,
+        band.1.min(SUM_WINDOW_REACH * FIT_WINDOW_CYCLES / dt),
+    )
 }
 
 /// The transition responses on one reference: `h` shifted by `ms` (its
@@ -364,6 +428,7 @@ impl Outcome {
         runs_done: Vec<RunDone>,
         terms: Vec<Option<Terms>>,
         levels: Vec<(usize, u8, f32)>,
+        sources: Vec<bool>,
     ) -> Result<Outcome> {
         let mut reasons: Vec<String> = Vec::new();
         let serial = |u: usize| {
@@ -555,16 +620,11 @@ impl Outcome {
                 let u = pair_uncertainty(a, b, &runs_done, chained.as_deref());
                 let ra = shifted(&a.result.response, a.arrival_ms - a.own_ms);
                 let rb = shifted(&b.result.response, b.arrival_ms - b.own_ms);
-                if let Some(band) = transition_band(&ra, &rb, u) {
-                    // The summed run's response is windowed about its first
-                    // arrival: above this the later one falls outside the
-                    // window and the sum cannot be judged.
-                    let dt = ((a.arrival_ms - b.arrival_ms).abs() / 1000.0).max(1e-9);
-                    let band = (
-                        band.0,
-                        band.1.min(SUM_WINDOW_REACH * FIT_WINDOW_CYCLES / dt),
-                    );
-                    transitions.push((i, j, band));
+                if let Some(whole) = transition_band(&ra, &rb, u) {
+                    // Kept whole: each summed run is judged as far up as its
+                    // own window reaches (`window_reach`).
+                    let band = window_reach(whole, a.arrival_ms - b.arrival_ms);
+                    transitions.push((i, j, whole));
                     rows.push(MeasureSystemTransition {
                         a_serial: serial(a.unit),
                         a_output: a.output,
@@ -603,6 +663,8 @@ impl Outcome {
             proposal_id: 1,
             filed: None,
             applied: MeasureSystemApplied::default(),
+            sources,
+            keep_refused_at: None,
         })
     }
 
@@ -655,6 +717,21 @@ impl Outcome {
             };
             let ra = shifted(&a.result.response, a.arrival_ms - a.own_ms + change(a));
             let rb = shifted(&b.result.response, b.arrival_ms - b.own_ms + change(b));
+            // Review AT-C: the band follows the arrivals this run is predicted
+            // with. After an apply they coincide, so the verify judges the
+            // whole transition band and a delay that was wrong by more than
+            // the band's top allows fails it; with the walked run's distance
+            // it would be judged only as far up as the sum check was.
+            let mut band = window_reach(
+                band,
+                (a.arrival_ms + change(a)) - (b.arrival_ms + change(b)),
+            );
+            if after.is_some() {
+                // A unit plays an output delay in whole samples: an applied
+                // delay is uncertain by half a sample, 45 degrees at a
+                // quarter of the rate (the plan's `1 / (8 u)`).
+                band.1 = band.1.min(f64::from(self.setup.rate_hz) / 4.0);
+            }
             let sign = |m: &Measured| if m.inverted { -1.0 } else { 1.0 };
             let predicted = complex_sum(&[(&ra, sign(a)), (&rb, sign(b))])
                 .ok_or_else(|| invalid("the transition's responses are on different grids"))?;
@@ -677,6 +754,7 @@ impl Outcome {
                     && v.iter().all(|x| x.passed)
                     && v.len() == self.transitions.len();
                 self.applied.verified = Some(ok);
+                self.keep_refused_at = None;
                 self.applied.stage = MeasureSystemApplyStage::Verified;
                 self.applied.message = v
                     .iter()
@@ -811,8 +889,11 @@ impl Outcome {
         self.setup
             .units
             .iter()
-            .map(|u| {
-                let playout_us = playout_us(status.as_ref()?, &u.serial)?;
+            .enumerate()
+            .map(|(i, u)| {
+                let source = self.sources.get(i).copied().unwrap_or(false);
+                let playout_us =
+                    playout_us(status.as_ref()?, &u.serial, PlayOut::Engine { source })?;
                 let s = snaps.as_ref()?.iter().find(|s| s.serial == u.serial)?;
                 Some(Terms {
                     playout_us,
@@ -933,12 +1014,39 @@ impl Outcome {
     }
 
     /// Keep what is applied.
+    ///
+    /// Review AT-C, as P5's Keep (WP P5TRUST, coordinator decision (b)):
+    /// **after a verify that did not pass** the first Keep is refused
+    /// (nothing changes; `applied.message` says why) and only a second one,
+    /// at least a second later on the user's explicit confirmation, keeps
+    /// it. A new verify asks again.
     pub(crate) fn keep(&mut self) -> Result<MeasureSystemApplied> {
         if !matches!(
             self.applied.stage,
             MeasureSystemApplyStage::Applied | MeasureSystemApplyStage::Verified
         ) {
             return Err(invalid("nothing is applied"));
+        }
+        if self.applied.verified == Some(false) {
+            let now = crate::guarded::now();
+            let min =
+                std::time::Duration::from_millis(super::super::tune::TUNE_KEEP_CONFIRM_MIN_MS);
+            let confirmed = self
+                .keep_refused_at
+                .is_some_and(|at| now.saturating_duration_since(at) >= min);
+            if !confirmed {
+                self.keep_refused_at.get_or_insert(now);
+                let why = "the verify did not confirm the alignment; Keep it only if you are \
+                           sure (call Keep again to keep it anyway, or Revert)";
+                if !self.applied.message.contains(why) {
+                    self.applied.message = if self.applied.message.is_empty() {
+                        why.to_owned()
+                    } else {
+                        format!("{}; {why}", self.applied.message)
+                    };
+                }
+                return Err(invalid(why));
+            }
         }
         self.applied.stage = MeasureSystemApplyStage::Kept;
         Ok(self.applied.clone())

@@ -519,7 +519,12 @@ Admin, as every `system.set`). It is the arrival at the listening position
 relative to the latest output measured with it (0 for that one, negative for an
 earlier one), **acoustic only**: the client takes out what the engine adds
 itself (the unit's play-out, its latency and lip-sync terms and the output delay
-in effect while it measured). Where present it replaces the distance: each
+in effect while it measured). A unit's play-out of a time-base sample is the
+path's delay to it, the play-out delay D the unit itself reports
+(`EXT_TIME_BASE.d`; 0 for the source of that time base, whose lag is in its
+output delays) and its latency after the link; while a measurement holds the
+units, the D of `system.status`'s alignment is not it (the hub cannot read
+them then). Where present it replaces the distance: each
 speaker's acoustic time is `r / c`, or for a measured one `r_latest / c + (m −
 m_latest)` through the latest speaker of the same room and runs, and its
 `out.delay` is the room's latest time minus its own; a room measured whole gets

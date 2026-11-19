@@ -7505,10 +7505,14 @@ uint32_t dspi_measure_system_result(struct FfiCore *core, char *buf, uint32_t le
 uint32_t dspi_measure_system_proposal(struct FfiCore *core, char *buf, uint32_t len);
 
 /**
- * Start the summed check of every inter-unit transition: the state, or a
- * failure.
+ * Start the summed check of every inter-unit transition, from each
+ * unit's fresh check in `checks_json` (the preflight is judged again and
+ * each output ramped again): the state, or a failure.
  */
-uint32_t dspi_measure_system_sum_check(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_measure_system_sum_check(struct FfiCore *core,
+                                       const char *checks_json,
+                                       char *buf,
+                                       uint32_t len);
 
 /**
  * Apply proposal `proposal_id` (Admin): what was done, or a failure
@@ -7520,9 +7524,14 @@ uint32_t dspi_measure_system_apply(struct FfiCore *core,
                                    uint32_t len);
 
 /**
- * Repeat the summed runs after an apply: the state, or a failure.
+ * Repeat the summed runs after an apply, from each unit's fresh check
+ * in `checks_json` (as `dspi_measure_system_sum_check`): the state, or a
+ * failure.
  */
-uint32_t dspi_measure_system_verify(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_measure_system_verify(struct FfiCore *core,
+                                    const char *checks_json,
+                                    char *buf,
+                                    uint32_t len);
 
 /**
  * Where the applied alignment stands.

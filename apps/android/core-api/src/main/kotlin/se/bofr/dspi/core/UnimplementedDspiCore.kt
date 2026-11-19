@@ -590,11 +590,11 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun measureSystemProposal(): MeasureSystemProposal = throw NotImplementedError("measure_system_proposal")
 
-    override fun measureSystemSumCheck(): MeasureSystemState = throw NotImplementedError("measure_system_sum_check")
+    override fun measureSystemSumCheck(checks: List<MeasureSystemUnitCheck>): MeasureSystemState = throw NotImplementedError("measure_system_sum_check")
 
     override fun measureSystemApply(proposalId: Long): MeasureSystemApplied = throw NotImplementedError("measure_system_apply")
 
-    override fun measureSystemVerify(): MeasureSystemState = throw NotImplementedError("measure_system_verify")
+    override fun measureSystemVerify(checks: List<MeasureSystemUnitCheck>): MeasureSystemState = throw NotImplementedError("measure_system_verify")
 
     override fun measureSystemApplied(): MeasureSystemApplied = throw NotImplementedError("measure_system_applied")
 

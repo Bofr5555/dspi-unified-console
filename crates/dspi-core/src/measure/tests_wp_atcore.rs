@@ -333,7 +333,8 @@ impl Stub {
                             time_base: 0,
                             role: 0,
                             state: 3,
-                            d: 192,
+                            // The D it runs (EXT_TIME_BASE.d).
+                            d: u.effective as u16,
                             arm_lead_ms: ARM_LEAD_MS,
                             outputs: u.outputs,
                             t: e.t,
@@ -1255,13 +1256,48 @@ fn wp_atcore_the_engines_terms_are_read_per_transport() {
         {"serial": "S", "transport": "spdif", "effective": 77, "latencyFrames": 24, "spdif": {"mode": "source"}},
         {"serial": "F", "transport": "spdif", "effective": 300, "latencyFrames": 24, "spdif": {"mode": "follower"}}
     ]}});
-    let us = |s: &str| proposal::playout_us(&st, s).unwrap();
-    assert!((us("L") - 240.0 / 48.0 * 1000.0).abs() < 1e-9);
-    assert!((us("U") - 5_000.0).abs() < 1e-9);
-    assert!((us("S") - 500.0).abs() < 1e-9, "a source plays T at once");
-    assert!((us("F") - 324.0 / 48.0 * 1000.0).abs() < 1e-9);
-    assert_eq!(proposal::playout_us(&st, "X"), None);
-    assert_eq!(proposal::playout_us(&json!({}), "L"), None);
+    use proposal::PlayOut;
+    let engine =
+        |s: &str, source: bool| proposal::playout_us(&st, s, PlayOut::Engine { source }).unwrap();
+    assert!((engine("L", false) - 240.0 / 48.0 * 1000.0).abs() < 1e-9);
+    assert!((engine("U", false) - 5_000.0).abs() < 1e-9);
+    assert!(
+        (engine("S", true) - 500.0).abs() < 1e-9,
+        "a source plays T at once"
+    );
+    assert!((engine("F", false) - 324.0 / 48.0 * 1000.0).abs() < 1e-9);
+    let none = PlayOut::Engine { source: false };
+    assert_eq!(proposal::playout_us(&st, "X", none), None);
+    assert_eq!(proposal::playout_us(&json!({}), "L", none), None);
+    // -- review AT-C -- during a session D is the unit's own word
+    // (`EXT_TIME_BASE.d` at open), whatever the alignment says meanwhile:
+    // the follower runs 150 where the hub, unable to read it, says 300.
+    let own = |s: &str, d: u16| {
+        proposal::playout_us(&st, s, PlayOut::Own { d, rate_hz: 48_000 }).unwrap()
+    };
+    assert!((own("F", 150) - 174.0 / 48.0 * 1000.0).abs() < 1e-9);
+    assert!((own("S", 0) - 500.0).abs() < 1e-9, "a source: D = 0");
+    assert!((own("L", 189) - 240.0 / 48.0 * 1000.0).abs() < 1e-9);
+    // A line unit that is also an S/PDIF source (R7b), measured with its
+    // line group: its line entry's D, not "a source plays at once".
+    let st2 = json!({"alignment": {"rateHz": 48000, "units": [
+        {"serial": "LS", "transport": "alink", "pathDelayFrames": 3, "effective": 125,
+         "latencyFrames": 16, "spdif": {"mode": "source", "lagSamples": 192}}
+    ]}});
+    let us = proposal::playout_us(
+        &st2,
+        "LS",
+        PlayOut::Own {
+            d: 125,
+            rate_hz: 48_000,
+        },
+    )
+    .unwrap();
+    assert!((us - 144.0 / 48.0 * 1000.0).abs() < 1e-9);
+    assert_eq!(
+        proposal::playout_us(&st, "L", PlayOut::Own { d: 1, rate_hz: 0 }),
+        None
+    );
     let r = json!({"values": [{"ok": true, "value": 1.25}, {"ok": true, "value": 0}]});
     assert_eq!(
         proposal::out_delays_of(&r, &[2, 5]),
@@ -1355,7 +1391,7 @@ proptest! {
         let st = json!({"alignment": {"rateHz": rate, "units": [
             {"serial": "A", "effective": eff, "latencyFrames": lat, "pathDelayFrames": lat}
         ]}});
-        if let Some(us) = proposal::playout_us(&st, "A") {
+        if let Some(us) = proposal::playout_us(&st, "A", proposal::PlayOut::Engine { source: false }) {
             prop_assert!(us.is_finite());
         }
         let r = json!({"values": vals.iter().map(|v| json!({"ok": true, "value": v})).collect::<Vec<_>>()});
@@ -1426,4 +1462,88 @@ fn wp_atcore_a_run_the_hub_holds_back_for_settling_says_so_and_finishes() {
         sess.state()
     );
     assert!(sess.state().words.is_empty());
+}
+
+// -- review AT-C --
+fn sum_session(
+    o: &proposal::Outcome,
+    hub: &mut StubHub,
+    purpose: MeasureSystemPurpose,
+) -> Vec<proposal::Verdict> {
+    let jobs = o.sum_jobs(purpose).unwrap();
+    let mut sc =
+        SysSession::open(o.setup.clone(), purpose, Some(jobs), hub, Instant::now()).unwrap();
+    drive(&mut sc, hub, 4_000);
+    let Some(SessionOutput::Verdicts(v)) = sc.take_outcome() else {
+        panic!("{:?}", sc.state());
+    };
+    v
+}
+
+/// The sum check is judged only as far up as its window sees both arrivals
+/// (703 Hz for two outputs 8 ms apart), where a walked delay that is wrong
+/// by 100 us still agrees within 1.5 dB. The verify must not inherit that
+/// band: after the apply the arrivals are predicted to coincide, the whole
+/// transition band is judged (up to a quarter of the rate), and the wrong
+/// delay fails it.
+#[test]
+fn review_atc_the_verify_judges_the_whole_band_and_fails_a_wrong_delay() {
+    let s = setup(&[("A", &[0]), ("B", &[0])]);
+    let mut hub = StubHub(Arc::new(Mutex::new(Stub::new(vec![
+        unit("A", 1, 48, &[3.0]),
+        unit("B", 1, 48, &[11.0]),
+    ]))));
+    let (_, out) = measure(&mut hub, &s);
+    let mut o = out.unwrap();
+    let top = o.result.transitions[0].band_hi_hz;
+    assert!(
+        (600.0..800.0).contains(&top),
+        "the sum check's reach: {top}"
+    );
+    // B plays 0.1 ms later than the walked run measured it.
+    hub.0.lock().unwrap().faults.sum_detune = Some((1, 0.1));
+    let v = sum_session(&o, &mut hub, MeasureSystemPurpose::SumCheck);
+    assert!(v[0].passed, "below 703 Hz 100 us is not told: {v:?}");
+    o.absorb_verdicts(MeasureSystemPurpose::SumCheck, v);
+    let p = o.proposal("admin");
+    assert!(p.offered, "{p:?}");
+    o.apply(&mut hub, p.id).unwrap();
+    let jobs = o.sum_jobs(MeasureSystemPurpose::Verify).unwrap();
+    assert!(
+        (jobs[0].band.1 - 12_000.0).abs() < 1.0,
+        "the verify's band: {:?}",
+        jobs[0].band
+    );
+    let v = sum_session(&o, &mut hub, MeasureSystemPurpose::Verify);
+    assert!(!v[0].passed, "{v:?}");
+    o.absorb_verdicts(MeasureSystemPurpose::Verify, v);
+    assert_eq!(o.applied.verified, Some(false), "{}", o.applied.message);
+    // As P5's Keep: after a verify that did not pass, the first Keep is
+    // refused and says why; a second one right away (a double click) too;
+    // one after the user had time to read it keeps.
+    assert!(o.keep().is_err());
+    assert_eq!(o.applied.stage, MeasureSystemApplyStage::Verified);
+    assert!(
+        o.applied.message.contains("did not confirm"),
+        "{}",
+        o.applied.message
+    );
+    assert!(o.keep().is_err(), "a double click");
+    crate::guarded::skew::advance(Duration::from_millis(1_100));
+    assert_eq!(o.keep().unwrap().stage, MeasureSystemApplyStage::Kept);
+    // And a right delay passes it over the same band.
+    let mut hub = StubHub(Arc::new(Mutex::new(Stub::new(vec![
+        unit("A", 1, 48, &[3.0]),
+        unit("B", 1, 48, &[11.0]),
+    ]))));
+    let (_, out) = measure(&mut hub, &s);
+    let mut o = out.unwrap();
+    let v = sum_session(&o, &mut hub, MeasureSystemPurpose::SumCheck);
+    o.absorb_verdicts(MeasureSystemPurpose::SumCheck, v);
+    let p = o.proposal("admin");
+    o.apply(&mut hub, p.id).unwrap();
+    let v = sum_session(&o, &mut hub, MeasureSystemPurpose::Verify);
+    assert!(v[0].passed, "{v:?}");
+    o.absorb_verdicts(MeasureSystemPurpose::Verify, v);
+    assert_eq!(o.keep().unwrap().stage, MeasureSystemApplyStage::Kept);
 }

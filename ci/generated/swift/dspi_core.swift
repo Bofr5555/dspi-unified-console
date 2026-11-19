@@ -4438,7 +4438,14 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     /**
      * Keep the applied alignment.
      *
-     * Errors: [`DspiError::InvalidArgument`] with nothing applied.
+     * **After a verify that did not pass** the first Keep is refused
+     * (nothing changes; the applied record's `message` says why): the
+     * client shows it and asks the user again, and only a second Keep, at
+     * least a second later, keeps it (as `measure_tune_keep`). A new
+     * verify asks again.
+     *
+     * Errors: [`DspiError::InvalidArgument`] with nothing applied, or the
+     * first Keep after a failed verify.
      */
     func measureSystemKeep() throws  -> MeasureSystemApplied
     
@@ -4510,15 +4517,20 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func measureSystemStop()  -> MeasureSystemState
     
     /**
-     * Run the summed check of every inter-unit transition (RC5f): each
-     * transition's units started by op 9 at one T with their outputs at
-     * their current net polarities. Control or Admin. Then tick as for a
-     * measurement; the proposal shows the verdicts.
+     * Start the summed check of every inter-unit transition (RC5f): one
+     * summed run per transition, the two units started at one T, compared
+     * with the sum the walked run predicts. **A session under every S-rule
+     * of its own** (review AT-C, as P5's summed check): `checks` are each
+     * unit's fresh [`DspiCore::measure_system_unit_check`] (the preflight
+     * S2, S6, S8, S11, S13 is judged again, a blocker names its unit and
+     * nothing plays), and each output of a transition is ramped again (S3)
+     * before the summed run plays 6 dB below the lower of the two levels
+     * (S-AT4), never above the measurement's.
      *
-     * Errors: [`DspiError::InvalidArgument`] with no result, nothing to
-     * check, or a session running; the hub's refusals as at the start.
+     * Errors: as [`DspiCore::measure_system_start`]; [`DspiError::
+     * InvalidArgument`] with no result or no transition.
      */
-    func measureSystemSumCheck() throws  -> MeasureSystemState
+    func measureSystemSumCheck(checks: [MeasureSystemUnitCheck]) throws  -> MeasureSystemState
     
     /**
      * Drive the system session: the hub's status (about 4 Hz, which renews
@@ -4541,13 +4553,15 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func measureSystemUnitCheck(setup: MeasureSystemSetup, unit: MeasureSystemUnit) throws  -> MeasureSystemUnitCheck
     
     /**
-     * After an apply: the summed runs again with the new delays (P5's
-     * verify). Tick as for a measurement; `measure_system_applied` shows
-     * the verdict.
+     * Repeat the summed runs after an apply (P5's verify step), predicted
+     * with each output's applied change. A session under every S-rule of
+     * its own, as [`DspiCore::measure_system_sum_check`]: `checks` are each
+     * unit's fresh check, and each output is ramped again.
      *
-     * Errors: as `measure_system_sum_check`; nothing applied.
+     * Errors: as [`DspiCore::measure_system_sum_check`]; [`DspiError::
+     * InvalidArgument`] with nothing applied.
      */
-    func measureSystemVerify() throws  -> MeasureSystemState
+    func measureSystemVerify(checks: [MeasureSystemUnitCheck]) throws  -> MeasureSystemState
     
     /**
      * Drive the session: apply queued notifications, judge them (S5), renew
@@ -11491,7 +11505,14 @@ open func measureSystemCapturePush(firstFrame: UInt64, samples: [Float], rateHz:
     /**
      * Keep the applied alignment.
      *
-     * Errors: [`DspiError::InvalidArgument`] with nothing applied.
+     * **After a verify that did not pass** the first Keep is refused
+     * (nothing changes; the applied record's `message` says why): the
+     * client shows it and asks the user again, and only a second Keep, at
+     * least a second later, keeps it (as `measure_tune_keep`). A new
+     * verify asks again.
+     *
+     * Errors: [`DspiError::InvalidArgument`] with nothing applied, or the
+     * first Keep after a failed verify.
      */
 open func measureSystemKeep()throws  -> MeasureSystemApplied  {
     return try  FfiConverterTypeMeasureSystemApplied_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
@@ -11607,17 +11628,23 @@ open func measureSystemStop() -> MeasureSystemState  {
 }
     
     /**
-     * Run the summed check of every inter-unit transition (RC5f): each
-     * transition's units started by op 9 at one T with their outputs at
-     * their current net polarities. Control or Admin. Then tick as for a
-     * measurement; the proposal shows the verdicts.
+     * Start the summed check of every inter-unit transition (RC5f): one
+     * summed run per transition, the two units started at one T, compared
+     * with the sum the walked run predicts. **A session under every S-rule
+     * of its own** (review AT-C, as P5's summed check): `checks` are each
+     * unit's fresh [`DspiCore::measure_system_unit_check`] (the preflight
+     * S2, S6, S8, S11, S13 is judged again, a blocker names its unit and
+     * nothing plays), and each output of a transition is ramped again (S3)
+     * before the summed run plays 6 dB below the lower of the two levels
+     * (S-AT4), never above the measurement's.
      *
-     * Errors: [`DspiError::InvalidArgument`] with no result, nothing to
-     * check, or a session running; the hub's refusals as at the start.
+     * Errors: as [`DspiCore::measure_system_start`]; [`DspiError::
+     * InvalidArgument`] with no result or no transition.
      */
-open func measureSystemSumCheck()throws  -> MeasureSystemState  {
+open func measureSystemSumCheck(checks: [MeasureSystemUnitCheck])throws  -> MeasureSystemState  {
     return try  FfiConverterTypeMeasureSystemState_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
-    uniffi_dspi_core_fn_method_dspicore_measure_system_sum_check(self.uniffiClonePointer(),$0
+    uniffi_dspi_core_fn_method_dspicore_measure_system_sum_check(self.uniffiClonePointer(),
+        FfiConverterSequenceTypeMeasureSystemUnitCheck.lower(checks),$0
     )
 })
 }
@@ -11655,15 +11682,18 @@ open func measureSystemUnitCheck(setup: MeasureSystemSetup, unit: MeasureSystemU
 }
     
     /**
-     * After an apply: the summed runs again with the new delays (P5's
-     * verify). Tick as for a measurement; `measure_system_applied` shows
-     * the verdict.
+     * Repeat the summed runs after an apply (P5's verify step), predicted
+     * with each output's applied change. A session under every S-rule of
+     * its own, as [`DspiCore::measure_system_sum_check`]: `checks` are each
+     * unit's fresh check, and each output is ramped again.
      *
-     * Errors: as `measure_system_sum_check`; nothing applied.
+     * Errors: as [`DspiCore::measure_system_sum_check`]; [`DspiError::
+     * InvalidArgument`] with nothing applied.
      */
-open func measureSystemVerify()throws  -> MeasureSystemState  {
+open func measureSystemVerify(checks: [MeasureSystemUnitCheck])throws  -> MeasureSystemState  {
     return try  FfiConverterTypeMeasureSystemState_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
-    uniffi_dspi_core_fn_method_dspicore_measure_system_verify(self.uniffiClonePointer(),$0
+    uniffi_dspi_core_fn_method_dspicore_measure_system_verify(self.uniffiClonePointer(),
+        FfiConverterSequenceTypeMeasureSystemUnitCheck.lower(checks),$0
     )
 })
 }
@@ -66370,7 +66400,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_measure_system_capture_push() != 35486) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_measure_system_keep() != 4155) {
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_system_keep() != 44096) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_measure_system_preflight() != 38600) {
@@ -66394,7 +66424,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_measure_system_stop() != 33996) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_measure_system_sum_check() != 583) {
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_system_sum_check() != 21511) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_measure_system_tick() != 37419) {
@@ -66403,7 +66433,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_measure_system_unit_check() != 61995) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_measure_system_verify() != 36972) {
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_system_verify() != 27297) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_measure_tick() != 49262) {

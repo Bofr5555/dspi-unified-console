@@ -748,14 +748,14 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
         return inner.measureSystemStart(setup, checks)
     }
 
-    override fun measureSystemSumCheck(): MeasureSystemState {
+    override fun measureSystemSumCheck(checks: List<MeasureSystemUnitCheck>): MeasureSystemState {
         guard("measureSystemSumCheck")
-        return inner.measureSystemSumCheck()
+        return inner.measureSystemSumCheck(checks)
     }
 
-    override fun measureSystemVerify(): MeasureSystemState {
+    override fun measureSystemVerify(checks: List<MeasureSystemUnitCheck>): MeasureSystemState {
         guard("measureSystemVerify")
-        return inner.measureSystemVerify()
+        return inner.measureSystemVerify(checks)
     }
 
     override fun measureSystemApply(proposalId: Long): MeasureSystemApplied {

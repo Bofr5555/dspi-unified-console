@@ -12,9 +12,11 @@
 //! - `measureSystemCapturePush {firstFrame, samples, rateHz, clipped?}`,
 //!   `measureSystemTick`, `measureSystemState`, `measureSystemStop`: the
 //!   state.
-//! - `measureSystemResult`, `measureSystemProposal`, `measureSystemSumCheck`,
-//!   `measureSystemApply {proposalId}`, `measureSystemVerify`,
-//!   `measureSystemApplied`, `measureSystemKeep`, `measureSystemRevert`.
+//! - `measureSystemResult`, `measureSystemProposal`, `measureSystemSumCheck
+//!   {checks}`, `measureSystemApply {proposalId}`, `measureSystemVerify
+//!   {checks}` (each unit's fresh check: a summed session judges the
+//!   preflight and ramps again), `measureSystemApplied`,
+//!   `measureSystemKeep`, `measureSystemRevert`.
 
 use dspi_core::{DspiCore, MeasureSystemSetup, MeasureSystemUnit, MeasureSystemUnitCheck};
 use serde::Deserialize;
@@ -40,6 +42,13 @@ struct UnitCheck {
 #[derive(Debug, Deserialize)]
 struct Start {
     setup: MeasureSystemSetup,
+    #[serde(default)]
+    checks: Vec<MeasureSystemUnitCheck>,
+}
+
+/// Each unit's fresh check, for a summed session.
+#[derive(Debug, Deserialize)]
+struct Checks {
     #[serde(default)]
     checks: Vec<MeasureSystemUnitCheck>,
 }
@@ -74,11 +83,15 @@ pub fn dispatch(core: &DspiCore, method: &str, p: Value) -> Option<CallResult> {
         "measureSystemStop" => Ok(tidy(&core.measure_system_stop())),
         "measureSystemResult" => reply(core.measure_system_result()),
         "measureSystemProposal" => reply(core.measure_system_proposal()),
-        "measureSystemSumCheck" => reply(core.measure_system_sum_check()),
+        "measureSystemSumCheck" => {
+            params::<Checks>(p).and_then(|q| reply(core.measure_system_sum_check(q.checks)))
+        }
         "measureSystemApply" => {
             params::<Id>(p).and_then(|q| reply(core.measure_system_apply(q.proposal_id)))
         }
-        "measureSystemVerify" => reply(core.measure_system_verify()),
+        "measureSystemVerify" => {
+            params::<Checks>(p).and_then(|q| reply(core.measure_system_verify(q.checks)))
+        }
         "measureSystemApplied" => Ok(tidy(&core.measure_system_applied())),
         "measureSystemKeep" => reply(core.measure_system_keep()),
         "measureSystemRevert" => reply(core.measure_system_revert()),
@@ -148,9 +161,9 @@ mod tests_wp_atcore {
         for (m, p) in [
             ("measureSystemResult", Value::Null),
             ("measureSystemProposal", Value::Null),
-            ("measureSystemSumCheck", Value::Null),
+            ("measureSystemSumCheck", json!({"checks": []})),
             ("measureSystemApply", json!({ "proposalId": 1 })),
-            ("measureSystemVerify", Value::Null),
+            ("measureSystemVerify", json!({"checks": []})),
             ("measureSystemKeep", Value::Null),
             ("measureSystemRevert", Value::Null),
         ] {

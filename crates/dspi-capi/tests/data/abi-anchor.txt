@@ -1875,12 +1875,18 @@ uint32_t dspi_measure_system_state(struct FfiCore *core, char *buf, uint32_t len
 uint32_t dspi_measure_system_stop(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_measure_system_result(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_measure_system_proposal(struct FfiCore *core, char *buf, uint32_t len);
-uint32_t dspi_measure_system_sum_check(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_measure_system_sum_check(struct FfiCore *core,
+const char *checks_json,
+char *buf,
+uint32_t len);
 uint32_t dspi_measure_system_apply(struct FfiCore *core,
 uint32_t proposal_id,
 char *buf,
 uint32_t len);
-uint32_t dspi_measure_system_verify(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_measure_system_verify(struct FfiCore *core,
+const char *checks_json,
+char *buf,
+uint32_t len);
 uint32_t dspi_measure_system_applied(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_measure_system_keep(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_measure_system_revert(struct FfiCore *core, char *buf, uint32_t len);

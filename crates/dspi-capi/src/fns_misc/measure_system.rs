@@ -154,15 +154,21 @@ pub extern "C" fn dspi_measure_system_proposal(
     text(core, buf, len, |c| json_reply(c.measure_system_proposal()))
 }
 
-/// Start the summed check of every inter-unit transition: the state, or a
-/// failure.
+/// Start the summed check of every inter-unit transition, from each
+/// unit's fresh check in `checks_json` (the preflight is judged again and
+/// each output ramped again): the state, or a failure.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_measure_system_sum_check(
     core: *mut FfiCore,
+    checks_json: *const c_char,
     buf: *mut c_char,
     len: u32,
 ) -> u32 {
-    text(core, buf, len, |c| json_reply(c.measure_system_sum_check()))
+    text(core, buf, len, |c| {
+        let r = json_arg::<Vec<MeasureSystemUnitCheck>>(checks_json, "checks")
+            .and_then(|checks| c.measure_system_sum_check(checks));
+        json_reply(r)
+    })
 }
 
 /// Apply proposal `proposal_id` (Admin): what was done, or a failure
@@ -179,14 +185,21 @@ pub extern "C" fn dspi_measure_system_apply(
     })
 }
 
-/// Repeat the summed runs after an apply: the state, or a failure.
+/// Repeat the summed runs after an apply, from each unit's fresh check
+/// in `checks_json` (as `dspi_measure_system_sum_check`): the state, or a
+/// failure.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_measure_system_verify(
     core: *mut FfiCore,
+    checks_json: *const c_char,
     buf: *mut c_char,
     len: u32,
 ) -> u32 {
-    text(core, buf, len, |c| json_reply(c.measure_system_verify()))
+    text(core, buf, len, |c| {
+        let r = json_arg::<Vec<MeasureSystemUnitCheck>>(checks_json, "checks")
+            .and_then(|checks| c.measure_system_verify(checks));
+        json_reply(r)
+    })
 }
 
 /// Where the applied alignment stands.
@@ -276,9 +289,9 @@ mod tests_wp_atcore {
         for r in [
             read(|b, l| dspi_measure_system_result(h, b, l)),
             read(|b, l| dspi_measure_system_proposal(h, b, l)),
-            read(|b, l| dspi_measure_system_sum_check(h, b, l)),
+            read(|b, l| dspi_measure_system_sum_check(h, c"[]".as_ptr(), b, l)),
             read(|b, l| dspi_measure_system_apply(h, 1, b, l)),
-            read(|b, l| dspi_measure_system_verify(h, b, l)),
+            read(|b, l| dspi_measure_system_verify(h, c"[]".as_ptr(), b, l)),
             read(|b, l| dspi_measure_system_keep(h, b, l)),
             read(|b, l| dspi_measure_system_revert(h, b, l)),
         ] {
