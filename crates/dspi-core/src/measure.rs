@@ -55,11 +55,18 @@ mod session;
 mod live;
 // -- WP P5TUNE -- the auto-tune (PLAN-P5 section 1.4, T10)
 mod tune;
+// -- WP P5CURV -- the passive microphone RTA and a measurement document's curves
+mod doc_curves;
+mod passive;
+pub use doc_curves::{
+    MeasureDocCurve, MeasureDocCurves, MeasureDocCurvesOptions, measure_doc_curves,
+};
 pub use live::{
     MeasureLiveAdjust, MeasureLiveBand, MeasureLiveChange, MeasureLiveCurve, MeasureLiveFrame,
     MeasureLiveMode, MeasureLiveProposal, MeasureLiveRta, MeasureLiveSetup, MeasureLiveState,
     MeasureRtaAveraging,
 };
+pub use passive::{MeasureRtaPassiveFrame, MeasureRtaPassiveSetup, MeasureRtaPassiveState};
 pub use tune::{
     MeasureLayout, MeasureLayoutOutput, MeasureTuneCheck, MeasureTuneCurves, MeasureTuneKeep,
     MeasureTuneKind, MeasureTuneOptions, MeasureTuneParam, MeasureTuneProposal, MeasureTuneStage,
@@ -597,6 +604,9 @@ pub(crate) struct MeasureSlot {
     tune: Mutex<tune::Tune>,
     /// What the auto-tune shows (a leaf).
     tune_view: Mutex<MeasureTuneState>,
+    // -- WP P5CURV --
+    /// The passive microphone RTA (a leaf: nothing is taken under it).
+    passive: Mutex<Option<passive::Passive>>,
 }
 
 impl MeasureSlot {
