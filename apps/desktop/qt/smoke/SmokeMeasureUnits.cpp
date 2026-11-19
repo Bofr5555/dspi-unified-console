@@ -299,7 +299,8 @@ static void unitsSection(SmokeDriver &d) {
     link->connectToHub(hub.url);
     const bool listed = settled() && d.waitFor(15000, [&] {
         int n = 0;
-        for (const QVariant &v : link->devices()) n += v.toMap().value(QStringLiteral("serial")).toString().startsWith(QLatin1String("DEMO-TB-"));
+        // -- review AT-D2 -- the four measured here (WP ATDEMO's sender DEMO-TB-TX is a fifth DEMO-TB- device)
+        for (const QVariant &v : link->devices()) n += QStringList{ A, B, C, X }.contains(v.toMap().value(QStringLiteral("serial")).toString());
         return link->phase() == QLatin1String("choose_device") && n == 4;
     });
     for (const QVariant &v : link->devices())
@@ -842,7 +843,9 @@ static void spdifSection(SmokeDriver &d) {
     std::printf("smoke: atqt-spdif: %s\n", qPrintable(sys->summary()));
     d.check("atqt-spdif: units fed by S/PDIF are not in the audio link's table nor counted in its summary",
             (!alinkRow || !alinkRow->isVisible()) && (!sourceRow || !sourceRow->isVisible())
-                && sys->summary().startsWith(QLatin1String("Audio link: 4 of 4 locked")));
+                // -- review AT-D2 -- 7: the demo's four and WP ATDEMO's three time-base units, now in the
+                // model; the two S/PDIF units are not among them (9 if they were)
+                && sys->summary().startsWith(QLatin1String("Audio link: 7 of 7 locked")));
     if (window) {
         window->resize(880, 1300);
         d.spin(300);
