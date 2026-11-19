@@ -185,6 +185,9 @@ pub struct ApplyAtFrameStatus {
 /// cancel all, 1 mute, 2 unmute, 3 preset load (`arg` slot), 4 master volume
 /// (`value` dB x 100), 5 output delay (`arg` output, `value` samples), 6 rate
 /// (`arg` rate code), 7 click on output `arg`, 8 sync pulse.
+/// -- WP ATPROTO -- 9 `SIGGEN_START` (the staged generator config starts on
+/// that sample; `arg` and `value` 0) and 10 `SIGGEN_STOP` (`arg` 0 fade, 1
+/// now), `extension_channel_spec.md` 2.8.7.1.
 pub const APPLY_OP_MAX: u8 = ApplyOp::MAX;
 
 #[cfg_attr(feature = "uniffi", uniffi::export)]

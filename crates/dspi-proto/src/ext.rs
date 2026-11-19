@@ -41,6 +41,8 @@ pub fn name(id: u16) -> &'static str {
         0x8000..=0x800A => alink::alink_name(id).unwrap_or("experimental"),
         // -- WP AUSB1 --
         0x8010..=0x8012 => alink_usb::alink_usb_name(id).unwrap_or("experimental"),
+        // -- WP ATPROTO --
+        0x8020..=0x8022 | 0x8030..=0x8031 => timebase::timebase_name(id).unwrap_or("experimental"),
         0x800B..=0xFFFF => "experimental",
         _ => "unknown",
     }
