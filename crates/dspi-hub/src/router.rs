@@ -29,6 +29,8 @@ use dspi_proto::generated::ext;
 use dspi_proto::generated::opcodes as op;
 use dspi_proto::generated::rta;
 use dspi_session::overvolt;
+// -- WP PGHDEV --
+use dspi_proto::paged::CmdId;
 
 use crate::lock::LockTable;
 use crate::policy::{self, Policy};
@@ -123,6 +125,12 @@ struct State {
     /// Child sessions (the parameter API's) and the session each acts for: a device
     /// lock the parent holds lets its child's commands through, while both are open.
     acts_for: BTreeMap<SessionId, SessionId>,
+}
+
+// -- WP PGHDEV --
+/// Whether a request is on page 0 (the 1.1.6 shape): its `wIndex` names no page.
+fn is_page_0(req: &CmdRequest) -> bool {
+    CmdId::from_request(req.b_request, req.w_index).is_legacy()
 }
 
 // -- WP P1HL --
@@ -287,11 +295,27 @@ impl Router {
     /// once, without touching the device: size, role, lock, then `max_inflight`. The
     /// app has no wire, so no size limit.
     pub fn admit(&self, s: &SessionCtx, req: &CmdRequest, now: Instant) -> Result<(), u8> {
+        // -- WP PGHDEV -- a page-0 request to a legacy device, by the 1.2 table
+        self.admit_class(s, req, self.policy.classify(req.b_request, req.dir), now)
+    }
+
+    // -- WP PGHDEV --
+    /// [`Router::admit`] with the class the request's route gives it
+    /// (`device::Route::class`, PLAN-PG section 1.5): the 1.2 table for page 0 to a
+    /// legacy device, the stricter of the 1.2 and 1.3 classes for a translated one,
+    /// the 1.3 table and our private rows for a page.
+    pub fn admit_class(
+        &self,
+        s: &SessionCtx,
+        req: &CmdRequest,
+        class: policy::Class,
+        now: Instant,
+    ) -> Result<(), u8> {
         let size = req.payload.len().max(usize::from(req.w_length));
         if !s.exempt_inflight && size > MAX_PAYLOAD {
             return Err(status::TOO_LARGE);
         }
-        if !self.policy.allows(s.role, req.b_request, req.dir) {
+        if !policy::role_permits(s.role, class) {
             return Err(status::DENIED);
         }
         let mut st = self.lock();
@@ -323,18 +347,27 @@ impl Router {
     }
 
     /// Whether this command is a parameter read ([`Policy::retries_stall`]).
+    /// -- WP PGHDEV -- Never a paged request: the adapter retries what the firmware
+    /// refused busy (`VC_ERR_BUSY`), and nothing else may be repeated.
     pub fn retries_stall(&self, req: &CmdRequest) -> bool {
-        self.policy.retries_stall(req.b_request, req.dir)
+        is_page_0(req) && self.policy.retries_stall(req.b_request, req.dir)
     }
 
     /// Whether this command can change the device ([`Policy::mutates`]).
+    /// -- WP PGHDEV -- by `(page, cmd)` of the request as sent ([`Policy::mutates_id`]),
+    /// never by its 1.1.6 equivalent: a paged status read whose equivalent is a 1.2
+    /// `config` row must not count as a write (PG-B review, finding 8).
     pub fn mutates(&self, req: &CmdRequest) -> bool {
-        self.policy.mutates(req.b_request, req.dir)
+        self.policy
+            .mutates_id(CmdId::from_request(req.b_request, req.w_index), req.dir)
     }
 
     /// Whether this request is a STOP that must not reach the device, because another
     /// session is watching (spec 7.15). Notes what makes this session a watcher. Reads
     /// and START count even if the device then refuses them.
+    /// -- WP PGHDEV -- `req` is the request's 1.1.6 equivalent (`judge_view`), so the
+    /// paged `MEAS.RTA_STOP`, `_START` and band reads count as their 1.1.6 forms do
+    /// (spec 7.15: analyser sharing by id on a paged device).
     fn stop_is_swallowed(
         &self,
         s: &SessionCtx,
@@ -392,8 +425,16 @@ impl Router {
         if self.lock().closing.contains_key(&s.id) {
             return Err((status::NO_DEVICE, Vec::new()));
         }
-        if self.stop_is_swallowed(s, req, now, unit.others_poll) {
-            return Err((status::OK, vec![RTA_ACK]));
+        // -- WP PGHDEV -- every judge here sees the 1.1.6 equivalent (OD-PGi); a paged
+        // request without one is no analyser request, no voltage write, and is
+        // attributed as itself
+        let paged = !is_page_0(req);
+        let view = if paged { policy::judge_view(req) } else { None };
+        let judged_req = view.as_ref().unwrap_or(req);
+        if self.stop_is_swallowed(s, judged_req, now, unit.others_poll) {
+            // -- WP PGHDEV -- the swallowed `MEAS.RTA_STOP` is a SET: `OK`, no payload
+            let ack = if paged { Vec::new() } else { vec![RTA_ACK] };
+            return Err((status::OK, ack));
         }
         // The app's session is exempt, and this is safe: it is this process's own core, and
         // that core's `core_vreg_op` is the only path that encodes these requests. It
@@ -404,7 +445,8 @@ impl Router {
         let judged = if s.id == LOCAL_SESSION_ID {
             None
         } else {
-            policy::core_vreg_write(req)
+            // -- WP PGHDEV -- 0x00 and the tunnel 0xE010 alike
+            policy::core_vreg_write_id(req)
         };
         if let Some(request) = judged {
             let refused = match request {
@@ -420,9 +462,11 @@ impl Router {
                 return Err((status::DENIED, Vec::new()));
             }
         }
-        if !self.policy.mutates(req.b_request, req.dir) || is_silent(req) {
+        // -- WP PGHDEV -- whether it writes: by the request as sent (`mutates`)
+        if !self.mutates(req) || is_silent(judged_req) {
             return Ok(ExecTicket::none());
         }
+        let req = judged_req;
         let param = parameter_key(req);
         let mut st = self.lock();
         if let Some(w) = st
