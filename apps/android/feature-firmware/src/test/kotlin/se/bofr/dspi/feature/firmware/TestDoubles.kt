@@ -164,6 +164,14 @@ class FakeGuard(var verdict: (typed: String) -> FirmwareGuardVerdict = { guardVe
         checks += typed
         return update?.invoke(typed) ?: updateVerdict(verdict(typed), rule, generationChange)
     }
+
+    /** -- review PG-D2 -- the write's check: answers as [check] and is recorded with it, and in [writeChecks]. */
+    val writeChecks = mutableListOf<String>()
+
+    override suspend fun checkWrite(image: ByteArray, typed: String): FirmwareUpdateVerdict {
+        writeChecks += typed
+        return check(image, typed)
+    }
 }
 
 /** A stub verifier answering at once. */

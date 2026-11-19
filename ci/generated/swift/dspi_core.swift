@@ -2878,6 +2878,29 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func firmwareVersionMatches(version: String) throws  -> Bool
     
     /**
+     * The write gate's verdict on `image`, without writing: what
+     * [`DspiCore::flash_confirmed`] would decide now. For a client whose
+     * write is its own (Android: PICOBOOT or the drive, in Kotlin), as its
+     * last check before the first byte; a client that writes through the
+     * core needs no call, the write asks the gate itself.
+     *
+     * The gate judges by the target this core read itself from the device
+     * ([`DspiCore::firmware_target`], or the bootloader entry), which is
+     * dropped when another device is opened: a caller cannot hand in a
+     * target, and a target the caller kept from another board is not used.
+     * `board` only adds doubt: one that is not the core's own record makes
+     * the voltage unknown, so the voltage phrase is asked. With no target
+     * read by this core (the board was in BOOTSEL before this core saw it)
+     * the voltage rule alone decides on `board`: pass
+     * [`firmware_guard_board_in_bootloader`] unless this run sent this very
+     * board to its bootloader. Write only on `verdict.allowed`. Reads the
+     * core's memory only: nothing is sent, and the kept target stays (it is
+     * dropped when a device is opened again). Parses the whole image: call
+     * off the UI thread. Never fails, never panics.
+     */
+    func firmwareWriteCheck(image: Data, board: FirmwareGuardBoard, typedConfirmation: String)  -> FirmwareUpdateVerdict
+    
+    /**
      * Write `image` to the bootloader drive behind the firmware guard
      * ([`crate::firmware_guard_check`] for `board` and `typed_confirmation`;
      * WP PGFLASH: [`crate::firmware_update_check`]'s rules on the target this
@@ -9205,6 +9228,37 @@ open func firmwareVersionMatches(version: String)throws  -> Bool  {
     return try  FfiConverterBool.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_firmware_version_matches(self.uniffiClonePointer(),
         FfiConverterString.lower(version),$0
+    )
+})
+}
+    
+    /**
+     * The write gate's verdict on `image`, without writing: what
+     * [`DspiCore::flash_confirmed`] would decide now. For a client whose
+     * write is its own (Android: PICOBOOT or the drive, in Kotlin), as its
+     * last check before the first byte; a client that writes through the
+     * core needs no call, the write asks the gate itself.
+     *
+     * The gate judges by the target this core read itself from the device
+     * ([`DspiCore::firmware_target`], or the bootloader entry), which is
+     * dropped when another device is opened: a caller cannot hand in a
+     * target, and a target the caller kept from another board is not used.
+     * `board` only adds doubt: one that is not the core's own record makes
+     * the voltage unknown, so the voltage phrase is asked. With no target
+     * read by this core (the board was in BOOTSEL before this core saw it)
+     * the voltage rule alone decides on `board`: pass
+     * [`firmware_guard_board_in_bootloader`] unless this run sent this very
+     * board to its bootloader. Write only on `verdict.allowed`. Reads the
+     * core's memory only: nothing is sent, and the kept target stays (it is
+     * dropped when a device is opened again). Parses the whole image: call
+     * off the UI thread. Never fails, never panics.
+     */
+open func firmwareWriteCheck(image: Data, board: FirmwareGuardBoard, typedConfirmation: String) -> FirmwareUpdateVerdict  {
+    return try!  FfiConverterTypeFirmwareUpdateVerdict_lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_firmware_write_check(self.uniffiClonePointer(),
+        FfiConverterData.lower(image),
+        FfiConverterTypeFirmwareGuardBoard_lower(board),
+        FfiConverterString.lower(typedConfirmation),$0
     )
 })
 }
@@ -67633,6 +67687,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_firmware_version_matches() != 52277) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_firmware_write_check() != 52397) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_flash_confirmed() != 4538) {

@@ -157,6 +157,9 @@ class DeviceProtocolWpPgandTest {
         assertTrue(v.verdict.message, v.verdict.message.contains("boom"))
         // A core without the call: no board, so no image
         assertEquals(CoreTools.NO_TARGET, newBridge(FakeDspiCore()).coreTools.firmwareTarget())
+        // -- review PG-D2 -- the write gate fails closed too when the core cannot be asked
+        val gate = newBridge(FakeDspiCore()).coreTools.firmwareWriteCheck(byteArrayOf(1, 2), CoreTools.UNKNOWN_BOARD, "x")
+        assertFalse(gate.verdict.allowed)
     }
 
     @Test

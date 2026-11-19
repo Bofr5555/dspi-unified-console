@@ -91,7 +91,10 @@ fun FirmwareUpdateView(
     val protocol by bridge.deviceProtocol.collectAsState()
     FirmwareUpdateView(
         model = session.model,
-        device = rememberDeviceInfo(bridge).copy(hasBootsel = protocol?.let { it.boardId == 0 }),
+        device = rememberDeviceInfo(bridge).copy(
+            hasBootsel = protocol?.let { it.boardId == 0 },
+            alinkSender = protocol?.deviceKind == se.bofr.dspi.core.DeviceKind.ALINK_SENDER // -- review PG-D2 --
+        ),
         enterBootloader = { op ->
             // Minted on the user's explicit action (Update dialog OK, or the
             // bootloader-only link as macOS acts on its click; E1), main thread.
@@ -116,7 +119,9 @@ data class FirmwareDeviceInfo(
     val connected: Boolean,
     val version: FirmwareVersion?,
     val chip: BootloaderBoard.Chip? = null,
-    val hasBootsel: Boolean? = null
+    val hasBootsel: Boolean? = null,
+    /** -- review PG-D2 -- the connected device is the alink sender: the bundled DSP image is not offered to it. */
+    val alinkSender: Boolean = false
 ) {
     val match: FirmwareMatch? get() = FirmwareMatch.of(connected, version)
 }
@@ -225,7 +230,7 @@ fun FirmwareUpdateView(
             state,
             device,
             primaryTitle,
-            onStart = { model.requestUpdate(device.connected, device.chip) }, // -- WP PGAND -- the check first
+            onStart = { model.requestUpdate(device.connected, device.chip, device.alinkSender) }, // -- WP PGAND -- the check first
             onExport = { pickExport.launch(ConfigurationBackup.FILE_NAME) },
             onClose = onBack,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)

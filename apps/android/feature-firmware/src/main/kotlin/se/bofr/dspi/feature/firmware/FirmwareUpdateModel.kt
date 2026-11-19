@@ -11,6 +11,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import se.bofr.dspi.bridge.FirmwareLabel
 
+/** -- review PG-D2 -- Why the bundled release is not offered to the alink sender. */
+const val SENDER_BUNDLED_TEXT =
+    "This is the audio link sender. The bundled firmware is for the DSP only: choose the sender's own image (.uf2)."
+
 /** What will be written. */
 sealed class FirmwareSource {
     /** The official release bundled with the app. */
@@ -130,9 +134,17 @@ class FirmwareUpdateModel(
      * check runs first, on the board as it runs now ([chip] is its chip), and
      * the confirmation shows its answer ([FirmwareInstaller.entryCheck]).
      */
-    fun requestUpdate(deviceConnected: Boolean, chip: BootloaderBoard.Chip?) {
+    fun requestUpdate(deviceConnected: Boolean, chip: BootloaderBoard.Chip?, alinkSender: Boolean = false) {
         if (!canChangeSetup) return
-        if (deviceConnected && !rebootRequested && chip != null) installer.checkBeforeEntry(chip)
+        if (deviceConnected && !rebootRequested && chip != null) {
+            // -- review PG-D2 -- the bundled images are the DSP's: none is offered to the
+            // alink sender (as the Qt console); its own image is a local .uf2
+            if (alinkSender && source == FirmwareSource.Bundled) {
+                installer.refuseBeforeEntry(SENDER_BUNDLED_TEXT)
+            } else {
+                installer.checkBeforeEntry(chip)
+            }
+        }
         confirmingUpdate = true
     }
 

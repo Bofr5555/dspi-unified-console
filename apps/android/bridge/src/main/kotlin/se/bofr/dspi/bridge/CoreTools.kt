@@ -70,6 +70,19 @@ interface CoreTools {
     fun firmwareUpdateCheck(image: ByteArray, target: FirmwareTarget, typedConfirmation: String): FirmwareUpdateVerdict =
         blockedUpdate("The firmware update check is not available.")
 
+    // -- review PG-D2 --
+    /**
+     * `firmware_write_check`: the core's write gate, asked without writing. The last
+     * check before a Kotlin write (PICOBOOT or the drive): the core judges by the target
+     * it read itself from the board ([firmwareTarget], or its bootloader entry) and drops
+     * when another device is opened, so a target kept here from another board cannot
+     * clear an image. [board] only adds doubt: pass the record of the board this run
+     * sent to its bootloader, else [firmwareGuardBoardInBootloader]. On the core's
+     * thread. Never throws; a failed call is a verdict that blocks.
+     */
+    suspend fun firmwareWriteCheck(image: ByteArray, board: FirmwareGuardBoard, typedConfirmation: String): FirmwareUpdateVerdict =
+        blockedUpdate("The firmware write check is not available.")
+
     companion object {
         // -- WP PGAND --
         /** No board known (no device, or the read failed): offered no image. */
@@ -178,6 +191,14 @@ internal class CoreToolsImpl(private val bridge: DspiBridgeImpl) : CoreTools {
     } catch (e: Exception) {
         CoreTools.blockedUpdate("The firmware update check could not judge this image: ${e.message ?: e.javaClass.simpleName}.")
     }
+
+    // -- review PG-D2 -- a failure of the call is no permission
+    override suspend fun firmwareWriteCheck(image: ByteArray, board: FirmwareGuardBoard, typedConfirmation: String): FirmwareUpdateVerdict =
+        bridge.onFfi {
+            runCatching { bridge.core.firmwareWriteCheck(image.toWire(), board, typedConfirmation) }.getOrElse {
+                CoreTools.blockedUpdate("The firmware write check could not judge this image: ${it.message ?: it.javaClass.simpleName}.")
+            }
+        }
 
     private fun ByteArray.toWire(): List<Int> = List(size) { this[it].toInt() and 0xFF }
 }

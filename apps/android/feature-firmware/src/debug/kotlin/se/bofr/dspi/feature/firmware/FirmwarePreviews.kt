@@ -21,6 +21,8 @@ private object PreviewGuard : FirmwareGuarding {
     override fun forgetBoard() = Unit
 
     override fun check(image: ByteArray, typed: String) = se.bofr.dspi.bridge.CoreTools.blockedUpdate("Previews do not write.")
+
+    override suspend fun checkWrite(image: ByteArray, typed: String) = check(image, typed) // -- review PG-D2 --
 }
 
 private object PreviewWriter : FirmwareWriter {

@@ -139,6 +139,8 @@ class UpdateCheckAndSenderWpPgandTest {
             override fun forgetBoard() = Unit
 
             override fun check(image: ByteArray, typed: String) = verdict(typed == phrase).also { asked += typed }
+
+            override suspend fun checkWrite(image: ByteArray, typed: String) = check(image, typed)
         }
         val verifier = FirmwareVerifying { null }
         val installer = FirmwareInstaller(FakeBootloaderLocator(), verifier, NoWriter, { image }, guard, scope, Dispatchers.Main.immediate)
