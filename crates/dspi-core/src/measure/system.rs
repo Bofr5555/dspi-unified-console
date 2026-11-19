@@ -417,6 +417,15 @@ pub struct MeasureSystemProposal {
     pub may_apply: bool,
     /// What stands in the way, if anything.
     pub notice: Option<MeasureSystemIssue>,
+    // -- WP ATGUARD --
+    /// The hub's guard the apply begins, s: the hub reverts the apply by
+    /// itself unless it is kept within this long (and when this console's
+    /// connection is lost). 0: the hub has no guard for a system apply.
+    #[serde(default)]
+    pub guard_s: u32,
+    /// The guard in words: how long, or that nothing reverts by itself.
+    #[serde(default)]
+    pub guard_note: String,
 }
 
 /// One unit's output delays as filed before an apply.
@@ -480,6 +489,12 @@ pub struct MeasureSystemApplied {
     pub verified: Option<bool>,
     /// What to know, in words.
     pub message: String,
+    // -- WP ATGUARD --
+    /// The hub's guard of this apply, s (0: none, nothing reverts by
+    /// itself): the hub sets the filed model back and aligns at the
+    /// deadline unless Keep confirms it, and when the connection is lost.
+    #[serde(default)]
+    pub guard_s: u32,
 }
 
 // ── The hub, as the session sees it ────────────────────────────────────
@@ -833,11 +848,13 @@ impl DspiCore {
     pub fn measure_system_proposal(&self) -> Result<MeasureSystemProposal> {
         let mut slot = self.system_slot();
         let role = self.with_hub(&mut slot, |hub| hub.role());
+        // -- WP ATGUARD -- whether the hub guards the apply
+        let guarded = self.with_hub(&mut slot, |hub| proposal::hub_guards(hub));
         let o = slot
             .outcome
             .as_ref()
             .ok_or_else(|| invalid("no system measurement result is ready"))?;
-        Ok(o.proposal(&role))
+        Ok(o.proposal_for(&role, guarded))
     }
 
     /// Start the summed check of every inter-unit transition (RC5f): one
@@ -864,6 +881,13 @@ impl DspiCore {
     /// are written into the model (`system.set`, guarded by the revision),
     /// then `system.align` writes the units. Repeat the summed runs next
     /// (`measure_system_verify`), then Keep or Revert.
+    ///
+    /// WP ATGUARD: on a hub with the cap `system_apply_guard` the hub's
+    /// guard is begun first (`system.guard.begin`, the proposal's
+    /// `guard_s`: the planned verify, 25 % longer, plus 120 s, at most
+    /// 590 s): the hub reverts by itself at the deadline unless Keep
+    /// confirms it, and when this console's connection is lost. Without the
+    /// cap nothing reverts by itself (the proposal says so).
     ///
     /// Errors: [`DspiError::Denied`] for a role below Admin, nothing sent;
     /// [`DspiError::InvalidArgument`] for another id, a summed check not
@@ -915,18 +939,27 @@ impl DspiCore {
     ///
     /// Errors: [`DspiError::InvalidArgument`] with nothing applied, or the
     /// first Keep after a failed verify.
+    ///
+    /// WP ATGUARD: a guarded apply is confirmed on the hub
+    /// (`system.guard.confirm`); one the hub has reverted already (its
+    /// deadline passed) is shown as reverted, with the hub's words.
     pub fn measure_system_keep(&self) -> Result<MeasureSystemApplied> {
         let mut slot = self.system_slot();
-        let o = slot
-            .outcome
-            .as_mut()
-            .ok_or_else(|| invalid("nothing is applied"))?;
-        o.keep()
+        let Some(mut o) = slot.outcome.take() else {
+            return Err(invalid("nothing is applied"));
+        };
+        let r = self.with_hub(&mut slot, |hub| o.keep(hub));
+        slot.outcome = Some(o);
+        r
     }
 
     /// Revert the applied alignment (Admin): the filed model is set again
     /// (`system.set`) and `system.align` writes the units back; every unit's
     /// output delays are read back against the filed ones.
+    ///
+    /// WP ATGUARD: a guarded apply is reverted by the hub
+    /// (`system.guard.cancel`: the same set and alignment), which ends the
+    /// guard.
     ///
     /// Errors: [`DspiError::InvalidArgument`] with nothing applied;
     /// [`DspiError::Denied`] below Admin; the hub's refusals.
@@ -985,6 +1018,15 @@ impl DspiCore {
                 return Err(invalid(
                     "busy: a system measurement is already running on this console",
                 ));
+            }
+            // -- WP ATGUARD -- a verify runs inside the hub's guard: one
+            // the hub has ended (its deadline) is not verified
+            if purpose == MeasureSystemPurpose::Verify
+                && let Some(mut o) = slot.outcome.take()
+            {
+                let alive = self.with_hub(&mut slot, |hub| o.guard_alive(hub));
+                slot.outcome = Some(o);
+                alive?;
             }
             let Some(o) = slot.outcome.as_ref() else {
                 return Err(invalid("no system measurement result is ready"));

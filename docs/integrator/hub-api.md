@@ -43,7 +43,7 @@ Reference: `crates/dspi-hub` (one module per family, registered as a service in 
 | 21 | [Firmware rollout](#21-firmware-rollout) | `fw.image.*`, `fw.rollout.*` (TLS only) | `rollout` | P3RO (writer P3PB); text P3DOC | built (P3RO; the writer P3PB) |
 | 22 | [Measurement documents](#22-measurement-documents) | `measure.doc.*` | `hub_measure` | P5HUB; text P5MDOC | built (P5HUB) |
 <!-- WP ATHUB -->
-| 23 | [Measuring several units](#23-measuring-several-units) | `system.measure.*` | `system_measure` | ATHUB | built (ATHUB) |
+| 23 | [Measuring several units](#23-measuring-several-units) | `system.measure.*`, `system.guard.*` (23.4) | `system_measure`, `system_apply_guard` | ATHUB, ATGUARD | built (ATHUB, ATGUARD) |
 
 <!-- WP P3FRZ: slot for P3WGR's and P3WRO's own marks on rows 19 to 21 (their web screens), added by them or at merge -->
 The web console's screens for rows 19 and 20 (groups, the action bar, bulk apply, fleet history) are P3WGR's, and row 21's
@@ -101,6 +101,7 @@ hub without it answers `unknown_type` (an older hub) or `unsupported`. Caps of t
 | `rollout` | section 21 | only with `uconsole hub --rollout`, on a hub that serves TLS (21.1) |
 | `hub_measure` | section 22 | on a hub with a data folder (`ServiceConfig::measure`, on by default; P5HUB) |
 | `system_measure` | section 23 (WP ATHUB) | always, to a Link 1.3 client (a 1.2-style client neither sees it nor is served) |
+| `system_apply_guard` | section 23.4 (WP ATGUARD: `system.guard.*`) | always |
 
 <!-- WP P3FRZ -->
 **v1 frozen 2026-11-16** (OD-P2a, OD-P3l; WP P3FRZ, after PRO phase 3's hub and core families merged): **additive
@@ -1430,6 +1431,12 @@ message's meaning, `fw.install` (`unsupported`), and the binary frames.
 | `system.measure.abort` | request | control (any principal of control or admin) | `system_measure` | 23.2 (built: ATHUB) |
 | `system.measure.close` | request | control, the session's owner | `system_measure` | 23.2 (built: ATHUB) |
 | `system.measure.aborted` | event, to the session's owner | | `system_measure` | 23.3 (built: ATHUB) |
+<!-- WP ATGUARD -->
+| `system.guard.begin` | request | admin | `system_apply_guard` | 23.4 (built: ATGUARD) |
+| `system.guard.confirm` | request | admin, the guard's owner | `system_apply_guard` | 23.4 (built: ATGUARD) |
+| `system.guard.cancel` | request | admin, the guard's owner | `system_apply_guard` | 23.4 (built: ATGUARD) |
+| `system.guard.status` | request | viewer | `system_apply_guard` | 23.4 (built: ATGUARD) |
+| `system.guard.ended` | event | | `system_apply_guard` | 23.4 (built: ATGUARD) |
 
 ## 19. Groups
 
@@ -2037,3 +2044,47 @@ sticky clip flag is set; the hub never clears them (health's clip counts are the
 - **A run that cannot start** (a unit refuses its first op 9, or it would be late) answers `device`, stops every unit
   (`STOP_NOW`: an earlier unit's start may already have come) and cancels every unit's queue: what was staged is spent,
   stage again.
+
+<!-- WP ATGUARD -->
+### 23.4 The guard of a system apply
+
+*State: built (ATGUARD, `crates/dspi-hub/src/system/guard.rs`; bodies `dspi_measure::system::messages::guard`).* What
+the guarded apply (`apply.*`, [hub.md, "Guarded apply"](hub.md#guarded-apply)) is to one device, for the system model and the
+alignment the hub writes across units. A console applying a measured alignment (`measure_system_apply`: measured
+arrivals into the model with `system.set`, then `system.align`) begins the guard first, so a console that closes, crashes
+or loses its connection after the apply cannot leave it behind unconfirmed.
+
+- **`begin` files** the model and its revision and starts the countdown (`timeout_ms`, clamped to 1 s..600 s, 300 s
+  when absent). The console's core asks for the planned verify (each output of a transition ramped again, then each
+  transition's summed run) 25 % longer plus 120 s, at most 590 s, as a single unit's measured tune does (P5TRUST's
+  decision (c)), so the verify runs inside the guard. **One guard at a time** (the model is one): a second `begin` is
+  `busy`.
+- **While a guard is pending**, a `system.set` from any other session (the REST mirror included) is refused `conflict`;
+  the owner's own `system.set` is taken, and the guard notes the revision it leaves. `system.align` and the measuring
+  family are not refused (the verify runs through `system.measure.*`). The hub's own API (an embedding app's
+  `HubHandle::system_set_model`) is not refused either: a model changed there makes the revert `not_written`.
+- **Keep** is `confirm {guard}` (the owner, before the deadline): `kept`, the alignment stays. **Revert** is
+  `cancel {guard}`: the hub reverts now and answers how.
+- **The hub reverts by itself** at the deadline (`timeout`), when the owner's session ends (`session_closed`: the
+  connection closed or was lost) and when the hub stops (`hub_stopping`). Reverting: every measuring session of the owner
+  (`system.measure.*`, a verify still playing) is aborted and closed first, so nothing plays and its locks do not refuse
+  the writes; then `system.set` back to the filed model **at the revision the owner's last `system.set` left** (a model
+  someone else changed meanwhile is never overwritten: `not_written`), then `system.align` writes the units. One set and
+  one alignment, never replayed.
+- **An older hub** without the cap offers no guard: the core then applies as before (Keep and Revert from the console
+  only) and says in the proposal (`guard_s` 0, `guard_note`) that nothing reverts by itself.
+
+| `t` | Who | Request | Answer |
+|---|---|---|---|
+| `system.guard.begin` | admin | `timeout_ms` (optional) | `BeginReply`: `guard`, `revision` (filed), `timeout_ms` (granted) |
+| `system.guard.confirm` | admin, the owner | `guard` | `Outcome` (`confirmed`, `kept`) |
+| `system.guard.cancel` | admin, the owner | `guard` | `Outcome` (`cancelled`, and how the revert went) |
+| `system.guard.status` | any role | | `StatusReply`: `active` (`{guard, session, revision_filed, revision_left, remaining_ms, reverting}` or null), `last` (the last `Outcome` or null) |
+
+`Outcome` is `{guard, reason, result, revision_filed, revision, writes_ok, write_failures?, message?, at}`: `reason` one
+of `confirmed`, `timeout`, `session_closed`, `cancelled`, `hub_stopping`; `result` one of `kept`, `reverted`,
+`revert_failed` (the model was set back but a unit was not written: `write_failures` says which), `not_written` (nothing
+was set back: the model changed meanwhile, or could not be saved). Every end is broadcast to every network session as
+**`system.guard.ended`** (the `Outcome` at the top level, `"v": 1`) and kept for `status`, so a console back after a lost
+connection reads what happened. Codes: `denied` (not admin, or another session's guard), `busy`, `conflict` (no such
+guard pending, it is being reverted, or another session's `system.set` while one is pending), `bad_request`.

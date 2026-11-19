@@ -454,6 +454,10 @@ screens is [docs/manual/measurement.md](../manual/measurement.md); the feature t
 | Demo device, every client | P5DEMO: the "Simulated microphone", demo connections only | the whole flow without hardware |
 | Android, Swift | | later batch (PLAN-P5, "Later batch") |
 
+Measuring and aligning **several units** with one microphone (PLAN-AT: one time base, the hub's `system.measure.*`, the
+summed check across units, and the apply inside the hub's guard) is
+[multi-unit-measurement.md](multi-unit-measurement.md).
+
 ## Reference
 
 | What | Where |
@@ -464,3 +468,4 @@ screens is [docs/manual/measurement.md](../manual/measurement.md); the feature t
 | The family's other kinds | [preset-format.md](../terminal/preset-format.md), [document-format.md](document-format.md) |
 | The words clients show | [`docs/GLOSSARY.md`](../GLOSSARY.md) section 3.4 |
 | The user manual | [docs/manual/measurement.md](../manual/measurement.md) |
+| Several units together | [multi-unit-measurement.md](multi-unit-measurement.md); the hub's side [hub-api.md section 23](hub-api.md#23-measuring-several-units) |

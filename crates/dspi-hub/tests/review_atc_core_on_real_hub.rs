@@ -743,3 +743,90 @@ fn review_atc_a_dropped_connection_stops_every_unit() {
     }
     assert_eq!(room.heard.len(), heard);
 }
+
+// -- WP ATGUARD --
+/// The core's apply on the real hub runs inside the hub's guard: measured,
+/// summed-checked, applied by `measure_system_apply` (which begins the
+/// guard, sized from the planned verify), verified inside it; then the
+/// console vanishes without Keep. The hub reverts by itself: the filed
+/// model, every delay as before.
+#[test]
+fn wp_atguard_the_cores_apply_reverts_when_the_console_drops() {
+    use dspi_measure::system::messages::guard as wire;
+    let Rig {
+        hub,
+        a,
+        b,
+        setup,
+        checks,
+        mut room,
+        before,
+    } = rig(World::Line, Duration::ZERO, 1_000);
+    let again = setup.clone();
+    let fresh = || {
+        vec![
+            a.measure_system_unit_check(again.clone(), again.units[0].clone())
+                .unwrap(),
+            b.measure_system_unit_check(again.clone(), again.units[1].clone())
+                .unwrap(),
+        ]
+    };
+    a.measure_system_start(setup, checks).unwrap();
+    let st = room.drive(&a, "measure");
+    assert_eq!(st.phase, MeasureSystemPhase::Done, "{st:?}");
+    a.measure_system_sum_check(fresh()).unwrap();
+    let st = room.drive(&a, "sum check");
+    assert_eq!(st.phase, MeasureSystemPhase::Done, "{st:?}");
+    let p = a.measure_system_proposal().unwrap();
+    assert!(p.offered, "{p:?}");
+    assert!(p.guard_s >= 120 && p.guard_s <= 590, "{p:?}");
+    assert!(
+        p.guard_note.contains("reverts the alignment by itself"),
+        "{p:?}"
+    );
+    let applied = a.measure_system_apply(p.id).unwrap();
+    assert_eq!(applied.stage, MeasureSystemApplyStage::Applied);
+    assert_eq!(applied.guard_s, p.guard_s);
+    let st = hub_request(&b, wire::STATUS, json!({}));
+    let active = &st["active"];
+    assert!(active.is_object(), "{st}");
+    let remaining = active["remaining_ms"].as_u64().unwrap();
+    assert!(
+        remaining <= u64::from(p.guard_s) * 1000
+            && remaining > u64::from(p.guard_s) * 1000 - 30_000,
+        "{st}"
+    );
+    let now = [out_delay_ms(&b, SERIALS[0]), out_delay_ms(&b, SERIALS[1])];
+    assert!((now[0] - before[0] - 2.0).abs() < 0.006, "{now:?}");
+    // The verify, inside the guard.
+    room.out_delay = delays(&a);
+    a.measure_system_verify(fresh()).unwrap();
+    let st = room.drive(&a, "verify");
+    assert_eq!(st.phase, MeasureSystemPhase::Done, "{st:?}");
+    assert_eq!(a.measure_system_applied().verified, Some(true));
+    // Gone, without Keep.
+    a.link_close();
+    let start = Instant::now();
+    let last = loop {
+        let st = hub_request(&b, wire::STATUS, json!({}));
+        if st["active"].is_null() && st["last"].is_object() {
+            break st["last"].clone();
+        }
+        assert!(start.elapsed() < Duration::from_secs(10), "{st}");
+        std::thread::sleep(Duration::from_millis(50));
+    };
+    assert_eq!(last["reason"], "session_closed", "{last}");
+    assert_eq!(last["result"], "reverted", "{last}");
+    let back = [out_delay_ms(&b, SERIALS[0]), out_delay_ms(&b, SERIALS[1])];
+    assert!(
+        (back[0] - before[0]).abs() < 0.0015 && (back[1] - before[1]).abs() < 0.0015,
+        "{back:?} where {before:?} was filed"
+    );
+    let (model, _) = hub.handle().system_model();
+    assert!(
+        model
+            .units
+            .iter()
+            .all(|u| u.speakers[0].measured_arrival_us.is_none())
+    );
+}

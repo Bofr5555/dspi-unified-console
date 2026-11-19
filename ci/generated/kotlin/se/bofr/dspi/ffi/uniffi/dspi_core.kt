@@ -5812,13 +5812,13 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_system_applied() != 12184.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_system_apply() != 53350.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_system_apply() != 39876.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_system_capture_push() != 35486.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_system_keep() != 44096.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_system_keep() != 28143.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_system_preflight() != 38600.toShort()) {
@@ -5830,7 +5830,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_system_result() != 38290.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_system_revert() != 35695.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_system_revert() != 21534.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_system_start() != 61644.toShort()) {
@@ -11249,6 +11249,13 @@ public interface DspiCoreInterface {
      * then `system.align` writes the units. Repeat the summed runs next
      * (`measure_system_verify`), then Keep or Revert.
      *
+     * WP ATGUARD: on a hub with the cap `system_apply_guard` the hub's
+     * guard is begun first (`system.guard.begin`, the proposal's
+     * `guard_s`: the planned verify, 25 % longer, plus 120 s, at most
+     * 590 s): the hub reverts by itself at the deadline unless Keep
+     * confirms it, and when this console's connection is lost. Without the
+     * cap nothing reverts by itself (the proposal says so).
+     *
      * Errors: [`DspiError::Denied`] for a role below Admin, nothing sent;
      * [`DspiError::InvalidArgument`] for another id, a summed check not
      * passed, nothing offered; [`DspiError::Link`] with the hub's refusal
@@ -11277,6 +11284,10 @@ public interface DspiCoreInterface {
      *
      * Errors: [`DspiError::InvalidArgument`] with nothing applied, or the
      * first Keep after a failed verify.
+     *
+     * WP ATGUARD: a guarded apply is confirmed on the hub
+     * (`system.guard.confirm`); one the hub has reverted already (its
+     * deadline passed) is shown as reverted, with the hub's words.
      */
     fun `measureSystemKeep`(): MeasureSystemApplied
     
@@ -11312,6 +11323,10 @@ public interface DspiCoreInterface {
      * Revert the applied alignment (Admin): the filed model is set again
      * (`system.set`) and `system.align` writes the units back; every unit's
      * output delays are read back against the filed ones.
+     *
+     * WP ATGUARD: a guarded apply is reverted by the hub
+     * (`system.guard.cancel`: the same set and alignment), which ends the
+     * guard.
      *
      * Errors: [`DspiError::InvalidArgument`] with nothing applied;
      * [`DspiError::Denied`] below Admin; the hub's refusals.
@@ -19837,6 +19852,13 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
      * then `system.align` writes the units. Repeat the summed runs next
      * (`measure_system_verify`), then Keep or Revert.
      *
+     * WP ATGUARD: on a hub with the cap `system_apply_guard` the hub's
+     * guard is begun first (`system.guard.begin`, the proposal's
+     * `guard_s`: the planned verify, 25 % longer, plus 120 s, at most
+     * 590 s): the hub reverts by itself at the deadline unless Keep
+     * confirms it, and when this console's connection is lost. Without the
+     * cap nothing reverts by itself (the proposal says so).
+     *
      * Errors: [`DspiError::Denied`] for a role below Admin, nothing sent;
      * [`DspiError::InvalidArgument`] for another id, a summed check not
      * passed, nothing offered; [`DspiError::Link`] with the hub's refusal
@@ -19887,6 +19909,10 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
      *
      * Errors: [`DspiError::InvalidArgument`] with nothing applied, or the
      * first Keep after a failed verify.
+     *
+     * WP ATGUARD: a guarded apply is confirmed on the hub
+     * (`system.guard.confirm`); one the hub has reverted already (its
+     * deadline passed) is shown as reverted, with the hub's words.
      */
     @Throws(DspiException::class)override fun `measureSystemKeep`(): MeasureSystemApplied {
             return FfiConverterTypeMeasureSystemApplied.lift(
@@ -19966,6 +19992,10 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
      * Revert the applied alignment (Admin): the filed model is set again
      * (`system.set`) and `system.align` writes the units back; every unit's
      * output delays are read back against the filed ones.
+     *
+     * WP ATGUARD: a guarded apply is reverted by the hub
+     * (`system.guard.cancel`: the same set and alignment), which ends the
+     * guard.
      *
      * Errors: [`DspiError::InvalidArgument`] with nothing applied;
      * [`DspiError::Denied`] below Admin; the hub's refusals.
@@ -41231,7 +41261,13 @@ data class MeasureSystemApplied (
     /**
      * What to know, in words.
      */
-    var `message`: kotlin.String
+    var `message`: kotlin.String, 
+    /**
+     * The hub's guard of this apply, s (0: none, nothing reverts by
+     * itself): the hub sets the filed model back and aligns at the
+     * deadline unless Keep confirms it, and when the connection is lost.
+     */
+    var `guardS`: kotlin.UInt
 ) {
     
     companion object
@@ -41251,6 +41287,7 @@ public object FfiConverterTypeMeasureSystemApplied: FfiConverterRustBuffer<Measu
             FfiConverterSequenceString.read(buf),
             FfiConverterOptionalBoolean.read(buf),
             FfiConverterString.read(buf),
+            FfiConverterUInt.read(buf),
         )
     }
 
@@ -41262,7 +41299,8 @@ public object FfiConverterTypeMeasureSystemApplied: FfiConverterRustBuffer<Measu
             FfiConverterUInt.allocationSize(value.`writesOk`) +
             FfiConverterSequenceString.allocationSize(value.`writeFailures`) +
             FfiConverterOptionalBoolean.allocationSize(value.`verified`) +
-            FfiConverterString.allocationSize(value.`message`)
+            FfiConverterString.allocationSize(value.`message`) +
+            FfiConverterUInt.allocationSize(value.`guardS`)
     )
 
     override fun write(value: MeasureSystemApplied, buf: ByteBuffer) {
@@ -41274,6 +41312,7 @@ public object FfiConverterTypeMeasureSystemApplied: FfiConverterRustBuffer<Measu
             FfiConverterSequenceString.write(value.`writeFailures`, buf)
             FfiConverterOptionalBoolean.write(value.`verified`, buf)
             FfiConverterString.write(value.`message`, buf)
+            FfiConverterUInt.write(value.`guardS`, buf)
     }
 }
 
@@ -41717,7 +41756,17 @@ data class MeasureSystemProposal (
     /**
      * What stands in the way, if anything.
      */
-    var `notice`: MeasureSystemIssue?
+    var `notice`: MeasureSystemIssue?, 
+    /**
+     * The hub's guard the apply begins, s: the hub reverts the apply by
+     * itself unless it is kept within this long (and when this console's
+     * connection is lost). 0: the hub has no guard for a system apply.
+     */
+    var `guardS`: kotlin.UInt, 
+    /**
+     * The guard in words: how long, or that nothing reverts by itself.
+     */
+    var `guardNote`: kotlin.String
 ) {
     
     companion object
@@ -41738,6 +41787,8 @@ public object FfiConverterTypeMeasureSystemProposal: FfiConverterRustBuffer<Meas
             FfiConverterBoolean.read(buf),
             FfiConverterBoolean.read(buf),
             FfiConverterOptionalTypeMeasureSystemIssue.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterString.read(buf),
         )
     }
 
@@ -41750,7 +41801,9 @@ public object FfiConverterTypeMeasureSystemProposal: FfiConverterRustBuffer<Meas
             FfiConverterBoolean.allocationSize(value.`withdrawn`) +
             FfiConverterBoolean.allocationSize(value.`offered`) +
             FfiConverterBoolean.allocationSize(value.`mayApply`) +
-            FfiConverterOptionalTypeMeasureSystemIssue.allocationSize(value.`notice`)
+            FfiConverterOptionalTypeMeasureSystemIssue.allocationSize(value.`notice`) +
+            FfiConverterUInt.allocationSize(value.`guardS`) +
+            FfiConverterString.allocationSize(value.`guardNote`)
     )
 
     override fun write(value: MeasureSystemProposal, buf: ByteBuffer) {
@@ -41763,6 +41816,8 @@ public object FfiConverterTypeMeasureSystemProposal: FfiConverterRustBuffer<Meas
             FfiConverterBoolean.write(value.`offered`, buf)
             FfiConverterBoolean.write(value.`mayApply`, buf)
             FfiConverterOptionalTypeMeasureSystemIssue.write(value.`notice`, buf)
+            FfiConverterUInt.write(value.`guardS`, buf)
+            FfiConverterString.write(value.`guardNote`, buf)
     }
 }
 

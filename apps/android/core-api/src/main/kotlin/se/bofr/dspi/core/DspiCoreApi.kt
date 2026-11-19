@@ -3708,6 +3708,13 @@ interface DspiCoreApi : AutoCloseable {
      * then `system.align` writes the units. Repeat the summed runs next
      * (`measure_system_verify`), then Keep or Revert.
      *
+     * WP ATGUARD: on a hub with the cap `system_apply_guard` the hub's
+     * guard is begun first (`system.guard.begin`, the proposal's
+     * `guard_s`: the planned verify, 25 % longer, plus 120 s, at most
+     * 590 s): the hub reverts by itself at the deadline unless Keep
+     * confirms it, and when this console's connection is lost. Without the
+     * cap nothing reverts by itself (the proposal says so).
+     *
      * Errors: [`DspiError::Denied`] for a role below Admin, nothing sent;
      * [`DspiError::InvalidArgument`] for another id, a summed check not
      * passed, nothing offered; [`DspiError::Link`] with the hub's refusal
@@ -3744,6 +3751,10 @@ interface DspiCoreApi : AutoCloseable {
      *
      * Errors: [`DspiError::InvalidArgument`] with nothing applied, or the
      * first Keep after a failed verify.
+     *
+     * WP ATGUARD: a guarded apply is confirmed on the hub
+     * (`system.guard.confirm`); one the hub has reverted already (its
+     * deadline passed) is shown as reverted, with the hub's words.
      */
     @Throws(DspiException::class)
     fun measureSystemKeep(): MeasureSystemApplied
@@ -3752,6 +3763,10 @@ interface DspiCoreApi : AutoCloseable {
      * Revert the applied alignment (Admin): the filed model is set again
      * (`system.set`) and `system.align` writes the units back; every unit's
      * output delays are read back against the filed ones.
+     *
+     * WP ATGUARD: a guarded apply is reverted by the hub
+     * (`system.guard.cancel`: the same set and alignment), which ends the
+     * guard.
      *
      * Errors: [`DspiError::InvalidArgument`] with nothing applied;
      * [`DspiError::Denied`] below Admin; the hub's refusals.

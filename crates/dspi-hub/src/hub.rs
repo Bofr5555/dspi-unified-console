@@ -229,6 +229,9 @@ pub(crate) struct HubInner {
     // -- WP P1HA --
     /// Guarded applies (`apply_guard.rs`). A leaf lock.
     pub(crate) apply_guards: crate::apply_guard::ApplyGuards,
+    // -- WP ATGUARD --
+    /// The guard of a system apply (`system/guard.rs`). A leaf lock.
+    pub(crate) system_guard: crate::system::guard::SystemGuards,
     // -- WP P1HL --
     /// Limits profiles, PINs and pinned modes (`limits.rs`). A leaf lock; each
     /// device's router holds it too.
@@ -363,6 +366,8 @@ impl Hub {
             locks_syncing: Mutex::new(()),
             // -- WP P1HA --
             apply_guards: crate::apply_guard::ApplyGuards::default(),
+            // -- WP ATGUARD --
+            system_guard: crate::system::guard::SystemGuards::default(),
             // -- WP P1HL --
             limits,
             // -- WP P2SV --
@@ -411,6 +416,8 @@ impl Hub {
                 Ok(t) => {
                     // -- WP P1HA -- the guarded applies' timer runs on this thread
                     inner.apply_guards.set_wake(Some(stop_tx.clone()));
+                    // -- WP ATGUARD -- and the system apply's guard
+                    inner.system_guard.set_wake(Some(stop_tx.clone()));
                     // -- WP P1HL -- and the holds to a limits profile
                     inner.limits.set_wake(Some(stop_tx.clone()));
                     // -- WP P2SV -- and the services' timers
@@ -487,12 +494,16 @@ impl Hub {
         }
         // -- WP P1HA -- guarded applies revert while their devices are still here
         inner.apply_guards.set_wake(None);
+        // -- WP ATGUARD --
+        inner.system_guard.set_wake(None);
         // -- WP P1HL --
         inner.limits.set_wake(None);
         // -- WP P2SV -- the services end their own threads, devices still here
         inner.services.set_wake(None);
         inner.services.stop();
         self.handle.apply_stop();
+        // -- WP ATGUARD -- the system apply's guard reverts, devices still here
+        self.handle.system_guard_stop();
         // 1. Off the network: goodbye, no new connections. 2. Everyone gets their close.
         // 3. Connections go.
         let goodbye = guard(&inner.advertiser).take();
@@ -693,6 +704,8 @@ impl HubHandle {
         }
         // -- WP P1HA -- its guarded applies revert
         self.apply_session_closed(id);
+        // -- WP ATGUARD -- and its system apply's guard
+        self.system_guard_session_closed(id);
         // -- WP P1HL -- its unlocks go
         self.inner.limits.session_closed(id);
         self.inner.sync_locks();
@@ -1467,6 +1480,10 @@ fn system_poll_loop(hub: &HubHandle, stop: &Receiver<()>) {
         let until = hub
             .apply_next_due()
             .map_or(next_poll, |due| due.min(next_poll));
+        // -- WP ATGUARD -- and the system apply's guard
+        let until = hub
+            .system_guard_next_due()
+            .map_or(until, |due| due.min(until));
         // -- WP P1HL -- and the next hold to a limits profile
         let until = hub.limits_next_due().map_or(until, |due| due.min(until));
         // -- WP P2SV -- and the earliest service timer
@@ -1481,6 +1498,8 @@ fn system_poll_loop(hub: &HubHandle, stop: &Receiver<()>) {
         }
         // -- WP P1HA --
         hub.apply_run_due();
+        // -- WP ATGUARD --
+        hub.system_guard_run_due();
         // -- WP P1HL --
         hub.limits_run_due();
         // -- WP P2SV --
