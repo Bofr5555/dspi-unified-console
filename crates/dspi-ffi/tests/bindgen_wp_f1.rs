@@ -70,6 +70,16 @@ const NOT_EXPORTED: &[&str] = &[
     // -- WP P3CC -- the web's image upload as base64 text (dspi-wasm
     // `hubFirmwarePut`); UniFFI has `hub_firmware_put` with the bytes.
     "hub_firmware_put_base64",
+    // -- review PG-C -- (WP PGCORE) Rust-only, doc(hidden): the Terminal's
+    // transport over the core reads the connection's generation and discovery;
+    // the bindings have `device_protocol`.
+    "connection_protocol_generation",
+    "connection_paged_discovery",
+    // -- review PG-C -- (WP PGFWUP) Rust-only until the update check is exported
+    // (PLAN-PG, the PG-D carry-over PGFWX): the hub rollout's, and
+    // `device_protocol` carries the board to the bindings.
+    "board",
+    "firmware_target",
 ];
 
 /// `crates/dspi-core/src/link.rs`, exported by WP C15.
