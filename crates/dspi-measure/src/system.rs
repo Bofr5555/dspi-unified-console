@@ -240,6 +240,46 @@ impl SystemSchedule {
     }
 }
 
+// -- WP ATSYS -- the analyser over segments (PLAN-AT section 1.4): the
+// timeline walk and its fit, the uncertainty of every cross-unit delay, the
+// gate's facts G1 to G4, the interleaved passes, the anchor chaining.
+pub mod analysis;
+pub mod chain;
+pub mod gate;
+pub mod plan;
+
+pub use analysis::{
+    ARRIVAL_RESOLUTION_US, CrossUnitDelay, MAX_OFFERED_UNCERTAINTY_US, MAX_RUN_OUTPUTS,
+    SystemAnalyser, SystemAnalysis, SystemCapture, SystemOutput, SystemStep, UnitOutput,
+    UnitStatusObservation, analyse_system, passband, passband_level_db, transition_band,
+};
+pub use chain::{Chain, ChainOptions, ChainRefusal, ChainRun, ChainedOutput, chain_runs};
+pub use gate::{GateFinding, SegmentProof, UnitFacts, check_gate, check_one_domain};
+pub use plan::{InterleaveOptions, UnitWalk, check_lead, interleave};
+
+impl SystemSchedule {
+    /// The same run with every start moved `by` domain samples later (a plan
+    /// from [`interleave`] placed at the hub's `T0`).
+    ///
+    /// Errors: [`MeasureError::Invalid`] when a start would pass `u64::MAX`.
+    pub fn offset_by(&self, by: u64) -> Result<SystemSchedule, MeasureError> {
+        let mut out = self.clone();
+        for s in &mut out.segments {
+            s.start = s
+                .start
+                .checked_add(by)
+                .ok_or_else(|| MeasureError::Invalid("a start past the counter".into()))?;
+            if s.end() == u64::MAX {
+                return Err(MeasureError::Invalid("a segment past the counter".into()));
+            }
+        }
+        Ok(out)
+    }
+}
+
+#[cfg(test)]
+mod tests_wp_atsys;
+
 #[cfg(test)]
 mod tests_wp_planat {
     use super::*;

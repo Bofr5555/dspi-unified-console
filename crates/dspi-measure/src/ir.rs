@@ -3204,3 +3204,47 @@ mod tests_wp_p5time;
 // -- WP P5ARRIVAL --
 #[cfg(test)]
 mod tests_wp_p5arrival;
+
+// -- WP ATSYS -- the system analyser (`crate::system::analysis`) runs this
+// analyser over a timeline of several units' segments and reads its fit.
+// Additive: nothing above changes.
+/// The common-slope fit of a run as the analyser holds it (WP ATSYS).
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct FitParts {
+    /// Capture frames per device sample.
+    pub(crate) slope: f64,
+    /// Per output in walk order: its intercept, capture frames from the
+    /// capture slice's first sample at device sample 0.
+    pub(crate) intercepts: Vec<Option<f64>>,
+    /// The run's timing origin (the earliest intercept), same frame.
+    pub(crate) origin: f64,
+    /// The absolute frame index of the slice's first sample.
+    pub(crate) first_frame: f64,
+    /// False for a single pass (the nominal ratio).
+    pub(crate) fitted: bool,
+}
+
+impl WalkedAnalyser {
+    /// The fit, once the analysis has passed its fit stage (WP ATSYS).
+    pub(crate) fn fit_parts(&self) -> Option<FitParts> {
+        let fit = self.fit.as_ref()?;
+        if matches!(self.stage, Stage::Search | Stage::Pass1(_) | Stage::Fit) {
+            return None;
+        }
+        Some(FitParts {
+            slope: fit.slope,
+            intercepts: fit.intercepts.clone(),
+            origin: self.origin,
+            first_frame: self.first_frame,
+            fitted: self.fitted,
+        })
+    }
+
+    /// Slices in all (WP ATSYS: the system analyser's progress).
+    pub(crate) fn slices_total(&self) -> usize {
+        self.total_slices()
+    }
+}
+
+#[cfg(test)]
+mod tests_wp_atsys;
