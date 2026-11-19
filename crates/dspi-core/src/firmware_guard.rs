@@ -451,6 +451,246 @@ fn from_status(t: &mut dyn Transport) -> FirmwareGuardBoard {
     }
 }
 
+// -- WP PGFWUP --
+// ── Per generation and board (PLAN-PG section 1.8) ─────────────────────
+//
+// On top of the voltage rule above, the update check
+// ([`firmware_update_check`]) judges the target as a whole
+// ([`FirmwareTarget`], read before the bootloader entry with
+// [`DspiCore::firmware_target`]):
+//
+// | Target | Image | Result |
+// |---|---|---|
+// | no BOOTSEL (the DSPi-Zero, an unknown board, a board not read) | any | refused: no image is offered |
+// | our lineage (bofr: the extension channel answers) | not proven ours | the typed confirmation (lineage loss), on top of the voltage rule |
+// | one generation | the other | the change is shown with what works afterwards |
+//
+// An image is proven ours by the manifest (a bundled bofr image) or by the
+// core-voltage stamp, which only our `core_vreg.c` emits. Every other image,
+// a stock one included, may be upstream's.
+
+/// What must be typed to put an image that may be upstream's on a board running
+/// our firmware, when the voltage rule does not ask already (its phrase then
+/// covers both, and the message names both).
+pub const LINEAGE_PHRASE: &str = "I ACCEPT LOSING THE EXTENSIONS";
+
+/// The board an update is for, read before it enters the bootloader. The
+/// default fails closed: no board known, so no image.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct FirmwareTarget {
+    /// The voltage rule's record ([`DspiCore::firmware_guard_board`]).
+    pub voltage: FirmwareGuardBoard,
+    /// The board (PLAN-PG section 1.9); `None` when it could not be read.
+    pub board: Option<dspi_proto::packets::Board>,
+    /// Whose firmware runs on it: ours when the extension channel answers.
+    pub lineage: crate::FirmwareLineage,
+    /// The protocol generation of the live connection.
+    pub generation: crate::FirmwareGeneration,
+}
+
+impl FirmwareTarget {
+    /// A board already in BOOTSEL (a mounted drive, a PICOBOOT device): it has
+    /// BOOTSEL by being there; nothing else is known.
+    pub fn in_bootloader() -> Self {
+        Self {
+            voltage: firmware_guard_board_in_bootloader(),
+            board: Some(dspi_proto::packets::Board::Pico),
+            ..Self::default()
+        }
+    }
+
+    /// Whether an image may be offered at all: only a board with BOOTSEL.
+    pub fn has_bootsel(&self) -> bool {
+        self.board
+            .is_some_and(dspi_proto::packets::Board::has_bootsel)
+    }
+}
+
+/// Which rule beyond the voltage rule decided an update verdict.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum FirmwareUpdateRule {
+    /// None: the voltage rule's verdict stands.
+    #[default]
+    None,
+    /// The board has no BOOTSEL: refused, whatever is typed.
+    NoBootsel,
+    /// Our firmware would give way to an image that may be upstream's.
+    LineageLoss,
+}
+
+/// [`firmware_update_check`]'s answer. Flash only on `verdict.allowed`.
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FirmwareUpdateVerdict {
+    /// The verdict, as [`firmware_guard_check`]'s with the rules above folded
+    /// in (`message` names every risk; `confirmation_phrase` is what to type).
+    pub verdict: FirmwareGuardVerdict,
+    /// The rule beyond the voltage rule that decided, if any.
+    pub rule: FirmwareUpdateRule,
+    /// The image's lineage (the manifest, or our stamp; else unknown).
+    pub image_lineage: crate::FirmwareLineage,
+    /// The image's generation (the manifest, or its version).
+    pub image_generation: crate::FirmwareGeneration,
+    /// A generation change, shown with what works afterwards; "" when none.
+    pub generation_change: String,
+}
+
+impl DspiCore {
+    /// The open board as an update target, read now: the voltage record, the
+    /// board (8 platform bytes and the descriptor), its lineage and the live
+    /// connection's generation. Never fails: what cannot be read is unknown,
+    /// and an unknown board is offered no image. Call before the bootloader
+    /// entry and keep it for [`firmware_update_check`].
+    pub fn firmware_target(&self) -> FirmwareTarget {
+        let mut inner = self.lock();
+        let inner_state = (
+            inner.state.fw_major,
+            inner.state.fw_minor,
+            inner.state.fw_patch,
+        );
+        let Ok(conn) = inner.conn() else {
+            return FirmwareTarget {
+                voltage: unknown(FirmwareGuardBoardSource::NoDevice),
+                ..FirmwareTarget::default()
+            };
+        };
+        let board = crate::hardware::read_board(conn).ok();
+        let t = conn.transport();
+        // The live connection's generation where the wrappers say it, else the
+        // generation the running firmware's version names (the mirror's
+        // `GET_PLATFORM`, read at connect).
+        let generation = match t.generation() {
+            Some(dspi_transport::Generation::Legacy) => crate::FirmwareGeneration::Legacy,
+            Some(dspi_transport::Generation::Paged(_)) => crate::FirmwareGeneration::Paged,
+            None => {
+                let s = &inner_state;
+                crate::FirmwareGeneration::of_version(&format!("{}.{}.{}", s.0, s.1, s.2))
+            }
+        };
+        let lineage = match sx::list(t) {
+            Ok(ids) if ids.iter().any(|&id| id != g::EXT_LIST) => crate::FirmwareLineage::Bofr,
+            // A stall is the firmware's own answer: no extension channel.
+            Err(ExtError::Unsupported { .. }) => crate::FirmwareLineage::Upstream,
+            _ => crate::FirmwareLineage::Unknown,
+        };
+        FirmwareTarget {
+            voltage: read_board(t),
+            board,
+            lineage,
+            generation,
+        }
+    }
+}
+
+/// The image's lineage and generation: the manifest's for a bundled image,
+/// else ours when it carries our core-voltage stamp, and the generation from
+/// its version.
+fn image_facts(
+    image: &[u8],
+    info: &Uf2Info,
+) -> (crate::FirmwareLineage, crate::FirmwareGeneration) {
+    if let Some(known) = crate::firmware_manifest::bundled_lineage(image) {
+        return known;
+    }
+    let lineage = if image_stamp(image, info).is_some() {
+        crate::FirmwareLineage::Bofr
+    } else {
+        crate::FirmwareLineage::Unknown
+    };
+    (
+        lineage,
+        crate::FirmwareGeneration::of_version(&info.firmware_version),
+    )
+}
+
+/// What works after a generation change, for the person deciding.
+fn generation_change(from: crate::FirmwareGeneration, to: crate::FirmwareGeneration) -> String {
+    use crate::FirmwareGeneration as G;
+    match (from, to) {
+        (G::Legacy, G::Paged) => {
+            "This update moves the device to firmware 1.1.7's paged protocol. \
+             Afterwards an upstream DSPi Link 1.2 hub (a 1.1.6 console, the bridge 0.1.0) can no \
+             longer serve it, and apps older than this one cannot control it."
+                .into()
+        }
+        (G::Paged, G::Legacy) => "This update moves the device back to the 1.1.6 protocol. \
+             Afterwards an upstream DSPi Link 1.3 hub does not serve it."
+            .into(),
+        _ => String::new(),
+    }
+}
+
+/// The update check (the table above): [`firmware_guard_check`] with the
+/// target's board, lineage and generation. Pure apart from parsing the image;
+/// never panics.
+pub fn firmware_update_check(
+    image: Vec<u8>,
+    target: &FirmwareTarget,
+    typed_confirmation: &str,
+) -> FirmwareUpdateVerdict {
+    let info = uf2_inspect(image.clone());
+    let (image_lineage, image_generation) = if info.valid {
+        image_facts(&image, &info)
+    } else {
+        Default::default()
+    };
+    let mut out = FirmwareUpdateVerdict {
+        image_lineage,
+        image_generation,
+        generation_change: generation_change(target.generation, image_generation),
+        ..FirmwareUpdateVerdict::default()
+    };
+    if !target.has_bootsel() {
+        let name = target
+            .board
+            .map_or("board could not be identified", crate::board_name);
+        out.rule = FirmwareUpdateRule::NoBootsel;
+        out.verdict = FirmwareGuardVerdict {
+            reason: FirmwareGuardReason::BoardUnknown,
+            message: format!(
+                "No image is offered for this device ({name}): it has no BOOTSEL bootloader \
+                 this app can update it through."
+            ),
+            required_mv: target.voltage.required_mv,
+            ..FirmwareGuardVerdict::default()
+        };
+        return out;
+    }
+    let mut v = firmware_guard_check(image, target.voltage.clone(), typed_confirmation.to_owned());
+    let loss = target.lineage == crate::FirmwareLineage::Bofr
+        && image_lineage != crate::FirmwareLineage::Bofr
+        && v.decision != FirmwareGuardDecision::Refused;
+    if loss {
+        out.rule = FirmwareUpdateRule::LineageLoss;
+        let text = "This board runs this fork's firmware, and this image may be upstream's: the \
+             extension channel, the audio link, the 1.20 V core setting and the stored IO, \
+             control-interface and Control Surfaces settings would be lost (upstream firmware \
+             reads them as missing and falls back to its defaults).";
+        v.message = if v.message.is_empty() {
+            text.to_owned()
+        } else {
+            format!("{} {text}", v.message)
+        };
+        if v.decision == FirmwareGuardDecision::Clear {
+            let confirmed = typed_confirmation == LINEAGE_PHRASE;
+            if confirmed {
+                log::warn!("firmware guard: lineage loss accepted by typed confirmation");
+            }
+            v.allowed = confirmed;
+            v.decision = if confirmed {
+                FirmwareGuardDecision::Confirmed
+            } else {
+                FirmwareGuardDecision::NeedsConfirmation
+            };
+            v.reason = FirmwareGuardReason::ImageUnknown;
+            v.confirmation_phrase = LINEAGE_PHRASE.to_owned();
+        }
+    }
+    out.verdict = v;
+    out
+}
+
 // ── The image's stamp ──────────────────────────────────────────────────
 
 /// An image's flash pages by address.
@@ -596,6 +836,10 @@ fn image_stamp(bytes: &[u8], info: &Uf2Info) -> Option<u16> {
     let first = stamps.next()??;
     stamps.all(|s| s == Some(first)).then_some(first)
 }
+
+// -- WP PGFWUP --
+#[cfg(test)]
+mod tests_wp_pgfwup;
 
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]

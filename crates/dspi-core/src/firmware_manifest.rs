@@ -83,19 +83,141 @@ struct Entry {
     version: String,
     size: u64,
     sha256: String,
+    // -- WP PGFWUP -- (PLAN-PG section 1.8) optional: the bundles are upstream's
+    // releases, and `tools/firmware_manifest.py` writes neither field yet
+    /// `upstream` (the default) or `bofr`.
+    #[serde(default)]
+    lineage: Option<String>,
+    /// `legacy` or `paged`; by default from the version (1.1.7 and later are
+    /// paged).
+    #[serde(default)]
+    generation: Option<String>,
+    /// The PAGEGUARD stamp: the `bofr-main` commit whose guard the image
+    /// contains (`df53ede` or a later one), as hex. Required of a legacy bofr
+    /// image (R6d).
+    #[serde(default)]
+    page_guard: Option<String>,
+    /// Filled from the fields above when the manifest is read: the lineage and
+    /// generation, or why the entry is refused (never offered, never flashed).
+    #[serde(skip, default = "unjudged")]
+    judged: Judged,
 }
 
-/// The compiled-in manifest. A manifest that does not parse (a test fails
-/// first) gives none, so every image is `NotBundled`: the existing checks
-/// still run, and nothing is refused on the manifest's account.
-fn manifest() -> &'static [Entry] {
-    static M: OnceLock<Vec<Entry>> = OnceLock::new();
-    M.get_or_init(|| match serde_json::from_str::<Manifest>(MANIFEST_JSON) {
+// -- WP PGFWUP --
+/// Where a firmware comes from (PLAN-PG section 1.8): upstream Weeb Labs, or
+/// this fork's `bofr-main` (extensions, alink, the 1.20 V core setting, our
+/// preset directory).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum FirmwareLineage {
+    /// Not known: every doubt resolves to "asks".
+    #[default]
+    Unknown,
+    /// Weeb Labs' firmware (stock).
+    Upstream,
+    /// This fork's `bofr-main`.
+    Bofr,
+}
+
+/// Which protocol generation a firmware speaks (PLAN-PG section 1.1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum FirmwareGeneration {
+    /// Not known.
+    #[default]
+    Unknown,
+    /// 1.1.6 and older: page 0 only.
+    Legacy,
+    /// 1.1.7 and later: paged.
+    Paged,
+}
+
+impl FirmwareGeneration {
+    /// The generation a DSPi version string names: 1.1.7 and later (betas
+    /// included) are paged, anything older legacy, an unreadable one unknown.
+    pub fn of_version(version: &str) -> Self {
+        match crate::hardware::parse_version(version) {
+            Some((major, minor, patch, _)) if (major, minor, patch) >= (1, 1, 7) => Self::Paged,
+            Some(_) => Self::Legacy,
+            None => Self::Unknown,
+        }
+    }
+}
+
+/// One image the manifest offers ([`bundled_images`]).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BundledImage {
+    /// The bundled file's name.
+    pub name: String,
+    /// `RP2040` or `RP2350`.
+    pub platform: String,
+    /// The DSPi version string inside the image.
+    pub version: String,
+    /// Whose firmware it is.
+    pub lineage: FirmwareLineage,
+    /// Which protocol generation it speaks.
+    pub generation: FirmwareGeneration,
+    /// The PAGEGUARD stamp of a legacy bofr image, else `None`.
+    pub page_guard: Option<String>,
+}
+
+/// An entry's lineage and generation, or why it is refused.
+type Judged = std::result::Result<(FirmwareLineage, FirmwareGeneration), String>;
+
+fn unjudged() -> Judged {
+    Err("not judged".into())
+}
+
+/// The rule an entry meets to be offered: a known lineage and generation, and
+/// on a legacy bofr image the PAGEGUARD stamp (a host-supplied MIDI pipe can
+/// outlive a re-flash, and a stale paged wrapper would then send paged requests
+/// to a downgraded board that only its guard can refuse, R6d).
+fn judge_entry(e: &Entry) -> Judged {
+    let lineage = match e.lineage.as_deref() {
+        None | Some("upstream") => FirmwareLineage::Upstream,
+        Some("bofr") => FirmwareLineage::Bofr,
+        Some(other) => return Err(format!("{}: unknown lineage {other:?}", e.name)),
+    };
+    let generation = match e.generation.as_deref() {
+        None => FirmwareGeneration::of_version(&e.version),
+        Some("legacy") => FirmwareGeneration::Legacy,
+        Some("paged") => FirmwareGeneration::Paged,
+        Some(other) => return Err(format!("{}: unknown generation {other:?}", e.name)),
+    };
+    if generation == FirmwareGeneration::Unknown {
+        return Err(format!(
+            "{}: the version {:?} names no generation",
+            e.name, e.version
+        ));
+    }
+    let stamped = e
+        .page_guard
+        .as_deref()
+        .is_some_and(|c| (7..=40).contains(&c.len()) && c.bytes().all(|b| b.is_ascii_hexdigit()));
+    if lineage == FirmwareLineage::Bofr && generation == FirmwareGeneration::Legacy && !stamped {
+        return Err(format!(
+            "{} is a 1.1.6-generation bofr image without the PAGEGUARD stamp: it is never \
+             offered (PLAN-PG R6d)",
+            e.name
+        ));
+    }
+    Ok((lineage, generation))
+}
+
+/// The manifest `text`, each entry judged. One that does not parse gives
+/// none.
+fn parse(text: &str) -> Vec<Entry> {
+    match serde_json::from_str::<Manifest>(text) {
         Ok(m) => m
             .images
             .into_iter()
             .map(|mut e| {
                 e.sha256.make_ascii_lowercase();
+                e.judged = judge_entry(&e);
+                if let Err(why) = &e.judged {
+                    log::error!("firmware manifest: {why}");
+                }
                 e
             })
             .collect(),
@@ -103,7 +225,51 @@ fn manifest() -> &'static [Entry] {
             log::error!("firmware manifest: unreadable ({e}); no image counts as bundled");
             Vec::new()
         }
-    })
+    }
+}
+
+/// The compiled-in manifest. A manifest that does not parse (a test fails
+/// first) gives none, so every image is `NotBundled`: the existing checks
+/// still run, and nothing is refused on the manifest's account.
+fn manifest() -> &'static [Entry] {
+    static M: OnceLock<Vec<Entry>> = OnceLock::new();
+    M.get_or_init(|| parse(MANIFEST_JSON))
+}
+
+// -- WP PGFWUP --
+/// The images the manifest offers, with their lineage and generation. An entry
+/// the manifest refuses (a legacy bofr image without the PAGEGUARD stamp, an
+/// unknown lineage or generation) is not among them.
+pub fn bundled_images() -> Vec<BundledImage> {
+    offered(manifest())
+}
+
+fn offered(all: &[Entry]) -> Vec<BundledImage> {
+    all.iter()
+        .filter_map(|e| {
+            let (lineage, generation) = e.judged.clone().ok()?;
+            Some(BundledImage {
+                name: e.name.clone(),
+                platform: e.platform.clone(),
+                version: e.version.clone(),
+                lineage,
+                generation,
+                page_guard: e.page_guard.clone().filter(|_| {
+                    lineage == FirmwareLineage::Bofr && generation == FirmwareGeneration::Legacy
+                }),
+            })
+        })
+        .collect()
+}
+
+/// The lineage and generation of `image` when it is a bundled image the
+/// manifest offers (by its hash), else `None`.
+pub(crate) fn bundled_lineage(image: &[u8]) -> Option<(FirmwareLineage, FirmwareGeneration)> {
+    let hash = sha256_hex(image);
+    manifest()
+        .iter()
+        .find(|e| e.sha256 == hash)
+        .and_then(|e| e.judged.clone().ok())
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {
@@ -124,10 +290,16 @@ fn base_name(name: &str) -> &str {
 /// ships in the same bundle as the images. Pure; hashes the image once.
 #[cfg_attr(feature = "uniffi", uniffi::export)]
 pub fn verify_bundled(image: Vec<u8>, name: String) -> BundledFirmware {
-    let name = base_name(&name);
-    match manifest().iter().find(|e| e.name == name) {
+    verify_in(manifest(), &image, &name)
+}
+
+fn verify_in(all: &[Entry], image: &[u8], name: &str) -> BundledFirmware {
+    let name = base_name(name);
+    match all.iter().find(|e| e.name == name) {
         None => BundledFirmware::NotBundled,
-        Some(e) if e.sha256 == sha256_hex(&image) => BundledFirmware::Verified,
+        // -- WP PGFWUP -- an entry the manifest refuses is never flashed
+        Some(e) if e.judged.is_err() => BundledFirmware::Mismatch,
+        Some(e) if e.sha256 == sha256_hex(image) => BundledFirmware::Verified,
         Some(_) => BundledFirmware::Mismatch,
     }
 }
@@ -143,10 +315,17 @@ fn platform_name(platform: i8) -> &'static str {
 /// The guard's question, without a name: `Mismatch` for an image that
 /// presents itself as a bundled one (chip, version string and size) with
 /// other bytes, `Verified` for bundled bytes, else `NotBundled`.
-fn judge(image: &[u8], info: &Uf2Info) -> (BundledFirmware, Option<&'static Entry>) {
+fn judge<'a>(
+    all: &'a [Entry],
+    image: &[u8],
+    info: &Uf2Info,
+) -> (BundledFirmware, Option<&'a Entry>) {
     let hash = sha256_hex(image);
-    let all = manifest();
-    if all.iter().any(|e| e.sha256 == hash) {
+    if let Some(e) = all.iter().find(|e| e.sha256 == hash) {
+        // -- WP PGFWUP -- the bytes of an entry the manifest refuses
+        if e.judged.is_err() {
+            return (BundledFirmware::Mismatch, Some(e));
+        }
         return (BundledFirmware::Verified, None);
     }
     let size = u64::try_from(image.len()).unwrap_or(u64::MAX);
@@ -169,7 +348,26 @@ pub(crate) fn refusal(
     info: &Uf2Info,
     required_mv: u16,
 ) -> Option<FirmwareGuardVerdict> {
-    match judge(image, info) {
+    refusal_in(manifest(), image, info, required_mv)
+}
+
+fn refusal_in(
+    all: &[Entry],
+    image: &[u8],
+    info: &Uf2Info,
+    required_mv: u16,
+) -> Option<FirmwareGuardVerdict> {
+    match judge(all, image, info) {
+        // -- WP PGFWUP --
+        (BundledFirmware::Mismatch, Some(e)) if e.judged.is_err() => Some(FirmwareGuardVerdict {
+            message: format!(
+                "{} is not offered: {}",
+                e.name,
+                e.judged.as_ref().err().map_or("", String::as_str)
+            ),
+            required_mv,
+            ..FirmwareGuardVerdict::default()
+        }),
         (BundledFirmware::Mismatch, Some(e)) => Some(FirmwareGuardVerdict {
             message: format!(
                 "This file looks like the bundled {} but is not the same file: it may be damaged \
@@ -197,7 +395,7 @@ mod tests_wp_secfwv {
     use std::path::{Path, PathBuf};
 
     fn judge_for_test(image: &[u8]) -> BundledFirmware {
-        judge(image, &uf2_inspect(image.to_vec())).0
+        judge(manifest(), image, &uf2_inspect(image.to_vec())).0
     }
 
     /// Every app's bundle directory, from the repository root.
@@ -393,5 +591,122 @@ mod tests_wp_secfwv {
         assert_eq!(n.kind, crate::NoticeKind::Info);
         assert_eq!(n.title, "Not a verified DSPi Console image");
         assert!(!n.reason.is_empty() && !n.action.is_empty());
+    }
+}
+
+// -- WP PGFWUP --
+#[cfg(test)]
+mod tests_wp_pgfwup {
+    use super::*;
+    use crate::{FirmwareGuardDecision, uf2_inspect};
+
+    /// A manifest of `entries` (JSON objects without the common fields).
+    fn manifest_of(entries: &[&str]) -> Vec<Entry> {
+        let images: Vec<String> = entries
+            .iter()
+            .enumerate()
+            .map(|(i, extra)| {
+                format!(
+                    r#"{{"name": "img{i}.uf2", "platform": "RP2350", "version": "{}",
+                       "size": 512, "sha256": "{}"{extra}}}"#,
+                    if extra.contains("\"v117\"") {
+                        "1.1.7-beta1"
+                    } else {
+                        "1.1.6-3-gabc"
+                    },
+                    sha256_hex(&bytes(i)),
+                )
+            })
+            .collect();
+        parse(&format!(r#"{{"images": [{}]}}"#, images.join(",")))
+    }
+
+    fn bytes(i: usize) -> Vec<u8> {
+        vec![u8::try_from(i).unwrap_or(0); 512]
+    }
+
+    #[test]
+    fn wp_pgfwup_the_bundled_images_are_upstream_and_legacy() {
+        let all = bundled_images();
+        assert_eq!(
+            all.len(),
+            manifest().len(),
+            "every bundled image is offered"
+        );
+        for i in all {
+            assert_eq!(
+                (i.lineage, i.generation, i.page_guard.as_deref()),
+                (FirmwareLineage::Upstream, FirmwareGeneration::Legacy, None),
+                "{}",
+                i.name
+            );
+        }
+    }
+
+    #[test]
+    fn wp_pgfwup_a_legacy_bofr_image_needs_the_pageguard_stamp() {
+        let all = manifest_of(&[
+            r#", "lineage": "bofr", "generation": "legacy""#,
+            r#", "lineage": "bofr", "generation": "legacy", "page_guard": "df53ede""#,
+            r#", "lineage": "bofr", "generation": "legacy", "page_guard": "not-hex!""#,
+            r#", "lineage": "bofr", "generation": "legacy", "page_guard": "abc""#,
+            r#", "lineage": "bofr", "generation": "paged""#,
+            r#", "lineage": "bofr", "v117": 1"#,
+            r#", "lineage": "fork""#,
+            r#", "generation": "both""#,
+            r#""#,
+        ]);
+        let offered = offered(&all);
+        let names: Vec<&str> = offered.iter().map(|i| i.name.as_str()).collect();
+        assert_eq!(names, ["img1.uf2", "img4.uf2", "img5.uf2", "img8.uf2"]);
+        assert_eq!(offered[0].page_guard.as_deref(), Some("df53ede"));
+        assert_eq!(
+            (offered[0].lineage, offered[0].generation),
+            (FirmwareLineage::Bofr, FirmwareGeneration::Legacy)
+        );
+        // The generation from the version: 1.1.7 betas are paged.
+        assert_eq!(offered[2].generation, FirmwareGeneration::Paged);
+        assert_eq!(offered[3].lineage, FirmwareLineage::Upstream);
+        assert!(all[0].judged.as_ref().unwrap_err().contains("PAGEGUARD"));
+
+        // Never flashed: by its name, and by its bytes before every flash.
+        for i in [0usize, 2, 3, 6, 7] {
+            let name = format!("img{i}.uf2");
+            assert_eq!(
+                verify_in(&all, &bytes(i), &name),
+                BundledFirmware::Mismatch,
+                "{name}"
+            );
+            let info = uf2_inspect(bytes(i));
+            let v = refusal_in(&all, &bytes(i), &info, 1200).expect("refused");
+            assert!(!v.allowed);
+            assert_eq!(v.decision, FirmwareGuardDecision::Refused, "{name}");
+            assert!(v.message.contains(&name), "{v:?}");
+        }
+        for i in [1usize, 4, 5, 8] {
+            let name = format!("img{i}.uf2");
+            assert_eq!(
+                verify_in(&all, &bytes(i), &name),
+                BundledFirmware::Verified,
+                "{name}"
+            );
+            assert!(refusal_in(&all, &bytes(i), &uf2_inspect(bytes(i)), 1200).is_none());
+        }
+    }
+
+    #[test]
+    fn wp_pgfwup_the_generation_of_a_version() {
+        for (v, g) in [
+            ("1.1.6", FirmwareGeneration::Legacy),
+            ("1.1.6-1-g9ffce34", FirmwareGeneration::Legacy),
+            ("1.0.9", FirmwareGeneration::Legacy),
+            ("1.1.7-beta1", FirmwareGeneration::Paged),
+            ("1.1.7", FirmwareGeneration::Paged),
+            ("1.2.0", FirmwareGeneration::Paged),
+            ("", FirmwareGeneration::Unknown),
+            ("garbage", FirmwareGeneration::Unknown),
+        ] {
+            assert_eq!(FirmwareGeneration::of_version(v), g, "{v}");
+        }
     }
 }

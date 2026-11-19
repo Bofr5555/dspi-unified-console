@@ -201,6 +201,11 @@ required-features = ["api"]
 name = "wp_p3ro_rollout"
 required-features = ["rollout"]
 
+# -- WP PGFWUP --
+[[test]]
+name = "wp_pgfwup_rollout"
+required-features = ["rollout"]
+
 # -- WP P3CC --
 [[test]]
 name = "wp_p3cc_core_calls"

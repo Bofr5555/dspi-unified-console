@@ -52,8 +52,12 @@ const BULK_WRITE_CHUNK: usize = 2048;
 /// consoles).
 pub(crate) const LOCK_REASON: &str = "Applying configuration";
 
-/// `REQ_GET_PLATFORM` answers 4, 6 or 7 bytes.
-const PLATFORM_LEN: u16 = 7;
+/// `REQ_GET_PLATFORM` answers 4, 6 or 7 bytes, a DSPi-Zero 8 (byte 7 the board
+/// id). -- WP PGFWUP -- asked for `PlatformInfo::FULL_LEN` (PLAN-PG section 1.9).
+const PLATFORM_LEN: u16 = {
+    assert!(dspi_proto::packets::PlatformInfo::FULL_LEN <= u16::MAX as usize);
+    dspi_proto::packets::PlatformInfo::FULL_LEN as u16
+};
 
 /// Bytes of `REQ_GET_DAC_HW_MUTE_CONFIG` used: enabled, active-low, pin,
 /// pad, hold ms, release ms (the first 8 bytes of the image's section).
