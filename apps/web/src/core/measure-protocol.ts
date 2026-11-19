@@ -377,6 +377,8 @@ export interface TuneTickState {
 const TUNE_APPLIED = new Set(["applied", "verifying", "verified"]);
 /** The calls after which the Worker turns the auto-tune (`measureTuneTick`): its runs and its guard. */
 const TUNE_STARTS = new Set(["measureTuneSumCheck", "measureTuneVerify", "measureTuneApply"]);
+/** Turns of the tune that may fail in a row before the Worker gives its timer up (review P5-E): 10 s of them. */
+export const TUNE_TURN_RETRIES = 200;
 /** The tune needs turning: a run plays, or a guard waits. */
 export function tuneActive(s: TuneTickState | null | undefined): boolean {
   return !!s && (!!s.running || TUNE_APPLIED.has(s.stage));
@@ -428,6 +430,8 @@ export class MeasureWorkerRoute {
   // whatever else the page starts).
   private tuneTimer: ReturnType<typeof setTimeout> | undefined;
   private tuneOn = false;
+  /** Turns of the tune that failed in a row (review P5-E). */
+  private tuneFailed = 0;
   /** Blocks pushed and refused since the port opened (the core's refusals are its answers). */
   pushed = 0;
   refused = 0;
@@ -523,6 +527,7 @@ export class MeasureWorkerRoute {
   private startTune(): void {
     clearTimer(this.env, this.tuneTimer);
     this.tuneOn = true;
+    this.tuneFailed = 0;
     this.tuneTimer = setTimer(this.env, () => void this.turnTune());
   }
 
@@ -540,10 +545,15 @@ export class MeasureWorkerRoute {
       // The Worker's post takes any event (worker.ts); the page's listeners tell them apart.
       (this.post as unknown as (e: TuneEvent) => void)({ event: "measureTune", state: s });
       active = tuneActive(s);
+      this.tuneFailed = 0;
     } catch {
-      active = false;
+      // Review P5-E: this timer is the guard's (its timeout reverts), so one failed turn does not
+      // end it: only the tune's own state does, a closed session, or turns that keep failing.
+      active = ++this.tuneFailed < TUNE_TURN_RETRIES;
     }
     if (!this.tuneOn) return;
+    // (cleared first: a start meanwhile has set its own timer, and one chain of turns is enough)
+    clearTimer(this.env, this.tuneTimer);
     if (active) this.tuneTimer = setTimer(this.env, () => void this.turnTune());
     else this.stopTune();
   }

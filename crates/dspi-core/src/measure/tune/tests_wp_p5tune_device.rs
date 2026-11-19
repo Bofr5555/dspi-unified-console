@@ -1484,3 +1484,38 @@ fn wp_p5hold_keep_is_refused_while_the_verify_runs() {
     let k = r.core.measure_tune_keep().unwrap();
     assert_eq!(k.guard.phase, GuardPhase::Kept, "{k:#?}");
 }
+
+// Review P5-E: a Stop of the verify ends "the verify is still running".
+#[test]
+fn review_p5e_a_stopped_verify_no_longer_says_it_is_running() {
+    let r = rig("p5e-keep-verifying-stop");
+    let mut mic = Mic::new(&r, heard());
+    let text = mic.measure(walked(&[0]), 150.0);
+    let p = r
+        .core
+        .measure_tune_propose(text, layout(&[0]), MeasureTuneOptions::default())
+        .unwrap();
+    let g = r.core.measure_tune_apply(p.id, 0).unwrap();
+    assert_eq!(g.phase, GuardPhase::Waiting);
+    r.core.measure_tune_verify().unwrap();
+    let e = r.core.measure_tune_keep().unwrap_err();
+    assert!(e.to_string().contains(KEY_KEEP_DURING_VERIFY), "{e}");
+    assert_eq!(
+        r.core.measure_tune_state().issue.unwrap().key,
+        KEY_KEEP_DURING_VERIFY
+    );
+    let st = r.core.measure_tune_stop();
+    assert_eq!(st.stage, MeasureTuneStage::Applied, "{st:#?}");
+    assert!(!st.running);
+    assert!(
+        st.issue
+            .as_ref()
+            .is_none_or(|i| i.key != KEY_KEEP_DURING_VERIFY),
+        "{st:#?}"
+    );
+    assert_eq!(r.core.apply_status().phase, GuardPhase::Waiting);
+    // No verify had its verdict: the core's rule is one Keep (the screens
+    // that run the verify by themselves ask first).
+    let k = r.core.measure_tune_keep().unwrap();
+    assert_eq!(k.guard.phase, GuardPhase::Kept, "{k:#?}");
+}

@@ -874,7 +874,7 @@ results' smoothing/target), P5QUI.
   after an apply** (its Keep is then offered against a verdict), and P5QUI's Verify button and the Terminal stay as
   they are (the refusal is shown in words through its notice row).
 
-**P5HOLD: The timing hold's anchor; Keep during a verify.** [IMPLEMENTED on wp/P5HOLD, 2026-11-19] Size 1. From main
+**P5HOLD: The timing hold's anchor; Keep during a verify.** [DONE 2026-11-19: review/p5e] Size 1. From main
 67fa8fff (P5-D merged). Review P5-D D1 and D3, and the "more repeats" nit. **Owns:** `align.rs`'s and `xover.rs`'s
 hold anchor, `tests/review_p5d_hold.rs`, the tune's Keep gate, its notice row, this entry.
 **Implemented:**
@@ -912,7 +912,7 @@ noisy).
 
 ### Wave P5-E: the web tune, close-out
 
-**P5WAT: Web: auto-tune and documents.** [DONE 2026-11-19, in review: `wp/P5WAT` `d6275600`, batch P5-E; not merged] Size 2.5. Wave P5-E (after P5WMS has merged: it fills P5WMS's tab slot
+**P5WAT: Web: auto-tune and documents.** [DONE 2026-11-19: review/p5e] Size 2.5. Wave P5-E (after P5WMS has merged: it fills P5WMS's tab slot
 and uses its `graph.tsx`). **Owns:** new `apps/web/src/screens/measure/{tune.tsx,docs.tsx,tune-model.ts}`,
 `test/unit/measure_p5wat.test.ts`, `test/e2e/measure_p5wat.spec.ts`, one marked line in `MeasureScreen.tsx`'s tab slot.
 **Implements:** the tune wizard of section 1.4 (layout with alignment groups and programme feeds, preflight, measure,
@@ -922,17 +922,36 @@ countdown, verify (started by itself right after the apply: P5HOLD), keep or rev
 tune proposed, applied, verified and kept; another reverted; a withdrawn timing write shown with its reason; the A/B
 toggles; Control cannot delete a hub document; 375 px. **Deps:** P5WMS (P5-D), P5TUNE, P5HUB.
 
-**P5FIN: Docs built and the manual.** [DONE 2026-11-19, in review: `wp/P5FIN`, batch P5-E; not merged] Size 0.75. Wave P5-E, after P5WAT (same review batch). **Owns:** the built
+**P5FIN: Docs built and the manual.** [DONE 2026-11-19: review/p5e] Size 0.75. Wave P5-E, after P5WAT (same review batch). **Owns:** the built
 marks in `docs/integrator/measurement.md` and `hub-api.md` section 22, a user manual page `docs/manual/measurement.md`
 (placing the microphone, the couplers, what the safety rules mean, what auto-tune changes and how to go back),
 `docs/PARITY.md` marks, this plan's `[DONE]` marks. **Done when:** links resolve; the no-host-noun check passes.
 **Deps:** P5WAT.
 
-**The P5-E review batch** (P5FIN, 2026-11-19; none merged yet): P5WAT and P5FIN above, and the P5-D follow-ups
-P5HOLD (the timing hold's anchor, `measure.tune.keep_during_verify`; its entry is on `wp/P5HOLD`), P5QUI2 (Qt's
-passive RTA tab, Results through `measure_doc_curves`, the client read-only mode in `playBlocker`; no entry, its
-report `work/wp-P5QUI2/REPORT.md`) and P5DAYTON (Dayton calibration files; section 8's row on `wp/P5DAYTON`). The
-manual and the integrator page describe all five, marked "in review". P5HIL stays owed (owner action).
+**The P5-E review batch** (P5FIN, 2026-11-19; reviewed on `review/p5e`, `work/review-p5e/REPORT.md`): P5WAT and P5FIN
+above, and the P5-D follow-ups P5HOLD (the timing hold's anchor, `measure.tune.keep_during_verify`; its entry above),
+P5QUI2 (Qt's passive RTA tab, Results through `measure_doc_curves`, the client read-only mode in `playBlocker`; no
+entry, its report `work/wp-P5QUI2/REPORT.md`) and P5DAYTON (Dayton calibration files; section 8's row). The manual and
+the integrator page describe all five. P5HIL stays owed (owner action).
+
+**Wave P5-E review outcomes** (`work/review-p5e/REPORT.md`; binding for later WPs):
+- **The web tune's own measurement takes the user's placement** (R3, S3): "Measure this layout" never assumes
+  speakers. It follows the setup's placement until the user chooses on the Auto-tune tab; headphones on a coupler run
+  with the headphone start level, ceiling and sound level cap. Its gap is the core's for the placement (the screen sent
+  300 ms for speakers).
+- **A summed check or verify is not started at all** when its tab was left while the microphone was asked for (before:
+  started, then stopped when it answered).
+- **A guard that ended lost or with a failed revert is never said to be reverted** (web; the core's tune stage is
+  `reverted` for every end but kept: the guard's phase says which). Qt still says "reverted" there:
+  a later WP.
+- **A Stop of the verify clears a `keep_during_verify` issue** (the core), so no client says "the verify is still
+  running" after it was stopped.
+- **Qt:** a withdrawn start's run is stopped whatever the page thinks of the connection; a refusal's notice title is
+  found after the error's own prefix (it never matched); `AudioCapture` survives a listener that stops it inside
+  `failed()`.
+- **Two passes stay allowed** (a quick curve, an EQ-only tune; the tune's own measurement always uses three). **Open,
+  small:** a hint under the Passes field when it is 2; the global guard bar adopting a tune's guard (web); Dayton's
+  `*1000Hz` line honoured only before the first data row.
 
 **P5HIL (the coordinator with the owner, not an agent WP).** Size 1. After P5-E. One real session on the K340 PCB unit
 (`BB66A44F2AC1E7B6`) with the owner's measurement microphone and its calibration file, in the web console through

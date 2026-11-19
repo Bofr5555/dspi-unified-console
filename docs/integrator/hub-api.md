@@ -1852,7 +1852,7 @@ What the code does where the text above leaves room, or is stricter than it:
 ([`docs/core-merge/PLAN-P5.md`](../core-merge/PLAN-P5.md)): measurement and auto-tune. The documents themselves are
 [measurement.md section 7](measurement.md#7-the-documents); this section is only how the hub keeps and serves them.
 Clients (WP P5FIN, 2026-11-19): built in Qt's Documents tab (P5QUI) and the Terminal's `uconsole measure docs` and
-`show` (P5TM), both through `measure_docs_merged`; the web's Documents tab (P5WAT) is in review. The user's view is
+`show` (P5TM), both through `measure_docs_merged`; and in the web's Documents tab (P5WAT). The user's view is
 [docs/manual/measurement.md section 8](../manual/measurement.md#8-documents).*
 
 ### 22.1 What the hub keeps

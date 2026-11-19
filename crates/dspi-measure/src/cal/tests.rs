@@ -609,6 +609,31 @@ fn wp_p5daytn_other_star_lines_stay_comments() {
     }
 }
 
+// Review P5-E: the sensitivity line counts only in the file's head.
+#[test]
+fn review_p5e_a_1khz_star_line_after_the_data_began_is_a_comment() {
+    for text in [
+        "20 1\n*1000Hz 0 dB\n1000 0\n",
+        "20 1\n*1000Hz\t-36.1\n1000 0\n",
+        // Out of range or not finite: in the head a refusal, here a comment.
+        "20 1\n1000 0\n*1000Hz 5\n",
+        "20 1\n*1000Hz nan\n1000 0\n",
+        // Two of them: no "second sensitivity" either.
+        "20 1\n*1000Hz -36.1\n*1000Hz -36.1\n1000 0\n",
+    ] {
+        let c = dayton(text).unwrap_or_else(|e| panic!("{text:?}: {e}"));
+        assert_eq!(c.curve.format, CalFormat::Rew, "{text:?}");
+        assert_eq!(c.curve.sensitivity_dbv_pa, None, "{text:?}");
+        assert_eq!(c.spl_scale().offset_db, None, "{text:?}");
+        assert_eq!(c.curve.points.len(), 2, "{text:?}");
+    }
+    // In the head it is the sensitivity, as before, also after other
+    // comments and a blank line.
+    let c = dayton("* a note\n\n*1000Hz -36.1\n20 1\n1000 0\n").unwrap();
+    assert_eq!(c.curve.sensitivity_dbv_pa, Some(-36.1));
+    assert_eq!(c.curve.format, CalFormat::Dayton);
+}
+
 #[test]
 fn wp_p5daytn_mic_document_keeps_the_sensitivity_and_its_scale() {
     use crate::doc::{MicCal, MicDoc};

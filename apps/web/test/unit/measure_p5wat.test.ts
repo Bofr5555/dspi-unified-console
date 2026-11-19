@@ -12,7 +12,7 @@ import { after, test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { MeasureWorkerRoute, TICK_MS, isMeasureEvent, tuneActive, type MeasureStateRecord, type TuneEvent } from "../../src/core/measure-protocol";
+import { MeasureWorkerRoute, TICK_MS, TUNE_TURN_RETRIES, isMeasureEvent, tuneActive, type MeasureStateRecord, type TuneEvent } from "../../src/core/measure-protocol";
 import { CoreCallError, type CoreEvent, type GuardedApplyRecord, type NoticeRecord } from "../../src/core/protocol";
 import { WasmCore, loadWasmModule } from "../../src/core/wasm";
 import type { CoreClient } from "../../src/core/client";
@@ -37,6 +37,7 @@ import {
   proposalSeries,
   refusalWords,
   stageWords,
+  tunePlaceOf,
   type DocRow,
   type DocsHost,
   type TuneLayoutRecord,
@@ -218,6 +219,51 @@ test("P5WAT: after an apply the Worker turns the tune (its guard's timer) until 
   assert.equal(r2.route.tuneTicking, false);
   await r2.fire();
   assert.deepEqual(r2.calls, []);
+});
+
+test("review P5-E: a failed turn does not end the guard's timer; only turns that keep failing do", async () => {
+  const calls: string[] = [];
+  const timers = new Map<number, () => void>();
+  let n = 0;
+  let fail = 3;
+  const route = new MeasureWorkerRoute(
+    async (method) => {
+      calls.push(method);
+      if (fail > 0) {
+        fail--;
+        throw new Error("a turn that failed");
+      }
+      return tstate("applied");
+    },
+    () => undefined,
+    {
+      MessageChannel,
+      workletUrl: "x",
+      setTimeout: ((fn: () => void) => (timers.set(++n, fn), n as unknown as ReturnType<typeof setTimeout>)) as unknown as typeof setTimeout,
+      clearTimeout: ((t: number) => void timers.delete(t)) as unknown as typeof clearTimeout,
+    },
+  );
+  const fire = async () => {
+    const fns = [...timers.values()];
+    timers.clear();
+    for (const f of fns) f();
+    await new Promise((r) => setTimeout(r, 2));
+  };
+  route.after("measureTuneApply", true, GUARD);
+  for (let i = 0; i < 6; i++) await fire();
+  assert.equal(route.tuneTicking, true, "three failed turns, then the guard is turned on");
+  assert.equal(calls.length, 6);
+  assert.equal(timers.size, 1, "one chain of turns");
+  // A start while a turn is in flight does not double the turns.
+  const turning = fire();
+  route.after("measureTuneVerify", true, tstate("verifying", { running: true }));
+  await turning;
+  assert.equal(timers.size, 1, "still one chain");
+  // Turns that never succeed end the timer (a core that is gone).
+  fail = Infinity;
+  for (let i = 0; i < TUNE_TURN_RETRIES + 2; i++) await fire();
+  assert.equal(route.tuneTicking, false);
+  assert.equal(timers.size, 0);
 });
 
 // ------------------------------------------------------------------ the tune desk on a stand-in core
@@ -475,6 +521,125 @@ test("P5WAT: leaving the tab withdraws a start still on its way: an apply is rev
   assert.equal(await verified, false);
   assert.ok(s.calls.lastIndexOf("measureTuneStop") > s.calls.indexOf("measureTuneVerify"), s.calls.join(" "));
   assert.equal(s.mics(), 0);
+});
+
+// ---- review P5-E ----
+
+test("review P5-E: the tune's own measurement takes the person's placement (headphone levels on a coupler) and the core's gap", () => {
+  const speakers = layoutSetup(LAYOUT, 1500, "", "x");
+  assert.equal(speakers.placement, "listeningPosition");
+  assert.equal(speakers.gapMs, undefined, "the gap is the core's for the placement, not a short one of the screen's");
+  assert.equal(speakers.passes, 3);
+  assert.equal(speakers.coupler, null);
+  // The Setup tab's placement decides until the person chooses on the tune tab.
+  assert.deepEqual(tunePlaceOf(null), { placement: "listeningPosition" });
+  assert.deepEqual(tunePlaceOf({ placement: "multiPosition", count: 5 }), { placement: "listeningPosition" });
+  const place = tunePlaceOf({ placement: "headphones", coupler: "flatPlate", count: 2 });
+  assert.deepEqual(place, { placement: "headphones", coupler: "flatPlate", count: 2 });
+  const phones = layoutSetup(LAYOUT, 1500, "", "x", place);
+  assert.equal(phones.placement, "headphones", "the core then starts at -60 dBFS and stops at -30 dBFS (S3)");
+  assert.equal(phones.coupler, "flatPlate");
+  assert.equal(phones.count, 2);
+  assert.equal(phones.gapMs, undefined);
+  const s = standIn({});
+  (s.host as unknown as { draft: unknown }).draft = { micDocument: "", placement: "headphones", coupler: "hats", count: 3 };
+  const t = new TuneDesk(s.host);
+  assert.deepEqual(t.place, { placement: "headphones", coupler: "hats", count: 3 });
+  t.setHeadphones(false);
+  assert.deepEqual(t.place, { placement: "listeningPosition" });
+  t.setHeadphones(true);
+  assert.deepEqual(t.place, { placement: "headphones", coupler: "hats", count: 3 });
+});
+
+test("review P5-E: a guard that was lost or whose revert failed is not said to be reverted", () => {
+  assert.match(stageWords(tstate("reverted", { guard: { ...GUARD, phase: "reverted" } })), /^Reverted: the settings from before are back/);
+  const lost = stageWords(tstate("reverted", { guard: { ...GUARD, phase: "lost", message: "The connection went." } }));
+  assert.match(lost, /may still hold the tune/);
+  assert.doesNotMatch(lost, /are back/);
+  const failed = stageWords(tstate("reverted", { guard: { ...GUARD, phase: "revert_failed" } }));
+  assert.match(failed, /revert failed/);
+  assert.doesNotMatch(failed, /are back/);
+});
+
+test("review P5-E: a no-verdict question the core answers with its refusal becomes the core's question, with its own second", async () => {
+  let clock = 5_000_000;
+  // A verify failed, then "Verify again" was stopped: applied, no verdict shown, the core still holds the failure.
+  let st = tstate("applied");
+  let asked = 0;
+  const s = standIn({
+    measureTuneState: () => st,
+    measureTuneProposal: () => PROPOSAL,
+    abState: () => ({ active: false }),
+    measureLayoutProposal: () => LAYOUT,
+    measureTuneKeep: () => {
+      asked++;
+      if (asked === 1) unverifiedRefusal();
+      st = tstate("kept");
+      return { guard: { ...GUARD, phase: "kept" }, snapshotBeforeId: "", snapshotBefore: "", snapshotAfterId: "", snapshotAfter: "", measurementId: "", measurement: "", notes: [] };
+    },
+  });
+  const t = new TuneDesk(s.host, () => clock);
+  await t.enter();
+  assert.equal(await t.keep(), false);
+  assert.equal(t.question?.why, "noVerdict");
+  assert.equal(asked, 0);
+  clock += CONFIRM_MS;
+  assert.equal(await t.confirmKeep(), false, "the core refuses: the verify had failed");
+  assert.equal(asked, 1);
+  assert.equal(t.question?.why, "unverified", "the question now says what the core said");
+  assert.match(t.question!.text, /^The verify did not confirm the tune/);
+  assert.equal(t.confirmReady(), false, "and its second counts from the refusal");
+  assert.equal(await t.confirmKeep(), false);
+  assert.equal(asked, 1, "a press at once sends nothing");
+  clock += CONFIRM_MS;
+  assert.equal(await t.confirmKeep(), true);
+  assert.equal(asked, 2);
+  await t.leave();
+});
+
+test("review P5-E: a summed check or a verify whose tab was left while the microphone was asked for is not started at all", async () => {
+  let st = tstate("proposed");
+  let grant: (() => void) | null = null;
+  const s = standIn({
+    measureTuneState: () => st,
+    measureTuneProposal: () => ({ ...PROPOSAL, sumCheck: "pending" }),
+    abState: () => ({ active: false }),
+    measureLayoutProposal: () => LAYOUT,
+    measureTuneSumCheck: () => (st = tstate("sumCheck", { running: true })),
+    measureTuneVerify: () => (st = tstate("verifying", { running: true })),
+    measureTuneStop: () => st,
+  });
+  let open = 0;
+  const host = s.host as unknown as { openMic: () => Promise<number>; closeMic: () => Promise<void> };
+  host.openMic = () =>
+    new Promise<number>((r) => {
+      grant = () => {
+        open++;
+        r(48000);
+      };
+    });
+  host.closeMic = async () => {
+    open--;
+  };
+  const t = new TuneDesk(s.host);
+  await t.enter();
+  const checked = t.sumCheck();
+  await new Promise((r) => setTimeout(r, 5));
+  await t.leave();
+  grant!();
+  assert.equal(await checked, false);
+  assert.equal(s.calls.includes("measureTuneSumCheck"), false, s.calls.join(" "));
+  assert.equal(open, 0, "the microphone closed again");
+  await t.enter();
+  st = tstate("applied");
+  t.state = st;
+  const verified = t.verify();
+  await new Promise((r) => setTimeout(r, 5));
+  await t.leave();
+  grant!();
+  assert.equal(await verified, false);
+  assert.equal(s.calls.includes("measureTuneVerify"), false, s.calls.join(" "));
+  assert.equal(open, 0);
 });
 
 test("P5WAT: the documents desk: Control cannot delete a hub document (nothing sent); Admin can; a hub rename goes to the hub", async () => {

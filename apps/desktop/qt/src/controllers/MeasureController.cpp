@@ -266,7 +266,10 @@ QString MeasureController::failureText(const QJsonObject &reply) {
     // the measurement's and the tune's refusals): that notice's title when the
     // table has a row for it, else the core's words without the key. Any such
     // key, so a new refusal needs no code here.
-    static const QRegularExpression keyed(QStringLiteral("^([a-z][a-z0-9_]*(?:\\.[a-z0-9_]+)+): (.+)$"),
+    // Review P5-E: after the error's own prefix ("invalid argument: measure.x:
+    // why" is what the core says; without it this never matched), and only a
+    // key the table has: any other text stays the core's, whole.
+    static const QRegularExpression keyed(QStringLiteral("^(?:[a-z][a-z ]*: )?([a-z][a-z0-9_]*(?:\\.[a-z0-9_]+)+): (.+)$"),
                                           QRegularExpression::DotMatchesEverythingOption);
     if (const QRegularExpressionMatch m = keyed.match(error); m.hasMatch()) {
         QString why = m.captured(2).trimmed();
@@ -274,7 +277,6 @@ QString MeasureController::failureText(const QJsonObject &reply) {
         const QString title = notices ? notices->row(m.captured(1)).value(QStringLiteral("title")).toString() : QString();
         //: A refusal of the core: %1 its notice's title, %2 the core's words
         if (!title.isEmpty()) return tr("%1: %2").arg(title, why);
-        if (!why.isEmpty()) return why;
     }
     if (notices) {
         const QString title = notices->row(key).value(QStringLiteral("title")).toString();
@@ -980,9 +982,12 @@ void MeasureController::stop() {
                if (loop->live.exchange(false)) live = reply([&](char *b, uint32_t l) { return dspi_measure_live_stop(c, b, l); });
                // The tune's runs (a proposal and an applied tune stay: its guard runs on)
                if (tuneRuns) reply([&](char *b, uint32_t l) { return dspi_measure_tune_stop(c, b, l); });
-               const QByteArray st =
-                   reply([&](char *b, uint32_t l) { return passiveOnly ? dspi_measure_state(c, b, l) : dspi_measure_stop(c, b, l); });
-               loop->session.store(false);
+               // Review P5-E: a run this loop was told of is stopped whatever the
+               // page thinks (a start withdrawn while the connection became one
+               // that may not play still had its run in the core)
+               const bool ours = loop->session.exchange(false);
+               const QByteArray st = reply(
+                   [&](char *b, uint32_t l) { return passiveOnly && !ours ? dspi_measure_state(c, b, l) : dspi_measure_stop(c, b, l); });
                // -- WP P5QUI2 -- the live view's state after its stop too: the
                // loop ticks it no more, so this is its last word (before, a
                // live view stopped here stayed "active" on the screen)

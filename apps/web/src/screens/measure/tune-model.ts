@@ -24,6 +24,7 @@ import { CoreCallError } from "../../core/protocol";
 import {
   tuneActive,
   type MeasureCaller,
+  type MeasureCoupler,
   type MeasureMethod,
   type MeasureCurveRecord,
   type MeasureDocInfoRecord,
@@ -276,6 +277,10 @@ export function stageWords(st: TuneStateRecord | null): string {
     case "kept":
       return "Kept.";
     case "reverted":
+      // Review P5-E: the core's stage is "reverted" for every end but kept; only the guard knows
+      // whether the settings from before are really back (a lost connection, a failed revert).
+      if (st.guard.phase === "lost") return `The connection was lost while the tune waited in its guard: the device may still hold the tune.${st.guard.message ? ` ${st.guard.message}` : ""}`;
+      if (st.guard.phase === "revert_failed") return `The revert failed: the device may still hold part of the tune.${st.guard.message ? ` ${st.guard.message}` : ""}`;
       return "Reverted: the settings from before are back.";
   }
 }
@@ -320,15 +325,31 @@ export function chosenLayout(l: TuneLayoutRecord, off: ReadonlySet<number>): Tun
   return { ...l, outputs: l.outputs.filter((o) => !off.has(o.output)) };
 }
 
-/** A walked run of the layout (one per alignment group, the session plans them), at the listening position. */
-export function layoutSetup(l: TuneLayoutRecord, sweepMs: number, micDocument: string, name: string): MeasureSetupRecord {
+/** Where the tune's own measurement is taken: speakers at the listening position, or headphones on a coupler. */
+export type TunePlace = { placement: "listeningPosition" } | { placement: "headphones"; coupler: MeasureCoupler; count: number };
+
+/** The tune's place for the Setup tab's draft: headphones when the person chose them there, else speakers. */
+export function tunePlaceOf(d: { placement?: string; coupler?: MeasureCoupler; count?: number } | null | undefined): TunePlace {
+  if (d?.placement !== "headphones") return { placement: "listeningPosition" };
+  const count = Number.isInteger(d.count) && d.count! >= 1 && d.count! <= 9 ? d.count! : 1;
+  return { placement: "headphones", coupler: d.coupler ?? "iec60318_4", count };
+}
+
+/**
+ * A walked run of the layout (one per alignment group, the session plans them), three passes (the
+ * least for "timing reliable"). Review P5-E: the placement is the person's (S3: the start level,
+ * the ceiling and the sound level cap are the placement's, lower for headphones), never assumed to
+ * be speakers; the gap is the core's for the placement (1 s for speakers, 0.3 s on a coupler).
+ */
+export function layoutSetup(l: TuneLayoutRecord, sweepMs: number, micDocument: string, name: string, place: TunePlace = { placement: "listeningPosition" }): MeasureSetupRecord {
   return {
     kind: "walked",
     outputs: l.outputs.map((o) => ({ output: o.output, role: o.role, speaker: o.speaker, group: o.group })),
-    placement: "listeningPosition",
+    placement: place.placement,
+    count: place.placement === "headphones" ? place.count : 0,
+    coupler: place.placement === "headphones" ? place.coupler : null,
     micDocument,
     sweepMs,
-    gapMs: 300,
     passes: 3,
     captureRateHz: 48_000,
     name,
@@ -345,7 +366,7 @@ export interface TuneHost {
   micDocument: string;
   targetDocument: string;
   targetName: string;
-  draft: { micDocument: string } | null;
+  draft: { micDocument: string; placement?: string; coupler?: MeasureCoupler; count?: number } | null;
   setResult(text: string | null, from: string): void;
   openMic(): Promise<number>;
   closeMic(): Promise<void>;
@@ -385,6 +406,8 @@ export class TuneDesk {
   said = "";
   busy = "";
   sweepMs = 1500;
+  /** Where "Measure this layout" measures; null: as the Setup tab's placement says (`place`). */
+  private placeChoice: TunePlace | null = null;
   private alive = false;
   /** Bumped when the tab is left: a start still on its way then knows. */
   private epoch = 0;
@@ -502,6 +525,17 @@ export class TuneDesk {
     this.changed();
   }
 
+  /** Where the tune's own measurement is taken: the person's choice here, else the Setup tab's placement. */
+  get place(): TunePlace {
+    return this.placeChoice ?? tunePlaceOf(this.host.draft);
+  }
+
+  setHeadphones(on: boolean): void {
+    const d = this.host.draft;
+    this.placeChoice = on ? tunePlaceOf({ placement: "headphones", coupler: d?.coupler, count: d?.placement === "headphones" ? d.count : 1 }) : { placement: "listeningPosition" };
+    this.changed();
+  }
+
   setSweepMs(ms: number): void {
     if (Number.isFinite(ms)) this.sweepMs = Math.min(15_000, Math.max(1000, Math.round(ms)));
     this.changed();
@@ -580,6 +614,11 @@ export class TuneDesk {
     this.clear();
     const epoch = this.epoch;
     if (!(await this.openMic())) return false;
+    // Review P5-E: left while the microphone was asked for: nothing is started at all.
+    if (epoch !== this.epoch || !this.alive) {
+      await this.closeMic();
+      return false;
+    }
     try {
       const st = await this.call("measureTuneSumCheck", { proposalId: p.id });
       if (epoch !== this.epoch || !this.alive) {
@@ -636,6 +675,11 @@ export class TuneDesk {
     const epoch = this.epoch;
     this.changed();
     if (!(await this.openMic())) return false;
+    // Review P5-E: as the summed check (the guard runs on, turned by the Worker).
+    if (epoch !== this.epoch || !this.alive) {
+      await this.closeMic();
+      return false;
+    }
     try {
       const st = await this.call("measureTuneVerify", undefined);
       if (epoch !== this.epoch || !this.alive) {
@@ -703,7 +747,9 @@ export class TuneDesk {
       const r = refusalWords(e);
       if (r.key === KEEP_UNVERIFIED) {
         // The core's first refusal opens the question; a second press too early keeps it open.
-        if (!second || !this.question) this.question = { why: "unverified", since: this.now(), text: r.text };
+        // Review P5-E: a "no verdict" question the core answers with this refusal (a verify had
+        // failed before the one that was stopped) becomes the core's question, with its own second.
+        if (!second || this.question?.why !== "unverified") this.question = { why: "unverified", since: this.now(), text: r.text };
       } else this.error = r.text;
       this.state = await this.call("measureTuneState", undefined).catch(() => this.state);
       return false;

@@ -336,7 +336,13 @@ pub fn parse_curve(text: &str, source_name: &str) -> Result<ParsedCurve, Measure
             )?);
             continue;
         }
-        if let Some(s) = dayton_sensitivity(line, line_no)? {
+        // Review P5-E: only in the file's head, where a Dayton file has it.
+        // After the first data row a `*` line is the comment it always was
+        // (a REW note such as `*1000Hz 0 dB` is then never a sensitivity, nor
+        // a reason to refuse the file).
+        if points.is_empty()
+            && let Some(s) = dayton_sensitivity(line, line_no)?
+        {
             if sensitivity_dbv_pa.is_some() {
                 return Err(MeasureError::Parse(format!(
                     "line {line_no}: a second 1 kHz sensitivity"

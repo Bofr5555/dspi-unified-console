@@ -230,23 +230,23 @@ microphone, the device's generator as the only stimulus ([`docs/integrator/measu
 plan [`docs/core-merge/PLAN-P5.md`](core-merge/PLAN-P5.md), the user's page
 [`docs/manual/measurement.md`](manual/measurement.md)). Everything is the core's (`dspi-measure`, `dspi-core`'s
 `measure`); a client adds the microphone's capture and its screens. Web and Qt first, the Terminal for documents and the
-tune from a document, Android and Swift in a later batch (OD-P5m). ✓ is on `main`; **in review** is the P5-E batch
-(P5WAT, P5QUI2, P5HOLD, P5DAYTON), not merged yet. Nothing here has run on real hardware with a real microphone but
+tune from a document, Android and Swift in a later batch (OD-P5m). ✓ is built, the P5-E batch
+(P5WAT, P5QUI2, P5HOLD, P5DAYTON; reviewed 2026-11-19) included. Nothing here has run on real hardware with a real microphone but
 P5SPIKE's start-level runs; P5HIL is owed.*
 
 | # | Feature | Web | Qt desktop | Terminal | Android | Swift (macOS, iOS) |
 |---|---|---|---|---|---|---|
 | J1 | A measurement run: walked sweeps through the generator, the safety ramp and aborts (S1 to S13), the device lock, the timing quality | ✓ (P5WCAP, P5WMS) | ✓ (P5QCAP, P5QUI) | ✗ (no microphone capture; `measure run` on the demo device only) | later batch | later batch |
 | J2 | Microphone calibration and targets: import of UMIK, REW and CSV files to `mic` and `target` documents; dB SPL, marked approximate until a calibrator check | ✓ (P5WMS); the calibrator step is in no screen yet | ✓ (P5QUI); no calibrator step either | ✓ (P5TM: `measure mic import`, `measure target import`) | later batch | later batch |
-| J2a | Dayton Audio calibration files (`*1000Hz` dBV/Pa line, a 0 dBV full scale assumed) | in review (P5DAYTON, core only: every client's import takes it) | in review (as Web) | in review (as Web) | later batch | later batch |
+| J2a | Dayton Audio calibration files (`*1000Hz` dBV/Pa line, a 0 dBV full scale assumed) | ✓ (P5DAYTON, core only: every client's import takes it) | ✓ (as Web) | ✓ (as Web) | later batch | later batch |
 | J3 | Placements and couplers: listening position, several positions, near-field, headphones on a coupler with reseats | ✓ (P5WMS) | ✓ (P5QUI) | n.a. (no capture) | later batch | later batch |
 | J4 | Live response with the target and the predicted curve; "cut this peak", "fit this range" as one undo group | ✓ (P5WMS) | ✓ (P5QUI) | ✗ | later batch | later batch |
-| J5 | Microphone RTA (pink-referenced, 1/1 to 1/48 octave, hold and compare); the passive RTA for a Viewer | ✓ (P5WMS; the passive RTA through P5CURV) | ◐ the live view's RTA ✓ (P5QUI); the passive RTA tab in review (P5QUI2) | ✗ | later batch | later batch |
-| J5a | Results drawn by the core (`measure_doc_curves`: smoothing, levelled target) | ✓ (P5WMS, P5CURV) | in review (P5QUI2; on `main` the C++ decodes the curves, no smoothing choice) | n.a. | later batch | later batch |
-| J6 | Auto-tune: delay and polarity, crossover corner and levels, the mandatory summed check, the target fit, one proposal applied guarded between two snapshots, A/B | in review (P5WAT: the verify starts by itself after an apply) | ✓ (P5QUI: Verify by a button, Keep Anyway, A/B) | ◐ (P5TM, `measure tune ID` from a document: off the demo device no summed check or verify, so only an EQ-only tune is applied) | later batch | later batch |
-| J6a | Keep refused while a verify runs (`measure.tune.keep_during_verify`); the timing hold anchored on the drivers' arrivals | in review (P5HOLD, core; P5WAT offers no Keep while verifying) | in review (P5HOLD; words through the notice row) | in review (P5HOLD) | later batch | later batch |
-| J7 | The `measurement`, `mic` and `target` documents: local store and the hub's (`measure.doc.*`), merged with the hub's winning; rename, note, delete by role | in review (P5WAT, the Documents tab; P5WMS saves a result to the hub) | ✓ (P5QUI, the Documents tab) | ✓ (P5TM: `measure docs`, `show`) | later batch | later batch |
-| J8 | REW text export of a measured output | ✓ (P5WMS, Results; the Documents tab in review, P5WAT) | ✓ (P5QUI, Results: REW Text…) | ✓ (P5TM: `measure export`) | later batch | later batch |
+| J5 | Microphone RTA (pink-referenced, 1/1 to 1/48 octave, hold and compare); the passive RTA for a Viewer | ✓ (P5WMS; the passive RTA through P5CURV) | ✓ (P5QUI the live view's RTA; P5QUI2 the passive RTA tab) | ✗ | later batch | later batch |
+| J5a | Results drawn by the core (`measure_doc_curves`: smoothing, levelled target) | ✓ (P5WMS, P5CURV) | ✓ (P5QUI2) | n.a. | later batch | later batch |
+| J6 | Auto-tune: delay and polarity, crossover corner and levels, the mandatory summed check, the target fit, one proposal applied guarded between two snapshots, A/B | ✓ (P5WAT: the verify starts by itself after an apply) | ✓ (P5QUI: Verify by a button, Keep Anyway, A/B) | ◐ (P5TM, `measure tune ID` from a document: off the demo device no summed check or verify, so only an EQ-only tune is applied) | later batch | later batch |
+| J6a | Keep refused while a verify runs (`measure.tune.keep_during_verify`); the timing hold anchored on the drivers' arrivals | ✓ (P5HOLD, core; P5WAT offers no Keep while verifying) | ✓ (P5HOLD; words through the notice row) | ✓ (P5HOLD) | later batch | later batch |
+| J7 | The `measurement`, `mic` and `target` documents: local store and the hub's (`measure.doc.*`), merged with the hub's winning; rename, note, delete by role | ✓ (P5WAT, the Documents tab; P5WMS saves a result to the hub) | ✓ (P5QUI, the Documents tab) | ✓ (P5TM: `measure docs`, `show`) | later batch | later batch |
+| J8 | REW text export of a measured output | ✓ (P5WMS, Results; P5WAT, the Documents tab) | ✓ (P5QUI, Results: REW Text…) | ✓ (P5TM: `measure export`) | later batch | later batch |
 
 The document model, the stores, the core's calls and the hub's family are built (P5MDOC, P5DOCK, P5HUB).
 

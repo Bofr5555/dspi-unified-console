@@ -11,10 +11,11 @@ import { noticeRow } from "../../ui/texts";
 import type { MeasureTab, MeasureTabProps } from "./MeasureScreen";
 import { DocsTab } from "./docs";
 import { MeasureGraph } from "./graph";
-import { ROLES } from "./model";
+import { COUPLERS, ROLES } from "./model";
 import { RunPanel } from "./run";
 import { download } from "./setup";
 import {
+  CONFIRM_MS,
   checkWords,
   feedWords,
   guardSeconds,
@@ -70,7 +71,7 @@ export function TuneTab(props: MeasureTabProps) {
     if (!l) return;
     t.useMeasurement(null);
     const on = { ...l, outputs: l.outputs.filter((o) => !t.off.has(o.output)) };
-    await desk.startRun(layoutSetup(on, t.sweepMs, desk.micDocument || desk.draft?.micDocument || "", "Auto-tune layout"));
+    await desk.startRun(layoutSetup(on, t.sweepMs, desk.micDocument || desk.draft?.micDocument || "", "Auto-tune layout", t.place));
   };
 
   return (
@@ -164,10 +165,22 @@ export function TuneTab(props: MeasureTabProps) {
             Sweep length, s{" "}
             <input aria-label="Tune sweep length" type="number" min={1} max={15} step={0.5} value={t.sweepMs / 1000} style={{ width: "5em" }} disabled={busy} onChange={(e) => t.setSweepMs(Number((e.currentTarget as HTMLInputElement).value) * 1000)} />
           </label>
+          <label>
+            Measured{" "}
+            <select aria-label="Tune placement" value={t.place.placement} disabled={busy || t.applied} onChange={(e) => t.setHeadphones((e.currentTarget as HTMLSelectElement).value === "headphones")}>
+              <option value="listeningPosition">Speakers, at the listening position</option>
+              <option value="headphones">Headphones on a coupler</option>
+            </select>
+          </label>
           <button type="button" disabled={busy || t.applied || !l || props.blocked !== ""} onClick={() => void measure()}>
             Measure this layout
           </button>
         </div>
+        <p class="muted" aria-label="Tune placement levels">
+          {t.place.placement === "headphones"
+            ? `Headphones: on the coupler, not on a head. The levels are the lower ones for headphones (${COUPLERS.find((c) => c.id === (t.place as { coupler?: string }).coupler)?.label ?? "the Setup tab's coupler"}).`
+            : "Speakers: the levels are those for speakers. For headphones choose Headphones on a coupler first: they are measured much more quietly."}
+        </p>
         {desk.preflight && !desk.preflight.clear ? (
           <ul class="change-list" aria-label="Tune preflight">
             {desk.preflight.blockers.map((b, i) => (
@@ -321,7 +334,7 @@ function GuardCard(props: MeasureTabProps & { t: TuneDesk }) {
   const v = st.verify;
   const q = t.question;
   const ready = t.confirmReady();
-  const wait = q ? Math.max(0, Math.ceil((q.since + 1000 - Date.now()) / 1000)) : 0;
+  const wait = q ? Math.max(0, Math.ceil((q.since + CONFIRM_MS - Date.now()) / 1000)) : 0;
   const kept = t.kept;
   const row2 = noticeRow("measure.tune.keep_unverified");
   return (

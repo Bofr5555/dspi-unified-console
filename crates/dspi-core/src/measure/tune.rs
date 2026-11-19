@@ -2756,6 +2756,15 @@ impl DspiCore {
             | MeasureTuneStage::Verifying
             | MeasureTuneStage::Verified => {
                 t.stage = MeasureTuneStage::Applied;
+                // Review P5-E: no verify runs any more, so "the verify is
+                // still running" is no longer true (it was cleared only by a
+                // verdict, and every client went on saying it after a Stop).
+                if t.issue
+                    .as_ref()
+                    .is_some_and(|i| i.key == KEY_KEEP_DURING_VERIFY)
+                {
+                    t.issue = None;
+                }
             }
             _ => t.forget(),
         }

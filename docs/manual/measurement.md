@@ -2,7 +2,7 @@
 
 *User manual, WP P5FIN, 2026-11-19. For the owner and for users of the web console and the Qt console. The technical
 contract is [docs/integrator/measurement.md](../integrator/measurement.md). This page describes the consoles as they are
-on `main` and in the P5-E review batch. Where a part is still in review it says "in review".*
+on `main` with the P5-E batch (reviewed 2026-11-19: `work/review-p5e/REPORT.md`).*
 
 With a measurement microphone you can see what each output of your DSPi really does in the room or on a headphone
 coupler. You can then correct it from the measured curve, or let auto-tune line up a multi-way speaker for you. Every
@@ -13,7 +13,7 @@ change is shown before it is written, and every change can be undone.
 | Console | Where | What it offers |
 |---|---|---|
 | Web console | the **Measure** screen, with the tools (Advanced and Installer modes) | tabs Measure, Results, Live, Auto-tune, Documents; Passive RTA when you may not play |
-| Qt console | **Tools > Measure…** (Advanced and Installer modes) | the same tabs. The Passive RTA tab, and the smoothing and target choices in Results, are in review |
+| Qt console | **Tools > Measure…** | the same tabs |
 | Terminal (`uconsole measure`) | the command line | importing calibration and target files, listing, showing and exporting documents, and a tune from a saved measurement. It opens no microphone |
 
 On the demo device a **Simulated microphone** stands in for a real one, so you can try every step without hardware. It
@@ -44,7 +44,7 @@ Pick the placement in the setup:
 | Placement | Where the microphone goes | What it is good for |
 |---|---|---|
 | **Listening position** | where your head is when you listen, at ear height | alignment (delay, polarity), the crossover and the EQ. This is the one auto-tune needs |
-| **Several positions** (3 to 9) | position 1 at the listening position, the others spread around it, over the area where people sit. You move the microphone when asked (**Next Position**) | an EQ that suits more than one spot. Dips that change more than 3 dB between positions are never filled. Only position 1 is used for timing |
+| **Several positions** (3 to 9) | position 1 at the listening position, the others spread around it, over the area where people sit. You move the microphone when asked (**Next position**) | an EQ that suits more than one spot. Dips that change more than 3 dB between positions are never filled. Only position 1 is used for timing |
 | **Near-field** | a few centimetres from one driver, on its axis | seeing one driver on its own. It is kept as a labelled near-field measurement and not used by auto-tune yet |
 
 Point the microphone the way its calibration file expects:
@@ -90,15 +90,15 @@ On a coupler the levels are lower than for speakers (section 4), and the pause b
 
 ### 3.1 The microphone's calibration
 
-Import the file that came with your microphone (**Import Calibration…** in the setup, or `uconsole measure mic import
-FILE`). It becomes a `mic` document that you can use again. These formats are read:
+Import the file that came with your microphone (the calibration file field of the setup in the web console,
+**Import Calibration…** in the Qt console, or `uconsole measure mic import FILE`). It becomes a `mic` document that you can use again. These formats are read:
 
 | File | What it gives |
 |---|---|
 | **miniDSP UMIK-1 / UMIK-2** text, with its `Sens Factor` line | the correction curve, and a sound level scale from the sensitivity |
 | **REW** calibration text (frequency, dB, optionally phase) | the correction curve. A `Sensitivity … dBFS` line also gives a sound level scale |
 | **CSV** (comma, semicolon or tab) | the correction curve only |
-| **Dayton Audio** (iMM-6C, UMM-6), with its `*1000Hz` sensitivity line *(in review)* | the correction curve, and a sound level scale from the sensitivity. A UMM-6 file with a `Sens Factor` line is read as a USB microphone, like a UMIK |
+| **Dayton Audio** (iMM-6C, UMM-6), with its `*1000Hz` sensitivity line | the correction curve, and a sound level scale from the sensitivity. A UMM-6 file with a `Sens Factor` line is read as a USB microphone, like a UMIK |
 
 The correction curve is applied to every measurement made with that microphone.
 
@@ -106,11 +106,12 @@ The correction curve is applied to every measurement made with that microphone.
 is always marked **approximate**. Set the microphone input as its maker says (for a UMIK, the gain its file was made
 for).
 
-**The Dayton full-scale assumption** *(in review)*. A Dayton file gives the sensitivity in volts per pascal (dBV/Pa).
+**The Dayton full-scale assumption.** A Dayton file gives the sensitivity in volts per pascal (dBV/Pa).
 To turn that into a level, the console assumes that a full-scale signal on your input is 1 V RMS (0 dBV). Most
 headset and interface inputs reach full scale below 1 V. There the console reads levels **too high**, so the sound
 level cap stops the ramp early, which errs on the safe side. On a line input whose full scale is above 1 V it reads
-levels too low.
+levels **too low**: the sound level cap then acts later than it should, and the level shown is lower than the real
+one. The generator's level ceiling still holds, as it does with no calibration file.
 
 **A calibrator step would override the assumption.** With an acoustic calibrator (a 94 or 114 dB tone at 1 kHz), the
 measured level of the tone would replace every assumption above, and the scale would no longer be approximate. The
@@ -124,7 +125,8 @@ sound level cap**: only the generator's level ceiling limits the level. The cons
 
 A target is the curve the EQ aims for, drawn dashed on every graph. Built in, all by our own parameters: **flat**, a
 **tilt**, a **house curve** (bass shelf plus tilt), and one default per coupler type. You can import any target or
-coupler compensation as REW or CSV text (**Import Target…**, or `uconsole measure target import FILE`). A target is
+coupler compensation as REW or CSV text (the target file field in the web console, **Import Target…** in the Qt console, or `uconsole measure target import
+FILE`). A target is
 lined up with your curve over a reference band (500 Hz to 2 kHz by default).
 
 ## 4. The safety rules, and what they mean for you
@@ -151,7 +153,7 @@ stops you, the console says which one and what to do.
 ## 5. Results and the live view
 
 **Results** shows each output's curve with the target dashed. Smoothing is 1/6 octave by default, and you can change it
-or hide the target (in the Qt console these two choices are in review). Points the measurement does not trust (too much noise, or repeats that disagree) are drawn faint
+or hide the target. Points the measurement does not trust (too much noise, or repeats that disagree) are drawn faint
 and are never used by the EQ fit. You can export an output as REW text.
 
 **Live** repeats short sweeps on one output, or plays pink noise with the microphone RTA (fast, slow or infinite
@@ -189,9 +191,12 @@ EQ toward the target. Each step shows its result before the next, and you can st
 1. **Layout.** The console proposes your speakers and their ways (low, mid, high, sub) from the DSPi's settings, and
    which outputs belong together. Check and correct it. You can leave outputs out.
 2. **Checks.** Everything that would stop a run (section 4) is listed in words.
-3. **Measure.** One walked run of each speaker's ways at the listening position.
-4. **Options.** You can keep the crossover (align only), keep the delays, or keep the levels. The web console can also
-   leave the EQ out (**No EQ fit**).
+3. **Measure.** One walked run of each speaker's ways at the listening position, three passes. For headphones choose
+   the headphone placement first (in the web console's Auto-tune tab: **Measured: Headphones on a coupler**; it follows
+   the setup's placement until you choose): the run then uses the lower headphone levels of section 4. In the Qt
+   console the tune uses the measurement you made on the Measure tab, with the placement you chose there.
+4. **Options.** You can keep the crossover (align only), keep the delays, keep the levels, or leave the EQ out (**No EQ
+   fit**).
 5. **Summed check, always.** The ways of each crossover play together, and the measured sum is compared with what the
    measurement predicts. If they disagree by more than 1.5 dB, every delay, polarity and crossover change is withdrawn
    with the reason, and only the EQ remains. Timing and crossover changes are applied only after the summed check has
@@ -221,7 +226,7 @@ It will not:
 - **change timing it cannot settle.** On a steep crossover (LR6, LR8, BW3 or BW4 near a low corner such as 120 Hz),
   or where the best timing is half a cycle away from what was measured, the delay and polarity are **kept**. The
   proposal's note says so, for example "the timing could not be settled at this corner; the delay and polarity are
-  kept". Since P5HOLD *(in review)* the measured arrivals are first corrected for the crossover's own delay, so most
+  kept". The measured arrivals are first corrected for the crossover's own delay, so most
   crossovers do get their timing. The note remains for the cases that are still unclear;
 - raise any output's gain, touch the volume, overwrite a PEQ band you have set (unless you free it), change a filter
   family or order, or apply anything without your press.
@@ -233,19 +238,21 @@ It will not:
    is long enough for the verify plus a margin, at most 590 s. If a verify would take longer, the proposal warns you.
 2. **Verify.** The tuned speaker is measured again: a walked run and a summed run for each crossover. It passes when
    everything is within 1.5 dB of the prediction.
-   - Web console *(in review)*: the verify starts by itself right after the apply.
+   - Web console: the verify starts by itself right after the apply.
    - Qt console: press **Verify**.
    - Terminal: only on the demo device. Elsewhere it has no microphone, so it applies only EQ-only tunes, says they are
      unverified, and leaves timing changes to the web or Qt console.
 3. **Keep.** The rules for Keep:
    - **While the verify runs**, Keep waits for its verdict. The web console does not offer it then, and the other
-     consoles say "The verify is still running" *(in review)*.
+     consoles say "The verify is still running".
    - **After a verify that passed**, one press of Keep keeps the tune.
    - **After a verify that failed**, Keep takes **two steps**. The first press is refused with "The verify did not
      confirm the tune". You are asked again, and only your second press, at least a second later, keeps it. The second
      question is withdrawn if you revert, apply again, verify again, or the countdown ends. Nothing ever presses Keep
      for you.
-   - **Before any verify has run** (Qt, Terminal), Keep keeps at once, as "Not verified".
+   - **Before any verify has given a verdict:** in the Qt console and the Terminal one press of Keep keeps the tune,
+     unverified (the Terminal says "Not verified"). The web console asks you once more ("The tune is not verified")
+     before it keeps.
 
    Keep saves an "After auto-tune" snapshot, which records which measurement the tune came from.
 
@@ -255,10 +262,11 @@ It will not:
 - **The countdown running out** does the same. Leaving it alone is always safe.
 - **A lost connection:** through a hub that runs the safe apply, the hub puts the settings back. Over USB nothing can
   be written while the DSPi is gone; Revert stays offered and puts the settings back once the same DSPi is open again.
+  Until then the console says that the DSPi may still hold the tune.
 - **A/B** after Keep: switch between the tuned settings (A) and the "Before" snapshot (B) to listen, then keep the one
   you prefer.
 - **The snapshots** "Before auto-tune" and "After auto-tune" stay in your snapshot list. Recall either at any time. The
-  web console also lets you download them *(in review)*.
+  web console also lets you download them.
 - **Undo:** the whole tune is one step in the history.
 
 ## 8. Documents
@@ -266,8 +274,7 @@ It will not:
 Measurements, microphones (`mic`) and targets are documents. The **Documents** tab lists your own and, with a hub, the
 hub's in one list; when both hold one, the hub's copy wins. You can rename them, add a note, export a measurement as
 REW text, start a tune from one, or save one to the hub. On a hub, renaming and notes need Control or Admin, and
-deleting needs Admin; a button you may not use is not offered, and the reason is given. In the web console the
-Documents tab is in review; the Qt console has its own.
+deleting needs Admin; a button you may not use is not offered, and the reason is given.
 
 ## 9. The Passive RTA, for Viewers and read-only use
 
@@ -277,7 +284,7 @@ now**, corrected and in dB SPL when the microphone is calibrated, with hold, com
 never plays anything and never writes to the DSPi. You can still open Results and Documents.
 
 It does not run while this console is measuring, in the live view or in auto-tune, so it never shows the test signal as
-if it were your music. Web console: built. Qt console: in review.
+if it were your music.
 
 ## See also
 
