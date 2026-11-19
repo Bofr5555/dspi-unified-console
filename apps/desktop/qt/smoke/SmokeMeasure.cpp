@@ -309,6 +309,28 @@ void measureSection(SmokeDriver &d) {
                 mc->simLabel() == QLatin1String("Simulated microphone"));
     d.check(QStringLiteral("p5qui: the setup is the device's layout"),
             d.waitFor(5000, [&] { return !mc->setupProblem().contains(QLatin1String("at least one")); }));
+    // -- WP P5FOLLOW -- (coordinator, headphone safety) no placement is
+    // assumed: Measure and Check wait for the person's choice, said in words
+    {
+        showTab(d, w, 0);
+        QQuickItem *startButton = in(d, w, QStringLiteral("MeasureSetup.start"));
+        QQuickItem *checkButton = in(d, w, QStringLiteral("MeasureSetup.preflight"));
+        d.check(QStringLiteral("p5follow: no placement is chosen for the person: Measure and Check are disabled, the reason in words"),
+                mc->placement().isEmpty() && mc->setupProblem().contains(QLatin1String("placement")) && startButton &&
+                    !startButton->isEnabled() && checkButton && !checkButton->isEnabled());
+        mc->start();
+        d.spin(200);
+        d.check(QStringLiteral("p5follow: a start without a placement is refused in words, nothing plays"),
+                !mc->running() && !mc->measuring() && mc->error().contains(QLatin1String("placement")) && generatorIdle(d));
+        mc->clearError();
+        mc->setPasses(2);
+        d.spin(100);
+        QQuickItem *hint = in(d, w, QStringLiteral("MeasureSetup.passesHint"));
+        const bool shown = hint && hint->isVisible() && hint->property("text").toString().contains(QLatin1String("three or more"));
+        mc->setPasses(3);
+        d.spin(100);
+        d.check(QStringLiteral("p5follow: two passes show the timing hint, three hide it"), shown && hint && !hint->isVisible());
+    }
     const QList<int> outs = chooseOutputs(mc);
     std::printf("smoke: p5qui: measuring outputs %s\n",
                 qPrintable(QStringList([&] { QStringList l; for (int o : outs) l << QString::number(o); return l; }()).join(QLatin1Char(','))));
