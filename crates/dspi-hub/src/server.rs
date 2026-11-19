@@ -3055,7 +3055,7 @@ impl Connection {
         if let Some(session) = &self.session {
             session.set_link_minor(self.link_minor);
         }
-        self.reply(self.shared.hello());
+        self.reply(self.shared.hello(self.link_minor)); // -- WP ATHUB -- by the client's minor
         if self.shared.auth.mode() == AccessMode::Open && self.session.is_none() {
             // Open access: the session opens with this answer, and no auth message follows
             // (spec 6.1).
@@ -3740,6 +3740,8 @@ pub(crate) fn control_plane(
         .or_else(|| crate::limits::handle_message(hub, session, value))
         // -- WP P2SV -- the services (`service.rs`), after the limits
         .or_else(|| hub.service_message(session, value))
+        // -- WP ATHUB -- `system.measure.*`, before the model's `system.*`
+        .or_else(|| crate::system::measure::handle_message(hub, session, value))
 }
 
 /// `{"t":"ok","id":…, …body}`.
@@ -3876,7 +3878,8 @@ impl Shared {
     }
 
     /// The hub's `hello` (spec 7.2). `fw_install` is not in `caps`: HUB.md section 8.
-    fn hello(&self) -> String {
+    /// -- WP ATHUB -- `link_minor`: the client's, which decides `system_measure`.
+    fn hello(&self, link_minor: u32) -> String {
         let mut caps = vec!["cmd", "notify", "poll", "snapshot", "lock", "rename"];
         // -- WP P1HA --
         caps.push(crate::apply_guard::CAP);
@@ -3903,6 +3906,10 @@ impl Shared {
         // -- WP PGHDEV -- it lists and forwards to 1.1.6-generation devices, which a
         // 1.3 hub does not (OD-PGg)
         caps.push(CAP_LEGACY_DEVICES);
+        // -- WP ATHUB -- measuring several units, for a Link 1.3 client
+        if crate::system::measure::offered_to(link_minor) {
+            caps.push(dspi_measure::system::messages::CAP);
+        }
         let mode = self.auth.mode();
         // -- WP SECPAIR -- a key rotation's announcement, while it lasts (PLAN-SEC 4.2)
         let mut hub = self.hub_info();
