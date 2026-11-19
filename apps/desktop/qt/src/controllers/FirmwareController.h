@@ -81,6 +81,17 @@ class FirmwareController : public QObject {
     Q_PROPERTY(bool guardAsking READ guardAsking NOTIFY guardChanged)
     Q_PROPERTY(QString guardMessage READ guardMessage NOTIFY guardChanged)
     Q_PROPERTY(QString guardPhrase READ guardPhrase NOTIFY guardChanged)
+    // -- WP PGQT -- The update check (dspi_firmware_update_check on the target
+    // the core read, dspi_firmware_target) judges before the device leaves for
+    // its bootloader: the protocol generation the image brings, in the core's
+    // words ("" when none or not known yet)
+    Q_PROPERTY(QString generationChange READ generationChange NOTIFY guardChanged)
+    // The connected board is offered no image (no BOOTSEL: a DSPi-Zero or an
+    // unknown board), and why; Update Firmware is off
+    Q_PROPERTY(bool noUpdate READ noUpdate NOTIFY deviceChanged)
+    // A sentence about the image for this board ("" for none): no BOOTSEL, or
+    // the alink sender, for which this build bundles no image
+    Q_PROPERTY(QString imageNote READ imageNote NOTIFY deviceChanged)
     // ---- The installer contract of QP17's Getting Started wizard
     // (OnboardingController.h): the Mac's states, and on the desktop
     // "checking" (the board is read before it restarts), "question" (the
@@ -137,6 +148,14 @@ public:
     bool guardAsking() const { return m_guardAsking; }
     QString guardMessage() const { return m_guardMessage; }
     QString guardPhrase() const { return m_guardPhrase; }
+    // -- WP PGQT --
+    QString generationChange() const { return m_generationChange; }
+    bool noUpdate() const;
+    QString imageNote() const;
+    // The board read for this run (dspi_firmware_target's JSON, "" none) and
+    // whether the write passes the core its voltage record (the smoke driver)
+    QByteArray targetForTest() const { return m_target; }
+    bool writesWithTargetForTest() const { return m_useTarget; }
 
     // The window showed (detection starts; a fresh run unless one is under way)
     // or closed (detection stops when nothing else watches)
@@ -197,7 +216,8 @@ private:
     };
     enum Error {
         NoError, MultipleBoards, VolumeNotMounted, ImageMissing, ImageStale, WriteFailed, DeviceDidNotReturn,
-        VersionMismatch, DeviceLocked, GuardRefused
+        VersionMismatch, DeviceLocked, GuardRefused,
+        NoBootsel   // -- WP PGQT --
     };
 
     void setState(State s);
@@ -261,6 +281,17 @@ private:
     int m_requiredMv = 0;
     bool m_boardRead = false;
     std::function<void()> m_afterGuard;
+    // -- WP PGQT -- this run's board, as the core read it before the
+    // bootloader entry, and the connection it was read on
+    QByteArray m_target;
+    uint64_t m_targetConnection = 0;
+    QString m_generationChange;
+    bool m_useTarget = false;   // the write passes the target's voltage record
+    bool senderConnected() const;
+    // The check before the write: the update check on this run's target, or
+    // the voltage rule alone with the voltage unknown (a board not read by
+    // this run). Worker thread.
+    static QJsonObject checkFor(const QByteArray &bytes, const QByteArray &target, int requiredMv, const QByteArray &typed);
 };
 
 #endif // FIRMWARECONTROLLER_H

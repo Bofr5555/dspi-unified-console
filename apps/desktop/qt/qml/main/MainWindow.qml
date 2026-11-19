@@ -50,6 +50,7 @@ ApplicationWindow {
             Layout.fillWidth: true
             Layout.fillHeight: true
             visible: !OnboardingController.wizardShown   // -- WP QP17 -- the wizard takes its place
+                     && !DeviceInfoController.sender      // -- WP PGQT -- the sender has no DSP screens
             orientation: Qt.Horizontal
             handle: Rectangle {
                 implicitWidth: 1
@@ -70,6 +71,16 @@ ApplicationWindow {
                 SplitView.fillWidth: true
                 selectedChannel: window.selectedChannel
             }
+        }
+
+        // -- WP PGQT -- the alink sender's page in place of the DSP screens
+        Loader {
+            objectName: "MainWindow.sender"
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            active: DeviceInfoController.sender && !OnboardingController.wizardShown
+            visible: active
+            sourceComponent: SenderPage {}
         }
 
         // -- WP QP17 -- Getting Started replaces the console while it runs

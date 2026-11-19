@@ -1539,6 +1539,27 @@ pub extern "C" fn dspi_demo_open_wire(core: *mut FfiCore, wire: u8) -> bool {
     flag(core, |c| c.open_demo_wire(wire))
 }
 
+// -- WP PGQT --
+/// Open the demo as fake protocol generation `code` (the Qt smoke driver's
+/// sections per generation): 0 stock 1.1.6, 1 ours 1.1.6 with PAGEGUARD, 2
+/// ours without it, 3 stock 1.1.7, 4 ours dual-stack 1.1.7, 5 the DSPi-Zero,
+/// 6 the alink sender, 7 ours 1.1.6 with PAGEGUARD on a board at the stock
+/// 1.15 V core. False for another code.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_demo_open_generation(core: *mut FfiCore, code: u8) -> bool {
+    flag(core, |c| c.open_demo_generation(code))
+}
+
+// -- WP PGQT --
+/// How many requests the fake of `dspi_demo_open_generation` got that its
+/// generation must not get; `u32::MAX` when none was opened on this handle.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_demo_generation_violations(core: *mut FfiCore) -> u32 {
+    with_core(core, u32::MAX, |h| {
+        h.core.demo_generation_violations().unwrap_or(u32::MAX)
+    })
+}
+
 /// How many writes the read-only mode has refused on this handle.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_read_only_refusals(core: *mut FfiCore) -> u32 {
@@ -2486,3 +2507,7 @@ mod tests_clean1 {
         assert_eq!(c_bytes(three.as_ptr(), 2), vec![1, 2]);
     }
 }
+
+// -- WP PGQT --
+#[cfg(test)]
+mod tests_wp_pgqt;

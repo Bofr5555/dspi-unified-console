@@ -544,6 +544,10 @@ pub(crate) struct Inner {
     /// judges by, never a caller's. Cleared when another device is opened
     /// and after a write; kept when the device leaves for its bootloader.
     pub(crate) flash_target: Option<crate::FirmwareTarget>,
+    // -- WP PGQT --
+    /// The fake opened by [`DspiCore::open_demo_generation`], for its
+    /// violation count; `None` for any other device.
+    pub(crate) demo_generation: Option<dspi_transport::FakeRemote>,
 }
 
 /// An open device.
@@ -950,6 +954,7 @@ impl Inner {
             client_read_only: read_only::ClientReadOnly::default(), // -- WP ROMODE --
             measure_tap: measure::Tap::default(),                   // -- WP P5SES --
             flash_target: None,                                     // -- WP PGFLASH --
+            demo_generation: None,                                  // -- WP PGQT --
         }
     }
 
@@ -1101,6 +1106,7 @@ impl DspiCore {
         let conn = Connection::new(transport, serial.clone(), vid);
         inner.confirm.connected(conn.generation); // -- WP P1BFIX -- F5
         inner.flash_target = None; // -- WP PGFLASH -- another device's story
+        inner.demo_generation = None; // -- WP PGQT -- the fake of another opening
         inner.conn = Some(conn);
         inner.selected = Some(serial);
     }

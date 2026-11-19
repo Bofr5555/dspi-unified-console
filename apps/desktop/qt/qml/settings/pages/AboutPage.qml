@@ -61,6 +61,30 @@ SettingsPage {
         }
     }
 
+    // -- WP PGQT -- The open device's protocol (read once per connection), and
+    // the raw request by command id
+    SettingsGroup {
+        objectName: "About.device"
+        title: qsTr("Connected Device")
+        iconName: "cpu"
+        DeviceInfoRows {}
+        RowLayout {
+            Layout.fillWidth: true
+            Item { Layout.fillWidth: true }
+            AppButton {
+                objectName: "About.raw"
+                text: qsTr("Raw Request…")
+                enabled: DeviceModel.connected
+                onClicked: rawDialog.open()
+            }
+        }
+    }
+
+    RawRequestDialog {
+        id: rawDialog
+        parent: page.Window.window ? page.Window.window.contentItem : page
+    }
+
     SettingsGroup {
         title: qsTr("Made By")
         iconName: "heart"
