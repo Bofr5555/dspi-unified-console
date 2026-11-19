@@ -94,7 +94,8 @@ else dnf -y -q install xorg-x11-server-Xvfb mesa-libGL mesa-libEGL fontconfig al
 ! ldconfig -p | grep -q libQt6 || { echo "qt: this system has Qt installed"; exit 1; }'
 
 check='
-v=$(APPIMAGE_EXTRACT_AND_RUN=1 /root/app.AppImage --version 2>/dev/null) || true
+# (offscreen: the app makes its QApplication before it reads its arguments)
+v=$(QT_QPA_PLATFORM=offscreen APPIMAGE_EXTRACT_AND_RUN=1 /root/app.AppImage --version 2>/dev/null) || true
 [ "$v" = "uConsole for DSPi $VERSION" ] || { echo "version: --version printed \"$v\""; exit 1; }
 echo "version: $v"
 cd /root && ./app.AppImage --appimage-extract >/dev/null

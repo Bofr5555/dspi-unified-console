@@ -34,6 +34,8 @@ rows=(
   "windows-qt|Windows Qt (MinGW), zip and installer|container|qt-windows"
   # -- WP POSTSWAP -- every Qt release file, each built in its own image from a
   # clean commit; the Linux ones installed and started in clean containers
+  # (-- WP APPIMG -- the AppImage by linux/test-appimage.sh; alone, with its own
+  # build: apps/desktop/packaging/linux/test-appimage.sh --build)
   "qt-packages|Qt release packages; Linux ones installed in clean containers|podman|=ci/release-desktop.sh --test"
   "windows-gnu|Windows workspace (GNU)|container|windows-gnu"
   "windows-terminal|Windows core and Terminal (MSVC)|xwin, container|windows-msvc"

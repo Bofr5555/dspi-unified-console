@@ -10,7 +10,7 @@
 //   importpath                the QML engine's import paths
 //   lib                       every Qt library or plugin mapped (/proc/self/maps)
 // then saves the About window as $PROBE_PNG (when set) and quits with 0, or
-// with 3 when it found no main window or no About page.
+// with 3 when it found no main window or no About page within 10 s.
 #include <QCoreApplication>
 #include <QFile>
 #include <QGuiApplication>
@@ -27,19 +27,33 @@ static void say(const char *key, const QString &value) {
     std::fflush(stdout);
 }
 
+// The visual tree, as the smoke driver searches it (a Loader's page is a child item)
+static QQuickItem *findIn(QQuickItem *scope, const QString &name) {
+    if (scope->objectName() == name) return scope;
+    for (QQuickItem *child : scope->childItems())
+        if (QQuickItem *found = findIn(child, name)) return found;
+    return nullptr;
+}
+
 static QQuickItem *findItem(const QString &name) {
     for (QWindow *w : QGuiApplication::allWindows()) {
         auto *qw = qobject_cast<QQuickWindow *>(w);
         if (!qw) continue;
-        if (auto *item = qw->contentItem()->findChild<QQuickItem *>(name)) return item;
+        if (QQuickItem *item = findIn(qw->contentItem(), name)) return item;
     }
     return nullptr;
 }
 
-static void finish() {
+static void finish(int tries) {
     QQuickItem *version = findItem(QStringLiteral("About.version"));
+    if (!version && tries > 0) {
+        QTimer::singleShot(500, qApp, [tries] { finish(tries - 1); });
+        return;
+    }
     if (!version) {
-        say("error", QStringLiteral("no About page after help.about"));
+        QStringList windows;
+        for (QWindow *w : QGuiApplication::allWindows()) windows << w->title() + (w->isVisible() ? "(shown)" : "");
+        say("error", QStringLiteral("no About page after help.about; windows: ") + windows.join(QStringLiteral(", ")));
         QCoreApplication::exit(3);
         return;
     }
@@ -95,7 +109,7 @@ static void start() {
             return;
         }
         QMetaObject::invokeMethod(shell, "trigger", Q_ARG(QString, QStringLiteral("help.about")));
-        QTimer::singleShot(3000, qApp, finish);
+        finish(20);
     });
 }
 Q_COREAPP_STARTUP_FUNCTION(start)
