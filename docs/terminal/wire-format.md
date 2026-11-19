@@ -306,3 +306,32 @@ On bulk SET the firmware ignores these; they are produced by the device:
 - **The analyser shares the bulk buffer.** `REQ_RTA_GET_BANDS_ALL` (0x0F) builds
   its reply in the same buffer, so it stalls while a chunked bulk transfer holds
   it (vendor_commands.c:4334-4355).
+
+<!-- WP PGDOC -->
+## 8. On paged firmware (1.1.7)
+
+*From the vendored registry and old-to-new map (`crates/dspi-proto/firmware/protocol/dspi_commands.json`,
+`legacy_map.json`, upstream firmware `103ba37`) and the planner (`crates/dspi-proto/src/paged/`, WP PGPROTO and
+PGCUST). The plan is [`docs/core-merge/PLAN-PG.md`](../core-merge/PLAN-PG.md) section 1.2; the client side is
+[`docs/integrator/protocol-generations.md`](../integrator/protocol-generations.md).*
+
+**The packet is unchanged.** Firmware 1.1.7 moves the vendor commands onto pages (a command id `0xPPCC`: page `PP` in
+the `wIndex` high byte, command `CC` in `bRequest`, `wIndex` low byte 2), but the bulk blob is the same `WireBulkParams`
+V32, 6136 bytes, with every offset, sentinel and read-only field above. Everything in sections 1 to 7 holds on both
+generations.
+
+| 1.1.6 opcode | On a paged device | Notes |
+|---|---|---|
+| `GET_ALL_PARAMS` 0xA0 | `STORE.ALL_PARAMS` 0x0240 GET, 6136 bytes | direct |
+| `SET_ALL_PARAMS` 0xA1 | `STORE.ALL_PARAMS` 0x0240 SET, exactly 6136 bytes, `wValue` 0 | a custom row: 1.1.6 ACKed and ignored a payload of 64 bytes or fewer (the adapter answers so, nothing sent) and STALLed every other wrong length at SETUP (a local STALL); a refusal of the write itself (busy, a header the apply refuses) is raised, never reported as applied |
+| `GET_ALL_PARAMS_CHUNK` 0xA2 | `STORE.ALL_PARAMS_CHUNK` 0x0241 GET, `wValue` the offset | direct |
+| `SET_ALL_PARAMS_CHUNK` 0xA3 | `STORE.ALL_PARAMS_CHUNK` 0x0241 SET, 1 to 64 bytes per request | direct; an out-of-order chunk is refused, as 1.1.6 STALLed it |
+| `SAVE_PARAMS` 0x51 (retired on 1.1.7) | `STORE.PRESET_ACTIVE` 0x0214 GET, then `STORE.PRESET_SAVE` 0x0210 to that slot | a custom row; a refusal of either step is raised, never answered as saved |
+
+- **Over DSPi Link the bulk is single-shot** on both generations (`STORE.ALL_PARAMS`, never the chunk form; spec 1.3
+  section 8.2).
+- **Writes RAM only**, as before: a bulk SET persists nothing; the save is the separate step above.
+- **Notifications:** the packet format and the `PARAM_CHANGED` offsets into this blob are unchanged. 1.1.7 adds
+  `NOTIFY_EVT_PIN_MAP_CHANGED` 0x11, on which the core re-reads the image and the pins.
+- **Raw access:** the core's `raw_set_id` refuses the bulk ids (`BULK`), as its `raw_set` refuses 0xA1 and the chunk
+  opcodes: through the core the blob goes only by its bulk calls.
