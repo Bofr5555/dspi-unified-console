@@ -1881,7 +1881,10 @@ fn sum_check_cell(
     drive(&mut sc, hub, 4_000);
     match sc.take_outcome() {
         Some(SessionOutput::Verdicts(v)) => (v[0].passed, v[0].rms_db),
-        _ => (false, None),
+        _ => {
+            eprintln!("the summed run gave no verdict: {:?}", sc.state().issue);
+            (false, None)
+        }
     }
 }
 
@@ -2735,5 +2738,45 @@ fn review_ate_a_lateness_planned_from_a_wrong_term_never_offers_a_wrong_arrival(
                 assert!(!p.offered && p.arrivals.is_empty(), "{p:?}");
             }
         }
+    }
+}
+
+/// The run's **last** unit the late one, by 400 ms and 900 ms (WP ATLATE's
+/// tests made the first one late, by up to 400 ms): both arrivals are
+/// offered and right, the capture kept its lateness longer, and the summed
+/// check judges them. Before this review the summed check of the pair
+/// 900 ms apart failed "the first cycle was not heard in the window the
+/// START implies" (its earlier part starts 900 ms before the sum is heard,
+/// the search window ends 500 ms after it), so such a proposal could never
+/// be checked or applied.
+#[test]
+fn review_ate_the_runs_last_unit_late_is_captured_whole() {
+    let s = setup(&[("A", &[0]), ("B", &[0])]);
+    for gap in [400.0f32, 900.0] {
+        let (a, mut b) = (unit("A", 1, 48, &[3.0]), unit("B", 1, 48, &[3.0]));
+        b.out_delay_ms = vec![gap];
+        let mut hub = StubHub(Arc::new(Mutex::new(Stub::new(vec![a, b]))));
+        let (sess, out) = measure(&mut hub, &s);
+        assert_eq!(
+            sess.state().phase,
+            MeasureSystemPhase::Done,
+            "{gap} ms: {:?}",
+            sess.state().issue
+        );
+        let o = out.unwrap();
+        let (a, b) = (arrival(&o, "A", 0), arrival(&o, "B", 0));
+        assert!(a.offered && b.offered, "{gap} ms: {a:?} {b:?}");
+        assert!(
+            (b.measured_us - a.measured_us - f64::from(gap) * 1000.0).abs() < 3.0,
+            "{gap} ms: {a:?} {b:?}"
+        );
+        assert!(a.arrival_us.abs() < 3.0 && b.arrival_us.abs() < 3.0);
+        // The summed check on responses taken with a planned lateness (the
+        // response is on the analysis' timeline, `own_ms`): right passes, a
+        // delay 50 us wrong fails as a judged failure.
+        let (pass, rms) = sum_check_cell(&o, &mut hub, 0.0, None);
+        assert!(pass, "{gap} ms, right: {rms:?}");
+        let (pass, rms) = sum_check_cell(&o, &mut hub, 50.0, None);
+        assert!(!pass && rms.is_some(), "{gap} ms, 50 us wrong: {rms:?}");
     }
 }

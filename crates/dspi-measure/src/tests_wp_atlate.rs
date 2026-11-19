@@ -343,3 +343,163 @@ fn wp_atlate_the_first_unit_heard_150_ms_late_is_measured_with_its_lateness() {
     assert!(d.offered, "{d:?}");
     assert!(err.abs() <= 2.0, "{err} µs off");
 }
+
+// -- review AT-E --
+/// [`analyse`] with every unit's status polls, one each 250 ms of the run:
+/// what its generator says then (its own segments' walk), noted at the
+/// capture frame that sound made at that moment is heard at.
+fn analyse_polled(
+    r: &SystemRender,
+    schedule: &SystemSchedule,
+) -> Result<SystemAnalysis, crate::ir::TimingError> {
+    use crate::ir::StatusObservation;
+    use crate::system::UnitStatusObservation;
+    let at = |t: u64| r.capture_frame_at_mic(t as f64 - ORIGIN as f64).unwrap();
+    let mut status = Vec::new();
+    // 100 ms after a cycle's start and so, with 1.0 s sweeps, 100 ms after
+    // one's end too, where the generator has moved on to its next output.
+    let mut t = schedule.start() + u64::from(RATE) / 10;
+    while t < schedule.end() {
+        for u in schedule.units() {
+            // The unit's segment that plays (or last played) at `t`.
+            let Some(seg) = schedule
+                .segments()
+                .iter()
+                .filter(|s| s.unit == u && s.start <= t)
+                .next_back()
+            else {
+                continue;
+            };
+            let st = seg.schedule.status_at((t - seg.start) as f64);
+            if st.active_channel == crate::stimulus::NO_CHANNEL {
+                continue;
+            }
+            status.push(UnitStatusObservation {
+                unit: u,
+                observation: StatusObservation {
+                    capture_frame: at(t).round() as u64,
+                    status: st,
+                },
+            });
+        }
+        t += u64::from(RATE) / 4;
+    }
+    assert!(status.len() > 20);
+    let pin = TimePin {
+        capture_frame: at(schedule.start()).round() as u64,
+        t: schedule.start(),
+        round_trip_frames: 48,
+    };
+    let first = r.capture.blocks.first().map_or(0, |b| b.first_frame);
+    let from = (at(schedule.start().saturating_sub(u64::from(RATE))) as u64).max(first);
+    let to = (at(schedule.end() + 2 * u64::from(RATE)) as u64)
+        .min(first + r.capture.samples.len() as u64);
+    let samples = &r.capture.samples[(from - first) as usize..(to - first) as usize];
+    analyse_system(
+        &SystemCapture {
+            samples,
+            first_frame: from,
+            rate_hz: RATE,
+            schedule,
+            pins: &[pin],
+            status: &status,
+            complete: true,
+        },
+        &AnalysisOptions::default(),
+    )
+}
+
+/// The run's first unit the late one, by more than the first cycle's search
+/// window (500 ms after its START) and than the status polls' slack
+/// (250 ms): 400 ms and 900 ms, with every unit's polls. Before this review
+/// 900 ms failed "the first cycle was not heard in the window the START
+/// implies" and 400 ms failed the status cross-check (the polls were judged
+/// against where the first cycle was heard, 400 ms late); now the first
+/// cycle is looked for, and the polls are judged, its lateness later, and
+/// the delay is offered within 2 us of the world's.
+#[test]
+fn review_ate_the_first_unit_late_past_the_search_window_is_found_and_its_polls_agree() {
+    for late in [19_200u64, 43_200] {
+        eprintln!("first unit {late} samples late");
+        let lateness = [(UnitIndex(0), late)];
+        // Two outputs a unit: its status changes within its segments.
+        let s = interleave_late(&walks(&[(0, 3), (1, 3)]), &options(3), &lateness)
+            .unwrap()
+            .offset_by(ORIGIN + PRE)
+            .unwrap();
+        let two = |name: &str, playout: f64, delay_ms: f64| {
+            let mut u = SimUnit::flat(name, 2);
+            u.playout_frames = playout;
+            for p in &mut u.outputs {
+                p.delay_ms = delay_ms;
+                p.gain_db = -6.0;
+            }
+            u
+        };
+        let world = room(
+            vec![two("A", 305.0 + late as f64, 3.0), two("B", 305.0, 5.37)],
+            11,
+        );
+        let r = render_system(&world, &s, &ProtoModel).unwrap();
+        let truth = |u: u8| {
+            r.truth
+                .output(UnitIndex(u), 0)
+                .map(|o| o.arrival_us)
+                .unwrap()
+        };
+        let a = analyse_polled(&r, &s).unwrap_or_else(|e| panic!("{late} samples late: {e}"));
+        assert!(a.timing_reliable, "{late}: {:?}", a.reasons);
+        let d = a
+            .delays
+            .iter()
+            .find(|d| d.from.output == 0 && d.to.output == 0)
+            .unwrap();
+        let err = d.delay_ms * 1000.0 - (truth(1) - truth(0));
+        eprintln!(
+            "{late} samples late: {:.3} ms, error {err:.3} us",
+            d.delay_ms
+        );
+        assert!(a.delays.iter().all(|d| d.offered), "{late}: {:?}", a.delays);
+        assert!(err.abs() <= 2.0, "{late}: {err} us off");
+        assert_eq!(a.walked.cycles.len(), 12);
+    }
+}
+
+/// A wrong lateness of the first unit is still refused. Told 900 ms late
+/// where it is on time, with one output a unit nothing is heard where its
+/// first cycle is looked for; with two, its second output's cycle (1.3 s
+/// after its START) lies in that window and would be taken for the first, a
+/// cycle late: the sweep heard before the window refuses it.
+#[test]
+fn review_ate_a_first_unit_whose_lateness_is_wrong_is_refused() {
+    let told = [(UnitIndex(0), 43_200u64)];
+    for outputs in [1usize, 2] {
+        let mask = if outputs == 2 { 3 } else { 1 };
+        let s = interleave_late(&walks(&[(0, mask), (1, mask)]), &options(3), &told)
+            .unwrap()
+            .offset_by(ORIGIN + PRE)
+            .unwrap();
+        let on_time = |name: &str, delay_ms: f64| {
+            let mut u = SimUnit::flat(name, outputs);
+            u.playout_frames = 305.0;
+            for p in &mut u.outputs {
+                p.delay_ms = delay_ms;
+                p.gain_db = -6.0;
+            }
+            u
+        };
+        let world = room(vec![on_time("A", 3.0), on_time("B", 5.37)], 11);
+        let r = render_system(&world, &s, &ProtoModel).unwrap();
+        match analyse_polled(&r, &s) {
+            Err(e) => eprintln!("{outputs} output(s): refused: {e}"),
+            Ok(a) => {
+                eprintln!("{outputs} output(s): {:?} {:?}", a.reasons, a.delays);
+                assert!(
+                    !a.timing_reliable || a.delays.iter().all(|d| !d.offered),
+                    "offered: {:?}",
+                    a.delays
+                );
+            }
+        }
+    }
+}

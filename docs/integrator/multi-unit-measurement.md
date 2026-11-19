@@ -242,7 +242,11 @@ waits up to 5 s for the terms; a unit whose terms cannot be read is expected at 
 What the planner cannot know (a speaker tens of metres away, a wrong term) still meets the old limit: an output heard more
 than about 85 ms after where it was expected is cut off, "heard too long after the run's first output for the gap between
 sweeps", and **nothing of that group is offered**. The hub's own bound for the parts of a summed run
-(`MAX_SUM_SPREAD_MS`, 1 s) is the same size. The real start offsets on hardware are not known yet (ATHIL notes them).
+(`MAX_SUM_SPREAD_MS`, 1 s) is the same size. The analysis looks for a run's first cycle, and judges the units' status
+polls, the first unit's lateness later (for a summed run: as much later as its last part starts), so the whole second is
+usable whichever unit is the late one (review AT-E; before, a first unit or a sum more than about 0.5 s late was "not
+heard in the window the START implies"). The lateness is per unit (the smallest of its measured outputs' delays): two
+outputs of one unit whose `out.delay` differ by more than about 85 ms still meet the old limit. The real start offsets on hardware are not known yet (ATHIL notes them).
 
 ## 8. The gate and the aborts
 

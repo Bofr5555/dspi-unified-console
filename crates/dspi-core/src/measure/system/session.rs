@@ -1171,15 +1171,31 @@ impl SysSession {
             .units
             .first()
             .map_or(0, |u| u32::from(u.plan.sweep.gap_ms));
+        // -- review AT-E -- a unit expected late (WP ATLATE) is heard that
+        // much after the schedule's end when its segment is the run's last:
+        // the capture is kept that much longer. Without it TAIL_MS, meant
+        // for the input latency, went to the lateness, and what the
+        // analysis lacks of a complete capture it reads as silence (a last
+        // sweep 1 s late with 0.2 s of input latency lost its end unseen).
+        let late_ms = schedule
+            .lateness()
+            .iter()
+            .map(|(_, l)| *l)
+            .max()
+            .map_or(0, |l| {
+                let ms = l.saturating_mul(1000) / u64::from(self.plan.rate_hz.max(1));
+                u32::try_from(ms.saturating_add(1)).unwrap_or(u32::MAX)
+            })
+            .min(dspi_measure::system::MAX_LATENESS_MS.saturating_add(1));
+        let tail_ms = gap.saturating_add(TAIL_MS).saturating_add(late_ms);
         let end_frame = self
             .capture_at(schedule.end())
-            .saturating_add(self.frames_of(gap.saturating_add(TAIL_MS)));
+            .saturating_add(self.frames_of(tail_ms));
         let secs = self.pin.map_or(0.0, |p| {
             (schedule.end() as f64 - p.t as f64).max(0.0) / f64::from(self.plan.rate_hz.max(1))
         });
-        let planned = Duration::from_secs_f64(secs.min(1e6)).saturating_add(Duration::from_millis(
-            u64::from(gap.saturating_add(TAIL_MS)),
-        ));
+        let planned = Duration::from_secs_f64(secs.min(1e6))
+            .saturating_add(Duration::from_millis(u64::from(tail_ms)));
         Some(Timed {
             kind,
             schedule,

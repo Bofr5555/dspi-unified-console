@@ -251,6 +251,16 @@ struct Layout {
     /// played, so the walk's first cycle is at its START as without
     /// lateness (the time pin's search, the status polls).
     late: Vec<i64>,
+    // -- review AT-E --
+    /// How long after `t_ref` the walk's first cycle is expected, beyond
+    /// what every unit shares, domain samples: the first unit's lateness
+    /// over the run's earliest unit (WP ATLATE), or for a summed run how
+    /// much later its last part starts (the parts are started apart so that
+    /// they are heard together, WP ATSUMOFF). The first cycle is searched
+    /// for, and the status polls are judged, that much later; without it a
+    /// first unit (or a sum) some 0.5 s late was "not heard in the window
+    /// the START implies" and one 0.3 s late failed its status polls.
+    first_late: u64,
 }
 
 fn invalid(m: impl Into<String>) -> MeasureError {
@@ -321,6 +331,12 @@ fn layout(schedule: &SystemSchedule) -> Result<Layout, MeasureError> {
             t_ref,
             single: None,
             late: vec![0; n],
+            first_late: segments
+                .iter()
+                .map(|s| s.start)
+                .max()
+                .unwrap_or(t_ref)
+                .saturating_sub(t_ref),
         });
     }
     if let [only] = segments {
@@ -345,6 +361,7 @@ fn layout(schedule: &SystemSchedule) -> Result<Layout, MeasureError> {
             t_ref,
             single: Some(only.unit),
             late: vec![0; n],
+            first_late: 0,
         });
     }
     let mut keys: Vec<(u8, Vec<UnitOutput>)> = Vec::new();
@@ -424,6 +441,7 @@ fn layout(schedule: &SystemSchedule) -> Result<Layout, MeasureError> {
         t_ref,
         single: None,
         late,
+        first_late: schedule.lateness_of(first.unit),
     })
 }
 
@@ -490,7 +508,10 @@ impl SystemAnalyser {
     /// The capture frame of the run's first domain sample, from a pin.
     fn start_frame(&self, pin: &TimePin) -> Result<u64, TimingError> {
         // Two u64 as i128: the difference cannot overflow.
-        let dt = i128::from(self.layout.t_ref).saturating_sub(i128::from(pin.t));
+        // -- review AT-E -- where the first cycle is expected (`first_late`).
+        let dt = i128::from(self.layout.t_ref)
+            .saturating_add(i128::from(self.layout.first_late))
+            .saturating_sub(i128::from(pin.t));
         let f = pin.capture_frame as f64 + dt as f64 * self.nominal;
         if !f.is_finite() || f < 0.0 || f > 1.8e19 {
             return Err(TimingError::CycleIdentity(
@@ -567,7 +588,9 @@ impl SystemAnalyser {
         let slack = self.options.status_slack_ms * f64::from(self.schedule.rate_hz) / 1000.0;
         for obs in capture.status {
             let rel = obs.observation.capture_frame as f64 - fit.first_frame;
-            let d = (rel - fit.origin) / fit.slope;
+            // -- review AT-E -- the fit's origin is where the walk's first
+            // cycle is heard: `first_late` after `t_ref` on the timeline.
+            let d = (rel - fit.origin) / fit.slope + self.layout.first_late as f64;
             if !d.is_finite() {
                 continue;
             }
