@@ -1770,7 +1770,7 @@ Switching an output is instant and never writes to flash. The pin, name and powe
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>This connection says the device is paged but carries no page list: a hub&apos;s in-process or principal connection does not pass the page discovery on. The page list is therefore empty here, and the extension channel is as the 1.1.6-shaped probe found it.</source>
+        <source>This connection says the device is paged but carries no page list: the connection to it does not pass the page discovery on. The page list is therefore empty here, and the extension channel is as the 1.1.6-shaped probe found it.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
