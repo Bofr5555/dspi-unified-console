@@ -210,6 +210,36 @@ fn noise_spread_db(noise: f64, signal: f64) -> f64 {
     }
 }
 
+// -- WP P5TRUST2 -- (review P5TRUST N3) the allowance is capped and does not
+// grow with the repeats.
+/// The most of the repeats' spread their noise may explain, dB (on top of the
+/// trust rule's 1 dB). Uncapped, the allowance at the 20 dB trust floor was
+/// about 3.2 dB with three repeats and 5.4 dB with eight, so a real change of
+/// the room between repeats of 4 to 6 dB passed there; with the cap a change
+/// of more than 3 dB is seen at every SNR. The cost: noise alone reaches it
+/// only below about 24 dB of SNR (three repeats), where a point is near the
+/// floor anyway and is then left untrusted, the safe side.
+pub const MAX_NOISE_SPREAD_DB: f64 = 2.0;
+/// The allowance is the one this many repeats would have at the averaged
+/// response's SNR, at most: more repeats make each repeat noisier against
+/// the same averaged SNR (one repeat's noise is the average's times the
+/// repeats), and its spread with them, but that must not widen what a change
+/// of the room may hide. Three is the measurement's usual count. The cost
+/// falls on long runs: with eight repeats noise alone puts about a fifth of
+/// the points near 30 dB of SNR over the rule (before, 4 %), and most of
+/// those near the 20 dB floor; they are left untrusted, the safe side.
+pub const SPREAD_REFERENCE_REPEATS: usize = 3;
+
+/// The spread, dB, that one repeat's noise power `rep_noise` on a mean
+/// windowed power `signal` explains with `repeats` repeats: held to
+/// [`SPREAD_REFERENCE_REPEATS`]' noise at the same averaged SNR and capped at
+/// [`MAX_NOISE_SPREAD_DB`].
+fn spread_allowance_db(rep_noise: f64, signal: f64, repeats: usize) -> f64 {
+    let r = repeats.max(1);
+    let scale = r.min(SPREAD_REFERENCE_REPEATS) as f64 / r as f64;
+    noise_spread_db(rep_noise * scale, signal).min(MAX_NOISE_SPREAD_DB)
+}
+
 // ---------------------------------------------------------------------------
 // Frame continuity (S5, RC5c)
 // ---------------------------------------------------------------------------
@@ -577,7 +607,9 @@ pub struct OutputIr {
     /// for one repeat. Each repeat's own impulse response under the fit's
     /// window ([`FIT_WINDOW_CYCLES`] about the output's arrival), so a
     /// point's spread carries the noise its windowed response has, less the
-    /// spread that noise gives ([`NOISE_SPREAD_SIGMAS`]): the trust mask's
+    /// spread that noise gives ([`NOISE_SPREAD_SIGMAS`], at most
+    /// [`MAX_NOISE_SPREAD_DB`] and never more than with
+    /// [`SPREAD_REFERENCE_REPEATS`] repeats, WP P5TRUST2): the trust mask's
     /// SNR rule already judges the noise (WP P5TRUST; before, the whole
     /// segment's per-cycle power in 1/96-octave bands, with that much more
     /// noise, and the noise's own spread counted as disagreement).
@@ -2718,7 +2750,12 @@ impl WalkedAnalyser {
                                 .filter_map(|s| s.windowed.get(g).copied())
                                 .sum::<f64>()
                                 / stats.len().max(1) as f64;
-                            noise_spread_db(nz.get(g).copied().unwrap_or(0.0), mean)
+                            // -- WP P5TRUST2 -- capped, repeat-count aware.
+                            spread_allowance_db(
+                                nz.get(g).copied().unwrap_or(0.0),
+                                mean,
+                                stats.len(),
+                            )
                         }
                         None => 0.0,
                     };

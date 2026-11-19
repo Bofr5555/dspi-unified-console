@@ -1344,8 +1344,32 @@ fn wp_p5trust_the_guard_scales_with_the_planned_verify() {
     long.doc.measurement.stimulus.duration_ms = 15_000;
     long.doc.measurement.stimulus.repeat = 8;
     assert!(DspiCore::tune_guard_s(&long, &computed) <= crate::guarded::APPLY_GUARD_MAX_TIMEOUT_S);
+    // -- WP P5TRUST2 -- (review P5TRUST N7) a verify longer than the guard's
+    // longest: the guard is still capped, and the proposal says so.
+    let planned = DspiCore::tune_guard_planned_s(&long, &computed).unwrap();
+    assert!(
+        planned > u64::from(crate::guarded::APPLY_GUARD_MAX_TIMEOUT_S),
+        "{planned}"
+    );
+    assert_eq!(
+        DspiCore::tune_guard_s(&long, &computed),
+        crate::guarded::APPLY_GUARD_MAX_TIMEOUT_S
+    );
+    let w = DspiCore::tune_guard_warning(&long, &computed).unwrap();
+    assert_eq!(w.key, KEY_GUARD_CAPPED);
+    assert!(w.message.contains(&planned.to_string()), "{w:?}");
+    assert!(DspiCore::tune_guard_warning(&input, &computed).is_none());
+    assert_eq!(
+        DspiCore::tune_guard_planned_s(&input, &computed),
+        Some(u64::from(short))
+    );
     // The apply with 0 takes it; an explicit length is the caller's.
     let p = eq_only(&r);
+    assert!(
+        p.warnings.iter().all(|w| w.key != KEY_GUARD_CAPPED),
+        "{:?}",
+        p.warnings
+    );
     let g = r.core.measure_tune_apply(p.id, 0).unwrap();
     assert_eq!(g.timeout_ms, short * 1000);
     r.core.measure_tune_revert().unwrap();

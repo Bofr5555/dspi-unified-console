@@ -149,6 +149,8 @@ pub(crate) const NOTICE_KEYS: &[&str] = &[
     KEY_MIC,
     KEY_NOT_KEPT,
     KEY_KEEP_UNVERIFIED,
+    // -- WP P5TRUST2 --
+    KEY_GUARD_CAPPED,
 ];
 const KEY_OTHER_DEVICE: &str = "measure.tune.other_device";
 const KEY_OLD: &str = "measure.tune.old";
@@ -159,6 +161,8 @@ const KEY_MIC: &str = "measure.tune.mic";
 const KEY_NOT_KEPT: &str = "measure.tune.not_kept";
 // -- WP P5TRUST -- coordinator decision (b)
 const KEY_KEEP_UNVERIFIED: &str = "measure.tune.keep_unverified";
+// -- WP P5TRUST2 -- (review P5TRUST N7)
+const KEY_GUARD_CAPPED: &str = "measure.tune.guard_capped";
 
 fn invalid(msg: impl Into<String>) -> DspiError {
     DspiError::InvalidArgument { msg: msg.into() }
@@ -1116,7 +1120,13 @@ impl DspiCore {
             transitions,
             held: c.held.clone(),
             withdrawn: c.withdrawn.clone(),
-            warnings: input.warnings.clone(),
+            // -- WP P5TRUST2 -- the guard's cap said (review P5TRUST N7).
+            warnings: input
+                .warnings
+                .iter()
+                .cloned()
+                .chain(Self::tune_guard_warning(input, &c))
+                .collect(),
             notes: c.notes.clone(),
             timing_reliable: input.doc.measurement.capture.timing_reliable,
             sum_check: if has_timing {
@@ -1245,6 +1255,19 @@ impl DspiCore {
     /// level to the ceiling. [`TUNE_GUARD_DEFAULT_S`] when a run cannot be
     /// planned.
     fn tune_guard_s(input: &Input, c: &Computed) -> u32 {
+        match Self::tune_guard_planned_s(input, c) {
+            Some(s) => u32::try_from(s)
+                .unwrap_or(u32::MAX)
+                .min(crate::guarded::APPLY_GUARD_MAX_TIMEOUT_S),
+            None => TUNE_GUARD_DEFAULT_S,
+        }
+    }
+
+    // -- WP P5TRUST2 -- (review P5TRUST N7) the planned length before the
+    // guard's cap, so a proposal can say when the cap cuts it.
+    /// The guard's planned length before the guard's longest is applied, s;
+    /// `None` when a run cannot be planned.
+    fn tune_guard_planned_s(input: &Input, c: &Computed) -> Option<u64> {
         let rate = match input.doc.measurement.stimulus.device_rate_hz {
             r @ (44_100 | 48_000 | 96_000) => r,
             _ => 48_000,
@@ -1252,13 +1275,13 @@ impl DspiCore {
         let mut ms: u64 = 0;
         for item in Self::tune_verify_queue(input, c, &c.chains) {
             let Ok(plan) = Plan::new(&item.setup) else {
-                return TUNE_GUARD_DEFAULT_S;
+                return None;
             };
             let span = f64::from(plan.ceiling_db - plan.start_db).max(0.0);
             let steps = ((span / f64::from(safety::RAMP_STEP_DB)).ceil() as u64).saturating_add(1);
             for run in &plan.runs {
                 let Ok(run_ms) = plan.run_ms(run, rate) else {
-                    return TUNE_GUARD_DEFAULT_S;
+                    return None;
                 };
                 let ramps = (run.outputs.len() as u64).saturating_mul(steps);
                 ms = ms
@@ -1266,13 +1289,31 @@ impl DspiCore {
                     .saturating_add(ramps.saturating_mul(RAMP_STEP_MS));
             }
         }
-        let s = ms
-            .saturating_mul(100 + TUNE_GUARD_SLACK_PCT)
-            .div_ceil(100_000)
-            .saturating_add(u64::from(TUNE_GUARD_MARGIN_S));
-        u32::try_from(s)
-            .unwrap_or(u32::MAX)
-            .min(crate::guarded::APPLY_GUARD_MAX_TIMEOUT_S)
+        Some(
+            ms.saturating_mul(100 + TUNE_GUARD_SLACK_PCT)
+                .div_ceil(100_000)
+                .saturating_add(u64::from(TUNE_GUARD_MARGIN_S)),
+        )
+    }
+
+    // -- WP P5TRUST2 -- (review P5TRUST N7)
+    /// The proposal's warning when the planned verify needs a longer guard
+    /// than the guard's longest: the guard is still capped, and would revert
+    /// the tune during or right after the verify.
+    fn tune_guard_warning(input: &Input, c: &Computed) -> Option<MeasureIssue> {
+        let planned = Self::tune_guard_planned_s(input, c)?;
+        let cap = crate::guarded::APPLY_GUARD_MAX_TIMEOUT_S;
+        (planned > u64::from(cap)).then(|| {
+            MeasureIssue::new(
+                KEY_GUARD_CAPPED,
+                None,
+                format!(
+                    "the verify needs a guard of about {planned} s with its margin, longer \
+                     than the guard's longest ({cap} s): the guard reverts the tune after {cap} s, \
+                     perhaps before the verify ends"
+                ),
+            )
+        })
     }
 
     /// Start the next run of `t`, or end the step (`finish`).

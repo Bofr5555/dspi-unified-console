@@ -753,6 +753,10 @@ pub(crate) struct PairFit {
     pub(crate) other: f64,
     /// Cost evaluations used.
     pub(crate) evals: u32,
+    // -- WP P5TRUST2 --
+    /// The best of the whole window lay further from the start than the hold
+    /// allowed, and the timing was chosen within it ([`PairCtx::search_held`]).
+    pub(crate) held: bool,
 }
 
 impl PairFit {
@@ -845,9 +849,36 @@ impl PairCtx {
     /// (`refine` evaluations). `steps == 0` judges `start` alone, both
     /// polarities. Uses `2·(2·steps + 1) + refine` evaluations at most.
     pub(crate) fn search(&self, start: f64, half: f64, steps: usize, refine: usize) -> PairFit {
+        self.search_held(start, half, steps, refine, f64::INFINITY)
+    }
+
+    // -- WP P5TRUST2 -- (review P5TRUST N2) a timing held near `start`.
+    /// As [`PairCtx::search`], but the result is held within `hold` ms of
+    /// `start`: when the best of the whole window lies further away, the
+    /// polarity and delay are chosen again among the coarse steps within
+    /// `hold` (the same steps, so the same evaluations), and the refinement
+    /// stays inside it. When the best of the window is within `hold` the
+    /// result is exactly [`PairCtx::search`]'s. The middle coarse step is
+    /// `start` (to rounding), so the held choice always has a candidate. A
+    /// `hold` that is not a positive number holds nothing.
+    pub(crate) fn search_held(
+        &self,
+        start: f64,
+        half: f64,
+        steps: usize,
+        refine: usize,
+        hold: f64,
+    ) -> PairFit {
+        let hold = if hold.is_nan() || hold <= 0.0 {
+            f64::INFINITY
+        } else {
+            hold
+        };
         let mut evals = 0u32;
-        // The best delay and cost of each polarity: [unflipped, flipped].
+        // The best delay and cost of each polarity: [unflipped, flipped];
+        // over the whole window and within the hold.
         let mut per = [(start, f64::INFINITY), (start, f64::INFINITY)];
+        let mut held = per;
         let step = if steps == 0 || half.is_nan() || half <= 0.0 {
             0.0
         } else {
@@ -879,19 +910,34 @@ impl PairCtx {
                 {
                     *b = (d, c);
                 }
+                if (d - start).abs() <= hold
+                    && let Some(b) = held.get_mut(usize::from(flip))
+                    && c < b.1
+                {
+                    *b = (d, c);
+                }
             }
         }
         // A flip must be clearly better (FLIP_MARGIN); a near tie keeps the
         // polarity there is.
-        let [plain, flipped] = per;
-        let flip = polarities.len() > 1 && flipped.1 < plain.1 * (1.0 - FLIP_MARGIN);
-        let chosen = if flip { flipped } else { plain };
-        let mut best = (chosen.0, flip, chosen.1);
-        let best_other = [plain.1, flipped.1];
-        // Golden-section refinement in the best coarse step's neighbourhood.
+        let pick = |[plain, flipped]: [(f64, f64); 2]| {
+            let flip = polarities.len() > 1 && flipped.1 < plain.1 * (1.0 - FLIP_MARGIN);
+            let chosen = if flip { flipped } else { plain };
+            ((chosen.0, flip, chosen.1), [plain.1, flipped.1])
+        };
+        let (mut best, mut best_other) = pick(per);
+        let was_held = (best.0 - start).abs() > hold;
+        let (lo_bound, hi_bound) = if was_held {
+            (best, best_other) = pick(held);
+            (start - hold, start + hold)
+        } else {
+            (f64::NEG_INFINITY, f64::INFINITY)
+        };
+        // Golden-section refinement in the best coarse step's neighbourhood
+        // (within the hold when it applied).
         if step > 0.0 && refine >= 2 {
             let inv_phi = (5f64.sqrt() - 1.0) / 2.0;
-            let (mut lo, mut hi) = (best.0 - step, best.0 + step);
+            let (mut lo, mut hi) = ((best.0 - step).max(lo_bound), (best.0 + step).min(hi_bound));
             let mut x1 = hi - inv_phi * (hi - lo);
             let mut x2 = lo + inv_phi * (hi - lo);
             let mut c1 = self.cost(x1, best.1);
@@ -933,6 +979,7 @@ impl PairCtx {
             cost: best.2.min(WORST),
             other: other.min(WORST),
             evals,
+            held: was_held,
         }
     }
 }

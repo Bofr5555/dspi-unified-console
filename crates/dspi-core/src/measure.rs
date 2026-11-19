@@ -153,6 +153,8 @@ pub(crate) const NOTICE_KEYS: &[&str] = &[
     "measure.tune.not_kept",
     // -- WP P5TRUST --
     "measure.tune.keep_unverified",
+    // -- WP P5TRUST2 --
+    "measure.tune.guard_capped",
 ];
 
 // ── Records ─────────────────────────────────────────────────────────────
