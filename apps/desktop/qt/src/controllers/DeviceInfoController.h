@@ -37,6 +37,13 @@ class QQmlEngine;
 //   an id, wValue or length above 16 bits, a byte above 0xFF, a payload longer
 //   than a control transfer carries. A SET goes through DeviceModel::write (the
 //   one write path); dspi_raw_set_id reads SYS.COMMAND_INFO per call.
+// - -- WP QTSENDER -- On the sender only the action ids of senderKeeps() do
+//   anything useful: its device info (Settings, Help > About), the audio link
+//   (Window > System...), the firmware update, the connection (Devices...,
+//   Reconnect, Open File... for an offline document) and the app's own rows
+//   (Quit, Help). Every other menu row, its shortcut and its tool window is
+//   greyed (MenuTable.available, ToolWindow.senderLocked), and Shell.trigger
+//   refuses it (the gate installed here), whoever triggers it.
 class DeviceInfoController : public QObject {
     Q_OBJECT
     QML_ELEMENT
@@ -94,6 +101,10 @@ public:
     bool alinkBusy() const { return m_alinkBusy; }
     // Reads the audio link status again (on the worker)
     Q_INVOKABLE void refreshAlink();
+
+    // -- WP QTSENDER -- Whether menu action `action` does something on the
+    // alink sender (whatever device is open: callers check `sender` first)
+    Q_INVOKABLE bool senderKeeps(const QString &action) const;
 
     // ---- Pure, for the smoke driver ----
     struct RawRequest {

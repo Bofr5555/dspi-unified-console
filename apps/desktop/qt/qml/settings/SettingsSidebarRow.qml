@@ -34,6 +34,7 @@ Item {
         id: button
         objectName: item.isHeading ? "" : "Settings.button." + row.id
         visible: !item.isHeading
+        enabled: !(row.devicePage === true && DeviceInfoController.sender)   // -- WP QTSENDER -- greyed on the alink sender
         anchors.fill: parent
         hoverEnabled: true
         focusPolicy: Qt.TabFocus
@@ -53,6 +54,7 @@ Item {
                 implicitHeight: 18
                 radius: Theme.radiusSmall
                 color: item.isHeading ? "transparent" : Theme.settingsTint(row.id)
+                opacity: button.enabled ? 1 : 0.4   // -- WP QTSENDER --
                 Icon {
                     anchors.centerIn: parent
                     name: item.isHeading ? "" : row.icon
@@ -64,7 +66,7 @@ Item {
                 Layout.fillWidth: true
                 text: item.isHeading ? "" : row.title
                 font: Theme.fontBody
-                color: Theme.text
+                color: button.enabled ? Theme.text : Theme.textDisabled   // -- WP QTSENDER --
                 elide: Text.ElideRight
             }
         }

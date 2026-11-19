@@ -21,6 +21,7 @@ class QQuickWindow;
 class QSystemTrayIcon;
 class Shell;
 class SidebarController;
+class DeviceInfoController;   // -- WP QTSENDER --
 
 // -- WP QP14 -- The tray (behaviour.md §12.1, the Mac's MenuBarMode): with
 // "Show in the tray" on and a tray on the desktop, closing the main window hides
@@ -90,12 +91,15 @@ private:
     void hideWindows();
     HubController *hub();
     SidebarController *sidebar();
+    // -- WP QTSENDER -- the volume rows grey on the alink sender
+    bool senderOpen();
 
     Shell *m_shell;
     DeviceModel *m_device;
     QPointer<QQuickWindow> m_main;
     QPointer<HubController> m_hub;
     QPointer<SidebarController> m_sidebar;
+    QPointer<DeviceInfoController> m_deviceInfo;   // -- WP QTSENDER --
     std::function<bool()> m_probe;
     bool m_showInTray = false;
     bool m_startMinimised = false;

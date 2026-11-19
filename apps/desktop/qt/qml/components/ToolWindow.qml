@@ -12,6 +12,20 @@ ApplicationWindow {
     required property string windowId
     property int defaultWidth: 600
     property int defaultHeight: 400
+    // -- WP QTSENDER -- The menu action that opened this window (Shell sets
+    // it), and whether that action does nothing on the open device (the alink
+    // sender): the content is then greyed under a banner that says why
+    property string actionId: ""
+    readonly property bool senderLocked: actionId.length > 0 && DeviceInfoController.sender
+                                         && !DeviceInfoController.senderKeeps(actionId)
+    contentItem.enabled: !senderLocked
+    header: Banner {
+        objectName: "ToolWindow.senderBanner"
+        visible: window.senderLocked
+        kind: "info"
+        iconName: "radio"
+        text: qsTr("This is an audio link sender. It has no DSP, so this window has nothing to show or change.")
+    }
 
     width: defaultWidth
     height: defaultHeight

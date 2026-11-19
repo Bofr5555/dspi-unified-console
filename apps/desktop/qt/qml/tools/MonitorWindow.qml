@@ -24,10 +24,12 @@ ToolWindow {
 
     Shortcut {
         sequence: "Ctrl+P"
+        enabled: !window.senderLocked   // -- WP QTSENDER --
         onActivated: MonitorController.togglePause()
     }
     Shortcut {
         sequence: "Ctrl+K"
+        enabled: !window.senderLocked   // -- WP QTSENDER --
         onActivated: MonitorController.clear()
     }
 

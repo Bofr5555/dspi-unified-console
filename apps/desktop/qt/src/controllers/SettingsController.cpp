@@ -3,6 +3,7 @@
 
 #include "Core.h"
 #include "CoreWorker.h"
+#include "DeviceInfoController.h"
 #include "DeviceModel.h"
 #include "PinMap.h"
 #include "PrefsMap.h"
@@ -189,6 +190,25 @@ bool SettingsController::matches(const QString &id, const QString &query) const 
     return false;
 }
 
+// -- WP QTSENDER --
+bool SettingsController::senderLocked(const SettingsRegistry::PageEntry *p) const {
+    if (!p || (p->group != SettingsRegistry::System && p->group != SettingsRegistry::Control)) return false;
+    const auto *info = qobject_cast<const DeviceInfoController *>(m_deviceInfo.data());
+    return info && info->sender();
+}
+
+void SettingsController::hookDeviceInfo() {
+    if (m_deviceInfo) return;
+    auto *info = Registrar::instance<DeviceInfoController>();
+    if (!info) return;
+    m_deviceInfo = info;
+    connect(info, &DeviceInfoController::changed, this, [this] {
+        ++m_pagesRevision;
+        emit pagesChanged();
+        ensureShown();
+    });
+}
+
 QVariantList SettingsController::sidebarRows(const QString &query) const {
     static const std::array<const char *, 4> titles{ QT_TR_NOOP("Application"), QT_TR_NOOP("Display"),
                                                      QT_TR_NOOP("System"), QT_TR_NOOP("Control") };
@@ -200,7 +220,10 @@ QVariantList SettingsController::sidebarRows(const QString &query) const {
             if (!isShown(id) || !matches(id, query)) continue;
             pages.append(QVariantMap{ { QStringLiteral("id"), id },
                                       { QStringLiteral("title"), translated(p->title) },
-                                      { QStringLiteral("icon"), QString::fromLatin1(p->icon) } });
+                                      { QStringLiteral("icon"), QString::fromLatin1(p->icon) },
+                                      // -- WP QTSENDER -- greyed while the alink sender is open
+                                      { QStringLiteral("devicePage"), p->group == SettingsRegistry::System ||
+                                                                          p->group == SettingsRegistry::Control } });
         }
         if (pages.isEmpty()) continue;
         rows.append(QVariantMap{ { QStringLiteral("heading"), tr(titles[size_t(g)]) } });
@@ -254,7 +277,7 @@ void SettingsController::navigate(const QString &id, bool record) {
 }
 
 void SettingsController::open(const QString &id) {
-    if (!entry(id)) return;
+    if (!entry(id) || senderLocked(entry(id))) return;   // -- WP QTSENDER --
     navigate(id, true);
 }
 
@@ -262,16 +285,19 @@ void SettingsController::back() {
     if (!canGoBack()) return;
     --m_historyIndex;
     navigate(m_history.at(m_historyIndex), false);
+    ensureShown();   // -- WP QTSENDER --
 }
 
 void SettingsController::forward() {
     if (!canGoForward()) return;
     ++m_historyIndex;
     navigate(m_history.at(m_historyIndex), false);
+    ensureShown();   // -- WP QTSENDER --
 }
 
 void SettingsController::ensureShown() {
-    if (!isShown(m_current)) navigate(QLatin1String(kFirstPage), true);
+    // -- WP QTSENDER -- nor a page the sender greys
+    if (!isShown(m_current) || senderLocked(entry(m_current))) navigate(QLatin1String(kFirstPage), true);
 }
 
 void SettingsController::showPage(const QString &id) {
@@ -282,6 +308,7 @@ void SettingsController::showPage(const QString &id) {
 // ---- Device facts --------------------------------------------------------------
 
 void SettingsController::onSnapshot() {
+    hookDeviceInfo();   // -- WP QTSENDER -- made by now
     const DeviceSnapshot &snap = m_ctx.device->snapshot();
     if (snap.connected != m_connected) {
         m_connected = snap.connected;

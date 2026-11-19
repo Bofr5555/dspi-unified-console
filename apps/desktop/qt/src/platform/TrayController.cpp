@@ -1,6 +1,7 @@
 #include "TrayController.h"
 
 #include "AppIdentity.h"
+#include "DeviceInfoController.h"
 #include "DeviceModel.h"
 #include "HubController.h"
 #include "Shell.h"
@@ -120,6 +121,15 @@ HubController *TrayController::hub() {
         }
     }
     return m_hub;
+}
+
+// -- WP QTSENDER --
+bool TrayController::senderOpen() {
+    if (!m_deviceInfo) {
+        m_deviceInfo = Registrar::instance<DeviceInfoController>();
+        if (m_deviceInfo) connect(m_deviceInfo, &DeviceInfoController::changed, this, &TrayController::refreshMenu);
+    }
+    return m_deviceInfo && m_deviceInfo->sender();
 }
 
 SidebarController *TrayController::sidebar() {
@@ -270,6 +280,7 @@ void TrayController::refreshMenu() {
     QAction *volume = child(m_menu, "Tray.volume");
     volume->setText(tr("Volume"));
     volume->setVisible(bar && m_device->connected());
+    volume->setEnabled(!senderOpen());   // -- WP QTSENDER -- the sender has no volume
     if (bar) {
         const bool master = bar->volumeMode() == QLatin1String("master");
         child(m_menu, "Tray.volumeLevel")
@@ -285,7 +296,7 @@ void TrayController::refreshMenu() {
 
 void TrayController::stepVolume(double db) {
     SidebarController *bar = sidebar();
-    if (!bar || !m_device->connected()) return;
+    if (!bar || !m_device->connected() || senderOpen()) return;   // -- WP QTSENDER --
     if (bar->volumeMode() == QLatin1String("master")) {
         const double now = qMax(kVolumeFloor - kVolumeStep, bar->masterVolumeDb());
         bar->setMasterVolume(qMin(0.0, now + db));

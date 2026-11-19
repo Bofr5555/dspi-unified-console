@@ -9558,6 +9558,13 @@ Macros are stored on the device alongside the controls and share their Save and 
     </message>
 </context>
 <context>
+    <name>SenderBanner</name>
+    <message>
+        <source>This is an audio link sender. It has no DSP: only its device info, the audio link and firmware updates are available.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>SenderPage</name>
     <message>
         <source>Audio Link Sender</source>
@@ -13084,6 +13091,13 @@ This wiring is a board-level setting: it is stored on the device, survives prese
     <name>ToolParameterRow</name>
     <message>
         <source>Off</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>ToolWindow</name>
+    <message>
+        <source>This is an audio link sender. It has no DSP, so this window has nothing to show or change.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
