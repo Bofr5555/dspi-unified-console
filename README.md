@@ -96,7 +96,7 @@ history of this file.
 |---|---|---|
 | Core | `crates/` | In use by every client, the Swift app included (its opt-out paths aside). The core gaps the clients asked for are done (CG1 to CG37). Since 2026-11-08: confirmation tokens are required for every dangerous call (P1TZ); the client read-only mode (ROMODE); the PRO features of phases 1 to 3 and 5 (below); DSPi Link over TLS 1.3 with the hub's key pinned at pairing (PLAN-SEC); the measurement maths in the new crate `dspi-measure` and the workflow in `dspi-core`'s `measure` module; and both firmware generations, 1.1.6 and upstream's paged 1.1.7, decided once per connection (PLAN-PG). Earlier: writes by parameter path (`write_param`), one filter-type name table, delays kept to 0.0001 ms, and one delay limit per platform (42 ms on RP2350, 21 ms on RP2040). |
 | Qt, Linux and Windows | `apps/desktop/` | *(2026-11-13.)* Rebuilt in QML from the macOS console's layout and words, on the core through the C ABI, and swapped in for the earlier port (Qt 6.8 or newer; no Qt 5, no macOS build). Beyond the Mac: read-only mode for other firmware, the Core Voltage page, undo and redo with a History window, an update check in the project's own downloads, and diagnostics bundles. Since then: the PRO phase 1 dialogs, the hub's limits and PIN (HUBADMIN), shared snapshots, the hub's history, the alarm banner and Identify (P2QT), pairing bound to the hub's key (SECQT), measurement and auto-tune in Tools > Measure… with a "Several units" tab (P5QCAP, P5QUI, P5QUI2, ATQT), and the device's generation and the update check in Settings > About (PGQT). Hardware pass on the K340 on Linux and Windows (QP22: `docs/core-merge/HW-QT.md`). Packages: `.deb`, `.rpm`, AppImage, a tar.gz with an installer and an Arch `PKGBUILD` for Linux; a zip and an installer for Windows (cross-built from Linux). None are signed or published. |
-| Android | `apps/android/` | On the core through UniFFI. **0.12.0, the first release on the core, is on Google Play, in closed testing**; `main` is at 0.13.0 (versionCode 13), not uploaded. On `main` for the next release: R8 shrinking, accessibility (TalkBack labels and roles, with the layout unchanged), faster Link meters, fractional delays kept, delay sliders in whole milliseconds, the delay limit from the core; the PRO phase 1 screens and the hub's limits and PIN; shared snapshots, the hub's history, the alarm banner and Identify (P2AN); pairing bound to the hub's key (SECAN); device info, the update check and the core's write gate (PGAND); S/PDIF units shown in the System screen, view only. Measurement comes in a later batch (PLAN-P5). Open: edge-to-edge, localisation. |
+| Android | `apps/android/` | On the core through UniFFI. **0.12.0, the first release on the core, is on Google Play, in closed testing**; `main` builds 0.13.0 (versionCode 13). On `main` for the next release: R8 shrinking, accessibility (TalkBack labels and roles, with the layout unchanged), faster Link meters, fractional delays kept, delay sliders in whole milliseconds, the delay limit from the core; the PRO phase 1 screens and the hub's limits and PIN; shared snapshots, the hub's history, the alarm banner and Identify (P2AN); pairing bound to the hub's key (SECAN); device info, the update check and the core's write gate (PGAND); S/PDIF units shown in the System screen, view only. Measurement comes in a later batch (PLAN-P5). Open: edge-to-edge, localisation. |
 | Terminal | `apps/terminal/` | Done but for a physical replug in its hardware pass (TM13). Every write goes through the core (TMCORE), so limits, the installer lock and confirmation tokens hold for it. New commands since 2026-11-08: the PRO phase 1 commands, `uconsole hub` services, REST, TLS, groups and the firmware rollout (P2TM, SECTM, P3TM), `uconsole measure` (P5TM), and `uconsole info` and `raw --id` for the generation (PGTM); see [`apps/terminal/README.md`](apps/terminal/README.md) and `uconsole --help`. |
 | Swift, macOS and iOS | `apps/apple/` | On the core by default since 2026-11-15/16: USB on the Mac (SW-M1), USB MIDI on iPhone, iPad and the Mac's MIDI paths (SW5), the DSPi Link client (SW6, with its lost-connection banner SW7), firmware updates (SW-M2), and the Mac's hub, now the Rust hub over UniFFI with TLS required by default (SW-M3, P2SW, SECSW). The DSP domains, presets, files, undo and the PRO phase 1 features run on the core's calls (SW8 to SW14, P1SW1 to P1SW3). The opt-out paths (`-CoreTransport NO`, `-CoreHub NO`) are still in the app, 1.1.6 only, to be retired (SWS13). Not yet: the device's generation and the update check (PGSWIFT), measurement (later batch). The look-and-feel decision (OD3) is still the owner's. |
 | Link hub | `crates/dspi-hub/` | `uconsole hub` runs it; the Mac app hosts it too. With `--web` it serves `/` (a landing page without scripts), `/console/` (our web console) and `/hub/` (Weeb Labs' DSPi-Link page, built from a pinned commit). Since 2026-11-08: TLS 1.3 on its one port, required by default, with PIN pairing bound to its key and a PAKE for native clients (PLAN-SEC); the phase 2 services and the phase 3 fleet (below), with the REST mirror under `/api/v1/` frozen as v1 on 2026-11-16; measurement documents (P5HUB); measuring several units, `system.measure.*`, and the guard of a system apply, `system.guard.*` (PLAN-AT); devices of both generations and DSPi Link 1.2 and 1.3 clients (PLAN-PG). Connection budgets: plain HTTP 48 in all and 16 per address; WebSocket 16 in all and 4 per address before sign-in. |
@@ -295,7 +295,7 @@ Nothing of it has run on real boards yet (ATHIL).
 
 ### Both firmware generations (on `main`, 2026-11-19)
 
-PLAN-PG ([`docs/core-merge/PLAN-PG.md`](docs/core-merge/PLAN-PG.md), waves PG-A to PG-D) is merged:
+PLAN-PG ([`docs/core-merge/PLAN-PG.md`](docs/core-merge/PLAN-PG.md), waves PG-A to PG-D) is merged but for the Swift row (PGSWIFT):
 every component speaks the old protocol, 1.1.6 with or without this fork's extension channel, and
 upstream's paged protocol of firmware 1.1.7. The client's side is
 [`docs/integrator/protocol-generations.md`](docs/integrator/protocol-generations.md), the user's
@@ -311,8 +311,12 @@ upstream's paged protocol of firmware 1.1.7. The client's side is
   phrase before leaving this fork's firmware, the generation change said) and **the core's write
   gate**, which judges every firmware write on the target it read itself.
 - **The alink sender** (`firmware/DSPi-Sender`) connects as its own device kind with a limited
-  connection: device info, the audio link block and the update. Recognising the later dual-stack
-  sender on its paged stack is pending (in review).
+  connection: device info, the audio link block and the update. The core recognises it on both
+  generations (PGSENDER): today's sender on the 1.1.6 protocol and the later dual-stack sender on its
+  paged stack, there only when the device's own discovery says it is one (anything else stays a DSP or
+  is refused). The dual-stack sender firmware is not written yet (FWPG4), so this is tested on its
+  fake only; our hub does not tell the paged sender apart yet, and a paged sender reached through a
+  hub's in-process connections is refused.
 - **Device info** (generation, protocol version, pages, envelope, board): web Device screen, Qt and
   Android Settings > About, `uconsole info`. Raw requests by command id: `uconsole raw --id`, and the
   web and Qt raw dialogs. Swift: not yet (PGSWIFT).
@@ -343,7 +347,7 @@ The port of this fork's firmware onto 1.1.7 (FWPG1 to FWPG6) waits for upstream 
   [`docs/release/minisign.pub`](docs/release/minisign.pub) (2026-11-18), and the secret half is kept by the
   owner, outside the repository ([`docs/RELEASING.md`](docs/RELEASING.md)). The Swift app's own updater
   still carries a test key, to be swapped at its first signed release.
-- **Publishing:** only the Android app is out (0.12.0, Google Play, closed testing). The other clients
+- **Publishing:** only the Android app is out (Google Play, closed testing; 0.12.0 was the first release on the core). The other clients
   are to be published as GitHub releases at the next Android release (not iOS). Making
   the repository public, any store upload and any contact with Weeb Labs are
   the owner's.

@@ -361,7 +361,12 @@ page but SYS 0x01, STORE 0x02 and 0xE0. **Fail closed:** anything else, and a pa
 bitmaps hold nothing of the DSP model, `PagedTransport` refuses every DSP request locally, and the core's
 `AlinkSender` connection refuses them before the adapter. **FWPG4 must present exactly this:** the product string,
 `SYS.PLATFORM` byte 3 = 0, pages SYS, STORE (the output-config save) and 0xE0 only, the tunnel listed in 0xE0's
-bitmap, page 0 kept. Over DSPi Link a paged sender gets no meter poll, not even from the hub's listed channel count;
+bitmap, page 0 kept. A sender build that lists any further page (a debug build's diagnostics page 0xF0 included) is
+not recognised and fails to open; the firmware's spec (`extension_channel_spec.md` 1.3.5) names the sender's paged
+stack but not this page set, so FWPG4 has to write it there (review PGS-DOC). The update check knows no sender image
+from a DSP image: the sender is judged as a Pico running our firmware (voltage unknown, so the voltage phrase is asked;
+an image not proven ours also names the lineage loss), on both generations alike
+(`firmware_guard/tests_review_pgsdoc.rs`), and the clients do not offer it the bundled DSP image. Over DSPi Link a paged sender gets no meter poll, not even from the hub's listed channel count;
 behind a 1.2 hub the core speaks legacy only and the dual-stack sender is the legacy sender.
 
 ### 1.10 The firmware port onto 1.1.7 (FWPG0-FWPG6, FWPGHIL)
@@ -540,7 +545,7 @@ page 0, no zero-length GET, SET lengths in bounds, planner-then-reverse identity
 tunnels only with 0xE0 in the `PageSet`; `cargo build -p dspi-proto --target wasm32-unknown-unknown` in the cross
 profile. **Deps:** the seam.
 
-**FWPG0: The envelope in the extension spec (firmware repo, docs only).** [TODO] Size 0.5. Wave PG-A. **Owns:** in
+**FWPG0: The envelope in the extension spec (firmware repo, docs only).** [DONE 2026-11-18: firmware `bofr-main`, `ddbe896` (merge `aeb8b4a`), `extension_channel_spec.md` section 1.3; marked at review PGS-DOC, 2026-11-19] Size 0.5. Wave PG-A. **Owns:** in
 `~/prog/DSPi-bofr`, branch `wp/FWPG0` from `bofr-main`: `Documentation/Features/extension_channel_spec.md` (new
 section "Envelopes": 1.1.6 `REQ_EXTENSION` 0x00, 1.1.7 page 0xE0 tunnel `0xE010`, `wValue` = id, payloads unchanged,
 GET and SET, refusals as `VC_ERR_*` never 0x02/0x03, `SYS.PAGE_LIST` lists 0xE0, MIDI and the legacy stack, the FWSEC1
@@ -855,7 +860,7 @@ on `AlinkSender` a sender page stands in for Home and the DSP routes are closed.
 judging on a target kept in Kotlin, which did not know when the core had opened another board; a dismissed check keeps
 no board; the bundled DSP image is not offered to the sender (as Qt).
 
-**PGSENDER: The dual-stack alink sender on its paged stack.** [DONE] Size 0.5. Wave PG-D (PGWEB's follow-up).
+**PGSENDER: The dual-stack alink sender on its paged stack.** [DONE 2026-11-19: `a80812dc`, review/pgsdoc] Size 0.5. Wave PG-D (PGWEB's follow-up).
 **Owns:** the sender recognition in `crates/dspi-core/src/device.rs` (`sender_mirror`, new `is_paged_alink_sender`,
 `SENDER_PAGES`), the Link bind's meter gate (`link.rs`, `open_bound`), new `device/tests_wp_pgsender.rs` and
 `link/tests_wp_pgsender.rs`, the sender e2e in `apps/web/test/e2e/device_pgweb.spec.ts`, section 1.9's rule,
@@ -865,7 +870,8 @@ page but SYS, STORE, 0xE0); fail closed otherwise. Over DSPi Link behind a 1.3 h
 meter poll; behind a 1.2 hub as the legacy sender. Web, Qt, Android and the Terminal key on `device_kind` and needed no
 change (checked); the web e2e runs the sender page on `sender-dual` too. **Not done:** our hub's in-process paths carry
 no discovery, so a paged sender reached through them still fails to open (fail closed, as PGTM's note); the firmware
-(FWPG4) is not written: its fake (`FakeDevice::sender(true)`, PGFAKE2) is the contract.
+(FWPG4) is not written: its fake (`FakeDevice::sender(true)`, PGFAKE2) is the contract; our hub (`crates/dspi-hub`)
+does not tell the paged sender apart.
 
 **PGSWIFT: Swift (coordinator, Mac VM).** [TODO] Size 1. Wave PG-D. **Owns:** the Swift device-info row; the
 core-backed paths' tests against the paged fakes. Its `CoreBackedTransport` needs no code (its opcodes go through the

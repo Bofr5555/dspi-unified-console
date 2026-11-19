@@ -207,7 +207,7 @@ microphone.*
 | **Guard** | The way back of a guarded apply: a countdown after the change, during which Keep keeps it; when it runs out, or the console goes away, the settings from before are put back by themselves (by the hub, for a system apply or a guarded recall over DSPi Link). The feature is called Safe apply; the hub's side of a system apply is `docs/integrator/hub-api.md` section 23.4 | s | |
 | **Generation** | Which protocol a device's firmware speaks: **legacy** (1.1.6 and older, page 0, with or without this fork's extension channel) or **paged** (upstream 1.1.7 and later, commands by page and id). Shown in the device info; decided once per connection | | |
 | **Extension channel** | This fork's own requests (`REQ_EXTENSION` 0x00 on legacy firmware, the tunnel on page 0xE0 on paged firmware): the crossfeed pair map, core voltage, the audio link and its time base. Absent on stock firmware, where its features are hidden | | |
-| **alink sender** | The device that feeds the audio link from USB (section 3.1's Sender); it connects as its own device kind with its device info, its audio link block and the firmware update, and has no DSP screens | | |
+| **alink sender** | The device that feeds the audio link from USB (section 3.1's Sender); it connects as its own device kind with its device info, its audio link block and the firmware update, and has no DSP screens. The core recognises it on either generation; the dual-stack sender firmware (paged) is not written yet | | |
 
 ## 4. Units
 

@@ -81,7 +81,7 @@ polish (5.8), per resource.
 
 | State | WPs |
 |---|---|
-| **In progress** (2026-11-19) | No WP of this plan. Under review elsewhere: `wp/PGSENDER` (PLAN-PG: the dual-stack alink sender on its paged stack). On 2026-11-15 SW7, SW-M2, SW-M3 and PLANP2 were in progress; all four are merged |
+| **In progress** (2026-11-19) | No WP of this plan. `wp/PGSENDER` (PLAN-PG: the dual-stack alink sender on its paged stack) was reviewed with WP DOCSYNC (`review/pgsdoc`). On 2026-11-15 SW7, SW-M2, SW-M3 and PLANP2 were in progress; all four are merged |
 | **Next** (2026-11-19) | Swift: SWS13 (retire the opt-out paths), PGSWIFT (PLAN-PG), SW19, SW20, SW22, SW23, SW24, SW-V1 (VM). Web: WB4c (later, OD9), then WB9. Android and handover: AN21, HO1. Then OPT0-OPT9, then PL-*. The hardware runs of the later plans (P3HIL, P5HIL, ATHIL, PGSMOKE, PGHIL) with the owner |
 | **Blocked** | **Need hardware or the owner:** SW15 (simulator and relay run), SW16 (iPhone or iPad), SW-M5 (Apple silicon Mac); XC4, XC5 (an ESP32 bridge), XC6 (go for a VREG write); QD35 hand checks; AN16 and AN22 (AN15's release upload, phone checks) |
 | **Done since 2026-11-15** | **Swift:** SW7 and SW-M2 (review batch 2, on `main` from `dc06920a`), SW-M3 (review batch 6, on `main` from `ef0e4095`), SW-M4 (`6d337b34`), SWS4 and SWS7 (review batch 6), P2SW and SECSW (`49cd5370`). **Web:** WB6d to WB6l (`6d337b34`, `5778bae0`, `8634bf02`), so WB6 is done. **Plans beyond this one:** PLANP2 and PRO phase 2, PLAN-SEC, PRO phase 3, PRO phase 5, PLAN-AT, PLAN-PG (their own files) |

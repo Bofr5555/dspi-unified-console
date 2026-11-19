@@ -87,6 +87,13 @@ STORE) and the tunnel on page 0xE0, and page 0 kept for legacy hosts. The core c
   screens**: the device info, the audio link block and the update.
 - `device_protocol` says the generation and the envelope (`Legacy`, or `Tunnel` on the paged stack); the clients' sender
   pages (web, Qt, Android, Terminal) key on `device_kind` only and need no change per generation.
+- **Updates.** The update check and the write gate know no sender image from a DSP image: the sender is judged as a
+  Pico running this fork's firmware, the same on both generations (its core voltage is not known, so the voltage
+  phrase is asked, and an image not proven ours also names the lineage loss). **Do not offer the sender the bundled
+  DSP images** (Qt and Android do not); a file the user picks is theirs to get right.
+- **Not yet:** the dual-stack sender firmware (FWPG4) is not written, so the paged rule is tested against its fake
+  only; a sender build that lists any page beyond the three (a debug build's diagnostics page 0xF0 too) is not
+  recognised; our hub (`crates/dspi-hub`) does not tell the paged sender apart.
 
 ## 5. Updates: the update check and the write gate
 
