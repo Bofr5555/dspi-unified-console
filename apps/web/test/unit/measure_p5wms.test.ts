@@ -428,7 +428,9 @@ test("P5WMS: a view-only session is refused a run with nothing played", { skip, 
   await desk.start();
   assert.match(playBlocker(session.readOnlyReason, desk.hubRole), /only the passive microphone RTA/);
   assert.equal(await desk.startRun(setupOf(initialDraft([0]), 48000)), false);
-  assert.notEqual(desk.error, "");
+  // Refused before anything plays: by the preflight's blocker, or the call's refusal.
+  assert.ok(desk.error !== "" || (desk.preflight && !desk.preflight.clear), `${desk.error} ${JSON.stringify(desk.preflight)}`);
+  if (desk.preflight) console.log("view-only preflight:", desk.preflight.blockers.map((b) => b.key).join(", "));
   assert.equal((await session.core.call("siggenStatus", undefined)).state, 0);
   await desk.stop();
 });

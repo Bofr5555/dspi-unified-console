@@ -116,6 +116,19 @@ export class MeasureDesk {
     this.live = live;
     this.changed();
     await this.refreshMics();
+    await this.preparePort();
+  }
+
+  /** The Worker's capture port, asked for ahead of a run (see `openMic`). */
+  private port: CaptureOpenRecord | null = null;
+
+  private async preparePort(): Promise<void> {
+    if (this.port || this.mic.kind === "sim") return;
+    try {
+      this.port = (await this.core.call(CAPTURE_OPEN as never, undefined as never)) as CaptureOpenRecord;
+    } catch {
+      this.port = null;
+    }
   }
 
   /** The screen is gone: whatever it started is stopped. */
@@ -140,6 +153,7 @@ export class MeasureDesk {
 
   setMic(m: MicChoice): void {
     this.mic = m;
+    void this.preparePort();
     this.changed();
   }
 
@@ -199,9 +213,11 @@ export class MeasureDesk {
       this.sim = await measureCall(this.core, "measureSimSet", { on: true, seed: 1 });
       return 48_000;
     }
-    if (this.sim?.on) this.sim = await measureCall(this.core, "measureSimSet", { on: false });
-    await this.closeMic();
-    const open = (await this.core.call(CAPTURE_OPEN as never, undefined as never)) as CaptureOpenRecord;
+    // Firefox starts an audio context only close to the user's click: nothing slow comes first
+    // (the Worker's port is asked for ahead, the simulated microphone switched off after).
+    if (this.capture) await this.closeMic();
+    const open = this.port ?? ((await this.core.call(CAPTURE_OPEN as never, undefined as never)) as CaptureOpenRecord);
+    this.port = null;
     const env = this.env();
     // The worklet posts on the Worker's port: the blocks never pass through the page.
     const routed: CaptureEnv = {
@@ -216,6 +232,7 @@ export class MeasureDesk {
       if (e.kind === "lost") this.error = noticeRow(e.noticeKey)?.title ?? "The microphone went away";
       this.changed();
     });
+    if (this.sim?.on) this.sim = await measureCall(this.core, "measureSimSet", { on: false });
     void this.refreshMics();
     this.changed();
     return this.capture.report.rateHz;
@@ -225,6 +242,7 @@ export class MeasureDesk {
     const c = this.capture;
     this.capture = null;
     if (c && !c.stopped) await c.stop().catch(() => undefined);
+    if (this.alive) void this.preparePort();
     this.changed();
   }
 
@@ -234,8 +252,15 @@ export class MeasureDesk {
     try {
       if (this.live?.active) this.live = await measureCall(this.core, "measureLiveStop", undefined);
       const rate = await this.openMic();
+      const run = { ...setup, captureRateHz: rate };
+      this.preflight = await measureCall(this.core, "measurePreflight", { setup: run });
+      if (!this.preflight.clear) {
+        await this.closeMic();
+        this.changed();
+        return false;
+      }
       this.result = null;
-      this.state = await measureCall(this.core, "measureStart", { setup: { ...setup, captureRateHz: rate } });
+      this.state = await measureCall(this.core, "measureStart", { setup: run });
       this.changed();
       return true;
     } catch (e) {
@@ -269,9 +294,9 @@ export class MeasureDesk {
   async startLive(setup: MeasureLiveSetupRecord): Promise<boolean> {
     this.clearError();
     try {
+      const rate = await this.openMic();
       // The live view forgets a finished run: its result is taken first.
       if (this.state?.resultReady && !this.result) await this.takeResult();
-      const rate = await this.openMic();
       this.live = await measureCall(this.core, "measureLiveStart", { setup: { ...setup, captureRateHz: rate } });
       this.changed();
       return true;

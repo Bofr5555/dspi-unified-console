@@ -314,6 +314,16 @@ const TICKS: Record<string, "measureTick" | "measureLiveTick"> = {
 /** The calls that end the session the Worker turns (one last state is pushed). */
 const ENDS = new Set(["measureStop", "measureLiveStop", "measureClear", "close", "open", "documentOpen"]);
 
+// A browser's timer functions refuse another `this` ("Illegal invocation"): called unbound.
+function setTimer(env: { setTimeout: typeof setTimeout }, fn: () => void): ReturnType<typeof setTimeout> {
+  const st = env.setTimeout;
+  return st(fn, TICK_MS);
+}
+function clearTimer(env: { clearTimeout: typeof clearTimeout }, t: ReturnType<typeof setTimeout> | undefined): void {
+  const ct = env.clearTimeout;
+  ct(t);
+}
+
 /** The Worker's part of a measurement: the capture port and the ticks (worker.ts). */
 export class MeasureWorkerRoute {
   private unbind: (() => void) | null = null;
@@ -384,13 +394,13 @@ export class MeasureWorkerRoute {
   }
 
   private start(tick: "measureTick" | "measureLiveTick"): void {
-    this.env.clearTimeout(this.timer);
+    clearTimer(this.env, this.timer);
     this.tick = tick;
-    this.timer = this.env.setTimeout(() => void this.turn(), TICK_MS);
+    this.timer = setTimer(this.env, () => void this.turn());
   }
 
   private stop(): void {
-    this.env.clearTimeout(this.timer);
+    clearTimer(this.env, this.timer);
     this.timer = undefined;
     this.tick = null;
   }
@@ -415,7 +425,7 @@ export class MeasureWorkerRoute {
       active = false;
     }
     if (this.tick !== tick) return;
-    if (active) this.timer = this.env.setTimeout(() => void this.turn(), TICK_MS);
+    if (active) this.timer = setTimer(this.env, () => void this.turn());
     else this.stop();
   }
 }

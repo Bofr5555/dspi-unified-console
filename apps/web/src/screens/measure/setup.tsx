@@ -57,10 +57,8 @@ export function SetupPanel(props: MeasureTabProps) {
     }
   };
   const preflight = () => void desk.runPreflight(setupOf(d, 48_000));
-  const start = async () => {
-    const p = await desk.runPreflight(setupOf(d, 48_000));
-    if (p?.clear) await desk.startRun(setupOf(d, 48_000));
-  };
+  // The microphone first (Firefox opens audio only close to the click), then the core's preflight.
+  const start = () => void desk.startRun(setupOf(d, 48_000));
 
   return (
     <section class="card" aria-label="Measurement setup" style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
@@ -212,7 +210,7 @@ export function SetupPanel(props: MeasureTabProps) {
         <button type="button" disabled={running || !!problem} onClick={preflight}>
           Check
         </button>
-        <button type="button" class="primary" disabled={running || !!problem} onClick={() => void start()}>
+        <button type="button" class="primary" disabled={running || !!problem} onClick={start}>
           Start measuring
         </button>
       </div>

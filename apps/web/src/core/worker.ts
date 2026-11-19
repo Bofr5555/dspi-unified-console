@@ -39,12 +39,24 @@ const deferred: CoreImpl = {
 const serial = new SerialCore(deferred);
 
 // -- WP P5WMS -- the capture worklet's blocks go straight from its port into `measureCapturePush`,
-// and a running measurement is turned here; its states are pushed as `measure` events.
-const measure = new MeasureWorkerRoute(
+// and a running measurement is turned here; its states are pushed as `measure` events. The
+// route's own trouble never holds a reply back.
+const route = new MeasureWorkerRoute(
   (m, p) => serial.call(m as never, p as never),
   (e) => self.postMessage({ push: e }),
   { MessageChannel, workletUrl: new URL("./capture-worklet.js", self.location.href).href, setTimeout, clearTimeout },
 );
+const measure = {
+  handles: (m: string) => route.handles(m),
+  answer: (m: string) => route.answer(m),
+  after(m: string, ok: boolean, v: unknown) {
+    try {
+      route.after(m, ok, v);
+    } catch {
+      // Ticks stopped; the session's state says the rest.
+    }
+  },
+};
 
 self.onmessage = (ev: MessageEvent<Request>) => {
   const { id, method, params } = ev.data;
