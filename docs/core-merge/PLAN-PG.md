@@ -803,12 +803,22 @@ core-backed paths' tests against the paged fakes. Its `CoreBackedTransport` need
 adapter). **Done when:** `ci/macvm.sh macos` builds and the core-backed tests pass with a G2s and a G2b fake.
 **Deps:** PGCORE, PGSWHUB0.
 
-**PGDOC: Docs.** [TODO] Size 1.25. Wave PG-D. **Owns:** `docs/integrator/hub-api.md` (section 3 device fields,
+**PGDOC: Docs.** [DONE] Size 1.25. Wave PG-D. **Owns:** `docs/integrator/hub-api.md` (section 3 device fields,
 section 17 deviations: legacy forwarding, translation for minor-2 sessions only, both denial lists, minor 3),
 `docs/core-merge/HUB.md` (wIndex section), `docs/PARITY.md` (rows), `docs/terminal/wire-format.md` (paged section),
 the user manual's notices page incl. S5 (an upstream console or hub can still offer stock firmware to a K340: it sees
 "legacy, update available"; our components cannot prevent that). **Done when:** every new field, cap and deviation in
-PGHDEV is documented and the docs build step passes. **Deps:** PGHDEV.
+PGHDEV is documented and the docs build step passes. **Deps:** PGHDEV. **Did (WP PGDOC):** `hub-api.md` 1.2 (cap `legacy_devices`, minor
+3), 3 (inventory `board_id`/`model`) and new 3.1 (the device object's `protocol`, `ext`, `board`; nothing listed or
+forwarded before the attach probe), new 17.1 (the departures from spec 1.3: legacy devices listed and forwarded, page-0
+translation for minor-2 sessions only, `0x10` for minor 3, `0x86` for a page on a legacy device, both denial lists,
+the stricter class, judges by the 1.1.6 equivalent, `DENIED` bootloader entry toward a board without BOOTSEL), 21
+(`excluded`, `no_bootsel`, `lineage_loss`, the verify through the tunnel, the writer's gate); `HUB.md` 8 and new 8.1;
+`PARITY.md` new section K; `wire-format.md` new section 8; new `docs/manual/notices.md` (S5, the paged Zero behind an
+upstream hub, the admin-only extension channel, the update questions, the sender, `uconsole raw`'s refusals and
+`raw --id`'s FLASH/RESTART/BULK rule); new `docs/integrator/protocol-generations.md` (`device_protocol`'s one platform
+read, `raw_set_id`, `device_kind` `AlinkSender`, PGFLASH's write gate and its fallback). PGWEB and PGQT described as
+"in review".
 
 ### HIL
 

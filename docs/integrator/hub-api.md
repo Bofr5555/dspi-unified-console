@@ -36,7 +36,7 @@ Reference: `crates/dspi-hub` (one module per family, registered as a service in 
 | 14 | [REST and API keys](#14-rest-and-api-keys) | `auth.mint`, `/api/v1/` | `api_keys`, `rest` | P2RS (fleet endpoints: P3RS) | built (P2RS; P3RS) |
 | 15 | [Statistics and the hub's name](#15-statistics-and-the-hubs-name) | `hub.stats`, `hub.rename` | `hub_stats` | P2HS | built |
 | 16 | [Scripting](#16-scripting) | `uconsole api` | | P2TM (fleet at the prompt: P3TM) | built (P2TM; P3TM) |
-| 17 | [Deviations from the DSPi Link spec](#17-deviations-from-the-dspi-link-spec) | | | P2DOC | built (this page) |
+| 17 | [Deviations from the DSPi Link spec](#17-deviations-from-the-dspi-link-spec) | | `legacy_devices` | P2DOC; 17.1 both firmware generations: PGHUB0, PGHPOL, PGHDEV, text PGDOC | built (this page) |
 | 18 | [Every message](#18-every-message) | | | P2DOC | built (this page) |
 | 19 | [Groups](#19-groups) | `group.list`, `group.set`, `group.delete`, `group.changed`; `group:<id>` schedule targets | `groups` | P3GR; text P3DOC | built (P3GR; text P3DOC) |
 | 20 | [Group writes and bulk apply](#20-group-writes-and-bulk-apply) | `group.param.*`, `group.preset.load`, `group.apply*` | `group_params`, `group_apply` | P3GP (20.2), P3BA (20.3); text P3DOC | built (P3GP, P3BA; text P3DOC) |
@@ -101,8 +101,17 @@ hub without it answers `unknown_type` (an older hub) or `unsupported`. Caps of t
 | `rollout` | section 21 | only with `uconsole hub --rollout`, on a hub that serves TLS (21.1) |
 | `hub_measure` | section 22 | on a hub with a data folder (`ServiceConfig::measure`, on by default; P5HUB) |
 | `system_measure` | section 23 (WP ATHUB) | always, to a Link 1.3 client (a 1.2-style client neither sees it nor is served) |
+<!-- WP PGDOC -->
+| `legacy_devices` | section 3.1 and 17 (PLAN-PG, WP PGHDEV): this hub lists and forwards to devices on 1.1.6-generation firmware, which a DSPi Link 1.3 hub does not | always |
 
 <!-- WP P3FRZ -->
+<!-- WP PGDOC -->
+**The DSPi Link minor.** Since PGHDEV the hub says `proto.minor` **3** (DSPi Link 1.3) in its `hello` and in
+`GET /dspi/v1/info`, and reads the client's own `hello.proto.minor` (missing: 2). That minor decides how a page-0
+request to a device on 1.1.7 firmware is served (section 17); everything else on this page is the same for both.
+(`dspi_link::messages::PROTO_MINOR`, still 2, is the 1.2 constant and is no longer what the hub sends; the hub sends
+`HUB_PROTO_MINOR`.)
+
 **v1 frozen 2026-11-16** (OD-P2a, OD-P3l; WP P3FRZ, after PRO phase 3's hub and core families merged): **additive
 only**. Within v1 a family only gains fields, messages, caps and codes (phase 3 added none to section 1.6); nothing
 changes meaning, nothing is removed, and a client ignores what it does not know (section 1.1). A breaking change is
@@ -452,6 +461,29 @@ history record on the hub's internal bus (stored by the history, section 6).
 The file is written atomically, 0600 on Unix, one record per line inside one JSON object, so a torn file still reads
 record by record: the hub keeps the whole file aside as `inventory.json.bad-<unix seconds>`, keeps what it could read, and
 writes the file again. The diagnostics bundle carries it as `hub/inventory.json`.
+
+<!-- WP PGDOC -->
+The record also carries, additively (WP PGZERO), **`board_id`** (the platform's board id, below; absent until the hub
+has seen it) and **`model`**, the name clients show for it: "DSPi", "DSPi Zero" or "Unknown board". They are not the
+`board` string above, which is the board name `EXT_IDENTIFY` reports.
+
+### 3.1 The device object (`device.list`, `device.added`, `device.changed`)
+
+*State: built (PGHDEV, the board PGZERO with the PG-C merge; `crates/dspi-hub/src/registry.rs`). PLAN-PG sections 1.5
+and 1.9. Spec 7.4's object, with these fields added:*
+
+| Field | When | Meaning |
+|---|---|---|
+| `protocol` | a device on 1.1.7 firmware (paged) only | `{major, minor}` from its `SYS.PROTOCOL_INFO`, as spec 1.3 section 7.4 says. **Absent for a device on 1.1.6-generation firmware** (legacy), which this hub still lists and forwards to (cap `legacy_devices`; section 17) |
+| `ext` | a paged device only (ours, additive) | `true` when its `SYS.PAGE_LIST` names our page 0xE0 (this fork's extensions, through the tunnel `0xE010`), else `false`. Left out for a legacy device (its clients probe `EXT_LIST` on `0x00` themselves, so its attach sends nothing new) and when the read failed |
+| `board` | only when not 0 (ours, additive) | the board id: 1 the DSPi-Zero; any other value a board this hub does not know. Read from platform byte 7 (the hub asks 8 platform bytes) and, on board 0, from the USB descriptor (product string, `bcdDevice`), which a client behind the hub cannot see. A paged Zero answers a 7-byte `SYS.PLATFORM`, so `board` is how a client of this hub knows it. Absent: a Pico |
+
+- **The generation belongs to the live attachment**, never to the inventory record: it is decided by the attach probe
+  (`dspi_transport::paged::open`) every time the device attaches. A device is **neither listed nor forwardable before
+  that probe has finished**; a CMD meanwhile is answered `NO_DEVICE` and not sent.
+- A device updated from one generation to the other detaches and attaches again: the `device.added` or
+  `device.changed` that announces it again has (or lacks) `protocol`, and a client re-attaches on it (our client does;
+  PLAN-PG section 1.1 step 8). The old attachment's wrapper is never reused.
 
 ## 4. Identify
 
@@ -1322,6 +1354,8 @@ a `uconsole --demo hub --rest --rollout` that requires TLS, with a group and an 
 
 *State: built (P2DOC). What this hub does that DSPi Link 1.2 does not define. Everything else is additive (new message
 types under new caps, new fields), which the spec allows (spec 10).*
+<!-- WP PGDOC -->
+*Since PGHDEV the hub says DSPi Link 1.3; its departures from 1.3 for the two firmware generations are section 17.1.*
 
 | Spec | It says | This hub | Why |
 |---|---|---|---|
@@ -1333,6 +1367,32 @@ types under new caps, new fields), which the spec allows (spec 10).*
 
 Unchanged: `device.list` and its 60 s grace (the inventory is a separate family), every `/dspi/` path, every DSPi Link 1.2
 message's meaning, `fw.install` (`unsupported`), and the binary frames.
+
+<!-- WP PGDOC -->
+### 17.1 Both firmware generations, both DSPi Link versions (PLAN-PG)
+
+*State: built (PGHUB0, PGHPOL, PGHDEV; `crates/dspi-hub/src/device.rs` `route`, `policy.rs`, `polls.rs`). PLAN-PG
+sections 1.5 and 1.6, OD-PGg, OD-PGh. The hub says DSPi Link 1.3 (`hello.proto.minor` 3, section 1.2) and serves
+devices of both firmware generations to clients of both versions. Where that departs from spec 1.3:*
+
+| Spec 1.3 | It says | This hub | Why |
+|---|---|---|---|
+| 7.4 | a 1.3 hub forwards nothing to a legacy device: every CMD for it answers `0x86 UNSUPPORTED`, every `poll.subscribe` `unsupported`; it may list it | **a legacy device is listed without `protocol` and forwarded to** (cap `legacy_devices`): page-0 CMDs and polls as a 1.2 hub does, judged by the 1.2 table. Only a request with a page (`wIndex` high byte not 0) answers `0x86`, and such a poll `unsupported` (PGHUB0) | the owner's requirement (OD-PGg): every component serves both generations. A page must never reach a 1.1.6 device: it would run the old opcode with the same number (a `GET 0x0553` would run `FACTORY_RESET` 0x53) |
+| 7.4 | `platform` is a 7-byte read | the hub reads 8 platform bytes itself and lists byte 7, the board id, as our additive `board` (with `ext`, section 3.1) | the board id tells a DSPi-Zero, which has no BOOTSEL |
+| 8.2 | a `wIndex` high byte 0 names no command on paged firmware and is refused | **from a session whose `hello` said minor 2 or lower** (upstream 1.1.6 consoles, our older apps, the vendored 1.2 hub page) **a page-0 request to a paged device is translated** by the hub's adapter into the paged requests with the same effect, polls included; the legacy extension `0x00` becomes the tunnel `0xE010` on a device with page 0xE0. From a session that said minor 3 or more it answers `0x10` (`VC_ERR_UNKNOWN`), and such a poll `unsupported`, as the spec says | 1.2 clients keep working with 1.1.7 devices. A 1.3 client whose page got lost never becomes another, state-changing command, and our own client sees a generation change instead of riding the translation |
+| 6.3, 7.3 | the policy is keyed by command id; `policy.denied_ids` is sent and `policy.denied` empty | **both lists** in `ok.policy`: `denied` (1.1.6 opcodes from the 1.2 table, for legacy devices) and `denied_ids` (`[id, dir]`, `dir` 0 SET and 1 GET, from the 1.3 table and our private rows, for paged devices). A page-0 request is judged by the 1.2 table; one with a page by the 1.3 table vendored from DSPi-Link plus `policy/private.json` (`0xE010` GET and SET `config`); a command in neither is `config` in both directions. **A translated request is judged by the stricter** of its 1.2 class and the 1.3 classes of the commands its translation reaches (OD-PGh) | one table per generation; a translation never widens what a role may do |
+| 6.3 | an admin may enter the bootloader | **a bootloader entry** (`0xF0`, `0x0130`, or a page-0 request translated to it) **toward a board whose id is not 0 is `DENIED`** before anything is sent, from any client and any role | a DSPi-Zero has no BOOTSEL bootloader (PLAN-PG section 1.9) |
+| (none) | | the lock scope, the core-voltage rule, the limits judge, the apply guard and the bulk gain guard judge a request with a page **by its 1.1.6 equivalent**; a paged write with no equivalent is outside the lock scope (refused for a control session while locked) and `limits_unknown` whenever a limits profile is set. The core-voltage rule covers `0x00` and the tunnel `0xE010` alike | these judges were built on 1.1.6 requests; a paged request with the same effect meets the same judge |
+
+- **Hub-originated requests** (health, Identify, alarms, limits, the apply guard, bulk gain, the local path, the
+  rollout) keep their 1.1.6 shape and reach a paged device through its adapter: they count as minor 2 above.
+- **Upstream clients are best effort** (owner compat policy): a 1.2 client works with every device through the
+  translation; a 1.3 client sees paged devices with `protocol` and, as its spec says, sends nothing to a legacy device;
+  this fork's extensions are invisible to it unless it uses `0xE010` (`config`).
+- **The extension channel is `config`** (`0x00` and `0xE010`): a control session gets none of it, an admin does; with
+  open access every session is admin. It carries the core voltage and other settings that change the hardware.
+- A paged DSPi-Zero behind an **upstream** 1.3 hub cannot be known by our clients (no `board` there): see
+  [protocol-generations.md](protocol-generations.md) section 6.
 
 ## 18. Every message
 
@@ -1738,8 +1798,8 @@ The steps, as a client sees them in the record (`step`):
 
 | # | `step` | What the hub does | Refused or failed with |
 |---|---|---|---|
-| 1 | `check` | The device must be online on this hub's USB and answering, not under another session's lock, with no pending guarded apply, and muted (its mute, `vol.mute`, on, or its master volume at -128 dB) unless the request says `"while_live": true` (OD-P3r). No other rollout may run, and **no board may be in BOOTSEL already** (`bootloader_counts` 0 and 0). The image must be in the store, valid, of the device's platform, and verified unless the hub allows unverified images | `unsupported` (not on this hub's USB), `offline` (not attached, or not answering), `locked`, `conflict` (a pending guarded apply; a board already in BOOTSEL), `confirmation_required` (not muted, no `while_live`), `busy` (another rollout), `not_found` (no such image), `image_refused` with `reason` `platform` or `not_verified` |
-| 2 | `guard` | Reads the board as the Admin's child session (`firmware_guard_board`: `EXT_CORE_VREG`, else the status block) and asks the firmware guard **with no typed word and no typed phrase**: only "clear" goes on. The board record is kept for step 6, since a board in BOOTSEL cannot be asked | `image_refused` with `reason` the guard's: `image_invalid`, `overvolt` (stamped above 1.20 V and above the board), `image_unknown` (unstamped on a board above 1.15 V), `image_lower` (stamped lower), `board_unknown`; `msg` is the guard's own message. A K340 at 1.20 V takes exactly a 1.20 V image; a stock board (1.15 V) takes a 1.20 V image |
+| 1 | `check` | The device must be online on this hub's USB and answering, not under another session's lock, with no pending guarded apply, and muted (its mute, `vol.mute`, on, or its master volume at -128 dB) unless the request says `"while_live": true` (OD-P3r). No other rollout may run, and **no board may be in BOOTSEL already** (`bootloader_counts` 0 and 0). The image must be in the store, valid, of the device's platform, and verified unless the hub allows unverified images | `unsupported` (not on this hub's USB), `offline` (not attached, or not answering), `locked`, `conflict` (a pending guarded apply; a board already in BOOTSEL), `confirmation_required` (not muted, no `while_live`), `busy` (another rollout), `not_found` (no such image), `image_refused` with `reason` `platform` or `not_verified`; `unsupported` with `reason` `no_bootsel` for a board without BOOTSEL (PGFWUP: a single device, or a group none of whose members has one; in a group such a member is `excluded` instead, below) |
+| 2 | `guard` | Reads the board as the Admin's child session (`firmware_guard_board`: `EXT_CORE_VREG`, else the status block) and asks the firmware guard **with no typed word and no typed phrase**: only "clear" goes on. The board record is kept for step 6, since a board in BOOTSEL cannot be asked | `image_refused` with `reason` the guard's: `image_invalid`, `overvolt` (stamped above 1.20 V and above the board), `image_unknown` (unstamped on a board above 1.15 V), `image_lower` (stamped lower), `board_unknown`; `lineage_loss` (PGFWUP: the board runs this fork's firmware, or its lineage could not be read, and the image is not proven ours, so the typed confirmation would be needed; when the voltage rule asks as well, its reason is given and the message names both); `msg` is the guard's own message. A K340 at 1.20 V takes exactly a 1.20 V image; a stock board (1.15 V) takes a 1.20 V image |
 | 3 | `export` | Captures the device's settings into the hub's snapshot store as "Before firmware <version>, <date>" (OD-P3o), and keeps its firmware version, `EXT_LIST`, board and `EXT_CORE_VREG` (live, stored, default) in the record | `conflict` (the store is full: nothing further is done), `device` |
 | 4 | `bootloader` | Sends the device to its bootloader as **the Admin's child session** (`enter_bootloader_confirmed`, the token minted inside; OD-P3g), judged by the role, the installer lock and the device lock like any client's write. The device leaves the bus. From here on a cancel is refused | `installer_lock`, `locked`, `device` |
 | 5 | `find` | Looks for the board in BOOTSEL every 500 ms for up to 15 s. **Exactly one** must appear (OD-P3i); on RP2350 its USB serial must be the device's serial (on RP2040 the boot ROM's serial is fixed, and uniqueness is the only check) | failed: none, more than one, or another serial. Nothing is written; the device may be left in BOOTSEL, and the alarm says so |
@@ -1770,7 +1830,9 @@ A record:
 | `started_at`, `ended_at` | times; `ended_at` `null` while running |
 | `devices` | one entry per device, in order (below) |
 
-A device's entry: `serial`; `state` (`pending`, `running`, `ok`, `failed`, `cancelled`, `not_tried`); `step` (the step
+A device's entry: `serial`; `state` (`pending`, `running`, `ok`, `failed`, `cancelled`, `not_tried`, and, since PGFWUP,
+`excluded`: a group member without BOOTSEL, never tried, `step` `check` and `failed` `{step: "check", code:
+"no_bootsel", text}`); `step` (the step
 it is at, or ended at); `steps`: `[{step, at, ok, text}]`, one per step done; `before`: `{fw, ext_list, board:
 {required_mv, source}, vreg: {live_mv, stored_mv, default_mv} or null, export}` (`export` the snapshot's id);
 `after`: `{fw, ext_list, vreg, settings}` once verified; `failed`: `{step, code?, text}` or `null`. `text` is one line
@@ -1843,6 +1905,23 @@ What the code does where the text above leaves room, or is stricter than it:
   `alarm.rules.set` says. Each step has a notice row `rollout.<step>` (`hub_rollout_step_notice`).
 - **The core's calls (P3CC):** `dspi_core::hub_server::fleet` has a typed call for every message of sections 19 to 21
   (`hub_groups`, `hub_group_set`, ..., `hub_rollout_cancel`), through C, UniFFI and the web binding.
+<!-- WP PGDOC -->
+- **Both firmware generations and boards without BOOTSEL (PGFWUP, PGFLASH; PLAN-PG sections 1.8 and 1.9).** Step 1
+  reads the device as an update target (`firmware_target`, as the principal's child): its board (8 platform bytes and
+  the USB descriptor), its lineage (`EXT_LIST`) and its generation. **A board without BOOTSEL** (a DSPi-Zero, an
+  unknown board or product string, a board that could not be read) is never exported, entered or flashed: a single
+  device is refused `unsupported` with `reason` `no_bootsel`; in a group that member is `excluded` and the rollout goes
+  on with the next; a group with no member that has BOOTSEL is refused the same way. An exclusion raises no
+  `rollout_failed` and does not make the rollout `failed`. Step 2 is the update check with nothing typed
+  (`firmware_update_check`): besides the voltage rule's reasons it refuses `lineage_loss`, and its step text names a
+  generation change (1.1.6 to 1.1.7 or back) with what works afterwards. A group may mix generations.
+- **The verify after a generation change** goes through the hub's re-opened device, which is probed again: on a device
+  now on 1.1.7 with this fork's extensions `EXT_LIST` and `EXT_CORE_VREG` are read through the tunnel `0xE010`, never
+  on `0x00`.
+- **The writer's gate.** The writer (`CoreWriter`) runs on a core of its own that read no target, so the core's write
+  gate there is the voltage rule alone, as before; steps 1 and 2 have already refused `no_bootsel` and `lineage_loss`
+  on the target read from the device. The bootloader entry of step 4 is refused by the core's own gate for a board
+  without BOOTSEL too, and by the hub's router (`DENIED`) for any client's entry toward such a board (section 17.1).
 
 ---
 
