@@ -4,6 +4,7 @@
 #include "Core.h"
 #include "DeviceModel.h"
 #include "MeasureController.h"
+#include "NoticeCenter.h" // -- WP REVERTW --
 
 #include "CoreApi.h"
 
@@ -108,6 +109,12 @@ QString TuneController::stageText() const {
         if (phase == QLatin1String("revert_failed"))
             return tr("The revert failed: the device may still hold part of the tune.") + tail;
         return tr("Reverted: the device is as it was before the tune.");
+    }
+    // -- WP REVERTW -- the guard did not put everything back: the notice's title and action
+    if (s == QLatin1String("revertIncomplete")) {
+        const QString key = str(m_state.value(QLatin1String("issue")).toObject(), "key");
+        if (auto *notices = Registrar::instance<NoticeCenter>()) return notices->revertText(key.isEmpty() ? QStringLiteral("revert.unknown") : key);
+        return tr("The revert was not fully successful. Check the settings, or restore a backup (a snapshot).");
     }
     return tr("No tune yet: measure, then propose one.");
 }

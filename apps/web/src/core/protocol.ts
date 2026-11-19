@@ -650,7 +650,7 @@ export interface AbCompareRecord {
 }
 
 /** Where a guarded apply stands (`dspi_core::GuardPhase`). */
-export type GuardPhase = "idle" | "waiting" | "kept" | "reverted" | "revert_failed" | "not_written" | "lost";
+export type GuardPhase = "idle" | "waiting" | "kept" | "reverted" | "revert_incomplete" | "revert_failed" | "not_written" | "lost"; // -- WP REVERTW -- revert_incomplete
 
 /** A guarded apply, safe apply with rollback (`dspi_core::GuardedApply`). */
 export interface GuardedApplyRecord {
@@ -667,6 +667,8 @@ export interface GuardedApplyRecord {
   message: string;
   changes: string[];
   notes: string[];
+  /** -- WP REVERTW -- the `revert.*` notice key when the revert was not fully successful; "" otherwise (older cores: absent). */
+  revertNotice?: string;
 }
 
 /** `documentOpen`'s `document`: what the offline session was opened from (`DspiCore::open_document`). */
@@ -2043,7 +2045,7 @@ export interface MeasureSystemProposalRecord {
   guardNote?: string;
 }
 
-export type MeasureSystemApplyStage = "none" | "applied" | "verified" | "kept" | "reverted";
+export type MeasureSystemApplyStage = "none" | "applied" | "verified" | "kept" | "reverted" | "revert_incomplete"; // -- WP REVERTW --
 
 export interface MeasureSystemAppliedRecord {
   stage: MeasureSystemApplyStage;
@@ -2056,6 +2058,8 @@ export interface MeasureSystemAppliedRecord {
   message: string;
   /** -- review AT-D2 -- the hub's guard of this apply, s, counted from the apply (0: none). */
   guardS?: number;
+  /** -- WP REVERTW -- the `revert.*` notice key with stage `revert_incomplete`; "" otherwise. */
+  revertNotice?: string;
 }
 
 export interface MeasureSystemMethods {

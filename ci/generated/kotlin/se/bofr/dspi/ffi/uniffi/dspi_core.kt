@@ -33533,7 +33533,14 @@ data class GuardedApply (
     /**
      * What the apply or the revert did not do, and why.
      */
-    var `notes`: List<kotlin.String>
+    var `notes`: List<kotlin.String>, 
+    /**
+     * The notice key when the revert was not fully successful
+     * (`revert.incomplete`, `revert.failed`, `revert.not_written`,
+     * `revert.unknown`; "" otherwise): show its title and action, with
+     * `message` and `notes` as the detail.
+     */
+    var `revertNotice`: kotlin.String
 ) {
     
     companion object
@@ -33555,6 +33562,7 @@ public object FfiConverterTypeGuardedApply: FfiConverterRustBuffer<GuardedApply>
             FfiConverterString.read(buf),
             FfiConverterSequenceString.read(buf),
             FfiConverterSequenceString.read(buf),
+            FfiConverterString.read(buf),
         )
     }
 
@@ -33568,7 +33576,8 @@ public object FfiConverterTypeGuardedApply: FfiConverterRustBuffer<GuardedApply>
             FfiConverterString.allocationSize(value.`reason`) +
             FfiConverterString.allocationSize(value.`message`) +
             FfiConverterSequenceString.allocationSize(value.`changes`) +
-            FfiConverterSequenceString.allocationSize(value.`notes`)
+            FfiConverterSequenceString.allocationSize(value.`notes`) +
+            FfiConverterString.allocationSize(value.`revertNotice`)
     )
 
     override fun write(value: GuardedApply, buf: ByteBuffer) {
@@ -33582,6 +33591,7 @@ public object FfiConverterTypeGuardedApply: FfiConverterRustBuffer<GuardedApply>
             FfiConverterString.write(value.`message`, buf)
             FfiConverterSequenceString.write(value.`changes`, buf)
             FfiConverterSequenceString.write(value.`notes`, buf)
+            FfiConverterString.write(value.`revertNotice`, buf)
     }
 }
 
@@ -41353,7 +41363,14 @@ data class MeasureSystemApplied (
      * itself): the hub sets the filed model back and aligns at the
      * deadline unless Keep confirms it, and when the connection is lost.
      */
-    var `guardS`: kotlin.UInt
+    var `guardS`: kotlin.UInt, 
+    /**
+     * The notice key when the revert was not fully successful (stage
+     * `RevertIncomplete`): `revert.incomplete`, `revert.failed`,
+     * `revert.not_written` or `revert.unknown`; "" otherwise. `message`
+     * names what was not put back.
+     */
+    var `revertNotice`: kotlin.String
 ) {
     
     companion object
@@ -41374,6 +41391,7 @@ public object FfiConverterTypeMeasureSystemApplied: FfiConverterRustBuffer<Measu
             FfiConverterOptionalBoolean.read(buf),
             FfiConverterString.read(buf),
             FfiConverterUInt.read(buf),
+            FfiConverterString.read(buf),
         )
     }
 
@@ -41386,7 +41404,8 @@ public object FfiConverterTypeMeasureSystemApplied: FfiConverterRustBuffer<Measu
             FfiConverterSequenceString.allocationSize(value.`writeFailures`) +
             FfiConverterOptionalBoolean.allocationSize(value.`verified`) +
             FfiConverterString.allocationSize(value.`message`) +
-            FfiConverterUInt.allocationSize(value.`guardS`)
+            FfiConverterUInt.allocationSize(value.`guardS`) +
+            FfiConverterString.allocationSize(value.`revertNotice`)
     )
 
     override fun write(value: MeasureSystemApplied, buf: ByteBuffer) {
@@ -41399,6 +41418,7 @@ public object FfiConverterTypeMeasureSystemApplied: FfiConverterRustBuffer<Measu
             FfiConverterOptionalBoolean.write(value.`verified`, buf)
             FfiConverterString.write(value.`message`, buf)
             FfiConverterUInt.write(value.`guardS`, buf)
+            FfiConverterString.write(value.`revertNotice`, buf)
     }
 }
 
@@ -48571,6 +48591,12 @@ enum class GuardPhase {
      */
     REVERTED,
     /**
+     * Reverted, but not wholly: some of the settings from before were not
+     * put back ([`GuardedApply::notes`] names them). The user must check the
+     * settings or restore a backup (a snapshot).
+     */
+    REVERT_INCOMPLETE,
+    /**
      * Putting them back failed; it is not tried again.
      */
     REVERT_FAILED,
@@ -49241,7 +49267,15 @@ enum class MeasureSystemApplyStage {
     /**
      * Reverted: the model and the units are as filed.
      */
-    REVERTED;
+    REVERTED,
+    /**
+     * The revert (the user's, or the hub's guard's) did not put everything
+     * back: the model was not set back, a unit's write failed, a delay
+     * reads back other than filed, or what the hub did is not known.
+     * `revert_notice` is the `revert.*` notice and `message` names what;
+     * the user must check the settings or restore a backup (a snapshot).
+     */
+    REVERT_INCOMPLETE;
     companion object
 }
 
@@ -49512,7 +49546,14 @@ enum class MeasureTuneStage {
     /**
      * Reverted (by the user, the timeout or a failed write).
      */
-    REVERTED;
+    REVERTED,
+    /**
+     * The guard ended without putting everything back (part of it, nothing,
+     * or it is not known): `issue` holds the `revert.*` notice and what was
+     * not put back. The user must check the settings or restore a backup
+     * (a snapshot): the "before" snapshot is `snapshot_before_id`.
+     */
+    REVERT_INCOMPLETE;
     companion object
 }
 

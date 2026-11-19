@@ -66,13 +66,20 @@ internal fun guardLines(
     g: GuardedApply,
     words: String = Snapshots.COUNTDOWN_WORDS,
     // -- WP P1AN2 -- the hub's backstop sentence, after the countdown, when the hub holds the guard
-    backstop: String = Snapshots.HUB_BACKSTOP_WORDS
-): Pair<String, String> = when (g.phase) {
-    GuardPhase.WAITING ->
-        "\"${g.label.ifEmpty { "The change" }}\"" to
-            (Snapshots.countdownLine(words, g.remainingMs) + if (g.hub) " $backstop" else "")
-    GuardPhase.LOST -> g.message.ifEmpty { "The connection was lost." } to ""
-    else -> g.message to g.notes.joinToString(" ")
+    backstop: String = Snapshots.HUB_BACKSTOP_WORDS,
+    // -- WP REVERTW -- the `revert.*` notice's title and action
+    revert: Pair<String, String> = Snapshots.REVERT_INCOMPLETE_TITLE to Snapshots.REVERT_INCOMPLETE_ACTION
+): Pair<String, String> = when {
+    // -- WP REVERTW -- a revert not fully successful leads with the notice, then what was not put back and what to do
+    g.revertNotice.isNotEmpty() ->
+        revert.first to (listOf(g.message) + g.notes + revert.second).filter { it.isNotEmpty() }.joinToString(" ")
+    else -> when (g.phase) {
+        GuardPhase.WAITING ->
+            "\"${g.label.ifEmpty { "The change" }}\"" to
+                (Snapshots.countdownLine(words, g.remainingMs) + if (g.hub) " $backstop" else "")
+        GuardPhase.LOST -> g.message.ifEmpty { "The connection was lost." } to ""
+        else -> g.message to g.notes.joinToString(" ")
+    }
 }
 
 /**
@@ -80,10 +87,12 @@ internal fun guardLines(
  * OK, never by a timer: Revert stays offered); and the end of one this bar
  * watched until [endShown] or the user's OK.
  */
-internal fun guardBarShown(g: GuardedApply, watched: Long, endShown: Pair<Long, GuardPhase>?): Boolean = when (g.phase) {
-    GuardPhase.WAITING -> true
-    GuardPhase.IDLE -> false
-    GuardPhase.LOST -> endShown != (g.id to g.phase)
+internal fun guardBarShown(g: GuardedApply, watched: Long, endShown: Pair<Long, GuardPhase>?): Boolean = when {
+    g.phase == GuardPhase.WAITING -> true
+    g.phase == GuardPhase.IDLE -> false
+    g.phase == GuardPhase.LOST -> endShown != (g.id to g.phase)
+    // -- WP REVERTW -- a revert not fully successful stays until the user's OK (no timer hides it)
+    g.revertNotice.isNotEmpty() -> endShown != (g.id to g.phase)
     else -> g.id == watched && endShown != (g.id to g.phase) && g.message.isNotEmpty()
 }
 
@@ -111,7 +120,9 @@ fun SafeApplyBar(bridge: DspiBridge, modifier: Modifier = Modifier) {
     var endShown by remember(bridge) { mutableStateOf<Pair<Long, GuardPhase>?>(null) }
     if (g.phase == GuardPhase.WAITING) watched = g.id
     // -- WP P1DCFIX -- a lost guard is not an end: no timer hides it (F2)
-    val ended = g.phase != GuardPhase.WAITING && g.phase != GuardPhase.IDLE && g.phase != GuardPhase.LOST && g.id == watched
+    // -- WP REVERTW -- nor is a revert not fully successful hidden by a timer
+    val ended = g.phase != GuardPhase.WAITING && g.phase != GuardPhase.IDLE && g.phase != GuardPhase.LOST && g.id == watched &&
+        g.revertNotice.isEmpty()
     LaunchedEffect(g.id, g.phase, ended) {
         if (ended) {
             delay(GUARD_END_SHOWN_MS)
@@ -120,6 +131,14 @@ fun SafeApplyBar(bridge: DspiBridge, modifier: Modifier = Modifier) {
     }
     var words by remember(bridge) { mutableStateOf(Snapshots.COUNTDOWN_WORDS) }
     var backstop by remember(bridge) { mutableStateOf(Snapshots.HUB_BACKSTOP_WORDS) } // -- WP P1AN2 --
+    // -- WP REVERTW -- the `revert.*` notice's words, read when one is carried
+    var revert by remember(bridge) { mutableStateOf(Snapshots.REVERT_INCOMPLETE_TITLE to Snapshots.REVERT_INCOMPLETE_ACTION) }
+    LaunchedEffect(bridge, g.revertNotice) {
+        if (g.revertNotice.isNotEmpty()) {
+            val r = snaps.revertWords(g.revertNotice)
+            onMainThread { revert = r }
+        }
+    }
     LaunchedEffect(bridge) {
         val w = snaps.countdownWords()
         val b = snaps.backstopWords()
@@ -130,7 +149,7 @@ fun SafeApplyBar(bridge: DspiBridge, modifier: Modifier = Modifier) {
         }
     }
     if (!guardBarShown(g, watched, endShown)) return
-    val (first, second) = guardLines(g, words, backstop)
+    val (first, second) = guardLines(g, words, backstop, revert)
     Surface(
         modifier.fillMaxWidth().padding(8.dp).testTag(SAFE_APPLY_BAR_TAG),
         color = MaterialTheme.colorScheme.inverseSurface,
@@ -147,7 +166,8 @@ fun SafeApplyBar(bridge: DspiBridge, modifier: Modifier = Modifier) {
                 Text(first, style = MaterialTheme.typography.bodyMedium)
                 if (second.isNotEmpty()) Text(second, style = MaterialTheme.typography.bodySmall)
             }
-            val canRevert = g.phase == GuardPhase.WAITING || (g.phase == GuardPhase.LOST && !g.hub)
+            // -- WP REVERTW -- a lost guard whose end the hub no longer knows has nothing to revert
+            val canRevert = g.phase == GuardPhase.WAITING || (g.phase == GuardPhase.LOST && !g.hub && g.revertNotice.isEmpty())
             if (canRevert) {
                 TextButton(
                     onClick = { scope.launch { snaps.revert() } },

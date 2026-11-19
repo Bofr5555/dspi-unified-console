@@ -65,6 +65,10 @@ public:
     // when the table lacks it. Keys of the same family fall back to the
     // family's row (`installer_lock.x` to `installer_lock`).
     Q_INVOKABLE void postKey(const QString &key, const QString &detail = QString());
+    // -- WP REVERTW -- a revert that was not fully successful (the core's
+    // `revert.*` rows): "Title. detail (or the reason). Action", with the
+    // English words for a table without the row; "" for an empty key
+    Q_INVOKABLE QString revertText(const QString &key, const QString &detail = QString()) const;
     // A write refusal worth a notice of its own: a limit, the installer's
     // lock, a missing confirmation, a hub that refused an image or could not
     // judge the write. Other refusals keep their own words where they are.

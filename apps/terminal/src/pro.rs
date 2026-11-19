@@ -587,6 +587,8 @@ pub(crate) fn report_guard(g: &GuardedApply, json: bool) -> u8 {
     let word = match g.phase {
         GuardPhase::Kept => "Kept",
         GuardPhase::Reverted => "Reverted",
+        // -- WP REVERTW --
+        GuardPhase::RevertIncomplete => "Not fully reverted",
         GuardPhase::RevertFailed => "Could not put the settings back",
         GuardPhase::NotWritten => "Not written",
         GuardPhase::Lost => "Connection lost",
@@ -603,7 +605,32 @@ pub(crate) fn report_guard(g: &GuardedApply, json: bool) -> u8 {
     for line in g.changes.iter().chain(&g.notes) {
         println!("  {}", printable(line));
     }
+    // -- WP REVERTW -- a revert not fully successful says so, in the
+    // notice's words (the exit code is not 0)
+    revert_notice_lines(&g.revert_notice);
     code
+}
+
+// -- WP REVERTW --
+/// The `revert.*` notice's title and action on standard error ("" prints
+/// nothing): the revert was not fully successful.
+pub(crate) fn revert_notice_lines(key: &str) {
+    for line in revert_notice_text(key) {
+        eprintln!("{line}");
+    }
+}
+
+/// The lines [`revert_notice_lines`] prints.
+fn revert_notice_text(key: &str) -> Vec<String> {
+    if key.is_empty() {
+        return Vec::new();
+    }
+    let n = dspi_core::notice_for_key(key.to_owned(), String::new());
+    vec![
+        format!("{COMMAND}: {}", n.title),
+        format!("      {}", n.reason),
+        format!("      {}", n.action),
+    ]
 }
 
 /// Run a guarded apply's countdown on standard input and report it.
@@ -1274,6 +1301,34 @@ pub(crate) mod tests {
             };
             assert!(near(gain(&core), expect), "{answer}: {}", gain(&core));
         }
+    }
+
+    // -- WP REVERTW --
+    #[test]
+    fn wp_revertw_a_revert_not_fully_successful_says_so_and_fails() {
+        for (phase, key) in [
+            (GuardPhase::RevertIncomplete, "revert.incomplete"),
+            (GuardPhase::RevertFailed, "revert.failed"),
+            (GuardPhase::NotWritten, "revert.not_written"),
+        ] {
+            let g = GuardedApply {
+                phase,
+                revert_notice: key.into(),
+                ..GuardedApply::default()
+            };
+            assert_eq!(report_guard(&g, true), exit::TRANSPORT, "{phase:?}");
+            assert_eq!(report_guard(&g, false), exit::TRANSPORT, "{phase:?}");
+            let lines = revert_notice_text(&g.revert_notice);
+            assert!(
+                lines[0].ends_with("The revert was not fully successful"),
+                "{lines:?}"
+            );
+            assert!(
+                lines[2].ends_with("Check the settings, or restore a backup (a snapshot)."),
+                "{lines:?}"
+            );
+        }
+        assert!(revert_notice_text("").is_empty());
     }
 
     #[test]

@@ -542,7 +542,9 @@ void SnapshotsController::setGuard(const QJsonObject &state) {
     emit abChanged();   // canToggle follows the guard
     // It ended now: the one that waited, or a new one that ended at once (an
     // import that failed and was put back)
-    const bool open = now == QLatin1String("waiting") || now == QLatin1String("lost") || now == QLatin1String("idle");
+    // -- WP REVERTW -- a lost guard whose end the hub no longer knows has ended
+    const bool open = now == QLatin1String("waiting") || (now == QLatin1String("lost") && guardRevertNotice().isEmpty())
+                      || now == QLatin1String("idle");
     const bool wasOpen = before == QLatin1String("waiting") || before == QLatin1String("lost");
     const bool ended = !open && (id != beforeId || (wasOpen && now != before));
     if (!ended) return;
@@ -552,11 +554,29 @@ void SnapshotsController::setGuard(const QJsonObject &state) {
     reloadAb();
     const QString message = guardMessage();
     auto *notices = Registrar::instance<NoticeCenter>();
+    // -- WP REVERTW -- not fully put back: the notice's words, an error
+    if (notices && !guardRevertNotice().isEmpty()) {
+        notices->post(guardRevertText(), QStringLiteral("error"));
+        return;
+    }
     if (!notices || message.isEmpty()) return;
     const QString kind = now == QLatin1String("kept") ? QStringLiteral("info")
                        : now == QLatin1String("reverted") ? QStringLiteral("warning")
                                                           : QStringLiteral("error");
     notices->post(message, kind);
+}
+
+// -- WP REVERTW --
+QString SnapshotsController::guardRevertText() const {
+    const QString key = guardRevertNotice();
+    if (key.isEmpty()) return {};
+    QStringList what{ guardMessage() };
+    for (const QJsonValue &n : m_guard.value(QLatin1String("notes")).toArray()) what << n.toString();
+    what.removeAll(QString());
+    auto *notices = Registrar::instance<NoticeCenter>();
+    const QString detail = what.join(QLatin1Char(' '));
+    if (notices) return notices->revertText(key, detail);
+    return tr("The revert was not fully successful. %1 Check the settings, or restore a backup (a snapshot).").arg(detail);
 }
 
 void SnapshotsController::reloadGuard() {

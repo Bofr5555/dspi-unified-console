@@ -574,9 +574,12 @@ export class SystemDesk {
     this.changed();
     try {
       this.applied = await this.core.call("measureSystemRevert", undefined);
-      this.said = this.applied.message || "Reverted: the installation and every unit are as they were filed.";
+      // -- WP REVERTW -- a revert not fully successful is the ended line's (an alert), not "said"
+      this.said = this.applied.stage === "revert_incomplete" ? "" : this.applied.message || "Reverted: the installation and every unit are as they were filed.";
       return true;
     } catch (e) {
+      // -- WP REVERTW -- a refused revert may have ended the guard (nothing set back): where it stands
+      this.applied = await this.core.call("measureSystemApplied", undefined).catch(() => this.applied);
       this.fail(e);
       return false;
     } finally {

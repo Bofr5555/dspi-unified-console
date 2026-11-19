@@ -33,7 +33,7 @@ import {
   type MeasureSetupRecord,
   type MeasureStateRecord,
 } from "../../core/measure-protocol";
-import { noticeRow } from "../../ui/texts";
+import { noticeRow, revertNotice } from "../../ui/texts"; // -- WP REVERTW -- revertNotice
 import type { NoticeRecord } from "../../core/protocol";
 import type { Series } from "./graph";
 import { ROLES, db, hz } from "./model";
@@ -117,7 +117,7 @@ export interface TuneProposalRecord {
   sumCheck: TuneCheck;
 }
 
-export type TuneStage = "idle" | "proposed" | "sumCheck" | "applied" | "verifying" | "verified" | "kept" | "reverted";
+export type TuneStage = "idle" | "proposed" | "sumCheck" | "applied" | "verifying" | "verified" | "kept" | "reverted" | "revertIncomplete"; // -- WP REVERTW --
 
 export interface TuneVerifyRecord {
   outputs: { output: number; rmsDb?: number | null }[];
@@ -282,6 +282,11 @@ export function stageWords(st: TuneStateRecord | null): string {
       if (st.guard.phase === "lost") return `The connection was lost while the tune waited in its guard: the device may still hold the tune.${st.guard.message ? ` ${st.guard.message}` : ""}`;
       if (st.guard.phase === "revert_failed") return `The revert failed: the device may still hold part of the tune.${st.guard.message ? ` ${st.guard.message}` : ""}`;
       return "Reverted: the settings from before are back.";
+    // -- WP REVERTW -- the guard ended without putting everything back: the notice's words
+    case "revertIncomplete": {
+      const n = revertNotice(st.issue?.key || "revert.unknown");
+      return `${n!.title}. ${n!.action}`;
+    }
   }
 }
 

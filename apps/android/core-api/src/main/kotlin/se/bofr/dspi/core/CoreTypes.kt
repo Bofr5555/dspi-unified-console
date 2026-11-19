@@ -4143,6 +4143,13 @@ data class GuardedApply(
      * What the apply or the revert did not do, and why.
      */
     val notes: List<String>,
+    /**
+     * The notice key when the revert was not fully successful
+     * (`revert.incomplete`, `revert.failed`, `revert.not_written`,
+     * `revert.unknown`; "" otherwise): show its title and action, with
+     * `message` and `notes` as the detail.
+     */
+    val revertNotice: String,
 )
 
 /**
@@ -7665,6 +7672,13 @@ data class MeasureSystemApplied(
      * deadline unless Keep confirms it, and when the connection is lost.
      */
     val guardS: Long,
+    /**
+     * The notice key when the revert was not fully successful (stage
+     * `RevertIncomplete`): `revert.incomplete`, `revert.failed`,
+     * `revert.not_written` or `revert.unknown`; "" otherwise. `message`
+     * names what was not put back.
+     */
+    val revertNotice: String,
 )
 
 /**
@@ -9325,6 +9339,12 @@ enum class GuardPhase {
      */
     REVERTED,
     /**
+     * Reverted, but not wholly: some of the settings from before were not
+     * put back ([`GuardedApply::notes`] names them). The user must check the
+     * settings or restore a backup (a snapshot).
+     */
+    REVERT_INCOMPLETE,
+    /**
      * Putting them back failed; it is not tried again.
      */
     REVERT_FAILED,
@@ -9623,6 +9643,14 @@ enum class MeasureSystemApplyStage {
      * Reverted: the model and the units are as filed.
      */
     REVERTED,
+    /**
+     * The revert (the user's, or the hub's guard's) did not put everything
+     * back: the model was not set back, a unit's write failed, a delay
+     * reads back other than filed, or what the hub did is not known.
+     * `revert_notice` is the `revert.*` notice and `message` names what;
+     * the user must check the settings or restore a backup (a snapshot).
+     */
+    REVERT_INCOMPLETE,
 }
 
 /**
@@ -9713,6 +9741,13 @@ enum class MeasureTuneStage {
      * Reverted (by the user, the timeout or a failed write).
      */
     REVERTED,
+    /**
+     * The guard ended without putting everything back (part of it, nothing,
+     * or it is not known): `issue` holds the `revert.*` notice and what was
+     * not put back. The user must check the settings or restore a backup
+     * (a snapshot): the "before" snapshot is `snapshot_before_id`.
+     */
+    REVERT_INCOMPLETE,
 }
 
 /**

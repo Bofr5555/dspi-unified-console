@@ -11,7 +11,8 @@ Banner {
     id: banner
     objectName: "SafeApplyBanner"
     readonly property bool waiting: SnapshotsController.guardWaiting
-    readonly property bool lost: SnapshotsController.guardPhase === "lost"
+    // -- WP REVERTW -- a lost guard whose end the hub no longer knows has ended: its notice says so
+    readonly property bool lost: SnapshotsController.guardPhase === "lost" && SnapshotsController.guardRevertNotice === ""
     readonly property int seconds: Math.ceil(SnapshotsController.guardRemainingMs / 1000)
     kind: "warning"
     iconName: "clock"

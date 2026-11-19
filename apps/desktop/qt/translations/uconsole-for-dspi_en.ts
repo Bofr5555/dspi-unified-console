@@ -8318,6 +8318,23 @@ Macros are stored on the device alongside the controls and share their Save and 
         <extracomment>A notice from the core&apos;s table: %1 its title, %2 its reason</extracomment>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>The revert was not fully successful</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Check the settings, or restore a backup (a snapshot).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1. %2</source>
+        <extracomment>A revert that was not fully successful: %1 the title, %2 what was not put back, %3 what to do</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1. %2 %3</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>NoticeDialog</name>
@@ -11113,6 +11130,10 @@ Macros are stored on the device alongside the controls and share their Save and 
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>The revert was not fully successful. %1 Check the settings, or restore a backup (a snapshot).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Nothing waits for Keep.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -13734,6 +13755,10 @@ This wiring is a board-level setting: it is stored on the device, survives prese
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>The revert was not fully successful. Check the settings, or restore a backup (a snapshot).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>No tune yet: measure, then propose one.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -14177,6 +14202,10 @@ This wiring is a board-level setting: it is stored on the device, survives prese
     </message>
     <message>
         <source>Reverted: the installation and every unit are as they were filed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The revert was not fully successful. %1 Check the settings, or restore a backup (a snapshot).</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
