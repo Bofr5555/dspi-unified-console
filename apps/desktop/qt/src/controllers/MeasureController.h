@@ -514,7 +514,8 @@ private:
     std::function<void(bool, int)> m_micOpening;
 
     QVariantList m_setupOutputs;
-    QString m_placement = QStringLiteral("listeningPosition");
+    // -- WP P5FOLLOW -- no default: the person chooses (headphone safety, S3)
+    QString m_placement;
     int m_count = 3;
     QString m_coupler = QStringLiteral("iec60318_4");
     int m_sweepMs = 5500;

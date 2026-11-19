@@ -4879,7 +4879,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_func_measure_doc_info() != 31814.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_func_mic_import() != 41178.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_func_mic_import() != 29888.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_func_mode_manifest() != 33369.toShort()) {
@@ -55689,7 +55689,8 @@ public object FfiConverterSequenceSequenceTypeFilterParams: FfiConverterRustBuff
 
         /**
          * A `mic` document from a microphone's calibration file (miniDSP UMIK-1 or
-         * UMIK-2 text with its `Sens Factor` line, REW calibration text, or CSV),
+         * UMIK-2 text with its `Sens Factor` line, Dayton Audio iMM-6C or UMM-6
+         * text with its `*1000Hz` sensitivity line, REW calibration text, or CSV),
          * on the standard grid: the file's format, serial, sensitivity and gain,
          * its angle (90° when the file name or a comment says so), the dB SPL scale
          * its sensitivity implies (labelled approximate until a calibrator step),

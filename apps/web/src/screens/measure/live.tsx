@@ -18,7 +18,7 @@ import {
 import { noticeRow } from "../../ui/texts";
 import type { MeasureTabProps } from "./MeasureScreen";
 import { MeasureGraph, type Series } from "./graph";
-import { AVERAGING, COUPLERS, ROLES, SMOOTHING, highestPoint, hz, issueText, liveText, smoothingLabel } from "./model";
+import { AVERAGING, COUPLERS, LIVE_PLACEMENT_FIRST, ROLES, SMOOTHING, highestPoint, hz, issueText, liveText, livePlaceOf, smoothingLabel } from "./model";
 import { readTextFile } from "./setup";
 
 const row = { display: "flex", flexWrap: "wrap", gap: "8px 16px", alignItems: "flex-end" } as const;
@@ -28,7 +28,8 @@ interface LiveDraft {
   output: number;
   role: MeasureRole;
   mode: MeasureLiveMode;
-  placement: MeasurePlacement;
+  /** WP P5FOLLOW: null until chosen (here or on the Setup tab): no default. */
+  placement: MeasurePlacement | null;
   coupler: MeasureCoupler;
   smoothing: number;
   averaging: MeasureRtaAveraging;
@@ -48,7 +49,7 @@ function num(s: string): number | null {
 
 export function LiveTab(props: MeasureTabProps) {
   const { desk, outputs, outputName } = props;
-  const [d, setD] = useState<LiveDraft>(() => ({ output: outputs[0] ?? 0, role: "full", mode: "sweep", placement: "listeningPosition", coupler: "iec60318_4", smoothing: 6, averaging: "slow" }));
+  const [d, setD] = useState<LiveDraft>(() => ({ output: outputs[0] ?? 0, role: "full", mode: "sweep", placement: livePlaceOf(desk.draft), coupler: desk.draft?.coupler ?? "iec60318_4", smoothing: 6, averaging: "slow" }));
   const [frame, setFrame] = useState<MeasureLiveFrameRecord | null>(null);
   const [at, setAt] = useState("");
   const [span, setSpan] = useState<[string, string]>(["", ""]);
@@ -81,6 +82,8 @@ export function LiveTab(props: MeasureTabProps) {
   }, [live?.seq, live?.pending, live?.active, live?.runs]);
 
   const start = async () => {
+    // WP P5FOLLOW: never without the person's placement (the button is disabled then too).
+    if (!d.placement) return;
     setSaid("");
     setProposal(null);
     await desk.startLive({
@@ -192,11 +195,16 @@ export function LiveTab(props: MeasureTabProps) {
             Stop live
           </button>
         ) : (
-          <button type="button" class="primary" disabled={desk.running} onClick={() => void start()}>
+          <button type="button" class="primary" disabled={desk.running || !d.placement} onClick={() => void start()}>
             Start live
           </button>
         )}
       </div>
+      {!active && !d.placement ? (
+        <p class="note" aria-label="Live placement needed">
+          {LIVE_PLACEMENT_FIRST}
+        </p>
+      ) : null}
       <fieldset style={{ border: 0, padding: 0, margin: 0, ...row }} disabled={active || desk.running}>
         <label style={field}>
           <span>Output</span>
@@ -220,7 +228,12 @@ export function LiveTab(props: MeasureTabProps) {
         </label>
         <label style={field}>
           <span>Placement</span>
-          <select aria-label="Live placement" value={d.placement} onChange={(e) => set({ placement: (e.currentTarget as HTMLSelectElement).value as MeasurePlacement })}>
+          <select aria-label="Live placement" value={d.placement ?? ""} onChange={(e) => set({ placement: (e.currentTarget as HTMLSelectElement).value as MeasurePlacement })}>
+            {d.placement ? null : (
+              <option value="" disabled>
+                Choose the placement
+              </option>
+            )}
             {LIVE_PLACEMENTS.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.label}

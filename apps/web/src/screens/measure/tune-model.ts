@@ -328,9 +328,14 @@ export function chosenLayout(l: TuneLayoutRecord, off: ReadonlySet<number>): Tun
 /** Where the tune's own measurement is taken: speakers at the listening position, or headphones on a coupler. */
 export type TunePlace = { placement: "listeningPosition" } | { placement: "headphones"; coupler: MeasureCoupler; count: number };
 
-/** The tune's place for the Setup tab's draft: headphones when the person chose them there, else speakers. */
-export function tunePlaceOf(d: { placement?: string; coupler?: MeasureCoupler; count?: number } | null | undefined): TunePlace {
-  if (d?.placement !== "headphones") return { placement: "listeningPosition" };
+/**
+ * The tune's place for the Setup tab's draft: headphones or speakers at the listening position when
+ * the person chose that there; null otherwise (WP P5FOLLOW, coordinator: no default, the person
+ * chooses on the tune tab; several positions or near-field are not the tune's places).
+ */
+export function tunePlaceOf(d: { placement?: string | null; coupler?: MeasureCoupler; count?: number } | null | undefined): TunePlace | null {
+  if (d?.placement === "listeningPosition") return { placement: "listeningPosition" };
+  if (d?.placement !== "headphones") return null;
   const count = Number.isInteger(d.count) && d.count! >= 1 && d.count! <= 9 ? d.count! : 1;
   return { placement: "headphones", coupler: d.coupler ?? "iec60318_4", count };
 }
@@ -341,7 +346,7 @@ export function tunePlaceOf(d: { placement?: string; coupler?: MeasureCoupler; c
  * the ceiling and the sound level cap are the placement's, lower for headphones), never assumed to
  * be speakers; the gap is the core's for the placement (1 s for speakers, 0.3 s on a coupler).
  */
-export function layoutSetup(l: TuneLayoutRecord, sweepMs: number, micDocument: string, name: string, place: TunePlace = { placement: "listeningPosition" }): MeasureSetupRecord {
+export function layoutSetup(l: TuneLayoutRecord, sweepMs: number, micDocument: string, name: string, place: TunePlace): MeasureSetupRecord {
   return {
     kind: "walked",
     outputs: l.outputs.map((o) => ({ output: o.output, role: o.role, speaker: o.speaker, group: o.group })),
@@ -366,11 +371,14 @@ export interface TuneHost {
   micDocument: string;
   targetDocument: string;
   targetName: string;
-  draft: { micDocument: string; placement?: string; coupler?: MeasureCoupler; count?: number } | null;
+  draft: { micDocument: string; placement?: string | null; coupler?: MeasureCoupler; count?: number } | null;
   setResult(text: string | null, from: string): void;
   openMic(): Promise<number>;
   closeMic(): Promise<void>;
 }
+
+/** WP P5FOLLOW: why the tune's own measurement waits for the person's placement. */
+export const PLACE_FIRST = "Choose where it is measured first: speakers at the listening position, or headphones on a coupler. Headphones are measured much more quietly.";
 
 /** The second Keep counts from this long after the core's refusal (`TUNE_KEEP_CONFIRM_MIN_MS`), ms. */
 export const CONFIRM_MS = 1000;
@@ -525,9 +533,14 @@ export class TuneDesk {
     this.changed();
   }
 
-  /** Where the tune's own measurement is taken: the person's choice here, else the Setup tab's placement. */
-  get place(): TunePlace {
+  /** Where the tune's own measurement is taken: the person's choice here, else the Setup tab's; null: not chosen yet, nothing is measured. */
+  get place(): TunePlace | null {
     return this.placeChoice ?? tunePlaceOf(this.host.draft);
+  }
+
+  /** Why "Measure this layout" waits for the person, or "" (WP P5FOLLOW: no placement is assumed). */
+  get placeProblem(): string {
+    return this.place ? "" : PLACE_FIRST;
   }
 
   setHeadphones(on: boolean): void {

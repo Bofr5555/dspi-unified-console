@@ -68,6 +68,11 @@ async function measureAndPropose(page: Page, tune: (name: string) => Locator): P
   }
   const m = tune("Tune measurement");
   await m.getByLabel("Tune sweep length").fill("1");
+  // -- WP P5FOLLOW -- no placement assumed: the person chooses first, the reason in words
+  await expect(m.getByRole("button", { name: "Measure this layout" })).toBeDisabled();
+  await expect(m.getByLabel("Tune placement levels")).toContainText("Choose where it is measured first");
+  await m.getByLabel("Tune placement", { exact: true }).selectOption("listeningPosition");
+  await expect(m.getByLabel("Tune placement levels")).toContainText("Speakers: the levels are those for speakers.");
   await m.getByRole("button", { name: "Measure this layout" }).click();
   await expect(m.getByLabel("Measurement to tune from")).toHaveAttribute("data-source", "yes", { timeout: 240_000 });
   await expect(m.getByRole("region", { name: "Measurement run" }).locator("[data-phase]")).toHaveAttribute("data-phase", "done");
@@ -87,6 +92,11 @@ async function applyAndVerify(page: Page, tune: (name: string) => Locator): Prom
   await tune("Tune proposal").getByRole("button", { name: "Apply and verify" }).click();
   const g = tune("Tune guard");
   await expect(g.getByLabel("Guard countdown")).toContainText("s left to Keep or Revert");
+  // -- WP P5FOLLOW -- the global guard bar adopts the tune's guard and counts it down too
+  const bar = page.locator("#one").getByRole("alert", { name: "Safe apply" });
+  await expect(bar).toBeVisible({ timeout: 10_000 });
+  await expect(bar.getByRole("progressbar", { name: "Time left" })).toBeVisible();
+  await expect(bar.locator(".guard-left")).toHaveText(/^\d+$/);
   await expect(g).toHaveAttribute("data-stage", "verifying");
   await expect(g.getByRole("button", { name: "Keep", exact: true })).toHaveCount(0);
   await expect(g.getByRole("button", { name: "Revert" })).toBeVisible();

@@ -389,9 +389,38 @@ pub(crate) fn anchored_start_ms(
     chain_high: &ChannelChain,
     model: &dyn SectionModel,
 ) -> f64 {
+    // -- WP P5FOLLOW -- the tests' "no anchor" case (sim builds only)
+    #[cfg(feature = "sim")]
+    if NO_ANCHOR.with(std::cell::Cell::get) {
+        return arrival_low_ms - arrival_high_ms;
+    }
     let lo = chain_onset_ms(chain_low, model).unwrap_or(0.0);
     let hi = chain_onset_ms(chain_high, model).unwrap_or(0.0);
     (arrival_low_ms - lo) - (arrival_high_ms - hi)
+}
+
+// -- WP P5FOLLOW --
+#[cfg(feature = "sim")]
+std::thread_local! {
+    static NO_ANCHOR: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+// -- WP P5FOLLOW --
+/// Tests only (the `sim` feature): run `f` with the hold anchored on the raw
+/// arrivals, as before WP P5HOLD, on this thread. The family tests use it to
+/// show that the guards alone keep a timing they cannot settle (review
+/// P5-E's mutants). Nothing in the crate or its clients calls it.
+#[cfg(feature = "sim")]
+#[doc(hidden)]
+pub fn sim_without_onset_anchor<R>(f: impl FnOnce() -> R) -> R {
+    struct Reset(bool);
+    impl Drop for Reset {
+        fn drop(&mut self) {
+            NO_ANCHOR.with(|c| c.set(self.0));
+        }
+    }
+    let _reset = Reset(NO_ANCHOR.with(|c| c.replace(true)));
+    f()
 }
 
 /// A driver's own response: a way's measurement divided by its measured

@@ -67,11 +67,13 @@ export function TuneTab(props: MeasureTabProps) {
   const measuring = !!desk.state?.active;
   const busy = !!t.busy || t.running || measuring;
 
+  const place = t.place;
   const measure = async () => {
-    if (!l) return;
+    // WP P5FOLLOW: never without the person's placement (the button is disabled then too).
+    if (!l || !place) return;
     t.useMeasurement(null);
     const on = { ...l, outputs: l.outputs.filter((o) => !t.off.has(o.output)) };
-    await desk.startRun(layoutSetup(on, t.sweepMs, desk.micDocument || desk.draft?.micDocument || "", "Auto-tune layout", t.place));
+    await desk.startRun(layoutSetup(on, t.sweepMs, desk.micDocument || desk.draft?.micDocument || "", "Auto-tune layout", place));
   };
 
   return (
@@ -167,19 +169,26 @@ export function TuneTab(props: MeasureTabProps) {
           </label>
           <label>
             Measured{" "}
-            <select aria-label="Tune placement" value={t.place.placement} disabled={busy || t.applied} onChange={(e) => t.setHeadphones((e.currentTarget as HTMLSelectElement).value === "headphones")}>
+            <select aria-label="Tune placement" value={place?.placement ?? ""} disabled={busy || t.applied} onChange={(e) => t.setHeadphones((e.currentTarget as HTMLSelectElement).value === "headphones")}>
+              {place ? null : (
+                <option value="" disabled>
+                  Choose where it is measured
+                </option>
+              )}
               <option value="listeningPosition">Speakers, at the listening position</option>
               <option value="headphones">Headphones on a coupler</option>
             </select>
           </label>
-          <button type="button" disabled={busy || t.applied || !l || props.blocked !== ""} onClick={() => void measure()}>
+          <button type="button" disabled={busy || t.applied || !l || !place || props.blocked !== ""} onClick={() => void measure()}>
             Measure this layout
           </button>
         </div>
-        <p class="muted" aria-label="Tune placement levels">
-          {t.place.placement === "headphones"
-            ? `Headphones: on the coupler, not on a head. The levels are the lower ones for headphones (${COUPLERS.find((c) => c.id === (t.place as { coupler?: string }).coupler)?.label ?? "the Setup tab's coupler"}).`
-            : "Speakers: the levels are those for speakers. For headphones choose Headphones on a coupler first: they are measured much more quietly."}
+        <p class={place ? "muted" : "note"} aria-label="Tune placement levels">
+          {!place
+            ? t.placeProblem
+            : place.placement === "headphones"
+              ? `Headphones: on the coupler, not on a head. The levels are the lower ones for headphones (${COUPLERS.find((c) => c.id === place.coupler)?.label ?? "the Setup tab's coupler"}).`
+              : "Speakers: the levels are those for speakers. For headphones choose Headphones on a coupler first: they are measured much more quietly."}
         </p>
         {desk.preflight && !desk.preflight.clear ? (
           <ul class="change-list" aria-label="Tune preflight">

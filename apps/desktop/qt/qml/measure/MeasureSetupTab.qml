@@ -44,6 +44,11 @@ ScrollView {
         return 0
     }
     readonly property bool editable: !mc.running && mc.playBlocker.length === 0
+    // -- WP P5FOLLOW -- -1 while no placement is chosen
+    readonly property int placementIndex: {
+        for (let i = 0; i < placements.length; ++i) if (placements[i].id === mc.placement) return i
+        return -1
+    }
 
     ColumnLayout {
         width: tab.availableWidth
@@ -114,7 +119,9 @@ ScrollView {
                     enabled: tab.editable
                     model: tab.placements
                     textRole: "text"
-                    currentIndex: tab.indexOf(tab.placements, mc.placement)
+                    // -- WP P5FOLLOW -- nothing chosen until the person chooses
+                    currentIndex: tab.placementIndex
+                    displayText: tab.placementIndex < 0 ? qsTr("Choose the placement") : currentText
                     onActivated: index => mc.placement = tab.placements[index].id
                 }
                 AppSpinBox {
@@ -141,7 +148,9 @@ ScrollView {
             }
             Text {
                 Layout.fillWidth: true
-                text: tab.placements[tab.indexOf(tab.placements, mc.placement)].detail
+                text: tab.placementIndex < 0
+                      ? qsTr("Where is the microphone? Speakers or headphones on a coupler: the levels depend on it, and headphones are measured much more quietly.")
+                      : tab.placements[tab.placementIndex].detail
                 font: Theme.fontSmall
                 color: Theme.textMuted
                 wrapMode: Text.WordWrap
@@ -243,6 +252,16 @@ ScrollView {
                     text: mc.runName
                     onCommitted: t => mc.runName = t
                 }
+            }
+            // -- WP P5FOLLOW -- (review P5-E) a hint, no minimum
+            Text {
+                objectName: "MeasureSetup.passesHint"
+                visible: mc.passes === 2
+                Layout.fillWidth: true
+                text: qsTr("Two passes cannot judge timing; use three or more for auto-tune.")
+                font: Theme.fontSmall
+                color: Theme.textMuted
+                wrapMode: Text.WordWrap
             }
             Text {
                 Layout.fillWidth: true

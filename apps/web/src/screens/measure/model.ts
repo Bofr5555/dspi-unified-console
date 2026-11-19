@@ -75,7 +75,8 @@ export interface OutputDraft {
 
 /** What the setup form holds. */
 export interface MeasureDraft {
-  placement: MeasurePlacement;
+  /** WP P5FOLLOW: null until the person chooses (no default: headphones are measured much more quietly). */
+  placement: MeasurePlacement | null;
   /** Positions (several positions: 3 to 9) or reseats (headphones: 1 to 9). */
   count: number;
   coupler: MeasureCoupler;
@@ -92,7 +93,7 @@ export interface MeasureDraft {
 /** A draft for the device's enabled outputs: the first two chosen, full range, speaker L. */
 export function initialDraft(outputs: number[]): MeasureDraft {
   return {
-    placement: "listeningPosition",
+    placement: null,
     count: 3,
     coupler: "iec60318_4",
     outputs: outputs.map((o, i) => ({ output: o, on: i < 2, role: "full", speaker: "L", group: 0 })),
@@ -111,17 +112,34 @@ export function withOutputs(d: MeasureDraft, outputs: number[]): MeasureDraft {
   return { ...d, outputs: kept };
 }
 
-export function countRange(p: MeasurePlacement): [number, number] | null {
+export function countRange(p: MeasurePlacement | null): [number, number] | null {
   if (p === "multiPosition") return [3, 9];
   if (p === "headphones") return [1, 9];
   return null;
 }
+
+/** WP P5FOLLOW (coordinator, headphone safety): why nothing is measured before the person chose the placement. */
+export const PLACEMENT_FIRST = "Choose the placement first: speakers or headphones on a coupler. Headphones are measured much more quietly.";
+
+/** WP P5FOLLOW: the live view's placements, and why it waits for the person's choice (it plays too). */
+export const LIVE_PLACEMENT_IDS: readonly MeasurePlacement[] = ["listeningPosition", "nearField", "headphones"];
+export const LIVE_PLACEMENT_FIRST = "Choose the placement first: speakers or headphones on a coupler. Headphones are measured much more quietly.";
+
+/** The live view's placement taken from the Setup tab's choice when it is one the live view has; null otherwise (no default). */
+export function livePlaceOf(d: { placement?: MeasurePlacement | null } | null | undefined): MeasurePlacement | null {
+  const p = d?.placement ?? null;
+  return p && LIVE_PLACEMENT_IDS.includes(p) ? p : null;
+}
+
+/** The hint under Passes when it is 2 (review P5-E: a hint, no minimum). */
+export const TWO_PASSES_HINT = "Two passes cannot judge timing; use three or more for auto-tune.";
 
 /** What is wrong with the draft before the core is asked, or "". */
 export function draftProblem(d: MeasureDraft): string {
   const on = d.outputs.filter((o) => o.on);
   if (on.length === 0) return "Choose at least one output to measure.";
   if (on.length > 16) return "At most 16 outputs a run.";
+  if (!d.placement) return PLACEMENT_FIRST;
   const r = countRange(d.placement);
   if (r && !(Number.isInteger(d.count) && d.count >= r[0] && d.count <= r[1]))
     return d.placement === "headphones" ? "Reseats: 1 to 9." : "Positions: 3 to 9.";
@@ -130,8 +148,9 @@ export function draftProblem(d: MeasureDraft): string {
   return "";
 }
 
-/** The session's setup (`MeasureSetup`) for the draft: a walked run; every other number the plan's default. */
+/** The session's setup (`MeasureSetup`) for the draft: a walked run; every other number the plan's default. Throws while no placement is chosen (never one assumed). */
 export function setupOf(d: MeasureDraft, captureRateHz: number): MeasureSetupRecord {
+  if (!d.placement) throw new Error(PLACEMENT_FIRST);
   const r = countRange(d.placement);
   return {
     kind: "walked",

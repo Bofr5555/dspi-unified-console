@@ -816,6 +816,10 @@ QString MeasureController::setupProblem() const {
         if (v.toMap().value(QStringLiteral("on")).toBool()) ++on;
     if (on == 0) return tr("Choose at least one output to measure.");
     if (on > 16) return tr("At most 16 outputs a run.");
+    // -- WP P5FOLLOW -- (coordinator, headphone safety) no placement is
+    // assumed: the levels are the placement's, much lower for headphones
+    if (m_placement.isEmpty())
+        return tr("Choose the placement first: speakers or headphones on a coupler. Headphones are measured much more quietly.");
     const auto r = countRange(m_placement);
     if (r.first && (m_count < r.first || m_count > r.second))
         return m_placement == QLatin1String("headphones") ? tr("Reseats: 1 to 9.") : tr("Positions: 3 to 9.");
@@ -1432,6 +1436,11 @@ void MeasureController::liveStart(const QVariantMap &s) {
     }
     if (m_passiveOn || m_passiveStarting) {   // -- WP P5QUI2 --
         fail(tr("Stop the passive RTA first."));
+        return;
+    }
+    // -- WP P5FOLLOW -- (coordinator, headphone safety) never a placement assumed
+    if (s.value(QStringLiteral("placement")).toString().isEmpty()) {
+        fail(tr("Choose the placement first: speakers or headphones on a coupler. Headphones are measured much more quietly."));
         return;
     }
     if (running()) return;

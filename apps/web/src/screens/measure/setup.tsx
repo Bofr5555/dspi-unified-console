@@ -6,7 +6,7 @@ import { useEffect } from "preact/hooks";
 import { measureCall } from "../../core/measure-protocol";
 import { noticeRow } from "../../ui/texts";
 import type { MeasureTabProps } from "./MeasureScreen";
-import { COUPLERS, PLACEMENTS, ROLES, countRange, draftProblem, initialDraft, micSummary, preflightLines, setupOf, withOutputs, type MeasureDraft, type OutputDraft } from "./model";
+import { COUPLERS, PLACEMENTS, ROLES, TWO_PASSES_HINT, countRange, draftProblem, initialDraft, micSummary, preflightLines, setupOf, withOutputs, type MeasureDraft, type OutputDraft } from "./model";
 
 const field = { display: "flex", flexDirection: "column", gap: "2px", minWidth: 0 } as const;
 const row = { display: "flex", flexWrap: "wrap", gap: "8px 16px", alignItems: "flex-end" } as const;
@@ -87,7 +87,7 @@ export function SetupPanel(props: MeasureTabProps) {
           </select>
         </label>
         <label style={field}>
-          <span>Calibration file (UMIK, REW or CSV)</span>
+          <span>Calibration file (UMIK, Dayton, REW or CSV)</span>
           <input type="file" aria-label="Import a calibration file" accept=".txt,.cal,.csv,.frd,text/plain" onChange={(e) => void importCal(e.currentTarget as HTMLInputElement)} />
         </label>
         {d.micDocument ? (
@@ -112,7 +112,9 @@ export function SetupPanel(props: MeasureTabProps) {
             </label>
           ))}
         </div>
-        <span class="muted">{PLACEMENTS.find((p) => p.id === d.placement)?.detail}</span>
+        <span class="muted" aria-label="Placement detail">
+          {PLACEMENTS.find((p) => p.id === d.placement)?.detail ?? "Where is the microphone? Speakers or headphones on a coupler: the levels depend on it, and headphones are measured much more quietly."}
+        </span>
         <div style={row}>
           {range ? (
             <label style={field}>
@@ -139,6 +141,11 @@ export function SetupPanel(props: MeasureTabProps) {
           <label style={field}>
             <span>Passes</span>
             <input type="number" aria-label="Passes" min={2} max={8} step={1} value={d.passes} onInput={(e) => set({ passes: Number((e.currentTarget as HTMLInputElement).value) })} />
+            {d.passes === 2 ? (
+              <span class="muted" aria-label="Passes hint">
+                {TWO_PASSES_HINT}
+              </span>
+            ) : null}
           </label>
           <label style={{ ...field, flex: "1 1 10em" }}>
             <span>Name</span>

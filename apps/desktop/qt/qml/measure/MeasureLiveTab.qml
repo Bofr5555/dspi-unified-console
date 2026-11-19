@@ -43,8 +43,17 @@ ScrollView {
     property int output: mc.outputs.length ? mc.outputs[0].output : 0
     property string role: "full"
     property string mode: "sweep"
-    property string placement: "listeningPosition"
-    property string coupler: "iec60318_4"
+    // -- WP P5FOLLOW -- (coordinator, headphone safety) no default placement:
+    // the person's choice here, else the Setup tab's when it is a live one
+    property string placementChoice: ""
+    readonly property string placement: placementChoice.length ? placementChoice
+                                        : (setupIndexOf(mc.placement) >= 0 ? mc.placement : "")
+    property string couplerChoice: ""
+    readonly property string coupler: couplerChoice.length ? couplerChoice : (mc.coupler.length ? mc.coupler : "iec60318_4")
+    function setupIndexOf(id) {
+        for (let i = 0; i < placements.length; ++i) if (placements[i].id === id) return i
+        return -1
+    }
     property int smoothing: 6
     property string averaging: "slow"
     // The frequency, or the range, picked on the graph or typed
@@ -83,7 +92,7 @@ ScrollView {
                 visible: !tab.active
                 text: qsTr("Start Live")
                 primary: true
-                enabled: tab.editable
+                enabled: tab.editable && tab.placement.length > 0
                 onClicked: tab.start()
             }
             AppButton {
@@ -93,6 +102,16 @@ ScrollView {
                 destructive: true
                 onClicked: mc.liveStop()
             }
+        }
+        // -- WP P5FOLLOW -- why Start Live waits
+        Text {
+            objectName: "MeasureLive.placementNeeded"
+            visible: !tab.active && tab.placement.length === 0
+            Layout.fillWidth: true
+            text: qsTr("Choose the placement first: speakers or headphones on a coupler. Headphones are measured much more quietly.")
+            font: Theme.fontBody
+            color: Theme.warning
+            wrapMode: Text.WordWrap
         }
         Flow {
             Layout.fillWidth: true
@@ -121,8 +140,10 @@ ScrollView {
                 enabled: tab.editable
                 model: tab.placements
                 textRole: "text"
-                currentIndex: tab.indexOf(tab.placements, tab.placement)
-                onActivated: index => tab.placement = tab.placements[index].id
+                objectName: "MeasureLive.placement"
+                currentIndex: tab.setupIndexOf(tab.placement)
+                displayText: currentIndex < 0 ? qsTr("Choose the placement") : currentText
+                onActivated: index => tab.placementChoice = tab.placements[index].id
             }
             AppComboBox {
                 visible: tab.placement === "headphones"
@@ -132,7 +153,7 @@ ScrollView {
                 model: tab.couplers
                 textRole: "text"
                 currentIndex: tab.indexOf(tab.couplers, tab.coupler)
-                onActivated: index => tab.coupler = tab.couplers[index].id
+                onActivated: index => tab.couplerChoice = tab.couplers[index].id
             }
             AppComboBox {
                 objectName: "MeasureLive.mode"

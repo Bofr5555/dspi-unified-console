@@ -885,6 +885,34 @@ impl PairCtx {
         if c.is_finite() { c.min(WORST) } else { WORST }
     }
 
+    // -- WP P5FOLLOW -- (review P5-E) the odd-order pair's branch
+    /// For a quadrature pair: which way the high way's phase sits from the
+    /// low way's through the window, delayed by `delta_ms` (never flipped):
+    /// the weighted mean of `sin Δφ`, with the weights of
+    /// [`CostKind::Quadrature`]. Near +1 or -1 at either quadrature, of
+    /// opposite signs half a cycle apart; 0 when nothing is judged.
+    pub(crate) fn quadrature_lead(&self, delta_ms: f64) -> f64 {
+        if !delta_ms.is_finite() {
+            return 0.0;
+        }
+        let (mut num, mut den) = (0.0, 0.0);
+        for p in &self.points {
+            let b = p.b.mul(Cx::polar(1.0, -p.w_ms * delta_ms));
+            let (ma, mb) = (p.a.norm_sqr().sqrt(), b.norm_sqr().sqrt());
+            let pw = ma * ma + mb * mb;
+            if !(pw > 1e-30 && pw.is_finite() && ma * mb > 1e-30) {
+                continue;
+            }
+            let w = ma * mb / pw;
+            // sin Δφ = Im(a·conj(b)) / (|a||b|).
+            let im = p.a.im * b.re - p.a.re * b.im;
+            num += w * (im / (ma * mb)).clamp(-1.0, 1.0);
+            den += w;
+        }
+        let v = if den > 1e-30 { num / den } else { 0.0 };
+        if v.is_finite() { v } else { 0.0 }
+    }
+
     /// Search the relative delay in `start ± half` with `steps` coarse steps
     /// each side for each polarity, then refine the best by golden section
     /// (`refine` evaluations). `steps == 0` judges `start` alone, both
@@ -994,6 +1022,8 @@ impl PairCtx {
         let was_held = (best.0 - start).abs() > hold;
         // -- WP P5HOLD -- the window's own best polarity, before the hold.
         let window_flip = best.1;
+        // -- WP P5FOLLOW -- and its delay, for an odd-order pair's guard.
+        let window_delta = best.0;
         let (lo_bound, hi_bound) = if was_held {
             (best, best_other) = pick(held);
             (start - hold, start + hold)
@@ -1049,9 +1079,20 @@ impl PairCtx {
         // tells which (P5SIM's room, LR8 at 120 Hz: the midrange's own
         // high-pass on the corner moves the right timing outside the hold,
         // and the hold left the half-cycle-off timing without a flip).
+        //
+        // WP P5FOLLOW (review P5-E): an odd-order Butterworth pair is never
+        // flipped, so that guard cannot fire for it. Its equivalent: the two
+        // quadratures, high way 90 degrees ahead or behind, are half a cycle
+        // apart just as the two polarities of an even-order pair, and score
+        // alike. A held choice in the other quadrature than the window's own
+        // best is unclear as well (P5SIM's room, BW3 at 120 Hz without the
+        // anchor: +1.03 ms proposed where the truth is -2.32 ms).
+        let other_quadrature = self.kind == CostKind::Quadrature
+            && self.quadrature_lead(best.0) * self.quadrature_lead(window_delta) <= 0.0;
         let held_unclear = was_held
             && (best.1
                 || best.1 != window_flip
+                || other_quadrature
                 || (step > 0.0 && (best.0 - start).abs() >= hold - step));
         PairFit {
             delta_ms: best.0,
