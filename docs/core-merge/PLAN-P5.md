@@ -774,7 +774,8 @@ choice and timing, `align.rs`'s pair search (additive), `ir.rs`'s spread allowan
 - N2: each candidate's relative delay is held within a quarter of its corner's period, at least 0.25 ms
   (`TIMING_HOLD_PERIODS`, `TIMING_HOLD_MIN_MS`), of the arrival-based delay; when the window's best lies further
   (a half or whole cycle off) the polarity and delay are chosen again within the hold, on the same evaluations, and
-  a note says so. Inside the hold the result is the old one bit for bit.
+  a note says so. Inside the hold the result is the old one bit for bit. (Review P5-D: a held choice that flips the
+  polarity or lies on the hold's edge is not proposed, the pair's timing is kept; see the wave P5-D review outcomes.)
 - N3: the noise allowance of the repeat spread is at most 2 dB (`MAX_NOISE_SPREAD_DB`). Coordinator: no repeat-count
   scaling (more repeats must never make points untrusted on noise alone). **Later:** compare group averages of the
   repeats (each group's noise like three repeats' at the averaged SNR), so many repeats see a change in the room as
@@ -839,6 +840,31 @@ written through the fake hub as a Viewer; a calibrated mic reads a full-scale si
 stored curve, P5RESP's smoothing and the live view's levelled target exactly, mask kept; bad input refused, never a
 panic (proptest); C and wasm calls tested. **Deps:** P5LIVE, P5DOCK. **Clients:** P5WMS (its passive RTA tab and
 results' smoothing/target), P5QUI.
+
+**Wave P5-D review outcomes** (`work/review-p5d/REPORT.md`; binding for P5-E and later, they amend the entries above):
+- **The timing hold never changes a polarity and never proposes its own edge.** The hold (P5TRUST2: a quarter of the
+  corner's period, at least 0.25 ms, about the arrival-based delay) trusts arrivals that carry the measured chain's own
+  group delay: through P5SIM's room a woofer's arrival behind an LR8 low-pass is 0.38 of the period late, an LR6's 0.23,
+  an LR4's 0.05 to 0.17 (the only family the hold was fitted on). Past a quarter period the right alignment is outside
+  the hold and the best inside it is the half-cycle-off one with the polarity flipped (a correctly wired LR8 pair got
+  its mid flipped and 1.3 ms of delay). So when the hold applied and its choice flips the polarity or lies within a
+  coarse step of the hold's edge, the pair's delay and polarity are **kept** and a note says so (`align` and every
+  candidate of the corner search; `PairFit.held_unclear`). **Later (a small WP):** anchor the hold on an arrival
+  corrected for the measured chain (or on the de-embedded drivers' own delay), so a steep pair gets its timing too;
+  until then an LR8 or LR6 pair whose arrivals are that far off gets no timing proposal, the EQ only.
+- **The passive microphone RTA never runs beside this core's own generator runs:** `measure_rta_passive_start` is `busy`
+  while a measurement, the live view or the auto-tune's runs are active, and a run that starts ends it (the core's
+  rule, not only the screens').
+- **A verify without any sum fails on an output it could not compare** (before: only when it could compare none): of
+  two full-range outputs one never goes unjudged. With a sum, the speaker's sum judges its ways.
+- **A screen never leaves a run without its Stop:** a start still on its way when the screen is left (web) or the
+  window closed or Stop pressed (Qt) is withdrawn, or stopped as soon as it answers. Each stop is sent on its own.
+- **Qt:** a Viewer through a hub is told so and the tabs that play are not offered (as the web). A "Keep Anyway"
+  waiting for the core's second is withdrawn by Revert, a new apply or a new verify.
+- **Open, for P5-E or a small Qt WP before P5FIN:** the passive microphone RTA in Qt (the calls exist: P5CURV), Qt's
+  results through `measure_doc_curves` (smoothing and target, as the web; the C++ copy of the curve decoding then goes),
+  the client read-only mode in Qt's `playBlocker`. And for the coordinator: Keep before any verify, or while one runs,
+  takes one press in every client (review P5TRUST N5): P5WAT should run the verify by itself after an apply.
 
 ### Wave P5-E: the web tune, close-out
 

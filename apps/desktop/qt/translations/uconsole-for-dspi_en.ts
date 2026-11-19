@@ -5752,6 +5752,10 @@ Macros are stored on the device alongside the controls and share their Save and 
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>This connection has the hub&apos;s Viewer role: measuring needs Control. Only the documents and saved measurements are offered.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Import a Microphone Calibration</source>
         <translation type="unfinished"></translation>
     </message>

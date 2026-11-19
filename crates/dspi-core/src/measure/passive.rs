@@ -108,6 +108,12 @@ impl MeasureSlot {
     fn passive_lock(&self) -> MutexGuard<'_, Option<Passive>> {
         self.passive.lock().unwrap_or_else(|p| p.into_inner())
     }
+
+    /// Review P5-D: a generator run starts on this core: the passive RTA
+    /// ends (it would show the stimulus). Called under the session's slot.
+    pub(super) fn passive_drop(&self) {
+        *self.passive_lock() = None;
+    }
 }
 
 /// The preset's averaging, as the live view's RTA has it.
@@ -208,15 +214,36 @@ impl DspiCore {
     /// copy dropped). Then push the microphone's blocks with
     /// `measure_rta_passive_push` and read `measure_rta_passive_frame`.
     ///
+    /// It never runs beside this core's own generator runs (review P5-D): it
+    /// is refused while a measurement, the live view or the auto-tune's runs
+    /// are active here, and a run that starts ends it, so it can never show
+    /// this console's stimulus as programme audio.
+    ///
     /// Errors: [`DspiError::InvalidArgument`] for a bad setup (a rate, a
-    /// band count, a microphone document that does not read).
+    /// band count, a microphone document that does not read), and `busy`
+    /// while a measurement or the live view runs on this core.
     pub fn measure_rta_passive_start(
         &self,
         setup: MeasureRtaPassiveSetup,
     ) -> Result<MeasureRtaPassiveState> {
         let p = Passive::new(setup)?;
+        // Review P5-D: never beside the generator. The session's slot is held
+        // from the check to the install (a start takes it too, and drops the
+        // passive RTA under it: `passive_drop`), so the two cannot cross.
+        if self.measure.live_on() {
+            return Err(invalid(
+                "busy: the live view plays the generator on this device",
+            ));
+        }
+        let slot = self.measure.lock();
+        if slot.as_ref().is_some_and(super::Session::active) {
+            return Err(invalid(
+                "busy: a measurement plays the generator on this device",
+            ));
+        }
         let state = p.state();
         *self.measure.passive_lock() = Some(p);
+        drop(slot);
         Ok(state)
     }
 

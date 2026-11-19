@@ -686,6 +686,37 @@ fn rms_between(
     (n >= 12).then(|| (ss / f64::from(n)).sqrt())
 }
 
+// -- WP P5TRUST2 --, review P5-D
+/// Why a verify without any sum (no summed run, no verified sum: a layout
+/// without transitions) confirms nothing, or `None`: it compared no output
+/// at all, or (review P5-D) one of its outputs could not be compared with its
+/// prediction (too few trusted points). Before the review only "no output at
+/// all" failed, so of two full-range outputs one could go unjudged, whatever
+/// it played, and the verify still passed on the other. With a sum the
+/// speaker's sum judges its ways, and a way too narrow to compare alone (a
+/// subwoofer below 100 Hz) does not fail it.
+fn verify_unjudged(v: &MeasureTuneVerify) -> Option<String> {
+    if !v.sums.is_empty() || !v.transitions.is_empty() {
+        return None;
+    }
+    let missing: Vec<String> = v
+        .outputs
+        .iter()
+        .filter(|o| o.rms_db.is_none())
+        .map(|o| format!("output {}", u16::from(o.output).saturating_add(1)))
+        .collect();
+    if v.outputs.is_empty() || missing.len() == v.outputs.len() {
+        Some("the verify could compare nothing with its prediction".into())
+    } else if missing.is_empty() {
+        None
+    } else {
+        Some(format!(
+            "the verify could not compare {} with its prediction",
+            missing.join(", ")
+        ))
+    }
+}
+
 fn invert_mask(outputs: &[(u8, bool)]) -> u32 {
     outputs
         .iter()
@@ -1592,13 +1623,11 @@ impl DspiCore {
             }
         }
         // -- WP P5TRUST2 -- a verify that judged nothing confirms nothing.
-        if v.sums.is_empty()
-            && v.transitions.is_empty()
-            && v.outputs.iter().all(|o| o.rms_db.is_none())
-        {
+        // Review P5-D: nor does it confirm an output it could not compare
+        // when no sum judges that output for it.
+        if let Some(why) = verify_unjudged(&v) {
             passed = false;
-            v.notes
-                .push("the verify could compare nothing with its prediction".into());
+            v.notes.push(why);
         }
         v.passed = passed;
         t.verify_failed = !passed;

@@ -440,6 +440,8 @@ test("P5WMS: the live view: a curve per sweep, 'cut this peak' previewed, applie
   const band = prop.changes[0]!.band;
   const peqOf = async () => JSON.stringify((await session.core.call("state", undefined)).state.filters);
   const before = await peqOf();
+  // Review P5-D: the core itself refuses the passive RTA beside the generator.
+  await assert.rejects(measureCall(session.core, "measureRtaPassiveStart", { setup: { captureRateHz: 48000, averaging: "fast" } }), /busy/);
   await measureCall(session.core, "measureLiveApply", { proposalId: prop.id });
   assert.notEqual(await peqOf(), before, "written");
   await session.core.call("undo", undefined);
@@ -449,6 +451,45 @@ test("P5WMS: the live view: a curve per sweep, 'cut this peak' previewed, applie
   assert.equal((await session.core.call("siggenStatus", undefined)).state, 0);
   assert.equal(desk.running, false);
   await desk.stop();
+});
+
+test("review P5-D: a live view that starts after the screen was left is stopped (nothing plays without its Stop)", { skip, timeout: 60_000 }, async () => {
+  const session = await sessionOn("control");
+  await session.open({ kind: "demo" });
+  await session.core.call("write", { path: "vol.user", value: { float: -20 } } as never);
+  // What reaches the core, in order (the start must really have gone out, then its stop).
+  const sent: string[] = [];
+  const core = session.core as unknown as { call: (m: string, p: unknown) => Promise<unknown> };
+  const call = core.call.bind(core);
+  core.call = async (m, p) => {
+    const v = await call(m, p);
+    sent.push(m);
+    return v;
+  };
+  const desk = new MeasureDesk(session);
+  await desk.start();
+  // The start is on its way (the microphone first) when the screen goes.
+  const started = desk.startLive({ output: 0, sweepMs: 1000, gapMs: 300, smoothing: 6 });
+  await desk.stop();
+  assert.equal(await started, false);
+  assert.equal(desk.error, "", "the start itself was not refused");
+  assert.ok(sent.includes("measureLiveStart"), sent.join(" "));
+  assert.ok(sent.lastIndexOf("measureLiveStop") > sent.indexOf("measureLiveStart"), sent.join(" "));
+  assert.equal((await measureCall(session.core, "measureLiveState", undefined)).active, false);
+  assert.equal((await measureCall(session.core, "measureState", undefined)).active, false);
+  assert.equal((await session.core.call("siggenStatus", undefined)).state, 0);
+  // The same for a run.
+  const desk2 = new MeasureDesk(session);
+  await desk2.start();
+  sent.length = 0;
+  const run = desk2.startRun(setupOf(initialDraft([0]), 48000));
+  await desk2.stop();
+  assert.equal(await run, false);
+  assert.equal(desk2.error, "", "the run itself was not refused");
+  assert.ok(sent.includes("measureStart"), sent.join(" "));
+  assert.ok(sent.lastIndexOf("measureStop") > sent.indexOf("measureStart"), sent.join(" "));
+  assert.equal((await measureCall(session.core, "measureState", undefined)).active, false);
+  assert.equal((await session.core.call("siggenStatus", undefined)).state, 0);
 });
 
 test("P5WMS: a view-only session is refused a run with nothing played", { skip, timeout: 60_000 }, async () => {

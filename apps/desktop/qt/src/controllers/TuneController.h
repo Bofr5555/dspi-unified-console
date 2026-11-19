@@ -250,6 +250,7 @@ private:
     // through the question (the core would take any second Keep as the
     // confirmation, so the question must come first)
     bool m_armed = false;
+    int m_keepToken = 0;   // review P5-D: which delayed "Keep Anyway" may still be sent
     int m_keepRefusals = 0;
     QString m_keptText;
     QJsonObject m_ab;

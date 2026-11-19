@@ -22,7 +22,8 @@ ToolWindow {
     readonly property bool blocked: MeasureController.playBlocker.length > 0
 
     // Closing the window stops what it started (the guard of an applied tune runs on)
-    onClosing: if (MeasureController.running) MeasureController.stop()
+    // (review P5-D: always, so a start still on its way is withdrawn too)
+    onClosing: MeasureController.stop()
 
     ColumnLayout {
         anchors.fill: parent

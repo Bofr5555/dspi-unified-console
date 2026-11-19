@@ -8,6 +8,7 @@
 #include "DeviceModel.h"
 #include "FilesController.h"
 #include "HistoryController.h"
+#include "LinkController.h"
 #include "NoticeCenter.h"
 #include "Shell.h"
 
@@ -444,6 +445,11 @@ MeasureController::MeasureController(const AppContext &ctx, QObject *parent) : Q
         reply([&](char *b, uint32_t l) { return dspi_measure_set_dir(c, dir.constData(), b, l); }, 1024);
     });
     QMetaObject::invokeMethod(this, &MeasureController::refreshInputs, Qt::QueuedConnection);
+    // Review P5-D: the hub's role decides who may play (playBlocker)
+    QMetaObject::invokeMethod(this, [this] {
+        if (auto *link = Registrar::instance<LinkController>())
+            connect(link, &LinkController::statusChanged, this, &MeasureController::deviceChanged);
+    }, Qt::QueuedConnection);
     onSnapshot();
 }
 
@@ -528,6 +534,11 @@ QString MeasureController::playBlocker() const {
     if (!connected()) return tr("No device connected.");
     if (m_ctx.device->readOnly())
         return tr("This connection is read-only: measuring plays the DSPi's generator, so only the documents and saved "
+                  "measurements are offered.");
+    // Review P5-D: a Viewer through a hub may not play the generator (the
+    // core refuses it, S11): said here, the tabs that play are not offered
+    if (auto *link = Registrar::instance<LinkController>(); link && link->inSession() && link->role() == QLatin1String("viewer"))
+        return tr("This connection has the hub's Viewer role: measuring needs Control. Only the documents and saved "
                   "measurements are offered.");
     return {};
 }
@@ -878,20 +889,28 @@ void MeasureController::start() {
         return;
     }
     if (running()) return;
+    // Review P5-D: a Stop (or the window closed) while this start is on its
+    // way withdraws it: nothing starts to play after the Stop
+    const quint64 epoch = m_stopEpoch;
     // The live view forgets a finished run: none runs now
-    openMic([this](bool ok, int rateHz) {
-        if (!ok) {
+    openMic([this, epoch](bool ok, int rateHz) {
+        if (!ok || epoch != m_stopEpoch) {
             closeMic();
             return;
         }
         const QByteArray setup = setupJson(rateHz);
         onLoop(this,
                [setup](FfiCore *c) { return once([&](char *b, uint32_t l) { return dspi_measure_start(c, setup.constData(), b, l); }); },
-               [this](const QByteArray &r) {
+               [this, epoch](const QByteArray &r) {
                    const QJsonObject o = object(r);
                    if (!isOk(o)) {
                        closeMic();
                        fail(failureText(o));
+                       return;
+                   }
+                   if (epoch != m_stopEpoch) {
+                       m_loop->session.store(true);
+                       stop();
                        return;
                    }
                    m_result.clear();
@@ -923,6 +942,7 @@ void MeasureController::nextPosition() {
 }
 
 void MeasureController::stop() {
+    ++m_stopEpoch;   // review P5-D: a start still on its way is withdrawn
     if (!m_loop) return;
     MeasureLoop *loop = m_loop;
     const bool tuneRuns = m_tuneRunning;
@@ -1268,19 +1288,26 @@ void MeasureController::liveStart(const QVariantMap &s) {
     setup.insert(QStringLiteral("micDocument"), QString::fromUtf8(m_micDocument));
     setup.insert(QStringLiteral("targetDocument"), QString::fromUtf8(m_targetDocument));
     if (str(setup, "placement") != QLatin1String("headphones")) setup.remove(QStringLiteral("coupler"));
-    openMic([this, setup](bool ok, int rateHz) mutable {
-        if (!ok) {
+    // Review P5-D: as `start`
+    const quint64 epoch = m_stopEpoch;
+    openMic([this, setup, epoch](bool ok, int rateHz) mutable {
+        if (!ok || epoch != m_stopEpoch) {
             closeMic();
             return;
         }
         setup.insert(QStringLiteral("captureRateHz"), rateHz);
         const QByteArray text = compact(setup);
         onLoop(this, [text](FfiCore *c) { return once([&](char *b, uint32_t l) { return dspi_measure_live_start(c, text.constData(), b, l); }); },
-               [this](const QByteArray &r) {
+               [this, epoch](const QByteArray &r) {
                    const QJsonObject o = object(r);
                    if (!isOk(o)) {
                        closeMic();
                        fail(failureText(o));
+                       return;
+                   }
+                   if (epoch != m_stopEpoch) {
+                       m_loop->live.store(true);
+                       stop();
                        return;
                    }
                    m_live = o;

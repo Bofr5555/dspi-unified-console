@@ -495,18 +495,75 @@ fn wp_p5trust2_alignment_alone_never_takes_a_timing_far_from_the_arrivals() {
     assert!((r.pairs[0].relative_delay_ms - 0.35).abs() < 0.01, "{r:?}");
     // The arrivals put the tweeter 1.8 ms later than its response does
     // (0.43 of the corner's period): the responses' best is outside the
-    // hold, and the timing proposed is held within it.
+    // hold. Review P5-D: the best inside the hold is then the half-cycle-off
+    // one with the polarity flipped (the tweeter is wired right), which is
+    // no timing to propose: the delay and the polarity are kept, and said.
     let mut w = ways();
     w[1].arrival_ms -= 1.8;
-    let start = (w[0].arrival_ms - 0.0) - (w[1].arrival_ms - 0.0);
     let r = align(&w, &pair_group(), &AlignOptions::default()).unwrap();
-    let hold = crate::xover::timing_hold_ms(corner);
+    assert!(!r.pairs[0].flipped, "{r:?}");
+    assert_eq!(r.pairs[0].relative_delay_ms, 0.0, "{r:?}");
     assert!(
-        (r.pairs[0].relative_delay_ms - start).abs() <= hold + 1e-6,
-        "{r:?} (start {start}, hold {hold})"
-    );
-    assert!(
-        r.notes.iter().any(|n| n.contains("measured arrivals")),
+        r.ways.iter().all(|w| !w.inverted && w.delay_ms == 0.0),
         "{r:?}"
     );
+    assert!(
+        r.notes
+            .iter()
+            .any(|n| n.contains("measured arrivals") && n.contains("are kept")),
+        "{r:?}"
+    );
+}
+
+// Review P5-D: what the hold leaves is proposed only when it keeps the
+// polarity and is not the hold's edge.
+#[test]
+fn review_p5d_a_held_timing_never_flips_and_is_never_the_holds_edge() {
+    let corner = 238.0;
+    let period = 1000.0 / corner;
+    let hold = crate::xover::timing_hold_ms(corner);
+    let half = half_window_ms(corner);
+    // Two ways in phase at +0.3 ms: the free search finds it; arrivals 0.4 of
+    // a period off put it outside the hold, where the flipped half-cycle-off
+    // alignment is the best inside.
+    let freqs: Vec<f64> = (0..97)
+        .map(|i| corner * (f64::from(i) / 48.0 - 1.0).exp2())
+        .collect();
+    let ctx = |delay_ms: f64| PairCtx {
+        points: freqs
+            .iter()
+            .map(|&f| {
+                let w_ms = std::f64::consts::TAU * f / 1000.0;
+                Point {
+                    w_ms,
+                    x: f.log2(),
+                    a: Cx::polar(1.0, 0.0),
+                    b: Cx::polar(1.0, w_ms * delay_ms),
+                    r: 0.0,
+                }
+            })
+            .collect(),
+        kind: CostKind::Phase,
+    };
+    let c = ctx(0.3);
+    let free = c.search(0.3 + 0.4 * period, half, 48, 24);
+    assert!(!free.flip && (free.delta_ms - 0.3).abs() < 0.02, "{free:?}");
+    let held = c.search_held(0.3 + 0.4 * period, half, 48, 24, hold);
+    // What is left inside is the flipped, half-cycle-off alignment or the
+    // hold's edge: unclear either way.
+    assert!(held.held && held.held_unclear, "{held:?}");
+    assert!(
+        held.flip
+            || ((held.delta_ms - (0.3 + 0.4 * period)).abs() - hold).abs() < half / 48.0 + 1e-9,
+        "{held:?}"
+    );
+    // The pair as it is, judged.
+    let kept = c.kept(0.0, held.evals);
+    assert!(kept.held && kept.held_unclear && !kept.flip, "{kept:?}");
+    assert_eq!(kept.delta_ms, 0.0);
+    assert_eq!(kept.evals, held.evals + 2);
+    // A held choice that keeps the polarity inside the hold is proposed.
+    let near = c.search_held(0.3 + 0.2 * period, half, 48, 24, hold);
+    assert!(!near.held && !near.held_unclear && !near.flip, "{near:?}");
+    assert!((near.delta_ms - 0.3).abs() < 0.02, "{near:?}");
 }

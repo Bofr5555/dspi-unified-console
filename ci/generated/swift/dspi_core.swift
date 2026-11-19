@@ -4369,8 +4369,14 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * copy dropped). Then push the microphone's blocks with
      * `measure_rta_passive_push` and read `measure_rta_passive_frame`.
      *
+     * It never runs beside this core's own generator runs (review P5-D): it
+     * is refused while a measurement, the live view or the auto-tune's runs
+     * are active here, and a run that starts ends it, so it can never show
+     * this console's stimulus as programme audio.
+     *
      * Errors: [`DspiError::InvalidArgument`] for a bad setup (a rate, a
-     * band count, a microphone document that does not read).
+     * band count, a microphone document that does not read), and `busy`
+     * while a measurement or the live view runs on this core.
      */
     func measureRtaPassiveStart(setup: MeasureRtaPassiveSetup) throws  -> MeasureRtaPassiveState
     
@@ -11241,8 +11247,14 @@ open func measureRtaPassivePush(samples: [Float], rateHz: UInt32)throws  -> Meas
      * copy dropped). Then push the microphone's blocks with
      * `measure_rta_passive_push` and read `measure_rta_passive_frame`.
      *
+     * It never runs beside this core's own generator runs (review P5-D): it
+     * is refused while a measurement, the live view or the auto-tune's runs
+     * are active here, and a run that starts ends it, so it can never show
+     * this console's stimulus as programme audio.
+     *
      * Errors: [`DspiError::InvalidArgument`] for a bad setup (a rate, a
-     * band count, a microphone document that does not read).
+     * band count, a microphone document that does not read), and `busy`
+     * while a measurement or the live view runs on this core.
      */
 open func measureRtaPassiveStart(setup: MeasureRtaPassiveSetup)throws  -> MeasureRtaPassiveState  {
     return try  FfiConverterTypeMeasureRtaPassiveState_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
@@ -63340,7 +63352,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_measure_rta_passive_push() != 56865) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_measure_rta_passive_start() != 39424) {
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_rta_passive_start() != 19944) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_measure_rta_passive_state() != 11846) {

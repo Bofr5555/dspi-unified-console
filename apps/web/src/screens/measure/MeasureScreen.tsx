@@ -298,6 +298,11 @@ export class MeasureDesk {
       const rate = await this.openMic("passive");
       const st = await measureCall(this.core, "measureRtaPassiveStart", { setup: { micDocument: this.draft?.micDocument ?? this.micDocument, captureRateHz: rate, averaging } });
       this.passive = { state: st, rta: null };
+      // Review P5-D: as `startRun` (the microphone is not left open behind a screen that is gone).
+      if (!this.alive) {
+        await this.stopGone();
+        return false;
+      }
       this.changed();
       this.pollPassive();
       return true;
@@ -364,6 +369,12 @@ export class MeasureDesk {
       }
       this.result = null;
       this.state = await measureCall(this.core, "measureStart", { setup: run });
+      // Review P5-D: the screen was left while this started (the microphone's permission question
+      // can take long): nothing keeps playing without its Stop.
+      if (!this.alive) {
+        await this.stopGone();
+        return false;
+      }
       this.changed();
       return true;
     } catch (e) {
@@ -385,8 +396,14 @@ export class MeasureDesk {
   /** Stop: the run and the live view (one STOP_NOW each in the core), the microphone. */
   async stopAll(): Promise<void> {
     if (this.passive) await this.stopPassive();
+    // Review P5-D: each stop on its own, so a live view that does not answer its stop never keeps
+    // the run's stop from being sent.
     try {
       if (this.live?.active) this.live = await measureCall(this.core, "measureLiveStop", undefined);
+    } catch (e) {
+      this.fail(e);
+    }
+    try {
       // A passive-only connection has no run to stop (and sends nothing).
       if (!this.passiveOnly || this.state?.active) this.state = await measureCall(this.core, "measureStop", undefined);
     } catch (e) {
@@ -396,6 +413,15 @@ export class MeasureDesk {
     this.changed();
   }
 
+  /** Review P5-D: something started after the screen was left: stopped as `stop` would have. */
+  private async stopGone(): Promise<void> {
+    if (this.live?.active) await measureCall(this.core, "measureLiveStop", undefined).catch(() => null);
+    if (this.state?.active) await measureCall(this.core, "measureStop", undefined).catch(() => null);
+    if (this.passive) await measureCall(this.core, "measureRtaPassiveStop", undefined).catch(() => null);
+    this.passive = null;
+    await this.closeMic();
+  }
+
   async startLive(setup: MeasureLiveSetupRecord): Promise<boolean> {
     this.clearError();
     try {
@@ -403,6 +429,11 @@ export class MeasureDesk {
       // The live view forgets a finished run: its result is taken first.
       if (this.state?.resultReady && !this.result) await this.takeResult();
       this.live = await measureCall(this.core, "measureLiveStart", { setup: { ...setup, captureRateHz: rate } });
+      // Review P5-D: as `startRun`.
+      if (!this.alive) {
+        await this.stopGone();
+        return false;
+      }
       this.changed();
       return true;
     } catch (e) {

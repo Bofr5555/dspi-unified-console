@@ -923,3 +923,35 @@ fn wp_p5trust_fit_this_range_sees_a_broad_bass_excess() {
     assert!(p.rms_after_db < p.rms_before_db);
     r.core.measure_live_stop();
 }
+
+// Review P5-D: the passive microphone RTA (P5CURV) never runs beside this
+// core's generator: it would show the stimulus as programme audio.
+#[test]
+fn review_p5d_the_passive_rta_never_runs_beside_the_generator() {
+    use crate::measure::MeasureRtaPassiveSetup;
+    let r = rig();
+    let passive = || MeasureRtaPassiveSetup {
+        capture_rate_hz: 48_000,
+        ..MeasureRtaPassiveSetup::default()
+    };
+    // Listening first: a generator run that starts ends it.
+    assert!(r.core.measure_rta_passive_start(passive()).unwrap().active);
+    r.core.measure_live_start(sweep_setup()).unwrap();
+    assert!(!r.core.measure_rta_passive_state().active);
+    assert!(r.core.measure_rta_passive_frame().rta.is_none());
+    // A block pushed to it meanwhile is ignored, not analysed.
+    let st = r
+        .core
+        .measure_rta_passive_push(vec![0.1; 960], 48_000)
+        .unwrap();
+    assert!(!st.active && st.frames == 0, "{st:?}");
+    // While the live view runs (also between its sweeps) it is refused.
+    let e = r.core.measure_rta_passive_start(passive()).unwrap_err();
+    assert!(e.to_string().contains("busy"), "{e}");
+    assert!(!r.core.measure_rta_passive_state().active);
+    // After the Stop it may listen again.
+    r.core.measure_live_stop();
+    assert!(!r.core.measure_live_state().active);
+    assert!(r.core.measure_rta_passive_start(passive()).unwrap().active);
+    r.core.measure_rta_passive_stop();
+}

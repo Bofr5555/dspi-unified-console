@@ -3489,8 +3489,14 @@ interface DspiCoreApi : AutoCloseable {
      * copy dropped). Then push the microphone's blocks with
      * `measure_rta_passive_push` and read `measure_rta_passive_frame`.
      *
+     * It never runs beside this core's own generator runs (review P5-D): it
+     * is refused while a measurement, the live view or the auto-tune's runs
+     * are active here, and a run that starts ends it, so it can never show
+     * this console's stimulus as programme audio.
+     *
      * Errors: [`DspiError::InvalidArgument`] for a bad setup (a rate, a
-     * band count, a microphone document that does not read).
+     * band count, a microphone document that does not read), and `busy`
+     * while a measurement or the live view runs on this core.
      */
     @Throws(DspiException::class)
     fun measureRtaPassiveStart(setup: MeasureRtaPassiveSetup): MeasureRtaPassiveState

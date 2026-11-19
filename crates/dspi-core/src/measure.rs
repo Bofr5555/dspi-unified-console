@@ -965,6 +965,9 @@ impl DspiCore {
             self.lock().measure_tap.set(true);
             let session = Session::new(plan, ctx, Instant::now());
             let state = session.state();
+            // Review P5-D: the passive microphone RTA never runs beside the
+            // generator (it would show the stimulus as programme audio).
+            self.measure.passive_drop();
             *slot = Some(session);
             state
         };

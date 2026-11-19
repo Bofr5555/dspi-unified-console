@@ -725,3 +725,39 @@ proptest! {
         }
     }
 }
+
+// Review P5-D: a verify without any sum confirms nothing when one of its
+// outputs could not be compared (before: only when none could).
+#[test]
+fn review_p5d_a_verify_without_sums_fails_on_an_output_it_could_not_compare() {
+    use super::{
+        MeasureTuneVerify, MeasureTuneVerifyOutput, MeasureTuneVerifySum, verify_unjudged,
+    };
+    let out = |output: u8, rms_db: Option<f64>| MeasureTuneVerifyOutput { output, rms_db };
+    let v = |outputs: Vec<MeasureTuneVerifyOutput>| MeasureTuneVerify {
+        outputs,
+        ..MeasureTuneVerify::default()
+    };
+    // Every output compared: judged by the per-output bound alone.
+    assert_eq!(
+        verify_unjudged(&v(vec![out(0, Some(0.2)), out(1, Some(0.1))])),
+        None
+    );
+    // Nothing compared, or no output at all.
+    let all = verify_unjudged(&v(vec![out(0, None), out(1, None)])).unwrap();
+    assert!(all.contains("compare nothing"), "{all}");
+    assert!(verify_unjudged(&v(Vec::new())).is_some());
+    // One of two could not be compared: it is named, the verify fails.
+    let one = verify_unjudged(&v(vec![out(0, Some(0.2)), out(1, None)])).unwrap();
+    assert!(
+        one.contains("output 2") && !one.contains("output 1"),
+        "{one}"
+    );
+    // With a verified sum the sum judges the speaker's ways.
+    let mut with_sum = v(vec![out(0, Some(0.2)), out(1, None)]);
+    with_sum.sums.push(MeasureTuneVerifySum {
+        speaker: "L".into(),
+        rms_db: Some(0.3),
+    });
+    assert_eq!(verify_unjudged(&with_sum), None);
+}

@@ -429,6 +429,7 @@ private:
     MeasureLoop *m_loop = nullptr;
     AudioCapture *m_capture = nullptr;
     bool m_shutDown = false;
+    quint64 m_stopEpoch = 0;   // review P5-D: counts the Stops (a start begun before one is withdrawn)
     QString m_serial;
 
     QVariantList m_outputs;

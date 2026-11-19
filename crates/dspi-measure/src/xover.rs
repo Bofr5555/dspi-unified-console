@@ -859,7 +859,14 @@ fn search(
                 } else {
                     f64::INFINITY
                 };
-                ctx.search_held(start, half_window_ms(*corner), steps, refine, hold)
+                let f = ctx.search_held(start, half_window_ms(*corner), steps, refine, hold);
+                // Review P5-D: a held choice that flips or lies on the hold's
+                // edge is no timing: the candidate keeps the current one.
+                if f.held_unclear {
+                    ctx.kept(delta_now, f.evals)
+                } else {
+                    f
+                }
             };
             let judged = PairCtx {
                 points: ctx.points,
@@ -984,8 +991,15 @@ fn search(
         let Some((corner, a2, b2, _, _, _)) = allowed.get(bi) else {
             return Err(MeasureError::Invalid("no candidate".into()));
         };
-        // -- WP P5TRUST2 --
-        if fit.held {
+        // -- WP P5TRUST2 --, review P5-D
+        if fit.held_unclear {
+            notes.push(crate::align::held_unclear_note(
+                da.output,
+                db.output,
+                *corner,
+                timing_hold_ms(*corner),
+            ));
+        } else if fit.held {
             notes.push(format!(
                 "outputs {} and {}: the best timing at {:.0} Hz lay more than {:.2} ms from the \
                  measured arrivals (a half or whole cycle off); the timing proposed is the best \

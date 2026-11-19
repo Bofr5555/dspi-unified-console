@@ -146,7 +146,8 @@ nothing written.
    group of typed writes, each judged as any write. When the planned verify needs a guard longer than 590 s the guard
    is still 590 s and the proposal carries the warning `measure.tune.guard_capped`.
 10. **Verify** inside the guard: a walked run and a summed run per transition. It passes when every summed run, verified
-    sum and tuned output is within 1.5 dB RMS of its prediction.
+    sum and tuned output is within 1.5 dB RMS of its prediction. A layout without transitions has no sum: there the
+    verify also fails when one of its outputs could not be compared with its prediction (review P5-D).
 11. **Keep or revert:** Keep confirms the guard, files "After auto-tune" with a `tune` block and offers the A/B compare of
     the two snapshots; Revert or the timeout reverts. After a verify that did not pass, the first Keep is refused with
     `measure.tune.keep_unverified`; show it and keep only on a second Keep the user confirms. `apply_confirm` on the
@@ -170,7 +171,9 @@ averaging, hold and compare) is the client's; the **device analyser** is the fir
   at the end, on abort and on drop). Over DSPi Link every other session's writes get `locked`; over USB a foreign write
   is caught by S5.
 - A client in read-only mode, a read-only connection or a Viewer through the hub gets the passive microphone RTA and the
-  documents only.
+  documents only. The passive RTA never runs beside this core's own generator runs: `measure_rta_passive_start` is
+  `busy` while a measurement, the live view or the auto-tune's runs are active, and a run that starts ends it (review
+  P5-D), so it never shows this console's stimulus as programme audio.
 - One measurement session per device; a second `measure_start` is `busy`.
 - The measurement runs where the microphone is: in the browser's core for the web, in the Qt app; never on the hub's
   machine. The hub stores documents and arbitrates through the lock; it adds no write of its own.

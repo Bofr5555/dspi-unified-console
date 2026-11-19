@@ -544,6 +544,9 @@ void TuneController::keep() {
 
 void TuneController::disarm() {
     m_armed = false;
+    // Review P5-D: a "Keep Anyway" still waiting for the core's second is
+    // withdrawn with it (a Revert pressed meanwhile is the last word)
+    ++m_keepToken;
     if (!m_keepConfirm && m_keepConfirmText.isEmpty()) return;
     m_keepConfirm = false;
     m_keepConfirmText.clear();
@@ -610,8 +613,14 @@ void TuneController::confirmKeep() {
     // An answer within the core's second is sent when it counts (one press,
     // the person's; nothing is pressed for them)
     const qint64 wait = m_refusedAt.isValid() ? kConfirmDelayMs - m_refusedAt.elapsed() : 0;
-    if (wait > 0) QTimer::singleShot(int(wait), this, &TuneController::keepNow);
-    else keepNow();
+    if (wait > 0) {
+        // Review P5-D: sent only if nothing withdrew it meanwhile (Revert, a
+        // new apply or verify: `disarm`)
+        const int token = ++m_keepToken;
+        QTimer::singleShot(int(wait), this, [this, token] {
+            if (token == m_keepToken) keepNow();
+        });
+    } else keepNow();
 }
 
 void TuneController::declineKeep() {
