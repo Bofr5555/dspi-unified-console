@@ -98,6 +98,12 @@ use dspi_transport::link::map_response;
 use dspi_transport::{
     DeviceDescriptor, LinkTransport, Transport, TransportCaps, TransportError, TransportKind,
 };
+// -- WP PGCORE --
+use dspi_proto::paged::legacy::{VC_ERR_PIN_IN_USE as VC_ERR_LAST, VC_ERR_UNKNOWN};
+use dspi_proto::paged::{Answer, LegacyBody, Next, Outcome, PageSet};
+use dspi_transport::link::{PAGED_REFUSES_PAGE0, firmware_refusal, is_retryable_13, paged_poll};
+use dspi_transport::paged::Discovery;
+use dspi_transport::{CmdId, PagedTransport};
 
 use crate::callbacks::LinkListener;
 // -- WP LKUI1 --
@@ -1366,7 +1372,13 @@ impl DspiCore {
             .and_then(|d| d.inputs.zip(d.outputs))
             .and_then(|(i, o)| u8::try_from(i.checked_add(o)?).ok())
             .filter(|n| (1..=crate::consts::MAX_CHANNELS as u8).contains(n));
-        if let Some(n) = channels {
+        // -- WP PGCORE -- a paged device's meter poll is planned with its
+        // discovery, which `paged::open` reads below: none sent ahead
+        let paged = matches!(
+            dspi_transport::link::LinkRoute::of(client.hello(), device.as_ref()),
+            dspi_transport::link::LinkRoute::Paged { .. }
+        );
+        if let Some(n) = channels.filter(|_| !paged) {
             // Sent ahead of the snapshot: the hub answers in order, so its
             // POLL frames start before the snapshot's bytes, not behind them
             side.subscribe_ahead(crate::connect::meter_len(n));
@@ -1376,18 +1388,51 @@ impl DspiCore {
         let mut transport = LinkTransport::new(client.clone(), handle, &serial);
         // -- WP LK4 -- the snapshot is on its way while the identity is read
         transport.prefetch_snapshot();
-        // The identity too: GET_PLATFORM and the serial are what the hub
-        // lists, so the bind reads only the snapshot (the background
-        // completion reads GET_PLATFORM and corrects the mirror if it differs)
-        let listed = device.as_ref().and_then(listed_identity);
+        // The identity too: the serial is what the hub lists. -- WP PGCORE --
+        // The platform is the device's own 8 bytes (`read_platform`), not the
+        // hub's 7, so the board id in byte 7 is seen (PLAN-PG R7c); on a
+        // paged device the discovery `paged::open` reads holds them.
+        let own_platform = if paged {
+            None
+        } else {
+            match transport.read_platform() {
+                Ok(p) if !p.is_empty() => Some(p),
+                Err(e)
+                    if matches!(e, TransportError::Disconnected)
+                        || dspi_transport::link::LinkNotice::of(&e).is_some() =>
+                {
+                    self.drop_meter_path_of(&side);
+                    return Err(e.into());
+                }
+                // The bind's identity read asks again
+                _ => None,
+            }
+        };
         // -- WP PGWIRE -- the generation wrapper (no probe over DSPi Link)
-        let transport = match dspi_transport::paged::open(Box::new(transport)) {
+        // -- WP PGCORE -- on a watched wire: a generation change re-attaches
+        let watched = Watched {
+            inner: transport,
+            regen: Arc::clone(&side.regen),
+            tx: tx.clone(),
+        };
+        let transport = match dspi_transport::paged::open(Box::new(watched)) {
             Ok(t) => t,
             Err(e) => {
                 self.drop_meter_path_of(&side);
                 return Err(e.into());
             }
         };
+        // -- WP PGCORE -- the side plans with the connection's discovery
+        let disc = transport.paged_discovery();
+        let own_platform = own_platform.or_else(|| disc.as_ref().map(|d| d.platform.clone()));
+        side.set_discovery(disc);
+        if paged && let Some(n) = channels {
+            on_channels(n);
+        }
+        let listed = device
+            .as_ref()
+            .zip(own_platform)
+            .and_then(|(d, p)| listed_identity(d, p));
         let attached = self.attach_opened_with(
             transport,
             serial.clone(),
@@ -1697,11 +1742,8 @@ impl DspiCore {
         let Some(mut t) = side.background() else {
             return;
         };
-        // The bind took the hub's word for the identity: the device's own
-        let platform = t
-            .control_in_upto(op::REQ_GET_PLATFORM, 0, 7)
-            .ok()
-            .filter(|p| *p != quick.platform);
+        // -- WP PGCORE -- the bind's identity is already the device's own
+        // word (`read_platform`, 8 bytes): no second platform read here
         let done = match dspi_session::probe::probe_rest(&mut *t, &quick) {
             Ok(done) => done,
             Err(TransportError::Disconnected) => return,
@@ -1758,14 +1800,6 @@ impl DspiCore {
             }
             conn.announce_refresh = true;
             crate::connect::merge_per_item(&before, &scratch, &mut inner.state);
-            if let Some(p) = platform {
-                log::info!(
-                    "the Link device's GET_PLATFORM differs from the hub's list; the mirror follows the device"
-                );
-                if let Err(e) = crate::state::apply_platform(&p, &mut inner.state) {
-                    log::warn!("GET_PLATFORM reply not applied: {e}");
-                }
-            }
             if let Some(b) = inner.link.as_mut().and_then(|s| s.bound.as_mut()) {
                 b.probe = reusable;
             }
@@ -1949,6 +1983,16 @@ fn next_step(s: &mut LinkSession, conn_gen: Option<u64>, pending: bool, now: Ins
     }
     if b.attached && std::mem::take(&mut b.seen_offline) {
         // The hub ended the feed, and the device may have changed.
+        b.attached = false;
+    }
+    // -- WP PGCORE -- a generation change (the transport's 0x86 after an
+    // answer, or another `protocol` in the hub's list): a new transport and
+    // a new `paged::open`, never a retry on the old one (section 1.1 step 8)
+    if b.attached
+        && b.side
+            .as_ref()
+            .is_some_and(|side| side.generation_changed(d.protocol))
+    {
         b.attached = false;
     }
     if b.attached {
@@ -2681,8 +2725,8 @@ fn hello_record(client: &LinkClient, state: &AuthState) -> LinkHello {
 // -- WP LK4 --
 /// The GET_PLATFORM reply and serial the hub lists for `d`, when it says all
 /// of it (platform, firmware `major.minor.patch` with its beta, outputs);
-/// `None` otherwise, and the bind reads them.
-fn listed_identity(d: &DeviceInfo) -> Option<dspi_session::probe::Listed> {
+/// `None` otherwise.
+fn hub_listed_identity(d: &DeviceInfo) -> Option<dspi_session::probe::Listed> {
     use dspi_proto::packets::{FirmwareVersion, PlatformInfo};
     let mut parts =
         d.fw.as_deref()?
@@ -2703,6 +2747,28 @@ fn listed_identity(d: &DeviceInfo) -> Option<dspi_session::probe::Listed> {
     };
     Some(dspi_session::probe::Listed {
         platform: info.encode().to_vec(),
+        serial: d.serial.clone(),
+    })
+}
+
+// -- WP PGCORE --
+/// The bind's identity: the device's own platform reply `platform` (8 bytes
+/// asked, so byte 7, the board id, is seen: PLAN-PG R7c) with the serial the
+/// hub lists for `d`; `None` when the serial is not listed or the reply does
+/// not decode, and the bind reads them. A hub listing that differs from the
+/// device is logged: the device's word wins.
+fn listed_identity(d: &DeviceInfo, platform: Vec<u8>) -> Option<dspi_session::probe::Listed> {
+    use dspi_proto::packets::PlatformInfo;
+    if d.serial.is_empty() || PlatformInfo::decode(&platform).is_err() {
+        return None;
+    }
+    if let Some(hub) = hub_listed_identity(d)
+        && platform.get(..hub.platform.len()) != Some(hub.platform.as_slice())
+    {
+        log::info!("the hub's listing of the Link device differs from its own GET_PLATFORM");
+    }
+    Some(dspi_session::probe::Listed {
+        platform,
         serial: d.serial.clone(),
     })
 }
@@ -2806,6 +2872,17 @@ pub(crate) struct LinkSide {
     /// One tunnelled meter read at a time.
     meter_tunnel: Mutex<()>,
     tx: Sender<Msg>,
+    // -- WP PGCORE --
+    /// The bound connection's discovery when the device is paged (set right
+    /// after `paged::open`): every request of this side is then planned with
+    /// it, and nothing on page 0 is sent (PLAN-PG section 1.1).
+    disc: Mutex<Option<Discovery>>,
+    /// The `protocol` the hub listed for the device when this side was made:
+    /// another one later is a re-flash under the handle (section 1.1 step 8).
+    listed_protocol: Option<dspi_link::messages::Proto>,
+    /// The bound transport saw a generation change
+    /// (`LinkTransport::needs_reattach`): the supervisor re-attaches.
+    regen: Arc<AtomicBool>,
 }
 
 fn guard<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -2862,7 +2939,6 @@ impl LinkSide {
             address: handle,
         };
         Self {
-            client,
             handle,
             descriptor,
             polls,
@@ -2871,22 +2947,46 @@ impl LinkSide {
             feed: Mutex::new(Feed::default()),
             lock_holds: Mutex::new(0),
             meter_tunnel: Mutex::new(()),
+            // -- WP PGCORE --
+            disc: Mutex::new(None),
+            listed_protocol: client.device(u32::from(handle)).and_then(|d| d.protocol),
+            regen: Arc::new(AtomicBool::new(false)),
+            client,
             tx,
         }
     }
 
     /// Move what arrived into `feed`.
     fn drain(&self, feed: &mut Feed, now: Instant) {
+        let pages = self.pages(); // -- WP PGCORE --
         for f in guard(&self.rx).try_iter() {
             // An empty frame is a failed read on the hub, not a reading.
-            if !f.payload.is_empty() {
-                feed.latest.insert(f.slot, (f.payload, now));
+            if f.payload.is_empty() {
+                continue;
             }
+            // -- WP PGCORE -- a paged device's frame is the paged GET's
+            // reply: fed through the same plan into the 1.1.6 shape
+            let payload = match &pages {
+                Some(pages) => {
+                    let Some(shaped) = slot_read(feed, f.slot)
+                        .and_then(|(op, val, len)| reshape(pages, op, val, len, &f.payload))
+                    else {
+                        continue;
+                    };
+                    shaped
+                }
+                None => f.payload,
+            };
+            feed.latest.insert(f.slot, (payload, now));
         }
     }
 
     /// One tunnelled GET; its reply may be shorter than `len`.
     fn tunnel_get(&self, opcode: u8, value: u16, len: u16) -> dspi_transport::Result<Vec<u8>> {
+        // -- WP PGCORE -- planned on a paged device
+        if let Some(mut paged) = self.paged_view(false) {
+            return paged.control_in_upto(opcode, value, len);
+        }
         let r = self.client.command(
             self.handle,
             Dir::Get,
@@ -2966,7 +3066,15 @@ impl LinkSide {
             }
             feed.meter_subscribed_at = Some(now);
             feed.meter_asked_slow = slow;
-            self.meter_spec(feed.meter_len, slow)
+            // -- WP PGCORE -- a read the paged device cannot poll: tunnelled
+            match self.meter_spec(feed.meter_len, slow) {
+                Some(spec) => spec,
+                None => {
+                    feed.meter_hz = None;
+                    feed.meter_refused_until = now.checked_add(POLL_RETRY_AFTER);
+                    return;
+                }
+            }
         };
         let granted = self.client.poll_subscribe(self.handle, &[spec]);
         let mut feed = guard(&self.feed);
@@ -2998,7 +3106,10 @@ impl LinkSide {
             return;
         }
         let now = Instant::now();
-        let spec = self.meter_spec(len, self.bridged);
+        // -- WP PGCORE --
+        let Some(spec) = self.meter_spec(len, self.bridged) else {
+            return;
+        };
         let Ok(pending) = self.client.poll_subscribe_begin(self.handle, &[spec]) else {
             return;
         };
@@ -3074,7 +3185,9 @@ impl LinkSide {
         }
     }
 
-    fn meter_spec(&self, len: u16, slow: bool) -> PollSpec {
+    /// -- WP PGCORE -- `None` when a paged device's plan for the meter read
+    /// is not one GET (OD-PGo): the meters are then tunnelled.
+    fn meter_spec(&self, len: u16, slow: bool) -> Option<PollSpec> {
         let wanted = if slow {
             METER_HZ_STALLED
         } else if self.bridged {
@@ -3083,14 +3196,28 @@ impl LinkSide {
             METER_HZ
         };
         let max = self.client.hello().limits.poll_max_hz;
-        PollSpec {
+        let hz = if max == 0 { wanted } else { wanted.min(max) };
+        // -- WP PGCORE -- the paged GET of the read's single-step plan
+        if let Some(pages) = self.pages() {
+            return paged_poll(
+                METER_SLOT,
+                op::REQ_GET_STATUS,
+                STATUS_METERS,
+                len,
+                hz,
+                &pages,
+            )
+            .map_err(|e| log::info!("the meters are not polled on this device: {e}"))
+            .ok();
+        }
+        Some(PollSpec {
             slot: METER_SLOT,
             req: op::REQ_GET_STATUS,
             val: STATUS_METERS,
             idx: dspi_proto::VENDOR_INTERFACE,
             len,
-            hz: if max == 0 { wanted } else { wanted.min(max) },
-        }
+            hz,
+        })
     }
 
     /// The meter block by a tunnelled read, when the hub refuses polls: at a
@@ -3161,10 +3288,25 @@ impl LinkSide {
                 limits.poll_budget_bps,
             );
             let len = u16::try_from(RtaBandFrame::SIZE).unwrap_or(u16::MAX);
+            let pages = self.pages(); // -- WP PGCORE --
             let specs: Vec<PollSpec> = band_channels(mask)
                 .filter_map(|ch| {
+                    let slot = band_slot(ch)?;
+                    // -- WP PGCORE -- planned on a paged device; a channel
+                    // it cannot poll is tunnelled (not granted)
+                    if let Some(pages) = &pages {
+                        return paged_poll(
+                            slot,
+                            op::REQ_RTA_GET_BANDS,
+                            u16::from(ch),
+                            len,
+                            hz,
+                            pages,
+                        )
+                        .ok();
+                    }
                     Some(PollSpec {
-                        slot: band_slot(ch)?,
+                        slot,
                         req: op::REQ_RTA_GET_BANDS,
                         val: u16::from(ch),
                         idx: dspi_proto::VENDOR_INTERFACE,
@@ -3210,6 +3352,360 @@ impl LinkSide {
                 feed.band_refused_until = now.checked_add(POLL_RETRY_AFTER);
             }
         }
+    }
+}
+
+// -- WP PGCORE --
+impl LinkSide {
+    /// Plan every request of this side with `disc`, the bound connection's
+    /// discovery (`None`: a legacy device, as before).
+    fn set_discovery(&self, disc: Option<Discovery>) {
+        *guard(&self.disc) = disc;
+    }
+
+    /// The paged device's pages, `None` on a legacy one.
+    fn pages(&self) -> Option<PageSet> {
+        guard(&self.disc).as_ref().map(|d| d.pages.clone())
+    }
+
+    /// This side as the adapter sees a paged device: 1.1.6-shaped calls
+    /// planned into paged requests sent by the side's own client; `None` on a
+    /// legacy device. `reads_only`: every SET refused here.
+    fn paged_view(&self, reads_only: bool) -> Option<PagedTransport> {
+        let disc = guard(&self.disc).clone()?;
+        let wire = SideWire {
+            client: self.client.clone(),
+            handle: self.handle,
+            descriptor: self.descriptor.clone(),
+            reads_only,
+        };
+        Some(PagedTransport::with_discovery(Box::new(wire), disc))
+    }
+
+    /// The band frames held: the analyser's tap or channels changed.
+    fn forget_bands(&self) {
+        let mut feed = guard(&self.feed);
+        for ch in 0u8..15 {
+            if let Some(slot) = band_slot(ch) {
+                feed.latest.remove(&slot);
+            }
+        }
+    }
+
+    /// Whether the device changed generation under this side: its transport
+    /// said so, or the hub lists another `protocol` for it now.
+    fn generation_changed(&self, listed: Option<dspi_link::messages::Proto>) -> bool {
+        self.regen.load(Ordering::SeqCst) || listed != self.listed_protocol
+    }
+}
+
+// -- WP PGCORE --
+/// The 1.1.6 read a poll slot carries: the meter block or one band channel.
+fn slot_read(feed: &Feed, slot: u8) -> Option<(u8, u16, u16)> {
+    if slot == METER_SLOT {
+        return Some((op::REQ_GET_STATUS, STATUS_METERS, feed.meter_len));
+    }
+    let ch = (0u8..15).find(|ch| band_slot(*ch) == Some(slot))?;
+    let len = u16::try_from(RtaBandFrame::SIZE).ok()?;
+    Some((op::REQ_RTA_GET_BANDS, u16::from(ch), len))
+}
+
+// -- WP PGCORE --
+/// A paged poll frame of the 1.1.6 read `opcode`/`value`/`len` in the 1.1.6
+/// shape: the frame fed through the read's own single-step plan (what
+/// `paged_poll` subscribed). `None` for a frame the plan does not take.
+fn reshape(pages: &PageSet, opcode: u8, value: u16, len: u16, frame: &[u8]) -> Option<Vec<u8>> {
+    let mut plan = dspi_proto::paged::plan(opcode, value, LegacyBody::In { len }, pages).ok()?;
+    match plan.start() {
+        Next::Send(_) => match plan.feed(Answer::Data(frame)) {
+            Next::Done(Outcome::Reply(b)) => Some(b),
+            _ => None,
+        },
+        Next::Done(_) => None,
+    }
+}
+
+// -- WP PGCORE --
+/// The side channel's raw wire to a paged device: paged requests on the
+/// session's client, `wIndex` `(page << 8) | 2`, a GET never with `wLength`
+/// 0. Only [`PagedTransport::with_discovery`] uses it, so a 1.1.6-shaped
+/// call never reaches it (and would be refused).
+struct SideWire {
+    client: LinkClient,
+    handle: u8,
+    descriptor: DeviceDescriptor,
+    reads_only: bool,
+}
+
+impl SideWire {
+    /// One paged request, a retryable answer (spec 1.3 section 8.1) tried
+    /// again through the busy window.
+    fn exchange(
+        &self,
+        dir: Dir,
+        id: CmdId,
+        value: u16,
+        len: u16,
+        data: &[u8],
+    ) -> dspi_transport::Result<Vec<u8>> {
+        let mut tries = 0;
+        loop {
+            let r = self
+                .client
+                .command(self.handle, dir, id.cmd(), value, id.w_index(), len, data);
+            if is_retryable_13(r.status) && tries < dspi_transport::BUSY_RETRIES {
+                tries = tries.saturating_add(1);
+                dspi_transport::clock::sleep(dspi_transport::BUSY_BACKOFF);
+                continue;
+            }
+            return settle_paged(id, len, r.status, r.payload);
+        }
+    }
+}
+
+/// A paged answer as the adapter takes it: a firmware result code is
+/// `Refused` (no `SYS.LAST_RESULT` read after it), a hub's status its error.
+fn settle_paged(
+    id: CmdId,
+    len: u16,
+    status: u8,
+    payload: Vec<u8>,
+) -> dspi_transport::Result<Vec<u8>> {
+    if (VC_ERR_UNKNOWN..=VC_ERR_LAST).contains(&status) {
+        return Err(firmware_refusal(id, status));
+    }
+    match map_response(status, id.cmd(), &payload) {
+        Some(e) => Err(e),
+        None => {
+            let mut payload = payload;
+            payload.truncate(usize::from(len));
+            Ok(payload)
+        }
+    }
+}
+
+impl Transport for SideWire {
+    fn control_in(&mut self, _: u8, _: u16, _: u16) -> dspi_transport::Result<Vec<u8>> {
+        Err(TransportError::Incompatible(PAGED_REFUSES_PAGE0.into()))
+    }
+
+    fn control_out(&mut self, _: u8, _: u16, _: &[u8]) -> dspi_transport::Result<()> {
+        Err(TransportError::Incompatible(PAGED_REFUSES_PAGE0.into()))
+    }
+
+    fn descriptor(&self) -> &DeviceDescriptor {
+        &self.descriptor
+    }
+
+    fn max_transfer(&self) -> usize {
+        usize::try_from(self.client.hello().limits.max_payload)
+            .map_or(8192, |n| n.clamp(64, 65_535))
+    }
+
+    fn caps(&self) -> TransportCaps {
+        TransportCaps {
+            kind: TransportKind::Link,
+            chunked_bulk: false,
+            remote: true,
+        }
+    }
+
+    fn session_id(&self) -> Option<u16> {
+        self.client.session_id()
+    }
+
+    fn carries_pages(&self) -> bool {
+        true
+    }
+
+    fn control_in_paged(
+        &mut self,
+        id: CmdId,
+        value: u16,
+        max_len: u16,
+    ) -> dspi_transport::Result<Vec<u8>> {
+        if max_len == 0 || id.is_legacy() {
+            return Err(TransportError::Stalled { opcode: id.cmd() });
+        }
+        self.exchange(Dir::Get, id, value, max_len, &[])
+    }
+
+    fn control_out_paged(
+        &mut self,
+        id: CmdId,
+        value: u16,
+        data: &[u8],
+    ) -> dspi_transport::Result<()> {
+        if self.reads_only {
+            return Err(TransportError::Remote(format!(
+                "0x{:04X}: background reads only",
+                id.0
+            )));
+        }
+        let Ok(len) = u16::try_from(data.len()) else {
+            return Err(TransportError::Remote(format!(
+                "{} bytes for 0x{:04X} exceed a vendor request",
+                data.len(),
+                id.0
+            )));
+        };
+        if id.is_legacy() || id == dspi_proto::paged::cmds::STORE_ALL_PARAMS_CHUNK {
+            return Err(TransportError::Stalled { opcode: id.cmd() });
+        }
+        self.exchange(Dir::Set, id, value, len, data).map(drop)
+    }
+
+    /// Up to the hub's `max_inflight` less one at once (one slot stays free
+    /// for what a user waits for, as [`BackgroundTransport`]'s).
+    fn control_in_batch_paged(
+        &mut self,
+        reads: &[dspi_transport::PagedRead],
+    ) -> Vec<dspi_transport::Result<Vec<u8>>> {
+        if reads.iter().any(|r| r.len == 0 || r.id.is_legacy()) {
+            return reads
+                .iter()
+                .map(|r| self.control_in_paged(r.id, r.value, r.len))
+                .collect();
+        }
+        let specs: Vec<dspi_link::CmdSpec> = reads
+            .iter()
+            .map(|r| dspi_link::CmdSpec {
+                handle: self.handle,
+                dir: Dir::Get,
+                b_request: r.id.cmd(),
+                w_value: r.value,
+                w_index: r.id.w_index(),
+                w_length: r.len,
+                payload: Vec::new(),
+            })
+            .collect();
+        let slots = self.client.max_inflight().saturating_sub(1).max(1);
+        let answers = self.client.commands_within(&specs, slots);
+        reads
+            .iter()
+            .zip(answers)
+            .map(|(r, a)| {
+                if is_retryable_13(a.status) {
+                    return self.control_in_paged(r.id, r.value, r.len);
+                }
+                settle_paged(r.id, r.len, a.status, a.payload)
+            })
+            .collect()
+    }
+}
+
+// -- WP PGCORE --
+/// The bound device's raw Link wire as `paged::open` gets it: the
+/// [`LinkTransport`] itself, which also tells the supervisor at once when it
+/// finds that the device changed generation (`needs_reattach`), so the core
+/// re-attaches with a new transport and a new `paged::open` instead of
+/// retrying on this one (PLAN-PG section 1.1 step 8).
+struct Watched {
+    inner: LinkTransport,
+    regen: Arc<AtomicBool>,
+    tx: Sender<Msg>,
+}
+
+impl Watched {
+    fn seen<T>(&self, r: dspi_transport::Result<T>) -> dspi_transport::Result<T> {
+        if self.inner.needs_reattach() && !self.regen.swap(true, Ordering::SeqCst) {
+            log::info!("the Link device changed generation: re-attaching");
+            let _ = self.tx.send(Msg::Kick);
+        }
+        r
+    }
+}
+
+impl Transport for Watched {
+    fn control_in(&mut self, opcode: u8, value: u16, len: u16) -> dspi_transport::Result<Vec<u8>> {
+        let r = self.inner.control_in(opcode, value, len);
+        self.seen(r)
+    }
+
+    fn control_in_upto(
+        &mut self,
+        opcode: u8,
+        value: u16,
+        max_len: u16,
+    ) -> dspi_transport::Result<Vec<u8>> {
+        let r = self.inner.control_in_upto(opcode, value, max_len);
+        self.seen(r)
+    }
+
+    fn control_out(&mut self, opcode: u8, value: u16, data: &[u8]) -> dspi_transport::Result<()> {
+        let r = self.inner.control_out(opcode, value, data);
+        self.seen(r)
+    }
+
+    fn descriptor(&self) -> &DeviceDescriptor {
+        self.inner.descriptor()
+    }
+
+    fn max_transfer(&self) -> usize {
+        self.inner.max_transfer()
+    }
+
+    fn notifications(&self) -> Option<Box<dyn dspi_transport::NotificationSource>> {
+        self.inner.notifications()
+    }
+
+    fn caps(&self) -> TransportCaps {
+        self.inner.caps()
+    }
+
+    fn session_id(&self) -> Option<u16> {
+        self.inner.session_id()
+    }
+
+    fn lock(&mut self, reason: &str, timeout: Duration) -> dspi_transport::Result<()> {
+        let r = self.inner.lock(reason, timeout);
+        self.seen(r)
+    }
+
+    fn unlock(&mut self) {
+        self.inner.unlock();
+    }
+
+    fn control_in_batch(
+        &mut self,
+        reads: &[dspi_transport::InRead],
+    ) -> Vec<dspi_transport::Result<Vec<u8>>> {
+        let r = self.inner.control_in_batch(reads);
+        let _ = self.seen(Ok(()));
+        r
+    }
+
+    fn carries_pages(&self) -> bool {
+        self.inner.carries_pages()
+    }
+
+    fn control_in_paged(
+        &mut self,
+        id: CmdId,
+        value: u16,
+        max_len: u16,
+    ) -> dspi_transport::Result<Vec<u8>> {
+        let r = self.inner.control_in_paged(id, value, max_len);
+        self.seen(r)
+    }
+
+    fn control_out_paged(
+        &mut self,
+        id: CmdId,
+        value: u16,
+        data: &[u8],
+    ) -> dspi_transport::Result<()> {
+        let r = self.inner.control_out_paged(id, value, data);
+        self.seen(r)
+    }
+
+    fn control_in_batch_paged(
+        &mut self,
+        reads: &[dspi_transport::PagedRead],
+    ) -> Vec<dspi_transport::Result<Vec<u8>>> {
+        let r = self.inner.control_in_batch_paged(reads);
+        let _ = self.seen(Ok(()));
+        r
     }
 }
 
@@ -3268,6 +3764,10 @@ impl SideChannel for LinkSide {
 
     // -- WP LK4 --
     fn background(self: Arc<Self>) -> Option<Box<dyn Transport>> {
+        // -- WP PGCORE -- a paged device's reads go through the adapter
+        if let Some(paged) = self.paged_view(true) {
+            return Some(Box::new(paged));
+        }
         Some(Box::new(BackgroundTransport { side: self }))
     }
 
@@ -3575,6 +4075,14 @@ impl Transport for RtaLinkTransport {
                 data.len()
             )));
         };
+        // -- WP PGCORE -- planned on a paged device
+        if let Some(mut paged) = self.side.paged_view(false) {
+            let r = paged.control_out(opcode, value, data);
+            if opcode == op::REQ_RTA_SET_CONFIG {
+                self.side.forget_bands();
+            }
+            return r;
+        }
         let r = self.side.client.command(
             self.side.handle,
             Dir::Set,
@@ -3803,3 +4311,9 @@ mod tests_wp_lkui1;
 #[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
 #[path = "alink/tests_wp_hwlk1f.rs"]
 mod tests_wp_hwlk1f;
+
+// -- WP PGCORE --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
+#[path = "link/tests_wp_pgcore.rs"]
+mod tests_wp_pgcore;

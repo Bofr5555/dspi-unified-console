@@ -119,8 +119,15 @@ fn wp_lk4_select_binds_on_the_snapshot_and_the_meters_run_before_the_probe_compl
     // Bound on the identity and the snapshot: no feature read yet, the
     // mirror shows the device's settings, and fetch_all reads nothing more
     assert_eq!(ran(&hub, probe_op), 0, "the select read only what binds");
-    // The hub lists the identity: not even GET_PLATFORM before the bind
-    assert_eq!(hub.log().len(), 0, "the snapshot alone: {:02X?}", hub.log());
+    // The hub lists the serial: -- WP PGCORE -- and the platform is the
+    // device's own 8 bytes (the board id, PLAN-PG R7c), one read beside the
+    // snapshot, and the only one
+    assert_eq!(
+        hub.log().iter().map(|e| e.2).collect::<Vec<_>>(),
+        vec![op::REQ_GET_PLATFORM],
+        "the snapshot and the platform: {:02X?}",
+        hub.log()
+    );
     core.fetch_all().unwrap();
     assert_eq!(
         core.get_state().num_channels,
@@ -533,7 +540,9 @@ fn wp_lk4_the_listed_identity_is_the_platform_reply_the_device_gives() {
         state: "online".into(),
         ..DeviceInfo::default()
     };
-    let l = listed_identity(&d).unwrap();
+    // -- WP PGCORE -- the hub's listing is a cross-check now (the bind takes
+    // the device's own 8 bytes, `listed_identity`)
+    let l = hub_listed_identity(&d).unwrap();
     assert_eq!(l.platform, vec![1, 1, 0x16, 9, 1, 6, 5]);
     assert_eq!(l.serial, "ABC");
     // Anything missing or odd: the bind reads the device instead
@@ -563,7 +572,7 @@ fn wp_lk4_the_listed_identity_is_the_platform_reply_the_device_gives() {
             ..d.clone()
         },
     ] {
-        assert!(listed_identity(&odd).is_none(), "{odd:?}");
+        assert!(hub_listed_identity(&odd).is_none(), "{odd:?}");
     }
 }
 
@@ -1070,4 +1079,37 @@ fn wp_lk4_a_second_fetch_all_in_the_window_keeps_the_users_value() {
         (after.preset_startup_mode, after.preset_default_slot),
         (mode, 2)
     );
+}
+
+// -- WP PGCORE --
+#[test]
+fn wp_pgcore_the_bind_identity_is_the_devices_own_platform_with_the_listed_serial() {
+    let d = DeviceInfo {
+        handle: 0,
+        serial: "ABC".into(),
+        platform: Some(1),
+        fw: Some("1.1.6".into()),
+        fw_beta: Some(5),
+        outputs: Some(9),
+        inputs: Some(8),
+        state: "online".into(),
+        ..DeviceInfo::default()
+    };
+    // Eight bytes: byte 7 is the board id, which the hub's 7 cannot carry
+    let own = vec![1, 1, 0x16, 9, 1, 6, 5, 1];
+    let l = listed_identity(&d, own.clone()).unwrap();
+    assert_eq!((l.platform, l.serial.as_str()), (own.clone(), "ABC"));
+    // The device's word wins over a listing that differs
+    let other = DeviceInfo {
+        fw: Some("1.1.5".into()),
+        ..d.clone()
+    };
+    assert_eq!(listed_identity(&other, own.clone()).unwrap().platform, own);
+    // No serial listed, or a reply that does not decode: the bind reads
+    let unnamed = DeviceInfo {
+        serial: String::new(),
+        ..d.clone()
+    };
+    assert!(listed_identity(&unnamed, own).is_none());
+    assert!(listed_identity(&d, vec![1, 2]).is_none());
 }

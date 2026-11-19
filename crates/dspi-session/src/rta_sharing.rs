@@ -639,6 +639,46 @@ impl Transport for Held<'_> {
     fn session_id(&self) -> Option<u16> {
         self.t.session_id()
     }
+
+    // -- WP PGCORE -- the paged calls pass: the engine's own pushes are
+    // 1.1.6-shaped (`REQ_RTA_SET_CONFIG`, held above), planned below this
+    // by the generation wrapper; a paged call here is someone's raw one.
+    fn carries_pages(&self) -> bool {
+        self.t.carries_pages()
+    }
+
+    fn control_in_paged(
+        &mut self,
+        id: dspi_transport::CmdId,
+        value: u16,
+        max_len: u16,
+    ) -> dspi_transport::Result<Vec<u8>> {
+        self.t.control_in_paged(id, value, max_len)
+    }
+
+    fn control_out_paged(
+        &mut self,
+        id: dspi_transport::CmdId,
+        value: u16,
+        data: &[u8],
+    ) -> dspi_transport::Result<()> {
+        self.t.control_out_paged(id, value, data)
+    }
+
+    fn control_in_batch_paged(
+        &mut self,
+        reads: &[dspi_transport::PagedRead],
+    ) -> Vec<dspi_transport::Result<Vec<u8>>> {
+        self.t.control_in_batch_paged(reads)
+    }
+
+    fn generation(&self) -> Option<dspi_transport::Generation> {
+        self.t.generation()
+    }
+
+    fn paged_discovery(&self) -> Option<dspi_transport::paged::Discovery> {
+        self.t.paged_discovery()
+    }
 }
 
 #[cfg(test)]
@@ -2474,5 +2514,36 @@ mod tests_wp_corenits {
         assert_eq!(s.own_pushes.last().map(|p| p.config.channel_mask), Some(20));
         s.reset();
         assert!(s.own_pushes.is_empty());
+    }
+}
+
+// -- WP PGCORE --
+#[cfg(test)]
+mod tests_wp_pgcore {
+    use super::*;
+    use dspi_transport::FakeDevice;
+    use dspi_transport::fake::FakeGeneration;
+
+    /// One poll's view of a paged device says what it is and passes the
+    /// paged calls.
+    #[test]
+    fn wp_pgcore_held_passes_the_generation_and_the_paged_calls() {
+        for generation in FakeGeneration::ALL {
+            let mut t =
+                dspi_transport::paged::open(Box::new(FakeDevice::demo_generation(generation)))
+                    .unwrap();
+            let mut share = PollShare::default();
+            let mut held = Held::new(&mut *t, &mut share);
+            assert_eq!(held.carries_pages(), generation.is_paged());
+            assert_eq!(held.generation(), t_generation(generation));
+            assert_eq!(held.paged_discovery().is_some(), generation.is_paged());
+            let r = held.control_in_paged(dspi_proto::paged::cmds::ROUTE_MASTER_VOLUME, 0, 4);
+            assert_eq!(r.is_ok(), generation.is_paged(), "{generation:?}: {r:?}");
+        }
+    }
+
+    fn t_generation(g: FakeGeneration) -> Option<dspi_transport::Generation> {
+        let t = dspi_transport::paged::open(Box::new(FakeDevice::demo_generation(g))).unwrap();
+        t.generation()
     }
 }

@@ -230,6 +230,12 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
         return inner.rawSet(opcode, value, data)
     }
 
+    // -- WP PGCORE -- a raw paged SET is a write, as rawSet
+    override fun rawSetId(id: Int, value: Int, data: List<Int>) {
+        guard("rawSetId")
+        return inner.rawSetId(id, value, data)
+    }
+
     override fun applyAllParams() {
         guard("applyAllParams")
         return inner.applyAllParams()
@@ -1099,7 +1105,9 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "measureTuneSumCheck",
             "measureTuneApply",
             "measureTuneVerify",
-            "measureTuneAb"
+            "measureTuneAb",
+            // -- WP PGCORE -- a raw paged SET
+            "rawSetId"
         )
 
         /** Core methods that only read, compute locally, manage listeners or the connection, or reboot into the bootloader. */
@@ -1564,7 +1572,11 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "measureTuneState",
             "measureTuneKeep",
             "measureTuneRevert",
-            "measureTuneStop"
+            "measureTuneStop",
+            // -- WP PGCORE -- a raw paged GET (every paged GET reads) and the
+            // connection's protocol generation (no traffic)
+            "rawGetId",
+            "deviceProtocol"
         )
 
         /** Control-surface operations that only read the device (`cs.rs`, `cs_op`). */

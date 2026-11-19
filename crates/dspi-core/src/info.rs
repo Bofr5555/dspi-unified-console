@@ -761,3 +761,78 @@ impl DspiCore {
             .map_err(DspiError::from)
     }
 }
+
+// -- WP PGCORE --
+// The connection's protocol generation for a client's device info (PLAN-PG
+// sections 1.1 and 1.3): from the generation wrapper `paged::open` made,
+// through every wrapper above it, with no traffic.
+#[cfg_attr(feature = "uniffi", uniffi::export)]
+impl DspiCore {
+    /// The open device's protocol: its generation, the paged protocol's
+    /// version and pages, and how the extension channel is reached. No
+    /// traffic. Errors: [`DspiError::Disconnected`] with nothing open.
+    pub fn device_protocol(&self) -> Result<DeviceProtocol> {
+        let mut inner = self.lock();
+        let conn = inner.conn()?;
+        Ok(protocol_of(conn))
+    }
+}
+
+impl DspiCore {
+    // -- WP PGCORE --
+    /// The open connection's generation as its transport reports it
+    /// (`Transport::generation`), `None` with nothing open or a path that
+    /// does not say. For a binding's own transport over the core (the
+    /// Terminal's); not exported.
+    #[doc(hidden)]
+    pub fn connection_protocol_generation(&self) -> Option<dspi_transport::Generation> {
+        let mut inner = self.lock();
+        inner.conn().ok()?.transport().generation()
+    }
+
+    // -- WP PGCORE --
+    /// The open connection's paged discovery (`Transport::paged_discovery`),
+    /// `None` on a legacy device or with nothing open. Not exported.
+    #[doc(hidden)]
+    pub fn connection_paged_discovery(&self) -> Option<dspi_transport::paged::Discovery> {
+        let mut inner = self.lock();
+        inner.conn().ok()?.transport().paged_discovery()
+    }
+}
+
+// -- WP PGCORE --
+/// [`DspiCore::device_protocol`] of `conn`.
+pub(crate) fn protocol_of(conn: &mut Connection) -> DeviceProtocol {
+    use dspi_transport::Generation;
+    let has_ext = !conn.ext.supported.is_empty();
+    let t = conn.transport();
+    let (generation, protocol_major, protocol_minor) = match t.generation() {
+        Some(Generation::Legacy) => (ProtocolGeneration::Legacy, 0, 0),
+        Some(Generation::Paged(info)) => (ProtocolGeneration::Paged, info.major, info.minor),
+        None => (ProtocolGeneration::Unknown, 0, 0),
+    };
+    let pages = t
+        .paged_discovery()
+        .map(|d| {
+            d.pages
+                .pages()
+                .map(|p| DevicePage {
+                    page: p.page,
+                    revision: p.revision,
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    let ext_envelope = match (has_ext, generation) {
+        (false, _) => ExtEnvelope::NoChannel,
+        (true, ProtocolGeneration::Paged) => ExtEnvelope::Tunnel,
+        (true, _) => ExtEnvelope::Legacy,
+    };
+    DeviceProtocol {
+        generation,
+        protocol_major,
+        protocol_minor,
+        pages,
+        ext_envelope,
+    }
+}

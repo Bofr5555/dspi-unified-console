@@ -210,9 +210,9 @@ impl DspiError {
             Self::Link { code, .. } | Self::AutoEq { code, .. } => Some(code.as_str()),
             Self::InstallerLock { code, .. } => Some(code.as_str()), // -- WP P1LK --
             // -- WP PGWIRE -- `paged::open`'s refusals keep their words
-            Self::Transfer { msg } => {
-                dspi_transport::paged::Refusal::of_text(msg).map(|r| r.code())
-            }
+            Self::Transfer { msg } => dspi_transport::paged::Refusal::of_text(msg)
+                .map(|r| r.code())
+                .or_else(|| link_notice_code(msg)), // -- WP PGCORE --
             _ => None,
         };
         code.map(|c| format!("{kind}.{c}"))
@@ -296,10 +296,33 @@ fn hub_refusal(e: &TransportError) -> Option<DspiError> {
     })
 }
 
+// -- WP PGCORE --
+/// The code of the DSPi Link notice whose words are `msg`
+/// ([`dspi_transport::link::LinkNotice`]): its key is `transfer.<code>`.
+#[cfg(feature = "link")]
+fn link_notice_code(msg: &str) -> Option<&'static str> {
+    dspi_transport::link::LinkNotice::of_text(msg).map(|n| n.code())
+}
+
+// -- WP PGCORE --
+/// A build without DSPi Link has no Link notices.
+#[cfg(not(feature = "link"))]
+fn link_notice_code(_msg: &str) -> Option<&'static str> {
+    None
+}
+
 impl From<TransportError> for DspiError {
     fn from(e: TransportError) -> Self {
         if let Some(mapped) = hub_refusal(&e) {
             return mapped; // -- WP P1DKFIX -- F5
+        }
+        // -- WP PGCORE -- a DSPi Link notice keeps its words exactly, so its
+        // notice row is found by them (`notice_key`)
+        #[cfg(feature = "link")]
+        if let Some(n) = dspi_transport::link::LinkNotice::of(&e) {
+            return DspiError::Transfer {
+                msg: n.text().to_owned(),
+            };
         }
         match e {
             TransportError::Disconnected
@@ -438,5 +461,28 @@ mod tests_wp_pgwire {
         // Another incompatibility keeps the plain key.
         let other = DspiError::from(TransportError::Incompatible("wire V12".into()));
         assert_eq!(other.notice_key(), "transfer");
+    }
+}
+
+// -- WP PGCORE --
+#[cfg(all(test, feature = "link"))]
+mod tests_wp_pgcore {
+    use super::*;
+    use dspi_transport::link::LinkNotice;
+
+    /// Each DSPi Link notice of the client (PGLINKC) has its own row, found
+    /// by its words through `LinkNotice::of`, and its words are the detail.
+    #[test]
+    fn wp_pgcore_the_link_notices_have_their_rows() {
+        for n in LinkNotice::ALL {
+            let e = DspiError::from(n.error());
+            let key = format!("transfer.{}", n.code());
+            assert_eq!(e.notice_key(), key);
+            assert!(crate::notice_text::has_row(&key), "{key}");
+            assert_eq!(e.notice_detail(), n.text());
+            let notice = crate::notice_text::notice_for(e);
+            assert_eq!(notice.key, key);
+            assert!(!notice.title.is_empty() && !notice.action.is_empty());
+        }
     }
 }

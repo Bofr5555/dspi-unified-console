@@ -268,6 +268,12 @@ struct ProbeKey {
     /// with a paged device's protocol version and page count: a probe made
     /// on one generation never describes a device on the other (PLAN-PG R6a).
     generation: Option<dspi_transport::Generation>,
+    // -- WP PGCORE --
+    /// A paged device's page list with each page's revision
+    /// ([`Transport::paged_discovery`]); `None` on a legacy one. A re-flash
+    /// that keeps the protocol version but adds or bumps a page is another
+    /// firmware (PLAN-PG section 1.1 step 7).
+    pages: Option<Vec<dspi_proto::paged::PageRev>>,
 }
 
 /// A probe kept to describe the same device again without its feature reads
@@ -342,6 +348,8 @@ pub struct Quick {
     // -- WP PGWIRE --
     /// The generation of the transport the identity was read on.
     generation: Option<dspi_transport::Generation>,
+    /// -- WP PGCORE -- and its page list ([`ProbeKey`]).
+    pages: Option<Vec<dspi_proto::paged::PageRev>>,
 }
 
 impl Quick {
@@ -363,6 +371,7 @@ impl Quick {
             header: *self.image.packet.header(),
             device_version: self.image.device_version,
             generation: self.generation, // -- WP PGWIRE --
+            pages: self.pages.clone(),   // -- WP PGCORE --
         };
         let (key, ext) = self.reused.unwrap_or((key, ExtState::default()));
         Probed {
@@ -451,9 +460,13 @@ pub fn probe_quick(
     };
     // -- WP PGWIRE -- the generation is part of the key
     let generation = t.generation();
+    let pages = page_list(t); // -- WP PGCORE --
     let again = reuse
         .filter(|r| {
-            r.key.platform == platform && r.key.serial == serial && r.key.generation == generation
+            r.key.platform == platform
+                && r.key.serial == serial
+                && r.key.generation == generation
+                && r.key.pages == pages // -- WP PGCORE --
         })
         .and_then(|r| {
             let mut answers = extra.into_iter();
@@ -487,6 +500,7 @@ pub fn probe_quick(
             serial,
             reused: Some((r.key.clone(), r.ext.clone())),
             generation,
+            pages, // -- WP PGCORE --
         });
     }
     let caps = Capabilities {
@@ -519,7 +533,14 @@ pub fn probe_quick(
         serial,
         reused: None,
         generation,
+        pages, // -- WP PGCORE --
     })
+}
+
+// -- WP PGCORE --
+/// The connection's page list with revisions, `None` on a legacy device.
+fn page_list(t: &dyn Transport) -> Option<Vec<dspi_proto::paged::PageRev>> {
+    t.paged_discovery().map(|d| d.pages.pages().collect())
 }
 
 /// The rest of [`probe_connect`] after [`probe_quick`]: the features, the
@@ -541,6 +562,7 @@ pub fn probe_rest(t: &mut dyn Transport, quick: &Quick) -> Result<Completed> {
         header: *quick.image.packet.header(),
         device_version: quick.image.device_version,
         generation: quick.generation, // -- WP PGWIRE --
+        pages: quick.pages.clone(),   // -- WP PGCORE --
     };
     Ok(Completed {
         caps,
@@ -2126,5 +2148,46 @@ mod tests_wp_pgwire {
                 .unwrap()
                 .reused
         );
+    }
+}
+
+// -- WP PGCORE --
+/// WP PGCORE: the re-attach shortcut is keyed by the page list too (PLAN-PG
+/// section 1.1 step 7): a paged device whose pages or revisions changed is
+/// probed in full.
+#[cfg(test)]
+mod tests_wp_pgcore {
+    use super::*;
+    use dspi_transport::FakeDevice;
+    use dspi_transport::fake::FakeGeneration;
+
+    fn opened(generation: FakeGeneration) -> Box<dyn Transport> {
+        dspi_transport::paged::open(Box::new(FakeDevice::demo_generation(generation))).unwrap()
+    }
+
+    #[test]
+    fn wp_pgcore_a_reusable_is_keyed_by_the_page_list() {
+        let mut first = opened(FakeGeneration::STOCK117);
+        let reuse = probe_connect(&mut *first, &mut |_| {}, None)
+            .unwrap()
+            .reusable()
+            .unwrap();
+        assert!(reuse.key.pages.as_ref().is_some_and(|p| !p.is_empty()));
+        // The same firmware: reused
+        let mut again = opened(FakeGeneration::STOCK117);
+        assert!(
+            probe_connect(&mut *again, &mut |_| {}, Some(&reuse))
+                .unwrap()
+                .reused
+        );
+        // A later page revision, the same protocol version: probed in full
+        let mut bumped = opened(FakeGeneration::Stock117 { revision: 200 });
+        let p = probe_connect(&mut *bumped, &mut |_| {}, Some(&reuse)).unwrap();
+        assert!(!p.reused);
+        assert_ne!(p.key.pages, reuse.key.pages);
+        // A legacy device has none
+        let mut old = opened(FakeGeneration::Bofr116 { page_guard: true });
+        let p = probe_connect(&mut *old, &mut |_| {}, None).unwrap();
+        assert_eq!(p.key.pages, None);
     }
 }

@@ -446,6 +446,18 @@ pub trait Transport: Send {
             .map(|r| self.control_in_paged(r.id, r.value, r.len))
             .collect()
     }
+
+    // -- WP PGCORE --
+    /// What [`paged::open`] read from a paged device at connect (its probe
+    /// answer, the page list with revisions and command bitmaps,
+    /// `SYS.PLATFORM`), for the layers above that show it or plan with it:
+    /// the core's device info, the DSPi Link side channel's polls, the
+    /// probe's reuse key. `None` for a legacy device, a raw wire and a
+    /// wrapper that does not say. It belongs to this connection only (PLAN-PG
+    /// section 1.1 step 7).
+    fn paged_discovery(&self) -> Option<paged::Discovery> {
+        None
+    }
 }
 
 // -- WP PGADAPT --

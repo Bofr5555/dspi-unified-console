@@ -1528,3 +1528,68 @@ pub struct LinkTxtRecord {
     /// for an upstream hub.
     pub tls_advertised: bool,
 }
+
+// -- WP PGCORE --
+/// Which protocol generation the open connection's device speaks, as the
+/// connect's probe decided it (PLAN-PG section 1.1).
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ProtocolGeneration {
+    /// Not said: a path that does not report it (a host-supplied transport).
+    #[default]
+    Unknown,
+    /// Firmware 1.1.6 and older: the 1.1.6 opcodes only.
+    Legacy,
+    /// Firmware 1.1.7 and later: the paged protocol.
+    Paged,
+}
+
+// -- WP PGCORE --
+/// How the open device's extension channel is reached (PLAN-PG section 1.3).
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ExtEnvelope {
+    /// No extension channel (stock firmware).
+    #[default]
+    NoChannel,
+    /// `REQ_EXTENSION` 0x00 on a 1.1.6-generation device.
+    Legacy,
+    /// The tunnel `0xE010` on page `0xE0` of a paged device.
+    Tunnel,
+}
+
+// -- WP PGCORE --
+/// One page a paged device implements, from its `SYS.PAGE_LIST`.
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DevicePage {
+    /// The page number (1 `SYS`, 5 `ROUTE`, `0xE0` our extensions, ...).
+    pub page: u8,
+    /// The device's revision of it.
+    pub revision: u8,
+}
+
+// -- WP PGCORE --
+/// The open connection's protocol, for a client's device-info row
+/// ([`crate::DspiCore::device_protocol`]). Read once at connect, never
+/// cached across connections.
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeviceProtocol {
+    /// The generation the probe decided.
+    pub generation: ProtocolGeneration,
+    /// The paged protocol's major and minor (`SYS.PROTOCOL_INFO`); 0 and 0
+    /// on a legacy device.
+    pub protocol_major: u8,
+    /// See `protocol_major`.
+    pub protocol_minor: u8,
+    /// A paged device's pages with their revisions, ascending; empty on a
+    /// legacy device.
+    pub pages: Vec<DevicePage>,
+    /// How the extension channel is reached.
+    pub ext_envelope: ExtEnvelope,
+}
