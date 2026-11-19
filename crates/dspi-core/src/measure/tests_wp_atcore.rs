@@ -104,6 +104,10 @@ struct Faults {
     demo_ready: u32,
     /// `system.status` answers `rate_limited` this many times first.
     status_rate_limited: u32,
+    // -- review AT-E --
+    /// `(unit, ms)`: the hub reports this unit's `out.delay` that much
+    /// larger than what it plays with (a wrong term).
+    term_lie_ms: Option<(usize, f32)>,
 }
 
 struct Stub {
@@ -596,14 +600,25 @@ impl Stub {
             })),
             "param.get_many" => {
                 let serial = body["serial"].as_str().unwrap_or("").to_owned();
-                let u = self.units.iter().find(|u| u.serial == serial).unwrap();
+                let (ui, u) = self
+                    .units
+                    .iter()
+                    .enumerate()
+                    .find(|(_, u)| u.serial == serial)
+                    .unwrap();
+                // -- review AT-E --
+                let lie = self
+                    .faults
+                    .term_lie_ms
+                    .filter(|(x, _)| *x == ui)
+                    .map_or(0.0, |(_, ms)| ms);
                 let values: Vec<Value> = body["items"]
                     .as_array()
                     .unwrap()
                     .iter()
                     .map(|it| {
                         let o = it["idx"][0].as_u64().unwrap() as usize;
-                        json!({"path": "out.delay", "idx": [o], "ok": true, "value": u.out_delay_ms[o]})
+                        json!({"path": "out.delay", "idx": [o], "ok": true, "value": u.out_delay_ms[o] + lie})
                     })
                     .collect();
                 Ok(json!({"serial": serial, "values": values}))
@@ -2011,6 +2026,15 @@ fn review_atd1_an_arrival_at_the_end_of_the_analysed_span_is_not_offered() {
     );
     let p = o.proposal("admin");
     assert!(!p.offered && p.arrivals.is_empty(), "{p:?}");
+    // -- review AT-E -- nor is the cross-unit delay shown as offered.
+    assert!(
+        o.result
+            .delays
+            .iter()
+            .all(|d| !d.offered && d.reason.contains("too long after")),
+        "{:?}",
+        o.result.delays
+    );
 }
 
 /// Two outputs of opposite polarity, their arrivals brought together by the
@@ -2665,4 +2689,51 @@ fn wp_atlate_a_lateness_past_what_a_run_plans_for_is_refused_before_it_plays() {
     );
     // No terms: as before this WP.
     assert!(p.lateness(&part, &[None, None]).is_empty());
+}
+
+// -- review AT-E --
+/// The lateness is planned from the engine's terms, so a wrong term moves
+/// where the analysis looks. It must never make a wrong arrival offered:
+/// with either unit's `out.delay` reported 60 ms to 900 ms larger than what
+/// it plays with, the run either fails, or offers nothing, or its measured
+/// arrivals (on the timeline, before any term is taken off) are right.
+/// 60 ms is inside the analysed span: found where it is, so the test is seen
+/// to measure; from 100 ms on the AT-D1 guard or the cycle search refuses;
+/// between them (the guard's 15 ms) either, never a wrong arrival offered.
+#[test]
+fn review_ate_a_lateness_planned_from_a_wrong_term_never_offers_a_wrong_arrival() {
+    let s = setup(&[("A", &[0]), ("B", &[0])]);
+    for which in [0usize, 1] {
+        for lie in [60.0f32, 86.0, 93.0, 100.0, 150.0, 400.0, 900.0] {
+            // A is 2 ms of air further than B.
+            let mut hub = pair_apart(2.0);
+            hub.0.lock().unwrap().faults.term_lie_ms = Some((which, lie));
+            let (sess, out) = measure(&mut hub, &s);
+            let Some(o) = out else {
+                let st = sess.state();
+                eprintln!("unit {which} +{lie} ms: no result: {:?}", st.issue);
+                assert_ne!(st.phase, MeasureSystemPhase::Done, "unit {which} +{lie} ms");
+                assert!(lie >= 100.0, "unit {which} +{lie} ms: {:?}", st.issue);
+                continue;
+            };
+            let (a, b) = (arrival(&o, "A", 0), arrival(&o, "B", 0));
+            let right = (a.measured_us - b.measured_us - 2_000.0).abs() < 3.0;
+            let offered = o.result.arrivals.iter().any(|x| x.offered)
+                || o.result.delays.iter().any(|d| d.offered);
+            eprintln!(
+                "unit {which} +{lie} ms: offered {offered}, right {right}: A {:.1} us, B {:.1} us, {:?}",
+                a.measured_us, b.measured_us, o.result.reasons
+            );
+            assert!(right || !offered, "unit {which} +{lie} ms: {a:?} {b:?}");
+            if lie <= 60.0 {
+                assert!(right && offered, "unit {which} +{lie} ms: {a:?} {b:?}");
+            } else if lie >= 100.0 {
+                // Found at the span's end or not at all: nothing is offered,
+                // right or not.
+                assert!(!offered, "unit {which} +{lie} ms: {:?}", o.result);
+                let p = o.proposal("admin");
+                assert!(!p.offered && p.arrivals.is_empty(), "{p:?}");
+            }
+        }
+    }
 }

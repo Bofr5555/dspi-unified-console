@@ -757,15 +757,24 @@ impl Outcome {
         let delays: Vec<MeasureSystemDelay> = runs_done
             .iter()
             .flat_map(|r| r.analysis.delays.iter())
-            .map(|d| MeasureSystemDelay {
-                from_serial: serial(usize::from(d.from.unit.0)),
-                from_output: d.from.output,
-                to_serial: serial(usize::from(d.to.unit.0)),
-                to_output: d.to.output,
-                delay_us: d.delay_ms * 1000.0,
-                uncertainty_us: d.uncertainty_us,
-                offered: d.offered,
-                reason: d.reason.clone(),
+            .map(|d| {
+                // -- review AT-E -- as the arrivals (review AT-D1): with an
+                // output cut at the end of what the analysis kept, no
+                // cross-unit delay of the group is shown as offered either.
+                let (offered, reason) = match cut.first() {
+                    Some(why) => (false, why.clone()),
+                    None => (d.offered, d.reason.clone()),
+                };
+                MeasureSystemDelay {
+                    from_serial: serial(usize::from(d.from.unit.0)),
+                    from_output: d.from.output,
+                    to_serial: serial(usize::from(d.to.unit.0)),
+                    to_output: d.to.output,
+                    delay_us: d.delay_ms * 1000.0,
+                    uncertainty_us: d.uncertainty_us,
+                    offered,
+                    reason,
+                }
             })
             .collect();
         // The inter-unit transitions (R8d).
