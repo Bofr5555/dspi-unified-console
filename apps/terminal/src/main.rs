@@ -114,6 +114,8 @@ mod usb_direct_gen;
 mod core_route;
 // -- WP P2TM -- `uconsole api`: any hub API message
 mod api;
+// -- WP P5TM -- `uconsole measure`: measurement documents and the tune
+mod measure;
 
 use dspi_cmd::COMMAND;
 use std::process::ExitCode;
@@ -290,6 +292,8 @@ fn main() -> ExitCode {
         Some("status") => pro::cmd_status(target, &flags, json),
         // -- WP AUSB3 -- writes files only; opens no unit
         Some("usb-direct") => usb_direct_gen::run(&flags, json),
+        // -- WP P5TM -- measurement documents and the auto-tune
+        Some("measure") => measure::run(target, &flags, json),
         // No arguments opens the interface; arguments run one command and exit.
         None => cmd_tui(target, &flags, palette),
         Some(other) if other.starts_with("--") => cmd_tui(target, &flags, palette),
@@ -336,6 +340,8 @@ fn is_command_word(word: &str) -> bool {
         "mode",
         // -- WP AUSB3 --
         "usb-direct",
+        // -- WP P5TM --
+        "measure",
     ];
     TERMINAL_VERBS.contains(&word)
         || dspi_cmd::VERBS.iter().any(|(n, _)| *n == word)
@@ -647,6 +653,13 @@ USAGE:
                              over --link: the modes the hub pins per role
                              (viewer, control, admin; Admin of the hub only)
     {COMMAND} status          the connection, device, limits, lock and audio link
+    {COMMAND} measure mic import <file> | target import <file> | docs [--kind k]
+             | show <id> | export <id> --output N [file|-]
+             | tune <id> [--dry-run] [--guard S] | run (--demo only)
+                             measurement, microphone and target documents, and
+                             the auto-tune from a measurement: every change in
+                             words, applied as one undo step that goes back
+                             unless you type keep ({COMMAND} measure --help)
     {COMMAND} cs export <file|-> write the control-surface configuration
     {COMMAND} cs import <file|-> apply one, live; bindings move pins, so only here
                              (--dry-run to report only, --save to store it)
