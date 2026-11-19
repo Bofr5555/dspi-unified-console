@@ -847,6 +847,44 @@ mod tests_wp_pghpol {
         }
     }
 
+    /// review/pgb: the same against expectations that do not come from the
+    /// file: the table's size and class counts at DSPi-Link `4aec5ab`, and the
+    /// rows spec 1.3 names (a re-vendor that changes them fails on purpose).
+    #[test]
+    fn wp_pghpol_the_1_3_table_is_the_one_vendored() {
+        let rows = rows13();
+        let count = |key: &str, class: &str| {
+            rows.iter()
+                .filter(|r| r["classes"][key].as_str() == Some(class))
+                .count()
+        };
+        assert_eq!(rows.len(), 211);
+        assert_eq!(
+            (
+                count("get", "read"),
+                count("set", "control"),
+                count("set", "config")
+            ),
+            (188, 106, 45)
+        );
+        assert_eq!(
+            count("get", "control") + count("get", "config") + count("set", "read"),
+            0
+        );
+        let p = Policy::embedded();
+        for (cid, set) in [
+            (0x0130u16, Class::Config), // SYS.ENTER_BOOTLOADER
+            (0x0230, Class::Config),
+            (0x0420, Class::Config),
+            (0x0220, Class::Config),
+            (0x0711, Class::Control),
+            (0x0240, Class::Control), // STORE.ALL_PARAMS
+        ] {
+            assert_eq!(p.classify_id(CmdId(cid), Dir::Set), set, "{cid:#06x}");
+        }
+        assert_eq!(p.classify_id(CmdId(0x0240), Dir::Get), Class::Read);
+    }
+
     /// R8a: every registry id the vendored 1.3 table lacks (today the 13 pin
     /// commands of 2026-11-18) is `config` both ways; every 1.3 row is a registry id.
     #[test]

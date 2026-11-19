@@ -452,9 +452,12 @@ fn wp_pgadapt_never_sent_locally_refused() {
                 t.control_out_paged(cmds::FILTER_BAND, 0, &band),
                 Err(TransportError::Refused { result, .. }) if result == VC_ERR_VALUE
             ));
-            // The 1.1.6 call with a NaN: answered as 1.1.6 would (an ACK
-            // or a STALL), with nothing sent.
-            let _ = t.control_out(op::REQ_SET_MASTER_VOLUME, 0, &bad.to_le_bytes());
+            // The 1.1.6 call with a NaN: nothing sent, and never an ACK for
+            // a write that did not happen (review/pgb).
+            assert!(matches!(
+                t.control_out(op::REQ_SET_MASTER_VOLUME, 0, &bad.to_le_bytes()),
+                Err(TransportError::Stalled { .. })
+            ));
         }
         assert!(matches!(
             t.control_out_paged(cmds::ROUTE_MASTER_VOLUME, 0, &[0; 6]),
@@ -800,6 +803,86 @@ impl Transport for Busy {
         }
         self.inner.control_out_paged(id, v, d)
     }
+}
+
+/// As a USB device that is busy: STALLs the next `left` paged SETs without
+/// running them and names `code` in `SYS.LAST_RESULT` (review/pgb).
+struct UsbBusy {
+    inner: FakeDevice,
+    left: Arc<AtomicU32>,
+    code: u8,
+    stalled: Option<(CmdId, u16)>,
+    sets: Arc<AtomicU32>,
+}
+
+impl Transport for UsbBusy {
+    forward!();
+    fn control_in_paged(&mut self, id: CmdId, v: u16, l: u16) -> Result<Vec<u8>> {
+        if id == cmds::SYS_LAST_RESULT
+            && let Some((sid, sv)) = self.stalled
+        {
+            let (i, w) = (sid.0.to_le_bytes(), sv.to_le_bytes());
+            return Ok(vec![i[0], i[1], 0, self.code, w[0], w[1], 0, 0]);
+        }
+        self.inner.control_in_paged(id, v, l)
+    }
+    fn control_out_paged(&mut self, id: CmdId, v: u16, d: &[u8]) -> Result<()> {
+        self.sets.fetch_add(1, Ordering::SeqCst);
+        if self.left.load(Ordering::SeqCst) > 0 {
+            self.left.fetch_sub(1, Ordering::SeqCst);
+            self.stalled = Some((id, v));
+            return Err(TransportError::Stalled { opcode: id.cmd() });
+        }
+        self.stalled = None;
+        self.inner.control_out_paged(id, v, d)
+    }
+}
+
+/// review/pgb: a 1.1.6-shaped write on a `direct` row that the device
+/// STALLs with `VC_ERR_BUSY` (a band write still pending, guide 5.8) is
+/// retried and lands; one still busy after the retries is an error, never an
+/// ACK for a write that did not happen. A refusal 1.1.6 ignored too
+/// (`VC_ERR_ADDRESS`) stays swallowed.
+#[test]
+fn wp_pgadapt_a_busy_direct_write_is_retried_and_never_reported_done() {
+    let mk = |code: u8| {
+        let dev = FakeDevice::demo_generation(FakeGeneration::STOCK117);
+        let (left, sets) = (Arc::new(AtomicU32::new(0)), Arc::new(AtomicU32::new(0)));
+        let busy = UsbBusy {
+            inner: dev,
+            left: Arc::clone(&left),
+            code,
+            stalled: None,
+            sets: Arc::clone(&sets),
+        };
+        (open(Box::new(busy)).unwrap(), left, sets)
+    };
+    let opcode = direct_onto(cmds::FILTER_BAND_BYPASS, false);
+    // Busy once: the write is sent again and lands.
+    let (mut t, left, sets) = mk(VC_ERR_BUSY);
+    left.store(1, Ordering::SeqCst);
+    t.control_out(opcode, 0x0100, &[1]).unwrap();
+    assert_eq!(sets.load(Ordering::SeqCst), 2, "sent again after the busy");
+    assert_eq!(
+        t.control_in(direct_onto(cmds::FILTER_BAND_BYPASS, true), 0x0100, 1)
+            .unwrap(),
+        vec![1]
+    );
+    // Busy for good: an error.
+    let (mut t, left, _) = mk(VC_ERR_BUSY);
+    left.store(100, Ordering::SeqCst);
+    let r = t.control_out(opcode, 0x0100, &[1]);
+    assert!(matches!(r, Err(TransportError::Stalled { .. })), "{r:?}");
+    // A longer payload refused by a device that judges lengths itself: an error.
+    let (mut t, left, _) = mk(VC_ERR_LENGTH);
+    left.store(1, Ordering::SeqCst);
+    let r = t.control_out(opcode, 0x0100, &[1]);
+    assert!(matches!(r, Err(TransportError::Stalled { .. })), "{r:?}");
+    // What 1.1.6 ignored silently is still ACKed, and sent once.
+    let (mut t, left, sets) = mk(VC_ERR_ADDRESS);
+    left.store(1, Ordering::SeqCst);
+    t.control_out(opcode, 0x0100, &[1]).unwrap();
+    assert_eq!(sets.load(Ordering::SeqCst), 1);
 }
 
 // ---------------------------------------------------------------- robustness

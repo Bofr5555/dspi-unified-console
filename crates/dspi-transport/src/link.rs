@@ -689,6 +689,16 @@ impl LinkTransport {
         len: u16,
         data: &[u8],
     ) -> Result<Vec<u8>> {
+        // -- review/pgb -- A paged request goes only to protocol major 1
+        // (spec 1.3 section 7.4: a later major may change what a command
+        // means); `paged::open` already refuses such a device from the probe
+        // this transport answers, this is the backstop for a direct caller.
+        if id.is_some()
+            && let LinkRoute::Paged { major, .. } = self.route
+            && major != 1
+        {
+            return Err(crate::paged::Refusal::NewerProtocol.error());
+        }
         let w_index = id.map_or(dspi_proto::VENDOR_INTERFACE, CmdId::w_index);
         let (client, handle) = (&self.client, self.handle);
         let r = busy_window_with(b_request, BUSY_BACKOFF, self.route.retryable(), || {
@@ -726,6 +736,8 @@ impl LinkTransport {
         let one = |t: &mut Self, r: &PagedRead| t.control_in_paged(r.id, r.value, r.len);
         let pipelined = reads.len() >= 2
             && self.client.max_inflight() >= 2
+            // -- review/pgb -- any other major goes one by one, to its refusal
+            && matches!(self.route, LinkRoute::Paged { major: 1, .. })
             && !reads
                 .iter()
                 .any(|r| r.id == cmds::STORE_ALL_PARAMS || r.id == SYS_PROTOCOL_INFO || r.len == 0);

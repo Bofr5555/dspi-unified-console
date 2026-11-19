@@ -524,15 +524,29 @@ impl PagedTransport {
         let mut next = plan.start();
         for _ in 0..MAX_PLAN_STEPS {
             match next {
-                Next::Done(outcome) => return Ok(outcome),
+                Next::Done(outcome) => return Ok(raise_lost_write(outcome)),
                 Next::Send(req) => {
+                    // -- review/pgb -- A refused SET is always explained: the
+                    // code decides whether it is retried (`VC_ERR_BUSY`) and
+                    // whether 1.1.6 would have ignored it too.
+                    let explain = explain || matches!(req.body, PagedBody::Set(_));
+                    // A NaN or an infinity is never sent and never reported
+                    // written: 1.1.6 stored some and ignored others, 1.1.7
+                    // stores none, so the 1.1.6-shaped write fails here.
+                    if let PagedBody::Set(data) = &req.body
+                        && registry::has_non_finite(req.id, data)
+                    {
+                        return Ok(Outcome::Stall {
+                            result: Some(lm::VC_ERR_VALUE),
+                        });
+                    }
                     let answer = self.send(&req, explain)?;
                     next = plan.feed(answer.as_answer());
                 }
             }
         }
         match next {
-            Next::Done(outcome) => Ok(outcome),
+            Next::Done(outcome) => Ok(raise_lost_write(outcome)),
             Next::Send(_) => Ok(Outcome::Stall { result: None }),
         }
     }
@@ -567,6 +581,22 @@ impl PagedTransport {
                 Err(TransportError::Stalled { opcode: id.cmd() })
             }
         }
+    }
+}
+
+/// -- review/pgb -- A write the planner would swallow (1.1.6 ACKed and
+/// ignored a rejected OUT) is raised as a STALL when the device refused it
+/// for a reason 1.1.6 never had: `VC_ERR_BUSY` still standing after the
+/// retries (guide 5.8: the request did not run; 1.1.6 kept the newest band
+/// write, it never dropped it) and `VC_ERR_LENGTH` (only a device at a
+/// higher page revision judges a length itself, R8b: every such write would
+/// be lost). Reporting either as done would lose a write silently.
+fn raise_lost_write(outcome: Outcome) -> Outcome {
+    match outcome {
+        Outcome::Swallowed {
+            result: Some(r @ (lm::VC_ERR_BUSY | lm::VC_ERR_LENGTH)),
+        } => Outcome::Stall { result: Some(r) },
+        other => other,
     }
 }
 

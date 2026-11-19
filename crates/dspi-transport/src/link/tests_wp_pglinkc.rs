@@ -927,3 +927,47 @@ fn wp_pglinkc_the_fake_13_hub_forwards_nothing_to_a_legacy_device() {
     );
     assert!(hub.requests().is_empty());
 }
+
+/// review/pgb: a device a 1.3 hub lists with a later protocol major is sent
+/// nothing paged (spec 1.3 section 7.4: only major 1), through `open` and
+/// from the raw transport alike.
+#[test]
+fn wp_pglinkc_a_later_protocol_major_is_sent_nothing() {
+    struct Major2;
+    impl HubDevice for Major2 {
+        fn request(&mut self, _: Dir, b: u8, _: u16, w: u16, _: u16, _: &[u8]) -> (u8, Vec<u8>) {
+            if b == 0x10 && w == 0x0102 {
+                return (
+                    status::OK,
+                    b"DSPi\x02\x00\x0C\x00\x40\x00\x00\x01\0\0\0\0".to_vec(),
+                );
+            }
+            (status::OK, vec![1, 2, 3, 4, 5, 6, 7, 8])
+        }
+    }
+    let hub = start(HubConfig::l13(Some(SharedDevice::new(Major2))), "admin");
+    let c = session(&hub, "admin");
+    let before = hub.requests().len();
+    let mut t = transport(&c);
+    assert_eq!(t.route(), LinkRoute::Paged { major: 2, minor: 0 });
+    let newer = crate::paged::Refusal::NewerProtocol;
+    let is_newer = |e: &TransportError| crate::paged::Refusal::of(e) == Some(newer);
+    assert!(
+        t.control_in_paged(cmds::SYS_PLATFORM, 0, 8)
+            .is_err_and(|e| is_newer(&e))
+    );
+    assert!(
+        t.control_out_paged(cmds::ROUTE_MASTER_VOLUME, 0, &[0; 4])
+            .is_err_and(|e| is_newer(&e))
+    );
+    let batch = t.paged_batch(&[
+        PagedRead::new(cmds::SYS_PLATFORM, 0, 8),
+        PagedRead::new(cmds::SYS_PAGE_LIST, 0, 26),
+    ]);
+    assert!(
+        batch.iter().all(|r| r.as_ref().is_err_and(is_newer)),
+        "{batch:?}"
+    );
+    assert!(opened(&c).is_err_and(|e| is_newer(&e)));
+    assert_eq!(hub.requests().len(), before, "nothing was sent");
+}
