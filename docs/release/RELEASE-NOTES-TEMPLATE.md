@@ -6,7 +6,7 @@ Release date: YYYY-MM-DD. One version for every client.
 
 ## Downloads
 
-<!-- As README.md "Download and install"; drop the rows this release does not carry. -->
+<!-- As docs/INSTALL.md "At a glance"; drop the rows this release does not carry (0.14.0: no macOS row). -->
 
 | System | File |
 |---|---|
@@ -27,7 +27,7 @@ and the AUR package are updated by their package managers.
 Every file of this release is listed in `SHA256SUMS`, which is signed:
 `SHA256SUMS.minisig`. The source code of exactly this release is
 `uConsole-for-DSPi-VERSION-source.tar.gz`; the Qt packages' (Windows and Linux)
-is `uConsole-for-DSPi-VERSION-desktop-source.tar.gz`. Licence: see `NOTICE.md`.
+is `uConsole-for-DSPi-VERSION-desktop-source.tar.gz`. Licence: see `NOTICE.md`. How to install each file: `docs/INSTALL.md`.
 
 ## Check a download
 

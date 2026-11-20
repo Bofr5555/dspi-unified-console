@@ -99,10 +99,11 @@ STORE) and the tunnel on page 0xE0, and page 0 kept for legacy hosts. The core c
   (`alink_sender`) on a DSP, whatever is typed. An image with no kind stamp (upstream's, and this fork's from before
   IMGKIND) may be a DSP image: on a sender it asks the typed confirmation and the message says so. **Still do not
   offer the sender the bundled DSP images** (Qt and Android do not): they carry no stamp.
-- **Not yet:** the dual-stack sender firmware (FWPG4) is not written, so the paged rule is tested against its fake
-  only; a sender build that lists any page beyond the three (a debug build's diagnostics page 0xF0 too) is not
-  recognised (the firmware spec states this page set in `extension_channel_spec.md` 1.3.5 from IMGKIND); our hub
-  (`crates/dspi-hub`) does not tell the paged sender apart.
+- **Not yet:** the dual-stack sender firmware (FWPG4) is written (the fork's `bofr-main`, round R1) but has not run on
+  its board (PGHIL), so the paged rule is tested against its fake and the firmware's host tests only; a sender build
+  that lists any page beyond the three (a debug build's diagnostics page 0xF0 too) is not recognised (the firmware
+  spec states this page set in `extension_channel_spec.md` 1.3.5 from IMGKIND). Our hub tells the paged sender apart
+  at attach (WP LINKFIX, above).
 
 ## 5. Updates: the update check and the write gate
 

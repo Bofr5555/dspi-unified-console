@@ -2,7 +2,8 @@
 
 How a release's files are put together and signed. The client-specific steps
 (the Qt packages, the Swift `.dmg`, the Android bundle, the web dist) are in each
-client's own docs; this page covers what every release shares.
+client's own docs; this page covers what every release shares. How a user installs and checks
+the files is [`INSTALL.md`](INSTALL.md).
 
 ## The files
 
@@ -18,6 +19,8 @@ client's own docs; this page covers what every release shares.
    release, with its `sha256sums` and `.SRCINFO` updated.
 4. The other clients' packages, copied into the same `DIR`: the Swift `.dmg`,
    the Android APK, the web dist.
+   **Release 0.14.0 carries no Swift `.dmg`:** the owner has deferred the Swift apps
+   (2026-11-19), so the macOS VM steps are skipped and the release notes drop the macOS row.
 5. **Last:** `ci/release-sums.sh --key SECRET_KEY DIR` writes `DIR/SHA256SUMS`
    over every file in `DIR` and signs it as `DIR/SHA256SUMS.minisig`.
 

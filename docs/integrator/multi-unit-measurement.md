@@ -1,5 +1,9 @@
 # Measuring several units together
 
+> † **Needs the DSPi fork firmware** on every unit (the shared time base and the generator started on it: `EXT_TIME_BASE`, `EXT_SIGGEN_TIMELINE`): [Bofr5555/DSPi](https://github.com/Bofr5555/DSPi), branch
+> `bofr-main`. Stock Weeb Labs firmware has no extension channel, so none of this is offered for it
+> ([`../FEATURES.md`](../FEATURES.md#firmware-stock-vs-fork)).
+
 *WP ATDOC, 2026-11-19: the integrator's page for PLAN-AT ([`docs/core-merge/PLAN-AT.md`](../core-merge/PLAN-AT.md)),
 "the alink time-base contract and multi-unit measurement". State: the firmware side is on the fork's `bofr-main`
 (`4f7114c`: waves FW-A to FW-C, reviewed); the maths, the simulated world, the codecs, the fakes, the hub family, the

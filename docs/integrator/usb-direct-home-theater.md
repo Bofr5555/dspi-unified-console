@@ -6,6 +6,10 @@ each on its own USB cable, drive a few speakers each. No audio link (alink) cabl
 is involved: every unit takes its audio from USB and runs as an **alink USB-direct
 unit**, locked to the computer's USB frame clock.
 
+> † **Needs the DSPi fork firmware** on every unit: [Bofr5555/DSPi](https://github.com/Bofr5555/DSPi), branch
+> `bofr-main`. Stock Weeb Labs firmware has no extension channel, so none of this is offered for it
+> ([`../FEATURES.md`](../FEATURES.md#firmware-stock-vs-fork)).
+
 | Source | What |
 |---|---|
 | DSPi-bofr `Documentation/Features/extension_channel_spec.md` 2.9 | the firmware's USB-direct block (normative): modes, D, lock error, status |

@@ -13,6 +13,10 @@ current (I: the audio link system, J: measurement and auto-tune with several uni
 Swift app reaches its devices through the core by default (USB and USB MIDI, DSPi Link, firmware updates and the Mac's hub:
 SW-M1, SW5, SW6, SW-M2, SW-M3; section 4's notes), so its "whenever a core is attached" cells hold for a plain launch; only the opt-out paths (`-CoreTransport NO`,
 `-CoreHub NO`) lack them. A stale copy of the first J table, left below J11 by a merge, was removed.
+**2026-11-20 (WP DOCS14, after round R1 at `2dcd5f41`):** K5's Qt cell (QTSENDER), J9's overlapped starts (ATOVL). The
+Swift app is deferred by the owner and not part of release 0.14.0; its cells say what `main` has. **†** marks a row
+that needs the DSPi fork firmware on the device ([Bofr5555/DSPi](https://github.com/Bofr5555/DSPi), branch
+`bofr-main`; the list: [`FEATURES.md`](FEATURES.md#firmware-stock-vs-fork)).
 
 The reference is the **macOS Swift DSPi Console**: upstream Weeb Labs v1.1.6 (`51fd1bb`) plus our stack, branch `ext-channel-116` (`48cf7c5`). Our stack adds FakeTransport, USB MIDI, the iOS target, the iOS Link client UI and the extension channel. iOS builds from the same sources.
 
@@ -100,7 +104,7 @@ It is frozen at wire **V26**. It has nothing from V27–V32 (limiter, subharmoni
 | # | Feature | macOS (ref) | iOS | Qt desktop | Terminal | Android | Windows C# |
 |---|---|---|---|---|---|---|---|
 | A1 | USB vendor transport | ✓ IOKit | n.a. (owner decision: MIDI is the only USB transport on iPhone/iPad) | ✓ the core's `nusb` through `dspi_capi` (no USB code in the app) | ✓ nusb, `doctor`, `--install-udev` | ✓ UsbManager fd into the core (patch 0001); claims only the vendor interface | ✓ WinUSB |
-| A2 | USB MIDI (SysEx) | ◐ dev flag `-LocalTransport midi`, and the fallback when the vendor interface cannot be opened; through the core (SW5) *(ours)* | ✓ CoreMIDI through the core's MIDI transport (SW5), relay port for the Simulator *(ours)* | ✗ | ✗ | ✗ (not needed: vendor works) | ✗ |
+| A2 | USB MIDI (SysEx) † | ◐ dev flag `-LocalTransport midi`, and the fallback when the vendor interface cannot be opened; through the core (SW5) *(ours)* | ✓ CoreMIDI through the core's MIDI transport (SW5), relay port for the Simulator *(ours)* | ✗ | ✗ | ✗ (not needed: vendor works) | ✗ |
 | A3 | DSPi Link client | ✓ Bonjour, typed address (lists the hub's devices), PIN pairing, tokens | ✓ Devices sheet, async PIN, local-network-denied state *(ours UI)* | ✓ Devices list, discovery (embedded mDNS on Linux; Windows' own DNS-SD on Windows, so browsing asks nothing of the firewall: DISC2), typed address, PIN pairing, tokens, reconnect with its state and attempt count, lock notice (`LinkController`, `qml/devices/DevicesPopup.qml`) | ✗ (`dspi-link` crate exists, not wired in; no mDNS) | ✓ with deviations: opt-in, NSD, Keystore tokens; viewer role makes the app read-only; no reconnect after 4000/4002 | ✗ |
 | A4 | DSPi Link hub / sharing | ✓ Networking page: roles, pairing, revoke, prevent sleep | n.a. (iOS is never a hub) | ✓ Settings > Networking: sharing, name, access, port, pairing, roles, revoke; Windows Firewall and Public-network warnings (`HubController`, `FirewallController`); advertised through Windows' DNS-SD on Windows (DISC2) | ✗ (test fakehub only) | ✗ (owner decision D1/D5) | ✗ |
 | A5 | Browser client served by the hub / ESP32 bridge | ✓ serves the web UI; ESP32 setup is external, Console sets the UART interface | ✗ (can be a client of a bridge) | ✗ | ✗ | ✗ (can be a client of a bridge) | ✗ |
@@ -129,7 +133,7 @@ It is frozen at wire **V26**. It has nothing from V27–V32 (limiter, subharmoni
 | B11 | Output delay/gain/mute/invert | ✓ | ✓ | ✓ | ✓ (+ output latency) | ✓ | ✓ |
 | B12 | Output limiter | ✓ | ✓ | ✓ | ✓ | ✓ (gang groups mirrored in Kotlin) | ✗ |
 | B13 | Crossfeed (basic) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| B14 | Crossfeed pair map (ext 0x00) | ✓ Default / K340 / Custom; in presets, files and diff *(ours)* | ✓ one column on iPhone *(ours)* | ✓ Default / K340 / Custom editor, in presets, files and diff (`qml/tools/CrossfeedPairMap.qml`) | ◐ CLI only (`uconsole ext xfeed-map`) | ✓ (patch 0002; in presets and diff) | ◐ legacy 0xFC/0xFD pair mask |
+| B14 | Crossfeed pair map (ext 0x00) † | ✓ Default / K340 / Custom; in presets, files and diff *(ours)* | ✓ one column on iPhone *(ours)* | ✓ Default / K340 / Custom editor, in presets, files and diff (`qml/tools/CrossfeedPairMap.qml`) | ◐ CLI only (`uconsole ext xfeed-map`) | ✓ (patch 0002; in presets and diff) | ◐ legacy 0xFC/0xFD pair mask |
 | B15 | Loudness | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | B16 | Volume leveller | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | B17 | Psychoacoustic bass | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
@@ -202,12 +206,14 @@ It is frozen at wire **V26**. It has nothing from V27–V32 (limiter, subharmoni
 | Scripting / JSON / dry-run / raw opcodes / `uconsole screenshot` | Terminal |
 | Undo/redo journal | Terminal (full); Qt desktop (Edit menu, History window); Swift macOS (Edit menu) and iOS (toolbar), on the core's device only (SWMAC1), undoing volume, EQ, crossover, output and matrix edits since SW9, the effects since SW10, channel names, LG Sound Sync and the master clock since SW11 (control-surface edits recorded and stepped over since SW12; signal-generator edits since SW14); web (Undo and Redo beside the screen tabs, Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z, Ctrl+Y; drags marked; WB8u); Android (Undo and Redo in the strip at the top of every screen, Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y on a keyboard, a snackbar saying what moved and naming another writer whose change was left alone; slider and graph drags marked, the mark ended on release, cancel, leaving the screen and the app stopping; off read-only and for a DSPi Link viewer; no History window yet; AN42); Windows (IO only) |
 | Event log (P0M: clips, audio link, resets, connections; a hub's alarms) | Web (Events screen, Advanced and Installer: filter by unit, Copy as Text; WB8u) |
-| Full core-voltage control (set/trial/auto) | Terminal CLI; Qt desktop (Core Voltage page, with calibration) |
+| Full core-voltage control (set/trial/auto) † | Terminal CLI; Qt desktop (Core Voltage page, with calibration) |
 | Strict read-only double write guard; confirmation tokens on flash writes; PICOBOOT flashing without a drive; config share sheet; light theme; auto-launch on plug | Android |
 | Searchable settings; Updates page; read-only mode; delay-refusal banner; licences screen; diagnostics bundle (Help > Save Diagnostics; also the web's Events screen, Save Diagnostics… as a download, Advanced and up, WB8u); the demo entry; Linux packaging (AppImage, tar.gz, deb, rpm, AUR) and Windows zip and installer | Qt desktop |
 | Bulk-endpoint debug window; 12-band PEQ | Windows C# |
 
-### I. The audio link installation on a hub (Pro layer)
+### I. The audio link installation on a hub (Pro layer) †
+
+*Every row needs the DSPi fork firmware † on the units and the sender.*
 
 *WP LKUI1, 2026-11-13. Beyond the macOS floor: the hub's system model (SW2, `system.*`, `docs/integrator/audio-link.md`).
 The web reads it through its own generic hub call (SW3); Qt and Android through the core's typed calls
@@ -253,8 +259,8 @@ P5SPIKE's start-level runs; P5HIL is owed.*
 | J6a | Keep refused while a verify runs (`measure.tune.keep_during_verify`); the timing hold anchored on the drivers' arrivals | ✓ (P5HOLD, core; P5WAT offers no Keep while verifying) | ✓ (P5HOLD; words through the notice row) | ✓ (P5HOLD) | later batch | later batch |
 | J7 | The `measurement`, `mic` and `target` documents: local store and the hub's (`measure.doc.*`), merged with the hub's winning; rename, note, delete by role | ✓ (P5WAT, the Documents tab; P5WMS saves a result to the hub) | ✓ (P5QUI, the Documents tab) | ✓ (P5TM: `measure docs`, `show`) | later batch | later batch |
 | J8 | REW text export of a measured output | ✓ (P5WMS, Results; P5WAT, the Documents tab) | ✓ (P5QUI, Results: REW Text…) | ✓ (P5TM: `measure export`) | later batch | later batch |
-| J9 | -- WP ATDOC -- Measuring several units together (PLAN-AT, [`docs/integrator/multi-unit-measurement.md`](integrator/multi-unit-measurement.md)): one microphone, each unit's generator started on the shared sample counter through our hub (cap `system_measure`), a fresh check of every unit, the settle wait (up to 40 s) said in words, interleaved passes, runs chained through an anchor output, the gate per unit, a cross-unit delay offered only within 10 µs (else "timing unreliable" with the wander) | ✓ (ATWEB: Measure, "Several units"; `--demo hub --alink --with-measure-units` measures with the demo hub's simulated microphone, ATDEMO) | ✓ (ATQT: Tools > Measure…, "Several units") | later (PLAN-AT "Later") | later | later |
-| J10 | -- WP ATDOC -- Applying a cross-unit alignment: the summed check per inter-unit transition (fresh checks, re-ramp, parts started apart, a cancelling pair not played), apply into the hub's model by Admin only, the verify, Keep in two steps after a failed verify, Revert; the hub's guard of the apply (ATGUARD: its note before the apply, the countdown after it, the hub reverting by itself at the deadline or when the console is lost) | ✓ (ATWEB, review AT-D2) | ✓ (ATQT) | later | later | later |
+| J9 | † -- WP ATDOC -- Measuring several units together (PLAN-AT, [`docs/integrator/multi-unit-measurement.md`](integrator/multi-unit-measurement.md)): one microphone, each unit's generator started on the shared sample counter through our hub (cap `system_measure`), a fresh check of every unit, the settle wait (up to 40 s) said in words, interleaved passes, or overlapped starts after the first pass where the units can be told apart (ATOVL, the default), runs chained through an anchor output, the gate per unit, a cross-unit delay offered only within 10 µs (else "timing unreliable" with the wander) | ✓ (ATWEB: Measure, "Several units"; `--demo hub --alink --with-measure-units` measures with the demo hub's simulated microphone, ATDEMO) | ✓ (ATQT: Tools > Measure…, "Several units") | later (PLAN-AT "Later") | later | later |
+| J10 | † -- WP ATDOC -- Applying a cross-unit alignment: the summed check per inter-unit transition (fresh checks, re-ramp, parts started apart, a cancelling pair not played), apply into the hub's model by Admin only, the verify, Keep in two steps after a failed verify, Revert; the hub's guard of the apply (ATGUARD: its note before the apply, the countdown after it, the hub reverting by itself at the deadline or when the console is lost) | ✓ (ATWEB, review AT-D2) | ✓ (ATQT) | later | later | later |
 | J11 | -- WP ATDOC -- The system measurement's notices (`measure.system.*`, every key in words) | ✓ (ATWEB) | ✓ (ATQT) | later | later | later |
 
 The document model, the stores, the core's calls and the hub's family are built (P5MDOC, P5DOCK, P5HUB).
@@ -276,7 +282,7 @@ and PGAND merged).*
 | K2 | Device info: board, generation, protocol version, pages, extension envelope (`device_protocol`, once per connection) | ✓ PGWEB: the Device screen | ✓ PGQT: Settings > About | ✓ PGTM: `uconsole info` (`--json`), Settings > About | ✓ PGAND: Settings > About, "Device" | ✗ (PGSWIFT) |
 | K3 | Raw request by command id (`raw_get_id`, `raw_set_id`) | ✓ PGWEB (numbers only) | ✓ PGQT (numbers only, no `PAGE.NAME`) | ✓ PGTM: `uconsole raw --id`, `raw out --id` | ✗ | ✗ |
 | K4 | The update check before the bootloader entry: no image without BOOTSEL, the lineage phrase, the generation change | ✓ PGWEB: Check an Image, the rollout dialog; no firmware write on the web | ✓ PGQT | ✓ PGTM: `uconsole flash` | ✓ PGAND; the Kotlin write's last check is the core's gate (`firmware_write_check`) | ✗ (PGSWIFT, before its next release) |
-| K5 | The alink sender's own page (`device_kind` `AlinkSender`: device info, audio link, update) | ✓ PGWEB | ✓ PGQT (the menus still open DSP windows, which answer unsupported) | ◐ `uconsole info` and About say it; the interface cannot open it | ✓ PGAND | ✗ (PGSWIFT) |
+| K5 | The alink sender's own page (`device_kind` `AlinkSender`: device info, audio link, update) | ✓ PGWEB | ✓ PGQT; QTSENDER: one banner, every DSP menu, shortcut and tool window greyed | ◐ `uconsole info` and About say it; the interface cannot open it | ✓ PGAND | ✗ (PGSWIFT) |
 | K6 | The DSPi-Zero named, and offered no update | ✓ PGWEB | ✓ PGQT | ✓ PGTM | ✓ PGAND | ✗ (the core refuses it; the opt-out path still sends 0xF0, PGSWIFT) |
 
 Since PGFLASH the core's write gate asks the lineage phrase itself. A client that is not switched yet (K4 ✗) asks

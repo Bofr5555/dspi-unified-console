@@ -13,7 +13,8 @@ Reference: `crates/dspi-hub` (design: [`docs/core-merge/HUB.md`](../core-merge/H
 - `uconsole` from a Terminal release archive (`ci/release-terminal.sh`), or a
   build: `cargo build --release -p dspi-term`.
 - On Linux, the udev rule for USB access without root: `sudo uconsole
-  --install-udev`, or `70-dspi.rules` from the archive into `/etc/udev/rules.d/`.
+  --install-udev`, or the rule file from the archive into `/etc/udev/rules.d/`. It is the one
+  rule every component shares ([`../INSTALL.md`](../INSTALL.md#usb-access-on-linux)).
 - Run it: `uconsole hub`. Ctrl-C or SIGTERM stops it and lets go of USB.
 - Check it: `uconsole doctor` on the hub machine; `uconsole --link HOST doctor`
   from a client.

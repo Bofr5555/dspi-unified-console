@@ -15,12 +15,15 @@ The app is a faithful port of the official clients rather than a re-implementati
   listed in [`docs/UPSTREAM-DEVIATIONS.md`](docs/UPSTREAM-DEVIATIONS.md).
 
 It is one of the clients in the `dspi-unified-console` repository; the root
-[`README.md`](../../README.md) has the project, the status of each client and the credits.
+[`README.md`](../../README.md) is the project's front page; the status of each client is in
+[`docs/STATUS.md`](../../docs/STATUS.md) and the credits in [`docs/CREDITS.md`](../../docs/CREDITS.md).
 
-> Status: version **0.12.0** (versionCode 12, tag `android-v0.12.0`), with DSPi Link. It is distributed
-> through Google Play as "DSPi Console for Android" (app ID `se.bofr.dspi_console_android`), in closed
-> testing. *(2026-11-19: `main` builds 0.13.0, versionCode 13; what it adds is below and in the root
-> README's Status.)*
+> Status: version **0.13.0** (versionCode 13) is distributed through Google Play (app ID
+> `se.bofr.dspi_console_android`), in closed testing; 0.12.0 (tag `android-v0.12.0`) was the first release on the
+> core. *(2026-11-20: `main` builds 0.14.0, versionCode 14, for the next release; what it adds is in
+> [`docs/STATUS.md`](../../docs/STATUS.md) and the changelog. Installing: [`docs/INSTALL.md`](../../docs/INSTALL.md#android);
+> what works where, and which features need the DSPi fork firmware (†):
+> [`docs/FEATURES.md`](../../docs/FEATURES.md).)*
 
 What you need: an Android phone or tablet with Android 8.0 or newer. **No DSPi required**: the app has a
 Demo mode, so every screen can be tried without hardware. With a DSPi: firmware **v1.1.6** for full
@@ -44,12 +47,13 @@ hub's key pinned at pairing (compare the fingerprint the hub shows with its PIN)
 such as an upstream one, shows as unsecured
 ([`docs/integrator/security.md`](../../docs/integrator/security.md)).
 
-On `main` for the next release (2026-11-19), all through the core: the PRO phase 1 screens (snapshots,
+Since 0.12.0, all through the core: the PRO phase 1 screens (snapshots,
 A/B, safe apply, limits profiles, the installer lock and PIN, offline documents and templates, document
 diff and partial import, AutoEQ preview), the hub's limits, PIN and pinned modes (HUBADMIN); shared
-snapshots, the hub's history, the alarm banner and Identify (P2AN); the device info with the firmware
+snapshots, the hub's history, the alarm banner and Identify † (P2AN); the device info with the firmware
 generation, the update check before the bootloader entry and the core's write gate for firmware 1.1.6
-and 1.1.7 (PGAND); and S/PDIF units in the System screen, view only. Measurement and auto-tune come in a
+and 1.1.7 (PGAND); the audio link's System screen † with S/PDIF units, view only; and the alink sender's own
+page †, where the write keys do nothing (QTSENDER). Measurement and auto-tune come in a
 later batch (`docs/core-merge/PLAN-P5.md`).
 
 Android specifics: auto-launch on plug-in, a foreground-service notification with volume / mute /
@@ -72,6 +76,10 @@ next preset, and the app claims only the DSPi's vendor control interface, so aud
   major is refused with a notice ([`docs/manual/notices.md`](../../docs/manual/notices.md)).
   - **Older, or a format the app cannot map:** the settings cannot be read, and the banner says the
     values on screen are defaults.
+- † **Needs the DSPi fork firmware** on the device ([Bofr5555/DSPi](https://github.com/Bofr5555/DSPi), branch
+  `bofr-main`): the crossfeed pair map, the core voltage, Identify and the audio link (the System screen,
+  USB-direct and S/PDIF units, the alink sender). Stock firmware has none of these, and the app does not offer
+  them for it ([`docs/FEATURES.md`](../../docs/FEATURES.md#firmware-stock-vs-fork)).
 
 ## Installing without Google Play
 

@@ -85,7 +85,8 @@ sudo uconsole --install-udev
 sudo udevadm control --reload
 ```
 
-The rule it writes is `xtask/70-dspi.rules`.
+The rule it writes is the one rule every component of the project shares (the Qt packages install the same
+file; [`../INSTALL.md`](../INSTALL.md#usb-access-on-linux)).
 
 then unplug and replug the device. The rule also covers the RP2 bootloader the
 device re-enumerates as during a firmware update; without that, an update appears
