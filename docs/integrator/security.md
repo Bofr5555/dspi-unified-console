@@ -75,6 +75,11 @@ macOS (all through the one Rust core, which does the pinning), `uconsole`, and t
   asked for no PIN, so no unencrypted or unchecked session opens in a pinned hub's name. What no client can do is
   recognise a known hub that answers under another id, or under none: that is a first contact, shown with its id, the
   key on the PIN prompt or the red "(unsecured)" bar.
+- **A token goes only to the hub it belongs to** (WP LINKFIX, 2026-11-19; fail closed). Records are kept by the hub's
+  id, and a client dialling by address sends no token before the hello names the hub and its record is read. The core
+  enforces it too: `link_connect` with a bare `v1` token and no expected hub id fails with `token_without_hub_id`
+  before anything is dialled (pair again, or dial with the hub's id), so a plaintext token never goes to whoever
+  answers at an address. A `v2` credential is still checked by its key pin before its token goes out.
 
 **Pairing.** The hub shows a 6-digit PIN for 2 minutes, with its key's fingerprint and a QR code of the pairing link
 `dspi://pair?h=<hid>&a=<host:port>&k=<key>&p=<PIN>`:

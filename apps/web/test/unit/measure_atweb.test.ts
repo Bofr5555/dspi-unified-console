@@ -217,6 +217,7 @@ const APPLIED: MeasureSystemAppliedRecord = { stage: "none", revisionBefore: 0, 
 /** A hub session's core and the units' own cores, all stand-ins; every call is recorded in order. */
 function deskRig(role: "admin" | "control", opts: { caps?: string[]; sim?: boolean; guardS?: number } = {}) {
   let guardEnded = ""; // -- review AT-D2 -- the hub ended its guard: its words
+  let guardNotice = ""; // -- WP REVERTW -- and the core's revert notice when it did not put everything back
   const calls: Call[] = [];
   let simOn = false; // -- WP ATDEMO --
   const simInfo = () => ({ available: !!opts.sim, on: simOn, label: "Simulated microphone", room: "the demo room", issue: null });
@@ -257,7 +258,10 @@ function deskRig(role: "admin" | "control", opts: { caps?: string[]; sim?: boole
           return { ...STATE, purpose: "sum_check" };
         case "measureSystemVerify":
           if (guardEnded) {
-            applied = { ...applied, stage: "reverted", message: guardEnded };
+            // -- WP REVERTW -- not wholly put back: the core's own stage and notice
+            applied = guardNotice
+              ? { ...applied, stage: "revert_incomplete", message: guardEnded, revertNotice: guardNotice }
+              : { ...applied, stage: "reverted", message: guardEnded };
             throw new CoreCallError("invalid", `invalid argument: ${guardEnded}`, "invalid");
           }
           return { ...STATE, purpose: "verify" };
@@ -346,8 +350,9 @@ function deskRig(role: "admin" | "control", opts: { caps?: string[]; sim?: boole
     passSumCheck() {
       prop = proposal({ mayApply: role === "admin", sumCheckNeeded: false });
     },
-    hubEndsGuard(words: string) {
+    hubEndsGuard(words: string, notice = "") {
       guardEnded = words;
+      guardNotice = notice;
     },
   };
 }
@@ -544,12 +549,16 @@ test("review AT-D2: the hub's guard of an apply counts down from the apply, and 
   rig.setNow(rig.now + 200_000);
   assert.equal(rig.desk.guardLeftS(), 0);
   assert.match(guardWords(300, 0), /has run out/);
-  rig.hubEndsGuard("the hub ended the guard (timeout), but the alignment was NOT wholly put back (not_written): nothing was set back");
+  rig.hubEndsGuard("the hub ended the guard (timeout), but the alignment was NOT wholly put back (not_written): nothing was set back", "revert.not_written");
   assert.equal(await rig.desk.summed("verify"), false);
-  assert.equal(rig.desk.applied?.stage, "reverted", "the hub's outcome is read, not left as applied");
+  // -- WP REVERTW -- its own stage, never "reverted"
+  assert.equal(rig.desk.applied?.stage, "revert_incomplete", "the hub's outcome is read, not left as applied");
   assert.equal(rig.desk.guarded, false);
   assert.match(rig.desk.error, /NOT wholly put back/);
-  assert.match(endedWords(rig.desk.applied!), /^The hub ended the guard \(timeout\), but the alignment was NOT wholly put back/);
+  assert.match(
+    endedWords(rig.desk.applied!),
+    /^The revert was not fully successful\. The hub ended the guard \(timeout\), but the alignment was NOT wholly put back.* Check the settings, or restore a backup \(a snapshot\)\.$/,
+  );
 });
 
 test("review AT-D2: the guard in words: none on an older hub, uncounted when this page did not see the apply; the end in the core's words", () => {
@@ -559,4 +568,10 @@ test("review AT-D2: the guard in words: none on an older hub, uncounted when thi
   assert.equal(endedWords({ stage: "reverted", message: "" }), "Reverted: the installation and every unit are as they were filed.");
   assert.equal(endedWords({ stage: "reverted", message: "reverted: the model and every unit's output delays are as filed" }), "Reverted: the model and every unit's output delays are as filed");
   assert.equal(endedWords({ stage: "applied", message: "x" }), "");
+  // -- WP REVERTW -- a revert not fully successful: the notice's title, what, and what to do
+  assert.equal(
+    endedWords({ stage: "revert_incomplete", message: "reverted, but not wholly: UNIT-2 out.delay: refused (not written)", revertNotice: "revert.incomplete" }),
+    "The revert was not fully successful. Reverted, but not wholly: UNIT-2 out.delay: refused (not written). Check the settings, or restore a backup (a snapshot).",
+  );
+  assert.match(endedWords({ stage: "revert_incomplete", message: "" }), /^The revert was not fully successful\. .*restore a backup \(a snapshot\)\.$/);
 });

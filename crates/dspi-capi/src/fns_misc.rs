@@ -1544,7 +1544,8 @@ pub extern "C" fn dspi_demo_open_wire(core: *mut FfiCore, wire: u8) -> bool {
 /// sections per generation): 0 stock 1.1.6, 1 ours 1.1.6 with PAGEGUARD, 2
 /// ours without it, 3 stock 1.1.7, 4 ours dual-stack 1.1.7, 5 the DSPi-Zero,
 /// 6 the alink sender, 7 ours 1.1.6 with PAGEGUARD on a board at the stock
-/// 1.15 V core. False for another code.
+/// 1.15 V core, 8 the dual-stack alink sender (WP QTSENDER). False for
+/// another code.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_demo_open_generation(core: *mut FfiCore, code: u8) -> bool {
     flag(core, |c| c.open_demo_generation(code))

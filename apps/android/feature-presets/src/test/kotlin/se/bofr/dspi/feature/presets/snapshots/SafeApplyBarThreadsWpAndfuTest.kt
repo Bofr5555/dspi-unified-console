@@ -59,7 +59,7 @@ class SafeApplyBarThreadsWpAndfuTest {
         override fun noticeForKey(key: String, detail: String): Notice =
             Notice(key, NoticeKind.INFO, "Keep these?", "Back in {s} s.", "Press Keep.", detail)
 
-        private fun waiting() = GuardedApply(7, GuardPhase.WAITING, "Room", true, 30_000, left, "", "", emptyList(), emptyList())
+        private fun waiting() = GuardedApply(7, GuardPhase.WAITING, "Room", true, 30_000, left, "", "", emptyList(), emptyList(), "")
     }
 
     private fun pumpUntil(what: String, until: () -> Boolean) {

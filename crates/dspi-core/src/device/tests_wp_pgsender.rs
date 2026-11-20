@@ -388,8 +388,9 @@ fn wp_pgsender_an_unrecognised_paged_device_is_not_a_sender() {
 
 #[test]
 fn wp_pgsender_a_paged_connection_without_discovery_is_not_a_sender() {
-    // A wrapper that says "paged" but passes no discovery on (the hub's
-    // in-process path): the rule cannot be checked, so no sender.
+    // A wrapper that says "paged" but passes no discovery on: the rule cannot
+    // be checked, so no sender. (-- WP LINKFIX -- the hub's in-process paths
+    // pass the attachment's discovery on now.)
     struct NoDisc(Box<dyn Transport>);
     impl Transport for NoDisc {
         fn control_in(&mut self, o: u8, v: u16, l: u16) -> dspi_transport::Result<Vec<u8>> {

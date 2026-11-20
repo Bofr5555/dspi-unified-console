@@ -135,6 +135,10 @@ interface Snapshots {
     /** The sentence after the countdown when the hub holds the guard: the reason of the core's `guard.hub_backstop`, or its English words. */
     suspend fun backstopWords(): String = HUB_BACKSTOP_WORDS
 
+    // -- WP REVERTW --
+    /** The title and action of the core's `revert.*` notice [key] (a revert not fully successful), or their English words. */
+    suspend fun revertWords(key: String): Pair<String, String> = REVERT_INCOMPLETE_TITLE to REVERT_INCOMPLETE_ACTION
+
     companion object {
         /** Every channel's EQ (`eq_channels` = `u32::MAX`). */
         const val ALL_CHANNELS: Long = 0xFFFF_FFFFL
@@ -157,7 +161,14 @@ interface Snapshots {
         fun countdownLine(words: String, remainingMs: Long): String =
             words.replace("{s}", ((remainingMs + 999) / 1000).coerceAtLeast(0).toString())
 
-        val IDLE_GUARD = GuardedApply(0, GuardPhase.IDLE, "", false, 0, 0, "", "", emptyList(), emptyList())
+        val IDLE_GUARD = GuardedApply(0, GuardPhase.IDLE, "", false, 0, 0, "", "", emptyList(), emptyList(), "")
+
+        // -- WP REVERTW -- a revert that was not fully successful (the core's `revert.*` rows)
+        /** The title every `revert.*` row has, for a core without the table. */
+        const val REVERT_INCOMPLETE_TITLE = "The revert was not fully successful"
+
+        /** The action every `revert.*` row has, for a core without the table. */
+        const val REVERT_INCOMPLETE_ACTION = "Check the settings, or restore a backup (a snapshot)."
         val NO_COMPARE = AbCompare(false, null, "", "", null)
 
         /** The user's words for a failure of [e]. */
@@ -444,6 +455,14 @@ internal class SnapshotsImpl(private val bridge: DspiBridgeImpl) : Snapshots {
             ?.let { "${it.title} ${it.reason}".trim() }
             ?.takeIf { "{s}" in it }
             ?: Snapshots.COUNTDOWN_WORDS
+    }
+
+    // -- WP REVERTW --
+    override suspend fun revertWords(key: String): Pair<String, String> = bridge.onFfi {
+        runCatching { core.noticeForKey(key, "") }.getOrNull()
+            ?.takeIf { it.key == key && it.title.isNotEmpty() }
+            ?.let { it.title to it.action.ifEmpty { Snapshots.REVERT_INCOMPLETE_ACTION } }
+            ?: (Snapshots.REVERT_INCOMPLETE_TITLE to Snapshots.REVERT_INCOMPLETE_ACTION)
     }
 
     // -- WP P1AN2 --

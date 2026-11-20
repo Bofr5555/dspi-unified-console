@@ -41,13 +41,13 @@ class BlockImportFake(private val guardDefault: Boolean = false) : FakeDspiCore(
     override fun applyGuardedImport(text: String, options: Long, eqChannels: Long, timeoutS: Long): GuardedApply {
         calls += "applyGuardedImport($options)"
         guarded = options
-        return GuardedApply(1, GuardPhase.WAITING, "Room", guardDefault, 30_000, 30_000, "", "", emptyList(), emptyList())
+        return GuardedApply(1, GuardPhase.WAITING, "Room", guardDefault, 30_000, 30_000, "", "", emptyList(), emptyList(), "")
     }
 
     override fun applyStatus(): GuardedApply = if (guarded ==
         null
     ) {
-        GuardedApply(0, GuardPhase.IDLE, "", false, 0, 0, "", "", emptyList(), emptyList())
+        GuardedApply(0, GuardPhase.IDLE, "", false, 0, 0, "", "", emptyList(), emptyList(), "")
     } else {
         applyGuardedImport("", guarded!!, 0, 0)
     }

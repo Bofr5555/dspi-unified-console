@@ -8,7 +8,7 @@ use dspi_measure::stimulus::{LogSweep, WalkSchedule};
 use dspi_measure::system::messages::CAP;
 use dspi_measure::system::{
     AnchorOutput, DomainId, InterleaveOptions, MAX_RUN_OUTPUTS, SystemSchedule, UnitIndex,
-    UnitWalk, interleave_late,
+    UnitWalk, interleave_late, overlap_late,
 };
 
 use super::super::plan::{PREROLL_MS, Plan};
@@ -28,6 +28,32 @@ pub(crate) const MAX_UNITS: usize = dspi_measure::system::MAX_UNITS;
 pub(crate) const PLANNING_LEAD_MS: u32 = 250;
 /// Added to the largest arm lead for the lead (S-AT3), ms.
 pub(crate) const LEAD_MARGIN_MS: u32 = 100;
+// -- WP ATOVL --
+/// What a unit's play-out (its D and post-alink latency, read only when the
+/// run starts) may add to the lateness the plan expects from its outputs'
+/// `out.delay`, per segment, ms: the runs are sized with it, so that a group
+/// that fits with its real lateness is not refused when the run is laid out.
+pub(crate) const LATENESS_SLACK_MS: u32 = 10;
+
+/// How a timed run was laid out (the result says which).
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum RunPlan {
+    /// Overlapped starts, the units this far apart, ms.
+    Overlapped(f64),
+    /// Interleaved passes; why not overlapped (empty: not asked).
+    Interleaved(String),
+}
+
+impl RunPlan {
+    /// In words, for the result.
+    pub(crate) fn words(&self) -> String {
+        match self {
+            RunPlan::Overlapped(ms) => format!("overlapped starts, {ms:.0} ms apart"),
+            RunPlan::Interleaved(why) if why.is_empty() => "interleaved passes".into(),
+            RunPlan::Interleaved(why) => format!("interleaved passes ({why})"),
+        }
+    }
+}
 
 fn invalid(msg: impl Into<String>) -> DspiError {
     DspiError::InvalidArgument { msg: msg.into() }
@@ -172,8 +198,135 @@ impl SetupPlan {
 
     /// The interleaved schedule of run `part` from domain sample 0, with a
     /// lead of `lead_ms` between a unit's segments.
+    #[cfg(test)]
     pub(crate) fn schedule(&self, part: &RunPart, lead_ms: u32) -> Result<SystemSchedule> {
         self.schedule_late(part, lead_ms, &[])
+    }
+
+    // -- WP ATOVL --
+    /// Run `part`'s schedule as the session plays it: overlapped starts
+    /// where they are safe (`overlap`, two units or more, and
+    /// `overlap_late` lays them out), else interleaved passes
+    /// ([`SetupPlan::schedule_late`]); and which, in words.
+    ///
+    /// Errors: as [`SetupPlan::schedule_late`] (the interleaved fallback's).
+    pub(crate) fn schedule_run(
+        &self,
+        part: &RunPart,
+        lead_ms: u32,
+        lateness: &[(UnitIndex, u64)],
+        overlap: bool,
+    ) -> Result<(SystemSchedule, RunPlan)> {
+        let why = if !overlap {
+            String::new()
+        } else if part.units.len() < 2 {
+            "one unit".into()
+        } else {
+            match self.check_lateness(part, lateness).and_then(|()| {
+                let walks = self.walks(part)?;
+                overlap_late(&walks, &self.options(lead_ms)?, lateness)
+                    .map_err(|e| invalid(e.to_string()))
+            }) {
+                Ok(s) => {
+                    let ms = s
+                        .overlap_samples()
+                        .map_or(0.0, |o| o as f64 * 1000.0 / f64::from(self.rate_hz.max(1)));
+                    return Ok((s, RunPlan::Overlapped(ms)));
+                }
+                Err(e) => {
+                    let m = e.to_string();
+                    let m = m.strip_prefix("invalid argument: ").unwrap_or(&m);
+                    m.strip_prefix("invalid input: ").unwrap_or(m).to_owned()
+                }
+            }
+        };
+        let s = self.schedule_late(part, lead_ms, lateness)?;
+        Ok((s, RunPlan::Interleaved(why)))
+    }
+
+    // -- WP ATOVL -- (moved out of `schedule_late`, unchanged)
+    fn walks(&self, part: &RunPart) -> Result<Vec<UnitWalk>> {
+        let sweep = self.sweep()?;
+        part.units
+            .iter()
+            .map(|(u, outs)| {
+                let mask = outs.iter().fold(0u16, |m, o| {
+                    m | 1u16.checked_shl(u32::from(*o)).unwrap_or(0)
+                });
+                Ok(UnitWalk {
+                    unit: UnitIndex(u8::try_from(*u).unwrap_or(u8::MAX)),
+                    domain: DomainId {
+                        time_base: 0,
+                        id: 0,
+                    },
+                    walk: WalkSchedule::new(sweep, mask, 1).map_err(|e| invalid(e.to_string()))?,
+                })
+            })
+            .collect()
+    }
+
+    // -- WP ATOVL --
+    fn options(&self, lead_ms: u32) -> Result<InterleaveOptions> {
+        let sweep = self.sweep()?;
+        Ok(InterleaveOptions {
+            passes: self.passes,
+            gap_samples: u64::from(sweep.gap_samples),
+            lead_samples: self.lead_samples(lead_ms),
+            capture_rate_hz: self.capture_rate_hz,
+            pre_roll_ms: PREROLL_MS,
+        })
+    }
+
+    // -- WP ATOVL --
+    /// What the plan expects of each unit's lateness in run `part` before
+    /// the run (the engine's terms are read only then): the smallest
+    /// `out.delay` of its outputs in the run, from its own check; the
+    /// play-out is not known yet ([`LATENESS_SLACK_MS`] sizes for it).
+    pub(crate) fn expected_lateness(&self, part: &RunPart) -> Vec<(UnitIndex, u64)> {
+        part.units
+            .iter()
+            .filter_map(|(u, outs)| {
+                let pu = self.units.get(*u)?;
+                let ms = outs
+                    .iter()
+                    .filter_map(|o| {
+                        pu.ctx
+                            .chains
+                            .iter()
+                            .find(|(x, _)| x == o)
+                            .map(|(_, c)| f64::from(c.delay_ms))
+                    })
+                    .fold(f64::INFINITY, f64::min);
+                if !ms.is_finite() || ms <= 0.0 {
+                    return None;
+                }
+                let samples = (ms * f64::from(self.rate_hz) / 1000.0).round();
+                let samples = if samples >= 1.8e19 {
+                    u64::MAX
+                } else {
+                    samples as u64
+                };
+                Some((UnitIndex(u8::try_from(*u).unwrap_or(u8::MAX)), samples))
+            })
+            .collect()
+    }
+
+    // -- WP ATOVL --
+    /// Whether run `part` fits one capture as the session will lay it out:
+    /// interleaved (the longer plan, and the fallback) with the lateness
+    /// the plan expects and [`LATENESS_SLACK_MS`] per segment for the
+    /// play-out not yet known.
+    fn fits(&self, part: &RunPart) -> bool {
+        let lateness = self.expected_lateness(part);
+        let Ok(s) = self.schedule_late(part, PLANNING_LEAD_MS, &lateness) else {
+            return false;
+        };
+        let Ok(options) = self.options(PLANNING_LEAD_MS) else {
+            return false;
+        };
+        let per = self.lead_samples(LATENESS_SLACK_MS);
+        let slack = per.saturating_mul(s.segments().len() as u64);
+        dspi_measure::system::plan::run_fits(&s, &options, slack)
     }
 
     // -- WP ATLATE --
@@ -190,6 +343,14 @@ impl SetupPlan {
         lead_ms: u32,
         lateness: &[(UnitIndex, u64)],
     ) -> Result<SystemSchedule> {
+        self.check_lateness(part, lateness)?;
+        let walks = self.walks(part)?;
+        interleave_late(&walks, &self.options(lead_ms)?, lateness)
+            .map_err(|e| invalid(e.to_string()))
+    }
+
+    // -- WP ATOVL -- (moved out of `schedule_late`, unchanged)
+    fn check_lateness(&self, part: &RunPart, lateness: &[(UnitIndex, u64)]) -> Result<()> {
         // Fail closed, the unit named: more than a run plans for is a model
         // or alignment fault, refused before anything plays.
         let of = |u: usize| {
@@ -214,36 +375,7 @@ impl SetupPlan {
                 dspi_measure::system::MAX_LATENESS_MS
             )));
         }
-        let sweep = self.sweep()?;
-        let walks: Vec<UnitWalk> = part
-            .units
-            .iter()
-            .map(|(u, outs)| {
-                let mask = outs.iter().fold(0u16, |m, o| {
-                    m | 1u16.checked_shl(u32::from(*o)).unwrap_or(0)
-                });
-                Ok(UnitWalk {
-                    unit: UnitIndex(u8::try_from(*u).unwrap_or(u8::MAX)),
-                    domain: DomainId {
-                        time_base: 0,
-                        id: 0,
-                    },
-                    walk: WalkSchedule::new(sweep, mask, 1).map_err(|e| invalid(e.to_string()))?,
-                })
-            })
-            .collect::<Result<_>>()?;
-        interleave_late(
-            &walks,
-            &InterleaveOptions {
-                passes: self.passes,
-                gap_samples: u64::from(sweep.gap_samples),
-                lead_samples: self.lead_samples(lead_ms),
-                capture_rate_hz: self.capture_rate_hz,
-                pre_roll_ms: PREROLL_MS,
-            },
-            lateness,
-        )
-        .map_err(|e| invalid(e.to_string()))
+        Ok(())
     }
 
     // -- WP ATLATE --
@@ -293,7 +425,8 @@ impl SetupPlan {
             .flat_map(|(i, u)| u.plan.outputs.iter().map(move |o| (i, o.output)))
             .collect();
         let whole = part_of(&all);
-        if all.len() <= MAX_RUN_OUTPUTS && self.schedule(&whole, PLANNING_LEAD_MS).is_ok() {
+        // -- WP ATOVL -- sized with the lateness expected (review AT-E 2).
+        if all.len() <= MAX_RUN_OUTPUTS && self.fits(&whole) {
             return Ok(vec![whole]);
         }
         let anchor = (usize::from(self.anchor.unit.0), self.anchor.output);
@@ -309,7 +442,7 @@ impl SetupPlan {
                 if outs.len() > MAX_RUN_OUTPUTS {
                     break;
                 }
-                if self.schedule(&part_of(&outs), PLANNING_LEAD_MS).is_ok() {
+                if self.fits(&part_of(&outs)) {
                     take = n;
                 } else {
                     break;

@@ -14,7 +14,7 @@
 //! |---|---|---|
 //! | `open {units, lease_ms?}` | Control, Admin | takes each unit's device lock for the session, reads `EXT_LIST`, `EXT_TIME_BASE` (twice), `EXT_SIGGEN_TIMELINE`, the outputs; checks G1 (one entry per unit with the group's time base and domain, R7b; the units' `t` agree within the reads' round trips, R7a; one USB bus where known); the lease clamped (R6b) |
 //! | `stage {session, serial, config}` | the owner | judges the 36-byte config with `stimulus::check_timed_config` (a finite log sweep, never `RAW`, at most the hard cap, no S/PDIF time-base slot, S-AT6), writes `0xA4` |
-//! | `run {session, segments, lead_ms}` | the owner | `t0` = T read now + the lead (at least the largest arm lead + 100 ms + the writes' time, OD-ATn) + whatever the servos still need to settle; each segment's op 9 at `t0 + offset` in each unit's own numbering (USB: S, time base 1, never 2, R5); `bad_schedule` for a unit's segments closer than the lead (R6a), an overlap or a run over 120 s; with `summed` (WP ATSUMOFF) the segments are one summed run of distinct units whose starts may differ by at most 1 s; units that play together (`summed`, or one offset) are staged at most 6 dB per doubling under the hard cap (review AT-D1); at most one op 9 pending per unit, the next written once the previous has started and never more than 110 s ahead |
+//! | `run {session, segments, lead_ms}` | the owner | `t0` = T read now + the lead (at least the largest arm lead + 100 ms + the writes' time, OD-ATn) + whatever the servos still need to settle; each segment's op 9 at `t0 + offset` in each unit's own numbering (USB: S, time base 1, never 2, R5); `bad_schedule` for a unit's segments closer than the lead (R6a), an overlap or a run over 120 s; with `summed` (WP ATSUMOFF) the segments are one summed run of distinct units whose starts may differ by at most 1 s; with `overlapped` (WP ATOVL) different units' segments may overlap (overlapped starts; a unit's own never, still the lead apart) and every unit playing while another does is staged at most 6 dB per doubling of the most units at once under the hard cap; units that play together (`summed`, or one offset) are staged at most 6 dB per doubling under the hard cap (review AT-D1); at most one op 9 pending per unit, the next written once the previous has started and never more than 110 s ahead |
 //! | `status {session}` | the owner | renews the lease; per unit `SiggenStatus`, `EXT_SIGGEN_TIMELINE`, the group's `EXT_TIME_BASE` entry, peaks, clip, limiter, events; the time pin `{t, hub_us}` |
 //! | `abort {session, reason}` | any Control or Admin principal | `STOP_NOW` and `CANCEL_ALL` on every unit, the broadcast stop where every unit has the ops; locks released; nothing staged can start after it (R4) |
 //! | `close {session}` | the owner | `CANCEL_ALL` (and `STOP_NOW` during a run), locks released |
@@ -1152,15 +1152,25 @@ impl MeasureHub {
             u64::try_from(writes.as_millis()).unwrap_or(u64::MAX),
         ));
         // -- WP ATSUMOFF -- a summed run's parts may start apart.
-        let checked = if req.summed {
+        let checked = if req.summed && req.overlapped {
+            Err("a run is summed or overlapped, not both".to_string())
+        } else if req.summed {
             schedule::check_summed(&req.segments, &lens, rate)
+        } else if req.overlapped {
+            // -- WP ATOVL -- overlapped starts: units may overlap each other.
+            schedule::check_overlapped(&req.segments, &lens, samples_in(lead, rate), rate)
         } else {
             schedule::check_segments(&req.segments, &lens, samples_in(lead, rate), rate)
         };
         // Review AT-D1: units that play together, 6 dB per doubling under
         // the hard cap (S-AT4's bound; the session's own rule is the client's).
-        let checked =
-            checked.and_then(|()| schedule::check_sum_levels(&req.segments, &levels, req.summed));
+        let checked = checked.and_then(|()| {
+            if req.overlapped {
+                schedule::check_overlap_levels(&req.segments, &lens, &levels)
+            } else {
+                schedule::check_sum_levels(&req.segments, &levels, req.summed)
+            }
+        });
         if let Err(why) = checked {
             return err(id, wire::code::BAD_SCHEDULE, &why, None);
         }

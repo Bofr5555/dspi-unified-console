@@ -353,20 +353,26 @@ the compat matrix (section 4).
 
 **How the core tells the sender apart (PGFIX, PGSENDER).** Only after the connect's bulk read failed, and never on
 `Disconnected`. Legacy: its USB product string ("DSPi Audio Link Sender", "DSPi Link Sender"), or without one (MIDI,
-behind a hub) a `REQ_GET_PLATFORM` naming 0 output channels. Paged (`device::is_paged_alink_sender`, on the
+behind a hub) a `REQ_GET_PLATFORM` naming 0 output channels. Paged (`dspi_transport::board::is_paged_alink_sender`, re-exported by `dspi_core::device`, on the
 connection's `paged::Discovery`), all of: (1) the same identity rule on `SYS.PLATFORM` (the 1.1.6 layout); (2) the
 tunnel `0xE010` on page 0xE0, i.e. our firmware; (3) no `STORE.ALL_PARAMS` GET in the bitmaps (no bulk image); (4) no
-page but SYS 0x01, STORE 0x02 and 0xE0. **Fail closed:** anything else, and a paged connection without a discovery
-(the hub's `LocalTransport`/`PrincipalTransport`), is not the sender; a paged DSP stays a DSP. Since the sender's
+page but SYS 0x01, STORE 0x02 and 0xE0. **Fail closed:** anything else, and a paged connection without a discovery,
+is not the sender; a paged DSP stays a DSP. Our hub's `LocalTransport`/`PrincipalTransport` pass the attachment's
+discovery on (LINKFIX), and the hub applies the rule at attach itself: no image read, no poll of what the sender does
+not list. Since the sender's
 bitmaps hold nothing of the DSP model, `PagedTransport` refuses every DSP request locally, and the core's
 `AlinkSender` connection refuses them before the adapter. **FWPG4 must present exactly this:** the product string,
 `SYS.PLATFORM` byte 3 = 0, pages SYS, STORE (the output-config save) and 0xE0 only, the tunnel listed in 0xE0's
 bitmap, page 0 kept. A sender build that lists any further page (a debug build's diagnostics page 0xF0 included) is
 not recognised and fails to open; the firmware's spec (`extension_channel_spec.md` 1.3.5) names the sender's paged
-stack but not this page set, so FWPG4 has to write it there (review PGS-DOC). The update check knows no sender image
-from a DSP image: the sender is judged as a Pico running our firmware (voltage unknown, so the voltage phrase is asked;
-an image not proven ours also names the lineage loss), on both generations alike
-(`firmware_guard/tests_review_pgsdoc.rs`), and the clients do not offer it the bundled DSP image. Over DSPi Link a paged sender gets no meter poll, not even from the hub's listed channel count;
+stack but not this page set, so FWPG4 has to write it there (review PGS-DOC). The update check tells a sender image
+from a DSP image by the image's device-kind stamp (IMGKIND, `image_kind.h`: `dsp` in every DSPi image, `alink_sender`
+in the sender's): an image stamped for the other kind, or with an unreadable stamp, is refused whatever is typed
+(`KindMismatch`); an image with no kind stamp (upstream's, ours before IMGKIND) asks on a sender and says it may be a
+DSP image (`KindUnknown`, or the voltage or lineage phrase where one is asked anyway). The sender's own stamped image on
+a sender is clear with no voltage phrase (INT-R1: the sender has no core-voltage setting and reports no voltage record,
+so there is nothing for the voltage rule to protect); on both generations alike (`firmware_guard/tests_wp_imgkind.rs`,
+`tests_review_pgsdoc.rs`), and the clients do not offer it the bundled DSP image. Over DSPi Link a paged sender gets no meter poll, not even from the hub's listed channel count;
 behind a 1.2 hub the core speaks legacy only and the dual-stack sender is the legacy sender.
 
 ### 1.10 The firmware port onto 1.1.7 (FWPG0-FWPG6, FWPGHIL)
@@ -869,9 +875,34 @@ when its bulk read failed and its discovery meets section 1.9's four conditions 
 page but SYS, STORE, 0xE0); fail closed otherwise. Over DSPi Link behind a 1.3 hub it binds as the paged sender with no
 meter poll; behind a 1.2 hub as the legacy sender. Web, Qt, Android and the Terminal key on `device_kind` and needed no
 change (checked); the web e2e runs the sender page on `sender-dual` too. **Not done:** our hub's in-process paths carry
-no discovery, so a paged sender reached through them still fails to open (fail closed, as PGTM's note); the firmware
-(FWPG4) is not written: its fake (`FakeDevice::sender(true)`, PGFAKE2) is the contract; our hub (`crates/dspi-hub`)
-does not tell the paged sender apart.
+no discovery, so a paged sender reached through them still fails to open (fail closed, as PGTM's note; **fixed by
+LINKFIX**); the firmware
+(FWPG4) is not written: its fake (`FakeDevice::sender(true)`, PGFAKE2) is the contract.
+
+**LINKFIX: The paged sender behind our hub; no bare token without a hub id.** [DONE] Size 0.5. Round R1. **Owns:**
+the sender rule's move to `crates/dspi-transport/src/board.rs` (the hub's headless build has no `dspi-core`),
+`DeviceShared::{discovery, paged_sender}` in `crates/dspi-hub/src/device.rs`, `paged_discovery` on `LocalTransport`
+and `PrincipalTransport`, the bare-token refusal in `link.rs` (`link_connect_hinted`), new
+`crates/dspi-hub/tests/wp_linkfix_paged_sender.rs`, `device.rs`'s `tests_wp_linkfix`, `link/tests_wp_linkfix.rs`,
+`docs/integrator/security.md`. **Did:** our hub decides the paged sender at attach by section 1.9's rule (with the USB
+product string), reads it no image and grants no poll of what it does not list; its in-process transports pass the
+attachment's discovery on, so a core on top opens the sender as `AlinkSender` (and a paged DSP lists its pages);
+`link_connect` with a bare `v1` token and no expected hub id fails `token_without_hub_id` before any dial.
+
+**QTSENDER: Qt greys what does nothing on the alink sender.** [DONE] Size 0.5. Wave R1 (owner 2026-11-19: "do the
+controls actually do anything useful with a sender connected? If no, grey them out and put up a banner"). **Owns:**
+`DeviceInfoController::senderKeeps` and the gate it gives `Shell::trigger` (`Shell::setActionGate`, `allows`),
+`MenuTable.available`, the menu, shortcut, Settings sidebar, tool window, tray and update-window greying, new
+`qml/banners/SenderBanner.qml`, `smoke/SmokeQtSender.cpp` (section `qtsender`), demo generation code 8
+(`FakeDevice::sender(true)`) in `open_demo_generation`. **Did:** checked every menu row on the legacy and the dual-stack
+sender: only device info (Settings, Help > About), the audio link (the sender page, Window > System...), Firmware
+Update, the connection rows (Devices..., Reconnect, Open File..., New from Template...), Events, Identify (when the
+sender answers it), AutoEQ's local rows, the text-field Edit rows, Quit and Help do anything. Every other row, its
+shortcut and its tool window (already open or not) is greyed, not hidden, and `Shell::trigger` refuses it whoever
+asks; Settings greys its System and Control pages; the update window greys Export Configuration; the tray greys the
+volume. One banner in the main window says why. Web needed nothing (the sender screen replaces the DSP screens and
+their keys). Android: its route gate already held; its write keys (presets, Commit, Mute, ...) now do nothing on the
+sender.
 
 **PGSWIFT: Swift (coordinator, Mac VM).** [TODO] Size 1. Wave PG-D. **Owns:** the Swift device-info row; the
 core-backed paths' tests against the paged fakes. Its `CoreBackedTransport` needs no code (its opcodes go through the

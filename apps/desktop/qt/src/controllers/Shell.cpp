@@ -82,6 +82,11 @@ bool Shell::handles(const QString &action) const {
 }
 
 void Shell::trigger(const QString &action) {
+    // -- WP QTSENDER -- the gate first: a refused id does nothing
+    if (!allows(action)) {
+        qInfo("Shell: \"%s\" is refused on this device", qPrintable(action));
+        return;
+    }
     emit triggered(action);
     const auto it = m_handlers.constFind(action);
     if (it != m_handlers.cend() && it->receiver) {
@@ -118,6 +123,8 @@ QWindow *Shell::openWindow(const QString &action) {
             return nullptr;
         }
         QJSEngine::setObjectOwnership(w, QJSEngine::CppOwnership);
+        // -- WP QTSENDER -- ToolWindow greys its content by it
+        if (w->metaObject()->indexOfProperty("actionId") >= 0) w->setProperty("actionId", action);
     }
     w->show();
     w->raise();
@@ -146,3 +153,11 @@ void Shell::setQuitGuard(QObject *receiver, std::function<void(std::function<voi
     m_quitGuardReceiver = receiver;
     m_quitGuard = std::move(guard);
 }
+
+// -- WP QTSENDER --
+void Shell::setActionGate(QObject *receiver, std::function<bool(const QString &)> gate) {
+    m_gateReceiver = receiver;
+    m_gate = std::move(gate);
+}
+
+bool Shell::allows(const QString &action) const { return !m_gateReceiver || !m_gate || m_gate(action); }

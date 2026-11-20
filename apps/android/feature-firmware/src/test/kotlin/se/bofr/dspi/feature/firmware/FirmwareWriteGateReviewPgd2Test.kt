@@ -12,6 +12,7 @@ import org.junit.Test
 import se.bofr.dspi.bridge.CoreTools
 import se.bofr.dspi.core.AutoEqDatabaseInfo
 import se.bofr.dspi.core.AutoEqFetch
+import se.bofr.dspi.core.DeviceKind
 import se.bofr.dspi.core.FirmwareGeneration
 import se.bofr.dspi.core.FirmwareGuardBoard
 import se.bofr.dspi.core.FirmwareGuardBoardSource
@@ -40,7 +41,8 @@ class FirmwareWriteGateReviewPgd2Test {
         FirmwareGuardBoard(1150, FirmwareGuardBoardSource.STATUS_BLOCK),
         boardId = 0,
         lineage = FirmwareLineage.UPSTREAM,
-        generation = FirmwareGeneration.LEGACY
+        generation = FirmwareGeneration.LEGACY,
+        deviceKind = DeviceKind.DSP // -- WP IMGKIND --
     )
 
     /** The core as the installer sees it: the entry check is clear; the gate answers [gate]. */

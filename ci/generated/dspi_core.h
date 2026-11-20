@@ -4993,7 +4993,8 @@ bool dspi_demo_open_wire(struct FfiCore *core, uint8_t wire);
  * sections per generation): 0 stock 1.1.6, 1 ours 1.1.6 with PAGEGUARD, 2
  * ours without it, 3 stock 1.1.7, 4 ours dual-stack 1.1.7, 5 the DSPi-Zero,
  * 6 the alink sender, 7 ours 1.1.6 with PAGEGUARD on a board at the stock
- * 1.15 V core. False for another code.
+ * 1.15 V core, 8 the dual-stack alink sender (WP QTSENDER). False for
+ * another code.
  */
 bool dspi_demo_open_generation(struct FfiCore *core, uint8_t code);
 
@@ -7783,8 +7784,10 @@ void dspi_link_browse_verify(struct FfiCore *core, const char *hub_id);
  * or a `v2` pinned one; `dspi_link_security` gives the one to store), "" = none. `expected_hub_id`: the
  * id it was stored under. With it, a token goes out only after the hello
  * has named that hub, and another hub at the address gets code `wrong_hub`
- * having seen no token. "" = not known: the token goes to whichever hub
- * answers. Forget a stored token only when `tokenRefused` says so.
+ * having seen no token. "" = not known: dial with no token and again with
+ * the hello's id (-- WP LINKFIX -- a bare token with no expected id is
+ * never sent: code `token_without_hub_id`, pair again). Forget a stored
+ * token only when `tokenRefused` says so.
  *
  * When `needsPairing`, ask for the PIN and call `dspi_link_pair`. From here
  * on the core keeps the session up: do not redial, do not queue writes.

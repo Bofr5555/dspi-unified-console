@@ -4059,6 +4059,12 @@ data class FirmwareTarget(
      * The protocol generation of the live connection.
      */
     val generation: FirmwareGeneration,
+    /**
+     * What the open device is (`DeviceProtocol::device_kind`); `None` when
+     * it is not known (no device, a board in BOOTSEL). An image stamped for
+     * another kind is refused; with `None` the kind rule does not apply.
+     */
+    val deviceKind: DeviceKind?,
 )
 
 /**
@@ -4137,6 +4143,13 @@ data class GuardedApply(
      * What the apply or the revert did not do, and why.
      */
     val notes: List<String>,
+    /**
+     * The notice key when the revert was not fully successful
+     * (`revert.incomplete`, `revert.failed`, `revert.not_written`,
+     * `revert.unknown`; "" otherwise): show its title and action, with
+     * `message` and `notes` as the detail.
+     */
+    val revertNotice: String,
 )
 
 /**
@@ -7534,6 +7547,13 @@ data class MeasureSystemResult(
      * Timed runs chained through the anchor (1: none).
      */
     val runs: Int,
+    /**
+     * Which plan each run used: "overlapped starts, 50 ms apart" (the
+     * default where it is safe) or "interleaved passes" with why
+     * overlapped starts were not used; "run 1: ...; run 2: ..." for
+     * chained runs.
+     */
+    val plan: String,
 )
 
 /**
@@ -7659,6 +7679,13 @@ data class MeasureSystemApplied(
      * deadline unless Keep confirms it, and when the connection is lost.
      */
     val guardS: Long,
+    /**
+     * The notice key when the revert was not fully successful (stage
+     * `RevertIncomplete`): `revert.incomplete`, `revert.failed`,
+     * `revert.not_written` or `revert.unknown`; "" otherwise. `message`
+     * names what was not put back.
+     */
+    val revertNotice: String,
 )
 
 /**
@@ -9227,6 +9254,17 @@ enum class FirmwareUpdateRule {
      * Our firmware would give way to an image that may be upstream's.
      */
     LINEAGE_LOSS,
+    /**
+     * The image is stamped for another kind of device than the target (a
+     * DSP image on an alink sender, a sender image on a DSP), or its kind
+     * stamp cannot be read: refused, whatever is typed.
+     */
+    KIND_MISMATCH,
+    /**
+     * The target is an alink sender and the image does not say what it is
+     * for, so it may be a DSP image: asks the typed confirmation.
+     */
+    KIND_UNKNOWN,
 }
 
 /**
@@ -9307,6 +9345,12 @@ enum class GuardPhase {
      * The settings from before are back.
      */
     REVERTED,
+    /**
+     * Reverted, but not wholly: some of the settings from before were not
+     * put back ([`GuardedApply::notes`] names them). The user must check the
+     * settings or restore a backup (a snapshot).
+     */
+    REVERT_INCOMPLETE,
     /**
      * Putting them back failed; it is not tried again.
      */
@@ -9606,6 +9650,14 @@ enum class MeasureSystemApplyStage {
      * Reverted: the model and the units are as filed.
      */
     REVERTED,
+    /**
+     * The revert (the user's, or the hub's guard's) did not put everything
+     * back: the model was not set back, a unit's write failed, a delay
+     * reads back other than filed, or what the hub did is not known.
+     * `revert_notice` is the `revert.*` notice and `message` names what;
+     * the user must check the settings or restore a backup (a snapshot).
+     */
+    REVERT_INCOMPLETE,
 }
 
 /**
@@ -9696,6 +9748,13 @@ enum class MeasureTuneStage {
      * Reverted (by the user, the timeout or a failed write).
      */
     REVERTED,
+    /**
+     * The guard ended without putting everything back (part of it, nothing,
+     * or it is not known): `issue` holds the `revert.*` notice and what was
+     * not put back. The user must check the settings or restore a backup
+     * (a snapshot): the "before" snapshot is `snapshot_before_id`.
+     */
+    REVERT_INCOMPLETE,
 }
 
 /**

@@ -174,7 +174,14 @@ mod link {
     fn wp_cg1_pairing_codes_token_and_refused_token() {
         let hub = pin_hub();
         let h = Handle::new();
-        let hello = connect_with(&h, &hub.url(), "stale", "");
+        // -- WP LINKFIX -- a bare token with no hub id is not sent at all
+        let refused = connect_with(&h, &hub.url(), "stale", "");
+        assert_eq!(refused["ok"], false, "{refused}");
+        assert_eq!(refused["code"], "token_without_hub_id", "{refused}");
+        assert!(hub.tokens_seen().is_empty());
+        let first = connect_with(&h, &hub.url(), "", "");
+        let id = first["hubId"].as_str().unwrap().to_owned();
+        let hello = connect_with(&h, &hub.url(), "stale", &id);
         assert_eq!(hello["needsPairing"], true, "{hello}");
         assert_eq!(hello["tokenRefused"], true);
         assert_eq!(hello["pinSource"], "fixed");

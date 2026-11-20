@@ -28,7 +28,7 @@
 //! use, with the image's stamp as the target and `required_mv` as the current
 //! voltage. It asks on a stock board too: a 1.25 V image on a 1.15 V board asks,
 //! a 1.20 V image on a 1.15 V board does not. An image with no stamp counts as
-//! 1.15 V, so it never asks; today's images have none. On an unknown board the
+//! 1.15 V, so it never asks. On an unknown board the
 //! word takes the place of the phrase: one typed answer per image, and an image
 //! above 1.20 V is not the too-low risk the phrase is about.
 //!
@@ -63,8 +63,9 @@
 //! `ID_AND_STRING` entry with tag `DS` and id [`STAMP_ID`], whose text is the
 //! build's `DSPI_VREG_MV` (`1150`, `1200`, `1250` or `1300`), in an image whose
 //! program name is `DSPi`. No stamp, another value, or stamps that disagree
-//! all mean unknown, treated as 1.15 V. Today's images carry no stamp, so all
-//! count as unknown; nothing here depends on that changing. File names
+//! all mean unknown, treated as 1.15 V. Upstream's images carry no stamp;
+//! our `bofr-main` images do from WP FWSTAMP on (`c6d82b8`, every build, with
+//! its `DSPI_VREG_MV`), older bofr builds do not. File names
 //! (`-vreg1200`), version strings and loose bytes are never believed. A
 //! `core_vreg` marker without a voltage would prove nothing, since such a
 //! build's default can still be 1.15 V. The firmware side, in `core_vreg.c`:
@@ -74,6 +75,25 @@
 //! #define STR(x) STR2(x)
 //! bi_decl(bi_string(BINARY_INFO_MAKE_TAG('D', 'S'), 0x0B7A4C15, STR(DSPI_VREG_MV)))
 //! ```
+//!
+//! # The device kind (WP IMGKIND)
+//!
+//! A second stamp, same tag, id [`KIND_ID`], text `dsp` (every DSPi image,
+//! `main.c`) or `alink_sender` (the sender's, `sender_main.c`; firmware
+//! `image_kind.h`), says what the image is for. [`firmware_update_check`]
+//! refuses, whatever is typed, an image stamped for another kind than the
+//! target's [`FirmwareTarget::device_kind`] and an image whose kind stamp
+//! cannot be read (another text, stamps that disagree), on any target. An image
+//! without one (upstream's, ours before IMGKIND) is judged as before, but on a
+//! sender it asks the typed confirmation ([`KIND_PHRASE`], or the phrase another
+//! rule already asks) with words saying it may be a DSP image. A kind stamp
+//! proves the lineage as the voltage stamp does. The program name is not
+//! consulted (the sender's is `DSPi-Sender`). With no target kind (a board in
+//! BOOTSEL, the write gate's fallback) the kind rule does not apply. The
+//! sender's own stamped image on a sender needs no voltage phrase (INT-R1): the
+//! sender has no core-voltage setting and reports no voltage record, so the
+//! voltage rule's "needs not known" would ask about nothing; only that case is
+//! cleared.
 //!
 //! A stamped image boots at max(stored, its default) (`core_vreg.c:59-62`), so
 //! a stored selection could hold even under a lower stamp. The guard gives no
@@ -110,6 +130,10 @@ const STAMP_TAG: u16 = 0x5344;
 /// The binary-info id of the core-voltage stamp. Picked at random, as the SDK
 /// asks of custom ids.
 pub const STAMP_ID: u32 = 0x0B7A_4C15;
+// -- WP IMGKIND --
+/// The binary-info id of the device-kind stamp (same tag `DS`): text `dsp` in
+/// every DSPi image, `alink_sender` in the sender's (firmware `image_kind.h`).
+pub const KIND_ID: u32 = 0x0B7A_4B1D;
 
 const UF2_BLOCK: usize = 512;
 const UF2_PAGE: u32 = 256;
@@ -563,6 +587,12 @@ fn from_status(t: &mut dyn Transport) -> FirmwareGuardBoard {
 /// covers both, and the message names both).
 pub const LINEAGE_PHRASE: &str = "I ACCEPT LOSING THE EXTENSIONS";
 
+// -- WP IMGKIND --
+/// What must be typed to put an image that does not say what it is for on an
+/// alink sender, when no other rule asks already (its phrase then covers it,
+/// and the message names it).
+pub const KIND_PHRASE: &str = "I ACCEPT THAT THIS MAY BE A DSP IMAGE";
+
 /// The board an update is for, read before it enters the bootloader. The
 /// default fails closed: no board known, so no image.
 ///
@@ -582,6 +612,12 @@ pub struct FirmwareTarget {
     pub lineage: crate::FirmwareLineage,
     /// The protocol generation of the live connection.
     pub generation: crate::FirmwareGeneration,
+    // -- WP IMGKIND --
+    /// What the open device is (`DeviceProtocol::device_kind`); `None` when
+    /// it is not known (no device, a board in BOOTSEL). An image stamped for
+    /// another kind is refused; with `None` the kind rule does not apply.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub device_kind: Option<crate::DeviceKind>,
 }
 
 impl FirmwareTarget {
@@ -635,6 +671,14 @@ pub enum FirmwareUpdateRule {
     NoBootsel,
     /// Our firmware would give way to an image that may be upstream's.
     LineageLoss,
+    // -- WP IMGKIND --
+    /// The image is stamped for another kind of device than the target (a
+    /// DSP image on an alink sender, a sender image on a DSP), or its kind
+    /// stamp cannot be read: refused, whatever is typed.
+    KindMismatch,
+    /// The target is an alink sender and the image does not say what it is
+    /// for, so it may be a DSP image: asks the typed confirmation.
+    KindUnknown,
 }
 
 /// [`firmware_update_check`]'s answer. Flash only on `verdict.allowed`.
@@ -724,6 +768,7 @@ pub(crate) fn target_of(inner: &mut crate::Inner) -> FirmwareTarget {
             ..FirmwareTarget::default()
         };
     };
+    let device_kind = Some(conn.kind); // -- WP IMGKIND --
     let board = crate::hardware::read_board(conn).ok();
     let t = conn.transport();
     // The live connection's generation where the wrappers say it, else the
@@ -750,6 +795,7 @@ pub(crate) fn target_of(inner: &mut crate::Inner) -> FirmwareTarget {
         board_id: board.map(dspi_proto::packets::Board::id),
         lineage,
         generation,
+        device_kind,
     }
 }
 
@@ -763,7 +809,10 @@ fn image_facts(
     if let Some(known) = crate::firmware_manifest::bundled_lineage(image) {
         return known;
     }
-    let lineage = if image_stamp(image, info).is_some() {
+    // -- WP IMGKIND -- the kind stamp is ours alone too
+    let lineage = if image_stamp(image, info).is_some()
+        || matches!(image_kind(image, info), ImageKind::Stamped(_))
+    {
         crate::FirmwareLineage::Bofr
     } else {
         crate::FirmwareLineage::Unknown
@@ -797,7 +846,10 @@ fn generation_change(from: crate::FirmwareGeneration, to: crate::FirmwareGenerat
 /// whatever is typed; the typed confirmation when firmware that may be ours
 /// would give way to an image that may be upstream's (a lineage that could
 /// not be read on an open board counts as ours); the generation change, with
-/// what works afterwards. Pure apart from parsing the image; never panics.
+/// what works afterwards; and (WP IMGKIND) the device kind: an image stamped
+/// for another kind than the target's, or with an unreadable kind stamp, is
+/// refused whatever is typed, and one without a kind stamp asks on a sender
+/// (module docs). Pure apart from parsing the image; never panics.
 #[cfg_attr(feature = "uniffi", uniffi::export)]
 pub fn firmware_update_check(
     image: Vec<u8>,
@@ -832,25 +884,88 @@ pub fn firmware_update_check(
         };
         return out;
     }
+    let kind = if info.valid {
+        image_kind(&image, &info)
+    } else {
+        ImageKind::None
+    };
     let mut v = firmware_guard_check(image, target.voltage.clone(), typed_confirmation.to_owned());
+    // -- WP IMGKIND -- the kind rule: a stamped image for another kind of
+    // device, or a kind stamp that cannot be read, is refused outright
+    if v.decision != FirmwareGuardDecision::Refused
+        && let Some(why) = kind_refusal(kind, target.device_kind)
+    {
+        out.rule = FirmwareUpdateRule::KindMismatch;
+        v.allowed = false;
+        v.decision = FirmwareGuardDecision::Refused;
+        v.reason = FirmwareGuardReason::ImageInvalid;
+        v.message = why;
+        v.confirmation_phrase = String::new();
+        out.verdict = v;
+        return out;
+    }
+    // -- INT-R1 -- (review R1 on IMGKIND's open question) the sender's own
+    // image on an alink sender: the sender has no core-voltage setting (no
+    // `core_vreg.c`, no voltage record), so the voltage rule's "this board's
+    // needs are not known" has nothing to protect there. A stamped
+    // `alink_sender` image runs the sender as it runs today, and no other
+    // image is cleared by this: every other verdict stands (a DSP image is
+    // refused above; an unstamped image still asks).
+    if target.device_kind == Some(crate::DeviceKind::AlinkSender)
+        && kind == ImageKind::Stamped(crate::DeviceKind::AlinkSender)
+        && matches!(
+            v.decision,
+            FirmwareGuardDecision::NeedsConfirmation | FirmwareGuardDecision::Confirmed
+        )
+        && v.reason == FirmwareGuardReason::BoardUnknown
+    {
+        v.allowed = true;
+        v.decision = FirmwareGuardDecision::Clear;
+        v.reason = FirmwareGuardReason::NoRisk;
+        v.message = String::new();
+        v.confirmation_phrase = String::new();
+    }
     let loss = target.may_be_ours()
         && image_lineage != crate::FirmwareLineage::Bofr
         && v.decision != FirmwareGuardDecision::Refused;
+    // -- WP IMGKIND -- an image that does not say what it is for, on a sender
+    let kind_unknown = target.device_kind == Some(crate::DeviceKind::AlinkSender)
+        && kind == ImageKind::None
+        && v.decision != FirmwareGuardDecision::Refused;
+    let mut texts = Vec::new();
+    if kind_unknown {
+        texts.push(
+            "This device is an alink sender, and this image does not say what it is for: it \
+             may be a DSP image, which does not run a sender.",
+        );
+    }
     if loss {
-        out.rule = FirmwareUpdateRule::LineageLoss;
-        let text = "This board runs this fork's firmware, and this image may be upstream's: the \
+        texts.push(
+            "This board runs this fork's firmware, and this image may be upstream's: the \
              extension channel, the audio link, the 1.20 V core setting and the stored IO, \
              control-interface and Control Surfaces settings would be lost (upstream firmware \
-             reads them as missing and falls back to its defaults).";
+             reads them as missing and falls back to its defaults).",
+        );
+    }
+    if !texts.is_empty() {
+        // The lineage rule keeps its name and phrase when both apply; the
+        // message names both.
+        let (rule, phrase) = if loss {
+            (FirmwareUpdateRule::LineageLoss, LINEAGE_PHRASE)
+        } else {
+            (FirmwareUpdateRule::KindUnknown, KIND_PHRASE)
+        };
+        out.rule = rule;
+        let text = texts.join(" ");
         v.message = if v.message.is_empty() {
-            text.to_owned()
+            text
         } else {
             format!("{} {text}", v.message)
         };
         if v.decision == FirmwareGuardDecision::Clear {
-            let confirmed = typed_confirmation == LINEAGE_PHRASE;
+            let confirmed = typed_confirmation == phrase;
             if confirmed {
-                log::warn!("firmware guard: lineage loss accepted by typed confirmation");
+                log::warn!("firmware guard: {rule:?} accepted by typed confirmation");
             }
             v.allowed = confirmed;
             v.decision = if confirmed {
@@ -859,11 +974,35 @@ pub fn firmware_update_check(
                 FirmwareGuardDecision::NeedsConfirmation
             };
             v.reason = FirmwareGuardReason::ImageUnknown;
-            v.confirmation_phrase = LINEAGE_PHRASE.to_owned();
+            v.confirmation_phrase = phrase.to_owned();
         }
     }
     out.verdict = v;
     out
+}
+
+// -- WP IMGKIND --
+/// Why an image of `kind` is refused on a target of `target` kind, or `None`
+/// when the kind rule lets it through.
+fn kind_refusal(kind: ImageKind, target: Option<crate::DeviceKind>) -> Option<String> {
+    let name = |k: crate::DeviceKind| match k {
+        crate::DeviceKind::Dsp => "a DSPi",
+        crate::DeviceKind::AlinkSender => "an alink sender",
+    };
+    match (kind, target) {
+        (ImageKind::Broken, _) => Some(
+            "This image's device-kind stamp cannot be read (an unknown kind, or two that \
+             disagree): it is not installed, whatever is typed."
+                .into(),
+        ),
+        (ImageKind::Stamped(have), Some(want)) if have != want => Some(format!(
+            "This image is for {}, and this device is {}: it is not installed, whatever is \
+             typed.",
+            name(have),
+            name(want)
+        )),
+        _ => None,
+    }
 }
 
 // ── The image's stamp ──────────────────────────────────────────────────
@@ -1012,6 +1151,42 @@ fn image_stamp(bytes: &[u8], info: &Uf2Info) -> Option<u16> {
     stamps.all(|s| s == Some(first)).then_some(first)
 }
 
+// -- WP IMGKIND --
+/// What an image's device-kind stamp says (module docs).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ImageKind {
+    /// No kind stamp: upstream images, and ours before IMGKIND.
+    None,
+    /// Stamped `dsp` or `alink_sender`, every stamp alike.
+    Stamped(crate::DeviceKind),
+    /// A kind stamp with another text, or stamps that disagree.
+    Broken,
+}
+
+/// The kind an image's stamp names. The program name is not consulted: the
+/// sender's is `DSPi-Sender`, and the stamp only narrows what may be written.
+fn image_kind(bytes: &[u8], info: &Uf2Info) -> ImageKind {
+    let mut kinds = Pages::of(bytes, info.family_id)
+        .strings()
+        .into_iter()
+        .filter(|(tag, id, _)| *tag == STAMP_TAG && *id == KIND_ID)
+        .map(|(_, _, text)| match text.as_str() {
+            "dsp" => Some(crate::DeviceKind::Dsp),
+            "alink_sender" => Some(crate::DeviceKind::AlinkSender),
+            _ => None,
+        });
+    let Some(first) = kinds.next() else {
+        return ImageKind::None;
+    };
+    match first {
+        Some(k) if kinds.all(|s| s == Some(k)) => ImageKind::Stamped(k),
+        _ => ImageKind::Broken,
+    }
+}
+
+// -- WP IMGKIND --
+#[cfg(test)]
+mod tests_wp_imgkind;
 // -- WP PGFWUP --
 #[cfg(test)]
 mod tests_wp_pgfwup;
@@ -1030,6 +1205,9 @@ mod tests_review_pgsdoc;
 
 #[cfg(test)]
 mod tests_review_pgd2;
+// -- WP FWSTAMP --
+#[cfg(test)]
+mod tests_wp_fwstamp;
 
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]

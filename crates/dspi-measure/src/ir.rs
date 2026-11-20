@@ -329,6 +329,13 @@ pub enum TimingError {
     /// Bad input or no signal.
     #[error(transparent)]
     Measure(#[from] MeasureError),
+    // -- WP ATOVL --
+    /// An overlapped run (overlapped starts) whose units cannot be told
+    /// apart in it: a unit heard further from its place than the plan
+    /// allows. The run is discarded; the same units measured with
+    /// interleaved passes are not affected.
+    #[error("overlapped starts: {0}")]
+    NotSeparable(String),
 }
 
 /// A `SIGGEN_GET_STATUS` reply and the capture frame the client had reached
@@ -1795,6 +1802,8 @@ pub struct WalkedAnalyser {
     stats: Vec<Vec<RepeatStats>>,
     acc: Vec<Vec<f64>>,
     reasons: Vec<String>,
+    // -- WP ATOVL -- an overlapped run (`None`: every run before this WP).
+    ovl: Option<Overlap>,
 }
 
 impl WalkedAnalyser {
@@ -1807,6 +1816,30 @@ impl WalkedAnalyser {
         schedule: &WalkSchedule,
         capture_rate_hz: u32,
         options: &AnalysisOptions,
+    ) -> Result<WalkedAnalyser, MeasureError> {
+        Self::build(schedule, capture_rate_hz, options, None)
+    }
+
+    // -- WP ATOVL --
+    /// [`WalkedAnalyser::new`] for a run whose cycles overlap in groups
+    /// (overlapped starts, see [`OverlapSpec`]).
+    ///
+    /// Errors: as [`WalkedAnalyser::new`], and a spec that does not fit the
+    /// schedule (a group per cycle, windows inside P5's).
+    pub(crate) fn new_overlapped(
+        schedule: &WalkSchedule,
+        capture_rate_hz: u32,
+        options: &AnalysisOptions,
+        spec: OverlapSpec,
+    ) -> Result<WalkedAnalyser, MeasureError> {
+        Self::build(schedule, capture_rate_hz, options, Some(spec))
+    }
+
+    fn build(
+        schedule: &WalkSchedule,
+        capture_rate_hz: u32,
+        options: &AnalysisOptions,
+        spec: Option<OverlapSpec>,
     ) -> Result<WalkedAnalyser, MeasureError> {
         if !(8_000..=192_000).contains(&capture_rate_hz) {
             return Err(MeasureError::Invalid(format!(
@@ -1844,12 +1877,25 @@ impl WalkedAnalyser {
                 "the gap between sweeps is too short to analyse (at least 60 ms)".into(),
             ));
         }
-        let pre = pre_f as usize;
-        let tail = (gap_cap - 2.0 * pre_f).floor().max(0.0) as usize;
+        let mut pre = pre_f as usize;
+        let mut tail = (gap_cap - 2.0 * pre_f).floor().max(0.0) as usize;
         let cycle_cap = (f64::from(sweep.cycle_samples) * nominal).ceil() as usize;
+        // -- WP ATOVL -- an overlapped run keeps shorter windows (never
+        // longer than P5's) and cuts each cycle with its whole group.
+        let ovl = match spec {
+            None => None,
+            Some(spec) => {
+                let (o, p, t) = Overlap::new(spec, schedule, rate, nominal, pre, tail)?;
+                pre = p;
+                tail = t;
+                Some(o)
+            }
+        };
+        let ext_most = ovl.as_ref().map_or(0, Overlap::widest_ext);
         let seg1 = cycle_cap
             .saturating_add(tail)
-            .saturating_add(pre.saturating_mul(2));
+            .saturating_add(pre.saturating_mul(2))
+            .saturating_add(ext_most);
         let n = fft_len(seg1)
             .ok_or_else(|| MeasureError::Invalid("sweep too long to analyse".into()))?;
         let f_hi = sweep.end_freq_hz().min(0.42 * rate);
@@ -1893,6 +1939,7 @@ impl WalkedAnalyser {
             stats: vec![Vec::new(); n_out],
             acc: vec![vec![0.0; pre.saturating_add(tail)]; n_out],
             reasons: Vec::new(),
+            ovl,
         })
     }
 
@@ -2016,11 +2063,67 @@ impl WalkedAnalyser {
         true
     }
 
+    // -- WP ATOVL --
+    /// [`WalkedAnalyser::fill`] of the capture from `start - ext.0` to
+    /// `start + len + ext.1`, laid circularly so that `start` stays at index
+    /// 0 (what lies before it wraps to the buffer's end): a cycle cut with
+    /// every sweep of its overlapped group whole, so that the deconvolution
+    /// sees no sweep cut off. The span's own ends are faded over `fade`
+    /// samples (none for 0). `false` when it is not all there yet.
+    fn fill_ext(
+        buf: &mut [C64],
+        capture: &WalkedCapture<'_>,
+        start: i64,
+        len: usize,
+        ext: (usize, usize),
+        fade: usize,
+    ) -> bool {
+        let n = buf.len();
+        let total = ext.0.saturating_add(len).saturating_add(ext.1).min(n);
+        let from = start.saturating_sub(ext.0 as i64);
+        let end = from.saturating_add(total as i64);
+        if !capture.complete && end > capture.samples.len() as i64 {
+            return false;
+        }
+        buf.iter_mut().for_each(|c| *c = czero());
+        let fade = if fade == 0 {
+            0
+        } else {
+            fade.clamp(1, (total / 10).max(1))
+        };
+        for i in 0..total {
+            let at = from.saturating_add(i as i64);
+            let mut v = if at < 0 {
+                0.0
+            } else {
+                capture
+                    .samples
+                    .get(at as usize)
+                    .map_or(0.0, |&s| f64::from(s))
+            };
+            if !v.is_finite() {
+                v = 0.0;
+            }
+            let d = i.min(total.saturating_sub(1).saturating_sub(i));
+            if d < fade {
+                v *= 0.5 - 0.5 * (std::f64::consts::PI * d as f64 / fade as f64).cos();
+            }
+            let idx = (i as i64)
+                .saturating_sub(ext.0 as i64)
+                .rem_euclid(n.max(1) as i64) as usize;
+            if let Some(c) = buf.get_mut(idx) {
+                *c = C64::new(v, 0.0);
+            }
+        }
+        true
+    }
+
     // -- WP P5ARRIVAL --
     /// Deconvolves `len` samples from `start` into the plain response and
     /// the analytic, matched-filter-weighted one (`weight` per bin), both of
     /// FFT length `four.n`; the segment's ends faded over `fade` samples (at
     /// most a tenth of it).
+    #[allow(clippy::too_many_arguments)]
     fn deconvolve_pair(
         four: &mut Fourier,
         g: &[C64],
@@ -2029,19 +2132,28 @@ impl WalkedAnalyser {
         start: i64,
         len: usize,
         fade: usize,
+        ext: (usize, usize),
     ) -> Option<(Vec<f64>, Vec<C64>)> {
         let mut buf = vec![czero(); four.n];
-        if !Self::fill(&mut buf, capture, start, len) {
-            return None;
-        }
-        // Both ends faded (as hearing's matched filter): the capture is cut
-        // out of noise, and rumble's step at a cut is a click whose high
-        // frequencies the whitening would weigh as signal.
-        let fade = fade.clamp(1, (len / 10).max(1));
-        for (i, c) in buf.iter_mut().enumerate().take(len) {
-            let d = i.min(len.saturating_sub(1).saturating_sub(i));
-            if d < fade {
-                *c = c.scale(0.5 - 0.5 * (std::f64::consts::PI * d as f64 / fade as f64).cos());
+        if ext != (0, 0) {
+            // -- WP ATOVL -- the cut with its overlapped group, faded at its
+            // own ends, `start` still at index 0.
+            if !Self::fill_ext(&mut buf, capture, start, len, ext, fade) {
+                return None;
+            }
+        } else {
+            if !Self::fill(&mut buf, capture, start, len) {
+                return None;
+            }
+            // Both ends faded (as hearing's matched filter): the capture is
+            // cut out of noise, and rumble's step at a cut is a click whose
+            // high frequencies the whitening would weigh as signal.
+            let fade = fade.clamp(1, (len / 10).max(1));
+            for (i, c) in buf.iter_mut().enumerate().take(len) {
+                let d = i.min(len.saturating_sub(1).saturating_sub(i));
+                if d < fade {
+                    *c = c.scale(0.5 - 0.5 * (std::f64::consts::PI * d as f64 / fade as f64).cos());
+                }
             }
         }
         four.forward(&mut buf);
@@ -2065,8 +2177,9 @@ impl WalkedAnalyser {
         let len = window
             .saturating_add(self.cycle_cap)
             .saturating_add(self.tail);
-        let n0 =
-            fft_len(len).ok_or_else(|| MeasureError::Invalid("search window too long".into()))?;
+        let ext0 = self.ext_of(0);
+        let n0 = fft_len(len.saturating_add(ext0.0).saturating_add(ext0.1))
+            .ok_or_else(|| MeasureError::Invalid("search window too long".into()))?;
         let mut four = Fourier::new(n0);
         let cap_rate = self.rate as u32;
         let first = self.schedule.sweep.render_at_rate(cap_rate, true)?;
@@ -2088,7 +2201,9 @@ impl WalkedAnalyser {
             };
         let w_search = detect_weights(n0, self.rate, self.band, &g0, early_psd.as_ref());
         let edge = (0.01 * self.rate) as usize;
-        let Some((_, a)) = Self::deconvolve_pair(&mut four, &g0, &w_search, capture, w0, len, edge)
+        // -- WP ATOVL -- the first cycle's group whole.
+        let Some((_, a)) =
+            Self::deconvolve_pair(&mut four, &g0, &w_search, capture, w0, len, edge, ext0)
         else {
             return Ok(false);
         };
@@ -2112,7 +2227,7 @@ impl WalkedAnalyser {
                 // the sweep's band.
                 let long = (0.2 * self.rate) as usize;
                 if let Some((_, ab)) =
-                    Self::deconvolve_pair(&mut fb, &gb, &wb, capture, 0, lb, long)
+                    Self::deconvolve_pair(&mut fb, &gb, &wb, capture, 0, lb, long, (0, 0))
                 {
                     // An arrival before the window lies in the capture before
                     // it: the deconvolution's wrap and zero padding are not
@@ -2250,17 +2365,38 @@ impl WalkedAnalyser {
             &self.g_regular
         };
         let edge = (0.01 * self.rate) as usize;
+        let ext = self.ovl.as_ref().map_or((0, 0), |o| o.ext_at(k));
         let Some((h, a)) =
-            Self::deconvolve_pair(four, g, &self.env_weight, capture, start, len, edge)
+            Self::deconvolve_pair(four, g, &self.env_weight, capture, start, len, edge, ext)
         else {
             return Ok(false);
         };
         let Some((pos, _)) = heard_env(&a, 0, self.pre.saturating_mul(2)) else {
-            return Err(TimingError::CycleIdentity(format!(
+            let why = format!(
                 "cycle {} (output {}) was not heard where the schedule puts it",
                 c.index, c.output
-            )));
+            );
+            // -- WP ATOVL -- an overlapped run looks only its narrow window
+            // either side: interleaved passes may still find it.
+            return Err(if self.ovl.is_some() {
+                TimingError::NotSeparable(why)
+            } else {
+                TimingError::CycleIdentity(why)
+            });
         };
+        // -- WP ATOVL -- in an overlapped run the search is narrow: a peak on
+        // its edge is a unit heard further from its place than the plan
+        // allows (or a neighbour's sound), never an arrival.
+        if self.ovl.is_some() {
+            let edge = (0.001 * self.rate).max(2.0);
+            if pos < edge || pos > self.pre.saturating_mul(2) as f64 - edge {
+                return Err(TimingError::NotSeparable(format!(
+                    "cycle {} (output {}) was heard at the edge of its overlapped window: its unit \
+                     sounds further from its place than overlapped starts allow",
+                    c.index, c.output
+                )));
+            }
+        }
         let sn = (SNIPPET_MS * self.rate / 1000.0).round() as i64;
         let i = pos.round() as i64;
         let snippet: Vec<f64> = (i.saturating_sub(sn)..i.saturating_add(sn))
@@ -2377,6 +2513,14 @@ impl WalkedAnalyser {
                 Fit { slope, intercepts }
             }
         };
+        // -- WP ATOVL -- the groups' common delays out (the capture clock's
+        // wander, common to what plays together), the units' spread checked.
+        let fit = match self.ovl.as_mut() {
+            Some(ov) => {
+                ov.common_mode(&fit, &pts, &self.ambiguity, self.outputs.len(), self.rate)?
+            }
+            None => fit,
+        };
         let origin = fit
             .intercepts
             .iter()
@@ -2452,7 +2596,9 @@ impl WalkedAnalyser {
         };
         let slope = fit.slope;
         let e = slope / self.nominal - 1.0;
-        let p = self.origin + slope * c.start as f64;
+        // -- WP ATOVL -- cut where its group was heard (the common delay).
+        let common = self.ovl.as_ref().map_or(0.0, |o| o.common_at(k));
+        let p = self.origin + slope * c.start as f64 + common;
         let base = p.floor();
         let frac = p - base;
         let start = (base as i64).saturating_sub(self.pre as i64);
@@ -2462,7 +2608,13 @@ impl WalkedAnalyser {
             .saturating_add(self.pre);
         let n = self.n;
         let mut buf = vec![czero(); n];
-        if !Self::fill(&mut buf, capture, start, len) {
+        let ext = self.ovl.as_ref().map_or((0, 0), |o| o.ext_at(k));
+        let filled = if ext == (0, 0) {
+            Self::fill(&mut buf, capture, start, len)
+        } else {
+            Self::fill_ext(&mut buf, capture, start, len, ext, 0)
+        };
+        if !filled {
             return Ok(false);
         }
         let oi = self.output_index(c.output);
@@ -2517,6 +2669,43 @@ impl WalkedAnalyser {
                 buf.get(idx).map_or(0.0, |c| c.re)
             })
             .collect();
+        // -- WP ATOVL -- an overlapped cut holds the rest of its group's
+        // responses (the other units, the offset apart): the band statistics
+        // are taken from this output's own window only (its ends tapered
+        // over 1 ms), not from the whole cut's spectrum.
+        if self.ovl.is_some() {
+            let taper = ((0.001 * self.rate) as usize).clamp(1, (len / 4).max(1));
+            let mut gated = vec![czero(); n];
+            for (i, &v) in own.iter().enumerate() {
+                let d = i.min(len.saturating_sub(1).saturating_sub(i));
+                let w = if d < taper {
+                    0.5 - 0.5 * (std::f64::consts::PI * d as f64 / taper as f64).cos()
+                } else {
+                    1.0
+                };
+                let idx = (i as i64).saturating_sub(pre).rem_euclid(n as i64) as usize;
+                if let Some(c) = gated.get_mut(idx) {
+                    *c = C64::new(v * w, 0.0);
+                }
+            }
+            four.forward(&mut gated);
+            st.power.clear();
+            st.z.clear();
+            for &(lo, hi) in &self.grid_bins {
+                let mut pw = 0.0;
+                let mut z = czero();
+                let mut cnt = 0.0;
+                for (bin, x) in gated.iter().enumerate().take(hi.saturating_add(1)).skip(lo) {
+                    let f = bin_freq(bin, n, self.rate);
+                    pw += x.norm_sqr();
+                    let rot = C64::from_polar(1.0, std::f64::consts::TAU * f * offset / self.rate);
+                    z = cadd(z, cmul(*x, rot));
+                    cnt += 1.0;
+                }
+                st.power.push(if cnt > 0.0 { pw / cnt } else { 0.0 });
+                st.z.push(z);
+            }
+        }
         // -- WP P5TRUST -- the repeat's windowed response, as the output's
         // response is made (the fit's window), so the spread is judged on
         // what is trusted: the unwindowed per-cycle power holds the noise of
@@ -2527,12 +2716,24 @@ impl WalkedAnalyser {
         // the envelope's rise earlier, and the spread compares the repeats
         // under one window either way.
         (st.windowed, st.windowed_w2) = self.windowed_power(&own, self.pre as f64 + offset);
-        if let Some(s) = self.stats.get_mut(oi) {
-            s.push(st);
-        }
-        if let Some(acc) = self.acc.get_mut(oi) {
-            for (a, v) in acc.iter_mut().zip(&own) {
-                *a += v;
+        // -- WP ATOVL -- every cycle's statistics are kept for the absolute
+        // gate; only the cycles that measure a difference (played with
+        // their group) are averaged and judged by the overlapped one.
+        let used = match self.ovl.as_mut() {
+            Some(ov) => {
+                ov.keep(oi, k, st.clone());
+                ov.used_at(k)
+            }
+            None => true,
+        };
+        if used {
+            if let Some(s) = self.stats.get_mut(oi) {
+                s.push(st);
+            }
+            if let Some(acc) = self.acc.get_mut(oi) {
+                for (a, v) in acc.iter_mut().zip(&own) {
+                    *a += v;
+                }
             }
         }
         self.stage = if k.saturating_add(1) < self.schedule.cycles().len() {
@@ -2556,7 +2757,11 @@ impl WalkedAnalyser {
             let oi = self.output_index(c.output);
             let y = self.arrivals.get(k).copied().unwrap_or(0.0);
             let a = fit.intercepts.get(oi).copied().flatten().unwrap_or(y);
-            let res = (y - a - fit.slope * c.start as f64) * us;
+            // -- WP ATOVL -- in an overlapped run: off its group's common
+            // delay; a cycle that measures no difference is not weighed.
+            let common = self.ovl.as_ref().map_or(0.0, |o| o.common_at(k));
+            let used = self.ovl.as_ref().is_none_or(|o| o.used_at(k));
+            let res = (y - a - fit.slope * c.start as f64 - common) * us;
             // -- WP P5ARRIVAL -- an ambiguous arrival is reported as such,
             // never as a residual the gate weighs.
             let ambiguous = self.ambiguity.get(k).copied().flatten();
@@ -2570,7 +2775,7 @@ impl WalkedAnalyser {
                     "cycle {} (output {}): its arrival is ambiguous (a second correlation peak {second_peak:.2} of the first within half a carrier period of the envelope)",
                     c.index, c.output
                 ));
-            } else {
+            } else if used {
                 max_res = max_res.max(res.abs());
             }
             cycle_timing.push(CycleTiming {
@@ -2584,11 +2789,13 @@ impl WalkedAnalyser {
             });
         }
         let repeats = self.schedule.repeat;
-        let r = f64::from(repeats);
+        // -- WP ATOVL -- the noise of a cut with its group.
         let seg = self
             .cycle_cap
             .saturating_add(self.tail)
-            .saturating_add(self.pre) as f64;
+            .saturating_add(self.pre)
+            .saturating_add(self.ovl.as_ref().map_or(0, Overlap::widest_ext))
+            as f64;
         let n = self.n as f64;
         // Per grid point: Σ|G|² and the bin count of its band.
         let g_sums: Vec<(f64, f64)> = self
@@ -2610,72 +2817,41 @@ impl WalkedAnalyser {
             self.reasons
                 .push("no pre-roll: the noise floor is not known".to_string());
         }
-        // -- WP P5ARRIVAL -- per output and third-octave band: the SNR per
-        // repeat summed over the band, and the level.
         let bands = self.check_bands();
         let n_out = self.outputs.len();
-        let mut noise_z: Vec<Vec<f64>> = Vec::with_capacity(n_out);
-        let mut mean_z: Vec<Vec<C64>> = Vec::with_capacity(n_out);
-        let mut band_snr: Vec<Vec<f64>> = Vec::with_capacity(n_out);
-        let mut band_level: Vec<Vec<f64>> = Vec::with_capacity(n_out);
-        for oi in 0..n_out {
-            let stats = self.stats.get(oi).map_or(&[][..], |v| v.as_slice());
-            let m = stats.len().max(1) as f64;
-            let nz: Vec<f64> = self
-                .grid
-                .iter()
-                .zip(&g_sums)
-                .map(|(&f, &(s, _))| self.noise_at(f).unwrap_or(0.0) * seg * s)
-                .collect();
-            let zm: Vec<C64> = (0..self.grid.len())
-                .map(|g| {
-                    stats
-                        .iter()
-                        .filter_map(|st| st.z.get(g).copied())
-                        .fold(czero(), cadd)
-                        .unscale(m)
-                })
-                .collect();
-            let snr: Vec<f64> = bands
-                .iter()
-                .map(|&(_, lo, hi)| {
-                    (lo..hi)
-                        .map(|p| {
-                            let nzp = nz.get(p).copied().unwrap_or(0.0);
-                            let s = zm.get(p).map_or(0.0, |z| z.norm_sqr());
-                            if nzp > 0.0 && nzp.is_finite() {
-                                ((s - nzp / m) / nzp).max(0.0)
-                            } else {
-                                0.0
-                            }
-                        })
-                        .sum()
-                })
-                .collect();
-            let level: Vec<f64> = bands
-                .iter()
-                .map(|&(_, lo, hi)| {
-                    (lo..hi)
-                        .map(|p| {
-                            stats
-                                .iter()
-                                .filter_map(|st| st.power.get(p).copied())
-                                .sum::<f64>()
-                                / m
-                        })
-                        .sum()
-                })
-                .collect();
-            noise_z.push(nz);
-            mean_z.push(zm);
-            band_snr.push(snr);
-            band_level.push(level);
+        // -- WP ATOVL -- an overlapped run is judged on what its groups
+        // measure: each repeat's phase against what the rest of its group
+        // heard at the same frequencies (the capture clock's wander taken
+        // out where they are loud enough), the plain repeats kept for the
+        // absolute gate.
+        let plain_tables = self.band_tables(&self.stats, &g_sums, seg, None);
+        let mut scale: Option<Vec<Vec<f64>>> = None;
+        if let Some(ov) = self.ovl.as_ref() {
+            let nz = plain_tables.noise.first().cloned().unwrap_or_default();
+            let (diff, more) =
+                ov.differential(&self.stats, &plain_tables.mean, &nz, &self.outputs, &cycles);
+            self.stats = diff;
+            scale = Some(more);
         }
-        let thr = 10f64.powf(PHASE_BAND_SNR_DB / 10.0);
+        let tables = if self.ovl.is_some() {
+            self.band_tables(&self.stats, &g_sums, seg, scale.as_deref())
+        } else {
+            plain_tables
+        };
         let mut outputs = Vec::with_capacity(n_out);
         let mut max_phase: f64 = 0.0;
         let mut wander_of_cycle: Vec<bool> = vec![false; cycles.len()];
+        let mut min_reps = repeats;
         for (oi, &output) in self.outputs.iter().enumerate() {
+            // -- WP ATOVL -- the repeats averaged (an overlapped run: those
+            // played with their group).
+            let reps = if self.ovl.is_some() {
+                u16::try_from(self.stats.get(oi).map_or(0, Vec::len)).unwrap_or(u16::MAX)
+            } else {
+                repeats
+            };
+            min_reps = min_reps.min(reps);
+            let r = f64::from(reps.max(1));
             let acc = self.acc.get(oi).cloned().unwrap_or_default();
             let samples: Vec<f64> = acc.iter().map(|v| v / r).collect();
             let ir = ImpulseResponse {
@@ -2760,160 +2936,54 @@ impl WalkedAnalyser {
                     }
                 })
                 .collect();
-            let empty_f: Vec<f64> = Vec::new();
-            let empty_z: Vec<C64> = Vec::new();
-            let nz = noise_z.get(oi).unwrap_or(&empty_f);
-            let zm = mean_z.get(oi).unwrap_or(&empty_z);
-            let snr = band_snr.get(oi).unwrap_or(&empty_f);
-            // -- WP P5ARRIVAL -- the phase check, band by band: the
-            // transitions by default, the bound per band as the larger of
-            // the degrees and the time.
-            let mut spread: f64 = 0.0;
-            let mut phase_bands = Vec::new();
-            let mut worst: Option<(f64, PhaseBand)> = None;
-            if stats.len() >= 2 && noise_measured {
-                let in_options = |c: f64| {
-                    self.options
-                        .phase_check_bands
-                        .iter()
-                        .any(|&(a, b)| c >= a && c <= b)
-                };
-                let transition = |b: usize| -> bool {
-                    let (Some(&sa), Some(&la)) =
-                        (snr.get(b), band_level.get(oi).and_then(|l| l.get(b)))
-                    else {
-                        return false;
-                    };
-                    sa >= thr
-                        && la > 0.0
-                        && (0..n_out).any(|o2| {
-                            o2 != oi
-                                && band_snr
-                                    .get(o2)
-                                    .and_then(|v| v.get(b))
-                                    .is_some_and(|s| *s >= thr)
-                                && band_level.get(o2).and_then(|v| v.get(b)).is_some_and(|l| {
-                                    *l > 0.0 && (10.0 * (la / l).log10()).abs() <= TRANSITION_DB
-                                })
-                        })
-                };
-                let wanted: Vec<bool> = if self.options.phase_check_bands.is_empty() {
-                    let t: Vec<bool> = (0..bands.len()).map(transition).collect();
-                    if t.iter().any(|v| *v) {
-                        t
-                    } else {
-                        bands
-                            .iter()
-                            .map(|&(c, _, _)| (100.0..=10_000.0).contains(&c))
-                            .collect()
-                    }
-                } else {
-                    bands.iter().map(|&(c, _, _)| in_options(c)).collect()
-                };
-                let in_band =
-                    snr.iter().copied().fold(0.0, f64::max) * 10f64.powf(-IN_BAND_DB / 10.0);
-                for (b, &(centre, lo, hi)) in bands.iter().enumerate() {
-                    let sb = snr.get(b).copied().unwrap_or(0.0);
-                    if !wanted.get(b).copied().unwrap_or(false) || sb < thr || sb < in_band {
-                        continue;
-                    }
-                    let mut sp: f64 = 0.0;
-                    for st in &stats {
-                        let q = (lo..hi).fold(czero(), |acc, p| {
-                            let nzp = nz.get(p).copied().unwrap_or(0.0);
-                            match (st.z.get(p), zm.get(p)) {
-                                (Some(z), Some(m)) if nzp > 0.0 => {
-                                    cadd(acc, cmul(*z, m.conj()).unscale(nzp))
-                                }
-                                _ => acc,
-                            }
-                        });
-                        sp = sp.max(q.arg().to_degrees().abs());
-                    }
-                    let bound = self
-                        .options
-                        .max_phase_spread_deg
-                        .max(360.0 * centre * self.options.max_phase_spread_us * 1e-6);
-                    let pb = PhaseBand {
-                        freq_hz: centre,
-                        snr_db: 10.0 * sb.log10(),
-                        spread_deg: sp,
-                        spread_us: sp / 360.0 / centre * 1e6,
-                        bound_deg: bound,
-                    };
-                    if sp > bound {
-                        issues.push(TimingIssue::PhaseSpread {
-                            output,
-                            freq_hz: centre,
-                            spread_deg: sp,
-                            bound_deg: bound,
-                        });
-                        if worst.is_none_or(|(x, _)| sp / bound > x) {
-                            worst = Some((sp / bound, pb));
-                        }
-                    }
-                    spread = spread.max(sp);
-                    phase_bands.push(pb);
+            // The cycles of these repeats, in order.
+            let ks: Vec<usize> = cycles
+                .iter()
+                .enumerate()
+                .filter(|(k, c)| {
+                    c.output == output && self.ovl.as_ref().is_none_or(|o| o.used_at(*k))
+                })
+                .map(|(k, _)| k)
+                .collect();
+            let own: Vec<f64> = ks
+                .iter()
+                .map(|&k| {
+                    cycle_timing
+                        .get(k)
+                        .map_or(0.0, |c: &CycleTiming| c.residual_us / us)
+                })
+                .collect();
+            let chk = self.output_checks(
+                &tables,
+                oi,
+                output,
+                &stats,
+                &ks,
+                &own,
+                &bands,
+                noise_measured,
+                &cycles,
+            );
+            issues.extend(chk.issues);
+            self.reasons.extend(chk.reasons);
+            for (k, wus, ppm, over) in chk.wander {
+                if let Some(ct) = cycle_timing.get_mut(k) {
+                    ct.wander_us = wus;
+                    ct.wander_ppm = ppm;
                 }
-                if phase_bands.is_empty() {
-                    self.reasons.push(format!(
-                        "output {output}: too quiet where the phase is checked"
-                    ));
+                if over && let Some(flag) = wander_of_cycle.get_mut(k) {
+                    *flag = true;
                 }
             }
-            if let Some((_, pb)) = worst {
-                self.reasons.push(format!(
-                    "output {output}: its repeats disagree in phase by {:.1}° at {:.0} Hz ({:.1} µs), more than {:.1}°",
-                    pb.spread_deg, pb.freq_hz, pb.spread_us, pb.bound_deg
-                ));
-            }
+            let spread = chk.spread;
+            let phase_bands = chk.phase_bands;
             max_phase = max_phase.max(spread);
-            // -- WP P5ARRIVAL -- the wander diagnostic: each repeat's delay
-            // along its sweep against the mean of the others.
-            if stats.len() >= 2 && noise_measured {
-                let ks: Vec<usize> = cycles
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, c)| c.output == output)
-                    .map(|(k, _)| k)
-                    .collect();
-                // Each repeat's own delay (its residual) is taken out: what
-                // is left is the movement inside its sweep.
-                let own: Vec<f64> = ks
-                    .iter()
-                    .map(|&k| cycle_timing.get(k).map_or(0.0, |c| c.residual_us / us))
-                    .collect();
-                let w = self.wander(&stats, &own, nz, snr, &bands);
-                for (&k, (wus, ppm)) in ks.iter().zip(w) {
-                    if wus.is_nan() || wus <= 0.0 {
-                        continue;
-                    }
-                    if let Some(ct) = cycle_timing.get_mut(k) {
-                        ct.wander_us = wus;
-                        ct.wander_ppm = ppm;
-                    }
-                    if wus > self.options.max_residual_us {
-                        if let Some(flag) = wander_of_cycle.get_mut(k) {
-                            *flag = true;
-                        }
-                        let index = cycles.get(k).map_or(0, |c| c.index);
-                        issues.push(TimingIssue::ClockWander {
-                            cycle: index,
-                            output,
-                            wander_us: wus,
-                            rate_ppm: ppm,
-                        });
-                        self.reasons.push(format!(
-                            "cycle {index} (output {output}): the capture clock wandered {wus:.0} µs / {ppm:.0} ppm inside its sweep against the other repeats"
-                        ));
-                    }
-                }
-            }
+            let snr = tables.snr.get(oi).cloned().unwrap_or_default();
             // -- WP P5ARRIVAL -- arrival and onset from the envelope of the
             // noise-weighted, band-limited response.
             let snr_avg: Vec<(f64, f64)> = bands
                 .iter()
-                .zip(snr)
+                .zip(&snr)
                 .map(|(&(c, _, _), &s)| (c, s * stats.len().max(1) as f64))
                 .collect();
             let a = self.envelope(&ir.samples, noise_measured.then_some(snr_avg.as_slice()));
@@ -2931,7 +3001,7 @@ impl WalkedAnalyser {
                 peak_index: peak,
                 onset_index: onset,
                 arrival_ms: 0.0,
-                repeats,
+                repeats: reps,
                 noise_db,
                 spread_db,
                 phase_spread_deg: spread,
@@ -2961,9 +3031,10 @@ impl WalkedAnalyser {
                 o.onset_index = (o.onset_index - delta).max(0.0);
             }
         }
-        if repeats < self.options.min_passes_reliable {
+        if min_reps < self.options.min_passes_reliable {
+            // -- WP ATOVL -- (an overlapped run: the passes played together)
             self.reasons.push(format!(
-                "{repeats} passes: timing needs at least {}",
+                "{min_reps} passes: timing needs at least {}",
                 self.options.min_passes_reliable
             ));
         }
@@ -3000,6 +3071,19 @@ impl WalkedAnalyser {
                 "a cycle is {max_res:.1} µs off the clock fit, more than {bound:.1} µs ({why})"
             ));
         }
+        // -- WP ATOVL -- beside the overlapped gate, P5's absolute one.
+        if self.ovl.is_some() {
+            let (gate, res) =
+                self.absolute_gate(&cycles, &g_sums, seg, &bands, noise_measured, bound);
+            let mut gate = gate;
+            // What fails the overlapped gate fails the absolute one too.
+            gate.reasons.splice(0..0, self.reasons.iter().cloned());
+            gate.reliable = gate.reasons.is_empty();
+            if let Some(ov) = self.ovl.as_mut() {
+                ov.abs = Some(gate);
+                ov.abs_residual_us = res;
+            }
+        }
         let fitted = self.fitted;
         let quality = TimingQuality {
             reliable: self.reasons.is_empty(),
@@ -3022,6 +3106,268 @@ impl WalkedAnalyser {
             outputs,
             band_hz: self.band,
         })
+    }
+
+    // -- WP ATOVL -- (moved out of `finish`, unchanged, so that an overlapped
+    // run's absolute gate can run it on its plain repeats.)
+    /// Per output and third-octave band: the noise per grid point, the mean
+    /// of the repeats' band phasors, the SNR per repeat summed over each
+    /// band, and the level (WP P5ARRIVAL).
+    fn band_tables(
+        &self,
+        stats_of: &[Vec<RepeatStats>],
+        g_sums: &[(f64, f64)],
+        seg: f64,
+        noise_scale: Option<&[Vec<f64>]>,
+    ) -> BandTables {
+        let bands = self.check_bands();
+        let n_out = self.outputs.len();
+        let mut t = BandTables {
+            noise: Vec::with_capacity(n_out),
+            mean: Vec::with_capacity(n_out),
+            snr: Vec::with_capacity(n_out),
+            level: Vec::with_capacity(n_out),
+        };
+        for oi in 0..n_out {
+            let stats = stats_of.get(oi).map_or(&[][..], |v| v.as_slice());
+            let m = stats.len().max(1) as f64;
+            // -- WP ATOVL -- the statistics of an overlapped run come from a
+            // window of `pre + tail` samples: per bin that much of the cut's
+            // noise, the bins of a band correlated over `n / window`.
+            let gate = self
+                .ovl
+                .as_ref()
+                .map(|_| (self.pre.saturating_add(self.tail)) as f64 / (self.n.max(1)) as f64);
+            let nz: Vec<f64> = self
+                .grid
+                .iter()
+                .zip(g_sums)
+                .enumerate()
+                .map(|(p, (&f, &(s, cnt)))| {
+                    let full = self.noise_at(f).unwrap_or(0.0) * seg * s;
+                    // -- WP ATOVL -- a repeat turned by its group's phase
+                    // carries that phase's noise too.
+                    let more = noise_scale
+                        .and_then(|v| v.get(oi))
+                        .and_then(|v| v.get(p))
+                        .copied()
+                        .unwrap_or(1.0);
+                    gate.map_or(full, |gw| full * (cnt * gw).min(1.0)) * more
+                })
+                .collect();
+            let zm: Vec<C64> = (0..self.grid.len())
+                .map(|g| {
+                    stats
+                        .iter()
+                        .filter_map(|st| st.z.get(g).copied())
+                        .fold(czero(), cadd)
+                        .unscale(m)
+                })
+                .collect();
+            // -- WP ATOVL -- a window of `pre + tail` samples resolves
+            // `bandwidth x window` independent values in a band, fewer than
+            // its grid points at low frequencies: the band's SNR counts
+            // only those.
+            let window_s = gate.map(|_| (self.pre.saturating_add(self.tail)) as f64 / self.rate);
+            let snr: Vec<f64> = bands
+                .iter()
+                .map(|&(centre, lo, hi)| {
+                    let sum: f64 = (lo..hi)
+                        .map(|p| {
+                            let nzp = nz.get(p).copied().unwrap_or(0.0);
+                            let s = zm.get(p).map_or(0.0, |z| z.norm_sqr());
+                            if nzp > 0.0 && nzp.is_finite() {
+                                ((s - nzp / m) / nzp).max(0.0)
+                            } else {
+                                0.0
+                            }
+                        })
+                        .sum();
+                    match window_s {
+                        Some(w) => {
+                            let width = centre
+                                * (2f64.powf(CHECK_BAND_OCTAVES / 2.0)
+                                    - 2f64.powf(-CHECK_BAND_OCTAVES / 2.0));
+                            let points = hi.saturating_sub(lo).max(1) as f64;
+                            sum * (width * w / points).min(1.0)
+                        }
+                        None => sum,
+                    }
+                })
+                .collect();
+            let level: Vec<f64> = bands
+                .iter()
+                .map(|&(_, lo, hi)| {
+                    (lo..hi)
+                        .map(|p| {
+                            stats
+                                .iter()
+                                .filter_map(|st| st.power.get(p).copied())
+                                .sum::<f64>()
+                                / m
+                        })
+                        .sum()
+                })
+                .collect();
+            t.noise.push(nz);
+            t.mean.push(zm);
+            t.snr.push(snr);
+            t.level.push(level);
+        }
+        t
+    }
+
+    // -- WP ATOVL -- (moved out of `finish`, unchanged.)
+    /// One output's phase check and wander diagnostic (WP P5ARRIVAL) on its
+    /// repeats `stats`, which are the cycles `ks`, each with its own delay
+    /// `own` (frames) taken out for the wander.
+    #[allow(clippy::too_many_arguments)]
+    fn output_checks(
+        &self,
+        t: &BandTables,
+        oi: usize,
+        output: u8,
+        stats: &[RepeatStats],
+        ks: &[usize],
+        own: &[f64],
+        bands: &[(f64, usize, usize)],
+        noise_measured: bool,
+        cycles: &[crate::stimulus::Cycle],
+    ) -> OutputChecks {
+        let mut out = OutputChecks::default();
+        let n_out = self.outputs.len();
+        let thr = 10f64.powf(PHASE_BAND_SNR_DB / 10.0);
+        let empty_f: Vec<f64> = Vec::new();
+        let empty_z: Vec<C64> = Vec::new();
+        let nz = t.noise.get(oi).unwrap_or(&empty_f);
+        let zm = t.mean.get(oi).unwrap_or(&empty_z);
+        let snr = t.snr.get(oi).unwrap_or(&empty_f);
+        let band_snr = &t.snr;
+        let band_level = &t.level;
+        // -- WP P5ARRIVAL -- the phase check, band by band: the
+        // transitions by default, the bound per band as the larger of
+        // the degrees and the time.
+        let mut worst: Option<(f64, PhaseBand)> = None;
+        if stats.len() >= 2 && noise_measured {
+            let in_options = |c: f64| {
+                self.options
+                    .phase_check_bands
+                    .iter()
+                    .any(|&(a, b)| c >= a && c <= b)
+            };
+            let transition = |b: usize| -> bool {
+                let (Some(&sa), Some(&la)) =
+                    (snr.get(b), band_level.get(oi).and_then(|l| l.get(b)))
+                else {
+                    return false;
+                };
+                sa >= thr
+                    && la > 0.0
+                    && (0..n_out).any(|o2| {
+                        o2 != oi
+                            && band_snr
+                                .get(o2)
+                                .and_then(|v| v.get(b))
+                                .is_some_and(|s| *s >= thr)
+                            && band_level.get(o2).and_then(|v| v.get(b)).is_some_and(|l| {
+                                *l > 0.0 && (10.0 * (la / l).log10()).abs() <= TRANSITION_DB
+                            })
+                    })
+            };
+            let wanted: Vec<bool> = if self.options.phase_check_bands.is_empty() {
+                let tr: Vec<bool> = (0..bands.len()).map(transition).collect();
+                if tr.iter().any(|v| *v) {
+                    tr
+                } else {
+                    bands
+                        .iter()
+                        .map(|&(c, _, _)| (100.0..=10_000.0).contains(&c))
+                        .collect()
+                }
+            } else {
+                bands.iter().map(|&(c, _, _)| in_options(c)).collect()
+            };
+            let in_band = snr.iter().copied().fold(0.0, f64::max) * 10f64.powf(-IN_BAND_DB / 10.0);
+            for (b, &(centre, lo, hi)) in bands.iter().enumerate() {
+                let sb = snr.get(b).copied().unwrap_or(0.0);
+                if !wanted.get(b).copied().unwrap_or(false) || sb < thr || sb < in_band {
+                    continue;
+                }
+                let mut sp: f64 = 0.0;
+                for st in stats {
+                    let q = (lo..hi).fold(czero(), |acc, p| {
+                        let nzp = nz.get(p).copied().unwrap_or(0.0);
+                        match (st.z.get(p), zm.get(p)) {
+                            (Some(z), Some(m)) if nzp > 0.0 => {
+                                cadd(acc, cmul(*z, m.conj()).unscale(nzp))
+                            }
+                            _ => acc,
+                        }
+                    });
+                    sp = sp.max(q.arg().to_degrees().abs());
+                }
+                let bound = self
+                    .options
+                    .max_phase_spread_deg
+                    .max(360.0 * centre * self.options.max_phase_spread_us * 1e-6);
+                let pb = PhaseBand {
+                    freq_hz: centre,
+                    snr_db: 10.0 * sb.log10(),
+                    spread_deg: sp,
+                    spread_us: sp / 360.0 / centre * 1e6,
+                    bound_deg: bound,
+                };
+                if sp > bound {
+                    out.issues.push(TimingIssue::PhaseSpread {
+                        output,
+                        freq_hz: centre,
+                        spread_deg: sp,
+                        bound_deg: bound,
+                    });
+                    if worst.is_none_or(|(x, _)| sp / bound > x) {
+                        worst = Some((sp / bound, pb));
+                    }
+                }
+                out.spread = out.spread.max(sp);
+                out.phase_bands.push(pb);
+            }
+            if out.phase_bands.is_empty() {
+                out.reasons.push(format!(
+                    "output {output}: too quiet where the phase is checked"
+                ));
+            }
+        }
+        if let Some((_, pb)) = worst {
+            out.reasons.push(format!(
+                "output {output}: its repeats disagree in phase by {:.1}° at {:.0} Hz ({:.1} µs), more than {:.1}°",
+                pb.spread_deg, pb.freq_hz, pb.spread_us, pb.bound_deg
+            ));
+        }
+        // -- WP P5ARRIVAL -- the wander diagnostic: each repeat's delay
+        // along its sweep against the mean of the others.
+        if stats.len() >= 2 && noise_measured {
+            let w = self.wander(stats, own, nz, snr, bands);
+            for (&k, (wus, ppm)) in ks.iter().zip(w) {
+                if wus.is_nan() || wus <= 0.0 {
+                    continue;
+                }
+                let over = wus > self.options.max_residual_us;
+                out.wander.push((k, wus, ppm, over));
+                if over {
+                    let index = cycles.get(k).map_or(0, |c| c.index);
+                    out.issues.push(TimingIssue::ClockWander {
+                        cycle: index,
+                        output,
+                        wander_us: wus,
+                        rate_ppm: ppm,
+                    });
+                    out.reasons.push(format!(
+                        "cycle {index} (output {output}): the capture clock wandered {wus:.0} µs / {ppm:.0} ppm inside its sweep against the other repeats"
+                    ));
+                }
+            }
+        }
+        out
     }
 
     // -- WP P5ARRIVAL --
@@ -3397,3 +3743,683 @@ impl WalkedAnalyser {
 
 #[cfg(test)]
 mod tests_wp_atsys;
+
+// -- WP ATOVL -- overlapped starts (PLAN-AT section 1.4, "Overlapped
+// starts"): the units' sweeps of one group start a fixed offset apart, so the
+// capture clock's wander is common to what plays together. The system
+// analyser lays such a run out as one walk whose cycles overlap in groups;
+// this analyser cuts each cycle with its whole group (one deconvolution of
+// every sweep of it, none cut off), takes each group's common delay out of
+// the fit, judges what the group measures (a repeat's phase against the rest
+// of its group's at each frequency), and keeps P5's absolute gate beside it
+// for what was not played together. Additive: without a spec nothing above
+// changes.
+
+/// How an overlapped run's cycles are grouped and windowed (WP ATOVL).
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct OverlapSpec {
+    /// Per cycle of the walk, in its order: its group. Cycles of one group
+    /// play together (each on another unit); a group of one cycle plays
+    /// alone (the run's first pass, which fixes cycle identity as P5 does).
+    pub(crate) group: Vec<u32>,
+    /// Kept before the timing origin, and the half-width of every cycle's
+    /// search, ms (at most P5's).
+    pub(crate) pre_ms: f64,
+    /// Kept after the timing origin, ms (at most P5's).
+    pub(crate) tail_ms: f64,
+    /// How far apart the members of a group may be heard beyond their
+    /// schedule, ms.
+    pub(crate) spread_ms: f64,
+    /// Clear of another member's impulse and harmonic images around each
+    /// window, ms.
+    pub(crate) guard_ms: f64,
+    /// The harmonic images checked: orders 2 to this.
+    pub(crate) harmonics: u32,
+}
+
+/// An overlapped run's absolute gate (P5's on every cycle, the groups'
+/// common delays left in): what a delay between outputs that did not play
+/// together may rely on.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct OverlapGate {
+    /// No reason.
+    pub(crate) reliable: bool,
+    /// Why not, in words.
+    pub(crate) reasons: Vec<String>,
+}
+
+/// What the system analyser reads of an overlapped run (WP ATOVL).
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct OverlapParts {
+    /// Per cycle: its group.
+    pub(crate) group: Vec<u32>,
+    /// Per cycle: played with its group (judged by the overlapped gate).
+    pub(crate) used: Vec<bool>,
+    /// Per cycle: its distance from the absolute fit (P5's), µs.
+    pub(crate) absolute_residual_us: Vec<f64>,
+    /// Per cycle: its group's common delay, µs.
+    pub(crate) common_us: Vec<f64>,
+    /// The absolute gate (after `finish`).
+    pub(crate) absolute: Option<OverlapGate>,
+}
+
+#[derive(Debug, Clone)]
+struct BandTables {
+    noise: Vec<Vec<f64>>,
+    mean: Vec<Vec<C64>>,
+    snr: Vec<Vec<f64>>,
+    level: Vec<Vec<f64>>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct OutputChecks {
+    spread: f64,
+    phase_bands: Vec<PhaseBand>,
+    issues: Vec<TimingIssue>,
+    reasons: Vec<String>,
+    /// `(cycle, wander µs, ppm, over the bound)`.
+    wander: Vec<(usize, f64, f64, bool)>,
+}
+
+#[derive(Debug, Clone)]
+struct Overlap {
+    group: Vec<u32>,
+    multi: Vec<bool>,
+    used: Vec<bool>,
+    ext: Vec<(usize, usize)>,
+    /// Per cycle: its output's index and device start.
+    out_of: Vec<usize>,
+    start: Vec<f64>,
+    spread_frames: f64,
+    guard_frames: f64,
+    pre_frames: f64,
+    tail_frames: f64,
+    /// Device samples each harmonic image (orders 2..) comes early.
+    harmonic_leads: Vec<f64>,
+    common: Vec<f64>,
+    abs_fit: Option<Fit>,
+    /// Per output: every cycle's statistics, `(cycle, stats)`.
+    all_stats: Vec<Vec<(usize, RepeatStats)>>,
+    abs: Option<OverlapGate>,
+    abs_residual_us: Vec<f64>,
+}
+
+impl Overlap {
+    /// The overlap of `schedule` and the windows it keeps (`pre`, `tail`,
+    /// capture frames).
+    fn new(
+        spec: OverlapSpec,
+        schedule: &WalkSchedule,
+        rate: f64,
+        nominal: f64,
+        pre: usize,
+        tail: usize,
+    ) -> Result<(Overlap, usize, usize), MeasureError> {
+        let cycles = schedule.cycles();
+        if spec.group.len() != cycles.len() {
+            return Err(MeasureError::Invalid(
+                "an overlapped run's groups do not match its cycles".into(),
+            ));
+        }
+        let fin = |v: f64| v.is_finite() && (0.0..=1000.0).contains(&v);
+        if !(fin(spec.pre_ms) && fin(spec.tail_ms) && fin(spec.spread_ms) && fin(spec.guard_ms))
+            || spec.harmonics > 64
+        {
+            return Err(MeasureError::Invalid("bad overlapped windows".into()));
+        }
+        let pre_o = (spec.pre_ms * rate / 1000.0).floor();
+        let tail_o = (spec.tail_ms * rate / 1000.0).floor();
+        if pre_o < 0.02 * rate || pre_o > pre as f64 || tail_o < 0.01 * rate {
+            return Err(MeasureError::Invalid(
+                "an overlapped run's windows are outside what the gap allows".into(),
+            ));
+        }
+        let pre_o = pre_o as usize;
+        let tail_o = (tail_o as usize).min(tail);
+        let outputs = schedule.outputs();
+        let out_of: Vec<usize> = cycles
+            .iter()
+            .map(|c| outputs.iter().position(|&o| o == c.output).unwrap_or(0))
+            .collect();
+        let count = |g: u32| spec.group.iter().filter(|x| **x == g).count();
+        let multi: Vec<bool> = spec.group.iter().map(|&g| count(g) >= 2).collect();
+        let has_multi: Vec<bool> = (0..outputs.len())
+            .map(|oi| out_of.iter().zip(&multi).any(|(&o, &m)| o == oi && m))
+            .collect();
+        let used: Vec<bool> = out_of
+            .iter()
+            .zip(&multi)
+            .map(|(&o, &m)| m || !has_multi.get(o).copied().unwrap_or(false))
+            .collect();
+        let spread_frames = spec.spread_ms * rate / 1000.0;
+        let ext = cycles
+            .iter()
+            .zip(&spec.group)
+            .zip(&multi)
+            .map(|((c, &g), &m)| {
+                if !m {
+                    return (0, 0);
+                }
+                let members = cycles.iter().zip(&spec.group).filter(|(_, x)| **x == g);
+                let first = members
+                    .clone()
+                    .map(|(c, _)| c.start)
+                    .min()
+                    .unwrap_or(c.start);
+                let last = members.map(|(c, _)| c.start).max().unwrap_or(c.start);
+                let before = (c.start.saturating_sub(first) as f64 * nominal).ceil() as usize;
+                let after =
+                    (last.saturating_sub(c.start) as f64 * nominal + spread_frames).ceil() as usize;
+                (before, after)
+            })
+            .collect();
+        let sweep = &schedule.sweep;
+        let ratio = sweep.end_freq_hz() / sweep.start_freq_hz();
+        let harmonic_leads = (2..=spec.harmonics.max(1))
+            .map(|k| f64::from(sweep.cycle_samples) * f64::from(k).ln() / ratio.ln())
+            .filter(|v| v.is_finite())
+            .collect();
+        Ok((
+            Overlap {
+                group: spec.group.clone(),
+                multi,
+                used,
+                ext,
+                out_of,
+                start: cycles.iter().map(|c| c.start as f64).collect(),
+                spread_frames,
+                guard_frames: spec.guard_ms * rate / 1000.0,
+                pre_frames: pre_o as f64,
+                tail_frames: tail_o as f64,
+                harmonic_leads,
+                common: vec![0.0; cycles.len()],
+                abs_fit: None,
+                all_stats: vec![Vec::new(); outputs.len()],
+                abs: None,
+                abs_residual_us: Vec::new(),
+            },
+            pre_o,
+            tail_o,
+        ))
+    }
+
+    fn widest_ext(&self) -> usize {
+        self.ext
+            .iter()
+            .map(|(a, b)| a.saturating_add(*b))
+            .max()
+            .unwrap_or(0)
+    }
+
+    fn ext_at(&self, k: usize) -> (usize, usize) {
+        self.ext.get(k).copied().unwrap_or((0, 0))
+    }
+
+    fn common_at(&self, k: usize) -> f64 {
+        self.common.get(k).copied().unwrap_or(0.0)
+    }
+
+    fn used_at(&self, k: usize) -> bool {
+        self.used.get(k).copied().unwrap_or(true)
+    }
+
+    fn keep(&mut self, oi: usize, k: usize, st: RepeatStats) {
+        if let Some(v) = self.all_stats.get_mut(oi) {
+            v.push((k, st));
+        }
+    }
+
+    /// The fit with each group's common delay taken out: one intercept per
+    /// output from the cycles played with their group, the common delays
+    /// per group (a lone cycle's is its own residual: it measures no
+    /// difference), each set of outputs linked by groups kept at the
+    /// absolute fit's mean. Then every member's window is checked clear of
+    /// the others' impulses and harmonic images where they were heard.
+    ///
+    /// Errors: [`TimingError::NotSeparable`] for members heard further
+    /// apart than the plan allows, or another's sound in a member's window.
+    fn common_mode(
+        &mut self,
+        fit: &Fit,
+        pts: &[(usize, f64, f64)],
+        ambiguity: &[Option<f64>],
+        n_out: usize,
+        rate: f64,
+    ) -> Result<Fit, TimingError> {
+        self.abs_fit = Some(fit.clone());
+        let b = fit.slope;
+        let n = pts.len();
+        let clear = |k: usize| ambiguity.get(k).is_none_or(|a| a.is_none());
+        let y_of = |k: usize| pts.get(k).map_or(0.0, |p| p.2 - b * p.1);
+        let mut groups: Vec<u32> = (0..n)
+            .filter(|&k| self.multi.get(k).copied().unwrap_or(false))
+            .filter_map(|k| self.group.get(k).copied())
+            .collect();
+        groups.sort_unstable();
+        groups.dedup();
+        let gi = |g: u32| groups.binary_search(&g).ok();
+        let mut w = vec![0.0f64; groups.len()];
+        let mut icpt: Vec<Option<f64>> = fit.intercepts.clone();
+        icpt.resize(n_out, None);
+        let has_multi: Vec<bool> = (0..n_out)
+            .map(|o| {
+                (0..n).any(|k| self.out_of.get(k) == Some(&o) && self.multi.get(k) == Some(&true))
+            })
+            .collect();
+        for _ in 0..400 {
+            let mut moved: f64 = 0.0;
+            for (j, &g) in groups.iter().enumerate() {
+                let (mut s, mut c) = (0.0, 0.0);
+                for k in 0..n {
+                    if self.group.get(k) == Some(&g) && clear(k) {
+                        let o = self.out_of.get(k).copied().unwrap_or(0);
+                        if let Some(Some(i)) = icpt.get(o) {
+                            s += y_of(k) - i;
+                            c += 1.0;
+                        }
+                    }
+                }
+                if c > 0.0
+                    && let Some(slot) = w.get_mut(j)
+                {
+                    moved = moved.max((s / c - *slot).abs());
+                    *slot = s / c;
+                }
+            }
+            for o in 0..n_out {
+                if !has_multi.get(o).copied().unwrap_or(false) {
+                    continue;
+                }
+                let (mut s, mut c) = (0.0, 0.0);
+                for k in 0..n {
+                    if self.out_of.get(k) == Some(&o)
+                        && self.multi.get(k) == Some(&true)
+                        && clear(k)
+                        && let Some(j) = self.group.get(k).and_then(|&g| gi(g))
+                    {
+                        s += y_of(k) - w.get(j).copied().unwrap_or(0.0);
+                        c += 1.0;
+                    }
+                }
+                if c > 0.0
+                    && let Some(slot) = icpt.get_mut(o)
+                {
+                    let v = s / c;
+                    moved = moved.max(slot.map_or(f64::INFINITY, |x| (x - v).abs()));
+                    *slot = Some(v);
+                }
+            }
+            if moved < 1e-9 {
+                break;
+            }
+        }
+        // Outputs linked by groups (union-find): each set kept at the
+        // absolute fit's mean (the differences inside it are what the groups
+        // measure; between sets only the absolute fit says anything).
+        let mut parent: Vec<usize> = (0..n_out).collect();
+        fn root(p: &mut [usize], mut x: usize) -> usize {
+            for _ in 0..p.len() {
+                let up = p.get(x).copied().unwrap_or(x);
+                if up == x {
+                    break;
+                }
+                x = up;
+            }
+            x
+        }
+        for &g in &groups {
+            let members: Vec<usize> = (0..n)
+                .filter(|&k| self.group.get(k) == Some(&g))
+                .filter_map(|k| self.out_of.get(k).copied())
+                .collect();
+            if let Some((&a, rest)) = members.split_first() {
+                for &m in rest {
+                    let (ra, rm) = (root(&mut parent, a), root(&mut parent, m));
+                    if ra != rm
+                        && let Some(slot) = parent.get_mut(rm)
+                    {
+                        *slot = ra;
+                    }
+                }
+            }
+        }
+        let roots: Vec<usize> = (0..n_out).map(|o| root(&mut parent, o)).collect();
+        for r in 0..n_out {
+            let set: Vec<usize> = (0..n_out)
+                .filter(|&o| roots.get(o) == Some(&r) && has_multi.get(o) == Some(&true))
+                .collect();
+            if set.is_empty() {
+                continue;
+            }
+            let deltas: Vec<f64> = set
+                .iter()
+                .filter_map(|&o| {
+                    let i = icpt.get(o).copied().flatten()?;
+                    let a = fit.intercepts.get(o).copied().flatten()?;
+                    Some(i - a)
+                })
+                .collect();
+            if deltas.is_empty() {
+                continue;
+            }
+            let delta = deltas.iter().sum::<f64>() / deltas.len() as f64;
+            for &o in &set {
+                if let Some(Some(i)) = icpt.get_mut(o) {
+                    *i -= delta;
+                }
+            }
+            for (j, &g) in groups.iter().enumerate() {
+                let first = (0..n).find(|&k| self.group.get(k) == Some(&g));
+                let in_set = first
+                    .and_then(|k| self.out_of.get(k))
+                    .is_some_and(|&o| roots.get(o) == Some(&r));
+                if in_set && let Some(slot) = w.get_mut(j) {
+                    *slot += delta;
+                }
+            }
+        }
+        // Per cycle: its group's common delay; a lone cycle's own residual.
+        self.common = (0..n)
+            .map(|k| {
+                let o = self.out_of.get(k).copied().unwrap_or(0);
+                if self.multi.get(k) == Some(&true) {
+                    self.group
+                        .get(k)
+                        .and_then(|&g| gi(g))
+                        .and_then(|j| w.get(j).copied())
+                        .unwrap_or(0.0)
+                } else {
+                    icpt.get(o).copied().flatten().map_or(0.0, |i| y_of(k) - i)
+                }
+            })
+            .collect();
+        let origin = icpt.iter().flatten().copied().fold(f64::INFINITY, f64::min);
+        // Each member's window clear of the others where they were heard.
+        let ms = 1000.0 / rate;
+        for &g in &groups {
+            let ks: Vec<usize> = (0..n).filter(|&k| self.group.get(k) == Some(&g)).collect();
+            let off = |k: usize| {
+                let o = self.out_of.get(k).copied().unwrap_or(0);
+                icpt.get(o).copied().flatten().map_or(0.0, |i| i - origin)
+            };
+            let heard: Vec<f64> = ks.iter().map(|&k| off(k)).collect();
+            let lo = heard.iter().copied().fold(f64::INFINITY, f64::min);
+            let hi = heard.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+            if hi - lo > self.spread_frames {
+                return Err(TimingError::NotSeparable(format!(
+                    "the units of a group were heard {:.1} ms apart beyond their plan, more than \
+                     the {:.1} ms overlapped starts allow",
+                    (hi - lo) * ms,
+                    self.spread_frames * ms
+                )));
+            }
+            for &k in &ks {
+                let own = off(k);
+                if own < 0.0 || own > self.tail_frames - 0.015 * rate {
+                    return Err(TimingError::NotSeparable(format!(
+                        "output {} is heard {:.1} ms after the run's first, too late for its \
+                         overlapped window of {:.1} ms",
+                        self.out_of.get(k).copied().unwrap_or(0),
+                        own * ms,
+                        self.tail_frames * ms
+                    )));
+                }
+                let sk = self.start.get(k).copied().unwrap_or(0.0);
+                let lo_w = -self.pre_frames - self.guard_frames;
+                let hi_w = self.tail_frames + self.guard_frames;
+                for &j in ks.iter().filter(|&&j| j != k) {
+                    let sj = self.start.get(j).copied().unwrap_or(0.0);
+                    let at = (sj - sk) * b + off(j);
+                    let mut images = vec![at];
+                    images.extend(self.harmonic_leads.iter().map(|h| at - h * b));
+                    if let Some(x) = images.iter().find(|&&x| x > lo_w && x < hi_w) {
+                        return Err(TimingError::NotSeparable(format!(
+                            "another unit's sound (or a harmonic image of it) is heard {:.1} ms \
+                             from output {}'s arrival, inside its overlapped window",
+                            x * ms,
+                            self.out_of.get(k).copied().unwrap_or(0)
+                        )));
+                    }
+                }
+            }
+        }
+        Ok(Fit {
+            slope: b,
+            intercepts: icpt,
+        })
+    }
+
+    /// The repeats as the overlapped gate judges them: each one's band
+    /// phasors turned by what the rest of its group heard at the same
+    /// frequencies against their own means (the capture clock's common
+    /// wander there), where the rest is loud enough to say (10 dB summed);
+    /// elsewhere unchanged. `stats[oi]` are the used cycles of output `oi`,
+    /// in order; `mean` and `nz` their means and the noise.
+    fn differential(
+        &self,
+        stats: &[Vec<RepeatStats>],
+        mean: &[Vec<C64>],
+        nz: &[f64],
+        outputs: &[u8],
+        cycles: &[crate::stimulus::Cycle],
+    ) -> (Vec<Vec<RepeatStats>>, Vec<Vec<f64>>) {
+        // (output index, repeat) of every used cycle.
+        let mut place: Vec<Option<(usize, usize)>> = vec![None; cycles.len()];
+        let mut count = vec![0usize; outputs.len()];
+        for (k, c) in cycles.iter().enumerate() {
+            if !self.used_at(k) {
+                continue;
+            }
+            let oi = outputs.iter().position(|&o| o == c.output).unwrap_or(0);
+            if let (Some(slot), Some(r)) = (place.get_mut(k), count.get_mut(oi)) {
+                *slot = Some((oi, *r));
+                *r = r.saturating_add(1);
+            }
+        }
+        let z_of = |k: usize| -> Option<&RepeatStats> {
+            let (oi, r) = place.get(k).copied().flatten()?;
+            stats.get(oi)?.get(r)
+        };
+        let mut out: Vec<Vec<RepeatStats>> = stats.to_vec();
+        let grid_len = stats
+            .iter()
+            .flat_map(|v| v.iter().map(|s| s.z.len()))
+            .max()
+            .unwrap_or(0);
+        // Per output and grid point: the noise a turned repeat carries
+        // against its own (its phase noise and its group's added), averaged
+        // over its repeats.
+        let mut more: Vec<Vec<f64>> = vec![vec![0.0; grid_len]; outputs.len()];
+        for k in 0..cycles.len() {
+            let Some((oi, r)) = place.get(k).copied().flatten() else {
+                continue;
+            };
+            if !self.multi.get(k).copied().unwrap_or(false) {
+                continue;
+            }
+            let g = self.group.get(k).copied();
+            let others: Vec<usize> = (0..cycles.len())
+                .filter(|&j| {
+                    j != k
+                        && self.group.get(j).copied() == g
+                        && place.get(j).copied().flatten().is_some()
+                })
+                .collect();
+            let Some(st) = out.get_mut(oi).and_then(|v| v.get_mut(r)) else {
+                continue;
+            };
+            for (p, z) in st.z.iter_mut().enumerate() {
+                let nzp = nz.get(p).copied().unwrap_or(0.0);
+                if !(nzp > 0.0 && nzp.is_finite()) {
+                    continue;
+                }
+                let mut c = czero();
+                let mut snr = 0.0;
+                for &j in &others {
+                    let oj = place.get(j).copied().flatten().map_or(0, |x| x.0);
+                    let (Some(sj), Some(mj)) = (z_of(j), mean.get(oj).and_then(|m| m.get(p)))
+                    else {
+                        continue;
+                    };
+                    let Some(zj) = sj.z.get(p) else { continue };
+                    c = cadd(c, cmul(*zj, mj.conj()).unscale(nzp));
+                    snr += mj.norm_sqr() / nzp;
+                }
+                let norm = c.norm();
+                if snr >= 10.0 && norm > 0.0 && norm.is_finite() {
+                    *z = cmul(*z, c.unscale(norm).conj());
+                    let own = mean
+                        .get(oi)
+                        .and_then(|m| m.get(p))
+                        .map_or(0.0, |m| m.norm_sqr() / nzp);
+                    if let Some(slot) = more.get_mut(oi).and_then(|v| v.get_mut(p)) {
+                        *slot += own / snr;
+                    }
+                }
+            }
+        }
+        // As a factor on the noise: 1 + the mean of `snr_own / snr_group`.
+        for (oi, v) in more.iter_mut().enumerate() {
+            let reps = stats.get(oi).map_or(0, Vec::len).max(1) as f64;
+            for x in v.iter_mut() {
+                *x = 1.0 + *x / reps;
+            }
+        }
+        (out, more)
+    }
+}
+
+impl WalkedAnalyser {
+    // -- WP ATOVL --
+    fn ext_of(&self, k: usize) -> (usize, usize) {
+        self.ovl.as_ref().map_or((0, 0), |o| o.ext_at(k))
+    }
+
+    /// An overlapped run's absolute gate: P5's residual bound on every
+    /// cycle against the absolute fit, and its phase and wander checks on
+    /// every cycle's plain repeats (the common delays put back).
+    #[allow(clippy::too_many_arguments)]
+    fn absolute_gate(
+        &self,
+        cycles: &[crate::stimulus::Cycle],
+        g_sums: &[(f64, f64)],
+        seg: f64,
+        bands: &[(f64, usize, usize)],
+        noise_measured: bool,
+        bound: f64,
+    ) -> (OverlapGate, Vec<f64>) {
+        let us = 1e6 / self.rate;
+        let mut reasons = Vec::new();
+        let Some(ov) = self.ovl.as_ref() else {
+            return (
+                OverlapGate {
+                    reliable: true,
+                    reasons,
+                },
+                Vec::new(),
+            );
+        };
+        let fit = ov.abs_fit.clone().or_else(|| self.fit.clone());
+        let res: Vec<f64> = cycles
+            .iter()
+            .enumerate()
+            .map(|(k, c)| {
+                let oi = self.output_index(c.output);
+                let y = self.arrivals.get(k).copied().unwrap_or(0.0);
+                let (a, b) = fit.as_ref().map_or((y, 0.0), |f| {
+                    (
+                        f.intercepts.get(oi).copied().flatten().unwrap_or(y),
+                        f.slope,
+                    )
+                });
+                (y - a - b * c.start as f64) * us
+            })
+            .collect();
+        let max_res = res
+            .iter()
+            .enumerate()
+            .filter(|(k, _)| self.ambiguity.get(*k).is_none_or(|a| a.is_none()))
+            .map(|(_, r)| r.abs())
+            .fold(0.0, f64::max);
+        if max_res > bound {
+            reasons.push(format!(
+                "a cycle is {max_res:.1} µs off the clock fit, more than {bound:.1} µs (outputs \
+                 that did not play together are judged as in interleaved passes)"
+            ));
+        }
+        // The plain repeats (the group's common delay put back) of the
+        // cycles the overlapped gate averages: a later unit's window holds
+        // the earlier units' room decay in every overlapped pass alike, so
+        // its lone first pass is not compared with them (the residual bound
+        // above holds every cycle).
+        let plain: Vec<Vec<RepeatStats>> = ov
+            .all_stats
+            .iter()
+            .map(|v| {
+                v.iter()
+                    .filter(|(k, _)| ov.used_at(*k))
+                    .map(|(k, st)| {
+                        let w = ov.common_at(*k);
+                        let mut st = st.clone();
+                        for (z, &f) in st.z.iter_mut().zip(&self.grid) {
+                            *z = cmul(
+                                *z,
+                                C64::from_polar(1.0, -std::f64::consts::TAU * f * w / self.rate),
+                            );
+                        }
+                        st
+                    })
+                    .collect()
+            })
+            .collect();
+        let tables = self.band_tables(&plain, g_sums, seg, None);
+        for (oi, &output) in self.outputs.iter().enumerate() {
+            let Some(v) = ov.all_stats.get(oi) else {
+                continue;
+            };
+            let ks: Vec<usize> = v
+                .iter()
+                .map(|(k, _)| *k)
+                .filter(|k| ov.used_at(*k))
+                .collect();
+            let own: Vec<f64> = ks
+                .iter()
+                .map(|&k| res.get(k).copied().unwrap_or(0.0) / us)
+                .collect();
+            let stats = plain.get(oi).cloned().unwrap_or_default();
+            let chk = self.output_checks(
+                &tables,
+                oi,
+                output,
+                &stats,
+                &ks,
+                &own,
+                bands,
+                noise_measured,
+                cycles,
+            );
+            reasons.extend(chk.reasons);
+        }
+        (
+            OverlapGate {
+                reliable: reasons.is_empty(),
+                reasons,
+            },
+            res,
+        )
+    }
+
+    /// The overlapped run's parts, once fitted (WP ATOVL); `None` for a
+    /// run without overlap.
+    pub(crate) fn overlap_parts(&self) -> Option<OverlapParts> {
+        let ov = self.ovl.as_ref()?;
+        let us = 1e6 / self.rate;
+        Some(OverlapParts {
+            group: ov.group.clone(),
+            used: ov.used.clone(),
+            absolute_residual_us: ov.abs_residual_us.clone(),
+            common_us: ov.common.iter().map(|w| w * us).collect(),
+            absolute: ov.abs.clone(),
+        })
+    }
+}

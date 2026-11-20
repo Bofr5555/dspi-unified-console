@@ -568,6 +568,7 @@ static void unitsSection(SmokeDriver &d) {
         "guardS":0,"guardNote":"This hub has no guard for an alignment across units: nothing puts it back by itself. Keep or Revert it yourself."})").object();
     QJsonObject applied{ { QStringLiteral("ok"), true }, { QStringLiteral("stage"), QStringLiteral("none") } };
     QJsonArray keeps;   // the answers Keep gives, in turn
+    QJsonObject revertAs; // -- WP REVERTW -- Revert's answer when set (else a clean revert)
     Record stand;
     QMutex standIn;     // the answers above, set here between the steps, read on the measurement loop
     uc->setCallsForTest([&](FfiCore *c, const QString &op, const QByteArray &a, const QByteArray &b) -> QByteArray {
@@ -598,7 +599,8 @@ static void unitsSection(SmokeDriver &d) {
             return j(k);
         }
         if (op == QLatin1String("revert")) {
-            applied = QJsonObject{ { QStringLiteral("ok"), true }, { QStringLiteral("stage"), QStringLiteral("reverted") }, { QStringLiteral("message"), QString() } };
+            applied = !revertAs.isEmpty() ? revertAs
+                                          : QJsonObject{ { QStringLiteral("ok"), true }, { QStringLiteral("stage"), QStringLiteral("reverted") }, { QStringLiteral("message"), QString() } };
             return j(applied);
         }
         return UnitsMeasureController::coreCall(c, op, a, b);
@@ -765,6 +767,26 @@ static void unitsSection(SmokeDriver &d) {
                 && outcome->property("text").toString().startsWith(QLatin1String("The hub's guard ran out (timeout)")) && uc->guardText().isEmpty());
     toEnd();
     d.grab(w, QStringLiteral("atqt/units-reverted-by-hub.png"));
+
+    // -- WP REVERTW -- a Revert whose writes failed: its own stage, in the notice's words (owner 2026-11-19)
+    steps.clear();
+    click(applyButton);
+    step(QStringLiteral("apply"), 10000);
+    answer(&revertAs, QJsonDocument::fromJson(R"J({"ok":true,"stage":"revert_incomplete","revertNotice":"revert.incomplete","guardS":300,"message":"reverted, but not wholly: DEMO-TB-B out.delay: refused (not written)"})J").object());
+    steps.clear();
+    click(in(QStringLiteral("MeasureUnits.revert")));
+    step(QStringLiteral("revert"), 10000);
+    outcome = in(QStringLiteral("MeasureUnits.outcome"));
+    const QString ended = outcome ? outcome->property("text").toString() : QString();
+    d.check("revertw: a revert not fully successful is its own stage, said in the notice's words with what was not put back",
+            uc->stage() == QLatin1String("revert_incomplete") && outcome && outcome->isVisible()
+                && ended.startsWith(QLatin1String("The revert was not fully successful."))
+                && ended.contains(QLatin1String("DEMO-TB-B out.delay: refused"))
+                && ended.endsWith(QLatin1String("Check the settings, or restore a backup (a snapshot)."))
+                && uc->guardText().isEmpty());
+    toEnd();
+    d.grab(w, QStringLiteral("atqt/units-revert-incomplete.png"));
+    answer(&revertAs, QJsonObject{});
 
     // Leaving the tab closes the units' connections
     QQuickItem *tabs = in(QStringLiteral("Measure.tabs"));

@@ -11,13 +11,18 @@ use super::*;
 const WAIT: Duration = Duration::from_secs(8);
 
 fn connect(core: &DspiCore, hub: &FakeHub, token: &str) -> Result<LinkHello> {
+    connect_to(core, hub, token, "")
+}
+
+// -- WP LINKFIX -- a bare (v1) token goes out only with the hub's id
+fn connect_to(core: &DspiCore, hub: &FakeHub, token: &str, id: &str) -> Result<LinkHello> {
     set_caller_driven_on_this_thread(true);
     let r = core.link_connect_with(
         hub.url(),
         "wp-wb4b".into(),
         "test".into(),
         token.into(),
-        String::new(),
+        id.into(),
         Tuning {
             backoff_divisor: 50,
             ..Tuning::default()
@@ -106,6 +111,7 @@ fn wp_wb4b_b_pairing_and_the_token_on_a_caller_driven_session() {
     let core = DspiCore::new();
     let hello = connect(&core, &hub, "").unwrap();
     assert!(hello.needs_pairing);
+    let hub_id = hello.hub_id.clone();
     assert_eq!(core.link_status().phase, LinkPhase::NeedsPairing);
     let wrong = core.link_pair("000000".into());
     assert!(
@@ -119,7 +125,7 @@ fn wp_wb4b_b_pairing_and_the_token_on_a_caller_driven_session() {
 
     // The token opens the next session without a PIN.
     let core2 = DspiCore::new();
-    let hello = connect(&core2, &hub, &token).unwrap();
+    let hello = connect_to(&core2, &hub, &token, &hub_id).unwrap();
     assert!(!hello.needs_pairing);
     tick_until(&core2, LinkPhase::ChooseDevice);
     core2.link_close();

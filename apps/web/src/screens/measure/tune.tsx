@@ -229,7 +229,7 @@ export function TuneTab(props: MeasureTabProps) {
       </section>
 
       {p ? <ProposalCard {...props} t={t} /> : null}
-      {st && (t.applied || st.stage === "kept" || st.stage === "reverted") ? <GuardCard {...props} t={t} /> : null}
+      {st && (t.applied || st.stage === "kept" || st.stage === "reverted" || st.stage === "revertIncomplete") ? <GuardCard {...props} t={t} /> : null /* -- WP REVERTW -- */}
       {t.said ? (
         <p class="note" role="status" aria-label="Tune outcome">
           {t.said}
@@ -351,7 +351,8 @@ function GuardCard(props: MeasureTabProps & { t: TuneDesk }) {
       <div class="card-head">
         <strong>5. Verify, then Keep or Revert</strong>
       </div>
-      <p aria-label="Tune stage" aria-live="polite">
+      {/* -- WP REVERTW -- a revert not fully successful is an alert, not a status line */}
+      <p aria-label="Tune stage" aria-live="polite" role={st.stage === "revertIncomplete" ? "alert" : undefined} class={st.stage === "revertIncomplete" ? "error" : undefined}>
         {stageWords(st)}
       </p>
       {t.applied && g.phase === "waiting" ? (
@@ -380,7 +381,7 @@ function GuardCard(props: MeasureTabProps & { t: TuneDesk }) {
         </div>
       ) : null}
       {st.issue && !q && !st.running && st.stage !== "kept" ? (
-        <p class="note" data-key={st.issue.key}>
+        <p class={st.stage === "revertIncomplete" ? "error" : "note"} data-key={st.issue.key}>
           {issueWords(st.issue)}
         </p>
       ) : null}

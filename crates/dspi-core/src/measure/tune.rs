@@ -414,6 +414,60 @@ pub enum MeasureTuneStage {
     Kept,
     /// Reverted (by the user, the timeout or a failed write).
     Reverted,
+    // -- WP REVERTW --
+    /// The guard ended without putting everything back (part of it, nothing,
+    /// or it is not known): `issue` holds the `revert.*` notice and what was
+    /// not put back. The user must check the settings or restore a backup
+    /// (a snapshot): the "before" snapshot is `snapshot_before_id`.
+    RevertIncomplete,
+}
+
+// -- WP REVERTW --
+/// A Revert's end: as [`tune_end_of`], but a guard left kept (another
+/// console took the device over first) did not put anything back.
+fn tune_revert_end(g: &GuardedApply) -> (MeasureTuneStage, Option<MeasureIssue>) {
+    if g.phase == GuardPhase::Kept {
+        let words = if g.message.is_empty() {
+            "the change stays: nothing was written back".to_owned()
+        } else {
+            g.message.clone()
+        };
+        return (
+            MeasureTuneStage::RevertIncomplete,
+            Some(MeasureIssue::new(
+                crate::guarded::NOTICE_REVERT_NOT_WRITTEN,
+                None,
+                words,
+            )),
+        );
+    }
+    tune_end_of(g)
+}
+
+/// Where a tune stands once its guard ended as `g` says, and the issue to
+/// show for a revert that was not fully successful.
+fn tune_end_of(g: &GuardedApply) -> (MeasureTuneStage, Option<MeasureIssue>) {
+    match g.phase {
+        GuardPhase::Kept => (MeasureTuneStage::Kept, None),
+        GuardPhase::Reverted => (MeasureTuneStage::Reverted, None),
+        _ => {
+            let key = if g.revert_notice.is_empty() {
+                crate::guarded::NOTICE_REVERT_UNKNOWN
+            } else {
+                g.revert_notice.as_str()
+            };
+            let mut words = vec![if g.message.is_empty() {
+                "the guard ended without putting the settings from before back".to_owned()
+            } else {
+                g.message.clone()
+            }];
+            words.extend(g.notes.iter().cloned());
+            (
+                MeasureTuneStage::RevertIncomplete,
+                Some(MeasureIssue::new(key, None, words.join(" "))),
+            )
+        }
+    }
 }
 
 /// One output's verify.
@@ -1733,11 +1787,12 @@ impl DspiCore {
             self.measure_stop_session();
         }
         let _ = self.measure_clear();
-        t.stage = if g.phase == GuardPhase::Kept {
-            MeasureTuneStage::Kept
-        } else {
-            MeasureTuneStage::Reverted
-        };
+        // -- WP REVERTW --
+        let (stage, issue) = tune_end_of(&g);
+        t.stage = stage;
+        if issue.is_some() {
+            t.issue = issue;
+        }
     }
 
     /// File a snapshot document's text: on the hub through the hub, else in
@@ -2489,9 +2544,12 @@ impl DspiCore {
         t.guard_id = guard.id;
         t.before = Some((before_id, before_text));
         if let Some(e) = failed {
-            let _ = self.apply_revert();
-            t.stage = MeasureTuneStage::Reverted;
-            t.issue = Some(MeasureIssue::new(KEY_NOT_KEPT, None, e.to_string()));
+            // -- WP REVERTW -- a revert that did not put everything back says so
+            let g = self.apply_revert().unwrap_or_else(|_| self.apply_status());
+            let (stage, issue) = tune_revert_end(&g);
+            t.stage = stage;
+            t.issue =
+                Some(issue.unwrap_or_else(|| MeasureIssue::new(KEY_NOT_KEPT, None, e.to_string())));
             self.tune_publish(&t);
             return Err(e);
         }
@@ -2605,7 +2663,12 @@ impl DspiCore {
             ..MeasureTuneKeep::default()
         };
         if guard.phase != GuardPhase::Kept {
-            t.stage = MeasureTuneStage::Reverted;
+            // -- WP REVERTW --
+            let (stage, issue) = tune_end_of(&guard);
+            t.stage = stage;
+            if issue.is_some() {
+                t.issue = issue;
+            }
             self.tune_publish(&t);
             return Ok(keep);
         }
@@ -2719,7 +2782,12 @@ impl DspiCore {
         }
         let _ = self.measure_clear();
         let g = self.apply_revert()?;
-        t.stage = MeasureTuneStage::Reverted;
+        // -- WP REVERTW --
+        let (stage, issue) = tune_revert_end(&g);
+        t.stage = stage;
+        if issue.is_some() {
+            t.issue = issue;
+        }
         self.tune_publish(&t);
         Ok(g)
     }
@@ -2769,5 +2837,64 @@ impl DspiCore {
             _ => t.forget(),
         }
         self.tune_publish(&t)
+    }
+}
+
+// -- WP REVERTW --
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests_wp_revertw {
+    use super::*;
+
+    fn ended(phase: GuardPhase, notice: &str) -> GuardedApply {
+        GuardedApply {
+            phase,
+            message: "the hub could not put it back".into(),
+            notes: vec!["Output 2: not written".into()],
+            revert_notice: notice.into(),
+            ..GuardedApply::default()
+        }
+    }
+
+    /// A tune's guard that ended without putting everything back is
+    /// `RevertIncomplete` with the guard's `revert.*` notice and its words;
+    /// a clean revert and a Keep are not.
+    #[test]
+    fn wp_revertw_a_tune_guard_not_wholly_put_back_has_its_own_stage() {
+        use crate::guarded::{
+            NOTICE_REVERT_FAILED, NOTICE_REVERT_INCOMPLETE, NOTICE_REVERT_NOT_WRITTEN,
+            NOTICE_REVERT_UNKNOWN,
+        };
+        for (phase, key) in [
+            (GuardPhase::RevertIncomplete, NOTICE_REVERT_INCOMPLETE),
+            (GuardPhase::RevertFailed, NOTICE_REVERT_FAILED),
+            (GuardPhase::NotWritten, NOTICE_REVERT_NOT_WRITTEN),
+        ] {
+            let (stage, issue) = tune_end_of(&ended(phase, key));
+            assert_eq!(stage, MeasureTuneStage::RevertIncomplete, "{phase:?}");
+            let i = issue.unwrap();
+            assert_eq!(i.key, key);
+            assert!(i.message.contains("Output 2: not written"), "{}", i.message);
+        }
+        // Lost, its end not known: the unknown notice.
+        let (stage, issue) = tune_end_of(&ended(GuardPhase::Lost, ""));
+        assert_eq!(stage, MeasureTuneStage::RevertIncomplete);
+        assert_eq!(issue.unwrap().key, NOTICE_REVERT_UNKNOWN);
+        assert_eq!(
+            tune_end_of(&ended(GuardPhase::Reverted, "")),
+            (MeasureTuneStage::Reverted, None)
+        );
+        assert_eq!(
+            tune_end_of(&ended(GuardPhase::Kept, "")),
+            (MeasureTuneStage::Kept, None)
+        );
+        // A Revert another console's takeover left kept put nothing back.
+        let (stage, issue) = tune_revert_end(&ended(GuardPhase::Kept, ""));
+        assert_eq!(stage, MeasureTuneStage::RevertIncomplete);
+        assert_eq!(issue.unwrap().key, NOTICE_REVERT_NOT_WRITTEN);
+        assert_eq!(
+            serde_json::to_value(MeasureTuneStage::RevertIncomplete).unwrap(),
+            serde_json::json!("revertIncomplete")
+        );
     }
 }

@@ -342,8 +342,8 @@ Documented, not observed (needs a USB device the app cannot open).
 - The core reports devices the last scan saw but could not open (`dspi_inaccessible_devices`).
 - Linux: when that count is above zero, the app offers a dialog explaining that the DSPi needs permission, with a
   button that installs the udev rule through `pkexec` (one authentication prompt), then rescans. The rule file is
-  `70-dspi.rules` (vendor 2e8b, the `uaccess` tag); the packages install the same rule, so the dialog matters for the
-  AppImage and the tar. A declined or failed `pkexec` leaves the dialog with a short error; nothing else changes.
+  `70-dspi.rules` (vendor 2e8b and the older firmware's 2e8a:feaa, the `uaccess` tag); its text is the packages' rule
+  file `packaging/linux/70-uconsole-for-dspi.rules`, built into the app, so the dialog matters for the AppImage and the tar. A declined or failed `pkexec` leaves the dialog with a short error; nothing else changes.
 - The status area at the bottom of the left column is one of the places that offers it (documented: the inventory
   lists the status area and the main window).
 - What a declined or failed `pkexec` shows is **not observable** here; say what failed and leave the rule

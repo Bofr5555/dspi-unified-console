@@ -10,7 +10,7 @@ pkgdesc='uConsole for DSPi: set up and control a DSPi audio processor'
 arch=('x86_64')
 url='https://github.com/Bofr5555/dspi-unified-console'
 license=('GPL-3.0-only')
-depends=('qt6-base' 'qt6-declarative' 'qt6-svg' 'alsa-lib' 'gcc-libs' 'glibc' 'hicolor-icon-theme')
+depends=('qt6-base' 'qt6-declarative' 'qt6-svg' 'qt6-multimedia' 'alsa-lib' 'gcc-libs' 'glibc' 'hicolor-icon-theme')
 makedepends=('cargo' 'cmake' 'ninja' 'qt6-tools')
 optdepends=('qt6-wayland: run on Wayland without XWayland'
             'polkit: install the udev rule from the app when a DSPi cannot be opened')

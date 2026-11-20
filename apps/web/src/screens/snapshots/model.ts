@@ -19,7 +19,9 @@ import {
   type ConfigDiff,
   type GuardedApplyRecord,
   type ImportReport,
+  type NoticeRecord, // -- WP REVERTW --
 } from "../../core/protocol";
+import { noticeRow, revertNotice } from "../../ui/texts"; // -- WP REVERTW --
 import type { HubSnapshotRecallRecord } from "../../core/hub-settings-protocol"; // -- WP P2WB3 --
 import type { Session } from "../../ui/session";
 // -- WP WB6K -- the document's input pair-link mask, both ways
@@ -91,7 +93,19 @@ export function waitingWords(text: string, seconds: number): { before: string; s
 
 /** A guard the bar offers: one waiting for Keep, or one lost with the device open again (Revert stays offered). */
 export function guardOffered(g: GuardedApplyRecord | null): boolean {
-  return !!g && (g.phase === "waiting" || g.phase === "lost");
+  // -- WP REVERTW -- a lost guard whose end the hub no longer knows has no Revert: its outcome says so
+  return !!g && (g.phase === "waiting" || (g.phase === "lost" && !g.revertNotice));
+}
+
+// -- WP REVERTW --
+/** How a guard's end reads: a revert that was not fully successful leads with its notice (owner 2026-11-19). */
+export function guardOutcome(g: GuardedApplyRecord, row: (key: string) => NoticeRecord | null = noticeRow): Outcome {
+  const n = revertNotice(g.revertNotice, row);
+  if (n) {
+    return { title: n.title, lines: [g.message || n.reason, n.action].filter(Boolean), notes: g.notes, tone: "error" };
+  }
+  const tone = g.phase === "kept" ? "info" : g.phase === "reverted" ? "warn" : "error";
+  return { title: g.label || "Safe apply", lines: [g.message].filter(Boolean), notes: g.notes, tone };
 }
 
 const NO_COMPARE: AbCompareRecord = { active: false, side: null, aName: "", bName: "", recall: null };
@@ -496,9 +510,9 @@ export class SnapshotDesk {
 
   private guardEnded(g: GuardedApplyRecord): void {
     // -- WP P1DCFIX -- a lost guard is the bar's (with Revert), not a result line
-    if (g.phase === "lost") return;
-    const tone = g.phase === "kept" ? "info" : g.phase === "reverted" ? "warn" : "error";
-    this.set({ outcome: { title: g.label || "Safe apply", lines: [g.message].filter(Boolean), notes: g.notes, tone } });
+    // -- WP REVERTW -- unless its end is not known: then it is the outcome
+    if (g.phase === "lost" && !g.revertNotice) return;
+    this.set({ outcome: guardOutcome(g) });
   }
 
   /** Keep the change. */

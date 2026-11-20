@@ -158,63 +158,10 @@ pub(crate) fn shut(conn: Connection) {
     drop(link);
 }
 
-// -- WP PGFIX --
-/// The product strings of the alink sender build (`firmware/DSPi/
-/// usb_descriptors.c` with `DSPI_ROLE_SENDER`; its first name too).
-pub(crate) const SENDER_PRODUCTS: [&str; 2] = ["DSPi Audio Link Sender", "DSPi Link Sender"];
-
-// -- WP PGFIX --
-/// Whether a device is the alink sender (`firmware/DSPi-Sender`), from its
-/// `REQ_GET_PLATFORM` reply and, where the descriptor is at hand, its USB
-/// product string, as PGZERO tells boards apart: the product string decides
-/// when there is one; without it (MIDI, behind a hub) a platform that names
-/// no output channels is the sender's (`sender_vendor.c`: byte 3 is 0, "no
-/// output channels: a sender"; every DSPi has outputs). A reply that does not
-/// decode is not the sender's.
-pub(crate) fn is_alink_sender_platform(platform: &[u8], product: Option<&str>) -> bool {
-    let Ok(info) = PlatformInfo::decode(platform) else {
-        return false;
-    };
-    match product.map(str::trim).filter(|p| !p.is_empty()) {
-        Some(p) => SENDER_PRODUCTS.contains(&p),
-        None => info.num_output_channels == 0,
-    }
-}
-
-// -- WP PGSENDER --
-/// The pages the dual-stack alink sender lists (FWPG4, extension channel spec
-/// 1.3: `SYS.PROTOCOL_INFO`, `SYS.PLATFORM`, its vendor subset on the paged
-/// stack and the tunnel): SYS (identity, discovery, bootloader), STORE (its
-/// output-config save) and our private page 0xE0.
-pub(crate) const SENDER_PAGES: [u8; 3] = [
-    dspi_proto::paged::cmds::SYS_PLATFORM.page(),
-    dspi_proto::paged::cmds::STORE_ALL_PARAMS.page(),
-    dspi_proto::paged::EXT_PAGE,
-];
-
-// -- WP PGSENDER --
-/// Whether a paged device is the dual-stack alink sender, from what
-/// `paged::open` read at connect (PLAN-PG section 1.9). Every condition must
-/// hold; anything else is a DSP or an unrecognised device, never a sender
-/// (fail closed):
-/// 1. it identifies as the sender as on the legacy stack: `SYS.PLATFORM` has
-///    the 1.1.6 `GET_PLATFORM` layout, so [`is_alink_sender_platform`] (the
-///    product string where there is one, else no outputs);
-/// 2. it is our firmware: page 0xE0 with the tunnel `0xE010` (the sender's
-///    alink block lives on the extension channel);
-/// 3. it has no bulk image: `STORE.ALL_PARAMS` GET is not in its bitmaps;
-/// 4. it lists no page but SYS, STORE and 0xE0 ([`SENDER_PAGES`]): a device
-///    with any DSP page is not the sender.
-pub(crate) fn is_paged_alink_sender(
-    disc: &dspi_transport::paged::Discovery,
-    product: Option<&str>,
-) -> bool {
-    use dspi_proto::paged::{PagedDir, cmds};
-    is_alink_sender_platform(&disc.platform, product)
-        && disc.has_extensions()
-        && !disc.pages.contains(cmds::STORE_ALL_PARAMS, PagedDir::Get)
-        && disc.pages.pages().all(|p| SENDER_PAGES.contains(&p.page))
-}
+// -- WP PGFIX -- / -- WP PGSENDER --
+// -- WP LINKFIX -- the sender rule now lives in `dspi_transport::board`, so our
+// hub's headless build applies the same one (PLAN-PG section 1.9)
+pub(crate) use dspi_transport::board::{is_alink_sender_platform, is_paged_alink_sender};
 
 // -- WP PGFIX --
 /// The connection to an alink sender whose bulk read failed (`err`), or
@@ -624,7 +571,8 @@ impl DspiCore {
     /// (stock 1.1.6), 1 G1b with PAGEGUARD, 2 G1b without it, 3 G2s (stock
     /// 1.1.7), 4 G2b (our dual-stack 1.1.7), 5 the DSPi-Zero, 6 the alink
     /// sender, 7 G1b with PAGEGUARD on a board at the stock 1.15 V core (a
-    /// Pico on our firmware, which the voltage rule alone clears). The demo's
+    /// Pico on our firmware, which the voltage rule alone clears), 8 the
+    /// dual-stack alink sender (paged 1.1.7 and 1.1.6; WP QTSENDER). The demo's
     /// own core voltage is 1.20 V. Opened through the generation probe as a USB device is
     /// (`dspi_transport::paged::open`). A request the generation must not get
     /// is counted ([`DspiCore::demo_generation_violations`]), never a panic.
@@ -639,6 +587,7 @@ impl DspiCore {
             4 => FakeDevice::demo_generation(G::Bofr117),
             5 => FakeDevice::zero(),
             6 => FakeDevice::sender(false),
+            8 => FakeDevice::sender(true), // -- WP QTSENDER --
             _ => return Err(DspiError::Unsupported),
         };
         let remote = dev.remote();

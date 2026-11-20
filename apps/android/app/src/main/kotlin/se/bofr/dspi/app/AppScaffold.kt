@@ -343,7 +343,8 @@ private fun DspiRoutesHost(
         }
     }
     DisposableEffect(nav, bridge, appState, history, keyAlerts) {
-        keys.host = NavShortcutHost(nav, bridge, appState, scope, history, keyAlerts, allow) { writes.value }
+        // -- WP QTSENDER -- the write keys (presets, Commit, Mute, ...) do nothing on the alink sender
+        keys.host = NavShortcutHost(nav, bridge, appState, scope, history, keyAlerts, allow) { writes.value && !senderNow.value }
         onDispose { keys.host = null }
     }
     NavHost(navController = nav, startDestination = DspiRoutes.HOME) {

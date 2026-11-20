@@ -66,10 +66,18 @@ backtraces "$out/log.txt" || exit 1
 # -- WP QP0 -- --version names the app by its display name (AppIdentity.h), not
 # by the settings name
 name=$(sed -n 's/.*displayName = "\(.*\)";/\1/p' "$(dirname "$0")/../src/AppIdentity.h")
-version=$("$app" --version 2>/dev/null)
-case "$version" in
-    "$name "[0-9]*) echo "smoke: --version: $version" ;;
-    *) echo "FAIL --version printed '$version', not '$name <version>'" >&2; exit 1 ;;
+# -- WP QTCLI -- with no display at all (no offscreen platform, no X11 or
+# Wayland): --version and --help are answered before the GUI is made
+nodisplay=(env -u QT_QPA_PLATFORM -u DISPLAY -u WAYLAND_DISPLAY)
+version=$("${nodisplay[@]}" "$app" --version 2>/dev/null); code=$?
+case "$code:$version" in
+    "0:$name "[0-9]*) echo "smoke: --version (no display): $version" ;;
+    *) echo "FAIL --version exited $code, printed '$version', not '$name <version>'" >&2; exit 1 ;;
+esac
+help=$("${nodisplay[@]}" "$app" --help 2>/dev/null); code=$?
+case "$code:$help" in
+    0:*--version*--demo*) echo "smoke: --help (no display): exit 0" ;;
+    *) echo "FAIL --help exited $code without a display; it printed: $help" >&2; exit 1 ;;
 esac
 # A run that stopped early has no summary, whatever its exit code.
 grep -q '^smoke: [0-9]* checks' "$out/log.txt" || { echo "no summary line: the driver did not finish" >&2; exit 1; }

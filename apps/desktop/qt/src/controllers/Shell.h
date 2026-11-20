@@ -72,6 +72,14 @@ public:
     // question), while `receiver` exists; `guard` calls `proceed` to quit
     void setQuitGuard(QObject *receiver, std::function<void(std::function<void()> proceed)> guard);
 
+    // -- WP QTSENDER -- Asked by trigger() before it runs `action`, while
+    // `receiver` exists; false refuses it (DeviceInfoController: nothing that
+    // needs a DSP runs on the alink sender). A window made by openWindow()
+    // gets its action id in its `actionId` property, when it has one.
+    void setActionGate(QObject *receiver, std::function<bool(const QString &action)> gate);
+    // Whether the gate lets `action` run now
+    Q_INVOKABLE bool allows(const QString &action) const;
+
 signals:
     void triggered(const QString &action);
     void bannersChanged();
@@ -93,6 +101,9 @@ private:
     // -- WP QP15 --
     QPointer<QObject> m_quitGuardReceiver;
     std::function<void(std::function<void()>)> m_quitGuard;
+    // -- WP QTSENDER --
+    QPointer<QObject> m_gateReceiver;
+    std::function<bool(const QString &)> m_gate;
 };
 
 #endif // SHELL_H

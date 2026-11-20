@@ -1770,7 +1770,7 @@ Switching an output is instant and never writes to flash. The pin, name and powe
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>This connection says the device is paged but carries no page list: a hub&apos;s in-process or principal connection does not pass the page discovery on. The page list is therefore empty here, and the extension channel is as the 1.1.6-shaped probe found it.</source>
+        <source>This connection says the device is paged but carries no page list: the connection to it does not pass the page discovery on. The page list is therefore empty here, and the extension channel is as the 1.1.6-shaped probe found it.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -8318,6 +8318,23 @@ Macros are stored on the device alongside the controls and share their Save and 
         <extracomment>A notice from the core&apos;s table: %1 its title, %2 its reason</extracomment>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>The revert was not fully successful</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Check the settings, or restore a backup (a snapshot).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1. %2</source>
+        <extracomment>A revert that was not fully successful: %1 the title, %2 what was not put back, %3 what to do</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1. %2 %3</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>NoticeDialog</name>
@@ -9554,6 +9571,13 @@ Macros are stored on the device alongside the controls and share their Save and 
     </message>
     <message>
         <source>Keep</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>SenderBanner</name>
+    <message>
+        <source>This is an audio link sender. It has no DSP: only its device info, the audio link and firmware updates are available.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -11103,6 +11127,10 @@ Macros are stored on the device alongside the controls and share their Save and 
     </message>
     <message>
         <source>The compare did not end.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The revert was not fully successful. %1 Check the settings, or restore a backup (a snapshot).</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -13088,6 +13116,13 @@ This wiring is a board-level setting: it is stored on the device, survives prese
     </message>
 </context>
 <context>
+    <name>ToolWindow</name>
+    <message>
+        <source>This is an audio link sender. It has no DSP, so this window has nothing to show or change.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>ToolsController</name>
     <message>
         <source>Subwoofer feed</source>
@@ -13720,6 +13755,10 @@ This wiring is a board-level setting: it is stored on the device, survives prese
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>The revert was not fully successful. Check the settings, or restore a backup (a snapshot).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>No tune yet: measure, then propose one.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -14163,6 +14202,10 @@ This wiring is a board-level setting: it is stored on the device, survives prese
     </message>
     <message>
         <source>Reverted: the installation and every unit are as they were filed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The revert was not fully successful. %1 Check the settings, or restore a backup (a snapshot).</source>
         <translation type="unfinished"></translation>
     </message>
     <message>

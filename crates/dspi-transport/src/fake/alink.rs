@@ -289,8 +289,9 @@ fn info_as(config: &AlinkConfig, setup: &AlinkSetup, latency: (u16, u16)) -> Ali
     }
 }
 
-/// A header GPIO on a Pico 2 (2.8.3), or 0xFF.
-fn pin_ok(p: u8) -> bool {
+/// A header GPIO on a Pico 2 (2.8.3), or 0xFF. -- INT-R1 -- `boards.rs` names
+/// the sender's refusal code by it.
+pub(super) fn pin_ok(p: u8) -> bool {
     p == 0xFF || p <= 22 || (26..=28).contains(&p)
 }
 

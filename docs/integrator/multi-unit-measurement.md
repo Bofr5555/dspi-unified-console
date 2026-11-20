@@ -161,13 +161,40 @@ the hub dies, each unit plays at most one more finite segment.
 default when the run fits one capture, else 3**; 2 to 8 when set. One config per unit per run, staged once (a config
 write restarts a running generator). Fewer than 3 passes are always timing unreliable.
 
-**Levels.** Each unit plays at the minimum of its walked outputs' ramp results (one config per unit). When units play
-together (a summed run):
+**Overlapped starts (WP ATOVL, the default where it is safe).** After that first interleaved pass (which fixes cycle
+identity exactly as before: the first sweep is heard alone), every further pass starts every unit's walk together, unit
+B **heard a fixed 50 to 200 ms after unit A** (C as much after B, and so on), so each unit's j-th output plays with the
+others' j-th outputs: a *group*. Each group is deconvolved as one cut holding all its sweeps whole, and the capture
+clock's wander, which every unit of a group meets at the same frequency within the offset, is taken out of the fit as
+the group's common delay. The passes given (5 or 3 by default, 2 to 8) are the overlapped ones; the first interleaved
+pass comes on top. The starts are planned with each unit's expected lateness, so the units are *heard* the offset
+apart, and a unit's own segments keep the lead.
 
-- **the client** plays each output 6 dB under the lower of the two fresh ramp results, never above the measurement's
-  (S-AT4);
+The **offset** is the smallest from 50 ms (1 ms steps) at which the analysis can tell the units apart: each unit's
+response is kept from 20 ms before the run's timing origin to the offset less 10 ms after it (never more than the
+interleaved plan keeps), every other unit's impulse **and its harmonic images** (orders 2 to 9, which a log sweep puts
+`T ln k / ln(f2/f1)` early) stay 5 ms clear of that window allowing 15 ms of unplanned spread between the units, and a
+group's cut stays inside the gap between sweeps. Where no offset up to 200 ms does, the plan is **interleaved** and says
+why. With the 1 s sweeps of the simulations two units overlap at 50 ms; three do not (the third unit's second harmonic,
+100 ms early, would land on the first unit's arrival). With the speakers' 5.5 s sweep and 1 s gaps up to about 13 units
+overlap. Only the timed walk overlaps; ramps and summed runs are as before.
+
+**When the run cannot tell its units apart** (a unit heard more than 15 ms from where its terms put it, a cycle on the
+edge of its 20 ms search, another unit's sound or harmonic image found in a window), the analysis refuses it as "not
+separable" and the session **measures the same run again with interleaved passes**, once. What the result reports
+(`MeasureSystemResult.plan`): "overlapped starts, 50 ms apart", "interleaved passes (overlapped starts do not fit: ...)"
+or "interleaved passes (overlapped starts could not tell the units apart: ...)"; "run 1: ...; run 2: ..." for chained
+runs.
+
+**Levels.** Each unit plays at the minimum of its walked outputs' ramp results (one config per unit). When units play
+together (a summed run, or overlapped starts):
+
+- **the client** plays each output of a summed run 6 dB under the lower of the two fresh ramp results, never above the
+  measurement's (S-AT4); with overlapped starts each unit 6 dB per doubling of the run's units under its own ramp result
+  (and under the hard cap less as much), for the whole run;
 - **the hub** holds what no ramp can pass: units that play together are each staged **at most 6 dB per doubling of their
-  number under the hard cap** (-6 dBFS for speakers), else `bad_schedule`:
+  number under the hard cap** (-6 dBFS for speakers), else `bad_schedule` (with overlapped starts: of the most units
+  sounding at once):
 
 | Units playing together | Highest staged level |
 |---|---|
@@ -185,7 +212,12 @@ S/PDIF source's time-base slot.
 **One run** holds at most **16 outputs** across the group and lasts at most **120 s** and 8 Mi capture frames (S7). A
 group of up to 16 units is opened at once.
 
-**A larger group is split into runs** that each repeat one **anchor output** (OD-ATk). Intercepts are kept relative to
+**A larger group is split into runs** that each repeat one **anchor output** (OD-ATk). The runs are sized as the
+session will lay them out (interleaved, the longer plan and the fallback) with the lateness the plan expects: each
+unit's smallest `out.delay` among its outputs in the run, from its own check, and 10 ms per segment for the play-out the
+plan cannot know yet (WP ATOVL, review AT-E). A group that fits one capture only without its lateness is split here,
+before anything plays; a run that still does not fit when the engine's terms are read is refused before it plays, as
+before. Intercepts are kept relative to
 the anchor in each run. The anchor is user-selectable (`MeasureSystemSetup.anchor_serial`, `anchor_output`); by default
 it is the first measured output of the group's first unit. Choose a full-range output with a short latency when there is
 one.
@@ -209,25 +241,43 @@ between A and B" (`measure.system.timing_unreliable`), and nothing is proposed f
 a sample-exact measured delay.
 
 **With a USB microphone whose clock wanders like the one measured in P5SPIKE** (bursts of 55-100 ppm for 0.25 to
-1.5 s, within ±50 µs), **every run reads "timing unreliable"**: the per-cycle gate already refuses it, so nothing is
-offered. That is safe, and it is what to expect. The simulated table (review AT-D part 1, re-running ATE2E's study: two
-units, one output each, 1 s sweeps, a room, a 31 ppm microphone, 30 seeds per row; P5SPIKE's bursts scaled by k, their
-bound with them):
+1.5 s, within ±50 µs), **interleaved passes read "timing unreliable"**: the per-cycle gate refuses every run. **Overlapped
+starts make that wander common to what plays together** (WP ATOVL, owner 2026-11-19): what a group measures (the
+differences between its units) is judged on its own, its common delay taken out. For an overlapped run
+`timing_reliable` is that gate: every cycle within 10 µs of the fit after its group's common delay, no ambiguous
+arrival, and each repeat's phase, and its delay along the sweep, agreeing with the other repeats **against what the rest
+of its group heard at the same frequencies** (where the rest is loud enough to say; elsewhere unchanged). Beside it the
+run keeps **P5's absolute gate** (every cycle against the plain fit, the wander left in): a difference between outputs
+that never played together (two outputs of one unit, or A's first output against B's second) is offered only on that
+gate, as with interleaved passes. So with a wandering microphone the units' j-th outputs are aligned to each other, and
+outputs of one unit are not offered.
 
-| k | 3 passes: gate pass, offered error | 5 passes |
-|---|---|---|
-| 1, 0.5, 0.3 | 0/30 | 0/30 |
-| 0.2 (11-20 ppm, ±10 µs) | 1/30 (its error 1.46 µs) | 0/30 |
-| 0.1 (5.5-10 ppm, ±5 µs) | 22/30, RMS 2.08 µs, worst 4.85 µs | 11/30, RMS 2.00, worst 2.99 |
-| 0.05 | 30/30, RMS 1.03, worst 2.37 | 30/30, RMS 0.82, worst 1.67 |
-| 0.02 | 30/30, RMS 0.40, worst 0.90 | 30/30, RMS 0.33, worst 0.63 |
-| none | 30/30, RMS 0.07 | 30/30, RMS 0.07 |
+The simulated table (WP ATOVL, re-running ATE2E's study: two units, one output each, 1 s sweeps, a room, a 31 ppm
+microphone, 30 seeds per row; P5SPIKE's bursts scaled by k, their bound with them; "reliable" is the run's gate,
+"offered" the cross-unit delay, the error against ATSIM's truth):
 
-So runs pass only when the wander is about a tenth of P5SPIKE's or less; more passes mean more chances for a burst.
-Everything offered stayed within three times its uncertainty and within 10 µs of the truth. A capture path with a steadier
-clock (an analogue measurement microphone on an audio interface) is the remedy today; "overlapped starts" (two units'
-sweeps in one deconvolution, so the wander is common to both) is in PLAN-AT's "Later", to be pulled forward if the
-owner's microphone trips the gate on hardware.
+| k | overlapped, 3 passes: reliable and offered, RMS error, worst | overlapped, 5 passes | interleaved, 3 passes | interleaved, 5 passes |
+|---|---|---|---|---|
+| 1 (P5SPIKE) | 29/30, 1.01 µs, 2.03 µs | 28/30, 0.86, 2.03 | 0/30 | 0/30 |
+| 0.5 | 30/30, 0.53, 1.11 | 30/30, 0.46, 1.10 | 0/30 | 0/30 |
+| 0.3 | 30/30, 0.34, 0.71 | 30/30, 0.29, 0.70 | 0/30 | 0/30 |
+| 0.1 | 30/30, 0.15, 0.30 | 30/30, 0.14, 0.30 | 22/30, 2.08, 4.85 | 11/30, 2.00, 2.99 |
+| none | 30/30, 0.10, 0.10 | 30/30, 0.10, 0.10 | 30/30, 0.07, 0.08 | 30/30, 0.07, 0.08 |
+
+(`ci/run.sh 'cargo test --release -p dspi-measure --features sim --lib wp_atovl_wander_table -- --ignored
+--nocapture'`, 410 s; the interleaved rows are ATE2E's table again, unchanged.)
+
+Everything offered stayed within three times its uncertainty and within 10 µs of the truth (the study asserts it for every
+seed). Through the real hub the run lands where the wall clock puts it, so the end-to-end case with P5SPIKE's microphone
+asserts "reliable and within its uncertainty, or unreliable and nothing offered".
+
+**What overlapped starts cost.** The responses are kept on the shorter window (20 ms before the origin, the offset less
+10 ms after: 40 ms at 50 ms), so below about 300 Hz the fit window is shorter than its 15 cycles; and a later unit's
+window holds the earlier units' room decay from the offset on, alike in every overlapped pass. Timing is not affected
+(the summed check runs as before and judges the real sum), but a later unit's low-frequency response in the documents
+carries some of the earlier unit's room: ATHIL should compare one with an interleaved run. Each unit plays 6 dB per
+doubling of the units lower. The analysis keeps every cut's group whole, so its FFTs are as long as the group's span
+longer.
 
 **Each unit's expected lateness is planned for (WP ATLATE).** The analysis keeps each response from 100 ms before
 where it looks for the run's first arrival to 100 ms after (its search span, the same whatever gap is set), less the
@@ -425,12 +475,15 @@ Everything above is proven on fakes, simulations and the firmware's unit tests o
   lateness the planner plans for, section 7).
 - Part B: one system measurement with the web or Qt client on two units, a cable pulled mid-run, an Admin apply with the
   summed check, Revert; or, with a wandering microphone, "timing unreliable" with the wander shown.
+- **Overlapped starts** (WP ATOVL, section 5): two units with the owner's microphone overlapped (the result says
+  "overlapped starts, 50 ms apart" and the delay is offered), the same pair interleaved for comparison (the delay and,
+  below 300 Hz, the later unit's response), and a third unit 20 ms further than its terms (measured again interleaved).
 
 ## 12. Not done yet
 
 - Terminal, Android and Swift screens (later); an S/PDIF editor for Android and Swift.
 - A verify's curve is not drawn (its result is in words).
-- Overlapped starts (section 7), several domains in one group, an S/PDIF relay (mode 3), ADAT, I2S/TDM and PTP time bases,
+- Several domains in one group, an S/PDIF relay (mode 3), ADAT, I2S/TDM and PTP time bases,
   cross-unit polarity, crossover and EQ proposals, the ops on RP2040 (PLAN-AT "Later").
 - Scenes at F on the S/PDIF time base (the hub applies S/PDIF units' scenes at once).
 

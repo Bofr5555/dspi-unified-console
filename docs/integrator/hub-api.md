@@ -2086,8 +2086,9 @@ them, and the client decodes them with `dspi_proto::ext::timebase`.*
   (`EXT_ALINK_SPDIF.tx_mask`, slot n = outputs 2n and 2n + 1; with `tx_mask` 0 every S/PDIF-type slot, a slot whose type it
   cannot read included; a unit that lists `EXT_ALINK_SPDIF` and does not answer it has every output refused). A session's
   own ceiling, the ramp and the summed-run rule (S-AT4's -6 dB per doubling under the ramps' results) are the
-  client's. The hub holds the bound no ramp can pass: units that play together in a `run` (`summed`, or segments at one
-  offset) must each be staged at most 6 dB per doubling of their number under the hard cap (-12 dBFS for two units, -18
+  client's. The hub holds the bound no ramp can pass: units that play together in a `run` (`summed`, segments at one
+  offset, or with `overlapped` every unit sounding while another does, counted at the most at once) must each be staged
+  at most 6 dB per doubling of their number under the hard cap (-12 dBFS for two units, -18
   for three or four, -24 up to eight, -30 up to sixteen), else `bad_schedule`.
 - **Served to Link 1.3 clients only.** A client whose `hello` said a 1.2 minor (upstream 1.1.6 consoles, our older apps)
   is not offered `system_measure` and is answered `unsupported`; so is the REST mirror.
@@ -2102,7 +2103,7 @@ list. Bodies are `dspi_measure::system::messages`' types at the top level of the
 |---|---|---|---|
 | `system.measure.open` | control | `units`: serials (1 to 16, each once); `lease_ms` (clamped to 500..5000, default 2000) | `OpenReply`: `session`, `time_base`, `domain`, `lease_ms`, `units`: `{serial, time_base, role, state, d, arm_lead_ms, outputs, t, origin_offset, t_minus_output, disturbances}` |
 | `system.measure.stage` | the owner | `session`, `serial`, `config`: the 36 bytes as an array | `serial`, `samples`: the segment's length at the domain's rate |
-| `system.measure.run` | the owner | `session`, `segments`: `{unit, offset}` in time order (a summed run: one offset, distinct units), `lead_ms` (at most 10 000), `summed` (optional, default false: the segments are one summed run of distinct units whose offsets may differ by at most 1 s, so each output's arrival is brought together; one outside those rules is refused with `bad_schedule`) | `RunReply`: `t0`, `segments`: `{unit, t, t_unit}` |
+| `system.measure.run` | the owner | `session`, `segments`: `{unit, offset}` in time order (a summed run: one offset, distinct units), `lead_ms` (at most 10 000), `summed` (optional, default false: the segments are one summed run of distinct units whose offsets may differ by at most 1 s, so each output's arrival is brought together; one outside those rules is refused with `bad_schedule`), `overlapped` (optional, default false, WP ATOVL: a walked run with overlapped starts: different units' segments may overlap, a unit's own never and still the lead apart, two units or more, at most 120 s; `summed` and `overlapped` together are refused; an older hub refuses such a run with `bad_schedule`) | `RunReply`: `t0`, `segments`: `{unit, t, t_unit}` |
 | `system.measure.status` | the owner | `session` (renews the lease) | `status`: `StatusReply` `{t, hub_us, units}`, each unit `{unit, siggen, timeline, time_base_entry, output_frames, output_peaks_dbfs, clipped, limiter_gr_db, events}` (raw bytes as arrays; `events` every watched packet since the last `status`, at most 64) |
 | `system.measure.abort` | any control or admin principal (stopping test audio is never a privilege) | `session`, `reason` (logged) | `AbortReply`: `units`: `{unit, stopped, error?}`; `broadcast`: `sender`, `spdif_source` or `none` |
 | `system.measure.close` | the owner | `session` | `{}`; `CANCEL_ALL` (and `STOP_NOW` during a run) on every unit, the locks released |

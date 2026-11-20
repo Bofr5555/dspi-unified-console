@@ -214,6 +214,8 @@ pub(crate) struct RunDone {
     /// `(unit, staged level)`.
     pub(crate) levels: Vec<(usize, f32)>,
     pub(crate) run_ids: Vec<u32>,
+    // -- WP ATOVL -- how it was laid out, in words.
+    pub(crate) plan: String,
 }
 
 /// One measured output.
@@ -823,6 +825,8 @@ impl Outcome {
                 reasons,
                 run_ids,
                 runs: u16::try_from(runs_done.len()).unwrap_or(u16::MAX),
+                // -- WP ATOVL -- which plan each run used.
+                plan: plan_words(&runs_done),
             },
             setup,
             measured,
@@ -1253,6 +1257,14 @@ impl Outcome {
         Err(invalid(why))
     }
 
+    // -- WP REVERTW --
+    /// The revert did not put everything back: the stage says so, with the
+    /// `revert.*` notice `key` (`message` names what).
+    fn revert_incomplete(&mut self, key: &str) {
+        self.applied.stage = MeasureSystemApplyStage::RevertIncomplete;
+        self.applied.revert_notice = key.to_owned();
+    }
+
     /// The hub ended the guard by itself: take its outcome. Its words.
     fn guard_ended(&mut self, last: Option<msg_guard::Outcome>) -> String {
         let why = match &last {
@@ -1282,6 +1294,16 @@ impl Outcome {
             self.applied.write_failures = o.write_failures.clone();
         }
         self.applied.stage = MeasureSystemApplyStage::Reverted;
+        // -- WP REVERTW -- not put back (or not wholly, or not known): its
+        // own stage and notice, never a clean revert
+        match last.as_ref().map(|o| o.result.as_str()) {
+            Some("reverted") => {}
+            Some("not_written") => {
+                self.revert_incomplete(crate::guarded::NOTICE_REVERT_NOT_WRITTEN);
+            }
+            Some(_) => self.revert_incomplete(crate::guarded::NOTICE_REVERT_FAILED),
+            None => self.revert_incomplete(crate::guarded::NOTICE_REVERT_UNKNOWN),
+        }
         self.applied.message = why.clone();
         why
     }
@@ -1432,7 +1454,8 @@ impl Outcome {
                     .into(),
                 (Err(e), _) => format!("the model was saved but the units were not written: {e}"),
             },
-            guard_s, // -- WP ATGUARD --
+            guard_s,                      // -- WP ATGUARD --
+            revert_notice: String::new(), // -- WP REVERTW --
         };
         let after = self.read_after(hub);
         if let Some(f) = self.filed.as_mut() {
@@ -1548,14 +1571,20 @@ impl Outcome {
                         }
                         Some(o) => o,
                         None => {
-                            return Err(invalid("the hub's guard of this apply has ended"));
+                            // -- WP REVERTW -- ended, how is not known
+                            let why = self.guard_ended(None);
+                            return Err(invalid(why));
                         }
                     }
                 }
                 Err(e) => return Err(e),
             };
             if outcome.result == "not_written" {
+                // -- WP REVERTW -- the guard has ended with nothing set
+                // back: the revert was not successful, and says so
+                self.applied.revision_after = outcome.revision;
                 self.applied.message = format!("not reverted: {}", outcome.message);
+                self.revert_incomplete(crate::guarded::NOTICE_REVERT_NOT_WRITTEN);
                 return Err(invalid(self.applied.message.clone()));
             }
             (
@@ -1599,12 +1628,22 @@ impl Outcome {
         self.applied.stage = MeasureSystemApplyStage::Reverted;
         self.applied.revision_after = revision.unwrap_or(self.applied.revision_after);
         self.applied.writes_ok = ok;
+        // -- WP REVERTW -- a failed write or a delay read back other than
+        // filed: the revert was not fully successful
+        let mut left: Vec<String> = failures
+            .iter()
+            .map(|f| format!("{f} (not written)"))
+            .collect();
+        left.extend(differ.iter().cloned());
         self.applied.write_failures = failures;
-        self.applied.message = if differ.is_empty() {
+        self.applied.message = if left.is_empty() {
             "reverted: the model and every unit's output delays are as filed".into()
         } else {
-            format!("reverted, but {}", differ.join("; "))
+            format!("reverted, but not wholly: {}", left.join("; "))
         };
+        if !left.is_empty() {
+            self.revert_incomplete(crate::guarded::NOTICE_REVERT_INCOMPLETE);
+        }
         Ok(self.applied.clone())
     }
 }
@@ -1632,6 +1671,33 @@ fn writes_of(report: &Value) -> (u32, Vec<String>) {
         }
     }
     (ok, bad)
+}
+
+// -- WP ATOVL --
+/// Which plan each run used, in words ("run 2: ..." when more than one).
+fn plan_words(runs: &[RunDone]) -> String {
+    let words: Vec<String> = runs
+        .iter()
+        .map(|r| {
+            if r.plan.is_empty() {
+                r.analysis.overlap_ms.map_or_else(
+                    || "interleaved passes".to_string(),
+                    |ms| format!("overlapped starts, {ms:.0} ms apart"),
+                )
+            } else {
+                r.plan.clone()
+            }
+        })
+        .collect();
+    match words.as_slice() {
+        [one] => one.clone(),
+        _ => words
+            .iter()
+            .enumerate()
+            .map(|(i, w)| format!("run {}: {w}", i.saturating_add(1)))
+            .collect::<Vec<_>>()
+            .join("; "),
+    }
 }
 
 fn unit_output(m: &Measured) -> UnitOutput {
@@ -1663,14 +1729,17 @@ fn pair_uncertainty(
     if a.run == b.run {
         let r = runs.get(a.run)?;
         if a.unit == b.unit {
+            // -- WP ATOVL -- two outputs of one unit never play together:
+            // the absolute uncertainties (equal to the plain ones for
+            // interleaved passes).
             let ua = r
                 .analysis
                 .output(unit_output(a).unit, a.output)?
-                .uncertainty_us?;
+                .absolute_uncertainty_us?;
             let ub = r
                 .analysis
                 .output(unit_output(b).unit, b.output)?
-                .uncertainty_us?;
+                .absolute_uncertainty_us?;
             return Some((ua * ua + ub * ub).sqrt());
         }
         return delay_of(r, a, b)?.uncertainty_us;
@@ -1703,7 +1772,7 @@ fn pair_offer(
         let Some(r) = runs.get(m.run) else {
             return (false, u, "no run".into());
         };
-        if same || m.unit == l.unit {
+        if same {
             let ok = r.analysis.timing_reliable;
             let why = if ok {
                 String::new()
@@ -1713,6 +1782,13 @@ fn pair_offer(
                     r.analysis.reasons.first().cloned().unwrap_or_default()
                 )
             };
+            return (ok, u, why);
+        }
+        if m.unit == l.unit {
+            // -- WP ATOVL -- the absolute gate (the run's own for
+            // interleaved passes): an overlapped run never plays two
+            // outputs of one unit together.
+            let (ok, why) = r.analysis.same_unit_offer();
             return (ok, u, why);
         }
         return match delay_of(r, m, l) {

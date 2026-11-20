@@ -89,3 +89,26 @@ export function resetNotices(): void {
   rows = null;
   loading = null;
 }
+
+// -- WP REVERTW -- a revert that was not fully successful (owner 2026-11-19): the core's
+// `revert.*` rows (`revert.incomplete`, `revert.failed`, `revert.not_written`, `revert.unknown`),
+// carried as `revertNotice` on a guard's end and a system apply, and as a tune's issue key.
+
+/** The words every `revert.*` row shares, for a table not read yet. */
+export const REVERT_INCOMPLETE_TITLE = "The revert was not fully successful";
+export const REVERT_INCOMPLETE_ACTION = "Check the settings, or restore a backup (a snapshot).";
+
+/** A `revert.*` notice's title, reason and action; null for no key (a clean end). */
+export function revertNotice(
+  key: string | null | undefined,
+  row: (key: string) => NoticeRecord | null = noticeRow,
+): { key: string; title: string; reason: string; action: string } | null {
+  if (!key) return null;
+  const r = row(key);
+  return {
+    key,
+    title: r?.title || REVERT_INCOMPLETE_TITLE,
+    reason: r?.reason ?? "",
+    action: r?.action || REVERT_INCOMPLETE_ACTION,
+  };
+}

@@ -1,6 +1,6 @@
 //! WP PGTM: `uconsole info` and `uconsole raw --id` on every fake generation
 //! (G1s, G1b with and without PAGEGUARD, G2s, G2b) and the DSPi-Zero, and a
-//! paged device on the hub's in-process path (the empty page list).
+//! paged device on the hub's in-process path (its page list, WP LINKFIX).
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -108,10 +108,11 @@ fn wp_pgtm_info_names_the_zero_on_either_generation() {
 }
 
 /// The hub's in-process path (`LocalTransport`, the app's own): the core
-/// says paged, the page list is empty, and the note says why (PG-C review
-/// carry-over).
+/// says paged and, since WP LINKFIX (the attachment's discovery passed on),
+/// lists the device's pages as over USB, with no note. The note itself is
+/// left for a paged connection without a discovery.
 #[test]
-fn wp_pgtm_a_paged_device_on_the_hubs_local_path_has_no_page_list() {
+fn wp_pgtm_a_paged_device_on_the_hubs_local_path_lists_its_pages() {
     let hub = dspi_hub::Hub::start(dspi_hub::HubConfig::in_process("pgtm")).unwrap();
     let dev = FakeDevice::demo_generation(FakeGeneration::STOCK117).with_serial("PGTM-LOCAL");
     hub.attach(Box::new(dev), 0x2E8B).unwrap();
@@ -133,20 +134,29 @@ fn wp_pgtm_a_paged_device_on_the_hubs_local_path_has_no_page_list() {
         .expect("the connect through the hub");
     let p = core.device_protocol().unwrap();
     assert_eq!(p.generation, ProtocolGeneration::Paged);
-    assert!(p.pages.is_empty(), "{:?}", p.pages);
+    assert!(!p.pages.is_empty(), "the discovery's pages");
     let view = view_of(&p);
-    assert_eq!(row(&view.rows(), "Pages"), "none listed on this connection");
-    assert_eq!(
-        view.notes(),
-        vec![dspi_tui::settings::about::NO_PAGE_LIST_NOTE]
+    assert_ne!(row(&view.rows(), "Pages"), "none listed on this connection");
+    assert!(
+        !view
+            .notes()
+            .contains(&dspi_tui::settings::about::NO_PAGE_LIST_NOTE),
+        "{:?}",
+        view.notes()
     );
     let text = info_text("PGTM-LOCAL", &view);
-    assert!(
-        text.contains("\nNote: This connection says the device is paged"),
-        "{text}"
+    assert!(!text.contains("carries no page list"), "{text}");
+    // Without a page list (a connection that passes none on), the note.
+    let bare = dspi_core::DeviceProtocol {
+        pages: Vec::new(),
+        ..p.clone()
+    };
+    assert_eq!(
+        view_of(&bare).notes(),
+        vec![dspi_tui::settings::about::NO_PAGE_LIST_NOTE]
     );
     assert_eq!(
-        info_json("PGTM-LOCAL", &p)["notes"][0],
+        info_json("PGTM-LOCAL", &bare)["notes"][0],
         dspi_tui::settings::about::NO_PAGE_LIST_NOTE
     );
     core.disconnect();

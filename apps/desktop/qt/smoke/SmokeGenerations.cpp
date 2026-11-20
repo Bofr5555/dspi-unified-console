@@ -155,7 +155,7 @@ void pure(SmokeDriver &d) {
                                 { QStringLiteral("boardId"), 0 },       { QStringLiteral("boardName"), QStringLiteral("DSPi") },
                                 { QStringLiteral("deviceKind"), QStringLiteral("dsp") } };
     const QStringList notes = DeviceInfoController::notesOf(hubPaged);
-    d.check(QStringLiteral("pgqt: a paged device with no page list (a hub's local or principal path) gets the note"),
+    d.check(QStringLiteral("pgqt: a paged device with no page list (a connection that passes no discovery on) gets the note"),
             notes.size() == 1 && notes.first().contains(QLatin1String("carries no page list")) &&
                 DeviceInfoController::rowsOf(hubPaged).value(3).toMap().value(QStringLiteral("value")).toString() ==
                     QLatin1String("none listed on this connection"));

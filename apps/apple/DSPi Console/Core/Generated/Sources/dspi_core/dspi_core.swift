@@ -3996,8 +3996,12 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * previous one. `token` = the token stored for this hub's id ("" =
      * none). `expected_hub_id` = that id. With it, a token goes out only after
      * the hello has named that hub, and another hub at the address fails the
-     * call with `wrong_hub`, having seen no token. "" = not known: the token
-     * goes to whichever hub answers (a hub added by address, no stored id).
+     * call with `wrong_hub`, having seen no token. "" = not known (a hub
+     * added by address, no stored id): dial with no token, read the hub's id
+     * from the hello, and dial again with that hub's token and id. -- WP
+     * LINKFIX -- A bare (`v1`) token with no expected id is never sent: the
+     * call fails with `token_without_hub_id` before anything is dialled
+     * (pair again). A `v2` credential's key pin still guards it.
      * Blocks for the hello and authentication (up to ~15 s). When
      * `needs_pairing`, ask for the PIN and call `link_pair`; otherwise the
      * device list is ready (`link_devices`).
@@ -4009,7 +4013,7 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * `hub_busy` (all the hub's sessions are in use; try again in a few
      * seconds), `handshake_refused` (trying again will not help),
      * `rate_limited` (the token stays good; wait a minute), `protocol`,
-     * `timeout`, `closed`, or the hub's own.
+     * `timeout`, `closed`, `token_without_hub_id` (above), or the hub's own.
      *
      * -- WP SECCORE -- `token` is the stored **credential** (PLAN-SEC 4.3): a
      * bare token (`v1`) or a `v2` string with the hub's key pin, as
@@ -10939,8 +10943,12 @@ open func linkClose()  {try! rustCall() {
      * previous one. `token` = the token stored for this hub's id ("" =
      * none). `expected_hub_id` = that id. With it, a token goes out only after
      * the hello has named that hub, and another hub at the address fails the
-     * call with `wrong_hub`, having seen no token. "" = not known: the token
-     * goes to whichever hub answers (a hub added by address, no stored id).
+     * call with `wrong_hub`, having seen no token. "" = not known (a hub
+     * added by address, no stored id): dial with no token, read the hub's id
+     * from the hello, and dial again with that hub's token and id. -- WP
+     * LINKFIX -- A bare (`v1`) token with no expected id is never sent: the
+     * call fails with `token_without_hub_id` before anything is dialled
+     * (pair again). A `v2` credential's key pin still guards it.
      * Blocks for the hello and authentication (up to ~15 s). When
      * `needs_pairing`, ask for the PIN and call `link_pair`; otherwise the
      * device list is ready (`link_devices`).
@@ -10952,7 +10960,7 @@ open func linkClose()  {try! rustCall() {
      * `hub_busy` (all the hub's sessions are in use; try again in a few
      * seconds), `handshake_refused` (trying again will not help),
      * `rate_limited` (the token stays good; wait a minute), `protocol`,
-     * `timeout`, `closed`, or the hub's own.
+     * `timeout`, `closed`, `token_without_hub_id` (above), or the hub's own.
      *
      * -- WP SECCORE -- `token` is the stored **credential** (PLAN-SEC 4.3): a
      * bare token (`v1`) or a `v2` string with the hub's key pin, as
@@ -28873,6 +28881,12 @@ public struct FirmwareTarget {
      * The protocol generation of the live connection.
      */
     public var generation: FirmwareGeneration
+    /**
+     * What the open device is (`DeviceProtocol::device_kind`); `None` when
+     * it is not known (no device, a board in BOOTSEL). An image stamped for
+     * another kind is refused; with `None` the kind rule does not apply.
+     */
+    public var deviceKind: DeviceKind?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -28889,11 +28903,17 @@ public struct FirmwareTarget {
          */lineage: FirmwareLineage, 
         /**
          * The protocol generation of the live connection.
-         */generation: FirmwareGeneration) {
+         */generation: FirmwareGeneration, 
+        /**
+         * What the open device is (`DeviceProtocol::device_kind`); `None` when
+         * it is not known (no device, a board in BOOTSEL). An image stamped for
+         * another kind is refused; with `None` the kind rule does not apply.
+         */deviceKind: DeviceKind?) {
         self.voltage = voltage
         self.boardId = boardId
         self.lineage = lineage
         self.generation = generation
+        self.deviceKind = deviceKind
     }
 }
 
@@ -28916,6 +28936,9 @@ extension FirmwareTarget: Equatable, Hashable {
         if lhs.generation != rhs.generation {
             return false
         }
+        if lhs.deviceKind != rhs.deviceKind {
+            return false
+        }
         return true
     }
 
@@ -28924,6 +28947,7 @@ extension FirmwareTarget: Equatable, Hashable {
         hasher.combine(boardId)
         hasher.combine(lineage)
         hasher.combine(generation)
+        hasher.combine(deviceKind)
     }
 }
 
@@ -28939,7 +28963,8 @@ public struct FfiConverterTypeFirmwareTarget: FfiConverterRustBuffer {
                 voltage: FfiConverterTypeFirmwareGuardBoard.read(from: &buf), 
                 boardId: FfiConverterOptionUInt8.read(from: &buf), 
                 lineage: FfiConverterTypeFirmwareLineage.read(from: &buf), 
-                generation: FfiConverterTypeFirmwareGeneration.read(from: &buf)
+                generation: FfiConverterTypeFirmwareGeneration.read(from: &buf), 
+                deviceKind: FfiConverterOptionTypeDeviceKind.read(from: &buf)
         )
     }
 
@@ -28948,6 +28973,7 @@ public struct FfiConverterTypeFirmwareTarget: FfiConverterRustBuffer {
         FfiConverterOptionUInt8.write(value.boardId, into: &buf)
         FfiConverterTypeFirmwareLineage.write(value.lineage, into: &buf)
         FfiConverterTypeFirmwareGeneration.write(value.generation, into: &buf)
+        FfiConverterOptionTypeDeviceKind.write(value.deviceKind, into: &buf)
     }
 }
 
@@ -29286,6 +29312,13 @@ public struct GuardedApply {
      * What the apply or the revert did not do, and why.
      */
     public var notes: [String]
+    /**
+     * The notice key when the revert was not fully successful
+     * (`revert.incomplete`, `revert.failed`, `revert.not_written`,
+     * `revert.unknown`; "" otherwise): show its title and action, with
+     * `message` and `notes` as the detail.
+     */
+    public var revertNotice: String
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -29324,7 +29357,13 @@ public struct GuardedApply {
          */changes: [String], 
         /**
          * What the apply or the revert did not do, and why.
-         */notes: [String]) {
+         */notes: [String], 
+        /**
+         * The notice key when the revert was not fully successful
+         * (`revert.incomplete`, `revert.failed`, `revert.not_written`,
+         * `revert.unknown`; "" otherwise): show its title and action, with
+         * `message` and `notes` as the detail.
+         */revertNotice: String) {
         self.id = id
         self.phase = phase
         self.label = label
@@ -29335,6 +29374,7 @@ public struct GuardedApply {
         self.message = message
         self.changes = changes
         self.notes = notes
+        self.revertNotice = revertNotice
     }
 }
 
@@ -29375,6 +29415,9 @@ extension GuardedApply: Equatable, Hashable {
         if lhs.notes != rhs.notes {
             return false
         }
+        if lhs.revertNotice != rhs.revertNotice {
+            return false
+        }
         return true
     }
 
@@ -29389,6 +29432,7 @@ extension GuardedApply: Equatable, Hashable {
         hasher.combine(message)
         hasher.combine(changes)
         hasher.combine(notes)
+        hasher.combine(revertNotice)
     }
 }
 
@@ -29410,7 +29454,8 @@ public struct FfiConverterTypeGuardedApply: FfiConverterRustBuffer {
                 reason: FfiConverterString.read(from: &buf), 
                 message: FfiConverterString.read(from: &buf), 
                 changes: FfiConverterSequenceString.read(from: &buf), 
-                notes: FfiConverterSequenceString.read(from: &buf)
+                notes: FfiConverterSequenceString.read(from: &buf), 
+                revertNotice: FfiConverterString.read(from: &buf)
         )
     }
 
@@ -29425,6 +29470,7 @@ public struct FfiConverterTypeGuardedApply: FfiConverterRustBuffer {
         FfiConverterString.write(value.message, into: &buf)
         FfiConverterSequenceString.write(value.changes, into: &buf)
         FfiConverterSequenceString.write(value.notes, into: &buf)
+        FfiConverterString.write(value.revertNotice, into: &buf)
     }
 }
 
@@ -45099,6 +45145,13 @@ public struct MeasureSystemApplied {
      * deadline unless Keep confirms it, and when the connection is lost.
      */
     public var guardS: UInt32
+    /**
+     * The notice key when the revert was not fully successful (stage
+     * `RevertIncomplete`): `revert.incomplete`, `revert.failed`,
+     * `revert.not_written` or `revert.unknown`; "" otherwise. `message`
+     * names what was not put back.
+     */
+    public var revertNotice: String
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -45131,7 +45184,13 @@ public struct MeasureSystemApplied {
          * The hub's guard of this apply, s (0: none, nothing reverts by
          * itself): the hub sets the filed model back and aligns at the
          * deadline unless Keep confirms it, and when the connection is lost.
-         */guardS: UInt32) {
+         */guardS: UInt32, 
+        /**
+         * The notice key when the revert was not fully successful (stage
+         * `RevertIncomplete`): `revert.incomplete`, `revert.failed`,
+         * `revert.not_written` or `revert.unknown`; "" otherwise. `message`
+         * names what was not put back.
+         */revertNotice: String) {
         self.stage = stage
         self.revisionBefore = revisionBefore
         self.revisionAfter = revisionAfter
@@ -45141,6 +45200,7 @@ public struct MeasureSystemApplied {
         self.verified = verified
         self.message = message
         self.guardS = guardS
+        self.revertNotice = revertNotice
     }
 }
 
@@ -45178,6 +45238,9 @@ extension MeasureSystemApplied: Equatable, Hashable {
         if lhs.guardS != rhs.guardS {
             return false
         }
+        if lhs.revertNotice != rhs.revertNotice {
+            return false
+        }
         return true
     }
 
@@ -45191,6 +45254,7 @@ extension MeasureSystemApplied: Equatable, Hashable {
         hasher.combine(verified)
         hasher.combine(message)
         hasher.combine(guardS)
+        hasher.combine(revertNotice)
     }
 }
 
@@ -45211,7 +45275,8 @@ public struct FfiConverterTypeMeasureSystemApplied: FfiConverterRustBuffer {
                 writeFailures: FfiConverterSequenceString.read(from: &buf), 
                 verified: FfiConverterOptionBool.read(from: &buf), 
                 message: FfiConverterString.read(from: &buf), 
-                guardS: FfiConverterUInt32.read(from: &buf)
+                guardS: FfiConverterUInt32.read(from: &buf), 
+                revertNotice: FfiConverterString.read(from: &buf)
         )
     }
 
@@ -45225,6 +45290,7 @@ public struct FfiConverterTypeMeasureSystemApplied: FfiConverterRustBuffer {
         FfiConverterOptionBool.write(value.verified, into: &buf)
         FfiConverterString.write(value.message, into: &buf)
         FfiConverterUInt32.write(value.guardS, into: &buf)
+        FfiConverterString.write(value.revertNotice, into: &buf)
     }
 }
 
@@ -46314,6 +46380,13 @@ public struct MeasureSystemResult {
      * Timed runs chained through the anchor (1: none).
      */
     public var runs: UInt16
+    /**
+     * Which plan each run used: "overlapped starts, 50 ms apart" (the
+     * default where it is safe) or "interleaved passes" with why
+     * overlapped starts were not used; "run 1: ...; run 2: ..." for
+     * chained runs.
+     */
+    public var plan: String
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -46342,7 +46415,13 @@ public struct MeasureSystemResult {
          */runIds: [UInt32], 
         /**
          * Timed runs chained through the anchor (1: none).
-         */runs: UInt16) {
+         */runs: UInt16, 
+        /**
+         * Which plan each run used: "overlapped starts, 50 ms apart" (the
+         * default where it is safe) or "interleaved passes" with why
+         * overlapped starts were not used; "run 1: ...; run 2: ..." for
+         * chained runs.
+         */plan: String) {
         self.documents = documents
         self.arrivals = arrivals
         self.delays = delays
@@ -46351,6 +46430,7 @@ public struct MeasureSystemResult {
         self.reasons = reasons
         self.runIds = runIds
         self.runs = runs
+        self.plan = plan
     }
 }
 
@@ -46385,6 +46465,9 @@ extension MeasureSystemResult: Equatable, Hashable {
         if lhs.runs != rhs.runs {
             return false
         }
+        if lhs.plan != rhs.plan {
+            return false
+        }
         return true
     }
 
@@ -46397,6 +46480,7 @@ extension MeasureSystemResult: Equatable, Hashable {
         hasher.combine(reasons)
         hasher.combine(runIds)
         hasher.combine(runs)
+        hasher.combine(plan)
     }
 }
 
@@ -46416,7 +46500,8 @@ public struct FfiConverterTypeMeasureSystemResult: FfiConverterRustBuffer {
                 timingReliable: FfiConverterBool.read(from: &buf), 
                 reasons: FfiConverterSequenceString.read(from: &buf), 
                 runIds: FfiConverterSequenceUInt32.read(from: &buf), 
-                runs: FfiConverterUInt16.read(from: &buf)
+                runs: FfiConverterUInt16.read(from: &buf), 
+                plan: FfiConverterString.read(from: &buf)
         )
     }
 
@@ -46429,6 +46514,7 @@ public struct FfiConverterTypeMeasureSystemResult: FfiConverterRustBuffer {
         FfiConverterSequenceString.write(value.reasons, into: &buf)
         FfiConverterSequenceUInt32.write(value.runIds, into: &buf)
         FfiConverterUInt16.write(value.runs, into: &buf)
+        FfiConverterString.write(value.plan, into: &buf)
     }
 }
 
@@ -57956,7 +58042,8 @@ public enum DspiError: Swift.Error {
     /**
      * DSPi Link session failure. `code`: `wrong_pin`, `rate_limited`,
      * `hub_busy`, `handshake_refused`, `io`, `handshake`, `protocol`,
-     * `timeout`, `closed`, or another spec 7.1 error code. `msg` can be shown.
+     * `timeout`, `closed`, `token_without_hub_id` (-- WP LINKFIX --), or another
+     * spec 7.1 error code. `msg` can be shown.
      */
     case Link(
         /**
@@ -58983,6 +59070,17 @@ public enum FirmwareUpdateRule {
      * Our firmware would give way to an image that may be upstream's.
      */
     case lineageLoss
+    /**
+     * The image is stamped for another kind of device than the target (a
+     * DSP image on an alink sender, a sender image on a DSP), or its kind
+     * stamp cannot be read: refused, whatever is typed.
+     */
+    case kindMismatch
+    /**
+     * The target is an alink sender and the image does not say what it is
+     * for, so it may be a DSP image: asks the typed confirmation.
+     */
+    case kindUnknown
 }
 
 
@@ -59006,6 +59104,10 @@ public struct FfiConverterTypeFirmwareUpdateRule: FfiConverterRustBuffer {
         
         case 3: return .lineageLoss
         
+        case 4: return .kindMismatch
+        
+        case 5: return .kindUnknown
+        
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
@@ -59024,6 +59126,14 @@ public struct FfiConverterTypeFirmwareUpdateRule: FfiConverterRustBuffer {
         
         case .lineageLoss:
             writeInt(&buf, Int32(3))
+        
+        
+        case .kindMismatch:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .kindUnknown:
+            writeInt(&buf, Int32(5))
         
         }
     }
@@ -59077,6 +59187,12 @@ public enum GuardPhase {
      */
     case reverted
     /**
+     * Reverted, but not wholly: some of the settings from before were not
+     * put back ([`GuardedApply::notes`] names them). The user must check the
+     * settings or restore a backup (a snapshot).
+     */
+    case revertIncomplete
+    /**
      * Putting them back failed; it is not tried again.
      */
     case revertFailed
@@ -59116,11 +59232,13 @@ public struct FfiConverterTypeGuardPhase: FfiConverterRustBuffer {
         
         case 4: return .reverted
         
-        case 5: return .revertFailed
+        case 5: return .revertIncomplete
         
-        case 6: return .notWritten
+        case 6: return .revertFailed
         
-        case 7: return .lost
+        case 7: return .notWritten
+        
+        case 8: return .lost
         
         default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -59146,16 +59264,20 @@ public struct FfiConverterTypeGuardPhase: FfiConverterRustBuffer {
             writeInt(&buf, Int32(4))
         
         
-        case .revertFailed:
+        case .revertIncomplete:
             writeInt(&buf, Int32(5))
         
         
-        case .notWritten:
+        case .revertFailed:
             writeInt(&buf, Int32(6))
         
         
-        case .lost:
+        case .notWritten:
             writeInt(&buf, Int32(7))
+        
+        
+        case .lost:
+            writeInt(&buf, Int32(8))
         
         }
     }
@@ -60357,6 +60479,14 @@ public enum MeasureSystemApplyStage {
      * Reverted: the model and the units are as filed.
      */
     case reverted
+    /**
+     * The revert (the user's, or the hub's guard's) did not put everything
+     * back: the model was not set back, a unit's write failed, a delay
+     * reads back other than filed, or what the hub did is not known.
+     * `revert_notice` is the `revert.*` notice and `message` names what;
+     * the user must check the settings or restore a backup (a snapshot).
+     */
+    case revertIncomplete
 }
 
 
@@ -60384,6 +60514,8 @@ public struct FfiConverterTypeMeasureSystemApplyStage: FfiConverterRustBuffer {
         
         case 5: return .reverted
         
+        case 6: return .revertIncomplete
+        
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
@@ -60410,6 +60542,10 @@ public struct FfiConverterTypeMeasureSystemApplyStage: FfiConverterRustBuffer {
         
         case .reverted:
             writeInt(&buf, Int32(5))
+        
+        
+        case .revertIncomplete:
+            writeInt(&buf, Int32(6))
         
         }
     }
@@ -60924,6 +61060,13 @@ public enum MeasureTuneStage {
      * Reverted (by the user, the timeout or a failed write).
      */
     case reverted
+    /**
+     * The guard ended without putting everything back (part of it, nothing,
+     * or it is not known): `issue` holds the `revert.*` notice and what was
+     * not put back. The user must check the settings or restore a backup
+     * (a snapshot): the "before" snapshot is `snapshot_before_id`.
+     */
+    case revertIncomplete
 }
 
 
@@ -60956,6 +61099,8 @@ public struct FfiConverterTypeMeasureTuneStage: FfiConverterRustBuffer {
         case 7: return .kept
         
         case 8: return .reverted
+        
+        case 9: return .revertIncomplete
         
         default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -60995,6 +61140,10 @@ public struct FfiConverterTypeMeasureTuneStage: FfiConverterRustBuffer {
         
         case .reverted:
             writeInt(&buf, Int32(8))
+        
+        
+        case .revertIncomplete:
+            writeInt(&buf, Int32(9))
         
         }
     }
@@ -63360,6 +63509,30 @@ fileprivate struct FfiConverterOptionTypeAbSide: FfiConverterRustBuffer {
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypeAbSide.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeDeviceKind: FfiConverterRustBuffer {
+    typealias SwiftType = DeviceKind?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeDeviceKind.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeDeviceKind.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -66538,7 +66711,10 @@ public func firmwareGuardCheck(image: Data, board: FirmwareGuardBoard, typedConf
  * whatever is typed; the typed confirmation when firmware that may be ours
  * would give way to an image that may be upstream's (a lineage that could
  * not be read on an open board counts as ours); the generation change, with
- * what works afterwards. Pure apart from parsing the image; never panics.
+ * what works afterwards; and (WP IMGKIND) the device kind: an image stamped
+ * for another kind than the target's, or with an unreadable kind stamp, is
+ * refused whatever is typed, and one without a kind stamp asks on a sender
+ * (module docs). Pure apart from parsing the image; never panics.
  */
 public func firmwareUpdateCheck(image: Data, target: FirmwareTarget, typedConfirmation: String) -> FirmwareUpdateVerdict  {
     return try!  FfiConverterTypeFirmwareUpdateVerdict_lift(try! rustCall() {
@@ -67222,7 +67398,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_func_firmware_guard_check() != 22496) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_func_firmware_update_check() != 5569) {
+    if (uniffi_dspi_core_checksum_func_firmware_update_check() != 57230) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_func_hub_alarm_notice() != 51350) {
@@ -68062,7 +68238,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_link_close() != 64450) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_link_connect() != 27969) {
+    if (uniffi_dspi_core_checksum_method_dspicore_link_connect() != 29502) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_link_connect_advertised() != 37895) {

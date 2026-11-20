@@ -86,3 +86,7 @@ mod tests_wp_ate2e;
 // -- WP ATLATE -- a walked run planned with each unit's expected lateness.
 #[cfg(all(test, feature = "sim"))]
 mod tests_wp_atlate;
+
+// -- WP ATOVL -- overlapped starts: the plan, the wander study, fail closed.
+#[cfg(all(test, feature = "sim"))]
+mod tests_wp_atovl;

@@ -440,6 +440,7 @@ ToolWindow {
             AppButton {
                 objectName: "FirmwareWindow.export"
                 visible: !parent.done && window.fw.showExport
+                enabled: !DeviceInfoController.sender   // -- WP QTSENDER -- the sender has no configuration to export
                 text: qsTr("Export Configuration…")
                 onClicked: FirmwareController.exportConfiguration()
             }

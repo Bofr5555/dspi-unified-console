@@ -206,6 +206,22 @@ fn wp_p1nt_codes_refine_the_key_where_the_table_has_a_row() {
                 );
                 continue;
             }
+            // -- WP REVERTW -- a revert not fully successful: no error makes
+            // these keys, a guard's end and a system apply carry them
+            if family == "revert" {
+                assert!(
+                    [
+                        crate::guarded::NOTICE_REVERT_INCOMPLETE,
+                        crate::guarded::NOTICE_REVERT_FAILED,
+                        crate::guarded::NOTICE_REVERT_NOT_WRITTEN,
+                        crate::guarded::NOTICE_REVERT_UNKNOWN,
+                    ]
+                    .contains(&n.key.as_str()),
+                    "{}: not a key guarded.rs names",
+                    n.key
+                );
+                continue;
+            }
             // -- WP SECFIX -- the label of a firmware file that is not a
             // bundled one: no error makes this key, the clients ask for it
             if family == "firmware" {
@@ -341,6 +357,9 @@ fn wp_p1nt_no_host_nouns_and_no_success() {
                 for word in lower.split(|c: char| !c.is_alphanumeric() && c != '\'') {
                     assert!(!HOST.contains(&word), "{platform:?}: {text}");
                 }
+                // -- WP REVERTW -- the owner's words for a failure (2026-11-19)
+                // are no success notice
+                let lower = lower.replace("not fully successful", "");
                 assert!(!lower.contains("success"), "{text}");
             }
         }

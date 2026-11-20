@@ -28,6 +28,7 @@ ToolWindow {
     // Space: Start, or the faded Stop (a focused text field keeps it)
     Shortcut {
         sequence: "Space"
+        enabled: !window.senderLocked   // -- WP QTSENDER --
         onActivated: SiggenController.toggle()
     }
 

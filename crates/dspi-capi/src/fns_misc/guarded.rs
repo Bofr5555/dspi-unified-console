@@ -5,8 +5,10 @@
 //! `dspi_apply_confirm`; the timeout (on `dspi_apply_poll`), `dspi_apply_revert`
 //! or a failed apply put the snapshot back. Over DSPi Link the hub guards it
 //! too. Every reply is JSON: the state `{ok, id, phase, label, hub, timeoutMs,
-//! remainingMs, reason, message, changes, notes}` (`phase`: `idle`, `waiting`,
-//! `kept`, `reverted`, `revert_failed`, `not_written`, `lost`), or a failure.
+//! remainingMs, reason, message, changes, notes, revertNotice}` (`phase`:
+//! `idle`, `waiting`, `kept`, `reverted`, `revert_incomplete`, `revert_failed`,
+//! `not_written`, `lost`; `revertNotice`, WP REVERTW: the `revert.*` notice key
+//! of a revert that was not fully successful, else ""), or a failure.
 //!
 //! A guarded call has happened whatever the buffer: for a short one, read the
 //! state with `dspi_apply_status` rather than calling again.

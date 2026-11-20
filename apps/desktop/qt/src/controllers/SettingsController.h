@@ -42,6 +42,9 @@ class QJSEngine;
 //   time with SettingsController::addSearchTerms.
 // - System and Control pages show only while a device is open. A page that the
 //   open device lacks hides itself with setPageAvailable(id, false).
+// - -- WP QTSENDER -- On the alink sender (DeviceInfoController.sender) the
+//   System and Control pages stay in the list greyed (a row's "devicePage"
+//   in sidebarRows) and do not open: the sender has no DSP to describe.
 //
 // A section another package adds to a page it does not own (the licence
 // statement on About, the onboarding developer rows on Advanced):
@@ -203,6 +206,9 @@ private:
     void navigate(const QString &id, bool record);
     void onSnapshot();
     void readPins();
+    // -- WP QTSENDER -- a System or Control page while the alink sender is open
+    bool senderLocked(const SettingsRegistry::PageEntry *p) const;
+    void hookDeviceInfo();
 
     AppContext m_ctx;
     PrefsMap *m_spectrum;
@@ -219,6 +225,7 @@ private:
     QVariantMap m_analyser;
     uint64_t m_factsGeneration = 0;
     bool m_connected = false;
+    QPointer<QObject> m_deviceInfo;   // -- WP QTSENDER --
 };
 
 #endif // SETTINGSCONTROLLER_H

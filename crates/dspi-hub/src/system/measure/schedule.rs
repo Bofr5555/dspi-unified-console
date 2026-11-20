@@ -264,6 +264,133 @@ pub(crate) fn check_sum_levels(
     Ok(())
 }
 
+// -- WP ATOVL --
+/// The checks of a walked run with overlapped starts (`system.measure.run`
+/// with `overlapped`, `bad_schedule`): some, at most `MAX_SEGMENTS`, each of
+/// a unit of the session with a staged config, in time order of their
+/// offsets, two units or more; different units' segments may overlap, a
+/// unit's own never, and a unit's next segment starts at least `lead`
+/// samples after its previous one ends (R6a); the run is at most
+/// [`MAX_RUN_MS`] long. One op 9 pending per unit still holds.
+pub(crate) fn check_overlapped(
+    segments: &[RunSegment],
+    lens: &[Option<u64>],
+    lead: u64,
+    rate: u32,
+) -> Result<(), String> {
+    if segments.is_empty() {
+        return Err("no segment".into());
+    }
+    if segments.len() > dspi_measure::system::MAX_SEGMENTS {
+        return Err(format!(
+            "{} segments (at most {})",
+            segments.len(),
+            dspi_measure::system::MAX_SEGMENTS
+        ));
+    }
+    let mut unit_end: Vec<Option<u64>> = vec![None; lens.len()];
+    let mut prev: Option<u64> = None;
+    let mut end: u64 = 0;
+    for s in segments {
+        let len = match lens.get(usize::from(s.unit)) {
+            None => return Err(format!("no unit {} in this session", s.unit)),
+            Some(None) => return Err(format!("unit {} has no config staged", s.unit)),
+            Some(Some(l)) => *l,
+        };
+        if prev.is_some_and(|p| s.offset < p) {
+            return Err("segments out of time order".into());
+        }
+        prev = Some(s.offset);
+        if let Some(Some(e)) = unit_end.get(usize::from(s.unit))
+            && s.offset < e.saturating_add(lead)
+        {
+            return Err(format!(
+                "unit {}'s segment at {} starts less than the lead ({lead} samples) after its \
+                 previous one ends ({e})",
+                s.unit, s.offset
+            ));
+        }
+        let e = s.offset.saturating_add(len);
+        if let Some(slot) = unit_end.get_mut(usize::from(s.unit)) {
+            *slot = Some(e);
+        }
+        end = end.max(e);
+    }
+    if unit_end.iter().filter(|e| e.is_some()).count() < 2 {
+        return Err("overlapped starts need two units or more".into());
+    }
+    let first = segments.first().map_or(0, |s| s.offset);
+    if end.saturating_sub(first) > samples_ms(MAX_RUN_MS, rate) {
+        return Err(format!(
+            "the run is longer than {} s",
+            MAX_RUN_MS.saturating_div(1000)
+        ));
+    }
+    Ok(())
+}
+
+// -- WP ATOVL --
+/// S-AT4 for overlapped starts, as far as the hub can hold it: every unit
+/// whose segment plays while another unit's does is staged at most the hard
+/// cap less 6 dB per doubling of the most units playing at once
+/// (`check_sum_levels`'s bound; the session's own rule is 6 dB per doubling
+/// under the lower ramp result). `lens[unit]` and `levels[unit]` as staged.
+pub(crate) fn check_overlap_levels(
+    segments: &[RunSegment],
+    lens: &[Option<u64>],
+    levels: &[Option<f32>],
+) -> Result<(), String> {
+    use dspi_measure::stimulus::LEVEL_HARD_CAP_DB;
+    let span = |s: &RunSegment| {
+        let len = lens
+            .get(usize::from(s.unit))
+            .copied()
+            .flatten()
+            .unwrap_or(0);
+        (s.offset, s.offset.saturating_add(len))
+    };
+    // The most distinct units sounding at one segment's start, and who.
+    let mut most = 1usize;
+    let mut together: Vec<u8> = Vec::new();
+    for s in segments {
+        let at = s.offset;
+        let mut units: Vec<u8> = segments
+            .iter()
+            .filter(|x| {
+                let (a, b) = span(x);
+                a <= at && at < b
+            })
+            .map(|x| x.unit)
+            .collect();
+        units.sort_unstable();
+        units.dedup();
+        most = most.max(units.len());
+        if units.len() >= 2 {
+            together.extend(units);
+        }
+    }
+    together.sort_unstable();
+    together.dedup();
+    if most < 2 {
+        return Ok(());
+    }
+    let doublings = most
+        .saturating_sub(1)
+        .checked_ilog2()
+        .map_or(0, |b| b.saturating_add(1));
+    let cap = LEVEL_HARD_CAP_DB - 6.0 * f32::from(u8::try_from(doublings).unwrap_or(u8::MAX));
+    for u in together {
+        let level = levels.get(usize::from(u)).copied().flatten();
+        if !level.is_some_and(|l| l <= cap + 0.001) {
+            return Err(format!(
+                "unit {u}'s staged level is above {cap} dBFS, the most for {most} units playing \
+                 together (the hard cap less 6 dB per doubling)"
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// What the scheduler does with a unit's next op 9 now.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Due {
@@ -587,5 +714,32 @@ mod tests_wp_athub {
                 }
             }
         }
+    }
+
+    // -- WP ATOVL --
+    #[test]
+    fn wp_atovl_overlapped_segments_of_different_units_may_overlap() {
+        let l = [Some(10_000), Some(10_000), None];
+        let seg = |unit: u8, offset: u64| RunSegment { unit, offset };
+        // Plain rules refuse the overlap; `overlapped` takes it.
+        let run = [seg(0, 0), seg(1, 2_400), seg(0, 30_000), seg(1, 32_400)];
+        assert!(check_segments(&run, &l, 12_000, 48_000).is_err());
+        assert!(check_overlapped(&run, &l, 12_000, 48_000).is_ok());
+        // A unit's own segments: never overlapping, the lead apart.
+        let own = [seg(0, 0), seg(1, 2_400), seg(0, 15_000)];
+        let e = check_overlapped(&own, &l, 12_000, 48_000).unwrap_err();
+        assert!(e.contains("lead"), "{e}");
+        // Time order, two units, staged configs, at most 120 s.
+        assert!(check_overlapped(&[seg(1, 10), seg(0, 0)], &l, 0, 48_000).is_err());
+        assert!(check_overlapped(&[seg(0, 0)], &l, 0, 48_000).is_err());
+        assert!(check_overlapped(&[seg(0, 0), seg(2, 10)], &l, 0, 48_000).is_err());
+        assert!(check_overlapped(&[seg(0, 0), seg(1, 121 * 48_000)], &l, 0, 48_000).is_err());
+        // S-AT4: two units playing together at most the cap less 6 dB.
+        assert!(check_overlap_levels(&run, &l, &[Some(-12.0), Some(-12.0), None]).is_ok());
+        let e = check_overlap_levels(&run, &l, &[Some(-12.0), Some(-11.0), None]).unwrap_err();
+        assert!(e.contains("-12"), "{e}");
+        // Not overlapping at all: no bound beyond the cap's.
+        let apart = [seg(0, 0), seg(1, 20_000)];
+        assert!(check_overlap_levels(&apart, &l, &[Some(-6.0), Some(-6.0), None]).is_ok());
     }
 }

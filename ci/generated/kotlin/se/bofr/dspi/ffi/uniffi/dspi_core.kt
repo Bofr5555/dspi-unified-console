@@ -4825,7 +4825,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_func_firmware_guard_check() != 22496.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_func_firmware_update_check() != 5569.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_func_firmware_update_check() != 57230.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_func_hub_alarm_notice() != 51350.toShort()) {
@@ -5665,7 +5665,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_link_close() != 64450.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_link_connect() != 27969.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_link_connect() != 29502.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_link_connect_advertised() != 37895.toShort()) {
@@ -10741,8 +10741,12 @@ public interface DspiCoreInterface {
      * previous one. `token` = the token stored for this hub's id ("" =
      * none). `expected_hub_id` = that id. With it, a token goes out only after
      * the hello has named that hub, and another hub at the address fails the
-     * call with `wrong_hub`, having seen no token. "" = not known: the token
-     * goes to whichever hub answers (a hub added by address, no stored id).
+     * call with `wrong_hub`, having seen no token. "" = not known (a hub
+     * added by address, no stored id): dial with no token, read the hub's id
+     * from the hello, and dial again with that hub's token and id. -- WP
+     * LINKFIX -- A bare (`v1`) token with no expected id is never sent: the
+     * call fails with `token_without_hub_id` before anything is dialled
+     * (pair again). A `v2` credential's key pin still guards it.
      * Blocks for the hello and authentication (up to ~15 s). When
      * `needs_pairing`, ask for the PIN and call `link_pair`; otherwise the
      * device list is ready (`link_devices`).
@@ -10754,7 +10758,7 @@ public interface DspiCoreInterface {
      * `hub_busy` (all the hub's sessions are in use; try again in a few
      * seconds), `handshake_refused` (trying again will not help),
      * `rate_limited` (the token stays good; wait a minute), `protocol`,
-     * `timeout`, `closed`, or the hub's own.
+     * `timeout`, `closed`, `token_without_hub_id` (above), or the hub's own.
      *
      * -- WP SECCORE -- `token` is the stored **credential** (PLAN-SEC 4.3): a
      * bare token (`v1`) or a `v2` string with the hub's key pin, as
@@ -18834,8 +18838,12 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
      * previous one. `token` = the token stored for this hub's id ("" =
      * none). `expected_hub_id` = that id. With it, a token goes out only after
      * the hello has named that hub, and another hub at the address fails the
-     * call with `wrong_hub`, having seen no token. "" = not known: the token
-     * goes to whichever hub answers (a hub added by address, no stored id).
+     * call with `wrong_hub`, having seen no token. "" = not known (a hub
+     * added by address, no stored id): dial with no token, read the hub's id
+     * from the hello, and dial again with that hub's token and id. -- WP
+     * LINKFIX -- A bare (`v1`) token with no expected id is never sent: the
+     * call fails with `token_without_hub_id` before anything is dialled
+     * (pair again). A `v2` credential's key pin still guards it.
      * Blocks for the hello and authentication (up to ~15 s). When
      * `needs_pairing`, ask for the PIN and call `link_pair`; otherwise the
      * device list is ready (`link_devices`).
@@ -18847,7 +18855,7 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
      * `hub_busy` (all the hub's sessions are in use; try again in a few
      * seconds), `handshake_refused` (trying again will not help),
      * `rate_limited` (the token stays good; wait a minute), `protocol`,
-     * `timeout`, `closed`, or the hub's own.
+     * `timeout`, `closed`, `token_without_hub_id` (above), or the hub's own.
      *
      * -- WP SECCORE -- `token` is the stored **credential** (PLAN-SEC 4.3): a
      * bare token (`v1`) or a `v2` string with the hub's key pin, as
@@ -33300,7 +33308,13 @@ data class FirmwareTarget (
     /**
      * The protocol generation of the live connection.
      */
-    var `generation`: FirmwareGeneration
+    var `generation`: FirmwareGeneration, 
+    /**
+     * What the open device is (`DeviceProtocol::device_kind`); `None` when
+     * it is not known (no device, a board in BOOTSEL). An image stamped for
+     * another kind is refused; with `None` the kind rule does not apply.
+     */
+    var `deviceKind`: DeviceKind?
 ) {
     
     companion object
@@ -33316,6 +33330,7 @@ public object FfiConverterTypeFirmwareTarget: FfiConverterRustBuffer<FirmwareTar
             FfiConverterOptionalUByte.read(buf),
             FfiConverterTypeFirmwareLineage.read(buf),
             FfiConverterTypeFirmwareGeneration.read(buf),
+            FfiConverterOptionalTypeDeviceKind.read(buf),
         )
     }
 
@@ -33323,7 +33338,8 @@ public object FfiConverterTypeFirmwareTarget: FfiConverterRustBuffer<FirmwareTar
             FfiConverterTypeFirmwareGuardBoard.allocationSize(value.`voltage`) +
             FfiConverterOptionalUByte.allocationSize(value.`boardId`) +
             FfiConverterTypeFirmwareLineage.allocationSize(value.`lineage`) +
-            FfiConverterTypeFirmwareGeneration.allocationSize(value.`generation`)
+            FfiConverterTypeFirmwareGeneration.allocationSize(value.`generation`) +
+            FfiConverterOptionalTypeDeviceKind.allocationSize(value.`deviceKind`)
     )
 
     override fun write(value: FirmwareTarget, buf: ByteBuffer) {
@@ -33331,6 +33347,7 @@ public object FfiConverterTypeFirmwareTarget: FfiConverterRustBuffer<FirmwareTar
             FfiConverterOptionalUByte.write(value.`boardId`, buf)
             FfiConverterTypeFirmwareLineage.write(value.`lineage`, buf)
             FfiConverterTypeFirmwareGeneration.write(value.`generation`, buf)
+            FfiConverterOptionalTypeDeviceKind.write(value.`deviceKind`, buf)
     }
 }
 
@@ -33516,7 +33533,14 @@ data class GuardedApply (
     /**
      * What the apply or the revert did not do, and why.
      */
-    var `notes`: List<kotlin.String>
+    var `notes`: List<kotlin.String>, 
+    /**
+     * The notice key when the revert was not fully successful
+     * (`revert.incomplete`, `revert.failed`, `revert.not_written`,
+     * `revert.unknown`; "" otherwise): show its title and action, with
+     * `message` and `notes` as the detail.
+     */
+    var `revertNotice`: kotlin.String
 ) {
     
     companion object
@@ -33538,6 +33562,7 @@ public object FfiConverterTypeGuardedApply: FfiConverterRustBuffer<GuardedApply>
             FfiConverterString.read(buf),
             FfiConverterSequenceString.read(buf),
             FfiConverterSequenceString.read(buf),
+            FfiConverterString.read(buf),
         )
     }
 
@@ -33551,7 +33576,8 @@ public object FfiConverterTypeGuardedApply: FfiConverterRustBuffer<GuardedApply>
             FfiConverterString.allocationSize(value.`reason`) +
             FfiConverterString.allocationSize(value.`message`) +
             FfiConverterSequenceString.allocationSize(value.`changes`) +
-            FfiConverterSequenceString.allocationSize(value.`notes`)
+            FfiConverterSequenceString.allocationSize(value.`notes`) +
+            FfiConverterString.allocationSize(value.`revertNotice`)
     )
 
     override fun write(value: GuardedApply, buf: ByteBuffer) {
@@ -33565,6 +33591,7 @@ public object FfiConverterTypeGuardedApply: FfiConverterRustBuffer<GuardedApply>
             FfiConverterString.write(value.`message`, buf)
             FfiConverterSequenceString.write(value.`changes`, buf)
             FfiConverterSequenceString.write(value.`notes`, buf)
+            FfiConverterString.write(value.`revertNotice`, buf)
     }
 }
 
@@ -41336,7 +41363,14 @@ data class MeasureSystemApplied (
      * itself): the hub sets the filed model back and aligns at the
      * deadline unless Keep confirms it, and when the connection is lost.
      */
-    var `guardS`: kotlin.UInt
+    var `guardS`: kotlin.UInt, 
+    /**
+     * The notice key when the revert was not fully successful (stage
+     * `RevertIncomplete`): `revert.incomplete`, `revert.failed`,
+     * `revert.not_written` or `revert.unknown`; "" otherwise. `message`
+     * names what was not put back.
+     */
+    var `revertNotice`: kotlin.String
 ) {
     
     companion object
@@ -41357,6 +41391,7 @@ public object FfiConverterTypeMeasureSystemApplied: FfiConverterRustBuffer<Measu
             FfiConverterOptionalBoolean.read(buf),
             FfiConverterString.read(buf),
             FfiConverterUInt.read(buf),
+            FfiConverterString.read(buf),
         )
     }
 
@@ -41369,7 +41404,8 @@ public object FfiConverterTypeMeasureSystemApplied: FfiConverterRustBuffer<Measu
             FfiConverterSequenceString.allocationSize(value.`writeFailures`) +
             FfiConverterOptionalBoolean.allocationSize(value.`verified`) +
             FfiConverterString.allocationSize(value.`message`) +
-            FfiConverterUInt.allocationSize(value.`guardS`)
+            FfiConverterUInt.allocationSize(value.`guardS`) +
+            FfiConverterString.allocationSize(value.`revertNotice`)
     )
 
     override fun write(value: MeasureSystemApplied, buf: ByteBuffer) {
@@ -41382,6 +41418,7 @@ public object FfiConverterTypeMeasureSystemApplied: FfiConverterRustBuffer<Measu
             FfiConverterOptionalBoolean.write(value.`verified`, buf)
             FfiConverterString.write(value.`message`, buf)
             FfiConverterUInt.write(value.`guardS`, buf)
+            FfiConverterString.write(value.`revertNotice`, buf)
     }
 }
 
@@ -41928,7 +41965,14 @@ data class MeasureSystemResult (
     /**
      * Timed runs chained through the anchor (1: none).
      */
-    var `runs`: kotlin.UShort
+    var `runs`: kotlin.UShort, 
+    /**
+     * Which plan each run used: "overlapped starts, 50 ms apart" (the
+     * default where it is safe) or "interleaved passes" with why
+     * overlapped starts were not used; "run 1: ...; run 2: ..." for
+     * chained runs.
+     */
+    var `plan`: kotlin.String
 ) {
     
     companion object
@@ -41948,6 +41992,7 @@ public object FfiConverterTypeMeasureSystemResult: FfiConverterRustBuffer<Measur
             FfiConverterSequenceString.read(buf),
             FfiConverterSequenceUInt.read(buf),
             FfiConverterUShort.read(buf),
+            FfiConverterString.read(buf),
         )
     }
 
@@ -41959,7 +42004,8 @@ public object FfiConverterTypeMeasureSystemResult: FfiConverterRustBuffer<Measur
             FfiConverterBoolean.allocationSize(value.`timingReliable`) +
             FfiConverterSequenceString.allocationSize(value.`reasons`) +
             FfiConverterSequenceUInt.allocationSize(value.`runIds`) +
-            FfiConverterUShort.allocationSize(value.`runs`)
+            FfiConverterUShort.allocationSize(value.`runs`) +
+            FfiConverterString.allocationSize(value.`plan`)
     )
 
     override fun write(value: MeasureSystemResult, buf: ByteBuffer) {
@@ -41971,6 +42017,7 @@ public object FfiConverterTypeMeasureSystemResult: FfiConverterRustBuffer<Measur
             FfiConverterSequenceString.write(value.`reasons`, buf)
             FfiConverterSequenceUInt.write(value.`runIds`, buf)
             FfiConverterUShort.write(value.`runs`, buf)
+            FfiConverterString.write(value.`plan`, buf)
     }
 }
 
@@ -47691,7 +47738,8 @@ sealed class DspiException: kotlin.Exception() {
     /**
      * DSPi Link session failure. `code`: `wrong_pin`, `rate_limited`,
      * `hub_busy`, `handshake_refused`, `io`, `handshake`, `protocol`,
-     * `timeout`, `closed`, or another spec 7.1 error code. `msg` can be shown.
+     * `timeout`, `closed`, `token_without_hub_id` (-- WP LINKFIX --), or another
+     * spec 7.1 error code. `msg` can be shown.
      */
     class Link(
         
@@ -48493,7 +48541,18 @@ enum class FirmwareUpdateRule {
     /**
      * Our firmware would give way to an image that may be upstream's.
      */
-    LINEAGE_LOSS;
+    LINEAGE_LOSS,
+    /**
+     * The image is stamped for another kind of device than the target (a
+     * DSP image on an alink sender, a sender image on a DSP), or its kind
+     * stamp cannot be read: refused, whatever is typed.
+     */
+    KIND_MISMATCH,
+    /**
+     * The target is an alink sender and the image does not say what it is
+     * for, so it may be a DSP image: asks the typed confirmation.
+     */
+    KIND_UNKNOWN;
     companion object
 }
 
@@ -48541,6 +48600,12 @@ enum class GuardPhase {
      * The settings from before are back.
      */
     REVERTED,
+    /**
+     * Reverted, but not wholly: some of the settings from before were not
+     * put back ([`GuardedApply::notes`] names them). The user must check the
+     * settings or restore a backup (a snapshot).
+     */
+    REVERT_INCOMPLETE,
     /**
      * Putting them back failed; it is not tried again.
      */
@@ -49212,7 +49277,15 @@ enum class MeasureSystemApplyStage {
     /**
      * Reverted: the model and the units are as filed.
      */
-    REVERTED;
+    REVERTED,
+    /**
+     * The revert (the user's, or the hub's guard's) did not put everything
+     * back: the model was not set back, a unit's write failed, a delay
+     * reads back other than filed, or what the hub did is not known.
+     * `revert_notice` is the `revert.*` notice and `message` names what;
+     * the user must check the settings or restore a backup (a snapshot).
+     */
+    REVERT_INCOMPLETE;
     companion object
 }
 
@@ -49483,7 +49556,14 @@ enum class MeasureTuneStage {
     /**
      * Reverted (by the user, the timeout or a failed write).
      */
-    REVERTED;
+    REVERTED,
+    /**
+     * The guard ended without putting everything back (part of it, nothing,
+     * or it is not known): `issue` holds the `revert.*` notice and what was
+     * not put back. The user must check the settings or restore a backup
+     * (a snapshot): the "before" snapshot is `snapshot_before_id`.
+     */
+    REVERT_INCOMPLETE;
     companion object
 }
 
@@ -51810,6 +51890,38 @@ public object FfiConverterOptionalTypeAbSide: FfiConverterRustBuffer<AbSide?> {
         } else {
             buf.put(1)
             FfiConverterTypeAbSide.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeDeviceKind: FfiConverterRustBuffer<DeviceKind?> {
+    override fun read(buf: ByteBuffer): DeviceKind? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeDeviceKind.read(buf)
+    }
+
+    override fun allocationSize(value: DeviceKind?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeDeviceKind.allocationSize(value)
+        }
+    }
+
+    override fun write(value: DeviceKind?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeDeviceKind.write(value, buf)
         }
     }
 }
@@ -55401,7 +55513,10 @@ public object FfiConverterSequenceSequenceTypeFilterParams: FfiConverterRustBuff
          * whatever is typed; the typed confirmation when firmware that may be ours
          * would give way to an image that may be upstream's (a lineage that could
          * not be read on an open board counts as ours); the generation change, with
-         * what works afterwards. Pure apart from parsing the image; never panics.
+         * what works afterwards; and (WP IMGKIND) the device kind: an image stamped
+         * for another kind than the target's, or with an unreadable kind stamp, is
+         * refused whatever is typed, and one without a kind stamp asks on a sender
+         * (module docs). Pure apart from parsing the image; never panics.
          */ fun `firmwareUpdateCheck`(`image`: kotlin.ByteArray, `target`: FirmwareTarget, `typedConfirmation`: kotlin.String): FirmwareUpdateVerdict {
             return FfiConverterTypeFirmwareUpdateVerdict.lift(
     uniffiRustCall() { _status ->
