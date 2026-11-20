@@ -7,6 +7,10 @@ arrives. The hub keeps the installation, computes each unit's delay so a room
 plays sample-aligned, applies scenes at one frame on every unit, and raises
 alarms when a link drops.
 
+> † **Needs the DSPi fork firmware** on every unit and the sender: [Bofr5555/DSPi](https://github.com/Bofr5555/DSPi), branch
+> `bofr-main`. Stock Weeb Labs firmware has no extension channel, so none of this is offered for it
+> ([`../FEATURES.md`](../FEATURES.md#firmware-stock-vs-fork)).
+
 Not DSPi Link: "Link" below is the hub's network protocol; "the audio link" is
 the stream.
 

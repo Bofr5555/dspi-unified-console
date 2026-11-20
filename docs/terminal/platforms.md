@@ -90,6 +90,7 @@ the one rule of every component (the desktop app's dialog and its `.deb`, `.rpm`
 and AUR packages install the same file, the packages in `/usr/lib/udev/rules.d/`).
 Every line is `MODE="0666"` (headless setups have no seat for `uaccess`) and keeps
 the `uaccess` tag.
+Installing on each system: [`../INSTALL.md`](../INSTALL.md#usb-access-on-linux).
 
 then unplug and replug the device. The rule also covers the RP2 bootloader the
 device re-enumerates as during a firmware update; without that, an update appears

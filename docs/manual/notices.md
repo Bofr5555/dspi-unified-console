@@ -25,7 +25,8 @@ Where you can see it:
 | Android app | **Settings > About**, the section "Device" at the end | board, which of the two firmware versions (1.1.7 with its protocol version), the command pages, and how the extensions are reached |
 
 "Extensions" are this fork's own additions: the audio link, the reset reason, the core voltage setting and a few more.
-Stock firmware has none of them; the console simply does not offer those parts then.
+Stock firmware has none of them; the console simply does not offer those parts then. Which features need
+the DSPi fork firmware ([Bofr5555/DSPi](https://github.com/Bofr5555/DSPi), branch `bofr-main`) is listed in [`../FEATURES.md`](../FEATURES.md#firmware-stock-vs-fork), marked †.
 
 ## 2. Messages you may see when connecting
 
@@ -94,6 +95,12 @@ Before an update starts, a console checks three things:
 - **A change of firmware version** (1.1.6 to 1.1.7 or back) is shown with what works afterwards. For example, after a
   move to 1.1.7 an older DSPi Link 1.2 hub can no longer serve the DSPi, and consoles older than this one cannot control
   it.
+- **An image for the other kind of device is refused.** Every firmware image of this fork carries a stamp saying
+  whether it is for a DSP or for the alink sender. The sender's image is refused on a DSP, and a DSP image on the
+  sender, whatever you type. An image without that stamp (upstream's, or this fork's from before the stamp) is
+  still offered to a DSP as before; on the alink sender it may be a DSP image, so the console asks you to type
+  `I ACCEPT THAT THIS MAY BE A DSP IMAGE` (when another phrase is asked as well, that one covers it). The sender has no
+  core voltage setting, so the sender's own stamped image asks no voltage phrase.
 
 Which consoles ask this before the restart into the bootloader:
 
@@ -120,10 +127,12 @@ The alink sender (the board that sends audio over the audio link) is not a DSP, 
 its device info, the audio link block and the firmware update. Every DSP screen is left out.
 
 - Web console: a page of its own with exactly those (its update part is **Check an Image…**).
-- Qt console: a page of its own; the menus still open DSP windows, which then say the device does not support them.
+- Qt console: a page of its own, with one banner; every DSP menu, shortcut and tool window is greyed while the sender
+  is open.
 - Android app: a page of its own in place of the main screen, with Firmware Update and Settings.
 - The Qt console and the Android app do not offer the sender their bundled firmware, which is for the DSP: choose the
-  sender's own image file.
+  sender's own image file. A DSP image is refused there by its stamp (section 6).
+- The sender speaks both firmware generations (1.1.6 and the paged 1.1.7), and our hub recognises it either way.
 - Terminal: `uconsole info` and **Settings > About** say it is the alink sender. The interface itself cannot open it
   yet, since it needs a DSP.
 

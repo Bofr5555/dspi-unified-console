@@ -14,7 +14,7 @@ KWindowSystem, no client-side titlebar and no macOS build (the Swift app is the
 Mac release). **The Summary and sections 1 and 7 describe the state after the swap.**
 Sections 2 to 5 and 8 to 11 are the record of the earlier work, on the old app:
 the file names, Qt 5 builds, `DSPi Console` names and the `.dmg` there no longer
-exist. Section 6 still describes the repository. The root [`README.md`](../README.md)
+exist. Section 6 still describes the repository. [`BUILDING.md`](BUILDING.md)
 has the current layout and builds; `apps/desktop/README.md` and
 `apps/desktop/packaging/README.md` have the desktop app's.
 
@@ -398,7 +398,7 @@ none has run against a K340 yet.
 
 1. **Licences. Nothing is final.** The repository is private; the owner's code is
    GPL-3.0-or-later (owner, 2026-11-08); final terms for Weeb Labs' parts are open
-   between the owner and Weeb Labs (README, "Licensing").
+   between the owner and Weeb Labs ([`LICENCES.md`](LICENCES.md)).
    - DSPi-Console-Linux has no licence file upstream. The Android console's
      `NOTICE.md` records "MIT per Weeb Labs, file pending".
    - DSPi-Terminal states GPL-3.0-or-later but has no LICENSE file.

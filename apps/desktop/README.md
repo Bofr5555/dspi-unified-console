@@ -13,6 +13,15 @@ behaviour, with the Windows and Linux additions listed in `docs/PARITY.md`.
 - The name people see is in one place: `src/AppIdentity.h`.
 - Settings are kept under the organisation and application
   `uconsole-for-dspi` (`AppIdentity.h`).
+- `--version` and `--help` answer on the terminal with no display (they are read before the window
+  system starts), so they work over SSH and in a package test.
+- With the alink sender open (the device that feeds the audio link, which has no DSP), one banner says so and
+  every DSP menu row, shortcut and tool window is greyed, never hidden; device info, the audio link block and
+  the firmware update stay.
+
+Installing a release: [`docs/INSTALL.md`](../../docs/INSTALL.md) (Windows, the Linux packages, the AppImage and
+the one USB rule every component shares). What the app offers against the other clients, and which features need
+the DSPi fork firmware (†): [`docs/FEATURES.md`](../../docs/FEATURES.md).
 
 ## Notes for Linux users
 

@@ -270,6 +270,9 @@ It will not:
 - **The snapshots** "Before auto-tune" and "After auto-tune" stay in your snapshot list. Recall either at any time. The
   web console also lets you download them.
 - **Undo:** the whole tune is one step in the history.
+- **A revert that is not fully successful** (a setting could not be written back, or reads back differently) says so:
+  "The revert was not fully successful" and "Check the settings, or restore a backup (a snapshot)." Recall the
+  "Before auto-tune" snapshot, or check the settings it names.
 
 ## 8. Documents
 
@@ -290,6 +293,10 @@ if it were your music.
 
 <!-- WP ATDOC -->
 ## 10. Measuring several units together
+
+*† Needs the DSPi fork firmware ([Bofr5555/DSPi](https://github.com/Bofr5555/DSPi), branch `bofr-main`) on every unit: the units' shared time base and the generator started on it are the fork's
+([`../FEATURES.md`](../FEATURES.md#firmware-stock-vs-fork)). Sections 1 to 9, one unit at a time, work on stock
+firmware 1.1.5 and later.*
 
 *This is in the web console (Measure, the "Several units" tab) and in the Qt console (Tools > Measure…, the
 "Several units" tab). It has not been tried on real units yet. The technical page is [docs/integrator/multi-unit-measurement.md](../integrator/multi-unit-measurement.md).*
@@ -326,9 +333,13 @@ on a sample counter the units share, so each unit starts exactly when it was tol
 3. **The clocks settle.** Right after the units lock, or after anything disturbed their clock, the hub waits until it
    has seen them locked for 40 seconds. The console says "waiting for the units' clocks to settle". This can take up to
    40 seconds; it is normal.
-4. **The run.** Each unit plays its outputs in turn, then the next unit, and the whole round repeats (5 passes when they
-   fit, else 3). The hub schedules every start a little ahead (about a quarter of a second with a K340), so each unit is
-   ready on time.
+4. **The run.** In the first pass each unit plays its outputs in turn, then the next unit. In the passes after it
+   (5 when they fit, else 3) the units start together, each a short fixed time (50 to 200 ms) after the one before, so
+   each unit's first outputs play together, then their second, and so on: **overlapped starts**. That keeps a USB
+   microphone's clock wander the same for the units heard together. Where the units cannot be told apart that way,
+   the console measures the run again with each unit in turn (**interleaved passes**), and the result says which it
+   used. The hub schedules every start a little ahead (about a quarter of a second with a K340), so each unit is ready
+   on time.
 5. **A large group is measured in several runs.** One run takes at most 16 outputs and 2 minutes. Each run then repeats
    one **anchor output** (the first unit's first output unless you choose another), and the runs are joined through it.
    The console says "The group needs several runs". If the anchor sounds different between runs, the runs do not join
@@ -346,10 +357,14 @@ The result gives each output's curve, as for one unit, and the **delay between t
 - **A delay between units is offered only when it is known to within 10 µs.** Otherwise the result says **"timing
   unreliable"** with how far the microphone's clock wandered, and nothing is proposed for those units. The curves are
   still good.
-- **With a USB microphone whose clock wanders like the one in our own test (section 6), every run reads "timing
-  unreliable".** In simulation, runs passed only when the wander was about a tenth of what we measured on that
-  microphone. Use a capture path with a steadier clock, such as an analogue measurement microphone on an audio
-  interface.
+- **A USB microphone whose clock wanders** (like the one in our own test, section 6) is what overlapped starts are
+  for. In simulation with that microphone's wander, overlapped runs gave a reliable delay between the units in 28 or
+  29 of 30 runs, where interleaved passes read "timing unreliable" every time. The delay offered is between outputs that
+  played together (each unit's first output, then its second, and so on); a delay between two outputs of one unit
+  still needs a steadier clock, such as an analogue measurement microphone on an audio interface.
+- **Overlapped starts measure the low frequencies less cleanly.** Below about 300 Hz a later unit's curve carries
+  some of the earlier unit's room. Timing is not affected; if a unit's bass looks odd, compare a single-unit
+  measurement of it.
 - **Units that play later are allowed for, up to a second.** The console knows how much later each unit plays (its
   output delays, and on USB-direct each stream's start offset) and spaces the sweeps and the listening for it. A unit
   more than a second later than the others is refused before anything plays: check its alignment. An output heard more
@@ -374,7 +389,9 @@ The result gives each output's curve, as for one unit, and the **delay between t
    steps**: the first press is refused with the reason, and only your second press, at least a second later, keeps it.
    Nothing presses Keep for you.
 5. **Revert** puts the installation and every unit's delays back as they were, and ends the countdown. If the hub has
-   already put things back when you press Keep or Verify, the console says what the hub did.
+   already put things back when you press Keep or Verify, the console says what the hub did. If a unit's delay could
+   not be put back, the console says "The revert was not fully successful" and asks you to check the settings or
+   restore a backup.
 
 An older hub has no countdown for this. The console then says before the apply that nothing reverts by itself: the
 new delays stay until you Keep or Revert.

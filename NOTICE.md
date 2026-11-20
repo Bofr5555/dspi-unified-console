@@ -62,7 +62,7 @@ The Qt packages are published with `uConsole-for-DSPi-<version>-desktop-source.t
 ## Who made what
 
 The facts behind this file, the iOS build first, are in [`docs/licensing/IOS-INVENTORY.md`](docs/licensing/IOS-INVENTORY.md);
-the README has the per-directory table.
+[`docs/LICENCES.md`](docs/LICENCES.md) has the per-directory table.
 
 - **DSPi, the DSPi firmware, DSPi Console for macOS, DSPi Console for Windows, DSPi-Terminal and DSPi-Link:** Weeb Labs
   (https://github.com/WeebLabs).
