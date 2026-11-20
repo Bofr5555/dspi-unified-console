@@ -21,7 +21,7 @@
 //! | `hub/rollout.json` | the hub's firmware rollout records (WP P3RO): serials, image names and hashes, step texts; never an image (`firmware/` is not read) |
 //! | `hub/measurements.json` | the hub's measurement documents (WP P5HUB): the store's index only (kind, name, serial, size of each), never a document or its curves |
 //! | `hub/mqtt.json` | the hub's MQTT broker setting (WP P2MQ), the password and the `tls` keys, CA and pin as `set` / `not set` |
-//! | `system/os.json` | OS facts: name, architecture, release, the udev rule on Linux |
+//! | `system/os.json` | OS facts: name, architecture, release, the udev rule on Linux (path, present, current) |
 //! | `system/usb.json` | DSPis and bootloaders on the bus, by enumeration only |
 //! | `client/<name>` | files the client adds (`uconsole doctor`'s report, a log) |
 //! | `notes.txt` | what could not be read, and why |
@@ -849,13 +849,36 @@ fn os_facts() -> Value {
         facts.insert("distribution".into(), json!(pretty));
         // `uconsole doctor`'s check: without the rule a user cannot claim
         // the device.
-        let udev = "/etc/udev/rules.d/70-dspi.rules";
-        facts.insert(
-            "udevRule".into(),
-            json!({ "path": udev, "present": Path::new(udev).exists() }),
-        );
+        facts.insert("udevRule".into(), udev_rule_facts(UDEV_RULE_PATHS));
     }
     Value::Object(facts)
+}
+
+// -- WP UDEV1 -- The one udev rule of every component (owner 2026-11-20),
+// always named 70-dspi.rules: in /etc from `uconsole --install-udev`, the Qt
+// dialog or install.sh, in /usr/lib from the .deb, .rpm or AUR package.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+const UDEV_RULE_PATHS: &[&str] = &[
+    "/etc/udev/rules.d/70-dspi.rules",
+    "/usr/lib/udev/rules.d/70-dspi.rules",
+];
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+const UDEV_RULE: &str = include_str!("../../../xtask/70-dspi.rules");
+
+/// Where the rule is (the first of `paths` that exists, which is the one udev
+/// reads), and whether it is this release's text (`current`: false for an
+/// older rule, e.g. one without the bootloader or MODE 0666; null if unread).
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn udev_rule_facts(paths: &[&str]) -> Value {
+    let found = paths.iter().copied().find(|p| Path::new(p).exists());
+    let current = found
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .map(|text| text == UDEV_RULE);
+    json!({
+        "path": found.or(paths.first().copied()),
+        "present": found.is_some(),
+        "current": current,
+    })
 }
 
 fn readme(now: i64, connected: bool) -> String {
@@ -1032,3 +1055,6 @@ mod tests_wp_p3ro;
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests_wp_p5hub;
+// -- WP UDEV1 --
+#[cfg(test)]
+mod tests_wp_udev1;

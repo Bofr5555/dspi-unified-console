@@ -73,13 +73,24 @@ tray), with Retry; a silent run exits 2.
 
 ## Linux: the udev rule
 
-`linux/70-uconsole-for-dspi.rules` gives the person at the seat access to a DSPi (USB vendor `2e8b`, and
-`2e8a:feaa` for older firmware) through logind's `uaccess` tag. The `.deb`, the `.rpm` and the AUR package
-install it in `/usr/lib/udev/rules.d/` and reload udev (`linux/postinst`, `postrm`,
-`arch/uconsole-for-dspi.install`); the archive's `install.sh --udev` installs it in `/etc/udev/rules.d/`. The
-app offers the same rule when a DSPi cannot be opened: the file is built into it as a resource
-(`qt/cmake/wp/qtcli.cmake`) and its dialog installs it as `/etc/udev/rules.d/70-dspi.rules`; the smoke driver checks
-that the two are the same text.
+One rule file serves every component (owner decision 2026-11-20): `xtask/70-dspi.rules`, always installed
+as `70-dspi.rules`. It opens a DSPi to every account (`MODE="0666"`, so headless setups and the hub's service
+work too; logind's `uaccess` tag stays for desktops): USB vendor `2e8b`, `2e8a:feaa` for older firmware, and
+the RP2350 bootloader `2e8a:0003` a DSPi shows during a firmware update.
+
+| Who installs it | Where |
+|---|---|
+| the `.deb`, the `.rpm` and the AUR package (`qt/cmake/wp/qp20.cmake`; udev reloaded by `linux/postinst`, `postrm`, `arch/uconsole-for-dspi.install`) | `/usr/lib/udev/rules.d/70-dspi.rules` |
+| the archive's `install.sh --udev` (pkexec or sudo, then `udevadm control --reload-rules`) | `/etc/udev/rules.d/70-dspi.rules` |
+| the app's device-access dialog, when a DSPi cannot be opened (the file is a resource, `qt/cmake/wp/qtcli.cmake`; pkexec) | `/etc/udev/rules.d/70-dspi.rules` |
+| the Terminal, `sudo uconsole --install-udev` (the file is built in, `apps/terminal/src/doctor.rs`) | `/etc/udev/rules.d/70-dspi.rules` |
+
+By hand: `sudo cp 70-dspi.rules /etc/udev/rules.d/` (the file is in the tar.gz and in every Terminal archive),
+`sudo udevadm control --reload-rules`, then replug the DSPi. A copy in `/etc/udev/rules.d/` hides the package's
+copy of the same name in `/usr/lib/udev/rules.d/`; both are the same text. The checks: the Qt smoke driver
+compares the built-in rule with `xtask/70-dspi.rules` byte for byte (`DSPI_SMOKE_SECTION=qp16-access`), the
+Terminal's unit test does the same for its copy, and `linux/test-packages.sh` / `test-appimage.sh` compare
+what the packages and the archive install.
 
 ## Licence texts in the packages
 

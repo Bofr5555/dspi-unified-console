@@ -85,13 +85,18 @@ sudo uconsole --install-udev
 sudo udevadm control --reload
 ```
 
-The rule it writes is `xtask/70-dspi.rules`.
+The rule it writes is `xtask/70-dspi.rules`, as `/etc/udev/rules.d/70-dspi.rules`:
+the one rule of every component (the desktop app's dialog and its `.deb`, `.rpm`
+and AUR packages install the same file, the packages in `/usr/lib/udev/rules.d/`).
+Every line is `MODE="0666"` (headless setups have no seat for `uaccess`) and keeps
+the `uaccess` tag.
 
 then unplug and replug the device. The rule also covers the RP2 bootloader the
 device re-enumerates as during a firmware update; without that, an update appears
 to hang at exactly the wrong moment.
 
-`uconsole doctor` checks for the rule and prints the exact fix when it is missing.
+`uconsole doctor` checks for the rule (in `/etc` or the package's `/usr/lib`) and
+prints the exact fix when it is missing or older than the release's.
 
 ### Raspberry Pi specifically
 

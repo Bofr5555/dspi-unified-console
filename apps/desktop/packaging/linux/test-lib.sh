@@ -4,6 +4,8 @@
 # The update feed as the app holds it (QStringLiteral: UTF-16), as a grep -P pattern
 feed=$(printf '%s' api.github.com/repos/Bofr5555/dspi-unified-console/releases | sed 's/./&\\x00/g')
 fails=0
+# -- WP UDEV1 -- The one rule file of every component; what packages install must be it, byte for byte
+rule_sum=$(sha256sum "$here/../../../../xtask/70-dspi.rules" | cut -d" " -f1)
 
 # Run in the container: start the app, judge its log
 run_app='
@@ -23,11 +25,12 @@ grep -qx "Name=uConsole for DSPi" $d && grep -qx "Exec=uconsole-for-dspi" $d && 
     && grep -q "<id>uconsole-for-dspi</id>" /usr/share/metainfo/uconsole-for-dspi.metainfo.xml \
     && grep -q "<project_license>GPL-3.0-only</project_license>" /usr/share/metainfo/uconsole-for-dspi.metainfo.xml \
     && test -s /usr/share/icons/hicolor/scalable/apps/uconsole-for-dspi.svg \
-    && grep -q "ATTR{idVendor}==\"2e8b\", TAG+=\"uaccess\"" /usr/lib/udev/rules.d/70-uconsole-for-dspi.rules \
+    && echo "'"$rule_sum"'  /usr/lib/udev/rules.d/70-dspi.rules" | sha256sum -c --quiet - \
+    && grep -q "ATTR{idVendor}==\"2e8a\", ATTR{idProduct}==\"0003\", TAG+=\"uaccess\", MODE=\"0666\"" /usr/lib/udev/rules.d/70-dspi.rules \
     && test -x /usr/bin/uconsole-for-dspi && ! ls -d /usr/bin/dspi-console /usr/share/applications/dspi-console.desktop /usr/share/doc/dspi-console /usr/bin/dspi-uconsole 2>/dev/null \
     || { echo "names: the installed files do not carry the name uconsole-for-dspi"; exit 1; }
 ! grep -aqP '"$feed"' /usr/bin/uconsole-for-dspi || { echo "feed: a distribution package has the update feed"; exit 1; }
-echo "names: uconsole-for-dspi.desktop (Name=uConsole for DSPi), metainfo, icon, udev rule, /usr/bin/uconsole-for-dspi; no update feed"'
+echo "names: uconsole-for-dspi.desktop (Name=uConsole for DSPi), metainfo, icon, udev rule (xtask/70-dspi.rules byte for byte), /usr/bin/uconsole-for-dspi; no update feed"'
 
 # -- WP QP20 -- In the container: the notice $1 says GPL-3.0-only, names the
 # additional terms, Lucide and the Rust crates; $2 is the folder of LICENSES/

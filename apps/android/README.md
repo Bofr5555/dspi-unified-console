@@ -17,10 +17,9 @@ The app is a faithful port of the official clients rather than a re-implementati
 It is one of the clients in the `dspi-unified-console` repository; the root
 [`README.md`](../../README.md) has the project, the status of each client and the credits.
 
-> Status: version **0.12.0** (versionCode 12, tag `android-v0.12.0`), with DSPi Link. It is distributed
+> Status: version **0.13.0** (versionCode 13), with DSPi Link. It is distributed
 > through Google Play as "DSPi Console for Android" (app ID `se.bofr.dspi_console_android`), in closed
-> testing. *(2026-11-19: `main` builds 0.13.0, versionCode 13; what it adds is below and in the root
-> README's Status.)*
+> testing. *(2026-11-20: `main` builds 0.14.0, versionCode 14; what it adds is in `CHANGELOG.md`.)*
 
 What you need: an Android phone or tablet with Android 8.0 or newer. **No DSPi required**: the app has a
 Demo mode, so every screen can be tried without hardware. With a DSPi: firmware **v1.1.6** for full

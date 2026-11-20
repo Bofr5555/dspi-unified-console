@@ -63,9 +63,10 @@ QString DeviceAccess::system() {
 }
 
 // -- WP QTCLI -- The packages' rule, built in (cmake/wp/qtcli.cmake): vendor
-// 2e8b, and 2e8a:feaa for older firmware. Empty if the resource is missing.
+// 2e8b, 2e8a:feaa for older firmware and the bootloader 2e8a:0003, MODE 0666
+// (-- WP UDEV1 -- xtask/70-dspi.rules). Empty if the resource is missing.
 QString DeviceAccess::ruleText() {
-    QFile file(QStringLiteral(":/udev/70-uconsole-for-dspi.rules"));
+    QFile file(QStringLiteral(":/udev/70-dspi.rules"));
     if (!file.open(QIODevice::ReadOnly)) return QString();
     return QString::fromUtf8(file.readAll());
 }

@@ -12,7 +12,8 @@
 # (musl, zlib, zstd, mimalloc), and each BUNDLED.txt row's copyright file.
 # -- WP QP20 -- The name people see is "uConsole for DSPi"; every package's
 # notice labels it GPL-3.0-only (the .rpm's License field too) and carries
-# Lucide's licence; the udev rule is installed; the archive's install.sh
+# Lucide's licence; the udev rule is installed (-- WP UDEV1 -- 70-dspi.rules,
+# byte for byte xtask/70-dspi.rules, the one rule of every component); the archive's install.sh
 # installs and removes a per-user copy; only the AppImage (and so the archive)
 # has the update feed, never the .deb or the .rpm.
 #   test-packages.sh [dist dir, default dist/ or $DSPI_DIST]
@@ -54,10 +55,11 @@ done
 t archive docker.io/library/debian:13 "
     mkdir /root/x && tar -xzf /dist/uConsole-for-DSPi-*-linux-x86_64.tar.gz -C /root/x && cd /root/x/uConsole-for-DSPi-*-linux-x86_64
     for f in NOTICE.txt LICENSES/BUNDLED.txt LICENSES/Qt/THIRD-PARTY.txt LICENSES/TERMS.txt LICENSES/rust-crates.txt LICENSES/Lucide/LICENSE \
-             install.sh README.txt 70-uconsole-for-dspi.rules uconsole-for-dspi.desktop uconsole-for-dspi.svg; do
+             install.sh README.txt 70-dspi.rules uconsole-for-dspi.desktop uconsole-for-dspi.svg; do
         test -s \$f || { echo \"archive: no \$f\"; exit 1; }
     done
     ls uConsole-for-DSPi-*-x86_64.AppImage >/dev/null
+    echo '$rule_sum  70-dspi.rules' | sha256sum -c --quiet - || { echo 'archive: 70-dspi.rules is not xtask/70-dspi.rules'; exit 1; }
     export HOME='/root/home dir' PATH=\$PATH
     ./install.sh >/dev/null
     e=\"\$HOME/.local/share/applications/uconsole-for-dspi.desktop\"
