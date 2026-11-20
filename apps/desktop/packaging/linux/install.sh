@@ -2,8 +2,10 @@
 # -- WP QP20 -- Installs uConsole for DSPi from this folder for the person
 # running it, with no root: the AppImage into ~/.local/bin/uconsole-for-dspi, the
 # menu entry and the icon under ~/.local/share. With --udev it also asks (with
-# pkexec, or sudo in a terminal) to install the udev rule that lets this seat
-# open a DSPi without root; the app offers the same when it needs it.
+# pkexec, or sudo in a terminal) to install the udev rule that lets this
+# computer open a DSPi without root; the app offers the same when it needs it.
+# -- WP UDEV1 -- The rule is 70-dspi.rules, the one rule of every component
+# (the Terminal's `uconsole --install-udev` writes the same file).
 #
 #   ./install.sh [--udev]      install, or update an earlier install
 #   ./install.sh --uninstall   remove what install.sh put in place (not the
@@ -15,7 +17,7 @@ data=${XDG_DATA_HOME:-$HOME/.local/share}
 app=$bin/uconsole-for-dspi
 entry=$data/applications/uconsole-for-dspi.desktop
 icon=$data/icons/hicolor/scalable/apps/uconsole-for-dspi.svg
-rule=/etc/udev/rules.d/70-uconsole-for-dspi.rules
+rule=/etc/udev/rules.d/70-dspi.rules
 
 refresh() {
     command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database -q "$data/applications" || true
@@ -48,11 +50,11 @@ echo "Installed $app (menu: uConsole for DSPi)."
 case :$PATH: in *:"$bin":*) ;; *) echo "Note: $bin is not on your PATH; the menu entry works regardless." ;; esac
 
 if [ "${1:-}" = --udev ]; then
-    script='install -m 0644 "$1" /etc/udev/rules.d/70-uconsole-for-dspi.rules && udevadm control --reload-rules && udevadm trigger --subsystem-match=usb --action=change'
+    script='install -m 0644 "$1" /etc/udev/rules.d/70-dspi.rules && udevadm control --reload-rules && udevadm trigger --subsystem-match=usb --action=change'
     if command -v pkexec >/dev/null 2>&1; then
-        pkexec /bin/sh -c "$script" sh "$here/70-uconsole-for-dspi.rules"
+        pkexec /bin/sh -c "$script" sh "$here/70-dspi.rules"
     else
-        sudo /bin/sh -c "$script" sh "$here/70-uconsole-for-dspi.rules"
+        sudo /bin/sh -c "$script" sh "$here/70-dspi.rules"
     fi
     echo "Installed the udev rule $rule."
 fi

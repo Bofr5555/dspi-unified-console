@@ -16,12 +16,14 @@ libpulse0 (Debian, Ubuntu), pulseaudio-libs (Fedora) or libpulse (Arch, openSUSE
 Or install it for yourself, with a menu entry:
     ./install.sh            (./install.sh --uninstall removes it again)
 
-Opening a DSPi needs permission to use its USB interface. Your distribution
-may already give it to the person at the seat; if not, the app says so and
-offers to install the same udev rule as this folder's (it asks for an
-administrator's password once). Or install this folder's rule now:
-./install.sh --udev puts 70-uconsole-for-dspi.rules in
-/etc/udev/rules.d/ and reloads udev's rules.
+Opening a DSPi needs permission to use its USB interface. If this account
+does not have it, the app says so and offers to install the same udev rule as
+this folder's (it asks for an administrator's password once). Or install this
+folder's rule now: ./install.sh --udev puts 70-dspi.rules in
+/etc/udev/rules.d/ and reloads udev's rules. The rule lets every account open
+a DSPi (MODE 0666) and also covers the bootloader a DSPi shows during a
+firmware update; it is the same file the Terminal's `uconsole --install-udev`
+and the .deb, .rpm and AUR packages install.
 
 Updating the firmware puts the board in BOOTSEL mode, where it shows as a USB
 drive; your desktop mounts it as it does any drive.

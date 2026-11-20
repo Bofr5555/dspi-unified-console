@@ -1,6 +1,0 @@
-# uConsole for DSPi: lets the person signed in at this seat open a DSPi over
-# USB without root (systemd-logind's uaccess tag). A DSPi enumerates with
-# vendor 2e8b; firmware before that used the Raspberry Pi vendor 2e8a with
-# product feaa. Boards in BOOTSEL mode are USB drives and need no rule.
-SUBSYSTEM=="usb", ATTR{idVendor}=="2e8b", TAG+="uaccess"
-SUBSYSTEM=="usb", ATTR{idVendor}=="2e8a", ATTR{idProduct}=="feaa", TAG+="uaccess"

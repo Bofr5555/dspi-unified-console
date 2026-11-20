@@ -20,6 +20,7 @@
 
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QMutex>
@@ -516,13 +517,25 @@ void accessSection(SmokeDriver &d) {
                 DeviceAccess::ruleText().contains(QLatin1String("TAG+=\"uaccess\"")) &&
                 DeviceAccess::rulePath() == QLatin1String("/etc/udev/rules.d/70-dspi.rules"));
     // -- WP QTCLI -- the packages' rule file, byte for byte, older firmware included
+    // -- WP UDEV1 -- the one rule of every component (xtask/70-dspi.rules), MODE 0666 on every line
     {
         QFile source(QStringLiteral(DSPI_UDEV_RULE_SOURCE));
         const QString packaged = source.open(QIODevice::ReadOnly) ? QString::fromUtf8(source.readAll()) : QString();
-        d.check(QStringLiteral("qtcli: the dialog's rule is packaging/linux/70-uconsole-for-dspi.rules"),
-                !packaged.isEmpty() && DeviceAccess::ruleText() == packaged);
+        d.check(QStringLiteral("udev1: the dialog's rule is xtask/70-dspi.rules, byte for byte"),
+                !packaged.isEmpty() && DeviceAccess::ruleText() == packaged
+                    && QFileInfo(QStringLiteral(DSPI_UDEV_RULE_SOURCE)).fileName() == QLatin1String("70-dspi.rules"));
         d.check(QStringLiteral("qtcli: the rule covers older firmware (2e8a:feaa)"),
-                DeviceAccess::ruleText().contains(QLatin1String("ATTR{idVendor}==\"2e8a\", ATTR{idProduct}==\"feaa\", TAG+=\"uaccess\"")));
+                DeviceAccess::ruleText().contains(QLatin1String("ATTR{idVendor}==\"2e8a\", ATTR{idProduct}==\"feaa\", TAG+=\"uaccess\", MODE=\"0666\"")));
+        d.check(QStringLiteral("udev1: the rule covers the bootloader (2e8a:0003)"),
+                DeviceAccess::ruleText().contains(QLatin1String("ATTR{idVendor}==\"2e8a\", ATTR{idProduct}==\"0003\", TAG+=\"uaccess\", MODE=\"0666\"")));
+        int lines = 0, open = 0;
+        for (const QString &line : DeviceAccess::ruleText().split(QLatin1Char('\n'))) {
+            if (!line.startsWith(QLatin1String("SUBSYSTEM=="))) continue;
+            ++lines;
+            if (line.endsWith(QLatin1String("MODE=\"0666\""))) ++open;
+        }
+        d.check(QStringLiteral("udev1: every line of the rule is MODE 0666 (%1 of %2)").arg(open).arg(lines),
+                lines == 3 && open == lines);
     }
     QList<QString> installs;
     int nextExit = 126;

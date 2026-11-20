@@ -1,13 +1,22 @@
-# Weeb Labs DSPi: allow non-root access to the vendor control interface.
+# uConsole for DSPi: lets any account open a DSPi over USB without root. This
+# one file is the rule of every part of uConsole for DSPi: `uconsole
+# --install-udev`, the desktop app's device-access dialog, the .deb, .rpm and
+# AUR packages (/usr/lib/udev/rules.d/) and the archive's install.sh
+# (/etc/udev/rules.d/), always named 70-dspi.rules.
 #
-# Install:  sudo uconsole --install-udev && sudo udevadm control --reload
-#           then unplug and replug the device.
+# Install by hand:  sudo cp 70-dspi.rules /etc/udev/rules.d/
+#                   sudo udevadm control --reload-rules
+#                   then unplug and replug the device.
 #
-# uaccess grants the physically-logged-in user access, which is what you want on
-# a desktop. The 0666 fallback covers headless setups (a Raspberry Pi reached
-# over SSH), where there is no seat for uaccess to apply to.
-SUBSYSTEM=="usb", ATTR{idVendor}=="2e8b", ATTR{idProduct}=="feaa", TAG+="uaccess", MODE="0666"
+# MODE="0666" covers headless setups (a Raspberry Pi reached over SSH, a hub
+# service), where there is no seat for logind's uaccess tag to apply to; the
+# tag stays for desktops.
 
-# The RP2 UF2 bootloader the device re-enumerates as after `uconsole firmware update`.
-# Without this, a firmware update appears to hang at exactly the wrong moment.
+# A DSPi: vendor 2e8b; firmware before that used the Raspberry Pi vendor 2e8a
+# with product feaa.
+SUBSYSTEM=="usb", ATTR{idVendor}=="2e8b", TAG+="uaccess", MODE="0666"
+SUBSYSTEM=="usb", ATTR{idVendor}=="2e8a", ATTR{idProduct}=="feaa", TAG+="uaccess", MODE="0666"
+
+# The RP2350 bootloader (2e8a:0003) a DSPi re-enumerates as during a firmware
+# update. Without this, an update appears to hang at exactly the wrong moment.
 SUBSYSTEM=="usb", ATTR{idVendor}=="2e8a", ATTR{idProduct}=="0003", TAG+="uaccess", MODE="0666"

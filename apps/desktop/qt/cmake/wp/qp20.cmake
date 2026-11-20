@@ -33,7 +33,8 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set(DSPI_UDEV_RULES_DIR "lib/udev/rules.d" CACHE STRING
         "udev rules directory under the prefix; empty: no rule")
     if(DSPI_UDEV_RULES_DIR)
-        install(FILES "${DSPI_PACKAGING}/linux/70-uconsole-for-dspi.rules" DESTINATION "${DSPI_UDEV_RULES_DIR}")
+        # -- WP UDEV1 -- the one rule file of every component
+        install(FILES "${DSPI_PACKAGING}/../../../xtask/70-dspi.rules" DESTINATION "${DSPI_UDEV_RULES_DIR}")
     endif()
 
     # The licence files, laid out as the AppImage and Windows stage them

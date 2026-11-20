@@ -157,7 +157,8 @@ name=uConsole-for-DSPi-$version-linux-x86_64
 stage=$out/.$name
 rm -rf "$stage"; mkdir -p "$stage/$name"
 cp "$image" "$stage/$name/"
-cp "$here/install.sh" "$here/README.txt" "$here/70-uconsole-for-dspi.rules" "$here/uconsole-for-dspi.desktop" "$stage/$name/"
+# -- WP UDEV1 -- the one rule file of every component
+cp "$here/install.sh" "$here/README.txt" "$here/../../../../xtask/70-dspi.rules" "$here/uconsole-for-dspi.desktop" "$stage/$name/"
 cp "$appdir/uconsole-for-dspi.svg" "$stage/$name/"
 cp -R "$appdir/usr/share/doc/uconsole-for-dspi/NOTICE.txt" "$appdir/usr/share/doc/uconsole-for-dspi/LICENSES" "$stage/$name/"
 chmod 755 "$stage/$name/install.sh"

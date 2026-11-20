@@ -1,8 +1,16 @@
 # Changelog
 
-Release notes of earlier versions: `CHANGELOG-0.13.0.md`.
+Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
 
 ## Unreleased
+
+## 0.14.0 (2026-11-20)
+
+One version for every client but the Swift app: the Qt desktop app (Windows and Linux), Android
+(versionCode 14), the Terminal (`uconsole`), the web console and the hub. The Swift app for
+macOS, iPhone and iPad is not part of this release (deferred by the owner); there is no macOS
+download in 0.14.0. Everything below was merged after the 0.13.0 release (tag `v0.13.0`,
+2026-11-09) up to 2026-11-20.
 
 ### Names
 - The project's apps are called **uConsole for DSPi**. Release files start with
@@ -11,21 +19,87 @@ Release notes of earlier versions: `CHANGELOG-0.13.0.md`.
 - Settings, the Windows install folder and registry entries, and the Linux desktop entry use
   the new names. Nothing is carried over from the earlier names.
 
-### Desktop app (Windows and Linux)
-- The Qt app was rebuilt in QML from the macOS console's layout and wording, on the shared
-  core, and replaces the earlier port. It needs Qt 6.8 or newer; the Qt 5 build and the Qt
-  `.dmg` are gone (the Swift app is the macOS app).
-- New compared with the earlier port: read-only mode for firmware this version cannot
-  write; the crossfeed pair map; device name, source names and output latency in Settings;
-  clock diagnostics and output ring health in Stats; separate C0 and C1 CPU bars; the
-  bundled 1.1.6 firmware, with a custom `.uf2`; the demo device; a Core Voltage page under
-  Settings > Advanced (on firmware with the extension channel); Edit > Undo, Redo and
-  History; Help > Save Diagnostics; an update check, off until switched on (Settings >
-  Updates), in the Windows files, the AppImage and the tar.gz only.
-- On Windows the settings are an INI file in `%APPDATA%\uconsole-for-dspi\`; the
-  uninstaller removes it and the app's firewall rule.
-- Packages: Windows installer and zip; AppImage, a tar.gz with an installer, `.deb`
-  (Debian 13), `.rpm` (Fedora 43 and 44) and an AUR `PKGBUILD`. None are code-signed.
+### Measurement and auto-tune (new)
+- Measure speakers or headphones with a calibrated microphone in the web console (Measure
+  screen) and the desktop app (Tools > Measure…). The DSPi plays the test signal with its own
+  generator; the console only listens.
+- Microphone calibration from miniDSP UMIK-1/UMIK-2, REW, CSV and Dayton Audio (iMM-6C, UMM-6)
+  files; speakers at one or several listening positions, or headphones on a coupler.
+- Results against a target, a live microphone RTA, and direct adjustments from the measured
+  curve ("cut this peak", "fit this range") as one undo step.
+- Auto-tune proposes delay and polarity, crossover corner and levels and a target EQ, in words.
+  A summed check comes first; the apply is guarded between "Before" and "After" snapshots,
+  verified by measuring again, then kept or reverted, with A/B between the two.
+- Safety first: the level starts quiet and ramps only until the microphone hears it; a run stops
+  on clipping or on any change from elsewhere; a tweeter is measured only through its
+  protective high-pass; EQ boosts are bounded; a delay is offered only when the timing is
+  reliable.
+- Measurement, microphone and target documents, kept locally or on the hub, and REW text export.
+  `uconsole measure` imports calibrations and targets, manages documents and runs an EQ-only
+  tune from a saved measurement.
+- The demo device has a simulated microphone in a simulated room, so the whole flow can be tried
+  without hardware.
+- Android: measurement comes in a later release.
+
+### Multi-unit system and the audio link (alink)
+- The hub models an audio-link system: rooms, zones and units, the link topology, alignment,
+  scenes recalled at a common frame, system alarms and a system mute. The web console has the
+  System view, the scene bar and a status rail; Qt and Android show the system's status, and
+  Android's System screen names units fed by S/PDIF (view only).
+- USB-direct alink units (several DSPis on USB from one computer, in phase lock) in the hub,
+  the core and every client, with scene timing, start-offset watch and a keep-aligned option.
+  `uconsole usb-direct generate` writes a home theatre's PipeWire and WirePlumber files.
+- **Several units measured together**: units on one time base (behind one alink sender, on
+  USB-direct, or following one DSPi over S/PDIF) are measured with one microphone through our
+  hub, in the web console's and Qt's "Several units" tab. Starts may overlap, sized for the
+  expected lateness, so a session takes less time. A delay between units is offered only when
+  it is known to within 10 µs, after a summed check across the units.
+- The hub guards a system apply: a countdown, and it puts the installation and the units' delays
+  back by itself if Keep does not come.
+- The alink sender (`DSPi-Sender`) connects as its own kind of device with a limited view
+  (device info, the audio link, firmware updates). The desktop app greys out every DSP menu,
+  shortcut and tool window for it and says why in one banner.
+
+### Hub and DSPi Link
+- **DSPi Link is encrypted.** The hub serves TLS 1.3 on its one port and requires it by default.
+  Clients pin the hub's key when they pair (PIN pairing bound to the key, with fingerprint and
+  QR code; a PAKE for the native clients) and refuse a hub whose key changed; a hub once pinned
+  is never reached in plaintext. Key rotation is signed by the old key
+  (`uconsole hub tls rotate`). Upstream DSPi Link clients, which cannot encrypt, need the hub's
+  `--upstream-compat`.
+- **The hub works on its own**: inventory and health of every DSPi it has seen, Identify (LED
+  and an optional quiet tone), a shared history of who did what, alarms with acknowledgement,
+  notifications by HTTPS webhook, push or MQTT (with TLS), parameters, presets and snapshots by
+  name with a shared copy on the hub, schedules, MQTT with Home Assistant discovery, and a REST
+  mirror under `/api/v1/` with API keys. Every write path goes through the same roles, limits
+  and lock as a console.
+- **The fleet in the web console**: groups and group writes (volume with offsets, preset maps,
+  bulk apply of a snapshot with a way back per device), the health board, the Overview, and an
+  unattended firmware rollout of the hub's own USB devices. The hub API v1 is frozen (additive
+  changes only).
+- The hub's limits profile, PIN and pinned modes can be set from every client.
+- The hub serves devices of both firmware generations and DSPi Link 1.2 and 1.3 clients, the
+  paged alink sender included.
+- A revert that the hub could not complete is now said as such, naming what was not put back.
+
+### Firmware updates and safety
+- **Firmware 1.1.7** (upstream's paged protocol) is supported beside 1.1.6, decided once per
+  connection, in every client but the Swift app. Device info (generation, protocol, pages,
+  board) is shown in the web Device screen, Qt and Android Settings > About and `uconsole info`.
+- An update check runs before every bootloader entry (no image for a board without BOOTSEL, a
+  phrase to type before leaving this fork's firmware, a generation change said), and the core's
+  write gate judges every firmware write on the target it read itself.
+- Images carry a kind stamp (DSP or alink sender) and a core-voltage stamp. An image of the
+  wrong kind, or of an unreadable kind, is refused with no override; an unstamped image on a
+  sender needs a typed confirmation. Our own stamped sender image on a sender skips the voltage
+  phrase.
+- Firmware is written through the core's PICOBOOT writer, and the bundled images are checked
+  against pinned digests.
+- **A device you can trust** (PRO phase 1), in every client: snapshots, A/B compare, safe apply
+  with automatic revert, limits profiles, the installer lock and PIN, confirmation tokens for
+  every dangerous operation, offline documents and templates, document diff and partial import,
+  undo groups and the AutoEQ preview.
+- Client read-only mode, and refused writes put back with a notice.
 
 ### All clients (shared core)
 - One change history in the core: every write is recorded, and undo and redo are
@@ -37,33 +111,50 @@ Release notes of earlier versions: `CHANGELOG-0.13.0.md`.
 - Parameter names, units and help lines follow one glossary (`docs/GLOSSARY.md`); levels
   against full scale read in dBFS. Five upmixer ranges now match what the firmware accepts.
 - Loading a preset with out-of-range values clamps them and reports each one.
+- Copy and paste of a channel's parameters through one core clipboard; a linked pair's band,
+  bypass and paste edits are one undo step.
 - A diagnostics bundle (one zip: versions, the device's state, stats, events, the OS and
   USB view; Link tokens removed) can be saved from the desktop app and with
   `uconsole diag`.
-- Each release's `SHA256SUMS` is signed with minisign; the release notes give the public
-  key and how to check a download.
 
-### New features on `main` (summary, WP DOCSYNC, 2026-11-19)
-The root `README.md` (Status) describes each one; the plans in `docs/core-merge/` have the detail.
-- **A device you can trust** (PRO phase 1): snapshots, A/B compare, safe apply with a way
-  back, limits profiles, the installer lock and PIN, offline documents and templates,
-  document diff and partial import, undo groups and the AutoEQ preview, in every client.
-- **DSPi Link is encrypted.** The hub serves TLS 1.3 on its port and requires it by default;
-  clients pin the hub's key when they pair and refuse a hub whose key changed. Webhooks use
-  HTTPS and MQTT can use TLS. Upstream DSPi Link clients, which cannot encrypt, need the
-  hub's `--upstream-compat`.
-- **The hub works on its own** (PRO phase 2): inventory, health, Identify, a shared history,
-  alarms, notifications, parameters and snapshots by name, schedules, MQTT and Home
-  Assistant, and a REST mirror with API keys.
-- **The fleet in the web console** (PRO phase 3): groups, group writes and bulk apply, the
-  health board, the Overview, and the firmware rollout of the hub's USB devices. The hub
-  API v1 is frozen.
-- **Measurement and auto-tune** (PRO phase 5) in the web and desktop consoles, with a
-  calibrated microphone (UMIK, Dayton, REW, CSV files), speakers or headphones on a
-  coupler, and a guarded, verified apply; several units on one time base through the hub;
-  `uconsole measure` for documents and an EQ-only tune.
-- **Firmware 1.1.7** (upstream's paged protocol) is supported beside 1.1.6, with an update
-  check before every firmware write.
+### Desktop app (Qt, Windows and Linux)
+- The Qt app was rebuilt in QML from the macOS console's layout and wording, on the shared
+  core, and replaces the earlier port. It needs Qt 6.8 or newer; the Qt 5 build and the Qt
+  `.dmg` are gone.
+- New compared with the earlier port: read-only mode for firmware this version cannot
+  write; the crossfeed pair map; device name, source names and output latency in Settings;
+  clock diagnostics and output ring health in Stats; separate C0 and C1 CPU bars; the
+  bundled 1.1.6 firmware, with a custom `.uf2`; the demo device; a Core Voltage page under
+  Settings > Advanced (on firmware with the extension channel); Edit > Undo, Redo and
+  History; Help > Save Diagnostics; an update check, off until switched on (Settings >
+  Updates), in the Windows files, the AppImage and the tar.gz only.
+- The PRO phase 1 dialogs, the hub's limits and PIN, shared snapshots, the hub's history, the
+  alarm banner and Identify, pairing bound to the hub's key, measurement (Tools > Measure…,
+  with "Several units"), and the device's generation and update check in Settings > About.
+- `uconsole-for-dspi --version` and `--help` answer without a display.
+- On Windows the settings are an INI file in `%APPDATA%\uconsole-for-dspi\`; the
+  uninstaller removes it and the app's firewall rule.
+
+### Android
+Changes since 0.13.0 (versionCode 13 on Google Play, closed testing):
+- Phone Home with the volume first and a health line; channel colours as tags.
+- The PRO phase 1 screens (snapshots, A/B, safe apply, limits, the installer lock, documents
+  and templates, diff and partial import, AutoEQ preview), undo and redo, and Copy/Paste
+  Parameters.
+- The hub's limits and PIN, shared snapshots, the hub's history, alarm notices and Identify.
+- Pairing bound to the hub's key, with an "(unsecured)" bar for a hub that is not encrypted.
+- Device info, the update check before the bootloader entry and the core's write gate; a page
+  for the alink sender; S/PDIF units in the System screen (view only).
+
+### Web console
+- The UI is complete: besides the main window, EQ, crossover, outputs and matrix there are now
+  inputs, effects, the System view, scene bar and status rail, Overview, Snapshots, Files and
+  AutoEQ, Control Surfaces, Events, Installer, the tools (Signal Generator, Analyser, Stats,
+  Interrupt Monitor), Measure, Device and Settings; on a hub also the Hub screen (devices,
+  health board, alarms, history, groups, bulk apply, firmware rollout) and Hub Settings.
+- DSPi Link over TLS (Chromium and Firefox); `uconsole web` pins the hub's key for the page.
+- Copy and paste of a channel's parameters; Paste names the device the copy came from.
+- Not yet: Web MIDI.
 
 ### Terminal
 - The command is now `uconsole`. `dspi` and `dspi-term` are no longer built or installed,
@@ -76,8 +167,31 @@ The root `README.md` (Status) describes each one; the plans in `docs/core-merge/
   the old directories.
 - The hub's service files are named after the command (`uconsole-hub.service`,
   `se.bofr.uconsole.hub.plist`, `uconsole-hub-task.xml`).
+- Every write goes through the core, so limits, the installer lock and confirmation tokens
+  hold for it (a dangerous write asks on a terminal and takes `--yes` in a script).
+- New commands: `open`, `snapshot`, `ab`, `diff`, `import --only/--preview/--guard`, `limits`,
+  `lock`, `autoeq preview|apply`; `uconsole hub` services, REST, TLS, groups and the firmware
+  rollout; `uconsole measure`; `uconsole info` and `raw --id`; `uconsole usb-direct generate`.
 - `uconsole --third-party-licences` prints the licence texts of the Rust crates compiled
   into it; the release archives carry them as `THIRD-PARTY-NOTICES.txt`.
+- `uconsole doctor` also accepts the udev rule a package installed, and says when the installed
+  rule is an older one.
+
+### Packaging
+- Desktop: Windows installer and zip; AppImage, a tar.gz with an installer, `.deb` (Debian 13),
+  `.rpm` (Fedora 43 and 44) and an AUR `PKGBUILD`. None are code-signed. The AppImage has its
+  own release test on Ubuntu 24.04 and 25.04, Debian 13 and Fedora 44 with no Qt installed.
+- **One udev rule for every component** (`70-dspi.rules`, from `xtask/70-dspi.rules`): the
+  `.deb`, `.rpm` and AUR package (in `/usr/lib/udev/rules.d/`), the tar.gz's `install.sh
+  --udev`, the desktop app's device-access dialog and `uconsole --install-udev` (in
+  `/etc/udev/rules.d/`) all install the same file. It lets every account open a DSPi
+  (`MODE="0666"`, so headless machines and the hub's service work too), keeps logind's
+  `uaccess` tag, and covers older firmware's `2e8a:feaa` and the RP2350 bootloader `2e8a:0003`.
+  Before, the Terminal and the desktop app wrote different rules to the same path. A rule
+  installed by the tar.gz before 0.14.0 as `70-uconsole-for-dspi.rules` can be removed.
+- Each release's `SHA256SUMS` is signed with minisign; the release notes give the public
+  key and how to check a download.
+- Not in this release: the Swift app for macOS, iPhone and iPad.
 
 ### All clients (draft notices)
 - About no longer shows the first-person donation paragraph or "Made with love by Weeb

@@ -24,9 +24,10 @@
 #     import path are the AppImage's own. The About window is saved as
 #     about-<image>.png beside the logs. (The app loads no translation
 #     catalogue: it is English only, its .ts is the source strings' record.)
-# And on the host, once: the archive's udev rule is the repository's, and the
-# udev instructions (README.md, the archive's README.txt and install.sh) name
-# that rule, where it goes and how to reload udev the same way.
+# And on the host, once: the archive's udev rule is the repository's (-- WP UDEV1 --
+# xtask/70-dspi.rules, the one rule of every component), and the udev
+# instructions (packaging/README.md, the archive's README.txt and install.sh)
+# name that rule, where it goes and how to reload udev the same way.
 # Logs: test-appimage-<image>.log in the dist dir. Needs podman and the network.
 set -uo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
@@ -51,23 +52,24 @@ rm -rf "$work"; mkdir -p "$work/out"
 
 # ---- On the host: the udev rule and the instructions that name it
 udev_check() {
-    local x rule=70-uconsole-for-dspi.rules
+    local x rule=70-dspi.rules
     x=$work/archive; mkdir -p "$x"
     tar -xzf "$dist/uConsole-for-DSPi-$version-linux-x86_64.tar.gz" -C "$x" || { echo "udev: no archive"; return 1; }
     x=$x/uConsole-for-DSPi-$version-linux-x86_64
-    cmp -s "$x/$rule" "$here/$rule" || { echo "udev: the archive's $rule is not the repository's"; return 1; }
-    grep -q 'ATTR{idVendor}=="2e8b", TAG+="uaccess"' "$x/$rule" || { echo "udev: $rule does not give vendor 2e8b uaccess"; return 1; }
+    cmp -s "$x/$rule" "$repo/xtask/$rule" || { echo "udev: the archive's $rule is not the repository's"; return 1; }
+    grep -q 'ATTR{idVendor}=="2e8b", TAG+="uaccess", MODE="0666"' "$x/$rule" || { echo "udev: $rule does not open vendor 2e8b (uaccess, 0666)"; return 1; }
     grep -qF "rule=/etc/udev/rules.d/$rule" "$x/install.sh" && grep -qF 'udevadm control --reload-rules' "$x/install.sh" \
         || { echo "udev: install.sh does not install /etc/udev/rules.d/$rule and reload the rules"; return 1; }
     grep -qF './install.sh --udev' "$x/README.txt" && grep -qF "$rule" "$x/README.txt" \
         || { echo "udev: README.txt does not name ./install.sh --udev and $rule"; return 1; }
-    # README.md's AppImage row: the same rule, the same folder, the same reload
-    local row
-    row=$(grep -F "uConsole-for-DSPi-<version>-x86_64.AppImage" "$repo/README.md" | grep -F udev)
+    # The packaging README's rule section: the same rule, the same folder, the same reload
+    # (-- WP UDEV1 -- the top README.md links there for installing)
+    local doc
+    doc=$(sed -n '/^## Linux: the udev rule/,/^## /p' "$here/../README.md")
     for s in "install.sh --udev" "$rule" "/etc/udev/rules.d/" "udevadm control --reload-rules"; do
-        case $row in *"$s"*) ;; *) echo "udev: README.md's AppImage row does not say \"$s\""; return 1 ;; esac
+        case $doc in *"$s"*) ;; *) echo "udev: packaging/README.md's udev section does not say \"$s\""; return 1 ;; esac
     done
-    echo "udev: $rule in the archive is the repository's; install.sh, README.txt and README.md name it and /etc/udev/rules.d/"
+    echo "udev: $rule in the archive is the repository's; install.sh, README.txt and packaging/README.md name it and /etc/udev/rules.d/"
 }
 echo "== udev (host)"
 if udev_check; then echo "== udev: OK"; else echo "== udev: FAILED"; fails=$((fails + 1)); fi

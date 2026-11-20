@@ -100,10 +100,10 @@ every DSPi firmware since 1.1.5 has, stock and bofr-main alike.
 
 **Linux: the udev rule.** Chromium opens the device through usbfs, so without a
 rule the open fails ("Access denied") and the session says the udev rule must be
-installed. It is the same rule as for the other consoles:
-`xtask/70-dspi.rules` (installed by `sudo uconsole --install-udev`) or
-`apps/desktop/packaging/linux/70-uconsole-for-dspi.rules`, then `sudo udevadm control
---reload` and replug. A Flatpak or Snap Chromium may also need its own USB
+installed. It is the one rule of every console, `xtask/70-dspi.rules`
+(`MODE="0666"`; installed as `70-dspi.rules` by `sudo uconsole --install-udev`,
+the desktop packages, the desktop app's dialog, or by hand into
+`/etc/udev/rules.d/`), then `sudo udevadm control --reload-rules` and replug. A Flatpak or Snap Chromium may also need its own USB
 permission. ChromeOS and Android Chrome: WB8 checks them.
 
 **Windows: no Zadig.** The firmware's MS OS 2.0 descriptors bind WinUSB to

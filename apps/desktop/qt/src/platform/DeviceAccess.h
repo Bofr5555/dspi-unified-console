@@ -21,12 +21,12 @@ class QQuickWindow;
 // core how many units its scan could not open. When that goes above zero the
 // dialog (qml/platform/UdevDialog.qml) offers itself, once until the count
 // drops to zero again:
-// - Linux: it installs the device rule (70-dspi.rules: vendor 2e8b and the
-//   older firmware's 2e8a:feaa, the uaccess tag) through pkexec, one authentication, then scans again. A
-//   declined or failed pkexec says what failed and leaves nothing installed.
-//   The packages install the same rule (-- WP QTCLI -- the same file: the
-//   text is packaging/linux/70-uconsole-for-dspi.rules); the dialog matters for the AppImage
-//   and the tarball.
+// - Linux: it installs the device rule (70-dspi.rules: vendor 2e8b, the
+//   older firmware's 2e8a:feaa and the bootloader 2e8a:0003, MODE 0666 and the uaccess tag) through
+//   pkexec, one authentication, then scans again. A declined or failed pkexec says what failed and
+//   leaves nothing installed. The packages and the Terminal install the same rule (-- WP QTCLI --,
+//   -- WP UDEV1 -- the same file: xtask/70-dspi.rules); the dialog matters for the AppImage and the
+//   tarball.
 // - Windows: advice (other programs holding the device; Zadig's WinUSB driver
 //   for very old firmware), and a new scan.
 // - Elsewhere: that the device cannot be opened.

@@ -17,6 +17,10 @@ use dspi_tui::shell::read_only;
 
 /// Where the Linux rule belongs.
 const UDEV_PATH: &str = "/etc/udev/rules.d/70-dspi.rules";
+// -- WP UDEV1 -- The one rule of every component (owner 2026-11-20): the Qt
+// app's dialog, install.sh and the .deb/.rpm/AUR packages install this same
+// file, the packages as /usr/lib/udev/rules.d/70-dspi.rules.
+const UDEV_PACKAGE_PATH: &str = "/usr/lib/udev/rules.d/70-dspi.rules";
 const UDEV_RULES: &str = include_str!("../../../xtask/70-dspi.rules");
 
 enum Status {
@@ -337,13 +341,25 @@ fn permission_fix() -> String {
 }
 
 fn udev_check() -> Status {
-    if std::path::Path::new(UDEV_PATH).exists() {
-        Status::Ok(format!("udev rule installed at {UDEV_PATH}"))
-    } else {
-        Status::Warn(format!(
+    udev_status(&[UDEV_PATH, UDEV_PACKAGE_PATH])
+}
+
+/// The first of `paths` that exists is the copy udev reads (one in /etc hides
+/// the package's of the same name); an older text is worth replacing.
+fn udev_status(paths: &[&str]) -> Status {
+    let Some(path) = paths.iter().find(|p| std::path::Path::new(p).exists()) else {
+        return Status::Warn(format!(
             "no udev rule at {UDEV_PATH}; non-root access needs one \
              (`sudo {COMMAND} --install-udev`)"
-        ))
+        ));
+    };
+    match std::fs::read_to_string(path) {
+        Ok(text) if text == UDEV_RULES => Status::Ok(format!("udev rule installed at {path}")),
+        Ok(_) => Status::Warn(format!(
+            "the udev rule at {path} is an older one (this release's also covers the \
+             bootloader and every account); `sudo {COMMAND} --install-udev` replaces it"
+        )),
+        Err(_) => Status::Ok(format!("udev rule installed at {path}")),
     }
 }
 
@@ -435,5 +451,56 @@ mod tests_wp_tm4 {
             panic!("not a failure");
         };
         assert!(m.contains("would not answer"), "{m}");
+    }
+}
+
+// -- WP UDEV1 --
+#[cfg(test)]
+mod tests_wp_udev1 {
+    use super::*;
+
+    /// The repository's one rule file (xtask/70-dspi.rules).
+    const SOURCE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../xtask/70-dspi.rules");
+
+    #[test]
+    fn wp_udev1_the_embedded_rule_is_the_source_file() {
+        assert_eq!(
+            std::fs::read_to_string(SOURCE).ok().as_deref(),
+            Some(UDEV_RULES)
+        );
+    }
+
+    #[test]
+    fn wp_udev1_every_line_opens_its_device_to_every_account() {
+        let lines: Vec<&str> = UDEV_RULES
+            .lines()
+            .filter(|l| l.starts_with("SUBSYSTEM=="))
+            .collect();
+        for id in [
+            r#"ATTR{idVendor}=="2e8b", TAG"#,
+            r#"ATTR{idVendor}=="2e8a", ATTR{idProduct}=="feaa""#,
+            r#"ATTR{idVendor}=="2e8a", ATTR{idProduct}=="0003""#,
+        ] {
+            assert!(lines.iter().any(|l| l.contains(id)), "{id}");
+        }
+        assert_eq!(lines.len(), 3, "{lines:?}");
+        assert!(
+            lines
+                .iter()
+                .all(|l| l.ends_with(r#"TAG+="uaccess", MODE="0666""#)),
+            "{lines:?}"
+        );
+    }
+
+    #[test]
+    fn wp_udev1_the_packaged_copy_counts_and_an_older_one_warns() {
+        let missing = "/nonexistent/udev1/70-dspi.rules";
+        assert!(matches!(udev_status(&[missing, SOURCE]), Status::Ok(_)));
+        assert!(matches!(udev_status(&[missing]), Status::Warn(_)));
+        let other = concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml");
+        let Status::Warn(m) = udev_status(&[other]) else {
+            panic!("an older rule is not a warning");
+        };
+        assert!(m.contains("older") && m.contains("--install-udev"), "{m}");
     }
 }

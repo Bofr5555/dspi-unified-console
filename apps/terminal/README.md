@@ -399,7 +399,11 @@ api` exits by the hub's answer: 0 ok, 2 not found, 3 another refusal, 4 no hub, 
 - **macOS**: nothing to install. The vendor interface is *exclusive*, so DSPi
   Console and this tool cannot hold the device at the same time.
 - **Linux and Raspberry Pi**: `sudo uconsole --install-udev`, then
-  `sudo udevadm control --reload`, then unplug and replug the device.
+  `sudo udevadm control --reload`, then unplug and replug the device. It writes
+  `/etc/udev/rules.d/70-dspi.rules` (also in the archive), the same rule the
+  desktop app and its packages install; it lets every account open a DSPi
+  (`MODE="0666"`, so it works over SSH and for the hub's service) and covers the
+  bootloader a firmware update uses.
 
 See [`docs/terminal/platforms.md`](../../docs/terminal/platforms.md) for what
 has been verified where.
