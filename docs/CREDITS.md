@@ -21,7 +21,8 @@ Weeb Labs: [GitHub](https://github.com/weeblabs) · [YouTube](https://youtube.co
 
 The core merge (one Rust core for every client), the unified console, the Android console, the Rust DSPi Link client,
 the hub's services, the web console, measurement and auto-tune, and the firmware fork's extensions (the audio link and
-its time base, the core-voltage setting, the image stamps) on [Bofr5555/DSPi](https://github.com/Bofr5555/DSPi).
+its time base, the core-voltage setting, the image stamps) on [Bofr5555/DSPi](https://github.com/Bofr5555/DSPi), released
+as [v1.1.6-bofr1](https://github.com/Bofr5555/DSPi/releases/tag/v1.1.6-bofr1).
 
 ## Who made what, and where it came from
 

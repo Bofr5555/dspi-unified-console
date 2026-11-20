@@ -20,7 +20,9 @@ app keeps its listing name until its next update.
 
 The clients work with stock DSPi firmware from Weeb Labs. Features marked
 "extension firmware" need a firmware build with the extension channel and are
-hidden otherwise.
+hidden otherwise: the DSPi fork firmware, release
+[v1.1.6-bofr1](https://github.com/Bofr5555/DSPi/releases/tag/v1.1.6-bofr1), is the one
+0.14.0 was tested against.
 
 Licence: GPL-3.0-only for the program as a whole (Bofr5555's contributions
 GPL-3.0-or-later with additional terms under section 7), shown in every

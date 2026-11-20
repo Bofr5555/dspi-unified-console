@@ -76,8 +76,8 @@ next preset, and the app claims only the DSPi's vendor control interface, so aud
   major is refused with a notice ([`docs/manual/notices.md`](../../docs/manual/notices.md)).
   - **Older, or a format the app cannot map:** the settings cannot be read, and the banner says the
     values on screen are defaults.
-- † **Needs the DSPi fork firmware** on the device ([Bofr5555/DSPi](https://github.com/Bofr5555/DSPi), branch
-  `bofr-main`): the crossfeed pair map, the core voltage, Identify and the audio link (the System screen,
+- † **Needs the DSPi fork firmware** on the device ([Bofr5555/DSPi](https://github.com/Bofr5555/DSPi), release
+  [v1.1.6-bofr1](https://github.com/Bofr5555/DSPi/releases/tag/v1.1.6-bofr1)): the crossfeed pair map, the core voltage, Identify and the audio link (the System screen,
   USB-direct and S/PDIF units, the alink sender). Stock firmware has none of these, and the app does not offer
   them for it ([`docs/FEATURES.md`](../../docs/FEATURES.md#firmware-stock-vs-fork)).
 

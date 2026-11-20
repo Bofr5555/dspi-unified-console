@@ -34,8 +34,8 @@ roles, and **installer modes** that hand a finished system over to its owner, lo
   image built for the wrong kind of device (the fork's images carry kind and core-voltage stamps †); leaving the
   fork's firmware asks you to confirm. Both firmware generations, 1.1.6 and upstream's paged 1.1.7, are supported.
 
-† **Needs the DSPi fork firmware** on the device: [Bofr5555/DSPi](https://github.com/Bofr5555/DSPi), branch
-`bofr-main`. Everything else works on stock Weeb Labs firmware, 1.1.6 or the paged 1.1.7
+† **Needs the DSPi fork firmware** on the device: [Bofr5555/DSPi](https://github.com/Bofr5555/DSPi), release
+[v1.1.6-bofr1](https://github.com/Bofr5555/DSPi/releases/tag/v1.1.6-bofr1) ([which image](docs/INSTALL.md#fork-firmware)). Everything else works on stock Weeb Labs firmware, 1.1.6 or the paged 1.1.7
 ([what needs which firmware](docs/FEATURES.md#firmware-stock-vs-fork)).
 
 ## Screenshots
