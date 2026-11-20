@@ -365,7 +365,7 @@ private fun SourcePicker(model: FirmwareUpdateModel, onChooseFile: () -> Unit) {
     }
 }
 
-/** -- WP SECFIX -- Test tag of the "Not a verified DSPi Console image" label. */
+/** -- WP SECFIX -- Test tag of the "Not a verified uConsole for DSPi image" label. */
 internal const val UNVERIFIED_LABEL_TAG = "firmware-unverified"
 
 @Composable

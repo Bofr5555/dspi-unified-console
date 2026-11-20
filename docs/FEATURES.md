@@ -8,7 +8,7 @@ short view; the full, cell-by-cell comparison with the macOS reference console, 
 **Apple** is the Swift app for macOS and iOS in [`apps/apple/`](../apps/apple/): it exists and runs on the core,
 but it is **not part of release 0.14.0** (the owner has deferred it), so its column says what the code on `main` has.
 
-**Firmware** says what the DSPi itself must run: **stock** is Weeb Labs' firmware, 1.1.6 or upstream's paged 1.1.7;
+**Firmware** says what the DSPi itself must run: **stock** is Weeb Labs' firmware, 1.1.6 or upstream's paged 1.1.7 beta as of 2026-11-18 (later 1.1.7 betas may need an update);
 **fork †** needs the DSPi fork firmware ([below](#firmware-stock-vs-fork)).
 
 ## Firmware: stock vs fork
@@ -18,7 +18,7 @@ but it is **not part of release 0.14.0** (the owner has deferred it), so its col
 generation it runs and which of the fork's extensions it has (the extension channel: request `0x00` on 1.1.6, the
 private page `0xE0` on paged firmware), and simply do not offer what a device lacks.
 
-**On stock firmware (1.1.6, or the paged 1.1.7) everything else works:** every DSP control, presets, files and
+**On stock firmware (1.1.6, or upstream's paged 1.1.7 beta as of 2026-11-18; later 1.1.7 betas may need an update) everything else works:** every DSP control, presets, files and
 AutoEQ, the analyser and generator, undo, snapshots, A/B and safe apply, limits profiles and the installer lock, the
 modes, the hub with its roles, TLS, history, alarms, schedules, MQTT, REST, groups and rollout, the device's health
 (load, temperature, the clip latch), firmware updates with their checks, and **measurement and auto-tune of one unit**
@@ -62,7 +62,7 @@ alink sender already speaks both ([`STATUS.md`](STATUS.md)). On our hub the fork
 | Firmware update, with the update check (see below) | stock | ✓ | ✓ | ◐ checks an image; writes only through a hub's rollout | ✓ `uconsole flash` | ◐ writes; no update check yet |
 | Core voltage | fork † | ✓ with calibration | ✓ | ✓ Installer mode | ✓ | ◐ |
 | Device info: board, firmware generation, protocol | stock | ✓ Settings > About | ✓ Settings > About | ✓ Device screen | ✓ `uconsole info` | – |
-| Both firmware generations, 1.1.6 and upstream's paged 1.1.7 | stock | ✓ | ✓ | ✓ | ✓ | ◐ on the core paths |
+| Both firmware generations, 1.1.6 and upstream's paged 1.1.7 beta as of 2026-11-18 (later 1.1.7 betas may need an update) | stock | ✓ | ✓ | ✓ | ✓ | ◐ on the core paths |
 | Read-only for firmware it cannot write, with a notice | stock | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Diagnostics bundle | stock | ✓ Help > Save Diagnostics | – | ✓ Events screen (Advanced and up) | ✓ `uconsole diag` | – |
 

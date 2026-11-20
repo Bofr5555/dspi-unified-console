@@ -44,7 +44,7 @@ struct FirmwareImage: Equatable {
     }
 
     /// -- WP SECFWV / SECSW -- The core's manifest (`verify_bundled`): the
-    /// "not a verified DSPi Console image" label (the core's notice row
+    /// "not a verified uConsole for DSPi image" label (the core's notice row
     /// `firmware.not_verified`) for an image that is not the bundled file,
     /// nil for one that is.  A label, not a refusal: the guard refuses a
     /// damaged copy of a bundled image by itself, and the usual

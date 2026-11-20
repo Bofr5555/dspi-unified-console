@@ -54,7 +54,8 @@ Remaining before a public release:
 
 The application ID is **`se.bofr.dspi_console_android`** (`app/build.gradle.kts`,
 `applicationId`), registered in Play Console on 2026-11-03 with the app name
-"DSPi Console for Android". **It can never change after the first upload:**
+"DSPi Console for Android" (renamed **uConsole for DSPi** with 0.14.0, owner
+2026-11-20; the ID stays). **It can never change after the first upload:**
 Play identifies the app by it, forever. The `namespace` values
 (`se.bofr.dspi.*`, the Kotlin packages) are internal and stay as they are.
 Builds with the old ID `se.bofr.dspi` (test releases up to 0.1.0-hil5) are a
@@ -154,6 +155,9 @@ apply for production access
 (https://support.google.com/googleplay/android-developer/answer/14151465).
 A DSPi board is rare hardware, so recruit testers who own one (WeebLabs
 community). Organisation accounts skip this.
+
+Done: the closed test ran up to 0.13.0, and the app was granted production
+access on 2026-11-20; 0.14.0 is the first release for production.
 
 ## 8. App content (Policy → App content) **(owner)**
 

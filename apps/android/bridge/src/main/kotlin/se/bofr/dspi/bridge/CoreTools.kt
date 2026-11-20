@@ -47,7 +47,7 @@ interface CoreTools {
     /**
      * -- WP SECFIX -- The label of a firmware file the user picked (SECFWV): null when the
      * core's manifest finds it is a bundled image byte for byte (`verify_bundled` with its
-     * file [name]), else "Not a verified DSPi Console image" and what that means, the core's
+     * file [name]), else "Not a verified uConsole for DSPi image" and what that means, the core's
      * notice row `firmware.not_verified`. Information, not a refusal. Hashes the image: call
      * off the main thread. Without a core nothing can be verified, so the label shows.
      */
@@ -151,7 +151,7 @@ data class FirmwareLabel(val title: String, val text: String) {
         const val NOTICE_KEY = "firmware.not_verified"
 
         /** When the core cannot be asked: the row's title, no explanation. */
-        val FALLBACK = FirmwareLabel("Not a verified DSPi Console image", "")
+        val FALLBACK = FirmwareLabel("Not a verified uConsole for DSPi image", "")
     }
 }
 

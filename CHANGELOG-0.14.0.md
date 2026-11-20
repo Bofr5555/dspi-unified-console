@@ -6,7 +6,8 @@ Release date: 2026-11-20. One version for every client but the Swift app.
 as a plain console for one DSPi, but the headline features are new: measuring
 and auto-tuning speakers with a microphone, systems of several DSPi units on
 the audio link, a hub that runs on its own and is encrypted, and support for
-upstream's firmware 1.1.7 beside 1.1.6.
+upstream's paged firmware 1.1.7 beside 1.1.6 (the 1.1.7 beta as of 2026-11-18;
+later 1.1.7 betas may need an update).
 
 This release carries the desktop app for Windows and Linux, Android
 (versionCode 14), the Terminal (`uconsole`), the web console and the hub. The
@@ -15,8 +16,10 @@ macOS download this time.
 
 The project's apps are now called **uConsole for DSPi**: release files start
 with `uConsole-for-DSPi-0.14.0-`, packages and the desktop command are
-`uconsole-for-dspi`, and the Terminal's command is `uconsole`. The Google Play
-app keeps its listing name until its next update.
+`uconsole-for-dspi`, and the Terminal's command is `uconsole`. The Android app
+is now called uConsole for DSPi on Google Play (formerly DSPi Console for
+Android), and Google Play granted it production access: it is being rolled out
+to production, no longer only in closed testing.
 
 The clients work with stock DSPi firmware from Weeb Labs. Features marked
 "extension firmware" need a firmware build with the extension channel and are
@@ -92,8 +95,9 @@ Measurement on Android comes in a later release.
 
 ## Firmware updates and safety
 
-- **Firmware 1.1.7** (upstream's paged protocol) works beside 1.1.6; each
-  client shows the device's generation in its device info.
+- **Firmware 1.1.7** (upstream's paged 1.1.7 beta as of 2026-11-18; later 1.1.7
+  betas may need an update) works beside 1.1.6; each client shows the device's
+  generation in its device info.
 - Before the board enters its bootloader, an update check says whether the
   image fits: a board without BOOTSEL gets no image, leaving this fork's
   firmware asks for a typed phrase, and a generation change is named. The core
@@ -123,6 +127,9 @@ tar.gz only). There is no macOS build of the Qt app.
 
 Changes since 0.13.0:
 
+- The app is now called uConsole for DSPi on Google Play (formerly DSPi
+  Console for Android), and Google Play granted it production access: it is
+  being rolled out to production, no longer only in closed testing.
 - Home on a phone puts the volume first, with a health line.
 - Snapshots, A/B compare, safe apply, limits, the installer lock, offline
   documents and templates, diff and partial import, the AutoEQ preview, undo

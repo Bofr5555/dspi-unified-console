@@ -47484,7 +47484,7 @@ enum class BundledFirmware {
      */
     VERIFIED,
     /**
-     * Not a bundled name: label it "not a verified DSPi Console image" and
+     * Not a bundled name: label it "not a verified uConsole for DSPi image" and
      * keep the usual confirmations. Not a refusal.
      */
     NOT_BUNDLED,

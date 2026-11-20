@@ -1,7 +1,8 @@
+• New name: uConsole for DSPi.
 • Snapshots, A/B compare and safe apply that reverts by itself.
 • Limits profiles, installer lock and PIN; undo and redo.
 • Open preset files with no device; templates; diff and partial import.
 • Encrypted DSPi Link: pairing pins the hub's key.
 • Hub alarms, history, shared snapshots and Identify.
-• Firmware 1.1.7 support, with a check before every update.
-• Phone Home with volume first and a health line.
+• Support for the 1.1.7 firmware beta (as of 2026-11-18); a check before every update.
+• Home puts the volume first, with a health line.

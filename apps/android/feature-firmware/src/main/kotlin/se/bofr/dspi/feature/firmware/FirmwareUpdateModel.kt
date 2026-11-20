@@ -51,7 +51,7 @@ class FirmwareUpdateModel(
 
     /**
      * -- WP SECFIX -- The chosen local file is not a bundled image (the core's manifest):
-     * "Not a verified DSPi Console image" and why, shown with it. Null for the bundled
+     * "Not a verified uConsole for DSPi image" and why, shown with it. Null for the bundled
      * release, or a file that is one byte for byte. Never a refusal.
      */
     var localLabel by mutableStateOf<FirmwareLabel?>(null)

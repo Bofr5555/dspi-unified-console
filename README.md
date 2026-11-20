@@ -32,10 +32,10 @@ roles, and **installer modes** that hand a finished system over to its owner, lo
   and redo, and confirmation for every dangerous write. A revert that cannot put everything back says so.
 - **Firmware updates that check first.** The update check reads the board before anything is written and refuses an
   image built for the wrong kind of device (the fork's images carry kind and core-voltage stamps †); leaving the
-  fork's firmware asks you to confirm. Both firmware generations, 1.1.6 and upstream's paged 1.1.7, are supported.
+  fork's firmware asks you to confirm. Both firmware generations, 1.1.6 and upstream's paged 1.1.7 beta as of 2026-11-18 (later 1.1.7 betas may need an update), are supported.
 
 † **Needs the DSPi fork firmware** on the device: [Bofr5555/DSPi](https://github.com/Bofr5555/DSPi), release
-[v1.1.6-bofr1](https://github.com/Bofr5555/DSPi/releases/tag/v1.1.6-bofr1) ([which image](docs/INSTALL.md#fork-firmware)). Everything else works on stock Weeb Labs firmware, 1.1.6 or the paged 1.1.7
+[v1.1.6-bofr1](https://github.com/Bofr5555/DSPi/releases/tag/v1.1.6-bofr1) ([which image](docs/INSTALL.md#fork-firmware)). Everything else works on stock Weeb Labs firmware, 1.1.6 or upstream's paged 1.1.7 beta as of 2026-11-18 (later 1.1.7 betas may need an update)
 ([what needs which firmware](docs/FEATURES.md#firmware-stock-vs-fork)).
 
 ## Screenshots
@@ -73,7 +73,7 @@ Release **0.14.0**, one version for every client ([install guide](docs/INSTALL.m
 
 - **Windows** 10/11: installer or portable zip ([how](docs/INSTALL.md#windows))
 - **Linux:** `.deb`, `.rpm`, AppImage, tar.gz or AUR, plus a one-time USB rule ([how](docs/INSTALL.md#linux))
-- **Android** 8+: Google Play (closed testing) or the APK ([how](docs/INSTALL.md#android))
+- **Android** 8+: Google Play (*uConsole for DSPi*, being rolled out to production) or the APK ([how](docs/INSTALL.md#android))
 - **Terminal** `uconsole` for Linux, Windows and macOS: interface, scripting and the hub ([how](docs/INSTALL.md#terminal-uconsole))
 - **Web console:** served by `uconsole web` or a hub, Chrome or Edge for USB ([how](docs/INSTALL.md#web-console))
 - **macOS and iOS:** the Swift apps exist but are not part of this release ([why](docs/INSTALL.md#macos-iphone-and-ipad))

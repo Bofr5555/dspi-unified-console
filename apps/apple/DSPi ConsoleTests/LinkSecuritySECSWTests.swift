@@ -426,7 +426,7 @@ final class LinkSecuritySECSWTests: XCTestCase {
     func testSECSWAFileThatIsNotBundledIsLabelledNotVerified() {
         let notice = FirmwareImage.notVerifiedNotice(Data(repeating: 0x55, count: 1024), name: "my-build.uf2")
         XCTAssertEqual(notice?.key, "firmware.not_verified")
-        XCTAssertEqual(notice?.title, "Not a verified DSPi Console image")
+        XCTAssertEqual(notice?.title, "Not a verified uConsole for DSPi image")
         #if os(macOS)
         // The app's own bundled images are verified.
         for chip in BootloaderBoard.Chip.allCases {

@@ -1,1 +1,1 @@
-DSPi Console for Android
+uConsole for DSPi

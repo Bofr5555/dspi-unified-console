@@ -127,7 +127,7 @@ class AboutPageAn26Test {
     @Test
     fun aMissingTableLeavesTheRestOfThePage() {
         show("")
-        rule.onNodeWithText("DSPi Console").assertExists()
+        rule.onNodeWithText("uConsole for DSPi").assertExists()
         rule.onNode(hasText("Links & Support")).assertDoesNotExist()
         rule.onNode(hasText("Made by")).assertDoesNotExist()
         rule.onNode(hasText("Credits")).assertDoesNotExist()

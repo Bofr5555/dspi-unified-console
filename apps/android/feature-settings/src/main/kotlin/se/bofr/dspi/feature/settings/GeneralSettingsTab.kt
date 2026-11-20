@@ -71,10 +71,10 @@ private fun AboutPage(onOpenLicenses: () -> Unit, onNavigate: (String) -> Unit, 
     val version = remember {
         runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "—"
     }
-    // The launcher label: "DSPi Console", or "uConsole for DSPi (APK)" in the sideload build
+    // The launcher label: "uConsole for DSPi", or "uConsole for DSPi (APK)" in the sideload build
     val appName = remember {
         runCatching { context.applicationInfo.loadLabel(context.packageManager).toString() }.getOrNull()
-            ?.takeIf { it.isNotBlank() && it != context.packageName } ?: "DSPi Console"
+            ?.takeIf { it.isNotBlank() && it != context.packageName } ?: "uConsole for DSPi"
     }
     val readAbout = LocalAboutJson.current
     val about = remember(readAbout) { runCatching { parseAbout(readAbout()) }.getOrDefault(AboutInfo()) }

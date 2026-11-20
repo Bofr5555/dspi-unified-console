@@ -34,8 +34,8 @@ android {
     defaultConfig {
         applicationId = "se.bofr.dspi_console_android" + if (sideload) "_apk" else ""
         // The launcher label, which the About page shows as its title too. The Play
-        // build keeps "DSPi Console" until its next release renames it (owner 2026-11-09)
-        resValue("string", "app_name", if (sideload) "uConsole for DSPi (APK)" else "DSPi Console")
+        // build is "uConsole for DSPi" since 0.14.0 (owner 2026-11-20). -- WP RENAME1 --
+        resValue("string", "app_name", if (sideload) "uConsole for DSPi (APK)" else "uConsole for DSPi")
         // The ONE place for the app version (runtime reads PackageInfo).
         // Every upload to Play needs a higher versionCode than any before it.
         versionCode = 14

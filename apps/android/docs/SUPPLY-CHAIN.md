@@ -87,7 +87,7 @@ bundles. `ci/check.sh --step firmware-digests` fails unless all three bundles
 hold exactly the pinned files and the manifest is current. The core checks the
 manifest before every flash (`dspi-core` `firmware_manifest.rs`): a bundled image
 whose bytes differ is refused, and a user's own file comes back `NotBundled`
-for the "not a verified DSPi Console image" label. This is a consistency check
+for the "not a verified uConsole for DSPi image" label. This is a consistency check
 against build mix-ups and corruption, **not tamper protection**: the manifest
 ships in the same bundle as the images, so whoever swaps an image can swap the
 manifest too. The controls against tampering are platform code signing and

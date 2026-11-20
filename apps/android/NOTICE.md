@@ -1,4 +1,4 @@
-# DSPi Console for Android — copyright, licence and additional terms
+# uConsole for DSPi on Android — copyright, licence and additional terms
 
 > **DRAFT.** Not final legal text: pending the owner's approval.
 

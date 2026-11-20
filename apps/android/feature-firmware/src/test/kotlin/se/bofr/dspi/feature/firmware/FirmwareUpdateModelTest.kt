@@ -85,7 +85,7 @@ class FirmwareUpdateModelTest {
     // -- WP SECFIX --
     @Test fun wpSecfixTheNotVerifiedLabelGoesWithTheLocalFile() = runTest {
         val m = model()
-        val label = se.bofr.dspi.bridge.FirmwareLabel("Not a verified DSPi Console image", "Why.")
+        val label = se.bofr.dspi.bridge.FirmwareLabel("Not a verified uConsole for DSPi image", "Why.")
         m.chooseLocal(FirmwareImage(null, "mine.uf2", null, TestUf2.image(1), false), label)
         assertEquals(label, m.localLabel)
         assertEquals(null, m.localFileError)

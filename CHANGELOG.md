@@ -15,7 +15,10 @@ download in 0.14.0. Everything below was merged after the 0.13.0 release (tag `v
 ### Names
 - The project's apps are called **uConsole for DSPi**. Release files start with
   `uConsole-for-DSPi-<version>-`; packages, installed files and the desktop app's command use
-  `uconsole-for-dspi`. The Google Play app keeps its listing name until its next update.
+  `uconsole-for-dspi`. The Android app is now called **uConsole for DSPi** on Google Play too
+  (formerly DSPi Console for Android); its app ID stays `se.bofr.dspi_console_android`.
+- Google Play granted the Android app production access (2026-11-20); it is being rolled out
+  to production, no longer only in closed testing.
 - Settings, the Windows install folder and registry entries, and the Linux desktop entry use
   the new names. Nothing is carried over from the earlier names.
 
@@ -83,7 +86,7 @@ download in 0.14.0. Everything below was merged after the 0.13.0 release (tag `v
 - A revert that the hub could not complete is now said as such, naming what was not put back.
 
 ### Firmware updates and safety
-- **Firmware 1.1.7** (upstream's paged protocol) is supported beside 1.1.6, decided once per
+- **Firmware 1.1.7** (upstream's paged 1.1.7 beta as of 2026-11-18 (later 1.1.7 betas may need an update)) is supported beside 1.1.6, decided once per
   connection, in every client but the Swift app. Device info (generation, protocol, pages,
   board) is shown in the web Device screen, Qt and Android Settings > About and `uconsole info`.
 - An update check runs before every bootloader entry (no image for a board without BOOTSEL, a
@@ -140,6 +143,8 @@ download in 0.14.0. Everything below was merged after the 0.13.0 release (tag `v
 
 ### Android
 Changes since 0.13.0 (versionCode 13 on Google Play, closed testing):
+- The app is now called uConsole for DSPi on Google Play (formerly DSPi Console for Android),
+  and has production access there (2026-11-20); it is being rolled out to production.
 - Phone Home with the volume first and a health line; channel colours as tags.
 - The PRO phase 1 screens (snapshots, A/B, safe apply, limits, the installer lock, documents
   and templates, diff and partial import, AutoEQ preview), undo and redo, and Copy/Paste

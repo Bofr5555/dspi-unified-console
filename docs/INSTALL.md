@@ -26,7 +26,7 @@ time; every file is listed in a signed `SHA256SUMS` instead ([Check a download](
 | **Fedora 43 or 44** | `uconsole-for-dspi-<version>-1.fc<N>.x86_64.rpm` (one per Fedora release) | `sudo dnf install ./uconsole-for-dspi-<version>-1.fc<N>.x86_64.rpm` |
 | **Other Linux** (x86_64, glibc 2.39+, e.g. Ubuntu 24.04) | `uConsole-for-DSPi-<version>-x86_64.AppImage`, or `…-linux-x86_64.tar.gz` with an installer | [AppImage and tar.gz](#appimage-and-targz) |
 | **Arch Linux** | the AUR package `uconsole-for-dspi` | [Arch](#arch-linux) |
-| **Android** 8+ | Google Play (closed testing), or `uConsole-for-DSPi-<version>.apk` | [Android](#android) |
+| **Android** 8+ | Google Play (*uConsole for DSPi*), or `uConsole-for-DSPi-<version>.apk` | [Android](#android) |
 | **Terminal** (`uconsole`, every system) | `uConsole-for-DSPi-<version>-terminal-<system>.tar.gz` / `.zip` | [Terminal](#terminal-uconsole) |
 | **Web console** | `uConsole-for-DSPi-<version>-web.tar.gz` | [Web console](#web-console) |
 | macOS, iOS, iPadOS | not in this release | [macOS, iPhone and iPad](#macos-iphone-and-ipad) |
@@ -101,8 +101,9 @@ BOOTSEL mode (for a firmware update) is a USB drive and needs no rule. The packa
 
 ## Android
 
-- **Google Play:** the app is in **closed testing** on Google Play (Android 8.0 or newer); once you are a tester,
-  install it from its Play listing.
+- **Google Play:** *uConsole for DSPi* (Android 8.0 or newer; called *DSPi Console for Android* up to 0.13.0). It
+  was granted production access on 2026-11-20 and is being rolled out to production after its closed test; install
+  it from its Play listing.
 - **Without Play:** `uConsole-for-DSPi-<version>.apk`. It is a separate app, *uConsole for DSPi (APK)*, so it
   installs next to the Play version rather than over it. Allow installs from your browser or file manager when asked.
 
