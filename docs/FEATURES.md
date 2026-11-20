@@ -13,8 +13,8 @@ but it is **not part of release 0.14.0** (the owner has deferred it), so its col
 
 ## Firmware: stock vs fork
 
-† **Needs the DSPi fork firmware** on the device: [Bofr5555/DSPi](https://github.com/Bofr5555/DSPi), branch
-`bofr-main`. The consoles themselves are the same for both; they ask each DSPi once per connection which firmware
+† **Needs the DSPi fork firmware** on the device: [Bofr5555/DSPi](https://github.com/Bofr5555/DSPi), release
+[v1.1.6-bofr1](https://github.com/Bofr5555/DSPi/releases/tag/v1.1.6-bofr1) (branch `bofr-main`; which image for which board: [`INSTALL.md`](INSTALL.md#fork-firmware)). The consoles themselves are the same for both; they ask each DSPi once per connection which firmware
 generation it runs and which of the fork's extensions it has (the extension channel: request `0x00` on 1.1.6, the
 private page `0xE0` on paged firmware), and simply do not offer what a device lacks.
 

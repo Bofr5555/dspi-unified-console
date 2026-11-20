@@ -12,7 +12,7 @@ Android and in the web console), so you can try every screen first.
 - [Windows](#windows) · [Linux](#linux) (Debian/Ubuntu, Fedora, AppImage and tar.gz, Arch) ·
   [USB access on Linux](#usb-access-on-linux) · [Android](#android) · [Terminal](#terminal-uconsole) ·
   [Web console](#web-console) · [macOS, iPhone and iPad](#macos-iphone-and-ipad) ·
-  [Check a download](#check-a-download) · [Source code](#source-code)
+  [Fork firmware](#fork-firmware) · [Check a download](#check-a-download) · [Source code](#source-code)
 
 The desktop installers and the Terminal binaries are **not code-signed** yet, so each system warns the first
 time; every file is listed in a signed `SHA256SUMS` instead ([Check a download](#check-a-download)).
@@ -152,6 +152,24 @@ The Swift apps for macOS and iOS ([`apps/apple/`](../apps/apple/)) exist and run
 **not part of release 0.14.0**: the owner has deferred the Apple apps. On a Mac today you can use the Terminal
 (`uConsole-for-DSPi-<version>-terminal-macos-universal.tar.gz`) and the web console it serves (`uconsole web`,
 in Chrome or Edge for USB). The Qt app has no macOS build.
+
+## Fork firmware
+
+The apps work with stock Weeb Labs firmware. The features marked † in [`FEATURES.md`](FEATURES.md#firmware-stock-vs-fork)
+need the DSPi fork firmware, release [**v1.1.6-bofr1**](https://github.com/Bofr5555/DSPi/releases/tag/v1.1.6-bofr1), the
+firmware 0.14.0 was tested against. Not an official Weeb Labs release. Pick the image for your board:
+
+| Board | Image |
+|---|---|
+| RP2040 (Pico) | `DSPi-v1.1.6-bofr1-rp2040.uf2`, or `…-rp2040-midi.uf2` with USB MIDI control |
+| RP2350 (Pico 2) | `DSPi-v1.1.6-bofr1-rp2350.uf2`, or `…-rp2350-midi.uf2` with USB MIDI control |
+| K340 (RP2350 at 1.20 V) | `DSPi-v1.1.6-bofr1-rp2350-midi-vreg1200.uf2` |
+| A Pico 2 as the alink sender | `DSPi-v1.1.6-bofr1-rp2350-alink-sender.uf2` |
+
+Flash it with the app's firmware update (choose the `.uf2` file; the update check reads the board and the image's
+stamps first and refuses an image for the other kind of device), or by hand: hold BOOTSEL while you plug the board in
+and copy the `.uf2` file to the drive that appears. The release page lists every file's SHA-256 and carries a
+`SHA256SUMS` signed with the same key as the apps ([Check a download](#check-a-download)). Back up your presets first.
 
 ## Check a download
 

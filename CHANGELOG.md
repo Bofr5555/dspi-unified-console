@@ -89,6 +89,9 @@ download in 0.14.0. Everything below was merged after the 0.13.0 release (tag `v
 - An update check runs before every bootloader entry (no image for a board without BOOTSEL, a
   phrase to type before leaving this fork's firmware, a generation change said), and the core's
   write gate judges every firmware write on the target it read itself.
+- The DSPi fork firmware this release was tested against is published as
+  [v1.1.6-bofr1](https://github.com/Bofr5555/DSPi/releases/tag/v1.1.6-bofr1) (images for
+  RP2040, RP2350, the K340 and the alink sender; [which image](docs/INSTALL.md#fork-firmware)).
 - Images carry a kind stamp (DSP or alink sender) and a core-voltage stamp. An image of the
   wrong kind, or of an unreadable kind, is refused with no override; an unstamped image on a
   sender needs a typed confirmation. Our own stamped sender image on a sender skips the voltage
