@@ -1,6 +1,7 @@
 # Debian 13 (trixie) with its own Qt 6.8 packages: the build the .deb is made
 # from, against the distribution's Qt (glibc 2.41). -- WP QP20 -- dpkg-dev for
-# CPack's dependency list (dpkg-shlibdeps).
+# CPack's dependency list (dpkg-shlibdeps). -- INT-R1 -- qt6-multimedia-dev: the
+# microphone (P5QCAP links Qt6::Multimedia); the .deb's Depends follow from it.
 #
 #   podman build -t uconsole-for-dspi-debian -f apps/desktop/packaging/linux/Containerfile.debian apps/desktop/packaging/linux
 #   podman run --rm -v "$PWD":/src:Z -w /src uconsole-for-dspi-debian apps/desktop/packaging/linux/build-debian.sh
@@ -14,6 +15,7 @@ RUN apt-get update \
  && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
       ca-certificates curl cmake ninja-build g++ pkg-config file binutils libasound2-dev dpkg-dev \
       qt6-base-dev qt6-base-private-dev qt6-declarative-dev qt6-svg-dev qt6-tools-dev qt6-tools-dev-tools \
+      qt6-multimedia-dev \
  && rm -rf /var/lib/apt/lists/*
 
 ENV RUSTUP_HOME=/opt/rustup CARGO_HOME=/opt/cargo PATH=/opt/cargo/bin:$PATH
