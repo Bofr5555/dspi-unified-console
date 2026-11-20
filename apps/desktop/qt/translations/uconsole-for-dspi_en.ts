@@ -2613,7 +2613,7 @@ Do you wish to proceed?</source>
 <context>
     <name>FirmwareController</name>
     <message>
-        <source>Not a verified uConsole for DSPi image</source>
+        <source>Not a verified firmware image</source>
         <translation type="unfinished"></translation>
     </message>
     <message>

@@ -522,7 +522,7 @@ fn check_chip(req: &Request, state: &DspState, image: &Image) -> Result<(), u8> 
 
 // -- WP SECFIX --
 /// The label of a file that is not a bundled DSPi Console image (SECFWV): the
-/// core's notice row `firmware.not_verified`, "Not a verified uConsole for DSPi
+/// core's notice row `firmware.not_verified`, "Not a verified firmware
 /// image: ...". `None` for a verified one.
 fn image_label(image: &Image) -> Option<String> {
     if image.bundled == BundledFirmware::Verified {

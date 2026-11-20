@@ -78,7 +78,7 @@
     {"key": "firmware_guard", "kind": "error", "title": "Firmware not installed",
      "reason": "This firmware image can leave the DSPi's core voltage too low. Nothing was written.",
      "action": "Choose a different firmware image."},
-    {"key": "firmware.not_verified", "kind": "info", "title": "Not a verified uConsole for DSPi image",
+    {"key": "firmware.not_verified", "kind": "info", "title": "Not a verified firmware image",
      "reason": "This file is not one of the firmware images that come with uConsole for DSPi, so it could not be checked against them.",
      "action": "Flash it only if you know where it came from, such as your own build. The usual checks still apply."},
     {"key": "overvolt_word", "kind": "warning", "title": "Confirmation needed",

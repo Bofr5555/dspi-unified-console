@@ -96,7 +96,7 @@ FirmwareController::FirmwareController(const AppContext &ctx, QObject *parent)
                                     return dspi_notice_for("firmware.not_verified", nullptr, b, n);
                                 })).object();
         const bool ours = row.value(QStringLiteral("key")).toString() == QLatin1String("firmware.not_verified");
-        m_unverifiedLabel = ours ? row.value(QStringLiteral("title")).toString() : tr("Not a verified uConsole for DSPi image");
+        m_unverifiedLabel = ours ? row.value(QStringLiteral("title")).toString() : tr("Not a verified firmware image");
         m_unverifiedText = ours ? row.value(QStringLiteral("reason")).toString() + QLatin1Char(' ')
                                       + row.value(QStringLiteral("action")).toString()
                                 : QString();

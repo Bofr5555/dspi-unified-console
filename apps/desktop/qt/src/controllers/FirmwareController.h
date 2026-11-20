@@ -73,7 +73,7 @@ class FirmwareController : public QObject {
     Q_PROPERTY(QString imageProblem READ imageProblem NOTIFY imageChanged)
     // -- WP SECFIX -- A custom image that is not a bundled one byte for byte
     // (the core's manifest, dspi_firmware_verify_bundled; SECFWV): the label
-    // "Not a verified uConsole for DSPi image" and what it means (the core's notice
+    // "Not a verified firmware image" and what it means (the core's notice
     // row firmware.not_verified). Information, not a refusal; "" otherwise.
     Q_PROPERTY(QString unverifiedLabel READ unverifiedLabel NOTIFY imageChanged)
     Q_PROPERTY(QString unverifiedText READ unverifiedText NOTIFY imageChanged)

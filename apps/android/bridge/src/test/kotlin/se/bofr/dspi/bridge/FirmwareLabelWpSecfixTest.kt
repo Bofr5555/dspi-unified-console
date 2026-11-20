@@ -10,7 +10,7 @@ import se.bofr.dspi.core.NoticeKind
 import se.bofr.dspi.fake.FakeDspiCore
 
 /**
- * WP SECFIX: the "Not a verified uConsole for DSPi image" label (SECFWV) comes from the core: its
+ * WP SECFIX: the "Not a verified firmware image" label (SECFWV) comes from the core: its
  * manifest decides (`verify_bundled`, by the file's name), its notice row gives the words.
  */
 class FirmwareLabelWpSecfixTest {
@@ -25,7 +25,7 @@ class FirmwareLabelWpSecfixTest {
         override fun noticeForKey(key: String, detail: String) = Notice(
             key,
             NoticeKind.INFO,
-            "Not a verified uConsole for DSPi image",
+            "Not a verified firmware image",
             "Not one of the app's images.",
             "Check where it came from.",
             detail
@@ -38,7 +38,7 @@ class FirmwareLabelWpSecfixTest {
         val label = newBridge(core).coreTools.firmwareLabel(byteArrayOf(1, 2, 3), "mine.uf2")
         assertEquals(listOf("mine.uf2"), core.asked)
         assertEquals(
-            FirmwareLabel("Not a verified uConsole for DSPi image", "Not one of the app's images. Check where it came from."),
+            FirmwareLabel("Not a verified firmware image", "Not one of the app's images. Check where it came from."),
             label
         )
         // A bundled name with other bytes is not verified either

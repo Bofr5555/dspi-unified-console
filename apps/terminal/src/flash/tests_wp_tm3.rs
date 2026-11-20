@@ -359,7 +359,7 @@ fn file(bytes: Vec<u8>) -> Image {
 }
 
 // -- WP SECFIX --
-/// A file of the user's is labelled "Not a verified uConsole for DSPi image" (the
+/// A file of the user's is labelled "Not a verified firmware image" (the
 /// core's row) and still flashes; the bundled image under its own name is not
 /// labelled.
 #[test]
@@ -368,7 +368,7 @@ fn wp_secfix_a_user_file_is_labelled_not_verified_and_not_refused() {
     assert_eq!(image.bundled, BundledFirmware::NotBundled);
     let label = image_label(&image).unwrap();
     assert!(
-        label.starts_with("Not a verified uConsole for DSPi image: "),
+        label.starts_with("Not a verified firmware image: "),
         "{label}"
     );
     let mut world = Fake::new("secfix_label").answers(&[LINEAGE]); // -- WP PGTM --

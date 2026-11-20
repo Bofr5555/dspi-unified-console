@@ -57658,7 +57658,7 @@ public enum BundledFirmware {
      */
     case verified
     /**
-     * Not a bundled name: label it "not a verified uConsole for DSPi image" and
+     * Not a bundled name: label it "not a verified firmware image" and
      * keep the usual confirmations. Not a refusal.
      */
     case notBundled

@@ -25,7 +25,7 @@
 //!   name. The answer is [`BundledFirmware::Verified`],
 //!   [`BundledFirmware::Mismatch`] (a bundled name whose bytes differ) or
 //!   [`BundledFirmware::NotBundled`] (any other name: a file the user picked,
-//!   for the "not a verified uConsole for DSPi image" label).
+//!   for the "not a verified firmware image" label).
 //! - Before every flash, the guard ([`crate::firmware_guard_check`], so also
 //!   [`crate::DspiCore::flash_confirmed`]) asks without a name, since the
 //!   flash path carries none: an image that presents itself as a bundled one
@@ -51,7 +51,7 @@ const MANIFEST_JSON: &str = include_str!("../../../firmware/manifest.json");
 // -- WP SECFIX --
 /// The notice row of the label every client shows for a firmware file that is
 /// not [`BundledFirmware::Verified`] (a file the user picked): its title is
-/// the label, "Not a verified uConsole for DSPi image"; the reason and action say
+/// the label, "Not a verified firmware image"; the reason and action say
 /// what that means. Information, not a refusal.
 pub const NOTICE_NOT_VERIFIED: &str = "firmware.not_verified";
 
@@ -62,7 +62,7 @@ pub const NOTICE_NOT_VERIFIED: &str = "firmware.not_verified";
 pub enum BundledFirmware {
     /// A bundled name, and the bytes are the ones the manifest lists.
     Verified,
-    /// Not a bundled name: label it "not a verified uConsole for DSPi image" and
+    /// Not a bundled name: label it "not a verified firmware image" and
     /// keep the usual confirmations. Not a refusal.
     #[default]
     NotBundled,
@@ -593,7 +593,7 @@ mod tests_wp_secfwv {
         let n = crate::notice_for_key(NOTICE_NOT_VERIFIED.into(), String::new());
         assert_eq!(n.key, NOTICE_NOT_VERIFIED);
         assert_eq!(n.kind, crate::NoticeKind::Info);
-        assert_eq!(n.title, "Not a verified uConsole for DSPi image");
+        assert_eq!(n.title, "Not a verified firmware image");
         assert!(!n.reason.is_empty() && !n.action.is_empty());
     }
 }
