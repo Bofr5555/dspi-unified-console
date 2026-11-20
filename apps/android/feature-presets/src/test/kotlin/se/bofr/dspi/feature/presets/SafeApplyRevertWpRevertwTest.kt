@@ -16,12 +16,11 @@ import se.bofr.dspi.feature.presets.snapshots.guardLines
  * put back and what to do; the bar stays until the user's OK.
  */
 class SafeApplyRevertWpRevertwTest {
-    private fun ended(phase: GuardPhase, notice: String) =
-        GuardedApply(
-            3, phase, "Room", false, 30_000, 0, "reverted",
-            "The revert was not fully successful: some of the settings from before were not put back (see the notes).",
-            emptyList(), listOf("Device name: not written (refused)"), notice
-        )
+    private fun ended(phase: GuardPhase, notice: String) = GuardedApply(
+        3, phase, "Room", false, 30_000, 0, "reverted",
+        "The revert was not fully successful: some of the settings from before were not put back (see the notes).",
+        emptyList(), listOf("Device name: not written (refused)"), notice
+    )
 
     @Test
     fun wp_revertw_the_bar_leads_with_the_notice_and_stays() {

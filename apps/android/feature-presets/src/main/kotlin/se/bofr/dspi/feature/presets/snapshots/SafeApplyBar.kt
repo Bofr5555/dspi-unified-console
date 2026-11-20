@@ -121,8 +121,12 @@ fun SafeApplyBar(bridge: DspiBridge, modifier: Modifier = Modifier) {
     if (g.phase == GuardPhase.WAITING) watched = g.id
     // -- WP P1DCFIX -- a lost guard is not an end: no timer hides it (F2)
     // -- WP REVERTW -- nor is a revert not fully successful hidden by a timer
-    val ended = g.phase != GuardPhase.WAITING && g.phase != GuardPhase.IDLE && g.phase != GuardPhase.LOST && g.id == watched &&
-        g.revertNotice.isEmpty()
+    val ended =
+        g.phase != GuardPhase.WAITING &&
+            g.phase != GuardPhase.IDLE &&
+            g.phase != GuardPhase.LOST &&
+            g.id == watched &&
+            g.revertNotice.isEmpty()
     LaunchedEffect(g.id, g.phase, ended) {
         if (ended) {
             delay(GUARD_END_SHOWN_MS)
