@@ -6,7 +6,7 @@ terminal interface, plus a scriptable one-shot CLI. The command is `uconsole`
 (package `dspi-term`).
 
 It is one of the clients in this repository. It came from Weeb Labs'
-DSPi-Terminal (see the root [`README.md`](../../README.md), Credits) and uses the
+DSPi-Terminal (see [`docs/CREDITS.md`](../../docs/CREDITS.md)) and uses the
 repository's session crates directly (`crates/dspi-proto`, `dspi-transport`,
 `dspi-session`, `dspi-cmd`, `dspi-tui`), writes through `dspi-core` (WP TMCORE; also
 `uconsole flash`, the PRO commands and `uconsole measure`) and runs `dspi-hub` for
@@ -168,7 +168,7 @@ uconsole completions zsh              # shell completion
 ### PRO commands, measurement and the protocol
 
 Each one-shot command is one session of the core, so an unlock lasts for that command.
-The root [`README.md`](../../README.md) (Status) describes the features.
+[`docs/STATUS.md`](../../docs/STATUS.md) and [`docs/FEATURES.md`](../../docs/FEATURES.md) describe the features.
 
 ```sh
 uconsole open site.dspipreset         # edit a document with no device, in the interface
