@@ -279,12 +279,16 @@ impl DspiCore {
         let mut inner = self.writing()?;
         // -- WP P0W -- `Session::write` journals it; an undo's replay as one
         crate::journal::check_replay(&inner)?;
+        crate::actor::judge_value(&inner, d.path, ix, &value)?; // -- WP MCP0 -- the pre-write hook
+        let actor = crate::actor::current(inner.actor_key); // -- WP MCP0 --
         let outcome = {
             let mut w = inner.writable_conn()?;
             w.conn().fresh_image = false;
             let session = w.session()?;
             session.replaying_as(crate::journal::replay_source());
+            session.actor = actor; // -- WP MCP0 -- the journal names the actor
             let r = session.write(d.path, ix, value.clone());
+            session.actor = crate::actor::EMBEDDER;
             session.replaying_as(None);
             r?
         };

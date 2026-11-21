@@ -163,6 +163,8 @@ mod measure_doc;
 pub mod measure;
 // -- WP P5DEMO -- the demo's simulated microphone (PLAN-P5 OD-P5q)
 mod measure_sim;
+// -- WP MCP0 -- who writes: actors, the pre-write hook, the user-editing gate
+pub mod actor;
 
 pub use callbacks::{DeviceEvents, LinkListener, MidiSender, NotifyListener, RtaListener};
 // -- WP P5SES --
@@ -555,6 +557,11 @@ pub(crate) struct Inner {
     /// The fake opened by [`DspiCore::open_demo_generation`], for its
     /// violation count; `None` for any other device.
     pub(crate) demo_generation: Option<dspi_transport::FakeRemote>,
+    // -- WP MCP0 --
+    /// What an [`actor::ActorScope`] names this core by.
+    pub(crate) actor_key: u64,
+    /// What other actors changed since the last `process_notifications`.
+    pub(crate) foreign: actor::Foreign,
 }
 
 /// An open device.
@@ -968,6 +975,8 @@ impl Inner {
             measure_tap: measure::Tap::default(),                   // -- WP P5SES --
             flash_target: None,                                     // -- WP PGFLASH --
             demo_generation: None,                                  // -- WP PGQT --
+            actor_key: actor::next_core_key(),                      // -- WP MCP0 --
+            foreign: actor::Foreign::default(),                     // -- WP MCP0 --
         }
     }
 
@@ -990,6 +999,7 @@ impl Inner {
             return Err(DspiError::ReadOnly);
         }
         crate::limits::lock_check(self)?; // -- WP P1LK -- the installer's lock
+        actor::gate(self)?; // -- WP MCP0 -- another actor: the user-editing gate
         Ok(Writable(self.conn()?))
     }
 
@@ -1004,6 +1014,7 @@ impl Inner {
         }
         read_only::check(self)?;
         crate::limits::lock_check(self)?;
+        actor::gate(self)?; // -- WP MCP0 --
         Ok(Writable(self.conn()?))
     }
 }

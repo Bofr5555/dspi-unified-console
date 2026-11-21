@@ -2402,6 +2402,7 @@ impl DspiCore {
                     .add("Crossfeed output pairs (not supported by this firmware)");
             }
         }
+        crate::actor::judge_whole(inner, &before, &built.state)?; // -- WP MCP0 -- the pre-write hook
         inner.state = built.state.clone();
         if let Err(e) = apply_all_params_locked(inner) {
             // -- WP BULKFIX -- (fixup bf F2) A failed repair left the device

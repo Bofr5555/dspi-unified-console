@@ -511,6 +511,7 @@ impl Inner {
         value: Value,
         update: impl FnOnce(&mut DspState),
     ) -> Result<()> {
+        crate::actor::judge_value(self, path, indices, &value)?; // -- WP MCP0 -- the pre-write hook
         // -- WP P0W --
         let change = self.journal_begin(path, indices)?;
         self.writable_conn()?
