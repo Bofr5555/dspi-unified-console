@@ -143,6 +143,16 @@ if [ -z "${DSPI_SMOKE_HW:-}" ] && [ -z "${DSPI_SMOKE_SECTION:-}" ]; then
     # The hardware pass on the demo
     launch hw-dry '' DSPI_SMOKE_HW=dry -- --demo || failed hw-dry $?
 fi
+# -- WP QTPOP -- The tool windows' sizes on two common screens: the offscreen
+# platform's screen from a config file. Also run by DSPI_SMOKE_SECTION=qtpop-popups.
+if [ -z "${DSPI_SMOKE_HW:-}" ] && { [ -z "${DSPI_SMOKE_SECTION:-}" ] || [[ ",$DSPI_SMOKE_SECTION," == *,qtpop-popups,* ]]; }; then
+    for screen in 1366x768 1920x1080; do
+        printf '{"screens":[{"name":"smoke","x":0,"y":0,"width":%d,"height":%d,"logicalDpi":96,"logicalBaseDpi":96,"dpr":1}]}\n' \
+            "${screen%x*}" "${screen#*x}" > "$out/screen-$screen.json"
+        launch "popups-$screen" '' QT_QPA_PLATFORM="offscreen:configfile=$out/screen-$screen.json" \
+            DSPI_SMOKE_POPUPS="$screen" DSPI_SMOKE_SECTION= -- --demo || failed "popups-$screen" $?
+    done
+fi
 
 # -- WP QP19 -- The gallery: <out>/index.html
 gallery() {

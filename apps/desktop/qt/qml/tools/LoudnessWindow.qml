@@ -15,6 +15,8 @@ ToolWindow {
     defaultHeight: 400
     minimumWidth: 740
     minimumHeight: 390
+    // -- WP QTPOP --
+    fitBodies: [body]
     title: qsTr("Loudness Compensation")
 
     readonly property bool writable: EffectsController.writable

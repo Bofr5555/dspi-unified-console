@@ -46,8 +46,11 @@ Dialog {
     readonly property real hostWidth: parent ? parent.width : 480
     readonly property real hostHeight: parent ? parent.height : 320
     width: Math.min(420, hostWidth - 2 * Theme.spacingLarge)
+    // -- WP QTPOP -- as tall as the channels, within the window less
+    // Theme.fitMargin each side; the list scrolls beyond that
+    height: Math.min(implicitHeight, hostHeight - 2 * Theme.fitMargin)
     x: (hostWidth - width) / 2
-    y: Math.max(Theme.spacingLarge, (hostHeight - implicitHeight) / 3)
+    y: Math.max(Theme.spacingLarge, (hostHeight - height) / 3)
     padding: Theme.spacingLarge
     topPadding: Theme.spacingSmall
 
@@ -76,7 +79,7 @@ Dialog {
     }
 
     contentItem: Item {
-        implicitHeight: promptText.height + Theme.spacing + list.height
+        implicitHeight: promptText.height + Theme.spacing + boxes.implicitHeight
         Accessible.role: Accessible.Dialog
         Accessible.name: picker.title
         Accessible.description: picker.prompt
@@ -93,7 +96,7 @@ Dialog {
             id: list
             y: promptText.height + Theme.spacing
             width: parent.width
-            height: Math.min(boxes.implicitHeight, Theme.popupMaxHeight)
+            height: Math.max(0, parent.height - y)
             contentHeight: boxes.implicitHeight
             clip: true
             boundsBehavior: Flickable.StopAtBounds

@@ -19,6 +19,8 @@ ToolWindow {
     minimumWidth: 740
     minimumHeight: 460
     title: qsTr("Crossfeed")
+    // -- WP QTPOP --
+    fitBodies: [body]
 
     readonly property bool writable: EffectsController.writable
     readonly property bool custom: EffectsController.crossfeedPreset === EffectsController.crossfeedCustomPreset

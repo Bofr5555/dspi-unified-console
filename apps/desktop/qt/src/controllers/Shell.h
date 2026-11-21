@@ -4,6 +4,7 @@
 #include <QHash>
 #include <QObject>
 #include <QPointer>
+#include <QSize>
 #include <QStringList>
 #include <QtQml/qqmlregistration.h>
 #include <functional>
@@ -79,6 +80,17 @@ public:
     void setActionGate(QObject *receiver, std::function<bool(const QString &action)> gate);
     // Whether the gate lets `action` run now
     Q_INVOKABLE bool allows(const QString &action) const;
+
+    // -- WP QTPOP -- The most a tool window grows to fit its content: the main
+    // window's size (while it shows) and the available size of `window`'s
+    // screen, less kFitMargin on each side; device-independent pixels.
+    static constexpr int kFitMargin = 48;
+    Q_INVOKABLE QSize fitCap(const QWindow *window) const;
+    // Sizes `window` to width x height: a side that grows stops at fitCap()
+    // (or where it is, when that is already more); one that shrinks takes the
+    // size asked, down to the window's minimum. Moves it up or left when it
+    // would leave its screen. Returns the size it gave it.
+    Q_INVOKABLE QSize fitWindow(QWindow *window, int width, int height) const;
 
 signals:
     void triggered(const QString &action);

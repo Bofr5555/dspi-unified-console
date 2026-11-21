@@ -184,8 +184,9 @@ void crossfeed(SmokeDriver &d) {
     ExtController *ext = Registrar::instance<ExtController>();
     Win win = open(d, "tools.crossfeed", "CrossfeedWindow");
     if (!win.w) return;
-    d.check(QStringLiteral("qp7: the crossfeed window is the Mac's size"),
-            win.w->width() == 780 && win.w->height() == 470 && win.w->minimumWidth() == 740 && win.w->minimumHeight() == 460);
+    // -- WP QTPOP -- at least the Mac's size, taller when its content needs it
+    d.check(QStringLiteral("qp7: the crossfeed window is the Mac's size or taller"),
+            win.w->width() == 780 && win.w->height() >= 470 && win.w->minimumWidth() == 740 && win.w->minimumHeight() == 460);
     d.check(QStringLiteral("qp7: the window's title"), win.w->title() == QLatin1String("Crossfeed"));
     const DspState *s0 = state(d);
     if (!s0) return;
@@ -385,8 +386,8 @@ void loudness(SmokeDriver &d) {
     Fx *fx = Registrar::instance<Fx>();
     Win win = open(d, "tools.loudness", "LoudnessWindow");
     if (!win.w || !state(d)) return;
-    d.check(QStringLiteral("qp7: the loudness window is the Mac's size"),
-            win.w->width() == 780 && win.w->height() == 400 && win.w->minimumHeight() == 390);
+    d.check(QStringLiteral("qp7: the loudness window is the Mac's size or taller"),   // -- WP QTPOP --
+            win.w->width() == 780 && win.w->height() >= 400 && win.w->minimumHeight() == 390);
     const bool wasOn = state(d)->loudness_enabled;
     const int wasMask = state(d)->loudness_output_mask;
     const float wasRef = state(d)->loudness_ref_spl, wasIntensity = state(d)->loudness_intensity;
@@ -434,8 +435,8 @@ void leveller(SmokeDriver &d) {
     Fx *fx = Registrar::instance<Fx>();
     Win win = open(d, "tools.leveller", "LevellerWindow");
     if (!win.w || !state(d)) return;
-    d.check(QStringLiteral("qp7: the leveller window is the Mac's size"),
-            win.w->width() == 380 && win.w->height() == 540 && win.w->minimumHeight() == 400);
+    d.check(QStringLiteral("qp7: the leveller window is the Mac's size or taller"),   // -- WP QTPOP --
+            win.w->width() == 380 && win.w->height() >= 540 && win.w->minimumHeight() == 400);
     const DspState s0 = *state(d);
 
     win.click(QStringLiteral("LevellerWindow.header.switch"));
@@ -491,8 +492,8 @@ void psybass(SmokeDriver &d) {
     Fx *fx = Registrar::instance<Fx>();
     Win win = open(d, "tools.psybass", "PsybassWindow");
     if (!win.w || !state(d)) return;
-    d.check(QStringLiteral("qp7: the psybass window is the Mac's size"),
-            win.w->width() == 780 && win.w->height() == 500 && win.w->minimumHeight() == 496);
+    d.check(QStringLiteral("qp7: the psybass window is the Mac's size or taller"),   // -- WP QTPOP --
+            win.w->width() == 780 && win.w->height() >= 500 && win.w->minimumHeight() == 496);
     const DspState s0 = *state(d);
     d.check(QStringLiteral("qp7: the demo has psychoacoustic bass"),
             fx->psybassSupported() && win.shows(QStringLiteral("PsybassWindow.body")) &&

@@ -44,6 +44,8 @@ public:
         Tray,        // DSPI_SMOKE_TRAY=hidden|hidden-quit|app-quit|no-tray
         Pseudo,      // DSPI_SMOKE_PSEUDO=en|pseudo
         SelfTest,    // DSPI_SMOKE_SELFTEST=thread|noquit: the driver's own failure paths fire
+        // -- WP QTPOP --
+        Popups,      // DSPI_SMOKE_POPUPS=<w>x<h>, on an offscreen screen of that size (run.sh)
     };
     struct App {
         QQmlApplicationEngine *engine;

@@ -17,6 +17,8 @@ ToolWindow {
     minimumWidth: 740
     minimumHeight: 500
     title: qsTr("Signal Generator")
+    // -- WP QTPOP --
+    fitBodies: [right]
 
     readonly property var gen: SiggenController
     readonly property bool enabledControls: SiggenController.controlsEnabled

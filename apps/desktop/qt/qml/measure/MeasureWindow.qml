@@ -19,6 +19,8 @@ ToolWindow {
     minimumWidth: 720
     minimumHeight: 520
     title: qsTr("Measure")
+    // -- WP QTPOP -- the tabs that are a ScrollView
+    fitBodies: [setupTab.contentItem, resultsTab.contentItem, liveTab.contentItem, tuneTab.contentItem, passiveTab.contentItem]
 
     readonly property bool blocked: MeasureController.playBlocker.length > 0
 
@@ -117,12 +119,12 @@ ToolWindow {
             Layout.fillWidth: true
             Layout.fillHeight: true
             currentIndex: tabs.currentIndex
-            MeasureSetupTab { onShowResults: tabs.currentIndex = 1 }
-            MeasureResultsTab { onShowTune: tabs.currentIndex = 3 }
-            MeasureLiveTab {}
-            MeasureTuneTab {}
+            MeasureSetupTab { id: setupTab; onShowResults: tabs.currentIndex = 1 }
+            MeasureResultsTab { id: resultsTab; onShowTune: tabs.currentIndex = 3 }
+            MeasureLiveTab { id: liveTab }
+            MeasureTuneTab { id: tuneTab }
             MeasureDocsTab { onShowResults: tabs.currentIndex = 1 }
-            MeasurePassiveTab {}
+            MeasurePassiveTab { id: passiveTab }
             MeasureUnitsTab {}   // -- WP ATQT --
         }
     }

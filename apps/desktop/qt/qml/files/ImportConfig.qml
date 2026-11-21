@@ -70,8 +70,11 @@ Dialog {
     readonly property real hostWidth: parent ? parent.width : 480
     readonly property real hostHeight: parent ? parent.height : 320
     width: Math.min(560, hostWidth - 2 * Theme.spacingLarge)
+    // -- WP QTPOP -- as tall as the changed values, within the window less
+    // Theme.fitMargin each side; the list scrolls beyond that
+    height: Math.min(implicitHeight, hostHeight - 2 * Theme.fitMargin)
     x: (hostWidth - width) / 2
-    y: Math.max(Theme.spacingLarge, (hostHeight - implicitHeight) / 4)
+    y: Math.max(Theme.spacingLarge, (hostHeight - height) / 4)
     padding: Theme.spacingLarge
     topPadding: Theme.spacingSmall
 
@@ -155,7 +158,9 @@ Dialog {
         }
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: Math.min(200, Math.max(1, rows.contentHeight) + 2)
+            Layout.preferredHeight: Math.max(1, rows.contentHeight) + 2
+            Layout.minimumHeight: Math.min(Layout.preferredHeight, 3 * Theme.rowHeight)
+            Layout.fillHeight: true
             visible: options.shownRows.length > 0
             radius: Theme.radiusSmall
             color: Theme.window

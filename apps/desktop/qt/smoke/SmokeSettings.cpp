@@ -130,7 +130,8 @@ void settingsSection(SmokeDriver &d) {
     d.spin(300);
     d.check(QStringLiteral("qp10: a fresh profile opens on About"), s->currentPage() == QLatin1String("about"));
     d.check(QStringLiteral("qp10: the title row names the page"), ui.text("Settings.title") == s->pageTitle(QStringLiteral("about")));
-    d.check(QStringLiteral("qp10: the default size is 860 x 630"), w->width() == 860 && w->height() == 630);
+    // -- WP QTPOP -- taller when the page needs it (About does)
+    d.check(QStringLiteral("qp10: the default size is 860 x 630 or taller"), w->width() == 860 && w->height() >= 630);
 
     const QStringList all = ui.pages(s);
     d.check(QStringLiteral("qp10: the list holds the QP10 pages in the Mac's order"),

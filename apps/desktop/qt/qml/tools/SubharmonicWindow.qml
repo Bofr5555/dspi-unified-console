@@ -16,6 +16,8 @@ ToolWindow {
     defaultHeight: 620
     minimumWidth: 740
     minimumHeight: 612
+    // -- WP QTPOP --
+    fitBodies: [body]
     title: qsTr("Subharmonic Synthesizer")
 
     readonly property bool writable: ToolsController.writable && ToolsController.subharmSupported
@@ -77,6 +79,7 @@ ToolWindow {
         }
 
         EffectColumns {
+            id: body
             objectName: "SubharmonicWindow.body"
             visible: !window.unsupported
             Layout.fillWidth: true
