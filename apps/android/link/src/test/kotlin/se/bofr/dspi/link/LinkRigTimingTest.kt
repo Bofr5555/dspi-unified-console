@@ -48,6 +48,9 @@ import se.bofr.dspi.ffi.FfiDspiCore
  * waits for the bridge's FFI thread (where every device call queues) and for
  * the core lock (`isConnected` takes it) while those reads run.
  *
+ * DSPI_RIG_LINK_DIR names the core's DSPi Link memory folder (`link_set_dir`), kept
+ * between runs as between app starts.
+ *
  * Skipped unless DSPI_RIG_HOST is set; one run per JVM (the rig script
  * interleaves runs with the reference client).
  */
@@ -123,6 +126,8 @@ class LinkRigTimingTest {
         val ffi = ffiExecutor.asCoroutineDispatcher()
         val scope = CoroutineScope(SupervisorJob() + main)
         val real = FfiDspiCore()
+        // -- WP LKFAST -- the core's hub memory, kept between runs as between app starts
+        System.getenv("DSPI_RIG_LINK_DIR")?.takeIf { it.isNotEmpty() }?.let { real.linkSetDir(it) }
         val core = timed(real)
         // The hub as DNS-SD would list it: its id from its info document (before the tap, not timed)
         val info = (1..5).firstNotNullOfOrNull { runCatching { real.linkFetchInfo(host, port) }.getOrNull() }
