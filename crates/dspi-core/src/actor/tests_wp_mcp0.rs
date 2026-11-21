@@ -52,7 +52,10 @@ fn code(e: &DspiError) -> &str {
 }
 
 /// A hook that keeps every proposal it is shown and lets it through.
-fn recorder() -> (WriteHook, Arc<Mutex<Vec<(bool, Vec<ProposedWrite>)>>>) {
+/// What a [`recorder`] saw: whether each proposal was whole, and its writes.
+type Seen = Arc<Mutex<Vec<(bool, Vec<ProposedWrite>)>>>;
+
+fn recorder() -> (WriteHook, Seen) {
     let seen = Arc::new(Mutex::new(Vec::new()));
     let keep = Arc::clone(&seen);
     let hook: WriteHook = Arc::new(move |p: &WriteProposal<'_>| {
@@ -283,7 +286,7 @@ fn wp_mcp0_the_hook_sees_before_and_after_for_setters_write_param_and_recall() {
             .collect()
     };
     let g = find("out.gain", &[0]);
-    assert_eq!(g[0].0, false);
+    assert!(!g[0].0, "a setter's write is not whole");
     assert_eq!(g[0].1.before, Some(ParamValue::Float(-1.0)));
     assert_eq!(g[0].1.after, ParamValue::Float(-4.0));
     // The recall puts it back: before −4, after −1, as part of a whole.

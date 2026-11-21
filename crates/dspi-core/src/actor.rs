@@ -322,6 +322,9 @@ pub(crate) fn judge_band(inner: &Inner, ch: u8, band: u8, p: &FilterParams) -> R
     })
 }
 
+/// A band field's value.
+type Field = fn(&FilterParams) -> Value;
+
 /// The fields of band `band` of wire channel `ch` that `now` changes from
 /// `was` (all of them when `was` is unknown).
 fn band_writes(
@@ -332,7 +335,7 @@ fn band_writes(
 ) -> Vec<ProposedWrite> {
     let linkwitz = FilterType::from_raw(now.filter_type).is_linkwitz();
     let gain = if linkwitz { "eq.fp" } else { "eq.gain" };
-    let fields: [(&str, fn(&FilterParams) -> Value, bool); 6] = [
+    let fields: [(&str, Field, bool); 6] = [
         ("eq.type", |p| Value::Choice(p.filter_type), true),
         ("eq.bypass", |p| Value::Bool(p.bypass), true),
         ("eq.freq", |p| Value::Float(p.freq), true),
