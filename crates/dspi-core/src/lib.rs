@@ -163,6 +163,8 @@ mod measure_doc;
 pub mod measure;
 // -- WP P5DEMO -- the demo's simulated microphone (PLAN-P5 OD-P5q)
 mod measure_sim;
+// -- WP ROLE0 -- the speaker layout: output roles from the user's setup (MPLAN 2.2)
+pub mod speaker_layout;
 
 pub use callbacks::{DeviceEvents, LinkListener, MidiSender, NotifyListener, RtaListener};
 // -- WP P5SES --
@@ -246,9 +248,11 @@ pub use write_param::{ParamValue, write_refusal};
 // -- WP CG34 --
 pub use names::{FilterTypeName, filter_type_name, filter_type_names};
 // -- BUG1 --
+// -- WP ROLE0 --
 pub use output_labels::{
     OutputCard, OutputLabel, OutputLabelInput, output_cards_for, output_labels_for,
 };
+pub use speaker_layout::{SpeakerLayout, SpeakerLayoutOutput};
 // -- WP P0W --
 pub use journal::{HistoryEntry, HistoryMove, HistorySource};
 // -- WP P0E --
@@ -439,6 +443,10 @@ pub struct DspiCore {
     /// The measurement session (`measure.rs`). Taken before `inner`, never
     /// after it.
     pub(crate) measure: measure::MeasureSlot,
+    // -- WP ROLE0 --
+    /// The speaker layouts (`speaker_layout.rs`). Taken with or without
+    /// `inner`, never `inner` after it.
+    pub(crate) speaker_layouts: speaker_layout::LayoutSlot,
     // -- WP P5DEMO --
     /// The demo's simulated microphone (`measure_sim.rs`). Taken before the
     /// measurement slot and `inner`, never after them.
@@ -1106,6 +1114,8 @@ impl DspiCore {
             measure: measure::MeasureSlot::default(),
             // -- WP P5DEMO --
             measure_sim: measure_sim::SimSlot::default(),
+            // -- WP ROLE0 --
+            speaker_layouts: speaker_layout::LayoutSlot::default(),
         })
     }
 }
