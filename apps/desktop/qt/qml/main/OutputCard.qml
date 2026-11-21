@@ -12,9 +12,29 @@ import UConsole
 // the device's line (ChannelController.maxDelayMs). A right-click on a slider
 // or a field resets it; elsewhere on the card it opens the card's menu with
 // Identify, as the output's row in the sidebar has (QPI4).
+//
+// -- WP QTTWEAK -- Where the card is wide enough (`oneRowWidth`) its panels
+// take one row each: both inputs side by side, a title, slider and value on
+// one line, mute beside the limiter; narrower, the two rows as before.
 Rectangle {
     id: card
     property int output: 0
+    readonly property bool oneRow: width >= oneRowWidth
+    // The narrowest the one-row card can be: what its panels need with
+    // sliders of 120 px
+    readonly property real oneRowWidth: {
+        let routes = 0
+        for (let i = 0; i < routeRepeater.count; ++i) {
+            const row = routeRepeater.itemAt(i)
+            if (row) routes += row.implicitWidth
+        }
+        routes += Math.max(0, routeRepeater.count - 1) * Theme.spacing
+        const value = 60 + 4 + 20   // a ChannelValueField of 60 with its unit
+        const panel = title => title + 120 + value + 2 * Theme.spacingSmall
+        return routes + panel(gainTitle.implicitWidth) + panel(delayTitle.implicitWidth)
+             + 6 * Theme.spacing + muteButton.implicitWidth + (limiterButton.visible ? limiterButton.implicitWidth + 4 : 0)
+             + 2 * Theme.spacingSmall + 3
+    }
 
     readonly property var out: (ChannelController.revision < 0 ? undefined : ChannelController.output(output))
     readonly property string outputName: {
@@ -24,7 +44,7 @@ Rectangle {
     }
 
     objectName: "OutputCard"
-    implicitHeight: 76
+    implicitHeight: oneRow ? Theme.controlHeight + 2 * Theme.spacingSmall : 76
     radius: Theme.radius
     color: Theme.panel
     border.width: 1
@@ -64,13 +84,16 @@ Rectangle {
         spacing: 0
 
         // ---- Routing: the first two inputs into this output ----
-        ColumnLayout {
+        GridLayout {
             objectName: "OutputCard.routing"
             Layout.margins: Theme.spacingSmall
             Layout.leftMargin: Theme.spacing
             Layout.rightMargin: Theme.spacing
-            spacing: 4
+            columns: card.oneRow ? 2 : 1
+            columnSpacing: Theme.spacing
+            rowSpacing: 4
             Repeater {
+                id: routeRepeater
                 model: Math.min(ChannelController.numInputs, 2)
                 RowLayout {
                     id: routeRow
@@ -173,27 +196,37 @@ Rectangle {
         Divider {}
 
         // ---- GAIN ----
-        ColumnLayout {
+        GridLayout {
             Layout.fillWidth: true
             Layout.margins: Theme.spacingSmall
             Layout.leftMargin: Theme.spacing
             Layout.rightMargin: Theme.spacing
-            spacing: 4
-            RowLayout {
-                PanelTitle { text: qsTr("GAIN"); Layout.fillWidth: true }
-                ChannelValueField {
-                    objectName: "OutputCard.gainValue"
-                    label: qsTr("Output gain")
-                    unit: qsTr("dB")
-                    fieldWidth: 60
-                    resetValue: 0
-                    value: gainSlider.pressed ? gainSlider.value : (card.out.gain || 0)
-                    onCommitted: v => ChannelController.setOutputGain(card.output, v)
-                }
+            columnSpacing: Theme.spacingSmall
+            rowSpacing: 4
+            PanelTitle {
+                id: gainTitle
+                text: qsTr("GAIN")
+                Layout.row: 0
+                Layout.column: 0
+                Layout.fillWidth: !card.oneRow
+            }
+            ChannelValueField {
+                objectName: "OutputCard.gainValue"
+                Layout.row: 0
+                Layout.column: card.oneRow ? 2 : 1
+                label: qsTr("Output gain")
+                unit: qsTr("dB")
+                fieldWidth: 60
+                resetValue: 0
+                value: gainSlider.pressed ? gainSlider.value : (card.out.gain || 0)
+                onCommitted: v => ChannelController.setOutputGain(card.output, v)
             }
             CustomSlider {
                 id: gainSlider
                 objectName: "OutputCard.gain"
+                Layout.row: card.oneRow ? 0 : 1
+                Layout.column: card.oneRow ? 1 : 0
+                Layout.columnSpan: card.oneRow ? 1 : 2
                 Layout.fillWidth: true
                 label: qsTr("Output gain")
                 from: -60
@@ -217,34 +250,44 @@ Rectangle {
         Divider {}
 
         // ---- DELAY ----
-        ColumnLayout {
+        GridLayout {
             Layout.fillWidth: true
             Layout.margins: Theme.spacingSmall
             Layout.leftMargin: Theme.spacing
             Layout.rightMargin: Theme.spacing
-            spacing: 4
-            RowLayout {
-                PanelTitle { text: qsTr("DELAY"); Layout.fillWidth: true }
-                // While the slider drags, the whole ms it sends; otherwise the delay exactly
-                ChannelValueField {
-                    objectName: "OutputCard.delayValue"
-                    label: qsTr("Output delay")
-                    unit: qsTr("ms")
-                    fieldWidth: 60
-                    maxDecimals: 4
-                    stripTrailingZeros: true
-                    scrollStep: 1
-                    wholeSteps: true
-                    minValue: 0
-                    maxValue: ChannelController.maxDelayMs
-                    resetValue: 0
-                    value: delaySlider.pressed ? Math.round(delaySlider.value) : (card.out.delay || 0)
-                    onCommitted: v => ChannelController.setOutputDelay(card.output, v)
-                }
+            columnSpacing: Theme.spacingSmall
+            rowSpacing: 4
+            PanelTitle {
+                id: delayTitle
+                text: qsTr("DELAY")
+                Layout.row: 0
+                Layout.column: 0
+                Layout.fillWidth: !card.oneRow
+            }
+            // While the slider drags, the whole ms it sends; otherwise the delay exactly
+            ChannelValueField {
+                objectName: "OutputCard.delayValue"
+                Layout.row: 0
+                Layout.column: card.oneRow ? 2 : 1
+                label: qsTr("Output delay")
+                unit: qsTr("ms")
+                fieldWidth: 60
+                maxDecimals: 4
+                stripTrailingZeros: true
+                scrollStep: 1
+                wholeSteps: true
+                minValue: 0
+                maxValue: ChannelController.maxDelayMs
+                resetValue: 0
+                value: delaySlider.pressed ? Math.round(delaySlider.value) : (card.out.delay || 0)
+                onCommitted: v => ChannelController.setOutputDelay(card.output, v)
             }
             CustomSlider {
                 id: delaySlider
                 objectName: "OutputCard.delay"
+                Layout.row: card.oneRow ? 0 : 1
+                Layout.column: card.oneRow ? 1 : 0
+                Layout.columnSpan: card.oneRow ? 1 : 2
                 Layout.fillWidth: true
                 label: qsTr("Output delay")
                 from: 0
@@ -262,13 +305,16 @@ Rectangle {
         }
         Divider {}
 
-        // ---- Mute over the limiter ----
-        ColumnLayout {
-            Layout.preferredWidth: 60
-            Layout.fillHeight: true
-            spacing: 0
+        // ---- Mute over the limiter (beside it in one row) ----
+        GridLayout {
+            Layout.preferredWidth: card.oneRow ? implicitWidth : 60
+            Layout.leftMargin: card.oneRow ? Theme.spacingSmall : 0
+            Layout.rightMargin: card.oneRow ? Theme.spacingSmall : 0
+            Layout.alignment: Qt.AlignVCenter
+            columns: card.oneRow ? 2 : 1
+            columnSpacing: 4
+            rowSpacing: 6
             readonly property bool split: ChannelController.limiterSupported
-            Item { Layout.fillHeight: true }
             IconButton {
                 id: muteButton
                 objectName: "OutputCard.mute"
@@ -284,7 +330,6 @@ Rectangle {
                 Accessible.checkable: true
                 Accessible.checked: muted
             }
-            Item { Layout.fillHeight: true }
             IconButton {
                 id: limiterButton
                 objectName: "OutputCard.limiter"
@@ -307,7 +352,6 @@ Rectangle {
                 Accessible.checkable: true
                 Accessible.checked: on
             }
-            Item { visible: limiterButton.visible; Layout.fillHeight: true }
         }
     }
 

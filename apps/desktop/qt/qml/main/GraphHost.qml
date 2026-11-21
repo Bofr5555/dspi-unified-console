@@ -3,10 +3,10 @@ import QtQuick.Layouts
 import UConsole
 
 // -- WP QP3 -- The graph at the top of the right pane (the Mac's ContentView
-// header, BodePlotView and GraphResizeHandle): "Filter Response", the graph at
-// the height the user dragged it to, and the drag strip under it. While the
-// graph is popped out the header holds a button that brings it back and the
-// graph is not drawn here. No legend: the sidebar's curve pills are the main
+// header, BodePlotView and GraphResizeHandle): the graph at the height the
+// user dragged it to, and the drag strip under it. While the graph is popped
+// out a header holds a button that brings it back and the graph is not drawn
+// here. No legend: the sidebar's curve pills are the main
 // window's show/hide control.
 //
 // The PEQ editor's band bar docks under the graph (GraphController.PeqDock,
@@ -21,36 +21,30 @@ ColumnLayout {
     property int linkedPartner: -1
 
     spacing: 0
+    Accessible.role: Accessible.Pane
+    Accessible.name: qsTr("Filter Response")
     onSelectedChannelChanged: GraphController.select(selectedChannel, linkedPartner)
     onLinkedPartnerChanged: GraphController.select(selectedChannel, linkedPartner)
     Component.onCompleted: GraphController.select(selectedChannel, linkedPartner)
 
-    // ---- Header: the title, or while popped out the button that brings it back ----
+    // ---- Header, only while popped out: the button that brings the graph back ----
+    // -- WP QTTWEAK -- no "Filter Response" heading over the graph (its space
+    // went to the graph); the graph keeps the name for assistive technology
     Item {
+        visible: GraphController.poppedOut
         implicitHeight: 22
         Layout.fillWidth: true
         // Popped out, no graph or strip follows, so the header carries the gap
-        Layout.bottomMargin: GraphController.poppedOut ? 14 : Theme.spacingLarge
+        Layout.bottomMargin: 14
 
         IconButton {
             objectName: "GraphHost.closePopOut"
             anchors { left: parent.left; verticalCenter: parent.verticalCenter }
-            visible: GraphController.poppedOut
             iconName: "minimize-2"
             iconSize: 12
             iconColor: Theme.textMuted
             toolTip: qsTr("Close pop-out window")
             onClicked: GraphController.closePopOut()
-        }
-        Text {
-            objectName: "GraphHost.title"
-            anchors { left: parent.left; verticalCenter: parent.verticalCenter }
-            visible: !GraphController.poppedOut
-            text: qsTr("Filter Response")
-            color: Theme.text
-            font: Theme.fontTitle
-            Accessible.role: Accessible.Heading
-            Accessible.name: text
         }
     }
 

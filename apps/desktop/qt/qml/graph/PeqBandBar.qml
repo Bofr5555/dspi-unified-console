@@ -81,6 +81,7 @@ Rectangle {
             visible: slot.value === null || slot.value.adjustable === true
             objectName: bar.objectName + ".input." + slot.field
             label: slot.caption
+            selectAllOnFocus: true // -- WP QTTWEAK --
             enabled: slot.value !== null && slot.value.adjustable === true && bar.editing
             implicitWidth: 64
             font: Theme.fontMono

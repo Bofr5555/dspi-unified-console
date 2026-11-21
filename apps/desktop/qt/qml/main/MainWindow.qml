@@ -4,15 +4,16 @@ import QtQuick.Layouts
 import UConsole
 
 // The main window: the system's frame, the menu bar, the banners, and the
-// sidebar beside the right pane (mockups section 1). Sizes are the Mac's: a
-// 1000×780 minimum.
+// sidebar beside the right pane (mockups section 1). A 1000×660 minimum (the
+// Mac's is 1000×780; -- WP QTTWEAK -- 660 fits a 1366×768 screen with a
+// title bar and a taskbar).
 ApplicationWindow {
     id: window
     objectName: "MainWindow"
     width: 1100
     height: 800
     minimumWidth: 1000
-    minimumHeight: 780
+    minimumHeight: 660
     visible: true
     title: AppIdentity.displayName
     color: Theme.window
