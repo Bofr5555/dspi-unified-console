@@ -31,6 +31,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import se.bofr.dspi.core.DspiException
 import se.bofr.dspi.core.LinkDevice
+import se.bofr.dspi.core.LinkEncryption
 import se.bofr.dspi.core.LinkHello
 import se.bofr.dspi.core.LinkListener
 import se.bofr.dspi.core.LinkPairLink
@@ -62,7 +63,9 @@ sealed interface LinkSessionState {
         val busy: Boolean = false,
         val errorCode: String = "",
         val hubKey: String = "",
-        val pin: String = ""
+        val pin: String = "",
+        // -- WP LKFAST -- the session's encryption as the prompt words it (the core's rule)
+        val encryption: LinkEncryption = LinkEncryption.UNKNOWN
     ) : LinkSessionState
 
     /** The hub shares several boards and none was chosen yet. */
@@ -663,15 +666,17 @@ class LinkSessionEngine(
         // -- WP SECAN -- the key the hub presented, and a pairing link's PIN
         val key = _security.value?.takeIf { it.encrypted && it.hubId.equals(h.id, ignoreCase = true) }?.hubKey.orEmpty()
         val linkPin = pairLink?.takeIf { it.hubId.equals(h.id, ignoreCase = true) }?.pin.orEmpty()
+        val enc = encryptionOf(_security.value?.takeIf { it.hubId.equals(h.id, ignoreCase = true) }) // -- WP LKFAST --
         _state.value = when {
-            shown != null && shown.hub.id == h.id -> shown.copy(hub = h, pinSource = source, hubKey = key)
+            shown != null && shown.hub.id == h.id -> shown.copy(hub = h, pinSource = source, hubKey = key, encryption = enc)
             st.closeCode == CLOSE_REVOKED -> LinkSessionState.NeedsPin(
                 h,
                 source,
                 error = "Access to ${h.name} was revoked. Pair again to reconnect.",
-                hubKey = key
+                hubKey = key,
+                encryption = enc
             )
-            else -> LinkSessionState.NeedsPin(h, source, hubKey = key, pin = linkPin)
+            else -> LinkSessionState.NeedsPin(h, source, hubKey = key, pin = linkPin, encryption = enc)
         }
     }
 

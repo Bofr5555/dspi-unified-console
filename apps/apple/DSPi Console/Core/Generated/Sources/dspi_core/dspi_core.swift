@@ -4053,6 +4053,16 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func linkForgetLastHub() 
     
     /**
+     * A hub's encryption before it is dialled, for its line in a list or a
+     * prompt: [`LinkEncryption::Verified`] for a stored credential with a key
+     * pin, `Offered` for one pinned before or an advert that says TLS, `Off`
+     * for a hub met without TLS lately or a browsed hub that does not
+     * advertise it, `Unknown` for a `typed` address with nothing known.
+     * The words: [`link_encryption_notice_key`]. No traffic.
+     */
+    func linkHubEncryption(credential: String, tlsAdvertised: Bool, hubId: String, typed: Bool)  -> LinkEncryption
+    
+    /**
      * Pair with the PIN the user typed (role `control`, as the macOS
      * Console asks). Returns the token to store against the hub id ("" when
      * the hub issued none). If the hub dropped the socket while the prompt
@@ -4108,6 +4118,12 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * session is not ready; as for the connect sequence.
      */
     func linkSelectDevice(handle: UInt32, serial: String) throws 
+    
+    /**
+     * The current session's encryption ([`DspiCore::link_security`] as one
+     * state): `Unknown` without a session.
+     */
+    func linkSessionEncryption()  -> LinkEncryption
     
     /**
      * Remember DSPi Link hubs between sessions in a small file under `dir`,
@@ -11064,6 +11080,25 @@ open func linkForgetLastHub()  {try! rustCall() {
 }
     
     /**
+     * A hub's encryption before it is dialled, for its line in a list or a
+     * prompt: [`LinkEncryption::Verified`] for a stored credential with a key
+     * pin, `Offered` for one pinned before or an advert that says TLS, `Off`
+     * for a hub met without TLS lately or a browsed hub that does not
+     * advertise it, `Unknown` for a `typed` address with nothing known.
+     * The words: [`link_encryption_notice_key`]. No traffic.
+     */
+open func linkHubEncryption(credential: String, tlsAdvertised: Bool, hubId: String, typed: Bool) -> LinkEncryption  {
+    return try!  FfiConverterTypeLinkEncryption_lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_link_hub_encryption(self.uniffiClonePointer(),
+        FfiConverterString.lower(credential),
+        FfiConverterBool.lower(tlsAdvertised),
+        FfiConverterString.lower(hubId),
+        FfiConverterBool.lower(typed),$0
+    )
+})
+}
+    
+    /**
      * Pair with the PIN the user typed (role `control`, as the macOS
      * Console asks). Returns the token to store against the hub id ("" when
      * the hub issued none). If the hub dropped the socket while the prompt
@@ -11144,6 +11179,17 @@ open func linkSelectDevice(handle: UInt32, serial: String)throws   {try rustCall
         FfiConverterString.lower(serial),$0
     )
 }
+}
+    
+    /**
+     * The current session's encryption ([`DspiCore::link_security`] as one
+     * state): `Unknown` without a session.
+     */
+open func linkSessionEncryption() -> LinkEncryption  {
+    return try!  FfiConverterTypeLinkEncryption_lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_link_session_encryption(self.uniffiClonePointer(),$0
+    )
+})
 }
     
     /**
@@ -59767,6 +59813,118 @@ extension HostTransportKind: Equatable, Hashable {}
 // Note that we don't yet support `indirect` for enums.
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
 /**
+ * What a client says about a DSPi Link hub's encryption (owner rule
+ * 2026-11-21: by the hub, never "all unencrypted"). Its words are the notice
+ * rows [`LinkEncryption::notice_key`] names (`dlink.encryption.*`).
+ */
+
+public enum LinkEncryption {
+    
+    /**
+     * Encrypted, and the hub's key is checked (pinned at pairing).
+     */
+    case verified
+    /**
+     * Encrypted (or will be): the hub offers TLS, its key not pinned yet.
+     */
+    case offered
+    /**
+     * Not encrypted: a hub without TLS (Weeb Labs' DSPi Console, the ESP32
+     * bridge, an older hub), or met without it.
+     */
+    case off
+    /**
+     * The hub is this device: nothing crosses the network.
+     */
+    case local
+    /**
+     * Not known yet: a typed address before it answered, no session.
+     */
+    case unknown
+}
+
+
+#if compiler(>=6)
+extension LinkEncryption: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLinkEncryption: FfiConverterRustBuffer {
+    typealias SwiftType = LinkEncryption
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LinkEncryption {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .verified
+        
+        case 2: return .offered
+        
+        case 3: return .off
+        
+        case 4: return .local
+        
+        case 5: return .unknown
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: LinkEncryption, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .verified:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .offered:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .off:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .local:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .unknown:
+            writeInt(&buf, Int32(5))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLinkEncryption_lift(_ buf: RustBuffer) throws -> LinkEncryption {
+    return try FfiConverterTypeLinkEncryption.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLinkEncryption_lower(_ value: LinkEncryption) -> RustBuffer {
+    return FfiConverterTypeLinkEncryption.lower(value)
+}
+
+
+extension LinkEncryption: Equatable, Hashable {}
+
+
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
  * Where a Link session is in its life, for the status line.
  */
 
@@ -67116,6 +67274,17 @@ public func linkCredentialUnpaired(credential: String) -> String  {
 })
 }
 /**
+ * The notice row with `encryption`'s words (`notice_for_key`): one rule for
+ * every client's hub lines, prompts and status.
+ */
+public func linkEncryptionNoticeKey(encryption: LinkEncryption) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+    uniffi_dspi_core_fn_func_link_encryption_notice_key(
+        FfiConverterTypeLinkEncryption_lower(encryption),$0
+    )
+})
+}
+/**
  * `GET /dspi/v1/info` (spec 3.2). Blocks up to a few seconds.
  *
  * Errors: [`DspiError::Link`] with `io` or `protocol`.
@@ -67705,6 +67874,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_func_link_credential_unpaired() != 46408) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_func_link_encryption_notice_key() != 5153) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_func_link_fetch_info() != 23971) {
@@ -68532,6 +68704,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_link_forget_last_hub() != 9866) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_dspicore_link_hub_encryption() != 59410) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_dspicore_link_pair() != 58905) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -68545,6 +68720,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_link_select_device() != 47133) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_link_session_encryption() != 27629) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_link_set_dir() != 37356) {

@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import se.bofr.dspi.core.LinkDevice
+import se.bofr.dspi.core.LinkEncryption
 import se.bofr.dspi.core.LinkPhase
 import se.bofr.dspi.feature.settings.NetworkingSettingsTab
 import se.bofr.dspi.link.HubSecurity
@@ -170,8 +171,10 @@ internal fun PinPromptBody(s: LinkSessionState.NeedsPin, wording: LinkWording, p
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         } else {
+            // -- WP LKFAST -- by the hub: not encrypted, this device, or not known yet
             Text(
-                "The PIN and the access token cross your network unencrypted. Pair only on a network you trust.",
+                pinPromptEncryptionLine(s.encryption),
+                Modifier.testTag(PIN_ENCRYPTION_TAG),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -182,6 +185,26 @@ internal fun PinPromptBody(s: LinkSessionState.NeedsPin, wording: LinkWording, p
 // -- WP SECAN --
 /** Test tag of the PIN prompt's hub key line. */
 internal const val PIN_HUB_KEY_TAG = "pin-hub-key"
+
+// -- WP LKFAST --
+/** Test tag of the PIN prompt's encryption line when no key is shown. */
+internal const val PIN_ENCRYPTION_TAG = "pin-encryption"
+
+/** The PIN prompt's line on a connection that is not encrypted. */
+internal const val PIN_UNENCRYPTED_LINE =
+    "The DSPi Link connection to this hub is not encrypted. The PIN and the access token cross your network as plain text. " +
+        "Pair only on a network you trust."
+
+/**
+ * The PIN prompt's encryption line when no hub key is shown: not encrypted, this device,
+ * or not known yet; the last two are the core's words (`dlink.encryption.*`).
+ */
+internal fun pinPromptEncryptionLine(e: LinkEncryption, words: UnsecuredWording = UnsecuredWording.CORE): String = when (e) {
+    LinkEncryption.OFF -> PIN_UNENCRYPTED_LINE
+    LinkEncryption.LOCAL -> words.notice("dlink.encryption.local").reason
+    LinkEncryption.VERIFIED, LinkEncryption.OFFERED -> words.notice("dlink.encryption.offered").reason
+    LinkEncryption.UNKNOWN -> words.notice("dlink.encryption.unknown").reason
+}
 
 /** What to do with the key on the PIN prompt. */
 internal const val PIN_HUB_KEY_HINT = "Check that it matches the key the hub shows with its PIN. The connection is encrypted."

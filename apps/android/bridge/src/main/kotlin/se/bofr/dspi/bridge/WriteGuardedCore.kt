@@ -1178,6 +1178,10 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "linkStartHub",
             "linkForgetLastHub",
             "linkRecheckTls",
+            // -- WP LKFAST -- a hub's / the session's encryption state (words: the notice table)
+            "linkHubEncryption",
+            "linkSessionEncryption",
+            "linkEncryptionNoticeKey",
             "bootloaderCounts",
             "captureBaseline",
             "checkCore1Conflict",

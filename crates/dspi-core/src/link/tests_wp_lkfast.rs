@@ -293,3 +293,88 @@ fn wp_lkfast_the_hub_bound_last_is_offered_at_start_unless_left_or_usb() {
     core.link_close();
     assert!(core.link_start_hub(false).is_some(), "bound again");
 }
+
+// ── LKFAST2 E: one rule for what a client says about a hub's encryption ──
+
+#[test]
+fn wp_lkfast_every_encryption_state_has_its_words() {
+    for e in [
+        LinkEncryption::Verified,
+        LinkEncryption::Offered,
+        LinkEncryption::Off,
+        LinkEncryption::Local,
+        LinkEncryption::Unknown,
+    ] {
+        let key = link_encryption_notice_key(e);
+        let n = crate::notice_text::notice_for_key(key.clone(), String::new());
+        assert_eq!(n.key, key, "a row of its own");
+        assert!(
+            n.reason.contains("DSPi Link"),
+            "never a bare \"link\": {}",
+            n.reason
+        );
+        assert!(!n.title.is_empty() && !n.reason.is_empty());
+    }
+}
+
+#[test]
+fn wp_lkfast_a_hubs_encryption_before_it_is_dialled() {
+    let key = FakeTlsKey::generate();
+    let hub = FakeHub::start(HubConfig {
+        auth: Auth::Fixed(PIN.into()),
+        ..HubConfig::default()
+    })
+    .unwrap();
+    hub.set_tls(Some(&key));
+    let core = core_in(&memory_dir("enc"));
+    let hello = dial(&core, &hub, "", "").unwrap();
+    let credential = core.link_pair(PIN.into()).unwrap();
+    assert_eq!(core.link_session_encryption(), LinkEncryption::Verified);
+    core.link_close();
+    assert_eq!(
+        core.link_session_encryption(),
+        LinkEncryption::Unknown,
+        "no session"
+    );
+    let id = hello.hub_id;
+    let enc = |c: &str, adv: bool, typed: bool| {
+        core.link_hub_encryption(c.into(), adv, id.clone(), typed)
+    };
+    assert_eq!(
+        enc(&credential, false, false),
+        LinkEncryption::Verified,
+        "a pinned key"
+    );
+    assert_eq!(
+        enc("", true, false),
+        LinkEncryption::Offered,
+        "an advert of TLS"
+    );
+    assert_eq!(
+        enc("", false, true),
+        LinkEncryption::Unknown,
+        "a typed address, nothing known"
+    );
+    assert_eq!(
+        enc("", false, false),
+        LinkEncryption::Off,
+        "a browsed hub without TLS in its advert"
+    );
+    core.hub_memory.met_plaintext(&id, true);
+    assert_eq!(
+        enc("", false, true),
+        LinkEncryption::Off,
+        "a typed address met without TLS"
+    );
+    assert_eq!(
+        enc(&credential, false, true),
+        LinkEncryption::Verified,
+        "a pin wins over the memory"
+    );
+
+    // A session to a hub without TLS on this machine's loopback: nothing crosses the network
+    let plain = FakeHub::start(HubConfig::default()).unwrap();
+    dial(&core, &plain, "", "").unwrap();
+    assert_eq!(core.link_session_encryption(), LinkEncryption::Local);
+    core.link_close();
+}

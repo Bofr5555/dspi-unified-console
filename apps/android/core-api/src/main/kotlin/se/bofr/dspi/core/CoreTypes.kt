@@ -9021,6 +9021,35 @@ data class VregCalView(
 )
 
 /**
+ * What a client says about a DSPi Link hub's encryption (owner rule
+ * 2026-11-21: by the hub, never "all unencrypted"). Its words are the notice
+ * rows [`LinkEncryption::notice_key`] names (`dlink.encryption.*`).
+ */
+enum class LinkEncryption {
+    /**
+     * Encrypted, and the hub's key is checked (pinned at pairing).
+     */
+    VERIFIED,
+    /**
+     * Encrypted (or will be): the hub offers TLS, its key not pinned yet.
+     */
+    OFFERED,
+    /**
+     * Not encrypted: a hub without TLS (Weeb Labs' DSPi Console, the ESP32
+     * bridge, an older hub), or met without it.
+     */
+    OFF,
+    /**
+     * The hub is this device: nothing crosses the network.
+     */
+    LOCAL,
+    /**
+     * Not known yet: a typed address before it answered, no session.
+     */
+    UNKNOWN,
+}
+
+/**
  * Where a Link session is in its life, for the status line.
  */
 enum class LinkPhase {

@@ -540,6 +540,10 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun linkRecheckTls(hubId: String): Unit = throw NotImplementedError("link_recheck_tls")
 
+    override fun linkHubEncryption(credential: String, tlsAdvertised: Boolean, hubId: String, typed: Boolean): LinkEncryption = throw NotImplementedError("link_hub_encryption")
+
+    override fun linkSessionEncryption(): LinkEncryption = throw NotImplementedError("link_session_encryption")
+
     override fun measureSetListener(listener: MeasureListener?): Unit = throw NotImplementedError("measure_set_listener")
 
     override fun measurePreflight(setup: MeasureSetup): MeasurePreflight = throw NotImplementedError("measure_preflight")
@@ -1027,6 +1031,8 @@ open class UnimplementedDspiCore : DspiCoreApi {
     override fun hubRolloutStepNotice(step: String, text: String): Notice = throw NotImplementedError("hub_rollout_step_notice")
 
     override fun limitsFieldRanges(): List<LimitFieldRange> = throw NotImplementedError("limits_field_ranges")
+
+    override fun linkEncryptionNoticeKey(encryption: LinkEncryption): String = throw NotImplementedError("link_encryption_notice_key")
 
     override fun linkParseAddress(text: String): LinkAddress = throw NotImplementedError("link_parse_address")
 

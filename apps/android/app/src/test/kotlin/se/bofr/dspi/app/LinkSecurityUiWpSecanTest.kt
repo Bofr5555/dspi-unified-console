@@ -24,6 +24,7 @@ import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 import se.bofr.dspi.core.DspiException
 import se.bofr.dspi.core.LinkDevice
+import se.bofr.dspi.core.LinkEncryption
 import se.bofr.dspi.core.LinkPairLink
 import se.bofr.dspi.core.NoticeKind
 import se.bofr.dspi.link.HubSecurity
@@ -170,10 +171,27 @@ class LinkSecurityUiWpSecanTest {
 
     @Test
     fun wpSecanAnUnencryptedPinPromptWarns() {
-        rule.setContent { PinPromptBody(LinkSessionState.NeedsPin(hub, "window"), LinkWording.CORE, "", {}, false) }
+        // -- WP LKFAST -- only when the session is known not to be encrypted
+        val asked = LinkSessionState.NeedsPin(hub, "window", encryption = LinkEncryption.OFF)
+        rule.setContent { PinPromptBody(asked, LinkWording.CORE, "", {}, false) }
         rule.onNodeWithTag(PIN_HUB_KEY_TAG).assertDoesNotExist()
-        rule.onNodeWithText("The PIN and the access token cross your network unencrypted. Pair only on a network you trust.")
-            .assertIsDisplayed()
+        rule.onNodeWithText(PIN_UNENCRYPTED_LINE).assertIsDisplayed()
+    }
+
+    // -- WP LKFAST --
+    @Test
+    fun wpLkfastAPinPromptWhoseEncryptionIsNotKnownSaysNothingFalse() {
+        rule.setContent { PinPromptBody(LinkSessionState.NeedsPin(hub, "window"), LinkWording.CORE, "", {}, false) }
+        rule.onNodeWithText(PIN_UNENCRYPTED_LINE).assertDoesNotExist()
+        rule.onNodeWithText("Whether the DSPi Link connection to this hub is encrypted shows once it answers.").assertIsDisplayed()
+    }
+
+    @Test
+    fun wpLkfastAPinPromptToThisDeviceSaysSo() {
+        val asked = LinkSessionState.NeedsPin(hub, "window", encryption = LinkEncryption.LOCAL)
+        rule.setContent { PinPromptBody(asked, LinkWording.CORE, "", {}, false) }
+        rule.onNodeWithText(PIN_UNENCRYPTED_LINE).assertDoesNotExist()
+        rule.onNodeWithTag(PIN_ENCRYPTION_TAG).assertIsDisplayed()
     }
 
     @Test

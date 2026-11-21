@@ -3356,6 +3356,22 @@ interface DspiCoreApi : AutoCloseable {
     fun linkRecheckTls(hubId: String)
 
     /**
+     * A hub's encryption before it is dialled, for its line in a list or a
+     * prompt: [`LinkEncryption::Verified`] for a stored credential with a key
+     * pin, `Offered` for one pinned before or an advert that says TLS, `Off`
+     * for a hub met without TLS lately or a browsed hub that does not
+     * advertise it, `Unknown` for a `typed` address with nothing known.
+     * The words: [`link_encryption_notice_key`]. No traffic.
+     */
+    fun linkHubEncryption(credential: String, tlsAdvertised: Boolean, hubId: String, typed: Boolean): LinkEncryption
+
+    /**
+     * The current session's encryption ([`DspiCore::link_security`] as one
+     * state): `Unknown` without a session.
+     */
+    fun linkSessionEncryption(): LinkEncryption
+
+    /**
      * Register (`Some`) or clear (`None`) the measurement listener: called
      * when a session's phase changes, it stops, or it asks something. Called
      * on the thread that pushed, ticked or stopped, with every core lock
@@ -6172,6 +6188,14 @@ interface DspiCoreApi : AutoCloseable {
      * Stateless (a free function in dspi-core); needs no device.
      */
     fun limitsFieldRanges(): List<LimitFieldRange>
+
+    /**
+     * The notice row with `encryption`'s words (`notice_for_key`): one rule for
+     * every client's hub lines, prompts and status.
+     *
+     * Stateless (a free function in dspi-core); needs no device.
+     */
+    fun linkEncryptionNoticeKey(encryption: LinkEncryption): String
 
     /**
      * Parse a hub address typed by the user (`host`, `host:port`, `[v6]:port`).

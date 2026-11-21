@@ -611,6 +611,10 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun linkRecheckTls(hubId: String) = core.linkRecheckTls(hubId)
 
+    override fun linkHubEncryption(credential: String, tlsAdvertised: Boolean, hubId: String, typed: Boolean): LinkEncryption = core.linkHubEncryption(credential, tlsAdvertised, hubId, typed).toDomain()
+
+    override fun linkSessionEncryption(): LinkEncryption = core.linkSessionEncryption().toDomain()
+
     override fun measureSetListener(listener: MeasureListener?) = core.measureSetListener(listener?.let { wrapMeasureListener(it) })
 
     override fun measurePreflight(setup: MeasureSetup): MeasurePreflight = call { core.measurePreflight(setup.toFfi()).toDomain() }
@@ -1098,6 +1102,8 @@ class FfiDspiCore : DspiCoreApi {
     override fun hubRolloutStepNotice(step: String, text: String): Notice = se.bofr.dspi.ffi.uniffi.hubRolloutStepNotice(step, text).toDomain()
 
     override fun limitsFieldRanges(): List<LimitFieldRange> = se.bofr.dspi.ffi.uniffi.limitsFieldRanges().map { it.toDomain() }
+
+    override fun linkEncryptionNoticeKey(encryption: LinkEncryption): String = se.bofr.dspi.ffi.uniffi.linkEncryptionNoticeKey(encryption.toFfi())
 
     override fun linkParseAddress(text: String): LinkAddress = call { se.bofr.dspi.ffi.uniffi.linkParseAddress(text).toDomain() }
 
@@ -6829,6 +6835,24 @@ internal fun VregCalView.toFfi() =
     )
 
 // ── Enum mapping ──
+
+internal fun se.bofr.dspi.ffi.uniffi.LinkEncryption.toDomain(): LinkEncryption =
+    when (this) {
+        se.bofr.dspi.ffi.uniffi.LinkEncryption.VERIFIED -> LinkEncryption.VERIFIED
+        se.bofr.dspi.ffi.uniffi.LinkEncryption.OFFERED -> LinkEncryption.OFFERED
+        se.bofr.dspi.ffi.uniffi.LinkEncryption.OFF -> LinkEncryption.OFF
+        se.bofr.dspi.ffi.uniffi.LinkEncryption.LOCAL -> LinkEncryption.LOCAL
+        se.bofr.dspi.ffi.uniffi.LinkEncryption.UNKNOWN -> LinkEncryption.UNKNOWN
+    }
+
+internal fun LinkEncryption.toFfi(): se.bofr.dspi.ffi.uniffi.LinkEncryption =
+    when (this) {
+        LinkEncryption.VERIFIED -> se.bofr.dspi.ffi.uniffi.LinkEncryption.VERIFIED
+        LinkEncryption.OFFERED -> se.bofr.dspi.ffi.uniffi.LinkEncryption.OFFERED
+        LinkEncryption.OFF -> se.bofr.dspi.ffi.uniffi.LinkEncryption.OFF
+        LinkEncryption.LOCAL -> se.bofr.dspi.ffi.uniffi.LinkEncryption.LOCAL
+        LinkEncryption.UNKNOWN -> se.bofr.dspi.ffi.uniffi.LinkEncryption.UNKNOWN
+    }
 
 internal fun se.bofr.dspi.ffi.uniffi.LinkPhase.toDomain(): LinkPhase =
     when (this) {

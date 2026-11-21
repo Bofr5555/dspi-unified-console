@@ -1731,6 +1731,11 @@ RustBuffer uniffi_dspi_core_fn_method_dspicore_link_devices(void*_Nonnull ptr, R
 void uniffi_dspi_core_fn_method_dspicore_link_forget_last_hub(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_LINK_HUB_ENCRYPTION
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_LINK_HUB_ENCRYPTION
+RustBuffer uniffi_dspi_core_fn_method_dspicore_link_hub_encryption(void*_Nonnull ptr, RustBuffer credential, int8_t tls_advertised, RustBuffer hub_id, int8_t typed, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_LINK_PAIR
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_LINK_PAIR
 RustBuffer uniffi_dspi_core_fn_method_dspicore_link_pair(void*_Nonnull ptr, RustBuffer pin, RustCallStatus *_Nonnull out_status
@@ -1754,6 +1759,11 @@ RustBuffer uniffi_dspi_core_fn_method_dspicore_link_security(void*_Nonnull ptr, 
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_LINK_SELECT_DEVICE
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_LINK_SELECT_DEVICE
 void uniffi_dspi_core_fn_method_dspicore_link_select_device(void*_Nonnull ptr, uint32_t handle, RustBuffer serial, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_LINK_SESSION_ENCRYPTION
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_LINK_SESSION_ENCRYPTION
+RustBuffer uniffi_dspi_core_fn_method_dspicore_link_session_encryption(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_LINK_SET_DIR
@@ -3424,6 +3434,11 @@ int8_t uniffi_dspi_core_fn_func_link_credential_tls_only(RustBuffer credential, 
 RustBuffer uniffi_dspi_core_fn_func_link_credential_unpaired(RustBuffer credential, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_LINK_ENCRYPTION_NOTICE_KEY
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_LINK_ENCRYPTION_NOTICE_KEY
+RustBuffer uniffi_dspi_core_fn_func_link_encryption_notice_key(RustBuffer encryption, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_LINK_FETCH_INFO
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_LINK_FETCH_INFO
 RustBuffer uniffi_dspi_core_fn_func_link_fetch_info(RustBuffer host, uint16_t port, RustCallStatus *_Nonnull out_status
@@ -4090,6 +4105,12 @@ uint16_t uniffi_dspi_core_checksum_func_link_credential_tls_only(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_LINK_CREDENTIAL_UNPAIRED
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_LINK_CREDENTIAL_UNPAIRED
 uint16_t uniffi_dspi_core_checksum_func_link_credential_unpaired(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_LINK_ENCRYPTION_NOTICE_KEY
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_LINK_ENCRYPTION_NOTICE_KEY
+uint16_t uniffi_dspi_core_checksum_func_link_encryption_notice_key(void
     
 );
 #endif
@@ -5743,6 +5764,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_link_forget_last_hub(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_LINK_HUB_ENCRYPTION
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_LINK_HUB_ENCRYPTION
+uint16_t uniffi_dspi_core_checksum_method_dspicore_link_hub_encryption(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_LINK_PAIR
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_LINK_PAIR
 uint16_t uniffi_dspi_core_checksum_method_dspicore_link_pair(void
@@ -5770,6 +5797,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_link_security(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_LINK_SELECT_DEVICE
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_LINK_SELECT_DEVICE
 uint16_t uniffi_dspi_core_checksum_method_dspicore_link_select_device(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_LINK_SESSION_ENCRYPTION
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_LINK_SESSION_ENCRYPTION
+uint16_t uniffi_dspi_core_checksum_method_dspicore_link_session_encryption(void
     
 );
 #endif

@@ -178,7 +178,8 @@ class DspiApplication : Application() {
             parseAddress = { t -> runCatching { deviceCore.linkParseAddress(t) }.getOrNull()?.let { it.host to it.port } },
             credentialKey = deviceCore::linkCredentialHubKey, // -- WP SECAN --
             credentialTlsOnly = deviceCore::linkCredentialTlsOnly, // -- WP PINTLS --
-            recheckTls = deviceCore::linkRecheckTls // -- WP LKFAST --
+            recheckTls = deviceCore::linkRecheckTls, // -- WP LKFAST --
+            hubEncryption = deviceCore::linkHubEncryption // -- WP LKFAST -- a small file read per row
         )
         linkFollower = LinkNetworkFollower(hubBrowser, modes.remoteState) { modes.remoteSession?.networkTarget }
         appScope.launch { linkFollower.follow() }

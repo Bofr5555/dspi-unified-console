@@ -8,12 +8,14 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import se.bofr.dspi.core.LinkEncryption
 import se.bofr.dspi.link.HubBrowser
 import se.bofr.dspi.link.LinkHub
 import se.bofr.dspi.link.LinkSessionState
 import se.bofr.dspi.link.LinkSettingsStore
 import se.bofr.dspi.link.LinkTokenStore
 import se.bofr.dspi.link.ManualHub
+import se.bofr.dspi.link.badgeOf
 import se.bofr.dspi.link.hubBadge
 import se.bofr.dspi.ui.link.AcknowledgedHubRow
 import se.bofr.dspi.ui.link.NetworkHubRow
@@ -44,7 +46,9 @@ class AppNetworkingController(
     // -- WP PINTLS -- the core's `link_credential_tls_only`: the record keeps the hub TLS-only
     private val credentialTlsOnly: (String) -> Boolean = { false },
     // -- WP LKFAST -- the core's `link_recheck_tls`: a forgotten hub is met as new, TLS first
-    private val recheckTls: (String) -> Unit = {}
+    private val recheckTls: (String) -> Unit = {},
+    // -- WP LKFAST -- the core's `link_hub_encryption` (credential, advert, hub id, typed): one rule for every client
+    private val hubEncryption: ((String, Boolean, String, Boolean) -> LinkEncryption)? = null
 ) : NetworkingController {
     private val visible = MutableStateFlow(false)
     private val pairedRevision = MutableStateFlow(0)
@@ -102,7 +106,11 @@ class AppNetworkingController(
         val n = h.deviceCount
         val detail = if (h.isManual) h.displayAddress else "${h.displayAddress}, $n device${if (n == 1) "" else "s"}"
         val active = remote.hub?.let { it.id == h.id || (h.isManual && it.host == h.host && it.port == h.port) } == true
-        val badge = hubBadge(h, pinOf(h.id).isNotEmpty()).label // -- WP SECAN --
+        // -- WP SECAN --, LKFAST: the core's rule when there is a core
+        val badge = (
+            hubEncryption?.let { e -> badgeOf(e(tokens.token(h.id).orEmpty(), h.tlsAdvertised, h.id, h.isManual)) }
+                ?: hubBadge(h, pinOf(h.id).isNotEmpty())
+            ).label
         return NetworkHubRow(h.id, h.name, detail, h.kind, h.isOpen, h.isManual, active && remote != LinkSessionState.Idle, badge)
     }
 

@@ -124,6 +124,11 @@ impl Store {
         (1..RECHECK_EVERY).contains(&n)
     }
 
+    /// `hub_id` was met without TLS and not with it since.
+    pub(crate) fn met_without_tls(&self, hub_id: &str) -> bool {
+        !hub_id.is_empty() && self.read().plaintext.contains_key(&hub_id.to_lowercase())
+    }
+
     /// A session to `hub_id` came up in plaintext; `tried` says whether TLS was
     /// tried (and refused) first, which starts the count again.
     pub(crate) fn met_plaintext(&self, hub_id: &str, tried: bool) {

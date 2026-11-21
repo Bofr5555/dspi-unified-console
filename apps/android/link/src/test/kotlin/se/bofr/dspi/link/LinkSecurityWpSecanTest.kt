@@ -12,6 +12,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import se.bofr.dspi.core.DspiException
 import se.bofr.dspi.core.LinkDevice
+import se.bofr.dspi.core.LinkEncryption
 import se.bofr.dspi.core.LinkHello
 import se.bofr.dspi.core.LinkInfo
 import se.bofr.dspi.core.LinkListener
@@ -410,5 +411,18 @@ class LinkSecurityWpSecanTest {
             pinSource = "window",
             tokenRefused = false
         )
+    }
+
+    // -- WP LKFAST --
+    @Test
+    fun wpLkfastTheSessionsEncryptionIsWordedByTheHub() {
+        assertEquals(LinkEncryption.UNKNOWN, encryptionOf(null))
+        assertEquals(LinkEncryption.OFF, encryptionOf(HubSecurity("h", encrypted = false, hubKey = "", keyNotice = false)))
+        assertEquals(LinkEncryption.OFFERED, encryptionOf(HubSecurity("h", encrypted = true, hubKey = "k", keyNotice = false)))
+        assertEquals(LinkEncryption.LOCAL, encryptionOf(HubSecurity("h", encrypted = false, hubKey = "", keyNotice = false, local = true)))
+        assertEquals(HubBadge.UNKNOWN, badgeOf(LinkEncryption.UNKNOWN))
+        assertEquals(HubBadge.UNENCRYPTED, badgeOf(LinkEncryption.OFF))
+        assertEquals(HubBadge.VERIFIED, badgeOf(LinkEncryption.VERIFIED))
+        assertEquals(HubBadge.ENCRYPTED, badgeOf(LinkEncryption.OFFERED))
     }
 }

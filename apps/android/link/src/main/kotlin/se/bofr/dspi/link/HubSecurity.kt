@@ -2,6 +2,8 @@
 // the core's `link_security`, the codes that offer pairing again, and the badges.
 package se.bofr.dspi.link
 
+import se.bofr.dspi.core.LinkEncryption
+
 /** What the UI shows about the current hub connection's encryption. */
 data class HubSecurity(
     /** The hub this is about ([LinkSessionState.hub]'s id). */
@@ -44,6 +46,27 @@ val REPAIR_CODES: Set<String> = setOf("hub_key_changed", "hub_key_unverified", "
  * removed, the only way back to an unencrypted pairing.
  */
 const val FORGET_HUB_CODE = "tls_required_pinned"
+
+// -- WP LKFAST --
+/**
+ * The session's [LinkEncryption] (the core's states) from what [HubSecurity] read: not
+ * known before its first look, then encrypted (a key not pinned yet while a PIN is asked
+ * for), this device, or not encrypted.
+ */
+fun encryptionOf(sec: HubSecurity?): LinkEncryption = when {
+    sec == null -> LinkEncryption.UNKNOWN
+    sec.local -> LinkEncryption.LOCAL
+    sec.encrypted -> LinkEncryption.OFFERED
+    else -> LinkEncryption.OFF
+}
+
+/** -- WP LKFAST -- the core's state of a hub before it is dialled ([DspiCoreApi.linkHubEncryption]) as a list badge. */
+fun badgeOf(e: LinkEncryption): HubBadge = when (e) {
+    LinkEncryption.VERIFIED -> HubBadge.VERIFIED
+    LinkEncryption.OFFERED -> HubBadge.ENCRYPTED
+    LinkEncryption.OFF -> HubBadge.UNENCRYPTED
+    LinkEncryption.LOCAL, LinkEncryption.UNKNOWN -> HubBadge.UNKNOWN
+}
 
 /** A hub list row's encryption badge. */
 enum class HubBadge(val label: String) {

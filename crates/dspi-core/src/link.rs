@@ -2887,6 +2887,62 @@ impl DspiCore {
     pub fn link_recheck_tls(&self, hub_id: String) {
         self.hub_memory.recheck(&hub_id);
     }
+
+    /// A hub's encryption before it is dialled, for its line in a list or a
+    /// prompt: [`LinkEncryption::Verified`] for a stored credential with a key
+    /// pin, `Offered` for one pinned before or an advert that says TLS, `Off`
+    /// for a hub met without TLS lately or a browsed hub that does not
+    /// advertise it, `Unknown` for a `typed` address with nothing known.
+    /// The words: [`link_encryption_notice_key`]. No traffic.
+    pub fn link_hub_encryption(
+        &self,
+        credential: String,
+        tls_advertised: bool,
+        hub_id: String,
+        typed: bool,
+    ) -> LinkEncryption {
+        let c = Credential::parse(&credential);
+        if c.pin.is_some() {
+            LinkEncryption::Verified
+        } else if c.pinned_before || tls_advertised {
+            LinkEncryption::Offered
+        } else if self.hub_memory.met_without_tls(&hub_id) || !typed {
+            LinkEncryption::Off
+        } else {
+            LinkEncryption::Unknown
+        }
+    }
+
+    /// The current session's encryption ([`DspiCore::link_security`] as one
+    /// state): `Unknown` without a session.
+    pub fn link_session_encryption(&self) -> LinkEncryption {
+        let live = self
+            .lock()
+            .link
+            .as_ref()
+            .is_some_and(|s| s.client.is_some());
+        if !live {
+            return LinkEncryption::Unknown;
+        }
+        let s = self.link_security();
+        if s.local {
+            LinkEncryption::Local
+        } else if !s.encrypted {
+            LinkEncryption::Off
+        } else if Credential::parse(&s.credential).pin.is_some() {
+            LinkEncryption::Verified
+        } else {
+            LinkEncryption::Offered
+        }
+    }
+}
+
+// -- WP LKFAST --
+/// The notice row with `encryption`'s words (`notice_for_key`): one rule for
+/// every client's hub lines, prompts and status.
+#[cfg_attr(feature = "uniffi", uniffi::export)]
+pub fn link_encryption_notice_key(encryption: LinkEncryption) -> String {
+    encryption.notice_key().to_owned()
 }
 
 fn hello_record(client: &LinkClient, state: &AuthState) -> LinkHello {
