@@ -15,6 +15,7 @@ import se.bofr.dspi.link.LinkSettingsStore
 import se.bofr.dspi.link.LinkTokenStore
 import se.bofr.dspi.link.ManualHub
 import se.bofr.dspi.link.hubBadge
+import se.bofr.dspi.ui.link.AcknowledgedHubRow
 import se.bofr.dspi.ui.link.NetworkHubRow
 import se.bofr.dspi.ui.link.NetworkingController
 import se.bofr.dspi.ui.link.NetworkingUiState
@@ -56,8 +57,9 @@ class AppNetworkingController(
         combine(
             combine(settings.settings, hubs, browser.browsing, browser.error) { a, b, c, d -> Quad(a, b, c, d) },
             modes.remoteState,
-            pairedRevision
-        ) { (s, hubs, browsing, error), remote, _ ->
+            pairedRevision,
+            modes.unsecuredAcks.acks // -- WP ANSEC --
+        ) { (s, hubs, browsing, error), remote, _, acks ->
             NetworkingUiState(
                 enabled = s.enabled,
                 findAutomatically = s.findAutomatically,
@@ -68,7 +70,12 @@ class AppNetworkingController(
                 browseError = error,
                 paired = tokens.paired().map { PairedHubRow(it.hubId, it.name, pinOf(it.hubId), tlsOnlyOf(it.hubId)) }, // -- WP SECAN --
                 status = status(remote),
-                connected = remote != LinkSessionState.Idle
+                connected = remote != LinkSessionState.Idle,
+                // -- WP ANSEC --
+                acknowledged = acks.map { a ->
+                    val at = if (':' in a.host) "[${a.host}]:${a.port}" else "${a.host}:${a.port}"
+                    AcknowledgedHubRow(a.hubId, a.name, if (a.typed) at else "")
+                }
             )
         }.stateIn(scope, SharingStarted.Eagerly, NetworkingUiState())
 
@@ -148,4 +155,15 @@ class AppNetworkingController(
     override fun setVisible(visible: Boolean) {
         this.visible.value = visible
     }
+
+    // -- WP ANSEC --
+    override fun acknowledgeUnsecured() = modes.acknowledgeUnsecured()
+
+    override fun highlightUnsecuredAgain() {
+        modes.remoteState.value.hub?.let { modes.unsecuredAcks.forget(it.id) }
+    }
+
+    override fun forgetAcknowledgement(hubId: String) = modes.unsecuredAcks.forget(hubId)
+
+    override fun forgetAcknowledgements() = modes.unsecuredAcks.forgetAll()
 }

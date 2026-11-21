@@ -33,6 +33,12 @@ data class PairedHubRow(
     val tlsOnly: Boolean = false
 )
 
+/**
+ * -- WP ANSEC -- A hub whose unsecured DSPi Link connection the user acknowledged: its bar keeps
+ * the normal colours (still saying "(unsecured)"). [detail]: the typed address, "" for a found hub.
+ */
+data class AcknowledgedHubRow(val id: String, val name: String, val detail: String = "")
+
 /** What Settings › Networking shows (DSPi Link client, owner decisions D2/D7). */
 data class NetworkingUiState(
     /** DSPi Link is opt-in: off by default. */
@@ -48,7 +54,9 @@ data class NetworkingUiState(
     val paired: List<PairedHubRow> = emptyList(),
     /** One line on the current connection, "" when none. */
     val status: String = "",
-    val connected: Boolean = false
+    val connected: Boolean = false,
+    /** -- WP ANSEC -- */
+    val acknowledged: List<AcknowledgedHubRow> = emptyList()
 )
 
 /**
@@ -82,6 +90,19 @@ interface NetworkingController {
 
     /** The page is on screen: look for hubs while it is (and "Find hubs automatically" is on). */
     fun setVisible(visible: Boolean)
+
+    // -- WP ANSEC --
+    /** The user acknowledged that the current hub's connection is unsecured: its bar is no longer highlighted. */
+    fun acknowledgeUnsecured() {}
+
+    /** Highlight the current hub's unsecured connection again (the info dialog's undo). */
+    fun highlightUnsecuredAgain() {}
+
+    /** Drop the acknowledgement of [hubId]. */
+    fun forgetAcknowledgement(hubId: String) {}
+
+    /** Drop every acknowledgement. */
+    fun forgetAcknowledgements() {}
 }
 
 val LocalNetworking = staticCompositionLocalOf<NetworkingController?> { null }

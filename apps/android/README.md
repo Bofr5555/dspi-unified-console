@@ -47,7 +47,11 @@ ESP32 bridge — hub discovery or address entry, PIN pairing, reconnect. *(Until
 plaintext. On `main` since 2026-11-16, WP SECAN:)* the connection to this project's hubs is TLS, with the
 hub's key pinned at pairing (compare the fingerprint the hub shows with its PIN); a hub without TLS,
 such as an upstream one, shows as unsecured
-([`docs/integrator/security.md`](../../docs/integrator/security.md)).
+([`docs/integrator/security.md`](../../docs/integrator/security.md)): the strip under the top bar ends in
+"(unsecured)" with an info button, in an amber warning tone. *(Unreleased, WP ANSEC:)* the info dialog's "I understand,
+don't highlight this hub" (on a phone also the strip's overflow menu) gives that hub's strip the normal colours; the
+words and the info button stay. It is remembered per hub, dropped when the hub is next seen encrypted or another hub
+answers at a typed address, and forgotten in Settings › Networking › Acknowledged Unsecured Hubs.
 
 Since 0.12.0, all through the core: the PRO phase 1 screens (snapshots,
 A/B, safe apply, limits profiles, the installer lock and PIN, offline documents and templates, document

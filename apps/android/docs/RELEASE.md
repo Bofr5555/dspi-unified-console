@@ -231,6 +231,12 @@ Answers specific to this app. Verify each against the build you upload
   (AN33, 2026-11-07: "plugged into a Mac running DSPi Console" became
   "connected to DSPi Console", no host-device nouns.) (added to `store/play/listing/en-US/full_description.txt` on
   `feature/link`; it ships with the first DSPi Link build.)
+  *WP ANSEC (2026-11-21, needs the owner's OK before the next listing update):* "The connection is
+  not encrypted; use it on networks you trust." became "DSPi Link connections to a uConsole for DSPi
+  hub are encrypted, and pairing pins the hub's key. DSPi Link connections to Weeb Labs' DSPi Console
+  or to a DSPi bridge are not encrypted; use those only on networks you trust." (SECAN made the first
+  case TLS); PRIVACY.md's Security bullet says the same. The Data safety answer above is unchanged
+  (some DSPi Link traffic is still plaintext).
 - Short description (80 chars), full description (4000). State clearly:
   needs a DSPi board and a phone/tablet with USB host (OTG) support;
   unofficial if so (step 0.3); GPL-3.0 with a source link (step 0.2).

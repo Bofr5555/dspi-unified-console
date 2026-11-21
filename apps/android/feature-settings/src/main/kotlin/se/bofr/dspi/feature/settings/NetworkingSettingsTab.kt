@@ -52,9 +52,7 @@ fun NetworkingSettingsTab(controller: NetworkingController) = WritesExempt {
         item {
             SettingsSection(
                 "DSPi Link",
-                footer = "Control a DSPi on a hub (DSPi Console or a DSPi bridge) from here. " +
-                    "DSPi Link traffic is not encrypted: use it only on networks you trust. To reach a hub from elsewhere, use a VPN " +
-                    "such as Tailscale."
+                footer = DSPI_LINK_FOOTER // -- WP ANSEC -- encrypted to this project's hubs since SECAN
             ) {
                 FormSwitchRow("Control DSPi devices over the network", null, s.enabled) { controller.setEnabled(it) }
                 if (s.status.isNotEmpty()) {
@@ -117,6 +115,23 @@ fun NetworkingSettingsTab(controller: NetworkingController) = WritesExempt {
                 }
             }
         }
+        // -- WP ANSEC -- the hubs whose unsecured connection is not highlighted, and the way back
+        if (s.acknowledged.isNotEmpty()) {
+            item {
+                SettingsSection(ACKNOWLEDGED_HUBS_TITLE, footer = ACKNOWLEDGED_HUBS_FOOTER) {
+                    s.acknowledged.forEach { a ->
+                        SettingRow(a.name.ifEmpty { a.id }, detail = a.detail.ifEmpty { null }) {
+                            TextButton(onClick = { controller.forgetAcknowledgement(a.id) }) { Text("Forget") }
+                        }
+                    }
+                    if (s.acknowledged.size > 1) {
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.End) {
+                            TextButton(onClick = { controller.forgetAcknowledgements() }) { Text(FORGET_ACKNOWLEDGEMENTS) }
+                        }
+                    }
+                }
+            }
+        }
     }
     if (adding) AddHubDialog(controller, onDismiss = { adding = false })
 }
@@ -171,6 +186,25 @@ private fun AddHubDialog(controller: NetworkingController, onDismiss: () -> Unit
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
 }
+
+// -- WP ANSEC --
+/**
+ * The DSPi Link section's footer. Since SECAN the connection to a uConsole for DSPi hub is TLS with
+ * the hub's key pinned at pairing; Weeb Labs' DSPi Console and the DSPi bridge have no TLS.
+ */
+internal const val DSPI_LINK_FOOTER =
+    "Control a DSPi on a hub (uConsole for DSPi, DSPi Console or a DSPi bridge) from here. " +
+        "DSPi Link connections to a uConsole for DSPi hub are encrypted, and pairing pins the hub's key. " +
+        "DSPi Link connections to Weeb Labs' DSPi Console or to a DSPi bridge are not encrypted; use those only on networks " +
+        "you trust. To reach a hub from elsewhere, use a VPN such as Tailscale."
+
+internal const val ACKNOWLEDGED_HUBS_TITLE = "Acknowledged Unsecured Hubs"
+
+internal const val ACKNOWLEDGED_HUBS_FOOTER =
+    "You chose not to highlight these hubs' unencrypted DSPi Link connections. The bar still says \"(unsecured)\". " +
+        "Forget highlights a hub again; so does its connection being encrypted once, or another hub answering at its address."
+
+internal const val FORGET_ACKNOWLEDGEMENTS = "Forget All"
 
 /** -- WP SECAN -- the hub list's badge for a hub without encryption (red). */
 private const val UNENCRYPTED_BADGE = "Unencrypted"

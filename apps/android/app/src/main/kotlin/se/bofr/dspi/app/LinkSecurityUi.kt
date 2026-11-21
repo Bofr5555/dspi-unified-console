@@ -1,6 +1,8 @@
 // -- WP SECAN -- The hub connection's security in the UI (PLAN-SEC 4.3, owner rule
 // 2026-11-15): the info button beside "(unsecured)", the new-key notice, the
 // pair-again dialog of REPAIR_CODES, and the confirmation of a `dspi://pair` link.
+// -- WP ANSEC -- (owner 2026-11-21) the warning colours of the unsecured bar and the
+// user's acknowledgement of it.
 package se.bofr.dspi.app
 
 import androidx.compose.foundation.layout.Column
@@ -14,6 +16,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -42,19 +45,59 @@ internal const val UNSECURED_INFO_DIALOG_TAG = "unsecured-info-dialog"
 /** Its accessible name. */
 internal const val UNSECURED_INFO_LABEL = "Why unsecured?"
 
+// -- WP ANSEC --
+/** The info dialog's acknowledgement: the bar is no longer highlighted for this hub. */
+const val UNSECURED_ACK_BUTTON = "I understand, don't highlight this hub"
+
+/** The same on a phone's strip overflow. */
+const val UNSECURED_ACK_MENU = "Don't highlight this hub"
+
+/** The info dialog's undo once acknowledged (Settings › Networking has it too). */
+const val UNSECURED_UNACK_BUTTON = "Highlight this hub again"
+
+/** What the info dialog offers: acknowledge (not yet acknowledged) or undo it; null = neither (no Networking). */
+internal data class UnsecuredAckActions(val onAcknowledge: (() -> Unit)? = null, val onHighlightAgain: (() -> Unit)? = null)
+
+/**
+ * The unsecured bar's warning colours before the user acknowledges it: amber, not the lost
+ * connection's red ([se.bofr.dspi.ui.link.LinkBanner]); [content] is the text and icon on
+ * [container], at least WCAG AA (4.5:1) in both themes.
+ */
+@Immutable
+internal data class StripWarningColors(val container: Color, val content: Color) {
+    companion object {
+        val Light = StripWarningColors(container = Color(0xFFFFE08C), content = Color(0xFF3D2F00))
+        val Dark = StripWarningColors(container = Color(0xFF574400), content = Color(0xFFFFE08C))
+
+        fun of(dark: Boolean) = if (dark) Dark else Light
+    }
+}
+
 /** The small info button beside "(unsecured)"; opens the core's calm explanation. */
 @Composable
-internal fun UnsecuredInfoButton(tint: Color, wording: UnsecuredWording = UnsecuredWording.CORE) {
+internal fun UnsecuredInfoButton(
+    tint: Color,
+    wording: UnsecuredWording = UnsecuredWording.CORE,
+    // -- WP ANSEC --
+    ack: UnsecuredAckActions = UnsecuredAckActions()
+) {
     var open by remember { mutableStateOf(false) }
     IconButton(onClick = { open = true }, modifier = Modifier.size(32.dp).testTag(UNSECURED_INFO_TAG)) {
         Icon(DspiIcons.info, contentDescription = UNSECURED_INFO_LABEL, tint = tint, modifier = Modifier.size(18.dp))
     }
-    if (open) UnsecuredInfoDialog(wording) { open = false }
+    if (open) UnsecuredInfoDialog(wording, ack) { open = false }
 }
 
 @Composable
-internal fun UnsecuredInfoDialog(wording: UnsecuredWording = UnsecuredWording.CORE, onDismiss: () -> Unit) {
+internal fun UnsecuredInfoDialog(
+    wording: UnsecuredWording = UnsecuredWording.CORE,
+    // -- WP ANSEC --
+    ack: UnsecuredAckActions = UnsecuredAckActions(),
+    onDismiss: () -> Unit
+) {
     val n = wording.info()
+    // -- WP ANSEC -- the acknowledgement, or its undo, beside OK
+    val other = ack.onAcknowledge?.let { UNSECURED_ACK_BUTTON to it } ?: ack.onHighlightAgain?.let { UNSECURED_UNACK_BUTTON to it }
     AlertDialog(
         onDismissRequest = onDismiss,
         modifier = Modifier.testTag(UNSECURED_INFO_DIALOG_TAG),
@@ -66,7 +109,15 @@ internal fun UnsecuredInfoDialog(wording: UnsecuredWording = UnsecuredWording.CO
                 Text(n.action, style = MaterialTheme.typography.bodySmall)
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("OK") } }
+        confirmButton = { TextButton(onClick = onDismiss) { Text("OK") } },
+        dismissButton = other?.let { (label, act) ->
+            {
+                TextButton(onClick = {
+                    act()
+                    onDismiss()
+                }) { Text(label) }
+            }
+        }
     )
 }
 

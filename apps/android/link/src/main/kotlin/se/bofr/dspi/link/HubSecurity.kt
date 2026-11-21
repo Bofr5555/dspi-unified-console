@@ -20,7 +20,12 @@ data class HubSecurity(
      * ::1, localhost, the same rule as every client): nothing crosses a network, so the bar is not
      * red and says nothing.
      */
-    val local: Boolean = false
+    val local: Boolean = false,
+    /**
+     * -- WP ANSEC -- The user acknowledged that this hub's connection is unsecured
+     * ([UnsecuredAckStore]): the bar keeps its normal colours, but still says "(unsecured)".
+     */
+    val acknowledged: Boolean = false
 ) {
     /** -- WP SECFIX -- The bar is red and says "(unsecured)": neither encrypted nor local. */
     val unsecured: Boolean get() = !encrypted && !local

@@ -408,7 +408,8 @@ again.
 - **`link_security()`**: `encrypted`, `hub_key` (the fingerprint), `hub_key_new` (show the fingerprint once),
   `credential`. **When `encrypted` is false** (an upstream hub, `--tls off`, compatibility mode) every client's connection
   bar is **red** and its text ends in **"(unsecured)"**, with an info button explaining it (the notices `dlink.unsecured`,
-  `dlink.unsecured.info`, `dlink.unsecured.compat`); a hub on the same machine (loopback) is not shown so.
+  `dlink.unsecured.info`, `dlink.unsecured.compat`); a hub on the same machine (loopback) is not shown so. (Android: amber
+  until the user acknowledges it per hub, then normal colours; the words and the info button stay, see security.md.)
 - **The browser** cannot pin: the web console on `https://<hub>:11915/console/` asks the user to accept the certificate
   once and shows the fingerprint to compare; `uconsole web` (`http://localhost:11916`) relays
   `ws://localhost:11916/hub/<target>/dspi/v1` to other hubs over pinned TLS (`crates/dspi-hub/src/proxy.rs`), loopback

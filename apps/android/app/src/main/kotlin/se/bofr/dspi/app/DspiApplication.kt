@@ -17,7 +17,9 @@ import se.bofr.dspi.link.LinkNetworkMonitor
 import se.bofr.dspi.link.LinkSettingsStore
 import se.bofr.dspi.link.LinkTokenStore
 import se.bofr.dspi.link.NsdHubBrowser
+import se.bofr.dspi.link.PrefsKeyValue
 import se.bofr.dspi.link.PrefsLinkSettingsStore
+import se.bofr.dspi.link.UnsecuredAckStore
 import se.bofr.dspi.link.keystoreLinkTokenStore
 import se.bofr.dspi.ui.settings.AppSettingsStore
 import se.bofr.dspi.ui.settings.DataStoreAppSettingsStore
@@ -153,7 +155,8 @@ class DspiApplication : Application() {
                     log = { Log.i(TAG, it) },
                     onClose = { network.setSessionActive(false) }
                 ).also { r -> appScope.launch { r.bridge.installer.setFolder(limitsFolder()) } } // -- WP P1AN2 --
-            }
+            },
+            unsecuredAcks = UnsecuredAckStore(PrefsKeyValue(this, "dspi_link_unsecured_acks")) // -- WP ANSEC --
         )
         // The notification acts on the unit on screen (device, demo or REMOTE)
         ConnectionServiceLink.controls = SwitchingNotificationControls(modes.bridge, appScope)

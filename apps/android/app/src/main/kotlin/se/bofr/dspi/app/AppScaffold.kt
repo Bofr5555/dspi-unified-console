@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
@@ -102,6 +103,7 @@ import se.bofr.dspi.feature.tools.ToolsScreen
 import se.bofr.dspi.ui.DragMarker
 import se.bofr.dspi.ui.DspiIcons
 import se.bofr.dspi.ui.DspiRoutes
+import se.bofr.dspi.ui.DspiTheme
 import se.bofr.dspi.ui.HelpTip
 import se.bofr.dspi.ui.LocalDemoMode
 import se.bofr.dspi.ui.LocalDragMarker
@@ -116,6 +118,7 @@ import se.bofr.dspi.ui.alert.LocalNoticeLine
 import se.bofr.dspi.ui.collectAsStateOnMain
 import se.bofr.dspi.ui.link.LinkBanner
 import se.bofr.dspi.ui.link.LinkBannerAction
+import se.bofr.dspi.ui.link.LocalNetworking
 import se.bofr.dspi.ui.onMainThread
 import se.bofr.dspi.ui.state.AppState
 import se.bofr.dspi.ui.state.LocalAppState
@@ -475,10 +478,18 @@ private fun ConnectionStripBar(
     // Demo and REMOTE stand out, so neither is taken for the USB unit
     val demo = strip is ConnectionStrip.Demo || strip is ConnectionStrip.Remote || strip is ConnectionStrip.Document // -- WP P1AN1 --
     val colors = MaterialTheme.colorScheme
-    // -- WP SECAN -- an unencrypted hub connection: the bar is red (its text says so too)
+    // -- WP SECAN -- an unencrypted hub connection: its text says so, with the info button
     val unsecured = strip is ConnectionStrip.Remote && strip.unsecured
-    val ink = if (unsecured) {
-        colors.onErrorContainer
+    // -- WP ANSEC -- (owner 2026-11-21) in the warning colours until the user acknowledges it for this hub
+    val warning = strip is ConnectionStrip.Remote && strip.warning
+    val warningColors = StripWarningColors.of(DspiTheme.colors.isDark)
+    val networking = LocalNetworking.current
+    val ack = UnsecuredAckActions(
+        onAcknowledge = networking?.takeIf { warning }?.let { n -> { n.acknowledgeUnsecured() } },
+        onHighlightAgain = networking?.takeIf { unsecured && !warning }?.let { n -> { n.highlightUnsecuredAgain() } }
+    )
+    val ink = if (warning) {
+        warningColors.content
     } else if (demo) {
         colors.onTertiaryContainer
     } else {
@@ -498,7 +509,7 @@ private fun ConnectionStripBar(
             .fillMaxWidth()
             .background(
                 when {
-                    unsecured -> colors.errorContainer // -- WP SECAN --
+                    warning -> warningColors.container // -- WP SECAN --, ANSEC: no longer red
                     demo -> colors.tertiaryContainer
                     else -> colors.surfaceVariant
                 }
@@ -526,15 +537,19 @@ private fun ConnectionStripBar(
                     val suffix = (strip as? ConnectionStrip.Remote)?.suffix.orEmpty()
                     val described = strip.short != strip.text || suffix.isNotEmpty()
                     Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-                        HelpTip(if (described) strip.text else "", Modifier.weight(1f, fill = suffix.isEmpty())) {
-                            Text(
-                                strip.short.removeSuffix(suffix),
-                                Modifier.semantics { if (described) contentDescription = strip.text },
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = ink,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
+                        // -- WP ANSEC -- the weight on a Box of its own: HelpTip's TooltipBox did not hand it to
+                        // the Row, so a long name took the room and squeezed "(unsecured)" out of sight
+                        Box(Modifier.weight(1f, fill = suffix.isEmpty())) {
+                            HelpTip(if (described) strip.text else "") {
+                                Text(
+                                    strip.short.removeSuffix(suffix),
+                                    Modifier.semantics { if (described) contentDescription = strip.text },
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = ink,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
                         }
                         if (suffix.isNotEmpty()) {
                             Text(
@@ -542,43 +557,60 @@ private fun ConnectionStripBar(
                                 Modifier.clearAndSetSemantics { testTag = UNSECURED_SUFFIX_TAG },
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = ink,
-                                maxLines = 1
+                                maxLines = 1,
+                                softWrap = false // -- WP ANSEC --
                             )
                         }
                     }
-                    if (unsecured) UnsecuredInfoButton(ink) // -- WP SECAN --
+                    if (unsecured) UnsecuredInfoButton(ink, ack = ack) // -- WP SECAN --, ANSEC
                     if (installerBadge) InstallerBadge(ink) // -- WP P1AN2 --
                     history?.let { UndoRedoButtons(it, ink) }
                     // -- WP P1AN1 -- Snapshots first in the overflow: the bar keeps its one line
                     // -- WP P1AN2 -- the Mode entry after it
                     StripMenu(
-                        listOfNotNull(onSnapshots?.let { SNAPSHOTS_ENTRY to it }, modeEntry) + actions,
+                        // -- WP ANSEC -- and the acknowledgement of an unsecured hub (a wide bar: its info dialog)
+                        listOfNotNull(onSnapshots?.let { SNAPSHOTS_ENTRY to it }, modeEntry) + actions +
+                            listOfNotNull(ack.onAcknowledge?.let { UNSECURED_ACK_MENU to it }),
                         devices,
                         onChooseDevice,
                         ink,
                         identifyEntry // -- WP P2AN -- last, below the device list
                     )
                 } else {
-                    // -- WP SECAN -- the info button right after "(unsecured)"
-                    Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-                        Text(strip.text, Modifier.weight(1f, fill = false), style = MaterialTheme.typography.bodyMedium, color = ink)
-                        if (unsecured) UnsecuredInfoButton(ink)
+                    // -- WP ANSEC -- on the warning colours its buttons take the bar's ink (AA contrast)
+                    StripButtonInk(if (warning) ink else null) {
+                        // -- WP SECAN -- the info button right after "(unsecured)"
+                        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                            Text(strip.text, Modifier.weight(1f, fill = false), style = MaterialTheme.typography.bodyMedium, color = ink)
+                            if (unsecured) UnsecuredInfoButton(ink, ack = ack) // -- WP ANSEC --
+                        }
+                        actions.forEach { (label, act) -> TextButton(onClick = act) { Text(label) } }
+                        if (noDevice) NoDeviceActions(onChooseDevice) // -- WP ANLINK --
+                        // -- WP P1AN1 --
+                        onSnapshots?.let { TextButton(onClick = it, Modifier.testTag(SNAPSHOTS_ENTRY_TAG)) { Text(SNAPSHOTS_ENTRY) } }
+                        // -- WP P1AN2 --
+                        if (installerBadge) InstallerBadge(ink)
+                        modeEntry?.let { (label, act) -> TextButton(onClick = act, Modifier.testTag(MODE_ENTRY_TAG)) { Text(label) } }
+                        history?.let { UndoRedoButtons(it, ink) } // -- WP AN42 --
+                        DeviceListButton(devices, onChooseDevice, identifyEntry) // -- WP AN7 --, P2AN: Identify
                     }
-                    actions.forEach { (label, act) -> TextButton(onClick = act) { Text(label) } }
-                    if (noDevice) NoDeviceActions(onChooseDevice) // -- WP ANLINK --
-                    // -- WP P1AN1 --
-                    onSnapshots?.let { TextButton(onClick = it, Modifier.testTag(SNAPSHOTS_ENTRY_TAG)) { Text(SNAPSHOTS_ENTRY) } }
-                    // -- WP P1AN2 --
-                    if (installerBadge) InstallerBadge(ink)
-                    modeEntry?.let { (label, act) -> TextButton(onClick = act, Modifier.testTag(MODE_ENTRY_TAG)) { Text(label) } }
-                    history?.let { UndoRedoButtons(it, ink) } // -- WP AN42 --
-                    DeviceListButton(devices, onChooseDevice, identifyEntry) // -- WP AN7 --, P2AN: Identify
                 }
             }
             if (compact && noDevice) {
                 FlowRow(Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp)) { NoDeviceActions(onChooseDevice) }
             }
         }
+    }
+}
+
+// -- WP ANSEC --
+/** [ink] (the warning colours' content) for the bar's text buttons, which are otherwise the accent. */
+@Composable
+private fun RowScope.StripButtonInk(ink: Color?, content: @Composable RowScope.() -> Unit) {
+    if (ink == null) {
+        content()
+    } else {
+        MaterialTheme(colorScheme = MaterialTheme.colorScheme.copy(primary = ink)) { content() }
     }
 }
 

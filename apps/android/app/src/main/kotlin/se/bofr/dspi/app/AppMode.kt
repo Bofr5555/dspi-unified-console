@@ -18,8 +18,10 @@ import se.bofr.dspi.feature.presets.PresetMenuActions
 import se.bofr.dspi.feature.presets.UnsavedChangesAction
 import se.bofr.dspi.feature.presets.defaultPresetName
 import se.bofr.dspi.link.HubSecurity
+import se.bofr.dspi.link.InMemoryKeyValue
 import se.bofr.dspi.link.LinkHub
 import se.bofr.dspi.link.LinkSessionState
+import se.bofr.dspi.link.UnsecuredAckStore
 import se.bofr.dspi.link.linkBrowseWanted
 import se.bofr.dspi.ui.alert.AlertHost
 import se.bofr.dspi.usb.DspiUsbDevice
@@ -76,7 +78,9 @@ class AppModeController(
     private val forwardUiVisible: (Boolean) -> Unit,
     private val remoteFactory: () -> RemoteSession = { error("DSPi Link is not available") },
     // -- WP P1AN1 -- a document opened offline: the demo stack on the document (P1OF)
-    private val documentFactory: (text: String, fileName: String) -> DemoSession = { _, _ -> error("Opening a file is not available") }
+    private val documentFactory: (text: String, fileName: String) -> DemoSession = { _, _ -> error("Opening a file is not available") },
+    // -- WP ANSEC -- the hubs whose unsecured connection the user acknowledged
+    val unsecuredAcks: UnsecuredAckStore = UnsecuredAckStore(InMemoryKeyValue())
 ) {
     private val scope = scope
     private val _mode = MutableStateFlow(AppMode.DEVICE)
@@ -168,12 +172,37 @@ class AppModeController(
                     }
                 }
             }
-            securityWatch = scope.launch { r.security.collect { _remoteSecurity.value = it } } // -- WP SECAN --
+            // -- WP SECAN --, ANSEC: with the user's acknowledgement, dropped when the hub's security changed
+            securityWatch = scope.launch {
+                combine(r.security, r.state, unsecuredAcks.acks) { sec, st, _ -> acknowledgedOf(sec, st) }.collect {
+                    _remoteSecurity.value =
+                        it
+                }
+            }
         }
         if (link != null) r.connectByLink(link) else r.connect(hub) // -- WP SECAN --
         _bridge.value = r.bridge
         _mode.value = AppMode.REMOTE
         _usbPrompt.value = false
+    }
+
+    // -- WP ANSEC --
+    /** [sec] as the bar shows it: [HubSecurity.acknowledged] while the user's acknowledgement of its hub holds. */
+    private fun acknowledgedOf(sec: HubSecurity?, st: LinkSessionState): HubSecurity? {
+        val hub = st.hub
+        if (sec == null || hub == null || !sec.hubId.equals(hub.id, ignoreCase = true) || !hubConnectionLive(st)) return sec
+        unsecuredAcks.observe(hub, sec)
+        return sec.copy(acknowledged = sec.unsecured && unsecuredAcks.acknowledged(hub))
+    }
+
+    /**
+     * The user acknowledged that the current hub's connection is unsecured (the info dialog, the
+     * strip's overflow): the bar is no longer highlighted for this hub. Only while it is unsecured.
+     */
+    fun acknowledgeUnsecured() {
+        val hub = _remoteState.value.hub ?: return
+        val sec = _remoteSecurity.value ?: return
+        if (sec.unsecured && sec.hubId.equals(hub.id, ignoreCase = true)) unsecuredAcks.acknowledge(hub)
     }
 
     /** Leave REMOTE and tear its stack down; the UI goes back to the device bridge. No-op otherwise. */

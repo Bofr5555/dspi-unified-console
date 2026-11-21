@@ -55,12 +55,15 @@ When you turn it on:
   numbers, names and firmware versions), and the devices' settings and live status.
 - **Stored on the phone.** For each hub you pair with: its id, its name and the access token,
   encrypted with a key kept in the Android Keystore, in the app's private storage. Hubs you add by
-  address and your client name are stored as settings. Settings › Networking › Paired Hubs lets you
+  address and your client name are stored as settings, and so are the hubs whose unencrypted
+  connection you chose not to highlight (their id, name and, for a hub added by address, the address). Settings › Networking › Paired Hubs lets you
   forget a hub; uninstalling the app deletes everything.
-- **Security.** DSPi Link traffic is **not encrypted**: the DSPi Link protocol uses plain WebSocket
-  on the local network, so anyone on the same network can see it, including the PIN and the token.
-  Use DSPi Link only on networks you trust, turn on PIN pairing on the hub, and use a VPN if you
-  want to reach your hub from elsewhere. The app connects only to a hub you tap; it never connects
+- **Security.** DSPi Link connections to a uConsole for DSPi hub are **encrypted** (TLS), and
+  pairing pins the hub's key, so the app connects to that hub only while it presents the same key.
+  DSPi Link connections to Weeb Labs' DSPi Console or to a DSPi bridge are **not encrypted**: they
+  use plain WebSocket on the local network, so anyone on the same network can see them, including
+  the PIN and the token; the app marks such a connection "(unsecured)". Use those only on networks
+  you trust, turn on PIN pairing on the hub, and use a VPN if you want to reach your hub from elsewhere. The app connects only to a hub you tap; it never connects
   on its own to a hub you have not chosen.
 - **Background.** While the app controls a DSPi through a hub, the same connection notification as
   for USB keeps the connection open in the background; disconnecting removes it.
