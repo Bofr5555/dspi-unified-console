@@ -92,7 +92,10 @@ data class AppSettings(
      * back): [SAFE_APPLY_TIMEOUT_DEFAULT_S], adjustable in Advanced within
      * [SAFE_APPLY_TIMEOUT_MIN_S]..[SAFE_APPLY_TIMEOUT_MAX_S] ([safeApplyTimeout]).
      */
-    val safeApplyTimeoutS: Int = SAFE_APPLY_TIMEOUT_DEFAULT_S
+    val safeApplyTimeoutS: Int = SAFE_APPLY_TIMEOUT_DEFAULT_S,
+    // -- WP ANVOL --
+    /** Android: the volume buttons move the DSPi's User Volume while the app is in front with a DSPi (no macOS key). */
+    val volumeKeysControlUserVolume: Boolean = true
 ) {
     /** The smoothing amount the views use (the old Light setting when on). */
     val rtaSmoothing: Double get() = if (rtaSmoothingOn) RTA_SMOOTHING_AMOUNT else 0.0

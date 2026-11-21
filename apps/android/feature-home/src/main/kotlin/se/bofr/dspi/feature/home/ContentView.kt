@@ -91,6 +91,7 @@ import se.bofr.dspi.ui.DspiType
 import se.bofr.dspi.ui.HorizontalRule
 import se.bofr.dspi.ui.MasterVolumeTaper
 import se.bofr.dspi.ui.PopUpButton
+import se.bofr.dspi.ui.ReportUserVolumeShown
 import se.bofr.dspi.ui.SidebarIconButton
 import se.bofr.dspi.ui.UserVolumeTaper
 import se.bofr.dspi.ui.VerticalRule
@@ -711,6 +712,7 @@ fun UserVolumeSection(bridge: DspiBridge, prefs: AppSettingsStore, modifier: Mod
     val connected = bridge.observeStatus { it.connected }
     val drag = rememberSliderDrag(UserVolumeTaper.dbToScalar(s.userVolumeDb).toFloat())
     fun db(v: Float) = UserVolumeTaper.scalarToDB(v.toDouble())
+    ReportUserVolumeShown() // -- WP ANVOL -- the volume buttons' indicator stays away while this moves
     Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             VolumeModeSelector(prefs.sidebarVolumeMode(), { prefs.setSidebarVolumeMode(it) })

@@ -70,7 +70,9 @@ class AppSettingsTest {
             "onboarding.setupDone",
             "whatsNew.lastShownVersion",
             // -- WP P1DCFIX -- the safe apply's timeout (the web's own setting; no macOS key)
-            "safeApply.timeoutS"
+            "safeApply.timeoutS",
+            // -- WP ANVOL -- Android's volume buttons (no macOS key)
+            "volumeKeys.userVolume"
         )
         assertEquals(macOs, AppSettingsFields.keyNames)
     }

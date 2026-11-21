@@ -62,6 +62,19 @@ Android specifics: auto-launch on plug-in, a foreground-service notification wit
 next preset, and the app claims only the DSPi's vendor control interface, so audio keeps playing
 (Android's own USB audio or a player such as USB Audio Player PRO).
 
+Volume buttons *(unreleased, WP ANVOL)*: while the app is in front and a DSPi is the current device (USB,
+DSPi Link or the demo), the device's volume buttons change the DSPi's **User Volume** (`vol.user`, the
+Home "User Volume" slider) in 1 dB steps on the whole-dB grid the firmware uses, -60 to 0 dB. Holding a
+button repeats; writes are paced to at most 10 a second, and the last level always goes out. The Home
+slider moves; on other pages a short "User Volume -23.0 dB" note appears at the top instead of Android's
+volume panel. The mute button (where a device has one) toggles the User Volume's mute. With no DSPi, a
+read-only connection (a DSPi Link viewer, firmware the app cannot write) or an offline document, or with
+the app in the background, the buttons work as usual on Android. Only the app's own window takes the
+keys: no media session, no accessibility service. Turn it off in Settings › Advanced › Volume Buttons.
+When this device is also the DSPi's USB audio source, Android's own media volume stays where it is and
+is applied to the audio before it reaches the DSPi; set it to the maximum to leave the level to the
+DSPi's User Volume.
+
 ## Requirements
 
 - Android 8.0 (API 26) or newer with USB host (OTG) support; arm64, armv7 and x86_64 builds.

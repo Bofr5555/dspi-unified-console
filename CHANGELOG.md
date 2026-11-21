@@ -11,6 +11,12 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
   the same page as Settings › Networking) and **Try the demo**. The device list always offers
   "DSPi Link…", with DSPi Link off too. DSPi Link stays opt-in: it is turned on only with
   Networking's switch; hubs are listed only while it is on. (WP ANLINK)
+- The volume buttons change the DSPi's User Volume (the Home "User Volume" slider) while the app
+  is in front and a DSPi is the current device (USB, DSPi Link or the demo): 1 dB a press, held to
+  repeat, -60 to 0 dB. The slider moves; elsewhere a short "User Volume" note replaces Android's
+  volume panel. The mute button toggles the User Volume's mute. With no DSPi, a read-only
+  connection, or the app in the background, the buttons change this device's volume as before.
+  On by default; Settings › Advanced › Volume Buttons turns it off. (WP ANVOL)
 
 ## 0.14.0 (2026-11-20)
 

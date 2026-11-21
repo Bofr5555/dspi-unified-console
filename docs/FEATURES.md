@@ -66,6 +66,7 @@ alink sender already speaks both ([`STATUS.md`](STATUS.md)). On our hub the fork
 | Device info: board, firmware generation, protocol | stock | ✓ Settings > About | ✓ Settings > About | ✓ Device screen | ✓ `uconsole info` | – |
 | Both firmware generations, 1.1.6 and upstream's paged 1.1.7 beta as of 2026-11-18 (later 1.1.7 betas may need an update) | stock | ✓ | ✓ | ✓ | ✓ | ◐ on the core paths |
 | Read-only for firmware it cannot write, with a notice | stock | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Device volume buttons set the DSPi's User Volume while the app is in front | stock | – | ✓ (Settings > Advanced, on by default) | – | – | – |
 | Diagnostics bundle | stock | ✓ Help > Save Diagnostics | – | ✓ Events screen (Advanced and up) | ✓ `uconsole diag` | – |
 
 ## Modes, installers and safety (PRO phase 1)
