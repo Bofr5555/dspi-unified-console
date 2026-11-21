@@ -142,8 +142,8 @@ fn error_code(e: &DspiError) -> &'static str {
 }
 
 /// A result as a JSON reply (module docs). The records replied this way have
-/// no field named `ok`.
-fn json_reply<T: serde::Serialize>(result: Result<T>) -> String {
+/// no field named `ok`. (-- WP MD0 -- crate-wide: `fns_core_set` replies so too.)
+pub(crate) fn json_reply<T: serde::Serialize>(result: Result<T>) -> String {
     let encoded = result.and_then(|v| {
         serde_json::to_value(v).map_err(|e| DspiError::Io {
             msg: format!("the reply could not be encoded: {e}"),
