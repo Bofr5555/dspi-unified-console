@@ -296,7 +296,7 @@ class UnsecuredBarWpAnsecTest {
         rule.mainClock.autoAdvance = false
         rule.setContent { DspiTheme(darkTheme = dark) { NetworkingSettingsTab(networking) } }
         settle()
-        rule.onNodeWithText("encrypted, and pairing pins the hub's key", substring = true).assertExists()
+        rule.onNodeWithText("encrypted depends on the hub", substring = true).assertExists()
         shoot(name)
     }
 

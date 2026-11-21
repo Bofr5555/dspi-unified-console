@@ -15,8 +15,9 @@ class NetworkingWordsWpAnsecTest {
     fun wpAnsecTheDspiLinkFooterSaysWhichHubsAreEncrypted() {
         val f = DSPI_LINK_FOOTER
         assertFalse(f, f.contains("traffic is not encrypted"))
-        assertTrue(f, f.contains("DSPi Link connections to a uConsole for DSPi hub are encrypted, and pairing pins the hub's key."))
-        assertTrue(f, f.contains("Weeb Labs' DSPi Console or to a DSPi bridge are not encrypted; use those only on networks you trust."))
+        // -- WP LKFAST -- (owner 2026-11-21) by the hub: never a claim about all of them
+        assertTrue(f, f.contains("Whether a hub's DSPi Link connection is encrypted depends on the hub"))
+        assertFalse(f, f.contains("are not encrypted"))
         assertTrue(f, f.contains("VPN"))
         // "link" only ever as "DSPi Link"
         val bare = Regex("(?<!DSPi )\\b[Ll]inks?\\b").findAll(f).toList()
