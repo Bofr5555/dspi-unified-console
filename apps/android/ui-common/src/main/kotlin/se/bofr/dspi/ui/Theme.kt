@@ -110,6 +110,44 @@ data class DspiColors(
 
 private val LocalDspiColors = staticCompositionLocalOf { DspiColors.Dark }
 
+// -- WP ANBAR --
+/** A tinted bar's fill and the text and icons on it, at least WCAG AA (4.5:1). */
+@Immutable
+data class BarColors(val container: Color, val content: Color)
+
+/**
+ * The connection bar's tints (owner 2026-11-21), so no Material default shows (its tertiary is
+ * pink). The unsecured warning's amber is the app's own (`StripWarningColors`); USB keeps
+ * surfaceVariant.
+ */
+@Immutable
+data class DspiBarColors(
+    /** DSPi Link to a hub that is fine (TLS, or not yet known): a tint of the accent. */
+    val link: BarColors,
+    /** Demo and a preset file opened offline: a warm neutral. */
+    val offline: BarColors,
+    /** An unsecured hub the user acknowledged: a cool neutral; the text still says "(unsecured)". */
+    val acknowledged: BarColors
+) {
+    companion object {
+        val Light =
+            DspiBarColors(
+                link = BarColors(container = Color(0xFFD3E4FA), content = Color(0xFF0B3A66)),
+                offline = BarColors(container = Color(0xFFE2DACB), content = Color(0xFF3B3428)),
+                acknowledged = BarColors(container = Color(0xFFD5D9DF), content = Color(0xFF2F343B))
+            )
+
+        val Dark =
+            DspiBarColors(
+                link = BarColors(container = Color(0xFF173A5E), content = Color(0xFFD3E4FA)),
+                offline = BarColors(container = Color(0xFF4A4336), content = Color(0xFFEEE8DE)),
+                acknowledged = BarColors(container = Color(0xFF474C53), content = Color(0xFFE6E8EB))
+            )
+
+        fun of(dark: Boolean) = if (dark) Dark else Light
+    }
+}
+
 /** Text styles named after the SwiftUI fonts the Console uses (scaled up a little for touch). */
 object DspiType {
     /** `.body`. */
@@ -150,12 +188,18 @@ object DspiType {
 @Composable
 fun DspiTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
     val c = if (darkTheme) DspiColors.Dark else DspiColors.Light
+    val bar = DspiBarColors.of(darkTheme) // -- WP ANBAR --
     val scheme =
         if (darkTheme) {
             darkColorScheme(
                 primary = c.accent,
                 onPrimary = Color.White,
                 secondary = c.accent,
+                // -- WP ANBAR -- Material's default tertiary is pink: the accent and the Link bar's tint
+                tertiary = c.accent,
+                onTertiary = Color.White,
+                tertiaryContainer = bar.link.container,
+                onTertiaryContainer = bar.link.content,
                 background = c.mainContent,
                 onBackground = c.label,
                 surface = c.windowBackground,
@@ -174,6 +218,11 @@ fun DspiTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable (
                 primary = c.accent,
                 onPrimary = Color.White,
                 secondary = c.accent,
+                // -- WP ANBAR -- Material's default tertiary is pink: the accent and the Link bar's tint
+                tertiary = c.accent,
+                onTertiary = Color.White,
+                tertiaryContainer = bar.link.container,
+                onTertiaryContainer = bar.link.content,
                 background = c.mainContent,
                 onBackground = c.label,
                 surface = c.windowBackground,
@@ -195,4 +244,10 @@ object DspiTheme {
     val colors: DspiColors
         @Composable @ReadOnlyComposable
         get() = LocalDspiColors.current
+
+    // -- WP ANBAR --
+    /** The connection bar's tints for the current theme. */
+    val bar: DspiBarColors
+        @Composable @ReadOnlyComposable
+        get() = DspiBarColors.of(LocalDspiColors.current.isDark)
 }

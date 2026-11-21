@@ -12,10 +12,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -85,7 +87,12 @@ internal fun UnsecuredInfoButton(
     IconButton(onClick = { open = true }, modifier = Modifier.size(32.dp).testTag(UNSECURED_INFO_TAG)) {
         Icon(DspiIcons.info, contentDescription = UNSECURED_INFO_LABEL, tint = tint, modifier = Modifier.size(18.dp))
     }
-    if (open) UnsecuredInfoDialog(wording, ack) { open = false }
+    // -- WP ANBAR -- the bar draws its buttons thin; the dialog's keep Material's 48dp
+    if (open) {
+        CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 48.dp) {
+            UnsecuredInfoDialog(wording, ack) { open = false }
+        }
+    }
 }
 
 @Composable

@@ -145,7 +145,7 @@ class NoDeviceStripWpAnlinkTest {
     private fun assertActionsShown() {
         rule.onNode(hasText(NO_DEVICE_LINK_ACTION) and inStrip).assertIsDisplayed()
         rule.onNode(hasText(NO_DEVICE_DEMO_ACTION) and inStrip).assertIsDisplayed()
-        // Material's touch target on both (the button is drawn 40dp high, its touch area is 48dp)
+        // A 48dp touch target on both (WP ANBAR: the button is drawn 32dp high, its touch area is 48dp)
         for (tag in listOf(NO_DEVICE_LINK_TAG, NO_DEVICE_DEMO_TAG)) {
             val touch = rule.onNodeWithTag(tag).fetchSemanticsNode().touchBoundsInRoot
             val minPx = with(rule.density) { 48.dp.toPx() } - 1f

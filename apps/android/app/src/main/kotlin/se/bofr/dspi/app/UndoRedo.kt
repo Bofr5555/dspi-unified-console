@@ -6,6 +6,7 @@
 package se.bofr.dspi.app
 
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -177,15 +178,26 @@ private val FEATURE_LABELS =
         "cs." to "Control surface"
     )
 
-/** Undo and Redo, side by side in the strip; disabled while there is nothing to step or writes are not allowed. */
+/**
+ * Undo and Redo, side by side in the strip; disabled while there is nothing to step or writes are not allowed.
+ * -- WP ANBAR -- drawn [STRIP_BUTTON_HEIGHT] high, as the bar's other buttons.
+ */
 @Composable
 internal fun UndoRedoButtons(model: UndoRedoModel, tint: Color = MaterialTheme.colorScheme.onSurfaceVariant) {
     val s by model.state.collectAsStateWithLifecycle()
     Row {
-        IconButton(onClick = { model.undo() }, enabled = s.canUndo, modifier = Modifier.testTag(UNDO_BUTTON_TAG)) {
+        IconButton(
+            onClick = { model.undo() },
+            enabled = s.canUndo,
+            modifier = Modifier.size(STRIP_BUTTON_HEIGHT).testTag(UNDO_BUTTON_TAG)
+        ) {
             Icon(DspiIcons.undo, contentDescription = "Undo", tint = if (s.canUndo) tint else tint.copy(alpha = 0.38f))
         }
-        IconButton(onClick = { model.redo() }, enabled = s.canRedo, modifier = Modifier.testTag(REDO_BUTTON_TAG)) {
+        IconButton(
+            onClick = { model.redo() },
+            enabled = s.canRedo,
+            modifier = Modifier.size(STRIP_BUTTON_HEIGHT).testTag(REDO_BUTTON_TAG)
+        ) {
             Icon(DspiIcons.redo, contentDescription = "Redo", tint = if (s.canRedo) tint else tint.copy(alpha = 0.38f))
         }
     }

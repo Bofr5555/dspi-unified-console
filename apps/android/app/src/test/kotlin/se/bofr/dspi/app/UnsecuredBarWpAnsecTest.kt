@@ -52,6 +52,7 @@ import se.bofr.dspi.feature.settings.NetworkingSettingsTab
 import se.bofr.dspi.link.HubSecurity
 import se.bofr.dspi.link.LinkHub
 import se.bofr.dspi.link.LinkSessionState
+import se.bofr.dspi.ui.DspiBarColors
 import se.bofr.dspi.ui.DspiTheme
 import se.bofr.dspi.ui.link.AcknowledgedHubRow
 import se.bofr.dspi.ui.link.LocalNetworking
@@ -89,7 +90,6 @@ class UnsecuredBarWpAnsecTest {
     private val words = UnsecuredWording.CORE
 
     private var security by mutableStateOf(plain)
-    private var scheme: ColorScheme? = null
 
     @After fun stop() = scope.cancel()
 
@@ -106,7 +106,6 @@ class UnsecuredBarWpAnsecTest {
         rule.setContent {
             CompositionLocalProvider(LocalAppSettings provides store, LocalNetworking provides networking) {
                 DspiTheme(darkTheme = dark) {
-                    scheme = MaterialTheme.colorScheme
                     AppScaffold(
                         bridge,
                         connectionStrip(AppMode.REMOTE, UsbSessionState.NoDevice, connected, security = security),
@@ -186,7 +185,8 @@ class UnsecuredBarWpAnsecTest {
         // The app's store answers with the acknowledged security
         security = plain.copy(acknowledged = true)
         settle()
-        assertEquals("the normal REMOTE colours after it", scheme!!.tertiaryContainer.toArgb(), stripFill())
+        // -- WP ANBAR -- the acknowledged neutral, not Material's tertiary
+        assertEquals("the acknowledged colours after it", DspiBarColors.of(dark).acknowledged.container.toArgb(), stripFill())
         // Never colour alone: the words and the info button stay
         assertSaysUnsecured(prefix.startsWith("phone"))
         rule.onNodeWithTag(UNSECURED_INFO_TAG).assertIsDisplayed()
@@ -250,10 +250,11 @@ class UnsecuredBarWpAnsecTest {
         rule.waitForIdle()
         for ((name, w, s) in listOf(Triple("light", StripWarningColors.Light, light!!), Triple("dark", StripWarningColors.Dark, dark!!))) {
             assertTrue("$name warning ${contrast(w.content, w.container)}", contrast(w.content, w.container) >= 4.5)
-            assertTrue("$name acknowledged", contrast(s.onTertiaryContainer, s.tertiaryContainer) >= 4.5)
+            val ack = DspiBarColors.of(name == "dark").acknowledged // -- WP ANBAR --
+            assertTrue("$name acknowledged", contrast(ack.content, ack.container) >= 4.5)
             // A warning, not the lost connection's red (its banner keeps errorContainer)
             assertNotEquals(name, s.errorContainer, w.container)
-            assertNotEquals(name, s.tertiaryContainer, w.container)
+            assertNotEquals(name, ack.container, w.container)
             val r = w.container.red
             val g = w.container.green
             val b = w.container.blue
