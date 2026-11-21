@@ -79,6 +79,9 @@ QtObject {
     readonly property int controlHeight: 24
     readonly property int sidebarWidth: 240
     readonly property int popupMaxHeight: 320
+    // -- WP QTPOP -- Room a dialog leaves inside the window it opens over, on
+    // each side (Shell::kFitMargin for tool windows)
+    readonly property int fitMargin: 48
 
     // Fonts: the system's UI font; numbers in the system's monospace
     readonly property font fontBody: Qt.font({ pixelSize: 13 })

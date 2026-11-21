@@ -17,6 +17,8 @@ ToolWindow {
     minimumWidth: 900
     minimumHeight: 480
     title: qsTr("System Statistics")
+    // -- WP QTPOP --
+    fitBodies: [flick]
 
     readonly property bool thirdColumn: StatsController.spdifInput.length > 0 || StatsController.lgSoundSync.length > 0
                                         || StatsController.adatOutput.length > 0 || StatsController.i2sSlave.length > 0

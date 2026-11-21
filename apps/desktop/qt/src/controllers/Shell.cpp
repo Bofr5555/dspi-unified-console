@@ -9,6 +9,7 @@
 #include <QJSEngine>
 #include <QQmlComponent>
 #include <QQmlEngine>
+#include <QScreen>
 #include <QStyleHints>
 #include <QUrl>
 #include <QWindow>
@@ -161,3 +162,35 @@ void Shell::setActionGate(QObject *receiver, std::function<bool(const QString &)
 }
 
 bool Shell::allows(const QString &action) const { return !m_gateReceiver || !m_gate || m_gate(action); }
+
+// -- WP QTPOP --
+QSize Shell::fitCap(const QWindow *window) const {
+    QScreen *screen = window && window->screen() ? window->screen() : QGuiApplication::primaryScreen();
+    QSize room = screen ? screen->availableGeometry().size() : QSize(1 << 24, 1 << 24);
+    for (const QWindow *w : QGuiApplication::topLevelWindows()) {
+        if (w->objectName() == QLatin1String("MainWindow") && w->isVisible()) {
+            room = room.boundedTo(w->size());
+            break;
+        }
+    }
+    return QSize(qMax(0, room.width() - 2 * kFitMargin), qMax(0, room.height() - 2 * kFitMargin));
+}
+
+void Shell::fitWindow(QWindow *window, int width, int height) const {
+    if (!window) return;
+    const QSize cap = fitCap(window), now = window->size();
+    const auto side = [](int has, int want, int most) { return want > has ? qMax(has, qMin(want, most)) : want; };
+    const QSize size(side(now.width(), width, cap.width()), side(now.height(), height, cap.height()));
+    if (size == now) return;
+    window->resize(size);
+    // Wayland places windows itself and ignores this
+    QScreen *screen = window->screen();
+    if (!screen) return;
+    const QRect avail = screen->availableGeometry();
+    const QMargins frame = window->frameMargins();
+    const QSize got = window->size();
+    QPoint at = window->position();
+    at.setX(qMax(avail.left() + frame.left(), qMin(at.x(), avail.right() + 1 - frame.right() - got.width())));
+    at.setY(qMax(avail.top() + frame.top(), qMin(at.y(), avail.bottom() + 1 - frame.bottom() - got.height())));
+    if (at != window->position()) window->setPosition(at);
+}

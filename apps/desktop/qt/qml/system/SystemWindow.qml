@@ -19,6 +19,8 @@ ToolWindow {
     minimumWidth: 560
     minimumHeight: 360
     title: qsTr("System")
+    // -- WP QTPOP --
+    fitBodies: [flick]
 
     readonly property bool simple: ModeController.mode === "simple"
     readonly property bool editable: SystemController.mayEdit && !SystemController.busy

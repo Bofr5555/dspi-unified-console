@@ -53,6 +53,17 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
   so no Material lavender or pink remains (slider tracks, the active preset row, Settings' selected page, menus,
   dialogs, snackbars). (WP ANBAR)
 
+### Desktop (Qt)
+- Tool windows no longer show a scroll bar for content that would fit (owner report: Headphone Crossfeed).
+  Each window that holds a form (Crossfeed, Loudness, Psychoacoustic Bass, Subharmonic, Tube, Leveller,
+  Upmixer, Signal Generator, Statistics, System, Measure and every Settings page) takes the height its content
+  needs when it opens and when its content changes: never less than its usual size, and no more than the main
+  window's size and the screen's, less 48 px on each side. Only content taller than that scrolls. It widens
+  only for content wider than it. Crossfeed opens at 780×586 instead of 780×470, for example. Lists of records
+  (events, history, snapshots, the AutoEQ list) and the Matrix window keep their own sizes. The Import Filters,
+  New from Template and Import Device Configuration dialogs show their whole list when the main window has room
+  (they stopped at 320, 320 and 200 px). (WP QTPOP)
+
 ## 0.14.0 (2026-11-20)
 
 One version for every client but the Swift app: the Qt desktop app (Windows, Linux and

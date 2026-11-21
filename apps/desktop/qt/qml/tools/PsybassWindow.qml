@@ -16,6 +16,8 @@ ToolWindow {
     defaultHeight: 500
     minimumWidth: 740
     minimumHeight: 496
+    // -- WP QTPOP --
+    fitBodies: [body]
     title: qsTr("Psychoacoustic Bass")
 
     readonly property bool writable: EffectsController.writable && EffectsController.psybassSupported

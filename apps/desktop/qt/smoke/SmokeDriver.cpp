@@ -172,6 +172,7 @@ const ModeVariable kModeVariables[] = {
     { "DSPI_SMOKE_TRAY", SmokeDriver::Mode::Tray },
     { "DSPI_SMOKE_PSEUDO", SmokeDriver::Mode::Pseudo },
     { "DSPI_SMOKE_SELFTEST", SmokeDriver::Mode::SelfTest },
+    { "DSPI_SMOKE_POPUPS", SmokeDriver::Mode::Popups },   // -- WP QTPOP --
 };
 const char *modeVariable() {
     for (const ModeVariable &m : kModeVariables)

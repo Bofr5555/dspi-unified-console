@@ -20,6 +20,8 @@ ToolWindow {
     minimumHeight: 400
     maximumHeight: 1200
     title: qsTr("Stereo Upmixer")
+    // -- WP QTPOP --
+    fitBodies: [body]
 
     readonly property bool writable: ToolsController.writable && ToolsController.upmixSupported
     readonly property bool unsupported: ToolsController.connected && !ToolsController.upmixSupported
@@ -105,6 +107,7 @@ ToolWindow {
         }
 
         Flickable {
+            id: body
             objectName: "UpmixerWindow.body"
             visible: !window.unsupported
             Layout.fillWidth: true

@@ -17,6 +17,8 @@ ToolWindow {
     defaultHeight: 664
     minimumWidth: 740
     minimumHeight: 400
+    // -- WP QTPOP --
+    fitBodies: [basic, advanced]
     title: qsTr("Tube Modeller")
 
     property bool advanced: false
@@ -157,6 +159,7 @@ ToolWindow {
 
         // ---- Basic: the tube on show, the shelf, drive and mix ----
         EffectColumns {
+            id: basic
             objectName: "TubeWindow.basic"
             visible: !window.unsupported && !window.advanced
             Layout.fillWidth: true
@@ -342,6 +345,7 @@ ToolWindow {
 
         // ---- Advanced: every parameter ----
         EffectColumns {
+            id: advanced
             objectName: "TubeWindow.advanced"
             visible: !window.unsupported && window.advanced
             Layout.fillWidth: true

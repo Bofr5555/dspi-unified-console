@@ -17,6 +17,8 @@ ToolWindow {
     minimumWidth: 640
     minimumHeight: 480
     title: qsTr("Settings")
+    // -- WP QTPOP --
+    fitBodies: [page.item]
     font: Theme.fontBody
 
     property string query: ""

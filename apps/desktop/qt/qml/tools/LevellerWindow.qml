@@ -16,6 +16,8 @@ ToolWindow {
     minimumWidth: 380
     minimumHeight: 400
     title: qsTr("Volume Leveller")
+    // -- WP QTPOP --
+    fitBodies: [body]
 
     readonly property bool writable: EffectsController.writable
     readonly property var speedTexts: [
