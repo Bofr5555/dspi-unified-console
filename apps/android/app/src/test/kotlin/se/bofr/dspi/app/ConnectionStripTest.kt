@@ -49,16 +49,42 @@ class ConnectionStripTest {
         assertEquals(listOf(true, false, false, false, false), rows.map { it.current })
         assertTrue("demo is offered with a DSPi open", rows.single { it.choice == DeviceChoice.Demo }.enabled)
         assertEquals("Studio Mac (network)", rows[1].label)
-        // DSPi Link off: no hubs, no dialog; nothing on USB: listed, disabled
+        // DSPi Link off: no hubs; nothing on USB: listed, disabled
+        // -- WP ANLINK -- "DSPi Link…" (Networking) is listed with DSPi Link off too
         val off = deviceList(AppMode.DEMO, UsbSessionState.NoDevice, hubs = listOf(hub))
-        assertEquals(listOf(DeviceChoice.Usb, DeviceChoice.Demo), off.map { it.choice })
+        assertEquals(listOf(DeviceChoice.Usb, DeviceChoice.Network, DeviceChoice.Demo), off.map { it.choice })
         assertFalse(off[0].enabled)
-        assertTrue(off[1].current)
+        assertTrue(off[1].enabled)
+        assertTrue(off[2].current)
         // REMOTE marks its hub, by id or a typed hub by address
         val connected = LinkSessionState.Connected(hub.copy(id = "9c2e", host = "10.0.0.2"), dev, "control")
         val remote = deviceList(AppMode.REMOTE, open, connected, listOf(hub, typed), linkEnabled = true)
         assertEquals(listOf(false, false, true, false, false), remote.map { it.current })
         assertEquals(ConnectionStrip.Usb, connectionStrip(AppMode.DEVICE, open))
+    }
+
+    // -- WP ANLINK --
+    @Test
+    fun wpAnlink_noDeviceSaysBothWaysAndDspiLinkIsAlwaysListed() {
+        val nd = connectionStrip(AppMode.DEVICE, UsbSessionState.NoDevice)
+        assertEquals(ConnectionStrip.NoDevice, nd)
+        assertEquals("No DSPi connected. Plug one in over USB, or connect over DSPi Link.", nd.text)
+        assertEquals("No DSPi connected", nd.short)
+        assertEquals("Connect over DSPi Link", NO_DEVICE_LINK_ACTION)
+        // the owner's naming: "DSPi Link" whole, never a bare "link" for it
+        for (t in listOf(nd.text, NO_DEVICE_LINK_ACTION)) {
+            assertFalse(t, Regex("(?<!DSPi )\\b[Ll]ink\\b").containsMatchIn(t))
+        }
+        val open = UsbSessionState.Open("x", UsbIds.DSPI_VID)
+        for (usb in listOf(UsbSessionState.NoDevice, open)) {
+            for (mode in AppMode.entries) {
+                val rows = deviceList(mode, usb, hubs = listOf(hub), linkEnabled = false)
+                val link = rows.single { it.choice == DeviceChoice.Network }
+                assertEquals("DSPi Link…", link.label)
+                assertTrue(link.enabled && !link.current)
+                assertTrue("hubs only while DSPi Link is on", rows.none { it.choice is DeviceChoice.Hub })
+            }
+        }
     }
 
     @Test

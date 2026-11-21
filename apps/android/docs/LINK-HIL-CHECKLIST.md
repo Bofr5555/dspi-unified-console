@@ -16,7 +16,7 @@ Record for each item: pass / fail, phone, hub, firmware, and the numbers asked f
 
 ## 1. Opt-in and privacy (any hub)
 
-- [ ] Fresh install: Settings › Networking shows "Control DSPi devices over the network" **off**; the strip under the top bar has no "Network…" button; nothing on the network (`adb shell dumpsys connectivity` / router: no traffic from the app; no `_dspi._tcp` queries).
+- [ ] Fresh install: Settings › Networking shows "Control DSPi devices over the network" **off**; the strip under the top bar (no DSPi on USB) shows "Connect over DSPi Link" and "Try the demo", and the device list "DSPi Link…" but no hub (WP ANLINK); both open Networking with the switch still off; nothing on the network (`adb shell dumpsys connectivity` / router: no traffic from the app; no `_dspi._tcp` queries).
 - [ ] Play/Settings › App info lists the network permissions; no other new permission.
 - [ ] Turn it on: the trusted-network notice is shown; "Find hubs automatically" browses only while the page is open, or while a session looks for its hub (section 6); leave the page with no session: queries stop.
 - [ ] `adb logcat` never shows a PIN or a token.

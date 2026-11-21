@@ -28,9 +28,12 @@ sealed interface ConnectionStrip {
         override val text = "DSPi on USB"
     }
 
-    /** No DSPi attached; demo and DSPi Link are in the device list ([deviceList]). */
+    /**
+     * No DSPi attached; demo and DSPi Link are in the device list ([deviceList]).
+     * -- WP ANLINK -- and on the strip itself: [NO_DEVICE_LINK_ACTION] and [NO_DEVICE_DEMO_ACTION].
+     */
     data object NoDevice : ConnectionStrip {
-        override val text = "No DSPi connected. Plug one in over USB."
+        override val text = "No DSPi connected. Plug one in over USB, or connect over DSPi Link."
         override val short = "No DSPi connected"
     }
 
@@ -70,6 +73,13 @@ sealed interface ConnectionStrip {
         val suffix: String = ""
     ) : ConnectionStrip
 }
+
+// -- WP ANLINK --
+/** The NoDevice strip's way to DSPi Link: opens Networking ([DeviceChoice.Network]); never turns DSPi Link on by itself. */
+const val NO_DEVICE_LINK_ACTION = "Connect over DSPi Link"
+
+/** The NoDevice strip's way to the demo device ([DeviceChoice.Demo]). */
+const val NO_DEVICE_DEMO_ACTION = "Try the demo"
 
 /** [DISCONNECT]'s label is CG10's `reconnecting.disconnect` (a test holds them equal). */
 enum class RemoteAction(val label: String) {
@@ -203,8 +213,9 @@ fun onHub(remote: LinkSessionState, hub: LinkHub): Boolean = remote != LinkSessi
 
 /**
  * USB, DSPi Link and demo in one list, the current one marked. [hubs] are the hubs
- * Networking knows (browsed and typed); they and "DSPi Link…" are listed only while
- * DSPi Link is on ([linkEnabled]). USB with no DSPi on the bus is listed, but disabled.
+ * Networking knows (browsed and typed); they are listed only while DSPi Link is on
+ * ([linkEnabled]). -- WP ANLINK -- "DSPi Link…" is always listed: it opens Networking,
+ * where DSPi Link is turned on (it stays opt-in). USB with no DSPi on the bus is listed, but disabled.
  */
 fun deviceList(
     mode: AppMode,
@@ -223,8 +234,8 @@ fun deviceList(
         hubs.forEach { h ->
             add(DeviceRow(DeviceChoice.Hub(h), "${h.name} (network)", current = mode == AppMode.REMOTE && onHub(remote, h)))
         }
-        add(DeviceRow(DeviceChoice.Network, "DSPi Link…"))
     }
+    add(DeviceRow(DeviceChoice.Network, "DSPi Link…")) // -- WP ANLINK -- with DSPi Link off too
     add(DeviceRow(DeviceChoice.Demo, "Demo (no device)", current = mode == AppMode.DEMO))
 }
 
