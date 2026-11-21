@@ -28,6 +28,19 @@ fun AdvancedSettingsTab(bridge: DspiBridge, appSettings: AppSettingsStore, canWr
         return
     }
     SettingsForm {
+        // -- WP ANVOL -- an app preference: usable while read-only
+        item {
+            SettingsSection("Volume Buttons") {
+                FormSwitchRow(
+                    "Volume Buttons Control User Volume",
+                    "While this app is open with a DSPi, the volume buttons change the DSPi's User Volume in 1 dB steps " +
+                        "instead of this device's own volume.",
+                    s.volumeKeysControlUserVolume
+                ) { v ->
+                    appSettings.update { it.copy(volumeKeysControlUserVolume = v) }
+                }
+            }
+        }
         item {
             SettingsSection("Channel Names") {
                 SettingRow("Reset all channel names to factory defaults.", null, enabled = connected) {

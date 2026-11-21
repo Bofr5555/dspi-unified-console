@@ -5,6 +5,8 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
+import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -15,6 +17,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
@@ -26,6 +29,8 @@ import se.bofr.dspi.feature.presets.DocumentOpener
 import se.bofr.dspi.feature.presets.LocalDocumentOpener
 import se.bofr.dspi.feature.settings.LocalAboutJson
 import se.bofr.dspi.ui.DspiTheme
+import se.bofr.dspi.ui.LocalUserVolumeShown
+import se.bofr.dspi.ui.UserVolumeShown
 import se.bofr.dspi.ui.collectAsStateOnMain
 import se.bofr.dspi.ui.link.LocalNetworking
 import se.bofr.dspi.ui.settings.LocalAppSettings
@@ -45,6 +50,19 @@ class MainActivity : ComponentActivity() {
     // -- WP SECAN -- a `dspi://pair` link waiting for the user's confirmation (or why it is not one)
     private var pairLink by mutableStateOf<LinkPairLink?>(null)
     private var badPairLink by mutableStateOf<String?>(null)
+
+    // -- WP ANVOL -- the volume buttons on the current bridge's User Volume
+    private val userVolumeShown = UserVolumeShown()
+    private val volumeKeys by lazy {
+        val host = BridgeVolumeKeyHost(
+            bridge = { app.modes.bridge.value },
+            setting = { app.appSettings.settings.value.volumeKeysControlUserVolume },
+            resumed = { lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) }
+        )
+        VolumeKeyController(app.appScope, host, SystemClock::uptimeMillis)
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean = volumeKeys.onKey(event) || super.dispatchKeyEvent(event)
 
     private val notificationPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* nothing to do either way */ }
@@ -80,6 +98,7 @@ class MainActivity : ComponentActivity() {
                     }
                 }
                 CompositionLocalProvider(
+                    LocalUserVolumeShown provides userVolumeShown, // -- WP ANVOL --
                     LocalAppSettings provides app.appSettings,
                     LocalAppState provides app.appState,
                     LocalNetworking provides app.networking,
@@ -137,6 +156,10 @@ class MainActivity : ComponentActivity() {
                             }
                             badPairLink?.let { r -> BadPairLinkDialog(r) { badPairLink = null } }
                             if (networkingOpen) NetworkingDialog(app.networking) { networkingOpen = false }
+                            // -- WP ANVOL -- the volume buttons' level when the Home slider is not on screen
+                            val volumeFeedback by volumeKeys.feedback.collectAsStateWithLifecycle()
+                            val sliders by userVolumeShown.count.collectAsStateWithLifecycle()
+                            VolumeKeyIndicator(volumeFeedback, sliderShown = sliders > 0)
                         }
                     )
                 }

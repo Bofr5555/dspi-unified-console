@@ -261,7 +261,9 @@ internal object AppSettingsFields {
         b(ONBOARDING_SETUP_DONE.name, { it.onboardingSetupDone }, { copy(onboardingSetupDone = it) }),
         s("whatsNew.lastShownVersion", { it.whatsNewLastShownVersion }, { copy(whatsNewLastShownVersion = it) }),
         // -- WP P1DCFIX --
-        i("safeApply.timeoutS", { it.safeApplyTimeoutS }, { copy(safeApplyTimeoutS = it) })
+        i("safeApply.timeoutS", { it.safeApplyTimeoutS }, { copy(safeApplyTimeoutS = it) }),
+        // -- WP ANVOL --
+        b("volumeKeys.userVolume", { it.volumeKeysControlUserVolume }, { copy(volumeKeysControlUserVolume = it) })
     )
 
     /** The macOS key names, in declaration order (for tests). */
