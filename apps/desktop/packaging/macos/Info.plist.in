@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- WP QTMAC: the Qt app bundle's Info.plist, configured by qt/cmake/wp/qtmac.cmake -->
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+    <key>CFBundleExecutable</key>
+    <string>${MACOSX_BUNDLE_EXECUTABLE_NAME}</string>
+    <key>CFBundleIdentifier</key>
+    <string>${MACOSX_BUNDLE_GUI_IDENTIFIER}</string>
+    <key>CFBundleName</key>
+    <string>${MACOSX_BUNDLE_BUNDLE_NAME}</string>
+    <key>CFBundleDisplayName</key>
+    <string>${MACOSX_BUNDLE_BUNDLE_NAME}</string>
+    <key>CFBundleIconFile</key>
+    <string>${MACOSX_BUNDLE_ICON_FILE}</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleShortVersionString</key>
+    <string>${MACOSX_BUNDLE_SHORT_VERSION_STRING}</string>
+    <key>CFBundleVersion</key>
+    <string>${MACOSX_BUNDLE_BUNDLE_VERSION}</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>${CMAKE_OSX_DEPLOYMENT_TARGET}</string>
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.music</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>NSPrincipalClass</key>
+    <string>NSApplication</string>
+    <key>NSSupportsAutomaticGraphicsSwitching</key>
+    <true/>
+    <key>NSHumanReadableCopyright</key>
+    <string>${MACOSX_BUNDLE_COPYRIGHT}</string>
+    <!-- The measurement microphone (Qt Multimedia's QAudioSource) -->
+    <key>NSMicrophoneUsageDescription</key>
+    <string>uConsole for DSPi listens to a measurement microphone while it measures your speakers. Nothing is recorded or sent anywhere.</string>
+    <!-- Firmware: the board's bootloader drive under /Volumes -->
+    <key>NSRemovableVolumesUsageDescription</key>
+    <string>uConsole for DSPi needs access to removable volumes to install firmware onto a board in bootloader mode.</string>
+    <!-- DSPi Link: hubs found by mDNS and sharing this Mac's devices -->
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>uConsole for DSPi shares your connected DSPi devices with apps and browsers on your local network, and discovers devices shared by other machines.</string>
+    <key>NSBonjourServices</key>
+    <array>
+        <string>_dspi._tcp</string>
+    </array>
+</dict>
+</plist>

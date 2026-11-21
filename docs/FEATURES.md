@@ -5,6 +5,8 @@ short view; the full, cell-by-cell comparison with the macOS reference console, 
 [`PARITY.md`](PARITY.md) (sections 2, 5 and H to K), and the user's pages are under [`manual/`](manual/).
 
 ✓ works · ◐ partly (the note says what) · – not offered · *later* planned for a later batch.
+**Qt desktop** is one app on Windows, Linux and (new in 0.14.0) macOS; its column holds for all three, with the
+few macOS differences [below](#the-desktop-app-on-macos).
 **Apple** is the Swift app for macOS and iOS in [`apps/apple/`](../apps/apple/): it exists and runs on the core,
 but it is **not part of release 0.14.0** (the owner has deferred it), so its column says what the code on `main` has.
 
@@ -141,6 +143,24 @@ again at the moment of writing. The user's page is [`manual/notices.md`](manual/
 | | Firmware | Qt desktop | Android | Web | Terminal | Apple (not in 0.14.0) |
 |---|---|---|---|---|---|---|
 | The checks before the bootloader entry | stock (the stamps: fork †) | ✓ | ✓ | ✓ Check an Image…, the rollout dialog | ✓ | – |
+
+## The desktop app on macOS
+
+<!-- WP QTMAC --> The macOS `.dmg` is the Qt desktop app, built from the same code as the Windows and Linux files,
+so every **Qt desktop** cell above holds on a Mac too, except:
+
+| | macOS | Windows, Linux |
+|---|---|---|
+| USB access | nothing to install: no driver, no rule; a DSPi another program holds open cannot be opened (the app says so and offers Try Again) | Linux: the udev rule ([INSTALL](INSTALL.md#usb-access-on-linux)) |
+| Firmware update | macOS mounts the bootloader drive under `/Volumes` itself | Linux: the app asks udisks to mount it |
+| DSPi Link pairing tokens | a file only the user can read (`link-tokens.json` in the app's settings folder), not the Keychain | Windows Credential Manager, Linux Secret Service (a file if neither is there) |
+| Open at login, keep the computer awake while sharing | – (not offered) | ✓ Settings |
+| USB input strips follow the channels the computer plays (multichannel) | – (the DSPi's own count is used) | ✓ |
+| Signing | ad hoc, not notarised: open it once by hand ([INSTALL](INSTALL.md#macos)) | not code-signed |
+
+The `.dmg` is universal (Intel and Apple silicon) and needs macOS 12 or newer. It has run on an Intel Mac (the
+project's macOS VM) on the demo device; Apple silicon, a real DSPi on USB, a firmware update and a real microphone
+have not been tried on a Mac yet.
 
 ## Not on real hardware yet
 

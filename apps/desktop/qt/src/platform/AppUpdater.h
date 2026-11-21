@@ -91,7 +91,8 @@ public:
     // The releases of a feed's reply worth looking at: no drafts, https pages,
     // parsable tags. Anything but a list gives none.
     static QVector<Release> parseFeed(const QByteArray &json);
-    // Whether `r` carries this app's package for `platform` ("linux", "windows")
+    // Whether `r` carries this app's package for `platform` ("linux", "windows";
+    // -- WP QTMAC -- "macos" on macOS builds)
     static bool carriesApp(const Release &r, const QString &platform);
     // The newest release above `current` (finals only for a final), or null
     static const Release *newest(const QVector<Release> &releases, const Version &current,

@@ -6,10 +6,10 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
 
 ## 0.14.0 (2026-11-20)
 
-One version for every client but the Swift app: the Qt desktop app (Windows and Linux), Android
-(versionCode 14), the Terminal (`uconsole`), the web console and the hub. The Swift app for
-macOS, iPhone and iPad is not part of this release (deferred by the owner); there is no macOS
-download in 0.14.0. Everything below was merged after the 0.13.0 release (tag `v0.13.0`,
+One version for every client but the Swift app: the Qt desktop app (Windows, Linux and
+macOS), Android (versionCode 14), the Terminal (`uconsole`), the web console and the hub. The
+Swift app for macOS, iPhone and iPad is not part of this release (deferred by the owner); the
+Mac's download is the Qt app's `.dmg`. Everything below was merged after the 0.13.0 release (tag `v0.13.0`,
 2026-11-09) up to 2026-11-20.
 
 ### Names
@@ -123,17 +123,20 @@ download in 0.14.0. Everything below was merged after the 0.13.0 release (tag `v
   USB view; Link tokens removed) can be saved from the desktop app and with
   `uconsole diag`.
 
-### Desktop app (Qt, Windows and Linux)
+### Desktop app (Qt, Windows, Linux and macOS)
 - The Qt app was rebuilt in QML from the macOS console's layout and wording, on the shared
-  core, and replaces the earlier port. It needs Qt 6.8 or newer; the Qt 5 build and the Qt
-  `.dmg` are gone.
+  core, and replaces the earlier port. It needs Qt 6.8 or newer; the Qt 5 build is gone.
+- macOS: `uConsole-for-DSPi-0.14.0-macos.dmg`, the same Qt app for Intel and Apple silicon
+  (universal), macOS 12 or newer. It is signed ad hoc only, not with a Developer ID, and not
+  notarised, so macOS asks once before it opens it (docs/INSTALL.md, macOS). No USB driver or
+  rule is needed; pairing tokens are kept in a file, not the Keychain.
 - New compared with the earlier port: read-only mode for firmware this version cannot
   write; the crossfeed pair map; device name, source names and output latency in Settings;
   clock diagnostics and output ring health in Stats; separate C0 and C1 CPU bars; the
   bundled 1.1.6 firmware, with a custom `.uf2`; the demo device; a Core Voltage page under
   Settings > Advanced (on firmware with the extension channel); Edit > Undo, Redo and
   History; Help > Save Diagnostics; an update check, off until switched on (Settings >
-  Updates), in the Windows files, the AppImage and the tar.gz only.
+  Updates), in the Windows files, the AppImage, the tar.gz and the macOS `.dmg` only.
 - The PRO phase 1 dialogs, the hub's limits and PIN, shared snapshots, the hub's history, the
   alarm banner and Identify, pairing bound to the hub's key, measurement (Tools > Measure…,
   with "Several units"), and the device's generation and update check in Settings > About.

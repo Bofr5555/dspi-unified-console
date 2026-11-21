@@ -73,10 +73,11 @@ Release **0.14.0**, one version for every client ([install guide](docs/INSTALL.m
 
 - **Windows** 10/11: installer or portable zip ([how](docs/INSTALL.md#windows))
 - **Linux:** `.deb`, `.rpm`, AppImage, tar.gz or AUR, plus a one-time USB rule ([how](docs/INSTALL.md#linux))
+- **macOS** 12+: the Qt app as a universal `.dmg` for Intel and Apple silicon, not notarised: open it once by hand ([how](docs/INSTALL.md#macos))
 - **Android** 8+: Google Play (*uConsole for DSPi*, being rolled out to production) or the APK ([how](docs/INSTALL.md#android))
 - **Terminal** `uconsole` for Linux, Windows and macOS: interface, scripting and the hub ([how](docs/INSTALL.md#terminal-uconsole))
 - **Web console:** served by `uconsole web` or a hub, Chrome or Edge for USB ([how](docs/INSTALL.md#web-console))
-- **macOS and iOS:** the Swift apps exist but are not part of this release ([why](docs/INSTALL.md#macos-iphone-and-ipad))
+- **iPhone and iPad:** the Swift apps exist but are not part of this release ([why](docs/INSTALL.md#iphone-and-ipad))
 
 Every file is listed in a `SHA256SUMS` signed with minisign ([check a download](docs/INSTALL.md#check-a-download)).
 

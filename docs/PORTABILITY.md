@@ -11,7 +11,7 @@ rusb, libusb, `dspi_core.dll`). Then the core merge
 Then, on 2026-11-13, a Qt app rebuilt from the macOS console's layout replaced the
 ported app itself (the swap, `382d7fe4`): Qt 6.8 or newer only, no Qt 5, no
 KWindowSystem, no client-side titlebar and no macOS build (the Swift app is the
-Mac release). **The Summary and sections 1 and 7 describe the state after the swap.**
+Mac release; since 2026-11-21, WP QTMAC, the Qt app has a macOS `.dmg` again). **The Summary and sections 1 and 7 describe the state after the swap.**
 Sections 2 to 5 and 8 to 11 are the record of the earlier work, on the old app:
 the file names, Qt 5 builds, `DSPi Console` names and the `.dmg` there no longer
 exist. Section 6 still describes the repository. [`BUILDING.md`](BUILDING.md)

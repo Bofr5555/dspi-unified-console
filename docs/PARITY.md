@@ -66,7 +66,7 @@ settings rows) is closed. Left:
 2. **Orca and languages:** the screen-reader pass is open, and English is the only language.
 3. **No USB MIDI**, by design: vendor USB works on Linux and Windows.
 4. **No coach marks** (off in the Mac build too).
-No macOS build: the Swift app is the Mac release.
+macOS: the same app as a universal `.dmg` (WP QTMAC, 2026-11-21; the differences are in `FEATURES.md`).
 
 ### Terminal (TUI/CLI)
 1. **No on-graph PEQ editing.** This is out of scope by design (decision 5); the `;` command bar replaces it.
@@ -189,7 +189,7 @@ It is frozen at wire **V26**. It has nothing from V27–V32 (limiter, subharmoni
 
 | # | Feature | macOS (ref) | iOS | Qt desktop | Terminal | Android | Windows C# |
 |---|---|---|---|---|---|---|---|
-| G1 | Menus, menu-bar mode, tray | ✓ menus + menu-bar gateway mode, start at login | ◐ toolbar Devices / Tools / Settings | ✓ in-window menu bar under the OS frame; tray with status, pairing code, share, allow a new client, quick volume and quit; start minimised (`TrayController`). No macOS build: the Swift app is the Mac release | n.a. (Ctrl-P palette instead) | n.a. (NavHost + service notification) | ◐ flyout menu, no tray |
+| G1 | Menus, menu-bar mode, tray | ✓ menus + menu-bar gateway mode, start at login | ◐ toolbar Devices / Tools / Settings | ✓ in-window menu bar under the OS frame; tray with status, pairing code, share, allow a new client, quick volume and quit; start minimised (`TrayController`). On macOS (the `.dmg`, WP QTMAC) the in-window menu bar too, no start at login | n.a. (Ctrl-P palette instead) | n.a. (NavHost + service notification) | ◐ flyout menu, no tray |
 | G2 | Keyboard shortcuts | ✓ about 30 + graph keys | ✗ | ✓ the Mac's plus ours (Ctrl+1–9 presets, Ctrl+S commit, Ctrl+Shift+R revert, Ctrl+M mute, Ctrl+B bypass, undo, redo, History), from one table (`qml/main/MenuTable.qml`, `ShortcutController`), checked by the smoke | ✓ Console mnemonics | ◐ graph editor only | ✓ |
 | G3 | Media keys, OS volume, notification controls | ◐ user volume follows the macOS volume (UAC); no media keys | n.a. | ✗ no host-volume code in the app | ◐ shows OS-slider changes | ◐ notification Vol −/+, Mute, Next preset; no MediaSession or volume keys | ◐ UAC1 reflected |
 | G4 | Background behaviour | ✓ keeps sharing from the menu bar, prevents sleep | ◐ no background; reconnects on foreground *(ours)* | n.a. (desktop app) | n.a. | ✓ foreground service keeps USB or Link open | n.a. |

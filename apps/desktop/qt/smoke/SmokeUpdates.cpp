@@ -96,6 +96,18 @@ QByteArray reply(const QByteArray &status, const QByteArray &body, const QByteAr
 QByteArray release(const char *tag, const QByteArray &more = {}, const QByteArray &assets = "linux") {
     const QByteArray v = QByteArray(tag).mid(1);
     QByteArray list;
+#ifdef Q_OS_MACOS
+    // -- WP QTMAC -- on a Mac, "linux" also carries this build's own file (the
+    // checks through the feed ask for "macos"), and "others" leaves it out
+    if (assets == "linux")
+        list = R"([{"name":"uConsole-for-DSPi-)" + v + R"(-linux-x86_64.tar.gz"},{"name":"uConsole-for-DSPi-)" + v
+             + R"(-macos.dmg"}])";
+    else if (assets == "others")
+        list = R"([{"name":"uConsole-for-DSPi-)" + v + R"(-terminal-linux-x86_64.tar.gz"},{"name":"uConsole-for-DSPi-)" + v
+             + R"(-source.tar.gz"},)" + R"({"name":"uConsole-for-DSPi-)" + v + R"(.apk"},{"name":"uconsole-for-dspi_)" + v
+             + R"(_amd64.deb"}])";
+    else list = "[]";
+#else
     if (assets == "linux") list = R"([{"name":"uConsole-for-DSPi-)" + v + R"(-linux-x86_64.tar.gz"}])";
     // -- WP RN1 -- the other clients' files share the stem; none is this app's
     else if (assets == "others")
@@ -103,6 +115,7 @@ QByteArray release(const char *tag, const QByteArray &more = {}, const QByteArra
              + R"(-terminal-linux-x86_64.tar.gz"},{"name":"uConsole-for-DSPi-)" + v + R"(-source.tar.gz"},)"
              + R"({"name":"uConsole-for-DSPi-)" + v + R"(.apk"},{"name":"uconsole-for-dspi_)" + v + R"(_amd64.deb"}])";
     else list = "[]";
+#endif
     return R"({"tag_name":")" + QByteArray(tag) + R"(","html_url":"https://example.invalid/releases/tag/)"
          + QByteArray(tag) + R"(","draft":false,"assets":)" + list + more + "}";
 }
@@ -193,6 +206,27 @@ void updatesSection(SmokeDriver &d) {
                     && !carries("uConsole-for-DSPi-0.13.0-linux-x86_64.tar.gz", "linux")
                     && !carries("DSPi-uConsole-0.14.0-linux-x86_64.tar.gz", "linux")
                     && !carries("DSPi-uConsole-0.14.0-windows-x86_64-setup.exe", "windows"));
+#ifdef Q_OS_MACOS
+        // -- WP QTMAC -- the macOS build's one file, and nothing else of the release
+        d.check(QStringLiteral("qtmac: the macOS build counts the -macos.dmg only"),
+                carries("uConsole-for-DSPi-0.14.0-macos.dmg", "macos")
+                    && !carries("uConsole-for-DSPi-0.14.0-x86_64.AppImage", "macos")
+                    && !carries("uConsole-for-DSPi-0.14.0-linux-x86_64.tar.gz", "macos")
+                    && !carries("uConsole-for-DSPi-0.14.0-windows-x86_64.zip", "macos")
+                    && !carries("uConsole-for-DSPi-0.14.0-macos.dmg.minisig", "macos")
+                    && !carries("uConsole-for-DSPi-0.13.0-macos.dmg", "macos")
+                    && !carries("uConsole-for-DSPi-0.14.0-macos.dmg", "linux"));
+        {
+            // v0.15.0 carries only the Linux file: the Mac is offered v0.14.0
+            const QByteArray feed
+                = R"([{"tag_name":"v0.15.0","html_url":"https://example.invalid/r","assets":[{"name":"uConsole-for-DSPi-0.15.0-linux-x86_64.tar.gz"}]},)"
+                  R"({"tag_name":"v0.14.0","html_url":"https://example.invalid/r","assets":[{"name":"uConsole-for-DSPi-0.14.0-macos.dmg"}]}])";
+            const QVector<AppUpdater::Release> all = AppUpdater::parseFeed(feed);
+            const AppUpdater::Release *mac = AppUpdater::newest(all, AppUpdater::Version::parse(QStringLiteral("0.13.0")),
+                                                                QStringLiteral("macos"));
+            d.check(QStringLiteral("qtmac: a release without the .dmg is not offered on macOS"), mac && mac->tag == "v0.14.0");
+        }
+#endif
         d.check(QStringLiteral("qp17: anything but a list is no release"),
                 AppUpdater::parseFeed(R"({"tag_name":"v2.0.0"})").isEmpty() && AppUpdater::parseFeed("not json").isEmpty()
                     && AppUpdater::parseFeed(R"([1, "x", null])").isEmpty());

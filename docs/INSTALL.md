@@ -11,11 +11,11 @@ Android and in the web console), so you can try every screen first.
 
 - [Windows](#windows) · [Linux](#linux) (Debian/Ubuntu, Fedora, AppImage and tar.gz, Arch) ·
   [USB access on Linux](#usb-access-on-linux) · [Android](#android) · [Terminal](#terminal-uconsole) ·
-  [Web console](#web-console) · [macOS, iPhone and iPad](#macos-iphone-and-ipad) ·
+  [Web console](#web-console) · [macOS](#macos) · [iPhone and iPad](#iphone-and-ipad) ·
   [Fork firmware](#fork-firmware) · [Check a download](#check-a-download) · [Source code](#source-code)
 
-The desktop installers and the Terminal binaries are **not code-signed** yet, so each system warns the first
-time; every file is listed in a signed `SHA256SUMS` instead ([Check a download](#check-a-download)).
+The desktop installers, the macOS app and the Terminal binaries are **not code-signed** yet, so each system warns
+the first time; every file is listed in a signed `SHA256SUMS` instead ([Check a download](#check-a-download)).
 
 ## At a glance
 
@@ -29,7 +29,8 @@ time; every file is listed in a signed `SHA256SUMS` instead ([Check a download](
 | **Android** 8+ | Google Play (*uConsole for DSPi*), or `uConsole-for-DSPi-<version>.apk` | [Android](#android) |
 | **Terminal** (`uconsole`, every system) | `uConsole-for-DSPi-<version>-terminal-<system>.tar.gz` / `.zip` | [Terminal](#terminal-uconsole) |
 | **Web console** | `uConsole-for-DSPi-<version>-web.tar.gz` | [Web console](#web-console) |
-| macOS, iOS, iPadOS | not in this release | [macOS, iPhone and iPad](#macos-iphone-and-ipad) |
+| **macOS** 12 or newer (Intel and Apple silicon) | `uConsole-for-DSPi-<version>-macos.dmg` (the Qt app, not notarised) | [macOS](#macos) |
+| iOS, iPadOS | not in this release | [iPhone and iPad](#iphone-and-ipad) |
 
 ## Windows
 
@@ -147,12 +148,40 @@ The web console runs in the browser and is served by the `uconsole` Terminal pro
 Keep a hub on the local network: it drops peers that are not on a local network. For access from elsewhere use a
 VPN ([`integrator/security.md`](integrator/security.md)).
 
-## macOS, iPhone and iPad
+## macOS
+
+<!-- WP QTMAC --> The Mac app is the same Qt app as on Windows and Linux: `uConsole-for-DSPi-<version>-macos.dmg`,
+one universal app for Intel and Apple silicon Macs, macOS 12 (Monterey) or newer. Open the `.dmg` and drag
+**uConsole for DSPi** onto **Applications**. USB needs no driver and no rule on a Mac.
+
+The app is **not signed with an Apple Developer ID and not notarised** (there is no Developer ID yet), only signed
+ad hoc so that it runs on Apple silicon. So macOS refuses to open it the first time ("cannot be opened because
+Apple cannot check it for malicious software" or "is damaged"). Check the download first
+([Check a download](#check-a-download)); then open it one of these ways, once:
+
+- **Finder:** Control-click (right-click) the app in Applications, choose **Open**, and **Open** again in the
+  dialog. On macOS 15 and newer that dialog has no Open button: try to open the app once, then go to **System
+  Settings > Privacy & Security**, scroll down to the message about uConsole for DSPi and click **Open Anyway**
+  (it asks for your password).
+- **Terminal:** remove the quarantine mark the browser put on the app, then open it normally:
+
+  ```sh
+  xattr -dr com.apple.quarantine "/Applications/uConsole for DSPi.app"
+  ```
+
+Either way only says that you trust this file; it does not make the app signed. macOS may also ask once for the
+microphone (measurement) and for the local network (DSPi Link: finding hubs, sharing this Mac's DSPi); allow them
+for those features.
+
+`"/Applications/uConsole for DSPi.app/Contents/MacOS/uConsole for DSPi" --version` (or `--help`) answers without
+opening a window. The app checks this project's releases for updates when that is switched on (Settings > Updates);
+an update is a new `.dmg` to drag over the old app. What differs from Windows and Linux is in
+[`FEATURES.md`](FEATURES.md#the-desktop-app-on-macos).
+
+## iPhone and iPad
 
 The Swift apps for macOS and iOS ([`apps/apple/`](../apps/apple/)) exist and run on the same core, but they are
-**not part of release 0.14.0**: the owner has deferred the Apple apps. On a Mac today you can use the Terminal
-(`uConsole-for-DSPi-<version>-terminal-macos-universal.tar.gz`) and the web console it serves (`uconsole web`,
-in Chrome or Edge for USB). The Qt app has no macOS build.
+**not part of release 0.14.0**: the owner has deferred the Apple apps. On a Mac, use the Qt app above.
 
 ## Fork firmware
 

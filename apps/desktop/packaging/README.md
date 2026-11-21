@@ -1,9 +1,10 @@
 # Packaging the Qt desktop app: uConsole for DSPi
 
-<!-- WP QP20 --> The Qt app for Linux and Windows, as people install it. The name they see is
+<!-- WP QP20 --> The Qt app for Linux, Windows and (<!-- WP QTMAC -->) macOS, as people install it. The name they see is
 "uConsole for DSPi" (`qt/src/AppIdentity.h`); files, packages and commands are `uconsole-for-dspi`
 (`/usr/bin/uconsole-for-dspi`, the desktop entry and AppStream id `uconsole-for-dspi`) and the release files are
-`uConsole-for-DSPi-<version>-…`, below (WP RN1). The Mac release is the Swift app (`apps/apple`); there is no Qt `.dmg`.
+`uConsole-for-DSPi-<version>-…`, below (WP RN1). The Mac release is this Qt app too, as a `.dmg`
+([macOS](#macos-the-dmg)); the Swift app (`apps/apple`) is deferred.
 
 ## Building a release
 
@@ -31,13 +32,13 @@ The AUR package (`arch/PKGBUILD`, `.SRCINFO`, `uconsole-for-dspi.install`) build
 Arch; it is published to the AUR by hand.
 
 **These names are a contract.** The app's update checker (`qt/src/platform/AppUpdater.cpp`) counts a GitHub
-release as one for this app only when it carries `uConsole-for-DSPi-<v>-windows-…` (Windows) or
-`uConsole-for-DSPi-<v>-linux-…` / `uConsole-for-DSPi-<v>-….AppImage` (Linux). Renaming them silently stops update
-notices for every installed copy.
+release as one for this app only when it carries `uConsole-for-DSPi-<v>-windows-…` (Windows),
+`uConsole-for-DSPi-<v>-linux-…` / `uConsole-for-DSPi-<v>-….AppImage` (Linux) or, <!-- WP QTMAC --> on macOS,
+`uConsole-for-DSPi-<v>-macos.dmg` exactly. Renaming them silently stops update notices for every installed copy.
 
 **The update feed** (`DSPI_UPDATE_FEED_URL`, QP17) is built into the project's own downloads only: the
-Windows zip and setup, the AppImage and the archive (`build-windows.sh`, `build-ubuntu.sh` pass the
-project's releases feed; set the variable empty to leave it out, as `ci/check.sh --step qt-windows`
+Windows zip and setup, the AppImage and the archive, and the macOS `.dmg` (`build-windows.sh`, `build-ubuntu.sh`,
+`macos/make-dmg.sh` pass the project's releases feed; set the variable empty to leave it out, as `ci/check.sh --step qt-windows`
 does). The `.deb`, the `.rpm` and the AUR package never carry it: their package manager updates them.
 `linux/test-packages.sh` checks both ways.
 
@@ -59,6 +60,35 @@ archive's `README.txt` match its rule and `install.sh`. `linux/test-appimage.sh 
 AppImage alone as the release does (`build-release.sh --appimage-only`). `windows/test-installer.sh <setup.exe>` runs the installer under Wine:
 `ci/check.sh --step qt-windows` builds the zip and the setup and runs it (also in `ci/matrix.sh`, row
 `windows-qt`).
+
+## macOS: the .dmg
+
+<!-- WP QTMAC --> `uConsole-for-DSPi-<v>-macos.dmg` is made in the macOS VM from a clean commit, from the host:
+
+```
+apps/desktop/packaging/macos/build-macos.sh [--no-test] [output dir]
+```
+
+It sends `HEAD` (`git archive`) to the VM (`ssh macvm`, or `$DSPI_MACVM`) and runs there, under `ci/macvm.sh`'s
+lock:
+
+- `macos/make-dmg.sh`: `macos/fetch-qt.sh` installs Qt 6.8.3 for macOS (universal; qtbase, qtdeclarative, qtsvg,
+  qtmultimedia: the AppImage's Qt) and Qt's CMake 3.30.5 and Ninja 1.12.1 into `~/qtmac-tools/qt-6.8.3`, each
+  archive checked against the SHA-256 pinned in `macos/qt-6.8.3.sha256` and the one download.qt.io publishes. It
+  builds the core (`dspi-capi`, the release features) for `x86_64-apple-darwin` and `aarch64-apple-darwin`, joins
+  them with `lipo`, builds the app universal for macOS 12 (Qt 6.8's minimum) with the update feed, and bundles
+  "uConsole for DSPi.app" (`qt/cmake/wp/qtmac.cmake`: bundle id `se.bofr.uconsole-for-dspi`, `macos/Info.plist.in`
+  with the microphone, local network and removable volume texts, the icon made from `assets/icon`). `macdeployqt`
+  copies Qt's frameworks, plugins and QML modules in; as on Windows and Linux **no multimedia plugin** (and so no
+  FFmpeg) and no SQL driver goes in. The build fails unless the app loads QtCore from the bundle and every binary
+  links only the bundle's and the system's libraries. `licences/stage.sh macos` adds the notices; then the app is
+  signed **ad hoc** (`codesign --force --deep -s -`: no Developer ID exists yet, so it is not notarised; set
+  `SIGN_ID` for a real identity) and packed with a link to `/Applications`.
+- `macos/test-dmg.sh`, in the VM's GUI session: mounts the `.dmg`, checks the signature, the Info.plist, both
+  architectures, the notices and `--version`, and runs the app from the `.dmg` on the demo device for 15 s.
+
+The `.dmg` lands in `~/.cache/dspi-build/work/release-<version>-macos/` (or the folder named); a file already there
+is never replaced. Copy it into the release folder before `ci/release-sums.sh` signs it (`docs/RELEASING.md`).
 
 ## Windows: the names the setup and the app write
 
@@ -109,6 +139,7 @@ Every package carries the app's licence and, where it bundles libraries, theirs:
 | Windows `.zip` and setup | next to `uconsole-for-dspi.exe` | `NOTICE.txt`, `LICENSES/`: as the AppImage's, with `bundled/<Fedora package>/` (MinGW Qt's, GCC's runtime with its exception, the other DLLs') instead of ICU and the runtime |
 | `.deb` | `/usr/share/doc/uconsole-for-dspi/` | `copyright` and `NOTICE.txt` (the notice with the additional terms; the GPL is Debian's `/usr/share/common-licenses/GPL-3`), `LICENSES/`: `TERMS.txt`, `rust-crates.txt`, `Lucide/`, the firmware's notices, AutoEq's MIT |
 | `.rpm`, AUR, a plain `cmake --install` | `/usr/share/licenses/uconsole-for-dspi/` | `NOTICE.txt`, `LICENSES/`: as the `.deb`'s, with `GPL-3.0.txt` |
+| macOS `.dmg` <!-- WP QTMAC --> | `uConsole for DSPi.app/Contents/Resources/` | `NOTICE.txt`, `LICENSES/`: GPL-3.0, LGPL-3.0, `TERMS.txt`, `rust-crates.txt`, `Lucide/`, the firmware's notices, AutoEq's MIT, `Qt/` (Qt 6.8.3's, `licences/qt-6.8.3/`), `BUNDLED.txt` (Qt's frameworks, plugins and QML modules, and their source archives) |
 
 <!-- WP P5QCAP --> The app links Qt Multimedia for the measurement microphone (`QAudioSource`, capture only). The
 Windows package bundles `Qt6Multimedia.dll`, whose WASAPI audio backend is built in, and **no multimedia plugin**:
@@ -131,7 +162,7 @@ client's About shows (`assets/about.json`). `licences/rust-crates.txt` lists the
 writes it and `ci/check.sh --step qt` fails when it is stale.
 
 `licences/stage.sh` lays these out for the AppImage (`linux/make-appimage.sh`), Windows
-(`windows/build-windows.sh`) and the Swift macOS app (`apps/apple/package-macos.sh`, which keeps its own
+(`windows/build-windows.sh`), the Qt `.dmg` (`macos/make-dmg.sh`) and the Swift macOS app (`apps/apple/package-macos.sh`, which keeps its own
 name). It lists every library in the package that is not the app's own in `LICENSES/BUNDLED.txt`
 (package, version, origin, source, licence, files) and fails on a file it cannot account for. The `.deb`
 and `.rpm` use the distribution's Qt, so they carry no Qt texts.

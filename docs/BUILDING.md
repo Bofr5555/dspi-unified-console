@@ -67,7 +67,8 @@ Other checks: `--step test`, `proptest`, `deny`, `licences`, `firmware-digests`,
 `ios-check`, `conformance-ts` (upstream's TypeScript Link client against the hub), and the opt-in
 `esp-rig`. On Linux the workspace needs ALSA development files for MIDI; the
 Linux Qt app needs the udev rule in `apps/desktop/packaging/linux/` for USB access.
-The Qt app has no macOS build; the Swift app is the macOS client.
+The Qt app's macOS build (a universal `.dmg`) is made in the macOS VM by
+`apps/desktop/packaging/macos/build-macos.sh` (WP QTMAC); the Swift app is deferred.
 
 ## The core
 

@@ -6,12 +6,12 @@ Release date: YYYY-MM-DD. One version for every client.
 
 ## Downloads
 
-<!-- As docs/INSTALL.md "At a glance"; drop the rows this release does not carry (0.14.0: no macOS row). -->
+<!-- As docs/INSTALL.md "At a glance"; drop the rows this release does not carry. -->
 
 | System | File |
 |---|---|
 | Windows 10/11 (x86_64) | `uConsole-for-DSPi-VERSION-windows-x86_64-setup.exe`, or the portable `uConsole-for-DSPi-VERSION-windows-x86_64.zip` |
-| macOS 14.6+ | `uConsole-for-DSPi-VERSION-macos.dmg` (the Swift app) |
+| macOS 12+ (Intel and Apple silicon) | `uConsole-for-DSPi-VERSION-macos.dmg` (the Qt app; not notarised until a Developer ID exists) |
 | Debian 13, Ubuntu 25.04 or newer | `uconsole-for-dspi_VERSION_amd64.deb` |
 | Fedora 43, 44 | `uconsole-for-dspi-VERSION-1.fc43.x86_64.rpm`, `uconsole-for-dspi-VERSION-1.fc44.x86_64.rpm` |
 | Other Linux (x86_64, glibc 2.39+) | `uConsole-for-DSPi-VERSION-x86_64.AppImage`, or `uConsole-for-DSPi-VERSION-linux-x86_64.tar.gz` with an installer |
@@ -20,13 +20,13 @@ Release date: YYYY-MM-DD. One version for every client.
 | Terminal (`uconsole`) | `uConsole-for-DSPi-VERSION-terminal-PLATFORM.tar.gz` / `.zip` |
 | Web console | `uConsole-for-DSPi-VERSION-web.tar.gz` |
 
-The Windows files, the AppImage and the tar.gz check this project's releases for
+The Windows files, the AppImage, the tar.gz and the `.dmg` check this project's releases for
 updates when that is switched on (Settings > Updates); the `.deb`, the `.rpm`
 and the AUR package are updated by their package managers.
 
 Every file of this release is listed in `SHA256SUMS`, which is signed:
 `SHA256SUMS.minisig`. The source code of exactly this release is
-`uConsole-for-DSPi-VERSION-source.tar.gz`; the Qt packages' (Windows and Linux)
+`uConsole-for-DSPi-VERSION-source.tar.gz`; the Qt packages' (Windows, Linux and macOS)
 is `uConsole-for-DSPi-VERSION-desktop-source.tar.gz`. Licence: see `NOTICE.md`. How to install each file: `docs/INSTALL.md`.
 
 ## Check a download

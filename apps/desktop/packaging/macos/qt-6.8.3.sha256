@@ -1,0 +1,15 @@
+# -- WP QTMAC -- Qt 6.8.3 (LTS), the Linux release's Qt (linux/qt-6.8.3.sha256), as
+# the official open-source binaries for macOS (universal: x86_64 and arm64, built
+# on macOS 14), with Qt's CMake and Ninja for the build, paths under
+# https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/, each with the
+# SHA-256 download.qt.io publishes next to it (<file>.sha256). fetch-qt.sh checks
+# both: a file must match the pin here and download.qt.io's published hash.
+# The modules: those of the AppImage's Qt (licences/qt-modules.sh appimage)
+# that macOS has, without qtwayland, and without qttools (lupdate; macdeployqt
+# is qtbase's).
+c4dfc40f1be702eaa08e08cf87a749c44c55e5eb09e46a7933f18ab4b7ca7ac7  qt6_683/qt6_683/qt.qt6.683.clang_64/6.8.3-0-202503201723qtbase-MacOS-MacOS_14-Clang-MacOS-MacOS_14-X86_64-ARM64.7z
+9b499244b4feafc9d5ff7cdb2ed8baf8ddbb7e71f6cd828c57707e37c8327beb  qt6_683/qt6_683/qt.qt6.683.clang_64/6.8.3-0-202503201723qtdeclarative-MacOS-MacOS_14-Clang-MacOS-MacOS_14-X86_64-ARM64.7z
+14f0e28662ba3d2d6b297916746e5b45197cf5cca408de7c5249ce628aecdd02  qt6_683/qt6_683/qt.qt6.683.clang_64/6.8.3-0-202503201723qtsvg-MacOS-MacOS_14-Clang-MacOS-MacOS_14-X86_64-ARM64.7z
+947f0871b0b18c997b4ad4fb961f6e999ef0e252c896ee88a6f0642b6b2e2633  qt6_683/qt6_683/qt.qt6.683.addons.qtmultimedia.clang_64/6.8.3-0-202503201723qtmultimedia-MacOS-MacOS_14-Clang-MacOS-MacOS_14-X86_64-ARM64.7z
+6bd1998d51a72b36468de58c7ad916bcd03c9778ab05a9a9382efbf9640649e5  tools_cmake/qt.tools.cmake/3.30.5-202502251255macos64_x86_cmake_tools.7z
+a320b4b41dcef46730c4e617add8a945257f4d4baaccb8753da53f8863c8dd85  tools_ninja/qt.tools.ninja/1.12.1-202502251256macos64_ninja.7z

@@ -9,12 +9,13 @@
 #   apps/desktop/packaging/release-sources.sh [dist dir ...]
 #
 # Always, from the versions the build scripts pin (licences/qt-modules.sh):
-#   qt/        Qt's source archives of the modules the AppImage and the Windows
-#              build ship, from download.qt.io, against the SHA-256 it publishes
+#   qt/        Qt's source archives of the modules the AppImage, the Windows
+#              build and (-- WP QTMAC --) the .dmg ship, from download.qt.io,
+#              against the SHA-256 it publishes
 #              next to each (read from download.qt.io itself, never a mirror).
 #              -- WP QP20 -- The Windows build's own source is Fedora's (below);
 #              its archives here are what update-licences.sh reads Qt's
-#              licence files from. KWindowSystem and the Qt .dmg are gone.
+#              licence files from. KWindowSystem is gone.
 # With dist dirs (build-release.sh's dist/ and build-windows.sh's output), from
 # each package's LICENSES/BUNDLED.txt:
 #   icu/       ICU (in the AppImage, from Qt's ICU build), from the ICU
@@ -84,7 +85,8 @@ qt_for() {  # <package kind> <label>
         echo "$2 qt/$m-everywhere-src-$version.tar.xz $url sha256-published-by-download.qt.io"
     done
 }
-{ qt_for appimage AppImage; qt_for windows Windows; } | while read -r for file url how; do
+# -- WP QTMAC -- and the Qt .dmg's (macos/qt-<version>.sha256)
+{ qt_for appimage AppImage; qt_for windows Windows; qt_for macos macOS; } | while read -r for file url how; do
     row "$for" "$file" "$url" "$how"
 done
 

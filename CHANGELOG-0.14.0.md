@@ -9,10 +9,10 @@ the audio link, a hub that runs on its own and is encrypted, and support for
 upstream's paged firmware 1.1.7 beside 1.1.6 (the 1.1.7 beta as of 2026-11-18;
 later 1.1.7 betas may need an update).
 
-This release carries the desktop app for Windows and Linux, Android
+This release carries the desktop app for Windows, Linux and macOS, Android
 (versionCode 14), the Terminal (`uconsole`), the web console and the hub. The
-Swift app for macOS, iPhone and iPad is **not** part of 0.14.0, so there is no
-macOS download this time.
+Swift app for macOS, iPhone and iPad is **not** part of 0.14.0; on a Mac, the
+desktop app is the Qt app, as a `.dmg`.
 
 The project's apps are now called **uConsole for DSPi**: release files start
 with `uConsole-for-DSPi-0.14.0-`, packages and the desktop command are
@@ -112,7 +112,7 @@ Measurement on Android comes in a later release.
 - Undo and redo in every client, through one change history; undo skips a
   value another console has since changed and says which.
 
-## Desktop: Windows and Linux
+## Desktop: Windows, Linux and macOS
 
 The desktop app was rebuilt in QML from the macOS console's layout and
 wording, on the shared core (Qt 6.8 or newer). New: read-only mode for
@@ -120,8 +120,17 @@ firmware it cannot fully write, the crossfeed pair map, clock diagnostics and
 output ring health, the bundled 1.1.6 firmware, the demo device, the Core
 Voltage page (extension firmware), Undo, Redo and History, Save Diagnostics,
 measurement, the hub's shared snapshots, history, alarms and Identify, and an
-optional check for new releases (off by default; Windows files, AppImage and
-tar.gz only). There is no macOS build of the Qt app.
+optional check for new releases (off by default; Windows files, AppImage,
+tar.gz and the macOS `.dmg` only).
+
+The Qt app now has a macOS build too: one universal app for Intel and Apple
+silicon Macs, macOS 12 or newer. It is signed ad hoc only, not with an Apple
+Developer ID, and not notarised, so macOS refuses it the first time: check the
+download, then Control-click the app and choose Open, or allow it under System
+Settings > Privacy & Security (Open Anyway), or run
+`xattr -dr com.apple.quarantine "/Applications/uConsole for DSPi.app"`. It has
+been run on an Intel Mac on the demo device; Apple silicon and a real DSPi on a
+Mac are not tested yet.
 
 ## Android
 
@@ -177,6 +186,7 @@ a firmware update uses. By hand: `sudo cp 70-dspi.rules /etc/udev/rules.d/`,
 | System | File |
 |---|---|
 | Windows 10/11 (x86_64) | `uConsole-for-DSPi-0.14.0-windows-x86_64-setup.exe`, or the portable `uConsole-for-DSPi-0.14.0-windows-x86_64.zip` |
+| macOS 12 or newer (Intel and Apple silicon) | `uConsole-for-DSPi-0.14.0-macos.dmg` (not notarised: see above) |
 | Debian 13, Ubuntu 25.04 or newer | `uconsole-for-dspi_0.14.0_amd64.deb` |
 | Fedora 43, 44 | `uconsole-for-dspi-0.14.0-1.fc43.x86_64.rpm`, `uconsole-for-dspi-0.14.0-1.fc44.x86_64.rpm` |
 | Other Linux (x86_64, glibc 2.39+) | `uConsole-for-DSPi-0.14.0-x86_64.AppImage`, or `uConsole-for-DSPi-0.14.0-linux-x86_64.tar.gz` with an installer |
@@ -185,17 +195,18 @@ a firmware update uses. By hand: `sudo cp 70-dspi.rules /etc/udev/rules.d/`,
 | Terminal (`uconsole`) | `uConsole-for-DSPi-0.14.0-terminal-PLATFORM.tar.gz` / `.zip` |
 | Web console | `uConsole-for-DSPi-0.14.0-web.tar.gz` |
 
-macOS, iPhone and iPad: not in this release.
+iPhone and iPad: not in this release.
 
-The Windows files, the AppImage and the tar.gz check this project's releases for
-updates when that is switched on (Settings > Updates); the `.deb`, the `.rpm`
-and the AUR package are updated by their package managers. None of the files
-are code-signed: Windows SmartScreen warns the first time the app is opened.
+The Windows files, the AppImage, the tar.gz and the `.dmg` check this project's
+releases for updates when that is switched on (Settings > Updates); the `.deb`,
+the `.rpm` and the AUR package are updated by their package managers. None of
+the files are code-signed: Windows SmartScreen warns the first time the app is
+opened, and macOS refuses the app until it is opened once by hand (above).
 
 Every file of this release is listed in `SHA256SUMS`, which is signed:
 `SHA256SUMS.minisig`. The source code of exactly this release is
-`uConsole-for-DSPi-0.14.0-source.tar.gz`; the Qt packages' (Windows and Linux)
-is `uConsole-for-DSPi-0.14.0-desktop-source.tar.gz`. Licence: see `NOTICE.md`.
+`uConsole-for-DSPi-0.14.0-source.tar.gz`; the Qt packages' (Windows, Linux and
+macOS) is `uConsole-for-DSPi-0.14.0-desktop-source.tar.gz`. Licence: see `NOTICE.md`.
 
 ## Check a download
 

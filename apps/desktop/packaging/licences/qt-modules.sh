@@ -5,6 +5,8 @@
 #                            (linux/Containerfile.ubuntu's manifest, qt-<version>.sha256)
 #   qt-modules.sh windows    e.g. "6.11.2 qtbase qtdeclarative qtsvg"
 #                            (windows/Containerfile's MINGW_QT_VERSION and packages)
+#   qt-modules.sh macos      e.g. "6.8.3 qtbase qtdeclarative qtmultimedia qtsvg"
+#                            (-- WP QTMAC -- macos/qt-<version>.sha256)
 # Each module is the name of its source archive on download.qt.io
 # (<module>-everywhere-src-<version>.tar.xz). The Windows build's Qt is Fedora's
 # MinGW Qt: its source is Fedora's source packages, listed in the bundle's
@@ -23,11 +25,16 @@ case ${1:-} in
         paths=$(grep -v '^#' "$manifest" | awk '{print $2}' | grep '\.7z$')
         version=$(sed -n 's|.*/\([0-9]*\.[0-9]*\.[0-9]*\)-0-[0-9]*qt.*|\1|p' <<<"$paths" | sort -u)
         modules=$(sed -n 's|.*/[0-9.]*-0-[0-9]*\(qt[a-z0-9]*\).*|\1|p' <<<"$paths") ;;
+    macos)   # -- WP QTMAC -- the Qt .dmg's Qt, from download.qt.io (its CMake and Ninja are not Qt's)
+        manifest=$(ls "$pkg"/macos/qt-*.sha256)
+        paths=$(grep -v '^#' "$manifest" | awk '{print $2}' | grep '\.7z$')
+        version=$(sed -n 's|.*/\([0-9]*\.[0-9]*\.[0-9]*\)-0-[0-9]*qt.*|\1|p' <<<"$paths" | sort -u)
+        modules=$(sed -n 's|.*/[0-9.]*-0-[0-9]*\(qt[a-z0-9]*\).*|\1|p' <<<"$paths") ;;
     windows)
         f=$pkg/windows/Containerfile
         version=$(sed -n 's/^ARG MINGW_QT_VERSION=\([0-9.]*\)$/\1/p' "$f")
         modules=$(grep -o 'mingw64-qt6-qt[a-z0-9]*' "$f" | sed 's/^mingw64-qt6-//') ;;
-    *) echo "usage: qt-modules.sh appimage|windows" >&2; exit 2 ;;
+    *) echo "usage: qt-modules.sh appimage|windows|macos" >&2; exit 2 ;;
 esac
 [ "$(wc -w <<<"$version" | tr -d " ")" = 1 ] || { echo "qt-modules: no single Qt version in the pins ('$version')" >&2; exit 1; }
 out=$version

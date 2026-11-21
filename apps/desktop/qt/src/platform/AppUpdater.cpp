@@ -54,6 +54,8 @@ public:
 QString thisPlatform() {
 #if defined(Q_OS_WIN)
     return QStringLiteral("windows");
+#elif defined(Q_OS_MACOS)   // -- WP QTMAC --
+    return QStringLiteral("macos");
 #else
     return QStringLiteral("linux");
 #endif
@@ -120,11 +122,17 @@ bool AppUpdater::carriesApp(const Release &r, const QString &platform) {
     // The tag's own version follows the prefix, and only these platform parts
     // count, so the other clients' files in the same release (…-macos.dmg,
     // …-terminal-linux-x86_64.tar.gz, …-source.tar.gz) do not.
+    // -- WP QTMAC -- The macOS build's ("macos") is uConsole-for-DSPi-<v>-macos.dmg;
+    // that branch is compiled on macOS only, so the Linux and Windows builds
+    // stay as they were.
     const QString prefix = QStringLiteral("uConsole-for-DSPi-%1-").arg(r.version.text());
     const bool windows = platform == QLatin1String("windows");
     return std::any_of(r.assets.cbegin(), r.assets.cend(), [&](const QString &asset) {
         if (!asset.startsWith(prefix)) return false;
         const QStringView rest = QStringView(asset).mid(prefix.size());
+#ifdef Q_OS_MACOS
+        if (platform == QLatin1String("macos")) return rest == QLatin1String("macos.dmg");
+#endif
         return windows ? rest.startsWith(QLatin1String("windows-"))
                        : rest.startsWith(QLatin1String("linux-")) || rest.endsWith(QLatin1String(".AppImage"));
     });

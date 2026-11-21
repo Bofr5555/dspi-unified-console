@@ -23,6 +23,9 @@
 #
 #   stage.sh appimage <AppDir> <dest> <app version>   in Containerfile.ubuntu's image
 #   stage.sh windows <bundle> <dest> <app version>    in the MinGW build image (Fedora)
+#   stage.sh macos <app bundle> <dest> <app version>  (WP QTMAC) the Qt app's .dmg, on
+#                               the Mac (bash 3.2): Qt's frameworks, plugins and QML
+#                               modules from download.qt.io (macos/qt-<version>.sha256)
 #   stage.sh swift <app bundle> <dest> <app version>  (WP REL013M) the Swift macOS
 #                               app, on the Mac: no Qt, no LGPL-3.0.txt; its core's
 #                               crates (apps/apple/licences/rust-crates.txt) and the
@@ -31,12 +34,12 @@
 # Fails on a file in the package it cannot account for, and when this folder
 # has no licence texts for the Qt (or ICU) the package carries
 # (update-licences.sh adds them).
-# -- WP QP20 -- The Qt app's packages (appimage, windows) name it "uConsole for
-# DSPi" (AppIdentity) and label it GPL-3.0-only; the Qt .dmg is gone (the Mac
-# release is the Swift app, which keeps its own name).
+# -- WP QP20 -- The Qt app's packages (appimage, windows; -- WP QTMAC -- macos,
+# the Qt .dmg again) name it "uConsole for DSPi" (AppIdentity) and label it
+# GPL-3.0-only; the Swift app keeps its own name.
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
-kind=${1:?usage: stage.sh appimage|windows|swift <package dir> <dest> <app version>}
+kind=${1:?usage: stage.sh appimage|windows|macos|swift <package dir> <dest> <app version>}
 pkg=${2:?}; dest=${3:?}; version=${4:?}
 fail() { echo "stage-licences: $*" >&2; exit 1; }
 L=$dest/LICENSES
@@ -172,6 +175,37 @@ windows)
         row "$p" "$ver" "$distro" "$srpm" "$lic" "$files"
     done
     sources="Their source code, Qt's among it, is included with this release (the Fedora source packages named there)."
+    ;;
+macos)
+    # -- WP QTMAC -- The Qt app's bundle: Qt's frameworks in Contents/Frameworks,
+    # its plugins in Contents/PlugIns and its QML modules in Contents/Resources/qml,
+    # each checked against the Qt the pins name ($QTDIR, as make-dmg.sh sets it)
+    Q=${QTDIR:?set QTDIR to the Qt the app was built on, as make-dmg.sh does}
+    qt=$("$Q/bin/qtpaths" --qt-version)
+    [ "$("$here/qt-modules.sh" macos | cut -d' ' -f1)" = "$qt" ] || fail "the app is built on Qt $qt, the pins say otherwise"
+    copy_dir "qt-$qt" Qt "Qt $qt"
+    for f in "$pkg"/Contents/Frameworks/*; do
+        [ -e "$f" ] || continue
+        b=${f##*/}
+        case $b in Qt*.framework) [ -d "$Q/lib/$b" ] || fail "Contents/Frameworks/$b is not Qt's" ;;
+            *) fail "Contents/Frameworks/$b: not accounted for" ;; esac
+    done
+    # macdeployqt moves the QML modules' plugins to PlugIns/quick (Resources/qml
+    # links to them there)
+    qmlplugins=$(find "$Q/qml" -name '*.dylib' -type f | sed 's|.*/||' | sort -u)
+    while read -r f; do
+        rel=${f#"$pkg"/Contents/}
+        case $rel in
+            PlugIns/quick/*) grep -qxF "${rel##*/}" <<<"$qmlplugins" || fail "Contents/$rel is no QML plugin of Qt's" ;;
+            PlugIns/*) [ -e "$Q/plugins/${rel#PlugIns/}" ] || fail "Contents/$rel is not Qt's" ;;
+            Resources/qml/*) [ -e "$Q/qml/${rel#Resources/qml/}" ] || fail "Contents/$rel is not Qt's" ;;
+            *) fail "Contents/$rel: not accounted for" ;;
+        esac
+    done < <(find "$pkg/Contents/PlugIns" "$pkg/Contents/Resources/qml" -type f 2>/dev/null)
+    qs=$(qt_sources macos) || fail "cannot read Qt's modules from the pins"
+    row Qt "$qt" download.qt.io "$qs" "LGPL-3.0-only (LICENSES/LGPL-3.0.txt, LICENSES/Qt/)" \
+        "Contents/Frameworks/Qt*.framework Contents/PlugIns Contents/Resources/qml"
+    sources="Qt's source for this version is included with this release (the source archives named there)."
     ;;
 swift)
     # -- WP REL013M --
