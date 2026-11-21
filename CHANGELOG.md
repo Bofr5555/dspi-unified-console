@@ -17,6 +17,18 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
   volume panel. The mute button toggles the User Volume's mute. With no DSPi, a read-only
   connection, or the app in the background, the buttons change this device's volume as before.
   On by default; Settings › Advanced › Volume Buttons turns it off. (WP ANVOL)
+- An unencrypted DSPi Link connection is no longer a red strip: it is amber (a warning tone with WCAG AA contrast in
+  light and dark), still ends in "(unsecured)" and keeps its info button. The info dialog offers "I understand, don't
+  highlight this hub" (on a phone also the strip's overflow menu): that hub's strip then has the normal colours, with
+  the words and the info button kept. The choice is remembered per hub (its id, and for a hub added by address the
+  address), dropped when the hub is next seen encrypted or a different hub answers at that address, and can be undone in
+  the info dialog or in Settings › Networking › Acknowledged Unsecured Hubs (per hub or Forget All). The lost-connection
+  banner stays red. (WP ANSEC)
+- On a phone, a long hub or device name no longer pushes "(unsecured)" out of sight; the name is shortened instead.
+  (WP ANSEC)
+- Settings › Networking no longer says all DSPi Link traffic is unencrypted: DSPi Link connections to a uConsole for
+  DSPi hub are encrypted and pairing pins the hub's key; those to Weeb Labs' DSPi Console or a DSPi bridge are not.
+  The privacy policy and the Play description say the same. (WP ANSEC)
 
 ## 0.14.0 (2026-11-20)
 

@@ -111,6 +111,12 @@ upstream compatibility mode (below). Our clients still connect to them, and say 
   fine on a trusted local network or over a VPN, but on any other network someone could read or change what is sent,
   including the pairing PIN and settings. Where the hub can do TLS it says how to turn it on, or that compatibility mode
   is on. (The text is the core's notice table, `dlink.unsecured`, `dlink.unsecured.info`, `dlink.unsecured.compat`.)
+  *Android (WP ANSEC, 2026-11-21):* the bar is amber (a warning tone with AA contrast in light and dark), not red, and
+  the user can acknowledge it per hub ("I understand, don't highlight this hub" in the info dialog, or the strip's
+  overflow on a phone). An acknowledged hub's bar has the normal colours but still ends in "(unsecured)" with its info
+  button. The acknowledgement is kept per hub id (and, for a typed hub, its address) and dropped when that hub is
+  seen encrypted or another hub answers at the typed address; Settings › Networking › Acknowledged Unsecured Hubs
+  forgets it. The other clients still show the red bar.
 - A hub on this same machine (loopback: `uconsole web`, `--loopback`) is not shown as unsecured: nothing crosses a
   network.
 - An unpinned client that finds TLS refused (an upstream hub) connects in plaintext as before; a pinned one never does.

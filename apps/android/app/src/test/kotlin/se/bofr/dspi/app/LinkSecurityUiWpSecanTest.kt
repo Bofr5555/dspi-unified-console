@@ -34,8 +34,9 @@ import se.bofr.dspi.usb.UsbSessionState
 
 /**
  * WP SECAN: the owner's rule (2026-11-15) on the real core's words: an unencrypted hub
- * connection makes the bar red with " (unsecured)" and an info button; an encrypted one
- * does not. The PIN prompt's key, the pair-again offer, and the pairing link's reading.
+ * connection gives the bar " (unsecured)" and an info button; an encrypted one does not.
+ * -- WP ANSEC -- (owner 2026-11-21) the bar is amber, not red, until acknowledged
+ * ([UnsecuredBarWpAnsecTest]). The PIN prompt's key, the pair-again offer, and the pairing link's reading.
  */
 @RunWith(DspiRobolectricTestRunner::class)
 @Config(sdk = [35], application = Application::class, qualifiers = "w400dp-h800dp-port-mdpi")
@@ -90,6 +91,8 @@ class LinkSecurityUiWpSecanTest {
     fun wpSecanAnUnencryptedHubMakesTheBarSaySo() {
         val strip = connectionStrip(AppMode.REMOTE, UsbSessionState.NoDevice, connected, security = plain) as ConnectionStrip.Remote
         assertTrue(strip.unsecured)
+        assertTrue("-- WP ANSEC -- in the warning colours until acknowledged", strip.warning)
+        assertFalse(strip.acknowledged)
         assertEquals("Living room via Studio Mac (unsecured)", strip.text)
         assertEquals(" (unsecured)", strip.suffix)
         // Every state with a live hub connection, not a lost or failed one
@@ -135,7 +138,7 @@ class LinkSecurityUiWpSecanTest {
     }
 
     @Test
-    fun wpSecanTheRedBarHasItsInfoButton() {
+    fun wpSecanTheUnsecuredBarHasItsInfoButton() {
         show(connectionStrip(AppMode.REMOTE, UsbSessionState.NoDevice, connected, security = plain))
         // A phone's one line: the word is never ellipsised away, and TalkBack reads the whole text once
         rule.onNodeWithTag(UNSECURED_SUFFIX_TAG).assertIsDisplayed()

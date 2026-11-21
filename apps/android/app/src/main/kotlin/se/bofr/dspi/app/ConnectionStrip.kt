@@ -60,8 +60,10 @@ sealed interface ConnectionStrip {
      * [lost] (WP AN5): the connection is lost and the core is reconnecting, shown as the
      * owner's banner; [detail], the banner's second line, is the hub and the core's `close_reason`.
      * -- WP SECAN -- [unsecured]: the hub connection is not encrypted (owner rule 2026-11-15):
-     * the bar is red, [text] ends in " (unsecured)" (so it is never colour alone) and an
-     * info button beside it explains ([UnsecuredWording.info]).
+     * [text] ends in " (unsecured)" (so it is never colour alone) and an info button beside it
+     * explains ([UnsecuredWording.info]). -- WP ANSEC -- (owner 2026-11-21) the bar has the
+     * warning colours ([StripWarningColors]) until the user acknowledges it for this hub
+     * ([acknowledged]); then the normal ones, with the words and the info button kept.
      */
     data class Remote(
         override val text: String,
@@ -70,8 +72,13 @@ sealed interface ConnectionStrip {
         val detail: String = "",
         val unsecured: Boolean = false,
         /** " (unsecured)" when [unsecured]: the end of [text], which a narrow bar never cuts off. */
-        val suffix: String = ""
-    ) : ConnectionStrip
+        val suffix: String = "",
+        /** -- WP ANSEC -- [unsecured], and the user acknowledged it for this hub: not highlighted. */
+        val acknowledged: Boolean = false
+    ) : ConnectionStrip {
+        /** -- WP ANSEC -- The bar has the warning colours. */
+        val warning: Boolean get() = unsecured && !acknowledged
+    }
 }
 
 // -- WP ANLINK --
@@ -286,7 +293,7 @@ fun remoteStrip(s: LinkSessionState, lockNotice: Boolean = false, wording: LinkW
 /**
  * The owner's rule (2026-11-15): while the app is on a hub over an unencrypted connection
  * ([HubSecurity.unsecured]: not encrypted, and not this device's own loopback, -- WP SECFIX --),
- * the bar says so: red, " (unsecured)" appended. Only the
+ * the bar says so: " (unsecured)" appended, in the warning colours until acknowledged (WP ANSEC). Only the
  * states with a live hub connection (the PIN prompt, the device choice, waiting for a
  * board, connected); a lost or failed connection has its own banner.
  */
@@ -295,13 +302,15 @@ fun ConnectionStrip.Remote.secured(
     security: HubSecurity?,
     wording: UnsecuredWording = UnsecuredWording.CORE
 ): ConnectionStrip.Remote {
-    val live = s is LinkSessionState.NeedsPin ||
-        s is LinkSessionState.ChooseDevice ||
-        s is LinkSessionState.WaitingForDevice ||
-        s is LinkSessionState.Connected
     val hub = s.hub ?: return this
     // -- WP SECFIX -- a hub on this device is local: not unsecured
-    if (!live || security == null || !security.unsecured || !security.hubId.equals(hub.id, ignoreCase = true)) return this
+    if (!hubConnectionLive(s) || security == null || !security.unsecured || !security.hubId.equals(hub.id, ignoreCase = true)) return this
     val suffix = wording.suffix()
-    return copy(text = text + suffix, unsecured = true, suffix = suffix)
+    return copy(text = text + suffix, unsecured = true, suffix = suffix, acknowledged = security.acknowledged) // -- WP ANSEC --
 }
+
+/** The states with a live hub connection: the PIN prompt, the device choice, waiting for a board, connected. */
+fun hubConnectionLive(s: LinkSessionState): Boolean = s is LinkSessionState.NeedsPin ||
+    s is LinkSessionState.ChooseDevice ||
+    s is LinkSessionState.WaitingForDevice ||
+    s is LinkSessionState.Connected
