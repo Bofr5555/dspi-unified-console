@@ -71,6 +71,16 @@ internal class DemoCore(private val core: DspiCoreApi) : DspiCoreApi by core {
         tlsAdvertised: Boolean
     ): LinkHello = throw DspiException.Unsupported()
 
+    // -- WP LKFAST3 -- the start's dial: as linkConnect
+    override fun linkConnectAtStart(
+        url: String,
+        clientName: String,
+        appVersion: String,
+        credential: String,
+        expectedHubId: String,
+        tlsAdvertised: Boolean
+    ): LinkHello = throw DspiException.Unsupported()
+
     override fun linkPair(pin: String): String = throw DspiException.Unsupported()
 
     override fun linkDevices(): List<LinkDevice> = emptyList()

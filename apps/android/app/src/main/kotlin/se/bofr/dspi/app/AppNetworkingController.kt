@@ -1,8 +1,8 @@
 package se.bofr.dspi.app
 
+import kotlin.coroutines.EmptyCoroutineContext
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -51,9 +51,10 @@ class AppNetworkingController(
     // -- WP LKFAST --, LKFAST3: the core's `link_forget_hub` (a forgotten hub is met as new, TLS
     // first, and is no longer dialled at start); a file write, so never on the main thread
     private val forgetHub: (String) -> Unit = {},
-    // -- WP LKFAST3 -- where the rows are built (they read the core's hub memory): off the main thread
-    rows: CoroutineDispatcher = Dispatchers.Default,
-    private val io: CoroutineDispatcher = Dispatchers.IO,
+    // -- WP LKFAST3 -- where the rows are built (they read the core's hub memory) and where Forget
+    // reaches it: the app passes Default and IO, off the main thread; null keeps the caller's (tests)
+    rows: CoroutineDispatcher? = null,
+    private val io: CoroutineDispatcher? = null,
     // -- WP LKFAST -- the core's `link_hub_encryption` (credential, advert, hub id, typed): one rule for every client
     private val hubEncryption: ((String, Boolean, String, Boolean) -> LinkEncryption)? = null
 ) : NetworkingController {
@@ -91,7 +92,7 @@ class AppNetworkingController(
                     AcknowledgedHubRow(a.hubId, a.name, if (a.typed) at else "")
                 }
             )
-        }.flowOn(rows) // -- WP LKFAST3 -- (review LKREV 3) the rows ask the core's hub memory
+        }.let { f -> rows?.let { f.flowOn(it) } ?: f } // -- WP LKFAST3 -- (review LKREV 3)
             .stateIn(scope, SharingStarted.Eagerly, NetworkingUiState())
 
     private data class Quad<A, B, C, D>(val a: A, val b: B, val c: C, val d: D)
@@ -170,7 +171,7 @@ class AppNetworkingController(
 
     override fun forget(hubId: String) {
         tokens.remove(hubId)
-        scope.launch(io) { forgetHub(hubId) } // -- WP LKFAST3 -- (review LKREV 2, 3)
+        scope.launch(io ?: EmptyCoroutineContext) { forgetHub(hubId) } // -- WP LKFAST3 -- (review LKREV 2, 3)
         pairedRevision.value++
     }
 

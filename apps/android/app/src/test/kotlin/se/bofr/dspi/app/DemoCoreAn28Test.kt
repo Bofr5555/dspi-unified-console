@@ -53,6 +53,7 @@ class DemoCoreAn28Test {
             { core.firmwareGuardBoardInBootloader() },
             { core.linkConnect("ws://hub", "demo", "1", "", "") },
             { core.linkConnectAdvertised("ws://hub", "demo", "1", "", "", true) }, // SEC-B
+            { core.linkConnectAtStart("ws://hub", "demo", "1", "", "", false) }, // -- WP LKFAST3 --
             { core.linkPair("1234") },
             { core.linkSelectDevice(0, "E6614103") },
             { core.linkFetchInfo("hub", 80) }
@@ -84,7 +85,9 @@ class DemoCoreAn28Test {
             // P1TK's confirmed bootloader and flash calls are refused too (WP P1TZ: the bootloader's only form)
             "openDocument", "openDemoUsbDirect", "flashConfirmed", "enterBootloaderConfirmed",
             // SEC-B: SECCORE's dial with the advert, refused as linkConnect is
-            "linkConnectAdvertised"
+            "linkConnectAdvertised",
+            // -- WP LKFAST3 -- the start's dial, refused as linkConnect is
+            "linkConnectAtStart"
         )
         assertEquals(guarded, names.filter { wayOut.containsMatchIn(it) }.toSet())
     }

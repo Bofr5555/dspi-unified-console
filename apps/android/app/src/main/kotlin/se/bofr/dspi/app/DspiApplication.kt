@@ -182,6 +182,8 @@ class DspiApplication : Application() {
             credentialKey = deviceCore::linkCredentialHubKey, // -- WP SECAN --
             credentialTlsOnly = deviceCore::linkCredentialTlsOnly, // -- WP PINTLS --
             forgetHub = deviceCore::linkForgetHub, // -- WP LKFAST3 --
+            rows = Dispatchers.Default,
+            io = Dispatchers.IO,
             hubEncryption = deviceCore::linkHubEncryption // -- WP LKFAST -- a small file read per row
         )
         linkFollower = LinkNetworkFollower(hubBrowser, modes.remoteState) { modes.remoteSession?.networkTarget }
