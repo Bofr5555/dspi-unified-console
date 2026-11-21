@@ -182,6 +182,89 @@ void measureAll(SmokeDriver &d, const QString &phase, bool checkHeavy) {
     }
 }
 
+// QTPOP2: a size the person gives a fitted window sticks, larger and smaller;
+// content that grows while it shows still refits it, even after a manual
+// resize, and never shrinks a window the person enlarged; Settings grows to a
+// long page on a big screen (the main window filling it)
+QWindow *openTool(SmokeDriver &d, const char *action) {
+    QWindow *window = nullptr;
+    d.waitFor(3000, [&] {
+        window = d.app().shell->openWindow(QString::fromLatin1(action));
+        return window && window->isVisible();
+    });
+    d.waitIdle();
+    d.spin(400);
+    return window;
+}
+
+void resizeChecks(SmokeDriver &d) {
+    QWindow *cf = openTool(d, "tools.crossfeed");
+    d.check("qtpop2: the crossfeed window opens", cf != nullptr);
+    if (cf) {
+        const int w = cf->width(), h0 = cf->height();
+        cf->resize(w, h0 + 100);   // as a drag of its corner would
+        d.spin(400);
+        d.check(QStringLiteral("qtpop2: crossfeed resized by hand to %1 stays (is %2)").arg(h0 + 100).arg(cf->height()),
+                cf->height() == h0 + 100);
+        const int smaller = qMax(cf->minimumHeight(), h0 - 60);
+        cf->resize(w, smaller);
+        d.spin(400);
+        d.check(QStringLiteral("qtpop2: crossfeed resized by hand to %1 stays (is %2)").arg(smaller).arg(cf->height()),
+                cf->height() == smaller);
+        cf->resize(w + 80, smaller);   // wider: the captions re-flow, which is no reason to refit
+        d.spin(400);
+        d.check(QStringLiteral("qtpop2: crossfeed widened by hand stays %1x%2 (is %3x%4)")
+                    .arg(w + 80).arg(smaller).arg(cf->width()).arg(cf->height()),
+                cf->width() == w + 80 && cf->height() == smaller);
+        cf->resize(w, h0);
+        cf->close();
+        d.spin(100);
+        cf = openTool(d, "tools.crossfeed");
+        d.check(QStringLiteral("qtpop2: opened again, crossfeed fits its content again (%1, was %2)").arg(cf ? cf->height() : -1).arg(h0),
+                cf && cf->height() == h0);
+        if (cf) cf->close();
+        d.spin(100);
+    }
+
+    auto *settings = Registrar::instance<SettingsController>();
+    QWindow *sw = settings ? openTool(d, "edit.settings") : nullptr;
+    d.check("qtpop2: the Settings window opens", sw && sw->isVisible());
+    if (!sw || !settings) return;
+    auto *quick = qobject_cast<QQuickWindow *>(sw);
+    const QSize cap = d.app().shell->fitCap(sw);
+    settings->open(QStringLiteral("updates"));
+    d.spin(400);
+    const int shortH = sw->height();
+    settings->open(QStringLiteral("networking"));
+    d.spin(400);
+    const Measure grown = measure(quick);
+    std::printf("smoke: qtpop2: settings updates %d, networking %d (needs %d, cap %d)\n", shortH, sw->height(), grown.needH, cap.height());
+    std::fflush(stdout);
+    d.check(QStringLiteral("qtpop2: Settings grows from %1 to the longer page (%2, needs %3) while it shows")
+                .arg(shortH).arg(sw->height()).arg(grown.needH),
+            sw->height() > shortH && (sw->height() >= grown.needH || sw->height() >= cap.height()));
+    d.check("qtpop2: on a big screen Settings > Networking shows without a scroll bar", !grown.scrollsV || grown.needH > cap.height());
+    const int taller = sw->height() + 15;
+    sw->resize(sw->width(), taller);
+    d.spin(400);
+    d.check(QStringLiteral("qtpop2: Settings resized by hand to %1 stays (is %2)").arg(taller).arg(sw->height()), sw->height() == taller);
+    settings->open(QStringLiteral("advanced"));
+    d.spin(400);
+    d.check(QStringLiteral("qtpop2: a shorter page does not shrink Settings the person enlarged (%1, is %2)").arg(taller).arg(sw->height()),
+            sw->height() == taller);
+    settings->open(QStringLiteral("about"));
+    d.spin(400);
+    d.check(QStringLiteral("qtpop2: a longer page still grows it after the manual resize, to the cap (%1, cap %2)")
+                .arg(sw->height()).arg(cap.height()),
+            sw->height() == qMax(taller, cap.height()));
+    const int small = qMax(sw->minimumHeight(), 640);
+    sw->resize(sw->width(), small);
+    d.spin(400);
+    d.check(QStringLiteral("qtpop2: Settings resized by hand to %1 stays (is %2)").arg(small).arg(sw->height()), sw->height() == small);
+    sw->close();
+    d.spin(100);
+}
+
 void prepare(SmokeDriver &d) {
     DeviceModel *device = d.app().device;
     if (!device->connected() || !device->demo() || device->remote()) device->openDemo();
@@ -213,6 +296,7 @@ void screenSection(SmokeDriver &d) {
     main->setGeometry(avail);
     d.spin(300);
     measureAll(d, QStringLiteral("%1-full").arg(screen), big);
+    if (big) resizeChecks(d);   // -- QTPOP2 --
 }
 
 const SmokeDriver::Section popups("qtpop-popups", 880, &mainSection);

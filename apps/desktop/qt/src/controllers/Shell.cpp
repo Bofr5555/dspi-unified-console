@@ -176,16 +176,16 @@ QSize Shell::fitCap(const QWindow *window) const {
     return QSize(qMax(0, room.width() - 2 * kFitMargin), qMax(0, room.height() - 2 * kFitMargin));
 }
 
-void Shell::fitWindow(QWindow *window, int width, int height) const {
-    if (!window) return;
+QSize Shell::fitWindow(QWindow *window, int width, int height) const {
+    if (!window) return {};
     const QSize cap = fitCap(window), now = window->size();
     const auto side = [](int has, int want, int most) { return want > has ? qMax(has, qMin(want, most)) : want; };
     const QSize size(side(now.width(), width, cap.width()), side(now.height(), height, cap.height()));
-    if (size == now) return;
+    if (size == now) return now;
     window->resize(size);
     // Wayland places windows itself and ignores this
     QScreen *screen = window->screen();
-    if (!screen) return;
+    if (!screen) return size;
     const QRect avail = screen->availableGeometry();
     const QMargins frame = window->frameMargins();
     const QSize got = window->size();
@@ -193,4 +193,5 @@ void Shell::fitWindow(QWindow *window, int width, int height) const {
     at.setX(qMax(avail.left() + frame.left(), qMin(at.x(), avail.right() + 1 - frame.right() - got.width())));
     at.setY(qMax(avail.top() + frame.top(), qMin(at.y(), avail.bottom() + 1 - frame.bottom() - got.height())));
     if (at != window->position()) window->setPosition(at);
+    return size;
 }

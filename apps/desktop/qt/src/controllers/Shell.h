@@ -89,8 +89,8 @@ public:
     // Sizes `window` to width x height: a side that grows stops at fitCap()
     // (or where it is, when that is already more); one that shrinks takes the
     // size asked, down to the window's minimum. Moves it up or left when it
-    // would leave its screen.
-    Q_INVOKABLE void fitWindow(QWindow *window, int width, int height) const;
+    // would leave its screen. Returns the size it gave it.
+    Q_INVOKABLE QSize fitWindow(QWindow *window, int width, int height) const;
 
 signals:
     void triggered(const QString &action);
