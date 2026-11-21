@@ -88,6 +88,9 @@ mod firmware_guard;
 mod firmware_manifest;
 mod hardware;
 mod hotplug;
+// -- WP MD0 -- one core per open device (native only)
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+mod core_set;
 // -- WP CG26 --
 mod host_transport;
 mod info;
@@ -218,6 +221,17 @@ pub use hardware::{
 pub use link_text::*;
 // -- WP HB0 --
 pub use hotplug::{BrokeredDevice, DeviceBroker};
+// -- WP MD0 --
+#[cfg(all(
+    feature = "link",
+    not(all(target_arch = "wasm32", target_os = "unknown"))
+))]
+pub use core_set::HubTarget;
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+pub use core_set::{
+    CORE_SET_CAP, CoreSet, CoreSetConfig, CoreSetError, CoreSetEvent, CoreSetEventKind,
+    CoreSetListener, DeviceId, DeviceLiveness, DeviceTarget, DeviceTransport, OpenDevice,
+};
 // -- WP CG17 --
 pub use dspi_proto::ext::PairMap;
 // -- WP FWX --

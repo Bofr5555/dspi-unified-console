@@ -422,15 +422,19 @@ impl DspiCore {
             return devices;
         }
         // The device we hold is listed without being opened a second time.
-        let ours = {
+        let mut ours: Vec<String> = {
             let inner = self.lock();
             inner
                 .conn
                 .as_ref()
                 .filter(|c| c.vid != 0)
                 .map(|c| c.serial.clone())
+                .into_iter()
+                .collect()
         };
-        let (devices, inaccessible) = usb::scan(ours.as_deref());
+        // -- WP MD0 -- and so are the units the other cores of its set hold
+        ours.extend(self.set_reserved());
+        let (devices, inaccessible) = usb::scan(&ours);
         let mut inner = self.lock();
         inner.devices = devices.clone();
         inner.inaccessible = inaccessible;
@@ -477,6 +481,7 @@ impl DspiCore {
         }
         #[cfg(all(feature = "usb", not(target_os = "android")))]
         {
+            self.refuse_held_by_another(&serial)?; // -- WP MD0 --
             self.lock().selected = Some(serial.clone());
             // Close first: the device may be the one we hold, and a second
             // claim of its interface 2 would fail.
@@ -784,6 +789,15 @@ pub(crate) fn usb_scan_quiet() -> Vec<DeviceInfo> {
     usb::scan_quiet()
 }
 
+// -- WP MD0 --
+/// The picker's scan for a [`crate::CoreSet`]: as [`DspiCore::scan_devices`]
+/// without a broker, the units in `ours` (held by the set) listed without
+/// being opened. The DSPis found and how many could not be opened.
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+pub(crate) fn usb_scan(ours: &[String]) -> (Vec<DeviceInfo>, u32) {
+    usb::scan(ours)
+}
+
 /// USB enumeration through nusb; empty on Android and without the `usb`
 /// feature (WP CG3).
 mod usb {
@@ -792,26 +806,26 @@ mod usb {
     use std::sync::atomic::{AtomicBool, Ordering};
 
     /// Every DSPi on the bus, and how many could not be opened. `ours`
-    /// (the device the core holds) is listed without opening it.
+    /// (the devices this core or its set holds) are listed without opening them.
     #[cfg(any(not(feature = "usb"), target_os = "android"))]
-    pub(super) fn scan(ours: Option<&str>) -> (Vec<DeviceInfo>, u32) {
+    pub(super) fn scan(ours: &[String]) -> (Vec<DeviceInfo>, u32) {
         let _ = ours;
         (Vec::new(), 0)
     }
 
     /// Every DSPi on the bus, and how many could not be opened. `ours`
-    /// (the device the core holds) is listed without opening it. A device
-    /// without a serial is skipped before any open: identity is what
-    /// selection and reconnection are keyed on.
+    /// (the devices this core or its set holds) are listed without opening
+    /// them. A device without a serial is skipped before any open: identity
+    /// is what selection and reconnection are keyed on.
     #[cfg(all(feature = "usb", not(target_os = "android")))]
-    pub(super) fn scan(ours: Option<&str>) -> (Vec<DeviceInfo>, u32) {
+    pub(super) fn scan(ours: &[String]) -> (Vec<DeviceInfo>, u32) {
         let mut found = Vec::new();
         let mut inaccessible: u32 = 0;
         for d in dspis() {
             let Some(serial) = serial_of(&d) else {
                 continue;
             };
-            if ours != Some(serial.as_str()) && !accessible(&d) {
+            if !ours.contains(&serial) && !accessible(&d) {
                 inaccessible = inaccessible.saturating_add(1);
                 continue;
             }

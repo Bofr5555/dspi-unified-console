@@ -99,6 +99,35 @@ pub(crate) struct HotplugState {
     /// The selected serial whose reopen has not succeeded yet, and the tries
     /// left.
     retry: Option<(String, u8)>,
+    // -- WP MD0 --
+    /// The [`crate::CoreSet`] this core belongs to, if any: then the set
+    /// scans the bus for it, and the serials the set's other cores hold are
+    /// not this core's to open.
+    pub(crate) member: Option<Membership>,
+}
+
+// -- WP MD0 --
+/// The serials a [`crate::CoreSet`]'s cores hold, by the holder's token, and
+/// the [`crate::DeviceId`] each is open as. Shared by the set and its cores.
+pub(crate) type Reserved = Arc<std::sync::Mutex<std::collections::BTreeMap<String, (u64, String)>>>;
+
+/// A core's place in a [`crate::CoreSet`].
+#[derive(Clone)]
+pub(crate) struct Membership {
+    /// This core's token in `reserved`.
+    #[cfg_attr(any(not(feature = "usb"), target_os = "android"), allow(dead_code))]
+    pub(crate) token: u64,
+    pub(crate) reserved: Reserved,
+}
+
+impl Membership {
+    fn reserved(
+        &self,
+    ) -> std::sync::MutexGuard<'_, std::collections::BTreeMap<String, (u64, String)>> {
+        self.reserved
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
 }
 
 /// A connection taken out of `Inner`, to be closed with the lock released.
@@ -180,11 +209,42 @@ impl DspiCore {
     /// polls (a few times). On Android there is nothing to enumerate (the
     /// app gets USB broadcasts instead); there it only closes a connection
     /// whose stream ended, and apps need not call it.
+    ///
+    /// -- WP MD0 -- A core in a [`crate::CoreSet`] does nothing here: the set
+    /// scans once for all its cores ([`crate::CoreSet::poll_hotplug`]).
     pub fn poll_hotplug(&self) {
+        if self.lock().hotplug.member.is_some() {
+            return;
+        }
         self.poll_with(
             || self.scan_quiet(),
             |serial| self.select_device(serial.to_owned()),
         );
+    }
+}
+
+// -- WP MD0 --
+impl DspiCore {
+    /// The serials this core's set holds, its own included; empty outside a set.
+    pub(crate) fn set_reserved(&self) -> Vec<String> {
+        let member = self.lock().hotplug.member.clone();
+        member.map_or_else(Vec::new, |m| m.reserved().keys().cloned().collect())
+    }
+
+    /// [`crate::DspiError::InvalidArgument`] when another core of this core's
+    /// set holds `serial`: one unit, one session (two writers never). Only
+    /// USB opens by serial without the set.
+    #[cfg_attr(any(not(feature = "usb"), target_os = "android"), allow(dead_code))]
+    pub(crate) fn refuse_held_by_another(&self, serial: &str) -> Result<()> {
+        let Some(member) = self.lock().hotplug.member.clone() else {
+            return Ok(());
+        };
+        match member.reserved().get(serial) {
+            Some((token, id)) if *token != member.token => Err(crate::DspiError::InvalidArgument {
+                msg: format!("{serial} is already open as {id}"),
+            }),
+            _ => Ok(()),
+        }
     }
 }
 
