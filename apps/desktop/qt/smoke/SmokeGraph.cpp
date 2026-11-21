@@ -13,6 +13,7 @@
 
 #include "CoreApi.h"
 
+#include <QAccessible>
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QSettings>
@@ -320,8 +321,10 @@ void graphSection(SmokeDriver &d) {
     d.check(QStringLiteral("qp3: the demo device is open"), d.waitFor(5000, [&]() { return d.app().device->connected(); }));
     d.waitIdle();
     d.check(QStringLiteral("qp3: the graph host is in the right pane"), d.item(QStringLiteral("GraphHost")) != nullptr);
-    QObject *title = d.item(QStringLiteral("GraphHost.title"));
-    d.check(QStringLiteral("qp3: its header says Filter Response"), title && title->property("text").toString() == QLatin1String("Filter Response"));
+    // -- WP QTTWEAK -- no heading over the graph; the plot keeps the name
+    QAccessibleInterface *named = QAccessible::queryAccessibleInterface(d.item(QStringLiteral("GraphHost.plot")));
+    d.check(QStringLiteral("qp3: the graph is named Filter Response, with no heading over it"),
+            named && named->text(QAccessible::Name) == QLatin1String("Filter Response") && d.item(QStringLiteral("GraphHost.title")) == nullptr);
     auto *curves = qobject_cast<BodePlot *>(d.item(QStringLiteral("GraphHost.plot.curves")));
     d.check(QStringLiteral("qp3: the graph has its curve layer"), curves != nullptr);
     d.check(QStringLiteral("qp3: the plot is an accessible graphic"), d.item(QStringLiteral("GraphHost.plot")) != nullptr);

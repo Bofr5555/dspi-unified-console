@@ -5,7 +5,6 @@ Section `qp3-graph` (order 30), in `smoke/SmokeGraph.cpp`.
 | Name | What |
 |---|---|
 | `GraphHost` | the graph at the top of the right pane (replaces the base's `RightPane.graph` placeholder) |
-| `GraphHost.title` | its "Filter Response" heading; hidden while popped out |
 | `GraphHost.closePopOut` | the header's button that closes the pop-out |
 | `GraphHost.plot` | the main window's graph (`GraphPlot`); `optionsOpen` |
 | `GraphHost.plot.grid`, `.curves`, `.labels` | its three `BodePlot` layers; `.curves` has `drawnChannels`, `drawnLines`, `drawnPhase`, `animating` |

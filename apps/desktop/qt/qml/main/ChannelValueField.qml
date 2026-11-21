@@ -60,6 +60,7 @@ RowLayout {
         id: field
         objectName: root.objectName.length ? root.objectName + ".field" : ""
         label: root.label
+        selectAllOnFocus: true // -- WP QTTWEAK --
         Layout.preferredWidth: root.fieldWidth
         horizontalAlignment: TextInput.AlignRight
         font: Theme.fontMono

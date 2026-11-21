@@ -4,6 +4,18 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
 
 ## Unreleased
 
+### Desktop (Qt)
+- Clicking or tabbing into a number in the band list, the output's control strip, an input's preamp or the band bar
+  under the graph selects all its text, so typing replaces the value; a second click places the cursor. (WP QTTWEAK)
+- The "Filter Response" heading above the graph is gone; the graph takes its space (screen readers still name it).
+  (WP QTTWEAK)
+- An output's control strip is one row where the window is wide enough: both inputs side by side, the gain and delay
+  sliders between their labels and values, mute beside the limiter. Wider still (about 1600 px and up), it sits in the
+  output's name row, between the name and Enabled. Narrow windows keep the two-row strip. At 1366x768 the band list
+  gains about 75 px. (WP QTTWEAK)
+- The main window's minimum height is 660 px (was 780), so it fits a 1366x768 screen with a title bar and a taskbar.
+  (WP QTTWEAK)
+
 ### Android
 - DSPi Link is reachable from the main page (owner report on 0.14.0: only through the settings
   cogwheel). With no DSPi connected, the strip under the top bar says "No DSPi connected. Plug one
