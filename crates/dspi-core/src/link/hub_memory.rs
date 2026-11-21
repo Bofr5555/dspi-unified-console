@@ -29,7 +29,7 @@
 #![cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), allow(dead_code))]
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
@@ -84,14 +84,14 @@ struct Cached {
 static FILES: Mutex<BTreeMap<PathBuf, Cached>> = Mutex::new(BTreeMap::new());
 
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-fn stamp(p: &Path) -> Option<(std::time::SystemTime, u64)> {
+fn stamp(p: &std::path::Path) -> Option<(std::time::SystemTime, u64)> {
     let m = std::fs::metadata(p).ok()?;
     Some((m.modified().ok()?, m.len()))
 }
 
 /// The file's memory, from the cache while its stamp is unchanged.
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-fn load(files: &mut BTreeMap<PathBuf, Cached>, p: &Path) -> Memory {
+fn load(files: &mut BTreeMap<PathBuf, Cached>, p: &std::path::Path) -> Memory {
     let now = stamp(p);
     if let Some(c) = files.get(p).filter(|c| c.stamp.is_some() && c.stamp == now) {
         return c.memory.clone();
