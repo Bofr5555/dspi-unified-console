@@ -16,6 +16,9 @@
 //! failed read is an empty memory; a failed write is logged and changes
 //! nothing else.
 
+// The web keeps no files: the store is there, never named, so it remembers nothing
+#![cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), allow(dead_code))]
+
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::Mutex;
