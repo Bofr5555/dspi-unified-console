@@ -35,6 +35,11 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
   the demo and an open preset file, a cool grey for an acknowledged unsecured hub; the unsecured warning stays amber.
   Text and icons have WCAG AA contrast (4.5:1 or more) in light and dark, also on the USB strip, whose text was a
   light grey. (WP ANBAR)
+- The accent blue is a shade per theme so it is readable as text everywhere (WCAG AA, 4.5:1): #005AC2 in light
+  (was #007AFF), #64AEFF in dark with dark navy text on filled accent buttons, chips and switches. Selected pills and
+  tiles have a fainter blue fill so their blue text stays readable. Every Material colour role is now the app's own,
+  so no Material lavender or pink remains (slider tracks, the active preset row, Settings' selected page, menus,
+  dialogs, snackbars). (WP ANBAR)
 
 ## 0.14.0 (2026-11-20)
 

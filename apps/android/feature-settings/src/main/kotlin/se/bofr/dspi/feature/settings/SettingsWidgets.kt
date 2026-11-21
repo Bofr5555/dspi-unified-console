@@ -255,7 +255,7 @@ internal fun Pill(text: String, color: Color) {
         color = color,
         modifier = Modifier
             .clip(RoundedCornerShape(50))
-            .background(color.copy(alpha = 0.15f))
+            .background(color.copy(alpha = 0.08f)) // -- WP ANBAR -- faint, so the text stays readable
             .padding(horizontal = 8.dp, vertical = 2.dp)
     )
 }

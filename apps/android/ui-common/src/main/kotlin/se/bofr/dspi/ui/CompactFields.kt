@@ -270,7 +270,7 @@ private fun CompactValueField(
         modifier
             .width(width)
             .background(
-                if (dragging) accent.copy(alpha = 0.15f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f),
+                if (dragging) DspiTheme.colors.accentTint else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f),
                 RoundedCornerShape(5.dp)
             )
             .pointerInput(enabled) {

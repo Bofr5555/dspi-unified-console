@@ -37,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import se.bofr.dspi.bridge.DspiBridge
 import se.bofr.dspi.ui.DspiRoutes
+import se.bofr.dspi.ui.DspiTheme
 
 /** The feature's internal sub-routes, titled as the macOS windows. */
 enum class AnalysisRoute(val route: String, val title: String) {
@@ -96,13 +97,12 @@ internal fun AnalysisScaffold(
                     BackRow(onBack)
                     for (r in AnalysisRoute.entries) {
                         val on = r == selected
-                        val accent = MaterialTheme.colorScheme.primary
                         Text(
                             r.title,
                             Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(8.dp))
-                                .background(if (on) accent.copy(alpha = 0.16f) else MaterialTheme.colorScheme.surface)
+                                .background(if (on) DspiTheme.colors.accentTint else MaterialTheme.colorScheme.surface)
                                 .clickable { onSelect(r) }
                                 .padding(horizontal = 12.dp, vertical = 10.dp),
                             fontSize = 14.sp,

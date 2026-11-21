@@ -30,6 +30,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import se.bofr.dspi.ui.DspiTheme
 import se.bofr.dspi.ui.MacColors
 import se.bofr.dspi.ui.WritesExempt
 import se.bofr.dspi.ui.link.NetworkHubRow
@@ -144,7 +145,7 @@ private fun HubRow(hub: NetworkHubRow, controller: NetworkingController) {
         onClick = { if (!hub.active) controller.connect(hub.id) }
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            if (hub.open) Pill("Open", MacColors.green) else Pill("Private", MacColors.blue)
+            if (hub.open) Pill("Open", MacColors.green) else Pill("Private", DspiTheme.colors.accent) // -- WP ANBAR -- AA
             // -- WP SECAN -- encrypted or not, in words
             if (hub.badge.isNotEmpty()) Pill(hub.badge, if (hub.badge == UNENCRYPTED_BADGE) MacColors.red else MacColors.green)
             if (hub.manual) {

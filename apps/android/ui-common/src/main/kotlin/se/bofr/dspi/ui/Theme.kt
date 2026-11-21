@@ -4,6 +4,7 @@
 package se.bofr.dspi.ui
 
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
@@ -31,7 +32,10 @@ data class DspiColors(
     /** `.secondary` / `secondaryLabelColor`. */
     val secondaryLabel: Color,
     val tertiaryLabel: Color,
-    /** `.accentColor` (controlAccentColor, blue). */
+    /**
+     * `.accentColor` (controlAccentColor, blue). -- WP ANBAR -- (owner 2026-11-21) a shade per theme so it is
+     * WCAG AA (4.5:1) as text on every surface: darker than macOS's #007AFF in light, lighter in dark.
+     */
     val accent: Color,
     /** `windowBackgroundColor`. */
     val windowBackground: Color,
@@ -52,8 +56,15 @@ data class DspiColors(
     val redSliderFill: Color,
     /** Row striping (`Color.white.opacity(0.03)` on the dark Console). */
     val alternatingRow: Color,
-    val isDark: Boolean
+    val isDark: Boolean,
+    // -- WP ANBAR --
+    /** Text and icons on a filled [accent] (Material's onPrimary), AA on it. */
+    val onAccent: Color = Color.White
 ) {
+    // -- WP ANBAR --
+    /** The fill of a selected pill or tile under [accent] text: faint, so that text stays AA. */
+    val accentTint: Color get() = accent.copy(alpha = 0.08f)
+
     /** A card's fill: `controlBackgroundColor.opacity(0.6)`. */
     val card: Color get() = controlBackground.copy(alpha = controlBackground.alpha * 0.6f)
 
@@ -69,7 +80,7 @@ data class DspiColors(
                 label = Color(1f, 1f, 1f, 0.847f),
                 secondaryLabel = Color(1f, 1f, 1f, 0.549f),
                 tertiaryLabel = Color(1f, 1f, 1f, 0.247f),
-                accent = Color(0xFF007AFF),
+                accent = Color(0xFF64AEFF), // -- WP ANBAR -- was #007AFF
                 windowBackground = Color(0xFF323232),
                 mainContent = Color(0xFF303030),
                 sidebar = Color(0xFF282828),
@@ -82,7 +93,9 @@ data class DspiColors(
                 blue = Color(0xFF0A84FF),
                 redSliderFill = Color(0xFFC83F29),
                 alternatingRow = Color(1f, 1f, 1f, 0.03f),
-                isDark = true
+                isDark = true,
+                onAccent = Color(0xFF002147) // -- WP ANBAR -- white is 2.3:1 on the lighter accent
+
             )
 
         val Light =
@@ -90,7 +103,7 @@ data class DspiColors(
                 label = Color(0f, 0f, 0f, 0.847f),
                 secondaryLabel = Color(0f, 0f, 0f, 0.498f),
                 tertiaryLabel = Color(0f, 0f, 0f, 0.259f),
-                accent = Color(0xFF007AFF),
+                accent = Color(0xFF005AC2), // -- WP ANBAR -- was #007AFF
                 windowBackground = Color(0xFFECECEC),
                 mainContent = Color(0xFFF0F0F0),
                 sidebar = Color(0xFFE3E3E3),
@@ -188,54 +201,102 @@ object DspiType {
 @Composable
 fun DspiTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
     val c = if (darkTheme) DspiColors.Dark else DspiColors.Light
-    val bar = DspiBarColors.of(darkTheme) // -- WP ANBAR --
-    val scheme =
-        if (darkTheme) {
-            darkColorScheme(
-                primary = c.accent,
-                onPrimary = Color.White,
-                secondary = c.accent,
-                // -- WP ANBAR -- Material's default tertiary is pink: the accent and the Link bar's tint
-                tertiary = c.accent,
-                onTertiary = Color.White,
-                tertiaryContainer = bar.link.container,
-                onTertiaryContainer = bar.link.content,
-                background = c.mainContent,
-                onBackground = c.label,
-                surface = c.windowBackground,
-                onSurface = c.label,
-                surfaceVariant = c.controlBackground,
-                onSurfaceVariant = c.secondaryLabel,
-                surfaceContainer = c.windowBackground,
-                surfaceContainerHigh = Color(0xFF3A3A3A),
-                surfaceContainerHighest = Color(0xFF444444),
-                outline = c.gray.copy(alpha = 0.35f),
-                outlineVariant = c.separator,
-                error = c.red
-            )
-        } else {
-            lightColorScheme(
-                primary = c.accent,
-                onPrimary = Color.White,
-                secondary = c.accent,
-                // -- WP ANBAR -- Material's default tertiary is pink: the accent and the Link bar's tint
-                tertiary = c.accent,
-                onTertiary = Color.White,
-                tertiaryContainer = bar.link.container,
-                onTertiaryContainer = bar.link.content,
-                background = c.mainContent,
-                onBackground = c.label,
-                surface = c.windowBackground,
-                onSurface = c.label,
-                surfaceVariant = c.controlBackground,
-                onSurfaceVariant = c.secondaryLabel,
-                outline = c.gray.copy(alpha = 0.35f),
-                outlineVariant = c.separator,
-                error = c.red
-            )
-        }
+    val scheme = dspiColorScheme(darkTheme)
     CompositionLocalProvider(LocalDspiColors provides c) {
         MaterialTheme(colorScheme = scheme, content = content)
+    }
+}
+
+// -- WP ANBAR --
+/**
+ * The Material colour scheme over [DspiColors]: every role is set (owner 2026-11-21), so none of
+ * Material's baseline purples, lavenders or pinks shows; each content role is AA on its container.
+ */
+fun dspiColorScheme(dark: Boolean): ColorScheme {
+    val c = if (dark) DspiColors.Dark else DspiColors.Light
+    val bar = DspiBarColors.of(dark)
+    // The other theme's accent: Material's inversePrimary, on inverseSurface (a snackbar's action)
+    val inverse = if (dark) DspiColors.Light else DspiColors.Dark
+    return if (dark) {
+        darkColorScheme(
+            primary = c.accent,
+            onPrimary = c.onAccent,
+            primaryContainer = bar.link.container,
+            onPrimaryContainer = bar.link.content,
+            inversePrimary = inverse.accent,
+            secondary = c.accent,
+            onSecondary = c.onAccent,
+            secondaryContainer = Color(0xFF2A3A4F),
+            onSecondaryContainer = Color(0xFFDCE6F2),
+            // Material's default tertiary is pink: the accent and the Link bar's tint
+            tertiary = c.accent,
+            onTertiary = c.onAccent,
+            tertiaryContainer = bar.link.container,
+            onTertiaryContainer = bar.link.content,
+            background = c.mainContent,
+            onBackground = c.label,
+            surface = c.windowBackground,
+            onSurface = c.label,
+            surfaceVariant = c.controlBackground,
+            onSurfaceVariant = c.secondaryLabel,
+            surfaceTint = c.accent,
+            inverseSurface = inverse.windowBackground,
+            inverseOnSurface = c.controlBackground,
+            error = c.red,
+            onError = Color.Black,
+            errorContainer = Color(0xFF5C1A16),
+            onErrorContainer = Color(0xFFFFD9D6),
+            outline = c.gray.copy(alpha = 0.35f),
+            outlineVariant = c.separator,
+            scrim = Color.Black,
+            surfaceBright = Color(0xFF4A4A4A),
+            surfaceContainer = c.windowBackground,
+            surfaceContainerHigh = Color(0xFF3A3A3A),
+            surfaceContainerHighest = Color(0xFF444444),
+            surfaceContainerLow = Color(0xFF2A2A2A),
+            surfaceContainerLowest = Color(0xFF1A1A1A),
+            surfaceDim = Color(0xFF262626)
+        )
+    } else {
+        lightColorScheme(
+            primary = c.accent,
+            onPrimary = c.onAccent,
+            primaryContainer = bar.link.container,
+            onPrimaryContainer = bar.link.content,
+            inversePrimary = inverse.accent,
+            secondary = c.accent,
+            onSecondary = c.onAccent,
+            secondaryContainer = Color(0xFFE1E8F2),
+            onSecondaryContainer = Color(0xFF1B2A3D),
+            // Material's default tertiary is pink: the accent and the Link bar's tint
+            tertiary = c.accent,
+            onTertiary = c.onAccent,
+            tertiaryContainer = bar.link.container,
+            onTertiaryContainer = bar.link.content,
+            background = c.mainContent,
+            onBackground = c.label,
+            surface = c.windowBackground,
+            onSurface = c.label,
+            surfaceVariant = c.controlBackground,
+            onSurfaceVariant = c.secondaryLabel,
+            surfaceTint = c.accent,
+            inverseSurface = inverse.windowBackground,
+            inverseOnSurface = Color(0xFFF2F2F2),
+            error = c.red,
+            onError = Color.Black,
+            errorContainer = Color(0xFFFFD9D6),
+            onErrorContainer = Color(0xFF5C0A05),
+            outline = c.gray.copy(alpha = 0.35f),
+            outlineVariant = c.separator,
+            scrim = Color.Black,
+            surfaceBright = Color(0xFFFAFAFA),
+            surfaceContainer = c.windowBackground,
+            surfaceContainerHigh = Color(0xFFE6E6E6),
+            surfaceContainerHighest = Color(0xFFDEDEDE),
+            surfaceContainerLow = Color(0xFFF5F5F5),
+            surfaceContainerLowest = Color.White,
+            surfaceDim = Color(0xFFD9D9D9)
+        )
     }
 }
 
