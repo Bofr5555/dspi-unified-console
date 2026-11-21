@@ -196,7 +196,7 @@ fun PillButton(
     Row(
         modifier
             .clip(shape)
-            .background(if (selected) c.accent.copy(alpha = 0.18f) else Color.Transparent, shape)
+            .background(if (selected) c.accentTint else Color.Transparent, shape)
             .border(1.dp, if (selected) c.accent.copy(alpha = 0.45f) else c.pillStroke, shape)
             .clickable(enabled = enabled, role = SemanticsRole.Button, onClick = onClick)
             // -- WP AN20 -- a pill that shows a state (Link) says so

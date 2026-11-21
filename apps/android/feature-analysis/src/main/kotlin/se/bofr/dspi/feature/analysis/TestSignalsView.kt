@@ -63,6 +63,7 @@ import se.bofr.dspi.core.SiggenCaps
 import se.bofr.dspi.core.SiggenConfig
 import se.bofr.dspi.core.SiggenStatus
 import se.bofr.dspi.ui.Caption
+import se.bofr.dspi.ui.DspiTheme
 import se.bofr.dspi.ui.LocalDemoMode
 import se.bofr.dspi.ui.MacColors
 import se.bofr.dspi.ui.SectionLabel
@@ -340,7 +341,7 @@ private fun SignalTile(ti: SiggenTypePresentation, selected: Boolean, enabled: B
     Column(
         modifier
             .clip(shape)
-            .background(if (selected) accent.copy(alpha = 0.16f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+            .background(if (selected) DspiTheme.colors.accentTint else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
             .border(1.dp, if (selected) accent.copy(alpha = 0.7f) else Color.Gray.copy(alpha = 0.2f), shape)
             // -- WP AN20 -- one of a set: TalkBack says which is selected
             .selectable(selected = selected, enabled = enabled, role = Role.RadioButton, onClick = onClick)
@@ -395,7 +396,7 @@ private fun OutputChip(state: TestSignalsUiState, o: Int, modifier: Modifier, on
         modifier
             .alpha(if (matrixEnabled) 1f else 0.4f)
             .clip(shape)
-            .background(if (selected) accent.copy(alpha = 0.18f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+            .background(if (selected) DspiTheme.colors.accentTint else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
             .border(
                 if (walkActive) 1.5.dp else 1.dp,
                 when {

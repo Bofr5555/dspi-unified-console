@@ -318,7 +318,7 @@ private fun DashboardLayoutPanel(prefs: AppSettingsStore) {
                         .weight(1f)
                         .height(44.dp)
                         .clip(shape)
-                        .background(if (on) c.accent.copy(alpha = 0.16f) else c.label.copy(alpha = 0.05f), shape)
+                        .background(if (on) c.accentTint else c.label.copy(alpha = 0.05f), shape)
                         .border(1.dp, if (on) c.accent.copy(alpha = 0.7f) else Color.Transparent, shape)
                         .clickable(
                             onClickLabel = if (n ==

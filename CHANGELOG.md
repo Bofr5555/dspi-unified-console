@@ -29,6 +29,17 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
 - Settings › Networking no longer says all DSPi Link traffic is unencrypted: DSPi Link connections to a uConsole for
   DSPi hub are encrypted and pairing pins the hub's key; those to Weeb Labs' DSPi Console or a DSPi bridge are not.
   The privacy policy and the Play description say the same. (WP ANSEC)
+- The strip under the top bar is thinner: 36 dp instead of 56 dp on one line (68 dp instead of 100 dp for a phone's
+  "No DSPi connected" with its two actions). Its buttons are drawn smaller but keep a 48 dp touch area. (WP ANBAR)
+- The strip's colours are the app's own instead of Material's default pink: a calm blue for DSPi Link, a warm grey for
+  the demo and an open preset file, a cool grey for an acknowledged unsecured hub; the unsecured warning stays amber.
+  Text and icons have WCAG AA contrast (4.5:1 or more) in light and dark, also on the USB strip, whose text was a
+  light grey. (WP ANBAR)
+- The accent blue is a shade per theme so it is readable as text everywhere (WCAG AA, 4.5:1): #005AC2 in light
+  (was #007AFF), #64AEFF in dark with dark navy text on filled accent buttons, chips and switches. Selected pills and
+  tiles have a fainter blue fill so their blue text stays readable. Every Material colour role is now the app's own,
+  so no Material lavender or pink remains (slider tracks, the active preset row, Settings' selected page, menus,
+  dialogs, snackbars). (WP ANBAR)
 
 ## 0.14.0 (2026-11-20)
 

@@ -192,7 +192,21 @@ fun StepDotStrip(labels: List<String>, current: Int, modifier: Modifier = Modifi
                     else -> muted.copy(alpha = 0.25f)
                 }
                 Box(Modifier.size(16.dp).background(fill, CircleShape), contentAlignment = Alignment.Center) {
-                    if (index < current || (index == last && current == last)) Text("✓", color = Color.White, fontSize = 9.sp)
+                    if (index < current ||
+                        (index == last && current == last)
+                    ) {
+                        Text(
+                            "✓",
+                            color = if (fill ==
+                                accent
+                            ) {
+                                MaterialTheme.colorScheme.onPrimary
+                            } else {
+                                Color.White
+                            },
+                            fontSize = 9.sp
+                        )
+                    }
                 }
                 Text(
                     label,

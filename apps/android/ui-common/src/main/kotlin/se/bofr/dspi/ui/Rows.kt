@@ -326,7 +326,8 @@ fun ToolChip(text: String, on: Boolean, enabled: Boolean, modifier: Modifier = M
             fontSize = 14.sp,
             fontWeight = FontWeight.SemiBold,
             maxLines = 1,
-            color = if (on) Color.White else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+            // -- WP ANBAR -- onPrimary: white is not AA on the dark theme's lighter accent
+            color = if (on) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
         )
     }
 }

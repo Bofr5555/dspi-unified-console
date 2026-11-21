@@ -8,13 +8,16 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.union
 import androidx.compose.material3.DropdownMenu
@@ -22,6 +25,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHostState
@@ -62,6 +66,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NamedNavArgument
@@ -100,6 +105,7 @@ import se.bofr.dspi.feature.settings.SettingsScreen
 import se.bofr.dspi.feature.settings.allowedForAlinkSender
 import se.bofr.dspi.feature.tools.OutputLimiterView
 import se.bofr.dspi.feature.tools.ToolsScreen
+import se.bofr.dspi.ui.BarColors
 import se.bofr.dspi.ui.DragMarker
 import se.bofr.dspi.ui.DspiIcons
 import se.bofr.dspi.ui.DspiRoutes
@@ -256,21 +262,25 @@ fun AppScaffold(
                 }
                 // In here: the Scaffold composes its content after the scaffold itself, the requester's node with it
                 LaunchedEffect(focusLost) { focus.requestFocus() }
-                ConnectionStripBar(
-                    strip,
-                    onExitDemo,
-                    onRequestPermission,
-                    onRemoteAction,
-                    history,
-                    devices,
-                    // -- WP P1AN1 -- the app bar's Snapshots entry
-                    // -- WP P1AN2 -- not in the locked-user state (Home only)
-                    onSnapshots = openSnapshots.takeUnless { locked },
-                    modeEntry = modeEntry, // -- WP P1AN2 --
-                    installerBadge = uiMode == UiModes.INSTALLER && lockState?.pinSet == true, // -- WP P1AN2 --
-                    identifyEntry = identifyEntry // -- WP P2AN --
-                ) { c ->
-                    if (c == DeviceChoice.Network) onConnectNetwork() else onChooseDevice(c)
+                // -- WP ANBAR -- thin (owner 2026-11-21): the bar's buttons are drawn STRIP_BUTTON_HEIGHT high and
+                // touched over Compose's 48dp minimum touch target, which may overlap a neighbour's (the nearer wins)
+                CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified) {
+                    ConnectionStripBar(
+                        strip,
+                        onExitDemo,
+                        onRequestPermission,
+                        onRemoteAction,
+                        history,
+                        devices,
+                        // -- WP P1AN1 -- the app bar's Snapshots entry
+                        // -- WP P1AN2 -- not in the locked-user state (Home only)
+                        onSnapshots = openSnapshots.takeUnless { locked },
+                        modeEntry = modeEntry, // -- WP P1AN2 --
+                        installerBadge = uiMode == UiModes.INSTALLER && lockState?.pinSet == true, // -- WP P1AN2 --
+                        identifyEntry = identifyEntry // -- WP P2AN --
+                    ) { c ->
+                        if (c == DeviceChoice.Network) onConnectNetwork() else onChooseDevice(c)
+                    }
                 }
                 if (locked) LockedBanner(lockState, lockLine, modeModel::openDialog) // -- WP P1AN2 --
                 key(bridge) {
@@ -472,11 +482,12 @@ private fun ConnectionStripBar(
 ) {
     // -- WP AN5 -- the owner's lost-connection banner; this bar is above every route, so it is on every screen
     if (strip is ConnectionStrip.Remote && strip.lost) {
-        LinkBanner(strip.text, strip.detail, strip.actions.map { a -> LinkBannerAction(a.label) { onRemoteAction(a) } })
+        // -- WP ANBAR -- the banner keeps Material's 48dp buttons
+        CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 48.dp) {
+            LinkBanner(strip.text, strip.detail, strip.actions.map { a -> LinkBannerAction(a.label) { onRemoteAction(a) } })
+        }
         return
     }
-    // Demo and REMOTE stand out, so neither is taken for the USB unit
-    val demo = strip is ConnectionStrip.Demo || strip is ConnectionStrip.Remote || strip is ConnectionStrip.Document // -- WP P1AN1 --
     val colors = MaterialTheme.colorScheme
     // -- WP SECAN -- an unencrypted hub connection: its text says so, with the info button
     val unsecured = strip is ConnectionStrip.Remote && strip.unsecured
@@ -488,13 +499,18 @@ private fun ConnectionStripBar(
         onAcknowledge = networking?.takeIf { warning }?.let { n -> { n.acknowledgeUnsecured() } },
         onHighlightAgain = networking?.takeIf { unsecured && !warning }?.let { n -> { n.highlightUnsecuredAgain() } }
     )
-    val ink = if (warning) {
-        warningColors.content
-    } else if (demo) {
-        colors.onTertiaryContainer
-    } else {
-        colors.onSurfaceVariant
+    // Demo and REMOTE stand out, so neither is taken for the USB unit
+    // -- WP ANBAR -- (owner 2026-11-21) in the app's own tints, not Material's pink tertiary
+    val bar = DspiTheme.bar
+    val tint: BarColors? = when {
+        warning -> BarColors(warningColors.container, warningColors.content) // -- WP SECAN --, ANSEC: no longer red
+        unsecured -> bar.acknowledged
+        strip is ConnectionStrip.Remote -> bar.link
+        strip is ConnectionStrip.Demo || strip is ConnectionStrip.Document -> bar.offline // -- WP P1AN1 --
+        else -> null
     }
+    // -- WP ANBAR -- untinted: onSurface; onSurfaceVariant (translucent) was 3.9:1 on the light bar, under AA
+    val ink = tint?.content ?: colors.onSurface
     val actions: List<Pair<String, () -> Unit>> =
         when (strip) {
             ConnectionStrip.Demo -> listOf("Exit demo" to onExitDemo)
@@ -507,13 +523,7 @@ private fun ConnectionStripBar(
         Modifier
             .testTag(CONNECTION_STRIP_TAG)
             .fillMaxWidth()
-            .background(
-                when {
-                    warning -> warningColors.container // -- WP SECAN --, ANSEC: no longer red
-                    demo -> colors.tertiaryContainer
-                    else -> colors.surfaceVariant
-                }
-            )
+            .background(tint?.container ?: colors.surfaceVariant)
     ) {
         // -- WP AN42 -- a phone: one line (the short text, the whole of it on a long-press and to
         // TalkBack), Undo and Redo, and the strip's actions and devices behind the overflow
@@ -525,8 +535,8 @@ private fun ConnectionStripBar(
                 Modifier.fillMaxWidth().padding(
                     start = 16.dp,
                     end = if (compact) 4.dp else 16.dp,
-                    top = 4.dp,
-                    bottom = if (compact && noDevice) 0.dp else 4.dp // -- WP ANLINK -- the actions' line below
+                    top = 2.dp, // -- WP ANBAR -- thin: 2dp around its 32dp buttons
+                    bottom = if (compact && noDevice) 0.dp else 2.dp // -- WP ANLINK -- the actions' line below
                 ),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
@@ -577,34 +587,49 @@ private fun ConnectionStripBar(
                         identifyEntry // -- WP P2AN -- last, below the device list
                     )
                 } else {
-                    // -- WP ANSEC -- on the warning colours its buttons take the bar's ink (AA contrast)
-                    StripButtonInk(if (warning) ink else null) {
+                    // -- WP ANSEC -- on the warning colours its buttons take the bar's ink (AA contrast), ANBAR: on every tint
+                    StripButtonInk(tint?.content) {
                         // -- WP SECAN -- the info button right after "(unsecured)"
                         Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
                             Text(strip.text, Modifier.weight(1f, fill = false), style = MaterialTheme.typography.bodyMedium, color = ink)
                             if (unsecured) UnsecuredInfoButton(ink, ack = ack) // -- WP ANSEC --
                         }
-                        actions.forEach { (label, act) -> TextButton(onClick = act) { Text(label) } }
+                        actions.forEach { (label, act) -> StripTextButton(label, act) }
                         if (noDevice) NoDeviceActions(onChooseDevice) // -- WP ANLINK --
                         // -- WP P1AN1 --
-                        onSnapshots?.let { TextButton(onClick = it, Modifier.testTag(SNAPSHOTS_ENTRY_TAG)) { Text(SNAPSHOTS_ENTRY) } }
+                        onSnapshots?.let { StripTextButton(SNAPSHOTS_ENTRY, it, Modifier.testTag(SNAPSHOTS_ENTRY_TAG)) }
                         // -- WP P1AN2 --
                         if (installerBadge) InstallerBadge(ink)
-                        modeEntry?.let { (label, act) -> TextButton(onClick = act, Modifier.testTag(MODE_ENTRY_TAG)) { Text(label) } }
+                        modeEntry?.let { (label, act) -> StripTextButton(label, act, Modifier.testTag(MODE_ENTRY_TAG)) }
                         history?.let { UndoRedoButtons(it, ink) } // -- WP AN42 --
                         DeviceListButton(devices, onChooseDevice, identifyEntry) // -- WP AN7 --, P2AN: Identify
                     }
                 }
             }
             if (compact && noDevice) {
-                FlowRow(Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp)) { NoDeviceActions(onChooseDevice) }
+                FlowRow(Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp, bottom = 2.dp)) { NoDeviceActions(onChooseDevice) }
             }
         }
     }
 }
 
+// -- WP ANBAR --
+/** How high the bar's buttons are drawn; their touch target stays 48dp. */
+internal val STRIP_BUTTON_HEIGHT = 32.dp
+
+/** A text button on the bar: [STRIP_BUTTON_HEIGHT] high, growing with a large font. */
+@Composable
+private fun StripTextButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    TextButton(
+        onClick = onClick,
+        // The minimum height reaches the button's content, so Material's 40dp default gives way to it
+        modifier = modifier.heightIn(min = STRIP_BUTTON_HEIGHT),
+        contentPadding = PaddingValues(horizontal = 12.dp)
+    ) { Text(label, maxLines = 1) }
+}
+
 // -- WP ANSEC --
-/** [ink] (the warning colours' content) for the bar's text buttons, which are otherwise the accent. */
+/** [ink] (the bar's tint content, WP ANBAR) for the bar's text buttons, which are otherwise the accent. */
 @Composable
 private fun RowScope.StripButtonInk(ink: Color?, content: @Composable RowScope.() -> Unit) {
     if (ink == null) {
@@ -617,12 +642,12 @@ private fun RowScope.StripButtonInk(ink: Color?, content: @Composable RowScope.(
 // -- WP ANLINK --
 /**
  * The NoDevice strip's actions: Networking (where DSPi Link is turned on; choosing this never
- * turns it on) and the demo device. TextButtons keep Material's 48dp touch target.
+ * turns it on) and the demo device. Their touch target stays 48dp (WP ANBAR: drawn thinner).
  */
 @Composable
 private fun NoDeviceActions(onChoose: (DeviceChoice) -> Unit) {
-    TextButton(onClick = { onChoose(DeviceChoice.Network) }, Modifier.testTag(NO_DEVICE_LINK_TAG)) { Text(NO_DEVICE_LINK_ACTION) }
-    TextButton(onClick = { onChoose(DeviceChoice.Demo) }, Modifier.testTag(NO_DEVICE_DEMO_TAG)) { Text(NO_DEVICE_DEMO_ACTION) }
+    StripTextButton(NO_DEVICE_LINK_ACTION, { onChoose(DeviceChoice.Network) }, Modifier.testTag(NO_DEVICE_LINK_TAG))
+    StripTextButton(NO_DEVICE_DEMO_ACTION, { onChoose(DeviceChoice.Demo) }, Modifier.testTag(NO_DEVICE_DEMO_TAG))
 }
 
 // -- WP P1AN2 --
@@ -646,7 +671,7 @@ private fun DeviceListButton(rows: List<DeviceRow>, onChoose: (DeviceChoice) -> 
     if (rows.isEmpty() && identifyEntry == null) return
     var open by remember { mutableStateOf(false) }
     Box {
-        TextButton(onClick = { open = true }, Modifier.testTag(DEVICE_LIST_TAG)) { Text("Devices") }
+        StripTextButton("Devices", { open = true }, Modifier.testTag(DEVICE_LIST_TAG)) // -- WP ANBAR --
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             DeviceRows(rows, onChoose) { open = false }
             // -- WP P2AN --
@@ -689,7 +714,8 @@ private fun StripMenu(
     if (actions.isEmpty() && rows.isEmpty() && identifyEntry == null) return
     var open by remember { mutableStateOf(false) }
     Box {
-        IconButton(onClick = { open = true }, Modifier.testTag(STRIP_MENU_TAG)) {
+        IconButton(onClick = { open = true }, Modifier.size(STRIP_BUTTON_HEIGHT).testTag(STRIP_MENU_TAG)) {
+            // -- WP ANBAR --
             Icon(DspiIcons.more, contentDescription = "More", tint = tint)
         }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
