@@ -65,6 +65,7 @@ class AppNetworkingController(
             NetworkingUiState(
                 enabled = s.enabled,
                 findAutomatically = s.findAutomatically,
+                reconnectAtStart = s.reconnectAtStart, // -- WP LKFAST --
                 clientName = s.clientName,
                 defaultClientName = defaultClientName,
                 hubs = hubs.map { row(it, remote) },
@@ -126,6 +127,8 @@ class AppNetworkingController(
     }
 
     override fun setFindAutomatically(on: Boolean) = settings.update { it.copy(findAutomatically = on) }
+
+    override fun setReconnectAtStart(on: Boolean) = settings.update { it.copy(reconnectAtStart = on) } // -- WP LKFAST --
 
     override fun setClientName(name: String) = settings.update { it.copy(clientName = name) }
 

@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import se.bofr.dspi.bridge.DangerousOp
 import se.bofr.dspi.bridge.DspiBridge
+import se.bofr.dspi.core.LinkLastHub
 import se.bofr.dspi.core.LinkPairLink
 import se.bofr.dspi.core.PresetStatus
 import se.bofr.dspi.feature.presets.PresetMenuActions
@@ -52,6 +53,11 @@ interface DemoSession {
  */
 fun dspiPresent(state: UsbSessionState, devices: List<DspiUsbDevice>): Boolean = state !is UsbSessionState.NoDevice || devices.isNotEmpty()
 
+// -- WP LKFAST --
+/** The core's last hub ([se.bofr.dspi.core.DspiCoreApi.linkStartHub]) as a browsed hub, to dial at start. */
+fun lastHubOf(h: LinkLastHub): LinkHub =
+    LinkHub(h.hubId, h.name, h.kind, h.auth, 1, emptyList(), h.host, h.port, h.path, tlsAdvertised = h.tlsAdvertised)
+
 /**
  * Selects between the device bridge and an explicit, separate demo bridge
  * (PLAN §3.3 `AppState`). Rules:
@@ -71,8 +77,8 @@ fun dspiPresent(state: UsbSessionState, devices: List<DspiUsbDevice>): Boolean =
  */
 class AppModeController(
     private val deviceBridge: DspiBridge,
-    usbState: StateFlow<UsbSessionState>,
-    usbDevices: StateFlow<List<DspiUsbDevice>>,
+    private val usbState: StateFlow<UsbSessionState>,
+    private val usbDevices: StateFlow<List<DspiUsbDevice>>,
     scope: CoroutineScope,
     private val demoFactory: () -> DemoSession,
     private val forwardUiVisible: (Boolean) -> Unit,
@@ -80,7 +86,9 @@ class AppModeController(
     // -- WP P1AN1 -- a document opened offline: the demo stack on the document (P1OF)
     private val documentFactory: (text: String, fileName: String) -> DemoSession = { _, _ -> error("Opening a file is not available") },
     // -- WP ANSEC -- the hubs whose unsecured connection the user acknowledged
-    val unsecuredAcks: UnsecuredAckStore = UnsecuredAckStore(InMemoryKeyValue())
+    val unsecuredAcks: UnsecuredAckStore = UnsecuredAckStore(InMemoryKeyValue()),
+    // -- WP LKFAST -- the user left the hub: the core's `link_forget_last_hub` (no dial at the next start)
+    private val leftHub: () -> Unit = {}
 ) {
     private val scope = scope
     private val _mode = MutableStateFlow(AppMode.DEVICE)
@@ -154,8 +162,22 @@ class AppModeController(
         switchGate.run { enterRemote(hub, link) }
     }
 
+    // -- WP LKFAST --
+    /**
+     * At start (owner decision 2026-11-21, B): [startHub] gives the hub used last, given
+     * whether a DSPi is on USB (the core's `link_start_hub`: USB wins, none if the user
+     * left it), and it is dialled at its stored address at once, as a browsed hub is: its
+     * stored credential, its advert's TLS. Nothing if the user chose something already.
+     */
+    suspend fun reconnectAtStart(startHub: suspend (usbPresent: Boolean) -> LinkHub?) {
+        if (_mode.value != AppMode.DEVICE || remote != null) return
+        val hub = startHub(dspiPresent(usbState.value, usbDevices.value)) ?: return
+        if (_mode.value != AppMode.DEVICE || remote != null || dspiPresent(usbState.value, usbDevices.value)) return
+        enterRemote(hub, atStart = true)
+    }
+
     /** Switch to the DSPi on [hub] (DSPi Link). Leaves demo; reuses the REMOTE stack when it exists. */
-    fun enterRemote(hub: LinkHub, link: LinkPairLink? = null) {
+    fun enterRemote(hub: LinkHub, link: LinkPairLink? = null, atStart: Boolean = false) {
         exitDemo()
         val r = remote ?: remoteFactory().also { r ->
             remote = r
@@ -180,7 +202,11 @@ class AppModeController(
                 }
             }
         }
-        if (link != null) r.connectByLink(link) else r.connect(hub) // -- WP SECAN --
+        when { // -- WP SECAN --, LKFAST
+            link != null -> r.connectByLink(link)
+            atStart -> r.connectAtStart(hub)
+            else -> r.connect(hub)
+        }
         _bridge.value = r.bridge
         _mode.value = AppMode.REMOTE
         _usbPrompt.value = false
@@ -209,6 +235,7 @@ class AppModeController(
     fun exitRemote() {
         val r = remote ?: return
         remote = null
+        leftHub() // -- WP LKFAST -- left on purpose: no dial at the next start
         remoteWatch?.cancel()
         remoteWatch = null
         securityWatch?.cancel() // -- WP SECAN --

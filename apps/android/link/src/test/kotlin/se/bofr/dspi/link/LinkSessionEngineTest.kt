@@ -151,6 +151,12 @@ class LinkSessionEngineTest {
         }
 
         override fun deviceOpen() = open
+
+        val rechecked = ArrayList<String>() // -- WP LKFAST --
+
+        override fun recheckTls(hubId: String) {
+            rechecked += hubId
+        }
     }
 
     private class Service : LinkServiceControl {
@@ -861,5 +867,60 @@ class LinkSessionEngineTest {
             pinSource = "window",
             tokenRefused = refused
         )
+    }
+
+    // -- WP LKFAST --
+
+    @Test
+    fun wpLkfastAStartsDialThatFindsNoHubSaysSoQuietly() = runTest {
+        val s = Stack(this)
+        s.ops.connectError = DspiException.Link("io", "no route")
+        s.engine.connectAtStart(hub)
+        runCurrent()
+        val st = s.engine.state.value as LinkSessionState.Failed
+        assertEquals("Not at its last address. Looking for it on the network…", st.reason)
+        // Seen on the network: one dial there, as after any failed dial
+        s.engine.hubSeen(moved)
+        runCurrent()
+        assertEquals(2, s.connects())
+        assertEquals("ws://10.0.2.9:11916/dspi/v1", s.ops.urls.last())
+    }
+
+    @Test
+    fun wpLkfastAStartsDialGoesAtOnceWhereTheHubIsSeenNow() = runTest {
+        val s = Stack(this)
+        val gate = CompletableDeferred<Unit>()
+        s.ops.connectGate = gate
+        s.ops.connectError = DspiException.Link("io", "no route")
+        s.engine.connectAtStart(hub)
+        runCurrent()
+        s.engine.hubSeen(moved)
+        runCurrent()
+        assertTrue("the old dial is stopped (link_close)", "close" in s.ops.log)
+        gate.complete(Unit) // the core's first dial ends at link_close
+        s.ops.connectError = null
+        runCurrent()
+        assertEquals(2, s.connects())
+        assertEquals("ws://10.0.2.9:11916/dspi/v1", s.ops.urls.last())
+        assertTrue(s.engine.state.value is LinkSessionState.Connected)
+    }
+
+    @Test
+    fun wpLkfastATappedDialKeepsItsRuleForAMove() = runTest {
+        val s = Stack(this)
+        val gate = CompletableDeferred<Unit>()
+        s.ops.connectGate = gate
+        s.engine.connect(hub)
+        runCurrent()
+        s.engine.hubSeen(moved)
+        runCurrent()
+        assertTrue("a tapped dial is not stopped", "close" !in s.ops.log)
+    }
+
+    @Test
+    fun wpLkfastPairAgainAndForgetTryTlsAgain() = runTest {
+        val s = Stack(this)
+        s.engine.forget("hub-1")
+        assertEquals(listOf("hub-1"), s.ops.rechecked)
     }
 }

@@ -34,6 +34,10 @@ interface RemoteSession {
 
     fun connect(hub: LinkHub)
 
+    // -- WP LKFAST --
+    /** [connect] at app start, to the hub used last ([LinkSessionEngine.connectAtStart]). */
+    fun connectAtStart(hub: LinkHub) = connect(hub)
+
     fun submitPin(pin: String)
 
     fun cancelPin()
@@ -104,6 +108,8 @@ fun startRemoteSession(
         override val state: StateFlow<LinkSessionState> = engine.state
 
         override fun connect(hub: LinkHub) = engine.connect(hub)
+
+        override fun connectAtStart(hub: LinkHub) = engine.connectAtStart(hub) // -- WP LKFAST --
 
         override fun submitPin(pin: String) = engine.submitPin(pin)
 

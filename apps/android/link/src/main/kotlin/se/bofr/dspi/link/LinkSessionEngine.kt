@@ -184,6 +184,10 @@ class LinkSessionEngine(
     /** The pairing link this dial is for: its pinned credential goes out instead of the stored one. */
     private var pairLink: LinkPairLink? = null
 
+    // -- WP LKFAST --
+    /** This dial is the app start's, to the hub used last, at its stored address ([connectAtStart]). */
+    private var atStart = false
+
     init {
         ops.setListener(
             object : LinkListener {
@@ -210,6 +214,17 @@ class LinkSessionEngine(
 
     /** Connect to [target] (a user tap), optionally to board [serial]. */
     fun connect(target: LinkHub, serial: String? = null) = connect(target, serial, null)
+
+    // -- WP LKFAST --
+    /**
+     * Connect to the hub used last when the app starts (owner decision 2026-11-21), at its
+     * stored address, without waiting for DNS-SD. The same rules as a tap: its stored
+     * credential (a pinned hub stays TLS only), the advert it had. If the address does not
+     * answer, the hub is looked for on the network quietly: a short status line, and one
+     * dial where it is seen ([hubSeen]), at once if it is seen elsewhere while this dial
+     * is still trying.
+     */
+    fun connectAtStart(target: LinkHub) = connect(target, null, null, atStart = true)
 
     // -- WP SECAN --
     /**
@@ -264,8 +279,9 @@ class LinkSessionEngine(
         _security.value = s.copy(keyNotice = false)
     }
 
-    private fun connect(target: LinkHub, serial: String?, link: LinkPairLink?) {
+    private fun connect(target: LinkHub, serial: String?, link: LinkPairLink?, atStart: Boolean = false) {
         pairLink = link
+        this.atStart = atStart // -- WP LKFAST --
         _security.value = null
         val sameHub = hub?.id == target.id
         hub = target
@@ -363,7 +379,18 @@ class LinkSessionEngine(
             // The dial under way may still work. If it does not, one more at the new address.
             is LinkSessionState.Connecting -> if (moved && !sessionLive) {
                 hub = there
-                redialAfterDial = true
+                if (atStart) {
+                    // -- WP LKFAST -- the stored address is old: stop that dial (it may try for a
+                    // minute) and dial where the hub is now
+                    log("link: the hub used last is at another address now")
+                    val gen = generation
+                    scope.launch {
+                        ops.close()
+                        if (gen == generation) connect(there, wantedSerial, null, atStart = true)
+                    }
+                } else {
+                    redialAfterDial = true
+                }
             }
             else -> Unit
         }
@@ -508,7 +535,9 @@ class LinkSessionEngine(
         } catch (e: DspiException) {
             if (gen == generation) {
                 val code = (e as? DspiException.Link)?.code.orEmpty()
-                _state.value = LinkSessionState.Failed(h, describe(e), code, fromPairLink = link != null)
+                // -- WP LKFAST -- the start's dial: quietly, it is looked for on the network
+                val text = if (atStart && code !in REPAIR_CODES) AT_START_NOT_FOUND else describe(e)
+                _state.value = LinkSessionState.Failed(h, text, code, fromPairLink = link != null)
                 log("link: could not connect (${(e as? DspiException.Link)?.code ?: "error"})")
                 if (redialAfterDial) redial()
             }
@@ -735,6 +764,9 @@ class LinkSessionEngine(
 
     private companion object {
         const val MANUAL_ID_PREFIX = "manual:"
+
+        // -- WP LKFAST -- the status line of a start's dial that found no hub at the stored address
+        const val AT_START_NOT_FOUND = "Not at its last address. Looking for it on the network…"
         const val VIEWER = "viewer"
 
         /** Close codes in `LinkStatus.closeCode` (spec 5). */

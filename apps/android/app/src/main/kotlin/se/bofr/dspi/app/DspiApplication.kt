@@ -7,6 +7,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import se.bofr.dspi.bridge.DspiBridge
 import se.bofr.dspi.bridge.DspiBridgeImpl
 import se.bofr.dspi.core.LinkPairLink
@@ -160,7 +161,9 @@ class DspiApplication : Application() {
                     onClose = { network.setSessionActive(false) }
                 ).also { r -> appScope.launch { r.bridge.installer.setFolder(limitsFolder()) } } // -- WP P1AN2 --
             },
-            unsecuredAcks = UnsecuredAckStore(PrefsKeyValue(this, "dspi_link_unsecured_acks")) // -- WP ANSEC --
+            unsecuredAcks = UnsecuredAckStore(PrefsKeyValue(this, "dspi_link_unsecured_acks")), // -- WP ANSEC --
+            // -- WP LKFAST -- the user left the hub: no dial at the next start (a small file write)
+            leftHub = { appScope.launch(Dispatchers.IO) { runCatching { deviceCore.linkForgetLastHub() } } }
         )
         // The notification acts on the unit on screen (device, demo or REMOTE)
         ConnectionServiceLink.controls = SwitchingNotificationControls(modes.bridge, appScope)
@@ -181,7 +184,18 @@ class DspiApplication : Application() {
         appScope.launch { linkFollower.follow() }
         appScope.launch { linkSettings.settings.collect { if (it.enabled) network.start() else network.stop() } }
         usbGate = UsbStartGate(appScope) { linkStore.awaitLoaded() }
-        usbGate.run { usb.start(this) }
+        usbGate.run {
+            usb.start(this)
+            // -- WP LKFAST -- (owner decision 2026-11-21) after the USB scan: USB wins
+            val s = linkSettings.settings.value
+            if (s.enabled && s.reconnectAtStart) {
+                appScope.launch {
+                    modes.reconnectAtStart { usbPresent ->
+                        withContext(Dispatchers.IO) { deviceCore.linkStartHub(usbPresent) }?.let(::lastHubOf)
+                    }
+                }
+            }
+        }
         UiVisibilityTracker(appScope) {
             modes.setUiVisible(it)
             if (it) linkFollower.uiShown()

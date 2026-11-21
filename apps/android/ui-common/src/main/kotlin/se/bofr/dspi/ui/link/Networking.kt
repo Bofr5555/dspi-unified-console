@@ -44,6 +44,8 @@ data class NetworkingUiState(
     /** DSPi Link is opt-in: off by default. */
     val enabled: Boolean = false,
     val findAutomatically: Boolean = true,
+    // -- WP LKFAST -- dial the hub used last when the app starts
+    val reconnectAtStart: Boolean = true,
     /** "" = [defaultClientName]. */
     val clientName: String = "",
     /** The phone's model (Build.MODEL). */
@@ -69,6 +71,10 @@ interface NetworkingController {
     fun setEnabled(enabled: Boolean)
 
     fun setFindAutomatically(on: Boolean)
+
+    // -- WP LKFAST --
+    /** Settings › Networking "Reconnect to the last hub at start". */
+    fun setReconnectAtStart(on: Boolean) {}
 
     fun setClientName(name: String)
 
