@@ -120,6 +120,11 @@ pub use alink_system::AlinkUnitUsbMode;
 pub use alink_system::AlinkSystemSaved;
 // -- WP ATQT --
 pub use alink_system_spdif::{AlinkSpdifEdit, AlinkSpdifUnit};
+// -- WP INST0 --
+pub use alink_installation::{
+    InstallationDraft, InstallationEdit, InstallationIssue, InstallationRole, InstallationSpeaker,
+    InstallationUnseen, InstallationView, installation_apply, installation_changes,
+};
 use dspi_session::ext_state::ExtState;
 
 /// The role asked for when pairing, as the macOS Console does.
@@ -4643,6 +4648,10 @@ pub mod alink_system;
 // -- WP ATQT -- the S/PDIF transport in the native System editor
 #[path = "alink/system_spdif.rs"]
 pub mod alink_system_spdif;
+
+// -- WP INST0 -- Installation setup: drafts of the hub's site (MPLAN 1.4)
+#[path = "alink/installation.rs"]
+pub mod alink_installation;
 
 // -- WP ATQT --
 #[cfg(test)]

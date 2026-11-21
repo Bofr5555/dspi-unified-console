@@ -211,6 +211,8 @@ mod tests {
             "src/fns_misc/measure_curv.rs",
             // -- WP PGFWX --
             "src/fns_misc/firmware_update.rs",
+            // -- WP INST0 --
+            "src/fns_misc/installation.rs",
             "src/fns_browse.rs",
             "src/fns_link.rs",
             "src/fns_hub.rs",

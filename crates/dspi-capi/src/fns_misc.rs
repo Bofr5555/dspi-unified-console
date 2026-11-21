@@ -110,6 +110,9 @@ mod protocol;
 mod measure_curv;
 // -- WP PGFWX -- the update target and the update check
 mod firmware_update;
+// -- WP INST0 -- Installation setup: drafts of the hub's site (DSPi Link only)
+#[cfg(feature = "link")]
+mod installation;
 
 // ── Replies ──────────────────────────────────────────────────────────
 
