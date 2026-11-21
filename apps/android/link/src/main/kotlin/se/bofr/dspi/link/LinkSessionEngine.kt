@@ -191,6 +191,13 @@ class LinkSessionEngine(
     /** This dial is the app start's, to the hub used last, at its stored address ([connectAtStart]). */
     private var atStart = false
 
+    // -- WP LKFAST3 --
+    /** What the next dial does first, on its own coroutine (the core's hub memory: Pair Again, Forget). */
+    private var beforeDial: (suspend () -> Unit)? = null
+
+    /** Settings › Networking "Find hubs automatically" is on: a hub not at its address is looked for. */
+    var findsHubs: () -> Boolean = { true }
+
     init {
         ops.setListener(
             object : LinkListener {
@@ -252,11 +259,14 @@ class LinkSessionEngine(
     fun rePair() {
         val s = _state.value as? LinkSessionState.Failed ?: return
         if (s.code !in REPAIR_CODES) return
-        ops.recheckTls(s.hub.id) // -- WP LKFAST -- Pair Again tries TLS first again
+        val id = s.hub.id
         if (s.code == FORGET_HUB_CODE) {
+            // -- WP LKFAST3 -- (review LKREV 2) forgotten in the core too, before the dial below
+            beforeDial = { ops.forgetHub(id) }
             tokens.remove(s.hub.id)
             log("link: forgetting the hub (${s.code})")
         } else {
+            beforeDial = { ops.recheckTls(id) } // -- WP LKFAST -- Pair Again tries TLS first again
             if (!s.fromPairLink) dropPairing(s.hub.id, s.hub.name)
             log("link: pairing again (${s.code})")
         }
@@ -363,7 +373,10 @@ class LinkSessionEngine(
         val shown = _state.value
         if (!found.id.equals(wanted.id, ignoreCase = true) && !found.id.equals(shown.hub?.id, ignoreCase = true)) return
         val moved = found.host != wanted.host || found.port != wanted.port || found.path != wanted.path
-        val there = if (moved) wanted.copy(host = found.host, port = found.port, path = found.path) else wanted
+        // -- WP LKFAST3 -- (review LKREV 4) the live advert's TLS: a sighting with tls=1 makes the redial TLS only
+        val tls = wanted.tlsAdvertised || found.tlsAdvertised
+        val there = (if (moved) wanted.copy(host = found.host, port = found.port, path = found.path) else wanted)
+            .copy(tlsAdvertised = tls)
         when (shown) {
             is LinkSessionState.Reconnecting -> {
                 if (moved) {
@@ -458,7 +471,7 @@ class LinkSessionEngine(
     /** Forget the token stored for [hubId] (Settings › Networking). */
     fun forget(hubId: String) {
         tokens.remove(hubId)
-        ops.recheckTls(hubId) // -- WP LKFAST -- a forgotten hub is met as new: TLS first
+        scope.launch { ops.forgetHub(hubId) } // -- WP LKFAST3 -- met as new: TLS first, no start dial
     }
 
     private fun forgetSession() {
@@ -484,6 +497,10 @@ class LinkSessionEngine(
     private suspend fun dial(target: LinkHub, gen: Int): Unit = dialLock.withLock {
         // A `linkClose` still on its way would end the session this dial opens
         teardown?.join()
+        beforeDial?.let { b ->
+            beforeDial = null
+            b()
+        }
         if (gen != generation) return@withLock
         detachCurrent()
         var h = target
@@ -534,12 +551,23 @@ class LinkSessionEngine(
             else -> tokens.token(expectedHubId).orEmpty()
         }
         val hello = try {
-            ops.connect(ops.wsUrl(h.host, h.port, h.path), clientName(), appVersion, token, expectedHubId, h.tlsAdvertised)
+            val url = ops.wsUrl(h.host, h.port, h.path)
+            if (atStart) { // -- WP LKFAST3 -- (review LKREV 6) a short first dial, then the search
+                ops.connectAtStart(url, clientName(), appVersion, token, expectedHubId, h.tlsAdvertised)
+            } else {
+                ops.connect(url, clientName(), appVersion, token, expectedHubId, h.tlsAdvertised)
+            }
         } catch (e: DspiException) {
             if (gen == generation) {
                 val code = (e as? DspiException.Link)?.code.orEmpty()
-                // -- WP LKFAST -- the start's dial: quietly, it is looked for on the network
-                val text = if (atStart && code !in REPAIR_CODES) AT_START_NOT_FOUND else describe(e)
+                // -- WP LKFAST -- the start's dial: quietly, it is looked for on the network.
+                // -- WP LKFAST3 -- (review LKREV 5) only when nothing answered there, and
+                // "looking for it" only while DNS-SD looks
+                val text = when {
+                    !atStart || code !in NOT_THERE_CODES -> describe(e)
+                    findsHubs() -> AT_START_NOT_FOUND
+                    else -> AT_START_NOT_FOUND_NO_SEARCH
+                }
                 _state.value = LinkSessionState.Failed(h, text, code, fromPairLink = link != null)
                 log("link: could not connect (${(e as? DspiException.Link)?.code ?: "error"})")
                 if (redialAfterDial) redial()
@@ -772,6 +800,13 @@ class LinkSessionEngine(
 
         // -- WP LKFAST -- the status line of a start's dial that found no hub at the stored address
         const val AT_START_NOT_FOUND = "Not at its last address. Looking for it on the network…"
+
+        // -- WP LKFAST3 --
+        const val AT_START_NOT_FOUND_NO_SEARCH =
+            "Not at its last address. To find it, turn on Find hubs automatically in Settings › Networking."
+
+        /** A dial's codes that mean nothing answered at the address (no hub there now). */
+        val NOT_THERE_CODES = setOf("io", "timeout", "handshake")
         const val VIEWER = "viewer"
 
         /** Close codes in `LinkStatus.closeCode` (spec 5). */

@@ -6,8 +6,10 @@ import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import se.bofr.dspi.bridge.DspiBridge
 import se.bofr.dspi.bridge.DspiBridgeImpl
 import se.bofr.dspi.core.LinkPairLink
@@ -158,7 +160,8 @@ class DspiApplication : Application() {
                     services.linkClient(),
                     linkStore,
                     log = { Log.i(TAG, it) },
-                    onClose = { network.setSessionActive(false) }
+                    onClose = { network.setSessionActive(false) },
+                    findsHubs = { linkSettings.settings.value.findAutomatically } // -- WP LKFAST3 --
                 ).also { r -> appScope.launch { r.bridge.installer.setFolder(limitsFolder()) } } // -- WP P1AN2 --
             },
             unsecuredAcks = UnsecuredAckStore(PrefsKeyValue(this, "dspi_link_unsecured_acks")), // -- WP ANSEC --
@@ -178,7 +181,7 @@ class DspiApplication : Application() {
             parseAddress = { t -> runCatching { deviceCore.linkParseAddress(t) }.getOrNull()?.let { it.host to it.port } },
             credentialKey = deviceCore::linkCredentialHubKey, // -- WP SECAN --
             credentialTlsOnly = deviceCore::linkCredentialTlsOnly, // -- WP PINTLS --
-            recheckTls = deviceCore::linkRecheckTls, // -- WP LKFAST --
+            forgetHub = deviceCore::linkForgetHub, // -- WP LKFAST3 --
             hubEncryption = deviceCore::linkHubEncryption // -- WP LKFAST -- a small file read per row
         )
         linkFollower = LinkNetworkFollower(hubBrowser, modes.remoteState) { modes.remoteSession?.networkTarget }
@@ -191,7 +194,8 @@ class DspiApplication : Application() {
             val s = linkSettings.settings.value
             if (s.enabled && s.reconnectAtStart) {
                 appScope.launch {
-                    modes.reconnectAtStart { usbPresent ->
+                    val scanned = suspend { withTimeoutOrNull(USB_SCAN_WAIT_MS) { usb.scanned.first { it } } }
+                    modes.reconnectAtStart(usbScanned = { scanned() }) { usbPresent ->
                         withContext(Dispatchers.IO) { deviceCore.linkStartHub(usbPresent) }?.let(::lastHubOf)
                     }
                 }
@@ -211,5 +215,8 @@ class DspiApplication : Application() {
 
     private companion object {
         const val TAG = "DspiApplication"
+
+        // -- WP LKFAST3 -- the first USB scan is quick; never hold the start's dial longer
+        const val USB_SCAN_WAIT_MS = 2_000L
     }
 }

@@ -269,6 +269,15 @@ class AppModeControllerTest {
         assertEquals("nothing was left", 0, leftHub)
     }
 
+    // -- WP LKFAST3 -- (review LKREV 8) the first scan's list decides, whenever it comes
+    @Test
+    fun wpLkfast3UsbWinsAtStartOnceTheFirstScanIsIn() = runTest {
+        val c = controller()
+        c.reconnectAtStart(usbScanned = { usbDevices.value = listOf(unit) }) { hub }
+        assertEquals(AppMode.DEVICE, c.mode.value)
+        assertTrue(remotes.isEmpty())
+    }
+
     @Test
     fun wpLkfastUsbWinsAtStart() = runTest {
         usbDevices.value = listOf(unit)

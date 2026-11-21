@@ -202,7 +202,8 @@ internal const val PIN_UNENCRYPTED_LINE =
 internal fun pinPromptEncryptionLine(e: LinkEncryption, words: UnsecuredWording = UnsecuredWording.CORE): String = when (e) {
     LinkEncryption.OFF -> PIN_UNENCRYPTED_LINE
     LinkEncryption.LOCAL -> words.notice("dlink.encryption.local").reason
-    LinkEncryption.VERIFIED, LinkEncryption.OFFERED -> words.notice("dlink.encryption.offered").reason
+    LinkEncryption.VERIFIED -> words.notice("dlink.encryption.verified").reason // -- WP LKFAST3 -- (review nit)
+    LinkEncryption.OFFERED -> words.notice("dlink.encryption.offered").reason
     LinkEncryption.UNKNOWN -> words.notice("dlink.encryption.unknown").reason
 }
 

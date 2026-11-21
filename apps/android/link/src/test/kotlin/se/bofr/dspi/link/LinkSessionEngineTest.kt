@@ -153,9 +153,28 @@ class LinkSessionEngineTest {
         override fun deviceOpen() = open
 
         val rechecked = ArrayList<String>() // -- WP LKFAST --
+        val forgot = ArrayList<String>() // -- WP LKFAST3 --
 
-        override fun recheckTls(hubId: String) {
+        override suspend fun recheckTls(hubId: String) {
             rechecked += hubId
+            log += "recheck($hubId)"
+        }
+
+        override suspend fun forgetHub(hubId: String) {
+            forgot += hubId
+            log += "forget($hubId)"
+        }
+
+        override suspend fun connectAtStart(
+            url: String,
+            clientName: String,
+            appVersion: String,
+            token: String,
+            expectedHubId: String,
+            tlsAdvertised: Boolean
+        ): LinkHello {
+            log += "atStart"
+            return connect(url, clientName, appVersion, token, expectedHubId, tlsAdvertised)
         }
     }
 
@@ -921,6 +940,60 @@ class LinkSessionEngineTest {
     fun wpLkfastPairAgainAndForgetTryTlsAgain() = runTest {
         val s = Stack(this)
         s.engine.forget("hub-1")
-        assertEquals(listOf("hub-1"), s.ops.rechecked)
+        runCurrent()
+        assertEquals("Forget: the core forgets the hub too", listOf("hub-1"), s.ops.forgot)
+    }
+
+    // -- WP LKFAST3 --
+
+    @Test
+    fun wpLkfast3PairAgainRechecksBeforeItsDial() = runTest {
+        val s = Stack(this)
+        s.ops.connectError = DspiException.Link("tls_refused", "refused")
+        s.engine.connect(hub)
+        runCurrent()
+        s.ops.connectError = null
+        s.engine.rePair()
+        runCurrent()
+        val i = s.ops.log.indexOf("recheck(hub-1)")
+        assertTrue(s.ops.log.toString(), i >= 0 && i < s.ops.log.indexOfLast { it.startsWith("connect") })
+    }
+
+    @Test
+    fun wpLkfast3TheStartsDialIsTheShortOne() = runTest {
+        val s = Stack(this)
+        s.engine.connectAtStart(hub)
+        runCurrent()
+        assertTrue("atStart" in s.ops.log)
+        s.engine.connect(hub)
+        runCurrent()
+        assertEquals("a tap is not", 1, s.ops.log.count { it == "atStart" })
+    }
+
+    @Test
+    fun wpLkfast3TheQuietLineIsOnlyForNoAnswerAndSaysWhetherAnythingLooks() = runTest {
+        val s = Stack(this)
+        s.ops.connectError = DspiException.Link("hub_busy", "busy")
+        s.engine.connectAtStart(hub)
+        runCurrent()
+        val busy = (s.engine.state.value as LinkSessionState.Failed).reason
+        assertTrue("the hub answered: its own reason ($busy)", !busy.startsWith("Not at its last address"))
+        s.ops.connectError = DspiException.Link("timeout", "no answer")
+        s.engine.connectAtStart(hub)
+        runCurrent()
+        assertEquals("Not at its last address. Looking for it on the network…", (s.engine.state.value as LinkSessionState.Failed).reason)
+        s.engine.findsHubs = { false }
+        s.engine.connectAtStart(hub)
+        runCurrent()
+        val text = (s.engine.state.value as LinkSessionState.Failed).reason
+        assertTrue(text, text.startsWith("Not at its last address.") && "Looking for it" !in text)
+    }
+
+    @Test
+    fun wpLkfast3ASightingWithTlsMakesTheRedialTlsOnly() = runTest {
+        val s = failedFirstDial()
+        s.engine.hubSeen(hub.copy(tlsAdvertised = true))
+        runCurrent()
+        assertEquals(listOf(false, true), s.ops.tlsAdvertised)
     }
 }

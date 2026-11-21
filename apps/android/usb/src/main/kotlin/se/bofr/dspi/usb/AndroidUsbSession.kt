@@ -52,6 +52,8 @@ class AndroidUsbSession(
 
     override val devices: StateFlow<List<DspiUsbDevice>> get() = engine.devices
 
+    override val scanned: StateFlow<Boolean> get() = engine.scanned // -- WP LKFAST3 --
+
     private var registered = false
 
     private val receiver = object : BroadcastReceiver() {

@@ -1,11 +1,14 @@
 package se.bofr.dspi.app
 
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import se.bofr.dspi.core.LinkEncryption
@@ -45,8 +48,12 @@ class AppNetworkingController(
     private val credentialKey: (String) -> String = { "" },
     // -- WP PINTLS -- the core's `link_credential_tls_only`: the record keeps the hub TLS-only
     private val credentialTlsOnly: (String) -> Boolean = { false },
-    // -- WP LKFAST -- the core's `link_recheck_tls`: a forgotten hub is met as new, TLS first
-    private val recheckTls: (String) -> Unit = {},
+    // -- WP LKFAST --, LKFAST3: the core's `link_forget_hub` (a forgotten hub is met as new, TLS
+    // first, and is no longer dialled at start); a file write, so never on the main thread
+    private val forgetHub: (String) -> Unit = {},
+    // -- WP LKFAST3 -- where the rows are built (they read the core's hub memory): off the main thread
+    rows: CoroutineDispatcher = Dispatchers.Default,
+    private val io: CoroutineDispatcher = Dispatchers.IO,
     // -- WP LKFAST -- the core's `link_hub_encryption` (credential, advert, hub id, typed): one rule for every client
     private val hubEncryption: ((String, Boolean, String, Boolean) -> LinkEncryption)? = null
 ) : NetworkingController {
@@ -84,7 +91,8 @@ class AppNetworkingController(
                     AcknowledgedHubRow(a.hubId, a.name, if (a.typed) at else "")
                 }
             )
-        }.stateIn(scope, SharingStarted.Eagerly, NetworkingUiState())
+        }.flowOn(rows) // -- WP LKFAST3 -- (review LKREV 3) the rows ask the core's hub memory
+            .stateIn(scope, SharingStarted.Eagerly, NetworkingUiState())
 
     private data class Quad<A, B, C, D>(val a: A, val b: B, val c: C, val d: D)
 
@@ -162,7 +170,7 @@ class AppNetworkingController(
 
     override fun forget(hubId: String) {
         tokens.remove(hubId)
-        recheckTls(hubId) // -- WP LKFAST --
+        scope.launch(io) { forgetHub(hubId) } // -- WP LKFAST3 -- (review LKREV 2, 3)
         pairedRevision.value++
     }
 

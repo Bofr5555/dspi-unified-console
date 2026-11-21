@@ -169,7 +169,8 @@ class AppModeController(
      * left it), and it is dialled at its stored address at once, as a browsed hub is: its
      * stored credential, its advert's TLS. Nothing if the user chose something already.
      */
-    suspend fun reconnectAtStart(startHub: suspend (usbPresent: Boolean) -> LinkHub?) {
+    suspend fun reconnectAtStart(usbScanned: suspend () -> Unit = {}, startHub: suspend (usbPresent: Boolean) -> LinkHub?) {
+        usbScanned() // -- WP LKFAST3 -- (review LKREV 8) "USB wins" on the first scan's list, not on luck
         if (_mode.value != AppMode.DEVICE || remote != null) return
         val hub = startHub(dspiPresent(usbState.value, usbDevices.value)) ?: return
         if (_mode.value != AppMode.DEVICE || remote != null || dspiPresent(usbState.value, usbDevices.value)) return

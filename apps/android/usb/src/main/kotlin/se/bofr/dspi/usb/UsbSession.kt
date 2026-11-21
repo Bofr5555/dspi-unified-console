@@ -77,6 +77,10 @@ interface UsbSession {
     /** Every DSPi attached now (multi-device picker), with or without permission. */
     val devices: StateFlow<List<DspiUsbDevice>>
 
+    // -- WP LKFAST3 --
+    /** True once the first scan has filled [devices]; a session that does not scan says so at once. */
+    val scanned: StateFlow<Boolean> get() = SCANNED
+
     /**
      * Register the USB receivers and pick up an already-attached device.
      * Idempotent. Call once from the Application (not per Activity).
@@ -114,3 +118,6 @@ interface UsbSession {
     /** Unregister the receivers only; an open device stays open. Idempotent. */
     fun stop(context: Context)
 }
+
+// -- WP LKFAST3 --
+private val SCANNED: StateFlow<Boolean> = kotlinx.coroutines.flow.MutableStateFlow(true)
