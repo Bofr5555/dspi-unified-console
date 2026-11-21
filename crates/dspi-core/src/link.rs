@@ -1414,6 +1414,21 @@ impl DspiCore {
             // -- WP LK4 -- the snapshot is on its way while the identity is read
             transport.prefetch_snapshot();
         }
+        // -- WP LKFAST -- a device an ESP32 bridge lists as legacy with meters
+        // ([`listed_legacy_with_meters`]): its meter poll and snapshot go out
+        // ahead of the identity read, in the same round trip, instead of one
+        // after it. Other hubs keep PGFIX's order.
+        let bridge = client.hello().hub.kind == "bridge";
+        if !paged
+            && bridge
+            && let Some(n) =
+                channels.filter(|_| device.as_ref().is_some_and(listed_legacy_with_meters))
+        {
+            side.subscribe_ahead(crate::connect::meter_len(n));
+            ahead.set(true);
+            on_channels(n);
+            transport.prefetch_snapshot();
+        }
         // The identity too: the serial is what the hub lists. -- WP PGCORE --
         // The platform is the device's own 8 bytes (`read_platform`), not the
         // hub's 7, so the board id in byte 7 is seen (PLAN-PG R7c); on a
@@ -1439,7 +1454,7 @@ impl DspiCore {
             let has_meters = own_platform
                 .as_deref()
                 .is_some_and(|p| !crate::device::is_alink_sender_platform(p, None));
-            if let Some(n) = channels.filter(|_| has_meters) {
+            if let Some(n) = channels.filter(|_| has_meters && !ahead.get()) {
                 // Sent ahead of the snapshot: the hub answers in order, so its
                 // POLL frames start before the snapshot's bytes, not behind them
                 side.subscribe_ahead(crate::connect::meter_len(n));
@@ -1478,6 +1493,7 @@ impl DspiCore {
         {
             on_channels(n);
         }
+        let bind_platform = own_platform.clone(); // -- WP LKFAST --
         let listed = device
             .as_ref()
             .zip(own_platform)
@@ -1519,6 +1535,10 @@ impl DspiCore {
             return Err(DspiError::Disconnected);
         };
         conn.side = Some(Arc::clone(&side) as Arc<dyn SideChannel>);
+        // -- WP LKFAST -- the board from the bind's own platform read
+        if let Some(p) = bind_platform {
+            conn.board_seen = crate::hardware::board_of_platform(&p, conn.transport());
+        }
         // -- WP LK2 -- meters from now on, whatever holds the core lock
         // -- WP PGFIX -- none on the alink sender (it has no meters)
         let old_path =
@@ -2808,6 +2828,25 @@ fn hello_record(client: &LinkClient, state: &AuthState) -> LinkHello {
 }
 
 // -- WP LK4 --
+// -- WP LKFAST --
+/// An ESP32 bridge lists `d` as a legacy DSPi with meters: firmware before
+/// the paged generation (1.1.7), outputs (the alink sender has none), and the
+/// image header's `wire_version`, which the bridge lists only once it has read
+/// the device's legacy settings image (upstream `hub_device.c`
+/// `learn_bulk_header`): a paged device or the sender never gets one.
+fn listed_legacy_with_meters(d: &DeviceInfo) -> bool {
+    use dspi_proto::packets::PlatformInfo;
+    if d.wire_version.is_none() {
+        return false;
+    }
+    hub_listed_identity(d)
+        .and_then(|l| PlatformInfo::decode(&l.platform).ok())
+        .is_some_and(|p| {
+            let v = p.version;
+            p.num_output_channels > 0 && (v.major, v.minor, v.patch) < (1, 1, 7)
+        })
+}
+
 /// The GET_PLATFORM reply and serial the hub lists for `d`, when it says all
 /// of it (platform, firmware `major.minor.patch` with its beta, outputs);
 /// `None` otherwise.
@@ -4355,6 +4394,10 @@ mod tests_wp_lk2;
 #[cfg(test)]
 #[path = "link/tests_wp_lk4.rs"]
 mod tests_wp_lk4;
+// -- WP LKFAST --
+#[cfg(test)]
+#[path = "link/tests_wp_lkfast.rs"]
+mod tests_wp_lkfast;
 
 // -- WP WB4b --
 #[cfg(test)]

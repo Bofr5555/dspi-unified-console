@@ -357,6 +357,7 @@ class DspiBridgeImpl(
         coreVoltageCalibration.close() // -- WP AN23 --
         core.setNotifyListener(null)
         core.setHotplugCallback(null)
+        if (startupLane.isInitialized()) startupLane.value.close() // -- WP LKFAST --
     }
 
     // ═══ Plumbing ═══
@@ -371,6 +372,24 @@ class DspiBridgeImpl(
 
     /** Run on the FFI dispatcher (suspending). */
     internal suspend fun <T> onFfi(block: suspend () -> T): T = withContext(ffi) { block() }
+
+    // -- WP LKFAST --
+    /** The lane of [onStartup]: its own thread, made on first use over DSPi Link. */
+    private val startupLane = lazy {
+        Executors.newSingleThreadExecutor { r -> Thread(r, "dspi-startup").apply { isDaemon = true } }.asCoroutineDispatcher()
+    }
+
+    /**
+     * A start-up read of what Home does not show (the analyser start and the
+     * pair map, the generator). Over DSPi Link these wait for the core's
+     * background probe, seconds on a weak Wi-Fi link, so they run on a lane of
+     * their own: a user's call on [ffi] never queues behind them. On USB, on [ffi].
+     */
+    internal suspend fun <T> onStartup(block: suspend () -> T): T =
+        if (attachedRemote == null) onFfi(block) else withContext(startupLane.value) { block() }
+
+    /** A DSPi Link device is attached: reads that only a page needs wait for that page. */
+    internal val overLink: Boolean get() = attachedRemote != null
 
     /**
      * Idempotent GET with the flash-blackout retry (DESIGN §4.5 rule 4,
@@ -2053,8 +2072,9 @@ class DspiBridgeImpl(
         if (r.probesLeft) {
             val gen = generation
             scope.launch(main) {
+                // -- WP LKFAST -- they wait for the core's background probe: not on [ffi]
                 val pairMap =
-                    onFfi {
+                    onStartup {
                         runCatching { core.rtaStart() }
                         probeCrossfeedPairMap()
                     }

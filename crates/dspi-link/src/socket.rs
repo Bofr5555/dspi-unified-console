@@ -139,6 +139,30 @@ pub trait WsConnector: Send + Sync {
         Err(LinkError::TlsRefused { advertised: false })
     }
 
+    // -- WP LKFAST --
+    /// [`Self::connect_tls`] where a refused TLS falls back to plaintext (an
+    /// unpinned hub that did not advertise TLS; PLAN-SEC 4.3 rule 2): the pin of
+    /// the key presented, or `None` for the plaintext connection. The default
+    /// tries TLS, then [`Self::connect`]. A connector may get the plaintext
+    /// connection ready while TLS is tried, as long as nothing goes out on it
+    /// before TLS was refused.
+    fn connect_tls_or_plain(
+        &self,
+        url: &str,
+        protocol: &str,
+        trust: TlsTrust,
+        handshake_within: Option<Duration>,
+    ) -> Result<(WsPair, Option<Pin>), LinkError> {
+        match self.connect_tls(url, protocol, trust, handshake_within) {
+            Ok((pair, pin)) => Ok((pair, Some(pin))),
+            Err(LinkError::TlsRefused { .. }) => {
+                log::info!("dspi-link: the hub has no TLS; connecting unencrypted");
+                self.connect(url, protocol).map(|pair| (pair, None))
+            }
+            Err(e) => Err(e),
+        }
+    }
+
     // -- WP SECWEB --
     /// The socket under this connector does TLS itself, by the URL's scheme (the
     /// browser's WebSocket: `wss://` is TLS checked by the browser's own trust, `ws://`
@@ -393,14 +417,43 @@ impl WsConnector for TcpConnector {
             return Err(LinkError::Io(format!("a wss:// URL needs TLS: {url}")));
         }
         let tcp = dial_tcp(url, deadline)?;
-        let wlock = Arc::new(Mutex::new(()));
-        let write_half = tcp.try_clone().map_err(|e| LinkError::Io(e.to_string()))?;
-        let shutdown = write_half.try_clone().map_err(|e| LinkError::Io(e.to_string()))?;
-        let broken = Arc::new(AtomicBool::new(false));
-        let reader = Pipe::plain(tcp, Arc::clone(&wlock), Arc::clone(&broken), Some(deadline));
-        let mut writer = Pipe::plain(write_half, wlock, Arc::clone(&broken), None);
-        writer.buffered = true;
-        upgrade(url, protocol, reader, writer, shutdown, broken, None)
+        plain_over(url, protocol, tcp, deadline)
+    }
+
+    // -- WP LKFAST --
+    /// The plaintext connection's TCP is dialled on a thread of its own while
+    /// TLS is tried on this one, and used (the WebSocket upgrade written) only
+    /// once TLS was refused: a hub without TLS (the ESP32 bridge) is reached in
+    /// the time of the longer dial, not of both. A hub with TLS sees a TCP
+    /// connect that closes unused; nothing is sent in plaintext.
+    #[cfg(all(feature = "tls", not(all(target_arch = "wasm32", target_os = "unknown"))))]
+    fn connect_tls_or_plain(
+        &self,
+        url: &str,
+        protocol: &str,
+        trust: TlsTrust,
+        handshake_within: Option<Duration>,
+    ) -> Result<(WsPair, Option<Pin>), LinkError> {
+        let spare_by = Instant::now() + self.connect_timeout;
+        let spare_url = url.to_owned();
+        // Not joined when TLS answers: a spare still dialling ends by itself and drops its socket
+        let spare = std::thread::Builder::new()
+            .name("dspi-link-dial".into())
+            .spawn(move || dial_tcp(&spare_url, spare_by))
+            .ok();
+        match self.connect_tls(url, protocol, trust, handshake_within) {
+            Ok((pair, pin)) => Ok((pair, Some(pin))),
+            Err(LinkError::TlsRefused { .. }) => {
+                log::info!("dspi-link: the hub has no TLS; connecting unencrypted");
+                let deadline = Instant::now() + self.connect_timeout;
+                match spare.map(std::thread::JoinHandle::join) {
+                    Some(Ok(Ok(tcp))) => plain_over(url, protocol, tcp, deadline),
+                    _ => self.connect(url, protocol),
+                }
+                .map(|pair| (pair, None))
+            }
+            Err(e) => Err(e),
+        }
     }
 
     // -- WP SECCORE --
@@ -439,6 +492,18 @@ impl WsConnector for TcpConnector {
         let pair = upgrade(&wss, protocol, reader, writer, shutdown, broken, binding)?;
         Ok((pair, outcome.presented().0))
     }
+}
+
+/// The plaintext WebSocket over a dialled `tcp`, its upgrade answered by `deadline`.
+fn plain_over(url: &str, protocol: &str, tcp: TcpStream, deadline: Instant) -> Result<WsPair, LinkError> {
+    let wlock = Arc::new(Mutex::new(()));
+    let write_half = tcp.try_clone().map_err(|e| LinkError::Io(e.to_string()))?;
+    let shutdown = write_half.try_clone().map_err(|e| LinkError::Io(e.to_string()))?;
+    let broken = Arc::new(AtomicBool::new(false));
+    let reader = Pipe::plain(tcp, Arc::clone(&wlock), Arc::clone(&broken), Some(deadline));
+    let mut writer = Pipe::plain(write_half, wlock, Arc::clone(&broken), None);
+    writer.buffered = true;
+    upgrade(url, protocol, reader, writer, shutdown, broken, None)
 }
 
 /// Name lookup and TCP connect by `deadline`, tuned, with the write-stall timeout.

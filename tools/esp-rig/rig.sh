@@ -15,6 +15,10 @@
 #   rig.sh ts RUN [VAR=VALUE...]      upstream's TypeScript client (clients/ts-probe.ts)
 #   rig.sh realhub RUN [FILTER]       crates/dspi-link/tests/real_hub against the bridge
 #                                     (default filter real::, the read-only safe set)
+#   rig.sh android-build              -- WP LKFAST -- the Android timing harness: the :link
+#                                     tests' classpath and the release libdspi_ffi
+#   rig.sh android RUN [VAR=VALUE...] the Android REMOTE stack from a tap to Home and a
+#                                     moving meter (apps/android LinkRigTimingTest)
 #   rig.sh log RUN                    the bridge's serial log
 #   rig.sh down RUN                   stop and remove the rig's containers
 #
@@ -255,6 +259,29 @@ cmd_provision() {
   echo "provisioned: $fw/flash-$baud.bin (UART $baud baud, detection off)"
 }
 
+# -- WP LKFAST -- the Android harness: the app's REMOTE stack on the JVM (the real core,
+# release build as the app ships it), run in the rig's network namespace through the
+# Android build container (apps/android/tools/dev.sh, DSPI_DEV_NETWORK)
+android_dir=$root/apps/android
+cmd_android_build() {
+  (cd "$android_dir" && ~/.cache/dspi-build/work/gradle-slot.sh tools/dev.sh ./gradlew --no-daemon \
+    -Dorg.gradle.jvmargs=-Xmx3g --init-script "$here/android-cp.gradle" -q :link:lkfastClasspath)
+  (cd "$android_dir" && tools/dev.sh bash -c 'cd ../.. && cargo build --release -p dspi-ffi --locked 2>&1 | tail -1')
+}
+
+cmd_android() {
+  local run=$1; shift
+  need_run "$run"
+  # RIG_ANDROID_CP / RIG_ANDROID_LIB: a kept build (a classpath file and the library's
+  # directory as the container sees them), for before/after runs
+  local cp=${RIG_ANDROID_CP:-$android_dir/build/lkfast-cp.txt} lib=${RIG_ANDROID_LIB:-/cache/target/release}
+  [ -f "$cp" ] || die "no harness (rig.sh android-build)"
+  (cd "$android_dir" && DSPI_DEV_NETWORK="container:$(net_of "$run")" tools/dev.sh env DSPI_RIG_HOST=$BRIDGE "$@" \
+    java -Xmx1g -Djna.library.path="$lib" -Djava.library.path="$lib" -cp "$(cat "$cp")" \
+    org.junit.runner.JUnitCore se.bofr.dspi.link.LinkRigTimingTest 2>&1) |
+    sed 's/^\.//' | grep -E '^LKFAST|Exception|FAIL|^OK' | sed 's/^/[android] /' # JUnit's progress dot
+}
+
 cmd_log() { need_run "$1"; podman logs "lk3-$1-qemu" 2>&1; }
 
 cmd_down() {
@@ -280,7 +307,9 @@ case "${1:-}" in
   rust-bin) shift; cmd_rust "${1:?run}" "${2:?binary}" "${@:3}" ;;
   ts) shift; cmd_ts "${1:?run}" "${@:2}" ;;
   realhub) cmd_realhub "${2:?run}" "${3:-}" ;;
+  android-build) cmd_android_build ;;
+  android) shift; cmd_android "${1:?run}" "${@:2}" ;;
   log) cmd_log "${2:?run}" ;;
   down) cmd_down "${2:?run}" ;;
-  *) sed -n '2,22p' "$0" >&2; exit 2 ;;
+  *) sed -n '2,26p' "$0" >&2; exit 2 ;;
 esac

@@ -52,7 +52,8 @@ class DeviceSettingsImpl internal constructor(private val bridge: DspiBridgeImpl
     /** Reads the core's copy, so it can run on every batch of notifications. */
     internal suspend fun refreshNames() {
         val asked = generation
-        val read = bridge.onFfi { readNames(bridge.core) }
+        // -- WP LKFAST -- the cached names wait for the background probe over DSPi Link
+        val read = bridge.onStartup { readNames(bridge.core) }
         if (asked != generation || !bridge.connected) return
         val next = read.copy(renameStamps = _names.value.renameStamps)
         if (next != _names.value) _names.value = next
@@ -181,7 +182,8 @@ class DeviceSettingsImpl internal constructor(private val bridge: DspiBridgeImpl
 
     private suspend fun probeCoreVoltage() {
         val asked = generation
-        val listed = bridge.onFfi {
+        // -- WP LKFAST -- these wait for the background probe over DSPi Link
+        val listed = bridge.onStartup {
             try {
                 bridge.core.extStatus().hasCoreVreg
             } catch (e: DspiException) {
@@ -196,7 +198,7 @@ class DeviceSettingsImpl internal constructor(private val bridge: DspiBridgeImpl
     override suspend fun refreshCoreVoltage() {
         if (!_coreVoltage.value.supported) return
         val asked = generation
-        val status = bridge.onFfi {
+        val status = bridge.onStartup {
             try {
                 bridge.get { bridge.core.fetchCoreVreg() }
             } catch (e: DspiException) {

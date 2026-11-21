@@ -663,6 +663,11 @@ pub(crate) struct Connection {
     /// has no session (no image, no DSP model); its setters answer
     /// `Unsupported`.
     pub(crate) kind: DeviceKind,
+    // -- WP LKFAST --
+    /// The board, once read on this connection or taken from a DSPi Link
+    /// bind's own platform read: `device_protocol` reads it once, not on
+    /// every call (the board does not change within a connection).
+    pub(crate) board_seen: Option<dspi_proto::packets::Board>,
 }
 
 /// A remote device reached without the [`Inner`] lock (WP C15).
@@ -791,6 +796,7 @@ impl Connection {
             document: None,
             // -- WP PGFIX --
             kind: DeviceKind::Dsp,
+            board_seen: None, // -- WP LKFAST --
         }
     }
 

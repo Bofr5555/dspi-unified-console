@@ -1,0 +1,12 @@
+// WP LKFAST: write the :link unit tests' runtime classpath to build/lkfast-cp.txt (rig.sh android-build)
+allprojects {
+    if (path == ":link") {
+        afterEvaluate {
+            tasks.register("lkfastClasspath") {
+                def t = tasks.named("testReleaseUnitTest").get()
+                dependsOn(t.testClassesDirs.buildDependencies, t.classpath.buildDependencies)
+                doLast { new File(rootDir, "build/lkfast-cp.txt").text = t.classpath.asPath }
+            }
+        }
+    }
+}

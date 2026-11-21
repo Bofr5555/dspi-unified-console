@@ -258,15 +258,16 @@ class SiggenControllerImpl internal constructor(private val bridge: DspiBridgeIm
         }
         bridge.scope.launch(bridge.main) {
             class Read(val caps: SiggenCaps?, val applied: SiggenConfig?, val status: SiggenStatus?)
+            // -- WP LKFAST -- the generator's reads wait for the background probe over DSPi Link
             val r =
-                bridge.onFfi {
+                bridge.onStartup {
                     val caps =
                         try {
                             bridge.get { bridge.core.siggenFetchCaps() }
                         } catch (e: DspiException) {
-                            return@onFfi Read(null, null, null)
+                            return@onStartup Read(null, null, null)
                         }
-                    if (!caps.supported) return@onFfi Read(caps, null, null)
+                    if (!caps.supported) return@onStartup Read(caps, null, null)
                     Read(
                         caps,
                         runCatching { bridge.get { bridge.core.siggenGetConfig() } }.getOrNull(),
@@ -735,7 +736,10 @@ class CsControllerImpl internal constructor(private val bridge: DspiBridgeImpl) 
         serial = s
         macroJob?.cancel()
         setModel("")
-        if (usable) refresh()
+        // -- WP LKFAST -- over DSPi Link the ~150 reads (the core lock held for
+        // seconds on a weak link) wait for the page that shows them: Settings
+        // reads them when it opens without them
+        if (usable && !bridge.overLink) refresh()
     }
 
     override fun refresh() {
