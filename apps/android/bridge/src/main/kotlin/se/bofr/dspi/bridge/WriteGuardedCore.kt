@@ -1173,6 +1173,11 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "linkCredentialTlsOnly",
             // -- WP PINX -- a pure function over a stored credential
             "linkCredentialHasToken",
+            // -- WP LKFAST -- the core's DSPi Link hub memory: a local file, no device traffic
+            "linkSetDir",
+            "linkStartHub",
+            "linkForgetLastHub",
+            "linkRecheckTls",
             "bootloaderCounts",
             "captureBaseline",
             "checkCore1Conflict",

@@ -2148,6 +2148,14 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
+
+
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -2783,7 +2791,11 @@ fun uniffi_dspi_core_checksum_method_dspicore_link_connect_advertised(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_link_devices(
 ): Short
+fun uniffi_dspi_core_checksum_method_dspicore_link_forget_last_hub(
+): Short
 fun uniffi_dspi_core_checksum_method_dspicore_link_pair(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_link_recheck_tls(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_link_retry_now(
 ): Short
@@ -2791,7 +2803,11 @@ fun uniffi_dspi_core_checksum_method_dspicore_link_security(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_link_select_device(
 ): Short
+fun uniffi_dspi_core_checksum_method_dspicore_link_set_dir(
+): Short
 fun uniffi_dspi_core_checksum_method_dspicore_link_set_url(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_link_start_hub(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_link_status(
 ): Short
@@ -3884,16 +3900,24 @@ fun uniffi_dspi_core_fn_method_dspicore_link_connect_advertised(`ptr`: Pointer,`
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_link_devices(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_link_forget_last_hub(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
 fun uniffi_dspi_core_fn_method_dspicore_link_pair(`ptr`: Pointer,`pin`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_link_recheck_tls(`ptr`: Pointer,`hubId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
 fun uniffi_dspi_core_fn_method_dspicore_link_retry_now(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_link_security(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_link_select_device(`ptr`: Pointer,`handle`: Int,`serial`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_dspi_core_fn_method_dspicore_link_set_dir(`ptr`: Pointer,`dir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
 fun uniffi_dspi_core_fn_method_dspicore_link_set_url(`ptr`: Pointer,`url`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_dspi_core_fn_method_dspicore_link_start_hub(`ptr`: Pointer,`usbPresent`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_link_status(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_load_params(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
@@ -5674,7 +5698,13 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_link_devices() != 29326.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_link_forget_last_hub() != 9866.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_link_pair() != 58905.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_link_recheck_tls() != 53518.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_link_retry_now() != 18334.toShort()) {
@@ -5686,7 +5716,13 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_link_select_device() != 47133.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_link_set_dir() != 37356.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_link_set_url() != 13979.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_link_start_hub() != 9253.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_link_status() != 7876.toShort()) {
@@ -10792,6 +10828,12 @@ public interface DspiCoreInterface {
     fun `linkDevices`(): List<LinkDevice>
     
     /**
+     * The user left the hub (Disconnect, or switched to another device): no
+     * dial at start until a device is bound on a hub again.
+     */
+    fun `linkForgetLastHub`()
+    
+    /**
      * Pair with the PIN the user typed (role `control`, as the macOS
      * Console asks). Returns the token to store against the hub id ("" when
      * the hub issued none). If the hub dropped the socket while the prompt
@@ -10809,6 +10851,12 @@ public interface DspiCoreInterface {
      * - [`DspiError::Disconnected`] with no session.
      */
     fun `linkPair`(`pin`: kotlin.String): kotlin.String
+    
+    /**
+     * Try TLS again at hub `hub_id`'s next connect, although it was met
+     * without TLS lately (Pair Again, Forget hub). No traffic.
+     */
+    fun `linkRecheckTls`(`hubId`: kotlin.String)
     
     /**
      * Try to reconnect now instead of waiting out the backoff (the platform
@@ -10843,6 +10891,17 @@ public interface DspiCoreInterface {
     fun `linkSelectDevice`(`handle`: kotlin.UInt, `serial`: kotlin.String)
     
     /**
+     * Remember DSPi Link hubs between sessions in a small file under `dir`,
+     * the app's own data folder ("" forgets the folder): a hub met without
+     * TLS is dialled without a TLS try next time ([`DspiCore::link_recheck_tls`]),
+     * and the hub bound last is kept for [`DspiCore::link_start_hub`]. Name
+     * it before the first connect.
+     *
+     * Errors: [`DspiError::Unsupported`] on the web (no files).
+     */
+    fun `linkSetDir`(`dir`: kotlin.String)
+    
+    /**
      * The hub answers at a new address (the app's browser found its `hid`
      * again after a DHCP change): reconnect there from now on, at once if
      * reconnecting. The core does not browse by itself.
@@ -10851,6 +10910,17 @@ public interface DspiCoreInterface {
      * to it would fail for ever.
      */
     fun `linkSetUrl`(`url`: kotlin.String)
+    
+    /**
+     * The hub to dial at start (owner decision 2026-11-21): the one whose
+     * device was bound last, unless the user left it
+     * ([`DspiCore::link_forget_last_hub`]) or a DSPi is on USB
+     * (`usb_present`: USB wins). `None` without a folder. The client checks
+     * its own settings (DSPi Link on, reconnect at start on) and dials it as
+     * a browsed hub, with that hub's stored credential: a pinned hub stays
+     * TLS only. Needs no device; no traffic.
+     */
+    fun `linkStartHub`(`usbPresent`: kotlin.Boolean): LinkLastHub?
     
     /**
      * Where the session stands; [`LinkStatus::phase`] is what to tell the
@@ -18921,6 +18991,21 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
+     * The user left the hub (Disconnect, or switched to another device): no
+     * dial at start until a device is bound on a hub again.
+     */override fun `linkForgetLastHub`()
+        = 
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_link_forget_last_hub(
+        it, _status)
+}
+    }
+    
+    
+
+    
+    /**
      * Pair with the PIN the user typed (role `control`, as the macOS
      * Console asks). Returns the token to store against the hub id ("" when
      * the hub issued none). If the hub dropped the socket while the prompt
@@ -18947,6 +19032,21 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     }
     )
     }
+    
+
+    
+    /**
+     * Try TLS again at hub `hub_id`'s next connect, although it was met
+     * without TLS lately (Pair Again, Forget hub). No traffic.
+     */override fun `linkRecheckTls`(`hubId`: kotlin.String)
+        = 
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_link_recheck_tls(
+        it, FfiConverterString.lower(`hubId`),_status)
+}
+    }
+    
     
 
     
@@ -19012,6 +19112,27 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
+     * Remember DSPi Link hubs between sessions in a small file under `dir`,
+     * the app's own data folder ("" forgets the folder): a hub met without
+     * TLS is dialled without a TLS try next time ([`DspiCore::link_recheck_tls`]),
+     * and the hub bound last is kept for [`DspiCore::link_start_hub`]. Name
+     * it before the first connect.
+     *
+     * Errors: [`DspiError::Unsupported`] on the web (no files).
+     */
+    @Throws(DspiException::class)override fun `linkSetDir`(`dir`: kotlin.String)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_link_set_dir(
+        it, FfiConverterString.lower(`dir`),_status)
+}
+    }
+    
+    
+
+    
+    /**
      * The hub answers at a new address (the app's browser found its `hid`
      * again after a DHCP change): reconnect there from now on, at once if
      * reconnecting. The core does not browse by itself.
@@ -19027,6 +19148,27 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 }
     }
     
+    
+
+    
+    /**
+     * The hub to dial at start (owner decision 2026-11-21): the one whose
+     * device was bound last, unless the user left it
+     * ([`DspiCore::link_forget_last_hub`]) or a DSPi is on USB
+     * (`usb_present`: USB wins). `None` without a folder. The client checks
+     * its own settings (DSPi Link on, reconnect at start on) and dials it as
+     * a browsed hub, with that hub's stored credential: a pinned hub stays
+     * TLS only. Needs no device; no traffic.
+     */override fun `linkStartHub`(`usbPresent`: kotlin.Boolean): LinkLastHub? {
+            return FfiConverterOptionalTypeLinkLastHub.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_link_start_hub(
+        it, FfiConverterBoolean.lower(`usbPresent`),_status)
+}
+    }
+    )
+    }
     
 
     
@@ -38816,6 +38958,90 @@ public object FfiConverterTypeLinkInfo: FfiConverterRustBuffer<LinkInfo> {
 
 
 /**
+ * The DSPi Link hub whose device was bound last ([`crate::DspiCore::link_start_hub`]):
+ * what a client needs to dial it again at start, as a browsed hub gives it.
+ */
+data class LinkLastHub (
+    /**
+     * The hub's id (lowercase), for its stored credential.
+     */
+    var `hubId`: kotlin.String, 
+    /**
+     * Its display name.
+     */
+    var `name`: kotlin.String, 
+    /**
+     * `console`, `bridge`, ...
+     */
+    var `kind`: kotlin.String, 
+    /**
+     * `none` or `pin`.
+     */
+    var `auth`: kotlin.String, 
+    /**
+     * The address it was reached at last.
+     */
+    var `host`: kotlin.String, 
+    /**
+     * Its port.
+     */
+    var `port`: kotlin.UShort, 
+    /**
+     * The WebSocket path.
+     */
+    var `path`: kotlin.String, 
+    /**
+     * Its advert said TLS when it was dialled (spec 3.1 `tls=1`): pass it on.
+     */
+    var `tlsAdvertised`: kotlin.Boolean
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeLinkLastHub: FfiConverterRustBuffer<LinkLastHub> {
+    override fun read(buf: ByteBuffer): LinkLastHub {
+        return LinkLastHub(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterUShort.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: LinkLastHub) = (
+            FfiConverterString.allocationSize(value.`hubId`) +
+            FfiConverterString.allocationSize(value.`name`) +
+            FfiConverterString.allocationSize(value.`kind`) +
+            FfiConverterString.allocationSize(value.`auth`) +
+            FfiConverterString.allocationSize(value.`host`) +
+            FfiConverterUShort.allocationSize(value.`port`) +
+            FfiConverterString.allocationSize(value.`path`) +
+            FfiConverterBoolean.allocationSize(value.`tlsAdvertised`)
+    )
+
+    override fun write(value: LinkLastHub, buf: ByteBuffer) {
+            FfiConverterString.write(value.`hubId`, buf)
+            FfiConverterString.write(value.`name`, buf)
+            FfiConverterString.write(value.`kind`, buf)
+            FfiConverterString.write(value.`auth`, buf)
+            FfiConverterString.write(value.`host`, buf)
+            FfiConverterUShort.write(value.`port`, buf)
+            FfiConverterString.write(value.`path`, buf)
+            FfiConverterBoolean.write(value.`tlsAdvertised`, buf)
+    }
+}
+
+
+
+/**
  * A parsed pairing link (`link_parse_pair_link`).
  */
 data class LinkPairLink (
@@ -51442,6 +51668,38 @@ public object FfiConverterOptionalTypeIdentifyInfo: FfiConverterRustBuffer<Ident
         } else {
             buf.put(1)
             FfiConverterTypeIdentifyInfo.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeLinkLastHub: FfiConverterRustBuffer<LinkLastHub?> {
+    override fun read(buf: ByteBuffer): LinkLastHub? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeLinkLastHub.read(buf)
+    }
+
+    override fun allocationSize(value: LinkLastHub?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeLinkLastHub.allocationSize(value)
+        }
+    }
+
+    override fun write(value: LinkLastHub?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeLinkLastHub.write(value, buf)
         }
     }
 }

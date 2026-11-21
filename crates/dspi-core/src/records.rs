@@ -816,6 +816,30 @@ pub struct CoreInfo {
 
 // ------------------------------------------------------------- DSPi Link
 
+// -- WP LKFAST --
+/// The DSPi Link hub whose device was bound last ([`crate::DspiCore::link_start_hub`]):
+/// what a client needs to dial it again at start, as a browsed hub gives it.
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct LinkLastHub {
+    /// The hub's id (lowercase), for its stored credential.
+    pub hub_id: String,
+    /// Its display name.
+    pub name: String,
+    /// `console`, `bridge`, ...
+    pub kind: String,
+    /// `none` or `pin`.
+    pub auth: String,
+    /// The address it was reached at last.
+    pub host: String,
+    /// Its port.
+    pub port: u16,
+    /// The WebSocket path.
+    pub path: String,
+    /// Its advert said TLS when it was dialled (spec 3.1 `tls=1`): pass it on.
+    pub tls_advertised: bool,
+}
+
 /// What a Link hub said about itself.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Default)]

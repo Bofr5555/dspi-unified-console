@@ -410,6 +410,11 @@ pub struct DspiCore {
     /// so it runs once. Taken without `inner`, never while holding it.
     #[cfg(feature = "link")]
     pub(crate) probe_lock: Mutex<()>,
+    // -- WP LKFAST --
+    /// What the core remembers about DSPi Link hubs between sessions (a file in
+    /// the folder of [`DspiCore::link_set_dir`]).
+    #[cfg(feature = "link")]
+    pub(crate) hub_memory: Arc<link::hub_memory::Store>,
     // -- WP P0M --
     /// The meter ballistics and the event log; `inner.events` is the same.
     /// Its locks are taken with or without `inner`, never `inner` after.
@@ -1085,6 +1090,8 @@ impl DspiCore {
             meter_path: Mutex::new(None),
             #[cfg(feature = "link")]
             probe_lock: Mutex::new(()),
+            #[cfg(feature = "link")]
+            hub_memory: Arc::default(), // -- WP LKFAST --
             // -- WP P0M --
             events,
             // -- WP P1SN --

@@ -113,11 +113,15 @@ class DspiApplication : Application() {
     /** -- WP P1AN2 -- the installer's limits profiles and PINs (`limits_set_dir`), app-private. */
     private fun limitsFolder(): String = java.io.File(filesDir, "limits").path
 
+    // -- WP LKFAST -- the core's DSPi Link hub memory (a hub met without TLS, the hub bound last)
+    private fun linkFolder(): String = java.io.File(filesDir, "dspi-link").path
+
     override fun onCreate() {
         super.onCreate()
         val version = appVersion()
         val linkStore = DataStoreLinkStore(dspiBridgeStore, appScope)
         val deviceCore = FfiDspiCore()
+        runCatching { deviceCore.linkSetDir(linkFolder()) } // -- WP LKFAST -- a path only, no I/O
         aboutJson = deviceCore::aboutJson
         parsePairLink = deviceCore::linkParsePairLink // -- WP SECAN --
         onboarding = OnboardingSource(deviceCore::onboardingWhatsNewJson, deviceCore::onboardingGettingStartedJson) // -- WP AN19 --
@@ -147,7 +151,7 @@ class DspiApplication : Application() {
                 startRemoteSession(
                     appScope,
                     version,
-                    FfiDspiCore(),
+                    FfiDspiCore().also { runCatching { it.linkSetDir(linkFolder()) } }, // -- WP LKFAST --
                     linkTokens,
                     clientName,
                     services.linkClient(),
@@ -170,7 +174,8 @@ class DspiApplication : Application() {
             Build.MODEL.orEmpty(),
             parseAddress = { t -> runCatching { deviceCore.linkParseAddress(t) }.getOrNull()?.let { it.host to it.port } },
             credentialKey = deviceCore::linkCredentialHubKey, // -- WP SECAN --
-            credentialTlsOnly = deviceCore::linkCredentialTlsOnly // -- WP PINTLS --
+            credentialTlsOnly = deviceCore::linkCredentialTlsOnly, // -- WP PINTLS --
+            recheckTls = deviceCore::linkRecheckTls // -- WP LKFAST --
         )
         linkFollower = LinkNetworkFollower(hubBrowser, modes.remoteState) { modes.remoteSession?.networkTarget }
         appScope.launch { linkFollower.follow() }

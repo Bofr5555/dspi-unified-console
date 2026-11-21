@@ -72,6 +72,10 @@ interface LinkCoreOps {
      */
     suspend fun security(): LinkSecurity? = null
 
+    // -- WP LKFAST --
+    /** Try TLS again at [hubId]'s next connect (`link_recheck_tls`: Pair Again, Forget hub). No traffic. */
+    fun recheckTls(hubId: String) {}
+
     fun wsUrl(host: String, port: Int, path: String): String
 
     // -- WP PINTLS --
@@ -154,6 +158,8 @@ class BridgeLinkCoreOps(
 
     // -- WP SECAN -- the core lock, as status(): not on the main thread
     override suspend fun security(): LinkSecurity? = withContext(network) { runCatching { core.linkSecurity() }.getOrNull() }
+
+    override fun recheckTls(hubId: String) = core.linkRecheckTls(hubId) // -- WP LKFAST --
 
     override fun wsUrl(host: String, port: Int, path: String): String = core.linkWsUrl(host, port, path)
 

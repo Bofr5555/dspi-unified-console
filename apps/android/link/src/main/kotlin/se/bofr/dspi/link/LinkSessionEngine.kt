@@ -234,6 +234,7 @@ class LinkSessionEngine(
     fun rePair() {
         val s = _state.value as? LinkSessionState.Failed ?: return
         if (s.code !in REPAIR_CODES) return
+        ops.recheckTls(s.hub.id) // -- WP LKFAST -- Pair Again tries TLS first again
         if (s.code == FORGET_HUB_CODE) {
             tokens.remove(s.hub.id)
             log("link: forgetting the hub (${s.code})")
@@ -425,7 +426,10 @@ class LinkSessionEngine(
     }
 
     /** Forget the token stored for [hubId] (Settings › Networking). */
-    fun forget(hubId: String) = tokens.remove(hubId)
+    fun forget(hubId: String) {
+        tokens.remove(hubId)
+        ops.recheckTls(hubId) // -- WP LKFAST -- a forgotten hub is met as new: TLS first
+    }
 
     private fun forgetSession() {
         generation++

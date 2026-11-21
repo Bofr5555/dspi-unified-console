@@ -1364,6 +1364,45 @@ data class CoreInfo(
 )
 
 /**
+ * The DSPi Link hub whose device was bound last ([`crate::DspiCore::link_start_hub`]):
+ * what a client needs to dial it again at start, as a browsed hub gives it.
+ */
+data class LinkLastHub(
+    /**
+     * The hub's id (lowercase), for its stored credential.
+     */
+    val hubId: String,
+    /**
+     * Its display name.
+     */
+    val name: String,
+    /**
+     * `console`, `bridge`, ...
+     */
+    val kind: String,
+    /**
+     * `none` or `pin`.
+     */
+    val auth: String,
+    /**
+     * The address it was reached at last.
+     */
+    val host: String,
+    /**
+     * Its port.
+     */
+    val port: Int,
+    /**
+     * The WebSocket path.
+     */
+    val path: String,
+    /**
+     * Its advert said TLS when it was dialled (spec 3.1 `tls=1`): pass it on.
+     */
+    val tlsAdvertised: Boolean,
+)
+
+/**
  * What a Link hub said about itself.
  */
 data class LinkHello(

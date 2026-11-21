@@ -603,6 +603,14 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun linkSetUrl(url: String) = core.linkSetUrl(url)
 
+    override fun linkSetDir(dir: String) = call { core.linkSetDir(dir) }
+
+    override fun linkStartHub(usbPresent: Boolean): LinkLastHub? = core.linkStartHub(usbPresent)?.let { it.toDomain() }
+
+    override fun linkForgetLastHub() = core.linkForgetLastHub()
+
+    override fun linkRecheckTls(hubId: String) = core.linkRecheckTls(hubId)
+
     override fun measureSetListener(listener: MeasureListener?) = core.measureSetListener(listener?.let { wrapMeasureListener(it) })
 
     override fun measurePreflight(setup: MeasureSetup): MeasurePreflight = call { core.measurePreflight(setup.toFfi()).toDomain() }
@@ -2050,6 +2058,30 @@ internal fun CoreInfo.toFfi() =
         minWireFormatVersion = minWireFormatVersion.toUByte(),
         bulkParamsSize = bulkParamsSize.toUInt(),
         magnitudePoints = magnitudePoints.toUInt(),
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.LinkLastHub.toDomain() =
+    LinkLastHub(
+        hubId = hubId,
+        name = name,
+        kind = kind,
+        auth = auth,
+        host = host,
+        port = port.toInt(),
+        path = path,
+        tlsAdvertised = tlsAdvertised,
+    )
+
+internal fun LinkLastHub.toFfi() =
+    se.bofr.dspi.ffi.uniffi.LinkLastHub(
+        hubId = hubId,
+        name = name,
+        kind = kind,
+        auth = auth,
+        host = host,
+        port = port.toUShort(),
+        path = path,
+        tlsAdvertised = tlsAdvertised,
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.LinkHello.toDomain() =

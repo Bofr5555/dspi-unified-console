@@ -42,7 +42,9 @@ class AppNetworkingController(
     // -- WP SECAN -- the core's `link_credential_hub_key`: the pin a stored credential carries ("" = none)
     private val credentialKey: (String) -> String = { "" },
     // -- WP PINTLS -- the core's `link_credential_tls_only`: the record keeps the hub TLS-only
-    private val credentialTlsOnly: (String) -> Boolean = { false }
+    private val credentialTlsOnly: (String) -> Boolean = { false },
+    // -- WP LKFAST -- the core's `link_recheck_tls`: a forgotten hub is met as new, TLS first
+    private val recheckTls: (String) -> Unit = {}
 ) : NetworkingController {
     private val visible = MutableStateFlow(false)
     private val pairedRevision = MutableStateFlow(0)
@@ -149,6 +151,7 @@ class AppNetworkingController(
 
     override fun forget(hubId: String) {
         tokens.remove(hubId)
+        recheckTls(hubId) // -- WP LKFAST --
         pairedRevision.value++
     }
 

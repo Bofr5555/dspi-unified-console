@@ -323,6 +323,9 @@ struct Target {
     /// The stored record says the hub was pinned before (Pair Again): TLS
     /// only, `tls_required_pinned` when it fails; the pairing pins the new key.
     pinned_before: bool,
+    // -- WP LKFAST --
+    /// Where a hub met without TLS is remembered across sessions.
+    memory: Arc<hub_memory::Store>,
 }
 
 // -- WP SECCORE --
@@ -358,12 +361,17 @@ impl Target {
     /// judged it (a proven rotation). Returns whether the credential changed.
     fn learn(&mut self, client: &LinkClient, state: &AuthState) -> bool {
         let Some(seen) = client.tls() else {
-            if self.pin.is_none() && !self.tls_advertised {
+            if self.pin.is_none() && !self.tls_advertised && !self.pinned_before {
+                // -- WP LKFAST -- and across sessions: no TLS try first next time
+                // (the count says when to try again); `tried`: it was refused now
+                self.memory
+                    .met_plaintext(&client.hello().hub.id, !self.plaintext_known);
                 self.plaintext_known = true;
             }
             return false;
         };
         self.plaintext_known = false;
+        self.memory.recheck(&client.hello().hub.id); // -- WP LKFAST -- met encrypted
         let keep = self.pin.is_some() || !self.token.is_empty() || state.needs_pin();
         if !keep {
             return false;
@@ -1134,6 +1142,7 @@ impl DspiCore {
         tuning: Tuning,
     ) -> Result<LinkHello> {
         let credential = Credential::parse(&credential);
+        let tls_only = credential.tls_only(); // -- WP LKFAST --
         // -- WP LINKFIX -- fail closed: a bare token goes only to the hub it
         // was issued by, so never without that hub's id (nothing else checks
         // who answers before it goes out in plaintext)
@@ -1154,9 +1163,16 @@ impl DspiCore {
             pin: credential.pin,
             pin_next: credential.next,
             tls_advertised: advert.tls,
-            plaintext_known: false,
+            // -- WP LKFAST -- a hub met without TLS lately: no TLS try first. A
+            // pinned hub, one pinned before, or one whose advert says TLS never
+            // skips it (and the advert makes the next plaintext meeting count anew)
+            plaintext_known: !tls_only && !advert.tls && self.hub_memory.skip_tls(&expected_hub_id),
             pinned_before: credential.pinned_before, // -- WP PINTLS --
+            memory: Arc::clone(&self.hub_memory),
         };
+        if advert.tls {
+            self.hub_memory.recheck(&expected_hub_id);
+        }
         // -- WP WB4b -- decided on the caller's thread, as the client's own mode is
         let pumped = dspi_link::client::caller_driven();
         // -- WP LK4 -- the first dial retries as the reference client does, and
@@ -1561,9 +1577,21 @@ impl DspiCore {
         current.retry = None;
         let _ = current.tx.send(Msg::Kick);
         side.bind_done(); // -- WP LK4 --
+        // -- WP LKFAST -- the hub to dial again at start
+        let h = client.hello();
+        let last = LinkLastHub {
+            hub_id: h.hub.id.to_lowercase(),
+            name: h.hub.name.clone(),
+            kind: h.hub.kind.clone(),
+            auth: h.auth.clone(),
+            tls_advertised: current.target.tls_advertised,
+            ..LinkLastHub::default()
+        };
+        let url = current.target.url.clone();
         drop(guard);
         drop(old_side);
         drop(old_path);
+        self.hub_memory.bound(&last, &url);
         Ok(())
     }
 
@@ -2806,6 +2834,58 @@ fn map_error(e: LinkError) -> DspiError {
     DspiError::Link {
         code: code.to_owned(),
         msg,
+    }
+}
+
+// -- WP LKFAST --
+#[cfg_attr(feature = "uniffi", uniffi::export)]
+impl DspiCore {
+    /// Remember DSPi Link hubs between sessions in a small file under `dir`,
+    /// the app's own data folder ("" forgets the folder): a hub met without
+    /// TLS is dialled without a TLS try next time ([`DspiCore::link_recheck_tls`]),
+    /// and the hub bound last is kept for [`DspiCore::link_start_hub`]. Name
+    /// it before the first connect.
+    ///
+    /// Errors: [`DspiError::Unsupported`] on the web (no files).
+    pub fn link_set_dir(&self, dir: String) -> Result<()> {
+        #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+        {
+            let dir = dir.trim();
+            self.hub_memory
+                .set_dir((!dir.is_empty()).then(|| dir.into()));
+            Ok(())
+        }
+        #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+        {
+            let _ = dir;
+            Err(DspiError::Unsupported)
+        }
+    }
+
+    /// The hub to dial at start (owner decision 2026-11-21): the one whose
+    /// device was bound last, unless the user left it
+    /// ([`DspiCore::link_forget_last_hub`]) or a DSPi is on USB
+    /// (`usb_present`: USB wins). `None` without a folder. The client checks
+    /// its own settings (DSPi Link on, reconnect at start on) and dials it as
+    /// a browsed hub, with that hub's stored credential: a pinned hub stays
+    /// TLS only. Needs no device; no traffic.
+    pub fn link_start_hub(&self, usb_present: bool) -> Option<LinkLastHub> {
+        if usb_present {
+            return None;
+        }
+        self.hub_memory.last()
+    }
+
+    /// The user left the hub (Disconnect, or switched to another device): no
+    /// dial at start until a device is bound on a hub again.
+    pub fn link_forget_last_hub(&self) {
+        self.hub_memory.left();
+    }
+
+    /// Try TLS again at hub `hub_id`'s next connect, although it was met
+    /// without TLS lately (Pair Again, Forget hub). No traffic.
+    pub fn link_recheck_tls(&self, hub_id: String) {
+        self.hub_memory.recheck(&hub_id);
     }
 }
 
@@ -4398,6 +4478,9 @@ mod tests_wp_lk4;
 #[cfg(test)]
 #[path = "link/tests_wp_lkfast.rs"]
 mod tests_wp_lkfast;
+// -- WP LKFAST --
+#[path = "link/hub_memory.rs"]
+pub(crate) mod hub_memory;
 
 // -- WP WB4b --
 #[cfg(test)]

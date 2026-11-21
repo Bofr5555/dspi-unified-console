@@ -532,6 +532,14 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun linkSetUrl(url: String): Unit = throw NotImplementedError("link_set_url")
 
+    override fun linkSetDir(dir: String): Unit = throw NotImplementedError("link_set_dir")
+
+    override fun linkStartHub(usbPresent: Boolean): LinkLastHub? = throw NotImplementedError("link_start_hub")
+
+    override fun linkForgetLastHub(): Unit = throw NotImplementedError("link_forget_last_hub")
+
+    override fun linkRecheckTls(hubId: String): Unit = throw NotImplementedError("link_recheck_tls")
+
     override fun measureSetListener(listener: MeasureListener?): Unit = throw NotImplementedError("measure_set_listener")
 
     override fun measurePreflight(setup: MeasureSetup): MeasurePreflight = throw NotImplementedError("measure_preflight")

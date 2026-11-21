@@ -1,0 +1,224 @@
+//! -- WP LKFAST -- What the core remembers about DSPi Link hubs between
+//! sessions, in one small file in the folder the client names
+//! ([`crate::DspiCore::link_set_dir`]): nothing is kept without one (the web).
+//!
+//! - **A hub met without TLS** (owner decision 2026-11-21, option C): an
+//!   unpinned hub that did not advertise TLS and refused it is dialled in
+//!   plaintext straight away next time, with no TLS try first. TLS is tried
+//!   again on every [`RECHECK_EVERY`]th connect, whenever the hub's advert says
+//!   TLS, and after [`crate::DspiCore::link_recheck_tls`] (Pair Again, Forget hub). A
+//!   pinned hub, or one pinned before, never reads this: it is TLS only.
+//! - **The last hub** (option B): the hub whose device was bound last, so a
+//!   client can dial it again at start ([`crate::DspiCore::link_start_hub`]), unless
+//!   the user left it ([`crate::DspiCore::link_forget_last_hub`]).
+//!
+//! The file is read and written whole on every change: a few hundred bytes. A
+//! failed read is an empty memory; a failed write is logged and changes
+//! nothing else.
+
+use std::collections::BTreeMap;
+use std::path::PathBuf;
+use std::sync::Mutex;
+
+use serde::{Deserialize, Serialize};
+
+use super::guard;
+use crate::LinkLastHub;
+
+/// TLS is tried again on every this many connects to a hub met without it.
+pub(crate) const RECHECK_EVERY: u32 = 10;
+
+/// The file's name in the client's folder.
+const FILE: &str = "dspi-link-hubs.json";
+
+/// The folder named by the client; `None`: nothing is remembered.
+#[derive(Default)]
+pub(crate) struct Store {
+    dir: Mutex<Option<PathBuf>>,
+    /// One read-modify-write at a time (two cores in one process may share the file).
+    file: Mutex<()>,
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
+struct Memory {
+    /// Hub id (lowercase) -> connects since TLS was last tried and refused.
+    #[serde(default)]
+    plaintext: BTreeMap<String, u32>,
+    #[serde(default)]
+    last: Option<Last>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+struct Last {
+    hub_id: String,
+    name: String,
+    kind: String,
+    auth: String,
+    url: String,
+    tls_advertised: bool,
+    /// The user left this hub (Disconnect, another device): no dial at start.
+    left: bool,
+}
+
+impl Store {
+    pub(crate) fn set_dir(&self, dir: Option<PathBuf>) {
+        *guard(&self.dir) = dir;
+    }
+
+    fn path(&self) -> Option<PathBuf> {
+        guard(&self.dir).as_ref().map(|d| d.join(FILE))
+    }
+
+    fn read(&self) -> Memory {
+        #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+        if let Some(p) = self.path() {
+            return std::fs::read(&p)
+                .ok()
+                .and_then(|b| serde_json::from_slice(&b).ok())
+                .unwrap_or_default();
+        }
+        Memory::default()
+    }
+
+    /// Change the memory and write it back, if a folder is named.
+    fn update(&self, f: impl FnOnce(&mut Memory)) {
+        #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+        {
+            let Some(p) = self.path() else { return };
+            let _one = guard(&self.file);
+            let mut m = self.read();
+            let before = m.clone();
+            f(&mut m);
+            if m == before {
+                return;
+            }
+            let write = || -> std::io::Result<()> {
+                if let Some(d) = p.parent() {
+                    std::fs::create_dir_all(d)?;
+                }
+                let tmp = p.with_extension("json.tmp");
+                std::fs::write(&tmp, serde_json::to_vec(&m).unwrap_or_default())?;
+                std::fs::rename(&tmp, &p)
+            };
+            if let Err(e) = write() {
+                log::warn!("dspi-link: the hub memory could not be written: {e}");
+            }
+        }
+        #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+        let _ = f;
+    }
+
+    /// Dial hub `hub_id` in plaintext without a TLS try: it was met without TLS
+    /// fewer than [`RECHECK_EVERY`] connects ago. The caller asks only for an
+    /// unpinned hub that does not advertise TLS.
+    pub(crate) fn skip_tls(&self, hub_id: &str) -> bool {
+        if hub_id.is_empty() {
+            return false;
+        }
+        let n = self
+            .read()
+            .plaintext
+            .get(&hub_id.to_lowercase())
+            .copied()
+            .unwrap_or(0);
+        (1..RECHECK_EVERY).contains(&n)
+    }
+
+    /// A session to `hub_id` came up in plaintext; `tried` says whether TLS was
+    /// tried (and refused) first, which starts the count again.
+    pub(crate) fn met_plaintext(&self, hub_id: &str, tried: bool) {
+        if hub_id.is_empty() {
+            return;
+        }
+        let id = hub_id.to_lowercase();
+        self.update(|m| {
+            let n = m.plaintext.entry(id).or_insert(0);
+            *n = if tried { 1 } else { n.saturating_add(1) };
+        });
+    }
+
+    /// TLS is to be tried at `hub_id`'s next connect (it was met encrypted, its
+    /// advert says TLS, or the user paired again or forgot it).
+    pub(crate) fn recheck(&self, hub_id: &str) {
+        let id = hub_id.to_lowercase();
+        self.update(|m| {
+            m.plaintext.remove(&id);
+        });
+    }
+
+    /// The hub a device was just bound on, to dial again at start.
+    pub(crate) fn bound(&self, hub: &LinkLastHub, url: &str) {
+        let last = Last {
+            hub_id: hub.hub_id.to_lowercase(),
+            name: hub.name.clone(),
+            kind: hub.kind.clone(),
+            auth: hub.auth.clone(),
+            url: url.to_owned(),
+            tls_advertised: hub.tls_advertised,
+            left: false,
+        };
+        self.update(|m| m.last = Some(last));
+    }
+
+    /// The user left the last hub: no dial at start until another bind.
+    pub(crate) fn left(&self) {
+        self.update(|m| {
+            if let Some(l) = m.last.as_mut() {
+                l.left = true;
+            }
+        });
+    }
+
+    /// The last hub, unless the user left it.
+    pub(crate) fn last(&self) -> Option<LinkLastHub> {
+        let l = self.read().last.filter(|l| !l.left)?;
+        let (host, port, path) = split_url(&l.url)?;
+        Some(LinkLastHub {
+            hub_id: l.hub_id,
+            name: l.name,
+            kind: l.kind,
+            auth: l.auth,
+            host,
+            port,
+            path,
+            tls_advertised: l.tls_advertised,
+        })
+    }
+}
+
+/// `ws://host:port/path` -> (host, port, path); `None` for anything else.
+fn split_url(url: &str) -> Option<(String, u16, String)> {
+    let rest = url
+        .strip_prefix("ws://")
+        .or_else(|| url.strip_prefix("wss://"))?;
+    let (authority, path) = rest
+        .find('/')
+        .map_or((rest, ""), |i| (&rest[..i], &rest[i..]));
+    let host = dspi_link::address::url_host(url)?.to_owned();
+    let port = authority
+        .rsplit_once(':')
+        .filter(|(h, _)| !h.ends_with(':'))?
+        .1
+        .parse()
+        .ok()?;
+    Some((host, port, path.to_owned()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wp_lkfast_split_url_reads_what_link_ws_url_writes() {
+        assert_eq!(
+            split_url("ws://192.168.1.20:11915/dspi/v1"),
+            Some(("192.168.1.20".into(), 11915, "/dspi/v1".into()))
+        );
+        assert_eq!(
+            split_url("ws://[fe80::1]:8080/x"),
+            Some(("fe80::1".into(), 8080, "/x".into()))
+        );
+        assert_eq!(split_url("http://a:1/"), None);
+        assert_eq!(split_url("ws://a/"), None, "a port is always written");
+    }
+}

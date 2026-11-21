@@ -3321,6 +3321,41 @@ interface DspiCoreApi : AutoCloseable {
     fun linkSetUrl(url: String)
 
     /**
+     * Remember DSPi Link hubs between sessions in a small file under `dir`,
+     * the app's own data folder ("" forgets the folder): a hub met without
+     * TLS is dialled without a TLS try next time ([`DspiCore::link_recheck_tls`]),
+     * and the hub bound last is kept for [`DspiCore::link_start_hub`]. Name
+     * it before the first connect.
+     *
+     * Errors: [`DspiError::Unsupported`] on the web (no files).
+     */
+    @Throws(DspiException::class)
+    fun linkSetDir(dir: String)
+
+    /**
+     * The hub to dial at start (owner decision 2026-11-21): the one whose
+     * device was bound last, unless the user left it
+     * ([`DspiCore::link_forget_last_hub`]) or a DSPi is on USB
+     * (`usb_present`: USB wins). `None` without a folder. The client checks
+     * its own settings (DSPi Link on, reconnect at start on) and dials it as
+     * a browsed hub, with that hub's stored credential: a pinned hub stays
+     * TLS only. Needs no device; no traffic.
+     */
+    fun linkStartHub(usbPresent: Boolean): LinkLastHub?
+
+    /**
+     * The user left the hub (Disconnect, or switched to another device): no
+     * dial at start until a device is bound on a hub again.
+     */
+    fun linkForgetLastHub()
+
+    /**
+     * Try TLS again at hub `hub_id`'s next connect, although it was met
+     * without TLS lately (Pair Again, Forget hub). No traffic.
+     */
+    fun linkRecheckTls(hubId: String)
+
+    /**
      * Register (`Some`) or clear (`None`) the measurement listener: called
      * when a session's phase changes, it stops, or it asks something. Called
      * on the thread that pushed, ticked or stopped, with every core lock

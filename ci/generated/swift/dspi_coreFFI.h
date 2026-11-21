@@ -1726,9 +1726,19 @@ RustBuffer uniffi_dspi_core_fn_method_dspicore_link_connect_advertised(void*_Non
 RustBuffer uniffi_dspi_core_fn_method_dspicore_link_devices(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_LINK_FORGET_LAST_HUB
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_LINK_FORGET_LAST_HUB
+void uniffi_dspi_core_fn_method_dspicore_link_forget_last_hub(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_LINK_PAIR
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_LINK_PAIR
 RustBuffer uniffi_dspi_core_fn_method_dspicore_link_pair(void*_Nonnull ptr, RustBuffer pin, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_LINK_RECHECK_TLS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_LINK_RECHECK_TLS
+void uniffi_dspi_core_fn_method_dspicore_link_recheck_tls(void*_Nonnull ptr, RustBuffer hub_id, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_LINK_RETRY_NOW
@@ -1746,9 +1756,19 @@ RustBuffer uniffi_dspi_core_fn_method_dspicore_link_security(void*_Nonnull ptr, 
 void uniffi_dspi_core_fn_method_dspicore_link_select_device(void*_Nonnull ptr, uint32_t handle, RustBuffer serial, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_LINK_SET_DIR
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_LINK_SET_DIR
+void uniffi_dspi_core_fn_method_dspicore_link_set_dir(void*_Nonnull ptr, RustBuffer dir, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_LINK_SET_URL
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_LINK_SET_URL
 void uniffi_dspi_core_fn_method_dspicore_link_set_url(void*_Nonnull ptr, RustBuffer url, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_LINK_START_HUB
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_LINK_START_HUB
+RustBuffer uniffi_dspi_core_fn_method_dspicore_link_start_hub(void*_Nonnull ptr, int8_t usb_present, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_LINK_STATUS
@@ -5717,9 +5737,21 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_link_devices(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_LINK_FORGET_LAST_HUB
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_LINK_FORGET_LAST_HUB
+uint16_t uniffi_dspi_core_checksum_method_dspicore_link_forget_last_hub(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_LINK_PAIR
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_LINK_PAIR
 uint16_t uniffi_dspi_core_checksum_method_dspicore_link_pair(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_LINK_RECHECK_TLS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_LINK_RECHECK_TLS
+uint16_t uniffi_dspi_core_checksum_method_dspicore_link_recheck_tls(void
     
 );
 #endif
@@ -5741,9 +5773,21 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_link_select_device(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_LINK_SET_DIR
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_LINK_SET_DIR
+uint16_t uniffi_dspi_core_checksum_method_dspicore_link_set_dir(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_LINK_SET_URL
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_LINK_SET_URL
 uint16_t uniffi_dspi_core_checksum_method_dspicore_link_set_url(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_LINK_START_HUB
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_LINK_START_HUB
+uint16_t uniffi_dspi_core_checksum_method_dspicore_link_start_hub(void
     
 );
 #endif

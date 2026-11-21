@@ -4047,6 +4047,12 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func linkDevices()  -> [LinkDevice]
     
     /**
+     * The user left the hub (Disconnect, or switched to another device): no
+     * dial at start until a device is bound on a hub again.
+     */
+    func linkForgetLastHub() 
+    
+    /**
      * Pair with the PIN the user typed (role `control`, as the macOS
      * Console asks). Returns the token to store against the hub id ("" when
      * the hub issued none). If the hub dropped the socket while the prompt
@@ -4064,6 +4070,12 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * - [`DspiError::Disconnected`] with no session.
      */
     func linkPair(pin: String) throws  -> String
+    
+    /**
+     * Try TLS again at hub `hub_id`'s next connect, although it was met
+     * without TLS lately (Pair Again, Forget hub). No traffic.
+     */
+    func linkRecheckTls(hubId: String) 
     
     /**
      * Try to reconnect now instead of waiting out the backoff (the platform
@@ -4098,6 +4110,17 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func linkSelectDevice(handle: UInt32, serial: String) throws 
     
     /**
+     * Remember DSPi Link hubs between sessions in a small file under `dir`,
+     * the app's own data folder ("" forgets the folder): a hub met without
+     * TLS is dialled without a TLS try next time ([`DspiCore::link_recheck_tls`]),
+     * and the hub bound last is kept for [`DspiCore::link_start_hub`]. Name
+     * it before the first connect.
+     *
+     * Errors: [`DspiError::Unsupported`] on the web (no files).
+     */
+    func linkSetDir(dir: String) throws 
+    
+    /**
      * The hub answers at a new address (the app's browser found its `hid`
      * again after a DHCP change): reconnect there from now on, at once if
      * reconnecting. The core does not browse by itself.
@@ -4106,6 +4129,17 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * to it would fail for ever.
      */
     func linkSetUrl(url: String) 
+    
+    /**
+     * The hub to dial at start (owner decision 2026-11-21): the one whose
+     * device was bound last, unless the user left it
+     * ([`DspiCore::link_forget_last_hub`]) or a DSPi is on USB
+     * (`usb_present`: USB wins). `None` without a folder. The client checks
+     * its own settings (DSPi Link on, reconnect at start on) and dials it as
+     * a browsed hub, with that hub's stored credential: a pinned hub stays
+     * TLS only. Needs no device; no traffic.
+     */
+    func linkStartHub(usbPresent: Bool)  -> LinkLastHub?
     
     /**
      * Where the session stands; [`LinkStatus::phase`] is what to tell the
@@ -11020,6 +11054,16 @@ open func linkDevices() -> [LinkDevice]  {
 }
     
     /**
+     * The user left the hub (Disconnect, or switched to another device): no
+     * dial at start until a device is bound on a hub again.
+     */
+open func linkForgetLastHub()  {try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_link_forget_last_hub(self.uniffiClonePointer(),$0
+    )
+}
+}
+    
+    /**
      * Pair with the PIN the user typed (role `control`, as the macOS
      * Console asks). Returns the token to store against the hub id ("" when
      * the hub issued none). If the hub dropped the socket while the prompt
@@ -11042,6 +11086,17 @@ open func linkPair(pin: String)throws  -> String  {
         FfiConverterString.lower(pin),$0
     )
 })
+}
+    
+    /**
+     * Try TLS again at hub `hub_id`'s next connect, although it was met
+     * without TLS lately (Pair Again, Forget hub). No traffic.
+     */
+open func linkRecheckTls(hubId: String)  {try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_link_recheck_tls(self.uniffiClonePointer(),
+        FfiConverterString.lower(hubId),$0
+    )
+}
 }
     
     /**
@@ -11092,6 +11147,22 @@ open func linkSelectDevice(handle: UInt32, serial: String)throws   {try rustCall
 }
     
     /**
+     * Remember DSPi Link hubs between sessions in a small file under `dir`,
+     * the app's own data folder ("" forgets the folder): a hub met without
+     * TLS is dialled without a TLS try next time ([`DspiCore::link_recheck_tls`]),
+     * and the hub bound last is kept for [`DspiCore::link_start_hub`]. Name
+     * it before the first connect.
+     *
+     * Errors: [`DspiError::Unsupported`] on the web (no files).
+     */
+open func linkSetDir(dir: String)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_link_set_dir(self.uniffiClonePointer(),
+        FfiConverterString.lower(dir),$0
+    )
+}
+}
+    
+    /**
      * The hub answers at a new address (the app's browser found its `hid`
      * again after a DHCP change): reconnect there from now on, at once if
      * reconnecting. The core does not browse by itself.
@@ -11104,6 +11175,23 @@ open func linkSetUrl(url: String)  {try! rustCall() {
         FfiConverterString.lower(url),$0
     )
 }
+}
+    
+    /**
+     * The hub to dial at start (owner decision 2026-11-21): the one whose
+     * device was bound last, unless the user left it
+     * ([`DspiCore::link_forget_last_hub`]) or a DSPi is on USB
+     * (`usb_present`: USB wins). `None` without a folder. The client checks
+     * its own settings (DSPi Link on, reconnect at start on) and dials it as
+     * a browsed hub, with that hub's stored credential: a pinned hub stays
+     * TLS only. Needs no device; no traffic.
+     */
+open func linkStartHub(usbPresent: Bool) -> LinkLastHub?  {
+    return try!  FfiConverterOptionTypeLinkLastHub.lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_link_start_hub(self.uniffiClonePointer(),
+        FfiConverterBool.lower(usbPresent),$0
+    )
+})
 }
     
     /**
@@ -40002,6 +40090,176 @@ public func FfiConverterTypeLinkInfo_lower(_ value: LinkInfo) -> RustBuffer {
 
 
 /**
+ * The DSPi Link hub whose device was bound last ([`crate::DspiCore::link_start_hub`]):
+ * what a client needs to dial it again at start, as a browsed hub gives it.
+ */
+public struct LinkLastHub {
+    /**
+     * The hub's id (lowercase), for its stored credential.
+     */
+    public var hubId: String
+    /**
+     * Its display name.
+     */
+    public var name: String
+    /**
+     * `console`, `bridge`, ...
+     */
+    public var kind: String
+    /**
+     * `none` or `pin`.
+     */
+    public var auth: String
+    /**
+     * The address it was reached at last.
+     */
+    public var host: String
+    /**
+     * Its port.
+     */
+    public var port: UInt16
+    /**
+     * The WebSocket path.
+     */
+    public var path: String
+    /**
+     * Its advert said TLS when it was dialled (spec 3.1 `tls=1`): pass it on.
+     */
+    public var tlsAdvertised: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The hub's id (lowercase), for its stored credential.
+         */hubId: String, 
+        /**
+         * Its display name.
+         */name: String, 
+        /**
+         * `console`, `bridge`, ...
+         */kind: String, 
+        /**
+         * `none` or `pin`.
+         */auth: String, 
+        /**
+         * The address it was reached at last.
+         */host: String, 
+        /**
+         * Its port.
+         */port: UInt16, 
+        /**
+         * The WebSocket path.
+         */path: String, 
+        /**
+         * Its advert said TLS when it was dialled (spec 3.1 `tls=1`): pass it on.
+         */tlsAdvertised: Bool) {
+        self.hubId = hubId
+        self.name = name
+        self.kind = kind
+        self.auth = auth
+        self.host = host
+        self.port = port
+        self.path = path
+        self.tlsAdvertised = tlsAdvertised
+    }
+}
+
+#if compiler(>=6)
+extension LinkLastHub: Sendable {}
+#endif
+
+
+extension LinkLastHub: Equatable, Hashable {
+    public static func ==(lhs: LinkLastHub, rhs: LinkLastHub) -> Bool {
+        if lhs.hubId != rhs.hubId {
+            return false
+        }
+        if lhs.name != rhs.name {
+            return false
+        }
+        if lhs.kind != rhs.kind {
+            return false
+        }
+        if lhs.auth != rhs.auth {
+            return false
+        }
+        if lhs.host != rhs.host {
+            return false
+        }
+        if lhs.port != rhs.port {
+            return false
+        }
+        if lhs.path != rhs.path {
+            return false
+        }
+        if lhs.tlsAdvertised != rhs.tlsAdvertised {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(hubId)
+        hasher.combine(name)
+        hasher.combine(kind)
+        hasher.combine(auth)
+        hasher.combine(host)
+        hasher.combine(port)
+        hasher.combine(path)
+        hasher.combine(tlsAdvertised)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLinkLastHub: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LinkLastHub {
+        return
+            try LinkLastHub(
+                hubId: FfiConverterString.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf), 
+                kind: FfiConverterString.read(from: &buf), 
+                auth: FfiConverterString.read(from: &buf), 
+                host: FfiConverterString.read(from: &buf), 
+                port: FfiConverterUInt16.read(from: &buf), 
+                path: FfiConverterString.read(from: &buf), 
+                tlsAdvertised: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: LinkLastHub, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.hubId, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterString.write(value.kind, into: &buf)
+        FfiConverterString.write(value.auth, into: &buf)
+        FfiConverterString.write(value.host, into: &buf)
+        FfiConverterUInt16.write(value.port, into: &buf)
+        FfiConverterString.write(value.path, into: &buf)
+        FfiConverterBool.write(value.tlsAdvertised, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLinkLastHub_lift(_ buf: RustBuffer) throws -> LinkLastHub {
+    return try FfiConverterTypeLinkLastHub.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLinkLastHub_lower(_ value: LinkLastHub) -> RustBuffer {
+    return FfiConverterTypeLinkLastHub.lower(value)
+}
+
+
+/**
  * A parsed pairing link (`link_parse_pair_link`).
  */
 public struct LinkPairLink {
@@ -63181,6 +63439,30 @@ fileprivate struct FfiConverterOptionTypeIdentifyInfo: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeLinkLastHub: FfiConverterRustBuffer {
+    typealias SwiftType = LinkLastHub?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeLinkLastHub.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeLinkLastHub.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeMeasureIssue: FfiConverterRustBuffer {
     typealias SwiftType = MeasureIssue?
 
@@ -68247,7 +68529,13 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_link_devices() != 29326) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_dspicore_link_forget_last_hub() != 9866) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_dspicore_link_pair() != 58905) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_link_recheck_tls() != 53518) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_link_retry_now() != 18334) {
@@ -68259,7 +68547,13 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_link_select_device() != 47133) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_dspicore_link_set_dir() != 37356) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_dspicore_link_set_url() != 13979) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_link_start_hub() != 9253) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_link_status() != 7876) {
