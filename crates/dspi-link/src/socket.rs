@@ -447,7 +447,11 @@ impl WsConnector for TcpConnector {
                 log::info!("dspi-link: the hub has no TLS; connecting unencrypted");
                 let deadline = Instant::now() + self.connect_timeout;
                 match spare.map(std::thread::JoinHandle::join) {
-                    Some(Ok(Ok(tcp))) => plain_over(url, protocol, tcp, deadline),
+                    // -- WP LKFAST3 -- (review LKREV 9) a spare the hub closed while TLS was
+                    // tried (an idle timeout): one fresh dial, as without a spare
+                    Some(Ok(Ok(tcp))) => {
+                        plain_over(url, protocol, tcp, deadline).or_else(|_| self.connect(url, protocol))
+                    }
                     _ => self.connect(url, protocol),
                 }
                 .map(|pair| (pair, None))

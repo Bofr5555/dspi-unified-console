@@ -441,3 +441,77 @@ fn wp_lkfast_an_advertised_tls_is_never_followed_by_plaintext() {
     assert!(matches!(r, Err(LinkError::TlsRefused { .. })), "{:?}", r.err());
     assert!(log.lock().unwrap().is_empty(), "no plaintext socket at all");
 }
+
+// -- WP LKFAST3 -- (review LKREV 9)
+/// In front of `to`: a connection that sends nothing for 100 ms (the idle
+/// plaintext spare) is closed, as a hub with a short idle timeout would; the
+/// first answer to a connection that did send (the TLS try) is held 300 ms.
+#[cfg(feature = "tls")]
+fn closes_idle_spare(to: std::net::SocketAddr, accepts: Arc<std::sync::atomic::AtomicU32>) -> String {
+    use std::io::{Read, Write};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let at = listener.local_addr().unwrap();
+    let held = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let closed_one = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    std::thread::spawn(move || {
+        for conn in listener.incoming() {
+            let Ok(mut down) = conn else { return };
+            accepts.fetch_add(1, Ordering::SeqCst);
+            let (held, closed_one) = (Arc::clone(&held), Arc::clone(&closed_one));
+            std::thread::spawn(move || {
+                let mut first = [0u8; 4096];
+                down.set_read_timeout(Some(Duration::from_millis(100))).unwrap();
+                let n = match down.read(&mut first) {
+                    Ok(n) if n > 0 => n,
+                    _ if !closed_one.swap(true, Ordering::SeqCst) => {
+                        let _ = down.shutdown(std::net::Shutdown::Both);
+                        return;
+                    }
+                    _ => 0,
+                };
+                down.set_read_timeout(None).unwrap();
+                let Ok(mut up) = std::net::TcpStream::connect(to) else { return };
+                if n > 0 && up.write_all(&first[..n]).is_err() {
+                    return;
+                }
+                let (mut down2, mut up2) = (down.try_clone().unwrap(), up.try_clone().unwrap());
+                std::thread::spawn(move || std::io::copy(&mut down2, &mut up2));
+                let hold = n > 0 && !held.swap(true, Ordering::SeqCst);
+                let mut buf = [0u8; 4096];
+                let mut first_answer = true;
+                loop {
+                    let k = up.read(&mut buf).unwrap_or(0);
+                    if first_answer && hold {
+                        std::thread::sleep(Duration::from_millis(300));
+                    }
+                    first_answer = false;
+                    if k == 0 || down.write_all(&buf[..k]).is_err() {
+                        break;
+                    }
+                }
+                let _ = down.shutdown(std::net::Shutdown::Both);
+            });
+        }
+    });
+    format!("ws://{at}/dspi/v1")
+}
+
+#[cfg(feature = "tls")]
+#[test]
+fn wp_lkfast3_a_spare_the_hub_closed_meanwhile_gets_one_fresh_dial() {
+    let hub = FakeHub::start(HubConfig::default()).unwrap();
+    let accepts = Arc::new(AtomicU32::new(0));
+    let url = closes_idle_spare(hub.addr(), Arc::clone(&accepts));
+    let (c, state) = LinkClient::connect_tls(
+        &TcpConnector::default(),
+        &url,
+        &opts(None),
+        None,
+        &dspi_link::client::SessionConfig::default(),
+        &dspi_link::TlsOptions::default(),
+    )
+    .unwrap();
+    assert_eq!(state, AuthState::Ready);
+    assert!(c.tls().is_none());
+    assert_eq!(accepts.load(Ordering::SeqCst), 3, "the TLS try, the closed spare, the fresh dial");
+}
