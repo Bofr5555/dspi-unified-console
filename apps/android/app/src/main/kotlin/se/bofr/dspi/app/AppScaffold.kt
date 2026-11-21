@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.displayCutout
@@ -127,6 +129,13 @@ internal const val DEVICE_LIST_TAG = "device-list"
 
 /** Test tag of the compact strip's overflow button (WP AN42): the strip's actions and the device list. */
 internal const val STRIP_MENU_TAG = "strip-menu"
+
+// -- WP ANLINK --
+/** Test tag of the NoDevice strip's "Connect over DSPi Link" button. */
+internal const val NO_DEVICE_LINK_TAG = "strip-no-device-link"
+
+/** Test tag of the NoDevice strip's "Try the demo" button. */
+internal const val NO_DEVICE_DEMO_TAG = "strip-no-device-demo"
 
 /**
  * macOS window/menu structure -> one NavHost (PLAN §3.3 `ui/nav/AppScaffold.kt`).
@@ -438,6 +447,7 @@ internal const val SNAPSHOTS_ENTRY_TAG = "strip-snapshots"
 /** Below this width the strip keeps to one line: its actions and the device list go into an overflow menu (WP AN42). */
 internal val STRIP_COMPACT_BELOW = 600.dp
 
+@OptIn(ExperimentalLayoutApi::class) // -- WP ANLINK -- FlowRow
 @Composable
 private fun ConnectionStripBar(
     strip: ConnectionStrip,
@@ -497,66 +507,90 @@ private fun ConnectionStripBar(
         // -- WP AN42 -- a phone: one line (the short text, the whole of it on a long-press and to
         // TalkBack), Undo and Redo, and the strip's actions and devices behind the overflow
         val compact = maxWidth < STRIP_COMPACT_BELOW
-        Row(
-            Modifier.fillMaxWidth().padding(start = 16.dp, end = if (compact) 4.dp else 16.dp, top = 4.dp, bottom = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            if (compact) {
-                // -- WP SECAN -- "(unsecured)" is never cut off: it is measured before the
-                // weighted text, which is ellipsised instead; TalkBack reads the whole text once
-                val suffix = (strip as? ConnectionStrip.Remote)?.suffix.orEmpty()
-                val described = strip.short != strip.text || suffix.isNotEmpty()
-                Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-                    HelpTip(if (described) strip.text else "", Modifier.weight(1f, fill = suffix.isEmpty())) {
-                        Text(
-                            strip.short.removeSuffix(suffix),
-                            Modifier.semantics { if (described) contentDescription = strip.text },
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = ink,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+        // -- WP ANLINK -- no DSPi: the ways to one stay on the strip, a second line on a phone
+        val noDevice = strip is ConnectionStrip.NoDevice
+        Column(Modifier.fillMaxWidth()) {
+            Row(
+                Modifier.fillMaxWidth().padding(
+                    start = 16.dp,
+                    end = if (compact) 4.dp else 16.dp,
+                    top = 4.dp,
+                    bottom = if (compact && noDevice) 0.dp else 4.dp // -- WP ANLINK -- the actions' line below
+                ),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                if (compact) {
+                    // -- WP SECAN -- "(unsecured)" is never cut off: it is measured before the
+                    // weighted text, which is ellipsised instead; TalkBack reads the whole text once
+                    val suffix = (strip as? ConnectionStrip.Remote)?.suffix.orEmpty()
+                    val described = strip.short != strip.text || suffix.isNotEmpty()
+                    Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                        HelpTip(if (described) strip.text else "", Modifier.weight(1f, fill = suffix.isEmpty())) {
+                            Text(
+                                strip.short.removeSuffix(suffix),
+                                Modifier.semantics { if (described) contentDescription = strip.text },
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = ink,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        if (suffix.isNotEmpty()) {
+                            Text(
+                                suffix,
+                                Modifier.clearAndSetSemantics { testTag = UNSECURED_SUFFIX_TAG },
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = ink,
+                                maxLines = 1
+                            )
+                        }
                     }
-                    if (suffix.isNotEmpty()) {
-                        Text(
-                            suffix,
-                            Modifier.clearAndSetSemantics { testTag = UNSECURED_SUFFIX_TAG },
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = ink,
-                            maxLines = 1
-                        )
+                    if (unsecured) UnsecuredInfoButton(ink) // -- WP SECAN --
+                    if (installerBadge) InstallerBadge(ink) // -- WP P1AN2 --
+                    history?.let { UndoRedoButtons(it, ink) }
+                    // -- WP P1AN1 -- Snapshots first in the overflow: the bar keeps its one line
+                    // -- WP P1AN2 -- the Mode entry after it
+                    StripMenu(
+                        listOfNotNull(onSnapshots?.let { SNAPSHOTS_ENTRY to it }, modeEntry) + actions,
+                        devices,
+                        onChooseDevice,
+                        ink,
+                        identifyEntry // -- WP P2AN -- last, below the device list
+                    )
+                } else {
+                    // -- WP SECAN -- the info button right after "(unsecured)"
+                    Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                        Text(strip.text, Modifier.weight(1f, fill = false), style = MaterialTheme.typography.bodyMedium, color = ink)
+                        if (unsecured) UnsecuredInfoButton(ink)
                     }
+                    actions.forEach { (label, act) -> TextButton(onClick = act) { Text(label) } }
+                    if (noDevice) NoDeviceActions(onChooseDevice) // -- WP ANLINK --
+                    // -- WP P1AN1 --
+                    onSnapshots?.let { TextButton(onClick = it, Modifier.testTag(SNAPSHOTS_ENTRY_TAG)) { Text(SNAPSHOTS_ENTRY) } }
+                    // -- WP P1AN2 --
+                    if (installerBadge) InstallerBadge(ink)
+                    modeEntry?.let { (label, act) -> TextButton(onClick = act, Modifier.testTag(MODE_ENTRY_TAG)) { Text(label) } }
+                    history?.let { UndoRedoButtons(it, ink) } // -- WP AN42 --
+                    DeviceListButton(devices, onChooseDevice, identifyEntry) // -- WP AN7 --, P2AN: Identify
                 }
-                if (unsecured) UnsecuredInfoButton(ink) // -- WP SECAN --
-                if (installerBadge) InstallerBadge(ink) // -- WP P1AN2 --
-                history?.let { UndoRedoButtons(it, ink) }
-                // -- WP P1AN1 -- Snapshots first in the overflow: the bar keeps its one line
-                // -- WP P1AN2 -- the Mode entry after it
-                StripMenu(
-                    listOfNotNull(onSnapshots?.let { SNAPSHOTS_ENTRY to it }, modeEntry) + actions,
-                    devices,
-                    onChooseDevice,
-                    ink,
-                    identifyEntry // -- WP P2AN -- last, below the device list
-                )
-            } else {
-                // -- WP SECAN -- the info button right after "(unsecured)"
-                Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-                    Text(strip.text, Modifier.weight(1f, fill = false), style = MaterialTheme.typography.bodyMedium, color = ink)
-                    if (unsecured) UnsecuredInfoButton(ink)
-                }
-                actions.forEach { (label, act) -> TextButton(onClick = act) { Text(label) } }
-                // -- WP P1AN1 --
-                onSnapshots?.let { TextButton(onClick = it, Modifier.testTag(SNAPSHOTS_ENTRY_TAG)) { Text(SNAPSHOTS_ENTRY) } }
-                // -- WP P1AN2 --
-                if (installerBadge) InstallerBadge(ink)
-                modeEntry?.let { (label, act) -> TextButton(onClick = act, Modifier.testTag(MODE_ENTRY_TAG)) { Text(label) } }
-                history?.let { UndoRedoButtons(it, ink) } // -- WP AN42 --
-                DeviceListButton(devices, onChooseDevice, identifyEntry) // -- WP AN7 --, P2AN: Identify
+            }
+            if (compact && noDevice) {
+                FlowRow(Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp)) { NoDeviceActions(onChooseDevice) }
             }
         }
     }
+}
+
+// -- WP ANLINK --
+/**
+ * The NoDevice strip's actions: Networking (where DSPi Link is turned on; choosing this never
+ * turns it on) and the demo device. TextButtons keep Material's 48dp touch target.
+ */
+@Composable
+private fun NoDeviceActions(onChoose: (DeviceChoice) -> Unit) {
+    TextButton(onClick = { onChoose(DeviceChoice.Network) }, Modifier.testTag(NO_DEVICE_LINK_TAG)) { Text(NO_DEVICE_LINK_ACTION) }
+    TextButton(onClick = { onChoose(DeviceChoice.Demo) }, Modifier.testTag(NO_DEVICE_DEMO_TAG)) { Text(NO_DEVICE_DEMO_ACTION) }
 }
 
 // -- WP P1AN2 --

@@ -40,7 +40,8 @@ bar (pins, outputs, I2S, inputs, global parameters, control interfaces, control 
 signals, spectrum analyser, statistics, interrupt monitor · firmware installer (the bundled 1.1.6
 images or a local `.uf2`) · demo mode without a device.
 
-DSPi Link (optional, off by default; Settings › Networking): control a DSPi through a DSPi Link hub
+DSPi Link (optional, off by default; turned on in Networking: Settings › Networking, "Connect over DSPi
+Link" on the main page when no DSPi is connected, or "DSPi Link…" in the device list): control a DSPi through a DSPi Link hub
 on the local network, such as DSPi Console on a Mac, this repository's `uconsole hub` or Qt app, or a DSPi
 ESP32 bridge — hub discovery or address entry, PIN pairing, reconnect. *(Until 0.12.0 the protocol was
 plaintext. On `main` since 2026-11-16, WP SECAN:)* the connection to this project's hubs is TLS, with the

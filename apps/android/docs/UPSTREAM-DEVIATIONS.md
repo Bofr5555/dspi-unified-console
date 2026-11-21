@@ -1001,6 +1001,9 @@ Reference: DSPi-Console `release/v1.1.6` (`9a42965`) `Link/` and
 2. **Opt-in, off by default** (D2): Settings › Networking › "Control DSPi
    devices over the network". macOS has no such switch (its client is always
    there). Browsing runs only while the Networking page is visible.
+   The same page opens from the main page (WP ANLINK): the strip's
+   "Connect over DSPi Link" with no DSPi connected, and "DSPi Link…" in the
+   device list, listed with DSPi Link off too; neither turns it on.
 3. **Protocol in Rust behind the core's transport** (D3/D4) instead of the
    Swift `NetworkTransport` under `DSPViewModel`: patch 0004 makes the core
    transport-aware (echo suppression by origin, single-shot bulk, Link

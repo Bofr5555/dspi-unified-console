@@ -4,6 +4,14 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
 
 ## Unreleased
 
+### Android
+- DSPi Link is reachable from the main page (owner report on 0.14.0: only through the settings
+  cogwheel). With no DSPi connected, the strip under the top bar says "No DSPi connected. Plug one
+  in over USB, or connect over DSPi Link." and shows **Connect over DSPi Link** (opens Networking,
+  the same page as Settings › Networking) and **Try the demo**. The device list always offers
+  "DSPi Link…", with DSPi Link off too. DSPi Link stays opt-in: it is turned on only with
+  Networking's switch; hubs are listed only while it is on. (WP ANLINK)
+
 ## 0.14.0 (2026-11-20)
 
 One version for every client but the Swift app: the Qt desktop app (Windows, Linux and

@@ -93,7 +93,8 @@ class StripCompactWpAn42Test {
         show(connectionStrip(AppMode.DEVICE, se.bofr.dspi.usb.UsbSessionState.NoDevice))
         rule.onNode(hasText("No DSPi connected") and inStrip).assertIsDisplayed()
         val strip = rule.onNodeWithTag(CONNECTION_STRIP_TAG).getBoundsInRoot()
-        assertTrue(strip.bottom - strip.top <= 56.dp)
+        // -- WP ANLINK -- no DSPi: one more line, the ways to one (DSPi Link, demo)
+        assertTrue(strip.bottom - strip.top <= 56.dp + 48.dp)
     }
 
     @Test
