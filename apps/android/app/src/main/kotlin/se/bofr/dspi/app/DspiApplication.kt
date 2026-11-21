@@ -6,7 +6,10 @@ import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import se.bofr.dspi.bridge.DspiBridge
 import se.bofr.dspi.bridge.DspiBridgeImpl
 import se.bofr.dspi.core.LinkPairLink
@@ -113,11 +116,15 @@ class DspiApplication : Application() {
     /** -- WP P1AN2 -- the installer's limits profiles and PINs (`limits_set_dir`), app-private. */
     private fun limitsFolder(): String = java.io.File(filesDir, "limits").path
 
+    // -- WP LKFAST -- the core's DSPi Link hub memory (a hub met without TLS, the hub bound last)
+    private fun linkFolder(): String = java.io.File(filesDir, "dspi-link").path
+
     override fun onCreate() {
         super.onCreate()
         val version = appVersion()
         val linkStore = DataStoreLinkStore(dspiBridgeStore, appScope)
         val deviceCore = FfiDspiCore()
+        runCatching { deviceCore.linkSetDir(linkFolder()) } // -- WP LKFAST -- a path only, no I/O
         aboutJson = deviceCore::aboutJson
         parsePairLink = deviceCore::linkParsePairLink // -- WP SECAN --
         onboarding = OnboardingSource(deviceCore::onboardingWhatsNewJson, deviceCore::onboardingGettingStartedJson) // -- WP AN19 --
@@ -147,16 +154,19 @@ class DspiApplication : Application() {
                 startRemoteSession(
                     appScope,
                     version,
-                    FfiDspiCore(),
+                    FfiDspiCore().also { runCatching { it.linkSetDir(linkFolder()) } }, // -- WP LKFAST --
                     linkTokens,
                     clientName,
                     services.linkClient(),
                     linkStore,
                     log = { Log.i(TAG, it) },
-                    onClose = { network.setSessionActive(false) }
+                    onClose = { network.setSessionActive(false) },
+                    findsHubs = { linkSettings.settings.value.findAutomatically } // -- WP LKFAST3 --
                 ).also { r -> appScope.launch { r.bridge.installer.setFolder(limitsFolder()) } } // -- WP P1AN2 --
             },
-            unsecuredAcks = UnsecuredAckStore(PrefsKeyValue(this, "dspi_link_unsecured_acks")) // -- WP ANSEC --
+            unsecuredAcks = UnsecuredAckStore(PrefsKeyValue(this, "dspi_link_unsecured_acks")), // -- WP ANSEC --
+            // -- WP LKFAST -- the user left the hub: no dial at the next start (a small file write)
+            leftHub = { appScope.launch(Dispatchers.IO) { runCatching { deviceCore.linkForgetLastHub() } } }
         )
         // The notification acts on the unit on screen (device, demo or REMOTE)
         ConnectionServiceLink.controls = SwitchingNotificationControls(modes.bridge, appScope)
@@ -170,13 +180,29 @@ class DspiApplication : Application() {
             Build.MODEL.orEmpty(),
             parseAddress = { t -> runCatching { deviceCore.linkParseAddress(t) }.getOrNull()?.let { it.host to it.port } },
             credentialKey = deviceCore::linkCredentialHubKey, // -- WP SECAN --
-            credentialTlsOnly = deviceCore::linkCredentialTlsOnly // -- WP PINTLS --
+            credentialTlsOnly = deviceCore::linkCredentialTlsOnly, // -- WP PINTLS --
+            forgetHub = deviceCore::linkForgetHub, // -- WP LKFAST3 --
+            rows = Dispatchers.Default,
+            io = Dispatchers.IO,
+            hubEncryption = deviceCore::linkHubEncryption // -- WP LKFAST -- a small file read per row
         )
         linkFollower = LinkNetworkFollower(hubBrowser, modes.remoteState) { modes.remoteSession?.networkTarget }
         appScope.launch { linkFollower.follow() }
         appScope.launch { linkSettings.settings.collect { if (it.enabled) network.start() else network.stop() } }
         usbGate = UsbStartGate(appScope) { linkStore.awaitLoaded() }
-        usbGate.run { usb.start(this) }
+        usbGate.run {
+            usb.start(this)
+            // -- WP LKFAST -- (owner decision 2026-11-21) after the USB scan: USB wins
+            val s = linkSettings.settings.value
+            if (s.enabled && s.reconnectAtStart) {
+                appScope.launch {
+                    val scanned = suspend { withTimeoutOrNull(USB_SCAN_WAIT_MS) { usb.scanned.first { it } } }
+                    modes.reconnectAtStart(usbScanned = { scanned() }) { usbPresent ->
+                        withContext(Dispatchers.IO) { deviceCore.linkStartHub(usbPresent) }?.let(::lastHubOf)
+                    }
+                }
+            }
+        }
         UiVisibilityTracker(appScope) {
             modes.setUiVisible(it)
             if (it) linkFollower.uiShown()
@@ -191,5 +217,8 @@ class DspiApplication : Application() {
 
     private companion object {
         const val TAG = "DspiApplication"
+
+        // -- WP LKFAST3 -- the first USB scan is quick; never hold the start's dial longer
+        const val USB_SCAN_WAIT_MS = 2_000L
     }
 }

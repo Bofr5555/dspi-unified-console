@@ -98,6 +98,9 @@ if [[ -t 0 && -t 1 ]]; then tty=(-t); fi
 # DSPi Link fake hub uses it: tools/link-fakehub.sh). Network only, no devices.
 publish=()
 if [[ -n "${DSPI_DEV_PUBLISH:-}" ]]; then publish=(-p "$DSPI_DEV_PUBLISH"); fi
+# -- WP LKFAST -- DSPI_DEV_NETWORK=container:<name> joins another container's network
+# namespace (only the esp-rig's Android timing harness, rig.sh android). Network only, no devices.
+if [[ -n "${DSPI_DEV_NETWORK:-}" ]]; then publish+=(--network "$DSPI_DEV_NETWORK"); fi
 
 if [[ $# -eq 0 ]]; then set -- bash; fi
 

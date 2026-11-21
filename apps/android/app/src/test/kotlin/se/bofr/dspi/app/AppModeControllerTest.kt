@@ -65,6 +65,13 @@ class AppModeControllerTest {
             flow.value = LinkSessionState.Connecting(hub)
         }
 
+        val atStart = mutableListOf<LinkHub>() // -- WP LKFAST --
+
+        override fun connectAtStart(hub: LinkHub) {
+            atStart += hub
+            connect(hub)
+        }
+
         override fun submitPin(pin: String) {}
 
         override fun cancelPin() {
@@ -102,8 +109,11 @@ class AppModeControllerTest {
         scope = CoroutineScope(backgroundScope.coroutineContext + UnconfinedTestDispatcher(testScheduler)),
         demoFactory = { FakeDemo().also { demos += it } },
         forwardUiVisible = { forwarded += it },
-        remoteFactory = { FakeRemote().also { remotes += it } }
+        remoteFactory = { FakeRemote().also { remotes += it } },
+        leftHub = { leftHub++ } // -- WP LKFAST --
     )
+
+    private var leftHub = 0
 
     private val unit = DspiUsbDevice("/dev/bus/usb/001/002", UsbIds.DSPI_VID, "E6614103", hasPermission = true)
 
@@ -241,5 +251,64 @@ class AppModeControllerTest {
         c.setUiVisible(true)
         assertEquals(listOf(false, true), remotes.single().rec.visible)
         assertEquals(1, remotes.single().retries)
+    }
+
+    // -- WP LKFAST --
+
+    @Test
+    fun wpLkfastTheHubUsedLastIsDialledAtStart() = runTest {
+        val c = controller()
+        var asked: Boolean? = null
+        c.reconnectAtStart { usb ->
+            asked = usb
+            hub
+        }
+        assertEquals(false, asked)
+        assertEquals(AppMode.REMOTE, c.mode.value)
+        assertEquals(listOf(hub), remotes.single().atStart)
+        assertEquals("nothing was left", 0, leftHub)
+    }
+
+    // -- WP LKFAST3 -- (review LKREV 8) the first scan's list decides, whenever it comes
+    @Test
+    fun wpLkfast3UsbWinsAtStartOnceTheFirstScanIsIn() = runTest {
+        val c = controller()
+        c.reconnectAtStart(usbScanned = { usbDevices.value = listOf(unit) }) { hub }
+        assertEquals(AppMode.DEVICE, c.mode.value)
+        assertTrue(remotes.isEmpty())
+    }
+
+    @Test
+    fun wpLkfastUsbWinsAtStart() = runTest {
+        usbDevices.value = listOf(unit)
+        val c = controller()
+        var asked: Boolean? = null
+        c.reconnectAtStart { usb ->
+            asked = usb
+            hub // the core says none with USB present; even if a hub came back, USB wins
+        }
+        assertEquals(true, asked)
+        assertEquals(AppMode.DEVICE, c.mode.value)
+        assertTrue(remotes.isEmpty())
+    }
+
+    @Test
+    fun wpLkfastNoHubOrAChoiceAlreadyMadeMeansNoDial() = runTest {
+        val c = controller()
+        c.reconnectAtStart { null }
+        assertTrue(remotes.isEmpty())
+        assertTrue(c.enterDemo())
+        c.reconnectAtStart { hub }
+        assertEquals(AppMode.DEMO, c.mode.value)
+        assertTrue(remotes.isEmpty())
+    }
+
+    @Test
+    fun wpLkfastLeavingTheHubIsRemembered() = runTest {
+        val c = controller()
+        c.enterRemote(hub)
+        remotes.single().disconnect()
+        assertEquals(AppMode.DEVICE, c.mode.value)
+        assertEquals(1, leftHub)
     }
 }

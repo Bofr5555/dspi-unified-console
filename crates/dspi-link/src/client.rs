@@ -626,17 +626,21 @@ impl LinkClient {
         if required || !tls.plaintext_known {
             let trust = tls.pin.map_or(TlsTrust::FirstUse, TlsTrust::Pinned);
             let within = (!required).then_some(TLS_TRY_WITHIN);
+            // -- WP LKFAST -- where plaintext may follow a refused TLS, the
+            // connector may get it ready while TLS is tried (nothing goes out on
+            // it before the refusal), so a hub without TLS costs no extra round trips
+            if !required {
+                let (pair, key) = connector.connect_tls_or_plain(url, SUB_PROTOCOL, trust, within)?;
+                return Self::connect_over(pair, opts, events, cfg, key.map(|key| (tls, key)));
+            }
             match connector.connect_tls(url, SUB_PROTOCOL, trust, within) {
                 Ok((pair, key)) => return Self::connect_over(pair, opts, events, cfg, Some((tls, key))),
                 // -- WP PINTLS -- a hub pinned before: refused, typed, nothing sent
                 Err(LinkError::TlsRefused { .. }) if tls.pin.is_none() && tls.pinned_before => {
                     return Err(LinkError::TlsRequiredPinned)
                 }
-                Err(LinkError::TlsRefused { .. }) if required => {
-                    return Err(LinkError::TlsRefused { advertised: tls.pin.is_none() })
-                }
                 Err(LinkError::TlsRefused { .. }) => {
-                    log::info!("dspi-link: the hub has no TLS; connecting unencrypted");
+                    return Err(LinkError::TlsRefused { advertised: tls.pin.is_none() })
                 }
                 Err(e) => return Err(e),
             }
@@ -729,6 +733,8 @@ impl LinkClient {
             return Err(e);
         }
 
+        // -- WP LKFAST -- the device list sent with an open hub's session probe
+        let mut listing = None;
         let state = if c.inner.hello.pin_required() {
             // Only now is it known which hub answered at this address
             let token = match &cfg.token_for {
@@ -760,7 +766,16 @@ impl LinkClient {
             }
         } else {
             // Open access: the session is open; ask for our id anyway (spec 6.1)
-            match c.request(|id| out::auth_pair(id, OPEN_ACCESS_PIN, &opts.client_name, None), left()) {
+            // -- WP LKFAST -- with the device list right behind it, in the same
+            // round trip: an open session needs no answer before it lists
+            let pair_id = c.inner.next_id.fetch_add(1, Ordering::SeqCst);
+            let pair =
+                c.request_begin(pair_id, out::auth_pair(pair_id, OPEN_ACCESS_PIN, &opts.client_name, None), left());
+            if pair.is_ok() {
+                let list_id = c.inner.next_id.fetch_add(1, Ordering::SeqCst);
+                listing = c.request_begin(list_id, out::device_list(list_id), left()).ok();
+            }
+            match pair.and_then(|p| c.request_finish(p)) {
                 Ok(v) => c.became_ready(&v),
                 Err(LinkError::Rejected { .. }) => {
                     log::warn!("dspi-link: open hub refused the session probe; own echoes cannot be recognised");
@@ -774,7 +789,11 @@ impl LinkClient {
             AuthState::Ready
         };
         if state == AuthState::Ready {
-            if let Err(e) = c.refresh_devices_within(left()) {
+            let listed = match listing {
+                Some(pending) => c.finish_device_list(pending),
+                None => c.refresh_devices_within(left()),
+            };
+            if let Err(e) = listed {
                 c.close();
                 return Err(e);
             }
@@ -1012,6 +1031,22 @@ impl LinkClient {
 
     fn read_device_list(&self, timeout: Duration) -> Result<Vec<DeviceInfo>, LinkError> {
         let v = self.request(out::device_list, timeout)?;
+        self.take_device_list(&v)
+    }
+
+    // -- WP LKFAST --
+    /// The answer to a `device.list` sent with [`Self::request_begin`], taken in
+    /// as [`Self::refresh_devices_within`] takes its own.
+    fn finish_device_list(&self, pending: PendingRequest) -> Result<Vec<DeviceInfo>, LinkError> {
+        let result = self.request_finish(pending).and_then(|v| self.take_device_list(&v));
+        if let Err(e) = &result {
+            lock(&self.inner.session).list_error = Some(e.clone());
+        }
+        result
+    }
+
+    /// A `device.list` answer into the session's list.
+    fn take_device_list(&self, v: &Value) -> Result<Vec<DeviceInfo>, LinkError> {
         let list: Vec<DeviceInfo> = v
             .get("devices")
             .cloned()

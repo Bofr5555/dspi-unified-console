@@ -3225,6 +3225,16 @@ interface DspiCoreApi : AutoCloseable {
     fun linkConnectAdvertised(url: String, clientName: String, appVersion: String, credential: String, expectedHubId: String, tlsAdvertised: Boolean): LinkHello
 
     /**
+     * [`DspiCore::link_connect_advertised`] for the dial at app start to the
+     * hub used last ([`DspiCore::link_start_hub`]): the same rules, but its
+     * first dial gives up after [`START_DIAL_BUDGET`] instead of a minute, so
+     * a hub that is not at its stored address hands over to the client's
+     * search quickly. A dial the user asked for keeps the long budget.
+     */
+    @Throws(DspiException::class)
+    fun linkConnectAtStart(url: String, clientName: String, appVersion: String, credential: String, expectedHubId: String, tlsAdvertised: Boolean): LinkHello
+
+    /**
      * The current session's encryption, for the hub's status and settings.
      */
     fun linkSecurity(): LinkSecurity
@@ -3319,6 +3329,65 @@ interface DspiCoreApi : AutoCloseable {
      * to it would fail for ever.
      */
     fun linkSetUrl(url: String)
+
+    /**
+     * Remember DSPi Link hubs between sessions in a small file under `dir`,
+     * the app's own data folder ("" forgets the folder): a hub met without
+     * TLS is dialled without a TLS try next time ([`DspiCore::link_recheck_tls`]),
+     * and the hub bound last is kept for [`DspiCore::link_start_hub`]. Name
+     * it before the first connect.
+     *
+     * Errors: [`DspiError::Unsupported`] on the web (no files).
+     */
+    @Throws(DspiException::class)
+    fun linkSetDir(dir: String)
+
+    /**
+     * The hub to dial at start (owner decision 2026-11-21): the one whose
+     * device was bound last, unless the user left it
+     * ([`DspiCore::link_forget_last_hub`]) or a DSPi is on USB
+     * (`usb_present`: USB wins). `None` without a folder. The client checks
+     * its own settings (DSPi Link on, reconnect at start on) and dials it as
+     * a browsed hub, with that hub's stored credential: a pinned hub stays
+     * TLS only. Needs no device; no traffic.
+     */
+    fun linkStartHub(usbPresent: Boolean): LinkLastHub?
+
+    /**
+     * The user left the hub (Disconnect, or switched to another device): no
+     * dial at start until a device is bound on a hub again.
+     */
+    fun linkForgetLastHub()
+
+    /**
+     * Try TLS again at hub `hub_id`'s next connect as at first contact (Pair
+     * Again): what was met lately, without TLS or with it, is forgotten. No
+     * traffic.
+     */
+    fun linkRecheckTls(hubId: String)
+
+    /**
+     * The user forgot hub `hub_id` (its pairing deleted): everything the core
+     * remembers of it goes, and it is no longer [`DspiCore::link_start_hub`]'s
+     * hub. No traffic.
+     */
+    fun linkForgetHub(hubId: String)
+
+    /**
+     * A hub's encryption before it is dialled, for its line in a list or a
+     * prompt: [`LinkEncryption::Verified`] for a stored credential with a key
+     * pin, `Offered` for one pinned before or an advert that says TLS, `Off`
+     * for a hub met without TLS lately or a browsed hub that does not
+     * advertise it, `Unknown` for a `typed` address with nothing known.
+     * The words: [`link_encryption_notice_key`]. No traffic.
+     */
+    fun linkHubEncryption(credential: String, tlsAdvertised: Boolean, hubId: String, typed: Boolean): LinkEncryption
+
+    /**
+     * The current session's encryption ([`DspiCore::link_security`] as one
+     * state): `Unknown` without a session.
+     */
+    fun linkSessionEncryption(): LinkEncryption
 
     /**
      * Register (`Some`) or clear (`None`) the measurement listener: called
@@ -6137,6 +6206,14 @@ interface DspiCoreApi : AutoCloseable {
      * Stateless (a free function in dspi-core); needs no device.
      */
     fun limitsFieldRanges(): List<LimitFieldRange>
+
+    /**
+     * The notice row with `encryption`'s words (`notice_for_key`): one rule for
+     * every client's hub lines, prompts and status.
+     *
+     * Stateless (a free function in dspi-core); needs no device.
+     */
+    fun linkEncryptionNoticeKey(encryption: LinkEncryption): String
 
     /**
      * Parse a hub address typed by the user (`host`, `host:port`, `[v6]:port`).

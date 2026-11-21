@@ -63,7 +63,9 @@ class LinkMetersWpLk2Test {
             assertTrue("the connection is not shown before the read", !b.status.value.connected)
             core.release.countDown()
             waitFor("the connection") { b.status.value.connected }
-            waitFor("the control surfaces after the meters") { core.callCount("csFetch") >= 1 }
+            // -- WP LKFAST -- the control surfaces wait for their page (Settings reads them when it opens)
+            waitFor("the generator after the meters") { core.callCount("siggenFetchCaps") >= 1 }
+            assertEquals("no control-surface read at the open", 0, core.callCount("csFetch"))
         } finally {
             core.release.countDown()
             b.close()
@@ -167,14 +169,14 @@ class LinkMetersWpLk2Test {
         assertTrue(b.attachRemote(0, core.serial))
         runCurrent()
         assertTrue(b.connected)
-        assertEquals("no control-surface read before a meter", 0, core.callCount("csFetch"))
         assertEquals(0, core.callCount("siggenFetchCaps"))
         advanceTimeBy(DspiBridgeImpl.STATUS_POLL_MS * 3)
         runCurrent()
-        assertEquals(1, core.callCount("csFetch"))
-        assertEquals(1, core.callCount("siggenFetchCaps"))
+        // -- WP LKFAST -- the generator on its own lane (a thread), the control surfaces at their page
+        waitFor("the generator read") { core.callCount("siggenFetchCaps") == 1 }
+        assertEquals(0, core.callCount("csFetch"))
         val calls = core.calls.toList()
-        assertTrue(calls.indexOfFirst { it == "fetchStatus" } < calls.indexOfFirst { it == "csFetch" })
+        assertTrue(calls.indexOfFirst { it == "fetchStatus" } < calls.indexOfFirst { it == "siggenFetchCaps" })
         b.close()
     }
 
@@ -186,7 +188,9 @@ class LinkMetersWpLk2Test {
         assertTrue(b.attachRemote(0, core.serial))
         runCurrent()
         assertEquals(0, core.callCount("fetchStatus"))
-        assertEquals(1, core.callCount("csFetch"))
+        // -- WP LKFAST -- the generator at once (on its own lane), the control surfaces at their page
+        waitFor("the generator read") { core.callCount("siggenFetchCaps") == 1 }
+        assertEquals(0, core.callCount("csFetch"))
         b.close()
     }
 

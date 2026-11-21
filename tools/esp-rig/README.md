@@ -95,6 +95,25 @@ tools/esp-rig/rig.sh down r1               # also keeps the serial log in runs/r
 - **CI.** `ci/check.sh --step esp-rig` (`ci.sh`) is opt-in and not in `--all`. It builds what is missing, then
   runs the smoke with our client and the TS client.
 
+### The Android app's path (WP LKFAST)
+
+`rig.sh android RUN` times the app's own REMOTE stack against a rig: the real core (release build, as the app ships
+it), `DspiBridgeImpl` on its serial FFI thread with the controllers' start-up reads, and `LinkSessionEngine`, on the
+JVM in the Android build container joined to the rig's network (`apps/android/link`'s `LinkRigTimingTest`, skipped
+without a rig). It prints the time from the tap on a hub to Home ready (what `observeDeviceReady` waits for) and to
+the first live meter read on Home; `DSPI_RIG_VERBOSE=1` adds every core call with its thread and times.
+`DSPI_RIG_AFTER_MS` keeps it running to report the meters during the start-up reads, `DSPI_RIG_TOUCH_MS` times a
+user action that long after Home (its wait for the FFI thread and the core lock). The Compose frame and the phone's
+own speed are not in it.
+
+```
+tools/esp-rig/rig.sh android-build                 # the :link tests' classpath, the release libdspi_ffi
+tools/esp-rig/rig.sh android r1 DSPI_RIG_VERBOSE=1
+```
+
+`RIG_ANDROID_CP` / `RIG_ANDROID_LIB` run a kept build (a classpath file, the library's directory) for before/after
+runs; `LK3_UNTIL_METER=1` ends the TS client at its first meter, for interleaved timing runs.
+
 ### The real DSPi (K340)
 
 ```

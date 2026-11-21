@@ -514,6 +514,8 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun linkConnectAdvertised(url: String, clientName: String, appVersion: String, credential: String, expectedHubId: String, tlsAdvertised: Boolean): LinkHello = throw NotImplementedError("link_connect_advertised")
 
+    override fun linkConnectAtStart(url: String, clientName: String, appVersion: String, credential: String, expectedHubId: String, tlsAdvertised: Boolean): LinkHello = throw NotImplementedError("link_connect_at_start")
+
     override fun linkSecurity(): LinkSecurity = throw NotImplementedError("link_security")
 
     override fun linkPair(pin: String): String = throw NotImplementedError("link_pair")
@@ -531,6 +533,20 @@ open class UnimplementedDspiCore : DspiCoreApi {
     override fun linkRetryNow(): Unit = throw NotImplementedError("link_retry_now")
 
     override fun linkSetUrl(url: String): Unit = throw NotImplementedError("link_set_url")
+
+    override fun linkSetDir(dir: String): Unit = throw NotImplementedError("link_set_dir")
+
+    override fun linkStartHub(usbPresent: Boolean): LinkLastHub? = throw NotImplementedError("link_start_hub")
+
+    override fun linkForgetLastHub(): Unit = throw NotImplementedError("link_forget_last_hub")
+
+    override fun linkRecheckTls(hubId: String): Unit = throw NotImplementedError("link_recheck_tls")
+
+    override fun linkForgetHub(hubId: String): Unit = throw NotImplementedError("link_forget_hub")
+
+    override fun linkHubEncryption(credential: String, tlsAdvertised: Boolean, hubId: String, typed: Boolean): LinkEncryption = throw NotImplementedError("link_hub_encryption")
+
+    override fun linkSessionEncryption(): LinkEncryption = throw NotImplementedError("link_session_encryption")
 
     override fun measureSetListener(listener: MeasureListener?): Unit = throw NotImplementedError("measure_set_listener")
 
@@ -1019,6 +1035,8 @@ open class UnimplementedDspiCore : DspiCoreApi {
     override fun hubRolloutStepNotice(step: String, text: String): Notice = throw NotImplementedError("hub_rollout_step_notice")
 
     override fun limitsFieldRanges(): List<LimitFieldRange> = throw NotImplementedError("limits_field_ranges")
+
+    override fun linkEncryptionNoticeKey(encryption: LinkEncryption): String = throw NotImplementedError("link_encryption_notice_key")
 
     override fun linkParseAddress(text: String): LinkAddress = throw NotImplementedError("link_parse_address")
 

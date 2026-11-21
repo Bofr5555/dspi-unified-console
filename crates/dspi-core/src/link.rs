@@ -323,6 +323,9 @@ struct Target {
     /// The stored record says the hub was pinned before (Pair Again): TLS
     /// only, `tls_required_pinned` when it fails; the pairing pins the new key.
     pinned_before: bool,
+    // -- WP LKFAST --
+    /// Where a hub met without TLS is remembered across sessions.
+    memory: Arc<hub_memory::Store>,
 }
 
 // -- WP SECCORE --
@@ -344,11 +347,14 @@ impl Target {
 
     /// What the client is told about TLS.
     fn tls_options(&self) -> TlsOptions {
+        // -- WP LKFAST3 -- (review LKREV 1) a hub that had TLS is TLS only, as
+        // one whose advert says so: no plaintext shortcut, no fallback
+        let had_tls = self.memory.tls_seen(&self.hub_id);
         TlsOptions {
             pin: self.pin,
             pin_next: self.pin_next,
-            advertised: self.tls_advertised,
-            plaintext_known: self.plaintext_known,
+            advertised: self.tls_advertised || had_tls,
+            plaintext_known: self.plaintext_known && !had_tls,
             pinned_before: self.pinned_before, // -- WP PINTLS --
         }
     }
@@ -358,12 +364,17 @@ impl Target {
     /// judged it (a proven rotation). Returns whether the credential changed.
     fn learn(&mut self, client: &LinkClient, state: &AuthState) -> bool {
         let Some(seen) = client.tls() else {
-            if self.pin.is_none() && !self.tls_advertised {
+            if self.pin.is_none() && !self.tls_advertised && !self.pinned_before {
+                // -- WP LKFAST -- and across sessions: no TLS try first next time
+                // (the count says when to try again); `tried`: it was refused now
+                self.memory
+                    .met_plaintext(&client.hello().hub.id, !self.plaintext_known);
                 self.plaintext_known = true;
             }
             return false;
         };
         self.plaintext_known = false;
+        self.memory.saw_tls(&client.hello().hub.id); // -- WP LKFAST3 -- met encrypted: TLS only from now on
         let keep = self.pin.is_some() || !self.token.is_empty() || state.needs_pin();
         if !keep {
             return false;
@@ -755,6 +766,36 @@ impl DspiCore {
             expected_hub_id,
             Advert {
                 tls: tls_advertised,
+                ..Advert::default()
+            },
+            Tuning::default(),
+        )
+    }
+
+    // -- WP LKFAST3 -- (review LKREV 6)
+    /// [`DspiCore::link_connect_advertised`] for the dial at app start to the
+    /// hub used last ([`DspiCore::link_start_hub`]): the same rules, but its
+    /// first dial gives up after [`START_DIAL_BUDGET`] instead of a minute, so
+    /// a hub that is not at its stored address hands over to the client's
+    /// search quickly. A dial the user asked for keeps the long budget.
+    pub fn link_connect_at_start(
+        &self,
+        url: String,
+        client_name: String,
+        app_version: String,
+        credential: String,
+        expected_hub_id: String,
+        tls_advertised: bool,
+    ) -> Result<LinkHello> {
+        self.link_connect_hinted(
+            url,
+            client_name,
+            app_version,
+            credential,
+            expected_hub_id,
+            Advert {
+                tls: tls_advertised,
+                first_dial: Some(START_DIAL_BUDGET),
             },
             Tuning::default(),
         )
@@ -1134,6 +1175,7 @@ impl DspiCore {
         tuning: Tuning,
     ) -> Result<LinkHello> {
         let credential = Credential::parse(&credential);
+        let tls_only = credential.tls_only(); // -- WP LKFAST --
         // -- WP LINKFIX -- fail closed: a bare token goes only to the hub it
         // was issued by, so never without that hub's id (nothing else checks
         // who answers before it goes out in plaintext)
@@ -1154,9 +1196,16 @@ impl DspiCore {
             pin: credential.pin,
             pin_next: credential.next,
             tls_advertised: advert.tls,
-            plaintext_known: false,
+            // -- WP LKFAST -- a hub met without TLS lately: no TLS try first. A
+            // pinned hub, one pinned before, or one whose advert says TLS never
+            // skips it (and the advert makes the next plaintext meeting count anew)
+            plaintext_known: !tls_only && !advert.tls && self.hub_memory.skip_tls(&expected_hub_id),
             pinned_before: credential.pinned_before, // -- WP PINTLS --
+            memory: Arc::clone(&self.hub_memory),
         };
+        if advert.tls {
+            self.hub_memory.saw_tls(&expected_hub_id); // -- WP LKFAST3 -- the ratchet
+        }
         // -- WP WB4b -- decided on the caller's thread, as the client's own mode is
         let pumped = dspi_link::client::caller_driven();
         // -- WP LK4 -- the first dial retries as the reference client does, and
@@ -1173,11 +1222,16 @@ impl DspiCore {
                 driver: None,
             });
         }
+        // -- WP LKFAST3 -- the start's dial has a short budget (never longer than the override)
+        let budget = advert
+            .first_dial
+            .map_or_else(first_dial_budget, |d| d.min(first_dial_budget()));
         let dialled = dial_first(
             &target,
             &tx,
             &cancel,
             (!pumped).then_some(tuning.backoff_divisor),
+            budget,
         );
         let dialled = match dialled {
             Ok(d) if !cancel.load(Ordering::SeqCst) => Ok(d),
@@ -1414,6 +1468,21 @@ impl DspiCore {
             // -- WP LK4 -- the snapshot is on its way while the identity is read
             transport.prefetch_snapshot();
         }
+        // -- WP LKFAST -- a device an ESP32 bridge lists as legacy with meters
+        // ([`listed_legacy_with_meters`]): its meter poll and snapshot go out
+        // ahead of the identity read, in the same round trip, instead of one
+        // after it. Other hubs keep PGFIX's order.
+        let bridge = client.hello().hub.kind == "bridge";
+        if !paged
+            && bridge
+            && let Some(n) =
+                channels.filter(|_| device.as_ref().is_some_and(listed_legacy_with_meters))
+        {
+            side.subscribe_ahead(crate::connect::meter_len(n));
+            ahead.set(true);
+            on_channels(n);
+            transport.prefetch_snapshot();
+        }
         // The identity too: the serial is what the hub lists. -- WP PGCORE --
         // The platform is the device's own 8 bytes (`read_platform`), not the
         // hub's 7, so the board id in byte 7 is seen (PLAN-PG R7c); on a
@@ -1439,7 +1508,7 @@ impl DspiCore {
             let has_meters = own_platform
                 .as_deref()
                 .is_some_and(|p| !crate::device::is_alink_sender_platform(p, None));
-            if let Some(n) = channels.filter(|_| has_meters) {
+            if let Some(n) = channels.filter(|_| has_meters && !ahead.get()) {
                 // Sent ahead of the snapshot: the hub answers in order, so its
                 // POLL frames start before the snapshot's bytes, not behind them
                 side.subscribe_ahead(crate::connect::meter_len(n));
@@ -1478,6 +1547,7 @@ impl DspiCore {
         {
             on_channels(n);
         }
+        let bind_platform = own_platform.clone(); // -- WP LKFAST --
         let listed = device
             .as_ref()
             .zip(own_platform)
@@ -1519,6 +1589,10 @@ impl DspiCore {
             return Err(DspiError::Disconnected);
         };
         conn.side = Some(Arc::clone(&side) as Arc<dyn SideChannel>);
+        // -- WP LKFAST -- the board from the bind's own platform read
+        if let Some(p) = bind_platform {
+            conn.board_seen = crate::hardware::board_of_platform(&p, conn.transport());
+        }
         // -- WP LK2 -- meters from now on, whatever holds the core lock
         // -- WP PGFIX -- none on the alink sender (it has no meters)
         let old_path =
@@ -1541,9 +1615,21 @@ impl DspiCore {
         current.retry = None;
         let _ = current.tx.send(Msg::Kick);
         side.bind_done(); // -- WP LK4 --
+        // -- WP LKFAST -- the hub to dial again at start
+        let h = client.hello();
+        let last = LinkLastHub {
+            hub_id: h.hub.id.to_lowercase(),
+            name: h.hub.name.clone(),
+            kind: h.hub.kind.clone(),
+            auth: h.auth.clone(),
+            tls_advertised: current.target.tls_advertised,
+            ..LinkLastHub::default()
+        };
+        let url = current.target.url.clone();
         drop(guard);
         drop(old_side);
         drop(old_path);
+        self.hub_memory.bound(&last, &url);
         Ok(())
     }
 
@@ -2435,7 +2521,18 @@ fn token_without_hub_id() -> DspiError {
 pub(crate) struct Advert {
     /// The browsed record's `tls_advertised` (spec 3.1 `tls=1`).
     pub(crate) tls: bool,
+    // -- WP LKFAST3 --
+    /// The first dial's budget when not [`FIRST_DIAL_BUDGET`] (the app start's dial).
+    pub(crate) first_dial: Option<Duration>,
 }
+
+// -- WP LKFAST3 -- (review LKREV 6)
+/// The first dial's budget at app start ([`DspiCore::link_connect_at_start`]):
+/// 8 s is the third SYN retransmission of a TCP connect (1 + 2 + 4 s) plus
+/// the 0.5 s and 1 s first-dial retries, so a hub at its address on a lossy
+/// Wi-Fi still gets through, while a hub that moved hands over to the search
+/// in seconds instead of a minute.
+pub(crate) const START_DIAL_BUDGET: Duration = Duration::from_secs(8);
 
 // -- WP LK4 --
 /// How long the first dial keeps trying (each try bounded by the connector's
@@ -2479,15 +2576,29 @@ fn dial_first(
     tx: &Sender<Msg>,
     cancel: &AtomicBool,
     retry: Option<u32>,
+    budget: Duration,
 ) -> std::result::Result<(LinkClient, AuthState), LinkError> {
     let divided = |d: Duration, by: u32| d.checked_div(by.max(1)).unwrap_or(d);
     let start = Instant::now();
     let mut failures = 0u32;
+    let mut told_tls = false;
     loop {
         let e = match dial(target, true, tx) {
             Ok(d) => return Ok(d),
             Err(e) => e,
         };
+        // -- WP LKFAST3 -- (review LKREV 4) the hub refused plaintext: it has TLS.
+        // TLS only from now on (the ratchet), and dialled again at once, over TLS
+        if matches!(e, LinkError::TlsRequired)
+            && !told_tls
+            && !target.hub_id.is_empty()
+            && !cancel.load(Ordering::SeqCst)
+        {
+            told_tls = true;
+            target.memory.saw_tls(&target.hub_id);
+            log::info!("DSPi Link: the hub asks for TLS; dialling it again over TLS");
+            continue;
+        }
         let Some(by) = retry.filter(|_| !cancel.load(Ordering::SeqCst)) else {
             return Err(e);
         };
@@ -2506,7 +2617,7 @@ fn dial_first(
             .min(FIRST_DIAL_RETRY_MAX)
             .max(min_delay);
         let wait = divided(wait, by);
-        if start.elapsed().saturating_add(wait) >= divided(first_dial_budget(), by) {
+        if start.elapsed().saturating_add(wait) >= divided(budget, by) {
             return Err(e);
         }
         log::info!("DSPi Link: the first dial failed ({e}); trying again in {wait:?}");
@@ -2789,6 +2900,123 @@ fn map_error(e: LinkError) -> DspiError {
     }
 }
 
+// -- WP LKFAST --
+#[cfg_attr(feature = "uniffi", uniffi::export)]
+impl DspiCore {
+    /// Remember DSPi Link hubs between sessions in a small file under `dir`,
+    /// the app's own data folder ("" forgets the folder): a hub met without
+    /// TLS is dialled without a TLS try next time ([`DspiCore::link_recheck_tls`]),
+    /// and the hub bound last is kept for [`DspiCore::link_start_hub`]. Name
+    /// it before the first connect.
+    ///
+    /// Errors: [`DspiError::Unsupported`] on the web (no files).
+    pub fn link_set_dir(&self, dir: String) -> Result<()> {
+        #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+        {
+            let dir = dir.trim();
+            self.hub_memory
+                .set_dir((!dir.is_empty()).then(|| dir.into()));
+            Ok(())
+        }
+        #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+        {
+            let _ = dir;
+            Err(DspiError::Unsupported)
+        }
+    }
+
+    /// The hub to dial at start (owner decision 2026-11-21): the one whose
+    /// device was bound last, unless the user left it
+    /// ([`DspiCore::link_forget_last_hub`]) or a DSPi is on USB
+    /// (`usb_present`: USB wins). `None` without a folder. The client checks
+    /// its own settings (DSPi Link on, reconnect at start on) and dials it as
+    /// a browsed hub, with that hub's stored credential: a pinned hub stays
+    /// TLS only. Needs no device; no traffic.
+    pub fn link_start_hub(&self, usb_present: bool) -> Option<LinkLastHub> {
+        if usb_present {
+            return None;
+        }
+        self.hub_memory.last()
+    }
+
+    /// The user left the hub (Disconnect, or switched to another device): no
+    /// dial at start until a device is bound on a hub again.
+    pub fn link_forget_last_hub(&self) {
+        self.hub_memory.left();
+    }
+
+    /// Try TLS again at hub `hub_id`'s next connect as at first contact (Pair
+    /// Again): what was met lately, without TLS or with it, is forgotten. No
+    /// traffic.
+    pub fn link_recheck_tls(&self, hub_id: String) {
+        self.hub_memory.recheck(&hub_id);
+    }
+
+    // -- WP LKFAST3 -- (review LKREV 2)
+    /// The user forgot hub `hub_id` (its pairing deleted): everything the core
+    /// remembers of it goes, and it is no longer [`DspiCore::link_start_hub`]'s
+    /// hub. No traffic.
+    pub fn link_forget_hub(&self, hub_id: String) {
+        self.hub_memory.forget(&hub_id);
+    }
+
+    /// A hub's encryption before it is dialled, for its line in a list or a
+    /// prompt: [`LinkEncryption::Verified`] for a stored credential with a key
+    /// pin, `Offered` for one pinned before or an advert that says TLS, `Off`
+    /// for a hub met without TLS lately or a browsed hub that does not
+    /// advertise it, `Unknown` for a `typed` address with nothing known.
+    /// The words: [`link_encryption_notice_key`]. No traffic.
+    pub fn link_hub_encryption(
+        &self,
+        credential: String,
+        tls_advertised: bool,
+        hub_id: String,
+        typed: bool,
+    ) -> LinkEncryption {
+        let c = Credential::parse(&credential);
+        if c.pin.is_some() {
+            LinkEncryption::Verified
+        } else if c.pinned_before || tls_advertised || self.hub_memory.tls_seen(&hub_id) {
+            LinkEncryption::Offered
+        } else if self.hub_memory.met_without_tls(&hub_id) || !typed {
+            LinkEncryption::Off
+        } else {
+            LinkEncryption::Unknown
+        }
+    }
+
+    /// The current session's encryption ([`DspiCore::link_security`] as one
+    /// state): `Unknown` without a session.
+    pub fn link_session_encryption(&self) -> LinkEncryption {
+        let live = self
+            .lock()
+            .link
+            .as_ref()
+            .is_some_and(|s| s.client.is_some());
+        if !live {
+            return LinkEncryption::Unknown;
+        }
+        let s = self.link_security();
+        if s.local {
+            LinkEncryption::Local
+        } else if !s.encrypted {
+            LinkEncryption::Off
+        } else if Credential::parse(&s.credential).pin.is_some() {
+            LinkEncryption::Verified
+        } else {
+            LinkEncryption::Offered
+        }
+    }
+}
+
+// -- WP LKFAST --
+/// The notice row with `encryption`'s words (`notice_for_key`): one rule for
+/// every client's hub lines, prompts and status.
+#[cfg_attr(feature = "uniffi", uniffi::export)]
+pub fn link_encryption_notice_key(encryption: LinkEncryption) -> String {
+    encryption.notice_key().to_owned()
+}
+
 fn hello_record(client: &LinkClient, state: &AuthState) -> LinkHello {
     let h = client.hello();
     LinkHello {
@@ -2808,6 +3036,25 @@ fn hello_record(client: &LinkClient, state: &AuthState) -> LinkHello {
 }
 
 // -- WP LK4 --
+// -- WP LKFAST --
+/// An ESP32 bridge lists `d` as a legacy DSPi with meters: firmware before
+/// the paged generation (1.1.7), outputs (the alink sender has none), and the
+/// image header's `wire_version`, which the bridge lists only once it has read
+/// the device's legacy settings image (upstream `hub_device.c`
+/// `learn_bulk_header`): a paged device or the sender never gets one.
+fn listed_legacy_with_meters(d: &DeviceInfo) -> bool {
+    use dspi_proto::packets::PlatformInfo;
+    if d.wire_version.is_none() {
+        return false;
+    }
+    hub_listed_identity(d)
+        .and_then(|l| PlatformInfo::decode(&l.platform).ok())
+        .is_some_and(|p| {
+            let v = p.version;
+            p.num_output_channels > 0 && (v.major, v.minor, v.patch) < (1, 1, 7)
+        })
+}
+
 /// The GET_PLATFORM reply and serial the hub lists for `d`, when it says all
 /// of it (platform, firmware `major.minor.patch` with its beta, outputs);
 /// `None` otherwise.
@@ -4355,6 +4602,13 @@ mod tests_wp_lk2;
 #[cfg(test)]
 #[path = "link/tests_wp_lk4.rs"]
 mod tests_wp_lk4;
+// -- WP LKFAST --
+#[cfg(test)]
+#[path = "link/tests_wp_lkfast.rs"]
+mod tests_wp_lkfast;
+// -- WP LKFAST --
+#[path = "link/hub_memory.rs"]
+pub(crate) mod hub_memory;
 
 // -- WP WB4b --
 #[cfg(test)]

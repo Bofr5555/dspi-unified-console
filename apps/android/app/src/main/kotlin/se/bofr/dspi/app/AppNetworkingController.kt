@@ -1,19 +1,24 @@
 package se.bofr.dspi.app
 
+import kotlin.coroutines.EmptyCoroutineContext
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import se.bofr.dspi.core.LinkEncryption
 import se.bofr.dspi.link.HubBrowser
 import se.bofr.dspi.link.LinkHub
 import se.bofr.dspi.link.LinkSessionState
 import se.bofr.dspi.link.LinkSettingsStore
 import se.bofr.dspi.link.LinkTokenStore
 import se.bofr.dspi.link.ManualHub
+import se.bofr.dspi.link.badgeOf
 import se.bofr.dspi.link.hubBadge
 import se.bofr.dspi.ui.link.AcknowledgedHubRow
 import se.bofr.dspi.ui.link.NetworkHubRow
@@ -42,7 +47,16 @@ class AppNetworkingController(
     // -- WP SECAN -- the core's `link_credential_hub_key`: the pin a stored credential carries ("" = none)
     private val credentialKey: (String) -> String = { "" },
     // -- WP PINTLS -- the core's `link_credential_tls_only`: the record keeps the hub TLS-only
-    private val credentialTlsOnly: (String) -> Boolean = { false }
+    private val credentialTlsOnly: (String) -> Boolean = { false },
+    // -- WP LKFAST --, LKFAST3: the core's `link_forget_hub` (a forgotten hub is met as new, TLS
+    // first, and is no longer dialled at start); a file write, so never on the main thread
+    private val forgetHub: (String) -> Unit = {},
+    // -- WP LKFAST3 -- where the rows are built (they read the core's hub memory) and where Forget
+    // reaches it: the app passes Default and IO, off the main thread; null keeps the caller's (tests)
+    rows: CoroutineDispatcher? = null,
+    private val io: CoroutineDispatcher? = null,
+    // -- WP LKFAST -- the core's `link_hub_encryption` (credential, advert, hub id, typed): one rule for every client
+    private val hubEncryption: ((String, Boolean, String, Boolean) -> LinkEncryption)? = null
 ) : NetworkingController {
     private val visible = MutableStateFlow(false)
     private val pairedRevision = MutableStateFlow(0)
@@ -63,6 +77,7 @@ class AppNetworkingController(
             NetworkingUiState(
                 enabled = s.enabled,
                 findAutomatically = s.findAutomatically,
+                reconnectAtStart = s.reconnectAtStart, // -- WP LKFAST --
                 clientName = s.clientName,
                 defaultClientName = defaultClientName,
                 hubs = hubs.map { row(it, remote) },
@@ -77,7 +92,8 @@ class AppNetworkingController(
                     AcknowledgedHubRow(a.hubId, a.name, if (a.typed) at else "")
                 }
             )
-        }.stateIn(scope, SharingStarted.Eagerly, NetworkingUiState())
+        }.let { f -> rows?.let { f.flowOn(it) } ?: f } // -- WP LKFAST3 -- (review LKREV 3)
+            .stateIn(scope, SharingStarted.Eagerly, NetworkingUiState())
 
     private data class Quad<A, B, C, D>(val a: A, val b: B, val c: C, val d: D)
 
@@ -99,7 +115,11 @@ class AppNetworkingController(
         val n = h.deviceCount
         val detail = if (h.isManual) h.displayAddress else "${h.displayAddress}, $n device${if (n == 1) "" else "s"}"
         val active = remote.hub?.let { it.id == h.id || (h.isManual && it.host == h.host && it.port == h.port) } == true
-        val badge = hubBadge(h, pinOf(h.id).isNotEmpty()).label // -- WP SECAN --
+        // -- WP SECAN --, LKFAST: the core's rule when there is a core
+        val badge = (
+            hubEncryption?.let { e -> badgeOf(e(tokens.token(h.id).orEmpty(), h.tlsAdvertised, h.id, h.isManual)) }
+                ?: hubBadge(h, pinOf(h.id).isNotEmpty())
+            ).label
         return NetworkHubRow(h.id, h.name, detail, h.kind, h.isOpen, h.isManual, active && remote != LinkSessionState.Idle, badge)
     }
 
@@ -125,6 +145,8 @@ class AppNetworkingController(
 
     override fun setFindAutomatically(on: Boolean) = settings.update { it.copy(findAutomatically = on) }
 
+    override fun setReconnectAtStart(on: Boolean) = settings.update { it.copy(reconnectAtStart = on) } // -- WP LKFAST --
+
     override fun setClientName(name: String) = settings.update { it.copy(clientName = name) }
 
     override fun connect(hubId: String) {
@@ -149,6 +171,7 @@ class AppNetworkingController(
 
     override fun forget(hubId: String) {
         tokens.remove(hubId)
+        scope.launch(io ?: EmptyCoroutineContext) { forgetHub(hubId) } // -- WP LKFAST3 -- (review LKREV 2, 3)
         pairedRevision.value++
     }
 

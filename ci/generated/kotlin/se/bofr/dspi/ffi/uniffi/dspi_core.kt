@@ -2148,6 +2148,24 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -2234,6 +2252,8 @@ fun uniffi_dspi_core_checksum_func_link_credential_hub_key(
 fun uniffi_dspi_core_checksum_func_link_credential_tls_only(
 ): Short
 fun uniffi_dspi_core_checksum_func_link_credential_unpaired(
+): Short
+fun uniffi_dspi_core_checksum_func_link_encryption_notice_key(
 ): Short
 fun uniffi_dspi_core_checksum_func_link_fetch_info(
 ): Short
@@ -2781,9 +2801,19 @@ fun uniffi_dspi_core_checksum_method_dspicore_link_connect(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_link_connect_advertised(
 ): Short
+fun uniffi_dspi_core_checksum_method_dspicore_link_connect_at_start(
+): Short
 fun uniffi_dspi_core_checksum_method_dspicore_link_devices(
 ): Short
+fun uniffi_dspi_core_checksum_method_dspicore_link_forget_hub(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_link_forget_last_hub(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_link_hub_encryption(
+): Short
 fun uniffi_dspi_core_checksum_method_dspicore_link_pair(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_link_recheck_tls(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_link_retry_now(
 ): Short
@@ -2791,7 +2821,13 @@ fun uniffi_dspi_core_checksum_method_dspicore_link_security(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_link_select_device(
 ): Short
+fun uniffi_dspi_core_checksum_method_dspicore_link_session_encryption(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_link_set_dir(
+): Short
 fun uniffi_dspi_core_checksum_method_dspicore_link_set_url(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_link_start_hub(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_link_status(
 ): Short
@@ -3882,18 +3918,34 @@ fun uniffi_dspi_core_fn_method_dspicore_link_connect(`ptr`: Pointer,`url`: RustB
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_link_connect_advertised(`ptr`: Pointer,`url`: RustBuffer.ByValue,`clientName`: RustBuffer.ByValue,`appVersion`: RustBuffer.ByValue,`credential`: RustBuffer.ByValue,`expectedHubId`: RustBuffer.ByValue,`tlsAdvertised`: Byte,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_link_connect_at_start(`ptr`: Pointer,`url`: RustBuffer.ByValue,`clientName`: RustBuffer.ByValue,`appVersion`: RustBuffer.ByValue,`credential`: RustBuffer.ByValue,`expectedHubId`: RustBuffer.ByValue,`tlsAdvertised`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_link_devices(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_link_forget_hub(`ptr`: Pointer,`hubId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_dspicore_link_forget_last_hub(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_dspicore_link_hub_encryption(`ptr`: Pointer,`credential`: RustBuffer.ByValue,`tlsAdvertised`: Byte,`hubId`: RustBuffer.ByValue,`typed`: Byte,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_link_pair(`ptr`: Pointer,`pin`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_link_recheck_tls(`ptr`: Pointer,`hubId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
 fun uniffi_dspi_core_fn_method_dspicore_link_retry_now(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_link_security(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_link_select_device(`ptr`: Pointer,`handle`: Int,`serial`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_dspi_core_fn_method_dspicore_link_session_encryption(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_link_set_dir(`ptr`: Pointer,`dir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
 fun uniffi_dspi_core_fn_method_dspicore_link_set_url(`ptr`: Pointer,`url`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_dspi_core_fn_method_dspicore_link_start_hub(`ptr`: Pointer,`usbPresent`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_link_status(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_load_params(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
@@ -4552,6 +4604,8 @@ fun uniffi_dspi_core_fn_func_link_credential_tls_only(`credential`: RustBuffer.B
 ): Byte
 fun uniffi_dspi_core_fn_func_link_credential_unpaired(`credential`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_func_link_encryption_notice_key(`encryption`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_link_fetch_info(`host`: RustBuffer.ByValue,`port`: Short,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_link_parse_address(`text`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -4850,6 +4904,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_func_link_credential_unpaired() != 46408.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_func_link_encryption_notice_key() != 5153.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_func_link_fetch_info() != 23971.toShort()) {
@@ -5671,10 +5728,25 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_link_connect_advertised() != 37895.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_link_connect_at_start() != 21471.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_link_devices() != 29326.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_link_forget_hub() != 42094.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_link_forget_last_hub() != 9866.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_link_hub_encryption() != 59410.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_link_pair() != 58905.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_link_recheck_tls() != 59831.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_link_retry_now() != 18334.toShort()) {
@@ -5686,7 +5758,16 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_link_select_device() != 47133.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_link_session_encryption() != 27629.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_link_set_dir() != 37356.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_link_set_url() != 13979.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_link_start_hub() != 9253.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_link_status() != 7876.toShort()) {
@@ -10787,9 +10868,41 @@ public interface DspiCoreInterface {
     fun `linkConnectAdvertised`(`url`: kotlin.String, `clientName`: kotlin.String, `appVersion`: kotlin.String, `credential`: kotlin.String, `expectedHubId`: kotlin.String, `tlsAdvertised`: kotlin.Boolean): LinkHello
     
     /**
+     * [`DspiCore::link_connect_advertised`] for the dial at app start to the
+     * hub used last ([`DspiCore::link_start_hub`]): the same rules, but its
+     * first dial gives up after [`START_DIAL_BUDGET`] instead of a minute, so
+     * a hub that is not at its stored address hands over to the client's
+     * search quickly. A dial the user asked for keeps the long budget.
+     */
+    fun `linkConnectAtStart`(`url`: kotlin.String, `clientName`: kotlin.String, `appVersion`: kotlin.String, `credential`: kotlin.String, `expectedHubId`: kotlin.String, `tlsAdvertised`: kotlin.Boolean): LinkHello
+    
+    /**
      * The hub's devices (empty before authentication).
      */
     fun `linkDevices`(): List<LinkDevice>
+    
+    /**
+     * The user forgot hub `hub_id` (its pairing deleted): everything the core
+     * remembers of it goes, and it is no longer [`DspiCore::link_start_hub`]'s
+     * hub. No traffic.
+     */
+    fun `linkForgetHub`(`hubId`: kotlin.String)
+    
+    /**
+     * The user left the hub (Disconnect, or switched to another device): no
+     * dial at start until a device is bound on a hub again.
+     */
+    fun `linkForgetLastHub`()
+    
+    /**
+     * A hub's encryption before it is dialled, for its line in a list or a
+     * prompt: [`LinkEncryption::Verified`] for a stored credential with a key
+     * pin, `Offered` for one pinned before or an advert that says TLS, `Off`
+     * for a hub met without TLS lately or a browsed hub that does not
+     * advertise it, `Unknown` for a `typed` address with nothing known.
+     * The words: [`link_encryption_notice_key`]. No traffic.
+     */
+    fun `linkHubEncryption`(`credential`: kotlin.String, `tlsAdvertised`: kotlin.Boolean, `hubId`: kotlin.String, `typed`: kotlin.Boolean): LinkEncryption
     
     /**
      * Pair with the PIN the user typed (role `control`, as the macOS
@@ -10809,6 +10922,13 @@ public interface DspiCoreInterface {
      * - [`DspiError::Disconnected`] with no session.
      */
     fun `linkPair`(`pin`: kotlin.String): kotlin.String
+    
+    /**
+     * Try TLS again at hub `hub_id`'s next connect as at first contact (Pair
+     * Again): what was met lately, without TLS or with it, is forgotten. No
+     * traffic.
+     */
+    fun `linkRecheckTls`(`hubId`: kotlin.String)
     
     /**
      * Try to reconnect now instead of waiting out the backoff (the platform
@@ -10843,6 +10963,23 @@ public interface DspiCoreInterface {
     fun `linkSelectDevice`(`handle`: kotlin.UInt, `serial`: kotlin.String)
     
     /**
+     * The current session's encryption ([`DspiCore::link_security`] as one
+     * state): `Unknown` without a session.
+     */
+    fun `linkSessionEncryption`(): LinkEncryption
+    
+    /**
+     * Remember DSPi Link hubs between sessions in a small file under `dir`,
+     * the app's own data folder ("" forgets the folder): a hub met without
+     * TLS is dialled without a TLS try next time ([`DspiCore::link_recheck_tls`]),
+     * and the hub bound last is kept for [`DspiCore::link_start_hub`]. Name
+     * it before the first connect.
+     *
+     * Errors: [`DspiError::Unsupported`] on the web (no files).
+     */
+    fun `linkSetDir`(`dir`: kotlin.String)
+    
+    /**
      * The hub answers at a new address (the app's browser found its `hid`
      * again after a DHCP change): reconnect there from now on, at once if
      * reconnecting. The core does not browse by itself.
@@ -10851,6 +10988,17 @@ public interface DspiCoreInterface {
      * to it would fail for ever.
      */
     fun `linkSetUrl`(`url`: kotlin.String)
+    
+    /**
+     * The hub to dial at start (owner decision 2026-11-21): the one whose
+     * device was bound last, unless the user left it
+     * ([`DspiCore::link_forget_last_hub`]) or a DSPi is on USB
+     * (`usb_present`: USB wins). `None` without a folder. The client checks
+     * its own settings (DSPi Link on, reconnect at start on) and dials it as
+     * a browsed hub, with that hub's stored credential: a pinned hub stays
+     * TLS only. Needs no device; no traffic.
+     */
+    fun `linkStartHub`(`usbPresent`: kotlin.Boolean): LinkLastHub?
     
     /**
      * Where the session stands; [`LinkStatus::phase`] is what to tell the
@@ -18906,6 +19054,26 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
+     * [`DspiCore::link_connect_advertised`] for the dial at app start to the
+     * hub used last ([`DspiCore::link_start_hub`]): the same rules, but its
+     * first dial gives up after [`START_DIAL_BUDGET`] instead of a minute, so
+     * a hub that is not at its stored address hands over to the client's
+     * search quickly. A dial the user asked for keeps the long budget.
+     */
+    @Throws(DspiException::class)override fun `linkConnectAtStart`(`url`: kotlin.String, `clientName`: kotlin.String, `appVersion`: kotlin.String, `credential`: kotlin.String, `expectedHubId`: kotlin.String, `tlsAdvertised`: kotlin.Boolean): LinkHello {
+            return FfiConverterTypeLinkHello.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_link_connect_at_start(
+        it, FfiConverterString.lower(`url`),FfiConverterString.lower(`clientName`),FfiConverterString.lower(`appVersion`),FfiConverterString.lower(`credential`),FfiConverterString.lower(`expectedHubId`),FfiConverterBoolean.lower(`tlsAdvertised`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * The hub's devices (empty before authentication).
      */override fun `linkDevices`(): List<LinkDevice> {
             return FfiConverterSequenceTypeLinkDevice.lift(
@@ -18913,6 +19081,57 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_link_devices(
         it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * The user forgot hub `hub_id` (its pairing deleted): everything the core
+     * remembers of it goes, and it is no longer [`DspiCore::link_start_hub`]'s
+     * hub. No traffic.
+     */override fun `linkForgetHub`(`hubId`: kotlin.String)
+        = 
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_link_forget_hub(
+        it, FfiConverterString.lower(`hubId`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * The user left the hub (Disconnect, or switched to another device): no
+     * dial at start until a device is bound on a hub again.
+     */override fun `linkForgetLastHub`()
+        = 
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_link_forget_last_hub(
+        it, _status)
+}
+    }
+    
+    
+
+    
+    /**
+     * A hub's encryption before it is dialled, for its line in a list or a
+     * prompt: [`LinkEncryption::Verified`] for a stored credential with a key
+     * pin, `Offered` for one pinned before or an advert that says TLS, `Off`
+     * for a hub met without TLS lately or a browsed hub that does not
+     * advertise it, `Unknown` for a `typed` address with nothing known.
+     * The words: [`link_encryption_notice_key`]. No traffic.
+     */override fun `linkHubEncryption`(`credential`: kotlin.String, `tlsAdvertised`: kotlin.Boolean, `hubId`: kotlin.String, `typed`: kotlin.Boolean): LinkEncryption {
+            return FfiConverterTypeLinkEncryption.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_link_hub_encryption(
+        it, FfiConverterString.lower(`credential`),FfiConverterBoolean.lower(`tlsAdvertised`),FfiConverterString.lower(`hubId`),FfiConverterBoolean.lower(`typed`),_status)
 }
     }
     )
@@ -18947,6 +19166,22 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     }
     )
     }
+    
+
+    
+    /**
+     * Try TLS again at hub `hub_id`'s next connect as at first contact (Pair
+     * Again): what was met lately, without TLS or with it, is forgotten. No
+     * traffic.
+     */override fun `linkRecheckTls`(`hubId`: kotlin.String)
+        = 
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_link_recheck_tls(
+        it, FfiConverterString.lower(`hubId`),_status)
+}
+    }
+    
     
 
     
@@ -19012,6 +19247,43 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
+     * The current session's encryption ([`DspiCore::link_security`] as one
+     * state): `Unknown` without a session.
+     */override fun `linkSessionEncryption`(): LinkEncryption {
+            return FfiConverterTypeLinkEncryption.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_link_session_encryption(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Remember DSPi Link hubs between sessions in a small file under `dir`,
+     * the app's own data folder ("" forgets the folder): a hub met without
+     * TLS is dialled without a TLS try next time ([`DspiCore::link_recheck_tls`]),
+     * and the hub bound last is kept for [`DspiCore::link_start_hub`]. Name
+     * it before the first connect.
+     *
+     * Errors: [`DspiError::Unsupported`] on the web (no files).
+     */
+    @Throws(DspiException::class)override fun `linkSetDir`(`dir`: kotlin.String)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_link_set_dir(
+        it, FfiConverterString.lower(`dir`),_status)
+}
+    }
+    
+    
+
+    
+    /**
      * The hub answers at a new address (the app's browser found its `hid`
      * again after a DHCP change): reconnect there from now on, at once if
      * reconnecting. The core does not browse by itself.
@@ -19027,6 +19299,27 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 }
     }
     
+    
+
+    
+    /**
+     * The hub to dial at start (owner decision 2026-11-21): the one whose
+     * device was bound last, unless the user left it
+     * ([`DspiCore::link_forget_last_hub`]) or a DSPi is on USB
+     * (`usb_present`: USB wins). `None` without a folder. The client checks
+     * its own settings (DSPi Link on, reconnect at start on) and dials it as
+     * a browsed hub, with that hub's stored credential: a pinned hub stays
+     * TLS only. Needs no device; no traffic.
+     */override fun `linkStartHub`(`usbPresent`: kotlin.Boolean): LinkLastHub? {
+            return FfiConverterOptionalTypeLinkLastHub.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_link_start_hub(
+        it, FfiConverterBoolean.lower(`usbPresent`),_status)
+}
+    }
+    )
+    }
     
 
     
@@ -38816,6 +39109,90 @@ public object FfiConverterTypeLinkInfo: FfiConverterRustBuffer<LinkInfo> {
 
 
 /**
+ * The DSPi Link hub whose device was bound last ([`crate::DspiCore::link_start_hub`]):
+ * what a client needs to dial it again at start, as a browsed hub gives it.
+ */
+data class LinkLastHub (
+    /**
+     * The hub's id (lowercase), for its stored credential.
+     */
+    var `hubId`: kotlin.String, 
+    /**
+     * Its display name.
+     */
+    var `name`: kotlin.String, 
+    /**
+     * `console`, `bridge`, ...
+     */
+    var `kind`: kotlin.String, 
+    /**
+     * `none` or `pin`.
+     */
+    var `auth`: kotlin.String, 
+    /**
+     * The address it was reached at last.
+     */
+    var `host`: kotlin.String, 
+    /**
+     * Its port.
+     */
+    var `port`: kotlin.UShort, 
+    /**
+     * The WebSocket path.
+     */
+    var `path`: kotlin.String, 
+    /**
+     * Its advert said TLS when it was dialled (spec 3.1 `tls=1`): pass it on.
+     */
+    var `tlsAdvertised`: kotlin.Boolean
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeLinkLastHub: FfiConverterRustBuffer<LinkLastHub> {
+    override fun read(buf: ByteBuffer): LinkLastHub {
+        return LinkLastHub(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterUShort.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: LinkLastHub) = (
+            FfiConverterString.allocationSize(value.`hubId`) +
+            FfiConverterString.allocationSize(value.`name`) +
+            FfiConverterString.allocationSize(value.`kind`) +
+            FfiConverterString.allocationSize(value.`auth`) +
+            FfiConverterString.allocationSize(value.`host`) +
+            FfiConverterUShort.allocationSize(value.`port`) +
+            FfiConverterString.allocationSize(value.`path`) +
+            FfiConverterBoolean.allocationSize(value.`tlsAdvertised`)
+    )
+
+    override fun write(value: LinkLastHub, buf: ByteBuffer) {
+            FfiConverterString.write(value.`hubId`, buf)
+            FfiConverterString.write(value.`name`, buf)
+            FfiConverterString.write(value.`kind`, buf)
+            FfiConverterString.write(value.`auth`, buf)
+            FfiConverterString.write(value.`host`, buf)
+            FfiConverterUShort.write(value.`port`, buf)
+            FfiConverterString.write(value.`path`, buf)
+            FfiConverterBoolean.write(value.`tlsAdvertised`, buf)
+    }
+}
+
+
+
+/**
  * A parsed pairing link (`link_parse_pair_link`).
  */
 data class LinkPairLink (
@@ -48806,6 +49183,60 @@ public object FfiConverterTypeHostTransportKind : FfiConverterRustBuffer<HostTra
 
 
 /**
+ * What a client says about a DSPi Link hub's encryption (owner rule
+ * 2026-11-21: by the hub, never "all unencrypted"). Its words are the notice
+ * rows [`LinkEncryption::notice_key`] names (`dlink.encryption.*`).
+ */
+
+enum class LinkEncryption {
+    
+    /**
+     * Encrypted, and the hub's key is checked (pinned at pairing).
+     */
+    VERIFIED,
+    /**
+     * Encrypted (or will be): the hub offers TLS, its key not pinned yet.
+     */
+    OFFERED,
+    /**
+     * Not encrypted: a hub without TLS (Weeb Labs' DSPi Console, the ESP32
+     * bridge, an older hub), or met without it.
+     */
+    OFF,
+    /**
+     * The hub is this device: nothing crosses the network.
+     */
+    LOCAL,
+    /**
+     * Not known yet: a typed address before it answered, no session.
+     */
+    UNKNOWN;
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeLinkEncryption: FfiConverterRustBuffer<LinkEncryption> {
+    override fun read(buf: ByteBuffer) = try {
+        LinkEncryption.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: LinkEncryption) = 4UL
+
+    override fun write(value: LinkEncryption, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+/**
  * Where a Link session is in its life, for the status line.
  */
 
@@ -51442,6 +51873,38 @@ public object FfiConverterOptionalTypeIdentifyInfo: FfiConverterRustBuffer<Ident
         } else {
             buf.put(1)
             FfiConverterTypeIdentifyInfo.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeLinkLastHub: FfiConverterRustBuffer<LinkLastHub?> {
+    override fun read(buf: ByteBuffer): LinkLastHub? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeLinkLastHub.read(buf)
+    }
+
+    override fun allocationSize(value: LinkLastHub?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeLinkLastHub.allocationSize(value)
+        }
+    }
+
+    override fun write(value: LinkLastHub?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeLinkLastHub.write(value, buf)
         }
     }
 }
@@ -55646,6 +56109,19 @@ public object FfiConverterSequenceSequenceTypeFilterParams: FfiConverterRustBuff
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_link_credential_unpaired(
         FfiConverterString.lower(`credential`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * The notice row with `encryption`'s words (`notice_for_key`): one rule for
+         * every client's hub lines, prompts and status.
+         */ fun `linkEncryptionNoticeKey`(`encryption`: LinkEncryption): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_link_encryption_notice_key(
+        FfiConverterTypeLinkEncryption.lower(`encryption`),_status)
 }
     )
     }

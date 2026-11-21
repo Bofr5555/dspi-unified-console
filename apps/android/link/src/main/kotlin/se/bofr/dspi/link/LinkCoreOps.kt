@@ -72,6 +72,23 @@ interface LinkCoreOps {
      */
     suspend fun security(): LinkSecurity? = null
 
+    // -- WP LKFAST --, LKFAST3 (review LKREV 3: the hub memory is a file, so off the main thread)
+    /** Try TLS again at [hubId]'s next connect, as at first contact (`link_recheck_tls`: Pair Again). */
+    suspend fun recheckTls(hubId: String) {}
+
+    /** The user forgot [hubId] (`link_forget_hub`): the core forgets it too, its start dial included. */
+    suspend fun forgetHub(hubId: String) {}
+
+    /** [connect] for the app start's dial to the hub used last (`link_connect_at_start`: a short first dial). */
+    suspend fun connectAtStart(
+        url: String,
+        clientName: String,
+        appVersion: String,
+        token: String,
+        expectedHubId: String,
+        tlsAdvertised: Boolean
+    ): LinkHello = connect(url, clientName, appVersion, token, expectedHubId, tlsAdvertised)
+
     fun wsUrl(host: String, port: Int, path: String): String
 
     // -- WP PINTLS --
@@ -154,6 +171,22 @@ class BridgeLinkCoreOps(
 
     // -- WP SECAN -- the core lock, as status(): not on the main thread
     override suspend fun security(): LinkSecurity? = withContext(network) { runCatching { core.linkSecurity() }.getOrNull() }
+
+    // -- WP LKFAST --, LKFAST3
+    override suspend fun recheckTls(hubId: String) = withContext(network) { core.linkRecheckTls(hubId) }
+
+    override suspend fun forgetHub(hubId: String) = withContext(network) { core.linkForgetHub(hubId) }
+
+    override suspend fun connectAtStart(
+        url: String,
+        clientName: String,
+        appVersion: String,
+        token: String,
+        expectedHubId: String,
+        tlsAdvertised: Boolean
+    ): LinkHello = withContext(network) {
+        core.linkConnectAtStart(url, clientName, appVersion, token, expectedHubId, tlsAdvertised)
+    }
 
     override fun wsUrl(host: String, port: Int, path: String): String = core.linkWsUrl(host, port, path)
 

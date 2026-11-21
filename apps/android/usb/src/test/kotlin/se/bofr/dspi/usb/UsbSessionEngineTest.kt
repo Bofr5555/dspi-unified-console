@@ -64,6 +64,18 @@ class UsbSessionEngineTest {
         assertEquals("E66138", e.lastSerial)
     }
 
+    // -- WP LKFAST3 -- (review LKREV 8)
+    @Test
+    fun wpLkfast3TheFirstScanSaysWhenTheListIsIn() = runTest {
+        host.plug("/dev/bus/usb/001/004", "E66138")
+        val e = engine()
+        assertFalse(e.scanned.value)
+        e.scan(askPermission = false)
+        settle()
+        assertTrue(e.scanned.value)
+        assertEquals(1, e.devices.value.size)
+    }
+
     @Test
     fun coldStartWithoutPermissionRequestsItThenConnectsOnGrant() = runTest {
         val d = host.plug("/dev/bus/usb/001/004", "E66138")

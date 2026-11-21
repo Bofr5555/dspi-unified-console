@@ -116,9 +116,23 @@ class AppNetworkingControllerTest {
                     it.substringBefore(':') to
                         (it.substringAfter(':', "11915").toIntOrNull() ?: 0)
                 }
-            }
+            },
+            // -- WP LKFAST3 -- the test's dispatcher for the rows and the core's file
+            forgetHub = { forgotten += it },
+            rows = UnconfinedTestDispatcher(testScheduler),
+            io = UnconfinedTestDispatcher(testScheduler)
         )
         return Triple(c, browser, remotes)
+    }
+
+    private val forgotten = mutableListOf<String>() // -- WP LKFAST3 --
+
+    // -- WP LKFAST3 -- (review LKREV 2)
+    @Test
+    fun wpLkfast3ForgetForgetsTheHubInTheCoreToo() = runTest {
+        val (c, _, _) = setup()
+        c.forget("6f1a")
+        assertEquals(listOf("6f1a"), forgotten)
     }
 
     // -- WP AN4 --

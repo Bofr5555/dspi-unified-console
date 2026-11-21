@@ -60,6 +60,12 @@ class UsbSessionEngine(
     /** Every DSPi on the bus (multi-device picker, "inaccessible" count). */
     val devices: StateFlow<List<DspiUsbDevice>> = _devices.asStateFlow()
 
+    // -- WP LKFAST3 -- (review LKREV 8)
+    private val _scanned = MutableStateFlow(false)
+
+    /** True once the first scan has filled [devices] ("USB wins" at start waits for it). */
+    val scanned: StateFlow<Boolean> = _scanned.asStateFlow()
+
     private sealed interface Event {
         data class Scan(val askPermission: Boolean) : Event
 
@@ -186,6 +192,7 @@ class UsbSessionEngine(
             is Event.Scan -> {
                 autoConnect = true
                 refreshDevices()
+                _scanned.value = true // -- WP LKFAST3 --
                 if (opened == null) connectBest(askPermission = e.askPermission)
             }
 

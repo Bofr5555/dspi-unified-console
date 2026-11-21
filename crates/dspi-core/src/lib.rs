@@ -410,6 +410,11 @@ pub struct DspiCore {
     /// so it runs once. Taken without `inner`, never while holding it.
     #[cfg(feature = "link")]
     pub(crate) probe_lock: Mutex<()>,
+    // -- WP LKFAST --
+    /// What the core remembers about DSPi Link hubs between sessions (a file in
+    /// the folder of [`DspiCore::link_set_dir`]).
+    #[cfg(feature = "link")]
+    pub(crate) hub_memory: Arc<link::hub_memory::Store>,
     // -- WP P0M --
     /// The meter ballistics and the event log; `inner.events` is the same.
     /// Its locks are taken with or without `inner`, never `inner` after.
@@ -663,6 +668,11 @@ pub(crate) struct Connection {
     /// has no session (no image, no DSP model); its setters answer
     /// `Unsupported`.
     pub(crate) kind: DeviceKind,
+    // -- WP LKFAST --
+    /// The board, once read on this connection or taken from a DSPi Link
+    /// bind's own platform read: `device_protocol` reads it once, not on
+    /// every call (the board does not change within a connection).
+    pub(crate) board_seen: Option<dspi_proto::packets::Board>,
 }
 
 /// A remote device reached without the [`Inner`] lock (WP C15).
@@ -791,6 +801,7 @@ impl Connection {
             document: None,
             // -- WP PGFIX --
             kind: DeviceKind::Dsp,
+            board_seen: None, // -- WP LKFAST --
         }
     }
 
@@ -1079,6 +1090,8 @@ impl DspiCore {
             meter_path: Mutex::new(None),
             #[cfg(feature = "link")]
             probe_lock: Mutex::new(()),
+            #[cfg(feature = "link")]
+            hub_memory: Arc::default(), // -- WP LKFAST --
             // -- WP P0M --
             events,
             // -- WP P1SN --

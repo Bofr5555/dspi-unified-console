@@ -263,3 +263,255 @@ fn info_endpoint_and_concurrent_commands() {
         t.join().unwrap();
     }
 }
+
+// -- WP LKFAST --
+/// A connector that logs, in order, the type of each text message the client
+/// sends ("> t") and each one it receives ("< t" or "< ok id").
+struct Recording {
+    inner: TcpConnector,
+    log: Arc<Mutex<Vec<String>>>,
+}
+
+struct RecSender(Box<dyn dspi_link::socket::WsSender>, Arc<Mutex<Vec<String>>>);
+struct RecReceiver(Box<dyn dspi_link::socket::WsReceiver>, Arc<Mutex<Vec<String>>>);
+
+fn kind_of(text: &str) -> String {
+    let v: serde_json::Value = serde_json::from_str(text).unwrap_or_default();
+    match v["t"].as_str() {
+        Some("ok") | Some("err") => format!("{} {}", v["t"].as_str().unwrap_or(""), v["id"]),
+        Some(t) => t.to_owned(),
+        None => "?".into(),
+    }
+}
+
+impl dspi_link::socket::WsSender for RecSender {
+    fn send(&self, msg: dspi_link::socket::WsMessage) -> std::io::Result<()> {
+        if let dspi_link::socket::WsMessage::Text(t) = &msg {
+            let v: serde_json::Value = serde_json::from_str(t).unwrap_or_default();
+            self.1.lock().unwrap().push(format!("> {} {}", v["t"].as_str().unwrap_or("?"), v["id"]));
+        }
+        self.0.send(msg)
+    }
+    fn ping(&self) -> std::io::Result<()> {
+        self.0.ping()
+    }
+    fn close(&self, code: u16) {
+        self.0.close(code)
+    }
+}
+
+impl dspi_link::socket::WsReceiver for RecReceiver {
+    fn recv(&mut self) -> dspi_link::socket::WsRecv {
+        let r = self.0.recv();
+        if let dspi_link::socket::WsRecv::Message(dspi_link::socket::WsMessage::Text(t)) = &r {
+            self.1.lock().unwrap().push(format!("< {}", kind_of(t)));
+        }
+        r
+    }
+}
+
+impl dspi_link::socket::WsConnector for Recording {
+    fn connect(&self, url: &str, protocol: &str) -> Result<dspi_link::socket::WsPair, LinkError> {
+        let (s, r) = self.inner.connect(url, protocol)?;
+        Ok((Box::new(RecSender(s, Arc::clone(&self.log))), Box::new(RecReceiver(r, Arc::clone(&self.log)))))
+    }
+}
+
+#[test]
+fn wp_lkfast_an_open_hub_is_listed_in_the_session_probes_round_trip() {
+    let hub = FakeHub::start(HubConfig::default()).unwrap();
+    let log = Arc::new(Mutex::new(Vec::new()));
+    let rec = Recording { inner: TcpConnector::default(), log: Arc::clone(&log) };
+    let (c, state) = LinkClient::connect(&rec, &hub.url(), &opts(None), None).unwrap();
+    assert_eq!(state, AuthState::Ready);
+    assert_eq!(c.session_id(), Some(12), "the session probe still learns our id");
+    assert_eq!(c.devices().len(), 1, "the list sent with it is taken in");
+    let log = log.lock().unwrap().clone();
+    let at = |s: &str| log.iter().position(|l| l.starts_with(s)).unwrap_or_else(|| panic!("no {s} in {log:?}"));
+    // Both requests go out before the probe's answer comes back: one round trip, not two
+    assert!(at("> auth.pair") < at("> device.list"), "{log:?}");
+    assert!(at("> device.list") < at("< ok 1"), "the list waits for nothing: {log:?}");
+}
+
+#[test]
+fn wp_lkfast_a_pin_hub_is_listed_after_its_token() {
+    let hub = FakeHub::start(HubConfig { auth: Auth::Window("123456".into()), ..HubConfig::default() }).unwrap();
+    let log = Arc::new(Mutex::new(Vec::new()));
+    let rec = Recording { inner: TcpConnector::default(), log: Arc::clone(&log) };
+    let (_c, state) = LinkClient::connect(&rec, &hub.url(), &opts(None), None).unwrap();
+    // No token: nothing is listed before the pairing
+    assert!(matches!(state, AuthState::NeedsPairing { .. }), "{state:?}");
+    assert!(!log.lock().unwrap().iter().any(|l| l.starts_with("> device.list")));
+}
+
+/// In front of `to`: logs when each TCP connection comes in and when the first
+/// one's first answer goes back, which is held for `hold` (a slow TLS refusal).
+#[cfg(feature = "tls")]
+fn slow_first_answer(
+    to: std::net::SocketAddr,
+    hold: Duration,
+    log: Arc<Mutex<Vec<(String, std::time::Instant)>>>,
+) -> String {
+    use std::io::{Read, Write};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let at = listener.local_addr().unwrap();
+    std::thread::spawn(move || {
+        for (n, conn) in listener.incoming().enumerate() {
+            let Ok(mut down) = conn else { return };
+            log.lock().unwrap().push((format!("accept {n}"), std::time::Instant::now()));
+            let Ok(mut up) = std::net::TcpStream::connect(to) else { return };
+            let (mut down2, mut up2) = (down.try_clone().unwrap(), up.try_clone().unwrap());
+            std::thread::spawn(move || std::io::copy(&mut down2, &mut up2));
+            let log = Arc::clone(&log);
+            std::thread::spawn(move || {
+                let mut buf = [0u8; 4096];
+                let mut first = true;
+                loop {
+                    let k = up.read(&mut buf).unwrap_or(0);
+                    // The answer, or the hub closing: either is the refusal
+                    if first && n == 0 {
+                        std::thread::sleep(hold);
+                        log.lock().unwrap().push(("answer 0".into(), std::time::Instant::now()));
+                    }
+                    first = false;
+                    if k == 0 || down.write_all(&buf[..k]).is_err() {
+                        break;
+                    }
+                }
+                let _ = down.shutdown(std::net::Shutdown::Both);
+            });
+        }
+    });
+    format!("ws://{at}/dspi/v1")
+}
+
+#[cfg(feature = "tls")]
+#[test]
+fn wp_lkfast_the_plaintext_fallback_is_dialled_while_tls_is_tried() {
+    let hub = FakeHub::start(HubConfig::default()).unwrap();
+    let log = Arc::new(Mutex::new(Vec::new()));
+    let url = slow_first_answer(hub.addr(), Duration::from_millis(300), Arc::clone(&log));
+    let (c, state) = LinkClient::connect_tls(
+        &TcpConnector::default(),
+        &url,
+        &opts(None),
+        None,
+        &dspi_link::client::SessionConfig::default(),
+        &dspi_link::TlsOptions::default(),
+    )
+    .unwrap();
+    assert_eq!(state, AuthState::Ready);
+    assert!(c.tls().is_none(), "plaintext, as before");
+    let log = log.lock().unwrap().clone();
+    let when =
+        |what: &str| log.iter().find(|e| e.0 == what).map(|e| e.1).unwrap_or_else(|| panic!("no {what}: {log:?}"));
+    // Connection 0 is the TLS try, 1 the plaintext one: dialled before the refusal came back
+    assert!(when("accept 1") < when("answer 0"), "{log:?}");
+    assert_eq!(log.iter().filter(|e| e.0.starts_with("accept")).count(), 2, "two dials in all: {log:?}");
+    assert_eq!(hub.upgrades(), (1, 0), "one plaintext upgrade, after the refusal");
+}
+
+/// A connector that only logs its dials and refuses TLS.
+struct NoTls {
+    inner: TcpConnector,
+    log: Arc<Mutex<Vec<&'static str>>>,
+}
+
+impl dspi_link::socket::WsConnector for NoTls {
+    fn connect(&self, url: &str, protocol: &str) -> Result<dspi_link::socket::WsPair, LinkError> {
+        self.log.lock().unwrap().push("plain");
+        self.inner.connect(url, protocol)
+    }
+}
+
+#[test]
+fn wp_lkfast_an_advertised_tls_is_never_followed_by_plaintext() {
+    let hub = FakeHub::start(HubConfig::default()).unwrap();
+    let log = Arc::new(Mutex::new(Vec::new()));
+    let conn = NoTls { inner: TcpConnector::default(), log: Arc::clone(&log) };
+    let tls = dspi_link::TlsOptions { advertised: true, ..dspi_link::TlsOptions::default() };
+    let r = LinkClient::connect_tls(
+        &conn,
+        &hub.url(),
+        &opts(None),
+        None,
+        &dspi_link::client::SessionConfig::default(),
+        &tls,
+    );
+    assert!(matches!(r, Err(LinkError::TlsRefused { .. })), "{:?}", r.err());
+    assert!(log.lock().unwrap().is_empty(), "no plaintext socket at all");
+}
+
+// -- WP LKFAST3 -- (review LKREV 9)
+/// In front of `to`: a connection that sends nothing for 100 ms (the idle
+/// plaintext spare) is closed, as a hub with a short idle timeout would; the
+/// first answer to a connection that did send (the TLS try) is held 300 ms.
+#[cfg(feature = "tls")]
+fn closes_idle_spare(to: std::net::SocketAddr, accepts: Arc<std::sync::atomic::AtomicU32>) -> String {
+    use std::io::{Read, Write};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let at = listener.local_addr().unwrap();
+    let held = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let closed_one = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    std::thread::spawn(move || {
+        for conn in listener.incoming() {
+            let Ok(mut down) = conn else { return };
+            accepts.fetch_add(1, Ordering::SeqCst);
+            let (held, closed_one) = (Arc::clone(&held), Arc::clone(&closed_one));
+            std::thread::spawn(move || {
+                let mut first = [0u8; 4096];
+                down.set_read_timeout(Some(Duration::from_millis(100))).unwrap();
+                let n = match down.read(&mut first) {
+                    Ok(n) if n > 0 => n,
+                    _ if !closed_one.swap(true, Ordering::SeqCst) => {
+                        let _ = down.shutdown(std::net::Shutdown::Both);
+                        return;
+                    }
+                    _ => 0,
+                };
+                down.set_read_timeout(None).unwrap();
+                let Ok(mut up) = std::net::TcpStream::connect(to) else { return };
+                if n > 0 && up.write_all(&first[..n]).is_err() {
+                    return;
+                }
+                let (mut down2, mut up2) = (down.try_clone().unwrap(), up.try_clone().unwrap());
+                std::thread::spawn(move || std::io::copy(&mut down2, &mut up2));
+                let hold = n > 0 && !held.swap(true, Ordering::SeqCst);
+                let mut buf = [0u8; 4096];
+                let mut first_answer = true;
+                loop {
+                    let k = up.read(&mut buf).unwrap_or(0);
+                    if first_answer && hold {
+                        std::thread::sleep(Duration::from_millis(300));
+                    }
+                    first_answer = false;
+                    if k == 0 || down.write_all(&buf[..k]).is_err() {
+                        break;
+                    }
+                }
+                let _ = down.shutdown(std::net::Shutdown::Both);
+            });
+        }
+    });
+    format!("ws://{at}/dspi/v1")
+}
+
+#[cfg(feature = "tls")]
+#[test]
+fn wp_lkfast3_a_spare_the_hub_closed_meanwhile_gets_one_fresh_dial() {
+    let hub = FakeHub::start(HubConfig::default()).unwrap();
+    let accepts = Arc::new(AtomicU32::new(0));
+    let url = closes_idle_spare(hub.addr(), Arc::clone(&accepts));
+    let (c, state) = LinkClient::connect_tls(
+        &TcpConnector::default(),
+        &url,
+        &opts(None),
+        None,
+        &dspi_link::client::SessionConfig::default(),
+        &dspi_link::TlsOptions::default(),
+    )
+    .unwrap();
+    assert_eq!(state, AuthState::Ready);
+    assert!(c.tls().is_none());
+    assert_eq!(accepts.load(Ordering::SeqCst), 3, "the TLS try, the closed spare, the fresh dial");
+}

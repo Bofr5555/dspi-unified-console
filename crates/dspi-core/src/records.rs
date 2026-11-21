@@ -816,6 +816,63 @@ pub struct CoreInfo {
 
 // ------------------------------------------------------------- DSPi Link
 
+// -- WP LKFAST --
+/// What a client says about a DSPi Link hub's encryption (owner rule
+/// 2026-11-21: by the hub, never "all unencrypted"). Its words are the notice
+/// rows [`LinkEncryption::notice_key`] names (`dlink.encryption.*`).
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LinkEncryption {
+    /// Encrypted, and the hub's key is checked (pinned at pairing).
+    Verified,
+    /// Encrypted (or will be): the hub offers TLS, its key not pinned yet.
+    Offered,
+    /// Not encrypted: a hub without TLS (Weeb Labs' DSPi Console, the ESP32
+    /// bridge, an older hub), or met without it.
+    Off,
+    /// The hub is this device: nothing crosses the network.
+    Local,
+    /// Not known yet: a typed address before it answered, no session.
+    Unknown,
+}
+
+impl LinkEncryption {
+    /// The notice row with this state's words.
+    pub fn notice_key(self) -> &'static str {
+        match self {
+            Self::Verified => "dlink.encryption.verified",
+            Self::Offered => "dlink.encryption.offered",
+            Self::Off => "dlink.encryption.off",
+            Self::Local => "dlink.encryption.local",
+            Self::Unknown => "dlink.encryption.unknown",
+        }
+    }
+}
+
+// -- WP LKFAST --
+/// The DSPi Link hub whose device was bound last ([`crate::DspiCore::link_start_hub`]):
+/// what a client needs to dial it again at start, as a browsed hub gives it.
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct LinkLastHub {
+    /// The hub's id (lowercase), for its stored credential.
+    pub hub_id: String,
+    /// Its display name.
+    pub name: String,
+    /// `console`, `bridge`, ...
+    pub kind: String,
+    /// `none` or `pin`.
+    pub auth: String,
+    /// The address it was reached at last.
+    pub host: String,
+    /// Its port.
+    pub port: u16,
+    /// The WebSocket path.
+    pub path: String,
+    /// Its advert said TLS when it was dialled (spec 3.1 `tls=1`): pass it on.
+    pub tls_advertised: bool,
+}
+
 /// What a Link hub said about itself.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Default)]

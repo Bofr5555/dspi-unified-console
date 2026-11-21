@@ -779,8 +779,16 @@ impl DspiCore {
         let conn = inner.conn()?;
         let mut p = protocol_of(conn);
         // -- PG-C merge -- the board name from hardware.rs (PGZERO line 5)
-        let board = match crate::hardware::read_board(conn) {
-            Ok(board) => board,
+        // -- WP LKFAST -- read once per connection (a Link bind has it already)
+        let read = match conn.board_seen {
+            Some(board) => Ok(board),
+            None => crate::hardware::read_board(conn),
+        };
+        let board = match read {
+            Ok(board) => {
+                conn.board_seen = Some(board);
+                board
+            }
             Err(DspiError::Disconnected) => return Err(DspiError::Disconnected),
             Err(e) => {
                 log::debug!("the board could not be read: {e}");

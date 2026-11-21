@@ -34,6 +34,10 @@ interface RemoteSession {
 
     fun connect(hub: LinkHub)
 
+    // -- WP LKFAST --
+    /** [connect] at app start, to the hub used last ([LinkSessionEngine.connectAtStart]). */
+    fun connectAtStart(hub: LinkHub) = connect(hub)
+
     fun submitPin(pin: String)
 
     fun cancelPin()
@@ -90,7 +94,9 @@ fun startRemoteSession(
     linkStore: LinkStore,
     main: CoroutineDispatcher = Dispatchers.Main.immediate,
     log: (String) -> Unit = {},
-    onClose: () -> Unit = {}
+    onClose: () -> Unit = {},
+    // -- WP LKFAST3 -- Settings › Networking "Find hubs automatically" (the start dial's status line)
+    findsHubs: () -> Boolean = { true }
 ): RemoteSession {
     val ffi: ExecutorCoroutineDispatcher = Executors.newSingleThreadExecutor { r ->
         Thread(r, "dspi-link-ffi").apply { isDaemon = true }
@@ -98,12 +104,15 @@ fun startRemoteSession(
     val scope = CoroutineScope(SupervisorJob(parent.coroutineContext.job) + main)
     val remoteBridge = DspiBridgeImpl(core, scope, ffi = ffi, main = main, linkStore = linkStore, appVersion = appVersion)
     val engine = LinkSessionEngine(BridgeLinkCoreOps(core, remoteBridge, ffi), tokens, clientName, appVersion, scope, service, log = log)
+    engine.findsHubs = findsHubs // -- WP LKFAST3 --
     log("remote mode on")
     return object : RemoteSession {
         override val bridge: DspiBridge = remoteBridge
         override val state: StateFlow<LinkSessionState> = engine.state
 
         override fun connect(hub: LinkHub) = engine.connect(hub)
+
+        override fun connectAtStart(hub: LinkHub) = engine.connectAtStart(hub) // -- WP LKFAST --
 
         override fun submitPin(pin: String) = engine.submitPin(pin)
 

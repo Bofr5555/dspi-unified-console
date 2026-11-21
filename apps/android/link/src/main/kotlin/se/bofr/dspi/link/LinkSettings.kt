@@ -18,7 +18,9 @@ data class LinkSettings(
     val findAutomatically: Boolean = true,
     /** Shown in the hub's client list; blank = the device model (D7). */
     val clientName: String = "",
-    val manualHubs: List<ManualHub> = emptyList()
+    val manualHubs: List<ManualHub> = emptyList(),
+    // -- WP LKFAST -- (owner decision 2026-11-21) dial the hub used last when the app starts
+    val reconnectAtStart: Boolean = true
 )
 
 interface LinkSettingsStore {
@@ -46,7 +48,8 @@ class PrefsLinkSettingsStore(context: Context) : LinkSettingsStore {
         enabled = prefs.getBoolean(K_ENABLED, false),
         findAutomatically = prefs.getBoolean(K_AUTO, true),
         clientName = prefs.getString(K_NAME, "").orEmpty(),
-        manualHubs = decodeManual(prefs.getString(K_MANUAL, "").orEmpty())
+        manualHubs = decodeManual(prefs.getString(K_MANUAL, "").orEmpty()),
+        reconnectAtStart = prefs.getBoolean(K_RECONNECT, true) // -- WP LKFAST --
     )
 
     @Synchronized
@@ -59,6 +62,7 @@ class PrefsLinkSettingsStore(context: Context) : LinkSettingsStore {
             .putBoolean(K_AUTO, next.findAutomatically)
             .putString(K_NAME, next.clientName)
             .putString(K_MANUAL, encodeManual(next.manualHubs))
+            .putBoolean(K_RECONNECT, next.reconnectAtStart) // -- WP LKFAST --
             .apply()
     }
 
@@ -67,6 +71,7 @@ class PrefsLinkSettingsStore(context: Context) : LinkSettingsStore {
         const val K_AUTO = "find_automatically"
         const val K_NAME = "client_name"
         const val K_MANUAL = "manual_hubs"
+        const val K_RECONNECT = "reconnect_at_start" // -- WP LKFAST --
     }
 }
 

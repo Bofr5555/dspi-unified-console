@@ -1364,6 +1364,45 @@ data class CoreInfo(
 )
 
 /**
+ * The DSPi Link hub whose device was bound last ([`crate::DspiCore::link_start_hub`]):
+ * what a client needs to dial it again at start, as a browsed hub gives it.
+ */
+data class LinkLastHub(
+    /**
+     * The hub's id (lowercase), for its stored credential.
+     */
+    val hubId: String,
+    /**
+     * Its display name.
+     */
+    val name: String,
+    /**
+     * `console`, `bridge`, ...
+     */
+    val kind: String,
+    /**
+     * `none` or `pin`.
+     */
+    val auth: String,
+    /**
+     * The address it was reached at last.
+     */
+    val host: String,
+    /**
+     * Its port.
+     */
+    val port: Int,
+    /**
+     * The WebSocket path.
+     */
+    val path: String,
+    /**
+     * Its advert said TLS when it was dialled (spec 3.1 `tls=1`): pass it on.
+     */
+    val tlsAdvertised: Boolean,
+)
+
+/**
  * What a Link hub said about itself.
  */
 data class LinkHello(
@@ -8980,6 +9019,35 @@ data class VregCalView(
      */
     val lastError: String?,
 )
+
+/**
+ * What a client says about a DSPi Link hub's encryption (owner rule
+ * 2026-11-21: by the hub, never "all unencrypted"). Its words are the notice
+ * rows [`LinkEncryption::notice_key`] names (`dlink.encryption.*`).
+ */
+enum class LinkEncryption {
+    /**
+     * Encrypted, and the hub's key is checked (pinned at pairing).
+     */
+    VERIFIED,
+    /**
+     * Encrypted (or will be): the hub offers TLS, its key not pinned yet.
+     */
+    OFFERED,
+    /**
+     * Not encrypted: a hub without TLS (Weeb Labs' DSPi Console, the ESP32
+     * bridge, an older hub), or met without it.
+     */
+    OFF,
+    /**
+     * The hub is this device: nothing crosses the network.
+     */
+    LOCAL,
+    /**
+     * Not known yet: a typed address before it answered, no session.
+     */
+    UNKNOWN,
+}
 
 /**
  * Where a Link session is in its life, for the status line.

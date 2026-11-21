@@ -11,6 +11,7 @@
 // LK3_CLIENTS  sessions at once (meters), default 1
 // LK3_BAUD     config: the UART rate to save, with detection off
 // LK3_HZ       the meter poll's rate (meters), default 10 (WP LK4)
+// LK3_UNTIL_METER  1: end the session at its first live meter (WP LKFAST: timing runs)
 //
 // Output: `LK3 ...` lines, then `LK3 summary ...` per session.
 
@@ -27,6 +28,7 @@ const SECONDS = Number(process.env.LK3_SECONDS ?? "60");
 const REREAD_S = Number(process.env.LK3_REREAD_S ?? "0");
 const CLIENTS = Number(process.env.LK3_CLIENTS ?? "1");
 const HZ = Number(process.env.LK3_HZ ?? "10");
+const UNTIL_METER = process.env.LK3_UNTIL_METER === "1"; // -- WP LKFAST --
 const REQ_GET_STATUS = 0x50;
 const REQ_GET_ALL_PARAMS = 0xa0;
 /** A gap between live meter frames longer than this is a freeze. */
@@ -140,6 +142,7 @@ async function session(id: number, deadline: number): Promise<Stats> {
       say(`c${id} poll granted ${JSON.stringify(grants)}`);
       let nextReread = REREAD_S > 0 ? Date.now() + REREAD_S * 1000 : Infinity;
       while (Date.now() < deadline && closed === null) {
+        if (UNTIL_METER && st.firstMeterS !== null) break; // -- WP LKFAST --
         await sleep(100);
         if (Date.now() >= nextReread && closed === null) {
           nextReread = Date.now() + REREAD_S * 1000;
@@ -172,6 +175,7 @@ async function session(id: number, deadline: number): Promise<Stats> {
     } else {
       c.disconnect();
     }
+    if (UNTIL_METER && st.firstMeterS !== null) break; // -- WP LKFAST --
     if (Date.now() < deadline) await sleep(1000);
   }
   return st;

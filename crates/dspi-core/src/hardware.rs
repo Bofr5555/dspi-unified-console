@@ -212,12 +212,25 @@ fn descriptor_board(t: &dyn dspi_transport::Transport) -> Option<Board> {
 /// the caller fails closed.
 pub(crate) fn read_board(conn: &mut Connection) -> Result<Board> {
     let reply = conn.get_upto(op::REQ_GET_PLATFORM, 0, PLATFORM_FULL_LEN)?;
-    let info = PlatformInfo::decode(&reply).map_err(|_| TransportError::ShortRead {
-        opcode: op::REQ_GET_PLATFORM,
-        wanted: PlatformInfo::MIN_LEN,
-        got: reply.len(),
-    })?;
-    Ok(identify_board(&info, descriptor_board(conn.transport())))
+    board_of_platform(&reply, conn.transport()).ok_or_else(|| {
+        TransportError::ShortRead {
+            opcode: op::REQ_GET_PLATFORM,
+            wanted: PlatformInfo::MIN_LEN,
+            got: reply.len(),
+        }
+        .into()
+    })
+}
+
+// -- WP LKFAST --
+/// The board a `REQ_GET_PLATFORM` reply (`platform`) and `t`'s descriptor
+/// name, as [`read_board`] finds it; `None` when the reply does not decode.
+pub(crate) fn board_of_platform(
+    platform: &[u8],
+    t: &dyn dspi_transport::Transport,
+) -> Option<Board> {
+    let info = PlatformInfo::decode(platform).ok()?;
+    Some(identify_board(&info, descriptor_board(t)))
 }
 
 /// [`DspiError::Unsupported`] unless the open board has BOOTSEL; the read's

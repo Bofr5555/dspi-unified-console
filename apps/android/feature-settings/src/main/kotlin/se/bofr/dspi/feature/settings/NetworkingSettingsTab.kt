@@ -55,6 +55,10 @@ fun NetworkingSettingsTab(controller: NetworkingController) = WritesExempt {
                 footer = DSPI_LINK_FOOTER // -- WP ANSEC -- encrypted to this project's hubs since SECAN
             ) {
                 FormSwitchRow("Control DSPi devices over the network", null, s.enabled) { controller.setEnabled(it) }
+                // -- WP LKFAST --
+                if (s.enabled) {
+                    FormSwitchRow(RECONNECT_AT_START, null, s.reconnectAtStart) { controller.setReconnectAtStart(it) }
+                }
                 if (s.status.isNotEmpty()) {
                     SettingRow("Connection", s.status) {
                         if (s.connected) TextButton(onClick = { controller.disconnect() }) { Text("Disconnect") }
@@ -192,11 +196,14 @@ private fun AddHubDialog(controller: NetworkingController, onDismiss: () -> Unit
  * The DSPi Link section's footer. Since SECAN the connection to a uConsole for DSPi hub is TLS with
  * the hub's key pinned at pairing; Weeb Labs' DSPi Console and the DSPi bridge have no TLS.
  */
+// -- WP LKFAST -- (owner 2026-11-21) by the hub, never "all unencrypted"
 internal const val DSPI_LINK_FOOTER =
     "Control a DSPi on a hub (uConsole for DSPi, DSPi Console or a DSPi bridge) from here. " +
-        "DSPi Link connections to a uConsole for DSPi hub are encrypted, and pairing pins the hub's key. " +
-        "DSPi Link connections to Weeb Labs' DSPi Console or to a DSPi bridge are not encrypted; use those only on networks " +
-        "you trust. To reach a hub from elsewhere, use a VPN such as Tailscale."
+        "Whether a hub's DSPi Link connection is encrypted depends on the hub: each hub below says so, and so does the bar " +
+        "while you are connected. To reach a hub from elsewhere, use a VPN such as Tailscale."
+
+// -- WP LKFAST --
+internal const val RECONNECT_AT_START = "Reconnect to the last hub at start"
 
 internal const val ACKNOWLEDGED_HUBS_TITLE = "Acknowledged Unsecured Hubs"
 
