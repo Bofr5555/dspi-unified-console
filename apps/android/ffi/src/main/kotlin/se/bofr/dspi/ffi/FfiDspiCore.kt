@@ -585,6 +585,8 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun linkConnectAdvertised(url: String, clientName: String, appVersion: String, credential: String, expectedHubId: String, tlsAdvertised: Boolean): LinkHello = call { core.linkConnectAdvertised(url, clientName, appVersion, credential, expectedHubId, tlsAdvertised).toDomain() }
 
+    override fun linkConnectAtStart(url: String, clientName: String, appVersion: String, credential: String, expectedHubId: String, tlsAdvertised: Boolean): LinkHello = call { core.linkConnectAtStart(url, clientName, appVersion, credential, expectedHubId, tlsAdvertised).toDomain() }
+
     override fun linkSecurity(): LinkSecurity = core.linkSecurity().toDomain()
 
     override fun linkPair(pin: String): String = call { core.linkPair(pin) }
@@ -610,6 +612,8 @@ class FfiDspiCore : DspiCoreApi {
     override fun linkForgetLastHub() = core.linkForgetLastHub()
 
     override fun linkRecheckTls(hubId: String) = core.linkRecheckTls(hubId)
+
+    override fun linkForgetHub(hubId: String) = core.linkForgetHub(hubId)
 
     override fun linkHubEncryption(credential: String, tlsAdvertised: Boolean, hubId: String, typed: Boolean): LinkEncryption = core.linkHubEncryption(credential, tlsAdvertised, hubId, typed).toDomain()
 

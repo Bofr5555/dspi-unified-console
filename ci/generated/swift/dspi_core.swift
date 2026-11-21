@@ -4042,9 +4042,25 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func linkConnectAdvertised(url: String, clientName: String, appVersion: String, credential: String, expectedHubId: String, tlsAdvertised: Bool) throws  -> LinkHello
     
     /**
+     * [`DspiCore::link_connect_advertised`] for the dial at app start to the
+     * hub used last ([`DspiCore::link_start_hub`]): the same rules, but its
+     * first dial gives up after [`START_DIAL_BUDGET`] instead of a minute, so
+     * a hub that is not at its stored address hands over to the client's
+     * search quickly. A dial the user asked for keeps the long budget.
+     */
+    func linkConnectAtStart(url: String, clientName: String, appVersion: String, credential: String, expectedHubId: String, tlsAdvertised: Bool) throws  -> LinkHello
+    
+    /**
      * The hub's devices (empty before authentication).
      */
     func linkDevices()  -> [LinkDevice]
+    
+    /**
+     * The user forgot hub `hub_id` (its pairing deleted): everything the core
+     * remembers of it goes, and it is no longer [`DspiCore::link_start_hub`]'s
+     * hub. No traffic.
+     */
+    func linkForgetHub(hubId: String) 
     
     /**
      * The user left the hub (Disconnect, or switched to another device): no
@@ -4082,8 +4098,9 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func linkPair(pin: String) throws  -> String
     
     /**
-     * Try TLS again at hub `hub_id`'s next connect, although it was met
-     * without TLS lately (Pair Again, Forget hub). No traffic.
+     * Try TLS again at hub `hub_id`'s next connect as at first contact (Pair
+     * Again): what was met lately, without TLS or with it, is forgotten. No
+     * traffic.
      */
     func linkRecheckTls(hubId: String) 
     
@@ -11060,6 +11077,26 @@ open func linkConnectAdvertised(url: String, clientName: String, appVersion: Str
 }
     
     /**
+     * [`DspiCore::link_connect_advertised`] for the dial at app start to the
+     * hub used last ([`DspiCore::link_start_hub`]): the same rules, but its
+     * first dial gives up after [`START_DIAL_BUDGET`] instead of a minute, so
+     * a hub that is not at its stored address hands over to the client's
+     * search quickly. A dial the user asked for keeps the long budget.
+     */
+open func linkConnectAtStart(url: String, clientName: String, appVersion: String, credential: String, expectedHubId: String, tlsAdvertised: Bool)throws  -> LinkHello  {
+    return try  FfiConverterTypeLinkHello_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_link_connect_at_start(self.uniffiClonePointer(),
+        FfiConverterString.lower(url),
+        FfiConverterString.lower(clientName),
+        FfiConverterString.lower(appVersion),
+        FfiConverterString.lower(credential),
+        FfiConverterString.lower(expectedHubId),
+        FfiConverterBool.lower(tlsAdvertised),$0
+    )
+})
+}
+    
+    /**
      * The hub's devices (empty before authentication).
      */
 open func linkDevices() -> [LinkDevice]  {
@@ -11067,6 +11104,18 @@ open func linkDevices() -> [LinkDevice]  {
     uniffi_dspi_core_fn_method_dspicore_link_devices(self.uniffiClonePointer(),$0
     )
 })
+}
+    
+    /**
+     * The user forgot hub `hub_id` (its pairing deleted): everything the core
+     * remembers of it goes, and it is no longer [`DspiCore::link_start_hub`]'s
+     * hub. No traffic.
+     */
+open func linkForgetHub(hubId: String)  {try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_link_forget_hub(self.uniffiClonePointer(),
+        FfiConverterString.lower(hubId),$0
+    )
+}
 }
     
     /**
@@ -11124,8 +11173,9 @@ open func linkPair(pin: String)throws  -> String  {
 }
     
     /**
-     * Try TLS again at hub `hub_id`'s next connect, although it was met
-     * without TLS lately (Pair Again, Forget hub). No traffic.
+     * Try TLS again at hub `hub_id`'s next connect as at first contact (Pair
+     * Again): what was met lately, without TLS or with it, is forgotten. No
+     * traffic.
      */
 open func linkRecheckTls(hubId: String)  {try! rustCall() {
     uniffi_dspi_core_fn_method_dspicore_link_recheck_tls(self.uniffiClonePointer(),
@@ -68698,7 +68748,13 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_link_connect_advertised() != 37895) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_dspicore_link_connect_at_start() != 21471) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_dspicore_link_devices() != 29326) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_link_forget_hub() != 42094) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_link_forget_last_hub() != 9866) {
@@ -68710,7 +68766,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_link_pair() != 58905) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_link_recheck_tls() != 53518) {
+    if (uniffi_dspi_core_checksum_method_dspicore_link_recheck_tls() != 59831) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_link_retry_now() != 18334) {

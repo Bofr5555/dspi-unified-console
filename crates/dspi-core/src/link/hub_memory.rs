@@ -5,22 +5,31 @@
 //! - **A hub met without TLS** (owner decision 2026-11-21, option C): an
 //!   unpinned hub that did not advertise TLS and refused it is dialled in
 //!   plaintext straight away next time, with no TLS try first. TLS is tried
-//!   again on every [`RECHECK_EVERY`]th connect, whenever the hub's advert says
-//!   TLS, and after [`crate::DspiCore::link_recheck_tls`] (Pair Again, Forget hub). A
-//!   pinned hub, or one pinned before, never reads this: it is TLS only.
+//!   again on every [`RECHECK_EVERY`]th connect, and after
+//!   [`crate::DspiCore::link_recheck_tls`] (Pair Again) or
+//!   [`crate::DspiCore::link_forget_hub`]. A pinned hub, or one pinned before,
+//!   never reads this: it is TLS only.
+//! - -- WP LKFAST3 -- (review LKREV 1) **A hub that had TLS** stays TLS only
+//!   ([`Store::tls_seen`], the PLAN-SEC ratchet): once a session to it was
+//!   encrypted, its advert said `tls=1`, or it refused plaintext
+//!   (`tls_required`), it is never dialled in plaintext again, until Pair Again
+//!   or Forget clear it. One downgraded session cannot keep it in plaintext.
 //! - **The last hub** (option B): the hub whose device was bound last, so a
 //!   client can dial it again at start ([`crate::DspiCore::link_start_hub`]), unless
-//!   the user left it ([`crate::DspiCore::link_forget_last_hub`]).
+//!   the user left it ([`crate::DspiCore::link_forget_last_hub`]) or forgot it.
 //!
-//! The file is read and written whole on every change: a few hundred bytes. A
+//! The file is written whole on every change (a few hundred bytes) and read
+//! through one cache per file for the whole process (-- WP LKFAST3 --, review
+//! LKREV 3 and 7): every core in the process shares it, each read-modify-write
+//! is atomic against the others, and a read only checks the file's stamp. A
 //! failed read is an empty memory; a failed write is logged and changes
 //! nothing else.
 
 // The web keeps no files: the store is there, never named, so it remembers nothing
 #![cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), allow(dead_code))]
 
-use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::collections::{BTreeMap, BTreeSet};
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
@@ -38,8 +47,6 @@ const FILE: &str = "dspi-link-hubs.json";
 #[derive(Default)]
 pub(crate) struct Store {
     dir: Mutex<Option<PathBuf>>,
-    /// One read-modify-write at a time (two cores in one process may share the file).
-    file: Mutex<()>,
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
@@ -47,6 +54,9 @@ struct Memory {
     /// Hub id (lowercase) -> connects since TLS was last tried and refused.
     #[serde(default)]
     plaintext: BTreeMap<String, u32>,
+    /// -- WP LKFAST3 -- Hubs that had TLS: TLS only until Pair Again or Forget.
+    #[serde(default)]
+    tls_seen: BTreeSet<String>,
     #[serde(default)]
     last: Option<Last>,
 }
@@ -63,6 +73,43 @@ struct Last {
     left: bool,
 }
 
+/// What a file held when last read or written, and its stamp then.
+struct Cached {
+    stamp: Option<(std::time::SystemTime, u64)>,
+    memory: Memory,
+}
+
+/// -- WP LKFAST3 -- One cache per file for the process; its lock is the one
+/// read-modify-write at a time for every core naming that folder.
+static FILES: Mutex<BTreeMap<PathBuf, Cached>> = Mutex::new(BTreeMap::new());
+
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+fn stamp(p: &Path) -> Option<(std::time::SystemTime, u64)> {
+    let m = std::fs::metadata(p).ok()?;
+    Some((m.modified().ok()?, m.len()))
+}
+
+/// The file's memory, from the cache while its stamp is unchanged.
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+fn load(files: &mut BTreeMap<PathBuf, Cached>, p: &Path) -> Memory {
+    let now = stamp(p);
+    if let Some(c) = files.get(p).filter(|c| c.stamp.is_some() && c.stamp == now) {
+        return c.memory.clone();
+    }
+    let memory: Memory = std::fs::read(p)
+        .ok()
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or_default();
+    files.insert(
+        p.to_owned(),
+        Cached {
+            stamp: now,
+            memory: memory.clone(),
+        },
+    );
+    memory
+}
+
 impl Store {
     pub(crate) fn set_dir(&self, dir: Option<PathBuf>) {
         *guard(&self.dir) = dir;
@@ -75,10 +122,7 @@ impl Store {
     fn read(&self) -> Memory {
         #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
         if let Some(p) = self.path() {
-            return std::fs::read(&p)
-                .ok()
-                .and_then(|b| serde_json::from_slice(&b).ok())
-                .unwrap_or_default();
+            return load(&mut guard(&FILES), &p);
         }
         Memory::default()
     }
@@ -88,8 +132,8 @@ impl Store {
         #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
         {
             let Some(p) = self.path() else { return };
-            let _one = guard(&self.file);
-            let mut m = self.read();
+            let mut files = guard(&FILES);
+            let mut m = load(&mut files, &p);
             let before = m.clone();
             f(&mut m);
             if m == before {
@@ -103,8 +147,17 @@ impl Store {
                 std::fs::write(&tmp, serde_json::to_vec(&m).unwrap_or_default())?;
                 std::fs::rename(&tmp, &p)
             };
-            if let Err(e) = write() {
-                log::warn!("dspi-link: the hub memory could not be written: {e}");
+            match write() {
+                Ok(()) => {
+                    files.insert(
+                        p.clone(),
+                        Cached {
+                            stamp: stamp(&p),
+                            memory: m,
+                        },
+                    );
+                }
+                Err(e) => log::warn!("dspi-link: the hub memory could not be written: {e}"),
             }
         }
         #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
@@ -112,24 +165,40 @@ impl Store {
     }
 
     /// Dial hub `hub_id` in plaintext without a TLS try: it was met without TLS
-    /// fewer than [`RECHECK_EVERY`] connects ago. The caller asks only for an
-    /// unpinned hub that does not advertise TLS.
+    /// fewer than [`RECHECK_EVERY`] connects ago and never had TLS. The caller
+    /// asks only for an unpinned hub that does not advertise TLS.
     pub(crate) fn skip_tls(&self, hub_id: &str) -> bool {
         if hub_id.is_empty() {
             return false;
         }
-        let n = self
-            .read()
-            .plaintext
-            .get(&hub_id.to_lowercase())
-            .copied()
-            .unwrap_or(0);
-        (1..RECHECK_EVERY).contains(&n)
+        let id = hub_id.to_lowercase();
+        let m = self.read();
+        let n = m.plaintext.get(&id).copied().unwrap_or(0);
+        !m.tls_seen.contains(&id) && (1..RECHECK_EVERY).contains(&n)
     }
 
     /// `hub_id` was met without TLS and not with it since.
     pub(crate) fn met_without_tls(&self, hub_id: &str) -> bool {
         !hub_id.is_empty() && self.read().plaintext.contains_key(&hub_id.to_lowercase())
+    }
+
+    // -- WP LKFAST3 --
+    /// `hub_id` had TLS ([`Self::saw_tls`]): it is reached over TLS only.
+    pub(crate) fn tls_seen(&self, hub_id: &str) -> bool {
+        !hub_id.is_empty() && self.read().tls_seen.contains(&hub_id.to_lowercase())
+    }
+
+    /// `hub_id` had TLS: an encrypted session, an advert of `tls=1`, or a
+    /// refusal of plaintext. TLS only from now on, until Pair Again or Forget.
+    pub(crate) fn saw_tls(&self, hub_id: &str) {
+        if hub_id.is_empty() {
+            return;
+        }
+        let id = hub_id.to_lowercase();
+        self.update(|m| {
+            m.plaintext.remove(&id);
+            m.tls_seen.insert(id);
+        });
     }
 
     /// A session to `hub_id` came up in plaintext; `tried` says whether TLS was
@@ -140,17 +209,34 @@ impl Store {
         }
         let id = hub_id.to_lowercase();
         self.update(|m| {
+            if m.tls_seen.contains(&id) {
+                return; // -- WP LKFAST3 -- TLS only: no note (not reached: such a dial needs TLS)
+            }
             let n = m.plaintext.entry(id).or_insert(0);
             *n = if tried { 1 } else { n.saturating_add(1) };
         });
     }
 
-    /// TLS is to be tried at `hub_id`'s next connect (it was met encrypted, its
-    /// advert says TLS, or the user paired again or forgot it).
+    /// TLS is to be tried at `hub_id`'s next connect, as at first contact: the
+    /// user paired again (the note and the had-TLS mark go).
     pub(crate) fn recheck(&self, hub_id: &str) {
         let id = hub_id.to_lowercase();
         self.update(|m| {
             m.plaintext.remove(&id);
+            m.tls_seen.remove(&id);
+        });
+    }
+
+    // -- WP LKFAST3 -- (review LKREV 2)
+    /// The user forgot `hub_id`: everything about it goes, the start's dial too.
+    pub(crate) fn forget(&self, hub_id: &str) {
+        let id = hub_id.to_lowercase();
+        self.update(|m| {
+            m.plaintext.remove(&id);
+            m.tls_seen.remove(&id);
+            if m.last.as_ref().is_some_and(|l| l.hub_id == id) {
+                m.last = None;
+            }
         });
     }
 
@@ -179,7 +265,12 @@ impl Store {
 
     /// The last hub, unless the user left it.
     pub(crate) fn last(&self) -> Option<LinkLastHub> {
-        let l = self.read().last.filter(|l| !l.left)?;
+        let m = self.read();
+        let seen = m
+            .last
+            .as_ref()
+            .is_some_and(|l| m.tls_seen.contains(&l.hub_id));
+        let l = m.last.filter(|l| !l.left)?;
         let (host, port, path) = split_url(&l.url)?;
         Some(LinkLastHub {
             hub_id: l.hub_id,
@@ -189,7 +280,8 @@ impl Store {
             host,
             port,
             path,
-            tls_advertised: l.tls_advertised,
+            // -- WP LKFAST3 -- a hub that had TLS is dialled as one that says so
+            tls_advertised: l.tls_advertised || seen,
         })
     }
 }

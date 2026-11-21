@@ -2162,6 +2162,10 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -2797,7 +2801,11 @@ fun uniffi_dspi_core_checksum_method_dspicore_link_connect(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_link_connect_advertised(
 ): Short
+fun uniffi_dspi_core_checksum_method_dspicore_link_connect_at_start(
+): Short
 fun uniffi_dspi_core_checksum_method_dspicore_link_devices(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_link_forget_hub(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_link_forget_last_hub(
 ): Short
@@ -3910,8 +3918,12 @@ fun uniffi_dspi_core_fn_method_dspicore_link_connect(`ptr`: Pointer,`url`: RustB
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_link_connect_advertised(`ptr`: Pointer,`url`: RustBuffer.ByValue,`clientName`: RustBuffer.ByValue,`appVersion`: RustBuffer.ByValue,`credential`: RustBuffer.ByValue,`expectedHubId`: RustBuffer.ByValue,`tlsAdvertised`: Byte,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_link_connect_at_start(`ptr`: Pointer,`url`: RustBuffer.ByValue,`clientName`: RustBuffer.ByValue,`appVersion`: RustBuffer.ByValue,`credential`: RustBuffer.ByValue,`expectedHubId`: RustBuffer.ByValue,`tlsAdvertised`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_link_devices(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_link_forget_hub(`ptr`: Pointer,`hubId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
 fun uniffi_dspi_core_fn_method_dspicore_link_forget_last_hub(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_link_hub_encryption(`ptr`: Pointer,`credential`: RustBuffer.ByValue,`tlsAdvertised`: Byte,`hubId`: RustBuffer.ByValue,`typed`: Byte,uniffi_out_err: UniffiRustCallStatus, 
@@ -5716,7 +5728,13 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_link_connect_advertised() != 37895.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_link_connect_at_start() != 21471.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_link_devices() != 29326.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_link_forget_hub() != 42094.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_link_forget_last_hub() != 9866.toShort()) {
@@ -5728,7 +5746,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_link_pair() != 58905.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_link_recheck_tls() != 53518.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_link_recheck_tls() != 59831.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_link_retry_now() != 18334.toShort()) {
@@ -10850,9 +10868,25 @@ public interface DspiCoreInterface {
     fun `linkConnectAdvertised`(`url`: kotlin.String, `clientName`: kotlin.String, `appVersion`: kotlin.String, `credential`: kotlin.String, `expectedHubId`: kotlin.String, `tlsAdvertised`: kotlin.Boolean): LinkHello
     
     /**
+     * [`DspiCore::link_connect_advertised`] for the dial at app start to the
+     * hub used last ([`DspiCore::link_start_hub`]): the same rules, but its
+     * first dial gives up after [`START_DIAL_BUDGET`] instead of a minute, so
+     * a hub that is not at its stored address hands over to the client's
+     * search quickly. A dial the user asked for keeps the long budget.
+     */
+    fun `linkConnectAtStart`(`url`: kotlin.String, `clientName`: kotlin.String, `appVersion`: kotlin.String, `credential`: kotlin.String, `expectedHubId`: kotlin.String, `tlsAdvertised`: kotlin.Boolean): LinkHello
+    
+    /**
      * The hub's devices (empty before authentication).
      */
     fun `linkDevices`(): List<LinkDevice>
+    
+    /**
+     * The user forgot hub `hub_id` (its pairing deleted): everything the core
+     * remembers of it goes, and it is no longer [`DspiCore::link_start_hub`]'s
+     * hub. No traffic.
+     */
+    fun `linkForgetHub`(`hubId`: kotlin.String)
     
     /**
      * The user left the hub (Disconnect, or switched to another device): no
@@ -10890,8 +10924,9 @@ public interface DspiCoreInterface {
     fun `linkPair`(`pin`: kotlin.String): kotlin.String
     
     /**
-     * Try TLS again at hub `hub_id`'s next connect, although it was met
-     * without TLS lately (Pair Again, Forget hub). No traffic.
+     * Try TLS again at hub `hub_id`'s next connect as at first contact (Pair
+     * Again): what was met lately, without TLS or with it, is forgotten. No
+     * traffic.
      */
     fun `linkRecheckTls`(`hubId`: kotlin.String)
     
@@ -19019,6 +19054,26 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
+     * [`DspiCore::link_connect_advertised`] for the dial at app start to the
+     * hub used last ([`DspiCore::link_start_hub`]): the same rules, but its
+     * first dial gives up after [`START_DIAL_BUDGET`] instead of a minute, so
+     * a hub that is not at its stored address hands over to the client's
+     * search quickly. A dial the user asked for keeps the long budget.
+     */
+    @Throws(DspiException::class)override fun `linkConnectAtStart`(`url`: kotlin.String, `clientName`: kotlin.String, `appVersion`: kotlin.String, `credential`: kotlin.String, `expectedHubId`: kotlin.String, `tlsAdvertised`: kotlin.Boolean): LinkHello {
+            return FfiConverterTypeLinkHello.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_link_connect_at_start(
+        it, FfiConverterString.lower(`url`),FfiConverterString.lower(`clientName`),FfiConverterString.lower(`appVersion`),FfiConverterString.lower(`credential`),FfiConverterString.lower(`expectedHubId`),FfiConverterBoolean.lower(`tlsAdvertised`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * The hub's devices (empty before authentication).
      */override fun `linkDevices`(): List<LinkDevice> {
             return FfiConverterSequenceTypeLinkDevice.lift(
@@ -19030,6 +19085,22 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     }
     )
     }
+    
+
+    
+    /**
+     * The user forgot hub `hub_id` (its pairing deleted): everything the core
+     * remembers of it goes, and it is no longer [`DspiCore::link_start_hub`]'s
+     * hub. No traffic.
+     */override fun `linkForgetHub`(`hubId`: kotlin.String)
+        = 
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_link_forget_hub(
+        it, FfiConverterString.lower(`hubId`),_status)
+}
+    }
+    
     
 
     
@@ -19099,8 +19170,9 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
-     * Try TLS again at hub `hub_id`'s next connect, although it was met
-     * without TLS lately (Pair Again, Forget hub). No traffic.
+     * Try TLS again at hub `hub_id`'s next connect as at first contact (Pair
+     * Again): what was met lately, without TLS or with it, is forgotten. No
+     * traffic.
      */override fun `linkRecheckTls`(`hubId`: kotlin.String)
         = 
     callWithPointer {

@@ -514,6 +514,8 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun linkConnectAdvertised(url: String, clientName: String, appVersion: String, credential: String, expectedHubId: String, tlsAdvertised: Boolean): LinkHello = throw NotImplementedError("link_connect_advertised")
 
+    override fun linkConnectAtStart(url: String, clientName: String, appVersion: String, credential: String, expectedHubId: String, tlsAdvertised: Boolean): LinkHello = throw NotImplementedError("link_connect_at_start")
+
     override fun linkSecurity(): LinkSecurity = throw NotImplementedError("link_security")
 
     override fun linkPair(pin: String): String = throw NotImplementedError("link_pair")
@@ -539,6 +541,8 @@ open class UnimplementedDspiCore : DspiCoreApi {
     override fun linkForgetLastHub(): Unit = throw NotImplementedError("link_forget_last_hub")
 
     override fun linkRecheckTls(hubId: String): Unit = throw NotImplementedError("link_recheck_tls")
+
+    override fun linkForgetHub(hubId: String): Unit = throw NotImplementedError("link_forget_hub")
 
     override fun linkHubEncryption(credential: String, tlsAdvertised: Boolean, hubId: String, typed: Boolean): LinkEncryption = throw NotImplementedError("link_hub_encryption")
 

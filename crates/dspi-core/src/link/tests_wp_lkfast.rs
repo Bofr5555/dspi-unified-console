@@ -8,6 +8,7 @@ use std::path::PathBuf;
 
 use dspi_link::credential::Credential;
 use dspi_link::fakehub::{Auth, FakeHub, FakeTlsKey, HubConfig};
+use dspi_link::socket::WsPair;
 use dspi_proto::generated::opcodes as op;
 
 use super::*;
@@ -190,7 +191,9 @@ fn wp_lkfast_a_pinned_hub_is_never_dialled_in_plaintext_whatever_the_memory_says
     let credential = core.link_pair(PIN.into()).unwrap();
     core.link_close();
     assert!(Credential::parse(&credential).pin.is_some());
-    // The memory claims plaintext for this hub (as a spoofer of its id could make it)
+    // The memory claims plaintext for this hub (as a spoofer of its id could
+    // make it; -- WP LKFAST3 -- past the had-TLS mark the pairing set)
+    core.hub_memory.recheck(&hello.hub_id);
     for _ in 0..3 {
         core.hub_memory.met_plaintext(&hello.hub_id, true);
     }
@@ -205,6 +208,7 @@ fn wp_lkfast_a_pinned_hub_is_never_dialled_in_plaintext_whatever_the_memory_says
         "met encrypted: the note goes"
     );
     // TLS off at the hub now: still TLS only, refused, nothing in plaintext
+    core.hub_memory.recheck(&hello.hub_id);
     for _ in 0..3 {
         core.hub_memory.met_plaintext(&hello.hub_id, true);
     }
@@ -235,11 +239,21 @@ fn wp_lkfast_an_advert_of_tls_forces_the_tls_try() {
     assert_eq!(hub.tls_refused(), 2, "TLS was tried");
     assert!(
         !core.hub_memory.skip_tls(&id),
-        "and the next unadvertised connect tries it too"
+        "no plaintext shortcut any more"
     );
-    dial(&core, &hub, "", &id).unwrap();
+    // -- WP LKFAST3 -- the advert is remembered (the ratchet): TLS only, the
+    // advert stripped or not, until Pair Again
+    assert!(dial(&core, &hub, "", &id).is_err(), "never plaintext again");
     core.link_close();
     assert_eq!(hub.tls_refused(), 3);
+    core.link_recheck_tls(id.clone());
+    dial(&core, &hub, "", &id).unwrap();
+    core.link_close();
+    assert_eq!(
+        hub.tls_refused(),
+        4,
+        "Pair Again: met as new, TLS tried first, then plaintext"
+    );
 }
 
 #[test]
@@ -336,7 +350,13 @@ fn wp_lkfast_a_hubs_encryption_before_it_is_dialled() {
         LinkEncryption::Unknown,
         "no session"
     );
-    let id = hello.hub_id;
+    // -- WP LKFAST3 -- that hub had TLS: "offered" whatever else; the rest on another id
+    assert_eq!(
+        core.link_hub_encryption(String::new(), false, hello.hub_id.clone(), true),
+        LinkEncryption::Offered,
+        "a hub that had TLS"
+    );
+    let id = "another-hub".to_owned();
     let enc = |c: &str, adv: bool, typed: bool| {
         core.link_hub_encryption(c.into(), adv, id.clone(), typed)
     };
@@ -376,5 +396,197 @@ fn wp_lkfast_a_hubs_encryption_before_it_is_dialled() {
     let plain = FakeHub::start(HubConfig::default()).unwrap();
     dial(&core, &plain, "", "").unwrap();
     assert_eq!(core.link_session_encryption(), LinkEncryption::Local);
+    core.link_close();
+}
+
+// ── LKFAST3: the review's fixes (LKREV 1, 2, 4, 6) ───────────────────────
+
+/// A machine in the middle that refuses TLS while `refuse` is set, letting
+/// plaintext through (the hub serves both).
+struct RefusesTls {
+    refuse: std::sync::atomic::AtomicBool,
+}
+
+impl WsConnector for RefusesTls {
+    fn connect(&self, url: &str, protocol: &str) -> std::result::Result<WsPair, LinkError> {
+        TcpConnector::default().connect(url, protocol)
+    }
+
+    fn connect_tls(
+        &self,
+        url: &str,
+        protocol: &str,
+        trust: dspi_link::socket::TlsTrust,
+        within: Option<Duration>,
+    ) -> std::result::Result<(WsPair, dspi_link::credential::Pin), LinkError> {
+        if self.refuse.load(Ordering::SeqCst) {
+            return Err(LinkError::TlsRefused { advertised: false });
+        }
+        TcpConnector::default().connect_tls(url, protocol, trust, within)
+    }
+}
+
+fn dial_via(
+    core: &DspiCore,
+    hub: &FakeHub,
+    mitm: &Arc<RefusesTls>,
+    id: &str,
+    advert: bool,
+) -> Result<LinkHello> {
+    core.link_connect_hinted(
+        hub.url(),
+        "wp-lkfast".into(),
+        "test".into(),
+        String::new(),
+        id.into(),
+        Advert {
+            tls: advert,
+            ..Advert::default()
+        },
+        Tuning {
+            connector: Arc::clone(mitm) as Arc<dyn WsConnector>,
+            backoff_divisor: 50,
+            ..Tuning::default()
+        },
+    )
+}
+
+/// An open hub with TLS that also takes plaintext (a uConsole hub in compatibility mode).
+fn open_tls_hub() -> FakeHub {
+    let hub = FakeHub::start(HubConfig::default()).unwrap();
+    hub.set_tls(Some(&FakeTlsKey::generate()));
+    hub
+}
+
+#[test]
+fn wp_lkfast3_a_hub_met_encrypted_once_is_never_downgraded_by_one_refused_tls() {
+    let hub = open_tls_hub();
+    let core = core_in(&memory_dir("ratchet"));
+    let mitm = Arc::new(RefusesTls {
+        refuse: false.into(),
+    });
+    let id = dial_via(&core, &hub, &mitm, "", false).unwrap().hub_id;
+    core.link_close();
+    // Met by its id, encrypted: from now on TLS only
+    dial_via(&core, &hub, &mitm, &id, false).unwrap();
+    assert!(core.link_security().encrypted);
+    core.link_close();
+    // The attacker refuses TLS once: refused, never plaintext
+    mitm.refuse.store(true, Ordering::SeqCst);
+    let plain_before = hub.upgrades().0;
+    assert!(dial_via(&core, &hub, &mitm, &id, false).is_err());
+    core.link_close();
+    // ...and the attacker gone, it is encrypted again, never through the 10-connect skip
+    mitm.refuse.store(false, Ordering::SeqCst);
+    for _ in 0..3 {
+        dial_via(&core, &hub, &mitm, &id, false).unwrap();
+        assert!(core.link_security().encrypted);
+        core.link_close();
+    }
+    assert_eq!(hub.upgrades().0, plain_before, "not one plaintext upgrade");
+    // Pair Again (or Forget) clears the mark: met as at first contact
+    core.link_recheck_tls(id.clone());
+    assert!(!core.hub_memory.tls_seen(&id));
+}
+
+#[test]
+fn wp_lkfast3_an_advert_of_tls_once_makes_the_hub_tls_only() {
+    let hub = open_tls_hub();
+    let core = core_in(&memory_dir("advert-once"));
+    let mitm = Arc::new(RefusesTls {
+        refuse: true.into(),
+    });
+    // First contact through the attacker: plaintext, noted (unavoidable without any advert)
+    let id = dial_via(&core, &hub, &mitm, "", false).unwrap().hub_id;
+    core.link_close();
+    dial_via(&core, &hub, &mitm, &id, false).unwrap();
+    assert!(!core.link_security().encrypted);
+    core.link_close();
+    assert!(core.hub_memory.skip_tls(&id));
+    // One sighting of its tls=1 advert: TLS only from then on, the note gone
+    mitm.refuse.store(false, Ordering::SeqCst);
+    dial_via(&core, &hub, &mitm, &id, true).unwrap();
+    core.link_close();
+    assert!(core.hub_memory.tls_seen(&id) && !core.hub_memory.skip_tls(&id));
+    // The attacker again, the advert stripped: refused, not plaintext
+    mitm.refuse.store(true, Ordering::SeqCst);
+    let plain_before = hub.upgrades().0;
+    assert!(dial_via(&core, &hub, &mitm, &id, false).is_err());
+    core.link_close();
+    assert_eq!(hub.upgrades().0, plain_before);
+    // The start record says TLS too
+    assert_eq!(
+        core.link_hub_encryption(String::new(), false, id.clone(), false),
+        LinkEncryption::Offered
+    );
+}
+
+#[test]
+fn wp_lkfast3_a_hub_that_now_requires_tls_is_dialled_again_over_tls_at_once() {
+    let hub = open_tls_hub();
+    let core = core_in(&memory_dir("required"));
+    let mitm = Arc::new(RefusesTls {
+        refuse: true.into(),
+    });
+    let id = dial_via(&core, &hub, &mitm, "", false).unwrap().hub_id;
+    core.link_close();
+    assert!(core.hub_memory.skip_tls(&id), "met without TLS");
+    // The hub turned TLS on (require mode), the attacker gone: the plaintext
+    // shortcut hears tls_required, and the same connect goes on over TLS
+    mitm.refuse.store(false, Ordering::SeqCst);
+    hub.set_require_tls(true);
+    dial_via(&core, &hub, &mitm, &id, false).unwrap();
+    assert!(core.link_security().encrypted);
+    core.link_close();
+    assert!(core.hub_memory.tls_seen(&id) && !core.hub_memory.met_without_tls(&id));
+}
+
+#[test]
+fn wp_lkfast3_forget_hub_drops_the_start_record_of_that_hub_only() {
+    let hub = bridge();
+    let dir = memory_dir("forget");
+    let core = core_in(&dir);
+    let hello = dial(&core, &hub, "", "").unwrap();
+    wait_until("the device list", || !core.link_devices().is_empty());
+    let d = core.link_devices().remove(0);
+    core.link_select_device(d.handle, d.serial).unwrap();
+    core.link_close();
+    core.link_forget_hub("another-hub".into());
+    assert!(
+        core.link_start_hub(false).is_some(),
+        "another hub's Forget leaves it"
+    );
+    core.link_forget_hub(hello.hub_id.to_uppercase());
+    assert_eq!(
+        core_in(&dir).link_start_hub(false),
+        None,
+        "forgotten: no dial at start"
+    );
+}
+
+#[test]
+fn wp_lkfast3_the_start_dial_gives_up_after_its_short_budget() {
+    // Nothing listens on this port: every try is refused, and the first dial retries
+    let core = core_in(&memory_dir("budget"));
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    drop(listener);
+    let url = format!("ws://127.0.0.1:{port}/dspi/v1");
+    let started = Instant::now();
+    let r = core.link_connect_at_start(
+        url,
+        "wp-lkfast".into(),
+        "test".into(),
+        String::new(),
+        "hub-x".into(),
+        false,
+    );
+    assert!(r.is_err());
+    let took = started.elapsed();
+    assert!(
+        took < START_DIAL_BUDGET + Duration::from_secs(3),
+        "{took:?}"
+    );
+    assert!(took >= Duration::from_secs(3), "it did retry: {took:?}");
     core.link_close();
 }

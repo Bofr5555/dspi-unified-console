@@ -3225,6 +3225,16 @@ interface DspiCoreApi : AutoCloseable {
     fun linkConnectAdvertised(url: String, clientName: String, appVersion: String, credential: String, expectedHubId: String, tlsAdvertised: Boolean): LinkHello
 
     /**
+     * [`DspiCore::link_connect_advertised`] for the dial at app start to the
+     * hub used last ([`DspiCore::link_start_hub`]): the same rules, but its
+     * first dial gives up after [`START_DIAL_BUDGET`] instead of a minute, so
+     * a hub that is not at its stored address hands over to the client's
+     * search quickly. A dial the user asked for keeps the long budget.
+     */
+    @Throws(DspiException::class)
+    fun linkConnectAtStart(url: String, clientName: String, appVersion: String, credential: String, expectedHubId: String, tlsAdvertised: Boolean): LinkHello
+
+    /**
      * The current session's encryption, for the hub's status and settings.
      */
     fun linkSecurity(): LinkSecurity
@@ -3350,10 +3360,18 @@ interface DspiCoreApi : AutoCloseable {
     fun linkForgetLastHub()
 
     /**
-     * Try TLS again at hub `hub_id`'s next connect, although it was met
-     * without TLS lately (Pair Again, Forget hub). No traffic.
+     * Try TLS again at hub `hub_id`'s next connect as at first contact (Pair
+     * Again): what was met lately, without TLS or with it, is forgotten. No
+     * traffic.
      */
     fun linkRecheckTls(hubId: String)
+
+    /**
+     * The user forgot hub `hub_id` (its pairing deleted): everything the core
+     * remembers of it goes, and it is no longer [`DspiCore::link_start_hub`]'s
+     * hub. No traffic.
+     */
+    fun linkForgetHub(hubId: String)
 
     /**
      * A hub's encryption before it is dialled, for its line in a list or a

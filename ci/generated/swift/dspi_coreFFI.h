@@ -1721,9 +1721,19 @@ RustBuffer uniffi_dspi_core_fn_method_dspicore_link_connect(void*_Nonnull ptr, R
 RustBuffer uniffi_dspi_core_fn_method_dspicore_link_connect_advertised(void*_Nonnull ptr, RustBuffer url, RustBuffer client_name, RustBuffer app_version, RustBuffer credential, RustBuffer expected_hub_id, int8_t tls_advertised, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_LINK_CONNECT_AT_START
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_LINK_CONNECT_AT_START
+RustBuffer uniffi_dspi_core_fn_method_dspicore_link_connect_at_start(void*_Nonnull ptr, RustBuffer url, RustBuffer client_name, RustBuffer app_version, RustBuffer credential, RustBuffer expected_hub_id, int8_t tls_advertised, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_LINK_DEVICES
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_LINK_DEVICES
 RustBuffer uniffi_dspi_core_fn_method_dspicore_link_devices(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_LINK_FORGET_HUB
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_LINK_FORGET_HUB
+void uniffi_dspi_core_fn_method_dspicore_link_forget_hub(void*_Nonnull ptr, RustBuffer hub_id, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_LINK_FORGET_LAST_HUB
@@ -5752,9 +5762,21 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_link_connect_advertised(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_LINK_CONNECT_AT_START
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_LINK_CONNECT_AT_START
+uint16_t uniffi_dspi_core_checksum_method_dspicore_link_connect_at_start(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_LINK_DEVICES
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_LINK_DEVICES
 uint16_t uniffi_dspi_core_checksum_method_dspicore_link_devices(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_LINK_FORGET_HUB
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_LINK_FORGET_HUB
+uint16_t uniffi_dspi_core_checksum_method_dspicore_link_forget_hub(void
     
 );
 #endif

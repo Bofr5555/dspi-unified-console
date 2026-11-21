@@ -1182,6 +1182,9 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "linkHubEncryption",
             "linkSessionEncryption",
             "linkEncryptionNoticeKey",
+            // -- WP LKFAST3 -- the hub memory's Forget (a local file); the start's dial is a dial, as linkConnect
+            "linkForgetHub",
+            "linkConnectAtStart",
             "bootloaderCounts",
             "captureBaseline",
             "checkCore1Conflict",
