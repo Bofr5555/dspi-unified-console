@@ -193,6 +193,11 @@ pub struct OpenDevice {
     pub serial: String,
     /// Whether it can be used now.
     pub state: DeviceLiveness,
+    // -- WP INT5 --
+    /// Opened with [`CoreSet::open_extra`]: the app's own business, not a
+    /// device the user has open.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub extra: bool,
 }
 
 fn id_text<S: serde::Serializer>(id: &DeviceId, s: S) -> std::result::Result<S::Ok, S::Error> {
@@ -505,6 +510,8 @@ struct Entry {
     /// What it held when `id` was given.
     held: Held,
     main: bool,
+    // -- WP INT5 --
+    extra: bool,
 }
 
 impl Entry {
@@ -520,6 +527,7 @@ impl Entry {
             label: self.label.clone(),
             serial: self.serial.clone(),
             state: self.state,
+            extra: self.extra,
         })
     }
 }
@@ -661,6 +669,7 @@ impl CoreSet {
                     token,
                     held: Held::Nothing,
                     main: true,
+                    extra: false,
                 },
             );
             core.lock().hotplug.member = Some(self.membership(token));
@@ -780,20 +789,38 @@ impl CoreSet {
     /// Blocks for the connect sequence (and, for a hub, the dial): not on a
     /// UI thread. On a failure nothing is added and the new core is closed.
     pub fn open(&self, target: DeviceTarget) -> std::result::Result<DeviceId, CoreSetError> {
+        self.open_target(target, false)
+    }
+
+    // -- WP INT5 --
+    /// [`CoreSet::open`] for a device the app uses itself without showing it
+    /// (a unit measured with others): listed as `extra`, and not offered to
+    /// AI agents.
+    pub fn open_extra(&self, target: DeviceTarget) -> std::result::Result<DeviceId, CoreSetError> {
+        self.open_target(target, true)
+    }
+
+    fn open_target(
+        &self,
+        target: DeviceTarget,
+        extra: bool,
+    ) -> std::result::Result<DeviceId, CoreSetError> {
         match target {
             DeviceTarget::Demo => {
                 let id = DeviceId::demo(self.take_number(false));
-                self.open_with(id, String::new(), |c| c.open_demo())
+                self.open_entry(id, String::new(), extra, |c| c.open_demo())
             }
             DeviceTarget::Usb { serial } => {
-                self.open_with(DeviceId::usb(&serial), String::new(), |c| {
+                self.open_entry(DeviceId::usb(&serial), String::new(), extra, |c| {
                     c.select_device(serial.clone())
                 })
             }
             DeviceTarget::Document { text, file_name } => {
                 let id = DeviceId::file(self.take_number(true));
                 let label = file_name.clone();
-                self.open_with(id, label, |c| c.open_document(text, file_name).map(drop))
+                self.open_entry(id, label, extra, |c| {
+                    c.open_document(text, file_name).map(drop)
+                })
             }
             #[cfg(feature = "link")]
             DeviceTarget::Hub(hub) => {
@@ -803,7 +830,7 @@ impl CoreSet {
                     }));
                 }
                 let id = hub_unit_id(&hub.hub_id, &hub.url, &hub.serial);
-                self.open_with(id, String::new(), |c| open_hub(c, &hub))
+                self.open_entry(id, String::new(), extra, |c| open_hub(c, &hub))
             }
         }
     }
@@ -824,6 +851,16 @@ impl CoreSet {
         &self,
         id: DeviceId,
         label: String,
+        open: impl FnOnce(&DspiCore) -> crate::Result<()>,
+    ) -> std::result::Result<DeviceId, CoreSetError> {
+        self.open_entry(id, label, false, open)
+    }
+
+    fn open_entry(
+        &self,
+        id: DeviceId,
+        label: String,
+        extra: bool,
         open: impl FnOnce(&DspiCore) -> crate::Result<()>,
     ) -> std::result::Result<DeviceId, CoreSetError> {
         // -- WP MDQT1 -- `hub:a/b/S` from a hub id with a `/`: whose serial?
@@ -909,6 +946,7 @@ impl CoreSet {
             token,
             held,
             main: false,
+            extra,
         };
         {
             let mut s = self.lock();

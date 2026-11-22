@@ -372,6 +372,13 @@ pub struct RunOutcome {
     pub judging: Judging,
 }
 
+// -- WP INT5 --
+/// The devices agents are told of and may name: those the user has open. A
+/// unit the app holds for a measurement across units is not one.
+pub(crate) fn devices(set: &CoreSet) -> Vec<OpenDevice> {
+    set.list().into_iter().filter(|d| !d.extra).collect()
+}
+
 /// The device `args` name, or the default: the app's device when it is
 /// open, else the only device open.
 fn resolve(
@@ -379,7 +386,7 @@ fn resolve(
     active: Option<&DeviceId>,
     args: &Map<String, Value>,
 ) -> Result<(DeviceId, String, Arc<DspiCore>), ToolError> {
-    let open = set.list();
+    let open = devices(set);
     let id = match args.get("device") {
         Some(Value::String(text)) => {
             let found = DeviceId::parse(text).filter(|id| open.iter().any(|d| d.id == *id));
@@ -430,9 +437,7 @@ fn newest_id(core: &DspiCore) -> u64 {
 /// place a tool call runs (module docs).
 pub fn run(ctx: &RunCtx<'_>, tool: &Tool, args: &Map<String, Value>) -> RunOutcome {
     if !tool.device {
-        let devices = ctx
-            .set
-            .list()
+        let devices = devices(ctx.set)
             .into_iter()
             .map(|open| {
                 let core = ctx.set.core(&open.id);

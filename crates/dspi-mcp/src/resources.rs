@@ -107,7 +107,7 @@ pub fn list(set: &CoreSet) -> Vec<Value> {
         json!({"uri": FILTER_TYPES_URI, "name": "filter-types", "title": "Filter types",
                "mimeType": "application/json"}),
     ];
-    for d in set.list() {
+    for d in crate::registry::devices(set) {
         out.push(json!({
             "uri": format!("dspi://device/{}/state", encode_id(&d.id)),
             "name": format!("state-{}", d.id.as_str()),
@@ -178,6 +178,12 @@ pub fn read(ctx: &ReadCtx<'_>, uri: &str) -> Result<Vec<Value>, RpcError> {
         .strip_prefix("dspi://device/")
         .and_then(|rest| rest.strip_suffix("/state"))
         .and_then(decode_id)
+        .filter(|id| {
+            crate::registry::devices(ctx.set)
+                .iter()
+                .any(|d| d.id == *id)
+        })
+    // -- WP INT5 --
     else {
         return Err(not_found());
     };

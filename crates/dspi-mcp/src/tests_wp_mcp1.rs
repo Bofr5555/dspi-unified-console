@@ -545,6 +545,37 @@ fn wp_mcp1_channel_and_response_read_the_filters() {
     );
 }
 
+// -- WP INT5 --
+#[test]
+fn wp_int5_a_device_the_app_uses_itself_is_not_offered_to_agents() {
+    let (set, ids) = set_of(1);
+    let extra = set.open_extra(DeviceTarget::Demo).unwrap();
+    assert_eq!(
+        set.list().iter().map(|d| d.extra).collect::<Vec<_>>(),
+        [false, true]
+    );
+    let mut s = server(&set);
+    let c = s.connect();
+    let l = ok(&mut s, c, "dspi_list_devices", json!({}));
+    let listed = l["devices"].as_array().unwrap();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0]["device"], json!(ids[0].as_str()));
+    // Not by its id either, nor as the active device, nor as the only one.
+    let args = json!({"device": extra.as_str()});
+    assert!(err(&mut s, c, "dspi_get_overview", args).contains("no open device"));
+    s.set_active_device(Some(extra.clone()));
+    ok(&mut s, c, "dspi_get_overview", json!({}));
+    let r = modern(&mut s, c, "resources/list", json!({}));
+    assert!(!r.to_string().contains(extra.as_str()));
+    let uri = format!("dspi://device/{}/state", extra.as_str());
+    let r = modern(&mut s, c, "resources/read", json!({"uri": uri}));
+    assert_eq!(r["error"]["code"], json!(INVALID_PARAMS));
+    set.close(&ids[0]).unwrap();
+    assert!(
+        err(&mut s, c, "dspi_get_overview", json!({})).contains("no device is open in the app")
+    );
+}
+
 #[test]
 fn wp_mcp1_lists_show_filed_snapshots_and_measurements() {
     let snaps = scratch("snapshots");

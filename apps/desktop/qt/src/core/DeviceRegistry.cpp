@@ -275,7 +275,10 @@ void DeviceRegistry::openExtra(const QJsonObject &target, ExtraDone done) {
     }
     m_extraOpening.append(serial);
     FfiCoreSet *set = m_set;
-    const QByteArray json = QJsonDocument(target).toJson(QJsonDocument::Compact);
+    // -- WP INT5 -- not a device the user has open: AI agents are not offered it
+    QJsonObject extra = target;
+    extra.insert(QStringLiteral("extra"), true);
+    const QByteArray json = QJsonDocument(extra).toJson(QJsonDocument::Compact);
     struct Opened {
         QJsonObject reply;
         FfiCore *core = nullptr;

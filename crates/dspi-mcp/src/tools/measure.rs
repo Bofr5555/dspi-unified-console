@@ -1705,7 +1705,7 @@ fn system_setup(
             .get("device")
             .and_then(Value::as_str)
             .and_then(DeviceId::parse)
-            .filter(|d| set.list().iter().any(|x| x.id == *d))
+            .filter(|d| crate::registry::devices(set).iter().any(|x| x.id == *d))
             .ok_or_else(|| {
                 ToolError::new("a unit is not open in the app; dspi_list_devices lists them")
             })?;
