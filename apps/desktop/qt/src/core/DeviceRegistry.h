@@ -75,6 +75,9 @@ public:
     // again; safe to call twice.
     void shutdown();
     bool isShutDown() const { return m_set == nullptr; }
+    // -- WP MCP4 -- For the AI agents' server (dspi_mcp_new), which is over every
+    // open device; null after shutdown()
+    const FfiCoreSet *set() const { return m_set; }
 
     // Opens `target` (dspi_core_set_open's JSON) on a core of its own, beside
     // what is open, and calls `done` with its session, or null and the core's

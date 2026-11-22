@@ -136,6 +136,7 @@ bool DeviceInfoController::senderKeeps(const QString &action) const {
         QStringLiteral("device.firmwareUpdate"), QStringLiteral("device.reconnect"),     QStringLiteral("device.devices"),
         QStringLiteral("autoeq.clearFavorites"), QStringLiteral("autoeq.updateDatabase"), QStringLiteral("window.minimiseToTray"),
         QStringLiteral("window.system"),
+        QStringLiteral("device.aiAgents"),   // -- WP MCP4 --
     };
     return action.startsWith(QLatin1String("help.")) || kept.contains(action);
 }

@@ -145,17 +145,18 @@ Rectangle {
             Accessible.name: text
         }
 
-        // -- WP LAY3 -- the AI button: a placeholder until MCP4's controller;
-        // WP LAY8 puts AiButton here in this block's place
+        // -- WP LAY3 -- the AI button; -- WP MCP4 -- with the agents' state, opening
+        // Settings > AI Agents. WP LAY8 puts AiButton here in this block's place
         AbstractButton {
             id: ai
             objectName: "TopBar.ai"
             text: "AI"
+            readonly property bool attention: AiController.state === "asking" || AiController.state === "error"
             implicitHeight: 28
             implicitWidth: aiFace.implicitWidth + 18
             hoverEnabled: true
             focusPolicy: Qt.TabFocus
-            onClicked: aiPopover.open()
+            onClicked: AiController.openSettings()
             contentItem: Item {
                 Row {
                     id: aiFace
@@ -166,8 +167,9 @@ Rectangle {
                         width: 8
                         height: 8
                         radius: 4
-                        color: "transparent"
-                        border.width: 1.5
+                        color: ai.attention ? Theme.warning : AiController.state === "active" ? Theme.connected
+                             : AiController.state === "on" || AiController.state === "paused" ? Theme.offline : "transparent"
+                        border.width: AiController.state === "off" ? 1.5 : 0
                         border.color: Theme.textMuted
                     }
                     Text {
@@ -185,37 +187,10 @@ Rectangle {
                 border.color: Theme.focusRing
             }
             Accessible.role: Accessible.Button
-            Accessible.name: qsTr("AI agent control: off")
+            Accessible.name: AiController.statusLine
             HelpTip {
-                text: qsTr("AI agent control: off")
-                visible: ai.hovered && !aiPopover.opened
-            }
-            PopoverPanel {
-                id: aiPopover
-                objectName: "TopBar.aiPopover"
-                title: qsTr("AI agent control")
-                x: ai.width - width
-                y: ai.height + 6
-                width: 320
-                contentItem: Column {
-                    spacing: Theme.spacingSmall
-                    Text {
-                        width: parent.width
-                        text: aiPopover.title
-                        font: Theme.fontTitle
-                        color: Theme.text
-                        Accessible.role: Accessible.Heading
-                        Accessible.name: text
-                    }
-                    Text {
-                        width: parent.width
-                        //: %1 is the app's name
-                        text: qsTr("Controlling %1 with your own AI agent is not ready yet. Nothing is sent anywhere.").arg(AppIdentity.displayName)
-                        font: Theme.fontBody
-                        color: Theme.textMuted
-                        wrapMode: Text.Wrap
-                    }
-                }
+                text: AiController.statusLine
+                visible: ai.hovered
             }
         }
 

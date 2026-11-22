@@ -79,6 +79,8 @@ QtObject {
                 // -- WP P2QT -- the device's events (this console's and the hub's) and Identify
                 { id: "device.events", text: qsTr("Events…") },
                 { id: "device.identify", text: qsTr("Identify"), enabled: () => IdentifyController.available },
+                // -- WP MCP4 -- what AI agents do, with Pause and Stop (AiController)
+                { id: "device.aiAgents", text: qsTr("AI Agents…") },
                 { separator: true },
                 { id: "device.firmwareUpdate", text: qsTr("Firmware Update…"), platformHidden: "STM32H723" },
                 { separator: true },
