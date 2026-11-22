@@ -54,7 +54,11 @@ export type InstallationEdit =
   | { op: "addZone"; id?: string; name: string; rooms?: string[]; source?: string | null }
   | { op: "setZoneRooms"; id: string; rooms: string[] }
   | { op: "addSender"; id?: string; name: string; serial?: string | null }
-  | { op: "addFanOut"; id?: string; name: string; serial?: string | null; upstream: string; output?: number | null };
+  | { op: "addFanOut"; id?: string; name: string; serial?: string | null; upstream: string; output?: number | null }
+  // -- WP WEBM3 -- an S/PDIF source's slots, groups
+  | { op: "setSpdifSource"; id: string; txMask: number }
+  | { op: "addGroup"; id?: string; name: string; units?: string[] }
+  | { op: "setGroupUnits"; id: string; units: string[] };
 
 export interface InstallationMethods {
   /**

@@ -145,6 +145,12 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
   its values) and the chosen channel: what an input feeds and its headphone profile, an output's crossover, limiter and
   Linkwitz Transform. It can be hidden, and stacks under the page on a narrow screen, where the band bar stays under
   the graph. The chosen band's values show on the graph by its dot. (WP WEBM2)
+- Web console: a page's parts are tabs beside its title. Effects has one tab per effect with a dot that shows
+  whether it is on, Measure's tabs moved up there, and each device tab comes back to the part it was left at.
+  Library has a History page with this connection's changes, newest first, and Undo and Redo. Settings lists its
+  pages by group beside the page. The Installation tab also shows in the Advanced mode, and edits an S/PDIF
+  source and the outputs it sends its time base on, groups of units, and the source a new zone plays. Measuring
+  several units uses a unit's open tab rather than a second connection to it. (WP WEBM3)
 - The System screen has an Installation tab in the Installer mode on a hub. It lists the units the hub sees that
   are not in the installation, with Join (name, room, role and what feeds it), and edits each unit's room, role and
   upstream, the rooms and the zones. The hub's own check runs as you edit and shows a problem where it is; Save lists

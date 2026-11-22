@@ -42,7 +42,7 @@ export const SECTIONS: readonly SectionDef[] = [
   { id: "effects", title: "Effects", pages: ["effects"] },
   { id: "measure", title: "Measure", pages: ["measure"] },
   { id: "analyse", title: "Analyse", pages: ["analyser", "generator", "stats", "monitor"] },
-  { id: "library", title: "Library", pages: ["snapshots", "files"] },
+  { id: "library", title: "Library", pages: ["snapshots", "history", "files"] }, // -- WP WEBM3 -- history
   { id: "system", title: "System", pages: ["system", "events"] },
   { id: "devices", title: "Devices", foot: true, pages: [CONNECT, "hub", "hub-settings", "device"] },
   { id: "settings", title: "Settings", foot: true, pages: ["settings", "surfaces", "installer"] },

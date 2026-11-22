@@ -51,7 +51,8 @@ export function SetupPanel(props: MeasureTabProps) {
     const row = d.outputs.find((x) => x.output === o);
     if (!row || session.readOnlyReason) return;
     const r = { ...row, ...patch };
-    const why = await layout.keep(withRow(layout.view.stored ?? layout.view.proposal, o, { role: r.role, speaker: r.speaker.trim(), group: r.group }), !!layout.view.stored?.confirmedByUser);
+    // -- WP WEBM3 -- (RB C3) on the layout as last kept, not as rendered
+    const why = await layout.update((v) => ({ layout: withRow(v.stored ?? v.proposal, o, { role: r.role, speaker: r.speaker.trim(), group: r.group }), confirmed: !!v.stored?.confirmedByUser }));
     setSaved(why ? { error: true, text: `Not saved to your speaker layout: ${why}` } : { error: false, text: SAVED_TO_LAYOUT });
   };
   const banner = layout.loaded ? bannerOf(layout.view) : null;

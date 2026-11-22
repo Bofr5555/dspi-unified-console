@@ -17,7 +17,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { createInterface } from "node:readline";
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { openPage, rail as sections } from "../nav";
+import { openPage, partsOf, rail as sections } from "../nav"; // -- WP WEBM3 -- partsOf
 
 test.skip(({ browserName }) => browserName === "webkit", "Chromium and Firefox only");
 // Chromium's headless shell has no getUserMedia: the full Chromium, headless (as P5WMS).
@@ -91,7 +91,7 @@ async function severalUnits(session: Locator, page: Page): Promise<Locator> {
   await setMode(session, page, "Advanced");
   await openPage(session, "Measure");
   const screen = session.getByRole("region", { name: "Measure" });
-  await screen.getByRole("tablist", { name: "Measurement" }).getByRole("tab", { name: "Several units" }).click();
+  await partsOf(screen, "Measurement").getByRole("tab", { name: "Several units" }).click();
   const tab = screen.getByRole("region", { name: "Several units" });
   await expect(tab.getByRole("group", { name: `Unit ${A}` })).toBeVisible();
   return tab;
@@ -318,7 +318,7 @@ test("ATWEB: a console not on the DSPi hub says that measuring several units nee
   await expect(sections(session)).toBeVisible();
   await openPage(session, "Measure");
   const screen = session.getByRole("region", { name: "Measure" });
-  await screen.getByRole("tablist", { name: "Measurement" }).getByRole("tab", { name: "Several units" }).click();
+  await partsOf(screen, "Measurement").getByRole("tab", { name: "Several units" }).click();
   const note = screen.getByRole("region", { name: "Several units" }).getByRole("note");
   await expect(note).toHaveAttribute("data-key", "measure.system.needs_hub");
   await expect(note).toContainText("Measuring several units needs the DSPi hub");

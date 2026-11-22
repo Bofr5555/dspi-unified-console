@@ -9,6 +9,7 @@
 // nothing; the DSPi's generator is the only stimulus, and Stop is shown whenever anything runs.
 // Leaving the screen stops whatever it started.
 
+import { PageParts, usePart } from "../../ui/shell/Parts"; // -- WP WEBM3 --
 import type { FunctionComponent } from "preact";
 import { useEffect, useMemo, useState } from "preact/hooks";
 import { CoreCallError } from "../../core/protocol";
@@ -540,7 +541,8 @@ export function MeasureScreen(props: ScreenProps) {
   };
   const blocked = playBlocker(session.readOnlyReason, desk.hubRole);
   const tabs = blocked ? [PASSIVE_TAB, ...MEASURE_TABS.filter((t) => t.passive)] : MEASURE_TABS;
-  const [chosen, setChosen] = useState(tabs[0]!.id);
+  // -- WP WEBM3 -- the tabs are the page's parts, in its head; the one on show kept per session
+  const [chosen, setChosen] = usePart(session, "measure", tabs.map((t) => t.id));
   const tab = tabs.find((t) => t.id === chosen) ?? tabs[0]!;
   if (!snap) return null;
   const p: MeasureTabProps = { session, desk, ask: props.ask, blocked, outputName, outputs: rows.map((r) => r.index), show: setChosen };
@@ -561,14 +563,10 @@ export function MeasureScreen(props: ScreenProps) {
           {desk.error}
         </p>
       ) : null}
-      <div class="screen-tabs" role="tablist" aria-label="Measurement">
-        {tabs.map((t) => (
-          <button type="button" role="tab" key={t.id} aria-selected={t === tab} onClick={() => setChosen(t.id)}>
-            {t.label}
-          </button>
-        ))}
+      <PageParts label="Measurement" parts={tabs} current={tab.id} onPart={setChosen} />
+      <div role="tabpanel" aria-labelledby={`${tab.id}-part-tab`} style={{ display: "contents" }}>
+        <tab.View {...p} />
       </div>
-      <tab.View {...p} />
     </div>
   );
 }

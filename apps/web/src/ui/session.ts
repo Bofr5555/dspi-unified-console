@@ -7,6 +7,7 @@
 // `choosing` from the hub's own list; then open. From then on the banner follows
 // the core's phases (reconnecting, closed), which the Worker pushes.
 
+import type { HeldUnit } from "../screens/measure/system/desk"; // -- WP WEBM3 --
 import {
   CoreCallError,
   type CoreEvent,
@@ -150,6 +151,9 @@ export class Session {
   // -- WP WEBM1 --
   /** Why the page may not open the DSPi `serial` in this session (it is open in another one), "" when it may (set by the page). */
   refuseOpen: ((serial: string) => string) | null = null;
+  // -- WP WEBM3 --
+  /** The console's other session that has the DSPi `serial` (set by the page), null when none has: views that span units use its core. */
+  heldBy: ((serial: string) => HeldUnit | null) | null = null;
 
   constructor(
     readonly id: string,

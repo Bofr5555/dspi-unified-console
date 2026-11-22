@@ -17,27 +17,73 @@ export type InstallationCall = <M extends keyof InstallationMethods>(
   params: InstallationMethods[M]["params"],
 ) => Promise<InstallationMethods[M]["result"]>;
 
-export const ROLES: { id: InstallationRole; label: string }[] = [
+// -- WP WEBM3 -- (RB C-2, as Qt's INSTQ) an S/PDIF source is a role on the form: the core's
+// S/PDIF follower marked as a source (`setSpdifSource`), fed by nothing the model holds.
+/** A unit's role on the form: the core's, or an S/PDIF source. */
+export type UnitRole = InstallationRole | "spdif_source";
+
+export const ROLES: { id: UnitRole; label: string }[] = [
   { id: "receiver", label: "Receiver" },
   { id: "repeater", label: "Repeater" },
   { id: "spdif_follower", label: "S/PDIF follower" },
+  { id: "spdif_source", label: "S/PDIF source" }, // -- WP WEBM3 --
   { id: "usb_direct", label: "USB-direct" },
 ];
 
 /** A unit's role as the model holds it. */
-export function roleOf(u: Unit): InstallationRole {
+export function roleOf(u: Unit): UnitRole {
   if (u.transport === "usb_direct") return "usb_direct";
-  if (u.transport === "spdif") return "spdif_follower";
+  if (u.transport === "spdif") return u.spdifSource ? "spdif_source" : "spdif_follower"; // -- WP WEBM3 --
   return u.repeater ? "repeater" : "receiver";
 }
 
-export function roleWord(r: InstallationRole): string {
+export function roleWord(r: UnitRole): string {
   return ROLES.find((x) => x.id === r)?.label ?? r;
 }
 
 /** Whether a unit of role `r` is fed by an upstream element. */
-export function needsUpstream(r: InstallationRole): boolean {
-  return r !== "usb_direct";
+export function needsUpstream(r: UnitRole): boolean {
+  return r !== "usb_direct" && r !== "spdif_source"; // -- WP WEBM3 --
+}
+
+// -- WP WEBM3 --
+/** A new S/PDIF source's time-base slot until the person chooses (outputs 7-8, as Qt's). */
+export const NEW_SOURCE_MASK = 0b1000;
+
+/** The core's role for a form role. */
+export function coreRole(r: UnitRole): InstallationRole {
+  return r === "spdif_source" ? "spdif_follower" : r;
+}
+
+/**
+ * The edits that give unit `u` the role `to`, as one step: a source by its transport stops being
+ * one first; a new source keeps the slots it had, else the default. None when it has that role.
+ */
+export function roleEdits(u: Unit, to: UnitRole): InstallationEdit[] {
+  const was = roleOf(u);
+  if (to === was) return [];
+  const edits: InstallationEdit[] = [];
+  if (was === "spdif_source") edits.push({ op: "setSpdifSource", id: u.id, txMask: 0 });
+  edits.push({ op: "setUnitRole", id: u.id, role: coreRole(to) });
+  if (to === "spdif_source") edits.push({ op: "setSpdifSource", id: u.id, txMask: u.spdifTxMask || NEW_SOURCE_MASK });
+  return edits;
+}
+
+/** The S/PDIF output slots (0 to 3) and their outputs, "1-2" to "7-8". */
+export const SPDIF_SLOTS = [0, 1, 2, 3].map((slot) => ({ slot, outputs: `${2 * slot + 1}-${2 * slot + 2}` }));
+
+/** A source's slot `slot` turned on or off: the edit, or why not (a source sends on one slot at least). */
+export function slotEdit(u: Unit, slot: number, on: boolean): InstallationEdit | string {
+  if (!u.spdifSource || slot < 0 || slot > 3) return "Only an S/PDIF source sends a time base.";
+  const was = u.spdifTxMask ?? 0;
+  const mask = on ? was | (1 << slot) : was & ~(1 << slot);
+  if (!mask) return "An S/PDIF source sends its time base on one pair of outputs at least.";
+  return { op: "setSpdifSource", id: u.id, txMask: mask };
+}
+
+/** `list` with `id` in it (`on`) or not, in its order. */
+export function withMember(list: readonly string[], id: string, on: boolean): string[] {
+  return on ? (list.includes(id) ? [...list] : [...list, id]) : list.filter((x) => x !== id);
 }
 
 /**
@@ -50,8 +96,8 @@ export function cleanText(s: string): string {
 }
 
 /** What may feed a unit of role `r` in `model` (never the unit itself): id and name. */
-export function upstreamChoices(model: SystemModel, r: InstallationRole, self?: string): { id: string; name: string }[] {
-  if (r === "usb_direct") return [];
+export function upstreamChoices(model: SystemModel, r: UnitRole, self?: string): { id: string; name: string }[] {
+  if (!needsUpstream(r)) return []; // -- WP WEBM3 -- an S/PDIF source too
   if (r === "spdif_follower") return model.units.filter((u) => u.spdifSource && u.id !== self).map((u) => ({ id: u.id, name: u.name || u.id }));
   return [
     ...model.senders.map((s) => ({ id: s.id, name: s.name || s.id })),
@@ -84,19 +130,19 @@ export function issuesAt(issues: InstallationIssue[], id: string, field: IssuePl
 
 /** The issues no element of `model` shows: the installation's own, or about an element it no longer holds. */
 export function generalIssues(issues: InstallationIssue[], model: SystemModel): InstallationIssue[] {
-  const ids = new Set<string>([...model.units, ...model.rooms, ...model.zones].map((x) => x.id));
+  const ids = new Set<string>([...model.units, ...model.rooms, ...model.zones, ...model.groups /* -- WP WEBM3 -- shown at the group */].map((x) => x.id));
   return issues.filter((i) => !i.subject || !ids.has(i.subject));
 }
 
 /** A unit seen but not held, joining: the `addUnit` edit. */
-export function joinEdit(serial: string, f: { name: string; room: string; role: InstallationRole; upstream: string }): InstallationEdit {
+export function joinEdit(serial: string, f: { name: string; room: string; role: UnitRole; upstream: string }): InstallationEdit {
   const name = f.name.trim();
   return {
     op: "addUnit",
     serial,
     ...(name ? { name } : {}),
     room: f.room || null,
-    role: f.role,
+    role: coreRole(f.role), // -- WP WEBM3 -- a source joins as a follower, then is marked
     upstream: needsUpstream(f.role) ? f.upstream || null : null,
   };
 }
@@ -168,6 +214,30 @@ export class InstallationForm {
       this.set({ error: message(e) });
       return false;
     }
+  }
+
+  // -- WP WEBM3 --
+  /**
+   * `first` and the edits `rest` makes of the draft it gives, as one step (all or none): for an
+   * edit after one that makes an id the core chooses (a new S/PDIF source's mark). The core makes
+   * the same id from the same draft, so `first` is tried once alone to learn it.
+   */
+  async editThen(first: InstallationEdit, rest: (next: InstallationDraft) => InstallationEdit[]): Promise<boolean> {
+    const draft = this.state.draft;
+    if (!draft) return false;
+    let more: InstallationEdit[];
+    try {
+      more = rest(await this.call("installationDraftEdit", { draft, edits: [first] }));
+    } catch (e) {
+      this.set({ error: message(e) });
+      return false;
+    }
+    return this.edit(first, ...more);
+  }
+
+  /** Say why an edit was not made (one the page refuses before the core is asked). */
+  refuse(why: string): void {
+    this.set({ error: why });
   }
 
   /** Forget the edits: the draft is the view's again. */

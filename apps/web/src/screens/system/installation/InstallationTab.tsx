@@ -2,16 +2,25 @@
 // Installation setup (model.ts, WP INST0): the units the hub sees that the installation does
 // not hold, with Join; each unit's name, room, role and what feeds it; rooms and zones; the
 // hub's validator's verdict at the field it is about; what saving changes, then Save (Admin).
+//
+// -- WP WEBM3 -- (review RB C-2, as Qt's INSTQ panel) also an S/PDIF source's role and its
+// time-base slots, groups of units, and the source a new zone plays.
 
 import { useEffect, useMemo, useState } from "preact/hooks";
 import type { Ask } from "../../../ui/screens";
 import type { Session } from "../../../ui/session";
 import type { SystemFeed } from "../feed";
-import type { Room, SystemModel, Unit, Zone } from "../model";
+import type { Group, Room, SystemModel, Unit, Zone } from "../model";
 import { writeNote, type Role } from "../model";
 import {
   InstallationForm,
+  NEW_SOURCE_MASK,
   ROLES,
+  SPDIF_SLOTS,
+  roleEdits,
+  slotEdit,
+  withMember,
+  type UnitRole,
   cleanText,
   generalIssues,
   issuesAt,
@@ -23,7 +32,7 @@ import {
   type InstallationCall,
   type IssuePlace,
 } from "./model";
-import type { InstallationIssue, InstallationRole, InstallationUnseen } from "./protocol";
+import type { InstallationIssue, InstallationUnseen } from "./protocol";
 
 function useForm(form: InstallationForm): FormState {
   const [, bump] = useState(0);
@@ -129,6 +138,7 @@ export function InstallationTab(props: { feed: SystemFeed; session: Session; ask
       <Feeds form={form} model={model} issues={st.issues} edit={edit} />
       <Rooms form={form} model={model} issues={st.issues} edit={edit} />
       <Zones form={form} model={model} issues={st.issues} edit={edit} />
+      <Groups form={form} model={model} issues={st.issues} edit={edit} /* -- WP WEBM3 -- */ />
       {form.dirty ? (
         <div class="sys-save" role="group" aria-label="Unsaved installation">
           <ul class="sys-results" aria-label="Changes">
@@ -204,7 +214,7 @@ function RoomSelect(props: { model: SystemModel; value: string; label: string; e
   );
 }
 
-function UpstreamSelect(props: { model: SystemModel; role: InstallationRole; self?: string; value: string; label: string; edit: boolean; onUp: (u: string) => void }) {
+function UpstreamSelect(props: { model: SystemModel; role: UnitRole; self?: string; value: string; label: string; edit: boolean; onUp: (u: string) => void }) {
   const choices = upstreamChoices(props.model, props.role, props.self);
   const known = choices.some((c) => c.id === props.value);
   return (
@@ -220,9 +230,9 @@ function UpstreamSelect(props: { model: SystemModel; role: InstallationRole; sel
   );
 }
 
-function RoleSelect(props: { value: InstallationRole; label: string; edit: boolean; onRole: (r: InstallationRole) => void }) {
+function RoleSelect(props: { value: UnitRole; label: string; edit: boolean; onRole: (r: UnitRole) => void }) {
   return (
-    <select aria-label={props.label} value={props.value} disabled={!props.edit} onChange={(e) => props.onRole((e.currentTarget as HTMLSelectElement).value as InstallationRole)}>
+    <select aria-label={props.label} value={props.value} disabled={!props.edit} onChange={(e) => props.onRole((e.currentTarget as HTMLSelectElement).value as UnitRole)}>
       {ROLES.map((r) => (
         <option key={r.id} value={r.id}>
           {r.label}
@@ -233,7 +243,7 @@ function RoleSelect(props: { value: InstallationRole; label: string; edit: boole
 }
 
 /** What joining makes of a unit the hub sees: a unit in a role, or the alink's sender or a fan-out. */
-type JoinAs = InstallationRole | "sender" | "fan_out";
+type JoinAs = UnitRole | "sender" | "fan_out";
 
 function Unseen(props: { form: InstallationForm; st: FormState; edit: boolean }) {
   const { view, draft } = props.st;
@@ -269,7 +279,7 @@ function JoinCard(props: { form: InstallationForm; model: SystemModel; u: Instal
   const [room, setRoom] = useState("");
   const [as, setAs] = useState<JoinAs>("receiver");
   const [up, setUp] = useState("");
-  const upRole: InstallationRole = as === "sender" ? "usb_direct" : as === "fan_out" ? "receiver" : as;
+  const upRole: UnitRole = as === "sender" ? "usb_direct" : as === "fan_out" ? "receiver" : as;
   const choices = upstreamChoices(model, upRole);
   const upstream = choices.some((c) => c.id === up) ? up : (choices[0]?.id ?? "");
   const join = async () => {
@@ -279,7 +289,13 @@ function JoinCard(props: { form: InstallationForm; model: SystemModel; u: Instal
         ? await props.form.edit({ op: "addSender", name: shown || u.serial, serial: u.serial })
         : as === "fan_out"
           ? await props.form.edit({ op: "addFanOut", name: shown || u.serial, serial: u.serial, upstream })
-          : await props.form.edit(joinEdit(u.serial, { name: shown, room, role: as, upstream }));
+          : as === "spdif_source"
+            ? // -- WP WEBM3 -- joined as a follower, marked a source on the id the core made, in one step
+              await props.form.editThen(joinEdit(u.serial, { name: shown, room, role: as, upstream }), (next) => {
+                const id = next.model.units.find((x) => x.serial === u.serial)?.id;
+                return id ? [{ op: "setSpdifSource", id, txMask: NEW_SOURCE_MASK }] : [];
+              })
+            : await props.form.edit(joinEdit(u.serial, { name: shown, room, role: as, upstream }));
     if (ok) setOpen(false);
   };
   const label = cleanText(u.name) || u.serial;
@@ -365,7 +381,7 @@ function UnitCard(props: { form: InstallationForm; model: SystemModel; u: Unit; 
         </label>
         <label class="sys-inline">
           Role
-          <RoleSelect value={role} label="Role" edit={edit} onRole={(r) => void form.edit({ op: "setUnitRole", id: u.id, role: r })} />
+          <RoleSelect value={role} label="Role" edit={edit} onRole={(r) => void form.edit(...roleEdits(u, r)) /* -- WP WEBM3 -- an S/PDIF source's mark too */} />
         </label>
         {needsUpstream(role) ? (
           <label class="sys-inline">
@@ -382,6 +398,31 @@ function UnitCard(props: { form: InstallationForm; model: SystemModel; u: Unit; 
           </label>
         ) : null}
       </div>
+      {u.spdifSource ? (
+        // -- WP WEBM3 -- the S/PDIF output slots a source sends its time base on
+        <div class="sys-row" role="group" aria-label={`Time base on outputs of ${label}`}>
+          <span class="sys-muted">Time base on outputs</span>
+          {SPDIF_SLOTS.map((x) => (
+            <label key={x.slot} class="sys-inline">
+              <input
+                type="checkbox"
+                aria-label={`${label} sends the time base on outputs ${x.outputs}`}
+                checked={(((u.spdifTxMask ?? 0) >> x.slot) & 1) === 1}
+                disabled={!edit}
+                onChange={(e) => {
+                  const box = e.currentTarget as HTMLInputElement;
+                  const ed = slotEdit(u, x.slot, box.checked);
+                  if (typeof ed === "string") {
+                    box.checked = !box.checked;
+                    form.refuse(ed);
+                  } else void form.edit(ed);
+                }}
+              />
+              {x.outputs}
+            </label>
+          ))}
+        </div>
+      ) : null}
       <Issues issues={props.issues} id={u.id} field="room" />
       <Issues issues={props.issues} id={u.id} field="upstream" />
       <Issues issues={props.issues} id={u.id} field="" />
@@ -500,13 +541,17 @@ function Zones(props: { form: InstallationForm; model: SystemModel; issues: Inst
   const { model, form, edit } = props;
   const [name, setName] = useState("");
   const [rooms, setRooms] = useState<string[]>([]);
+  const [source, setSource] = useState(""); // -- WP WEBM3 -- what the new zone plays
   const add = async () => {
     const kept = rooms.filter((r) => model.rooms.some((x) => x.id === r));
-    if (name.trim() && (await form.edit({ op: "addZone", name: name.trim(), rooms: kept }))) {
+    const plays = model.sources.some((x) => x.id === source) ? source : null;
+    if (name.trim() && (await form.edit({ op: "addZone", name: name.trim(), rooms: kept, source: plays }))) {
       setName("");
       setRooms([]);
+      setSource("");
     }
   };
+  const sourceName = (id: string) => cleanText(model.sources.find((x) => x.id === id)?.name || id);
   return (
     <section aria-label="Zones">
       <h4>Zones</h4>
@@ -524,6 +569,7 @@ function Zones(props: { form: InstallationForm; model: SystemModel; issues: Inst
                     </button>
                   ) : null}
                 </div>
+                {z.source ? <p class="sys-muted">Plays {sourceName(z.source)}</p> : null /* -- WP WEBM3 -- */}
                 <RoomChecks model={model} rooms={z.rooms} edit={edit} onRooms={(r) => void form.edit({ op: "setZoneRooms", id: z.id, rooms: r })} />
                 <Issues issues={props.issues} id={z.id} field="rooms" />
                 <Issues issues={props.issues} id={z.id} field="" />
@@ -550,9 +596,101 @@ function Zones(props: { form: InstallationForm; model: SystemModel; issues: Inst
             </button>
           </div>
           {model.rooms.length ? <RoomChecks model={model} rooms={rooms} edit onRooms={setRooms} /> : null}
+          {model.sources.length ? (
+            // -- WP WEBM3 -- the source it plays (set when it is made, as Qt's)
+            <label class="sys-inline">
+              Plays
+              <select aria-label="New zone's source" value={source} onChange={(e) => setSource((e.currentTarget as HTMLSelectElement).value)}>
+                <option value="">No source</option>
+                {model.sources.map((x) => (
+                  <option key={x.id} value={x.id}>
+                    {cleanText(x.name || x.id)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
         </form>
       ) : null}
     </section>
   );
 }
 
+
+// -- WP WEBM3 -- (review RB C-2, as Qt's INSTQ) groups of units: a name, its units, made and removed
+function UnitChecks(props: { model: SystemModel; units: string[]; edit: boolean; label: string; onUnits: (u: string[]) => void }) {
+  return (
+    <div class="sys-row" role="group" aria-label={props.label}>
+      {props.model.units.map((u) => (
+        <label key={u.id} class="sys-inline">
+          <input
+            type="checkbox"
+            checked={props.units.includes(u.id)}
+            disabled={!props.edit}
+            onChange={(e) => props.onUnits(withMember(props.units, u.id, (e.currentTarget as HTMLInputElement).checked))}
+          />
+          {cleanText(u.name || u.id)}
+        </label>
+      ))}
+    </div>
+  );
+}
+
+function Groups(props: { form: InstallationForm; model: SystemModel; issues: InstallationIssue[]; edit: boolean }) {
+  const { model, form, edit } = props;
+  const [name, setName] = useState("");
+  const [units, setUnits] = useState<string[]>([]);
+  const add = async () => {
+    const kept = units.filter((u) => model.units.some((x) => x.id === u));
+    if (name.trim() && (await form.edit({ op: "addGroup", name: name.trim(), units: kept }))) {
+      setName("");
+      setUnits([]);
+    }
+  };
+  return (
+    <section aria-label="Groups">
+      <h4>Groups</h4>
+      {model.groups.length ? (
+        <div class="sys-inst-list">
+          {model.groups.map((g: Group) => {
+            const label = cleanText(g.name) || g.id;
+            return (
+              <div key={g.id} class="sys-room sys-inst-card" aria-label={`Group ${label}`}>
+                <div class="sys-row">
+                  <NameField label="Name" name={g.name || g.id} edit={edit} onName={(n) => void form.edit({ op: "renameElement", id: g.id, name: n })} />
+                  {edit ? (
+                    <button type="button" aria-label={`Remove ${label}`} onClick={() => void form.edit({ op: "removeElement", id: g.id })}>
+                      Remove
+                    </button>
+                  ) : null}
+                </div>
+                <UnitChecks model={model} units={g.units} edit={edit} label="Units" onUnits={(u) => void form.edit({ op: "setGroupUnits", id: g.id, units: u })} />
+                <Issues issues={props.issues} id={g.id} field="" />
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <p class="sys-note">No groups.</p>
+      )}
+      {edit ? (
+        <form
+          class="sys-room sys-inst-card"
+          aria-label="New group"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void add();
+          }}
+        >
+          <div class="sys-row">
+            <input aria-label="New group's name" placeholder="New group" value={name} maxLength={64} onInput={(e) => setName((e.currentTarget as HTMLInputElement).value)} />
+            <button type="submit" disabled={!name.trim()}>
+              Add group
+            </button>
+          </div>
+          {model.units.length ? <UnitChecks model={model} units={units} edit label="Units of the new group" onUnits={setUnits} /> : null}
+        </form>
+      ) : null}
+    </section>
+  );
+}

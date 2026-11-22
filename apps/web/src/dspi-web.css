@@ -1566,3 +1566,33 @@
 @container top (max-width: 720px) {
   .dspi-web .device-tab-close { min-width: 44px; height: 44px; }
 }
+
+/* -- WP WEBM3 -- A page's parts as tabs in the page head (ui/shell/Parts.tsx), with an on/off dot */
+.dspi-web .page-parts-slot { display: contents; }
+.dspi-web .page-tabs + .page-parts-slot > .page-parts { border-left: 1px solid var(--selection); padding-left: 0.4rem; }
+.dspi-web .page-parts button { position: relative; display: inline-flex; align-items: center; gap: 0.4rem; }
+.dspi-web .part-dot { flex: none; width: 0.5rem; height: 0.5rem; border-radius: 50%; border: 1.5px solid var(--muted); box-sizing: border-box; }
+.dspi-web .part-dot.on { border-color: var(--accent); background: var(--accent); }
+.dspi-web .history-screen { display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; }
+.dspi-web .history-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.dspi-web .history-list li { display: grid; grid-template-columns: 4.5rem minmax(0, 1fr) auto; gap: 0.2rem 0.6rem; align-items: baseline; padding: 0.35rem 0.25rem; border-bottom: 1px solid var(--selection); }
+.dspi-web .history-list .h-time { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 0.85rem; }
+.dspi-web .history-list .h-what { min-width: 0; overflow-wrap: anywhere; }
+.dspi-web .history-list .h-values { color: var(--muted); font-size: 0.85rem; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.dspi-web .history-list .h-source { color: var(--muted); font-size: 0.8rem; }
+.dspi-web .settings-screen { grid-template-columns: minmax(9rem, 11rem) minmax(0, 1fr); align-items: start; }
+.dspi-web .settings-nav { flex-direction: column; flex-wrap: nowrap; gap: 0.6rem; position: sticky; top: calc(var(--top-h, 0px) + var(--bar-h, 0px) + 0.5rem); }
+.dspi-web .settings-group-list { display: flex; flex-direction: column; gap: 0.2rem; min-width: 0; }
+.dspi-web .settings-group-list button { text-align: left; }
+.dspi-web .settings-page { display: grid; gap: 0.75rem; min-width: 0; }
+.dspi-web .settings-nav .settings-group { font-size: 0.75rem; font-weight: 650; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+@container console (max-width: 720px) {
+  .dspi-web .page-tabs + .page-parts-slot > .page-parts { border-left: 0; padding-left: 0; }
+  .dspi-web .page-parts button { min-height: 44px; }
+  .dspi-web .history-list li { grid-template-columns: minmax(0, 1fr) auto; }
+  .dspi-web .history-list .h-time { grid-column: 1 / -1; }
+  .dspi-web .settings-screen { grid-template-columns: minmax(0, 1fr); }
+  .dspi-web .settings-nav { position: static; gap: 0.35rem; }
+  .dspi-web .settings-group-list { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 0.35rem; }
+  .dspi-web .settings-nav .settings-group { flex: 0 0 6.5rem; }
+}

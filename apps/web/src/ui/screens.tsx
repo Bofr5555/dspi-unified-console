@@ -78,6 +78,7 @@ import { HUB_SCREEN, HUB_SCREEN_ID, HubAlarmBanner, useHubView } from "../screen
 import { OverviewScreen } from "../screens/overview/OverviewScreen";
 import { MeasureScreen } from "../screens/measure/MeasureScreen"; // -- WP P5WMS --
 import { DeviceScreen } from "../screens/device/DeviceScreen"; // -- WP PGWEB --
+import { HistoryScreen } from "../screens/history/HistoryScreen"; // -- WP WEBM3 --
 
 // -- WP WEBM1 -- the Modern shell
 import { Frame } from "./shell/Frame";
@@ -146,6 +147,7 @@ export const SCREENS: ScreenDef[] = [
   // -- WP P1WB1 -- (Advanced and Installer: setting up and handing over;
   // -- WP P1DCFIX -- Simple has Snapshots as recall and A/B only)
   { id: "snapshots", label: "Snapshots", View: SnapshotsScreen },
+  { id: "history", label: "History", View: HistoryScreen }, // -- WP WEBM3 -- Library › History (setting up: not in Simple)
   { id: "files", label: "Files", View: FilesScreen },
   // -- WP WB6L -- (setting up the hardware: Advanced and Installer, as files)
   { id: "surfaces", label: "Control Surfaces", View: SurfacesScreen },
@@ -165,7 +167,7 @@ export const SCREENS: ScreenDef[] = [
 
 // -- WP P1WB1 --
 /** The screens Simple leaves out besides the Pro layer's: files are for setting up (-- WP P1DCFIX -- Snapshots stay, recall and A/B only). */
-const SETUP = new Set(["files", "surfaces" /* -- WP WB6L -- */, "xover", "delays" /* -- WP WEBM2 -- */]);
+const SETUP = new Set(["files", "surfaces" /* -- WP WB6L -- */, "xover", "delays" /* -- WP WEBM2 -- */, "history" /* -- WP WEBM3 -- */]);
 
 // -- WP WB6J -- the tool screens, in Advanced and Installer
 const TOOLS = new Set(["generator", "analyser", "stats", "monitor", "measure" /* -- WP P5WMS -- */]);

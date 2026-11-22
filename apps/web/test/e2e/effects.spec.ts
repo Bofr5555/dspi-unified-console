@@ -6,7 +6,7 @@
 // with the controls off.
 
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { openPage } from "../nav";
+import { openPage, partsOf } from "../nav"; // -- WP WEBM3 -- partsOf
 
 type State = Record<string, unknown> & {
   crossfeedEnabled: boolean;
@@ -45,12 +45,12 @@ async function openEffects(page: Page) {
   const session = one.getByRole("article", { name: "DSPi" });
   await openPage(session, "Effects");
   const screen = session.getByRole("region", { name: "Effects" });
-  await expect(screen.getByRole("tablist", { name: "Effects" })).toBeVisible();
+  await expect(partsOf(screen, "Effects")).toBeVisible();
   return { session, screen };
 }
 
 function effect(screen: Locator, name: string) {
-  return screen.getByRole("tablist", { name: "Effects" }).getByRole("tab", { name: new RegExp(`^${name} (On|Off)$`) });
+  return partsOf(screen, "Effects").getByRole("tab", { name: new RegExp(`^${name} (On|Off)$`) });
 }
 
 async function show(screen: Locator, name: string) {

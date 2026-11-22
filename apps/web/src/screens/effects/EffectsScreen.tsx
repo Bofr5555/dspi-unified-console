@@ -16,6 +16,9 @@
 // Each effect is addressable: `effect` (or a `target` with `effect`, which
 // the System view's blocks hand over once the session's `open` exists)
 // opens the screen at it; its panel has the id `effects-<id>`.
+//
+// -- WP WEBM3 -- The effects are the page's parts (MODLAY 2: one tab each, with its on/off dot),
+// in the page head beside the title (ui/shell/Parts.tsx); the one on show is kept per session.
 
 import { memo } from "preact/compat";
 import { useEffect, useRef, useState } from "preact/hooks";
@@ -24,6 +27,7 @@ import { useSessionState } from "../../ui/components";
 import type { ScreenProps } from "../../ui/screens";
 import type { Session } from "../../ui/session";
 import { outputLabel } from "../main/model";
+import { PageParts, usePart } from "../../ui/shell/Parts"; // -- WP WEBM3 --
 import { LevelControl } from "../outputs/Level";
 import {
   asBool,
@@ -110,46 +114,24 @@ export function EffectsScreen(props: EffectsScreenProps) {
   const features = useFeatures(session, device);
   const words = useWords(session);
   const asked = props.effect ?? (props as { target?: { effect?: unknown } | null }).target?.effect;
-  const [chosen, setChosen] = useState<EffectId | null>(isEffectId(asked) ? asked : null);
-  // A new target while the screen is shown opens that effect.
+  const s = snap?.state;
+  // -- WP WEBM3 -- the effects shown, as the page's parts; a target opens its effect
+  const list = s && features !== null && words !== null ? availableEffects(s, features) : [];
+  const [chosen, setChosen] = usePart(session, "effects", list.map((e) => e.id));
+  // A new target while the screen is shown (or as it opens) opens that effect.
   useEffect(() => {
     if (isEffectId(asked)) setChosen(asked);
   }, [asked]);
 
-  const s = snap?.state;
   if (!s) return <p class="empty">This DSPi's effects are not known yet.</p>;
   if (features === null || words === null) return <p class="empty">Reading the effects…</p>;
-  const list = availableEffects(s, features);
   if (!list.length) return <p class="empty">This DSPi has no effects this console can set.</p>;
   const current = list.find((e) => e.id === chosen) ?? list[0]!;
   const ro = session.readOnlyReason !== "";
   return (
     <section class="effects-screen" aria-label="Effects">
-      <div class="fx-layout">
-        <div class="fx-list" role="tablist" aria-label="Effects">
-          {list.map((e) => {
-            const on = isOn(e, s);
-            return (
-              <button
-                type="button"
-                role="tab"
-                key={e.id}
-                id={`${effectPanelId(e.id)}-tab`}
-                class="fx-pick"
-                aria-selected={e === current}
-                aria-controls={effectPanelId(e.id)}
-                data-effect={e.id}
-                data-on={on}
-                onClick={() => setChosen(e.id)}
-              >
-                <span class="fx-name">{e.label}</span>{" "}
-                <span class={`fx-state${on ? " on" : ""}`}>{on ? "On" : "Off"}</span>
-              </button>
-            );
-          })}
-        </div>
-        <EffectPanel key={current.id} session={session} def={current} s={s} features={features} words={words} ro={ro} labels={snap?.outputLabels} />
-      </div>
+      <PageParts label="Effects" parts={list.map((e) => ({ id: e.id, label: e.label, on: isOn(e, s) }))} current={current.id} onPart={setChosen} />
+      <EffectPanel key={current.id} session={session} def={current} s={s} features={features} words={words} ro={ro} labels={snap?.outputLabels} />
     </section>
   );
 }
