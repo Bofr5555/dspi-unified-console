@@ -40,7 +40,8 @@ dspi-measure.workspace = true
 # -- WP MCP2c -- the hub and installation tools against a real in-process hub
 # with fake alink units (as dspi-hub's tests/wp_inst0_installation.rs). Both
 # workspace crates, already in the lock.
-dspi-hub = { workspace = true, default-features = false }
+# -- WP FEAT2 -- `api`: its group writes and its schedule (no new crate)
+dspi-hub = { workspace = true, default-features = false, features = ["api"] }
 dspi-transport = { path = "../dspi-transport", default-features = false, features = ["link"] }
 # -- WP MCP5 -- the measuring tools against the demo's simulated microphone
 # (P5DEMO), as the Qt and Terminal builds have it: the same crate, one more

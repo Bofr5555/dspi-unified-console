@@ -76,6 +76,10 @@ pub struct ServerConfig {
     /// requests (`Server::measure_take`); without one the tools that start a
     /// measurement say measuring is not available.
     pub measuring: bool,
+    // -- WP FEAT2 --
+    /// The app takes the agents' requests to open and close devices
+    /// (`Server::device_take`); without it those tools say so.
+    pub opening: bool,
 }
 
 impl Default for ServerConfig {
@@ -89,6 +93,7 @@ impl Default for ServerConfig {
             autoeq: None,                // -- WP MCP2b --
             template_dir: String::new(), // -- WP MCP2b --
             measuring: false,            // -- WP MCP5 --
+            opening: false,              // -- WP FEAT2 --
         }
     }
 }
@@ -126,6 +131,9 @@ pub struct Server {
     // -- WP MCP5 --
     /// The agents' requests to the app's Measure view.
     measure: crate::tools::measure::Jobs,
+    // -- WP FEAT2 --
+    /// The agents' requests to open and close devices.
+    opens: crate::tools::devices::Opens,
 }
 
 impl Server {
@@ -137,6 +145,7 @@ impl Server {
     /// A server with these tools only.
     pub fn with_registry(set: Arc<CoreSet>, config: ServerConfig, registry: Registry) -> Self {
         let measure = crate::tools::measure::Jobs::new(config.measuring); // -- WP MCP5 --
+        let opens = crate::tools::devices::Opens::new(config.opening); // -- WP FEAT2 --
         Self {
             set,
             active: None,
@@ -151,6 +160,7 @@ impl Server {
             drags: BTreeMap::new(),
             installation: crate::tools::installation::Drafts::default(), // -- WP MCP2c --
             measure,                                                     // -- WP MCP5 --
+            opens,                                                       // -- WP FEAT2 --
         }
     }
 
@@ -195,6 +205,7 @@ impl Server {
         self.clients.remove(&client);
         self.installation.forget(client); // -- WP MCP2c --
         self.measure.forget(client); // -- WP MCP5 --
+        self.opens.forget(client); // -- WP FEAT2 --
         for id in self.confirms.of_client(client) {
             self.confirms.end(
                 id,
@@ -587,6 +598,7 @@ impl Server {
         entry.device.clone_from(&out.device);
         entry.journal_ids = out.journal_ids;
         self.measure.stamp(now_ms); // -- WP MCP5 -- a request's clock starts now
+        self.opens.stamp(now_ms); // -- WP FEAT2 --
         let asked = !out.judging.asked.is_empty() && out.judging.refused.is_none();
         let result = match out.result {
             Err(_) if asked && regranted => {
@@ -660,6 +672,7 @@ impl Server {
             template_dir: &self.config.template_dir,
             installation: Some(&self.installation), // -- WP MCP2c --
             measure: Some(&self.measure),           // -- WP MCP5 --
+            opens: Some(&self.opens),               // -- WP FEAT2 --
         };
         registry::run(&ctx, tool, args)
     }
@@ -792,6 +805,7 @@ impl Server {
     /// nothing changed, and every agent's timed preview is put back now.
     pub fn stop_agents(&mut self, now_ms: u64) {
         crate::tools::measure::stop_all(&self.set, &self.measure); // -- WP MCP5 --
+        self.opens.stop_all(); // -- WP FEAT2 --
         for id in self
             .confirms
             .waiting()
@@ -959,6 +973,42 @@ impl Server {
         crate::tools::measure::all_json(&self.measure)
     }
 
+    // -- WP FEAT2 --
+    /// The devices the app remembers the user opened (`{device, name}` each, a
+    /// `usb:`, `hub:` or `link:` id): an agent may ask for these too, beside
+    /// those on USB and those the hubs of the open devices list.
+    pub fn set_known_devices(&mut self, rows: &Value) {
+        self.opens.set_remembered(rows);
+    }
+
+    /// The agents' requests to open or close a device that the app has to
+    /// take, oldest first: `{request_id, client, client_name, kind, device,
+    /// what, state, note}`.
+    pub fn device_requests(&self) -> Vec<Value> {
+        self.opens.waiting_json()
+    }
+
+    /// The app takes request `id`: its ticket `{request_id, kind, device,
+    /// transport, hub, serial, client_name, what}`, `None` when it no longer
+    /// waits (or a device to close may not be closed any more: the agent is
+    /// told why).
+    pub fn device_take(&mut self, id: u64) -> Option<Value> {
+        self.opens.take(&self.set, id)
+    }
+
+    /// The app says how request `id` went: done, or declined with `note`.
+    /// False when it was not taken (or no longer open): a device opened for
+    /// it stays the user's.
+    pub fn device_report(&mut self, id: u64, ok: bool, note: &str) -> bool {
+        self.opens.report(&self.set, id, ok, note)
+    }
+
+    /// Whether the device requests changed since the last call (the app
+    /// reads `device_requests` again).
+    pub fn take_device_events(&mut self) -> bool {
+        self.opens.take_changed()
+    }
+
     /// Confirmation `id`, waiting or ended (kept a while).
     pub fn confirmation(&self, id: u64) -> Option<&Confirmation> {
         self.confirms.get(id)
@@ -986,6 +1036,7 @@ impl Server {
     /// gone.
     pub fn tick(&mut self, now_ms: u64) {
         crate::tools::measure::tick(&self.set, &self.measure, now_ms); // -- WP MCP5 --
+        crate::tools::devices::tick(&self.set, &self.opens, now_ms); // -- WP FEAT2 --
         for id in self.confirms.lapsed(now_ms) {
             if let Some(c) = self.confirms.get(id) {
                 self.activity.push(ActivityEntry {

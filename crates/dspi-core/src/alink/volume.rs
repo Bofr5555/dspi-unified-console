@@ -357,7 +357,7 @@ impl DspiCore {
                 let held = crate::limits::profile_of(&mut self.lock(), &unit.serial)
                     .and_then(|p| p.check_master_volume(to).err());
                 if let Some(v) = held {
-                    unit.refuse(v.code, &v.msg);
+                    unit.refuse("limit_exceeded", &v.msg);
                 }
             }
         }

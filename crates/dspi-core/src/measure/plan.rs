@@ -80,6 +80,13 @@ pub fn measure_level_caps(placement: MeasurePlacement) -> MeasureLevelCaps {
     }
 }
 
+/// A sweep's length, ms: what a setup may name.
+pub const MEASURE_SWEEP_MS: std::ops::RangeInclusive<u32> = MIN_SWEEP_MS..=MAX_SWEEP_MS;
+/// A walked run's passes: what a setup may name.
+pub const MEASURE_PASSES: std::ops::RangeInclusive<u16> = PASSES_MIN..=MAX_REPEAT;
+/// The most positions or reseats a setup may name (at least 3 positions, or
+/// 1 reseat).
+pub const MEASURE_COUNT_MAX: usize = dspi_measure::position::MAX_POSITIONS;
 /// The lowest ceiling a setup may name, peak dBFS.
 pub const MEASURE_CEILING_MIN_DB: f32 = -120.0;
 /// The lowest SPL cap a setup may name, dB SPL.

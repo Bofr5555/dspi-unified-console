@@ -199,6 +199,10 @@ pub enum Event {
     /// The agents' measurement requests changed: read
     /// [`HttpServer::measure_requests`] again and take what waits.
     MeasureRequests,
+    // -- WP FEAT2 --
+    /// The agents' requests to open or close a device changed: read
+    /// [`HttpServer::device_requests`] again and take what waits.
+    DeviceRequests,
 }
 
 impl Event {
@@ -215,6 +219,7 @@ impl Event {
             Self::ConfirmationsChanged => json!({"event": "confirmationsChanged"}),
             Self::Activity => json!({"event": "activity"}),
             Self::MeasureRequests => json!({"event": "measureRequests"}), // -- WP MCP5 --
+            Self::DeviceRequests => json!({"event": "deviceRequests"}),   // -- WP FEAT2 --
         }
     }
 }
@@ -326,11 +331,13 @@ impl Shared {
     /// Run `f` on the MCP side, then tell the app, unlocked, of the
     /// confirmations it asked or ended, and wake the ticking thread for them.
     fn with_mcp<R>(&self, f: impl FnOnce(&mut Mcp) -> R) -> R {
-        let (r, changed, measure) = {
+        let (r, changed, measure, devices) = {
             let mut mcp = lock(&self.mcp);
             let r = f(&mut mcp);
             let measure = mcp.server.take_measure_events(); // -- WP MCP5 --
-            (r, !mcp.server.take_confirm_events().is_empty(), measure)
+            let devices = mcp.server.take_device_events(); // -- WP FEAT2 --
+            let changed = !mcp.server.take_confirm_events().is_empty();
+            (r, changed, measure, devices)
         };
         if changed {
             self.wake();
@@ -338,6 +345,9 @@ impl Shared {
         }
         if measure {
             self.emit(&[Event::MeasureRequests]); // -- WP MCP5 --
+        }
+        if devices {
+            self.emit(&[Event::DeviceRequests]); // -- WP FEAT2 --
         }
         r
     }
@@ -553,6 +563,35 @@ impl HttpServer {
         let done = self
             .shared
             .with_mcp(|m| m.server.measure_report(id, ok, note));
+        self.shared.emit(&[Event::Activity]);
+        done
+    }
+
+    // -- WP FEAT2 --
+    /// The devices the app remembers the user opened
+    /// (`Server::set_known_devices`). Waits as [`HttpServer::with_server`].
+    pub fn set_known_devices(&self, rows: &Value) {
+        self.shared.with_mcp(|m| m.server.set_known_devices(rows));
+    }
+
+    /// The agents' requests to open or close a device, oldest first
+    /// (`Server::device_requests`). Waits as [`HttpServer::with_server`].
+    pub fn device_requests(&self) -> Vec<Value> {
+        self.shared.with_mcp(|m| m.server.device_requests())
+    }
+
+    /// The app takes request `id`: its ticket, `None` when it no longer
+    /// waits. Waits as [`HttpServer::with_server`].
+    pub fn device_take(&self, id: u64) -> Option<Value> {
+        self.shared.with_mcp(|m| m.server.device_take(id))
+    }
+
+    /// How request `id` went (`Server::device_report`). Waits as
+    /// [`HttpServer::with_server`].
+    pub fn device_report(&self, id: u64, ok: bool, note: &str) -> bool {
+        let done = self
+            .shared
+            .with_mcp(|m| m.server.device_report(id, ok, note));
         self.shared.emit(&[Event::Activity]);
         done
     }
