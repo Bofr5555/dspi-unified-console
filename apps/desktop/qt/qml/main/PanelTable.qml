@@ -99,7 +99,7 @@ QtObject {
         },
         {
             action: "tools.spectrum", panel: "SpectrumPanel", windowId: "spectrum",
-            section: "analyse", tab: "spectrum", title: qsTr("Spectrum Analyser"), icon: "chart-column",
+            section: "analyse", tab: "spectrum", title: qsTr("Spectrum Analyser"), tabTitle: qsTr("Spectrum"), icon: "chart-column", // -- WP LAY5a -- tabTitle
             width: 860, height: 560, minWidth: 620, minHeight: 420
         },
         {

@@ -15,6 +15,8 @@ ColumnLayout {
     property bool bandShown: false
     property int band: -1
     property int bandsSelected: 0
+    // -- WP LAY5a -- The way to the matrix (not beside the matrix itself)
+    property bool routingLink: true
 
     readonly property bool isOutput: info.isOutput
     readonly property int output: isOutput ? info.number : -1
@@ -174,6 +176,7 @@ ColumnLayout {
             }
             AppButton {
                 objectName: "Inspector.editRouting"
+                visible: inspector.routingLink   // -- WP LAY5a --
                 Layout.topMargin: 4
                 text: qsTr("Edit Routing…")
                 onClicked: Shell.trigger("tools.matrix")
@@ -293,7 +296,7 @@ ColumnLayout {
     }
     AppButton {
         objectName: "Inspector.editOutputRouting"
-        visible: inspector.isOutput
+        visible: inspector.isOutput && inspector.routingLink   // -- WP LAY5a --
         text: qsTr("Edit Routing…")
         onClicked: Shell.trigger("tools.matrix")
     }

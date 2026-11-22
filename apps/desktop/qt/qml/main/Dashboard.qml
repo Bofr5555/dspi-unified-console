@@ -15,6 +15,11 @@ Item {
     objectName: "Dashboard"
 
     readonly property int spacing: DashboardController.spacing
+    // -- WP LAY5a -- Modern's Overview: what stands over the cards (none: "");
+    // and its cards open their channel, and have no layout gear
+    property Component head: null
+    property bool choosable: false
+    signal chosen(int channel)
     readonly property bool ready: DeviceModel.connected
     readonly property int columns: DashboardController.columnsFor(DashboardController.cardsPerRow, grid.width,
                                                                   DashboardController.cards.length)
@@ -41,6 +46,14 @@ Item {
             width: flick.width - 2 * Theme.spacingLarge
             spacing: dashboard.spacing
 
+            // -- WP LAY5a --
+            Loader {
+                objectName: "Dashboard.head"
+                Layout.fillWidth: true
+                visible: active
+                active: dashboard.head !== null
+                sourceComponent: dashboard.head
+            }
             // -- WP QP9 -- The spectrum as bars, above the cards
             SpectrumStrip {
                 place: "dashboard"
@@ -62,6 +75,8 @@ Item {
                         required property int index
                         objectName: "Dashboard.card." + modelData.key
                         entry: modelData
+                        choosable: dashboard.choosable                    // -- WP LAY5a --
+                        onChosen: channel => dashboard.chosen(channel)    // -- WP LAY5a --
                         Layout.fillWidth: true
                         Layout.preferredWidth: (grid.width - (grid.columns - 1) * grid.columnSpacing) / grid.columns
                         Layout.alignment: Qt.AlignTop

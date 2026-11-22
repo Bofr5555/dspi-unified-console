@@ -1,8 +1,9 @@
 import QtQuick
 import UConsole
 
-// -- WP LAY3 -- Overview: the dashboard (WP LAY5a adds the active effects).
-// Choosing a card's channel opens it on the Equaliser page.
+// -- WP LAY3 -- Overview: the dashboard. Choosing a card's channel opens it on
+// the Equaliser page. -- WP LAY5a -- Over the cards the device, its effects and
+// its connection (OverviewSummary); without a device, the way to one.
 Item {
     id: page
     objectName: "OverviewSection"
@@ -32,15 +33,29 @@ Item {
         }
     }
 
-    Text {
+    Column {
         anchors.centerIn: parent
         visible: !DeviceModel.connected
-        text: qsTr("No Device Connected")
-        font: Theme.fontTitle
-        color: Theme.textMuted
+        spacing: Theme.spacing
+        Text {
+            anchors.horizontalCenter: parent.horizontalCenter
+            text: qsTr("No Device Connected")
+            font: Theme.fontTitle
+            color: Theme.textMuted
+        }
+        AppButton {
+            objectName: "OverviewSection.devices"
+            anchors.horizontalCenter: parent.horizontalCenter
+            text: qsTr("Choose a Device…")
+            primary: true
+            onClicked: if (page.host) page.host.go("devices", "devices")
+        }
     }
     Dashboard {
         anchors.fill: parent
         anchors.topMargin: Theme.spacingSmall
+        choosable: true
+        onChosen: channel => SidebarController.select(channel)
+        head: Component { OverviewSummary { host: page.host } }
     }
 }

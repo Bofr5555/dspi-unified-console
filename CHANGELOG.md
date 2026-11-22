@@ -71,6 +71,11 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
   **inspector** at the right has the selected band with every shape laid out flat, and the channel: what an input feeds,
   or an output's crossover, limiter and Linkwitz Transform. Under 1280 px it is folded away and opens over the page.
   Settings › Appearance shows or hides it, and puts the band bar under the graph for those who want it. (WP LAY4)
+- Modern's Overview, Routing, Effects and Analyse. **Overview** has the device, its effects (choose one to open its page)
+  and its connection over the channel cards; a card opens its channel on the Equaliser. **Routing** has the inspector
+  beside the matrix: an output's header or an input's label selects it. **Effects** has a dot on each tab that says
+  whether the effect is on, and the signal chain beside the page, in the order the DSPi runs it, with a switch for each
+  effect. **Analyse** marks the Signal Generator's tab while it plays and stops it from any of its pages. (WP LAY5a)
 - Modern has neutral grey surfaces; Settings › Appearance offers Darker grey. Classic's colours are unchanged. (WP LAY4)
 - A value typed into a gain, delay or preamp field with Enter is kept when the field is left. Before, leaving the field
   could put the earlier value back. (WP LAY4)

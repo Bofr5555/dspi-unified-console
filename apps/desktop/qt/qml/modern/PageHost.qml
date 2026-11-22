@@ -153,6 +153,7 @@ Item {
                 id: scroll
                 objectName: page.objectName + ".scroll"
                 anchors.fill: parent
+                anchors.rightMargin: aside.width   // -- WP LAY5a --
                 // A panel keeps its window's least size; a smaller page scrolls
                 contentWidth: Math.max(width, page.row ? page.row.minWidth || 0 : 0)
                 contentHeight: Math.max(height, page.row ? Math.max(page.row.minHeight || 0, page.content ? page.content.minimumHeight : 0) : 0)
@@ -196,6 +197,26 @@ Item {
                     // Done, Cancel, a close button: back to where the person was
                     function onCloseRequested() { if (page.current) page.pageHost.back() }
                 }
+            }
+
+            // -- WP LAY5a -- The section's inspector, at the panel's right
+            // (or over it, in a narrow window: it takes no width then)
+            Loader {
+                id: aside
+                objectName: page.objectName + ".aside"
+                readonly property string type: page.entry && page.entry.aside ? page.entry.aside : ""
+                anchors.right: parent.right
+                width: item ? item.implicitWidth : 0
+                height: parent.height
+                enabled: !page.locked
+                active: type.length > 0
+                Component.onCompleted: if (type.length) sourceComponent = Qt.createComponent("UConsole", type)
+                onLoaded: {
+                    if (item.host !== undefined) item.host = page.pageHost
+                    if (item.tab !== undefined) item.tab = page.entry.tab
+                    item.shown = Qt.binding(() => page.shown)
+                }
+                onStatusChanged: if (status === Loader.Error) console.warn("PageHost: the aside of", page.key, "did not load")
             }
 
             // The panel is in its own window

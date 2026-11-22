@@ -18,14 +18,6 @@ Row {
     Tool { actionId: "autoeq.browse"; text: qsTr("Headphone Profile…") }
     Tool { actionId: "file.importFilters"; text: qsTr("Import…") }
     Tool { actionId: "file.exportFilters"; text: qsTr("Export…") }
-    AppButton {
-        objectName: "EqualiserTools.inspector"
-        text: qsTr("Inspector")
-        iconName: InspectorState.open ? "chevron-right" : "chevron-left"
-        toolTip: InspectorState.open ? qsTr("Hide the Inspector") : qsTr("Show the Inspector")
-        onClicked: InspectorState.toggle()
-        Accessible.role: Accessible.CheckBox
-        Accessible.checkable: true
-        Accessible.checked: InspectorState.open
-    }
+    // -- WP LAY5a -- a type of its own, for the other pages
+    InspectorButton { objectName: "EqualiserTools.inspector" }
 }
