@@ -27,6 +27,8 @@
 #include <QSaveFile>
 #include <QSettings>
 #include <QStandardPaths>
+#include <QTimeZone>
+#include <algorithm>
 #include <memory>
 #include <utility>
 
@@ -116,6 +118,7 @@ AiController::AiController(const AppContext &ctx, QObject *parent) : QObject(par
     m_readSoon.setSingleShot(true);
     m_readSoon.setInterval(100);
     connect(&m_readSoon, &QTimer::timeout, this, &AiController::readActivity);
+    connect(&m_readSoon, &QTimer::timeout, this, &AiController::readAgents);   // -- WP LAY8 --
     connect(ctx.registry, &DeviceRegistry::devicesChanged, this, &AiController::onDevices);
     // It must stop before the set is freed, which main() does after the event loop
     connect(QCoreApplication::instance(), &QCoreApplication::aboutToQuit, this, &AiController::shutdown);
@@ -250,6 +253,8 @@ void AiController::tick() {
     if (!m_waiting.isEmpty()) emit secondsChanged();
     const bool recent = m_lastCall.isValid() && m_lastCall.secsTo(now) < kRecentSeconds;
     if (!recent) m_lastCall = QDateTime();
+    // -- WP LAY8 --
+    if (m_agents.removeIf([&](const Agent &a) { return a.last.secsTo(now) >= kRecentSeconds; })) emit agentsChanged();
     emit stateChanged();
     if (m_pairing.isEmpty() && m_waiting.isEmpty() && !recent) m_tick.stop();
 }
@@ -325,6 +330,7 @@ void AiController::stopServer() {
                  m_waiting.clear();
                  m_answered.clear();
                  m_lastCall = QDateTime();
+                 setAgents({});   // -- WP LAY8 --
                  setPairing({});
                  emit confirmationsChanged();
                  emit stateChanged();
@@ -481,6 +487,54 @@ void AiController::revoke(double id) {
     onThread([mcp, id] { return dspi_mcp_revoke(mcp, uint64_t(id)); }, [this](bool) { readClients(); });
 }
 
+// -- WP LAY8 -- Who is connected: MCP over HTTP keeps no connection, so it is who
+// called within the last minute, as for `active`
+void AiController::readAgents() {
+    FfiMcp *mcp = m_mcp;
+    onThread([mcp] { return parse(readSized([mcp](char *b, uint32_t n) { return dspi_mcp_clients(mcp, b, n); })); },
+             [this](const QJsonObject &reply) {
+                 if (isOk(reply) && m_running) setAgents(reply.value(QLatin1String("value")).toArray());
+             });
+}
+
+void AiController::setAgents(const QJsonArray &clients) {
+    const QDateTime now = QDateTime::currentDateTimeUtc();
+    QList<Agent> agents;
+    for (const QJsonValue &v : clients) {
+        const QJsonObject c = v.toObject();
+        const qint64 used = c.value(QLatin1String("lastUsed")).toInteger();
+        const QDateTime last = QDateTime::fromSecsSinceEpoch(used, QTimeZone::UTC);
+        if (used == 0 || last.secsTo(now) >= kRecentSeconds) continue;
+        Agent a{ quint64(c.value(QLatin1String("id")).toInteger()), str(c, "name"), now, last };
+        for (const Agent &known : std::as_const(m_agents))
+            if (known.id == a.id) a.since = known.since;
+        agents.append(a);
+    }
+    const bool changed = !std::equal(agents.cbegin(), agents.cend(), m_agents.cbegin(), m_agents.cend(),
+                                     [](const Agent &a, const Agent &b) { return a.id == b.id && a.name == b.name; });
+    m_agents = agents;
+    if (changed) emit agentsChanged();
+    // The one that called is gone (disconnected, removed)
+    if (m_agents.isEmpty() && m_lastCall.isValid()) {
+        m_lastCall = QDateTime();
+        emit stateChanged();
+    }
+}
+
+QVariantList AiController::agents() const {
+    QVariantList out;
+    for (const Agent &a : m_agents)
+        out.append(QVariantMap{ { QStringLiteral("id"), double(a.id) },
+                                { QStringLiteral("name"), a.name },
+                                { QStringLiteral("since"), QLocale().toString(a.since.toLocalTime().time(), QLocale::ShortFormat) } });
+    return out;
+}
+
+void AiController::disconnectAgent(double id) {
+    revoke(id);
+    readAgents();   // after it, in order
+}
+
 QVariantMap AiController::pairing() const {
     if (m_pairing.isEmpty()) return {};
     return { { QStringLiteral("id"), m_pairing.value(QLatin1String("id")).toDouble() },
@@ -507,6 +561,28 @@ void AiController::answerPairing(bool allow) {
 
 // ---- What waits for the user ----------------------------------------------------------
 
+// -- WP LAY8 -- dspi-mcp's RiskKind
+QString AiController::riskLabel(const QString &kind) {
+    static const QHash<QString, const char *> labels{
+        { QStringLiteral("louder"), QT_TRANSLATE_NOOP("AiController", "Louder") },
+        { QStringLiteral("unmute"), QT_TRANSLATE_NOOP("AiController", "Unmute") },
+        { QStringLiteral("enable"), QT_TRANSLATE_NOOP("AiController", "Output on") },
+        { QStringLiteral("new_route"), QT_TRANSLATE_NOOP("AiController", "New route") },
+        { QStringLiteral("boost"), QT_TRANSLATE_NOOP("AiController", "EQ boost") },
+        { QStringLiteral("delay_step"), QT_TRANSLATE_NOOP("AiController", "Delay") },
+        { QStringLiteral("tweeter_crossing"), QT_TRANSLATE_NOOP("AiController", "Tweeter protection") },
+        { QStringLiteral("change"), QT_TRANSLATE_NOOP("AiController", "Change") },
+        { QStringLiteral("test_signal"), QT_TRANSLATE_NOOP("AiController", "Test signal") },
+        { QStringLiteral("recall"), QT_TRANSLATE_NOOP("AiController", "Replaces settings") },
+        { QStringLiteral("flash_write"), QT_TRANSLATE_NOOP("AiController", "Saved on the device") },
+        { QStringLiteral("installation_save"), QT_TRANSLATE_NOOP("AiController", "Installation") },
+        { QStringLiteral("source"), QT_TRANSLATE_NOOP("AiController", "Input source") },
+        { QStringLiteral("system"), QT_TRANSLATE_NOOP("AiController", "Every unit") },
+    };
+    const char *label = labels.value(kind);
+    return label ? tr(label) : QString();
+}
+
 void AiController::readConfirmations() {
     FfiMcp *mcp = m_mcp;
     onThread([mcp] { return parse(readSized([mcp](char *b, uint32_t n) { return dspi_mcp_confirmations(mcp, b, n); }, 4096)); },
@@ -521,7 +597,13 @@ void AiController::readConfirmations() {
                      w.client = str(c, "client_name");
                      w.title = str(c, "title");
                      w.device = str(c, "device");
-                     for (const QJsonValue &r : c.value(QLatin1String("risks")).toArray()) w.risks << str(r.toObject(), "what");
+                     for (const QJsonValue &r : c.value(QLatin1String("risks")).toArray()) {
+                         w.risks << str(r.toObject(), "what");
+                         // -- WP LAY8 --
+                         const QString label = riskLabel(str(r.toObject(), "kind"));
+                         //: %1 is a kind of change ("Louder"), %2 the change ("Out 1 gain up from -12 dB to -3 dB")
+                         w.riskLines << (label.isEmpty() ? w.risks.constLast() : tr("%1: %2").arg(label, w.risks.constLast()));
+                     }
                      w.ends = QDateTime::currentDateTimeUtc().addMSecs(c.value(QLatin1String("remaining_ms")).toInteger());
                      there.insert(w.id);
                      list.append(w);
@@ -547,6 +629,7 @@ QVariantList AiController::confirmations() const {
             { QStringLiteral("title"), w.title },
             { QStringLiteral("device"), deviceTitle(w.device) },
             { QStringLiteral("risks"), w.risks },
+            { QStringLiteral("riskLines"), w.riskLines },   // -- WP LAY8 --
         });
     }
     return out;

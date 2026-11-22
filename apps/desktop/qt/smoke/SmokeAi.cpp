@@ -358,8 +358,50 @@ void aiSection(SmokeDriver &d) {
         d.check("mcp4: Modern shows the sheet too", sheetOpen());
         armed();
         d.grab(main, QStringLiteral("modern-ai-confirm.png"));
+        // -- WP LAY8 -- each risk with its kind
+        QQuickItem *risk = overlay("AiConfirmSheet.risk.0");
+        d.check("lay8: the sheet names the risk's kind", risk && risk->property("text").toString().contains(QStringLiteral("Louder: Out 1")));
         click(overlay("AiConfirmSheet.deny"));
         agent.result(*e);
+        // -- WP LAY8 -- The AI button and its popover, on the real server
+        {
+            QQuickItem *button = d.item(QStringLiteral("TopBar.ai"));
+            QObject *popover = d.object(QStringLiteral("AiPopover"));
+            const auto face = [&] { return button ? button->property("face").toString() : QString(); };
+            d.check("lay8: an agent that called shows as connected, by its paired name",
+                    popover && d.waitFor(3000, [&] { return face() == QLatin1String("connected") && ai->agents().size() == 1; })
+                        && ai->agents().first().toMap().value(QStringLiteral("name")) == QLatin1String("Fake agent"));
+            ai->addClient(QStringLiteral("<b>Second</b>"));
+            d.waitFor(3000, [&] { return !ai->newClient().isEmpty(); });
+            Agent other{ d, port, ai->newClient().value(QStringLiteral("token")).toString().toUtf8() };
+            ai->clearNewClient();
+            setGain(-10);
+            e = other.gain(-22);
+            const bool made = !failed(other.result(*e));
+            d.check("lay8: a second one beside it, in the order of the clients", made && d.waitFor(3000, [&] {
+                return ai->agents().size() == 2 && ai->agents().last().toMap().value(QStringLiteral("name")) == QLatin1String("<b>Second</b>");
+            }));
+            click(button);
+            d.check("lay8: the popover shows both, and the last change with Undo",
+                    d.waitFor(2000, [&] { return opened(popover) && overlay("AiPopover.agent.1") && overlay("AiPopover.change.0.undo"); }));
+            d.spin(300);
+            d.grab(main, QStringLiteral("lay8-real.png"));
+            d.check("lay8: its Undo", click(overlay("AiPopover.change.0.undo")) && d.waitFor(3000, [&] { return gainIs(-10); }));
+            d.check("lay8: Disconnect stops that agent only, at once", click(overlay("AiPopover.agent.1.disconnect"))
+                    && d.waitFor(3000, [&] { return ai->agents().size() == 1 && ai->clients().size() == 1; })
+                    && ai->agents().first().toMap().value(QStringLiteral("name")) == QLatin1String("Fake agent"));
+            e = other.gain(-23);
+            d.waitFor(5000, [&] { return e->done; });
+            d.check("lay8: its token is refused, and the server still listens for others", e->status() == 401 && ai->running() && gainIs(-10));
+            e = agent.gain(-11);
+            d.check("lay8: the other agent goes on", !failed(agent.result(*e)) && d.waitFor(3000, [&] { return gainIs(-11); }));
+            e = agent.gain(0);
+            d.check("lay8: a question closes the popover, and its button says somebody waits",
+                    sheetOpen() && d.waitFor(1000, [&] { return !opened(popover); }) && face() == QLatin1String("attention"));
+            armed();
+            click(overlay("AiConfirmSheet.deny"));
+            agent.result(*e);
+        }
         layout->setLayout(QStringLiteral("classic"));
         d.spin(400);
         icon = d.item(QStringLiteral("AiStatusIcon"));

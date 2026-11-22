@@ -119,6 +119,10 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
   "Show Here" stops none. (WP LAY5b)
 - Window > System… › Installation: after "changed elsewhere" and Reload, **Make Them Again** makes the changes that were not
   saved again on the installation as it is now. (WP LAY5b)
+- Modern's **AI** button shows the state (off, waiting for an agent, an agent connected, paused, or something to answer) and
+  opens a popover: the switch, which agents are connected with **Disconnect**, their latest changes with Undo, Pause, and
+  the way to the activity and Settings › AI Agents. The confirmation sheet says what kind of change it asks about
+  ("Louder", "Saved on the device", "Every unit"). (WP LAY8)
 
 ### Android
 - DSPi Link is reachable from the main page (owner report on 0.14.0: only through the settings
