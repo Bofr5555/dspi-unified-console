@@ -40,7 +40,7 @@ mod tools {
     use crate::tools::hub::{hub_error, on_hub, record};
     use crate::tools::installation::binding;
     use crate::tools::measure::read_only_hook;
-    use crate::tools::read::{empty_schema, object_schema};
+    use crate::tools::read::{empty_schema, num, object_schema};
     use crate::untrusted;
 
     pub(super) static SET_VOLUME: Tool = Tool {
@@ -171,9 +171,9 @@ mod tools {
                     "unit_id": untrusted::note(&u.unit_id),
                     "unit_name": untrusted::name(&u.name),
                     "serial": untrusted::name(&u.serial),
-                    "before_db": u.before_db,
-                    "asked_db": u.target_db,
-                    "after_db": u.after_db,
+                    "before_db": u.before_db.map(num),
+                    "asked_db": u.target_db.map(num),
+                    "after_db": u.after_db.map(num),
                     "status": u.state,
                     "code": untrusted::name(&u.code),
                     "note": untrusted::note(&u.message),

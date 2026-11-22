@@ -58,7 +58,7 @@ use crate::ClientId;
 use crate::policy::{self, RiskKind};
 use crate::registry::{Call, Tool, ToolClass, ToolError, ToolResult};
 use crate::tools::edit::schema;
-use crate::tools::read::{empty_schema, object_schema, state};
+use crate::tools::read::{empty_schema, num, object_schema, state};
 use crate::untrusted;
 
 /// A core record as JSON (`null` should it not serialise). A macro: this
@@ -2364,7 +2364,7 @@ static OPTIONS: Tool = Tool {
             .collect();
         let caps = |p: MeasurePlacement| {
             let c = measure_level_caps(p);
-            json!({"max_level_dbfs": c.ceiling_db, "max_spl_db": c.spl_cap_db})
+            json!({"max_level_dbfs": num(c.ceiling_db), "max_spl_db": num(c.spl_cap_db)})
         };
         let speakers = caps(MeasurePlacement::ListeningPosition);
         Ok(json!({

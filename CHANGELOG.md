@@ -72,6 +72,11 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
   you can keep a tune whose verify did not pass. (WP MCP5)
 - The speaker layout's banner says a layout was "set outside this app (a configuration file or another app)" instead
   of claiming a configuration file brought it. (WP MCP5)
+- AI agents can set the volume of a whole room or zone of an installation (each unit's limits still hold; louder asks),
+  open a DSPi the console already knows (on USB, listed by a connected hub, or opened before) and close a tab they
+  opened, read a hub's schedule, and for a measurement choose one of your microphone calibrations and target curves and
+  a lower level limit, never a higher one. Finding the low end on a headphone coupler uses the headphones' lower levels.
+  An agent reverts only a tune it applied itself. (WP FEAT2)
 - AI agents have a manual page, docs/manual/ai-agents.md: the configuration for Claude Desktop, Claude Code, Cursor and
   VS Code (with the token kept out of your shell's history), what is asked, what agents can never do, and undo. The
   agents' endpoint follows MCP 2026-07-28 more closely (its error codes for a missing `_meta` and a contradicting header;

@@ -86,6 +86,12 @@ public:
     // now ("" when it can): a firmware update or a calibration runs on it
     Q_INVOKABLE QString pinnedText(const QString &id) const;
 
+    // -- WP FEAT2 -- An AI agent's request (AiController::deviceRequested): opens a
+    // known device beside the others, as its tab opens but not made active, or
+    // closes the tab it opened as closeOpen() does. Reported once. Nothing here
+    // pairs or dials a new address.
+    void agentRequest(const QJsonObject &ticket);
+
     // This app's own hub (sharing), which is not listed as another one
     void setOwnHubId(const QString &id);
     // -- WP QP14 -- Settings > Networking shows its Other Hubs: browse while it

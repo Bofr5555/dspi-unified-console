@@ -182,6 +182,15 @@ public:
     // was withdrawn meanwhile (its agent gone, agents turned off): stop it
     void reportMeasure(quint64 request, bool started, const QString &note, std::function<void()> withdrawn = {});
 
+    // -- WP FEAT2 -- The same for an agent's request to open a known device as a
+    // tab, or to close one it opened: taken once, handed on (deviceRequested:
+    // { request_id, kind, device, transport, hub, serial, client_name, what }),
+    // and reported once.
+    void reportDevice(quint64 request, bool done, const QString &note);
+    // The devices the app remembers the user opened, [{ device, name }] (a set
+    // id): known to agents beside those the server sees by itself
+    void setKnownDevices(const QJsonArray &devices);
+
 signals:
     void stateChanged();
     void settingsChanged();
@@ -196,6 +205,8 @@ signals:
     // that takes it (MeasureController, UnitsMeasureController for `loop`
     // "system") reports with reportMeasure()
     void measureRequested(const QJsonObject &ticket);
+    // -- WP FEAT2 -- DevicesController's, which reports with reportDevice()
+    void deviceRequested(const QJsonObject &ticket);
 
 private:
     static void eventThunk(const char *json, void *self);
@@ -267,6 +278,7 @@ private:
     std::atomic<bool> m_callQueued{ false };
     int m_pending = 0;
     void takeMeasureRequests();   // -- WP MCP5 --
+    void takeDeviceRequests();   // -- WP FEAT2 --
     QSet<quint64> m_measureTaken;   // -- WP MCP5 -- asked to take, once each
     QThreadPool m_thread;       // one thread: the server's calls, in order
 };

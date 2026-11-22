@@ -19,11 +19,14 @@ pub const FILTER_TYPES_URI: &str = "dspi://filter-types";
 // -- WP MCP2b -- the paragraph on wholesale writes, flash and effects
 // -- WP MCP2c -- the section on hubs, the audio link and Installation setup
 // -- WP MCP5 -- the section on measuring
+// -- WP FEAT2 -- opening known devices, a room's volume, the measuring options
 pub const GUIDE: &str = "# DSPi: how to read it well
 
 A DSPi is a digital signal processor for loudspeakers. The console app has one or more DSPis
 open; `dspi_list_devices` lists them. Every tool takes an optional `device`; without it the
-device the app shows is used.
+device the app shows is used. A device that is not open may be a known one
+(`dspi_list_known_devices`): `dspi_open_device` asks the app to open it, and
+`dspi_close_device` to close one you opened. Any other is the user's to open.
 
 ## Channels
 - Inputs and outputs are numbered from 0. Name them `{\"input\": n}` or `{\"output\": n}`.
@@ -63,6 +66,9 @@ device the app shows is used.
   which may be held for the user. If someone saved meanwhile, nothing is saved and your edits
   are kept aside: remake them on the fresh draft.
 - A scene recall, an alignment and USB-direct modes reach every unit and may be held.
+- `dspi_system_set_volume` sets the volume of every unit of a room or a zone; each unit's own
+  limits still hold, and the result has a row per unit. Louder may be held.
+- `dspi_list_schedules` reads the hub's schedule. Only the user changes it.
 
 ## Measuring
 - A measurement needs a person: the app's microphone, put where you say. Tell the user what
@@ -73,6 +79,8 @@ device the app shows is used.
 - `dspi_measure_start` (or `dspi_measure_rolloff_start` for an output's low end) asks the
   app to measure: it may be held for the user, then the app's Measure view runs it. Poll
   `dspi_measure_status` every few seconds; `dspi_measure_stop` stops it.
+- `dspi_get_measure_options` lists the user's microphone calibrations and the target curves you
+  may name, and the level limits, which you may only lower (`max_level_dbfs`, `max_spl_db`).
 - A tweeter is never played below 1 kHz, and the level limits and the limits profile always
   apply: these are not questions and nothing lifts them.
 - Then `dspi_tune_propose`, `dspi_tune_sum_check` if it says so, `dspi_tune_apply`,
