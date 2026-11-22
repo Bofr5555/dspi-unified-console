@@ -6,6 +6,7 @@
 #include "DeviceSession.h"
 #include "NoticeCenter.h"
 #include "SpeakersController.h"
+#include "TuneSession.h"   // -- WP RCFIX --
 #include "AiController.h"   // -- WP MCP5 --
 #include "Shell.h"          // -- WP MCP5 --
 
@@ -33,7 +34,9 @@ MeasureController::MeasureController(const AppContext &ctx, QObject *parent) : Q
         [this] {
             if (auto *sc = Registrar::instance<SpeakersController>())
                 connect(sc, &SpeakersController::storedChanged, this, [this, sc](const QString &origin) {
-                    if (origin != QLatin1String("measure")) session()->takeLayout(sc->stored());
+                    if (origin == QLatin1String("measure")) return;
+                    session()->takeLayout(sc->stored());
+                    session()->tune()->takeLayout(sc->stored());   // -- WP RCFIX --
                 });
         },
         Qt::QueuedConnection);

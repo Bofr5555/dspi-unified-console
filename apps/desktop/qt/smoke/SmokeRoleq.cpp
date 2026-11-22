@@ -20,6 +20,7 @@
 #include "Registrar.h"
 #include "Shell.h"
 #include "SpeakersController.h"
+#include "TuneController.h"
 
 #include <QDirIterator>
 #include <QFile>
@@ -84,6 +85,12 @@ QString roleIn(const QJsonObject &layout, int output) {
 QString rowRole(MeasureController *mc, int output) {
     for (const QVariant &v : mc->setupOutputs())
         if (v.toMap().value(QStringLiteral("output")).toInt() == output) return v.toMap().value(QStringLiteral("role")).toString();
+    return {};
+}
+
+QVariantMap tuneRow(TuneController *tc, int output) {
+    for (const QVariant &v : tc->layout())
+        if (v.toMap().value(QStringLiteral("output")).toInt() == output) return v.toMap();
     return {};
 }
 
@@ -224,6 +231,29 @@ void roleqSection(SmokeDriver &d) {
     d.spin(150);
     d.check(QStringLiteral("roleq: the Measure rows are pre-filled from the layout"),
             d.waitFor(3000, [&] { return rowRole(mc, out) == other; }));
+    // -- WP RCFIX -- (review RC, RC2) and Auto-tune's rows follow a Confirm, no Reload
+    auto *tc = Registrar::instance<TuneController>();
+    const auto tuneRole = [&] { return tuneRow(tc, out).value(QStringLiteral("role")).toString(); };
+    d.check(QStringLiteral("roleq: the Auto-tune rows are pre-filled from the layout"),
+            tc && d.waitFor(5000, [&] { return tuneRole() == other; }));
+    if (tc) {
+        tc->setOutputOn(out, !tuneRow(tc, out).value(QStringLiteral("on")).toBool());
+        const bool on = tuneRow(tc, out).value(QStringLiteral("on")).toBool();
+        QString asTold;
+        const QMetaObject::Connection told = QObject::connect(sc, &SpeakersController::storedChanged, sc, [&] { asTold = tuneRole(); },
+                                                              Qt::QueuedConnection);
+        sc->setRole(out, QStringLiteral("high"));
+        sc->confirm();
+        d.check(QStringLiteral("roleq: a Confirm reaches the Auto-tune rows at once, their chosen outputs stay"),
+                d.waitFor(5000, [&] { return !asTold.isEmpty(); }) && asTold == QLatin1String("high")
+                    && tuneRow(tc, out).value(QStringLiteral("on")).toBool() == on);
+        QObject::disconnect(told);
+        tc->setOutputOn(out, !on);
+        sc->setRole(out, other);
+        sc->confirm();
+        d.check(QStringLiteral("roleq: and the next one"),
+                d.waitFor(5000, [&] { return tuneRole() == other && roleIn(storedLayout(d), out) == other; }) && rowRole(mc, out) == other);
+    }
     QQuickItem *setupBanner = mw ? d.item(QStringLiteral("MeasureSetup.speakersBanner"), mw->contentItem()) : nullptr;
     d.check(QStringLiteral("roleq: no banner on Measure while the layout is confirmed"), setupBanner && !setupBanner->isVisible());
     mc->setOutputRole(out, was);

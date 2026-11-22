@@ -165,7 +165,7 @@ fn wp_roll1_the_effective_role_is_resolved_into_the_plan() {
         gain: 0.0,
         qp: 0.0,
     }];
-    p.resolve_roles(&vec![(1, chain)]).unwrap();
+    p.resolve_roles(&vec![(1, chain)], None).unwrap();
     assert_eq!(
         p.role_of(1),
         MeasureRole::High,
@@ -201,11 +201,14 @@ fn wp_roll1_a_three_way_group_plays_the_tweeter_with_the_way_that_plays_highest(
         ],
     ))
     .unwrap();
-    p.resolve_roles(&vec![
-        (0, with(vec![band(34, 400.0)])),
-        (1, with(vec![band(35, 400.0), band(34, 3_000.0)])),
-        (2, with(vec![band(LR4_HP, 3_000.0)])),
-    ])
+    p.resolve_roles(
+        &vec![
+            (0, with(vec![band(34, 400.0)])),
+            (1, with(vec![band(35, 400.0), band(34, 3_000.0)])),
+            (2, with(vec![band(LR4_HP, 3_000.0)])),
+        ],
+        None,
+    )
     .unwrap();
     // The woofer, low-passed at 400 Hz, would not be heard above 1 kHz: the
     // midrange is the tweeter's reference.
@@ -239,7 +242,7 @@ fn wp_roll1_pink_noise_never_plays_a_tweeter() {
         gain: 0.0,
         qp: 0.0,
     }];
-    assert!(p.resolve_roles(&vec![(2, chain)]).is_err());
+    assert!(p.resolve_roles(&vec![(2, chain)], None).is_err());
 }
 
 #[test]
@@ -829,4 +832,167 @@ fn wp_roll1_a_job_carries_its_actor() {
     core.set_dragging(false);
     let newest = core.history(1).first().cloned().unwrap();
     assert_eq!(newest.actor, crate::actor::EMBEDDER, "{newest:?}");
+}
+
+// ── WP RCFIX: the confirmed layout over a stale caller (review RC, RC2, RC3) ──
+
+/// The user's confirmed layout of the demo world: 0 Low, 1 Mid, 2 High.
+fn confirm(core: &DspiCore, confirmed_by_user: bool) {
+    let row = |output, role| crate::speaker_layout::SpeakerLayoutOutput {
+        output,
+        role,
+        speaker: "L".into(),
+        group: 0,
+    };
+    core.speaker_layout_set(crate::speaker_layout::SpeakerLayout {
+        outputs: vec![
+            row(WOOFER, MeasureRole::Low),
+            row(MID, MeasureRole::Mid),
+            row(TWEETER, MeasureRole::High),
+        ],
+        confirmed_by_user,
+        ..Default::default()
+    })
+    .unwrap();
+}
+
+fn resolved(core: &DspiCore, s: &MeasureSetup) -> Plan {
+    let mut p = Plan::new(s).unwrap();
+    core.measure_resolve_roles(&mut p).unwrap();
+    p
+}
+
+#[test]
+fn wp_rcfix_a_stale_full_on_a_confirmed_tweeter_gets_the_1khz_floor() {
+    // A tweeter not crossed over yet: nothing but the layout shows it.
+    let core = demo(None, None);
+    let stale = setup(
+        MeasureRunKind::Walked,
+        vec![
+            out(WOOFER, MeasureRole::Full, 0),
+            out(TWEETER, MeasureRole::Full, 0),
+        ],
+    );
+    // No layout, then one that is not confirmed: the caller's roles.
+    for _ in 0..2 {
+        let p = resolved(&core, &stale);
+        assert_eq!(p.role_of(TWEETER), MeasureRole::Full);
+        confirm(&core, false);
+    }
+    confirm(&core, true);
+    let p = resolved(&core, &stale);
+    assert_eq!(p.role_of(TWEETER), MeasureRole::High);
+    assert_eq!(
+        p.role_of(WOOFER),
+        MeasureRole::Full,
+        "as strict as the layout's Low: the caller's stays"
+    );
+    for run in &p.runs {
+        let cfg = run_config(&p, run, -40.0);
+        let tweeter = run.outputs.contains(&TWEETER);
+        assert_eq!(starts_at(&cfg) >= TWEETER_STIMULUS_FLOOR_HZ, tweeter);
+        if tweeter {
+            let ramp = ramp_config(&p, run, TWEETER, -50.0);
+            assert!(starts_at(&ramp) >= TWEETER_STIMULUS_FLOOR_HZ);
+        }
+    }
+    let sweep = |f1: f32| SiggenConfig {
+        signal_type: SIG_LOG_SWEEP,
+        channel_mask: 1 << TWEETER,
+        invert_mask: 0,
+        flags: 0,
+        level_db: -40.0,
+        duration_ms: 1_000,
+        repeat: 1,
+        gap_ms: 300,
+        p: vec![f1, 20_000.0, 0.0, 0.0],
+    };
+    assert!(below_floor(&p, &sweep(20.0)).is_some(), "the interlock too");
+    // A role the caller made stricter stays; a middle way is raised to.
+    let p = resolved(
+        &core,
+        &setup(
+            MeasureRunKind::Walked,
+            vec![
+                out(WOOFER, MeasureRole::High, 0),
+                out(MID, MeasureRole::Full, 0),
+            ],
+        ),
+    );
+    assert_eq!(p.role_of(WOOFER), MeasureRole::High);
+    assert_eq!(p.role_of(MID), MeasureRole::Mid);
+    // Pink noise and the start: refused before anything plays.
+    let one = vec![out(TWEETER, MeasureRole::Full, 0)];
+    let e = core
+        .measure_start(setup(MeasureRunKind::Pink, one.clone()))
+        .unwrap_err()
+        .to_string();
+    assert!(e.contains("measure.tweeter_stimulus"), "{e}");
+    let e = core
+        .measure_start(setup(MeasureRunKind::LiveSweep, one))
+        .unwrap_err()
+        .to_string();
+    assert!(e.contains("is a high way in the speaker layout"), "{e}");
+    assert!(!core.measure_state().active);
+    // The tune takes the layout's role over the caller's copy of it.
+    let lo = |output, role| crate::measure::MeasureLayoutOutput {
+        output,
+        role,
+        ..Default::default()
+    };
+    let l = core
+        .layout_roles(
+            crate::measure::MeasureLayout {
+                outputs: vec![lo(WOOFER, MeasureRole::Sub), lo(TWEETER, MeasureRole::Full)],
+                ..Default::default()
+            },
+            false,
+        )
+        .unwrap();
+    assert_eq!(l.outputs[0].role, MeasureRole::Sub);
+    assert_eq!(l.outputs[1].role, MeasureRole::High);
+}
+
+#[test]
+fn wp_rcfix_a_units_own_check_takes_its_confirmed_layouts_role() {
+    use crate::measure::{MeasureSystemSetup, MeasureSystemUnit};
+    let core = demo(None, None);
+    let unit = MeasureSystemUnit {
+        serial: core.lock().conn().unwrap().serial.clone(),
+        outputs: vec![
+            out(WOOFER, MeasureRole::Full, 0),
+            out(TWEETER, MeasureRole::Full, 0),
+        ],
+    };
+    let s = MeasureSystemSetup {
+        units: vec![unit.clone()],
+        ..Default::default()
+    };
+    let check = |core: &DspiCore| {
+        let c = core
+            .measure_system_unit_check(s.clone(), unit.clone())
+            .unwrap();
+        let ctx: serde_json::Value = serde_json::from_str(&c.context).unwrap();
+        let held = c
+            .preflight
+            .blockers
+            .iter()
+            .any(|b| b.key == "measure.tweeter_highpass" && b.output == Some(TWEETER));
+        (ctx["roles"].clone(), held)
+    };
+    assert_eq!(
+        check(&core),
+        (
+            serde_json::json!([[WOOFER, "full"], [TWEETER, "full"]]),
+            false
+        )
+    );
+    confirm(&core, true);
+    assert_eq!(
+        check(&core),
+        (
+            serde_json::json!([[WOOFER, "full"], [TWEETER, "high"]]),
+            true
+        )
+    );
 }

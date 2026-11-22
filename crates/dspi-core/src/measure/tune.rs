@@ -2501,7 +2501,8 @@ impl DspiCore {
             count,
             ..MeasureSetup::default()
         };
-        let plan = Plan::new(&setup)?;
+        let mut plan = Plan::new(&setup)?;
+        self.measure_resolve_roles(&mut plan)?; // -- WP RCFIX --
         let pre = self.measure_preflight_plan(
             &plan,
             &PreflightOptions {

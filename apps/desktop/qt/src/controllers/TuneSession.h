@@ -107,6 +107,7 @@ public:
     bool busy() const { return m_busy > 0; }
 
     void reloadLayout();
+    void takeLayout(const QJsonObject &layout);   // -- WP RCFIX --
     void setOutputOn(int output, bool on);
     void setOutputRole(int output, const QString &role);
     void setOutputSpeaker(int output, const QString &speaker);
@@ -179,6 +180,7 @@ private:
     QString m_serial;   // -- WP MDQT2c -- the connected device
     QJsonObject m_state;
     QVariantList m_layout;
+    quint64 m_layoutEpoch = 0;   // -- WP RCFIX -- a read older than the layout taken is read again
     QString m_layoutNote;
     bool m_keepCrossover = false;
     bool m_keepDelays = false;

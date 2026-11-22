@@ -242,9 +242,32 @@ void TuneSession::onResult() {
     if (changed) emit layoutChanged();
 }
 
+// -- WP RCFIX -- (review RC, RC2) the stored layout changed: the rows take its
+// roles, speakers and groups, the chosen outputs stay. A read on its way may
+// have read the one before
+void TuneSession::takeLayout(const QJsonObject &layout) {
+    ++m_layoutEpoch;
+    bool changed = false;
+    for (QVariant &v : m_layout) {
+        QVariantMap row = v.toMap();
+        for (const QJsonValue &x : layout.value(QLatin1String("outputs")).toArray()) {
+            const QJsonObject l = x.toObject();
+            if (l.value(QLatin1String("output")).toInt() != row.value(QStringLiteral("output")).toInt()) continue;
+            row.insert(QStringLiteral("role"), str(l, "role"));
+            row.insert(QStringLiteral("speaker"), str(l, "speaker"));
+            row.insert(QStringLiteral("group"), l.value(QLatin1String("group")).toInt());
+        }
+        if (row == v.toMap()) continue;
+        v = row;
+        changed = true;
+    }
+    if (changed) emit layoutChanged();
+}
+
 void TuneSession::reloadLayout() {
     MeasureSession *m = measure();
     if (!m) return;
+    const quint64 epoch = m_layoutEpoch;
     m->onLoop(this,
               [](FfiCore *c) {
                   // -- WP ROLEQ -- the proposal's feeds with the roles,
@@ -267,7 +290,11 @@ void TuneSession::reloadLayout() {
                   o.insert(QStringLiteral("outputs"), outs);
                   return QJsonDocument(o).toJson(QJsonDocument::Compact);
               },
-              [this, m](const QByteArray &r) {
+              [this, m, epoch](const QByteArray &r) {
+                  if (epoch != m_layoutEpoch) {   // -- WP RCFIX --
+                      reloadLayout();
+                      return;
+                  }
                   const QJsonObject o = MeasureSession::object(r);
                   if (!isOk(o)) {
                       m_layout.clear();

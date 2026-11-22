@@ -369,6 +369,16 @@ impl DspiCore {
             })
     }
 
+    // -- WP RCFIX --
+    /// The open device's layout if the user confirmed it; `None` without one
+    /// or with no device.
+    pub(crate) fn confirmed_layout_now(&self) -> Option<SpeakerLayout> {
+        self.speaker_layout()
+            .ok()
+            .flatten()
+            .filter(|l| l.confirmed_by_user)
+    }
+
     /// `text`, an export, with the open device's layout in
     /// `meta.speakerLayout` (no serial); unchanged with none.
     pub(crate) fn with_speaker_layout_meta(&self, text: String) -> String {

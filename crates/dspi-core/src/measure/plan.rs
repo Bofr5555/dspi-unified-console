@@ -12,8 +12,9 @@ use dspi_measure::types::{Placement, Response};
 
 use super::{
     Chains, MeasureIssue, MeasurePlacement, MeasureRole, MeasureRunKind, MeasureSetup,
-    effective_role, placement_of,
+    confirmed_role, effective_role, placement_of,
 };
+use crate::speaker_layout::SpeakerLayout;
 use crate::{DspiError, Result};
 
 /// The generator idle before every ramp and run: the noise floor, ms.
@@ -342,12 +343,18 @@ impl Plan {
     /// high-pass at 1 kHz or above makes it a high way, whatever it was
     /// called), and the runs laid out again for it: every run code after the
     /// start sees the role the safety rules hold the output to. Outputs
-    /// `chains` lacks keep their role.
+    /// `chains` lacks keep their role. -- WP RCFIX -- The user's `confirmed`
+    /// layout raises a role first, where it is stricter.
     ///
     /// Errors: [`DspiError::InvalidArgument`] for pink noise on what turns
     /// out to be a high way.
-    pub(crate) fn resolve_roles(&mut self, chains: &Chains) -> Result<()> {
+    pub(crate) fn resolve_roles(
+        &mut self,
+        chains: &Chains,
+        confirmed: Option<&SpeakerLayout>,
+    ) -> Result<()> {
         for o in &mut self.outputs {
+            o.role = confirmed_role(o.role, o.output, confirmed);
             if let Some((_, c)) = chains.iter().find(|(out, _)| *out == o.output) {
                 o.role = effective_role(o.role, c);
                 o.top_hz = low_pass_hz(c);

@@ -351,6 +351,7 @@ private:
     LinkSession *hostLink() const;
     void rehost();
     QString ownSerial() const;
+    QJsonObject ownLayout() const;   // -- WP RCFIX --
     void refreshUnits();
     void openUnit(const QString &serial);
     void readOutputs(const QString &serial, UnitPtr unit, const QString &error);   // -- WP XDEV1 --

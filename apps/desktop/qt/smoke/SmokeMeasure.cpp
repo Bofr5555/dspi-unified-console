@@ -553,9 +553,7 @@ void tuneSection(SmokeDriver &d) {
     showTab(d, w, 3);
     QDir().mkpath(d.outDir() + QStringLiteral("/p5qui"));
     // The layout: the device's, the measured outputs on
-    QSignalSpy reread(tc, &TuneController::layoutChanged);   // -- WP INT5 -- not the one it had
     tc->reloadLayout();
-    d.waitFor(5000, [&] { return !reread.isEmpty(); });
     QList<int> measured;
     for (const QVariant &v : mc->resultOutputs()) measured << v.toMap().value(QStringLiteral("output")).toInt();
     const auto onAre = [&] {

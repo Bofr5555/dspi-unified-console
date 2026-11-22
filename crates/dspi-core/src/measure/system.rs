@@ -631,6 +631,10 @@ pub(crate) struct UnitContext {
     pub(crate) num_inputs: u8,
     pub(crate) limiter_outputs: Vec<u8>,
     pub(crate) chains: Vec<(u8, dspi_measure::types::ChannelChain)>,
+    // -- WP RCFIX --
+    /// Each output's role resolved on this unit's own core: the stricter of
+    /// the caller's, its confirmed layout's and what its filters show.
+    pub(crate) roles: Vec<(u8, super::MeasureRole)>,
 }
 
 // ── The calls ───────────────────────────────────────────────────────────
@@ -662,7 +666,10 @@ impl DspiCore {
                 unit.serial
             )));
         }
-        let p = plan::unit_plan(&setup, &unit)?;
+        let mut p = plan::unit_plan(&setup, &unit)?;
+        // -- WP RCFIX -- (review RC, RC3) this unit's own confirmed layout
+        // and its chains, whatever roles the caller gave
+        self.measure_resolve_roles(&mut p)?;
         let preflight = self.measure_preflight_plan(&p, &super::PreflightOptions::default())?;
         let rate = self
             .fetch_stat(crate::consts::STAT_SAMPLE_RATE)
@@ -693,6 +700,7 @@ impl DspiCore {
                     .iter()
                     .map(|o| (o.output, super::preflight::chain_of(s, o.output)))
                     .collect(),
+                roles: p.outputs.iter().map(|o| (o.output, o.role)).collect(),
             }
         };
         Ok(MeasureSystemUnitCheck {

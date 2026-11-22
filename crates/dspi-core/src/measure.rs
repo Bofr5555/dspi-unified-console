@@ -45,6 +45,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::callbacks::MeasureListener;
 use crate::records::{SiggenConfig, SiggenStatus, SystemStatus};
+use crate::speaker_layout::SpeakerLayout;
 use crate::{DspiCore, DspiError, Result};
 
 mod plan;
@@ -335,6 +336,35 @@ pub(crate) fn effective_role(role: MeasureRole, chain: &ChannelChain) -> Measure
         role.driver(),
         &filters,
     ))
+}
+
+// -- WP RCFIX --
+/// The stricter of two roles for the safety rules: a high way over a middle
+/// one over the others, which the rules treat alike (`role` then).
+pub(crate) fn stricter_role(role: MeasureRole, other: MeasureRole) -> MeasureRole {
+    let rank = |r| match r {
+        MeasureRole::High => 2,
+        MeasureRole::Mid => 1,
+        MeasureRole::Full | MeasureRole::Sub | MeasureRole::Low => 0,
+    };
+    if rank(other) > rank(role) {
+        other
+    } else {
+        role
+    }
+}
+
+// -- WP RCFIX --
+/// `role` for `output`, or its role in the user's confirmed layout (`None`
+/// without one) where that is stricter.
+pub(crate) fn confirmed_role(
+    role: MeasureRole,
+    output: u8,
+    confirmed: Option<&SpeakerLayout>,
+) -> MeasureRole {
+    confirmed
+        .and_then(|l| l.output(output))
+        .map_or(role, |row| stricter_role(role, row.role))
 }
 
 /// A headphone coupler type.
@@ -896,13 +926,18 @@ impl DspiCore {
     }
 
     /// A tune's `layout` with its roles from the stored speaker layout when
-    /// `from_layout` (as [`DspiCore::setup_roles`]).
+    /// `from_layout` (as [`DspiCore::setup_roles`]); -- WP RCFIX -- else the
+    /// caller's, each never looser than the user's confirmed layout's.
     pub(crate) fn layout_roles(
         &self,
         mut layout: MeasureLayout,
         from_layout: bool,
     ) -> Result<MeasureLayout> {
         if !from_layout {
+            let confirmed = self.confirmed_layout_now();
+            for lo in &mut layout.outputs {
+                lo.role = confirmed_role(lo.role, lo.output, confirmed.as_ref());
+            }
             return Ok(layout);
         }
         let outputs: Vec<MeasureOutput> = layout
@@ -1247,8 +1282,10 @@ impl DspiCore {
 
     // -- WP ROLL1 --
     /// Resolve `plan`'s roles to the effective roles on the mirror's chains
-    /// ([`Plan::resolve_roles`]).
+    /// ([`Plan::resolve_roles`]); -- WP RCFIX -- never looser than the user's
+    /// confirmed layout, whatever the caller passed (review RC, RC2).
     pub(crate) fn measure_resolve_roles(&self, plan: &mut Plan) -> Result<()> {
+        let confirmed = self.confirmed_layout_now();
         let chains: Chains = {
             let inner = self.lock();
             plan.outputs
@@ -1257,7 +1294,7 @@ impl DspiCore {
                 .map(|o| (o.output, preflight::chain_of(&inner.state, o.output)))
                 .collect()
         };
-        plan.resolve_roles(&chains)
+        plan.resolve_roles(&chains, confirmed.as_ref())
     }
 
     // -- WP ROLL1 --

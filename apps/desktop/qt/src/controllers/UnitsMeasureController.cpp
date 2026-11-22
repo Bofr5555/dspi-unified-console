@@ -11,6 +11,7 @@
 #include "DeviceSession.h"
 #include "MeasureController.h"
 #include "SessionModel.h"
+#include "SpeakersController.h"   // -- WP RCFIX --
 #include "NoticeCenter.h"
 #include "AiController.h"   // -- WP MCP5 --
 #include "Shell.h"          // -- WP MCP5 --
@@ -66,6 +67,17 @@ QString stepKey(const QString &key) {
     if (key == QLatin1String("dlink.no_timeline")) return QStringLiteral("measure.system.no_timeline");
     return key;
 }
+
+// -- WP RCFIX -- (review RC, RC3) output `output`'s role in a unit's stored layout,
+// "" unless the user confirmed it
+QString confirmedRole(const QJsonObject &layout, int output) {
+    if (!layout.value(QLatin1String("confirmedByUser")).toBool()) return {};
+    for (const QJsonValue &v : layout.value(QLatin1String("outputs")).toArray())
+        if (v.toObject().value(QLatin1String("output")).toInt() == output) return str(v.toObject(), "role");
+    return {};
+}
+
+QString orFull(const QString &role) { return role.isEmpty() ? QStringLiteral("full") : role; }
 
 double num(const QJsonValue &v) { return v.isDouble() ? v.toDouble() : NAN; }
 
@@ -156,6 +168,11 @@ UnitsMeasureController::UnitsMeasureController(const AppContext &ctx, QObject *p
         // -- WP MCP5 -- an AI agent's runs across units
         if (auto *ai = Registrar::instance<AiController>())
             connect(ai, &AiController::measureRequested, this, &UnitsMeasureController::agentRequest);
+        // -- WP RCFIX -- this console's own DSPi: its confirmed layout changed
+        if (auto *sc = Registrar::instance<SpeakersController>())
+            connect(sc, &SpeakersController::storedChanged, this, [this] {
+                if (m_entered && !running()) refreshUnits();
+            });
         if (auto *link = Registrar::instance<LinkController>()) {
             connect(link, &LinkController::devicesChanged, this, [this] {
                 if (m_entered) refreshUnits();
@@ -411,6 +428,14 @@ void UnitsMeasureController::leave() {
     closeAll();
 }
 
+// -- WP RCFIX -- The stored layout of this console's own DSPi, {} while it is not
+// the one Settings › Speakers shows
+QJsonObject UnitsMeasureController::ownLayout() const {
+    auto *sc = Registrar::instance<SpeakersController>();
+    const QJsonObject layout = sc ? sc->stored() : QJsonObject();
+    return str(layout, "serial") == ownSerial() ? layout : QJsonObject();
+}
+
 void UnitsMeasureController::refreshUnits() {
     LinkSession *link = hostLink();
     const QVariantList devices = link ? link->devices() : QVariantList();
@@ -437,11 +462,15 @@ void UnitsMeasureController::refreshUnits() {
                 QVariantMap out = o.toMap();
                 const int n = out.value(QStringLiteral("output")).toInt();
                 out.insert(QStringLiteral("on"), n == 0 && row.value(QStringLiteral("chosen")).toBool());
-                out.insert(QStringLiteral("role"), QStringLiteral("full"));
+                // -- WP RCFIX -- the layout's role, again when it changes
+                const QString confirmed = confirmedRole(ownLayout(), n);
+                out.insert(QStringLiteral("layoutRole"), confirmed);
+                out.insert(QStringLiteral("role"), orFull(confirmed));
                 for (const QVariant &w : was)
                     if (w.toMap().value(QStringLiteral("output")).toInt() == n) {
                         out.insert(QStringLiteral("on"), w.toMap().value(QStringLiteral("on")));
-                        out.insert(QStringLiteral("role"), w.toMap().value(QStringLiteral("role")));
+                        if (w.toMap().value(QStringLiteral("layoutRole")).toString() == confirmed)
+                            out.insert(QStringLiteral("role"), w.toMap().value(QStringLiteral("role")));
                     }
                 outs.append(out);
             }
@@ -575,7 +604,7 @@ void UnitsMeasureController::setUnitChosen(const QString &serial, bool on) {
     for (int i = 0; i < outs.size(); ++i) {
         QVariantMap o = outs.at(i).toMap();
         o.insert(QStringLiteral("on"), on && o.value(QStringLiteral("output")).toInt() == 0);
-        o.insert(QStringLiteral("role"), QStringLiteral("full"));
+        o.insert(QStringLiteral("role"), orFull(o.value(QStringLiteral("layoutRole")).toString()));   // -- WP RCFIX --
         outs[i] = o;
     }
     row.insert(QStringLiteral("outputs"), outs);
@@ -690,6 +719,8 @@ void UnitsMeasureController::readOutputs(const QString &serial, UnitPtr unit, co
         if (unit && why.isEmpty()) {
             FfiCore *c = unit->core;
             const QJsonObject labels = object(MeasureController::reply([&](char *b, uint32_t l) { return dspi_output_labels(c, b, l); }));
+            // -- WP RCFIX -- its rows' roles from its own confirmed layout
+            const QJsonObject layout = object(MeasureController::reply([&](char *b, uint32_t l) { return dspi_speaker_layout(c, b, l); }));
             if (!isOk(labels)) why = tr("%1: its state could not be read.").arg(serial);
             for (const QJsonValue &v : labels.value(QLatin1String("value")).toArray()) {
                 const QJsonObject o = v.toObject();
@@ -697,7 +728,8 @@ void UnitsMeasureController::readOutputs(const QString &serial, UnitPtr unit, co
                 outputs.append(QVariantMap{ { QStringLiteral("output"), n },
                                             { QStringLiteral("label"), str(o, "label") },
                                             { QStringLiteral("on"), n == 0 },
-                                            { QStringLiteral("role"), QStringLiteral("full") } });
+                                            { QStringLiteral("layoutRole"), confirmedRole(layout, n) },
+                                            { QStringLiteral("role"), orFull(confirmedRole(layout, n)) } });
             }
         }
         if (!why.isEmpty()) unit.reset();

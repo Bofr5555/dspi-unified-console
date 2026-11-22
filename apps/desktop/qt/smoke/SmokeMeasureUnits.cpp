@@ -25,11 +25,13 @@
 #include "AudioCapture.h"
 #include "Core.h"
 #include "DeviceModel.h"
+#include "DeviceRegistry.h"   // -- WP RCFIX --
 #include "LinkController.h"
 #include "MeasureController.h"
 #include "ModeController.h"
 #include "Registrar.h"
 #include "Shell.h"
+#include "SpeakersController.h"   // -- WP RCFIX --
 #include "SystemController.h"
 #include "UnitsMeasureController.h"
 
@@ -381,6 +383,55 @@ static void unitsSection(SmokeDriver &d) {
     d.spin(200);
     d.check("atqt: with the listening position and two units the step may be checked and started",
             !problem->isVisible() && uc->blocker().isEmpty() && start->isEnabled() && checkButton->isEnabled());
+
+    // -- WP RCFIX -- (review RC, RC3) the rows' roles are each unit's own confirmed
+    // layout's, and the core holds a unit to it whatever the row says
+    {
+        auto *sc = Registrar::instance<SpeakersController>();
+        const auto role = [&](const QString &s) {
+            for (const QVariant &v : unit(s).value(QStringLiteral("outputs")).toList())
+                if (v.toMap().value(QStringLiteral("output")).toInt() == 0) return v.toMap().value(QStringLiteral("role")).toString();
+            return QString();
+        };
+        const auto confirmA = [&](const QString &r) {
+            for (const QVariant &v : sc->rows()) {
+                const int o = v.toMap().value(QStringLiteral("output")).toInt();
+                sc->setIncluded(o, o == 0);
+            }
+            sc->setRole(0, r);
+            sc->confirm();
+            return d.waitFor(10000, [&] { return sc->status() == QLatin1String("confirmed") && role(A) == r; });
+        };
+        const auto confirmB = [&](const char *r) {
+            const QByteArray text = QByteArrayLiteral("{\"outputs\":[{\"output\":0,\"role\":\"") + r
+                                    + QByteArrayLiteral("\",\"speaker\":\"B\",\"group\":0}],\"confirmedByUser\":true}");
+            QByteArray buf(1 << 16, '\0');
+            if (!uc->unitCore(B) || dspi_speaker_layout_set(uc->unitCore(B), text.constData(), buf.data(), uint32_t(buf.size())) == 0) return false;
+            uc->setUnitChosen(B, false);
+            // Its connection gives the serial back first
+            d.waitFor(10000, [] { return !DeviceRegistry::instance()->extraSerials().contains(B); });
+            steps.clear();
+            uc->setUnitChosen(B, true);
+            return step(QStringLiteral("unit"), 20000) && d.waitFor(20000, [&] { return uc->unitOpen(B) && role(B) == QLatin1String(r); });
+        };
+        const auto tweeterHeld = [&] {
+            steps.clear();
+            click(checkButton);
+            step(QStringLiteral("check"), 20000);
+            for (const QVariant &l : uc->preflightLines())
+                if (l.toMap().value(QStringLiteral("text")).toString().contains(B) && l.toMap().value(QStringLiteral("text")).toString().contains(QLatin1String("tweeter")))
+                    return true;
+            return false;
+        };
+        d.check("atqt: this DSPi's rows take its confirmed layout's role when it is confirmed",
+                sc && d.waitFor(10000, [&] { return sc->loaded(); }) && role(A) == QLatin1String("full") && confirmA(QStringLiteral("sub")));
+        d.check("atqt: another unit's rows are pre-filled from its own confirmed layout", confirmB("high"));
+        d.check("atqt: its tweeter is held at the check", tweeterHeld());
+        uc->setOutputRole(B, 0, QStringLiteral("full"));
+        d.check("atqt: and stays held when its row says full range", role(B) == QLatin1String("full") && tweeterHeld());
+        d.check("atqt: the layouts back to full range", confirmB("full") && confirmA(QStringLiteral("full")) && uc->blocker().isEmpty());
+        d.spin(200);
+    }
 
     // The check: each unit judged by its own core
     rec.clear();

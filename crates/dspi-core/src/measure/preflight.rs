@@ -318,6 +318,9 @@ pub(crate) fn judge(
                 // -- WP ROLL1 -- the caller's role (the plan's is resolved)
                 let why = if role == spec.declared {
                     format!("output {n} is a {way} way")
+                } else if super::effective_role(spec.declared, &chain) != role {
+                    // -- WP RCFIX -- raised by the user's confirmed layout
+                    format!("output {n} is a {way} way in the speaker layout")
                 } else {
                     format!("output {n} has a high-pass at 1 kHz or above, so it is a {way} way,")
                 };

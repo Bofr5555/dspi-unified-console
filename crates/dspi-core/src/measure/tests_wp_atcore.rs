@@ -810,6 +810,7 @@ fn check(
             .iter()
             .map(|o| (o.output, flat_chains(1).remove(0)))
             .collect(),
+        roles: Vec::new(),
     };
     MeasureSystemUnitCheck {
         serial: serial.into(),
@@ -1022,6 +1023,19 @@ fn wp_roll1_a_tweeter_is_refused_in_a_measurement_across_units() {
         .unwrap();
     assert_eq!((b.serial.as_str(), b.output), ("A", Some(1)));
     assert!(b.message.contains("output 2 is a tweeter"), "{}", b.message);
+    // -- WP RCFIX -- called Full, flat chain, but a tweeter on its own core
+    // (its confirmed layout): refused.
+    let mut b = check(&s, "B", Vec::new());
+    let mut ctx: UnitContext = serde_json::from_str(&b.context).unwrap();
+    ctx.roles = vec![(0, MeasureRole::High)];
+    b.context = serde_json::to_string(&ctx).unwrap();
+    let (pre, _) = plan::preflight(&s, &[check(&s, "A", Vec::new()), b], &mut hub).unwrap();
+    let b = pre
+        .blockers
+        .iter()
+        .find(|b| b.key == "measure.tweeter_stimulus")
+        .unwrap();
+    assert_eq!((b.serial.as_str(), b.output), ("B", Some(0)));
     // Called a tweeter, flat chain: refused too.
     s.units[1].outputs[0].role = MeasureRole::High;
     let checks = vec![check(&s, "A", Vec::new()), check(&s, "B", Vec::new())];
