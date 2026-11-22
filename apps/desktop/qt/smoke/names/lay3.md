@@ -5,8 +5,8 @@ and `modern-*.png`.
 
 - `ModernShell`; `ModernShell.sender`, `ModernShell.wizard` (loaders); `ModernShell.toast`, `ModernShell.toast.banner`.
 - `TopBar` and `TopBar.preset`, `.presetMenu`, `.ab`, `.search`, `.ai`, `.aiPopover`, `.theme`, `.themeMenu`, `.theme.<value>`, `.undo`,
-  `.redo`, `.history`, `.save` (`.save.button`, `.save.more`, `.save.menu`, `.save.<action id>`), `.lock`, `.bell`.
-- `AppMenuButton`, `AppMenu`, `AppMenu.<action id>`, `AppMenu.classicLayout`.
+  `.redo`, `.save` (`.save.button`, `.save.more`, `.save.menu`), `.lock`, `.bell`. (-- WP LAY3b -- the menus: names/lay3b.md)
+- `AppMenuButton`, `AppMenu`.
 - The device tabs by place: `DeviceTabs` (the top bar), `DeviceRow` (several), `DeviceRail` (the rail's top), each with
   `.tab.<device id>` (or `none`), `.close.<device id>`, `.menu.<device id>`, `.add`, `.strip`, `.unsecured`, `.access`.
 - `DeviceSwitcher`, `DeviceSwitcher.<action id>`, `DeviceSwitcher.manage`.

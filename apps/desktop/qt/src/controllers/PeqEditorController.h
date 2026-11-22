@@ -69,6 +69,8 @@ double clamp(double v, double lo, double hi);
 
 FilterParams flatBand();
 FilterParams make(int type, double freq, double q, double gain);
+// -- WP LAY3b -- `was` as a band of `type` (moved from PeqOverlay::setShape)
+FilterParams reshaped(FilterParams was, int type);
 bool same(const FilterParams &a, const FilterParams &b);
 // A band part-way to `to`: frequency and Q in the log domain; a new type or
 // bypass lands at once
@@ -110,6 +112,8 @@ class PeqEditorController : public QObject {
     Q_PROPERTY(int pointedBand READ pointedBand NOTIFY changed)
     // The channel the graph edits, -1 for none (set by the editor on show)
     Q_PROPERTY(int editedChannel READ editedChannel NOTIFY changed)
+    // -- WP LAY3b -- a band was copied
+    Q_PROPERTY(bool hasBand READ hasBand NOTIFY bandCopied)
 
 public:
     PeqEditorController(const AppContext &ctx, QObject *parent);
@@ -136,6 +140,24 @@ public:
     // -- WP LAY4 -- A filter type's shape (PeqShapeGlyph's), -1 for none
     Q_INVOKABLE int shapeOfType(int type) const;
 
+    // -- WP LAY3b -- What a band's right-click menu offers and does (ContextMenus),
+    // on rows and dots alike; the edits mirror onto a linked input.
+    // The shapes this firmware offers: [{shape, title}]
+    Q_INVOKABLE QVariantList shapes() const;
+    // A type's {shape, order}; {-1, 2} for one the graph does not reshape
+    Q_INVOKABLE QVariantMap shapeOrder(int type) const;
+    // Its slopes when it has two: [{name, text, value: {shape, order}, checked}]
+    Q_INVOKABLE QVariantList slopes(int type) const;
+    Q_INVOKABLE QString slopeTitle(int type) const;
+    Q_INVOKABLE void setShape(int channel, const QList<int> &bands, int shape, int order);
+    Q_INVOKABLE void bypassBands(int channel, const QList<int> &bands, bool crossover, bool bypass);
+    Q_INVOKABLE void invertGain(int channel, const QList<int> &bands);
+    Q_INVOKABLE void resetBands(int channel, const QList<int> &bands, bool crossover);
+    // One band's own clipboard, for every device
+    Q_INVOKABLE void copyBand(int channel, int band);
+    Q_INVOKABLE void pasteBand(int channel, const QList<int> &bands);
+    bool hasBand() const { return m_hasBand; }
+
     void setSelection(const QSet<int> &bands);
     void reveal(int band) { emit showRow(band); }
     void showLive(int band, const FilterParams &p);
@@ -155,6 +177,7 @@ signals:
     // The selection changed on the list's side (a row's number clicked)
     void selectionChanged();
     void rowHoveredChanged();
+    void bandCopied();   // -- WP LAY3b --
     // The list should scroll this band's row into view
     void showRow(int band);
 
@@ -177,6 +200,8 @@ private:
     int m_rowHovered = -1;
     int m_pointed = -1;
     QHash<int, FilterParams> m_live;
+    FilterParams m_copied{};   // -- WP LAY3b --
+    bool m_hasBand = false;
     int m_rev = 0;
 };
 

@@ -8,6 +8,9 @@ import UConsole
 ComboBox {
     id: control
     property string label
+    // -- WP LAY3b -- A right-click on a row of the list asks for its menu
+    property bool rowMenus: false
+    signal rowMenu(int index, Item row, real x, real y)
 
     implicitHeight: Theme.controlHeight
     implicitWidth: 160
@@ -35,6 +38,11 @@ ComboBox {
         background: Rectangle {
             color: row.highlighted ? Theme.selection : "transparent"
             radius: Theme.radiusSmall
+        }
+        TapHandler {   // -- WP LAY3b --
+            acceptedButtons: Qt.RightButton
+            enabled: control.rowMenus
+            onTapped: point => control.rowMenu(row.index, row, point.position.x, point.position.y)
         }
         Accessible.role: Accessible.ListItem
         Accessible.name: contentItem.text

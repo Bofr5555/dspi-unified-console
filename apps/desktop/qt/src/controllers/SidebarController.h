@@ -180,6 +180,7 @@ public:
     Q_INVOKABLE void savePreset();
     Q_INVOKABLE void renamePreset(int slot, const QString &name);
     Q_INVOKABLE void setDefaultPreset();
+    Q_INVOKABLE void setStartupPreset(int slot);   // -- WP LAY3b -- any slot
     Q_INVOKABLE void clearPreset(int slot);
     Q_INVOKABLE void clearAllPresets();
     // The unsaved list as the question shows it: at most 15 lines

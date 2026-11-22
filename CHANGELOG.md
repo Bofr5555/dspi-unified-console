@@ -41,7 +41,7 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
   placement chosen for another device. (WP MDQT2c)
 - A second layout, **Modern**: one window with a rail of sections (Overview, Equaliser, Routing, Effects, Measure, Analyse,
   Library, System, Devices, Settings), every tool on a page with tabs, the open device as a tab at the top, the volume,
-  meters, Mute and Bypass EQ in a dock along the bottom, and no menu bar (the uConsole button holds the menus, and every
+  meters, Mute and Bypass EQ in a dock along the bottom, and no menu bar (actions are where they act, and every
   keyboard shortcut works). States that limit what can be done show in a strip under the top bar; other notices are behind
   the bell. Any tool page can be opened in its own window. Settings › Appearance switches between Classic and Modern at any
   time, and arranges Modern; the device, the selected channel and open tool windows stay. **New installs start in Modern**;
@@ -79,6 +79,13 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
 - Modern has neutral grey surfaces; Settings › Appearance offers Darker grey. Classic's colours are unchanged. (WP LAY4)
 - A value typed into a gain, delay or preamp field with Enter is kept when the field is left. Before, leaving the field
   could put the earlier value back. (WP LAY4)
+- Modern layout: the actions are where they act. A right-click on a channel, a band (its row or its dot on the graph), the
+  graph or a preset slot opens its menu (on the first three the menu key too): rename, copy and paste, mute, identify, routing, headphone
+  profile and Clear PEQ on a channel; shape, slope, bypass, invert, copy and paste of one band, and reset on a band or
+  the selected bands; add a band here, the selection, spectrum, phase, pop-out and settings on the graph; recall, save,
+  rename, startup preset, copy and clear on a slot, also in the preset picker's list. Undo has a ▾ with the recent
+  changes and History. The app button's menu holds only the global actions (files, settings, help, quit). A device tab's
+  Close is greyed while a firmware update or a core voltage calibration runs there, with the reason. (WP LAY3b)
 
 ### Android
 - DSPi Link is reachable from the main page (owner report on 0.14.0: only through the settings

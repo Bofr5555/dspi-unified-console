@@ -16,6 +16,13 @@ Item {
     readonly property int activeSlot: DeviceModel.presets.activeSlot
 
     function popupPresetMenu(item, x, y) { presetMenu.popup(item, x, y) }
+    // -- WP LAY3b -- what Modern's slot menu (ContextMenus) asks
+    function askRename(slot) {
+        presetRename.slot = slot
+        presetRename.open()
+    }
+    function askClear(slot) { clearOne.ask(slot) }
+    function askClearAll() { clearAll.ask() }
     function popupSourceMenu(item, x, y) { sourceMenu.popup(item, x, y) }
 
     component Line: MenuSeparator {

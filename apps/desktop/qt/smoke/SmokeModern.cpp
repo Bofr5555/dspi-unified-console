@@ -100,7 +100,7 @@ void shellPart(Modern &m) {
     // -- WP INT3 -- KEEPOPEN is on: MDQT2a-c rebound every controller
     m.check("choosing a device opens it beside the others (keepOpen)", registry && registry->keepOpen());
     for (const char *name : { "AppMenuButton", "DeviceTabs", "TopBar.preset", "TopBar.ab", "TopBar.search", "TopBar.ai", "TopBar.theme",
-                              "TopBar.undo", "TopBar.redo", "TopBar.history", "TopBar.save", "TopBar.bell", "NavRail", "Dock.source",
+                              "TopBar.undo", "TopBar.redo", "TopBar.save", "TopBar.bell", "NavRail", "Dock.source",
                               "Dock.mode", "Dock.volume", "Dock.mute", "Dock.bypass", "Dock.meters" })
         m.d.check(QStringLiteral("lay3: %1 shows").arg(QLatin1String(name)), m.visible(QString::fromLatin1(name)));
     QQuickItem *channels = m.d.item(QStringLiteral("Dock.meters"));
@@ -173,13 +173,14 @@ void tabsPart(Modern &m) {
     QTest::keyClick(m.main, Qt::Key_T, Qt::ControlModifier | Qt::ShiftModifier);
     m.check("the menu table's shortcuts work, and go to the page",
             m.d.waitFor(1000, [&] { return m.shell->pageAction() == QLatin1String("tools.stats"); }));
-    QObject *overflow = m.d.object(QStringLiteral("AppMenu.tools.matrix"));
-    m.check("the app menu holds the menu table", overflow != nullptr && m.d.object(QStringLiteral("AppMenu.file.quit")) != nullptr);
-    if (overflow) QMetaObject::invokeMethod(overflow, "triggered");
-    m.check("and its rows go to their pages", m.d.waitFor(1000, [&] { return m.shell->pageAction() == QLatin1String("tools.matrix"); }));
+    // -- WP LAY3b -- the few global actions (lay3b-menus checks them all)
     m.click(QStringLiteral("AppMenuButton"));
     QObject *menu = m.d.object(QStringLiteral("AppMenu"));
     m.check("the app button opens its menu", menu && m.d.waitFor(1000, [&] { return menu->property("opened").toBool(); }));
+    QObject *overflow = m.d.object(QStringLiteral("AppMenu.edit.settings"));
+    m.check("the app menu holds its rows", overflow != nullptr && m.d.object(QStringLiteral("AppMenu.file.quit")) != nullptr);
+    if (overflow) QMetaObject::invokeMethod(overflow, "triggered");
+    m.check("and they go to their pages", m.d.waitFor(1000, [&] { return m.shell->pageAction() == QLatin1String("edit.settings"); }));
     m.d.grab(m.main, QStringLiteral("modern-app-menu.png"));
     if (menu) QMetaObject::invokeMethod(menu, "close");
     m.d.spin(200);

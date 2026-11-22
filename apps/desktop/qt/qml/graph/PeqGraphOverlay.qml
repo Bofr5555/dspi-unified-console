@@ -41,6 +41,12 @@ Item {
 
         onMenuRequested: (x, y) => {
             const m = menuModel()
+            // -- WP LAY3b -- Modern's menus are MenuTable's (the graph's, and a row's alike)
+            if (LayoutController.modern) {
+                if (m.kind === "band") ContextMenus.band(editedChannel, m.band, false, overlay, x, y, overlay)
+                else ContextMenus.graph(root.plot, overlay, overlay, x, y)
+                return
+            }
             if (m.kind === "band") bandMenu.open(m, x, y)
             else graphMenu.open(m, x, y)
         }
