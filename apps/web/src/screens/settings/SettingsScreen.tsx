@@ -19,6 +19,7 @@ import { useSessionState } from "../../ui/components";
 import type { ScreenProps } from "../../ui/screens";
 import type { Session } from "../../ui/session";
 import { CoreVoltage } from "./CoreVoltage";
+import { SpeakersPage } from "./speakers/SpeakersPage"; // -- WP ROLEW --
 import {
   AVERAGING,
   CEILINGS,
@@ -48,11 +49,12 @@ import {
   type SpectrumPrefs,
 } from "./model";
 
-type Page = "global" | "pins" | "graphing" | "spectrum" | "advanced" | "help" | "vreg";
+type Page = "global" | "pins" | "speakers" /* -- WP ROLEW -- */ | "graphing" | "spectrum" | "advanced" | "help" | "vreg";
 
 const PAGE_TITLES: Record<Page, string> = {
   global: "Global",
   pins: "Pins",
+  speakers: "Speakers", // -- WP ROLEW --
   graphing: "Graphing",
   spectrum: "Spectrum",
   advanced: "Advanced",
@@ -72,7 +74,7 @@ export function SettingsScreen(props: ScreenProps) {
   if (!st.snapshot) return null;
   const pinsShown = screenIn(manifest, "hardware", mode);
   const vregShown = operationIn(manifest, "core_voltage", mode);
-  const pages: Page[] = ["global", ...(pinsShown ? (["pins"] as Page[]) : []), "graphing", "spectrum", "advanced", ...(vregShown ? (["vreg"] as Page[]) : []), "help"];
+  const pages: Page[] = ["global", ...(pinsShown ? (["pins"] as Page[]) : []), "speakers" /* -- WP ROLEW -- */, "graphing", "spectrum", "advanced", ...(vregShown ? (["vreg"] as Page[]) : []), "help"];
   const current = pages.includes(page) ? page : "global";
   return (
     <div class="settings-screen">
@@ -85,6 +87,7 @@ export function SettingsScreen(props: ScreenProps) {
       </nav>
       {current === "global" ? <GlobalPage session={session} /> : null}
       {current === "pins" ? <PinsPage session={session} /> : null}
+      {current === "speakers" ? <SpeakersPage session={session} /> : null /* -- WP ROLEW -- */}
       {current === "graphing" ? <GraphingPage /> : null}
       {current === "spectrum" ? <SpectrumPage /> : null}
       {current === "advanced" ? <AdvancedPage {...props} vregShown={vregShown} onVreg={() => setPage("vreg")} /> : null}

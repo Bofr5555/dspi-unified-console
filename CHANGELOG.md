@@ -103,6 +103,11 @@ Mac's download is the Qt app's `.dmg`. Everything below was merged after the 0.1
 - The demo device has a simulated microphone in a simulated room, so the whole flow can be tried
   without hardware.
 - Android: measurement comes in a later release.
+- Web console: Settings › Speakers says which output drives what (full range, sub, woofer, mid,
+  tweeter), suggested from the filters and confirmed by you. The Measure setup starts from it,
+  and a way, speaker or group changed there is saved to it. A banner on both says when the
+  layout is not confirmed, or came with an imported configuration and needs checking. The
+  browser keeps it per DSPi. (WP ROLEW)
 
 ### Multi-unit system and the audio link (alink)
 - The hub models an audio-link system: rooms, zones and units, the link topology, alignment,
