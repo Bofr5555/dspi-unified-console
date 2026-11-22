@@ -56,6 +56,13 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
   beside the others, and each tab keeps its device's edits, pages, history, drafts and running measurement. Closing a
   tab asks about that device's unsaved changes; quitting asks about each open device. Classic still shows one device
   and replaces it. (WP MDQT2a, MDQT2b, MDQT2c, INT3)
+- **AI agents** (Settings › AI Agents, off until you turn it on): an AI agent on this computer (Claude Desktop, Claude
+  Code, Cursor and other MCP clients) can read your devices and change their settings. Each agent is paired once, with
+  a code; risky changes (louder, an unmute, a preset, a tweeter's protection) wait for your answer, and you can have
+  every change asked about or none. What agents did is listed with Undo for each change (Device › AI Agents…, also the
+  robot icon beside the device in Classic and the AI button in Modern), tagged in the History, and Pause and Stop are
+  there at any time. Nothing on your network can reach it; from another computer, go through SSH
+  (docs/mcp-ssh-forwarding.md). The agent starts this app with `--mcp`, or the Terminal's `uconsole mcp`. (WP MCP4)
 
 ### Android
 - DSPi Link is reachable from the main page (owner report on 0.14.0: only through the settings
