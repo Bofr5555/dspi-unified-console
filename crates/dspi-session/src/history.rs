@@ -101,6 +101,11 @@ pub struct Change {
     pub source: ChangeSource,
     /// Join the last entry when this repeats it (module docs).
     pub coalesce: bool,
+    // -- WP MCP0 --
+    /// Who asked for it: 0 for the embedding app itself, another number for
+    /// an actor the embedder registered (an AI agent). A change joins only a
+    /// step of the same actor.
+    pub actor: u32,
 }
 
 impl Change {
@@ -117,6 +122,7 @@ impl Change {
             hazard: hazard_of(path),
             source: ChangeSource::Local,
             coalesce: false,
+            actor: 0, // -- WP MCP0 --
         }
     }
 }
@@ -154,6 +160,15 @@ fn now_ms() -> u64 {
     dspi_transport::clock::system_time()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX))
+}
+
+// -- WP MCP0 --
+/// The next journal entry id: one counter for the whole process, so an id
+/// never names an entry of another connection or another session.
+fn next_entry_id() -> u64 {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(1);
+    NEXT.fetch_add(1, Ordering::Relaxed)
 }
 
 /// Drop the oldest entries of `v` beyond `cap`.
@@ -216,7 +231,11 @@ impl Session {
         self.history_version = self.history_version.wrapping_add(1);
         // An action has no value to put back, whatever its hazard.
         let reversible = undoable(change.hazard) && change.after != Value::Trigger;
-        if change.coalesce && reversible && self.gathering(change.source).is_some() {
+        // -- WP MCP0 -- a step gathers one actor's changes only
+        let joins = self
+            .gathering(change.source)
+            .is_some_and(|e| e.actor == change.actor);
+        if change.coalesce && reversible && joins {
             for e in [self.journal.last_mut(), self.undo_stack.last_mut()]
                 .into_iter()
                 .flatten()
@@ -246,6 +265,9 @@ impl Session {
             more: Vec::new(),
             label: label.map(str::to_owned), // -- WP P1UG --
             begun_ms: at_ms,
+            // -- WP MCP0 --
+            id: next_entry_id(),
+            actor: change.actor,
         };
         self.journal.push(entry.clone());
         cap(&mut self.journal, JOURNAL_CAP);
@@ -416,6 +438,26 @@ impl Session {
     pub fn restore_redo(&mut self, entry: JournalEntry) {
         self.history_version = self.history_version.wrapping_add(1);
         self.redo_stack.push(entry);
+    }
+
+    // -- WP MCP0 --
+    /// The journal entry with id `id` ([`JournalEntry::id`]), if the journal
+    /// still holds it.
+    pub fn entry(&self, id: u64) -> Option<&JournalEntry> {
+        self.journal.iter().rev().find(|e| e.id == id)
+    }
+
+    // -- WP MCP0 --
+    /// Take the step with id `id` off the undo and redo stacks: it was
+    /// reverted on its own (`dspi-core`'s `revert_entry`), so neither undo
+    /// nor redo may move it again. The journal keeps it.
+    pub fn forget_step(&mut self, id: u64) {
+        let before = (self.undo_stack.len(), self.redo_stack.len());
+        self.undo_stack.retain(|e| e.id != id);
+        self.redo_stack.retain(|e| e.id != id);
+        if before != (self.undo_stack.len(), self.redo_stack.len()) {
+            self.history_version = self.history_version.wrapping_add(1);
+        }
     }
 }
 

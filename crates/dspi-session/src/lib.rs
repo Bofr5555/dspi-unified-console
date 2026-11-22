@@ -48,6 +48,8 @@ pub mod snapshot_store;
 pub mod measure_store;
 pub mod state;
 pub mod surfaces;
+// -- WP INST0 -- the hub's installation model and validator, shared with the clients
+pub mod system_model;
 pub mod tube;
 #[cfg(feature = "undo")]
 pub mod undo;

@@ -88,6 +88,9 @@ mod firmware_guard;
 mod firmware_manifest;
 mod hardware;
 mod hotplug;
+// -- WP MD0 -- one core per open device (native only)
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+mod core_set;
 // -- WP CG26 --
 mod host_transport;
 mod info;
@@ -163,6 +166,10 @@ mod measure_doc;
 pub mod measure;
 // -- WP P5DEMO -- the demo's simulated microphone (PLAN-P5 OD-P5q)
 mod measure_sim;
+// -- WP MCP0 -- who writes: actors, the pre-write hook, the user-editing gate
+pub mod actor;
+// -- WP ROLE0 -- the speaker layout: output roles from the user's setup (MPLAN 2.2)
+pub mod speaker_layout;
 
 pub use callbacks::{DeviceEvents, LinkListener, MidiSender, NotifyListener, RtaListener};
 // -- WP P5SES --
@@ -218,6 +225,17 @@ pub use hardware::{
 pub use link_text::*;
 // -- WP HB0 --
 pub use hotplug::{BrokeredDevice, DeviceBroker};
+// -- WP MD0 --
+#[cfg(all(
+    feature = "link",
+    not(all(target_arch = "wasm32", target_os = "unknown"))
+))]
+pub use core_set::HubTarget;
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+pub use core_set::{
+    CORE_SET_CAP, CoreSet, CoreSetConfig, CoreSetError, CoreSetEvent, CoreSetEventKind,
+    CoreSetListener, DeviceId, DeviceLiveness, DeviceTarget, DeviceTransport, OpenDevice,
+};
 // -- WP CG17 --
 pub use dspi_proto::ext::PairMap;
 // -- WP FWX --
@@ -246,9 +264,11 @@ pub use write_param::{ParamValue, write_refusal};
 // -- WP CG34 --
 pub use names::{FilterTypeName, filter_type_name, filter_type_names};
 // -- BUG1 --
+// -- WP ROLE0 --
 pub use output_labels::{
     OutputCard, OutputLabel, OutputLabelInput, output_cards_for, output_labels_for,
 };
+pub use speaker_layout::{SpeakerLayout, SpeakerLayoutOutput};
 // -- WP P0W --
 pub use journal::{HistoryEntry, HistoryMove, HistorySource};
 // -- WP P0E --
@@ -439,6 +459,10 @@ pub struct DspiCore {
     /// The measurement session (`measure.rs`). Taken before `inner`, never
     /// after it.
     pub(crate) measure: measure::MeasureSlot,
+    // -- WP ROLE0 --
+    /// The speaker layouts (`speaker_layout.rs`). Taken with or without
+    /// `inner`, never `inner` after it.
+    pub(crate) speaker_layouts: speaker_layout::LayoutSlot,
     // -- WP P5DEMO --
     /// The demo's simulated microphone (`measure_sim.rs`). Taken before the
     /// measurement slot and `inner`, never after them.
@@ -555,6 +579,11 @@ pub(crate) struct Inner {
     /// The fake opened by [`DspiCore::open_demo_generation`], for its
     /// violation count; `None` for any other device.
     pub(crate) demo_generation: Option<dspi_transport::FakeRemote>,
+    // -- WP MCP0 --
+    /// What an [`actor::ActorScope`] names this core by.
+    pub(crate) actor_key: u64,
+    /// What other actors changed since the last `process_notifications`.
+    pub(crate) foreign: actor::Foreign,
 }
 
 /// An open device.
@@ -968,6 +997,8 @@ impl Inner {
             measure_tap: measure::Tap::default(),                   // -- WP P5SES --
             flash_target: None,                                     // -- WP PGFLASH --
             demo_generation: None,                                  // -- WP PGQT --
+            actor_key: actor::next_core_key(),                      // -- WP MCP0 --
+            foreign: actor::Foreign::default(),                     // -- WP MCP0 --
         }
     }
 
@@ -990,6 +1021,7 @@ impl Inner {
             return Err(DspiError::ReadOnly);
         }
         crate::limits::lock_check(self)?; // -- WP P1LK -- the installer's lock
+        actor::gate(self)?; // -- WP MCP0 -- another actor: the user-editing gate
         Ok(Writable(self.conn()?))
     }
 
@@ -1004,6 +1036,7 @@ impl Inner {
         }
         read_only::check(self)?;
         crate::limits::lock_check(self)?;
+        actor::gate(self)?; // -- WP MCP0 --
         Ok(Writable(self.conn()?))
     }
 }
@@ -1106,6 +1139,8 @@ impl DspiCore {
             measure: measure::MeasureSlot::default(),
             // -- WP P5DEMO --
             measure_sim: measure_sim::SimSlot::default(),
+            // -- WP ROLE0 --
+            speaker_layouts: speaker_layout::LayoutSlot::default(),
         })
     }
 }

@@ -341,8 +341,16 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
     if let Some(r) = crate::measure_tune::dispatch(&core, &req.method, req.params.clone()) {
         return r;
     }
+    // -- WP ROLE0 -- the speaker layout (src/speaker_layout.rs)
+    if let Some(r) = crate::speaker_layout::dispatch(&core, &req.method, req.params.clone()) {
+        return r;
+    }
     // -- WP ATCORE -- the system measurement across units (src/measure_system.rs)
     if let Some(r) = crate::measure_system::dispatch(&core, &req.method, req.params.clone()) {
+        return r;
+    }
+    // -- WP INST0 -- Installation setup (src/installation.rs)
+    if let Some(r) = crate::installation::dispatch(&core, &req.method, req.params.clone()) {
         return r;
     }
     // -- WP PGCORE -- the protocol generation and raw paged requests (src/protocol.rs)

@@ -206,6 +206,13 @@ pub struct JournalEntry {
     /// of its first write (a group's step goes on after another writer's
     /// change, and undo names the writer of a change made since it began).
     pub begun_ms: u64,
+    // -- WP MCP0 --
+    /// The entry's id: unique in the process, kept when later changes join
+    /// the step.
+    pub id: u64,
+    /// Who made it ([`crate::history::Change::actor`]): 0 for the embedding
+    /// app itself.
+    pub actor: u32,
 }
 
 // -- WP P0W2 (O1) --
@@ -391,6 +398,11 @@ pub struct Session {
     // -- WP TMCORE --
     /// Where writes go instead of the transport ([`Session::set_route`]).
     route: Option<Box<dyn crate::route::WriteRoute>>,
+    // -- WP MCP0 --
+    /// Who the [`Session::write`]s that follow are for, as
+    /// [`crate::history::Change::actor`]: 0, the embedding app, unless the
+    /// embedder says otherwise around a write.
+    pub actor: u32,
 }
 
 impl Session {
@@ -414,6 +426,7 @@ impl Session {
             history_version: 0,
             // -- WP TMCORE --
             route: None,
+            actor: 0, // -- WP MCP0 --
         })
     }
 
@@ -1114,6 +1127,7 @@ impl Session {
                 crate::history::ChangeSource::Local
             },
             coalesce: false,
+            actor: self.actor, // -- WP MCP0 --
         };
         self.record_with_outcome(change, outcome);
     }

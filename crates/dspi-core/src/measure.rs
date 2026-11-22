@@ -39,6 +39,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use dspi_measure::types::{ChannelChain, Coupler, Placement, WayRole};
 use dspi_session::notify::{Event, Notification, Source};
+use dspi_session::output_label::{DriverRole, LabelFilter}; // -- WP ROLE0 --
 use dspi_transport::clock::Instant;
 use serde::{Deserialize, Serialize};
 
@@ -99,8 +100,12 @@ mod tests_wp_p5ses_device;
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_pgmeas;
 
+// -- WP ROLE0 -- the speaker layout's proposal is the tune's layout
 pub(crate) use plan::Plan;
 pub(crate) use preflight::PreflightOptions;
+#[cfg(test)]
+pub(crate) use preflight::tweeter_floor as preflight_tweeter_floor;
+pub(crate) use tune::layout_of as layout_proposal_of;
 // -- WP P5DEMO -- the simulated microphone renders through the chains the session reads
 #[cfg(any(test, feature = "measure-sim"))]
 pub(crate) use preflight::chain_of;
@@ -210,6 +215,8 @@ pub(crate) const NOTICE_KEYS: &[&str] = &[
     "measure.tune.keep_during_verify",
     // -- WP ATDEMO -- the demo hub's simulated microphone refused
     "measure.system.sim_refused",
+    // -- WP ROLE0 -- roles from the speaker layout, which is not confirmed
+    "measure.layout_unconfirmed",
 ];
 
 // ── Records ─────────────────────────────────────────────────────────────
@@ -251,6 +258,28 @@ pub enum MeasureRole {
 }
 
 impl MeasureRole {
+    // -- WP ROLE0 --
+    pub(crate) fn from_driver(r: DriverRole) -> Self {
+        match r {
+            DriverRole::Full => MeasureRole::Full,
+            DriverRole::Sub => MeasureRole::Sub,
+            DriverRole::Low => MeasureRole::Low,
+            DriverRole::Mid => MeasureRole::Mid,
+            DriverRole::High => MeasureRole::High,
+        }
+    }
+
+    // -- WP ROLE0 --
+    pub(crate) fn driver(self) -> DriverRole {
+        match self {
+            MeasureRole::Full => DriverRole::Full,
+            MeasureRole::Sub => DriverRole::Sub,
+            MeasureRole::Low => DriverRole::Low,
+            MeasureRole::Mid => DriverRole::Mid,
+            MeasureRole::High => DriverRole::High,
+        }
+    }
+
     pub(crate) fn way(self) -> WayRole {
         match self {
             MeasureRole::Full => WayRole::Full,
@@ -276,6 +305,27 @@ pub enum MeasurePlacement {
     NearField,
     /// Headphones on a coupler, 1 to 9 reseats (`count`).
     Headphones,
+}
+
+// -- WP ROLE0 --
+/// The role the safety rules hold output `chain` to (S6, the tune's high-pass
+/// rule): the stricter of `role` and what its filters show
+/// ([`dspi_session::output_label::effective_role`]).
+pub(crate) fn effective_role(role: MeasureRole, chain: &ChannelChain) -> MeasureRole {
+    let filters: Vec<LabelFilter> = chain
+        .peq
+        .iter()
+        .chain(&chain.crossover)
+        .map(|b| LabelFilter {
+            filter_type: b.filter_type,
+            bypass: b.bypass,
+            freq: b.freq,
+        })
+        .collect();
+    MeasureRole::from_driver(dspi_session::output_label::effective_role(
+        role.driver(),
+        &filters,
+    ))
 }
 
 /// A headphone coupler type.
@@ -362,6 +412,14 @@ pub struct MeasureSetup {
     /// the ceiling is the start level, so the ramp never goes above it; every
     /// other rule unchanged (P5SPIKE's timing test).
     pub start_level_only: bool,
+    // -- WP ROLE0 --
+    /// Take each output's role, speaker and group from the device's stored
+    /// speaker layout instead of `outputs` (MPLAN 2.2, `roles: "layout"`);
+    /// with no outputs listed, every output of the layout. Refused
+    /// (`measure.layout_unconfirmed`) while the user has not confirmed the
+    /// layout.
+    #[cfg_attr(feature = "uniffi", uniffi(default = false))]
+    pub roles_from_layout: bool,
 }
 
 /// A walked run's timing (PLAN-P5 section 1.1 steps 6 and 7): the clock fit,
@@ -769,6 +827,91 @@ impl Device for CoreDevice<'_> {
     }
 }
 
+// -- WP ROLE0 --
+impl DspiCore {
+    /// `setup` with its roles from the stored speaker layout when it asks for
+    /// that (`roles_from_layout`): each listed output's role, speaker and
+    /// group, or every output of the layout when none is listed. The
+    /// `measure.layout_unconfirmed` refusal with no confirmed layout, or an
+    /// output the layout lacks.
+    pub(crate) fn setup_roles(&self, mut setup: MeasureSetup) -> Result<MeasureSetup> {
+        if !setup.roles_from_layout {
+            return Ok(setup);
+        }
+        let layout = self.confirmed_speaker_layout()?;
+        if setup.outputs.is_empty() {
+            setup.outputs = layout
+                .outputs
+                .iter()
+                .map(|o| MeasureOutput {
+                    output: o.output,
+                    role: o.role,
+                    speaker: o.speaker.clone(),
+                    group: o.group,
+                    inverted: false,
+                })
+                .collect();
+        }
+        for out in &mut setup.outputs {
+            let row = layout
+                .output(out.output)
+                .ok_or_else(|| DspiError::InvalidArgument {
+                    msg: format!(
+                        "{}: output {} is not in the speaker layout: ask the user to confirm \
+                         it in Settings › Speakers",
+                        crate::speaker_layout::NOTICE_LAYOUT_UNCONFIRMED,
+                        u16::from(out.output).saturating_add(1)
+                    ),
+                })?;
+            out.role = row.role;
+            out.speaker = row.speaker.clone();
+            out.group = row.group;
+        }
+        Ok(setup)
+    }
+
+    /// A tune's `layout` with its roles from the stored speaker layout when
+    /// `from_layout` (as [`DspiCore::setup_roles`]).
+    pub(crate) fn layout_roles(
+        &self,
+        mut layout: MeasureLayout,
+        from_layout: bool,
+    ) -> Result<MeasureLayout> {
+        if !from_layout {
+            return Ok(layout);
+        }
+        let outputs: Vec<MeasureOutput> = layout
+            .outputs
+            .iter()
+            .map(|o| MeasureOutput {
+                output: o.output,
+                ..MeasureOutput::default()
+            })
+            .collect();
+        let setup = self.setup_roles(MeasureSetup {
+            outputs,
+            roles_from_layout: true,
+            ..MeasureSetup::default()
+        })?;
+        if layout.outputs.is_empty() {
+            layout.outputs = setup
+                .outputs
+                .iter()
+                .map(|o| MeasureLayoutOutput {
+                    output: o.output,
+                    ..MeasureLayoutOutput::default()
+                })
+                .collect();
+        }
+        for (lo, o) in layout.outputs.iter_mut().zip(&setup.outputs) {
+            lo.role = o.role;
+            lo.speaker = o.speaker.clone();
+            lo.group = o.group;
+        }
+        Ok(layout)
+    }
+}
+
 // ── The calls ───────────────────────────────────────────────────────────
 
 #[cfg_attr(feature = "uniffi", uniffi::export)]
@@ -791,6 +934,7 @@ impl DspiCore {
     /// a setup that is not one (no outputs, an output twice, a count out of
     /// range); a transfer failure of the reads.
     pub fn measure_preflight(&self, setup: MeasureSetup) -> Result<MeasurePreflight> {
+        let setup = self.setup_roles(setup)?; // -- WP ROLE0 --
         let plan = Plan::new(&setup)?;
         self.measure_preflight_plan(&plan, &PreflightOptions::default())
     }
@@ -810,6 +954,7 @@ impl DspiCore {
     /// this console holds it through `device_lock_acquire`;
     /// [`DspiError::Disconnected`].
     pub fn measure_start(&self, setup: MeasureSetup) -> Result<MeasureState> {
+        let setup = self.setup_roles(setup)?; // -- WP ROLE0 --
         self.measure_start_with(&setup, &PreflightOptions::default())
     }
 

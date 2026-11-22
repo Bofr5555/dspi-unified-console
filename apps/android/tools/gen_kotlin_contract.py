@@ -280,6 +280,11 @@ def next_item(lines: list[str], i: int) -> int:
     """The line after attributes and docs, from attribute line `i`."""
     i += 1
     while lines[i].strip().startswith(("#[", "///")):
+        # -- WP INT1 -- an attribute rustfmt split over lines (INST0's `#[serde(\n tag = ...)]`)
+        depth = lines[i].count("[") - lines[i].count("]")
+        while depth > 0:
+            i += 1
+            depth += lines[i].count("[") - lines[i].count("]")
         i += 1
     return i
 
@@ -416,9 +421,12 @@ def parse_surface() -> Surface:
             continue
         # -- WP P0W -- a data-carrying enum is a sealed class (`gen_types`);
         # its fields are typed as on the domain side, fully qualified.
+        # -- WP INT1 -- any field the domain can name (INST0's InstallationEdit:
+        # options, lists, unsigned numbers, records and enums of the contract).
+        known = {r.name for r in out.records} | {x.name for x in out.enums}
         for v in e.variants:
             for f in v.fields:
-                if kt(f.ty) not in QUALIFIED:
+                if not qualifiable(kt(f.ty), known):
                     raise SystemExit(f"enum {e.name}.{v.name}: field type {f.ty}: teach the generator")
     return apply_exclusions(out)
 
@@ -452,11 +460,24 @@ FFI_PRIM = {
 
 # -- WP P0W -- A sealed class's variants may shadow the Kotlin names
 # (`ParamValue.Int`, `ParamValue.Float`), so its fields are written in full.
-QUALIFIED = {
-    "Int": "kotlin.Int", "Long": "kotlin.Long", "Float": "kotlin.Float", "Double": "kotlin.Double",
-    "Boolean": "kotlin.Boolean", "String": "kotlin.String",
-    "List<Int>": "kotlin.collections.List<kotlin.Int>",
-}
+# -- WP INT1 -- every name in the type, not a fixed list: Kotlin's own in
+# `kotlin.` / `kotlin.collections.`, the contract's in its package.
+KOTLIN_NAMES = {"Int", "Long", "Float", "Double", "Boolean", "String", "Short", "Byte"}
+
+
+def qualified(k: str) -> str:
+    def one(m: re.Match) -> str:
+        n = m.group(0)
+        if n in KOTLIN_NAMES:
+            return f"kotlin.{n}"
+        if n == "List":
+            return "kotlin.collections.List"
+        return f"se.bofr.dspi.core.{n}"
+    return re.sub(r"\b[A-Z]\w*", one, k)
+
+
+def qualifiable(k: str, known: set[str]) -> bool:
+    return all(n in KOTLIN_NAMES or n == "List" or n in known for n in re.findall(r"\b[A-Z]\w*", k))
 
 
 def norm(t: str) -> str:
@@ -598,7 +619,7 @@ def gen_types(surf: Surface) -> str:
             for v in e.variants:
                 out.append(kdoc(v.doc, "    "))
                 if v.fields:
-                    fs = ", ".join(f"val {camel(f.name)}: {QUALIFIED[kt(f.ty)]}" for f in v.fields)
+                    fs = ", ".join(f"val {camel(f.name)}: {qualified(kt(f.ty))}" for f in v.fields)
                     out.append(f"    data class {v.name}({fs}) : {e.name}()\n")
                 else:
                     out.append(f"    data object {v.name} : {e.name}()\n")

@@ -2711,6 +2711,112 @@ data class ApplyAtFrameStatus(
 )
 
 /**
+ * A model being edited: the one read at `revision` (`base`) and the edits
+ * made on it (`model`), both the hub's JSON as text. Saving sends `model`
+ * with `revision`; the diff compares it with `base`.
+ */
+data class InstallationDraft(
+    /**
+     * The hub's revision the draft was read at (0 for a new installation).
+     */
+    val revision: Long,
+    /**
+     * The model as read, JSON.
+     */
+    val base: String,
+    /**
+     * The model with the edits, JSON.
+     */
+    val model: String,
+)
+
+/**
+ * A DSPi the hub sees that the installation does not hold.
+ */
+data class InstallationUnseen(
+    /**
+     * Its USB serial: what [`InstallationEdit::AddUnit`] takes.
+     */
+    val serial: String,
+    /**
+     * Its name when last seen.
+     */
+    val name: String,
+    /**
+     * Attached now.
+     */
+    val online: Boolean,
+    /**
+     * The firmware version; "" when unknown.
+     */
+    val fw: String,
+    /**
+     * Output channels.
+     */
+    val outputs: Int,
+)
+
+/**
+ * What [`DspiCore::installation_view`] reads.
+ */
+data class InstallationView(
+    /**
+     * The model's revision on the hub.
+     */
+    val revision: Long,
+    /**
+     * This session's role on the hub (`viewer`, `control`, `admin`).
+     */
+    val role: String,
+    /**
+     * The role may save (admin).
+     */
+    val mayEdit: Boolean,
+    /**
+     * A draft of the model as it is.
+     */
+    val draft: InstallationDraft,
+    /**
+     * The units the hub sees that the installation does not hold, as the
+     * hub's inventory orders them (online first).
+     */
+    val unseen: List<InstallationUnseen>,
+    /**
+     * The hub keeps an inventory: false for one without (`unseen` is then
+     * empty, not "none").
+     */
+    val inventory: Boolean,
+)
+
+/**
+ * A speaker on one of a unit's outputs.
+ */
+data class InstallationSpeaker(
+    /**
+     * The unit's output, from 0.
+     */
+    val output: Int,
+    /**
+     * From the speaker to the listening position, metres.
+     */
+    val distanceM: Float,
+)
+
+/**
+ * One reason the hub would refuse a draft.
+ */
+data class InstallationIssue(
+    /**
+     * The element it is about; "" for the installation as a whole.
+     */
+    val subject: String,
+    /**
+     * The hub's words.
+     */
+    val message: String,
+)
+
+/**
  * One element of the installation: the sender, a fan-out or a unit.
  */
 data class AlinkSystemUnit(
@@ -6176,6 +6282,20 @@ data class HistoryEntry(
      * was written inside one; `None` otherwise.
      */
     val label: String?,
+    /**
+     * The change's id, for [`DspiCore::revert_entry`]: unique in the
+     * process, the same for every value of one step.
+     */
+    val id: Long,
+    /**
+     * Who made it: 0 for this app itself, another number for an actor the
+     * app registered (an AI agent, `crate::actor`).
+     */
+    val actor: Long,
+    /**
+     * The actor's label ("AI · Claude Code"); `None` for this app itself.
+     */
+    val actorLabel: String?,
 )
 
 /**
@@ -6516,6 +6636,14 @@ data class MeasureSetup(
      * other rule unchanged (P5SPIKE's timing test).
      */
     val startLevelOnly: Boolean,
+    /**
+     * Take each output's role, speaker and group from the device's stored
+     * speaker layout instead of `outputs` (MPLAN 2.2, `roles: "layout"`);
+     * with no outputs listed, every output of the layout. Refused
+     * (`measure.layout_unconfirmed`) while the user has not confirmed the
+     * layout.
+     */
+    val rolesFromLayout: Boolean,
 )
 
 /**
@@ -6849,6 +6977,11 @@ data class MeasureLiveSetup(
      * The RTA's bands per octave (1 to 48; 0: 3).
      */
     val bandsPerOctave: Int,
+    /**
+     * Take `role` from the device's stored speaker layout (MPLAN 2.2);
+     * refused (`measure.layout_unconfirmed`) while it is not confirmed.
+     */
+    val rolesFromLayout: Boolean,
 )
 
 /**
@@ -7829,6 +7962,13 @@ data class MeasureTuneOptions(
      * See `fit_min_hz`.
      */
     val fitMaxHz: Double,
+    /**
+     * Take the layout's roles, speakers and groups from the device's stored
+     * speaker layout (MPLAN 2.2, `roles: "layout"`); a layout with no
+     * outputs then means every output of it. Refused
+     * (`measure.layout_unconfirmed`) while the user has not confirmed it.
+     */
+    val rolesFromLayout: Boolean,
 )
 
 /**
@@ -8869,6 +9009,55 @@ data class SnapshotRecall(
 )
 
 /**
+ * One output of the layout.
+ */
+data class SpeakerLayoutOutput(
+    /**
+     * The output, 0-based.
+     */
+    val output: Int,
+    /**
+     * What it drives.
+     */
+    val role: MeasureRole,
+    /**
+     * The speaker it belongs to (`L`, `R`, `Sub`, or the user's word).
+     */
+    val speaker: String,
+    /**
+     * Its alignment group: the outputs of one speaker share one.
+     */
+    val group: Int,
+)
+
+/**
+ * Which output drives what, for one device.
+ */
+data class SpeakerLayout(
+    /**
+     * The device's serial (set by the core; "" in an exported copy).
+     */
+    val serial: String,
+    /**
+     * The outputs, each once, in output order.
+     */
+    val outputs: List<SpeakerLayoutOutput>,
+    /**
+     * The user confirmed it (the Getting Started step, Settings ›
+     * Speakers). A proposal is never confirmed.
+     */
+    val confirmedByUser: Boolean,
+    /**
+     * When it was set, ms since the Unix epoch; 0 for a proposal.
+     */
+    val updatedMs: Long,
+    /**
+     * Remarks in words (a proposal's: outputs left out and why).
+     */
+    val notes: List<String>,
+)
+
+/**
  * A voltage the flow offers on the connected device.
  */
 data class VregChoice(
@@ -9177,6 +9366,112 @@ enum class AbSide {
      * The second snapshot.
      */
     B,
+}
+
+/**
+ * A unit's role in the installation: how the programme reaches it.
+ */
+enum class InstallationRole {
+    /**
+     * It plays the audio link from its upstream (a sender, a fan-out or a
+     * repeater).
+     */
+    RECEIVER,
+    /**
+     * A receiver that also re-emits the stream to the units naming it.
+     */
+    REPEATER,
+    /**
+     * It follows an S/PDIF source unit's time base (its upstream).
+     */
+    SPDIF_FOLLOWER,
+    /**
+     * USB directly from the host; no upstream.
+     */
+    USB_DIRECT,
+}
+
+/**
+ * One edit of a draft. An `id` left out is made from the name (or the
+ * serial); every id an edit names must exist, every serial is in the
+ * installation once. JSON: `{"op": "addUnit", "serial": ..., ...}`.
+ */
+sealed class InstallationEdit {
+    /**
+     * Add the unit with this serial, in `room`, as `role`, fed by
+     * `upstream` (none for a USB-direct unit).
+     */
+    data class AddUnit(val serial: kotlin.String, val id: kotlin.String?, val name: kotlin.String, val room: kotlin.String?, val role: se.bofr.dspi.core.InstallationRole, val upstream: kotlin.String?) : InstallationEdit()
+    /**
+     * Remove an element of any kind. What names it as a member (a zone's
+     * rooms, a group's units, a unit's room, a zone's source, a source's
+     * sender) forgets it, and scene actions aimed at it go; an element it
+     * fed is left for the validator to point out.
+     */
+    data class RemoveElement(val id: kotlin.String) : InstallationEdit()
+    /**
+     * Rename an element of any kind.
+     */
+    data class RenameElement(val id: kotlin.String, val name: kotlin.String) : InstallationEdit()
+    /**
+     * Put a unit in a room, or in none.
+     */
+    data class SetUnitRoom(val id: kotlin.String, val room: kotlin.String?) : InstallationEdit()
+    /**
+     * Change a unit's role. The fields the new role cannot have go (a
+     * USB-direct unit's upstream, an S/PDIF follower's slots).
+     */
+    data class SetUnitRole(val id: kotlin.String, val role: se.bofr.dspi.core.InstallationRole) : InstallationEdit()
+    /**
+     * Set what feeds a unit, and which output of it.
+     */
+    data class SetUnitUpstream(val id: kotlin.String, val upstream: kotlin.String, val output: kotlin.Int?) : InstallationEdit()
+    /**
+     * A USB-direct unit's mode and what it does in lock error.
+     */
+    data class SetUnitUsbMode(val id: kotlin.String, val mode: kotlin.String?, val playUnaligned: kotlin.Boolean) : InstallationEdit()
+    /**
+     * A unit's speakers by output. A speaker on an output that stays keeps
+     * its measured arrival.
+     */
+    data class SetUnitSpeakers(val id: kotlin.String, val speakers: kotlin.collections.List<se.bofr.dspi.core.InstallationSpeaker>) : InstallationEdit()
+    /**
+     * Make a unit an S/PDIF time-base source on the output slots of
+     * `tx_mask`, or (0) not one.
+     */
+    data class SetSpdifSource(val id: kotlin.String, val txMask: kotlin.Int) : InstallationEdit()
+    /**
+     * Add a room.
+     */
+    data class AddRoom(val id: kotlin.String?, val name: kotlin.String) : InstallationEdit()
+    /**
+     * Add a zone of `rooms`, playing `source`.
+     */
+    data class AddZone(val id: kotlin.String?, val name: kotlin.String, val rooms: kotlin.collections.List<kotlin.String>, val source: kotlin.String?) : InstallationEdit()
+    /**
+     * A zone's rooms.
+     */
+    data class SetZoneRooms(val id: kotlin.String, val rooms: kotlin.collections.List<kotlin.String>) : InstallationEdit()
+    /**
+     * Add a group of `units`.
+     */
+    data class AddGroup(val id: kotlin.String?, val name: kotlin.String, val units: kotlin.collections.List<kotlin.String>) : InstallationEdit()
+    /**
+     * A group's units.
+     */
+    data class SetGroupUnits(val id: kotlin.String, val units: kotlin.collections.List<kotlin.String>) : InstallationEdit()
+    /**
+     * Add a sender (the audio link's clock).
+     */
+    data class AddSender(val id: kotlin.String?, val name: kotlin.String, val serial: kotlin.String?) : InstallationEdit()
+    /**
+     * Add a fan-out fed by `upstream`.
+     */
+    data class AddFanOut(val id: kotlin.String?, val name: kotlin.String, val serial: kotlin.String?, val upstream: kotlin.String, val output: kotlin.Int?) : InstallationEdit()
+    /**
+     * The installation's own settings; `None` leaves one as it is.
+     */
+    data class SetSystem(val rateHz: kotlin.Long?, val setD: kotlin.Boolean, val dFrames: kotlin.Int?, val keepUsbAligned: kotlin.Boolean?) : InstallationEdit()
 }
 
 /**

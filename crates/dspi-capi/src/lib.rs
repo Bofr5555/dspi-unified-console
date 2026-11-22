@@ -47,6 +47,8 @@ mod fns_link;
 // -- WP HB6 --
 #[cfg(feature = "hub")]
 mod fns_hub;
+// -- WP MD0 -- one core per open device
+mod fns_core_set;
 
 /// Run `f`, turning a panic into `fail`. Every exported function goes
 /// through this.
@@ -211,6 +213,11 @@ mod tests {
             "src/fns_misc/measure_curv.rs",
             // -- WP PGFWX --
             "src/fns_misc/firmware_update.rs",
+            // -- WP INST0 --
+            "src/fns_misc/installation.rs",
+            // -- WP INT1 -- (MD0's and ROLE0's, in the header since INT1 regenerated it)
+            "src/fns_core_set.rs",
+            "src/fns_misc/speaker_layout.rs",
             "src/fns_browse.rs",
             "src/fns_link.rs",
             "src/fns_hub.rs",

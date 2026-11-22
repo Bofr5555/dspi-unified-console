@@ -1,175 +1,24 @@
 import QtQuick
 import QtQuick.Controls.Basic
-import QtQuick.Layouts
 import UConsole
 
-// -- WP QP2 -- The Linkwitz Transform panel (the Mac's linkwitzPopover): the
-// driver's alignment (f0, Q0) moved to a target (fp, Qp), with the DC boost
-// that implies. Edits stay in a draft until Apply, because a mistyped fp is
-// tens of dB of boost into a driver; Revert goes back to the band as applied,
-// and closing the panel drops the draft.
+// -- WP QP2 -- The Linkwitz Transform panel in a popover from its band row;
+// closing it drops the draft. -- WP LAY2 -- The content, with the draft and
+// Apply, is LinkwitzContent, which Modern's inspector shows as well.
 PopoverPanel {
     id: panel
     property int channel: -1
     property int band: 0
 
-    // The band as applied (fp is carried in the gain field)
-    readonly property var applied: (ChannelController.revision < 0 ? undefined : ChannelController.band(channel, band, false))
-    property real f0: 0
-    property real q0: 0
-    property real fp: 0
-    property real qp: 0
-    readonly property real boost: ChannelController.linkwitzBoost(f0, fp)
-    // Compared with the round trip's grid: fp to 0.05 Hz, Qp to 1/512
-    readonly property bool dirty: Math.abs(f0 - applied.freq) >= 0.05 || Math.abs(q0 - applied.q) >= 0.0005
-                                  || Math.abs(fp - applied.gain) >= 0.05 || Math.abs(qp - applied.qp) >= 1 / 512
-
-    function revert() {
-        f0 = applied.freq
-        q0 = applied.q
-        fp = applied.gain
-        qp = applied.qp
-    }
-    function applyDraft() { ChannelController.setLinkwitz(channel, band, f0, q0, fp, qp) }
-
     title: qsTr("Linkwitz Transform")
     width: 320
     padding: Theme.spacingLarge
-    onAboutToShow: revert()
+    onAboutToShow: content.active = true
+    onClosed: content.active = false
 
-    contentItem: ColumnLayout {
-        spacing: Theme.spacing
-
-        ColumnLayout {
-            spacing: 2
-            Text {
-                text: qsTr("Linkwitz Transform")
-                font: Theme.fontTitle
-                color: Theme.text
-                Accessible.role: Accessible.Heading
-                Accessible.name: text
-            }
-            Text {
-                Layout.fillWidth: true
-                text: qsTr("Re-align a sealed woofer's rolloff from the driver's (f0, Q0) to a target (fp, Qp).")
-                font: Theme.fontSmall
-                color: Theme.textMuted
-                wrapMode: Text.Wrap
-            }
-        }
-
-        GridLayout {
-            columns: 5
-            columnSpacing: Theme.spacingSmall
-            rowSpacing: Theme.spacingSmall
-
-            Text { text: qsTr("Driver"); font: Theme.fontSmall; color: Theme.textMuted }
-            Text { text: "f0"; font: Theme.fontSmall; color: Theme.textMuted }
-            ChannelValueField {
-                objectName: "Linkwitz.f0"
-                label: qsTr("Driver resonance f0")
-                unit: qsTr("Hz")
-                fieldWidth: 64
-                scrollStep: 1
-                minValue: 10
-                stripTrailingZeros: true
-                value: panel.f0
-                onCommitted: v => panel.f0 = Math.max(10, v)
-            }
-            Text { text: "Q0"; font: Theme.fontSmall; color: Theme.textMuted }
-            ChannelValueField {
-                objectName: "Linkwitz.q0"
-                label: qsTr("Driver Q0")
-                fieldWidth: 56
-                maxDecimals: 3
-                scrollStep: 0.01
-                minValue: 0.1
-                stripTrailingZeros: true
-                value: panel.q0
-                onCommitted: v => panel.q0 = Math.min(20, Math.max(0.1, v))
-            }
-
-            Text { text: qsTr("Target"); font: Theme.fontSmall; color: Theme.textMuted }
-            Text { text: "fp"; font: Theme.fontSmall; color: Theme.textMuted }
-            ChannelValueField {
-                objectName: "Linkwitz.fp"
-                label: qsTr("Target frequency fp")
-                unit: qsTr("Hz")
-                fieldWidth: 64
-                scrollStep: 1
-                minValue: 10
-                stripTrailingZeros: true
-                value: panel.fp
-                onCommitted: v => panel.fp = Math.max(10, v)
-            }
-            Text { text: "Qp"; font: Theme.fontSmall; color: Theme.textMuted }
-            ChannelValueField {
-                objectName: "Linkwitz.qp"
-                label: qsTr("Target Qp")
-                fieldWidth: 56
-                maxDecimals: 3
-                scrollStep: 0.01
-                minValue: 0.1
-                stripTrailingZeros: true
-                value: panel.qp
-                onCommitted: v => panel.qp = Math.min(20, Math.max(0.1, v))
-            }
-        }
-
-        Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.separator }
-
-        RowLayout {
-            spacing: 6
-            Text { text: qsTr("DC boost"); font: Theme.fontSmall; color: Theme.textMuted }
-            Text {
-                objectName: "Linkwitz.boost"
-                text: (panel.boost >= 0 ? "+" : "") + panel.boost.toFixed(1) + " " + qsTr("dB")
-                font: Theme.fontMono
-                color: panel.boost > 15 ? Theme.warning : Theme.text
-                Accessible.role: Accessible.StaticText
-                Accessible.name: qsTr("DC boost %1").arg(text)
-            }
-            Icon {
-                visible: panel.boost > 15
-                name: "triangle-alert"
-                size: 12
-                color: Theme.warning
-                accessibleName: qsTr("High boost")
-            }
-        }
-        Text {
-            Layout.fillWidth: true
-            text: qsTr("Real low-frequency gain (40 x log10(f0/fp)). It uses driver excursion and amp headroom - reduce preamp or master volume to match.")
-            font: Theme.fontCaption
-            color: Theme.textMuted
-            wrapMode: Text.Wrap
-        }
-
-        Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.separator }
-
-        RowLayout {
-            spacing: Theme.spacingSmall
-            Text {
-                objectName: "Linkwitz.state"
-                text: panel.dirty ? qsTr("Not applied yet") : qsTr("Applied")
-                font: Theme.fontSmall
-                color: panel.dirty ? Theme.warning : Theme.textMuted
-            }
-            Item { Layout.fillWidth: true }
-            AppButton {
-                objectName: "Linkwitz.revert"
-                text: qsTr("Revert")
-                enabled: panel.dirty
-                onClicked: panel.revert()
-            }
-            AppButton {
-                objectName: "Linkwitz.apply"
-                text: qsTr("Apply")
-                primary: true
-                enabled: panel.dirty && ChannelController.writable
-                onClicked: panel.applyDraft()
-                Keys.onReturnPressed: panel.applyDraft()
-            }
-        }
+    contentItem: LinkwitzContent {
+        id: content
+        channel: panel.channel
+        band: panel.band
     }
 }

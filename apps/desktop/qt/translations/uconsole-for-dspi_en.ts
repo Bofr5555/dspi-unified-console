@@ -216,6 +216,53 @@
     </message>
 </context>
 <context>
+    <name>AppearancePage</name>
+    <message>
+        <source>Layout</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Classic is the Mac console&apos;s layout: a menu bar and tool windows. Modern puts every tool on a page of one window.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Classic</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Modern</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Modern Arrangement</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sections</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Rail with page tabs</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Tabs along the top</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Device tabs</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>In the top bar</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>At the top of the rail</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>AutoEqController</name>
     <message>
         <source>AutoEQ database not found</source>
@@ -1547,11 +1594,7 @@ Switching an output is instant and never writes to flash. The pin, name and powe
     </message>
 </context>
 <context>
-    <name>DashboardLayoutPopup</name>
-    <message>
-        <source>Dashboard layout</source>
-        <translation type="unfinished"></translation>
-    </message>
+    <name>DashboardLayoutContent</name>
     <message>
         <source>1 card per row</source>
         <translation type="unfinished"></translation>
@@ -1582,6 +1625,13 @@ Switching an output is instant and never writes to flash. The pin, name and powe
     </message>
     <message>
         <source>Auto</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>DashboardLayoutPopup</name>
+    <message>
+        <source>Dashboard layout</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -1921,7 +1971,7 @@ Switching an output is instant and never writes to flash. The pin, name and powe
     </message>
 </context>
 <context>
-    <name>DevicesPopup</name>
+    <name>DevicesContent</name>
     <message>
         <source>Devices</source>
         <translation type="unfinished"></translation>
@@ -1992,11 +2042,11 @@ Switching an output is instant and never writes to flash. The pin, name and powe
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>No hubs added.</source>
+        <source>Looking for hubs…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Looking for hubs…</source>
+        <source>No hubs added.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2013,6 +2063,13 @@ Switching an output is instant and never writes to flash. The pin, name and powe
     </message>
     <message>
         <source>A DSPi shared by another console (Settings &gt; Networking there) or by a DSPi Link bridge shows here.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>DevicesPopup</name>
+    <message>
+        <source>Devices</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -3265,6 +3322,9 @@ Save before continuing?</source>
         <source>Graph options</source>
         <translation type="unfinished"></translation>
     </message>
+</context>
+<context>
+    <name>GraphOptionsContent</name>
     <message>
         <source>Graph Setup</source>
         <translation type="unfinished"></translation>
@@ -4782,6 +4842,17 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
     </message>
 </context>
 <context>
+    <name>InspectorSection</name>
+    <message>
+        <source>Expanded</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Collapsed</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>InstallCard</name>
     <message>
         <source>%1 percent written</source>
@@ -5294,6 +5365,13 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
         <source>Output Limiter</source>
         <translation type="unfinished"></translation>
     </message>
+</context>
+<context>
+    <name>LimiterSettingsContent</name>
+    <message>
+        <source>Output Limiter</source>
+        <translation type="unfinished"></translation>
+    </message>
     <message>
         <source>Output limiter</source>
         <translation type="unfinished"></translation>
@@ -5480,6 +5558,13 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
 </context>
 <context>
     <name>Linkwitz</name>
+    <message>
+        <source>Linkwitz Transform</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>LinkwitzContent</name>
     <message>
         <source>Linkwitz Transform</source>
         <translation type="unfinished"></translation>
@@ -7823,11 +7908,7 @@ Macros are stored on the device alongside the controls and share their Save and 
     </message>
 </context>
 <context>
-    <name>MonitorWindow</name>
-    <message>
-        <source>Interrupt Monitor</source>
-        <translation type="unfinished"></translation>
-    </message>
+    <name>MonitorPanel</name>
     <message>
         <source>Resume</source>
         <translation type="unfinished"></translation>
@@ -8783,6 +8864,17 @@ Macros are stored on the device alongside the controls and share their Save and 
     </message>
     <message>
         <source>Pair</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>PanelTable</name>
+    <message>
+        <source>System Statistics</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Interrupt Monitor</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -10319,6 +10411,22 @@ Macros are stored on the device alongside the controls and share their Save and 
     </message>
     <message>
         <source>Installer&apos;s note</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Appearance</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Layout</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Classic</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Modern</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -12136,11 +12244,7 @@ Macros are stored on the device alongside the controls and share their Save and 
     </message>
 </context>
 <context>
-    <name>StatsWindow</name>
-    <message>
-        <source>System Statistics</source>
-        <translation type="unfinished"></translation>
-    </message>
+    <name>StatsPanel</name>
     <message>
         <source>over</source>
         <translation type="unfinished"></translation>

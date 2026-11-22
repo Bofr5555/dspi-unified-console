@@ -119,6 +119,16 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun openDemoAlink() = call { core.openDemoAlink() }
 
+    override fun installationView(): InstallationView = call { core.installationView().toDomain() }
+
+    override fun installationDraftEdit(draft: InstallationDraft, edits: List<InstallationEdit>): InstallationDraft = call { core.installationDraftEdit(draft.toFfi(), edits.map { it.toFfi() }).toDomain() }
+
+    override fun installationValidate(draft: InstallationDraft): List<InstallationIssue> = call { core.installationValidate(draft.toFfi()).map { it.toDomain() } }
+
+    override fun installationDiff(draft: InstallationDraft): List<String> = call { core.installationDiff(draft.toFfi()) }
+
+    override fun installationSave(draft: InstallationDraft): AlinkSystemSaved = call { core.installationSave(draft.toFfi()).toDomain() }
+
     override fun alinkSystemView(): AlinkSystemView = call { core.alinkSystemView().toDomain() }
 
     override fun alinkSystemSave(revision: Long, edits: AlinkSystemEdits): Long = call { core.alinkSystemSave(revision.toULong(), edits.toFfi()).toLong() }
@@ -557,6 +567,8 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun history(n: Long): List<HistoryEntry> = core.history(n.toUInt()).map { it.toDomain() }
 
+    override fun revertEntry(id: Long): HistoryMove = call { core.revertEntry(id.toULong()).toDomain() }
+
     override fun limitsSetDir(dir: String) = call { core.limitsSetDir(dir) }
 
     override fun limitsProfileDocument(): String = core.limitsProfileDocument()
@@ -986,6 +998,14 @@ class FfiDspiCore : DspiCoreApi {
     override fun snapshotImport(text: String, name: String, note: String): SnapshotInfo = call { core.snapshotImport(text, name, note).toDomain() }
 
     override fun snapshotListMerged(serial: String): SnapshotMergedList = core.snapshotListMerged(serial).toDomain()
+
+    override fun speakerLayoutSetDir(dir: String) = call { core.speakerLayoutSetDir(dir) }
+
+    override fun speakerLayout(): SpeakerLayout? = call { core.speakerLayout()?.let { it.toDomain() } }
+
+    override fun speakerLayoutPropose(): SpeakerLayout = call { core.speakerLayoutPropose().toDomain() }
+
+    override fun speakerLayoutSet(layout: SpeakerLayout): SpeakerLayout = call { core.speakerLayoutSet(layout.toFfi()).toDomain() }
 
     override fun siggenFetchCaps(): SiggenCaps = call { core.siggenFetchCaps().toDomain() }
 
@@ -2924,6 +2944,82 @@ internal fun ApplyAtFrameStatus.toFfi() =
         lastResult = lastResult,
         lastResultCode = lastResultCode.toUByte(),
         lastFrame = lastFrame.toULong(),
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.InstallationDraft.toDomain() =
+    InstallationDraft(
+        revision = revision.toLong(),
+        base = base,
+        model = model,
+    )
+
+internal fun InstallationDraft.toFfi() =
+    se.bofr.dspi.ffi.uniffi.InstallationDraft(
+        revision = revision.toULong(),
+        base = base,
+        model = model,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.InstallationUnseen.toDomain() =
+    InstallationUnseen(
+        serial = serial,
+        name = name,
+        online = online,
+        fw = fw,
+        outputs = outputs.toInt(),
+    )
+
+internal fun InstallationUnseen.toFfi() =
+    se.bofr.dspi.ffi.uniffi.InstallationUnseen(
+        serial = serial,
+        name = name,
+        online = online,
+        fw = fw,
+        outputs = outputs.toUByte(),
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.InstallationView.toDomain() =
+    InstallationView(
+        revision = revision.toLong(),
+        role = role,
+        mayEdit = mayEdit,
+        draft = draft.toDomain(),
+        unseen = unseen.map { it.toDomain() },
+        inventory = inventory,
+    )
+
+internal fun InstallationView.toFfi() =
+    se.bofr.dspi.ffi.uniffi.InstallationView(
+        revision = revision.toULong(),
+        role = role,
+        mayEdit = mayEdit,
+        draft = draft.toFfi(),
+        unseen = unseen.map { it.toFfi() },
+        inventory = inventory,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.InstallationSpeaker.toDomain() =
+    InstallationSpeaker(
+        output = output.toInt(),
+        distanceM = distanceM,
+    )
+
+internal fun InstallationSpeaker.toFfi() =
+    se.bofr.dspi.ffi.uniffi.InstallationSpeaker(
+        output = output.toUByte(),
+        distanceM = distanceM,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.InstallationIssue.toDomain() =
+    InstallationIssue(
+        subject = subject,
+        message = message,
+    )
+
+internal fun InstallationIssue.toFfi() =
+    se.bofr.dspi.ffi.uniffi.InstallationIssue(
+        subject = subject,
+        message = message,
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.AlinkSystemUnit.toDomain() =
@@ -5060,6 +5156,9 @@ internal fun se.bofr.dspi.ffi.uniffi.HistoryEntry.toDomain() =
         atMs = atMs.toLong(),
         undoable = undoable,
         label = label,
+        id = id.toLong(),
+        actor = actor.toLong(),
+        actorLabel = actorLabel,
     )
 
 internal fun HistoryEntry.toFfi() =
@@ -5072,6 +5171,9 @@ internal fun HistoryEntry.toFfi() =
         atMs = atMs.toULong(),
         undoable = undoable,
         label = label,
+        id = id.toULong(),
+        actor = actor.toUInt(),
+        actorLabel = actorLabel,
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.HistoryMove.toDomain() =
@@ -5247,6 +5349,7 @@ internal fun se.bofr.dspi.ffi.uniffi.MeasureSetup.toDomain() =
         captureRateHz = captureRateHz.toLong(),
         name = name,
         startLevelOnly = startLevelOnly,
+        rolesFromLayout = rolesFromLayout,
     )
 
 internal fun MeasureSetup.toFfi() =
@@ -5266,6 +5369,7 @@ internal fun MeasureSetup.toFfi() =
         captureRateHz = captureRateHz.toUInt(),
         name = name,
         startLevelOnly = startLevelOnly,
+        rolesFromLayout = rolesFromLayout,
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.MeasureTiming.toDomain() =
@@ -5454,6 +5558,7 @@ internal fun se.bofr.dspi.ffi.uniffi.MeasureLiveSetup.toDomain() =
         captureRateHz = captureRateHz.toLong(),
         averaging = averaging.toDomain(),
         bandsPerOctave = bandsPerOctave.toInt(),
+        rolesFromLayout = rolesFromLayout,
     )
 
 internal fun MeasureLiveSetup.toFfi() =
@@ -5474,6 +5579,7 @@ internal fun MeasureLiveSetup.toFfi() =
         captureRateHz = captureRateHz.toUInt(),
         averaging = averaging.toFfi(),
         bandsPerOctave = bandsPerOctave.toUByte(),
+        rolesFromLayout = rolesFromLayout,
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.MeasureLiveCurve.toDomain() =
@@ -6077,6 +6183,7 @@ internal fun se.bofr.dspi.ffi.uniffi.MeasureTuneOptions.toDomain() =
         windowOctaves = windowOctaves,
         fitMinHz = fitMinHz,
         fitMaxHz = fitMaxHz,
+        rolesFromLayout = rolesFromLayout,
     )
 
 internal fun MeasureTuneOptions.toFfi() =
@@ -6090,6 +6197,7 @@ internal fun MeasureTuneOptions.toFfi() =
         windowOctaves = windowOctaves,
         fitMinHz = fitMinHz,
         fitMaxHz = fitMaxHz,
+        rolesFromLayout = rolesFromLayout,
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.MeasureTuneParam.toDomain() =
@@ -6760,6 +6868,40 @@ internal fun SnapshotRecall.toFfi() =
         notes = notes,
     )
 
+internal fun se.bofr.dspi.ffi.uniffi.SpeakerLayoutOutput.toDomain() =
+    SpeakerLayoutOutput(
+        output = output.toInt(),
+        role = role.toDomain(),
+        speaker = speaker,
+        group = group.toInt(),
+    )
+
+internal fun SpeakerLayoutOutput.toFfi() =
+    se.bofr.dspi.ffi.uniffi.SpeakerLayoutOutput(
+        output = output.toUByte(),
+        role = role.toFfi(),
+        speaker = speaker,
+        group = group.toUByte(),
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.SpeakerLayout.toDomain() =
+    SpeakerLayout(
+        serial = serial,
+        outputs = outputs.map { it.toDomain() },
+        confirmedByUser = confirmedByUser,
+        updatedMs = updatedMs,
+        notes = notes,
+    )
+
+internal fun SpeakerLayout.toFfi() =
+    se.bofr.dspi.ffi.uniffi.SpeakerLayout(
+        serial = serial,
+        outputs = outputs.map { it.toFfi() },
+        confirmedByUser = confirmedByUser,
+        updatedMs = updatedMs,
+        notes = notes,
+    )
+
 internal fun se.bofr.dspi.ffi.uniffi.VregChoice.toDomain() =
     VregChoice(
         code = code.toInt(),
@@ -6946,6 +7088,64 @@ internal fun AbSide.toFfi(): se.bofr.dspi.ffi.uniffi.AbSide =
     when (this) {
         AbSide.A -> se.bofr.dspi.ffi.uniffi.AbSide.A
         AbSide.B -> se.bofr.dspi.ffi.uniffi.AbSide.B
+    }
+
+internal fun se.bofr.dspi.ffi.uniffi.InstallationRole.toDomain(): InstallationRole =
+    when (this) {
+        se.bofr.dspi.ffi.uniffi.InstallationRole.RECEIVER -> InstallationRole.RECEIVER
+        se.bofr.dspi.ffi.uniffi.InstallationRole.REPEATER -> InstallationRole.REPEATER
+        se.bofr.dspi.ffi.uniffi.InstallationRole.SPDIF_FOLLOWER -> InstallationRole.SPDIF_FOLLOWER
+        se.bofr.dspi.ffi.uniffi.InstallationRole.USB_DIRECT -> InstallationRole.USB_DIRECT
+    }
+
+internal fun InstallationRole.toFfi(): se.bofr.dspi.ffi.uniffi.InstallationRole =
+    when (this) {
+        InstallationRole.RECEIVER -> se.bofr.dspi.ffi.uniffi.InstallationRole.RECEIVER
+        InstallationRole.REPEATER -> se.bofr.dspi.ffi.uniffi.InstallationRole.REPEATER
+        InstallationRole.SPDIF_FOLLOWER -> se.bofr.dspi.ffi.uniffi.InstallationRole.SPDIF_FOLLOWER
+        InstallationRole.USB_DIRECT -> se.bofr.dspi.ffi.uniffi.InstallationRole.USB_DIRECT
+    }
+
+internal fun se.bofr.dspi.ffi.uniffi.InstallationEdit.toDomain(): InstallationEdit =
+    when (this) {
+        is se.bofr.dspi.ffi.uniffi.InstallationEdit.AddUnit -> InstallationEdit.AddUnit(serial, id, name, room, role.toDomain(), upstream)
+        is se.bofr.dspi.ffi.uniffi.InstallationEdit.RemoveElement -> InstallationEdit.RemoveElement(id)
+        is se.bofr.dspi.ffi.uniffi.InstallationEdit.RenameElement -> InstallationEdit.RenameElement(id, name)
+        is se.bofr.dspi.ffi.uniffi.InstallationEdit.SetUnitRoom -> InstallationEdit.SetUnitRoom(id, room)
+        is se.bofr.dspi.ffi.uniffi.InstallationEdit.SetUnitRole -> InstallationEdit.SetUnitRole(id, role.toDomain())
+        is se.bofr.dspi.ffi.uniffi.InstallationEdit.SetUnitUpstream -> InstallationEdit.SetUnitUpstream(id, upstream, output?.let { it.toInt() })
+        is se.bofr.dspi.ffi.uniffi.InstallationEdit.SetUnitUsbMode -> InstallationEdit.SetUnitUsbMode(id, mode, playUnaligned)
+        is se.bofr.dspi.ffi.uniffi.InstallationEdit.SetUnitSpeakers -> InstallationEdit.SetUnitSpeakers(id, speakers.map { it.toDomain() })
+        is se.bofr.dspi.ffi.uniffi.InstallationEdit.SetSpdifSource -> InstallationEdit.SetSpdifSource(id, txMask.toInt())
+        is se.bofr.dspi.ffi.uniffi.InstallationEdit.AddRoom -> InstallationEdit.AddRoom(id, name)
+        is se.bofr.dspi.ffi.uniffi.InstallationEdit.AddZone -> InstallationEdit.AddZone(id, name, rooms, source)
+        is se.bofr.dspi.ffi.uniffi.InstallationEdit.SetZoneRooms -> InstallationEdit.SetZoneRooms(id, rooms)
+        is se.bofr.dspi.ffi.uniffi.InstallationEdit.AddGroup -> InstallationEdit.AddGroup(id, name, units)
+        is se.bofr.dspi.ffi.uniffi.InstallationEdit.SetGroupUnits -> InstallationEdit.SetGroupUnits(id, units)
+        is se.bofr.dspi.ffi.uniffi.InstallationEdit.AddSender -> InstallationEdit.AddSender(id, name, serial)
+        is se.bofr.dspi.ffi.uniffi.InstallationEdit.AddFanOut -> InstallationEdit.AddFanOut(id, name, serial, upstream, output?.let { it.toInt() })
+        is se.bofr.dspi.ffi.uniffi.InstallationEdit.SetSystem -> InstallationEdit.SetSystem(rateHz?.let { it.toLong() }, setD, dFrames?.let { it.toInt() }, keepUsbAligned)
+    }
+
+internal fun InstallationEdit.toFfi(): se.bofr.dspi.ffi.uniffi.InstallationEdit =
+    when (this) {
+        is InstallationEdit.AddUnit -> se.bofr.dspi.ffi.uniffi.InstallationEdit.AddUnit(serial, id, name, room, role.toFfi(), upstream)
+        is InstallationEdit.RemoveElement -> se.bofr.dspi.ffi.uniffi.InstallationEdit.RemoveElement(id)
+        is InstallationEdit.RenameElement -> se.bofr.dspi.ffi.uniffi.InstallationEdit.RenameElement(id, name)
+        is InstallationEdit.SetUnitRoom -> se.bofr.dspi.ffi.uniffi.InstallationEdit.SetUnitRoom(id, room)
+        is InstallationEdit.SetUnitRole -> se.bofr.dspi.ffi.uniffi.InstallationEdit.SetUnitRole(id, role.toFfi())
+        is InstallationEdit.SetUnitUpstream -> se.bofr.dspi.ffi.uniffi.InstallationEdit.SetUnitUpstream(id, upstream, output?.let { it.toUByte() })
+        is InstallationEdit.SetUnitUsbMode -> se.bofr.dspi.ffi.uniffi.InstallationEdit.SetUnitUsbMode(id, mode, playUnaligned)
+        is InstallationEdit.SetUnitSpeakers -> se.bofr.dspi.ffi.uniffi.InstallationEdit.SetUnitSpeakers(id, speakers.map { it.toFfi() })
+        is InstallationEdit.SetSpdifSource -> se.bofr.dspi.ffi.uniffi.InstallationEdit.SetSpdifSource(id, txMask.toUByte())
+        is InstallationEdit.AddRoom -> se.bofr.dspi.ffi.uniffi.InstallationEdit.AddRoom(id, name)
+        is InstallationEdit.AddZone -> se.bofr.dspi.ffi.uniffi.InstallationEdit.AddZone(id, name, rooms, source)
+        is InstallationEdit.SetZoneRooms -> se.bofr.dspi.ffi.uniffi.InstallationEdit.SetZoneRooms(id, rooms)
+        is InstallationEdit.AddGroup -> se.bofr.dspi.ffi.uniffi.InstallationEdit.AddGroup(id, name, units)
+        is InstallationEdit.SetGroupUnits -> se.bofr.dspi.ffi.uniffi.InstallationEdit.SetGroupUnits(id, units)
+        is InstallationEdit.AddSender -> se.bofr.dspi.ffi.uniffi.InstallationEdit.AddSender(id, name, serial)
+        is InstallationEdit.AddFanOut -> se.bofr.dspi.ffi.uniffi.InstallationEdit.AddFanOut(id, name, serial, upstream, output?.let { it.toUByte() })
+        is InstallationEdit.SetSystem -> se.bofr.dspi.ffi.uniffi.InstallationEdit.SetSystem(rateHz?.let { it.toUInt() }, setD, dFrames?.let { it.toUShort() }, keepUsbAligned)
     }
 
 internal fun se.bofr.dspi.ffi.uniffi.ConfirmOp.toDomain(): ConfirmOp =

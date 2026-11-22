@@ -58,6 +58,10 @@ struct AppContext {
 //
 // Window: a QML type (usually a ToolWindow) that Shell opens for a menu row's
 // action id, made once and raised afterwards.
+// -- WP LAY0 -- A tool converted to a Panel keeps its Window line as it is:
+// the type becomes the PanelWindow's objectName, and the rest (the panel's
+// type, title, sizes, Modern section and tab) is the action's row in
+// qml/main/PanelTable.qml, so a conversion never edits the controller.
 namespace Registrar {
 
 using Factory = QObject *(*)(const AppContext &ctx, QObject *parent);

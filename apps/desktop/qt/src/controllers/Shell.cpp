@@ -7,6 +7,7 @@
 #include <QFontDatabase>
 #include <QGuiApplication>
 #include <QJSEngine>
+#include <QJSValue>
 #include <QQmlComponent>
 #include <QQmlEngine>
 #include <QScreen>
@@ -97,6 +98,16 @@ void Shell::trigger(const QString &action) {
         return;
     }
     if (m_windowTypes.contains(action)) {
+        // -- WP LAY0 -- a panel goes to its page while the shell has pages
+        if (m_pageHost) {
+            const QVariantMap row = panel(action);
+            QVariant shown;
+            if (!row.isEmpty()
+                && QMetaObject::invokeMethod(m_pageHost.data(), "showPanel", Q_RETURN_ARG(QVariant, shown),
+                                             Q_ARG(QVariant, row))
+                && (shown.canConvert<QJSValue>() ? shown.value<QJSValue>().toBool() : shown.toBool()))
+                return;
+        }
         openWindow(action);
         return;
     }
@@ -110,9 +121,13 @@ QWindow *Shell::openWindow(const QString &action) {
     if (type.isEmpty()) return nullptr;
     QPointer<QWindow> &w = m_windows[action];
     if (!w) {
+        // -- WP LAY0 -- a panel opens in a PanelWindow named as the registered type
+        const QVariantMap row = panel(action);
         QQmlComponent component(m_engine);
-        component.loadFromModule("UConsole", type);
-        QObject *o = component.create();
+        component.loadFromModule("UConsole", row.isEmpty() ? type : QStringLiteral("PanelWindow"));
+        QObject *o = row.isEmpty() ? component.create()
+                                   : component.createWithInitialProperties(
+                                         { { QStringLiteral("panel"), row }, { QStringLiteral("objectName"), type } });
         if (!o) {
             qWarning("Shell: the window %s did not load: %s", qPrintable(type), qPrintable(component.errorString()));
             return nullptr;
@@ -131,6 +146,35 @@ QWindow *Shell::openWindow(const QString &action) {
     w->raise();
     w->requestActivate();
     return w;
+}
+
+// -- WP LAY0 --
+QVariantList Shell::panels() const {
+    QObject *table = m_engine ? m_engine->singletonInstance<QObject *>("UConsole", "PanelTable") : nullptr;
+    if (!table) return {};
+    const QVariant rows = table->property("panels");
+    return rows.canConvert<QJSValue>() ? rows.value<QJSValue>().toVariant().toList() : rows.toList();
+}
+
+QVariantMap Shell::panel(const QString &action) const {
+    for (const QVariant &row : panels()) {
+        const QVariantMap map = row.toMap();
+        if (map.value(QStringLiteral("action")).toString() == action) return map;
+    }
+    return {};
+}
+
+void Shell::setPageHost(QObject *host) {
+    if (host == m_pageHost) return;
+    disconnect(m_pageHostGone);
+    m_pageHost = host;
+    // The QPointer is null already when `destroyed` comes
+    if (host)
+        m_pageHostGone = connect(host, &QObject::destroyed, this, [this]() {
+            m_pageHost = nullptr;
+            emit pageHostChanged();
+        });
+    emit pageHostChanged();
 }
 
 void Shell::openUrl(const QString &url) {

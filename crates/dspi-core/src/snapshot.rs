@@ -839,6 +839,7 @@ impl DspiCore {
                     // -- WP P1LM -- held to the device's limits profile, and said so
                     let held = crate::limits::hold(inner, &mut s);
                     notes.extend(crate::limits::held_line(&held));
+                    crate::actor::judge_whole(inner, &before, &s)?; // -- WP MCP0 -- the pre-write hook
                     inner.state = s;
                     if let Err(e) = crate::connect::apply_all_params_locked(inner) {
                         // -- WP BULKFIX -- as the import does

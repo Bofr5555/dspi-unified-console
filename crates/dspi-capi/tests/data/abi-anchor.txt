@@ -488,6 +488,7 @@
 typedef struct AutoEqFetchSink AutoEqFetchSink;
 typedef struct AutoEqRebuildHandle AutoEqRebuildHandle;
 typedef struct FfiCore FfiCore;
+typedef struct FfiCoreSet FfiCoreSet;
 typedef struct FfiHub FfiHub;
 typedef struct DeviceInfo {
 uint8_t serial[64];
@@ -1223,6 +1224,7 @@ uint32_t dspi_history(struct FfiCore *core,
 uint32_t n,
 char *buf,
 uint32_t len);
+uint32_t dspi_revert_entry(struct FfiCore *core, uint64_t id, char *buf, uint32_t len);
 void dspi_set_dragging(const struct FfiCore *core, bool dragging);
 void dspi_undo_group_begin(const struct FfiCore *core, const char *label);
 void dspi_undo_group_end(const struct FfiCore *core);
@@ -1937,6 +1939,34 @@ const char *target,
 const char *typed,
 char *buf,
 uint32_t len);
+uint32_t dspi_speaker_layout_set_dir(struct FfiCore *core,
+const char *dir,
+char *buf,
+uint32_t len);
+uint32_t dspi_speaker_layout(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_speaker_layout_propose(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_speaker_layout_set(struct FfiCore *core,
+const char *layout_json,
+char *buf,
+uint32_t len);
+uint32_t dspi_installation_view(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_installation_draft_edit(struct FfiCore *core,
+const char *draft_json,
+const char *edits_json,
+char *buf,
+uint32_t len);
+uint32_t dspi_installation_validate(struct FfiCore *core,
+const char *draft_json,
+char *buf,
+uint32_t len);
+uint32_t dspi_installation_diff(struct FfiCore *core,
+const char *draft_json,
+char *buf,
+uint32_t len);
+uint32_t dspi_installation_save(struct FfiCore *core,
+const char *draft_json,
+char *buf,
+uint32_t len);
 bool dspi_link_browse_start(struct FfiCore *core,
 void (*callback)(void *user_data),
 void *user_data,
@@ -2033,4 +2063,28 @@ uint32_t dspi_hub_begin_pairing(struct FfiHub *hub, char *buf, uint32_t len);
 bool dspi_hub_cancel_pairing(struct FfiHub *hub);
 bool dspi_hub_revoke(struct FfiHub *hub, uint32_t cid);
 bool dspi_hub_set_role(struct FfiHub *hub, uint32_t cid, const char *role);
+struct FfiCoreSet *dspi_core_set_new(void);
+void dspi_core_set_free(struct FfiCoreSet *set);
+uint32_t dspi_core_set_open(struct FfiCoreSet *set,
+const char *target_json,
+char *buf,
+uint32_t len);
+uint32_t dspi_core_set_close(struct FfiCoreSet *set, const char *id, char *buf, uint32_t len);
+uint32_t dspi_core_set_list(struct FfiCoreSet *set, char *buf, uint32_t len);
+struct FfiCore *dspi_core_set_core(struct FfiCoreSet *set, const char *id);
+uint32_t dspi_core_set_find_serial(struct FfiCoreSet *set,
+const char *serial,
+char *buf,
+uint32_t len);
+uint32_t dspi_core_set_config(struct FfiCoreSet *set,
+const char *config_json,
+char *buf,
+uint32_t len);
+uint32_t dspi_core_set_scan_devices(struct FfiCoreSet *set,
+struct DeviceInfo *out_devices,
+uint32_t max_devices);
+void dspi_core_set_poll_hotplug(struct FfiCoreSet *set);
+void dspi_core_set_set_listener(struct FfiCoreSet *set,
+void (*callback)(const char *event_json, void *user_data),
+void *user_data);
 #endif

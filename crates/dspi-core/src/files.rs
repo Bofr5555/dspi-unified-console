@@ -2178,7 +2178,9 @@ impl DspiCore {
         let (state, map) = exportable(&mut self.lock())?;
         let text = export_config(&state, &name, &app_version, links, map);
         // -- WP P1LM -- the device's limits profile in `meta.limits` (never a PIN)
-        Ok(self.with_limits_meta(text))
+        let text = self.with_limits_meta(text);
+        // -- WP ROLE0 -- the speaker layout in `meta.speakerLayout`
+        Ok(self.with_speaker_layout_meta(text))
     }
 
     // -- WP P1TK -- (WP P1TZ: the only form; config_import and
@@ -2305,7 +2307,14 @@ impl DspiCore {
         let imported = self.import_document(&doc, sel, &ticket);
         self.whole_image_ended(began); // -- WP ECHO1 --
         match imported {
-            Ok(reply) => reply.to_string(),
+            Ok(mut reply) => {
+                // -- WP ROLE0 -- the speaker layout goes with the crossover
+                let layout = sel.has(IMPORT_CROSSOVER) && self.import_speaker_layout(&doc);
+                if let Some(o) = reply.as_object_mut() {
+                    o.insert("speakerLayout".into(), json!(layout));
+                }
+                reply.to_string()
+            }
             Err(e) => device_refusal(&e),
         }
     }
@@ -2402,6 +2411,7 @@ impl DspiCore {
                     .add("Crossfeed output pairs (not supported by this firmware)");
             }
         }
+        crate::actor::judge_whole(inner, &before, &built.state)?; // -- WP MCP0 -- the pre-write hook
         inner.state = built.state.clone();
         if let Err(e) = apply_all_params_locked(inner) {
             // -- WP BULKFIX -- (fixup bf F2) A failed repair left the device

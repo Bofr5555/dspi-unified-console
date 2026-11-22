@@ -71,6 +71,7 @@ use dspi_measure::types::{ChannelChain, LogGrid, Placement, Response};
 use dspi_measure::xover::{
     Driver, HighpassOverride, HighpassRule, SumMode, predict_sum, summed_check,
 };
+use dspi_session::output_label; // -- WP ROLE0 --
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -248,6 +249,13 @@ pub struct MeasureTuneOptions {
     pub fit_min_hz: f64,
     /// See `fit_min_hz`.
     pub fit_max_hz: f64,
+    // -- WP ROLE0 --
+    /// Take the layout's roles, speakers and groups from the device's stored
+    /// speaker layout (MPLAN 2.2, `roles: "layout"`); a layout with no
+    /// outputs then means every output of it. Refused
+    /// (`measure.layout_unconfirmed`) while the user has not confirmed it.
+    #[cfg_attr(feature = "uniffi", uniffi(default = false))]
+    pub roles_from_layout: bool,
 }
 
 /// What a write changes.
@@ -966,6 +974,21 @@ impl DspiCore {
         let mut max_d = max;
         let mut highpass = Vec::new();
         for w in ways {
+            // -- WP ROLE0 -- a high pass at 1 kHz or above keeps the tweeter's
+            // rule, whatever the way is called (MPLAN 2.2, the effective role)
+            let effective = super::effective_role(w.role, &w.chain_now);
+            let has_own = profile
+                .as_ref()
+                .and_then(|p| p.output(w.output))
+                .is_some_and(|o| o.highpass_min_hz.is_some());
+            if effective != w.role && !has_own {
+                highpass.extend(HighpassRule::default_for(effective.way()).map(|rule| {
+                    HighpassOverride {
+                        output: w.output,
+                        rule,
+                    }
+                }));
+            }
             if let Some(o) = profile.as_ref().and_then(|p| p.output(w.output)) {
                 if let Some(d) = o.delay_min_ms {
                     min_d = min_d.max(f64::from(d));
@@ -974,15 +997,18 @@ impl DspiCore {
                     max_d = max_d.min(f64::from(d));
                 }
                 if let Some(hz) = o.highpass_min_hz {
-                    let base = HighpassRule::default_for(w.role.way());
+                    let base = HighpassRule::default_for(effective.way()); // -- WP ROLE0 --
+                    let slope = o
+                        .highpass_min_slope_db
+                        .or(base.map(|b| b.min_slope_db))
+                        .unwrap_or(preflight::MIN_SLOPE_DB);
+                    // -- WP ROLE0 -- a profile never lowers a tweeter's floor
+                    let (min_hz, min_slope_db) = preflight::tweeter_floor(effective, hz, slope);
                     highpass.push(HighpassOverride {
                         output: w.output,
                         rule: HighpassRule {
-                            min_hz: hz,
-                            min_slope_db: o
-                                .highpass_min_slope_db
-                                .or(base.map(|b| b.min_slope_db))
-                                .unwrap_or(preflight::MIN_SLOPE_DB),
+                            min_hz,
+                            min_slope_db,
                         },
                     });
                 }
@@ -1937,6 +1963,7 @@ fn verified_sum(
 /// The layout the device's state suggests (PLAN-P5 section 1.4 step 1).
 pub(crate) fn layout_of(s: &crate::records::DspState) -> MeasureLayout {
     let n_in = s.num_input_channels;
+    let labels = crate::output_labels::source(s); // -- WP ROLE0 --
     let mut outputs = Vec::new();
     let mut notes = Vec::new();
     for o in 0..s.num_output_channels {
@@ -1975,32 +2002,9 @@ pub(crate) fn layout_of(s: &crate::records::DspState) -> MeasureLayout {
             .get(usize::from(n_in.saturating_add(o)))
             .cloned()
             .unwrap_or_default();
-        let bands = c.peq.iter().chain(&c.crossover);
-        let mut lp = None;
-        let mut hp = false;
-        for b in bands {
-            if b.bypass || b.filter_type == 0 {
-                continue;
-            }
-            match dspi_proto::xover::meta(b.filter_type) {
-                Some(m) if m.high_pass => hp = true,
-                Some(_) => lp = Some(b.freq),
-                None => match b.filter_type {
-                    4 | 12 => lp = Some(b.freq),
-                    5 | 13 => hp = true,
-                    _ => {}
-                },
-            }
-        }
-        let sub_named = name.to_lowercase().contains("sub");
-        let role = match (lp, hp) {
-            _ if sub_named => MeasureRole::Sub,
-            (Some(f), false) if f <= 120.0 => MeasureRole::Sub,
-            (Some(_), false) => MeasureRole::Low,
-            (Some(_), true) => MeasureRole::Mid,
-            (None, true) => MeasureRole::High,
-            (None, false) => MeasureRole::Full,
-        };
+        // -- WP ROLE0 -- the labels' inference, thresholds and all
+        let filters = labels.filters.get(oi).map(Vec::as_slice).unwrap_or(&[]);
+        let role = MeasureRole::from_driver(output_label::driver_role(filters, &name));
         let speaker = if role == MeasureRole::Sub {
             "Sub".to_owned()
         } else {
@@ -2129,6 +2133,7 @@ impl DspiCore {
         {
             return Err(invalid("tune options out of range"));
         }
+        let layout = self.layout_roles(layout, options.roles_from_layout)?; // -- WP ROLE0 --
         let (doc, source) = self.tune_load(&measurement)?;
         if doc.measurement.serial != serial {
             return Err(invalid(format!(

@@ -120,6 +120,8 @@ pub mod measure_tune;
 pub mod measure_curv;
 // -- WP ATCORE -- the system measurement across units
 pub mod measure_system;
+// -- WP INST0 -- Installation setup: drafts of the hub's site
+pub mod installation;
 // -- WP WB6I -- the Settings page: names, latency, the core-voltage flow
 pub mod settings;
 // -- WP WB4a --
@@ -133,6 +135,8 @@ pub mod sws_a;
 pub mod protocol;
 // -- WP PGFWX -- the update target and the update check
 pub mod firmware;
+// -- WP ROLE0 -- the speaker layout (MPLAN 2.2)
+pub mod speaker_layout;
 
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 #[allow(unsafe_code)]

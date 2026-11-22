@@ -454,6 +454,8 @@ void SidebarController::toggleWindow(const QString &action) {
 // is a window, followed for the button's active look
 void SidebarController::trackWindow(const QString &action) {
     if (m_windows.value(action) || !m_ctx.shell->handles(action)) return;
+    // -- WP LAY0 -- a panel the shell's page host showed has no window to follow
+    if (m_ctx.shell->pageHost() && !m_ctx.shell->panel(action).isEmpty()) return;
     QWindow *w = m_ctx.shell->openWindow(action);
     if (!w) return;
     m_windows.insert(action, w);

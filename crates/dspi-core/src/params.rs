@@ -948,6 +948,7 @@ impl BandChange {
 fn send(inner: &mut Inner, path: &str, indices: &[u8], value: Value) -> Result<()> {
     // -- WP P1LM -- a limits profile refuses a value past a limit, unsent
     crate::limits::check_write(inner, path, indices, &value)?;
+    crate::actor::judge_value(inner, path, indices, &value)?; // -- WP MCP0 -- the pre-write hook
     // -- WP P5FOLLOW -- a volume write during a measurement is noted as it
     // is sent (its echo, equal to the mirror, is then not judged again)
     if path.starts_with("vol.") && path != "vol.master.save" {
@@ -972,6 +973,7 @@ fn send_raw(inner: &mut Inner, opcode: u8, value: u16, data: &[u8]) -> Result<()
 fn send_band(inner: &mut Inner, ch: u8, band: u8, p: &FilterParams) -> Result<()> {
     // -- WP P1LM -- a limits profile refuses a boost or a lost high-pass
     crate::limits::check_band(inner, ch, band, p)?;
+    crate::actor::judge_band(inner, ch, band, p)?; // -- WP MCP0 -- the pre-write hook
     let filter_type = FilterType::from_raw(p.filter_type);
     let packet = EqParamPacket {
         channel: ch,

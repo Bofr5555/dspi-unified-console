@@ -3826,6 +3826,56 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func inaccessibleDevices()  -> UInt32
     
     /**
+     * What saving `draft` would change, one sentence per change, in the
+     * model's order. Sends nothing.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a draft that is not a model.
+     */
+    func installationDiff(draft: InstallationDraft) throws  -> [String]
+    
+    /**
+     * `edits` made on `draft`, in order, all or none. Sends nothing.
+     *
+     * Errors: [`DspiError::InvalidArgument`] naming the edit that cannot be
+     * made (an id that does not exist or is taken, a serial already in the
+     * installation, a name too long) or a draft that is not a model.
+     */
+    func installationDraftEdit(draft: InstallationDraft, edits: [InstallationEdit]) throws  -> InstallationDraft
+    
+    /**
+     * Save `draft` as the installation: one `system.set` the hub takes only
+     * while its model is still at the draft's revision. Checked here first
+     * with the hub's validator. Returns the new revision and the hub's
+     * warnings. Admin only. Blocks.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a draft the hub would
+     * refuse (nothing sent); [`DspiError::ReadOnly`] in the client
+     * read-only mode (nothing sent, not even the read); [`DspiError::Link`]
+     * `conflict` when the installation changed on the hub meanwhile (read
+     * it again), `denied` for another role; [`DspiError::Disconnected`].
+     */
+    func installationSave(draft: InstallationDraft) throws  -> AlinkSystemSaved
+    
+    /**
+     * The hub's own validator on `draft`: empty when the hub would take it,
+     * else why not, naming the element. Sends nothing.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a draft that is not a model.
+     */
+    func installationValidate(draft: InstallationDraft) throws  -> [InstallationIssue]
+    
+    /**
+     * The installation on the hub this session is on, as a draft to edit,
+     * with the units the hub sees that it does not hold. Every role may
+     * read it; `may_edit` says whether this one may save. Blocks on the
+     * network: keep it off a UI thread.
+     *
+     * Errors: [`DspiError::Disconnected`] with no hub session,
+     * [`DspiError::Link`] with the hub's code or the client's.
+     */
+    func installationView() throws  -> InstallationView
+    
+    /**
      * Lock the open device again on this console (the end of an unlock).
      *
      * Errors: [`DspiError::Disconnected`]; [`DspiError::InstallerLock`]
@@ -5192,6 +5242,9 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * polls (a few times). On Android there is nothing to enumerate (the
      * app gets USB broadcasts instead); there it only closes a connection
      * whose stream ended, and apps need not call it.
+     *
+     * -- WP MD0 -- A core in a [`crate::CoreSet`] does nothing here: the set
+     * scans once for all its cores ([`crate::CoreSet::poll_hotplug`]).
      */
     func pollHotplug() 
     
@@ -5443,6 +5496,30 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * read. A new connection does this too. Never fails.
      */
     func resetMeterMax() 
+    
+    /**
+     * Revert one change by its id ([`HistoryEntry::id`]), wherever it is
+     * in the history: write back the value it replaced (and what the device
+     * moved with it) through the typed setters, as undo does, but only
+     * while every value it set is still what it left there. Otherwise
+     * nothing is written and the reply reports the conflict: `entry`
+     * `None`, `skipped` the values someone has changed since, `note` who.
+     * A change already undone gives `entry` `None` and a note saying so.
+     * The change then leaves the undo and redo stacks; the reversal is
+     * journalled as an undo.
+     *
+     * An actor other than this app (`crate::actor`) may revert only its
+     * own changes: [`DspiError::ConfirmationRequired`] with code
+     * `not_own_entry` otherwise. The app may revert any.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device, or when the
+     * connection changed during the call; [`DspiError::InvalidArgument`]
+     * for an id the history does not hold (another connection's, or one
+     * past the newest 1000), for a change undo cannot reverse
+     * ([`HistoryEntry::undoable`]) and for a reversal by undo or redo; the
+     * setters' errors, after which the values already written back stay.
+     */
+    func revertEntry(id: UInt64) throws  -> HistoryMove
     
     /**
      * The device's analyser as the worker probed it: `supported` false
@@ -6773,6 +6850,52 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * Errors as [`DspiCore::snapshot_rename`].
      */
     func snapshotSetNote(id: String, note: String) throws  -> SnapshotInfo
+    
+    /**
+     * The open device's speaker layout as the user set it; `None` when none
+     * was set (show [`DspiCore::speaker_layout_propose`] to confirm). Reads
+     * the host's file, not the device.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device.
+     */
+    func speakerLayout() throws  -> SpeakerLayout?
+    
+    /**
+     * What the device's filters and routing suggest (the inference the
+     * output labels use): each enabled output that plays an input, its role
+     * from its filters (or "sub" in its name), its speaker from its
+     * programme source, one group per speaker. Never confirmed, never saved.
+     * Reads the mirror only.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device.
+     */
+    func speakerLayoutPropose() throws  -> SpeakerLayout
+    
+    /**
+     * Keep `layout` as the open device's speaker layout, stamped now, with
+     * its `confirmed_by_user` as given. **For the user's own screens only**
+     * (the Getting Started step, Settings › Speakers, the Measure tables):
+     * an agent never sets roles (MPLAN 2.2). Returns what was kept.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device;
+     * [`DspiError::InvalidArgument`] for an output twice, one the device
+     * lacks, more than 16, or a speaker name over 64 characters (nothing
+     * kept); [`DspiError::Io`] when the file cannot be written;
+     * [`DspiError::ConfirmationRequired`] `user_only` inside another actor's
+     * [`crate::actor::ActorScope`] (WP INT1).
+     */
+    func speakerLayoutSet(layout: SpeakerLayout) throws  -> SpeakerLayout
+    
+    /**
+     * Keep speaker layouts in files under `dir`, the app's own data folder,
+     * one subfolder per device serial (created when first written; "" forgets
+     * the folder). Layouts set before a folder was named are written to it
+     * where it holds none for that device.
+     *
+     * Errors: [`DspiError::Unsupported`] on the web (no files: the page keeps
+     * the layout and sets it again with [`DspiCore::speaker_layout_set`]).
+     */
+    func speakerLayoutSetDir(dir: String) throws 
     
     /**
      * Pulse the mute output for about a second, so an installer can hear
@@ -10763,6 +10886,86 @@ open func inaccessibleDevices() -> UInt32  {
 }
     
     /**
+     * What saving `draft` would change, one sentence per change, in the
+     * model's order. Sends nothing.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a draft that is not a model.
+     */
+open func installationDiff(draft: InstallationDraft)throws  -> [String]  {
+    return try  FfiConverterSequenceString.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_installation_diff(self.uniffiClonePointer(),
+        FfiConverterTypeInstallationDraft_lower(draft),$0
+    )
+})
+}
+    
+    /**
+     * `edits` made on `draft`, in order, all or none. Sends nothing.
+     *
+     * Errors: [`DspiError::InvalidArgument`] naming the edit that cannot be
+     * made (an id that does not exist or is taken, a serial already in the
+     * installation, a name too long) or a draft that is not a model.
+     */
+open func installationDraftEdit(draft: InstallationDraft, edits: [InstallationEdit])throws  -> InstallationDraft  {
+    return try  FfiConverterTypeInstallationDraft_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_installation_draft_edit(self.uniffiClonePointer(),
+        FfiConverterTypeInstallationDraft_lower(draft),
+        FfiConverterSequenceTypeInstallationEdit.lower(edits),$0
+    )
+})
+}
+    
+    /**
+     * Save `draft` as the installation: one `system.set` the hub takes only
+     * while its model is still at the draft's revision. Checked here first
+     * with the hub's validator. Returns the new revision and the hub's
+     * warnings. Admin only. Blocks.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a draft the hub would
+     * refuse (nothing sent); [`DspiError::ReadOnly`] in the client
+     * read-only mode (nothing sent, not even the read); [`DspiError::Link`]
+     * `conflict` when the installation changed on the hub meanwhile (read
+     * it again), `denied` for another role; [`DspiError::Disconnected`].
+     */
+open func installationSave(draft: InstallationDraft)throws  -> AlinkSystemSaved  {
+    return try  FfiConverterTypeAlinkSystemSaved_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_installation_save(self.uniffiClonePointer(),
+        FfiConverterTypeInstallationDraft_lower(draft),$0
+    )
+})
+}
+    
+    /**
+     * The hub's own validator on `draft`: empty when the hub would take it,
+     * else why not, naming the element. Sends nothing.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a draft that is not a model.
+     */
+open func installationValidate(draft: InstallationDraft)throws  -> [InstallationIssue]  {
+    return try  FfiConverterSequenceTypeInstallationIssue.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_installation_validate(self.uniffiClonePointer(),
+        FfiConverterTypeInstallationDraft_lower(draft),$0
+    )
+})
+}
+    
+    /**
+     * The installation on the hub this session is on, as a draft to edit,
+     * with the units the hub sees that it does not hold. Every role may
+     * read it; `may_edit` says whether this one may save. Blocks on the
+     * network: keep it off a UI thread.
+     *
+     * Errors: [`DspiError::Disconnected`] with no hub session,
+     * [`DspiError::Link`] with the hub's code or the client's.
+     */
+open func installationView()throws  -> InstallationView  {
+    return try  FfiConverterTypeInstallationView_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_installation_view(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
      * Lock the open device again on this console (the end of an unlock).
      *
      * Errors: [`DspiError::Disconnected`]; [`DspiError::InstallerLock`]
@@ -12857,6 +13060,9 @@ open func pinMap() -> PinMap  {
      * polls (a few times). On Android there is nothing to enumerate (the
      * app gets USB broadcasts instead); there it only closes a connection
      * whose stream ended, and apps need not call it.
+     *
+     * -- WP MD0 -- A core in a [`crate::CoreSet`] does nothing here: the set
+     * scans once for all its cores ([`crate::CoreSet::poll_hotplug`]).
      */
 open func pollHotplug()  {try! rustCall() {
     uniffi_dspi_core_fn_method_dspicore_poll_hotplug(self.uniffiClonePointer(),$0
@@ -13192,6 +13398,36 @@ open func resetMeterMax()  {try! rustCall() {
     uniffi_dspi_core_fn_method_dspicore_reset_meter_max(self.uniffiClonePointer(),$0
     )
 }
+}
+    
+    /**
+     * Revert one change by its id ([`HistoryEntry::id`]), wherever it is
+     * in the history: write back the value it replaced (and what the device
+     * moved with it) through the typed setters, as undo does, but only
+     * while every value it set is still what it left there. Otherwise
+     * nothing is written and the reply reports the conflict: `entry`
+     * `None`, `skipped` the values someone has changed since, `note` who.
+     * A change already undone gives `entry` `None` and a note saying so.
+     * The change then leaves the undo and redo stacks; the reversal is
+     * journalled as an undo.
+     *
+     * An actor other than this app (`crate::actor`) may revert only its
+     * own changes: [`DspiError::ConfirmationRequired`] with code
+     * `not_own_entry` otherwise. The app may revert any.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device, or when the
+     * connection changed during the call; [`DspiError::InvalidArgument`]
+     * for an id the history does not hold (another connection's, or one
+     * past the newest 1000), for a change undo cannot reverse
+     * ([`HistoryEntry::undoable`]) and for a reversal by undo or redo; the
+     * setters' errors, after which the values already written back stay.
+     */
+open func revertEntry(id: UInt64)throws  -> HistoryMove  {
+    return try  FfiConverterTypeHistoryMove_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_revert_entry(self.uniffiClonePointer(),
+        FfiConverterUInt64.lower(id),$0
+    )
+})
 }
     
     /**
@@ -15183,6 +15419,73 @@ open func snapshotSetNote(id: String, note: String)throws  -> SnapshotInfo  {
         FfiConverterString.lower(note),$0
     )
 })
+}
+    
+    /**
+     * The open device's speaker layout as the user set it; `None` when none
+     * was set (show [`DspiCore::speaker_layout_propose`] to confirm). Reads
+     * the host's file, not the device.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device.
+     */
+open func speakerLayout()throws  -> SpeakerLayout?  {
+    return try  FfiConverterOptionTypeSpeakerLayout.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_speaker_layout(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * What the device's filters and routing suggest (the inference the
+     * output labels use): each enabled output that plays an input, its role
+     * from its filters (or "sub" in its name), its speaker from its
+     * programme source, one group per speaker. Never confirmed, never saved.
+     * Reads the mirror only.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device.
+     */
+open func speakerLayoutPropose()throws  -> SpeakerLayout  {
+    return try  FfiConverterTypeSpeakerLayout_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_speaker_layout_propose(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Keep `layout` as the open device's speaker layout, stamped now, with
+     * its `confirmed_by_user` as given. **For the user's own screens only**
+     * (the Getting Started step, Settings › Speakers, the Measure tables):
+     * an agent never sets roles (MPLAN 2.2). Returns what was kept.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device;
+     * [`DspiError::InvalidArgument`] for an output twice, one the device
+     * lacks, more than 16, or a speaker name over 64 characters (nothing
+     * kept); [`DspiError::Io`] when the file cannot be written;
+     * [`DspiError::ConfirmationRequired`] `user_only` inside another actor's
+     * [`crate::actor::ActorScope`] (WP INT1).
+     */
+open func speakerLayoutSet(layout: SpeakerLayout)throws  -> SpeakerLayout  {
+    return try  FfiConverterTypeSpeakerLayout_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_speaker_layout_set(self.uniffiClonePointer(),
+        FfiConverterTypeSpeakerLayout_lower(layout),$0
+    )
+})
+}
+    
+    /**
+     * Keep speaker layouts in files under `dir`, the app's own data folder,
+     * one subfolder per device serial (created when first written; "" forgets
+     * the folder). Layouts set before a folder was named are written to it
+     * where it holds none for that device.
+     *
+     * Errors: [`DspiError::Unsupported`] on the web (no files: the page keeps
+     * the layout and sets it again with [`DspiCore::speaker_layout_set`]).
+     */
+open func speakerLayoutSetDir(dir: String)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_speaker_layout_set_dir(self.uniffiClonePointer(),
+        FfiConverterString.lower(dir),$0
+    )
+}
 }
     
     /**
@@ -29723,6 +30026,20 @@ public struct HistoryEntry {
      * was written inside one; `None` otherwise.
      */
     public var label: String?
+    /**
+     * The change's id, for [`DspiCore::revert_entry`]: unique in the
+     * process, the same for every value of one step.
+     */
+    public var id: UInt64
+    /**
+     * Who made it: 0 for this app itself, another number for an actor the
+     * app registered (an AI agent, `crate::actor`).
+     */
+    public var actor: UInt32
+    /**
+     * The actor's label ("AI · Claude Code"); `None` for this app itself.
+     */
+    public var actorLabel: String?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -29763,7 +30080,18 @@ public struct HistoryEntry {
         /**
          * The undo group's label ([`DspiCore::begin_group`]) when the change
          * was written inside one; `None` otherwise.
-         */label: String?) {
+         */label: String?, 
+        /**
+         * The change's id, for [`DspiCore::revert_entry`]: unique in the
+         * process, the same for every value of one step.
+         */id: UInt64, 
+        /**
+         * Who made it: 0 for this app itself, another number for an actor the
+         * app registered (an AI agent, `crate::actor`).
+         */actor: UInt32, 
+        /**
+         * The actor's label ("AI · Claude Code"); `None` for this app itself.
+         */actorLabel: String?) {
         self.path = path
         self.indices = indices
         self.before = before
@@ -29772,6 +30100,9 @@ public struct HistoryEntry {
         self.atMs = atMs
         self.undoable = undoable
         self.label = label
+        self.id = id
+        self.actor = actor
+        self.actorLabel = actorLabel
     }
 }
 
@@ -29806,6 +30137,15 @@ extension HistoryEntry: Equatable, Hashable {
         if lhs.label != rhs.label {
             return false
         }
+        if lhs.id != rhs.id {
+            return false
+        }
+        if lhs.actor != rhs.actor {
+            return false
+        }
+        if lhs.actorLabel != rhs.actorLabel {
+            return false
+        }
         return true
     }
 
@@ -29818,6 +30158,9 @@ extension HistoryEntry: Equatable, Hashable {
         hasher.combine(atMs)
         hasher.combine(undoable)
         hasher.combine(label)
+        hasher.combine(id)
+        hasher.combine(actor)
+        hasher.combine(actorLabel)
     }
 }
 
@@ -29837,7 +30180,10 @@ public struct FfiConverterTypeHistoryEntry: FfiConverterRustBuffer {
                 source: FfiConverterTypeHistorySource.read(from: &buf), 
                 atMs: FfiConverterUInt64.read(from: &buf), 
                 undoable: FfiConverterBool.read(from: &buf), 
-                label: FfiConverterOptionString.read(from: &buf)
+                label: FfiConverterOptionString.read(from: &buf), 
+                id: FfiConverterUInt64.read(from: &buf), 
+                actor: FfiConverterUInt32.read(from: &buf), 
+                actorLabel: FfiConverterOptionString.read(from: &buf)
         )
     }
 
@@ -29850,6 +30196,9 @@ public struct FfiConverterTypeHistoryEntry: FfiConverterRustBuffer {
         FfiConverterUInt64.write(value.atMs, into: &buf)
         FfiConverterBool.write(value.undoable, into: &buf)
         FfiConverterOptionString.write(value.label, into: &buf)
+        FfiConverterUInt64.write(value.id, into: &buf)
+        FfiConverterUInt32.write(value.actor, into: &buf)
+        FfiConverterOptionString.write(value.actorLabel, into: &buf)
     }
 }
 
@@ -38701,6 +39050,549 @@ public func FfiConverterTypeInputLockStatus_lower(_ value: InputLockStatus) -> R
 
 
 /**
+ * A model being edited: the one read at `revision` (`base`) and the edits
+ * made on it (`model`), both the hub's JSON as text. Saving sends `model`
+ * with `revision`; the diff compares it with `base`.
+ */
+public struct InstallationDraft {
+    /**
+     * The hub's revision the draft was read at (0 for a new installation).
+     */
+    public var revision: UInt64
+    /**
+     * The model as read, JSON.
+     */
+    public var base: String
+    /**
+     * The model with the edits, JSON.
+     */
+    public var model: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The hub's revision the draft was read at (0 for a new installation).
+         */revision: UInt64, 
+        /**
+         * The model as read, JSON.
+         */base: String, 
+        /**
+         * The model with the edits, JSON.
+         */model: String) {
+        self.revision = revision
+        self.base = base
+        self.model = model
+    }
+}
+
+#if compiler(>=6)
+extension InstallationDraft: Sendable {}
+#endif
+
+
+extension InstallationDraft: Equatable, Hashable {
+    public static func ==(lhs: InstallationDraft, rhs: InstallationDraft) -> Bool {
+        if lhs.revision != rhs.revision {
+            return false
+        }
+        if lhs.base != rhs.base {
+            return false
+        }
+        if lhs.model != rhs.model {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(revision)
+        hasher.combine(base)
+        hasher.combine(model)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeInstallationDraft: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> InstallationDraft {
+        return
+            try InstallationDraft(
+                revision: FfiConverterUInt64.read(from: &buf), 
+                base: FfiConverterString.read(from: &buf), 
+                model: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: InstallationDraft, into buf: inout [UInt8]) {
+        FfiConverterUInt64.write(value.revision, into: &buf)
+        FfiConverterString.write(value.base, into: &buf)
+        FfiConverterString.write(value.model, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeInstallationDraft_lift(_ buf: RustBuffer) throws -> InstallationDraft {
+    return try FfiConverterTypeInstallationDraft.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeInstallationDraft_lower(_ value: InstallationDraft) -> RustBuffer {
+    return FfiConverterTypeInstallationDraft.lower(value)
+}
+
+
+/**
+ * One reason the hub would refuse a draft.
+ */
+public struct InstallationIssue {
+    /**
+     * The element it is about; "" for the installation as a whole.
+     */
+    public var subject: String
+    /**
+     * The hub's words.
+     */
+    public var message: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The element it is about; "" for the installation as a whole.
+         */subject: String, 
+        /**
+         * The hub's words.
+         */message: String) {
+        self.subject = subject
+        self.message = message
+    }
+}
+
+#if compiler(>=6)
+extension InstallationIssue: Sendable {}
+#endif
+
+
+extension InstallationIssue: Equatable, Hashable {
+    public static func ==(lhs: InstallationIssue, rhs: InstallationIssue) -> Bool {
+        if lhs.subject != rhs.subject {
+            return false
+        }
+        if lhs.message != rhs.message {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(subject)
+        hasher.combine(message)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeInstallationIssue: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> InstallationIssue {
+        return
+            try InstallationIssue(
+                subject: FfiConverterString.read(from: &buf), 
+                message: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: InstallationIssue, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.subject, into: &buf)
+        FfiConverterString.write(value.message, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeInstallationIssue_lift(_ buf: RustBuffer) throws -> InstallationIssue {
+    return try FfiConverterTypeInstallationIssue.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeInstallationIssue_lower(_ value: InstallationIssue) -> RustBuffer {
+    return FfiConverterTypeInstallationIssue.lower(value)
+}
+
+
+/**
+ * A speaker on one of a unit's outputs.
+ */
+public struct InstallationSpeaker {
+    /**
+     * The unit's output, from 0.
+     */
+    public var output: UInt8
+    /**
+     * From the speaker to the listening position, metres.
+     */
+    public var distanceM: Float
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The unit's output, from 0.
+         */output: UInt8, 
+        /**
+         * From the speaker to the listening position, metres.
+         */distanceM: Float) {
+        self.output = output
+        self.distanceM = distanceM
+    }
+}
+
+#if compiler(>=6)
+extension InstallationSpeaker: Sendable {}
+#endif
+
+
+extension InstallationSpeaker: Equatable, Hashable {
+    public static func ==(lhs: InstallationSpeaker, rhs: InstallationSpeaker) -> Bool {
+        if lhs.output != rhs.output {
+            return false
+        }
+        if lhs.distanceM != rhs.distanceM {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(output)
+        hasher.combine(distanceM)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeInstallationSpeaker: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> InstallationSpeaker {
+        return
+            try InstallationSpeaker(
+                output: FfiConverterUInt8.read(from: &buf), 
+                distanceM: FfiConverterFloat.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: InstallationSpeaker, into buf: inout [UInt8]) {
+        FfiConverterUInt8.write(value.output, into: &buf)
+        FfiConverterFloat.write(value.distanceM, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeInstallationSpeaker_lift(_ buf: RustBuffer) throws -> InstallationSpeaker {
+    return try FfiConverterTypeInstallationSpeaker.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeInstallationSpeaker_lower(_ value: InstallationSpeaker) -> RustBuffer {
+    return FfiConverterTypeInstallationSpeaker.lower(value)
+}
+
+
+/**
+ * A DSPi the hub sees that the installation does not hold.
+ */
+public struct InstallationUnseen {
+    /**
+     * Its USB serial: what [`InstallationEdit::AddUnit`] takes.
+     */
+    public var serial: String
+    /**
+     * Its name when last seen.
+     */
+    public var name: String
+    /**
+     * Attached now.
+     */
+    public var online: Bool
+    /**
+     * The firmware version; "" when unknown.
+     */
+    public var fw: String
+    /**
+     * Output channels.
+     */
+    public var outputs: UInt8
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Its USB serial: what [`InstallationEdit::AddUnit`] takes.
+         */serial: String, 
+        /**
+         * Its name when last seen.
+         */name: String, 
+        /**
+         * Attached now.
+         */online: Bool, 
+        /**
+         * The firmware version; "" when unknown.
+         */fw: String, 
+        /**
+         * Output channels.
+         */outputs: UInt8) {
+        self.serial = serial
+        self.name = name
+        self.online = online
+        self.fw = fw
+        self.outputs = outputs
+    }
+}
+
+#if compiler(>=6)
+extension InstallationUnseen: Sendable {}
+#endif
+
+
+extension InstallationUnseen: Equatable, Hashable {
+    public static func ==(lhs: InstallationUnseen, rhs: InstallationUnseen) -> Bool {
+        if lhs.serial != rhs.serial {
+            return false
+        }
+        if lhs.name != rhs.name {
+            return false
+        }
+        if lhs.online != rhs.online {
+            return false
+        }
+        if lhs.fw != rhs.fw {
+            return false
+        }
+        if lhs.outputs != rhs.outputs {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(serial)
+        hasher.combine(name)
+        hasher.combine(online)
+        hasher.combine(fw)
+        hasher.combine(outputs)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeInstallationUnseen: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> InstallationUnseen {
+        return
+            try InstallationUnseen(
+                serial: FfiConverterString.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf), 
+                online: FfiConverterBool.read(from: &buf), 
+                fw: FfiConverterString.read(from: &buf), 
+                outputs: FfiConverterUInt8.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: InstallationUnseen, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.serial, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterBool.write(value.online, into: &buf)
+        FfiConverterString.write(value.fw, into: &buf)
+        FfiConverterUInt8.write(value.outputs, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeInstallationUnseen_lift(_ buf: RustBuffer) throws -> InstallationUnseen {
+    return try FfiConverterTypeInstallationUnseen.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeInstallationUnseen_lower(_ value: InstallationUnseen) -> RustBuffer {
+    return FfiConverterTypeInstallationUnseen.lower(value)
+}
+
+
+/**
+ * What [`DspiCore::installation_view`] reads.
+ */
+public struct InstallationView {
+    /**
+     * The model's revision on the hub.
+     */
+    public var revision: UInt64
+    /**
+     * This session's role on the hub (`viewer`, `control`, `admin`).
+     */
+    public var role: String
+    /**
+     * The role may save (admin).
+     */
+    public var mayEdit: Bool
+    /**
+     * A draft of the model as it is.
+     */
+    public var draft: InstallationDraft
+    /**
+     * The units the hub sees that the installation does not hold, as the
+     * hub's inventory orders them (online first).
+     */
+    public var unseen: [InstallationUnseen]
+    /**
+     * The hub keeps an inventory: false for one without (`unseen` is then
+     * empty, not "none").
+     */
+    public var inventory: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The model's revision on the hub.
+         */revision: UInt64, 
+        /**
+         * This session's role on the hub (`viewer`, `control`, `admin`).
+         */role: String, 
+        /**
+         * The role may save (admin).
+         */mayEdit: Bool, 
+        /**
+         * A draft of the model as it is.
+         */draft: InstallationDraft, 
+        /**
+         * The units the hub sees that the installation does not hold, as the
+         * hub's inventory orders them (online first).
+         */unseen: [InstallationUnseen], 
+        /**
+         * The hub keeps an inventory: false for one without (`unseen` is then
+         * empty, not "none").
+         */inventory: Bool) {
+        self.revision = revision
+        self.role = role
+        self.mayEdit = mayEdit
+        self.draft = draft
+        self.unseen = unseen
+        self.inventory = inventory
+    }
+}
+
+#if compiler(>=6)
+extension InstallationView: Sendable {}
+#endif
+
+
+extension InstallationView: Equatable, Hashable {
+    public static func ==(lhs: InstallationView, rhs: InstallationView) -> Bool {
+        if lhs.revision != rhs.revision {
+            return false
+        }
+        if lhs.role != rhs.role {
+            return false
+        }
+        if lhs.mayEdit != rhs.mayEdit {
+            return false
+        }
+        if lhs.draft != rhs.draft {
+            return false
+        }
+        if lhs.unseen != rhs.unseen {
+            return false
+        }
+        if lhs.inventory != rhs.inventory {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(revision)
+        hasher.combine(role)
+        hasher.combine(mayEdit)
+        hasher.combine(draft)
+        hasher.combine(unseen)
+        hasher.combine(inventory)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeInstallationView: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> InstallationView {
+        return
+            try InstallationView(
+                revision: FfiConverterUInt64.read(from: &buf), 
+                role: FfiConverterString.read(from: &buf), 
+                mayEdit: FfiConverterBool.read(from: &buf), 
+                draft: FfiConverterTypeInstallationDraft.read(from: &buf), 
+                unseen: FfiConverterSequenceTypeInstallationUnseen.read(from: &buf), 
+                inventory: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: InstallationView, into buf: inout [UInt8]) {
+        FfiConverterUInt64.write(value.revision, into: &buf)
+        FfiConverterString.write(value.role, into: &buf)
+        FfiConverterBool.write(value.mayEdit, into: &buf)
+        FfiConverterTypeInstallationDraft.write(value.draft, into: &buf)
+        FfiConverterSequenceTypeInstallationUnseen.write(value.unseen, into: &buf)
+        FfiConverterBool.write(value.inventory, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeInstallationView_lift(_ buf: RustBuffer) throws -> InstallationView {
+    return try FfiConverterTypeInstallationView.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeInstallationView_lower(_ value: InstallationView) -> RustBuffer {
+    return FfiConverterTypeInstallationView.lower(value)
+}
+
+
+/**
  * A PIN just set ([`DspiCore::installer_pin_set`]).
  */
 public struct InstallerPin {
@@ -43668,6 +44560,11 @@ public struct MeasureLiveSetup {
      * The RTA's bands per octave (1 to 48; 0: 3).
      */
     public var bandsPerOctave: UInt8
+    /**
+     * Take `role` from the device's stored speaker layout (MPLAN 2.2);
+     * refused (`measure.layout_unconfirmed`) while it is not confirmed.
+     */
+    public var rolesFromLayout: Bool
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -43720,7 +44617,11 @@ public struct MeasureLiveSetup {
          */averaging: MeasureRtaAveraging, 
         /**
          * The RTA's bands per octave (1 to 48; 0: 3).
-         */bandsPerOctave: UInt8) {
+         */bandsPerOctave: UInt8, 
+        /**
+         * Take `role` from the device's stored speaker layout (MPLAN 2.2);
+         * refused (`measure.layout_unconfirmed`) while it is not confirmed.
+         */rolesFromLayout: Bool = false) {
         self.output = output
         self.mode = mode
         self.role = role
@@ -43737,6 +44638,7 @@ public struct MeasureLiveSetup {
         self.captureRateHz = captureRateHz
         self.averaging = averaging
         self.bandsPerOctave = bandsPerOctave
+        self.rolesFromLayout = rolesFromLayout
     }
 }
 
@@ -43795,6 +44697,9 @@ extension MeasureLiveSetup: Equatable, Hashable {
         if lhs.bandsPerOctave != rhs.bandsPerOctave {
             return false
         }
+        if lhs.rolesFromLayout != rhs.rolesFromLayout {
+            return false
+        }
         return true
     }
 
@@ -43815,6 +44720,7 @@ extension MeasureLiveSetup: Equatable, Hashable {
         hasher.combine(captureRateHz)
         hasher.combine(averaging)
         hasher.combine(bandsPerOctave)
+        hasher.combine(rolesFromLayout)
     }
 }
 
@@ -43842,7 +44748,8 @@ public struct FfiConverterTypeMeasureLiveSetup: FfiConverterRustBuffer {
                 splCapDb: FfiConverterOptionFloat.read(from: &buf), 
                 captureRateHz: FfiConverterUInt32.read(from: &buf), 
                 averaging: FfiConverterTypeMeasureRtaAveraging.read(from: &buf), 
-                bandsPerOctave: FfiConverterUInt8.read(from: &buf)
+                bandsPerOctave: FfiConverterUInt8.read(from: &buf), 
+                rolesFromLayout: FfiConverterBool.read(from: &buf)
         )
     }
 
@@ -43863,6 +44770,7 @@ public struct FfiConverterTypeMeasureLiveSetup: FfiConverterRustBuffer {
         FfiConverterUInt32.write(value.captureRateHz, into: &buf)
         FfiConverterTypeMeasureRtaAveraging.write(value.averaging, into: &buf)
         FfiConverterUInt8.write(value.bandsPerOctave, into: &buf)
+        FfiConverterBool.write(value.rolesFromLayout, into: &buf)
     }
 }
 
@@ -44736,6 +45644,14 @@ public struct MeasureSetup {
      * other rule unchanged (P5SPIKE's timing test).
      */
     public var startLevelOnly: Bool
+    /**
+     * Take each output's role, speaker and group from the device's stored
+     * speaker layout instead of `outputs` (MPLAN 2.2, `roles: "layout"`);
+     * with no outputs listed, every output of the layout. Refused
+     * (`measure.layout_unconfirmed`) while the user has not confirmed the
+     * layout.
+     */
+    public var rolesFromLayout: Bool
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -44790,7 +45706,14 @@ public struct MeasureSetup {
          * Play at the start level only (-50 dBFS speakers, -60 dBFS headphones):
          * the ceiling is the start level, so the ramp never goes above it; every
          * other rule unchanged (P5SPIKE's timing test).
-         */startLevelOnly: Bool) {
+         */startLevelOnly: Bool, 
+        /**
+         * Take each output's role, speaker and group from the device's stored
+         * speaker layout instead of `outputs` (MPLAN 2.2, `roles: "layout"`);
+         * with no outputs listed, every output of the layout. Refused
+         * (`measure.layout_unconfirmed`) while the user has not confirmed the
+         * layout.
+         */rolesFromLayout: Bool = false) {
         self.kind = kind
         self.outputs = outputs
         self.placement = placement
@@ -44806,6 +45729,7 @@ public struct MeasureSetup {
         self.captureRateHz = captureRateHz
         self.name = name
         self.startLevelOnly = startLevelOnly
+        self.rolesFromLayout = rolesFromLayout
     }
 }
 
@@ -44861,6 +45785,9 @@ extension MeasureSetup: Equatable, Hashable {
         if lhs.startLevelOnly != rhs.startLevelOnly {
             return false
         }
+        if lhs.rolesFromLayout != rhs.rolesFromLayout {
+            return false
+        }
         return true
     }
 
@@ -44880,6 +45807,7 @@ extension MeasureSetup: Equatable, Hashable {
         hasher.combine(captureRateHz)
         hasher.combine(name)
         hasher.combine(startLevelOnly)
+        hasher.combine(rolesFromLayout)
     }
 }
 
@@ -44906,7 +45834,8 @@ public struct FfiConverterTypeMeasureSetup: FfiConverterRustBuffer {
                 splCapDb: FfiConverterOptionFloat.read(from: &buf), 
                 captureRateHz: FfiConverterUInt32.read(from: &buf), 
                 name: FfiConverterString.read(from: &buf), 
-                startLevelOnly: FfiConverterBool.read(from: &buf)
+                startLevelOnly: FfiConverterBool.read(from: &buf), 
+                rolesFromLayout: FfiConverterBool.read(from: &buf)
         )
     }
 
@@ -44926,6 +45855,7 @@ public struct FfiConverterTypeMeasureSetup: FfiConverterRustBuffer {
         FfiConverterUInt32.write(value.captureRateHz, into: &buf)
         FfiConverterString.write(value.name, into: &buf)
         FfiConverterBool.write(value.startLevelOnly, into: &buf)
+        FfiConverterBool.write(value.rolesFromLayout, into: &buf)
     }
 }
 
@@ -48446,6 +49376,13 @@ public struct MeasureTuneOptions {
      * See `fit_min_hz`.
      */
     public var fitMaxHz: Double
+    /**
+     * Take the layout's roles, speakers and groups from the device's stored
+     * speaker layout (MPLAN 2.2, `roles: "layout"`); a layout with no
+     * outputs then means every output of it. Refused
+     * (`measure.layout_unconfirmed`) while the user has not confirmed it.
+     */
+    public var rolesFromLayout: Bool
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -48478,7 +49415,13 @@ public struct MeasureTuneOptions {
          */fitMinHz: Double, 
         /**
          * See `fit_min_hz`.
-         */fitMaxHz: Double) {
+         */fitMaxHz: Double, 
+        /**
+         * Take the layout's roles, speakers and groups from the device's stored
+         * speaker layout (MPLAN 2.2, `roles: "layout"`); a layout with no
+         * outputs then means every output of it. Refused
+         * (`measure.layout_unconfirmed`) while the user has not confirmed it.
+         */rolesFromLayout: Bool = false) {
         self.targetDocument = targetDocument
         self.micDocument = micDocument
         self.keepCrossover = keepCrossover
@@ -48488,6 +49431,7 @@ public struct MeasureTuneOptions {
         self.windowOctaves = windowOctaves
         self.fitMinHz = fitMinHz
         self.fitMaxHz = fitMaxHz
+        self.rolesFromLayout = rolesFromLayout
     }
 }
 
@@ -48525,6 +49469,9 @@ extension MeasureTuneOptions: Equatable, Hashable {
         if lhs.fitMaxHz != rhs.fitMaxHz {
             return false
         }
+        if lhs.rolesFromLayout != rhs.rolesFromLayout {
+            return false
+        }
         return true
     }
 
@@ -48538,6 +49485,7 @@ extension MeasureTuneOptions: Equatable, Hashable {
         hasher.combine(windowOctaves)
         hasher.combine(fitMinHz)
         hasher.combine(fitMaxHz)
+        hasher.combine(rolesFromLayout)
     }
 }
 
@@ -48558,7 +49506,8 @@ public struct FfiConverterTypeMeasureTuneOptions: FfiConverterRustBuffer {
                 keepEq: FfiConverterBool.read(from: &buf), 
                 windowOctaves: FfiConverterDouble.read(from: &buf), 
                 fitMinHz: FfiConverterDouble.read(from: &buf), 
-                fitMaxHz: FfiConverterDouble.read(from: &buf)
+                fitMaxHz: FfiConverterDouble.read(from: &buf), 
+                rolesFromLayout: FfiConverterBool.read(from: &buf)
         )
     }
 
@@ -48572,6 +49521,7 @@ public struct FfiConverterTypeMeasureTuneOptions: FfiConverterRustBuffer {
         FfiConverterDouble.write(value.windowOctaves, into: &buf)
         FfiConverterDouble.write(value.fitMinHz, into: &buf)
         FfiConverterDouble.write(value.fitMaxHz, into: &buf)
+        FfiConverterBool.write(value.rolesFromLayout, into: &buf)
     }
 }
 
@@ -56233,6 +57183,248 @@ public func FfiConverterTypeSpdifRxStatus_lower(_ value: SpdifRxStatus) -> RustB
 
 
 /**
+ * Which output drives what, for one device.
+ */
+public struct SpeakerLayout {
+    /**
+     * The device's serial (set by the core; "" in an exported copy).
+     */
+    public var serial: String
+    /**
+     * The outputs, each once, in output order.
+     */
+    public var outputs: [SpeakerLayoutOutput]
+    /**
+     * The user confirmed it (the Getting Started step, Settings ›
+     * Speakers). A proposal is never confirmed.
+     */
+    public var confirmedByUser: Bool
+    /**
+     * When it was set, ms since the Unix epoch; 0 for a proposal.
+     */
+    public var updatedMs: Int64
+    /**
+     * Remarks in words (a proposal's: outputs left out and why).
+     */
+    public var notes: [String]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The device's serial (set by the core; "" in an exported copy).
+         */serial: String, 
+        /**
+         * The outputs, each once, in output order.
+         */outputs: [SpeakerLayoutOutput], 
+        /**
+         * The user confirmed it (the Getting Started step, Settings ›
+         * Speakers). A proposal is never confirmed.
+         */confirmedByUser: Bool, 
+        /**
+         * When it was set, ms since the Unix epoch; 0 for a proposal.
+         */updatedMs: Int64, 
+        /**
+         * Remarks in words (a proposal's: outputs left out and why).
+         */notes: [String]) {
+        self.serial = serial
+        self.outputs = outputs
+        self.confirmedByUser = confirmedByUser
+        self.updatedMs = updatedMs
+        self.notes = notes
+    }
+}
+
+#if compiler(>=6)
+extension SpeakerLayout: Sendable {}
+#endif
+
+
+extension SpeakerLayout: Equatable, Hashable {
+    public static func ==(lhs: SpeakerLayout, rhs: SpeakerLayout) -> Bool {
+        if lhs.serial != rhs.serial {
+            return false
+        }
+        if lhs.outputs != rhs.outputs {
+            return false
+        }
+        if lhs.confirmedByUser != rhs.confirmedByUser {
+            return false
+        }
+        if lhs.updatedMs != rhs.updatedMs {
+            return false
+        }
+        if lhs.notes != rhs.notes {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(serial)
+        hasher.combine(outputs)
+        hasher.combine(confirmedByUser)
+        hasher.combine(updatedMs)
+        hasher.combine(notes)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSpeakerLayout: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SpeakerLayout {
+        return
+            try SpeakerLayout(
+                serial: FfiConverterString.read(from: &buf), 
+                outputs: FfiConverterSequenceTypeSpeakerLayoutOutput.read(from: &buf), 
+                confirmedByUser: FfiConverterBool.read(from: &buf), 
+                updatedMs: FfiConverterInt64.read(from: &buf), 
+                notes: FfiConverterSequenceString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: SpeakerLayout, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.serial, into: &buf)
+        FfiConverterSequenceTypeSpeakerLayoutOutput.write(value.outputs, into: &buf)
+        FfiConverterBool.write(value.confirmedByUser, into: &buf)
+        FfiConverterInt64.write(value.updatedMs, into: &buf)
+        FfiConverterSequenceString.write(value.notes, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSpeakerLayout_lift(_ buf: RustBuffer) throws -> SpeakerLayout {
+    return try FfiConverterTypeSpeakerLayout.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSpeakerLayout_lower(_ value: SpeakerLayout) -> RustBuffer {
+    return FfiConverterTypeSpeakerLayout.lower(value)
+}
+
+
+/**
+ * One output of the layout.
+ */
+public struct SpeakerLayoutOutput {
+    /**
+     * The output, 0-based.
+     */
+    public var output: UInt8
+    /**
+     * What it drives.
+     */
+    public var role: MeasureRole
+    /**
+     * The speaker it belongs to (`L`, `R`, `Sub`, or the user's word).
+     */
+    public var speaker: String
+    /**
+     * Its alignment group: the outputs of one speaker share one.
+     */
+    public var group: UInt8
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The output, 0-based.
+         */output: UInt8, 
+        /**
+         * What it drives.
+         */role: MeasureRole, 
+        /**
+         * The speaker it belongs to (`L`, `R`, `Sub`, or the user's word).
+         */speaker: String, 
+        /**
+         * Its alignment group: the outputs of one speaker share one.
+         */group: UInt8) {
+        self.output = output
+        self.role = role
+        self.speaker = speaker
+        self.group = group
+    }
+}
+
+#if compiler(>=6)
+extension SpeakerLayoutOutput: Sendable {}
+#endif
+
+
+extension SpeakerLayoutOutput: Equatable, Hashable {
+    public static func ==(lhs: SpeakerLayoutOutput, rhs: SpeakerLayoutOutput) -> Bool {
+        if lhs.output != rhs.output {
+            return false
+        }
+        if lhs.role != rhs.role {
+            return false
+        }
+        if lhs.speaker != rhs.speaker {
+            return false
+        }
+        if lhs.group != rhs.group {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(output)
+        hasher.combine(role)
+        hasher.combine(speaker)
+        hasher.combine(group)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSpeakerLayoutOutput: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SpeakerLayoutOutput {
+        return
+            try SpeakerLayoutOutput(
+                output: FfiConverterUInt8.read(from: &buf), 
+                role: FfiConverterTypeMeasureRole.read(from: &buf), 
+                speaker: FfiConverterString.read(from: &buf), 
+                group: FfiConverterUInt8.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: SpeakerLayoutOutput, into buf: inout [UInt8]) {
+        FfiConverterUInt8.write(value.output, into: &buf)
+        FfiConverterTypeMeasureRole.write(value.role, into: &buf)
+        FfiConverterString.write(value.speaker, into: &buf)
+        FfiConverterUInt8.write(value.group, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSpeakerLayoutOutput_lift(_ buf: RustBuffer) throws -> SpeakerLayoutOutput {
+    return try FfiConverterTypeSpeakerLayoutOutput.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSpeakerLayoutOutput_lower(_ value: SpeakerLayoutOutput) -> RustBuffer {
+    return FfiConverterTypeSpeakerLayoutOutput.lower(value)
+}
+
+
+/**
  * One statistics poll.
  */
 public struct StatsTick {
@@ -59854,6 +61046,571 @@ public func FfiConverterTypeHostTransportKind_lower(_ value: HostTransportKind) 
 
 
 extension HostTransportKind: Equatable, Hashable {}
+
+
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
+ * One edit of a draft. An `id` left out is made from the name (or the
+ * serial); every id an edit names must exist, every serial is in the
+ * installation once. JSON: `{"op": "addUnit", "serial": ..., ...}`.
+ */
+
+public enum InstallationEdit {
+    
+    /**
+     * Add the unit with this serial, in `room`, as `role`, fed by
+     * `upstream` (none for a USB-direct unit).
+     */
+    case addUnit(
+        /**
+         * Its USB serial.
+         */serial: String, 
+        /**
+         * Its id; `None`: made from the name or the serial.
+         */id: String?, 
+        /**
+         * What people call it.
+         */name: String, 
+        /**
+         * Where it stands.
+         */room: String?, 
+        /**
+         * How the programme reaches it.
+         */role: InstallationRole, 
+        /**
+         * What feeds it: a sender, a fan-out or a repeater (an S/PDIF
+         * source for a follower).
+         */upstream: String?
+    )
+    /**
+     * Remove an element of any kind. What names it as a member (a zone's
+     * rooms, a group's units, a unit's room, a zone's source, a source's
+     * sender) forgets it, and scene actions aimed at it go; an element it
+     * fed is left for the validator to point out.
+     */
+    case removeElement(
+        /**
+         * The element.
+         */id: String
+    )
+    /**
+     * Rename an element of any kind.
+     */
+    case renameElement(
+        /**
+         * The element.
+         */id: String, 
+        /**
+         * The new name.
+         */name: String
+    )
+    /**
+     * Put a unit in a room, or in none.
+     */
+    case setUnitRoom(
+        /**
+         * The unit.
+         */id: String, 
+        /**
+         * The room; `None`: no room.
+         */room: String?
+    )
+    /**
+     * Change a unit's role. The fields the new role cannot have go (a
+     * USB-direct unit's upstream, an S/PDIF follower's slots).
+     */
+    case setUnitRole(
+        /**
+         * The unit.
+         */id: String, 
+        /**
+         * Its new role.
+         */role: InstallationRole
+    )
+    /**
+     * Set what feeds a unit, and which output of it.
+     */
+    case setUnitUpstream(
+        /**
+         * The unit.
+         */id: String, 
+        /**
+         * The element feeding it.
+         */upstream: String, 
+        /**
+         * Which output of the upstream element, for the record.
+         */output: UInt8?
+    )
+    /**
+     * A USB-direct unit's mode and what it does in lock error.
+     */
+    case setUnitUsbMode(
+        /**
+         * The unit.
+         */id: String, 
+        /**
+         * `off`, `rate_lock` or `phase_lock`; `None`: the unit's own.
+         */mode: String?, 
+        /**
+         * Play unaligned in lock error instead of muting.
+         */playUnaligned: Bool
+    )
+    /**
+     * A unit's speakers by output. A speaker on an output that stays keeps
+     * its measured arrival.
+     */
+    case setUnitSpeakers(
+        /**
+         * The unit.
+         */id: String, 
+        /**
+         * Its speakers.
+         */speakers: [InstallationSpeaker]
+    )
+    /**
+     * Make a unit an S/PDIF time-base source on the output slots of
+     * `tx_mask`, or (0) not one.
+     */
+    case setSpdifSource(
+        /**
+         * The unit.
+         */id: String, 
+        /**
+         * Bit n: S/PDIF output slot n carries the time base; 0: not a source.
+         */txMask: UInt8
+    )
+    /**
+     * Add a room.
+     */
+    case addRoom(
+        /**
+         * Its id; `None`: made from the name.
+         */id: String?, 
+        /**
+         * What people call it.
+         */name: String
+    )
+    /**
+     * Add a zone of `rooms`, playing `source`.
+     */
+    case addZone(
+        /**
+         * Its id; `None`: made from the name.
+         */id: String?, 
+        /**
+         * What people call it.
+         */name: String, 
+        /**
+         * Its rooms.
+         */rooms: [String], 
+        /**
+         * What it plays.
+         */source: String?
+    )
+    /**
+     * A zone's rooms.
+     */
+    case setZoneRooms(
+        /**
+         * The zone.
+         */id: String, 
+        /**
+         * Its rooms.
+         */rooms: [String]
+    )
+    /**
+     * Add a group of `units`.
+     */
+    case addGroup(
+        /**
+         * Its id; `None`: made from the name.
+         */id: String?, 
+        /**
+         * What people call it.
+         */name: String, 
+        /**
+         * Its units.
+         */units: [String]
+    )
+    /**
+     * A group's units.
+     */
+    case setGroupUnits(
+        /**
+         * The group.
+         */id: String, 
+        /**
+         * Its units.
+         */units: [String]
+    )
+    /**
+     * Add a sender (the audio link's clock).
+     */
+    case addSender(
+        /**
+         * Its id; `None`: made from the name or the serial.
+         */id: String?, 
+        /**
+         * What people call it.
+         */name: String, 
+        /**
+         * Its USB serial when the hub can reach it.
+         */serial: String?
+    )
+    /**
+     * Add a fan-out fed by `upstream`.
+     */
+    case addFanOut(
+        /**
+         * Its id; `None`: made from the name or the serial.
+         */id: String?, 
+        /**
+         * What people call it.
+         */name: String, 
+        /**
+         * Its USB serial when the hub can reach it.
+         */serial: String?, 
+        /**
+         * What feeds it: a sender, a fan-out or a repeater.
+         */upstream: String, 
+        /**
+         * Which output of the upstream element, for the record.
+         */output: UInt8?
+    )
+    /**
+     * The installation's own settings; `None` leaves one as it is.
+     */
+    case setSystem(
+        /**
+         * 44100, 48000 or 96000.
+         */rateHz: UInt32?, 
+        /**
+         * Change the system delay to `d_frames`.
+         */setD: Bool, 
+        /**
+         * The system delay in frames; `None`: automatic.
+         */dFrames: UInt16?, 
+        /**
+         * Keep USB-direct units aligned.
+         */keepUsbAligned: Bool?
+    )
+}
+
+
+#if compiler(>=6)
+extension InstallationEdit: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeInstallationEdit: FfiConverterRustBuffer {
+    typealias SwiftType = InstallationEdit
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> InstallationEdit {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .addUnit(serial: try FfiConverterString.read(from: &buf), id: try FfiConverterOptionString.read(from: &buf), name: try FfiConverterString.read(from: &buf), room: try FfiConverterOptionString.read(from: &buf), role: try FfiConverterTypeInstallationRole.read(from: &buf), upstream: try FfiConverterOptionString.read(from: &buf)
+        )
+        
+        case 2: return .removeElement(id: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 3: return .renameElement(id: try FfiConverterString.read(from: &buf), name: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 4: return .setUnitRoom(id: try FfiConverterString.read(from: &buf), room: try FfiConverterOptionString.read(from: &buf)
+        )
+        
+        case 5: return .setUnitRole(id: try FfiConverterString.read(from: &buf), role: try FfiConverterTypeInstallationRole.read(from: &buf)
+        )
+        
+        case 6: return .setUnitUpstream(id: try FfiConverterString.read(from: &buf), upstream: try FfiConverterString.read(from: &buf), output: try FfiConverterOptionUInt8.read(from: &buf)
+        )
+        
+        case 7: return .setUnitUsbMode(id: try FfiConverterString.read(from: &buf), mode: try FfiConverterOptionString.read(from: &buf), playUnaligned: try FfiConverterBool.read(from: &buf)
+        )
+        
+        case 8: return .setUnitSpeakers(id: try FfiConverterString.read(from: &buf), speakers: try FfiConverterSequenceTypeInstallationSpeaker.read(from: &buf)
+        )
+        
+        case 9: return .setSpdifSource(id: try FfiConverterString.read(from: &buf), txMask: try FfiConverterUInt8.read(from: &buf)
+        )
+        
+        case 10: return .addRoom(id: try FfiConverterOptionString.read(from: &buf), name: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 11: return .addZone(id: try FfiConverterOptionString.read(from: &buf), name: try FfiConverterString.read(from: &buf), rooms: try FfiConverterSequenceString.read(from: &buf), source: try FfiConverterOptionString.read(from: &buf)
+        )
+        
+        case 12: return .setZoneRooms(id: try FfiConverterString.read(from: &buf), rooms: try FfiConverterSequenceString.read(from: &buf)
+        )
+        
+        case 13: return .addGroup(id: try FfiConverterOptionString.read(from: &buf), name: try FfiConverterString.read(from: &buf), units: try FfiConverterSequenceString.read(from: &buf)
+        )
+        
+        case 14: return .setGroupUnits(id: try FfiConverterString.read(from: &buf), units: try FfiConverterSequenceString.read(from: &buf)
+        )
+        
+        case 15: return .addSender(id: try FfiConverterOptionString.read(from: &buf), name: try FfiConverterString.read(from: &buf), serial: try FfiConverterOptionString.read(from: &buf)
+        )
+        
+        case 16: return .addFanOut(id: try FfiConverterOptionString.read(from: &buf), name: try FfiConverterString.read(from: &buf), serial: try FfiConverterOptionString.read(from: &buf), upstream: try FfiConverterString.read(from: &buf), output: try FfiConverterOptionUInt8.read(from: &buf)
+        )
+        
+        case 17: return .setSystem(rateHz: try FfiConverterOptionUInt32.read(from: &buf), setD: try FfiConverterBool.read(from: &buf), dFrames: try FfiConverterOptionUInt16.read(from: &buf), keepUsbAligned: try FfiConverterOptionBool.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: InstallationEdit, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case let .addUnit(serial,id,name,room,role,upstream):
+            writeInt(&buf, Int32(1))
+            FfiConverterString.write(serial, into: &buf)
+            FfiConverterOptionString.write(id, into: &buf)
+            FfiConverterString.write(name, into: &buf)
+            FfiConverterOptionString.write(room, into: &buf)
+            FfiConverterTypeInstallationRole.write(role, into: &buf)
+            FfiConverterOptionString.write(upstream, into: &buf)
+            
+        
+        case let .removeElement(id):
+            writeInt(&buf, Int32(2))
+            FfiConverterString.write(id, into: &buf)
+            
+        
+        case let .renameElement(id,name):
+            writeInt(&buf, Int32(3))
+            FfiConverterString.write(id, into: &buf)
+            FfiConverterString.write(name, into: &buf)
+            
+        
+        case let .setUnitRoom(id,room):
+            writeInt(&buf, Int32(4))
+            FfiConverterString.write(id, into: &buf)
+            FfiConverterOptionString.write(room, into: &buf)
+            
+        
+        case let .setUnitRole(id,role):
+            writeInt(&buf, Int32(5))
+            FfiConverterString.write(id, into: &buf)
+            FfiConverterTypeInstallationRole.write(role, into: &buf)
+            
+        
+        case let .setUnitUpstream(id,upstream,output):
+            writeInt(&buf, Int32(6))
+            FfiConverterString.write(id, into: &buf)
+            FfiConverterString.write(upstream, into: &buf)
+            FfiConverterOptionUInt8.write(output, into: &buf)
+            
+        
+        case let .setUnitUsbMode(id,mode,playUnaligned):
+            writeInt(&buf, Int32(7))
+            FfiConverterString.write(id, into: &buf)
+            FfiConverterOptionString.write(mode, into: &buf)
+            FfiConverterBool.write(playUnaligned, into: &buf)
+            
+        
+        case let .setUnitSpeakers(id,speakers):
+            writeInt(&buf, Int32(8))
+            FfiConverterString.write(id, into: &buf)
+            FfiConverterSequenceTypeInstallationSpeaker.write(speakers, into: &buf)
+            
+        
+        case let .setSpdifSource(id,txMask):
+            writeInt(&buf, Int32(9))
+            FfiConverterString.write(id, into: &buf)
+            FfiConverterUInt8.write(txMask, into: &buf)
+            
+        
+        case let .addRoom(id,name):
+            writeInt(&buf, Int32(10))
+            FfiConverterOptionString.write(id, into: &buf)
+            FfiConverterString.write(name, into: &buf)
+            
+        
+        case let .addZone(id,name,rooms,source):
+            writeInt(&buf, Int32(11))
+            FfiConverterOptionString.write(id, into: &buf)
+            FfiConverterString.write(name, into: &buf)
+            FfiConverterSequenceString.write(rooms, into: &buf)
+            FfiConverterOptionString.write(source, into: &buf)
+            
+        
+        case let .setZoneRooms(id,rooms):
+            writeInt(&buf, Int32(12))
+            FfiConverterString.write(id, into: &buf)
+            FfiConverterSequenceString.write(rooms, into: &buf)
+            
+        
+        case let .addGroup(id,name,units):
+            writeInt(&buf, Int32(13))
+            FfiConverterOptionString.write(id, into: &buf)
+            FfiConverterString.write(name, into: &buf)
+            FfiConverterSequenceString.write(units, into: &buf)
+            
+        
+        case let .setGroupUnits(id,units):
+            writeInt(&buf, Int32(14))
+            FfiConverterString.write(id, into: &buf)
+            FfiConverterSequenceString.write(units, into: &buf)
+            
+        
+        case let .addSender(id,name,serial):
+            writeInt(&buf, Int32(15))
+            FfiConverterOptionString.write(id, into: &buf)
+            FfiConverterString.write(name, into: &buf)
+            FfiConverterOptionString.write(serial, into: &buf)
+            
+        
+        case let .addFanOut(id,name,serial,upstream,output):
+            writeInt(&buf, Int32(16))
+            FfiConverterOptionString.write(id, into: &buf)
+            FfiConverterString.write(name, into: &buf)
+            FfiConverterOptionString.write(serial, into: &buf)
+            FfiConverterString.write(upstream, into: &buf)
+            FfiConverterOptionUInt8.write(output, into: &buf)
+            
+        
+        case let .setSystem(rateHz,setD,dFrames,keepUsbAligned):
+            writeInt(&buf, Int32(17))
+            FfiConverterOptionUInt32.write(rateHz, into: &buf)
+            FfiConverterBool.write(setD, into: &buf)
+            FfiConverterOptionUInt16.write(dFrames, into: &buf)
+            FfiConverterOptionBool.write(keepUsbAligned, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeInstallationEdit_lift(_ buf: RustBuffer) throws -> InstallationEdit {
+    return try FfiConverterTypeInstallationEdit.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeInstallationEdit_lower(_ value: InstallationEdit) -> RustBuffer {
+    return FfiConverterTypeInstallationEdit.lower(value)
+}
+
+
+extension InstallationEdit: Equatable, Hashable {}
+
+
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
+ * A unit's role in the installation: how the programme reaches it.
+ */
+
+public enum InstallationRole {
+    
+    /**
+     * It plays the audio link from its upstream (a sender, a fan-out or a
+     * repeater).
+     */
+    case receiver
+    /**
+     * A receiver that also re-emits the stream to the units naming it.
+     */
+    case repeater
+    /**
+     * It follows an S/PDIF source unit's time base (its upstream).
+     */
+    case spdifFollower
+    /**
+     * USB directly from the host; no upstream.
+     */
+    case usbDirect
+}
+
+
+#if compiler(>=6)
+extension InstallationRole: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeInstallationRole: FfiConverterRustBuffer {
+    typealias SwiftType = InstallationRole
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> InstallationRole {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .receiver
+        
+        case 2: return .repeater
+        
+        case 3: return .spdifFollower
+        
+        case 4: return .usbDirect
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: InstallationRole, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .receiver:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .repeater:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .spdifFollower:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .usbDirect:
+            writeInt(&buf, Int32(4))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeInstallationRole_lift(_ buf: RustBuffer) throws -> InstallationRole {
+    return try FfiConverterTypeInstallationRole.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeInstallationRole_lower(_ value: InstallationRole) -> RustBuffer {
+    return FfiConverterTypeInstallationRole.lower(value)
+}
+
+
+extension InstallationRole: Equatable, Hashable {}
 
 
 
@@ -63983,6 +65740,30 @@ fileprivate struct FfiConverterOptionTypeSnapshotRecall: FfiConverterRustBuffer 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeSpeakerLayout: FfiConverterRustBuffer {
+    typealias SwiftType = SpeakerLayout?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeSpeakerLayout.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeSpeakerLayout.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeAbSide: FfiConverterRustBuffer {
     typealias SwiftType = AbSide?
 
@@ -65426,6 +67207,81 @@ fileprivate struct FfiConverterSequenceTypeHubStatsDevice: FfiConverterRustBuffe
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeInstallationIssue: FfiConverterRustBuffer {
+    typealias SwiftType = [InstallationIssue]
+
+    public static func write(_ value: [InstallationIssue], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeInstallationIssue.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [InstallationIssue] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [InstallationIssue]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeInstallationIssue.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeInstallationSpeaker: FfiConverterRustBuffer {
+    typealias SwiftType = [InstallationSpeaker]
+
+    public static func write(_ value: [InstallationSpeaker], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeInstallationSpeaker.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [InstallationSpeaker] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [InstallationSpeaker]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeInstallationSpeaker.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeInstallationUnseen: FfiConverterRustBuffer {
+    typealias SwiftType = [InstallationUnseen]
+
+    public static func write(_ value: [InstallationUnseen], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeInstallationUnseen.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [InstallationUnseen] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [InstallationUnseen]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeInstallationUnseen.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeLimitFieldRange: FfiConverterRustBuffer {
     typealias SwiftType = [LimitFieldRange]
 
@@ -66676,6 +68532,31 @@ fileprivate struct FfiConverterSequenceTypeSpdifBufferStats: FfiConverterRustBuf
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeSpeakerLayoutOutput: FfiConverterRustBuffer {
+    typealias SwiftType = [SpeakerLayoutOutput]
+
+    public static func write(_ value: [SpeakerLayoutOutput], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeSpeakerLayoutOutput.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [SpeakerLayoutOutput] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [SpeakerLayoutOutput]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeSpeakerLayoutOutput.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeTargetInfo: FfiConverterRustBuffer {
     typealias SwiftType = [TargetInfo]
 
@@ -66743,6 +68624,31 @@ fileprivate struct FfiConverterSequenceTypeVregChoice: FfiConverterRustBuffer {
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeVregChoice.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeInstallationEdit: FfiConverterRustBuffer {
+    typealias SwiftType = [InstallationEdit]
+
+    public static func write(_ value: [InstallationEdit], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeInstallationEdit.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [InstallationEdit] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [InstallationEdit]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeInstallationEdit.read(from: &buf))
         }
         return seq
     }
@@ -68697,6 +70603,21 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_inaccessible_devices() != 62282) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_dspicore_installation_diff() != 36787) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_installation_draft_edit() != 19407) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_installation_save() != 31866) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_installation_validate() != 58522) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_installation_view() != 16120) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_dspicore_installer_lock() != 14116) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -69078,7 +70999,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_pin_map() != 51158) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_poll_hotplug() != 29460) {
+    if (uniffi_dspi_core_checksum_method_dspicore_poll_hotplug() != 19582) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_preamp_max_db() != 3403) {
@@ -69124,6 +71045,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_reset_meter_max() != 60815) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_revert_entry() != 18006) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_rta_get_caps() != 59838) {
@@ -69481,6 +71405,18 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_snapshot_set_note() != 19310) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_speaker_layout() != 33225) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_speaker_layout_propose() != 65330) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_speaker_layout_set() != 50039) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_speaker_layout_set_dir() != 8445) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_test_dac_mute() != 36228) {
