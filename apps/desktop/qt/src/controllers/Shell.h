@@ -6,6 +6,8 @@
 #include <QPointer>
 #include <QSize>
 #include <QStringList>
+#include <QVariantList>
+#include <QVariantMap>
 #include <QtQml/qqmlregistration.h>
 #include <functional>
 
@@ -18,6 +20,9 @@ class QJSEngine;
 // in this order, the handler a controller added for it, or opens the tool
 // window registered for it; an id nobody handles yet does nothing but log, so
 // the full menu exists from the start and each work package fills its rows.
+// -- WP LAY0 -- A tool window whose action has a PanelTable row is a Panel in
+// a PanelWindow; while the loaded shell hosts panels on pages (pageHost, the
+// Modern shell), trigger() shows the panel on its page instead.
 //
 // It also holds the registered banners, which BannerHost stacks, and the
 // colour scheme the Theme follows: the system's, unless overridden.
@@ -31,6 +36,11 @@ class Shell : public QObject {
     // The system's fixed-pitch family (Theme.fontMono): Consolas on Windows,
     // the desktop's monospace on Linux
     Q_PROPERTY(QString monospaceFamily READ monospaceFamily CONSTANT)
+    // -- WP LAY0 -- The loaded shell's page host, null when it has none
+    // (Classic). It has `function showPanel(row)`, which shows PanelTable's
+    // `row` on its page and returns true, or false to let a window open. The
+    // shell sets it when it loads; it clears itself when the host goes.
+    Q_PROPERTY(QObject *pageHost READ pageHost WRITE setPageHost NOTIFY pageHostChanged)
 public:
     explicit Shell(QQmlEngine *engine, QObject *parent = nullptr);
     ~Shell() override;
@@ -64,8 +74,16 @@ public:
     // Whether something handles `action` (a menu row with `optional: true`
     // shows only then).
     Q_INVOKABLE bool handles(const QString &action) const;
-    // The window registered for `action`, made and shown; null if none.
+    // The window registered for `action`, made and shown; null if none. With
+    // a PanelTable row it is a PanelWindow, also while a page host is set
+    // (the Modern "Open in window").
     Q_INVOKABLE QWindow *openWindow(const QString &action);
+    // -- WP LAY0 -- PanelTable's row for `action`; empty when its tool is no panel
+    Q_INVOKABLE QVariantMap panel(const QString &action) const;
+    // Every PanelTable row, in order
+    QVariantList panels() const;
+    QObject *pageHost() const { return m_pageHost; }
+    void setPageHost(QObject *host);
     Q_INVOKABLE void openUrl(const QString &url);
     Q_INVOKABLE void quit();
 
@@ -97,6 +115,7 @@ signals:
     void bannersChanged();
     void lastUnhandledChanged();
     void darkSchemeChanged();
+    void pageHostChanged();   // -- WP LAY0 --
 
 private:
     struct Handler {
@@ -116,6 +135,9 @@ private:
     // -- WP QTSENDER --
     QPointer<QObject> m_gateReceiver;
     std::function<bool(const QString &)> m_gate;
+    // -- WP LAY0 --
+    QPointer<QObject> m_pageHost;
+    QMetaObject::Connection m_pageHostGone;
 };
 
 #endif // SHELL_H

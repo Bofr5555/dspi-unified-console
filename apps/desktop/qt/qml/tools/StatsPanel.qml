@@ -8,15 +8,11 @@ import UConsole
 // paths' counters, ring health, PDM, DMA starvation and the buffers' fill
 // with their history; a third column for the interfaces the device has; and
 // the desktop's clock diagnostics when the firmware was built with them.
-ToolWindow {
-    id: window
-    objectName: "StatsWindow"
-    windowId: "stats"
-    defaultWidth: 960
-    defaultHeight: 660
-    minimumWidth: 900
-    minimumHeight: 480
-    title: qsTr("System Statistics")
+// -- WP LAY0 -- A panel (Panel.qml): PanelTable's row for tools.stats gives
+// its window's title and sizes.
+Panel {
+    id: panel
+    objectName: "StatsPanel"
     // -- WP QTPOP --
     fitBodies: [flick]
 
@@ -25,8 +21,9 @@ ToolWindow {
                                         || StatsController.clockDiagnostics.length > 0
                                         || StatsController.usbErrors.length > 0
 
-    onVisibleChanged: StatsController.windowShown = visible
-    Component.onCompleted: StatsController.windowShown = visible
+    onShownChanged: StatsController.windowShown = shown
+    Component.onCompleted: StatsController.windowShown = shown
+    Component.onDestruction: StatsController.windowShown = false   // -- WP LAY0 -- a page host unloaded
 
     function bandColor(band) {
         if (band === "good") return Theme.success
@@ -74,12 +71,12 @@ ToolWindow {
             width: 6
             height: 6
             radius: 3
-            color: window.bandColor(info.band)
+            color: panel.bandColor(info.band)
         }
         Text {
             text: info.value
             font: info.dot ? Theme.fontSmall : Qt.font({ family: Theme.fontMono.family, pixelSize: 12, weight: Font.Bold })
-            color: info.dot ? Theme.textMuted : window.bandColor(info.band)
+            color: info.dot ? Theme.textMuted : panel.bandColor(info.band)
         }
         HoverHandler { id: infoHover }
         HelpTip {
@@ -141,7 +138,7 @@ ToolWindow {
                     Layout.alignment: Qt.AlignHCenter
                     text: String(parent.count)
                     font: Qt.font({ family: Theme.fontMono.family, pixelSize: 14, weight: Font.Bold })
-                    color: parent.count > 0 ? window.bandColor(modelData.band) : Theme.text
+                    color: parent.count > 0 ? panel.bandColor(modelData.band) : Theme.text
                 }
                 Text {
                     Layout.alignment: Qt.AlignHCenter
@@ -303,7 +300,7 @@ ToolWindow {
                         Timer {
                             interval: 1000
                             repeat: true
-                            running: window.visible && StatsController.starvation.lastEventMs > 0
+                            running: panel.shown && StatsController.starvation.lastEventMs > 0
                             onTriggered: parent.now = Date.now()
                         }
                         Text {
@@ -378,17 +375,17 @@ ToolWindow {
                             objectName: "StatsWindow.fill." + index
                             Layout.fillWidth: true
                             entry: modelData
-                            tint: window.seriesColor(modelData.colour)
-                            valueColor: window.bandColor(modelData.band)
+                            tint: panel.seriesColor(modelData.colour)
+                            valueColor: panel.bandColor(modelData.band)
                         }
                     }
                 }
 
-                Rectangle { visible: window.thirdColumn; Layout.fillHeight: true; implicitWidth: 1; color: Theme.separator }
+                Rectangle { visible: panel.thirdColumn; Layout.fillHeight: true; implicitWidth: 1; color: Theme.separator }
 
                 // ---- Column 3: the interfaces the device has, and the diagnostics ----
                 ColumnLayout {
-                    visible: window.thirdColumn
+                    visible: panel.thirdColumn
                     Layout.preferredWidth: 1
                     Layout.fillWidth: true
                     Layout.alignment: Qt.AlignTop

@@ -7,29 +7,26 @@ import UConsole
 // at least 720×320): Pause, Clear and Copy, the state and the count, then one
 // monospaced row per notification, newest at the bottom. The rows are the
 // core's text with the local time in front (MonitorController).
-ToolWindow {
-    id: window
-    objectName: "MonitorWindow"
-    windowId: "interruptMonitor"
-    defaultWidth: 900
-    defaultHeight: 480
-    minimumWidth: 720
-    minimumHeight: 320
-    title: qsTr("Interrupt Monitor")
+// -- WP LAY0 -- A panel (Panel.qml): PanelTable's row for
+// tools.interruptMonitor gives its window's title and sizes.
+Panel {
+    id: panel
+    objectName: "MonitorPanel"
 
     readonly property var monitor: MonitorController
 
-    onVisibleChanged: MonitorController.windowShown = visible
-    Component.onCompleted: MonitorController.windowShown = visible
+    onShownChanged: MonitorController.windowShown = shown
+    Component.onCompleted: MonitorController.windowShown = shown
+    Component.onDestruction: MonitorController.windowShown = false   // -- WP LAY0 -- a page host unloaded
 
     Shortcut {
         sequence: "Ctrl+P"
-        enabled: !window.senderLocked   // -- WP QTSENDER --
+        enabled: panel.shown && !panel.locked   // -- WP QTSENDER -- -- WP LAY0 -- only while it shows
         onActivated: MonitorController.togglePause()
     }
     Shortcut {
         sequence: "Ctrl+K"
-        enabled: !window.senderLocked   // -- WP QTSENDER --
+        enabled: panel.shown && !panel.locked   // -- WP QTSENDER -- -- WP LAY0 -- only while it shows
         onActivated: MonitorController.clear()
     }
 
