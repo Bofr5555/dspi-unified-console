@@ -64,6 +64,9 @@ pub const CORE_SET_CAP: usize = 8;
 #[cfg(feature = "link")]
 const HUB_LIST_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
 
+/// How long [`CoreSet::list`] waits for a core that is busy.
+const LIST_WAIT: std::time::Duration = std::time::Duration::from_millis(100);
+
 /// A stable name for an open device: `<kind>:<rest>`, see the module docs.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct DeviceId(String);
@@ -400,6 +403,7 @@ enum Held {
     /// A unit on USB (open, or gone and to be reopened).
     Usb(String),
     /// A unit bound through a hub.
+    #[cfg_attr(not(feature = "link"), allow(dead_code))]
     Hub {
         hub_id: String,
         url: String,
@@ -976,8 +980,8 @@ impl CoreSet {
     }
 
     /// The open devices, the main core's first, then in the order they were
-    /// opened. Not while a core is inside a device call: that one is listed as
-    /// it was last seen, so this does not wait on a device.
+    /// opened. A core that stays inside a device call is listed as it was last
+    /// seen, so this waits a tenth of a second on each at most.
     pub fn list(&self) -> Vec<OpenDevice> {
         self.emit(self.sync(false));
         self.lock().entries.iter().filter_map(Entry::view).collect()
@@ -1025,7 +1029,7 @@ impl CoreSet {
     }
 
     /// [`CoreSet::refresh`]'s events, to be emitted with no lock held.
-    /// `wait` false passes over a core inside a device call.
+    /// `wait` false passes over a core that stays inside a device call.
     fn sync(&self, wait: bool) -> Vec<CoreSetEvent> {
         let _one = self.syncing.lock().unwrap_or_else(PoisonError::into_inner);
         let cores: Vec<(u64, Arc<DspiCore>)> = self
@@ -1036,24 +1040,21 @@ impl CoreSet {
             .collect();
         let mut seen = Vec::with_capacity(cores.len());
         for (token, core) in cores {
-            let guard = if wait {
+            let Some(inner) = (if wait {
                 Some(core.lock())
             } else {
-                core.try_lock()
+                lock_briefly(&core)
+            }) else {
+                continue;
             };
-            let Some(inner) = guard else { continue };
             let held = Held::read(&inner);
             let name = inner
                 .conn
                 .as_ref()
                 .map(|c| c.device_name.clone())
                 .unwrap_or_default();
+            let state = liveness(&inner);
             drop(inner);
-            let state = if wait || core.try_lock().is_some() {
-                Some(liveness(&core))
-            } else {
-                None
-            };
             seen.push((token, held, name, state));
         }
 
@@ -1084,7 +1085,7 @@ impl CoreSet {
                 }
                 let before = std::mem::replace(&mut e.held, held);
                 e.serial = e.held.serial().to_owned();
-                e.state = state.unwrap_or(DeviceLiveness::Live);
+                e.state = state;
                 if let Some((id, label)) = named {
                     events.push(CoreSetEvent {
                         kind: CoreSetEventKind::Opened,
@@ -1115,12 +1116,9 @@ impl CoreSet {
                 }
                 continue;
             }
-            let (Some(state), Some(id)) = (state, e.id.clone()) else {
+            let Some(id) = e.id.clone().filter(|_| e.state != state) else {
                 continue;
             };
-            if e.state == state {
-                continue;
-            }
             e.state = state;
             events.push(CoreSetEvent {
                 kind: match state {
@@ -1240,13 +1238,31 @@ impl Drop for CoreSet {
     }
 }
 
-/// Whether `core`'s device can be used now.
-fn liveness(core: &DspiCore) -> DeviceLiveness {
+// -- WP MDQT1 --
+/// `core`'s lock, unless something holds it for longer than a moment (a device
+/// call; a Link session's own looks are far shorter than this).
+fn lock_briefly(core: &DspiCore) -> Option<MutexGuard<'_, crate::Inner>> {
+    let start = dspi_transport::clock::Instant::now();
+    loop {
+        if let Some(inner) = core.try_lock() {
+            return Some(inner);
+        }
+        if start.elapsed() >= LIST_WAIT {
+            return None;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+}
+
+/// Whether the device behind `inner` can be used now.
+fn liveness(inner: &crate::Inner) -> DeviceLiveness {
     #[cfg(feature = "link")]
-    if core.lock().link.is_some() && core.link_status().phase == crate::LinkPhase::Reconnecting {
+    if let Some(s) = &inner.link
+        && s.reconnecting(inner.conn.as_ref().map(|c| c.generation))
+    {
         return DeviceLiveness::Reconnecting;
     }
-    if core.is_connected() {
+    if inner.conn.is_some() {
         DeviceLiveness::Live
     } else {
         DeviceLiveness::Lost

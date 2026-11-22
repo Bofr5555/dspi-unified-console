@@ -56,6 +56,7 @@ fn attach(core: &DspiCore, serial: &str) {
 }
 
 fn ids(set: &CoreSet) -> Vec<String> {
+    set.refresh(); // not skipping a core that is busy on a loaded host
     set.list().iter().map(|d| d.id.to_string()).collect()
 }
 
@@ -317,6 +318,20 @@ fn wp_mdqt1_a_broker_taken_by_one_core_is_the_whole_sets() {
     assert_eq!(*next.0.lock().unwrap(), ["A", "B"]);
     assert!(set.core(&b).unwrap().is_connected());
     assert!(set.list().iter().all(|d| d.state == DeviceLiveness::Live));
+}
+
+/// A core inside a long device call does not hold up the list; its entry stays.
+#[test]
+fn wp_mdqt1_the_list_does_not_wait_for_a_busy_core() {
+    let set = CoreSet::new();
+    let main = set.main_core();
+    main.open_demo().unwrap();
+    set.refresh();
+    let busy = main.lock();
+    let started = std::time::Instant::now();
+    assert_eq!(set.list().len(), 1);
+    assert!(started.elapsed() < std::time::Duration::from_secs(5));
+    drop(busy);
 }
 
 #[cfg(feature = "link")]

@@ -519,6 +519,12 @@ impl LinkSession {
         }
     }
 
+    /// [`DspiCore::link_status`]'s phase is [`LinkPhase::Reconnecting`].
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    pub(crate) fn reconnecting(&self, conn_gen: Option<u64>) -> bool {
+        !self.cancel.load(Ordering::SeqCst) && self.phase(conn_gen) == LinkPhase::Reconnecting
+    }
+
     /// The unit bound through it (its serial), with the hub's id and address:
     /// what a [`crate::CoreSet`] keeps the device under.
     #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
