@@ -355,6 +355,10 @@ private:
     void openUnit(const QString &serial);
     void readOutputs(const QString &serial, UnitPtr unit, const QString &error);   // -- WP XDEV1 --
     void tabClosing(DeviceSession *session);                                      // -- WP XDEV1 --
+    // -- WP MCP5 -- an AI agent's run across units (AiController::measureRequested,
+    // `loop` "system"): on the device shown, said as "Requested by AI · name"
+    void agentRequest(const QJsonObject &ticket);
+    QString m_agentLabel;
     void closeUnit(const QString &serial);
     void closeAll();
     QVariantMap unitRow(const QString &serial) const;

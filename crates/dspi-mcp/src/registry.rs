@@ -122,7 +122,8 @@ impl Registry {
         tools.extend(tools::hub::TOOLS.iter().copied());
         tools.extend(tools::analysis::TOOLS.iter().copied());
         tools.extend(tools::info::TOOLS.iter().copied());
-        // -- WP MCP5 --
+        // -- WP MCP5 -- measuring, the auto-tune, measuring across units
+        tools.extend(tools::measure::TOOLS.iter().copied());
         Self { tools }
     }
 
@@ -294,6 +295,14 @@ pub struct Call<'a> {
     // -- WP MCP2c --
     /// The agents' Installation drafts.
     pub installation: Option<&'a tools::installation::Drafts>,
+    // -- WP MCP5 --
+    /// The agents' requests to the app's Measure view.
+    pub measure: Option<&'a tools::measure::Jobs>,
+    /// The client's label ("AI · Claude Code").
+    pub client_label: String,
+    /// The devices, for a tool over several units (measuring across units):
+    /// it reaches another unit's core only inside a scope of its own.
+    pub set: Option<&'a CoreSet>,
     core: Option<&'a DspiCore>,
 }
 
@@ -345,6 +354,9 @@ pub struct RunCtx<'a> {
     // -- WP MCP2c --
     /// The agents' Installation drafts.
     pub installation: Option<&'a tools::installation::Drafts>,
+    // -- WP MCP5 --
+    /// The agents' requests to the app's Measure view.
+    pub measure: Option<&'a tools::measure::Jobs>,
 }
 
 /// What [`run`] did.
@@ -450,6 +462,9 @@ pub fn run(ctx: &RunCtx<'_>, tool: &Tool, args: &Map<String, Value>) -> RunOutco
             autoeq: ctx.autoeq, // -- WP MCP2b --
             template_dir: ctx.template_dir,
             installation: ctx.installation, // -- WP MCP2c --
+            measure: ctx.measure,           // -- WP MCP5 --
+            client_label: ctx.client_label.to_owned(),
+            set: None,
             core: None,
         };
         let result = (tool.handler)(&mut call, args);
@@ -506,6 +521,9 @@ pub fn run(ctx: &RunCtx<'_>, tool: &Tool, args: &Map<String, Value>) -> RunOutco
             autoeq: ctx.autoeq, // -- WP MCP2b --
             template_dir: ctx.template_dir,
             installation: ctx.installation, // -- WP MCP2c --
+            measure: ctx.measure,           // -- WP MCP5 --
+            client_label: ctx.client_label.to_owned(),
+            set: Some(ctx.set),
             core: Some(&core),
         };
         (tool.handler)(&mut call, args)

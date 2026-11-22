@@ -162,6 +162,14 @@ public:
     void setStoreDir(const QString &dir) { m_storeDir = dir; }
     int pending() const { return m_pending; }
 
+    // -- WP MCP5 -- The AI request interface of the Measure views. An agent's
+    // measurement start is a request: this controller takes it from the server
+    // (each once) and hands its ticket to the Measure views (measureRequested:
+    // { request_id, device, kind, loop, actor, client_name, what, setup }); the
+    // view that runs it starts it with dspi_mcp_measure_begin on the device's
+    // core and says how it went here. Every request ends in exactly one report.
+    void reportMeasure(quint64 request, bool started, const QString &note);
+
 signals:
     void stateChanged();
     void settingsChanged();
@@ -171,6 +179,10 @@ signals:
     void secondsChanged();
     void activityChanged();
     void newClientChanged();
+    // -- WP MCP5 -- an agent's measurement request for the Measure views; the one
+    // that takes it (MeasureController, UnitsMeasureController for `loop`
+    // "system") reports with reportMeasure()
+    void measureRequested(const QJsonObject &ticket);
 
 private:
     static void eventThunk(const char *json, void *self);
@@ -231,6 +243,8 @@ private:
     QTimer m_readSoon;          // coalesces the activity events
     std::atomic<bool> m_callQueued{ false };
     int m_pending = 0;
+    void takeMeasureRequests();   // -- WP MCP5 --
+    QSet<quint64> m_measureTaken;   // -- WP MCP5 -- asked to take, once each
     QThreadPool m_thread;       // one thread: the server's calls, in order
 };
 

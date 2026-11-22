@@ -51,6 +51,12 @@ public:
 
     // -- WP MDQT2c -- the device is about to be closed or replaced
     void stopForClose();
+    // -- WP MCP5 -- An AI agent's summed check or verify (MeasureSession::
+    // startForAgent): the microphone, then `job` (dspi_mcp_measure_begin), driven
+    // as this tune's own runs; `ended` once, whether they began and why not
+    void agentRuns(std::function<QByteArray(FfiCore *)> job, std::function<void(bool, const QString &)> ended) {
+        startRuns(QStringLiteral("agent"), std::move(job), std::move(ended));
+    }
 
     QString stage() const;
     QString stageText() const;
@@ -152,7 +158,9 @@ private:
     void onTuneState(const QByteArray &json);
     void setProposal(const QJsonObject &p);
     void readProposal();
-    void startRuns(const QString &step, std::function<QByteArray(FfiCore *)> job);
+    // -- WP MCP5 -- `ended` (may be empty): once, whether the runs began and why not
+    void startRuns(const QString &step, std::function<QByteArray(FfiCore *)> job,
+                   std::function<void(bool, const QString &)> ended = {});
     void deviceWrite(const QString &step, std::function<QByteArray(FfiCore *)> job, std::function<void(const QJsonObject &)> done);
     void fail(const QString &text);
     void track(int delta);

@@ -19,3 +19,4 @@ pub mod hub;
 pub mod info;
 pub mod installation;
 // -- WP MCP5 --
+pub mod measure;

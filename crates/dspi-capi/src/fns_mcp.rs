@@ -255,6 +255,11 @@ impl FfiMcp {
         if let Some(d) = cfg.get("templateDir").and_then(Value::as_str) {
             server_config.template_dir = d.to_owned();
         }
+        // -- WP MCP5 -- the app's Measure view takes the agents' requests
+        server_config.measuring = cfg
+            .get("measuring")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
         let mut server = Server::new(Arc::clone(&self.set), server_config);
         server.set_active_device(lock(&self.active).clone());
         let listener = Arc::clone(&self.listener);
@@ -330,8 +335,9 @@ pub extern "C" fn dspi_mcp_free(mcp: *mut FfiMcp) {
 
 /// Start listening for AI agents. `config_json`: `{"port": 47860, "storeDir":
 /// "<the app's folder>", "appVersion": "0.15.0", "templateDir": "<the user's
-/// templates>"}`, each optional (without a folder the clients last only for
-/// this run). Reply `{ok, port,
+/// templates>", "measuring": true}`, each optional (without a folder the
+/// clients last only for this run; -- WP MCP5 -- `measuring`: the app runs
+/// the agents' measurement requests, `dspi_mcp_measure_*`). Reply `{ok, port,
 /// addresses}`; code `running` when it runs already, `io` when the port is in
 /// use on `127.0.0.1` or on `::1`, `store` when the clients' file is damaged (it is left as it is).
 ///
@@ -671,3 +677,99 @@ mod tests_wp_mcp3;
 #[cfg(test)]
 #[path = "fns_mcp/tests_wp_mcp4.rs"]
 mod tests_wp_mcp4;
+
+// -- WP MCP5 --
+#[cfg(test)]
+#[path = "fns_mcp/tests_wp_mcp5.rs"]
+mod tests_wp_mcp5;
+
+// -- WP MCP5 -- the agents' measurement requests to the app's Measure view
+//
+// An agent's measurement start (`dspi_measure_start`, the low-end search, the
+// auto-tune's runs, runs across units) is a request: the listener gets
+// `measureRequests`; `dspi_mcp_measure_requests` lists what waits;
+// `dspi_mcp_measure_take` takes one (its ticket); the app opens the
+// microphone and calls `dspi_mcp_measure_begin` on the device's core, on the
+// thread that drives its measurements, then drives the job as its own (the
+// ticket's `loop`: `session`, `rolloff`, `tune` or `system`) and says how it
+// went with `dspi_mcp_measure_report`. A request nobody takes lapses after
+// 30 s. Only while the start's configuration said `"measuring": true`.
+
+/// The measurement requests waiting for the app, oldest first: `{ok, value:
+/// [{request_id, client, client_name, device, kind, loop, what, state,
+/// note}]}`. Empty while stopped. Waits for an agent's call in progress.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_mcp_measure_requests(mcp: *mut FfiMcp, buf: *mut c_char, len: u32) -> u32 {
+    with_mcp(mcp, 0, |m| {
+        let rows = m.server().map_or_else(Vec::new, |s| s.measure_requests());
+        copy_text(&json!({"ok": true, "value": rows}).to_string(), buf, len)
+    })
+}
+
+/// Take request `id` for the Measure view: `{ok, ticket: {request_id, device,
+/// kind, loop, actor, client_name, what, setup}}`, or code `gone` when it no
+/// longer waits (taken, withdrawn, lapsed) or the server is stopped. Waits for
+/// an agent's call in progress.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_mcp_measure_take(
+    mcp: *mut FfiMcp,
+    id: u64,
+    buf: *mut c_char,
+    len: u32,
+) -> u32 {
+    with_mcp(mcp, 0, |m| {
+        let reply = match m.server().and_then(|s| s.measure_take(id)) {
+            Some(ticket) => ok(json!({"ticket": ticket})),
+            None => failure("gone", "the request no longer waits"),
+        };
+        copy_text(&reply.to_string(), buf, len)
+    })
+}
+
+/// How request `id` went: `started` true once `dspi_mcp_measure_begin`
+/// started it, false with `note` (the reason, in words; may be null) when it
+/// could not. False when the request was not open.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_mcp_measure_report(
+    mcp: *mut FfiMcp,
+    id: u64,
+    started: bool,
+    note: *const c_char,
+) -> bool {
+    with_mcp(mcp, false, |m| {
+        let note = c_str(note).unwrap_or("");
+        m.server()
+            .is_some_and(|s| s.measure_report(id, started, note))
+    })
+}
+
+/// Start a taken request's job on `core` (the ticket's device) with the
+/// microphone's rate `rate_hz` (0 for a job that takes none): the job runs as
+/// the agent (History and `actor` in its state say so), and the core's own
+/// rules judge it again (the preflight, the tweeter's floor, the level caps,
+/// the limits). Reply: the job's state as its own start gives it (`{ok,
+/// ...}`: a measurement's, the low-end search's, the tune's or the system
+/// session's), or `{ok: false, code: "refused", error}` with nothing played.
+/// Needs no MCP handle.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_mcp_measure_begin(
+    core: *mut crate::FfiCore,
+    ticket_json: *const c_char,
+    rate_hz: u32,
+    buf: *mut c_char,
+    len: u32,
+) -> u32 {
+    crate::fns_device::text(core, buf, len, |c| {
+        let ticket = c_str(ticket_json)
+            .and_then(|t| serde_json::from_str::<Value>(t).ok())
+            .map(|t| t.get("ticket").cloned().unwrap_or(t));
+        let reply = match ticket {
+            None => failure("invalid", "the ticket is not JSON"),
+            Some(t) => match dspi_mcp::tools::measure::begin(c, &t, rate_hz) {
+                Ok(state) => ok(state),
+                Err(e) => failure("refused", e),
+            },
+        };
+        reply.to_string()
+    })
+}

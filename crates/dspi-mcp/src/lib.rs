@@ -90,3 +90,11 @@ mod tests_wp_mcp2c;
 #[cfg(feature = "http")]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_mcp4;
+// -- WP MCP5 --
+#[cfg(test)]
+#[allow(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    clippy::cast_possible_truncation
+)]
+mod tests_wp_mcp5;

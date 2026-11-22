@@ -63,6 +63,15 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
   robot icon beside the device in Classic and the AI button in Modern), tagged in the History, and Pause and Stop are
   there at any time. Nothing on your network can reach it; from another computer, go through SSH
   (docs/mcp-ssh-forwarding.md). The agent starts this app with `--mcp`, or the Terminal's `uconsole mcp`. (WP MCP4)
+- **AI agents can measure.** An agent can check and start a measurement, find where an output's response drops off at
+  the low end, propose an auto-tune from a measurement, apply and verify it, and measure several units together. Each
+  start opens Measure, which runs it as its own (with your microphone) and says "Requested by AI · name"; the result
+  is filed with your measurements. The roles always come from your confirmed speaker layout (an agent cannot set or
+  change them, and is told to ask you to confirm it in Settings › Speakers); starting test signals is asked about
+  unless you chose "never ask"; the tweeter's 1 kHz floor, the level limits and your limits profile always apply. Only
+  you can keep a tune whose verify did not pass. (WP MCP5)
+- The speaker layout's banner says a layout was "set outside this app (a configuration file or another app)" instead
+  of claiming a configuration file brought it. (WP MCP5)
 - Modern's Equaliser: three pages. **PEQ** has the channel in one strip over the graph (name, Enabled, input mix, gain,
   delay, mute, polarity, limiter; an input's link and preamp), a label on the graph with the selected band's values, the
   RTA, Phase, All Curves and pop-out switches in the graph's corner, and a denser band table. **Crossover** has every
@@ -162,6 +171,8 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
   and a way, speaker or group changed there is saved to it. A banner on both says when the
   layout is not confirmed, or came with an imported configuration and needs checking. The
   browser keeps it per DSPi. (WP ROLEW)
+- The speaker layout's banner says a layout was "set outside this app (a configuration file or another app)" instead
+  of claiming a configuration file brought it. (WP MCP5)
 
 ## 0.14.0 (2026-11-20)
 

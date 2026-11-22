@@ -485,35 +485,47 @@ bool TuneSession::needsSumCheck() const { return sumCheck() == QLatin1String("pe
 
 // ---- The runs --------------------------------------------------------------------------
 
-void TuneSession::startRuns(const QString &step, std::function<QByteArray(FfiCore *)> job) {
+void TuneSession::startRuns(const QString &step, std::function<QByteArray(FfiCore *)> job,
+                            std::function<void(bool, const QString &)> ended) {
     clearError();
+    // -- WP MCP5 -- the outcome for an agent's request, once
+    const auto end = [ended](bool ok, const QString &why) {
+        if (ended) ended(ok, why);
+    };
     MeasureSession *m = measure();
-    if (!m || !m->loop()) return;
+    if (!m || !m->loop()) {
+        end(false, tr("The Measure view is not ready."));
+        return;
+    }
     if (!m->playBlocker().isEmpty()) {
         fail(m->playBlocker());
         emit stepDone(step, false);
+        end(false, m_error);
         return;
     }
     if (m->measuring() || m->liveActive() || m->passiveActive()) {   // -- WP P5QUI2 -- the passive RTA too
         fail(tr("Stop the measurement or the live view first."));
         emit stepDone(step, false);
+        end(false, m_error);
         return;
     }
     m->m_starting = true;   // -- WP MDQT2c --
-    m->openMic([this, m, step, job](bool ok, int) {
+    m->openMic([this, m, step, job, end](bool ok, int) {
         if (!ok) {
             m->m_starting = false;
             m->closeMic();
             emit stepDone(step, false);
+            end(false, m->error().isEmpty() ? tr("The microphone could not be opened.") : m->error());
             return;
         }
-        m->onLoop(this, job, [this, m, step](const QByteArray &r) {
+        m->onLoop(this, job, [this, m, step, end](const QByteArray &r) {
             m->m_starting = false;
             const QJsonObject o = MeasureSession::object(r);
             if (!isOk(o)) {
                 m->closeMic();
                 fail(MeasureSession::failureText(o));
                 emit stepDone(step, false);
+                end(false, m_error);
                 return;
             }
             m_runs = true;
@@ -523,6 +535,7 @@ void TuneSession::startRuns(const QString &step, std::function<QByteArray(FfiCor
             m->loop()->session.store(true);
             m->setRunning();
             onTuneState(r);
+            end(true, QString());
         });
     });
 }
