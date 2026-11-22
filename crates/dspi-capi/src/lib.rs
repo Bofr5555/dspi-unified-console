@@ -47,6 +47,8 @@ mod fns_link;
 // -- WP HB6 --
 #[cfg(feature = "hub")]
 mod fns_hub;
+// -- WP MD0 -- one core per open device
+mod fns_core_set;
 
 /// Run `f`, turning a panic into `fail`. Every exported function goes
 /// through this.

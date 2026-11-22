@@ -488,6 +488,7 @@
 typedef struct AutoEqFetchSink AutoEqFetchSink;
 typedef struct AutoEqRebuildHandle AutoEqRebuildHandle;
 typedef struct FfiCore FfiCore;
+typedef struct FfiCoreSet FfiCoreSet;
 typedef struct FfiHub FfiHub;
 typedef struct DeviceInfo {
 uint8_t serial[64];
@@ -2033,4 +2034,28 @@ uint32_t dspi_hub_begin_pairing(struct FfiHub *hub, char *buf, uint32_t len);
 bool dspi_hub_cancel_pairing(struct FfiHub *hub);
 bool dspi_hub_revoke(struct FfiHub *hub, uint32_t cid);
 bool dspi_hub_set_role(struct FfiHub *hub, uint32_t cid, const char *role);
+struct FfiCoreSet *dspi_core_set_new(void);
+void dspi_core_set_free(struct FfiCoreSet *set);
+uint32_t dspi_core_set_open(struct FfiCoreSet *set,
+const char *target_json,
+char *buf,
+uint32_t len);
+uint32_t dspi_core_set_close(struct FfiCoreSet *set, const char *id, char *buf, uint32_t len);
+uint32_t dspi_core_set_list(struct FfiCoreSet *set, char *buf, uint32_t len);
+struct FfiCore *dspi_core_set_core(struct FfiCoreSet *set, const char *id);
+uint32_t dspi_core_set_find_serial(struct FfiCoreSet *set,
+const char *serial,
+char *buf,
+uint32_t len);
+uint32_t dspi_core_set_config(struct FfiCoreSet *set,
+const char *config_json,
+char *buf,
+uint32_t len);
+uint32_t dspi_core_set_scan_devices(struct FfiCoreSet *set,
+struct DeviceInfo *out_devices,
+uint32_t max_devices);
+void dspi_core_set_poll_hotplug(struct FfiCoreSet *set);
+void dspi_core_set_set_listener(struct FfiCoreSet *set,
+void (*callback)(const char *event_json, void *user_data),
+void *user_data);
 #endif
