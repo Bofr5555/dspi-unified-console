@@ -12,7 +12,8 @@ import UConsole
 //   tabs     tabs that are no panel: { tab, title, icon, content }, `content`
 //            a QML type of module UConsole: an Item with `property bool shown`
 //            (false while the person cannot see it) and, when it wants them,
-//            `required property Item host` (PageHost)
+//            `required property Item host` (PageHost); -- WP LAY4 -- `tools`, a
+//            QML type for the row over the page, beside the tabs (optional)
 //   order    the tabs' order, by tab id; one not listed comes after, in
 //            PanelTable's order (optional)
 //   quiet    tab ids with no tab of their own in the tab bar: reached by their
@@ -28,7 +29,12 @@ QtObject {
         },
         {
             id: "equaliser", title: qsTr("Equaliser"), icon: "sliders-vertical",
-            tabs: [{ tab: "peq", title: qsTr("Equaliser"), icon: "sliders-vertical", content: "EqualiserSection" }]
+            // -- WP LAY4 --
+            tabs: [
+                { tab: "peq", title: qsTr("PEQ"), icon: "sliders-vertical", content: "EqualiserPeq", tools: "EqualiserTools" },
+                { tab: "crossover", title: qsTr("Crossover"), icon: "chart-line", content: "EqualiserCrossover", tools: "EqualiserTools" },
+                { tab: "delay", title: qsTr("Delay & Gain"), icon: "timer", content: "EqualiserDelay", tools: "EqualiserTools" }
+            ]
         },
         { id: "routing", title: qsTr("Routing"), icon: "waypoints" },
         { id: "effects", title: qsTr("Effects"), icon: "headphones" },
@@ -59,12 +65,14 @@ QtObject {
         const quiet = s.quiet || []
         const list = (s.tabs || []).map(t => ({
             key: id + "/" + t.tab, section: id, tab: t.tab, title: t.title, icon: t.icon, content: t.content, row: null,
+            tools: t.tools || "", // -- WP LAY4 --
             quiet: quiet.indexOf(t.tab) >= 0
         }))
         for (const r of PanelTable.panels) {
             if (r.section !== id) continue
             list.push({
                 key: id + "/" + r.tab, section: id, tab: r.tab, title: r.tabTitle || r.title, icon: r.icon, content: "", row: r,
+                tools: "", // -- WP LAY4 --
                 quiet: quiet.indexOf(r.tab) >= 0
             })
         }

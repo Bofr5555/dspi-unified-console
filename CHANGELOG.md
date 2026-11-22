@@ -63,6 +63,17 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
   robot icon beside the device in Classic and the AI button in Modern), tagged in the History, and Pause and Stop are
   there at any time. Nothing on your network can reach it; from another computer, go through SSH
   (docs/mcp-ssh-forwarding.md). The agent starts this app with `--mcp`, or the Terminal's `uconsole mcp`. (WP MCP4)
+- Modern's Equaliser: three pages. **PEQ** has the channel in one strip over the graph (name, Enabled, input mix, gain,
+  delay, mute, polarity, limiter; an input's link and preamp), a label on the graph with the selected band's values, the
+  RTA, Phase, All Curves and pop-out switches in the graph's corner, and a denser band table. **Crossover** has every
+  output's curve over one table of all high and low passes, and the selected output's four bands. **Delay & Gain** has
+  every output's gain, delay, distance (343 m/s; typing one sets the delay), arrival bar, polarity, mute and limiter. An
+  **inspector** at the right has the selected band with every shape laid out flat, and the channel: what an input feeds,
+  or an output's crossover, limiter and Linkwitz Transform. Under 1280 px it is folded away and opens over the page.
+  Settings › Appearance shows or hides it, and puts the band bar under the graph for those who want it. (WP LAY4)
+- Modern has neutral grey surfaces; Settings › Appearance offers Darker grey. Classic's colours are unchanged. (WP LAY4)
+- A value typed into a gain, delay or preamp field with Enter is kept when the field is left. Before, leaving the field
+  could put the earlier value back. (WP LAY4)
 
 ### Android
 - DSPi Link is reachable from the main page (owner report on 0.14.0: only through the settings

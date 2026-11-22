@@ -27,7 +27,7 @@ RowLayout {
         selectByMouse: true
         font: row.mono ? Theme.fontMono : Theme.fontBody
         color: Theme.textMuted
-        selectionColor: Theme.selection
+        selectionColor: Theme.textSelection
         selectedTextColor: Theme.text
         horizontalAlignment: TextEdit.AlignRight
         wrapMode: TextEdit.Wrap

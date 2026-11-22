@@ -116,6 +116,8 @@ public:
     Q_INVOKABLE void setCrossoverFamily(int channel, int band, int family);
     Q_INVOKABLE void setCrossoverLowPass(int channel, int band, bool lowPass);
     Q_INVOKABLE void setCrossoverOrder(int channel, int band, int order);
+    // -- WP LAY4 -- One band back to Off, 1000 Hz, Q 0.707, 0 dB (mirrored onto a linked partner)
+    Q_INVOKABLE void clearBand(int channel, int band, bool crossover);
     // Enable All / Bypass All (bands that are Off are left alone)
     Q_INVOKABLE void setAllBypassed(int channel, bool crossover, bool bypass);
     // Every band of the list back to Off, 1000 Hz, Q 0.707, 0 dB
@@ -164,6 +166,11 @@ public:
     // The routing rows: {enabled, gain, invert} of input -> output
     Q_INVOKABLE QVariantMap route(int input, int output) const;
     Q_INVOKABLE void setRoute(int input, int output, bool enabled, double gain, bool invert);
+    // -- WP LAY4 -- What `output` plays: 0 as its inputs, 1 every connected input
+    // inverted, 2 some of them, -1 with none connected; and all of them inverted
+    // or none, as one undo step
+    Q_INVOKABLE int outputPolarity(int output) const;
+    Q_INVOKABLE void setOutputPolarity(int output, bool inverted);
     // An output page counts itself while shown; the limiter meter polls meanwhile
     Q_INVOKABLE void watchLimiter(bool on);
 

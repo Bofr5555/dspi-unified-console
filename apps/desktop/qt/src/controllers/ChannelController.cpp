@@ -448,6 +448,11 @@ void ChannelController::setCrossoverOrder(int channel, int band, int order) {
     });
 }
 
+// -- WP LAY4 --
+void ChannelController::clearBand(int channel, int band, bool crossover) {
+    editBand(channel, band, crossover, [](FilterParams &p) { p = flatBand(); });
+}
+
 void ChannelController::setAllBypassed(int channel, bool crossover, bool bypass) {
     if (!bypassSupported()) return;
     const int n = crossover ? XoBands : PeqBands;
@@ -707,6 +712,31 @@ void ChannelController::setRoute(int input, int output, bool enabled, double gai
         return;
     const auto i = uint8_t(input), o = uint8_t(output);
     const float g = float(gain);
-    apply(QStringLiteral("matrix route %1 %2").arg(input).arg(output),
+    apply(QStringLiteral("matrix route %1 %2").arg(input).arg(output) + m_groupTag,   // -- WP LAY4 --
           [i, o, enabled, g, invert](FfiCore *c) { return dspi_set_matrix_route(c, i, o, enabled, g, invert); });
+}
+
+// -- WP LAY4 --
+int ChannelController::outputPolarity(int output) const {
+    const DspState *s = m_ctx.device->state();
+    if (!s || output < 0 || output >= numOutputs()) return -1;
+    int connected = 0, inverted = 0;
+    for (int i = 0; i < numInputs(); ++i) {
+        if (!s->matrix_routing[i][output]) continue;
+        ++connected;
+        inverted += s->matrix_invert[i][output] ? 1 : 0;
+    }
+    return connected == 0 ? -1 : inverted == 0 ? 0 : inverted == connected ? 1 : 2;
+}
+
+void ChannelController::setOutputPolarity(int output, bool inverted) {
+    const DspState *s = m_ctx.device->state();
+    if (!s || output < 0 || output >= numOutputs()) return;
+    QList<int> change;
+    for (int i = 0; i < numInputs(); ++i)
+        if (s->matrix_routing[i][output] && s->matrix_invert[i][output] != inverted) change << i;
+    if (change.isEmpty()) return;
+    grouped(tr("Output polarity"), [&] {
+        for (int i : std::as_const(change)) setRoute(i, output, true, double(s->matrix_gain[i][output]), inverted);
+    });
 }

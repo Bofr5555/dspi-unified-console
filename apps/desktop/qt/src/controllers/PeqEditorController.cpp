@@ -348,6 +348,12 @@ void PeqEditorController::forget() {
     bump();
 }
 
+// -- WP LAY4 --
+int PeqEditorController::shapeOfType(int type) const {
+    int shape = -1;
+    return Peq::shapeOf(type, &shape, nullptr) ? shape : -1;
+}
+
 void PeqEditorController::rowClicked(int band, int modifiers) {
     const std::shared_ptr<State> st = state();
     if (st->edited < 0 || band < 0 || band >= BANDS_PER_CHANNEL) return;

@@ -17,30 +17,66 @@ QtObject {
 
     readonly property bool dark: Shell.darkScheme
 
+    // -- WP LAY4 -- Modern's neutral greys (MODLAY 2, 7: areas apart by tone, the
+    // accent only for what is on or chosen): Grey, or Darker grey
+    // (LayoutController.arrangement.tone). Classic keeps the colours below; a
+    // colour a tone does not name is the same in every one.
+    readonly property var toned: !LayoutController.modern ? ({})
+        : greys[(LayoutController.arrangement.tone === "darker" ? "darker " : "grey ") + (dark ? "dark" : "light")]
+    readonly property var greys: ({
+        "grey dark": {
+            window: "#202020", panel: "#2a2a2a", sidebar: "#1c1c1c", control: "#343434", controlHover: "#3c3c3c",
+            controlPressed: "#464646", selection: "#3b3b3b", menu: "#2c2c2c", separator: "#303030", border: "#484848",
+            graphGrid: "#3a3a3a", text: "#e8e8e8", textMuted: "#a7a7a7", textDisabled: "#868686", meterTrack: "#141414",
+            pinFree: "#343434"
+        },
+        "grey light": {
+            window: "#f3f3f3", panel: "#fbfbfb", sidebar: "#ebebeb", control: "#e8e8e8", controlHover: "#e2e2e2",
+            controlPressed: "#d8d8d8", selection: "#e1e1e1", menu: "#fbfbfb", separator: "#e2e2e2", border: "#cdcdcd",
+            graphGrid: "#d3d3d3", text: "#1b1b1b", textMuted: "#5e5e5e", textDisabled: "#7d7d7d", success: "#1a6b2e",
+            meterTrack: "#dadada", pinFree: "#e4e4e4"
+        },
+        "darker dark": {
+            window: "#151515", panel: "#1e1e1e", sidebar: "#111111", control: "#2a2a2a", controlHover: "#323232",
+            controlPressed: "#3b3b3b", selection: "#303030", menu: "#222222", separator: "#262626", border: "#404040",
+            graphGrid: "#303030", text: "#e8e8e8", textMuted: "#a3a3a3", textDisabled: "#858585", meterTrack: "#0c0c0c",
+            pinFree: "#2a2a2a"
+        },
+        "darker light": {
+            window: "#e2e2e2", panel: "#eeeeee", sidebar: "#d9d9d9", control: "#d9d9d9", controlHover: "#d2d2d2",
+            controlPressed: "#c8c8c8", selection: "#cfcfcf", menu: "#eeeeee", separator: "#d2d2d2", border: "#b9b9b9",
+            graphGrid: "#c6c6c6", text: "#1b1b1b", textMuted: "#545454", textDisabled: "#707070", accentText: "#174ba8",
+            dangerText: "#98190f", warning: "#6e4300", success: "#14602a", meterTrack: "#cbcbcb", meterLevel: "#4c5e7e",
+            meterMid: "#8a5700", alarmRaised: "#98190f", alarmAcknowledged: "#6e4300", pinFree: "#d4d4d4"
+        }
+    })
+
     // Surfaces
-    readonly property color window: dark ? "#1e1f22" : "#f4f4f5"
-    readonly property color panel: dark ? "#26272b" : "#ffffff"
-    readonly property color sidebar: dark ? "#222326" : "#ececee"
-    readonly property color control: dark ? "#303136" : "#ffffff"
-    readonly property color controlHover: dark ? "#3a3b40" : "#f0f0f3"
-    readonly property color controlPressed: dark ? "#45464c" : "#e2e2e7"
-    readonly property color selection: dark ? "#203a63" : "#dbe8fc"
-    readonly property color menu: dark ? "#2a2b2f" : "#ffffff"
+    readonly property color window: toned.window || (dark ? "#1e1f22" : "#f4f4f5")
+    readonly property color panel: toned.panel || (dark ? "#26272b" : "#ffffff")
+    readonly property color sidebar: toned.sidebar || (dark ? "#222326" : "#ececee")
+    readonly property color control: toned.control || (dark ? "#303136" : "#ffffff")
+    readonly property color controlHover: toned.controlHover || (dark ? "#3a3b40" : "#f0f0f3")
+    readonly property color controlPressed: toned.controlPressed || (dark ? "#45464c" : "#e2e2e7")
+    readonly property color selection: toned.selection || (dark ? "#203a63" : "#dbe8fc")
+    // -- WP LAY4 -- selected text in a field, which stays blue where `selection` is a grey
+    readonly property color textSelection: dark ? "#203a63" : "#dbe8fc"
+    readonly property color menu: toned.menu || (dark ? "#2a2b2f" : "#ffffff")
     readonly property color tooltip: dark ? "#3a3b40" : "#1c1c1e"
     readonly property color tooltipText: "#f2f2f2"
     // Behind a modal question: the window dimmed
     readonly property color scrim: dark ? "#80000000" : "#59000000"
 
     // Lines
-    readonly property color separator: dark ? "#35363a" : "#d9d9de"
-    readonly property color border: dark ? "#44454b" : "#c9c9cf"
+    readonly property color separator: toned.separator || (dark ? "#35363a" : "#d9d9de")
+    readonly property color border: toned.border || (dark ? "#44454b" : "#c9c9cf")
     readonly property color focusRing: accent
-    readonly property color graphGrid: dark ? "#3a3b40" : "#d0d0d5"
+    readonly property color graphGrid: toned.graphGrid || (dark ? "#3a3b40" : "#d0d0d5")
 
     // Text
-    readonly property color text: dark ? "#e6e6e6" : "#1c1c1e"
-    readonly property color textMuted: dark ? "#a4a4aa" : "#5f5f64"
-    readonly property color textDisabled: dark ? "#88888e" : "#808085"
+    readonly property color text: toned.text || (dark ? "#e6e6e6" : "#1c1c1e")
+    readonly property color textMuted: toned.textMuted || (dark ? "#a4a4aa" : "#5f5f64")
+    readonly property color textDisabled: toned.textDisabled || (dark ? "#88888e" : "#808085")
     readonly property color textOnAccent: "#ffffff"
     // Text on a ChannelPalette colour (pills): every palette colour reaches
     // at least 6.3:1 with it, white none
@@ -50,10 +86,10 @@ QtObject {
     readonly property color accent: "#2563eb"
     readonly property color danger: "#c42b1c"
     // The accent and danger as text or icons on a surface (fills use the above)
-    readonly property color accentText: dark ? "#7aaeff" : "#1d5bd0"
-    readonly property color dangerText: dark ? "#ff7468" : "#b42318"
-    readonly property color warning: dark ? "#e0a030" : "#875200"
-    readonly property color success: dark ? "#34c759" : "#1c7532"
+    readonly property color accentText: toned.accentText || (dark ? "#7aaeff" : "#1d5bd0")
+    readonly property color dangerText: toned.dangerText || (dark ? "#ff7468" : "#b42318")
+    readonly property color warning: toned.warning || (dark ? "#e0a030" : "#875200")
+    readonly property color success: toned.success || (dark ? "#34c759" : "#1c7532")
     readonly property color connected: "#34c759"
     readonly property color disconnected: "#ff3b30"
 
@@ -105,7 +141,7 @@ QtObject {
     function settingsTint(id) { return settingsTints[id] !== undefined ? settingsTints[id] : settingsTintDefault }
     readonly property var pinRoleTints: ["#0278c7", "#ba3822", "#04856f", "#9543a7", "#807701"]
     // A free pin on the Overview map
-    readonly property color pinFree: dark ? "#303136" : "#e4e4e8"
+    readonly property color pinFree: toned.pinFree || (dark ? "#303136" : "#e4e4e8")
 
     // -- WP QP15 -- AutoEQ: the tag behind each measurement source's name (the
     // Mac's source colours), drawn faint under Theme.text
@@ -130,10 +166,10 @@ QtObject {
     // density scale (classic and compact) and the status bar's height. Meter
     // colours are graphics, not text: each reaches 3:1 on meterTrack (WCAG
     // 1.4.11), checked by tools/contrast.py.
-    readonly property color meterLevel: dark ? "#8fa3bf" : "#56698a"
-    readonly property color meterTrack: dark ? "#16171a" : "#dcdce1"
+    readonly property color meterLevel: toned.meterLevel || (dark ? "#8fa3bf" : "#56698a")
+    readonly property color meterTrack: toned.meterTrack || (dark ? "#16171a" : "#dcdce1")
     readonly property color meterLow: dark ? "#3ea65a" : "#2b7d43"
-    readonly property color meterMid: dark ? "#e0a030" : "#9a6200"
+    readonly property color meterMid: toned.meterMid || (dark ? "#e0a030" : "#9a6200")
     readonly property color meterHigh: dark ? "#ff3b30" : "#c42b1c"
     readonly property color meterHold: dark ? "#f2f2f2" : "#1c1c1e"
     // Where the segments change, in dBFS, and the bottom of a meter's scale
@@ -141,8 +177,8 @@ QtObject {
     readonly property real meterHighDb: -6
     readonly property real meterFloorDb: -60
     readonly property color offline: dark ? "#6b6c72" : "#76767c"
-    readonly property color alarmRaised: dark ? "#ff7468" : "#b42318"
-    readonly property color alarmAcknowledged: dark ? "#e0a030" : "#875200"
+    readonly property color alarmRaised: toned.alarmRaised || (dark ? "#ff7468" : "#b42318")
+    readonly property color alarmAcknowledged: toned.alarmAcknowledged || (dark ? "#e0a030" : "#875200")
     readonly property color alarmCleared: textMuted
     // Row height and font size per density: the classic screens' and the
     // Pro tables' compact one
