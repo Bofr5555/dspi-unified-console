@@ -13,7 +13,10 @@ Item {
     property string tab: ""
     property bool pills: false
     readonly property var entry: SectionTable.tab(section, tab)
-    readonly property var entries: SectionTable.tabs(section).filter(t => !t.quiet || t.tab === tab)
+    // -- WP LAY5b -- those there now; made anew only when one comes or goes (a
+    // tab chosen keeps its focus)
+    readonly property string quietTab: entry && entry.quiet ? tab : ""
+    readonly property var entries: SectionTable.tabs(section).filter(t => t.quiet ? t.tab === quietTab : SectionTable.shows(section, t.tab))
     readonly property string action: entry && entry.row ? entry.row.action : ""
     signal chosen(string tab)
 
@@ -133,7 +136,12 @@ Item {
             enabled: Shell.allows(bar.action) && Shell.shownWindows.indexOf(bar.action) < 0
             iconName: "app-window"
             toolTip: qsTr("Open in Window")
-            onClicked: Shell.openWindow(bar.action)
+            // -- WP LAY5b -- on the part shown here
+            onClicked: {
+                const part = bar.entry.part
+                const window = Shell.openWindow(bar.action)
+                if (part.length && window && window.content) window.content.showPart(part)
+            }
         }
     }
 }

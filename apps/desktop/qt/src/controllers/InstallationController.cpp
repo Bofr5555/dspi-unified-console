@@ -152,9 +152,11 @@ QString InstallationController::hubKey() {
     return id.isEmpty() ? link()->sessionUrl() : id;
 }
 
-void InstallationController::setShown(bool shown) {
-    if (shown == m_shown) return;
-    m_shown = shown;
+// -- WP LAY5b -- (was setShown: the last of two panels to say won)
+void InstallationController::panelShown(bool shown) {
+    const bool was = m_panels > 0;
+    m_panels = qMax(0, m_panels + (shown ? 1 : -1));
+    if (was == (m_panels > 0)) return;
     emit shownChanged();
     updatePolling();
 }
@@ -170,7 +172,7 @@ void InstallationController::updatePolling() {
         emit editableChanged();
     }
     const bool onHub = m_device->connected() && m_device->remote();
-    const bool read = onHub && m_shown && !m_shutDown;
+    const bool read = onHub && m_panels > 0 && !m_shutDown;
     if (read && !m_timer.isActive()) {
         m_timer.start();
         refresh();
@@ -203,6 +205,7 @@ void InstallationController::rebind() {
     m_dirty = false;
     m_current = false;
     m_stale = false;
+    dropLost();   // -- WP LAY5b --
     setMessage(QString(), false);
     if (m_core) takeDraft(QJsonObject());
     m_current = false;
@@ -247,6 +250,7 @@ void InstallationController::applyView(const QJsonObject &o, const QString &hub)
         m_hub = hub;
         m_dirty = false;
         m_current = false;
+        dropLost();   // -- WP LAY5b --
         setMessage(QString(), false);
     }
     m_available = true;
@@ -275,9 +279,15 @@ void InstallationController::takeDraft(const QJsonObject &draft) {
     m_draft = draft;
     m_current = true;
     m_stale = false;
+    m_edits = QJsonArray();   // -- WP LAY5b --
+    // -- WP LAY5b -- a refused edit's words stay on their field until the draft
+    // moves, as they are shown: not only until the next poll
+    if (same) {
+        updateUnseen();
+        return;
+    }
     m_refusedWhy.clear();
-    if (same) updateUnseen();
-    else draftMoved();
+    draftMoved();
 }
 
 void InstallationController::draftMoved() {
@@ -412,6 +422,7 @@ QVariantMap InstallationController::element(const QString &id, int) const {
                      { QStringLiteral("kind"), kind },
                      { QStringLiteral("name"), label(id) },
                      { QStringLiteral("serial"), clean(str(e, "serial")) },
+                     { QStringLiteral("hubSerial"), str(e, "serial") },   // -- WP LAY5b --
                      { QStringLiteral("upstream"), str(e, "upstream") },
                      { QStringLiteral("source"), str(e, "source") },
                      { QStringLiteral("rooms"), strings(e.value(QLatin1String("rooms"))) },
@@ -499,6 +510,7 @@ bool InstallationController::edit(const QJsonArray &edits, const QString &id, co
     }
     o.remove(QStringLiteral("ok"));
     m_draft = o;
+    for (const QJsonValue &e : edits) m_edits.append(e);   // -- WP LAY5b --
     m_refusedWhy.clear();
     setMessage(QString(), false);
     draftMoved();
@@ -519,6 +531,7 @@ bool InstallationController::join(const QString &serial, const QString &name, co
     const bool source = as == QLatin1String("spdif_source");
     const bool fed = as != QLatin1String("usb_direct") && !source;
     const QJsonObject before = m_draft;
+    const QJsonArray editsBefore = m_edits;   // -- WP LAY5b --
     if (!edit({ op("addUnit", { { QStringLiteral("serial"), serial },
                                 { QStringLiteral("name"), called },
                                 { QStringLiteral("room"), orNull(room) },
@@ -534,6 +547,7 @@ bool InstallationController::join(const QString &serial, const QString &name, co
             return true;
     const QString why = m_refusedWhy;
     m_draft = before;
+    m_edits = editsBefore;
     draftMoved();
     return refuse(at, QString(), why);
 }
@@ -665,6 +679,7 @@ void InstallationController::save() {
                     // Until the view is read, there is no draft to edit
                     m_dirty = false;
                     m_current = false;
+                    dropLost();   // -- WP LAY5b --
                     QStringList said{ tr("Saved on the hub.") };
                     for (const QString &w : strings(saved.value(QLatin1String("warnings")))) said << clean(w);
                     if (said.size() > 1) said.first() = tr("Saved on the hub, with warnings:");
@@ -688,8 +703,33 @@ void InstallationController::save() {
 
 void InstallationController::reload() {
     if (m_busy > 0) return;
+    // -- WP LAY5b -- edits that could not be saved are kept aside (the web's
+    // "Make them again"); edits of one's own discarded are not
+    if (m_stale && m_dirty && !m_edits.isEmpty()) {
+        m_lost = m_edits;
+        m_lostChanges = m_changes;
+    }
     m_dirty = false;
     setMessage(QString(), false);
     if (!m_latest.isEmpty()) takeDraft(m_latest);
     refresh();
+}
+
+// -- WP LAY5b -- On the fresh draft, never a copy of the old one over it
+bool InstallationController::remake() {
+    if (m_lost.isEmpty() || !editable()) return false;
+    if (!edit(m_lost, QString(), QString())) {
+        //: %1 is the core's reason
+        setMessage(tr("They could not be made again: %1").arg(m_refusedWhy), true);
+        return false;
+    }
+    dropLost();
+    return true;
+}
+
+void InstallationController::dropLost() {
+    if (m_lost.isEmpty()) return;
+    m_lost = QJsonArray();
+    m_lostChanges.clear();
+    emit draftChanged();
 }

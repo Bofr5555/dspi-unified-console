@@ -179,8 +179,17 @@ public:
     QVariantList otherRuns() const { return m_others; }
     Q_INVOKABLE void stopOther(const QString &id);
     Q_INVOKABLE void showOther(const QString &id);
-    // The window is closed: what it started stops, on every device
+    // What was started stops, on every device
     Q_INVOKABLE void stopAll();
+    // -- WP LAY5b -- A host shows the panel, or no longer does (a count: its
+    // page and its window are two). While one does, the shown device's
+    // measurement thread runs (MeasureSession::wake)
+    Q_INVOKABLE void panelShown(bool shown);
+    // For `panel`, whose host closes it. A window beside a page of the panel
+    // (Modern) stops what runs on the device shown: the others' go on, with
+    // their Stop on the page. Anywhere else nothing would show those any
+    // more: every device's stops.
+    Q_INVOKABLE void panelClosing(bool pageRemains);
     // -- WP RBFIX -- The devices stopAll() would stop something on ("" for none)
     QString runsOn() const;
 
@@ -429,6 +438,7 @@ private:
     QString m_calibrationSummary;
     QVariantList m_others;
     bool m_shutDown = false;
+    int m_panels = 0;   // -- WP LAY5b -- panelShown()
 };
 
 #endif // MEASURECONTROLLER_H

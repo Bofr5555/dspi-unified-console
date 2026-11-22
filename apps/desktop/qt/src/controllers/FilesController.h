@@ -85,6 +85,8 @@ public:
     Q_INVOKABLE void saveFileTo(const QString &path);
     Q_INVOKABLE void saveTemplateTo(const QString &path);
     Q_INVOKABLE void listTemplates();
+    // -- WP LAY5b -- The same list for Library > Files: templatesRead(), no picker
+    Q_INVOKABLE void readTemplates();
     // Template `id` (dspi_template_list's), shown as `name`
     Q_INVOKABLE void openTemplate(const QString &id, const QString &name);
     // Where Save as Template… writes and New from Template… also looks
@@ -109,6 +111,7 @@ signals:
     void configurationOptions(const QString &prompt, const QVariantMap &preview, bool guardDefault);
     // -- WP P1QT1 -- New from Template…'s list: [{id, name, builtin, platform, inputs, outputs}]
     void templatesPicker(const QVariantList &templates);
+    void templatesRead(const QVariantList &templates);   // -- WP LAY5b --
     void offlineChanged();
     // An alert: `error` gives it the error look
     void notice(const QString &title, const QString &text, bool error);
@@ -119,6 +122,7 @@ signals:
 
 private:
     void wire(QQuickWindow *window);
+    void withTemplates(std::function<void(const QVariantList &)> done);   // -- WP LAY5b --
     void showError(const QString &text) { emit notice(tr("Error"), text, true); }
     void showSuccess(const QString &text) { emit notice(tr("Success"), text, false); }
     bool needDevice();

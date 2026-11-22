@@ -51,6 +51,9 @@ class SpeakersController : public QObject {
     // The last outcome in words, and whether it was a failure
     Q_PROPERTY(QString said READ said NOTIFY saidChanged)
     Q_PROPERTY(bool saidError READ saidError NOTIFY saidChanged)
+    // -- WP LAY5b -- `said` when it is about a Measure table's edit, else ""
+    // (Confirm's is not for under that table)
+    Q_PROPERTY(QString saidMeasure READ saidMeasure NOTIFY saidChanged)
 public:
     SpeakersController(const AppContext &ctx, QObject *parent);
     static SpeakersController *create(QQmlEngine *, QJSEngine *);
@@ -64,6 +67,7 @@ public:
     QStringList notes() const { return state()->notes; }
     QString said() const { return state()->said; }
     bool saidError() const { return state()->saidError; }
+    QString saidMeasure() const { return state()->saidInMeasure ? state()->said : QString(); }
 
     // The stored layout as the core gave it, {} for none
     QJsonObject stored() const { return state()->stored; }
@@ -113,6 +117,7 @@ private:
         QVariantList outputs;   // [{output, label}] of the device
         QString said;
         bool saidError = false;
+        bool saidInMeasure = false;   // -- WP LAY5b --
         bool touched = false;     // the person changed the draft since it was built
         quint64 generation = 0;   // a reload's answer for an older device is dropped
     };
@@ -122,7 +127,7 @@ private:
     void onSnapshot();
     void setStored(const StatePtr &st, const QJsonObject &layout, const QString &origin);
     void rebuild(const StatePtr &st);
-    void say(const StatePtr &st, const QString &text, bool error);
+    void say(const StatePtr &st, const QString &text, bool error, bool measure = false);
     void setField(int output, const QString &field, const QVariant &value);
     static QVariantMap rowOf(const State &st, int output);
     QJsonObject draftLayout() const;

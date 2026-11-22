@@ -18,9 +18,44 @@ Panel {
     windowFont: Theme.fontBody   // -- WP LAY1b -- the window's font, as before
 
     property string query: ""
-    readonly property var rows: {
+    readonly property var allRows: {
         SettingsController.revision   // re-read when pages come and go
         return SettingsController.sidebarRows(query)
+    }
+    // -- WP LAY5b -- Modern's page shows a group (its tab is the heading); a
+    // search finds pages in every group
+    readonly property var rows: !part.length || query.trim().length ? allRows : allRows.filter(r => r.group === part)
+    // Another tab, once it shows: the group's page last shown, else its first.
+    // (Not while a window has the panel: its page is not this one's to change.)
+    property var lastOf: ({})
+    property string asked: ""
+    onPartChanged: {
+        asked = part
+        Qt.callLater(panel.takePart)
+    }
+    function takePart() {
+        if (!shown || !part.length) return
+        const want = asked
+        asked = ""
+        // The page was changed elsewhere meanwhile: its tab
+        if (want !== part) return followPage()
+        if (SettingsController.groupOf(SettingsController.currentPage) === part) return
+        const pages = SettingsController.sidebarRows("").filter(r => r.group === part)
+        const last = pages.find(r => r.id === lastOf[part])
+        if (last || pages.length) SettingsController.open((last || pages[0]).id)
+    }
+    // A page of another group (a search, Back, a link): its tab
+    function followPage() {
+        const group = SettingsController.groupOf(SettingsController.currentPage)
+        const of = Object.assign({}, lastOf)
+        of[group] = SettingsController.currentPage
+        lastOf = of
+        if (shown && part.length && group.length && group !== part) partChosen(group)
+    }
+    Component.onCompleted: followPage()
+    Connections {
+        target: SettingsController
+        function onCurrentPageChanged() { panel.followPage() }
     }
     // The first page the search leaves, for Down and Return
     readonly property string firstMatch: {
@@ -28,7 +63,10 @@ Panel {
         return hit ? hit.id : ""
     }
 
-    onShownChanged: if (shown) SettingsController.ensureShown()
+    onShownChanged: {
+        if (shown) SettingsController.ensureShown()
+        Qt.callLater(panel.takePart)   // -- WP LAY5b --
+    }
 
     // -- WP LAY3 -- Modern's top bar search
     function focusSearch() { search.forceActiveFocus() }

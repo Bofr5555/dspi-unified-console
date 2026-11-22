@@ -442,7 +442,7 @@ MeasureSession::MeasureSession(DeviceSession *session, MeasureController *owner)
         connect(m_loop, &MeasureLoop::passiveFrame, this, &MeasureSession::onPassiveFrame);
         // The blocks go from the capture straight to the loop, in order
         connect(m_capture, &AudioCapture::block, m_loop, &MeasureLoop::push);
-        m_thread->start();
+        // -- WP LAY5b -- it starts at wake()
     }
     connect(m_capture, &AudioCapture::started, this, [this](int rateHz, int, const QString &) {
         if (auto done = std::exchange(m_micOpening, nullptr)) done(true, rateHz);
@@ -499,6 +499,11 @@ MeasureSession::~MeasureSession() {
     if (m_capture->isRunning()) m_capture->stop();
     if (m_shutDown || !m_thread) return;
     m_shutDown = true;
+    if (!m_awake) {   // -- WP LAY5b -- never started: nothing of it runs, or will
+        delete m_loop;
+        m_thread->deleteLater();
+        return;
+    }
     for (std::atomic<bool> *f : { &m_loop->live, &m_loop->tune, &m_loop->session, &m_loop->passive, &m_loop->system }) f->store(false);
     connect(m_thread, &QThread::finished, m_thread, &QObject::deleteLater);
     m_thread->quit();
@@ -511,7 +516,9 @@ void MeasureSession::shutdown() {
     m_shutDown = true;
     m_micOpening = nullptr;
     if (m_capture && m_capture->isRunning()) m_capture->stop();
-    if (m_thread) {
+    if (m_thread && !m_awake) {   // -- WP LAY5b --
+        delete m_loop;
+    } else if (m_thread) {
         if (m_loop && m_session && m_session->handle())
             QMetaObject::invokeMethod(m_loop, &MeasureLoop::finish, Qt::BlockingQueuedConnection);
         m_thread->quit();
@@ -609,6 +616,7 @@ void MeasureSession::setCalibration(const QByteArray &document, const QString &s
 void MeasureSession::onLoop(QObject *ctx, std::function<QByteArray(FfiCore *)> job,
                                std::function<void(const QByteArray &)> done) {
     if (!m_loop || m_shutDown) return;
+    wake();   // -- WP LAY5b --
     track(1);
     QPointer<QObject> guard(ctx);
     QPointer<MeasureSession> self(this);
@@ -742,10 +750,25 @@ void MeasureSession::onSnapshot() {
     emit deviceChanged();
     refreshAccess();
     if (changedDevice) {
-        refreshSim();
-        if (connected()) fillFromLayout();   // -- WP ROLEQ --
+        if (m_awake) {   // -- WP LAY5b --
+            refreshSim();
+            if (connected()) fillFromLayout();   // -- WP ROLEQ --
+        }
         reloadDocuments();
     }
+}
+
+// -- WP LAY5b -- (review RB) A device that is only looked at needs no measurement
+// thread: it starts, and the loop's reads of the device are made, when Measure
+// shows on it or something is asked of the loop
+void MeasureSession::wake() {
+    if (m_awake || m_shutDown || !m_thread) return;
+    m_awake = true;
+    m_thread->start();
+    if (!connected()) return;   // onSnapshot's, with a device
+    refreshSim();
+    fillFromLayout();
+    m_tune->reloadLayout();
 }
 
 void MeasureSession::refreshSim() {

@@ -34,6 +34,14 @@ Item {
     // The font its Controls and popups take from their window (a window's
     // `font`); undefined leaves the host's. A page host sets it on the page.
     property var windowFont: undefined
+    // -- WP LAY5b -- A panel of several parts (Measure's, Settings' groups): the
+    // one a page shows, whose tabs are the page's (SectionTable.parts); "" for a
+    // host without, where the panel has tabs of its own
+    property string part: ""
+    // The panel asks its page for another part
+    signal partChosen(string part)
+    // A window opened from a page's part starts on it
+    function showPart(id) {}
     // The person closes it (its window's close); a page host emits it when it
     // takes the panel away for good
     signal closing()

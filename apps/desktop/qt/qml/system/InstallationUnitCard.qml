@@ -43,6 +43,18 @@ Card {
             color: Theme.textMuted
             elide: Text.ElideRight
         }
+        // -- WP LAY5b -- as the System view's (XDEV1); matched by the serial as
+        // the hub gives it
+        AppButton {
+            objectName: "Installation.openInTab." + card.unitId
+            readonly property string hubSerial: card.unit.hubSerial || ""
+            readonly property string tab: SystemController.tabs[hubSerial] || ""
+            visible: SystemController.openInTabOffered && hubSerial.length > 0 && tab !== "active"
+            text: tab === "open" ? qsTr("Show tab") : qsTr("Open in tab")
+            toolTip: tab === "open" ? qsTr("Show %1's tab").arg(card.unit.name || "")
+                                    : qsTr("Open %1 in a tab of its own").arg(card.unit.name || "")
+            onClicked: SystemController.openInTab(hubSerial)
+        }
         AppButton {
             objectName: "Installation.remove." + card.unitId
             visible: card.editable

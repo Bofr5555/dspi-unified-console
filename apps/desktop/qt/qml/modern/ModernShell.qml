@@ -28,7 +28,7 @@ Item {
     // The alink sender has no DSP screens; what it keeps stays reachable
     readonly property bool senderPage: DeviceInfoController.sender && !wizard
         && !(pages.action.length ? DeviceInfoController.senderKeeps(pages.action) : pages.section === "devices")
-    readonly property bool devicesPage: pages.visible && pages.section === "devices" && pages.tab === "devices"
+    readonly property bool devicesPage: pages.visible && pages.section === "devices" && (pages.tab === "devices" || pages.tab === "hubs")   // -- WP LAY5b -- hubs
 
     // -- WP LAY3 -- KEEPOPEN: several devices at once (a chosen device opens in a
     // tab beside the others). -- WP INT3 -- on: every controller follows the
@@ -145,6 +145,7 @@ Item {
                     PageHost {
                         id: pages
                         anchors.fill: parent
+                        dialogs: presetDialogs   // -- WP LAY5b --
                         visible: !shell.senderPage
                     }
                     // -- WP PGQT -- the alink sender's page in place of the DSP screens

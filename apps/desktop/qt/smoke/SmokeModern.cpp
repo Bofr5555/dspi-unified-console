@@ -125,7 +125,8 @@ void routesPart(Modern &m) {
             window = window || (w->isVisible() && w != m.main && w->property("actionId").toString() == action);
         m.d.check(QStringLiteral("lay3: %1 shows %2 on its page, in no window").arg(action, row.value(QStringLiteral("panel")).toString()),
                   shown && QString::fromLatin1(panel->metaObject()->className()).startsWith(row.value(QStringLiteral("panel")).toString()) && !window
-                      && m.section() + QLatin1Char('/') + m.tab() == key && m.shell->pageAction() == action
+                      && m.host()->property("pageKey").toString() == key   // -- WP LAY5b -- its tab may be a part's
+                      && m.shell->pageAction() == action
                       && panel->property("actionId").toString() == action && panel->property("inPage").toBool()
                       && panel->isVisible() && panel->width() > 100 && panel->height() > 100);
         if (!before.isEmpty() && before != key) {
@@ -139,7 +140,7 @@ void routesPart(Modern &m) {
     for (const char *s : { "overview", "equaliser", "routing", "effects", "measure", "analyse", "library", "system", "devices", "settings" }) {
         const bool clicked = m.click(QStringLiteral("NavRail.") + QLatin1String(s));
         m.d.check(QStringLiteral("lay3: the rail goes to %1").arg(QLatin1String(s)),
-                  clicked && m.section() == QLatin1String(s) && m.content(m.section() + QLatin1Char('/') + m.tab()) != nullptr);
+                  clicked && m.section() == QLatin1String(s) && m.content(m.host()->property("pageKey").toString()) != nullptr);
     }
     auto *devices = Registrar::instance<DevicesController>();
     m.go("devices", "devices");

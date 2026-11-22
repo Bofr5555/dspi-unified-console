@@ -390,11 +390,11 @@ void SpeakersController::writeBack(int output, const QString &role, const QStrin
             if (generation != st->generation) return;
             if (!isOk(o)) {
                 say(st, tr("Not saved to your speaker layout: %1").arg(r.isEmpty() ? tr("the core did not answer.") : str(o, "error")),
-                    true);
+                    true, true);
                 return;
             }
             setStored(st, layoutOf(o), QStringLiteral("measure"));
-            say(st, tr("Saved to your speaker layout."), false);
+            say(st, tr("Saved to your speaker layout."), false, true);
         });
 }
 
@@ -420,8 +420,9 @@ void SpeakersController::openSettings() {
     if (auto *settings = Registrar::instance<SettingsController>()) settings->showPage(QStringLiteral("speakers"));
 }
 
-void SpeakersController::say(const StatePtr &st, const QString &text, bool error) {
+void SpeakersController::say(const StatePtr &st, const QString &text, bool error, bool measure) {
     st->said = text;
     st->saidError = error;
+    st->saidInMeasure = measure;
     if (shown(st)) emit saidChanged();
 }

@@ -209,6 +209,28 @@ void SettingsController::hookDeviceInfo() {
     });
 }
 
+// -- WP LAY5b --
+QString SettingsController::groupOf(const QString &id) const {
+    const auto *p = entry(id);
+    if (!p) return QString();
+    switch (p->group) {
+    case SettingsRegistry::Application: return QStringLiteral("application");
+    case SettingsRegistry::Display: return QStringLiteral("display");
+    case SettingsRegistry::System: return QStringLiteral("device");
+    case SettingsRegistry::Control: return QStringLiteral("control");
+    case SettingsRegistry::Hidden: return QStringLiteral("application");   // the Core Voltage page, opened from Advanced
+    }
+    return QString();
+}
+
+bool SettingsController::groupShown(const QString &group, int) const {
+    const auto &list = SettingsRegistry::pages();
+    return std::any_of(list.begin(), list.end(), [&](const auto &p) {
+        const QString id = QString::fromLatin1(p.id);
+        return groupOf(id) == group && isShown(id);
+    });
+}
+
 QVariantList SettingsController::sidebarRows(const QString &query) const {
     static const std::array<const char *, 4> titles{ QT_TR_NOOP("Application"), QT_TR_NOOP("Display"),
                                                      QT_TR_NOOP("System"), QT_TR_NOOP("Control") };
@@ -221,6 +243,7 @@ QVariantList SettingsController::sidebarRows(const QString &query) const {
             pages.append(QVariantMap{ { QStringLiteral("id"), id },
                                       { QStringLiteral("title"), translated(p->title) },
                                       { QStringLiteral("icon"), QString::fromLatin1(p->icon) },
+                                      { QStringLiteral("group"), groupOf(id) },   // -- WP LAY5b --
                                       // -- WP QTSENDER -- greyed while the alink sender is open
                                       { QStringLiteral("devicePage"), p->group == SettingsRegistry::System ||
                                                                           p->group == SettingsRegistry::Control } });

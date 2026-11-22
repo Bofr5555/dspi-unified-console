@@ -92,6 +92,15 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
   says why). A change refused on a device that is not the one shown (a limit, the lock) is now a notice that names
   that device. Leaving Modern keeps the other devices open: Classic shows the active one and lists the others under
   Open devices, and back in Modern their tabs are there. (WP XDEV1)
+- Modern: Measure, System and Settings have their parts as tabs of the page (Settings: Application, Display, Device and
+  Control; its search still finds every page). Library has **Presets** (every slot, with Recall, Save and the slot's
+  menu) and **Files** (the filter and configuration files, files without a device, the templates). Devices is This
+  Computer, Hubs and Firmware; a hub's PIN, and pairing again after its key changed, are asked on the Hubs page, which
+  also shows the hub's key and your role. System › Installation offers "Open in tab" for each unit. A window opened from
+  a page starts on the same part; closing a Measure window in Modern stops the measurement of the device shown, and
+  "Show Here" stops none. (WP LAY5b)
+- Window > System… › Installation: after "changed elsewhere" and Reload, **Make Them Again** makes the changes that were not
+  saved again on the installation as it is now. (WP LAY5b)
 
 ### Android
 - DSPi Link is reachable from the main page (owner report on 0.14.0: only through the settings
