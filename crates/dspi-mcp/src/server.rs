@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use dspi_core::actor::{ActorId, ActorScope, EMBEDDER, register_actor};
-use dspi_core::{CoreSet, DeviceId, DspiCore, GuardPhase};
+use dspi_core::{AutoEqLibrary, CoreSet, DeviceId, DspiCore, GuardPhase};
 use serde_json::{Map, Value, json};
 
 use crate::activity::{Activity, ActivityEntry, Outcome};
@@ -65,6 +65,12 @@ pub struct ServerConfig {
     pub write_limit: RateLimit,
     /// The agent policy.
     pub policy: Arc<dyn Policy>,
+    // -- WP MCP2b --
+    /// The AutoEQ database the app keeps, for the AutoEQ tools (none: they
+    /// say so).
+    pub autoeq: Option<Arc<AutoEqLibrary>>,
+    /// The user's template folder ("" for the shipped templates only).
+    pub template_dir: String,
 }
 
 impl Default for ServerConfig {
@@ -75,6 +81,8 @@ impl Default for ServerConfig {
             read_limit: READ_LIMIT,
             write_limit: WRITE_LIMIT,
             policy: Arc::new(ReadOnlyPolicy),
+            autoeq: None,                // -- WP MCP2b --
+            template_dir: String::new(), // -- WP MCP2b --
         }
     }
 }
@@ -583,6 +591,8 @@ impl Server {
             grant,
             confirmations: Some(&self.confirms),
             guards: Some(&self.guards),
+            autoeq: self.config.autoeq.as_ref(), // -- WP MCP2b --
+            template_dir: &self.config.template_dir,
         };
         registry::run(&ctx, tool, args)
     }
