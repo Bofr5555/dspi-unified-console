@@ -118,7 +118,7 @@ Dialog {
                 selectByMouse: true
                 font: Qt.font({ family: Shell.monospaceFamily, pixelSize: 15 })
                 color: Theme.text
-                selectionColor: Theme.selection
+                selectionColor: Theme.textSelection
                 selectedTextColor: Theme.text
                 wrapMode: TextEdit.WrapAnywhere
                 Accessible.role: Accessible.StaticText
@@ -172,7 +172,7 @@ Dialog {
             font: Qt.font({ family: Shell.monospaceFamily, pixelSize: 24, letterSpacing: 4 })
             color: Theme.text
             placeholderTextColor: Theme.textMuted
-            selectionColor: Theme.selection
+            selectionColor: Theme.textSelection
             selectedTextColor: Theme.text
             maximumLength: 6
             inputMethodHints: Qt.ImhDigitsOnly

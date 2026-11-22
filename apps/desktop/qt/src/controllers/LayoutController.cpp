@@ -18,7 +18,10 @@ const SettingsRegistry::Page appearancePage{
     "AppearancePage",
     { QT_TRANSLATE_NOOP("SettingsPages", "Layout"), QT_TRANSLATE_NOOP("SettingsPages", "Classic"),
       QT_TRANSLATE_NOOP("SettingsPages", "Modern"), QT_TRANSLATE_NOOP("SettingsPages", "Theme"),
-      QT_TRANSLATE_NOOP("SettingsPages", "Dark"), QT_TRANSLATE_NOOP("SettingsPages", "Light") }
+      QT_TRANSLATE_NOOP("SettingsPages", "Dark"), QT_TRANSLATE_NOOP("SettingsPages", "Light"),
+      // -- WP LAY4 --
+      QT_TRANSLATE_NOOP("SettingsPages", "Darker grey"), QT_TRANSLATE_NOOP("SettingsPages", "Inspector"),
+      QT_TRANSLATE_NOOP("SettingsPages", "Band bar") }
 };
 
 const char *const kSetupDoneKey = "onboarding/setupDone";   // OnboardingController's
@@ -37,6 +40,10 @@ LayoutController::LayoutController(const AppContext &ctx, QObject *parent)
     : QObject(parent), m_ctx(ctx), m_arrangement(new PrefsMap(QStringLiteral("ui/arrangement"), this)) {
     m_arrangement->declare(QStringLiteral("navigation"), QStringLiteral("rail"));
     m_arrangement->declare(QStringLiteral("deviceTabs"), QStringLiteral("topBar"));
+    // -- WP LAY4 --
+    m_arrangement->declare(QStringLiteral("tone"), QStringLiteral("grey"));
+    m_arrangement->declare(QStringLiteral("inspector"), QStringLiteral("shown"));
+    m_arrangement->declare(QStringLiteral("bandBar"), QStringLiteral("hidden"));
 
     QSettings settings;
     m_layout = settings.value(QLatin1String(kLayoutKey)).toString();

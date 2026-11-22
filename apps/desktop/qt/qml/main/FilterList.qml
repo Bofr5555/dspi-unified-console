@@ -44,6 +44,12 @@ Rectangle {
     readonly property bool allBypassed: actionable.every(p => p.bypass)
     readonly property bool allEnabled: actionable.every(p => !p.bypass)
     signal tabChosen(bool crossover)
+    // -- WP LAY4 -- Modern's table: denser rows, no outline; an input's Clear
+    // clears its linked partner too
+    property int rowHeight: 36
+    property bool flat: false
+    property bool clearsInput: false
+    property string clearText: qsTr("Clear All")
 
     function showBand(band) {
         const row = rows.itemAt(band)
@@ -56,7 +62,7 @@ Rectangle {
     objectName: crossover ? "FilterList.xo" : "FilterList"
     radius: Theme.radius
     color: Theme.panel
-    border.width: 1
+    border.width: list.flat ? 0 : 1
     border.color: Theme.separator
     clip: true
     implicitHeight: header.height + rowsColumn.implicitHeight + footer.height
@@ -66,7 +72,7 @@ Rectangle {
         id: header
         z: 1
         width: parent.width
-        height: 32
+        height: list.flat ? 26 : 32
         color: Theme.panel
         radius: Theme.radius
         RowLayout {
@@ -114,6 +120,7 @@ Rectangle {
                     required property int index
                     objectName: list.objectName + ".band." + index
                     width: rowsColumn.width
+                    rowHeight: list.rowHeight
                     channel: list.channel
                     band: index
                     crossover: list.crossover
@@ -178,7 +185,7 @@ Rectangle {
             AppButton {
                 objectName: list.objectName + ".clearAll"
                 visible: list.showClear
-                text: qsTr("Clear All")
+                text: list.clearText
                 toolTip: qsTr("Reset all bands")
                 enabled: ChannelController.writable
                 onClicked: clearQuestion.open()
@@ -222,9 +229,15 @@ Rectangle {
         parent: Overlay.overlay
         title: qsTr("Clear All Bands?")
         // -- WP P1QT2 -- one undo step now (Edit > Undo puts every band back)
-        text: qsTr("Every band in this list will be reset to its default (flat) state. Edit > Undo puts them back.")
+        text: list.clearsInput && ChannelController.revision >= 0 && ChannelController.linkedPartner(list.channel) >= 0 // -- WP LAY4 --
+              ? qsTr("Every band on both channels of the linked pair will be reset to its default (flat) state. Edit > Undo puts them back.")
+              : qsTr("Every band in this list will be reset to its default (flat) state. Edit > Undo puts them back.")
         acceptText: qsTr("Clear All")
-        onAnswered: answer => { if (answer === "accept") ChannelController.clearBands(list.channel, list.crossover) }
+        onAnswered: answer => {
+            if (answer !== "accept") return
+            if (list.clearsInput) ChannelController.clearInputPeq(list.channel) // -- WP LAY4 --
+            else ChannelController.clearBands(list.channel, list.crossover)
+        }
     }
 
     Accessible.role: Accessible.Table

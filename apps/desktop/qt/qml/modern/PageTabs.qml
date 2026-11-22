@@ -100,6 +100,14 @@ Item {
                 }
             }
         }
+        // -- WP LAY4 -- the page's own buttons
+        Loader {
+            objectName: "PageTabs.tools"
+            readonly property string type: bar.entry && bar.entry.tools ? bar.entry.tools : ""
+            visible: active
+            active: type.length > 0
+            sourceComponent: active ? Qt.createComponent("UConsole", type) : null
+        }
         IconButton {
             objectName: "PageTabs.openWindow"
             visible: bar.action.length > 0

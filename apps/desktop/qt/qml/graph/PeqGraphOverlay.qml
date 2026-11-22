@@ -83,6 +83,63 @@ Item {
             }
         }
 
+        // ---- -- WP LAY4 -- Modern: the selected band's values beside its dot, and
+        // how to begin on an empty graph (the band bar says both in Classic)
+        Rectangle {
+            id: bandLabel
+            objectName: root.objectName + ".bandLabel"
+            readonly property int band: overlay.chipBand
+            readonly property string shownName: band >= 0 ? words(overlay.chip) : ""
+            readonly property point at: follow(overlay.chip, overlay.animating, overlay.width, overlay.height)
+            function follow() { return overlay.dotPoint(band) }
+            function words(chip) {
+                const shape = overlay.shapes.find(s => s.shape === chip.shape)
+                const parts = [band + 1, shape ? shape.title : chip.code || ""]
+                for (const r of chip.rows || []) {
+                    const unit = r.unit.length ? " " + r.unit : ""
+                    // Freq and Gain carry a unit; the width's is Q itself
+                    parts.push(r.field === 2 && r.adjustable ? r.unit + " " + r.number
+                             : r.field < 2 && r.adjustable ? r.number + unit : r.label + " " + r.number + unit)
+                }
+                if (chip.bypass) parts.push(qsTr("bypassed"))
+                return parts.join(" · ")
+            }
+            visible: LayoutController.modern && root.plot !== null && !root.plot.popOut && overlay.editing && band >= 0
+                     && !overlay.cardOpen
+            width: bandText.implicitWidth + 12
+            height: 20
+            radius: Theme.radiusSmall
+            color: Theme.tooltip
+            x: Math.min(Math.max(at.x - width / 2, 4), Math.max(overlay.width - width - 4, 4))
+            // Over the dot; under it at the plot's top, where the toggles are
+            y: at.y - height - 14 < 34 ? Math.min(at.y + 14, overlay.height - height - 4) : at.y - height - 14
+            Accessible.role: Accessible.StaticText
+            Accessible.name: shownName
+            Text {
+                id: bandText
+                anchors.centerIn: parent
+                textFormat: Text.PlainText
+                text: bandLabel.shownName
+                font: Qt.font({ family: Theme.fontMono.family, pixelSize: 11 })
+                color: Theme.tooltipText
+            }
+        }
+        Text {
+            objectName: root.objectName + ".hint"
+            readonly property bool empty: {
+                if (overlay.editedChannel < 0 || ChannelController.revision < 0) return false
+                for (let b = 0; b < 10; ++b)
+                    if (ChannelController.band(overlay.editedChannel, b, false).type !== 0) return false
+                return true
+            }
+            visible: LayoutController.modern && root.plot !== null && !root.plot.popOut && empty && !overlay.ghostShown
+                     && !overlay.cardOpen
+            anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: 24 }
+            text: qsTr("Double-click to add a band, then drag its dot; the wheel changes its Q")
+            font: Theme.fontSmall
+            color: Theme.textMuted
+        }
+
         // ---- The Ctrl-click card: a shape, then its slope, for a band not made yet ----
         Rectangle {
             id: card

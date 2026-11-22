@@ -13,7 +13,7 @@ TextField {
     implicitHeight: Theme.controlHeight + 2
     font: Theme.fontBody
     color: Theme.text
-    selectionColor: Theme.selection
+    selectionColor: Theme.textSelection
     selectedTextColor: Theme.text
     placeholderText: qsTr("Search")
     placeholderTextColor: Theme.textMuted

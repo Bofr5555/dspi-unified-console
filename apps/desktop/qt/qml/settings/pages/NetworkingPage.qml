@@ -348,7 +348,7 @@ SettingsPage {
                 selectByMouse: true
                 font: Qt.font({ family: Shell.monospaceFamily, pixelSize: 13 })
                 color: Theme.textMuted
-                selectionColor: Theme.selection
+                selectionColor: Theme.textSelection
                 selectedTextColor: Theme.text
                 Accessible.role: Accessible.StaticText
                 Accessible.name: qsTr("Hub key")
@@ -452,7 +452,7 @@ SettingsPage {
                 selectByMouse: true
                 font: Qt.font({ family: Shell.monospaceFamily, pixelSize: 34, weight: Font.DemiBold, letterSpacing: 8 })
                 color: Theme.text
-                selectionColor: Theme.selection
+                selectionColor: Theme.textSelection
                 selectedTextColor: Theme.text
                 Accessible.role: Accessible.StaticText
                 Accessible.name: qsTr("Pairing code")

@@ -133,6 +133,8 @@ public:
     // one clicked (row order, empty rows skipped), a plain click selects it
     Q_INVOKABLE void rowClicked(int band, int modifiers);
     Q_INVOKABLE void forget();
+    // -- WP LAY4 -- A filter type's shape (PeqShapeGlyph's), -1 for none
+    Q_INVOKABLE int shapeOfType(int type) const;
 
     void setSelection(const QSet<int> &bands);
     void reveal(int band) { emit showRow(band); }

@@ -104,7 +104,7 @@ Dialog {
             wrapMode: TextEdit.Wrap
             font: Theme.fontMono
             color: DeviceInfoController.rawFailed ? Theme.warning : Theme.text
-            selectionColor: Theme.selection
+            selectionColor: Theme.textSelection
             Accessible.role: Accessible.StaticText
             Accessible.name: qsTr("Result")
             Accessible.description: text

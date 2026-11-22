@@ -26,7 +26,10 @@ class QJSEngine;
 //   can A/B it live: `navigation` "rail" (variant B: a rail and tabs in each
 //   page, the default) or "tabs" (variant A: top tabs), and `deviceTabs`
 //   "topBar" (the open devices as tabs in the top bar, the default) or
-//   "rail" (at the rail's top). The Modern shell reads them; another package
+//   "rail" (at the rail's top). -- WP LAY4 -- `tone` "grey" (the default) or
+//   "darker" (Theme's surfaces in Modern), `inspector` "shown" (the default)
+//   or "hidden", `bandBar` "hidden" (the default) or "shown" (the band bar
+//   docked under the Equaliser's graph). The Modern shell reads them; another package
 //   declares a further key with arrangement->declare().
 class LayoutController : public QObject {
     Q_OBJECT

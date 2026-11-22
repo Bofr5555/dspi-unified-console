@@ -251,7 +251,7 @@ void switchPart(SmokeDriver &d, Shell *shell, LayoutController *layout) {
             !menuBefore && !main->property("menuBar").value<QObject *>() && d.object(QStringLiteral("Menu.tools.stats")) == nullptr);
     d.check(QStringLiteral("lay0: the switch keeps the device session"),
             device->connected() && device->demo() && device->property("serial").toString() == serial);
-    QQuickItem *bar = d.item(QStringLiteral("RightPane"));   // -- WP LAY3 -- on the Equaliser page
+    QQuickItem *bar = d.item(QStringLiteral("GraphHost"));   // -- WP LAY3, LAY4 -- on the Equaliser page
     d.check(QStringLiteral("lay0: the switch keeps the selection"),
             main->property("selectedChannel").toInt() == 0 && bar && bar->property("selectedChannel").toInt() == 0
                 && sidebar && sidebar->selectedChannel() == 0);

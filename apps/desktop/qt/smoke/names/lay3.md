@@ -13,7 +13,7 @@ and `modern-*.png`.
 - `NavRail` (the rail) and `NavTabs` (across the top), each with `.<section id>`.
 - `PageTabs`, `PageTabs.title`, `PageTabs.<tab id>`, `PageTabs.openWindow`.
 - `PageHost`, `PageHost.page.<section>/<tab>` and its `.scroll`, `.inWindow`, `.raise`, `.bringBack`.
-- `OverviewSection`, `EqualiserSection` (`.channels`), `DevicesSection`.
+- `OverviewSection`, `EqualiserPeq` (`.channels`; lay4.md), `DevicesSection`.
 - `Dock` and `Dock.source`, `.mode`, `.volume`, `.readout`, `.mute`, `.bypass`, `.meters`, `.meter.<wire channel>`, `.cpu<n>`.
 - `StatusStrip`; `NotificationDrawer`, `.sheet`, `.banners`, `.earlier`, `.clear`, `.events`, `.close`.
 - `Appearance.theme` (Settings > Appearance). `PresetDialogs`: the `GlobalControls.*` menus and dialogs, names unchanged.
