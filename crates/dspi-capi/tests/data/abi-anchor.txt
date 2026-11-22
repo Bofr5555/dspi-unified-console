@@ -1224,6 +1224,7 @@ uint32_t dspi_history(struct FfiCore *core,
 uint32_t n,
 char *buf,
 uint32_t len);
+uint32_t dspi_revert_entry(struct FfiCore *core, uint64_t id, char *buf, uint32_t len);
 void dspi_set_dragging(const struct FfiCore *core, bool dragging);
 void dspi_undo_group_begin(const struct FfiCore *core, const char *label);
 void dspi_undo_group_end(const struct FfiCore *core);
@@ -1936,6 +1937,34 @@ uint32_t dspi_firmware_update_check(const uint8_t *image,
 uint32_t image_len,
 const char *target,
 const char *typed,
+char *buf,
+uint32_t len);
+uint32_t dspi_speaker_layout_set_dir(struct FfiCore *core,
+const char *dir,
+char *buf,
+uint32_t len);
+uint32_t dspi_speaker_layout(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_speaker_layout_propose(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_speaker_layout_set(struct FfiCore *core,
+const char *layout_json,
+char *buf,
+uint32_t len);
+uint32_t dspi_installation_view(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_installation_draft_edit(struct FfiCore *core,
+const char *draft_json,
+const char *edits_json,
+char *buf,
+uint32_t len);
+uint32_t dspi_installation_validate(struct FfiCore *core,
+const char *draft_json,
+char *buf,
+uint32_t len);
+uint32_t dspi_installation_diff(struct FfiCore *core,
+const char *draft_json,
+char *buf,
+uint32_t len);
+uint32_t dspi_installation_save(struct FfiCore *core,
+const char *draft_json,
 char *buf,
 uint32_t len);
 bool dspi_link_browse_start(struct FfiCore *core,
