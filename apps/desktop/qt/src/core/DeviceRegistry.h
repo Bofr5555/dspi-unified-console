@@ -94,8 +94,9 @@ public:
 
     // Opens under way, for the smoke driver
     int opening() const { return m_opening; }
-    // A refused open on a session's own core (SessionModel): openFailed()
-    void reportFailure(const QString &code, const QString &error);
+    // A unit another session has, refused on a session's own core
+    // (SessionModel): openFailed()
+    void reportRefused(const QString &serial);
 
 signals:
     void devicesChanged();
@@ -111,6 +112,7 @@ signals:
     void configFailed(const QString &error);
 
 private:
+    static QString alreadyOpen(const QString &serial);
     static void eventThunk(const char *eventJson, void *self);
     void track(DeviceSession *session);
     void readRows();
@@ -123,6 +125,7 @@ private:
     DeviceSession *m_main;
     DeviceSession *m_active;
     QList<DeviceSession *> m_sessions;
+    QList<DeviceSession *> m_closing;   // closed, their workers running dry
     bool m_keepOpen = false;
     int m_opening = 0;
     QTimer m_hotplugTimer;

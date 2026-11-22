@@ -48,6 +48,7 @@ pub struct FfiCoreSet {
 }
 
 impl FfiCoreSet {
+    #[allow(clippy::vec_box)]
     fn handles(&self) -> std::sync::MutexGuard<'_, Vec<Box<FfiCore>>> {
         self.handles.lock().unwrap_or_else(PoisonError::into_inner)
     }

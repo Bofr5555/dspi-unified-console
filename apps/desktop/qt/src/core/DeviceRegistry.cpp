@@ -210,6 +210,8 @@ void DeviceRegistry::shutdown() {
     m_hotplugTimer.stop();
     dspi_core_set_set_listener(m_set, nullptr, nullptr);
     for (DeviceSession *s : std::as_const(m_sessions)) s->shutdown();
+    // Those on their way out too: their cores go with the set below
+    for (DeviceSession *s : std::as_const(m_closing)) s->shutdown();
     m_scanner->waitForDone();
     delete m_scanner;
     const bool quiet = m_opener->waitForDone(kQuitWaitMs);
@@ -227,7 +229,14 @@ void DeviceRegistry::shutdown() {
 
 // ---- Opening, choosing, closing ------------------------------------------------
 
-void DeviceRegistry::reportFailure(const QString &code, const QString &error) { emit openFailed(code, error); }
+QString DeviceRegistry::alreadyOpen(const QString &serial) {
+    //: %1 is the device's serial number
+    return tr("%1 is already open here, and a device has one session at a time. Choose it under Open devices.").arg(serial);
+}
+
+void DeviceRegistry::reportRefused(const QString &serial) {
+    emit openFailed(QStringLiteral("already_open"), alreadyOpen(serial));
+}
 
 void DeviceRegistry::open(const QJsonObject &target, Done done, bool activate) {
     if (!m_set) return;
@@ -258,8 +267,10 @@ void DeviceRegistry::open(const QJsonObject &target, Done done, bool activate) {
             if (!o.core) {
                 QString code = o.reply.value(QLatin1String("code")).toString();
                 if (code.isEmpty()) code = QStringLiteral("io");
-                const QString error = o.reply.value(QLatin1String("error")).toString();
+                QString error = o.reply.value(QLatin1String("error")).toString();
                 qInfo("DeviceRegistry: not opened (%s): %s", qPrintable(code), qPrintable(error));
+                if (code == QLatin1String("already_open"))
+                    error = alreadyOpen(target.value(QLatin1String("serial")).toString());
                 emit openFailed(code, error);
                 if (done) done(nullptr, code, error);
                 return;
@@ -340,12 +351,14 @@ void DeviceRegistry::close(const QString &id) {
     // a hub ends); then its worker runs dry, and only then its core closes
     emit sessionClosing(s);
     m_sessions.removeOne(s);
+    m_closing.append(s);
     s->setBackground(false);
     emit devicesChanged();
     if (FfiCore *c = s->handle()) dspi_link_close(c);
     s->worker()->call(
         s, [closeIt](FfiCore *) { return closeIt(); },
         [this, s](bool) {
+            m_closing.removeOne(s);
             s->shutdown();
             s->deleteLater();
             readRows();

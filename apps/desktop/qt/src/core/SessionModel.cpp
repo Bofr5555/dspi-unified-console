@@ -156,8 +156,8 @@ void SessionModel::selectDevice(const QString &serial) {
             if (!r.refusal.isEmpty()) {
                 apply(r.snap, 0);
                 track(-1);
-                if (auto *registry = DeviceRegistry::instance())
-                    registry->reportFailure(QStringLiteral("already_open"), r.refusal);
+                qInfo("DeviceModel: %s", qPrintable(r.refusal));
+                if (auto *registry = DeviceRegistry::instance()) registry->reportRefused(serial);
                 return;
             }
             m_demo = false;

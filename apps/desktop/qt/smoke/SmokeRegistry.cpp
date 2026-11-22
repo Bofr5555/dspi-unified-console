@@ -184,9 +184,13 @@ void registrySection(SmokeDriver &d) {
     d.check("mdqt1: the list refuses it as well", notices->serial() > noticesNow && r->active() == a && r->sessions().size() == 3 &&
                                                       a->model()->demo() && near(volumeOf(a), wantedA));
     // On the active core, past the list: the core's own refusal
-    const int noticesCore = notices->serial();
+    // (its notice is the first one's, still on show, so it is not posted again)
+    QString refused;
+    const auto c4 = QObject::connect(r, &DeviceRegistry::openFailed, r, [&refused](const QString &code, const QString &) { refused = code; });
     device->selectDevice(serial);
-    d.check("mdqt1: the core refuses it, with a notice", d.waitFor(5000, [&] { return notices->serial() > noticesCore; }) && d.waitIdle());
+    d.check("mdqt1: the core refuses it, and it is said",
+            d.waitFor(5000, [&] { return refused == QLatin1String("already_open"); }) && d.waitIdle());
+    QObject::disconnect(c4);
     d.check("mdqt1: what was open stays open", a->model()->connected() && a->model()->demo() && near(volumeOf(a), wantedA));
     // The same way: chosen again, it becomes the active one
     list->chooseHubDevice(handle, serial);
