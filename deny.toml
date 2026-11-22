@@ -42,6 +42,8 @@ exceptions = [
     { crate = "dspi-wasm", allow = ["GPL-3.0-or-later"] },
     # -- WP LK3 -- the ESP32 bridge rig's UART tunnel (tools/esp-rig/tunnel; review c73 F2)
     { crate = "dspi-esp-rig", allow = ["GPL-3.0-or-later"] },
+    # -- WP MCP1 -- the MCP server (crates/dspi-mcp)
+    { crate = "dspi-mcp", allow = ["GPL-3.0-or-later"] },
     # -- WP TM12 --
     # The Terminal's HTTPS (dspi-tui/src/autoeq_fetch.rs): named one by one, like
     # the rest of this list. Not in the iOS or Android libraries. webpki-roots is

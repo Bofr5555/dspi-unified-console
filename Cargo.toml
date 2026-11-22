@@ -32,6 +32,8 @@ members = [
     "crates/dspi-wasm",
     # -- WP LK3 -- the ESP32 bridge emulator rig's UART tunnel (tools/esp-rig)
     "tools/esp-rig/tunnel",
+    # -- WP MCP1 -- the MCP server (sans-IO; transports in MCP3)
+    "crates/dspi-mcp",
     "apps/terminal",
     "xtask",
 ]
