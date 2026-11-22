@@ -214,6 +214,19 @@ Item {
                                 font: Theme.fontSmall
                                 color: Theme.textMuted
                             }
+                            // -- WP XDEV1 -- open in a tab: measured on that tab's connection
+                            Text {
+                                objectName: "MeasureUnits.unitTab." + unitBox.modelData.serial
+                                visible: unitBox.modelData.chosen && !!unitBox.modelData.tab && !unitBox.modelData.own
+                                Layout.fillWidth: true
+                                Layout.leftMargin: 24
+                                textFormat: Text.PlainText
+                                //: %1 is the device's tab
+                                text: qsTr("Measured through its open tab, %1.").arg(unitBox.modelData.tab || "")
+                                font: Theme.fontSmall
+                                color: Theme.textMuted
+                                wrapMode: Text.WordWrap
+                            }
                             Text {
                                 objectName: "MeasureUnits.unitError." + unitBox.modelData.serial
                                 visible: unitBox.modelData.chosen && unitBox.modelData.error.length > 0

@@ -103,6 +103,15 @@ By hand, in the container:
   live view, solo) stops on `activeLeaving`; what plays on a device that is closed
   or replaced stops on `sessionStopping`, posted to its worker (`drainFirst`).
   `DeviceSession::setJob` makes its tab busy.
+  Views that span devices use the registry directly (WP XDEV1): Several units
+  judges a unit open in a tab by that tab's core (no second session) and any
+  other by an extra core of the set (`DeviceRegistry::openExtra`: no tab, its
+  serial held while it is chosen); the System view's "Open in tab" shows a
+  unit's tab or opens one through the hub (`LinkController::openInTab`). A write
+  refused on a device that is not the active one is a notice naming it
+  (`backgroundRefused`). Leaving Modern keeps the other devices open:
+  `DeviceRegistry::kOthersStayOpenInClassic` is that one policy point.
+  `sessionClosing` is never emitted for the main session.
 - **One thread calls a core:** its `CoreWorker`. Every blocking call (reads,
   writes, scans, files) is posted to it and its result comes back to the GUI
   thread as a queued call. The hot-plug poll (one for every core) and the opens

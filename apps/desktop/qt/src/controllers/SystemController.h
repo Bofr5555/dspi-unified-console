@@ -108,6 +108,11 @@ class SystemController : public QObject {
     Q_PROPERTY(QVariantList spdifSources READ spdifSources NOTIFY spdifChanged)
     Q_PROPERTY(QVariantList spdifCandidates READ spdifCandidates NOTIFY spdifChanged)
     Q_PROPERTY(QStringList spdifDrafted READ spdifDrafted NOTIFY draftChanged)
+    // -- WP XDEV1 -- "Open in tab" (MPLAN 1.2 item 6): offered in Modern, on a
+    // hub, for a unit the hub lists; `tabs` is serial -> "active" (the tab
+    // shown now) or "open" (a tab of its own), for the units open here
+    Q_PROPERTY(bool openInTabOffered READ openInTabOffered NOTIFY tabsChanged)
+    Q_PROPERTY(QVariantMap tabs READ tabs NOTIFY tabsChanged)
 public:
     SystemController(const AppContext &ctx, QObject *parent = nullptr);
     ~SystemController() override;
@@ -156,6 +161,16 @@ public:
     QVariantList spdifSources() const;
     QVariantList spdifCandidates() const;
     QStringList spdifDrafted() const;
+
+    // -- WP XDEV1 --
+    bool openInTabOffered() const;
+    QVariantMap tabs() const;
+    // The unit with this serial in a tab: its own when it is open, else a new
+    // one through the hub shown here (it becomes the active tab). The serial
+    // is matched as the hub lists it (a unit row's `serial`, never a cleaned
+    // text). False when not offered (Classic, no hub, a serial the hub does
+    // not list); an open that fails is a notice.
+    Q_INVOKABLE bool openInTab(const QString &serial);
 
     // Reads the view now (the poll does every 3 s)
     Q_INVOKABLE void refresh();
@@ -225,6 +240,7 @@ signals:
     void actionChanged();
     void draftChanged();
     void spdifChanged();   // -- WP ATQT --
+    void tabsChanged();    // -- WP XDEV1 --
 
 private:
     QString text(const char *key) const { return m_view.value(QLatin1String(key)).toString(); }

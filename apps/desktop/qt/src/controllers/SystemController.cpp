@@ -4,7 +4,9 @@
 #include "DeviceModel.h"
 #include "DeviceRegistry.h"   // -- WP MDQT2b --
 #include "DeviceSession.h"
+#include "LinkController.h"   // -- WP XDEV1 --
 #include "Registrar.h"
+#include "SessionModel.h"     // -- WP XDEV1 --
 
 #include <QCoreApplication>
 #include <QJSEngine>
@@ -85,6 +87,12 @@ SystemController::SystemController(const AppContext &ctx, QObject *parent)
     // -- WP MDQT2b -- with InstallationController, so the System panel's two
     // tabs are always of the same hub
     if (m_registry) connect(m_registry, &DeviceRegistry::activeChanged, this, &SystemController::updatePolling);
+    // -- WP XDEV1 --
+    if (m_registry) {
+        connect(m_registry, &DeviceRegistry::devicesChanged, this, &SystemController::tabsChanged);
+        connect(m_registry, &DeviceRegistry::keepOpenChanged, this, &SystemController::tabsChanged);
+    }
+    connect(this, &SystemController::viewChanged, this, &SystemController::tabsChanged);
     // No wait here: a hub request may take its 15 s, and LinkController's quit
     // closes the session, which ends it; the destructor waits afterwards
     connect(qApp, &QCoreApplication::aboutToQuit, this, [this] {
@@ -103,6 +111,30 @@ SystemController *SystemController::create(QQmlEngine *, QJSEngine *) {
     SystemController *self = Registrar::instance<SystemController>();
     QJSEngine::setObjectOwnership(self, QJSEngine::CppOwnership);
     return self;
+}
+
+// -- WP XDEV1 -- "Open in tab" -------------------------------------------------------
+
+bool SystemController::openInTabOffered() const {
+    auto *link = Registrar::instance<LinkController>();
+    return m_registry && m_registry->keepOpen() && m_available && link && link->inSession();
+}
+
+QVariantMap SystemController::tabs() const {
+    QVariantMap out;
+    if (!m_registry) return out;
+    for (DeviceSession *s : m_registry->sessions()) {
+        const QString serial = s->model()->serial();
+        if (serial.isEmpty() || m_registry->holder(serial) != s) continue;
+        out.insert(serial, s == m_registry->active() ? QStringLiteral("active") : QStringLiteral("open"));
+    }
+    return out;
+}
+
+bool SystemController::openInTab(const QString &serial) {
+    // A tab that is open is shown without the view; LinkController checks the rest
+    auto *link = Registrar::instance<LinkController>();
+    return link && link->openInTab(serial);
 }
 
 // -- fixup lk1 --

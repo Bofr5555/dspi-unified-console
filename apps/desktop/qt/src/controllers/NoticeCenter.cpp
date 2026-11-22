@@ -2,6 +2,7 @@
 
 #include "DeviceModel.h"
 #include "DeviceSession.h"   // -- WP MDQT2b --
+#include "DeviceRegistry.h"   // -- WP XDEV1 --
 #include "Snapshot.h"
 // -- WP P2QT --
 #include "Core.h"
@@ -38,6 +39,17 @@ NoticeCenter::NoticeCenter(const AppContext &ctx, QObject *parent) : QObject(par
         connect(ctx.device, &DeviceModel::writeRefused, this, [this](const QString &, const QString &key, const QString &message) {
             if (gateKey(key)) postKey(key, message);
         });
+    // -- WP XDEV1 -- (review RB B4) and one refused on a device that is not the
+    // active one, named: it was asked of there just before a switch
+    if (ctx.registry)
+        connect(ctx.registry, &DeviceRegistry::backgroundRefused, this,
+                [this](const QString &device, const QString &, const QString &key, const QString &message) {
+                    if (!gateKey(key)) return;
+                    const QVariantMap r = row(key);
+                    const QString kind = r.value(QStringLiteral("kind")).toString();
+                    //: A write refused on another open device: %1 the device, %2 the refusal
+                    post(tr("On %1: %2").arg(device, line(key, message)), kind.isEmpty() ? QStringLiteral("error") : kind);
+                });
     // -- WP P2QT -- the hub's alarms
     if (ctx.device) connect(ctx.device, &DeviceModel::snapshotApplied, this, &NoticeCenter::onSnapshot);
     if (HubFeed *feed = HubFeed::of(ctx.core)) connect(feed, &HubFeed::hubEvent, this, &NoticeCenter::onHubEvent);

@@ -86,6 +86,12 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
   rename, startup preset, copy and clear on a slot, also in the preset picker's list. Undo has a ▾ with the recent
   changes and History. The app button's menu holds only the global actions (files, settings, help, quit). A device tab's
   Close is greyed while a firmware update or a core voltage calibration runs there, with the reason. (WP LAY3b)
+- In Modern, Window > System… has **Open in tab** on each unit of the hub (**Show tab** when it is open). Measure ›
+  Several units measures a unit that is open in a tab through that tab's connection instead of opening a second one;
+  a unit that is not open gets a connection of its own while it is chosen, and cannot be opened in a tab meanwhile (it
+  says why). A change refused on a device that is not the one shown (a limit, the lock) is now a notice that names
+  that device. Leaving Modern keeps the other devices open: Classic shows the active one and lists the others under
+  Open devices, and back in Modern their tabs are there. (WP XDEV1)
 
 ### Android
 - DSPi Link is reachable from the main page (owner report on 0.14.0: only through the settings

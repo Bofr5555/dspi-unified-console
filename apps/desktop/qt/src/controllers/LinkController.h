@@ -205,6 +205,12 @@ public:
     Q_INVOKABLE void dismissKeyNotice();
     // Reads the session's state again (no traffic); the core's events do this.
     Q_INVOKABLE void refreshStatus();
+    // -- WP XDEV1 -- A unit of the hub shown here in a tab of its own (the System
+    // view's "Open in tab"): its tab, made active, when it is open already; else
+    // opened beside the others as bindDevice does in Modern. False when not
+    // offered: not in Modern, no hub session (or a dial for another), a serial
+    // the hub does not list (compared as the hub gives it).
+    bool openInTab(const QString &serial);
 
     // For the smoke driver: runs on the controller's thread when a dial ends
     // that was given up meanwhile, with its session up, just before it is closed
