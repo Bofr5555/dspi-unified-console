@@ -101,8 +101,11 @@ bool click(QQuickItem *item) {
 void demoEntry(SmokeDriver &d) {
     DeviceModel *device = d.app().device;
     auto *list = Registrar::instance<DevicesController>();
+    // -- WP LAY7 -- Classic's popover, or Modern's device switcher
+    const bool modern = d.app().shell->pageHost() != nullptr;
     QQuickItem *host = list ? list->host() : nullptr;
-    QObject *popup = host ? host->findChild<QObject *>(QStringLiteral("DevicesPopup")) : nullptr;
+    QObject *popup = modern ? d.object(QStringLiteral("DeviceSwitcher")) : host ? host->findChild<QObject *>(QStringLiteral("DevicesPopup")) : nullptr;
+    d.check("qp19-demo: the layout the launch asks for", modern == (qEnvironmentVariable("DSPI_SMOKE_DEMO_ENTRY") == QLatin1String("modern")));
     d.check("qp19-demo: the device list is loaded", popup != nullptr);
     if (!popup) return;
     const auto in = [&](const QString &name) {

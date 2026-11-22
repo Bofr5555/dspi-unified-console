@@ -361,10 +361,15 @@ void devicePart(Menus &m) {
         m.d.waitFor(1500, [&] { return menu && !menu->property("visible").toBool(); });
         m.settle();
     };
+    // -- WP LAY7 -- the reason's row is there always, and shows while there is one
+    const auto noReason = [&] {
+        auto *item = qobject_cast<QQuickItem *>(row("device.close.why"));
+        return item && !item->isVisible() && item->height() < 1;
+    };
     m.check("a right-click on a device tab opens its menu", tab && openMenu());
     for (const char *which : { "device.identify", "device.reconnect", "device.firmwareUpdate", "device.close" })
         m.d.check(QStringLiteral("lay3b: %1 is in it").arg(QLatin1String(which)), row(which) != nullptr);
-    m.check("Close works while nothing pins the device", row("device.close") && row("device.close")->property("enabled").toBool() && !row("device.close.why"));
+    m.check("Close works while nothing pins the device", row("device.close") && row("device.close")->property("enabled").toBool() && noReason());
     shut();
     firmware->pretendRunForTest(session);
     m.d.spin(100);
@@ -381,7 +386,7 @@ void devicePart(Menus &m) {
     shut();
     firmware->pretendRunForTest(nullptr);
     m.d.spin(100);
-    m.check("let go, Close works again", openMenu() && row("device.close")->property("enabled").toBool() && !row("device.close.why"));
+    m.check("let go, Close works again", openMenu() && row("device.close")->property("enabled").toBool() && noReason());
     shut();
     // The switcher has the same actions
     m.click(QStringLiteral("DeviceTabs.add"));

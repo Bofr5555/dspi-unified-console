@@ -39,6 +39,7 @@
 #include <QSignalSpy>
 #include <atomic>
 #include <cmath>
+#include <cstdio>
 #include <memory>
 
 namespace {
@@ -133,6 +134,9 @@ struct Two {
         r->setKeepOpen(true);
         if (!a->model()->connected() || !a->model()->demo()) a->model()->openDemo();
         if (!d.waitFor(10000, [&] { return a->model()->connected() && a->model()->demo(); })) return false;
+        // -- WP LAY7 -- (review RC, RC15) a demo still on its way (a hub's session
+        // left opens the one before it) drops what is written meanwhile
+        if (!idle(a)) return false;
         r->openDemo();
         if (!d.waitFor(10000, [&] { return r->opening() == 0 && r->sessions().size() == 2; })) return false;
         b = r->sessions().at(1);
@@ -151,9 +155,17 @@ struct Two {
         r->setKeepOpen(false);
         d.waitIdle();
     }
+    // -- WP LAY7 -- (review RC, RC15) Why nothing starts on the active device
+    void why(const char *what) {
+        std::printf("smoke: mdqt2c: %s: error '%s', blocker '%s', setup '%s', issue '%s', sim %d, microphone '%s', %d outputs\n", what,
+                    qPrintable(mc->error()), qPrintable(mc->playBlocker()), qPrintable(mc->setupProblem()), qPrintable(mc->issueText()),
+                    int(mc->simAvailable()), qPrintable(mc->micChoice()), int(mc->setupOutputs().size()));
+        for (const QVariant &v : mc->preflightLines()) std::printf("smoke: mdqt2c:   %s\n", qPrintable(QJsonDocument::fromVariant(v).toJson(QJsonDocument::Compact)));
+    }
     // The active device's setup: one output, short sweeps
     void setup() {
-        d.waitFor(5000, [&] { return mc->simAvailable() && mc->micChoice() == QLatin1String("sim") && !mc->setupOutputs().isEmpty(); });
+        const bool ready = d.waitFor(5000, [&] { return mc->simAvailable() && mc->micChoice() == QLatin1String("sim") && !mc->setupOutputs().isEmpty(); });
+        if (!ready) why("not ready");
         bool one = false;
         for (const QVariant &v : mc->setupOutputs()) {
             const QVariantMap m = v.toMap();
@@ -183,6 +195,7 @@ void measuring(Two &t, QByteArray *result) {
     d.check("mdqt2c: A keeps its setup", mc->placement() == QLatin1String("listeningPosition") && mc->runName() == QLatin1String("On A"));
     mc->start();
     d.check("mdqt2c: a measurement starts on A", d.waitFor(8000, [&] { return mc->measuring(); }));
+    if (!mc->measuring()) t.why("no measurement on A");   // -- WP LAY7 --
     QQuickItem *bar = w ? d.item(QStringLiteral("Measure.runningText"), w->contentItem()) : nullptr;
     d.check("mdqt2c: its page says on which device it runs",
             !mc->runningOn().isEmpty() && mc->runningOn() == t.a->title() && bar && bar->property("text").toString().contains(t.a->title()));

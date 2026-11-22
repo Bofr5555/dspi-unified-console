@@ -408,8 +408,8 @@ static void unitsSection(SmokeDriver &d) {
             QByteArray buf(1 << 16, '\0');
             if (!uc->unitCore(B) || dspi_speaker_layout_set(uc->unitCore(B), text.constData(), buf.data(), uint32_t(buf.size())) == 0) return false;
             uc->setUnitChosen(B, false);
-            // Its connection gives the serial back first
-            d.waitFor(10000, [] { return !DeviceRegistry::instance()->extraSerials().contains(B); });
+            // -- WP LAY7 -- at once: its connection is still closing
+            d.check("atqt: unchosen and chosen again at once", DeviceRegistry::instance()->extraSerials().contains(B));
             steps.clear();
             uc->setUnitChosen(B, true);
             return step(QStringLiteral("unit"), 20000) && d.waitFor(20000, [&] { return uc->unitOpen(B) && role(B) == QLatin1String(r); });
