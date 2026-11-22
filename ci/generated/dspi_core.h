@@ -2436,6 +2436,11 @@ typedef struct AutoEqRebuildHandle AutoEqRebuildHandle;
 typedef struct FfiCore FfiCore;
 
 /**
+ * The handle behind `struct FfiCoreSet *`.
+ */
+typedef struct FfiCoreSet FfiCoreSet;
+
+/**
  * The handle behind the C ABI's `struct FfiHub *`: created by `dspi_hub_new` and freed
  * by `dspi_hub_free`.
  */
@@ -5352,15 +5357,29 @@ bool dspi_can_redo(const struct FfiCore *core);
 /**
  * The newest `n` changes of the open connection, newest first, in JSON
  * (`value`: a list of `{path, indices, before, after, source, atMs,
- * undoable, label}`; `label` the undo group's, or null (WP P1UG); `before` and `after` are parameter values as
+ * undoable, label, id, actor, actorLabel}`; `label` the undo group's, or null (WP P1UG); `before` and `after` are parameter values as
  * `dspi_write_param` takes them, `before` null when unknown; `source` is
- * `local`, `undo` or `redo`; `atMs` milliseconds since the Unix epoch). A
- * reconnect starts a new history. `NOTIFY_HISTORY` says when it moved.
+ * `local`, `undo` or `redo`; `atMs` milliseconds since the Unix epoch;
+ * -- WP MCP0 -- `id` the change's id for `dspi_revert_entry`, `actor` 0 for
+ * this app and another number for an AI agent in this process, `actorLabel`
+ * the agent's name or null). A reconnect starts a new history.
+ * `NOTIFY_HISTORY` says when it moved.
  */
 uint32_t dspi_history(struct FfiCore *core,
                       uint32_t n,
                       char *buf,
                       uint32_t len);
+
+/**
+ * Revert one change by its `id` from `dspi_history` (`DspiCore::revert_entry`),
+ * wherever it is in the history: its values go back only while each still
+ * holds what the change left. The reply is as `dspi_undo`'s: `entry` the
+ * change reverted; on a conflict `entry` null, `skipped` the values someone
+ * changed since and `note` who; a change already undone `entry` null and a
+ * note. Failures: `invalid` for an id not in the history, a change that
+ * cannot be undone or an undo/redo entry; the setters' failures.
+ */
+uint32_t dspi_revert_entry(struct FfiCore *core, uint64_t id, char *buf, uint32_t len);
 
 /**
  * Mark a continuous drag (`DspiCore::set_dragging`): `true` when a slider
@@ -7717,6 +7736,90 @@ uint32_t dspi_firmware_update_check(const uint8_t *image,
                                     uint32_t len);
 
 /**
+ * Keep speaker layouts in files under `dir`, the app's own data folder, one
+ * subfolder per serial ("" forgets the folder). `{ok}` or a failure.
+ */
+uint32_t dspi_speaker_layout_set_dir(struct FfiCore *core,
+                                     const char *dir,
+                                     char *buf,
+                                     uint32_t len);
+
+/**
+ * The open device's stored layout, `{ok: true, value: null}` when none was
+ * set, or a failure.
+ */
+uint32_t dspi_speaker_layout(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * What the device's filters and routing suggest (never confirmed, never
+ * saved): the layout, or a failure.
+ */
+uint32_t dspi_speaker_layout_propose(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Keep `layout_json` as the open device's layout (the user's screens only):
+ * the layout kept, or a failure (`invalid` naming why).
+ */
+uint32_t dspi_speaker_layout_set(struct FfiCore *core,
+                                 const char *layout_json,
+                                 char *buf,
+                                 uint32_t len);
+
+/**
+ * The installation on the hub this session is on: JSON {ok, revision, role,
+ * mayEdit, draft: {revision, base, model}, unseen: [{serial, name, online,
+ * fw, outputs}], inventory} (`inventory` false: the hub keeps no inventory,
+ * so `unseen` is empty without meaning "none"). Every role. Blocks on the
+ * network: off the UI thread. Failures: `disconnected`, `link` with the
+ * hub's code.
+ */
+uint32_t dspi_installation_view(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * `edits_json` (a JSON list of edits, module docs) made on `draft_json`,
+ * all or none: the new draft, JSON {ok, revision, base, model}, or a
+ * failure `invalid` naming the edit (`edit 2: no room "x"`). Sends nothing.
+ */
+uint32_t dspi_installation_draft_edit(struct FfiCore *core,
+                                      const char *draft_json,
+                                      const char *edits_json,
+                                      char *buf,
+                                      uint32_t len);
+
+/**
+ * The hub's own validator on `draft_json`: JSON {ok, value: [{subject,
+ * message}]}, empty when the hub would take it (`subject`: the element's
+ * id, "" for the installation as a whole). Sends nothing.
+ */
+uint32_t dspi_installation_validate(struct FfiCore *core,
+                                    const char *draft_json,
+                                    char *buf,
+                                    uint32_t len);
+
+/**
+ * What saving `draft_json` would change: JSON {ok, value: [sentence, ...]},
+ * empty for nothing. Sends nothing.
+ */
+uint32_t dspi_installation_diff(struct FfiCore *core,
+                                const char *draft_json,
+                                char *buf,
+                                uint32_t len);
+
+/**
+ * Save `draft_json` as the installation (Admin): one `system.set` at the
+ * draft's revision. JSON {ok, revision, warnings} (the hub's warnings about
+ * the model it kept), or a failure: `invalid` for a draft the hub would
+ * refuse (nothing sent), `read_only` (nothing sent), `link` with noticeKey
+ * `dlink.conflict` when the installation changed on the hub meanwhile (read
+ * the view again), or `dlink` with the hub's words for another role.
+ * Blocks: off the UI thread.
+ */
+uint32_t dspi_installation_save(struct FfiCore *core,
+                                const char *draft_json,
+                                char *buf,
+                                uint32_t len);
+
+/**
  * Start looking for hubs on the local network, replacing any browse running.
  * Returns at once; false only with a null handle, in a build without the
  * feature, or when a thread cannot start. A network failure shows in
@@ -8204,5 +8307,103 @@ bool dspi_hub_revoke(struct FfiHub *hub, uint32_t cid);
  * such client, another role, or inside the callback.
  */
 bool dspi_hub_set_role(struct FfiHub *hub, uint32_t cid, const char *role);
+
+/**
+ * Create an empty set of cores, and install the logger as `dspi_core_new`
+ * does. Free it with `dspi_core_set_free`. Null only if creating it panicked.
+ */
+struct FfiCoreSet *dspi_core_set_new(void);
+
+/**
+ * Free a set: its listener is unset, every device is closed as by
+ * `dspi_core_set_close`, and every `FfiCore` it handed out dies. Null is
+ * ignored. Blocks while closing.
+ */
+void dspi_core_set_free(struct FfiCoreSet *set);
+
+/**
+ * Open the device `target` names on a core of its own and add it to the set.
+ * `target` is JSON: `{"kind": "demo"}`, `{"kind": "usb", "serial"}`,
+ * `{"kind": "document", "text", "fileName"}`, or (with Link) `{"kind": "hub",
+ * "url", "hubId", "serial", "clientName", "appVersion", "credential",
+ * "tlsAdvertised"}`: a unit behind a hub on its own session, with a credential
+ * the app holds. JSON `{ok, id}`, or the failure (module docs). Blocks for the
+ * connect sequence: not on the UI thread.
+ */
+uint32_t dspi_core_set_open(struct FfiCoreSet *set,
+                            const char *target_json,
+                            char *buf,
+                            uint32_t len);
+
+/**
+ * Close the device `id` and drop it from the set; the `FfiCore` handed out
+ * for it dies (its callbacks are unset first). JSON `{ok}`, or `unknown`.
+ */
+uint32_t dspi_core_set_close(struct FfiCoreSet *set, const char *id, char *buf, uint32_t len);
+
+/**
+ * The open devices, in the order they were opened: JSON `{ok, value: [{id,
+ * label, transport, serial, state}]}`. `transport` is `usb`, `hub`, `link`,
+ * `demo` or `file`; `state` is `live`, `reconnecting` or `lost`.
+ */
+uint32_t dspi_core_set_list(struct FfiCoreSet *set, char *buf, uint32_t len);
+
+/**
+ * The core of the open device `id`, for every `dspi_*` call; null for an id
+ * that is not open. The set owns it: it stays valid until
+ * `dspi_core_set_close` of `id` or `dspi_core_set_free`, the same pointer
+ * each time. Never pass it to `dspi_core_free`.
+ */
+struct FfiCore *dspi_core_set_core(struct FfiCoreSet *set, const char *id);
+
+/**
+ * The open device whose unit has `serial`: its id in `{ok, value}`, `value`
+ * null when none.
+ */
+uint32_t dspi_core_set_find_serial(struct FfiCoreSet *set,
+                                   const char *serial,
+                                   char *buf,
+                                   uint32_t len);
+
+/**
+ * Set the folders every core of the set gets, now and from now on. `config`
+ * is JSON `{limitsDir, snapshotDir, measureDir, eventLogDir, linkDir,
+ * speakerLayoutDir}`; an absent or empty one is not set. JSON `{ok}`, or the first core's failure.
+ * Blocking file I/O.
+ */
+uint32_t dspi_core_set_config(struct FfiCoreSet *set,
+                              const char *config_json,
+                              char *buf,
+                              uint32_t len);
+
+/**
+ * Look for DSPi units on USB for the picker, as `dspi_scan_devices`: up to
+ * `max_devices` written to `out_devices` (may be null), the units the set
+ * holds listed without being opened again. Returns how many were written,
+ * or would have been; 0 for a null handle.
+ */
+uint32_t dspi_core_set_scan_devices(struct FfiCoreSet *set,
+                                    struct DeviceInfo *out_devices,
+                                    uint32_t max_devices);
+
+/**
+ * One hotplug poll for every device of the set, with one USB enumeration
+ * (about every 500 ms, off the UI thread). The cores' own
+ * `dspi_poll_hotplug` does nothing in a set. Events go to the set's listener.
+ */
+void dspi_core_set_poll_hotplug(struct FfiCoreSet *set);
+
+/**
+ * Set the callback for the set's events: `event_json` is `{kind, id,
+ * serial}`, `kind` one of `opened`, `closed`, `lost`, `reconnecting`,
+ * `restored`, `arrived`, `departed` (`id` "" for the last two: a unit on the
+ * bus, not an open device). It runs on the thread of the call that caused it
+ * (`dspi_core_set_open`, `_close`, `_poll_hotplug`) with no lock held, and
+ * the string lives for the call. Null unsets it; once that returns, the old
+ * one is not running.
+ */
+void dspi_core_set_set_listener(struct FfiCoreSet *set,
+                                void (*callback)(const char *event_json, void *user_data),
+                                void *user_data);
 
 #endif  /* DSPI_CORE_H */
