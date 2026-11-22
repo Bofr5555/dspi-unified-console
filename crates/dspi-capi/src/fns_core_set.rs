@@ -82,6 +82,13 @@ fn with_set<T>(p: *const FfiCoreSet, fail: T, f: impl FnOnce(&FfiCoreSet) -> T) 
     })
 }
 
+// -- WP MCP3 --
+/// The set behind `p`, for the MCP server (`fns_mcp`); `None` for null.
+#[cfg(feature = "mcp")]
+pub(crate) fn set_arc(p: *const FfiCoreSet) -> Option<Arc<CoreSet>> {
+    with_set(p, None, |s| Some(Arc::clone(&s.set)))
+}
+
 /// A text reply from the set (`fns_misc`'s rules): the bytes needed, 0 for a
 /// null handle or a panic.
 fn set_text(
