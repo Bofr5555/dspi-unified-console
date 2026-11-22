@@ -603,12 +603,14 @@ impl CoreSet {
                 }
             });
         if let Err(e) = opened {
+            // Shut first, then give the serial back: until the device is
+            // closed another open of it would fail on the busy interface.
+            shut_core(&core);
             self.release(token);
             {
                 let mut s = self.lock();
                 s.pending = s.pending.saturating_sub(1);
             }
-            shut_core(&core);
             return Err(e.into());
         }
 
@@ -662,9 +664,10 @@ impl CoreSet {
             })?;
             s.entries.remove(at)
         };
-        self.release(entry.token);
-        entry.core.lock().hotplug.member = None;
+        // Shut first, then give the serial back (review RA F3).
         shut_core(&entry.core);
+        entry.core.lock().hotplug.member = None;
+        self.release(entry.token);
         self.emit(vec![CoreSetEvent {
             kind: CoreSetEventKind::Closed,
             id: entry.id.as_str().to_owned(),

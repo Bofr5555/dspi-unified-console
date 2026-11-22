@@ -610,3 +610,77 @@ mod hub {
         }
     }
 }
+
+/// A fake USB unit that notes, when the core drops it, whether the set
+/// still held its serial then.
+struct HeldAtDrop {
+    dev: FakeDevice,
+    set: std::sync::Weak<CoreSet>,
+    serial: String,
+    held: Arc<Mutex<Option<bool>>>,
+}
+
+impl dspi_transport::Transport for HeldAtDrop {
+    fn control_in(&mut self, o: u8, v: u16, l: u16) -> dspi_transport::Result<Vec<u8>> {
+        self.dev.control_in(o, v, l)
+    }
+    fn control_in_upto(&mut self, o: u8, v: u16, l: u16) -> dspi_transport::Result<Vec<u8>> {
+        self.dev.control_in_upto(o, v, l)
+    }
+    fn control_out(&mut self, o: u8, v: u16, d: &[u8]) -> dspi_transport::Result<()> {
+        self.dev.control_out(o, v, d)
+    }
+    fn max_transfer(&self) -> usize {
+        self.dev.max_transfer()
+    }
+    fn descriptor(&self) -> &dspi_transport::DeviceDescriptor {
+        self.dev.descriptor()
+    }
+    fn notifications(&self) -> Option<Box<dyn dspi_transport::NotificationSource>> {
+        self.dev.notifications()
+    }
+}
+
+impl Drop for HeldAtDrop {
+    fn drop(&mut self) {
+        let held = self
+            .set
+            .upgrade()
+            .is_some_and(|s| s.find_serial(&self.serial).is_some());
+        *self.held.lock().unwrap() = Some(held);
+    }
+}
+
+/// Review RA F3: the serial is given back only after the device is shut, on
+/// close and on a failed open, so a concurrent open of the unit never finds
+/// the interface still claimed.
+#[test]
+fn wp_md0_the_serial_is_released_after_the_device_is_shut() {
+    let set = CoreSet::new();
+    let unit = |serial: &str, held: &Arc<Mutex<Option<bool>>>| HeldAtDrop {
+        dev: FakeDevice::demo(),
+        set: Arc::downgrade(&set),
+        serial: serial.to_owned(),
+        held: Arc::clone(held),
+    };
+    let held = Arc::new(Mutex::new(None));
+    let t = unit("R1", &held);
+    let id = set
+        .open_with(DeviceId::usb("R1"), String::new(), |c| {
+            c.attach_probed(Box::new(t), "R1".into(), VID)
+        })
+        .unwrap();
+    set.close(&id).unwrap();
+    assert_eq!(*held.lock().unwrap(), Some(true), "held while shutting");
+    assert_eq!(set.find_serial("R1"), None, "free afterwards");
+
+    let held = Arc::new(Mutex::new(None));
+    let t = unit("R2", &held);
+    let failed = set.open_with(DeviceId::usb("R2"), String::new(), |c| {
+        c.attach_probed(Box::new(t), "R2".into(), VID)?;
+        Err(DspiError::Disconnected)
+    });
+    assert_eq!(failed, Err(CoreSetError::Device(DspiError::Disconnected)));
+    assert_eq!(*held.lock().unwrap(), Some(true), "held while shutting");
+    assert_eq!(set.find_serial("R2"), None, "free afterwards");
+}
