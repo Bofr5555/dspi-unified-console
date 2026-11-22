@@ -2180,13 +2180,34 @@ pub extern "C" fn dspi_can_redo(core: *const FfiCore) -> bool {
 
 /// The newest `n` changes of the open connection, newest first, in JSON
 /// (`value`: a list of `{path, indices, before, after, source, atMs,
-/// undoable, label}`; `label` the undo group's, or null (WP P1UG); `before` and `after` are parameter values as
+/// undoable, label, id, actor, actorLabel}`; `label` the undo group's, or null (WP P1UG); `before` and `after` are parameter values as
 /// `dspi_write_param` takes them, `before` null when unknown; `source` is
-/// `local`, `undo` or `redo`; `atMs` milliseconds since the Unix epoch). A
-/// reconnect starts a new history. `NOTIFY_HISTORY` says when it moved.
+/// `local`, `undo` or `redo`; `atMs` milliseconds since the Unix epoch;
+/// -- WP MCP0 -- `id` the change's id for `dspi_revert_entry`, `actor` 0 for
+/// this app and another number for an AI agent in this process, `actorLabel`
+/// the agent's name or null). A reconnect starts a new history.
+/// `NOTIFY_HISTORY` says when it moved.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_history(core: *mut FfiCore, n: u32, buf: *mut c_char, len: u32) -> u32 {
     text(core, buf, len, |c| json_reply(Ok(c.history(n))))
+}
+
+// -- WP MCP0 --
+/// Revert one change by its `id` from `dspi_history` (`DspiCore::revert_entry`),
+/// wherever it is in the history: its values go back only while each still
+/// holds what the change left. The reply is as `dspi_undo`'s: `entry` the
+/// change reverted; on a conflict `entry` null, `skipped` the values someone
+/// changed since and `note` who; a change already undone `entry` null and a
+/// note. Failures: `invalid` for an id not in the history, a change that
+/// cannot be undone or an undo/redo entry; the setters' failures.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_revert_entry(
+    core: *mut FfiCore,
+    id: u64,
+    buf: *mut c_char,
+    len: u32,
+) -> u32 {
+    text(core, buf, len, |c| json_reply(c.revert_entry(id)))
 }
 
 // -- WP QTGAP1 --
@@ -2258,6 +2279,10 @@ mod tests_wp_p0w;
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_p1ug;
+// -- WP MCP0 --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_mcp0;
 // -- WP CS1 --
 #[cfg(test)]
 mod tests_wp_cs1;

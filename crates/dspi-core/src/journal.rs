@@ -256,6 +256,8 @@ pub(crate) struct UndoGroup {
     depth: u32,
     label: String,
     foreign_since: bool,
+    // -- WP MCP0 -- who opened it: only that actor's writes join its step
+    actor: crate::actor::ActorId,
 }
 
 impl UndoGroup {
@@ -277,6 +279,18 @@ fn end_undo_group(conn: &mut crate::Connection) {
     }
 }
 
+// -- WP MCP0 --
+/// The step `change` would join: the one being gathered, when it is the
+/// same actor's.
+fn gathering_of<'s>(
+    session: &'s dspi_session::Session,
+    change: &Change,
+) -> Option<&'s JournalEntry> {
+    session
+        .gathering(change.source)
+        .filter(|e| e.actor == change.actor)
+}
+
 /// Whether journal paths `a` and `b` name one value: the same path, or two
 /// of a band's ([`BAND_FIELDS`] and [`EQ_BAND`]).
 fn same_value(a: &str, b: &str) -> bool {
@@ -296,7 +310,8 @@ fn split_regroup(conn: &mut crate::Connection, change: &Change) {
         return;
     };
     // No step gathered: this change starts one after theirs anyway.
-    let held = session.gathering(change.source).map(|step| {
+    // -- WP MCP0 -- a step of this change's actor
+    let held = gathering_of(session, change).map(|step| {
         step.values()
             .iter()
             .any(|v| v.indices == change.indices && same_value(v.path, change.path))
@@ -541,8 +556,14 @@ impl Pending {
         // P0W2, O1); one undo cannot reverse (a hazard, an action) stays
         // apart.
         // -- WP P1UG -- an undo group gathers as a drag does
-        let gathering =
-            inner.dragging() || inner.conn.as_ref().is_some_and(|c| c.undo_group.is_open());
+        // -- WP MCP0 -- the drag is the embedder's (another actor is refused
+        // while it lasts); a group gathers its opener's writes only
+        let actor = crate::actor::current(inner.actor_key);
+        let gathering = (inner.dragging() && actor == crate::actor::EMBEDDER)
+            || inner
+                .conn
+                .as_ref()
+                .is_some_and(|c| c.undo_group.is_open() && c.undo_group.actor == actor);
         let coalesce = gathering && hazard(self.path) == Hazard::None && after != Value::Trigger;
         record(
             inner,
@@ -555,6 +576,7 @@ impl Pending {
                 hazard: hazard(self.path),
                 source: replay_source().unwrap_or(ChangeSource::Local),
                 coalesce,
+                actor,
             },
         );
     }
@@ -574,12 +596,15 @@ pub(crate) fn journal(inner: &mut Inner, path: &'static str, indices: &[u8], aft
             hazard: hazard(path),
             source: replay_source().unwrap_or(ChangeSource::Local),
             coalesce: false,
+            actor: crate::actor::current(inner.actor_key), // -- WP MCP0 --
         },
     );
 }
 
 /// Put `change` in the open session's journal; nowhere without one.
 fn record(inner: &mut Inner, change: Change) {
+    // -- WP MCP0 -- another actor's change: the embedder is told
+    crate::actor::noted(inner, change.actor, change.path, &change.indices);
     // -- WP P1UG -- a change that ends the history ends the group too; inside
     // a group, a value written again after another writer's change starts a
     // new step (before a band's paths are joined, so the new step holds it)
@@ -599,7 +624,10 @@ fn record(inner: &mut Inner, change: Change) {
     conn.own_writes
         .note(change.path, &change.indices, &change.after, now_ms());
     // -- WP P1UG -- a fresh change inside a group carries its label
-    let label = (conn.undo_group.is_open() && change.source == ChangeSource::Local)
+    // -- WP MCP0 -- the group's opener's changes only
+    let label = (conn.undo_group.is_open()
+        && change.source == ChangeSource::Local
+        && conn.undo_group.actor == change.actor)
         .then(|| conn.undo_group.label.clone());
     // An empty label names nothing; the writes still form one step.
     let label = label.filter(|l| !l.is_empty());
@@ -663,7 +691,7 @@ fn join_band_step(inner: &mut Inner, change: Change) -> Change {
     let Some(session) = inner.conn.as_mut().and_then(|c| c.session().ok()) else {
         return change;
     };
-    let Some(held) = session.gathering(change.source).and_then(|step| {
+    let Some(held) = gathering_of(session, &change).and_then(|step| {
         step.values()
             .into_iter()
             .find(|v| v.indices == change.indices && of_band(v.path))
@@ -773,9 +801,20 @@ fn at<T: Clone>(v: &[T], i: u8) -> Option<T> {
 /// What the mirror holds for journal `path` at `indices`, as the registry's
 /// kind; `None` for an action, a value the mirror does not hold, or an index
 /// it does not have. "Every output" (`ALL_OUTPUTS`) has no single value.
-#[allow(clippy::too_many_lines)] // one arm per path, nothing to factor
 pub(crate) fn mirror_value(inner: &Inner, path: &str, ix: &[u8]) -> Option<Value> {
-    let s: &DspState = &inner.state;
+    state_value(&inner.state, inner.conn.as_ref(), path, ix)
+}
+
+// -- WP MCP0 -- (split from `mirror_value`, for a whole-state diff)
+/// [`mirror_value`] of state `s`, with what `conn` holds outside the image
+/// (the input source names, the device name, the crossfeed pair map).
+#[allow(clippy::too_many_lines)] // one arm per path, nothing to factor
+pub(crate) fn state_value(
+    s: &DspState,
+    conn: Option<&crate::Connection>,
+    path: &str,
+    ix: &[u8],
+) -> Option<Value> {
     let i0 = ix.first().copied().unwrap_or(0);
     let i1 = ix.get(1).copied().unwrap_or(0);
     let f = |x: f32| Some(Value::Float(x));
@@ -854,11 +893,7 @@ pub(crate) fn mirror_value(inner: &Inner, path: &str, ix: &[u8]) -> Option<Value
         "bass.mask" => m(s.psybass_output_mask.into()),
         "sub.solo" => b(s.subharm_solo),
         "in.source" => c(s.input_source),
-        "in.name" => inner
-            .conn
-            .as_ref()
-            .and_then(|c| at(&c.source_names, i0))
-            .map(Value::Text),
+        "in.name" => conn.and_then(|c| at(&c.source_names, i0)).map(Value::Text),
         "in.rate" => Some(Value::Int(match s.i2s_input_rate {
             0 => 44_100,
             2 => 96_000,
@@ -884,19 +919,14 @@ pub(crate) fn mirror_value(inner: &Inner, path: &str, ix: &[u8]) -> Option<Value
         "i2s.mck.mult" => c(s.mck_multiplier),
         "adat.enable" => b(s.adat_out_enabled),
         "adat.pin" => n(s.adat_out_pin),
-        "dev.name" => inner
-            .conn
-            .as_ref()
-            .map(|c| Value::Text(c.device_name.clone())),
+        "dev.name" => conn.map(|c| Value::Text(c.device_name.clone())),
         "preset.name" => at(&s.preset_names, i0).map(Value::Text),
         "preset.startup" => Some(Value::Bytes(vec![
             s.preset_startup_mode,
             s.preset_default_slot,
         ])),
         "preset.iomode" => c(s.output_config_mode),
-        EXT_PAIRMAP => inner
-            .conn
-            .as_ref()
+        EXT_PAIRMAP => conn
             .and_then(|c| c.ext.pair_map)
             .map(|m| Value::Bytes(m.0.to_vec())),
         _ => None,
@@ -963,6 +993,15 @@ pub struct HistoryEntry {
     /// The undo group's label ([`DspiCore::begin_group`]) when the change
     /// was written inside one; `None` otherwise.
     pub label: Option<String>,
+    // -- WP MCP0 --
+    /// The change's id, for [`DspiCore::revert_entry`]: unique in the
+    /// process, the same for every value of one step.
+    pub id: u64,
+    /// Who made it: 0 for this app itself, another number for an actor the
+    /// app registered (an AI agent, `crate::actor`).
+    pub actor: u32,
+    /// The actor's label ("AI · Claude Code"); `None` for this app itself.
+    pub actor_label: Option<String>,
 }
 
 impl From<&JournalEntry> for HistoryEntry {
@@ -976,6 +1015,10 @@ impl From<&JournalEntry> for HistoryEntry {
             source: e.source.into(),
             at_ms: e.at_ms,
             undoable: e.undoable,
+            // -- WP MCP0 --
+            id: e.id,
+            actor: e.actor,
+            actor_label: crate::actor::actor_label(e.actor),
         }
     }
 }
@@ -1087,6 +1130,7 @@ impl DspiCore {
     pub fn begin_group(&self, label: String) {
         let mut inner = self.lock();
         let dragging = inner.dragging();
+        let actor = crate::actor::current(inner.actor_key); // -- WP MCP0 --
         let Some(conn) = inner.conn.as_mut() else {
             return;
         };
@@ -1098,6 +1142,7 @@ impl DspiCore {
             depth: 1,
             label,
             foreign_since: false,
+            actor, // -- WP MCP0 --
         };
         if dragging {
             return;
@@ -1159,6 +1204,31 @@ impl DspiCore {
             .and_then(|c| c.session().ok())
             .map(|s| s.history(n).iter().map(HistoryEntry::from).collect())
             .unwrap_or_default()
+    }
+
+    // -- WP MCP0 --
+    /// Revert one change by its id ([`HistoryEntry::id`]), wherever it is
+    /// in the history: write back the value it replaced (and what the device
+    /// moved with it) through the typed setters, as undo does, but only
+    /// while every value it set is still what it left there. Otherwise
+    /// nothing is written and the reply reports the conflict: `entry`
+    /// `None`, `skipped` the values someone has changed since, `note` who.
+    /// A change already undone gives `entry` `None` and a note saying so.
+    /// The change then leaves the undo and redo stacks; the reversal is
+    /// journalled as an undo.
+    ///
+    /// An actor other than this app (`crate::actor`) may revert only its
+    /// own changes: [`DspiError::ConfirmationRequired`] with code
+    /// `not_own_entry` otherwise. The app may revert any.
+    ///
+    /// Errors: [`DspiError::Disconnected`] with no device, or when the
+    /// connection changed during the call; [`DspiError::InvalidArgument`]
+    /// for an id the history does not hold (another connection's, or one
+    /// past the newest 1000), for a change undo cannot reverse
+    /// ([`HistoryEntry::undoable`]) and for a reversal by undo or redo; the
+    /// setters' errors, after which the values already written back stay.
+    pub fn revert_entry(&self, id: u64) -> Result<HistoryMove> {
+        self.revert_step(id)
     }
 }
 
@@ -1292,6 +1362,88 @@ impl DspiCore {
         })
     }
 
+    // -- WP MCP0 --
+    /// [`DspiCore::revert_entry`].
+    fn revert_step(&self, id: u64) -> Result<HistoryMove> {
+        let (entry, generation) =
+            {
+                let mut inner = self.lock();
+                let actor = crate::actor::current(inner.actor_key);
+                let conn = inner.conn()?;
+                let generation = conn.generation;
+                let entry = conn.session()?.entry(id).cloned().ok_or_else(|| {
+                    DspiError::InvalidArgument {
+                        msg: format!("change {id} is not in this device's history"),
+                    }
+                })?;
+                if actor != crate::actor::EMBEDDER && entry.actor != actor {
+                    return Err(DspiError::ConfirmationRequired {
+                        code: crate::actor::NOT_OWN_ENTRY.into(),
+                        msg: format!(
+                            "change {id} was not made by this agent; only its own can be undone"
+                        ),
+                    });
+                }
+                if entry.source != ChangeSource::Local {
+                    return Err(DspiError::InvalidArgument {
+                        msg: format!("change {id} is an undo or a redo, not a change of its own"),
+                    });
+                }
+                if !entry.undoable || !entry.restorable() {
+                    return Err(DspiError::InvalidArgument {
+                        msg: format!("change {id} cannot be undone"),
+                    });
+                }
+                // Already back as it was: undone, or put back by hand.
+                let back = entry.values().iter().all(|v| {
+                    v.before.as_ref().is_none_or(|b| {
+                        mirror_value(&inner, v.path, &v.indices).as_ref() == Some(b)
+                    })
+                });
+                if back {
+                    return Ok(HistoryMove {
+                        entry: None,
+                        skipped: Vec::new(),
+                        note: Some(format!("Change {id} is already undone.")),
+                    });
+                }
+                let judged = judge(&inner, &entry, |v| Some(&v.after));
+                if !judged.left.is_empty() {
+                    return Ok(HistoryMove {
+                        entry: None,
+                        skipped: judged.left,
+                        note: judged.note,
+                    });
+                }
+                (entry, generation)
+            };
+        let steps: Vec<(&'static str, Vec<u8>, Value)> = entry
+            .values()
+            .into_iter()
+            .rev()
+            .flat_map(|v| {
+                v.before.map(|b| (v.path, v.indices, b)).into_iter().chain(
+                    v.companions
+                        .into_iter()
+                        .map(|c| (c.path, c.indices, c.before)),
+                )
+            })
+            .collect();
+        let replay = Replay {
+            source: ChangeSource::Undo,
+            generation,
+        };
+        for (path, ix, value) in steps {
+            self.replay(replay, path, &ix, value)?;
+        }
+        self.with_session(generation, |s| s.forget_step(id));
+        Ok(HistoryMove {
+            entry: Some(HistoryEntry::from(&entry)),
+            skipped: Vec::new(),
+            note: None,
+        })
+    }
+
     /// Write one step of a replay through the typed setter for `path`, the
     /// thread marked as replaying so the record knows it for one.
     fn replay(&self, replay: Replay, path: &str, ix: &[u8], value: Value) -> Result<()> {
@@ -1392,6 +1544,10 @@ fn judge(
                     at_ms: entry.at_ms,
                     undoable: entry.undoable,
                     label: entry.label.clone(), // -- WP P1UG --
+                    // -- WP MCP0 --
+                    id: entry.id,
+                    actor: entry.actor,
+                    actor_label: crate::actor::actor_label(entry.actor),
                 });
             }
             None => keep.push(v),

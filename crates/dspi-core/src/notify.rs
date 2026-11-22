@@ -195,6 +195,11 @@ impl DspiCore {
                 result.flags |= settled.flags;
                 result.filter_channels |= settled.filter_channels;
             }
+            // -- WP MCP0 -- another actor's writes in this process: their
+            // echoes equal the mirror and raise nothing of their own
+            let foreign = std::mem::take(&mut guard.foreign);
+            result.flags |= foreign.flags;
+            result.filter_channels |= foreign.channels;
             // -- WP P0W --
             let mark = crate::journal::history_mark(&mut guard);
             if mark != guard.history_seen {
