@@ -45598,8 +45598,9 @@ public struct MeasureRolloffSetup {
      */
     public var speaker: String
     /**
-     * Where the microphone is: the listening position or near field (close
-     * to the driver, which judges a driver best).
+     * Where the microphone is: near field (close to the driver, which
+     * judges a driver best); any other placement is taken as the listening
+     * position.
      */
     public var placement: MeasurePlacement
     /**
@@ -45655,8 +45656,9 @@ public struct MeasureRolloffSetup {
          * The speaker it belongs to, for the document.
          */speaker: String, 
         /**
-         * Where the microphone is: the listening position or near field (close
-         * to the driver, which judges a driver best).
+         * Where the microphone is: near field (close to the driver, which
+         * judges a driver best); any other placement is taken as the listening
+         * position.
          */placement: MeasurePlacement, 
         /**
          * The microphone's `mic` document's text ("" uncalibrated).

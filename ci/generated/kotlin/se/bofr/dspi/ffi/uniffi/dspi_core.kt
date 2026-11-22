@@ -42201,8 +42201,9 @@ data class MeasureRolloffSetup (
      */
     var `speaker`: kotlin.String, 
     /**
-     * Where the microphone is: the listening position or near field (close
-     * to the driver, which judges a driver best).
+     * Where the microphone is: near field (close to the driver, which
+     * judges a driver best); any other placement is taken as the listening
+     * position.
      */
     var `placement`: MeasurePlacement, 
     /**
