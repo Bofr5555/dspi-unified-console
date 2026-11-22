@@ -404,6 +404,7 @@ ScrollView {
     QuestionDialog {
         id: applyQuestion
         objectName: "MeasureTune.applyQuestion"
+        ofDevice: true   // -- WP MDQT2c --
         parent: Overlay.overlay
         title: qsTr("Apply the auto-tune?")
         text: qsTr("Every change above is written as one undo step, after a snapshot \"Before auto-tune\" is filed and the checks are run again. It goes back by itself unless you Keep it.")
@@ -417,6 +418,7 @@ ScrollView {
     QuestionDialog {
         id: keepQuestion
         objectName: "MeasureTune.keepQuestion"
+        ofDevice: true   // -- WP MDQT2c --
         parent: Overlay.overlay
         title: qsTr("Keep a tune the verify did not confirm?")
         text: TuneController.keepConfirmText

@@ -110,6 +110,9 @@ public:
     void closed(std::function<void(FfiCore *)> close);
 
 signals:
+    // -- WP MDQT2c -- The open device is about to be replaced by another one on
+    // this session's core (Classic); what is posted to the worker now comes first
+    void replacing();
     // After every applied snapshot; `flags` are the NOTIFY_* bits that caused
     // it (0 for a read or write of this app's own).
     void applied(uint flags);

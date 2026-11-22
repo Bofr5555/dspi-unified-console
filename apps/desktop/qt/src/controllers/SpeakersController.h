@@ -5,6 +5,7 @@
 #include <QObject>
 #include <QVariantList>
 #include <QtQml/qqmlregistration.h>
+#include <memory>
 
 #include "Registrar.h"
 
@@ -27,6 +28,10 @@ class QJSEngine;
 //   "imported" (an unconfirmed layout this console did not write: it came with
 //   an imported configuration, review RA F1), "confirmed". What this console
 //   wrote last is speakers/written/<serial hex> = its updatedMs.
+// - -- WP MDQT2c -- Each open device has its own draft, layout and words; what is
+//   shown is the active one's. A Confirm or a write-back answered after a switch
+//   is its device's. `storedChanged` is the active one's (another device
+//   becoming active is a "read").
 // - Where the layouts live is the core's: <AppData>/speaker-layouts, which
 //   main.cpp names for every core of the set (MDQT1, dspi_core_set_config).
 class SpeakersController : public QObject {
@@ -50,18 +55,18 @@ public:
     SpeakersController(const AppContext &ctx, QObject *parent);
     static SpeakersController *create(QQmlEngine *, QJSEngine *);
 
-    QVariantList rows() const { return m_rows; }
+    QVariantList rows() const { return state()->rows; }
     QString status() const;
     qint64 stamp() const;
     bool edited() const;
     bool editable() const;
-    bool loaded() const { return m_loaded; }
-    QStringList notes() const { return m_notes; }
-    QString said() const { return m_said; }
-    bool saidError() const { return m_saidError; }
+    bool loaded() const { return state()->loaded; }
+    QStringList notes() const { return state()->notes; }
+    QString said() const { return state()->said; }
+    bool saidError() const { return state()->saidError; }
 
     // The stored layout as the core gave it, {} for none
-    QJsonObject stored() const { return m_stored; }
+    QJsonObject stored() const { return state()->stored; }
 
     // Reads the stored layout and the proposal again (the page, the step and
     // Measure call it when they show)
@@ -97,29 +102,37 @@ signals:
     void storedChanged(const QString &origin);
 
 private:
+    // -- WP MDQT2c -- one device's, in its session's stash: a draft stays with it
+    struct State {
+        QString serial;
+        bool loaded = false;
+        QJsonObject stored;     // {} for none
+        QJsonObject proposal;   // {} until read
+        QStringList notes;
+        QVariantList rows;
+        QVariantList outputs;   // [{output, label}] of the device
+        QString said;
+        bool saidError = false;
+        bool touched = false;     // the person changed the draft since it was built
+        quint64 generation = 0;   // a reload's answer for an older device is dropped
+    };
+    using StatePtr = std::shared_ptr<State>;
+    StatePtr state() const;
+    bool shown(const StatePtr &st) const { return st == state(); }
     void onSnapshot();
-    void setStored(const QJsonObject &layout, const QString &origin);
-    void rebuild();
-    void say(const QString &text, bool error);
+    void setStored(const StatePtr &st, const QJsonObject &layout, const QString &origin);
+    void rebuild(const StatePtr &st);
+    void say(const StatePtr &st, const QString &text, bool error);
     void setField(int output, const QString &field, const QVariant &value);
+    static QVariantMap rowOf(const State &st, int output);
     QJsonObject draftLayout() const;
     static void remember(const QString &serial, const QJsonObject &kept);
     static bool imported(const QString &serial, const QJsonObject &layout);
     QVariantList outputs() const;
 
     AppContext m_ctx;
-    QString m_serial;
-    bool m_loaded = false;
-    QJsonObject m_stored;     // {} for none
-    QJsonObject m_proposal;   // {} until read
-    QStringList m_notes;
-    QVariantList m_rows;
-    QVariantList m_outputs;   // [{output, label}] of the device
-    QString m_said;
-    bool m_saidError = false;
+    StatePtr m_announced;   // the one the last change notices were for
     bool m_editable = false;
-    bool m_touched = false;     // the person changed the draft since it was built
-    quint64 m_generation = 0;   // a reload's answer for an older device is dropped
 };
 
 #endif // SPEAKERSCONTROLLER_H

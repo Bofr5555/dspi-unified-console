@@ -6,7 +6,11 @@
 #include "CoreWorker.h"
 #include "DeviceModel.h"
 #include "LinkController.h"
+#include "LinkSession.h"
+#include "DeviceRegistry.h"
+#include "DeviceSession.h"
 #include "MeasureController.h"
+#include "SessionModel.h"
 #include "NoticeCenter.h"
 
 #include "CoreApi.h"
@@ -123,7 +127,9 @@ UnitsMeasureController::UnitsMeasureController(const AppContext &ctx, QObject *p
     m_guardTimer.setInterval(1000);
     connect(&m_guardTimer, &QTimer::timeout, this, [this] {
         emit guardChanged();
-        if (guardRemainingS() <= 0) m_guardTimer.stop();
+        if (guardRemainingS() > 0) return;
+        m_guardTimer.stop();
+        rehost();   // -- WP MDQT2c --
     });
     m_keepTimer.setInterval(250);
     connect(&m_keepTimer, &QTimer::timeout, this, [this] {
@@ -136,8 +142,7 @@ UnitsMeasureController::UnitsMeasureController(const AppContext &ctx, QObject *p
     });
     // The other controllers exist once every constructor has run
     QMetaObject::invokeMethod(this, [this] {
-        if (MeasureController *m = measure(); m && m->loop())
-            connect(m->loop(), &MeasureLoop::systemState, this, &UnitsMeasureController::stateArrived);
+        rehost();   // -- WP MDQT2c --
         if (auto *link = Registrar::instance<LinkController>()) {
             connect(link, &LinkController::devicesChanged, this, [this] {
                 if (m_entered) refreshUnits();
@@ -148,7 +153,10 @@ UnitsMeasureController::UnitsMeasureController(const AppContext &ctx, QObject *p
             });
         }
     }, Qt::QueuedConnection);
+    // -- WP MDQT2c -- its device closed while it ran (after MeasureController let go)
+    connect(ctx.registry, &DeviceRegistry::sessionClosing, this, &UnitsMeasureController::rehost, Qt::QueuedConnection);
     connect(ctx.device, &DeviceModel::snapshotApplied, this, [this] {
+        rehost();   // -- WP MDQT2c --
         if (m_entered) refreshUnits();
     });
 }
@@ -163,18 +171,82 @@ UnitsMeasureController *UnitsMeasureController::create(QQmlEngine *, QJSEngine *
     return Registrar::instance<UnitsMeasureController>();
 }
 
-MeasureController *UnitsMeasureController::measure() const { return Registrar::instance<MeasureController>(); }
+// -- WP MDQT2c -- The device whose core the session runs on: the active one, but
+// while the session runs, or an applied one waits in its guard, the one it was
+// started on (until it is closed)
+MeasureSession *UnitsMeasureController::measure() const {
+    if (m_host) return m_host;
+    auto *measure = Registrar::instance<MeasureController>();
+    return measure ? measure->session() : nullptr;
+}
 
-QString UnitsMeasureController::ownSerial() const { return m_ctx.device->connected() ? m_ctx.device->serial() : QString(); }
+LinkSession *UnitsMeasureController::hostLink() const {
+    MeasureSession *m = measure();
+    return m ? m->link() : nullptr;
+}
+
+void UnitsMeasureController::rehost() {
+    auto *measure = Registrar::instance<MeasureController>();
+    if (!measure || m_shutDown) return;
+    MeasureSession *now = measure->session();
+    emit hostChanged();
+    if (m_host == now) return;
+    const bool was = m_hosted;
+    if (m_host && (running() || m_starting || m_micOurs || guardRemainingS() > 0)) return;
+    if (m_host && m_host->loop()) disconnect(m_host->loop(), &MeasureLoop::systemState, this, nullptr);
+    m_host = now;
+    m_hosted = true;
+    emit hostChanged();
+    if (now->loop()) connect(now->loop(), &MeasureLoop::systemState, this, &UnitsMeasureController::stateArrived);
+    if (!was) return;
+    // Another device's core and hub: what the last one's said is not its
+    ++m_epoch;
+    disarm();
+    closeAll();
+    m_starting = false;
+    m_micOurs = false;
+    setBusy(QString());
+    m_placement.clear();
+    m_units.clear();
+    m_state = {};
+    m_measured.clear();
+    m_issueText.clear();
+    m_issueKey.clear();
+    m_preflightLines.clear();
+    setProposal({});
+    setApplied({});
+    m_result = {};
+    m_arrivals.clear();
+    m_delays.clear();
+    m_graph.clear();
+    emit formChanged();
+    emit preflightChanged();
+    emit stateChanged();
+    emit resultChanged();
+    clearWords();
+    if (m_entered) enter();
+}
+
+QString UnitsMeasureController::heldWords() const {
+    MeasureSession *m = measure();
+    if (!m || m->isActive() || !m->session()) return {};
+    //: %1 is another open device
+    return tr("This is the measurement across units started on %1.").arg(m->session()->title());
+}
+
+QString UnitsMeasureController::ownSerial() const {
+    MeasureSession *m = measure();
+    return m && m->connected() ? m->model()->serial() : QString();
+}
 
 QString UnitsMeasureController::role() const {
     if (!m_roleForTest.isEmpty()) return m_roleForTest;
-    auto *link = Registrar::instance<LinkController>();
+    LinkSession *link = hostLink();
     return link && link->inSession() ? link->role() : QString();
 }
 
 void UnitsMeasureController::onLoop(std::function<QByteArray(FfiCore *)> job, std::function<void(const QByteArray &)> done) {
-    MeasureController *m = measure();
+    MeasureSession *m = measure();
     if (!m || !m->loop() || m_shutDown) {
         if (done) done(failure(tr("The measurement is not available.")));
         return;
@@ -266,7 +338,7 @@ QString UnitsMeasureController::arrivalWords(const QJsonObject &a) const {
 
 void UnitsMeasureController::enter() {
     m_entered = true;
-    auto *link = Registrar::instance<LinkController>();
+    LinkSession *link = hostLink();
     if (!link || !link->inSession()) {
         m_unavailable = tr("Measuring several units together needs the DSPi hub: it starts every unit's generator on one "
                            "shared sample counter.");
@@ -325,7 +397,7 @@ void UnitsMeasureController::leave() {
 }
 
 void UnitsMeasureController::refreshUnits() {
-    auto *link = Registrar::instance<LinkController>();
+    LinkSession *link = hostLink();
     const QVariantList devices = link ? link->devices() : QVariantList();
     const QString own = ownSerial();
     QVariantList rows;
@@ -541,7 +613,7 @@ void UnitsMeasureController::setOutputRole(const QString &serial, int output, co
 // ---- The units' own connections ----------------------------------------------------------
 
 void UnitsMeasureController::openUnit(const QString &serial) {
-    auto *link = Registrar::instance<LinkController>();
+    LinkSession *link = hostLink();
     if (!link || !link->inSession()) {
         setUnitField(serial, QStringLiteral("error"), tr("%1: this console is not connected through a hub.").arg(serial));
         emit stepDone(QStringLiteral("unit"), false);
@@ -758,10 +830,15 @@ void UnitsMeasureController::check() {
 
 void UnitsMeasureController::start() {
     clearWords();
-    MeasureController *m = measure();
+    MeasureSession *m = measure();
     const QString why = blocker();
     if (!why.isEmpty() || running() || !m) {
         failWords(why.isEmpty() ? tr("A measurement across units is already running.") : why);
+        emit stepDone(QStringLiteral("start"), false);
+        return;
+    }
+    if (!m->isActive()) {   // -- WP MDQT2c --
+        failWords(heldWords());
         emit stepDone(QStringLiteral("start"), false);
         return;
     }
@@ -884,7 +961,7 @@ void UnitsMeasureController::beginSession(const QJsonObject &state) {
     m_state = state;
     m_issueText.clear();
     m_issueKey.clear();
-    if (MeasureController *m = measure(); m && m->loop()) m->loop()->system.store(true);
+    if (MeasureSession *m = measure(); m && m->loop()) m->loop()->system.store(true);
     emit stateChanged();
     updateRunning();
 }
@@ -892,7 +969,7 @@ void UnitsMeasureController::beginSession(const QJsonObject &state) {
 void UnitsMeasureController::stop() {
     ++m_epoch;
     disarm();
-    MeasureController *m = measure();
+    MeasureSession *m = measure();
     if (!m || !m->loop()) return;
     const bool ours = running() || m_micOurs;
     if (!ours) return;
@@ -917,7 +994,7 @@ void UnitsMeasureController::setUseSim(bool on) {
 }
 
 void UnitsMeasureController::openMicForRun(std::function<void(bool, int)> done) {
-    MeasureController *m = measure();
+    MeasureSession *m = measure();
     if (!m) {
         done(false, 0);
         return;
@@ -951,7 +1028,7 @@ void UnitsMeasureController::endSession() {
     m_starting = false;
     if (m_micOurs) {
         m_micOurs = false;
-        if (MeasureController *m = measure()) m->closeMic();
+        if (MeasureSession *m = measure()) m->closeMic();
     }
     updateRunning();
 }
@@ -986,6 +1063,9 @@ void UnitsMeasureController::stateArrived(const QByteArray &json) {
         return;
     }
     endSession();
+    // -- WP MDQT2c -- on a device that is not shown: how it ended
+    if (MeasureSession *m = measure(); m && !m->isActive())
+        m->owner()->report(m, m_issueText.isEmpty() ? tr("The measurement across units ended.") : m_issueText, !m_issueText.isEmpty());
     if (str(st, "phase") != QLatin1String("done")) {
         const QString p = purpose();
         emit stepDone(p == QLatin1String("verify") ? QStringLiteral("verify") : p == QLatin1String("sum_check") ? QStringLiteral("sumCheck") : QStringLiteral("run"), false);
@@ -1011,7 +1091,7 @@ void UnitsMeasureController::stateArrived(const QByteArray &json) {
 
 void UnitsMeasureController::updateRunning() {
     emit stateChanged();
-    if (MeasureController *m = measure()) {
+    if (MeasureSession *m = measure()) {
         const bool on = running();
         m->setSystemRun(on, on ? (phaseText().isEmpty() ? tr("Measuring across units.") : phaseText()) : QString(), [this] { stop(); });
     }
@@ -1047,7 +1127,7 @@ void UnitsMeasureController::verify() {
 // The summed check or the verify: fresh checks, the microphone, the runs
 void UnitsMeasureController::runs(const QString &step, const QString &op) {
     clearWords();
-    MeasureController *m = measure();
+    MeasureSession *m = measure();
     if (m_measured.isEmpty() || !m) {
         failWords(tr("Measure the group first."));
         emit stepDone(step, false);

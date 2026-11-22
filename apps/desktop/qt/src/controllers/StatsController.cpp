@@ -5,6 +5,7 @@
 #include "CoreApi.h"
 #include "CoreWorker.h"
 #include "DeviceModel.h"
+#include "SessionState.h"
 #include "Snapshot.h"
 
 #include <QCoreApplication>
@@ -44,9 +45,20 @@ constexpr int kStatCount = 23;
 
 } // namespace
 
+StatsController::State::State() {
+    for (auto &h : history) h.fill(std::numeric_limits<double>::quiet_NaN(), kHistory);
+}
+
+StatsController::StatePtr StatsController::state() const {
+    return sessionState<State>(m_ctx.activeSession(), QStringLiteral("StatsController"));
+}
+
 StatsController::StatsController(const AppContext &ctx, QObject *parent) : QObject(parent), m_ctx(ctx) {
-    for (auto &h : m_history) h.fill(std::numeric_limits<double>::quiet_NaN(), kHistory);
     connect(ctx.device, &DeviceModel::snapshotApplied, this, &StatsController::onSnapshot);
+    // -- WP MDQT2c -- Once the Poller follows the new one (its own handler, first)
+    connect(ctx.core, &Core::activeChanged, this, [this] {
+        if (m_shown && m_ctx.poller) m_ctx.poller->readNow(m_slowPoll);
+    });
     if (ctx.poller) {
         m_slowPoll = ctx.poller->add(
             QStringLiteral("stats"), kSlowMs, this, [](FfiCore *c) { return readSlow(c); },
@@ -151,35 +163,35 @@ void StatsController::applySlow(const Slow &s) {
     if (!s.ok) return;
     // A failed read leaves that value as it was
     Slow next = s;
-    if (m_haveSlow) {
+    if (state()->haveSlow) {
         for (int i = 0; i < kStatCount; ++i)
             if (!s.statOk[i]) {
-                next.stat[i] = m_slow.stat[i];
-                next.statOk[i] = m_slow.statOk[i];
+                next.stat[i] = state()->slow.stat[i];
+                next.statOk[i] = state()->slow.statOk[i];
             }
         if (next.stat[STAT_STARVATION_TOTAL] > 0 && !s.statOk[STAT_STARVATION_TOTAL])
-            std::copy(std::begin(m_slow.starvation), std::end(m_slow.starvation), std::begin(next.starvation));
+            std::copy(std::begin(state()->slow.starvation), std::end(state()->slow.starvation), std::begin(next.starvation));
         // -- WP FIXS1 -- a ring-health read that failed keeps its section
         if (!s.ringRead) {
-            next.ringRead = m_slow.ringRead;
-            next.ringPresent = m_slow.ringPresent;
-            next.ring = m_slow.ring;
+            next.ringRead = state()->slow.ringRead;
+            next.ringPresent = state()->slow.ringPresent;
+            next.ring = state()->slow.ring;
         }
     }
     const uint32_t total = next.stat[STAT_STARVATION_TOTAL];
-    m_delta = starvationDelta(m_haveTotal, m_lastTotal, total);
-    if (m_delta > 0) {
-        m_eventBefore = m_eventAt;
-        m_eventAt = QDateTime::currentMSecsSinceEpoch();
+    state()->delta = starvationDelta(state()->haveTotal, state()->lastTotal, total);
+    if (state()->delta > 0) {
+        state()->eventBefore = state()->eventAt;
+        state()->eventAt = QDateTime::currentMSecsSinceEpoch();
     }
-    m_lastTotal = total;
-    m_haveTotal = true;
-    m_lgSeen = m_lgSeen || s.lgOk;
-    m_targetFrames = next.ringPresent ? next.ring.value(QStringLiteral("targetFrames")).toInt() : 0;
-    m_batchFrames = next.ringPresent ? next.ring.value(QStringLiteral("batchFrames")).toInt() : 0;
-    m_clockDiag = s.clockDiag;
-    m_slow = next;
-    m_haveSlow = true;
+    state()->lastTotal = total;
+    state()->haveTotal = true;
+    state()->lgSeen = state()->lgSeen || s.lgOk;
+    state()->targetFrames = next.ringPresent ? next.ring.value(QStringLiteral("targetFrames")).toInt() : 0;
+    state()->batchFrames = next.ringPresent ? next.ring.value(QStringLiteral("batchFrames")).toInt() : 0;
+    state()->clockDiag = s.clockDiag;
+    state()->slow = next;
+    state()->haveSlow = true;
     emit slowChanged();
 }
 
@@ -192,39 +204,46 @@ uint32_t StatsController::starvationDelta(bool have, uint32_t last, uint32_t tot
 
 void StatsController::applyFast(const Fast &f) {
     if (!f.ok) return;
-    m_buffers = f.buffers;
-    m_streaming = f.buffers.value(QStringLiteral("streaming")).toBool();
-    m_pdmActive = f.buffers.value(QStringLiteral("pdmActive")).toBool();
-    m_numSpdif = std::clamp(f.buffers.value(QStringLiteral("numSpdif")).toInt(), 0, 4);
-    if (f.fillsOk) m_fills = f.fills;
+    state()->buffers = f.buffers;
+    state()->streaming = f.buffers.value(QStringLiteral("streaming")).toBool();
+    state()->pdmActive = f.buffers.value(QStringLiteral("pdmActive")).toBool();
+    state()->numSpdif = std::clamp(f.buffers.value(QStringLiteral("numSpdif")).toInt(), 0, 4);
+    if (f.fillsOk) state()->fills = f.fills;
     const QVariantMap pdm = f.buffers.value(QStringLiteral("pdm")).toMap();
     const double nan = std::numeric_limits<double>::quiet_NaN();
     std::array<double, 6> sample{ nan, nan, nan, nan, nan, nan };
-    for (int i = 0; i < m_numSpdif && i < int(m_fills.size()); ++i)
-        sample[size_t(i)] = std::min(100.0, m_fills.at(i).toMap().value(QStringLiteral("fillPct")).toDouble());
-    if (m_pdmActive) {
+    for (int i = 0; i < state()->numSpdif && i < int(state()->fills.size()); ++i)
+        sample[size_t(i)] = std::min(100.0, state()->fills.at(i).toMap().value(QStringLiteral("fillPct")).toDouble());
+    if (state()->pdmActive) {
         sample[4] = pdm.value(QStringLiteral("dmaFillPct")).toDouble();
         sample[5] = pdm.value(QStringLiteral("ringFillPct")).toDouble();
     }
-    for (size_t i = 0; i < m_history.size(); ++i) {
-        m_history[i].removeFirst();
-        m_history[i].append(sample[i]);
+    for (size_t i = 0; i < state()->history.size(); ++i) {
+        state()->history[i].removeFirst();
+        state()->history[i].append(sample[i]);
     }
     emit buffersChanged();
 }
 
 void StatsController::onSnapshot() {
     const DeviceSnapshot &snap = m_ctx.device->snapshot();
-    if (snap.connected && snap.generation != m_generation) {
+    // -- WP MDQT2c -- another device is active: what it last said, then its next read
+    const StatePtr st = state();
+    if (st != m_announced) {
+        const bool first = !m_announced;
+        m_announced = st;
+        if (!first) emit buffersChanged();
+    }
+    if (snap.connected && snap.generation != state()->generation) {
         // Every connect after the first counts as a reconnect
-        if (m_seenConnect) ++m_connects;
-        m_seenConnect = true;
-        m_generation = snap.generation;
+        if (state()->seenConnect) ++state()->connects;
+        state()->seenConnect = true;
+        state()->generation = snap.generation;
         // -- WP FIXS1 -- the same device back: what it last said stays until
         // its next read (SHOTS1: a reset here showed zeros until then)
         const QString serial = m_ctx.device->serial().trimmed();
-        const bool same = !serial.isEmpty() && serial == m_serial;
-        m_serial = serial;
+        const bool same = !serial.isEmpty() && serial == state()->serial;
+        state()->serial = serial;
         if (same) {
             emit slowChanged();
             return;
@@ -232,14 +251,14 @@ void StatsController::onSnapshot() {
         // -- fixup fs1 (F2) -- another device while the window shows: read it now
         if (m_shown && m_ctx.poller) m_ctx.poller->readNow(m_slowPoll);
         // Another device: its sections and counters start over
-        m_haveSlow = false;
-        m_haveTotal = false;
-        m_lgSeen = false;
-        m_slow = Slow{};
-        m_clockDiag.clear();
-        m_fills.clear();
-        m_numSpdif = 0;
-        for (auto &h : m_history) h.fill(std::numeric_limits<double>::quiet_NaN(), kHistory);
+        state()->haveSlow = false;
+        state()->haveTotal = false;
+        state()->lgSeen = false;
+        state()->slow = Slow{};
+        state()->clockDiag.clear();
+        state()->fills.clear();
+        state()->numSpdif = 0;
+        for (auto &h : state()->history) h.fill(std::numeric_limits<double>::quiet_NaN(), kHistory);
     }
     emit slowChanged();
 }
@@ -283,13 +302,13 @@ QVariantMap StatsController::device() const {
     return { { QStringLiteral("platform"), platform },
              { QStringLiteral("firmware"), st && !fw.isEmpty() ? QStringLiteral("v") + fw : dash() },
              { QStringLiteral("serial"), serial.isEmpty() ? dash() : serial },
-             { QStringLiteral("reconnects"), QString::number(m_connects) } };
+             { QStringLiteral("reconnects"), QString::number(state()->connects) } };
 }
 
 QVariantMap StatsController::system() const {
-    const auto &v = m_slow.stat;
+    const auto &v = state()->slow.stat;
     // -- WP FIXS1 -- a value not read yet is a dash, never a zero
-    const auto known = [this](int which, const QString &text) { return m_slow.statOk[which] ? text : dash(); };
+    const auto known = [this](int which, const QString &text) { return state()->slow.statOk[which] ? text : dash(); };
     return { { QStringLiteral("clock"), known(STAT_CLOCK_HZ, QStringLiteral("%1 MHz").arg(v[STAT_CLOCK_HZ] / 1e6, 0, 'f', 1)) },
              { QStringLiteral("coreVoltage"),
                known(STAT_CORE_MV, QStringLiteral("%1 V").arg(v[STAT_CORE_MV] / 1000.0, 0, 'f', 2)) },
@@ -299,8 +318,8 @@ QVariantMap StatsController::system() const {
 }
 
 QVariantMap StatsController::counters() const {
-    const auto &v = m_slow.stat;
-    const auto &ok = m_slow.statOk;
+    const auto &v = state()->slow.stat;
+    const auto &ok = state()->slow.statOk;
     // -1: not read yet, so not shown (WP FIXS1)
     const auto count = [&](int which) { return ok[which] ? qint64(v[which]) : qint64(-1); };
     const auto pair = [](qint64 over, qint64 under) {
@@ -314,23 +333,23 @@ QVariantMap StatsController::counters() const {
 
 QVariantMap StatsController::starvation() const {
     QVariantList perSlot;
-    const int n = std::max(m_numSpdif, 2);
+    const int n = std::max(state()->numSpdif, 2);
     for (int i = 0; i < n && i < 4; ++i)
         perSlot.append(QVariantMap{ { QStringLiteral("label"), QCoreApplication::translate("StatsController", "Out %1/%2")
                                                                    .arg(2 * i + 1)
                                                                    .arg(2 * i + 2) },
-                                  { QStringLiteral("count"), qint64(m_slow.starvation[i]) } });
-    return { { QStringLiteral("known"), m_slow.statOk[STAT_STARVATION_TOTAL] },
-             { QStringLiteral("total"), qint64(m_slow.stat[STAT_STARVATION_TOTAL]) },
-             { QStringLiteral("delta"), qint64(m_delta) },
+                                  { QStringLiteral("count"), qint64(state()->slow.starvation[i]) } });
+    return { { QStringLiteral("known"), state()->slow.statOk[STAT_STARVATION_TOTAL] },
+             { QStringLiteral("total"), qint64(state()->slow.stat[STAT_STARVATION_TOTAL]) },
+             { QStringLiteral("delta"), qint64(state()->delta) },
              { QStringLiteral("slots"), perSlot },
-             { QStringLiteral("lastEventMs"), m_eventAt },
-             { QStringLiteral("previousEventMs"), m_eventBefore } };
+             { QStringLiteral("lastEventMs"), state()->eventAt },
+             { QStringLiteral("previousEventMs"), state()->eventBefore } };
 }
 
 QVariantList StatsController::ringHealth() const {
-    if (!m_slow.ringPresent) return {};
-    const QVariantMap &r = m_slow.ring;
+    if (!state()->slow.ringPresent) return {};
+    const QVariantMap &r = state()->slow.ring;
     const auto num = [&](const char *key) { return r.value(QLatin1String(key)).toLongLong(); };
     const QVariant lowest = r.value(QStringLiteral("lowestFill"));
     return {
@@ -359,8 +378,8 @@ QVariantList StatsController::ringHealth() const {
 }
 
 QVariantList StatsController::spdifInput() const {
-    if (!m_slow.inputSource || !m_slow.rxOk) return {};
-    const Slow &s = m_slow;
+    if (!state()->slow.inputSource || !state()->slow.rxOk) return {};
+    const Slow &s = state()->slow;
     QString state, band;
     switch (s.rxState) {
     case 0: state = QCoreApplication::translate("StatsController", "Inactive"); band = QStringLiteral("off"); break;
@@ -393,8 +412,8 @@ QVariantList StatsController::spdifInput() const {
 }
 
 QVariantList StatsController::channelStatus() const {
-    if (!m_slow.inputSource || !m_slow.rxOk || m_slow.rxState != 2) return {};
-    const auto &raw = m_slow.channelStatus;
+    if (!state()->slow.inputSource || !state()->slow.rxOk || state()->slow.rxState != 2) return {};
+    const auto &raw = state()->slow.channelStatus;
     QString category;
     switch (raw[1]) {
     case 0x00: category = QCoreApplication::translate("StatsController", "General"); break;
@@ -434,24 +453,24 @@ QVariantList StatsController::channelStatus() const {
 }
 
 QVariantList StatsController::spdifDebug() const {
-    if (!m_slow.inputSource || !m_slow.rxOk || m_slow.rxState == 0) return {};
+    if (!state()->slow.inputSource || !state()->slow.rxOk || state()->slow.rxState == 0) return {};
     QString lib;
-    switch (m_slow.rxLib) {
+    switch (state()->slow.rxLib) {
     case 0: lib = QCoreApplication::translate("StatsController", "No Signal"); break;
     case 1: lib = QCoreApplication::translate("StatsController", "Waiting Stable"); break;
     case 2: lib = QCoreApplication::translate("StatsController", "Stable"); break;
-    default: lib = unknown(m_slow.rxLib); break;
+    default: lib = unknown(state()->slow.rxLib); break;
     }
     return {
         row(QCoreApplication::translate("StatsController", "Library State"), lib),
-        row(QCoreApplication::translate("StatsController", "Stable Callbacks"), QString::number(m_slow.rxStable)),
-        row(QCoreApplication::translate("StatsController", "Lost Callbacks"), QString::number(m_slow.rxLost)),
+        row(QCoreApplication::translate("StatsController", "Stable Callbacks"), QString::number(state()->slow.rxStable)),
+        row(QCoreApplication::translate("StatsController", "Lost Callbacks"), QString::number(state()->slow.rxLost)),
     };
 }
 
 QVariantList StatsController::lgSoundSync() const {
-    if (!m_lgSeen) return {};
-    const Slow &s = m_slow;
+    if (!state()->lgSeen) return {};
+    const Slow &s = state()->slow;
     return {
         row(QCoreApplication::translate("StatsController", "Enabled"), yesNo(s.lgEnabled)),
         stateRow(QCoreApplication::translate("StatsController", "Present"), yesNo(s.lgPresent),
@@ -465,8 +484,8 @@ QVariantList StatsController::lgSoundSync() const {
 
 QVariantList StatsController::adatOutput() const {
     const DspState *st = m_ctx.device->state();
-    if (!m_slow.adatOk || !st || st->platform_id != 1) return {};
-    const Slow &s = m_slow;
+    if (!state()->slow.adatOk || !st || st->platform_id != 1) return {};
+    const Slow &s = state()->slow;
     QString state, band;
     if (!s.adatEnabled) { state = QCoreApplication::translate("StatsController", "Disabled"); band = QStringLiteral("off"); }
     else if (s.adatActive) { state = QCoreApplication::translate("StatsController", "Streaming"); band = QStringLiteral("good"); }
@@ -496,8 +515,8 @@ QVariantList StatsController::usbErrorRows(const QVariantMap &reply) {
 }
 
 QVariantList StatsController::i2sSlave() const {
-    if (!m_slow.i2sOk || m_slow.i2sMode != 1) return {};
-    const Slow &s = m_slow;
+    if (!state()->slow.i2sOk || state()->slow.i2sMode != 1) return {};
+    const Slow &s = state()->slow;
     QString state, band;
     switch (s.i2sState) {
     case 0: state = QCoreApplication::translate("StatsController", "Inactive"); band = QStringLiteral("off"); break;
@@ -521,7 +540,7 @@ QVariantList StatsController::fillRows() const {
     const auto historyOf = [this](int series) {
         QVariantList h;
         h.reserve(kHistory);
-        for (double v : m_history[size_t(series)]) h.append(v);
+        for (double v : state()->history[size_t(series)]) h.append(v);
         return h;
     };
     const auto make = [&](const QString &title, double fill, int min, int max, const QString &band, const QString &colour,
@@ -538,17 +557,17 @@ QVariantList StatsController::fillRows() const {
                             { QStringLiteral("dashed"), dashed },
                             { QStringLiteral("history"), historyOf(series) } };
     };
-    const QVariantList spdif = m_buffers.value(QStringLiteral("spdif")).toList();
-    for (int i = 0; i < m_numSpdif; ++i) {
+    const QVariantList spdif = state()->buffers.value(QStringLiteral("spdif")).toList();
+    for (int i = 0; i < state()->numSpdif; ++i) {
         const bool i2s = st && i < 4 && st->output_types[i] == 1;
         const QString title = i2s ? QCoreApplication::translate("StatsController", "Out %1/%2 (I2S)").arg(2 * i + 1).arg(2 * i + 2)
                                   : QCoreApplication::translate("StatsController", "Out %1/%2 (SPDIF)").arg(2 * i + 1).arg(2 * i + 2);
         double fill = 0;
         int min = 0, max = 0;
         QString band;
-        if (i < m_fills.size()) {
+        if (i < state()->fills.size()) {
             // The core's fills: on the ring's scale, rated by its target
-            const QVariantMap f = m_fills.at(i).toMap();
+            const QVariantMap f = state()->fills.at(i).toMap();
             fill = f.value(QStringLiteral("fillPct")).toDouble();
             min = f.value(QStringLiteral("minPct")).toInt();
             max = f.value(QStringLiteral("maxPct")).toInt();
@@ -562,8 +581,8 @@ QVariantList StatsController::fillRows() const {
         }
         rows.append(make(title, fill, min, max, band, QStringLiteral("output %1").arg(2 * i), false, false, i));
     }
-    if (m_pdmActive) {
-        const QVariantMap pdm = m_buffers.value(QStringLiteral("pdm")).toMap();
+    if (state()->pdmActive) {
+        const QVariantMap pdm = state()->buffers.value(QStringLiteral("pdm")).toMap();
         const double dma = pdm.value(QStringLiteral("dmaFillPct")).toDouble();
         const double ring = pdm.value(QStringLiteral("ringFillPct")).toDouble();
         rows.append(make(QCoreApplication::translate("StatsController", "PDM DMA"), dma, pdm.value(QStringLiteral("dmaMinPct")).toInt(),

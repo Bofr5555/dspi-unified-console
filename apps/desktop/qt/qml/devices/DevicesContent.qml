@@ -90,6 +90,7 @@ ColumnLayout {
                         title: openRow.modelData.title
                         subtitle: openRow.modelData.state === "lost" ? qsTr("Not connected")
                                   : openRow.modelData.state === "reconnecting" ? qsTr("Reconnecting…")
+                                  : openRow.modelData.busy ? openRow.modelData.job   // -- WP MDQT2c --
                                   : openRow.modelData.serial
                         current: openRow.modelData.active
                         onClicked: DevicesController.chooseOpen(openRow.modelData.id)

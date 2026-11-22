@@ -35,8 +35,9 @@ class DeviceRegistry : public QObject {
     QML_ELEMENT
     QML_SINGLETON
     // The open devices, the main session's first: [{ id, title, label,
-    // transport, serial, state, active, clip }]; `state` is "live",
-    // "reconnecting" or "lost", `clip` whether one that is not active clips
+    // transport, serial, state, active, clip, busy, job }]; `state` is "live",
+    // "reconnecting" or "lost", `clip` whether one that is not active clips,
+    // `busy` whether something runs on it (a measurement), `job` what, in words
     Q_PROPERTY(QVariantList devices READ devices NOTIFY devicesChanged)
     // The active device's id, "" with none
     Q_PROPERTY(QString activeId READ activeId NOTIFY devicesChanged)
@@ -112,6 +113,11 @@ signals:
     void sessionOpened(DeviceSession *session);
     // It is about to go: let go of it and its core now. Not the active one any more.
     void sessionClosing(DeviceSession *session);
+    // -- WP MDQT2c -- The session's device is about to be closed, or replaced on
+    // its core (the main one's too, and before sessionClosing()): what plays on
+    // it is stopped now, posted to its worker (DeviceSession::drainFirst), so
+    // that the Stop goes out while the device is still there.
+    void sessionStopping(DeviceSession *session);
     void openFailed(const QString &code, const QString &error);
     void configFailed(const QString &error);
 
@@ -120,6 +126,7 @@ private:
     static void eventThunk(const char *eventJson, void *self);
     void track(DeviceSession *session);
     void readRows();
+    void endSession(DeviceSession *session, const QByteArray &id);   // -- WP MDQT2c --
     void pollHotplug();
     // `job` on `pool`'s thread, `done` back here while this lives
     template <class Job, class After>
@@ -130,6 +137,7 @@ private:
     DeviceSession *m_active;
     QList<DeviceSession *> m_sessions;
     QList<DeviceSession *> m_closing;   // closed, their workers running dry
+    QList<DeviceSession *> m_stopping;   // -- WP MDQT2c -- their Stops on the way, closed next
     bool m_keepOpen = false;
     int m_opening = 0;
     QTimer m_hotplugTimer;

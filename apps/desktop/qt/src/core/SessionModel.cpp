@@ -114,6 +114,7 @@ void SessionModel::start(bool demo) {
 }
 
 void SessionModel::openDemo() {
+    if (m_snap.connected && !m_demo) emit replacing();   // -- WP MDQT2c --
     track(1);
     m_session->worker()->call(
         this,
@@ -133,6 +134,7 @@ void SessionModel::openDemo() {
 
 void SessionModel::selectDevice(const QString &serial) {
     if (serial.isEmpty()) return;
+    if (m_snap.connected && serial != m_serial) emit replacing();   // -- WP MDQT2c --
     track(1);
     const QByteArray s = serial.toUtf8();
     m_session->worker()->call(

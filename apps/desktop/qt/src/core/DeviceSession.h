@@ -2,11 +2,13 @@
 #define DEVICESESSION_H
 
 #include <QHash>
+#include <QMap>
 #include <QObject>
 #include <QString>
 #include <QTimer>
 #include <QVariantMap>
 #include <atomic>
+#include <utility>
 
 #include "CoreWorker.h"
 
@@ -55,6 +57,18 @@ public:
     // the session.
     QVariantMap &stash(const QString &controller) { return m_stash[controller]; }
 
+    // -- WP MDQT2c -- What runs on this device whichever is active (a measurement,
+    // the generator), in words, by the controller's class name; "" when it is over
+    void setJob(const QString &controller, const QString &text);
+    bool busy() const { return !m_jobs.isEmpty(); }
+    bool hasJob(const QString &controller) const { return m_jobs.contains(controller); }
+    // The jobs' words, one of them when there are several
+    QString job() const { return m_jobs.isEmpty() ? QString() : m_jobs.first(); }
+    // For DeviceRegistry::sessionStopping: what the handler just posted to the
+    // worker (a Stop) goes out before the device closes
+    void drainFirst() { m_drain = true; }
+    bool takeDrain() { return std::exchange(m_drain, false); }
+
     // The clip hold of the last background read (0 while it is the active one)
     uint clipHold() const { return m_clipHold; }
     // The registry: read it in the background, or not
@@ -73,6 +87,7 @@ signals:
     // The device, or its title, is another than before
     void identityChanged();
     void clipHoldChanged();
+    void jobsChanged();   // -- WP MDQT2c --
 
 private:
     static void notifyThunk(void *self);
@@ -90,6 +105,8 @@ private:
     uint m_clipHold = 0;
     QVariantMap m_row;
     QHash<QString, QVariantMap> m_stash;
+    QMap<QString, QString> m_jobs;   // -- WP MDQT2c --
+    bool m_drain = false;            // -- WP MDQT2c --
     QString m_identity;
     std::atomic<bool> m_notifyQueued{ false };
 };

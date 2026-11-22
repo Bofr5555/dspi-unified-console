@@ -54,6 +54,18 @@ ScrollView {
         target: SpeakersController
         function onStoredChanged() { tab.layoutRole() }
     }
+    // -- WP MDQT2c -- another device: its draft starts over (a placement chosen
+    // for the last one is never assumed for it)
+    Connections {
+        target: MeasureController
+        function onDeviceSwitched() {
+            tab.placementChoice = ""
+            tab.couplerChoice = ""
+            tab.at = tab.from = tab.to = ""
+            tab.output = tab.mc.outputs.length ? tab.mc.outputs[0].output : 0
+            tab.layoutRole()
+        }
+    }
     property string mode: "sweep"
     // -- WP P5FOLLOW -- (coordinator, headphone safety) no default placement:
     // the person's choice here, else the Setup tab's when it is a live one

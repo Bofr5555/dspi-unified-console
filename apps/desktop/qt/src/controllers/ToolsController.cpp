@@ -6,9 +6,13 @@
 #include "ChannelListModel.h"
 #include "Core.h"
 #include "DeviceModel.h"
+#include "DeviceRegistry.h"
+#include "DeviceSession.h"
+#include "SessionState.h"
 #include "HardwareController.h"
 #include "Shell.h"
 
+#include <QPointer>
 #include <QtGlobal>
 #include <algorithm>
 #include <array>
@@ -208,6 +212,7 @@ struct Shaper {
 ToolsController::ToolsController(const AppContext &ctx, QObject *parent) : QObject(parent), m_ctx(ctx) {
     connect(m_ctx.device, &DeviceModel::snapshotApplied, this, [this]() {
         ++m_reads;
+        switched();   // -- WP MDQT2c --
         emit toolsChanged();
         updatePolls();
         readUnprotected();   // -- WP P1QT2 --
@@ -217,6 +222,11 @@ ToolsController::ToolsController(const AppContext &ctx, QObject *parent) : QObje
         emit toolsChanged();
     });
     connect(m_ctx.poller, &Poller::metersChanged, this, &ToolsController::updateGlow);
+    // -- WP MDQT2c -- Solo never stays on past the window that shows it: on the
+    // device that is left too
+    connect(ctx.registry, &DeviceRegistry::activeLeaving, this, [this] {
+        if (m_subharmShown && subharmSolo()) setSubharmSolo(false);
+    });
 
     m_subMeterPoll = ctx.poller->add(
         QStringLiteral("subharmonic meter"), 100, this,
@@ -230,8 +240,9 @@ ToolsController::ToolsController(const AppContext &ctx, QObject *parent) : QObje
             QVariantList levels;
             const int n = std::min(numOutputs(), int(v.size()));
             for (int i = 0; i < n; ++i) levels << std::clamp(double(v[size_t(i)]), 0.0, 1.0);
-            if (levels == m_subMeter) return;
-            m_subMeter = levels;
+            const StatePtr st = state();
+            if (levels == st->subMeter) return;
+            st->subMeter = levels;
             emit subharmMeterChanged();
         });
     ctx.poller->setEnabled(m_subMeterPoll, false);
@@ -245,7 +256,7 @@ ToolsController::ToolsController(const AppContext &ctx, QObject *parent) : QObje
         [this](const std::pair<bool, UpmixStatus> &r) {
             if (!r.first) return;
             const UpmixStatus &st = r.second;
-            m_upmixStatus = QVariantMap{ { QStringLiteral("active"), st.active },
+            state()->upmixStatus = QVariantMap{ { QStringLiteral("active"), st.active },
                                          { QStringLiteral("parked"), int(st.parked_reason) },
                                          { QStringLiteral("correlation"), double(st.correlation) },
                                          { QStringLiteral("balance"), double(st.balance) },
@@ -255,6 +266,25 @@ ToolsController::ToolsController(const AppContext &ctx, QObject *parent) : QObje
             emit upmixStatusChanged();
         });
     ctx.poller->setEnabled(m_upmixPoll, false);
+}
+
+// -- WP MDQT2c --
+ToolsController::StatePtr ToolsController::state() const {
+    return sessionState<State>(m_ctx.activeSession(), QStringLiteral("ToolsController"));
+}
+
+void ToolsController::switched() {
+    const StatePtr st = state();
+    if (st == m_announced) return;
+    const bool first = !m_announced;
+    m_announced = st;
+    if (first) return;
+    emit headroomChanged();
+    emit subharmMeterChanged();
+    emit upmixStatusChanged();
+    emit unprotectedChanged();
+    updateGlow();
+    if (m_subharmShown) fetchHeadroom();
 }
 
 void ToolsController::apply(const QString &what, std::function<bool(FfiCore *)> setter, std::function<void(bool)> done) {
@@ -291,19 +321,25 @@ QString ToolsController::outputName(int output) const {
 // ---- Windows and the live readings ---------------------------------------------
 
 void ToolsController::windowShown(const QString &window, bool shown) {
+    // -- WP MDQT2c -- one more place shows it, or one less; a report of "not
+    // shown" by one that never was (a page unloaded) takes none away
+    const auto counted = [shown](int &places) {
+        places = std::max(0, places + (shown ? 1 : -1));
+        return places;
+    };
     if (window == QLatin1String("subharmonic")) {
-        m_subharmShown = shown;
+        counted(m_subharmShown);
         if (shown) {
             fetchHeadroom();
-        } else if (subharmSolo()) {
+        } else if (m_subharmShown == 0 && subharmSolo()) {
             // Solo takes the program off the masked outputs: never past this window
             setSubharmSolo(false);
         }
     } else if (window == QLatin1String("tube")) {
-        m_tubeShown = shown;
+        counted(m_tubeShown);
         updateGlow();
     } else if (window == QLatin1String("upmixer")) {
-        m_upmixShown = shown;
+        counted(m_upmixShown);
     }
     updatePolls();
 }
@@ -312,24 +348,29 @@ void ToolsController::updatePolls() {
     const bool subOn = connected() && subharm(QStringLiteral("enabled")) != 0;
     m_ctx.poller->setEnabled(m_subMeterPoll, m_subharmShown && subharmExtended() && subOn);
     m_ctx.poller->setEnabled(m_upmixPoll, m_upmixShown && upmixSupported());
-    if (!(m_subharmShown && subOn) && !m_subMeter.isEmpty()) {
-        m_subMeter.clear();
+    const StatePtr st = state();
+    if (!(m_subharmShown && subOn) && !st->subMeter.isEmpty()) {
+        st->subMeter.clear();
         emit subharmMeterChanged();
     }
 }
 
 void ToolsController::fetchHeadroom() {
-    if (!subharmSupported()) return;
-    m_ctx.core->worker()->call(
+    if (subharmSupported()) fetchHeadroom(m_ctx.activeSession(), state());
+}
+
+void ToolsController::fetchHeadroom(DeviceSession *session, const StatePtr &st) {
+    if (!session) return;
+    session->worker()->call(
         this,
         [](FfiCore *c) {
             float db = 0;
             return dspi_fetch_subharm_headroom(c, &db) && std::isfinite(db) ? double(db) : NAN;
         },
-        [this](double db) {
-            if (std::isnan(db) || db == m_headroom) return;
-            m_headroom = db;
-            emit headroomChanged();
+        [this, st](double db) {
+            if (std::isnan(db) || db == st->headroom) return;
+            st->headroom = db;
+            if (st == state()) emit headroomChanged();
         });
 }
 
@@ -382,9 +423,11 @@ void ToolsController::setSubharm(const QString &key, double value) {
     // The headroom is derived from the switch, the levels, the boost and the ceiling
     const bool headroom = id != SUBHARM_PARAM_MASK && id != SUBHARM_PARAM_LINK && id != SUBHARM_PARAM_SELECT &&
                           id != SUBHARM_PARAM_DEPTH && id != SUBHARM_PARAM_HOLD;
+    const StatePtr st = state();
+    QPointer<DeviceSession> session(m_ctx.activeSession());
     apply(QStringLiteral("subharm %1").arg(key), [id, v](FfiCore *c) { return dspi_set_subharm_param(c, id, v); },
-          [this, headroom](bool ok) {
-              if (ok && headroom) fetchHeadroom();
+          [this, headroom, st, session](bool ok) {
+              if (ok && headroom) fetchHeadroom(session, st);
           });
 }
 
@@ -809,25 +852,27 @@ void ToolsController::protectAllOutputs() {
 
 // -- WP P1QT2 -- PRO1 S2's warning, from the core's mirror, on the worker
 void ToolsController::readUnprotected() {
-    if (m_unprotectedAsked) return;
-    m_unprotectedAsked = true;
+    const StatePtr st = state();
+    if (st->unprotectedAsked) return;
+    st->unprotectedAsked = true;
     m_ctx.core->worker()->call(
         this, [](FfiCore *c) { return dspi_outputs_without_limiter(c, kUnprotectedAboveDb); },
-        [this](uint32_t mask) {
-            m_unprotectedAsked = false;
+        [this, st](uint32_t mask) {
+            st->unprotectedAsked = false;
             QVariantList list;
             for (int o = 0; o < MAX_OUTPUTS && o < 32; ++o)
                 if (mask >> o & 1u) list << o;
-            if (list == m_unprotected) return;
-            m_unprotected = list;
-            emit unprotectedChanged();
+            if (list == st->unprotected) return;
+            st->unprotected = list;
+            if (st == state()) emit unprotectedChanged();
         });
 }
 
 QString ToolsController::unprotectedText() const {
-    if (m_unprotected.isEmpty()) return QString();
+    const QVariantList unprotected = state()->unprotected;
+    if (unprotected.isEmpty()) return QString();
     QStringList names;
-    for (const QVariant &o : m_unprotected) names << outputName(o.toInt());
+    for (const QVariant &o : unprotected) names << outputName(o.toInt());
     //: PRO1 S2's warning row; %1 the outputs ("Out 1, Out 2"), %2 the gain (-10)
     return tr("No limiter on %1, above %2 dB of gain.")
         .arg(names.join(QStringLiteral(", ")))

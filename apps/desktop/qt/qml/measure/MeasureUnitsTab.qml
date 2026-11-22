@@ -88,6 +88,17 @@ Item {
             }
         }
 
+        // -- WP MDQT2c -- it still runs, or waits in its guard, on another device
+        Text {
+            objectName: "MeasureUnits.held"
+            visible: text.length > 0
+            Layout.fillWidth: true
+            textFormat: Text.PlainText
+            text: tab.uc.heldWords
+            font: Theme.fontBody
+            color: Theme.warning
+            wrapMode: Text.WordWrap
+        }
         // Not on our hub
         Text {
             objectName: "MeasureUnits.unavailable"
