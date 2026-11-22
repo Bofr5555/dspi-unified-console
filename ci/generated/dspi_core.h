@@ -8461,10 +8461,11 @@ void dspi_mcp_free(struct FfiMcp *mcp);
 
 /**
  * Start listening for AI agents. `config_json`: `{"port": 47860, "storeDir":
- * "<the app's folder>", "appVersion": "0.15.0"}`, each optional (without a
- * folder the clients last only for this run). Reply `{ok, port,
+ * "<the app's folder>", "appVersion": "0.15.0", "templateDir": "<the user's
+ * templates>"}`, each optional (without a folder the clients last only for
+ * this run). Reply `{ok, port,
  * addresses}`; code `running` when it runs already, `io` when the port is in
- * use, `store` when the clients' file is damaged (it is left as it is).
+ * use on `127.0.0.1` or on `::1`, `store` when the clients' file is damaged (it is left as it is).
  *
  * Returns the length needed; see the module's rule on short buffers.
  */
@@ -8472,7 +8473,8 @@ uint32_t dspi_mcp_start(struct FfiMcp *mcp, const char *config_json, char *buf, 
 
 /**
  * Stop listening: the agents' next requests fail, a pairing request waiting
- * ends. True if it was running.
+ * ends, waiting confirmations end with nothing changed, and the agents'
+ * timed previews are put back. The activity is kept. True if it was running.
  */
 bool dspi_mcp_stop(struct FfiMcp *mcp);
 
@@ -8524,11 +8526,39 @@ bool dspi_mcp_pairing_answer(struct FfiMcp *mcp, uint64_t request, bool allow);
 void dspi_mcp_pause(struct FfiMcp *mcp, bool paused);
 
 /**
- * The newest `n` entries of the agents' activity, oldest first: `{ok, value:
- * [entry]}` (`dspi_mcp::activity::ActivityEntry::to_json`). Empty while
- * stopped.
+ * The newest `n` entries of the agents' activity since the handle was made,
+ * oldest first: `{ok, value: [entry]}` (`dspi_mcp::activity::ActivityEntry::
+ * to_json` with `title`, `at_unix_ms` and `run`, which tells the runs of the
+ * server apart: `id` starts again in each).
  */
 uint32_t dspi_mcp_activity(struct FfiMcp *mcp, uint32_t n, char *buf, uint32_t len);
+
+/**
+ * When agents ask the user: `ask_everything`, `ask_risky` (the default) or
+ * `never_ask`. It holds from the next call on, and across stop and start.
+ * False for another word.
+ */
+bool dspi_mcp_set_confirm(struct FfiMcp *mcp, const char *mode);
+
+/**
+ * The AutoEQ database the agents' AutoEQ tools search, from its file's
+ * bytes; null or 0 bytes for none. The next start uses it. False when the
+ * bytes are no database (the last one stays).
+ */
+bool dspi_mcp_set_autoeq(struct FfiMcp *mcp, const uint8_t *data, uint32_t len);
+
+/**
+ * The confirmations waiting for the user, oldest first: `{ok, value:
+ * [{confirmation_id, client, client_name, tool, title, device, risks:
+ * [{kind, what, output}], remaining_ms, ...}]}`. Empty while stopped.
+ */
+uint32_t dspi_mcp_confirmations(struct FfiMcp *mcp, char *buf, uint32_t len);
+
+/**
+ * The user's answer to confirmation `id`. Allow runs the agent's call now, on
+ * this thread (it writes to the device). False when it no longer waits.
+ */
+bool dspi_mcp_confirm_answer(struct FfiMcp *mcp, uint64_t id, bool allow);
 
 /**
  * The device the app shows (a set id), which tools use when an agent names
