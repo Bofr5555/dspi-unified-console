@@ -16,6 +16,10 @@
 //!   guarded by the revision it was read at (`conflict` when the hub's model
 //!   moved meanwhile), through the same read-modify-write as the "Clock and
 //!   audio links" edits ([`DspiCore::alink_system_save_report`]). Admin only.
+//!   On `conflict`, rebuild the draft from a fresh [`DspiCore::installation_view`]
+//!   and make the edits again on it; never copy the new revision into the old
+//!   draft. There is no 3-way merge (`base` serves the diff only), so that
+//!   would silently overwrite the other editor's save.
 //!
 //! The Terminal's `usb-direct generate` builds its model with the same edits
 //! ([`installation_apply`]), so there is one path to a model.
@@ -485,7 +489,8 @@ impl InstallationDraft {
         })
     }
 
-    /// [`Self::to_json`]'s shape back, each model checked to be one.
+    /// [`Self::to_json`]'s shape back, each model checked to be one, the
+    /// revision required (a missing one would save over a fresh hub's model).
     pub fn from_json(v: &Value) -> Result<Self> {
         let model = |key: &str| -> Result<String> {
             let m: SystemModel = serde_json::from_value(v.get(key).cloned().unwrap_or(Value::Null))
@@ -494,8 +499,13 @@ impl InstallationDraft {
                 })?;
             to_text(&m)
         };
+        let revision = v.get("revision").and_then(Value::as_u64).ok_or_else(|| {
+            DspiError::InvalidArgument {
+                msg: "the draft has no revision".into(),
+            }
+        })?;
         Ok(Self {
-            revision: v.get("revision").and_then(Value::as_u64).unwrap_or(0),
+            revision,
             base: model("base")?,
             model: model("model")?,
         })

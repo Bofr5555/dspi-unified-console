@@ -368,6 +368,23 @@ fn wp_inst0_the_draft_round_trips_as_one_json_object_and_by_serde() {
         InstallationDraft::from_json(&json!({"revision": 1, "base": {}, "model": {"x": 1}}))
             .is_err()
     );
+    // Review RA F5: the revision is required, never taken as 0.
+    for no_rev in [
+        json!({"base": {}, "model": {}}),
+        json!({"revision": "7", "base": {}, "model": {}}),
+        json!({"revision": -1, "base": {}, "model": {}}),
+    ] {
+        assert!(
+            matches!(InstallationDraft::from_json(&no_rev), Err(crate::DspiError::InvalidArgument { msg }) if msg.contains("revision")),
+            "{no_rev}"
+        );
+    }
+    assert_eq!(
+        InstallationDraft::from_json(&json!({"revision": 0, "base": {}, "model": {}}))
+            .unwrap()
+            .revision,
+        0
+    );
     assert_eq!(
         DspiCore::new().installation_diff(d).unwrap(),
         [

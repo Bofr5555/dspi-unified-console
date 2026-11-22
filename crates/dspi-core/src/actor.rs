@@ -34,6 +34,12 @@
 //!   is a boost.
 //! - **Undo by id.** [`DspiCore::revert_entry`] reverts one change, and an
 //!   actor other than the embedder may revert only its own.
+//! - **Not judged: writes the device applies wholesale.** A preset load and
+//!   `load_params` send one command whose result is known only once the
+//!   device has applied it, so the hook never sees them. Like a recall and an
+//!   import they journal one `bulk` / `preset.load` entry, which resets the
+//!   history: no undo, and [`DspiCore::revert_entry`] cannot undo them. A
+//!   layer that lets an agent do these must class them itself (review RA F5).
 //!
 //! The hook runs under the core's lock: it must not call the core. Outside a
 //! scope nothing of this runs beyond a thread-local look-up.
@@ -181,6 +187,11 @@ pub(crate) fn next_core_key() -> u64 {
 /// While alive, the calls this thread makes on its core are `actor`'s, and
 /// its writes pass `hook` (module docs). Scopes nest; the newest for a core
 /// counts. Not `Send`: it belongs to the thread that made it.
+///
+/// Thread-scoped: work the core does on its own threads (a measurement's
+/// volume and signal-generator writes, the guarded apply's revert on timeout)
+/// runs outside any scope, so it is journalled as [`EMBEDDER`] and skips the
+/// hook, whoever started it.
 #[must_use = "the scope ends when it is dropped"]
 pub struct ActorScope<'a> {
     core: &'a DspiCore,
