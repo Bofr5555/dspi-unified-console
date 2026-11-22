@@ -419,30 +419,6 @@
         <source>Activity</source>
         <translation type="unfinished"></translation>
     </message>
-    <message>
-        <source>Allow AI agents?</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>An agent on this computer that you allow may read your devices&apos; settings and change them: equaliser, crossovers, gains, routing, effects, presets and more.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>It cannot update firmware, change the limits or the installer&apos;s lock, set up speakers, pair hubs or delete presets.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>You can undo each change, pause the agents or stop them at any time.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>This device has no limits profile. You can set one up first; it holds agents too.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Allow</source>
-        <translation type="unfinished"></translation>
-    </message>
 </context>
 <context>
     <name>AiAgentsPanel</name>
@@ -480,6 +456,10 @@
 </context>
 <context>
     <name>AiController</name>
+    <message>
+        <source>The app&apos;s Measure view is not available.</source>
+        <translation type="unfinished"></translation>
+    </message>
     <message>
         <source>Could not start on port %1.</source>
         <translation type="unfinished"></translation>
@@ -526,6 +506,67 @@
     </message>
     <message>
         <source>The agent was not added: it had stopped waiting, or its token could not be kept.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Louder</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unmute</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Output on</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>New route</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>EQ boost</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Delay</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Tweeter protection</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Change</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Test signal</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Replaces settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Saved on the device</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Installation</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Input source</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Every unit</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1: %2</source>
+        <extracomment>%1 is a kind of change (&quot;Louder&quot;), %2 the change (&quot;Out 1 gain up from -12 dB to -3 dB&quot;)</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -585,6 +626,37 @@
     </message>
 </context>
 <context>
+    <name>AiEnableQuestion</name>
+    <message>
+        <source>Allow AI agents?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>An agent on this computer that you allow may read your devices&apos; settings and change them: equaliser, crossovers, gains, routing, effects, presets and more.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>It cannot update firmware, change the limits or the installer&apos;s lock, set up speakers, pair hubs or delete presets.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>You can undo each change, pause the agents or stop them at any time.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This device has no limits profile. You can set one up first; it holds agents too.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Allow</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Set Up Limits…</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>AiHost</name>
     <message>
         <source>Time left: %1</source>
@@ -631,6 +703,102 @@
     </message>
     <message>
         <source>%1 more waiting</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>AiPopover</name>
+    <message>
+        <source>AI agents</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Allow AI agents to control %1</source>
+        <extracomment>%1 is the app&apos;s name</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Allow AI agents</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Nothing listens and nothing is sent while this is off. On, only agents on this computer can connect, and you allow each of them.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Listening on %1</source>
+        <extracomment>%1 is a list of addresses</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Agents read and change settings without asking you.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Agents read settings, and ask you before every change.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Agents read and change settings, and ask you before risky changes.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Try Again</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Connect an Agent…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Connected since %1</source>
+        <extracomment>%1 is a time</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Disconnect</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Its token stops: it has to be allowed again.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Disconnect %1</source>
+        <extracomment>%1 is an AI agent&apos;s name</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Latest changes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Undone</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Undo</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Undo: %1</source>
+        <extracomment>%1 is what an AI agent did</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Resume</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pause</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Activity…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>AI Agents Settings…</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -1544,6 +1712,103 @@ Switching an output is instant and never writes to flash. The pin, name and powe
     </message>
     <message>
         <source>%1 settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>CommandPalette</name>
+    <message>
+        <source>Save to Device</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open a Device…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Switch Device</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Headphone Profile…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>AutoEQ</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Minimize to Tray</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open Graph in Window</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Spectrum Analyzer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Switch to %1</source>
+        <extracomment>%1 is a device&apos;s name</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Device</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Go to %1</source>
+        <extracomment>%1 is a section of the app (Equaliser, Effects…)</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Section</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Layout</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Channel</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Command palette</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Type a command, page, setting, channel or device</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Search settings, channels, commands…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Nothing found</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Commands</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>↑ ↓ choose</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Enter run</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Esc close</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -2916,43 +3181,119 @@ Switching an output is instant and never writes to flash. The pin, name and powe
         <source>Done</source>
         <translation type="unfinished"></translation>
     </message>
+</context>
+<context>
+    <name>DevicesController</name>
     <message>
-        <source>Open devices</source>
+        <source>A data folder cannot be used, so what belongs in it is not kept: %1</source>
+        <extracomment>%1 is the system&apos;s reason</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Not connected</source>
+        <source>The device did not open.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Reconnecting…</source>
+        <source>%1 is already open over USB. Close it there first.</source>
+        <extracomment>%1 is the device&apos;s serial number</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Close %1</source>
+        <source>%1 is already open through a hub. Close it there first.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>A firmware update is under way on %1. Wait for it to finish.</source>
         <extracomment>%1 is a device&apos;s name</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>USB</source>
+        <source>A core voltage calibration runs on %1. End it on its Core Voltage page first.</source>
+        <extracomment>%1 is a device&apos;s name</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>DevicesHubs</name>
+    <message>
+        <source>Pair with %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>DSPi (%1)</source>
+        <source>the hub</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>No DSPi on USB</source>
+        <source>Cancel</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Demo DSPi</source>
+        <source>Pair</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Simulated DSPi</source>
+        <source>This hub</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>Name</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Your role</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Admin</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Control</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Viewer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Security</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Encrypted</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not encrypted</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>On this computer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hub key</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This computer&apos;s DSPi</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Share it with other consoles on this network, and choose who may do what.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Networking Settings…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>OK</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>DevicesLink</name>
     <message>
         <source>DSPi Link</source>
         <translation type="unfinished"></translation>
@@ -3019,33 +3360,42 @@ Switching an output is instant and never writes to flash. The pin, name and powe
     </message>
 </context>
 <context>
-    <name>DevicesController</name>
+    <name>DevicesLocal</name>
     <message>
-        <source>A data folder cannot be used, so what belongs in it is not kept: %1</source>
-        <extracomment>%1 is the system&apos;s reason</extracomment>
+        <source>Open devices</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>The device did not open.</source>
+        <source>Not connected</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>%1 is already open over USB. Close it there first.</source>
-        <extracomment>%1 is the device&apos;s serial number</extracomment>
+        <source>Reconnecting…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>%1 is already open through a hub. Close it there first.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>A firmware update is under way on %1. Wait for it to finish.</source>
+        <source>Close %1</source>
         <extracomment>%1 is a device&apos;s name</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>A core voltage calibration runs on %1. End it on its Core Voltage page first.</source>
-        <extracomment>%1 is a device&apos;s name</extracomment>
+        <source>USB</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>DSPi (%1)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No DSPi on USB</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Demo DSPi</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Simulated DSPi</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -3053,6 +3403,33 @@ Switching an output is instant and never writes to flash. The pin, name and powe
     <name>DevicesPopup</name>
     <message>
         <source>Devices</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>DevicesSection</name>
+    <message>
+        <source>A DSPi on USB was found that cannot be opened.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Help…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show how to give access</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The device shown</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>On the network</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hubs and Their Devices</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -6234,6 +6611,11 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
         <source>Saved on the hub, with warnings:</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>They could not be made again: %1</source>
+        <extracomment>%1 is the core&apos;s reason</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>InstallationJoinCard</name>
@@ -6432,6 +6814,18 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>The installation was changed elsewhere and has been read again: these changes were not saved. Make them again on the installation as it is now, or leave them.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Make Them Again</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Leave Them</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Not ready to save: %1</source>
         <translation type="unfinished"></translation>
     </message>
@@ -6476,6 +6870,22 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
     </message>
     <message>
         <source>Name of unit %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show tab</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open in tab</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show %1&apos;s tab</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open %1 in a tab of its own</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -7032,6 +7442,132 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
     </message>
     <message>
         <source>Adds 5ms latency. Improves transient handling.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>LibraryFiles</name>
+    <message>
+        <source>Filters</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The bands of the channels you choose, as a text file that other programs read too.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Device configuration</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Every setting of the device. An import shows what it changes first.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Files without a device</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open now: %1</source>
+        <extracomment>%1 is a file&apos;s name</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>not saved yet</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Edit a configuration on every page with no device, then save it or import it to a DSPi.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Templates</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>A template opens as a new file with no device.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No templates</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1, %2 in, %3 out · %4</source>
+        <extracomment>%1 the platform, %2 and %3 the input and output counts, %4 &quot;shipped&quot; or &quot;yours&quot;</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>shipped with the app</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>saved here</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open template %1</source>
+        <extracomment>%1 is a template&apos;s name</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>LibraryPresets</name>
+    <message>
+        <source>No Device Connected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Presets</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>At power-on the device loads preset %1.</source>
+        <extracomment>%1 is a slot&apos;s number</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>At power-on the device loads the preset it was last on.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Preset %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Empty</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Active, with unsaved changes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Active</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Startup</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Recall</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Save</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Save the current settings in this slot</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>More</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -7745,6 +8281,10 @@ Macros are stored on the device alongside the controls and share their Save and 
     <message>
         <source>%1: %2</source>
         <extracomment>%1 is a device, %2 what happened on it</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>That device is no longer open in the app.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -8474,7 +9014,16 @@ Macros are stored on the device alongside the controls and share their Save and 
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Finding an output&apos;s low end with the DSPi&apos;s generator.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Measuring with the DSPi&apos;s generator.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Requested by %1: %2</source>
+        <extracomment>%1 is &quot;AI · &quot; and the agent&apos;s name, %2 what plays</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -8681,6 +9230,32 @@ Macros are stored on the device alongside the controls and share their Save and 
     </message>
     <message>
         <source>Target in use: %1.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>That device is closing.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Something already runs on this device in the app; nothing was played.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The Measure view cannot run that.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Stopped in the app before it began.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1&apos;s low end: %3 dB down at %2 Hz.</source>
+        <extracomment>%1 an output&apos;s name, %2 a frequency in Hz, %3 the dB below its loudest point</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 still plays well at %2 Hz, where the search stops.</source>
+        <extracomment>%1 an output&apos;s name, %2 a frequency in Hz</extracomment>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -9777,7 +10352,7 @@ Macros are stored on the device alongside the controls and share their Save and 
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Ctrl+K</source>
+        <source>Ctrl+L</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -10913,15 +11488,7 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
     </message>
 </context>
 <context>
-    <name>PairingDialog</name>
-    <message>
-        <source>Pair with %1</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>the hub</source>
-        <translation type="unfinished"></translation>
-    </message>
+    <name>PairingContent</name>
     <message>
         <source>Hub key</source>
         <translation type="unfinished"></translation>
@@ -10940,6 +11507,17 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
     </message>
     <message>
         <source>Pairing code</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>PairingDialog</name>
+    <message>
+        <source>Pair with %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>the hub</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -11784,6 +12362,13 @@ Save before continuing?</source>
 <context>
     <name>RePairDialog</name>
     <message>
+        <source>Cancel</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>RePairWords</name>
+    <message>
         <source>This hub was paired with encryption</source>
         <translation type="unfinished"></translation>
     </message>
@@ -11816,15 +12401,11 @@ Save before continuing?</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Pair Again</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Forget Hub</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Cancel</source>
+        <source>Pair Again</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -12046,6 +12627,30 @@ Save before continuing?</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Results</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Live</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Auto-tune</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Documents</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Passive RTA</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Several units</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Analyse</source>
         <translation type="unfinished"></translation>
     </message>
@@ -12054,7 +12659,27 @@ Save before continuing?</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Presets</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Files</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>System</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Units</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Clock and Links</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Installation</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -12062,7 +12687,27 @@ Save before continuing?</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>All Devices</source>
+        <source>This Computer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hubs</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Application</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Display</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Device</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Control</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -14162,11 +14807,11 @@ Save before continuing?</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Imported speaker layout: these roles came with a configuration file. Check that they match this DSPi&apos;s speakers, then confirm them.</source>
+        <source>Imported speaker layout: these roles were set outside this app (a configuration file or another app). Check that they match this DSPi&apos;s speakers, then confirm them.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Imported speaker layout: these roles came with a configuration file. Check that they match this DSPi&apos;s speakers, then confirm them in Settings › Speakers.</source>
+        <source>Imported speaker layout: these roles were set outside this app (a configuration file or another app). Check that they match this DSPi&apos;s speakers, then confirm them in Settings › Speakers.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -16085,7 +16730,7 @@ This wiring is a board-level setting: it is stored on the device, survives prese
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Search settings…</source>
+        <source>Search settings, channels, commands…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -16674,7 +17319,15 @@ This wiring is a board-level setting: it is stored on the device, survives prese
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>The Measure view is not ready.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Stop the measurement or the live view first.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The microphone could not be opened.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -16890,6 +17543,11 @@ This wiring is a board-level setting: it is stored on the device, survives prese
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Requested by %1: %2</source>
+        <extracomment>%1 is &quot;AI · &quot; and the agent&apos;s name, %2 what plays</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Measure the group first.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -17086,6 +17744,22 @@ This wiring is a board-level setting: it is stored on the device, survives prese
     </message>
     <message>
         <source>Reverting</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The Measure view is not ready.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Measuring across units runs on the device the app shows: ask the user to show that device.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Something already runs on this device in the app; nothing was played.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Stopped in the app before it began.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
