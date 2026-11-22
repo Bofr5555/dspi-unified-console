@@ -485,11 +485,13 @@
 #define HUB_EVENT_SESSION_CLOSED 4
 #define HUB_EVENT_STOPPED 5
 #define HUB_EVENT_TLS_KEY 6
+#define MCP_REPLY_MIN 1024
 typedef struct AutoEqFetchSink AutoEqFetchSink;
 typedef struct AutoEqRebuildHandle AutoEqRebuildHandle;
 typedef struct FfiCore FfiCore;
 typedef struct FfiCoreSet FfiCoreSet;
 typedef struct FfiHub FfiHub;
+typedef struct FfiMcp FfiMcp;
 typedef struct DeviceInfo {
 uint8_t serial[64];
 uint32_t serial_len;
@@ -2091,5 +2093,22 @@ uint32_t max_devices);
 void dspi_core_set_poll_hotplug(struct FfiCoreSet *set);
 void dspi_core_set_set_listener(struct FfiCoreSet *set,
 void (*callback)(const char *event_json, void *user_data),
+void *user_data);
+struct FfiMcp *dspi_mcp_new(const struct FfiCoreSet *set);
+void dspi_mcp_free(struct FfiMcp *mcp);
+uint32_t dspi_mcp_start(struct FfiMcp *mcp, const char *config_json, char *buf, uint32_t len);
+bool dspi_mcp_stop(struct FfiMcp *mcp);
+uint32_t dspi_mcp_status(struct FfiMcp *mcp, char *buf, uint32_t len);
+void dspi_mcp_set_listener(struct FfiMcp *mcp, void (*callback)(const char *event_json,
+void *user_data), void *user_data);
+uint32_t dspi_mcp_add_client(struct FfiMcp *mcp, const char *name, char *buf, uint32_t len);
+uint32_t dspi_mcp_clients(struct FfiMcp *mcp, char *buf, uint32_t len);
+bool dspi_mcp_revoke(struct FfiMcp *mcp, uint64_t id);
+bool dspi_mcp_pairing_answer(struct FfiMcp *mcp, uint64_t request, bool allow);
+void dspi_mcp_pause(struct FfiMcp *mcp, bool paused);
+uint32_t dspi_mcp_activity(struct FfiMcp *mcp, uint32_t n, char *buf, uint32_t len);
+bool dspi_mcp_set_active_device(struct FfiMcp *mcp, const char *id);
+int32_t dspi_mcp_relay_stdio(const char *config_json,
+void (*token_sink)(const char *token, void *user_data),
 void *user_data);
 #endif
