@@ -748,6 +748,23 @@ pub(crate) fn compute(
         };
         match crossover_corner(&drivers, &sp.transitions, target, &constraints, model) {
             Ok(p) => {
+                // -- WP FUNC1 -- Polarity is a property of the crosspoints that
+                // feed an output: with none it would be written nowhere, the
+                // summed checks (the generator's own polarity) would pass, and
+                // the speaker would play with the old one.
+                let unfed = p.outputs.iter().zip(&way_list).find(|(o, w)| {
+                    w.feeds.is_empty() && o.chain.feed.inverted != w.chain_now.feed.inverted
+                });
+                if let Some((_, w)) = unfed {
+                    let why = format!(
+                        "no input feeds output {}, whose polarity must change (it is set on \
+                         its routes): route the speaker's outputs first, then propose again",
+                        u16::from(w.output).saturating_add(1)
+                    );
+                    withdraw(KEY_NO_TIMING, why);
+                    sp.drivers = None;
+                    continue;
+                }
                 for (k, o) in p.outputs.iter().enumerate() {
                     if let Some(i) = sp.ways.get(k) {
                         if let Some(slot) = chains.get_mut(*i) {

@@ -507,6 +507,45 @@ fn wp_p5tune_the_bass_modes_are_reduced_within_2_db() {
     );
 }
 
+// Nothing routed to the midrange whose polarity must change: the write would
+// go nowhere (the function test's speakers kept a hole at every crossover).
+#[test]
+fn wp_func1_no_polarity_change_is_offered_for_an_output_no_input_feeds() {
+    let doc = MeasurementDoc::from_text(left_doc()).unwrap();
+    let lay = layout(&[0, 1, 2]);
+    let mut ways = ways_of(&doc, &lay, &start_chains());
+    let run = |ways: &[WayIn]| {
+        maths::compute(
+            &doc,
+            ways,
+            &MeasureTuneOptions::default(),
+            &bounds(),
+            &speakers_target(),
+            &Allow::default(),
+            &CoreSectionModel,
+        )
+    };
+    assert!(
+        run(&ways)
+            .writes
+            .iter()
+            .any(|w| w.kind == MeasureTuneKind::Polarity)
+    );
+    for w in &mut ways {
+        w.feeds.clear();
+    }
+    let c = run(&ways);
+    assert!(c.writes.iter().all(|w| !w.timing), "{:?}", c.writes);
+    assert!(
+        c.withdrawn
+            .iter()
+            .any(|w| w.key == maths::KEY_NO_TIMING && w.message.contains("no input feeds output")),
+        "{:?}",
+        c.withdrawn
+    );
+    assert!(c.writes.iter().any(|w| w.kind == MeasureTuneKind::Eq));
+}
+
 // A subwoofer alone, low-passed after it was measured: its level is not judged
 // where it plays nothing (the function test's was: ten cuts of 15 dB).
 #[test]
