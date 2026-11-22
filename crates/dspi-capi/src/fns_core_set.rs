@@ -311,8 +311,9 @@ pub extern "C" fn dspi_core_set_main(set: *mut FfiCoreSet) -> *mut FfiCore {
 }
 
 // -- WP MDQT1 --
-/// The open device `core` (a handle of this set) has now: its row as in
-/// `dspi_core_set_list`, in `{ok, value}`; `value` null with no device.
+/// The open device `core` (a handle of this set) has, as the last
+/// `dspi_core_set_list` or poll saw it: its row as there, in `{ok, value}`;
+/// `value` null with no device. Does not wait on a device.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_core_set_device_of(
     set: *mut FfiCoreSet,
@@ -321,9 +322,8 @@ pub extern "C" fn dspi_core_set_device_of(
     len: u32,
 ) -> u32 {
     set_text(set, buf, len, |s| {
-        s.set.refresh();
         let device = crate::with_core(core, None, |c| s.set.device_of(&c.core));
-        json_reply(Ok(device))
+        json!({ "ok": true, "value": device }).to_string()
     })
 }
 

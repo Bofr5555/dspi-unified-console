@@ -31,6 +31,11 @@ struct FfiCore;
 // Over a slow transport (a Link bridge; LinkController sets slowTransport)
 // every poll runs at 2 Hz at most.
 //
+// -- WP MDQT1 -- It reads the active device: after a switch the next tick is the
+// new one's, a read of the old one still in flight is dropped, and the meters
+// start over. The other open devices are read once a second by their sessions
+// (DeviceSession).
+//
 // A work package adds its own poll instead of a timer of its own:
 //
 //     m_poll = ctx.poller->add(QStringLiteral("subharmonic meter"), 100, this,
@@ -132,6 +137,7 @@ private:
     void tick(Id id);
     void schedule(Poll &poll);
     void updateRunning();
+    void rebind();   // -- WP MDQT1 --
 
     Core *m_core;
     DeviceModel *m_device;
@@ -141,6 +147,7 @@ private:
     Id m_statusPoll = 0;
     bool m_running = false;
     bool m_slow = false;
+    quint64 m_epoch = 0;   // -- WP MDQT1 -- counts the switches of the active device
     QVariantList m_peaks;
     uint m_clipFlags = 0;
     QVariantList m_peakHold;   // -- WP QP18 --

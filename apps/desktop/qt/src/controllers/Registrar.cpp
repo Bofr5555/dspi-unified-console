@@ -1,11 +1,15 @@
 #include "Registrar.h"
 
+#include "DeviceRegistry.h"   // -- WP MDQT1 --
 #include "Shell.h"
 
 #include <QHash>
 #include <QJSEngine>
 #include <QStringList>
 #include <algorithm>
+
+// -- WP MDQT1 --
+DeviceSession *AppContext::activeSession() const { return registry ? registry->active() : nullptr; }
 
 namespace Registrar {
 

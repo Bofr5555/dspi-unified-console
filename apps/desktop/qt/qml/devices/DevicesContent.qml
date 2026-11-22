@@ -67,6 +67,44 @@ ColumnLayout {
             width: flick.width
             spacing: 4
 
+            // -- WP MDQT1 -- ---- Open devices: only when several are
+            SectionHeading {
+                objectName: "DevicesPopup.openHeading"
+                Layout.fillWidth: true
+                visible: DeviceRegistry.devices.length > 1
+                text: qsTr("Open devices")
+            }
+            Repeater {
+                model: DeviceRegistry.devices.length > 1 ? DeviceRegistry.devices : []
+                delegate: RowLayout {
+                    id: openRow
+                    required property var modelData
+                    Layout.fillWidth: true
+                    spacing: 2
+                    DeviceRow {
+                        Layout.fillWidth: true
+                        objectName: "DevicesPopup.open." + openRow.modelData.id
+                        iconName: openRow.modelData.transport === "usb" ? "usb"
+                                  : openRow.modelData.transport === "demo" ? "play"
+                                  : openRow.modelData.transport === "file" ? "file-text" : "network"
+                        title: openRow.modelData.title
+                        subtitle: openRow.modelData.state === "lost" ? qsTr("Not connected")
+                                  : openRow.modelData.state === "reconnecting" ? qsTr("Reconnecting…")
+                                  : openRow.modelData.serial
+                        current: openRow.modelData.active
+                        onClicked: DevicesController.chooseOpen(openRow.modelData.id)
+                    }
+                    IconButton {
+                        objectName: "DevicesPopup.close." + openRow.modelData.id
+                        iconName: "x"
+                        //: %1 is a device's name
+                        toolTip: qsTr("Close %1").arg(openRow.modelData.title)
+                        Accessible.name: toolTip
+                        onClicked: DevicesController.closeOpen(openRow.modelData.id)
+                    }
+                }
+            }
+
             // ---- USB and the demo
             SectionHeading {
                 Layout.fillWidth: true

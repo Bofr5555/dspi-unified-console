@@ -15,6 +15,7 @@ fn reply(f: impl FnOnce(*mut c_char, u32) -> u32) -> Value {
 }
 
 fn device_of(set: *mut FfiCoreSet, core: *const FfiCore) -> Value {
+    reply(|b, l| dspi_core_set_list(set, b, l));
     reply(|b, l| dspi_core_set_device_of(set, core, b, l))["value"].clone()
 }
 
