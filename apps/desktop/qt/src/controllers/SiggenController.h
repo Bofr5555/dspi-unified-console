@@ -6,11 +6,14 @@
 #include <QVariantList>
 #include <QtQml/qqmlregistration.h>
 #include <array>
+#include <functional>
+#include <memory>
 
 #include "CoreApi.h"
 #include "Poller.h"
 #include "Registrar.h"
 
+class DeviceSession;
 class QQmlEngine;
 class QJSEngine;
 
@@ -27,9 +30,13 @@ class QJSEngine;
 // - Start sends the configuration and SIGGEN_CTL_START, Stop SIGGEN_CTL_STOP
 //   (faded) or SIGGEN_CTL_STOP_NOW, all through DeviceModel::write, so a
 //   read-only device sends nothing. Closing the window or quitting does not
-//   stop the generator.
+//   stop the generator. -- WP MDQT2c -- Leaving the device does (another one
+//   becomes active, it is closed or replaced): what was started here is
+//   stopped there, faded. A measurement's generator is not this one's.
 // - Status: read every 300 ms while the generator runs, and after every
 //   notification batch carrying NOTIFY_SIGGEN (a start elsewhere, completion).
+// - -- WP MDQT2c -- The draft, the capabilities and the status are per device
+//   (the session's stash); what is shown is the active one's.
 // - The type table (labels, the status names, the blurbs, the fallback
 //   ranges) is the Mac's; the device's capabilities override the ranges.
 class SiggenController : public QObject {
@@ -152,8 +159,8 @@ public:
     Q_INVOKABLE static QString unitFor(int semantic);
 
     // For tests
-    const SiggenConfig &draft() const { return m_draft; }
-    const SiggenStatus &status() const { return m_status; }
+    const SiggenConfig &draft() const { return state()->draft; }
+    const SiggenStatus &status() const { return state()->status; }
     Poller::Id statusPoll() const;
 
 signals:
@@ -171,21 +178,39 @@ private:
     // A type's timing and parameters: the device's when it sent them, else the table's
     int timingOf(int type) const;
     Param paramOf(int type, int index) const;
+    // -- WP MDQT2c -- one device's
+    struct Device {
+        SiggenCaps caps{};
+        bool supported = false;
+        SiggenConfig draft{};
+        SiggenStatus status{};
+        uint64_t generation = 0;
+        // Started (or edited while it ran) from here, and not seen to end since;
+        // `seen`: it was seen playing since the last start
+        bool ours = false;
+        bool seen = false;
+        QString serial;   // the device it was started on
+        int starts = 0;   // Starts on their way
+        Device();
+    };
+    using StatePtr = std::shared_ptr<Device>;
+    StatePtr state() const;
+    bool shown(const StatePtr &st) const { return st == state(); }
+    void started(const StatePtr &st);
+    void stopOn(DeviceSession *session);
+    void sendStart(const SiggenConfig &cfg);
     void edit(const std::function<void(SiggenConfig &)> &change);
     void onSnapshot();
     void onState(uint flags);
     void fetchAll();
     void fetchStatus();
-    void setStatus(const SiggenStatus &status);
+    void fetchStatus(DeviceSession *session, const StatePtr &st);
+    void setStatus(const StatePtr &st, const SiggenStatus &status);
     void sendLive();
     void updatePoll();
 
     AppContext m_ctx;
-    SiggenCaps m_caps{};
-    bool m_supported = false;
-    SiggenConfig m_draft{};
-    SiggenStatus m_status{};
-    uint64_t m_generation = 0;
+    StatePtr m_announced;   // -- WP MDQT2c -- the one the last change notices were for
     bool m_shown = false;
     Poller::Id m_poll = 0;
     // The live apply's debounce (a single shot after an edit, not a poll)

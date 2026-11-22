@@ -135,6 +135,7 @@ ColumnLayout {
     QuestionDialog {
         id: deleteQuestion
         objectName: "MeasureDocs.deleteQuestion"
+        ofDevice: true   // -- WP MDQT2c -- the hub's copy is that of its hub
         parent: Overlay.overlay
         property var doc: ({})
         title: qsTr("Delete \"%1\"?").arg(doc.name || "")

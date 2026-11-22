@@ -14,7 +14,7 @@
 #include "CoreApi.h"
 #include "Registrar.h"
 
-class Core;
+class DeviceSession;
 class PrefsMap;
 class QQmlEngine;
 class QJSEngine;
@@ -30,6 +30,9 @@ class QJSEngine;
 //   view watches (0 otherwise, which stops the analyser on the device), bins
 //   while a curve view watches, the transform size, averaging and decay from
 //   the Spectrum Analyser settings. Nothing is asked while nothing watches.
+// - -- WP MDQT2c -- Several devices: the analyser follows the active one. Its
+//   own core calls back, its picture, caps and ownership are its own; the one
+//   left is asked for nothing (its analyser rests) until it is active again.
 // - Selections: the dashboard's is stored (spectrum/dashboardSource and the
 //   other side); a channel page starts on its own channel and is not stored.
 // - Following: when another console drives the analyser, every view draws the
@@ -107,14 +110,15 @@ public:
     };
 
     RtaController(const AppContext &ctx, QObject *parent = nullptr);
+    ~RtaController() override;
     static RtaController *create(QQmlEngine *, QJSEngine *) { return Registrar::instance<RtaController>(); }
 
     bool ready() const;
     bool available() const;
     int largestOrder() const;
-    const RtaCapsInfo &capabilities() const { return m_caps; }
+    const RtaCapsInfo &capabilities() const { return state()->caps; }
     // The latest picture (GUI thread)
-    const RtaSnapshot &snapshot() const { return *m_snap; }
+    const RtaSnapshot &snapshot() const { return *state()->snap; }
     int pictureRevision() const;
 
     bool onDashboard() const;
@@ -178,7 +182,7 @@ public:
     Q_INVOKABLE int draggedBarHeight(double startHeight, double dy, int count) const;
 
     // The request as last sent (tests)
-    const RtaRequest &request() const { return m_request; }
+    const RtaRequest &request() const { return state()->request; }
     // How many requests were sent (tests)
     int requestsSent() const;
 
@@ -193,17 +197,37 @@ signals:
 
 private:
     struct Shared;
-    // Unsets the analyser's callback when the controller goes (after
-    // Core::shutdown there is nothing left to unset)
-    struct CallbackRelease {
-        Core *core = nullptr;
-        CallbackRelease() = default;
-        CallbackRelease(const CallbackRelease &) = delete;
-        CallbackRelease &operator=(const CallbackRelease &) = delete;
-        ~CallbackRelease();
+    // -- WP MDQT2c -- one device's analyser: what its core handed over, its page's
+    // selection and the request sent there
+    struct State {
+        std::shared_ptr<Shared> shared;   // once its core's callback is set
+        std::shared_ptr<RtaSnapshot> snap = std::make_shared<RtaSnapshot>();
+        RtaCapsInfo caps{};
+        RtaOwnership owner{};
+        uint32_t version = 0;
+        uint32_t telemetry = 0;
+        uint64_t generation = 0;
+        uint64_t askedGeneration = 0;   // the read-only connection openAnalyser() tried
+        bool readOnlyRefused = false;
+        // -1 on the dashboard, else the wire channel of the page
+        int page = -1;
+        Selection pageSelection;
+        Selection pageOtherSide;
+        bool pageOtherKnown = false;
+        RtaRequest request{};
+        bool watching = false;
+        bool sentOnce = false;
+        State();
     };
+    using StatePtr = std::shared_ptr<State>;
+    StatePtr state() const;
+    // The active device's core calls back here from now on
+    void listen();
+    // Nothing is asked of a device that is left or closing
+    void stopAsking(DeviceSession *session);
+    void unlisten(DeviceSession *session);
     static void thunk(void *self);
-    Q_INVOKABLE void onPicture();
+    void onPicture();
     // Stores a spectrum/* key of this package's and updates the map QML binds to
     void setPref(const char *key, const QVariant &value);
     void onSnapshot();
@@ -217,34 +241,16 @@ private:
     void push();
     void startAnalyser();
 public:
-    bool readOnlyRefused() const { return m_readOnlyRefused; }
+    bool readOnlyRefused() const { return state()->readOnlyRefused; }
 private:
 
     AppContext m_ctx;
     PrefsMap *m_prefs;
     // The settings page's map (fftOrder, avgMs, ...), found once the controllers exist
     PrefsMap *m_settings = nullptr;
-    std::shared_ptr<Shared> m_shared;
-    std::shared_ptr<RtaSnapshot> m_snap;
-    // After m_shared: released first
-    CallbackRelease m_release;
-    RtaCapsInfo m_caps{};
-    RtaOwnership m_owner{};
-    uint32_t m_version = 0;
-    uint32_t m_telemetry = 0;
-    int m_pictureRevision = 0;
-    uint64_t m_generation = 0;
-    uint64_t m_askedGeneration = 0;   // the read-only connection openAnalyser() tried
-    bool m_readOnlyRefused = false;
-    // -1 on the dashboard, else the wire channel of the page
-    int m_page = -1;
-    Selection m_pageSelection;
-    Selection m_pageOtherSide;
-    bool m_pageOtherKnown = false;
+    StatePtr m_announced;   // -- WP MDQT2c -- the one the last change notices were for
     QHash<QString, int> m_views;
-    RtaRequest m_request{};
-    bool m_watching = false;
-    bool m_sentOnce = false;
+    int m_pictureRevision = 0;
     int m_requestsSent = 0;
 };
 

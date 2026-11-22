@@ -1,110 +1,26 @@
 #ifndef MEASURECONTROLLER_H
 #define MEASURECONTROLLER_H
 
-// -- WP P5QUI -- Tools > Measure… (PLAN-P5 T1, T5, T7 to T9, T11; the web's
-// P5WMS screens on Qt): the setup and the run, the results, the live view with
-// its direct adjustments and the microphone RTA, and the documents. Every rule
-// is the core's (dspi_measure_*: the preflight, the ramp, the aborts, the
-// documents); this controller only drives the calls and shows what they say.
-//
-// Nothing is ever played by the host (S1): the stimulus is the DSPi's own
-// generator. The microphone is P5QCAP's AudioCapture (capture only), or the
-// demo DSPi's simulated microphone (P5DEMO), which is arithmetic in the core.
-//
-// Threads:
-// - The measurement loop (MeasureLoop) is a thread of its own with a 50 ms
-//   timer: it ticks the session, the live view or the tune (dspi_measure_tick,
-//   _live_tick, _tune_tick), pushes the microphone's blocks
-//   (dspi_measure_capture_push, in order, straight from the capture) and runs
-//   the session's own calls (start, stop, next position, the summed check, the
-//   verify, Keep). The core is internally locked; these calls are documented
-//   "off the UI thread".
-// - Writes that change the device's parameters (a live adjustment, a tune's
-//   apply, its revert, the A/B) go through DeviceModel::write on the core
-//   worker, as every write does, so the snapshot and the history follow.
-// - The store's calls (documents, imports, export) run on the core worker.
-// The GUI thread never waits on any of them.
-//
-// Stop is always offered while anything runs; leaving the app stops what this
-// controller started (one STOP_NOW in the core) before the core goes.
+// -- WP MDQT2c -- Tools > Measure… as QML and the other controllers see it: a
+// facade over the active device's MeasureSession, where it all happens
+// (MeasureSession.h). When another device becomes active, every property is
+// that one's; what runs on the one left goes on there (`otherRuns`, with a Stop
+// of its own, and a notice with the outcome). One microphone: while a run on one
+// device has an input open, none is opened for another.
 
-#include <QByteArray>
-#include <QJsonObject>
+#include <QHash>
+#include <QList>
 #include <QObject>
 #include <QPointer>
-#include <QString>
-#include <QStringList>
 #include <QVariantList>
 #include <QVariantMap>
 #include <QtQml/qqmlregistration.h>
-#include <atomic>
-#include <functional>
 
-#include "AudioCapture.h"
+#include "MeasureSession.h"
 #include "Registrar.h"
 
 class QJSEngine;
 class QQmlEngine;
-class QThread;
-class QTimer;
-struct FfiCore;
-
-// The measurement thread's object: the tick, the pushes and the session's calls
-class MeasureLoop : public QObject {
-    Q_OBJECT
-public:
-    // What the timer drives (set from any thread)
-    std::atomic<bool> session{ false };   // dspi_measure_tick while active
-    std::atomic<bool> live{ false };      // dspi_measure_live_tick instead
-    std::atomic<bool> tune{ false };      // dspi_measure_tune_tick (runs and the guard)
-    // -- WP P5QUI2 -- the passive microphone RTA: the blocks to
-    // dspi_measure_rta_passive_push, its frame read about 4 times a second
-    std::atomic<bool> passive{ false };
-    // -- WP ATQT -- the several-units step's session on the hub
-    // (dspi_measure_system_tick; the blocks to dspi_measure_system_capture_push)
-    std::atomic<bool> system{ false };
-
-    explicit MeasureLoop(FfiCore *core) : m_core(core) {}
-    FfiCore *core() const { return m_core; }
-    // How often the timer ticks
-    static constexpr int kTickMs = 50;
-
-public slots:
-    void begin();
-    void push(const dspi_capture::Block &block);
-    // Asks for the live view's frame on the next tick (after a proposal)
-    void refreshFrame() { m_frameWanted = true; }
-    // The end: whatever runs is stopped (one STOP_NOW each), the timer too
-    void finish();
-
-signals:
-    // Each a JSON reply, emitted when it changed (at most about 5 a second
-    // while only the progress moves)
-    void sessionState(const QByteArray &json);
-    void liveState(const QByteArray &json);
-    void liveFrame(const QByteArray &json);
-    void tuneState(const QByteArray &json);
-    // A push the core refused (a null pointer, a block over its bound)
-    void pushRefused(const QByteArray &json);
-    // -- WP P5QUI2 -- the passive RTA's frame ({ok, state, rta})
-    void passiveFrame(const QByteArray &json);
-    // -- WP ATQT -- the several-units session's state (MeasureSystemState)
-    void systemState(const QByteArray &json);
-
-private:
-    void tick();
-    bool due(QByteArray *last, qint64 *at, const QByteArray &now, const char *key);
-
-    FfiCore *m_core;
-    QTimer *m_timer = nullptr;
-    QByteArray m_lastSession, m_lastLive, m_lastTune;
-    qint64 m_sessionAt = 0, m_liveAt = 0, m_tuneAt = 0;
-    QByteArray m_liveKey;   // seq, pending, active, runs of the last frame read
-    bool m_frameWanted = false;
-    int m_passiveTicks = 0;   // -- WP P5QUI2 --
-    QByteArray m_lastSystem;   // -- WP ATQT --
-    qint64 m_systemAt = 0;     // -- WP ATQT --
-};
 
 class MeasureController : public QObject {
     Q_OBJECT
@@ -240,220 +156,231 @@ class MeasureController : public QObject {
     Q_PROPERTY(QString said READ said NOTIFY errorChanged)
     Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)
 
+    // ---- Several devices (-- WP MDQT2c --) ----
+    Q_PROPERTY(QString runningOn READ runningOn NOTIFY runningChanged)
+    Q_PROPERTY(QVariantList otherRuns READ otherRuns NOTIFY otherRunsChanged)
+
 public:
     MeasureController(const AppContext &ctx, QObject *parent = nullptr);
     ~MeasureController() override;
     static MeasureController *create(QQmlEngine *, QJSEngine *);
 
-    bool connected() const;
-    QString playBlocker() const;
-    QVariantList outputs() const { return m_outputs; }
+    // The active device's, made when it is first shown
+    MeasureSession *session() const;
+    QList<MeasureSession *> sessions() const { return m_sessions.values(); }
+    // The one, but for `but`, whose input is open or being opened; null for none
+    MeasureSession *capturing(const MeasureSession *but) const;
+    // Something on a device that is not shown has an outcome: a notice names it
+    void report(MeasureSession *on, const QString &text, bool warning);
 
-    bool simAvailable() const { return m_simAvailable; }
-    QString simLabel() const { return m_simLabel; }
-    QString micChoice() const { return m_micChoice; }
-    void setMicChoice(const QString &choice);
-    QVariantList inputs() const { return m_inputs; }
-    bool micOpen() const;
-    QString micSummary() const { return m_micSummary; }
-    bool micCalibrated() const { return !m_micDocument.isEmpty(); }
-    QByteArray micDocument() const { return m_micDocument; }
+    // Which device this window's runs are on, "" with one device open
+    QString runningOn() const;
+    // What runs on the other open devices: [{ id, title, text }]
+    QVariantList otherRuns() const { return m_others; }
+    Q_INVOKABLE void stopOther(const QString &id);
+    Q_INVOKABLE void showOther(const QString &id);
+    // The window is closed: what it started stops, on every device
+    Q_INVOKABLE void stopAll();
 
-    QVariantList setupOutputs() const { return m_setupOutputs; }
-    QString placement() const { return m_placement; }
-    void setPlacement(const QString &p);
-    int count() const { return m_count; }
-    void setCount(int n);
-    QString coupler() const { return m_coupler; }
-    void setCoupler(const QString &c);
-    int sweepMs() const { return m_sweepMs; }
-    void setSweepMs(int ms);
-    int passes() const { return m_passes; }
-    void setPasses(int n);
-    QString runName() const { return m_runName; }
-    void setRunName(const QString &n);
-    QString setupProblem() const;
-    QVariantList preflightLines() const { return m_preflightLines; }
-    bool preflightDone() const { return m_preflightDone; }
-    bool preflightClear() const { return m_preflightClear; }
+    bool connected() const { return session()->connected(); }
+    QString playBlocker() const { return session()->playBlocker(); }
+    QVariantList outputs() const { return session()->outputs(); }
 
-    QString phase() const;
-    QString phaseText() const;
-    int progress() const;
-    bool measuring() const;
-    bool waitingPosition() const { return phase() == QLatin1String("waitPosition"); }
-    QString issueText() const;
-    QString timingText() const;
-    bool timingReliable() const;
-    bool running() const;
-    QString runningText() const;
+    bool simAvailable() const { return session()->simAvailable(); }
+    QString simLabel() const { return session()->simLabel(); }
+    QString micChoice() const { return session()->micChoice(); }
+    void setMicChoice(const QString &choice) { session()->setMicChoice(choice); }
+    QVariantList inputs() const { return session()->inputs(); }
+    bool micOpen() const { return session()->micOpen(); }
+    QString micSummary() const { return session()->micSummary(); }
+    bool micCalibrated() const { return session()->micCalibrated(); }
+    QByteArray micDocument() const { return session()->micDocument(); }
 
-    bool hasResult() const { return !m_result.isEmpty(); }
-    QByteArray resultDocument() const { return m_result; }
-    QString resultName() const { return m_resultView.value(QStringLiteral("name")).toString(); }
-    QString resultSummary() const { return m_resultView.value(QStringLiteral("summary")).toString(); }
-    QString resultTiming() const { return m_resultView.value(QStringLiteral("timing")).toString(); }
-    QVariant resultTimingReliable() const { return m_resultView.value(QStringLiteral("reliable")); }
-    QVariantList resultOutputs() const { return m_resultView.value(QStringLiteral("outputs")).toList(); }
-    QVariantMap resultGraph() const { return m_resultGraph; }
-    QString resultFrom() const { return m_resultFrom; }
-    int resultSmoothing() const { return m_resultSmoothing; }
-    void setResultSmoothing(int n);
-    bool resultTarget() const { return m_resultTarget; }
-    void setResultTarget(bool on);
-    int resultCurvesSmoothing() const;
+    QVariantList setupOutputs() const { return session()->setupOutputs(); }
+    QString placement() const { return session()->placement(); }
+    void setPlacement(const QString &p) { session()->setPlacement(p); }
+    int count() const { return session()->count(); }
+    void setCount(int n) { session()->setCount(n); }
+    QString coupler() const { return session()->coupler(); }
+    void setCoupler(const QString &c) { session()->setCoupler(c); }
+    int sweepMs() const { return session()->sweepMs(); }
+    void setSweepMs(int ms) { session()->setSweepMs(ms); }
+    int passes() const { return session()->passes(); }
+    void setPasses(int n) { session()->setPasses(n); }
+    QString runName() const { return session()->runName(); }
+    void setRunName(const QString &n) { session()->setRunName(n); }
+    QString setupProblem() const { return session()->setupProblem(); }
+    QVariantList preflightLines() const { return session()->preflightLines(); }
+    bool preflightDone() const { return session()->preflightDone(); }
+    bool preflightClear() const { return session()->preflightClear(); }
 
-    bool passiveActive() const { return m_passiveOn; }
-    QString passiveBlocker() const;
-    QVariantMap passiveGraph() const { return m_passiveGraph; }
-    QVariantMap passiveCompareGraph() const { return m_passiveCompareGraph; }
-    bool passiveHeld() const { return m_passiveHeld; }
-    bool passiveReady() const { return m_passiveReady; }
-    int passiveFrames() const { return m_passiveFrames; }
-    QString passiveAveraging() const { return m_passiveAveraging; }
+    QString phase() const { return session()->phase(); }
+    QString phaseText() const { return session()->phaseText(); }
+    int progress() const { return session()->progress(); }
+    bool measuring() const { return session()->measuring(); }
+    bool waitingPosition() const { return session()->waitingPosition(); }
+    QString issueText() const { return session()->issueText(); }
+    QString timingText() const { return session()->timingText(); }
+    bool timingReliable() const { return session()->timingReliable(); }
+    bool running() const { return session()->running(); }
+    QString runningText() const { return session()->runningText(); }
 
-    bool liveActive() const;
-    QString liveText() const;
-    int liveSeq() const { return m_live.value(QLatin1String("seq")).toInt(); }
-    QString liveMode() const { return m_live.value(QLatin1String("mode")).toString(QStringLiteral("sweep")); }
-    int liveOutput() const { return m_live.value(QLatin1String("output")).toInt(); }
-    QString liveIssueText() const;
-    QVariantMap liveGraph() const { return m_liveGraph; }
-    QVariantMap compareGraph() const { return m_compareGraph; }
-    bool rtaHeld() const { return m_rtaHeld; }
-    bool rtaReady() const { return m_rtaReady; }
-    int rtaFrames() const { return m_rtaFrames; }
-    bool liveMeasured() const { return m_liveMeasured; }
-    double livePeakHz() const { return m_livePeakHz; }
-    QVariantMap proposal() const { return m_proposal; }
-    QString liveSaid() const { return m_liveSaid; }
-    QString targetName() const { return m_targetName; }
-    QByteArray targetDocument() const { return m_targetDocument; }
+    bool hasResult() const { return session()->hasResult(); }
+    QByteArray resultDocument() const { return session()->resultDocument(); }
+    QString resultName() const { return session()->resultName(); }
+    QString resultSummary() const { return session()->resultSummary(); }
+    QString resultTiming() const { return session()->resultTiming(); }
+    QVariant resultTimingReliable() const { return session()->resultTimingReliable(); }
+    QVariantList resultOutputs() const { return session()->resultOutputs(); }
+    QVariantMap resultGraph() const { return session()->resultGraph(); }
+    QString resultFrom() const { return session()->resultFrom(); }
+    int resultSmoothing() const { return session()->resultSmoothing(); }
+    void setResultSmoothing(int n) { session()->setResultSmoothing(n); }
+    bool resultTarget() const { return session()->resultTarget(); }
+    void setResultTarget(bool on) { session()->setResultTarget(on); }
+    int resultCurvesSmoothing() const { return session()->resultCurvesSmoothing(); }
 
-    QVariantList documents() const { return m_documents; }
-    bool hubDocuments() const { return m_hubDocuments; }
-    QString documentsNote() const { return m_documentsNote; }
+    bool passiveActive() const { return session()->passiveActive(); }
+    QString passiveBlocker() const { return session()->passiveBlocker(); }
+    QVariantMap passiveGraph() const { return session()->passiveGraph(); }
+    QVariantMap passiveCompareGraph() const { return session()->passiveCompareGraph(); }
+    bool passiveHeld() const { return session()->passiveHeld(); }
+    bool passiveReady() const { return session()->passiveReady(); }
+    int passiveFrames() const { return session()->passiveFrames(); }
+    QString passiveAveraging() const { return session()->passiveAveraging(); }
 
-    QString error() const { return m_error; }
-    QString said() const { return m_said; }
-    bool busy() const { return m_busy > 0; }
+    bool liveActive() const { return session()->liveActive(); }
+    QString liveText() const { return session()->liveText(); }
+    int liveSeq() const { return session()->liveSeq(); }
+    QString liveMode() const { return session()->liveMode(); }
+    int liveOutput() const { return session()->liveOutput(); }
+    QString liveIssueText() const { return session()->liveIssueText(); }
+    QVariantMap liveGraph() const { return session()->liveGraph(); }
+    QVariantMap compareGraph() const { return session()->compareGraph(); }
+    bool rtaHeld() const { return session()->rtaHeld(); }
+    bool rtaReady() const { return session()->rtaReady(); }
+    int rtaFrames() const { return session()->rtaFrames(); }
+    bool liveMeasured() const { return session()->liveMeasured(); }
+    double livePeakHz() const { return session()->livePeakHz(); }
+    QVariantMap proposal() const { return session()->proposal(); }
+    QString liveSaid() const { return session()->liveSaid(); }
+    QString targetName() const { return session()->targetName(); }
+    QByteArray targetDocument() const { return session()->targetDocument(); }
+
+    QVariantList documents() const { return session()->documents(); }
+    bool hubDocuments() const { return session()->hubDocuments(); }
+    QString documentsNote() const { return session()->documentsNote(); }
+
+    QString error() const { return session()->error(); }
+    QString said() const { return session()->said(); }
+    bool busy() const { return session()->busy(); }
 
     // ---- The microphone ----
-    Q_INVOKABLE void refreshInputs();
+    Q_INVOKABLE void refreshInputs() { session()->refreshInputs(); }
     // An open dialog, then importMicFile(); clearMic() goes back to relative dB
-    Q_INVOKABLE void chooseMicFile();
-    Q_INVOKABLE void importMicFile(const QString &path);
-    Q_INVOKABLE void clearMic();
+    Q_INVOKABLE void chooseMicFile() { session()->chooseMicFile(); }
+    Q_INVOKABLE void importMicFile(const QString &path) { session()->importMicFile(path); }
+    Q_INVOKABLE void clearMic() { session()->clearMic(); }
 
     // ---- The setup and the run ----
-    Q_INVOKABLE void setOutputOn(int output, bool on);
-    Q_INVOKABLE void setOutputRole(int output, const QString &role);
-    Q_INVOKABLE void setOutputSpeaker(int output, const QString &speaker);
-    Q_INVOKABLE void setOutputGroup(int output, int group);
+    Q_INVOKABLE void setOutputOn(int output, bool on) { session()->setOutputOn(output, on); }
+    Q_INVOKABLE void setOutputRole(int output, const QString &role) { session()->setOutputRole(output, role); }
+    Q_INVOKABLE void setOutputSpeaker(int output, const QString &speaker) { session()->setOutputSpeaker(output, speaker); }
+    Q_INVOKABLE void setOutputGroup(int output, int group) { session()->setOutputGroup(output, group); }
     // The layout the device's state suggests (roles, speakers, groups)
-    Q_INVOKABLE void proposeLayout();
+    Q_INVOKABLE void proposeLayout() { session()->proposeLayout(); }
     // -- WP ROLEQ -- the rows from the stored speaker layout (its outputs
     // chosen), else the proposal; done when a device opens
-    Q_INVOKABLE void fillFromLayout();
-    Q_INVOKABLE void preflight();
+    Q_INVOKABLE void fillFromLayout() { session()->fillFromLayout(); }
+    Q_INVOKABLE void preflight() { session()->preflight(); }
     // Preflight, the microphone, then the run
-    Q_INVOKABLE void start();
-    Q_INVOKABLE void nextPosition();
+    Q_INVOKABLE void start() { session()->start(); }
+    Q_INVOKABLE void nextPosition() { session()->nextPosition(); }
     // Stop: the run, the live view and the tune's runs, the microphone
-    Q_INVOKABLE void stop();
+    Q_INVOKABLE void stop() { session()->stop(); }
 
     // ---- The result ----
-    Q_INVOKABLE void setOutputShown(int output, bool shown);
+    Q_INVOKABLE void setOutputShown(int output, bool shown) { session()->setOutputShown(output, shown); }
     // An open dialog, then openResultFile()
-    Q_INVOKABLE void chooseResultFile();
-    Q_INVOKABLE void openResultFile(const QString &path);
+    Q_INVOKABLE void chooseResultFile() { session()->chooseResultFile(); }
+    Q_INVOKABLE void openResultFile(const QString &path) { session()->openResultFile(path); }
     // Files the result in this console's store, or on the hub
-    Q_INVOKABLE void saveResult();
-    Q_INVOKABLE void saveResultToHub();
+    Q_INVOKABLE void saveResult() { session()->saveResult(); }
+    Q_INVOKABLE void saveResultToHub() { session()->saveResultToHub(); }
     // A save dialog, then saveResultTo() (the document's text)
-    Q_INVOKABLE void exportResult();
-    Q_INVOKABLE void saveResultTo(const QString &path);
+    Q_INVOKABLE void exportResult() { session()->exportResult(); }
+    Q_INVOKABLE void saveResultTo(const QString &path) { session()->saveResultTo(path); }
     // Output `output`'s response as REW text: a save dialog, then exportRewTo()
-    Q_INVOKABLE void exportRew(int output);
-    Q_INVOKABLE void exportRewTo(int output, const QString &path);
-    Q_INVOKABLE void clearResult();
+    Q_INVOKABLE void exportRew(int output) { session()->exportRew(output); }
+    Q_INVOKABLE void exportRewTo(int output, const QString &path) { session()->exportRewTo(output, path); }
+    Q_INVOKABLE void clearResult() { session()->clearResult(); }
 
     // ---- The live view ----
     // { output, role, mode ("sweep", "pinkRta"), placement, coupler, smoothing,
     // averaging }
-    Q_INVOKABLE void liveStart(const QVariantMap &setup);
-    Q_INVOKABLE void liveStop();
-    Q_INVOKABLE void cutPeak(double freqHz);
-    Q_INVOKABLE void fitRange(double f1Hz, double f2Hz);
+    Q_INVOKABLE void liveStart(const QVariantMap &setup) { session()->liveStart(setup); }
+    Q_INVOKABLE void liveStop() { session()->liveStop(); }
+    Q_INVOKABLE void cutPeak(double freqHz) { session()->cutPeak(freqHz); }
+    Q_INVOKABLE void fitRange(double f1Hz, double f2Hz) { session()->fitRange(f1Hz, f2Hz); }
     // Writes the pending change as one undo step, or drops it
-    Q_INVOKABLE void liveApply();
-    Q_INVOKABLE void liveDiscard();
-    Q_INVOKABLE void liveHold(bool on);
-    Q_INVOKABLE void liveAveraging(const QString &averaging);
+    Q_INVOKABLE void liveApply() { session()->liveApply(); }
+    Q_INVOKABLE void liveDiscard() { session()->liveDiscard(); }
+    Q_INVOKABLE void liveHold(bool on) { session()->liveHold(on); }
+    Q_INVOKABLE void liveAveraging(const QString &averaging) { session()->liveAveraging(averaging); }
     // Edit > Undo (HistoryController): takes the last step back
-    Q_INVOKABLE void undo();
+    Q_INVOKABLE void undo() { session()->undo(); }
     // A target file (REW or CSV): an open dialog, then importTargetFile()
-    Q_INVOKABLE void chooseTargetFile(const QString &use, const QString &coupler);
-    Q_INVOKABLE void importTargetFile(const QString &path, const QString &use, const QString &coupler);
-    Q_INVOKABLE void clearTarget();
+    Q_INVOKABLE void chooseTargetFile(const QString &use, const QString &coupler) { session()->chooseTargetFile(use, coupler); }
+    Q_INVOKABLE void importTargetFile(const QString &path, const QString &use, const QString &coupler) { session()->importTargetFile(path, use, coupler); }
+    Q_INVOKABLE void clearTarget() { session()->clearTarget(); }
 
     // ---- The passive microphone RTA (-- WP P5QUI2 --) ----
     // The chosen input (never the simulated microphone: it hears only the
     // generator), then the core's passive RTA; Stop (or stop()) ends it
-    Q_INVOKABLE void passiveStart(const QString &averaging);
-    Q_INVOKABLE void passiveStop();
-    Q_INVOKABLE void passiveHold(bool on);
-    Q_INVOKABLE void setPassiveAveraging(const QString &averaging);
+    Q_INVOKABLE void passiveStart(const QString &averaging) { session()->passiveStart(averaging); }
+    Q_INVOKABLE void passiveStop() { session()->passiveStop(); }
+    Q_INVOKABLE void passiveHold(bool on) { session()->passiveHold(on); }
+    Q_INVOKABLE void setPassiveAveraging(const QString &averaging) { session()->setPassiveAveraging(averaging); }
     // Reads the client read-only mode again (playBlocker); also on every snapshot
-    Q_INVOKABLE void refreshAccess();
+    Q_INVOKABLE void refreshAccess() { session()->refreshAccess(); }
 
     // ---- The documents ----
-    Q_INVOKABLE void reloadDocuments();
+    Q_INVOKABLE void reloadDocuments() { session()->reloadDocuments(); }
     // Opens document `id` (a measurement as the result, a mic as the
     // calibration, a target as the target); `where` "hub" reads the hub's
-    Q_INVOKABLE void openDocument(const QString &id, const QString &where);
-    Q_INVOKABLE void renameDocument(const QString &id, const QString &where, const QString &name);
-    Q_INVOKABLE void noteDocument(const QString &id, const QString &where, const QString &note);
-    Q_INVOKABLE void deleteDocument(const QString &id, const QString &where);
+    Q_INVOKABLE void openDocument(const QString &id, const QString &where) { session()->openDocument(id, where); }
+    Q_INVOKABLE void renameDocument(const QString &id, const QString &where, const QString &name) { session()->renameDocument(id, where, name); }
+    Q_INVOKABLE void noteDocument(const QString &id, const QString &where, const QString &note) { session()->noteDocument(id, where, note); }
+    Q_INVOKABLE void deleteDocument(const QString &id, const QString &where) { session()->deleteDocument(id, where); }
 
-    Q_INVOKABLE void clearError();
+    Q_INVOKABLE void clearError() { session()->clearError(); }
 
-    // ---- For TuneController (same thread rules) ----
-    MeasureLoop *loop() const { return m_loop; }
-    // Opens the chosen microphone; `done(ok, rateHz)` on the GUI thread
-    void openMic(std::function<void(bool ok, int rateHz)> done);
-    void closeMic();
-    // Runs `job` on the measurement thread, then `done(result)` here while
-    // `ctx` lives. The job gets the core (never null).
-    void onLoop(QObject *ctx, std::function<QByteArray(FfiCore *)> job, std::function<void(const QByteArray &)> done);
     // A JSON reply's failure in words (the notice's title when the table has
     // one, else the core's message)
-    static QString failureText(const QJsonObject &reply);
+    static QString failureText(const QJsonObject &reply) { return MeasureSession::failureText(reply); }
     // An issue {key, output, message} in words
-    QString issueWords(const QJsonObject &issue) const;
-    QString outputName(int output) const;
-    void fail(const QString &text);
-    void say(const QString &text);
-    void setResultDocument(const QByteArray &text, const QString &from);
+    QString issueWords(const QJsonObject &issue) const { return session()->issueWords(issue); }
+    QString outputName(int output) const { return session()->outputName(output); }
+    void fail(const QString &text) { session()->fail(text); }
+    void say(const QString &text) { session()->say(text); }
+    void setResultDocument(const QByteArray &text, const QString &from) { session()->setResultDocument(text, from); }
 
     // A call's reply as text, the buffer grown as the call asks
-    static QByteArray reply(const std::function<uint32_t(char *, uint32_t)> &call, int first = 1 << 16);
+    static QByteArray reply(const std::function<uint32_t(char *, uint32_t)> &call, int first = 1 << 16) { return MeasureSession::reply(call, first); }
     // A reply's JSON object (empty for one that is not)
-    static QJsonObject object(const QByteArray &text);
+    static QJsonObject object(const QByteArray &text) { return MeasureSession::object(text); }
     // A curve record ({freqsHz, magDb, valid, spl}) as a graph series
-    static QVariantMap series(const QJsonObject &curve, const QString &kind, const QString &label, int colour = 0);
-    // The graph of `series`: { series, yMin, yMax, unit }
-    static QVariantMap graph(const QVariantList &series, const QString &unit);
+    static QVariantMap series(const QJsonObject &curve, const QString &kind, const QString &label, int colour = 0) {
+        return MeasureSession::series(curve, kind, label, colour);
+    }
+    // The graph of `list`: { series, yMin, yMax, unit }
+    static QVariantMap graph(const QVariantList &list, const QString &unit) { return MeasureSession::graph(list, unit); }
 
     // The smoke driver's view of the capture
-    AudioCapture *capture() const { return m_capture; }
+    AudioCapture *capture() const { return session()->capture(); }
     // -- WP P5QUI2 -- the smoke driver's seam: the capture reads from this
     // source instead of an input (null: the inputs again)
-    void setCaptureSource(dspi_capture::SourceFactory factory) { m_captureSource = std::move(factory); }
-    // -- WP ATQT -- the several-units step (UnitsMeasureController): while its
-    // session plays, the Stop bar shows its words and Stop (or the window
-    // closed) stops it too
-    void setSystemRun(bool running, const QString &text, std::function<void()> stop);
+    void setCaptureSource(dspi_capture::SourceFactory factory) { session()->setCaptureSource(std::move(factory)); }
 
 signals:
     void deviceChanged();
@@ -472,122 +399,33 @@ signals:
     void passiveChanged();   // -- WP P5QUI2 --
     // A store or document call finished (the smoke driver): what and whether it went through
     void stored(const QString &op, bool ok);
+    // -- WP MDQT2c --
+    void otherRunsChanged();
+    // Another device is shown: a tab's own drafts start over (a placement chosen
+    // for the last one is not assumed for it)
+    void deviceSwitched();
+    void sessionMade(MeasureSession *session);
 
 private:
-    void onSnapshot();
-    void fillSetup(bool fromLayout);   // -- WP ROLEQ --
-    void onSessionState(const QByteArray &json);
-    void onLiveState(const QByteArray &json);
-    void onLiveFrame(const QByteArray &json);
-    void track(int delta);
-    void storeCall(const QString &op, std::function<QByteArray(FfiCore *)> job,
-                   std::function<void(const QByteArray &)> done = {});
-    QByteArray setupJson(int rateHz) const;
-    // -- WP ROLEQ -- whether it changed (a role, speaker or group change is
-    // written back to the speaker layout)
-    bool setOutputField(int output, const QString &field, const QVariant &value);
-    void refreshSim();
-    void takeResult();
-    void fileImported(const QByteArray &doc);
-    void propose(std::function<QByteArray(FfiCore *)> job);
-    void showProposal(const QJsonObject &proposal);
-    void setRunning();
+    MeasureSession *make(DeviceSession *device) const;
+    template <class Signal>
+    void relay(MeasureSession *from, Signal signal, void (MeasureController::*to)());
+    void onSwitched();
+    void checkOthers();
+    QVariantList others() const;
+    void drop(DeviceSession *device);
     void shutdown();
-    // -- WP P5QUI2 --
-    void openCapture(std::function<void(bool ok, int rateHz)> done);
-    void requestCurves();
-    void buildResultGraph();
-    void onPassiveFrame(const QByteArray &json);
-    void passiveEnded();
+    MeasureSession *byId(const QString &id) const;
 
     AppContext m_ctx;
-    QThread *m_thread = nullptr;
-    MeasureLoop *m_loop = nullptr;
-    AudioCapture *m_capture = nullptr;
+    mutable QHash<DeviceSession *, MeasureSession *> m_sessions;
+    QPointer<DeviceSession> m_announced;   // the one the last change notices were for
+    // The console's, for a device opened later: the input and the calibration
+    QString m_input;
+    QByteArray m_calibration;
+    QString m_calibrationSummary;
+    QVariantList m_others;
     bool m_shutDown = false;
-    quint64 m_stopEpoch = 0;   // review P5-D: counts the Stops (a start begun before one is withdrawn)
-    QString m_serial;
-
-    QVariantList m_outputs;
-    bool m_simAvailable = false;
-    bool m_simOn = false;
-    QString m_simLabel;
-    QString m_micChoice;
-    bool m_micChosen = false;   // the person chose (the demo's default is the simulated one)
-    QVariantList m_inputs;
-    QByteArray m_micDocument;
-    QString m_micSummary;
-    std::function<void(bool, int)> m_micOpening;
-
-    QVariantList m_setupOutputs;
-    // -- WP P5FOLLOW -- no default: the person chooses (headphone safety, S3)
-    QString m_placement;
-    int m_count = 3;
-    QString m_coupler = QStringLiteral("iec60318_4");
-    int m_sweepMs = 5500;
-    int m_passes = 3;
-    QString m_runName;
-    QVariantList m_preflightLines;
-    bool m_preflightDone = false;
-    bool m_preflightClear = false;
-
-    QJsonObject m_state;
-    bool m_wasActive = false;
-    bool m_wasRunning = false;
-    bool m_tuneRunning = false;
-    // The session's last run was the tune's (its result is not the window's)
-    bool m_tuneSession = false;
-
-    QByteArray m_result;
-    QString m_resultFrom;
-    QVariantMap m_resultView;
-    QVariantMap m_resultGraph;
-    QList<int> m_hidden;
-    // -- WP P5QUI2 -- the core's curves of the result, and which ask is the last
-    QJsonObject m_curves;
-    quint64 m_curvesAsk = 0;
-    int m_resultSmoothing = 6;
-    bool m_resultTarget = true;
-    // -- WP P5QUI2 -- the passive RTA, and the client read-only mode
-    bool m_passiveOn = false;
-    bool m_passiveStarting = false;
-    QVariantMap m_passiveGraph;
-    QVariantMap m_passiveCompareGraph;
-    bool m_passiveHeld = false;
-    bool m_passiveReady = false;
-    int m_passiveFrames = 0;
-    QString m_passiveAveraging = QStringLiteral("slow");
-    bool m_clientReadOnly = false;
-    dspi_capture::SourceFactory m_captureSource;
-    // -- WP ATQT --
-    bool m_systemRunning = false;
-    QString m_systemText;
-    std::function<void()> m_systemStop;
-
-    QJsonObject m_live;
-    QJsonObject m_frame;
-    QVariantMap m_liveGraph;
-    QVariantMap m_compareGraph;
-    bool m_rtaHeld = false;
-    bool m_rtaReady = false;
-    int m_rtaFrames = 0;
-    bool m_liveMeasured = false;
-    double m_livePeakHz = 0;
-    QJsonObject m_pending;   // the proposal as the core gave it
-    QVariantMap m_proposal;
-    QString m_liveSaid;
-    QByteArray m_targetDocument;
-    QString m_targetName;
-
-    QVariantList m_documents;
-    bool m_hubDocuments = false;
-    QString m_documentsNote;
-
-    QString m_error;
-    QString m_said;
-    int m_busy = 0;
-
-    friend class TuneController;
 };
 
 #endif // MEASURECONTROLLER_H

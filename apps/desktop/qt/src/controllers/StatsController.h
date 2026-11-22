@@ -6,6 +6,7 @@
 #include <QVariantMap>
 #include <QtQml/qqmlregistration.h>
 #include <array>
+#include <memory>
 #include <cstdint>
 
 #include "Poller.h"
@@ -91,10 +92,10 @@ public:
     QVariantList lgSoundSync() const;
     QVariantList adatOutput() const;
     QVariantList i2sSlave() const;
-    QVariantList clockDiagnostics() const { return m_clockDiag; }
-    QVariantList usbErrors() const { return usbErrorRows(m_slow.usb); }
-    bool streaming() const { return m_streaming; }
-    bool pdmActive() const { return m_pdmActive; }
+    QVariantList clockDiagnostics() const { return state()->clockDiag; }
+    QVariantList usbErrors() const { return usbErrorRows(state()->slow.usb); }
+    bool streaming() const { return state()->streaming; }
+    bool pdmActive() const { return state()->pdmActive; }
     QVariantList fillRows() const;
 
     // Reset Watermarks (a device write: refused on a read-only device)
@@ -175,33 +176,40 @@ private:
     bool m_shown = false;
     Poller::Id m_slowPoll = 0;
     Poller::Id m_fastPoll = 0;
-    Slow m_slow;
-    bool m_haveSlow = false;
-    bool m_lgSeen = false;
-    // Starvation: the previous total, the delta of the last read, event times
-    bool m_haveTotal = false;
-    uint32_t m_lastTotal = 0;
-    uint32_t m_delta = 0;
-    qint64 m_eventAt = 0;
-    qint64 m_eventBefore = 0;
-    // Connections: the generation seen, how many after the first
-    uint64_t m_generation = 0;
-    // -- WP FIXS1 -- the device's serial at the last connect
-    QString m_serial;
-    bool m_seenConnect = false;
-    int m_connects = 0;
-    QVariantList m_clockDiag;
-    // Buffers
-    bool m_streaming = false;
-    bool m_pdmActive = false;
-    int m_numSpdif = 0;
-    QVariantMap m_buffers;
-    QVariantList m_fills;
-    // History per series: slots 0..3, PDM DMA, PDM ring; NaN for no sample
-    std::array<QList<double>, 6> m_history;
-    // Ring target and batch from the last ring-health read (0 without it)
-    int m_targetFrames = 0;
-    int m_batchFrames = 0;
+    // -- WP MDQT2c -- one device's readings, histories and counts
+    struct State {
+        Slow slow;
+        bool haveSlow = false;
+        bool lgSeen = false;
+        // Starvation: the previous total, the delta of the last read, event times
+        bool haveTotal = false;
+        uint32_t lastTotal = 0;
+        uint32_t delta = 0;
+        qint64 eventAt = 0;
+        qint64 eventBefore = 0;
+        // Connections: the generation seen, how many after the first
+        uint64_t generation = 0;
+        // -- WP FIXS1 -- the device's serial at the last connect
+        QString serial;
+        bool seenConnect = false;
+        int connects = 0;
+        QVariantList clockDiag;
+        // Buffers
+        bool streaming = false;
+        bool pdmActive = false;
+        int numSpdif = 0;
+        QVariantMap buffers;
+        QVariantList fills;
+        // History per series: slots 0..3, PDM DMA, PDM ring; NaN for no sample
+        std::array<QList<double>, 6> history;
+        // Ring target and batch from the last ring-health read (0 without it)
+        int targetFrames = 0;
+        int batchFrames = 0;
+        State();
+    };
+    using StatePtr = std::shared_ptr<State>;
+    StatePtr state() const;
+    StatePtr m_announced;   // the one the last change notices were for
 };
 
 #endif // STATSCONTROLLER_H

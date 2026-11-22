@@ -7,11 +7,13 @@
 #include <QVariantMap>
 #include <QtQml/qqmlregistration.h>
 #include <functional>
+#include <memory>
 
 #include "CoreApi.h"
 #include "Poller.h"
 #include "Registrar.h"
 
+class DeviceSession;
 class QJSEngine;
 
 // -- WP QP8 -- The controller of the Subharmonic Synthesizer, the Tube Modeller,
@@ -35,6 +37,10 @@ class QJSEngine;
 // subharmonic headroom (after each change) and its sub meter (10 Hz), the
 // upmixer's telemetry (about 16 Hz). The tube's glow follows the base's meter
 // poll. Closing the subharmonic window switches solo off, as on the Mac.
+// -- WP MDQT2c -- A tool may show in several places (a page and its window):
+// windowShown counts them, and only the last one gone stops its polls. The
+// readings are per device; leaving a device switches its solo off as closing the
+// window does.
 //
 // Limiter edits are part of the output configuration: each one calls
 // HardwareController.beginOutputEdit() first, so the save bar offers to keep
@@ -76,7 +82,7 @@ public:
     static constexpr float kUnprotectedAboveDb = -10.0f;
 
     ToolsController(const AppContext &ctx, QObject *parent);
-    QVariantList unprotectedOutputs() const { return m_unprotected; }   // -- WP P1QT2 --
+    QVariantList unprotectedOutputs() const { return state()->unprotected; }   // -- WP P1QT2 --
     QString unprotectedText() const;                                    // -- WP P1QT2 --
     static ToolsController *create(QQmlEngine *, QJSEngine *) { return Registrar::instance<ToolsController>(); }
 
@@ -90,8 +96,8 @@ public:
     bool subharmSupported() const;
     bool subharmExtended() const;
     bool subharmSolo() const;
-    double subharmHeadroom() const { return m_headroom; }
-    QVariantList subharmMeter() const { return m_subMeter; }
+    double subharmHeadroom() const { return state()->headroom; }
+    QVariantList subharmMeter() const { return state()->subMeter; }
     static QVariantList subharmStartingPoints();
     Q_INVOKABLE double subharm(const QString &key) const;
     Q_INVOKABLE void setSubharm(const QString &key, double value);
@@ -117,7 +123,7 @@ public:
     // ---- Stereo upmixer (wire V26, RP2350) ----
     bool upmixSupported() const;
     // {active, parked, correlation, balance, center, ls, rs}
-    QVariantMap upmixStatus() const { return m_upmixStatus; }
+    QVariantMap upmixStatus() const { return state()->upmixStatus; }
     Q_INVOKABLE double upmix(const QString &key) const;
     Q_INVOKABLE void setUpmix(const QString &key, double value);
 
@@ -178,27 +184,35 @@ signals:
     void unprotectedChanged();   // -- WP P1QT2 --
 
 private:
+    // -- WP MDQT2c -- one device's readings
+    struct State {
+        double headroom = 0;
+        QVariantList subMeter;
+        QVariantMap upmixStatus;
+        QVariantList unprotected;        // -- WP P1QT2 --
+        bool unprotectedAsked = false;   // -- WP P1QT2 --
+    };
+    using StatePtr = std::shared_ptr<State>;
+    StatePtr state() const;
+    void switched();
     void apply(const QString &what, std::function<bool(FfiCore *)> setter, std::function<void(bool)> done = {});
     void limiterWrite(const QString &what, std::function<bool(FfiCore *)> setter);
     bool limiterOutput(int output) const;
     void fetchHeadroom();
+    void fetchHeadroom(DeviceSession *session, const StatePtr &st);
     void updatePolls();
     void updateGlow();
     void readUnprotected();   // -- WP P1QT2 --
 
     AppContext m_ctx;
     int m_reads = 0;
-    double m_headroom = 0;
-    QVariantList m_subMeter;
     double m_glow = 0;
-    QVariantMap m_upmixStatus;
-    bool m_subharmShown = false;
-    bool m_tubeShown = false;
-    bool m_upmixShown = false;
+    int m_subharmShown = 0;   // in how many places
+    int m_tubeShown = 0;
+    int m_upmixShown = 0;
     Poller::Id m_subMeterPoll = -1;
     Poller::Id m_upmixPoll = -1;
-    QVariantList m_unprotected;        // -- WP P1QT2 --
-    bool m_unprotectedAsked = false;   // -- WP P1QT2 --
+    StatePtr m_announced;   // -- WP MDQT2c -- the one the last change notices were for
 };
 
 #endif // TOOLSCONTROLLER_H

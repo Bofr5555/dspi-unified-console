@@ -68,6 +68,14 @@ void DeviceSession::checkIdentity() {
     emit identityChanged();
 }
 
+// -- WP MDQT2c --
+void DeviceSession::setJob(const QString &controller, const QString &text) {
+    if (m_jobs.value(controller) == text) return;
+    if (text.isEmpty()) m_jobs.remove(controller);
+    else m_jobs.insert(controller, text);
+    emit jobsChanged();
+}
+
 void DeviceSession::setBackground(bool on) {
     if (on == m_background.isActive()) return;
     if (on) m_background.start();

@@ -22,7 +22,7 @@ Panel {
 
     // Closing the window stops what it started (the guard of an applied tune runs on)
     // (review P5-D: always, so a start still on its way is withdrawn too)
-    onClosing: MeasureController.stop()
+    onClosing: MeasureController.stopAll()   // -- WP MDQT2c -- on every device
     // -- WP P5QUI2 -- the client read-only mode read again when it shows
     onShownChanged: if (shown) MeasureController.refreshAccess()
     // The tabs that play go when the connection may no longer play; the
@@ -51,8 +51,13 @@ Panel {
                 anchors.fill: parent
                 anchors.margins: 6
                 Text {
+                    objectName: "Measure.runningText"
                     Layout.fillWidth: true
-                    text: MeasureController.runningText
+                    // -- WP MDQT2c -- with several devices open, on which
+                    textFormat: Text.PlainText
+                    text: MeasureController.runningOn.length
+                          ? qsTr("Running on %1. %2").arg(MeasureController.runningOn).arg(MeasureController.runningText)
+                          : MeasureController.runningText
                     font: Theme.fontBody
                     color: Theme.text
                     wrapMode: Text.WordWrap
@@ -62,6 +67,43 @@ Panel {
                     text: qsTr("Stop")
                     destructive: true
                     onClicked: MeasureController.stop()
+                }
+            }
+        }
+        // -- WP MDQT2c -- what runs on the other open devices, each with its Stop
+        Repeater {
+            model: MeasureController.otherRuns
+            Rectangle {
+                id: other
+                required property var modelData
+                objectName: "Measure.otherRun"
+                Layout.fillWidth: true
+                implicitHeight: otherRow.implicitHeight + 12
+                radius: Theme.radius
+                color: Theme.selection
+                RowLayout {
+                    id: otherRow
+                    anchors.fill: parent
+                    anchors.margins: 6
+                    Text {
+                        Layout.fillWidth: true
+                        textFormat: Text.PlainText
+                        text: qsTr("Running on %1. %2").arg(other.modelData.title).arg(other.modelData.text)
+                        font: Theme.fontBody
+                        color: Theme.text
+                        wrapMode: Text.WordWrap
+                    }
+                    AppButton {
+                        objectName: "Measure.otherRun.show"
+                        text: qsTr("Show")
+                        onClicked: MeasureController.showOther(other.modelData.id)
+                    }
+                    AppButton {
+                        objectName: "Measure.otherRun.stop"
+                        text: qsTr("Stop")
+                        destructive: true
+                        onClicked: MeasureController.stopOther(other.modelData.id)
+                    }
                 }
             }
         }

@@ -112,6 +112,10 @@ public:
 
     static LinkController *create(QQmlEngine *, QJSEngine *);
 
+    // -- WP MDQT2c -- The Link session of an open device, whichever is active
+    // (null once it is closing)
+    LinkSession *linkOf(DeviceSession *session) const { return m_links.value(session); }
+
     QString phase() const;
     QString phaseKey() const;
     QString phaseText() const;

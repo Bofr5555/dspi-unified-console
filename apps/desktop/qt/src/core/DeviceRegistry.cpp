@@ -22,6 +22,9 @@ constexpr uint32_t kActBuffer = 8 * 1024;
 // How long quitting waits for an open in progress (a hub's dial has its own
 // budget); one that is still running is left to the process's end
 constexpr int kQuitWaitMs = 2000;
+// -- WP MDQT2c -- How long closing a device waits for the Stop of what plays on
+// it; a call stuck on a hub ends then
+constexpr int kStopWaitMs = 2000;
 
 QJsonObject actOnce(const std::function<uint32_t(char *, uint32_t)> &call) {
     QByteArray buf(int(kActBuffer), '\0');
@@ -85,6 +88,9 @@ void DeviceRegistry::run(QThreadPool *pool, Job job, After after) {
 void DeviceRegistry::track(DeviceSession *session) {
     connect(session, &DeviceSession::identityChanged, this, &DeviceRegistry::readRows);
     connect(session, &DeviceSession::clipHoldChanged, this, &DeviceRegistry::devicesChanged);
+    // -- WP MDQT2c --
+    connect(session, &DeviceSession::jobsChanged, this, &DeviceRegistry::devicesChanged);
+    connect(session->model(), &SessionModel::replacing, this, [this, session] { emit sessionStopping(session); });
 }
 
 // ---- What is open --------------------------------------------------------------
@@ -118,6 +124,8 @@ QVariantList DeviceRegistry::devices() const {
         row.insert(QStringLiteral("title"), s->title());
         row.insert(QStringLiteral("active"), s == m_active);
         row.insert(QStringLiteral("clip"), s->clipHold() != 0);
+        row.insert(QStringLiteral("busy"), s->busy());   // -- WP MDQT2c --
+        row.insert(QStringLiteral("job"), s->job());     // -- WP MDQT2c --
         out.append(row);
     }
     return out;
@@ -315,6 +323,7 @@ bool DeviceRegistry::activate(const QString &id) {
 
 void DeviceRegistry::activate(DeviceSession *session) {
     if (!session || session == m_active || !m_sessions.contains(session)) return;
+    if (m_stopping.contains(session)) return;   // -- WP MDQT2c -- it is being closed
     emit activeLeaving();   // -- WP MDQT2a --
     if (session == m_active || !m_sessions.contains(session)) return;
     m_active->setBackground(true);
@@ -327,20 +336,37 @@ void DeviceRegistry::activate(DeviceSession *session) {
 
 void DeviceRegistry::close(const QString &id) {
     DeviceSession *s = session(id);
-    if (!s || !m_set) return;
+    if (!s || !m_set || m_stopping.contains(s)) return;
     if (s == m_active) {
         // The neighbour before it, else the one after; the main session is
         // there with no device too
         const qsizetype at = m_sessions.indexOf(s);
         DeviceSession *next = nullptr;
         for (qsizetype i = at - 1; i >= 0 && !next; --i)
-            if (!m_sessions.at(i)->id().isEmpty()) next = m_sessions.at(i);
+            if (!m_sessions.at(i)->id().isEmpty() && !m_stopping.contains(m_sessions.at(i))) next = m_sessions.at(i);
         for (qsizetype i = at + 1; i < m_sessions.size() && !next; ++i)
-            if (!m_sessions.at(i)->id().isEmpty()) next = m_sessions.at(i);
+            if (!m_sessions.at(i)->id().isEmpty() && !m_stopping.contains(m_sessions.at(i))) next = m_sessions.at(i);
         activate(next ? next : m_main);
     }
-    FfiCoreSet *set = m_set;
     const QByteArray wire = id.toUtf8();
+    // -- WP MDQT2c -- What plays on it stops first, while it is there
+    emit sessionStopping(s);
+    const bool drain = s->takeDrain();
+    if (s->isMain() || !drain) {
+        endSession(s, wire);
+        return;
+    }
+    m_stopping.append(s);
+    const auto end = [this, s, wire] {
+        if (!m_stopping.removeOne(s) || !m_set) return;
+        endSession(s, wire);
+    };
+    QTimer::singleShot(kStopWaitMs, s, end);
+    s->worker()->call(s, [](FfiCore *) { return true; }, [end](bool) { end(); });
+}
+
+void DeviceRegistry::endSession(DeviceSession *s, const QByteArray &wire) {
+    FfiCoreSet *set = m_set;
     const auto closeIt = [set, wire] {
         return isOk(actOnce([&](char *b, uint32_t n) { return dspi_core_set_close(set, wire.constData(), b, n); }));
     };

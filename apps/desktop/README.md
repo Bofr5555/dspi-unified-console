@@ -97,6 +97,12 @@ By hand, in the container:
   it was asked with. On `activeLeaving` what is half-edited is finished or let go
   of, on the device it was made on; a `QuestionDialog` about the device is
   `ofDevice`.
+  A job goes on on the device it was started on (WP MDQT2c): Measure and Tune are
+  facades over a `MeasureSession` and a `TuneSession` per device, with a
+  measurement thread each. What has no end of its own (the signal generator, the
+  live view, solo) stops on `activeLeaving`; what plays on a device that is closed
+  or replaced stops on `sessionStopping`, posted to its worker (`drainFirst`).
+  `DeviceSession::setJob` makes its tab busy.
 - **One thread calls a core:** its `CoreWorker`. Every blocking call (reads,
   writes, scans, files) is posted to it and its result comes back to the GUI
   thread as a queued call. The hot-plug poll (one for every core) and the opens

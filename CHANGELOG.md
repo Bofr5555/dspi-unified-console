@@ -36,6 +36,9 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
   it. The Measure tables start from it, and a role, speaker or group changed there is saved to it without confirming
   it. Measure shows a banner while the layout is not confirmed, also when it came with an imported configuration.
   (WP ROLEQ)
+- Choosing another DSPi (on USB, or the demo) first stops what plays on the one that is left: a signal from the Signal
+  Generator (faded), a measurement or the live view; an auto-tune not kept yet goes back. Measure no longer takes the
+  placement chosen for another device. (WP MDQT2c)
 
 ### Android
 - DSPi Link is reachable from the main page (owner report on 0.14.0: only through the settings
