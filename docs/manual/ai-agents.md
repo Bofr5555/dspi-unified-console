@@ -1,8 +1,8 @@
 # AI agents
 
 *User manual, WP MCP6, 2026-11-22. For the owner and for users of the Qt console. It describes the console as it is with
-the Modern programme's wave 4 (MCP1 to MCP4) and the MCP conformance work (MCP6). Measuring through an agent comes with
-WP MCP5 and will get its own section here.*
+the Modern programme's waves 4 and 5: MCP1 to MCP4, the MCP conformance work (MCP6), and measuring through an agent
+(MCP5, with ROLL1's rules for tweeters; section 6).*
 
 An AI agent on your computer, such as Claude Desktop, Claude Code, Cursor or VS Code, can read the settings of the DSPi
 devices that DSPi Console has open and change them for you: "make the left woofer 2 dB quieter", "why does output 3 sound
@@ -154,7 +154,7 @@ from Another Computer…** link).
 An agent you allow may read every device the console has open and change most of what you can change: the equaliser,
 crossovers, gain, delay, polarity, mute, routing, effects, volume and source, presets (load, save, rename, copy),
 snapshots, A/B, config and filter files (as text), AutoEQ, channel and device names, the audio link's delays and scenes,
-and Installation setup.
+and Installation setup. It may also ask the console to measure your speakers or headphones and tune them (section 6).
 
 - **Several devices.** Every tool takes a `device` (from `dspi_list_devices`). Without it, the agent works on the device
   the console shows. An agent cannot open or close devices; you do that.
@@ -167,9 +167,9 @@ and Installation setup.
 
 **What agents can never do, whatever the setting:** update or flash firmware, use the bootloader or factory reset;
 change the limits profile, the installer PIN or lock; change hardware, pin or core-voltage settings; play the signal
-generator or Identify; pair hubs or change DSPi Link security and hub administration; delete presets, snapshots or
-measurements; update the AutoEQ database; set up speakers (the speaker layout); send raw device commands; read or write
-files by path.
+generator or Identify (a measurement's test sweeps are the one exception: section 6); pair hubs or change DSPi Link
+security and hub administration; delete presets, snapshots or measurements; update the AutoEQ database; set up speakers
+(the speaker layout); send raw device commands; read or write files by path.
 
 **What an agent reads, it may pass on to its own service.** An agent that runs on a cloud model sends what it reads to
 that service, as with anything else you show it.
@@ -185,15 +185,17 @@ that service, as with anything else you show it.
   - boost a PEQ band by more than 6 dB, change a Linkwitz transform, or move a delay by more than 20 ms;
   - lower a tweeter's protection (see below);
   - change the input source;
+  - play test signals: start a measurement, a low-end search, or an auto-tune's check or verify (section 6);
   - replace many settings at once: load a preset, recall a snapshot, import a config or filter file;
   - write the device's flash: save, rename or copy a preset, save to the device, rename a channel or the device;
-  - change every unit of an installation: align the audio link, apply a scene, change USB-direct modes, or save the
-    installation.
+  - change every unit of an installation: align the audio link (also with a measurement across units), apply a scene,
+    change USB-direct modes, or save the installation.
 
   Other changes, such as lowering a gain, cutting a PEQ band or a small delay change, are made at once.
 - **About every change.** Every change waits for your answer.
-- **Never.** Agents' changes are made at once, louder ones too. Your limits profile and the protection of outputs you set
-  up as tweeters still apply, and so does the rule below.
+- **Never.** Agents' changes are made at once, louder ones too, and **test signals play without a question** when an agent
+  starts a measurement. Your limits profile and the protection of outputs you set up as tweeters still apply, and so do
+  the rule below and the rules of section 6.
 
 **A tweeter's protection.** An output whose high-pass sits at 1 kHz or above drives a tweeter, whatever it is called.
 Removing that high-pass, moving it below 1 kHz or making it shallower than 12 dB/octave is asked about under the default
@@ -216,7 +218,71 @@ told the question is still open and can ask again with `dspi_get_confirmation`. 
 - While you drag a control, an agent's change to that device is refused and the agent is told to try again: you are not
   overruled mid-drag.
 
-## 6. Good to know
+## 6. Measuring with an agent
+
+An agent can ask the console to measure, find an output's low end, and propose, apply and verify an auto-tune. The console
+does the measuring, with its own microphone and in its own **Measure** view, exactly as when you start it there. The agent
+never plays or records anything itself.
+
+**What it needs**
+
+- **A person at the microphone.** The agent says where to put it; somebody has to put it there, and move it when the
+  measurement asks for the next position.
+- **A confirmed speaker setup** (Settings › Speakers, **Confirm**). The roles (woofer, midrange, tweeter…) always come from
+  it: no tool takes a role or changes the setup. Without it, or with one that is not confirmed, the agent is refused and
+  told to ask you to confirm it.
+- **The device open in the console**, and nothing else measuring on it. A measurement across units needs each unit open in
+  a tab, each with its own confirmed speaker setup.
+
+**What happens.** The agent's start is a request. Under **About risky changes** and **About every change** you are asked
+first (the question says **Test signal**, which outputs play, and the **AI** button shows there is something to answer);
+under **Never** it starts at once. The console then opens **Measure**, opens the microphone and runs it. The Stop bar says
+**Requested by AI · name** until it ends, with **Stop** on every tab of Measure; on a device that is not the one shown, its
+row there has **Show** and **Stop**. A request the console cannot take up within 30 s lapses, and the agent is told. The
+result is filed with your measurements. An agent can stop only what it asked for itself.
+
+**A tweeter's low end.** These rules hold under every question setting; nothing lifts them, and they hold for your own
+measurements too:
+
+- A tweeter (an output your speaker setup calls one, or any output with a high-pass at 1 kHz or above) gets **no stimulus
+  below 1 kHz**: its sweeps start there, and pink noise is refused on it. Measured with a speaker's other ways, it gets an
+  extra run that starts at 1 kHz, so each position takes one run more. A measurement across units does not play a
+  tweeter at all.
+- The low-end search (`dspi_measure_rolloff_start`) sweeps from 8 kHz down in half octaves and **stops once the response is
+  15 dB below its loudest point**, or at 1 kHz on a tweeter. If the response is still good at 1 kHz, it stops there anyway
+  and notes that the output is **probably a midrange set up as a tweeter**. The note is not an error: look at the output's
+  role in your speaker setup.
+- The volume and level limits, the checks before a run and your limits profile apply as in Measure.
+
+**Tuning.** Applying a proposal is a timed preview: each change is judged as the agent's other changes are (section 4), and
+the preview puts everything back at its end unless it is kept. After a verify that did not pass, **only you can keep it**,
+in the console. The same holds across units.
+
+**The tools**
+
+| Tool | What it does |
+|---|---|
+| `dspi_measure_preflight` | What stands between a measurement and the device now, and the roles it would use. Plays nothing |
+| `dspi_measure_start` | Asks for a measurement: one output at a time or summed. *Test signal* |
+| `dspi_measure_rolloff_start` | Asks for the low-end search on one output. *Test signal* |
+| `dspi_measure_status` | Where the request and the device's measuring jobs stand |
+| `dspi_measure_continue` | The microphone is at the next position: go on |
+| `dspi_measure_stop` | Stops what this agent asked for. Never asked |
+| `dspi_tune_propose` | Works out an auto-tune from a measurement. Writes nothing |
+| `dspi_tune_sum_check` | Plays the ways of a speaker together and compares, before timing changes. *Test signal* |
+| `dspi_tune_apply` | Applies the proposal as a timed preview, as one undo step |
+| `dspi_tune_verify` | Measures the applied tune again. *Test signal* |
+| `dspi_tune_keep` | Keeps it (only you can, after a verify that did not pass) |
+| `dspi_tune_revert` | Puts it back now. Never asked |
+| `dspi_system_measure_preflight` | What stands between a measurement of several units and now. Plays nothing |
+| `dspi_system_measure_start` | Asks for a measurement of several units together, through the hub. *Test signal* |
+| `dspi_system_measure_proposal` | The alignment it proposes |
+| `dspi_system_measure_apply` | Applies it on the hub: every unit re-anchors, and the hub puts it back unless it is kept |
+| `dspi_system_measure_verify` | The summed runs across units, before or after the apply. *Test signal* |
+| `dspi_system_measure_keep` | Keeps it (only you can, after a verify that did not pass) |
+| `dspi_system_measure_revert` | Puts it back now. Never asked |
+
+## 7. Good to know
 
 - **Loading a preset.** A preset load is done by the device itself. If the preset lowers a tweeter's high-pass, the device
   plays it that way for a moment, until the console puts the protection back. Under the default setting you are asked
@@ -232,7 +298,7 @@ told the question is still open and can ask again with `dspi_get_confirmation`. 
 - **The port is taken.** If another program has the port, the page says so and **Try Again** retries. Pick another port,
   and change it in the agents' configuration too (`--port <n>` for `uconsole mcp`).
 
-## 7. Owner smoke test checklist (wave 6)
+## 8. Owner smoke test checklist (wave 6)
 
 For the owner, on real agent hosts, before the release. Use the demo device or a device with its limits profile set and
 the volume at 80 % or less. These steps change your own agent configuration; undo them afterwards if you want.
