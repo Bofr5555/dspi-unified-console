@@ -71,6 +71,11 @@ pub struct ServerConfig {
     pub autoeq: Option<Arc<AutoEqLibrary>>,
     /// The user's template folder ("" for the shipped templates only).
     pub template_dir: String,
+    // -- WP MCP5 --
+    /// The app has a Measure view that takes the agents' measurement
+    /// requests (`Server::measure_take`); without one the tools that start a
+    /// measurement say measuring is not available.
+    pub measuring: bool,
 }
 
 impl Default for ServerConfig {
@@ -83,6 +88,7 @@ impl Default for ServerConfig {
             policy: Arc::new(ReadOnlyPolicy),
             autoeq: None,                // -- WP MCP2b --
             template_dir: String::new(), // -- WP MCP2b --
+            measuring: false,            // -- WP MCP5 --
         }
     }
 }
@@ -117,6 +123,9 @@ pub struct Server {
     // -- WP MCP2c --
     /// The agents' Installation drafts, by client and hub.
     installation: crate::tools::installation::Drafts,
+    // -- WP MCP5 --
+    /// The agents' requests to the app's Measure view.
+    measure: crate::tools::measure::Jobs,
 }
 
 impl Server {
@@ -127,6 +136,7 @@ impl Server {
 
     /// A server with these tools only.
     pub fn with_registry(set: Arc<CoreSet>, config: ServerConfig, registry: Registry) -> Self {
+        let measure = crate::tools::measure::Jobs::new(config.measuring); // -- WP MCP5 --
         Self {
             set,
             active: None,
@@ -140,6 +150,7 @@ impl Server {
             guards: AgentGuards::new(),
             drags: BTreeMap::new(),
             installation: crate::tools::installation::Drafts::default(), // -- WP MCP2c --
+            measure,                                                     // -- WP MCP5 --
         }
     }
 
@@ -183,6 +194,7 @@ impl Server {
     pub fn disconnect(&mut self, client: ClientId) {
         self.clients.remove(&client);
         self.installation.forget(client); // -- WP MCP2c --
+        self.measure.forget(client); // -- WP MCP5 --
         for id in self.confirms.of_client(client) {
             self.confirms.end(
                 id,
@@ -561,6 +573,7 @@ impl Server {
         }
         entry.device.clone_from(&out.device);
         entry.journal_ids = out.journal_ids;
+        self.measure.stamp(now_ms); // -- WP MCP5 -- a request's clock starts now
         let asked = !out.judging.asked.is_empty() && out.judging.refused.is_none();
         let result = match out.result {
             Err(_) if asked && regranted => {
@@ -633,6 +646,7 @@ impl Server {
             autoeq: self.config.autoeq.as_ref(), // -- WP MCP2b --
             template_dir: &self.config.template_dir,
             installation: Some(&self.installation), // -- WP MCP2c --
+            measure: Some(&self.measure),           // -- WP MCP5 --
         };
         registry::run(&ctx, tool, args)
     }
@@ -764,6 +778,7 @@ impl Server {
     /// The user turned the agents off: every waiting confirmation ends with
     /// nothing changed, and every agent's timed preview is put back now.
     pub fn stop_agents(&mut self, now_ms: u64) {
+        crate::tools::measure::stop_all(&self.set, &self.measure); // -- WP MCP5 --
         for id in self
             .confirms
             .waiting()
@@ -899,6 +914,38 @@ impl Server {
         Ok(())
     }
 
+    // -- WP MCP5 --
+    /// The agents' measurement requests the app has to take, oldest first:
+    /// `{request_id, client, client_name, device, kind, loop, what, state,
+    /// note}`.
+    pub fn measure_requests(&self) -> Vec<Value> {
+        crate::tools::measure::waiting_json(&self.measure)
+    }
+
+    /// The app takes request `id` for its Measure view: the ticket to start
+    /// it with (`tools::measure::begin`), `None` when it no longer waits.
+    pub fn measure_take(&mut self, id: u64) -> Option<Value> {
+        self.measure.take(id)
+    }
+
+    /// The app says how request `id` went: started, or declined with `note`
+    /// (no microphone, the user stopped it, the core refused). False when it
+    /// was not open.
+    pub fn measure_report(&mut self, id: u64, ok: bool, note: &str) -> bool {
+        self.measure.report(id, ok, note)
+    }
+
+    /// Whether the measurement requests changed since the last call (the
+    /// app reads `measure_requests` again).
+    pub fn take_measure_events(&mut self) -> bool {
+        self.measure.take_changed()
+    }
+
+    /// Every measurement request kept (the newest 32), as the app sees them.
+    pub fn measure_log(&self) -> Vec<Value> {
+        crate::tools::measure::all_json(&self.measure)
+    }
+
     /// Confirmation `id`, waiting or ended (kept a while).
     pub fn confirmation(&self, id: u64) -> Option<&Confirmation> {
         self.confirms.get(id)
@@ -925,6 +972,7 @@ impl Server {
     /// hook (a revert is never refused), or as the app once the agent is
     /// gone.
     pub fn tick(&mut self, now_ms: u64) {
+        crate::tools::measure::tick(&self.set, &self.measure, now_ms); // -- WP MCP5 --
         for id in self.confirms.lapsed(now_ms) {
             if let Some(c) = self.confirms.get(id) {
                 self.activity.push(ActivityEntry {

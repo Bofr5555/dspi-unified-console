@@ -195,6 +195,10 @@ pub enum Event {
     ConfirmationsChanged,
     /// An agent called a tool: read [`HttpServer::activity`] again.
     Activity,
+    // -- WP MCP5 --
+    /// The agents' measurement requests changed: read
+    /// [`HttpServer::measure_requests`] again and take what waits.
+    MeasureRequests,
 }
 
 impl Event {
@@ -210,6 +214,7 @@ impl Event {
             Self::ClientsChanged => json!({"event": "clientsChanged"}),
             Self::ConfirmationsChanged => json!({"event": "confirmationsChanged"}),
             Self::Activity => json!({"event": "activity"}),
+            Self::MeasureRequests => json!({"event": "measureRequests"}), // -- WP MCP5 --
         }
     }
 }
@@ -321,14 +326,18 @@ impl Shared {
     /// Run `f` on the MCP side, then tell the app, unlocked, of the
     /// confirmations it asked or ended, and wake the ticking thread for them.
     fn with_mcp<R>(&self, f: impl FnOnce(&mut Mcp) -> R) -> R {
-        let (r, changed) = {
+        let (r, changed, measure) = {
             let mut mcp = lock(&self.mcp);
             let r = f(&mut mcp);
-            (r, !mcp.server.take_confirm_events().is_empty())
+            let measure = mcp.server.take_measure_events(); // -- WP MCP5 --
+            (r, !mcp.server.take_confirm_events().is_empty(), measure)
         };
         if changed {
             self.wake();
             self.emit(&[Event::ConfirmationsChanged]);
+        }
+        if measure {
+            self.emit(&[Event::MeasureRequests]); // -- WP MCP5 --
         }
         r
     }
@@ -522,6 +531,30 @@ impl HttpServer {
             self.shared.emit(&[Event::Activity]);
         }
         answered
+    }
+
+    // -- WP MCP5 --
+    /// The agents' measurement requests the app has to take, oldest first
+    /// (`Server::measure_requests`). Waits as [`HttpServer::with_server`].
+    pub fn measure_requests(&self) -> Vec<Value> {
+        self.shared.with_mcp(|m| m.server.measure_requests())
+    }
+
+    /// The app takes request `id`: its ticket (`tools::measure::begin`
+    /// starts it), `None` when it no longer waits. Waits as
+    /// [`HttpServer::with_server`].
+    pub fn measure_take(&self, id: u64) -> Option<Value> {
+        self.shared.with_mcp(|m| m.server.measure_take(id))
+    }
+
+    /// How request `id` went (`Server::measure_report`). Waits as
+    /// [`HttpServer::with_server`].
+    pub fn measure_report(&self, id: u64, ok: bool, note: &str) -> bool {
+        let done = self
+            .shared
+            .with_mcp(|m| m.server.measure_report(id, ok, note));
+        self.shared.emit(&[Event::Activity]);
+        done
     }
 
     /// The newest `n` activity entries, oldest first:

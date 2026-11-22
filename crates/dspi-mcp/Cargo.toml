@@ -42,3 +42,7 @@ dspi-measure.workspace = true
 # workspace crates, already in the lock.
 dspi-hub = { workspace = true, default-features = false }
 dspi-transport = { path = "../dspi-transport", default-features = false, features = ["link"] }
+# -- WP MCP5 -- the measuring tools against the demo's simulated microphone
+# (P5DEMO), as the Qt and Terminal builds have it: the same crate, one more
+# feature for the tests.
+dspi-core = { path = "../dspi-core", default-features = false, features = ["measure-sim"] }
