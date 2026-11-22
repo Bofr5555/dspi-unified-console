@@ -5,11 +5,13 @@
 #include "CoreApi.h"
 #include "CoreWorker.h"
 #include "DeviceModel.h"
+#include "DeviceSession.h"   // -- WP MDQT2b --
 #include "NoticeCenter.h"
 #include "Shell.h"
 #include "Snapshot.h"
 
 #include <QJSEngine>
+#include <QPointer>
 #include <QJsonDocument>
 #include <algorithm>
 #include <memory>
@@ -43,7 +45,10 @@ void IdentifyController::onSnapshot() {
     const QString serial = m_ctx.device->serial();
     const bool remote = m_ctx.device->remote();
     m_readOnly = m_ctx.device->readOnly();
-    const bool changed = connected != m_connected || serial != m_serial || remote != m_remote;
+    // -- WP MDQT2b -- another open device (two demos share a serial) is probed anew
+    const bool switched = m_ctx.activeSession() != m_session;
+    m_session = m_ctx.activeSession();
+    const bool changed = switched || connected != m_connected || serial != m_serial || remote != m_remote;
     m_connected = connected;
     m_serial = serial;
     m_remote = remote;

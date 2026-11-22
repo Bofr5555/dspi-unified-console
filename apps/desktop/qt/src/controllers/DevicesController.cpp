@@ -1,9 +1,11 @@
 #include "DevicesController.h"
 
 #include "Core.h"
+#include "CoreVoltageController.h"   // -- WP MDQT2b --
 #include "DeviceModel.h"
 #include "DeviceRegistry.h"   // -- WP MDQT1 --
 #include "DeviceSession.h"
+#include "FirmwareController.h"   // -- WP MDQT2b --
 #include "LinkController.h"
 #include "NoticeCenter.h"
 #include "Registrar.h"
@@ -19,6 +21,7 @@
 #include <QQmlApplicationEngine>
 #include <QQmlComponent>
 #include <QQuickItem>
+#include <QPointer>
 #include <QQuickWindow>
 #include <QSettings>
 #include <QVector>
@@ -258,8 +261,45 @@ bool DevicesController::takeOpen(const QString &serial, bool remote) {
 void DevicesController::chooseOpen(const QString &id) { m_registry->activate(id); }
 
 void DevicesController::closeOpen(const QString &id) {
-    UnsavedGuard::before(id == m_registry->activeId() ? QStringLiteral("device") : QString(), this,
-                         [this, id] { m_registry->close(id); });
+    // -- WP MDQT2b -- that device's question, and not while a job pins it
+    DeviceSession *session = m_registry->session(id);
+    if (!session) return;
+    const QString pinned = pinnedBy(session);
+    if (!pinned.isEmpty()) {
+        refuse(pinned);
+        return;
+    }
+    const QPointer<DeviceSession> asked = session;
+    UnsavedGuard::beforeClosing(session, this, [this, id, asked] {
+        if (!asked) return;
+        const QString now = pinnedBy(asked);
+        if (now.isEmpty()) m_registry->close(id);
+        else refuse(now);
+    });
+}
+
+// -- WP MDQT2b --
+QString DevicesController::pinnedText(const QString &id) const { return pinnedBy(m_registry->session(id)); }
+
+QString DevicesController::pinnedBy(DeviceSession *session) const {
+    if (!session) return QString();
+    const auto *firmware = Registrar::instance<FirmwareController>();
+    //: %1 is a device's name
+    if (firmware && firmware->runsOn(session)) return tr("A firmware update is under way on %1. Wait for it to finish.").arg(session->title());
+    const auto *voltage = Registrar::instance<CoreVoltageController>();
+    //: %1 is a device's name
+    if (voltage && voltage->calibratingOn(session))
+        return tr("A core voltage calibration runs on %1. End it on its Core Voltage page first.").arg(session->title());
+    return QString();
+}
+
+// Classic replaces the active device: not while a job pins it
+bool DevicesController::refusedPinned() {
+    if (m_registry->keepOpen()) return false;
+    const QString pinned = pinnedBy(m_registry->active());
+    if (pinned.isEmpty()) return false;
+    refuse(pinned);
+    return true;
 }
 
 void DevicesController::chooseDemo() {
@@ -270,6 +310,7 @@ void DevicesController::chooseDemo() {
     }
     // -- WP QP15 -- another device: the unsaved-changes question first (M42, QD37)
     const bool same = m_device->demo() && !m_device->remote();
+    if (!same && refusedPinned()) return;   // -- WP MDQT2b --
     UnsavedGuard::before(same ? QString() : QStringLiteral("device"), this, [this] {
         if (LinkController *l = link(); l && (l->inSession() || m_device->remote())) l->leaveForLocal();
         m_device->openDemo();
@@ -285,6 +326,7 @@ void DevicesController::chooseUsb(const QString &serial) {
     }
     // -- WP QP15 -- another device: the unsaved-changes question first (M42, QD37)
     const bool same = serial == m_device->serial() && !m_device->demo() && !m_device->remote();
+    if (!same && refusedPinned()) return;   // -- WP MDQT2b --
     UnsavedGuard::before(same ? QString() : QStringLiteral("device"), this, [this, serial] {
         if (LinkController *l = link(); l && (l->inSession() || m_device->remote())) l->leaveForLocal();
         m_device->selectDevice(serial);
@@ -314,6 +356,7 @@ void DevicesController::chooseHubDevice(int handle, const QString &serial) {
     }
     // -- WP QP15 -- another device: the unsaved-changes question first (M42)
     const bool same = serial == m_device->serial() && m_device->remote();
+    if (!same && refusedPinned()) return;   // -- WP MDQT2b --
     UnsavedGuard::before(same ? QString() : QStringLiteral("device"), this, [this, handle, serial] {
         if (LinkController *l = link()) l->bindDevice(handle, serial);
     });

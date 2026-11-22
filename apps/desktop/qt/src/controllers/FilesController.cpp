@@ -8,6 +8,7 @@
 #include "Core.h"
 #include "CoreWorker.h"
 #include "DeviceModel.h"
+#include "DeviceSession.h"   // -- WP MDQT2b --
 #include "HardwareController.h"
 #include "PresetModel.h"
 #include "Shell.h"
@@ -20,6 +21,7 @@
 #include "CoreApi.h"
 
 #include <QDateTime>
+#include <QPointer>
 #include <QDir>   // -- WP P1QT1 --
 #include <QFile>
 #include <QFileDialog>
@@ -143,15 +145,18 @@ FilesController::FilesController(const AppContext &ctx, QObject *parent) : QObje
             showError(tr("Still identifying the device. Try again in a moment."));
             return;
         }
+        m_askedOf = m_ctx.activeSession();   // -- WP MDQT2b --
         emit deviceQuestion(QStringLiteral("commit"), tr("Save Preset"),
                             tr("Save current parameters to preset slot %1?").arg(slot + 1), tr("Save"), false);
     });
     shell->addHandler(QStringLiteral("device.revert"), this, [this] {
+        m_askedOf = m_ctx.activeSession();   // -- WP MDQT2b --
         emit deviceQuestion(QStringLiteral("revert"), tr("Revert to Saved"),
                             tr("Revert to last saved parameters?\n\nCurrent unsaved changes will be lost."), tr("Revert"),
                             false);
     });
     shell->addHandler(QStringLiteral("device.factoryReset"), this, [this] {
+        m_askedOf = m_ctx.activeSession();   // -- WP MDQT2b --
         emit deviceQuestion(QStringLiteral("factoryReset"), tr("Factory Reset"),
                             tr("Do you wish to clear all active parameters?\n\nThis will not overwrite your saved "
                                "parameters unless you run 'Commit Parameters'."),
@@ -248,6 +253,7 @@ void FilesController::setImporting(bool importing) {
 
 void FilesController::importFiltersFrom(const QString &path) {
     const auto inputs = uint8_t(m_ctx.device->numInputs());
+    const QPointer<DeviceSession> asked = m_ctx.activeSession();   // -- WP MDQT2b --
     m_ctx.core->worker()->call(
         this,
         [path, inputs](FfiCore *c) {
@@ -261,7 +267,8 @@ void FilesController::importFiltersFrom(const QString &path) {
             }
             return std::make_pair(r, inspected);
         },
-        [this](std::pair<Read, QJsonObject> result) {
+        [this, asked](std::pair<Read, QJsonObject> result) {
+            if (asked != m_ctx.activeSession()) return;   // -- WP MDQT2b -- inspected for the device left
             const Read &r = result.first;
             const QJsonObject &o = result.second;
             if (!r.error.isEmpty()) {
@@ -303,13 +310,14 @@ void FilesController::importFiltersFrom(const QString &path) {
                                             { QStringLiteral("checked"), ch.value(QLatin1String("checked")).toBool() } });
             }
             m_pending = r.text;
+            m_askedOf = asked;   // -- WP MDQT2b --
             emit filtersPicker(prompt, choices);
         });
 }
 
 void FilesController::applyFilters(const QVariantList &wires) {
     const QByteArray text = std::exchange(m_pending, QByteArray());
-    if (text.isEmpty() || wires.isEmpty()) return;
+    if (text.isEmpty() || wires.isEmpty() || !stillAskedOf()) return;
     QByteArray chosen;
     for (const QVariant &w : wires) chosen.append(char(uint8_t(w.toInt())));
     auto reply = std::make_shared<QJsonObject>();
@@ -412,6 +420,7 @@ QString FilesController::importPrompt(const QString &platform, const QString &fi
 
 void FilesController::importConfigurationFrom(const QString &path) {
     if (!needDevice()) return;
+    const QPointer<DeviceSession> asked = m_ctx.activeSession();   // -- WP MDQT2b --
     m_ctx.core->worker()->call(
         this,
         [path](FfiCore *c) {
@@ -438,7 +447,8 @@ void FilesController::importConfigurationFrom(const QString &path) {
             inspected.insert(QStringLiteral("_guardDefault"), guardDefault);
             return std::make_pair(r, inspected);
         },
-        [this](std::pair<Read, QJsonObject> result) {
+        [this, asked](std::pair<Read, QJsonObject> result) {
+            if (asked != m_ctx.activeSession()) return;   // -- WP MDQT2b -- inspected for the device left
             const QJsonObject &o = result.second;
             if (!result.first.error.isEmpty()) {
                 showError(result.first.error);
@@ -455,6 +465,7 @@ void FilesController::importConfigurationFrom(const QString &path) {
                 return;
             }
             m_pending = result.first.text;
+            m_askedOf = asked;   // -- WP MDQT2b --
             emit configurationOptions(importPrompt(o.value(QLatin1String("platform")).toString(),
                                                    o.value(QLatin1String("firmware")).toString(),
                                                    o.value(QLatin1String("savedUtc")).toString()),
@@ -466,7 +477,7 @@ void FilesController::importConfigurationFrom(const QString &path) {
 // before and safe-apply hook in here)
 void FilesController::applyConfiguration(int blocks, bool guarded) {
     const QByteArray text = std::exchange(m_pending, QByteArray());
-    if (text.isEmpty()) return;
+    if (text.isEmpty() || !stillAskedOf()) return;
     // -- WP P1QT1 -- by block (P1DF); every channel's EQ when EQ is ticked
     const uint32_t options = IMPORT_BY_BLOCK | (uint32_t(blocks) & IMPORT_ALL_BLOCKS);
     if ((options & IMPORT_ALL_BLOCKS) == 0) {
@@ -486,6 +497,7 @@ void FilesController::applyConfiguration(int blocks, bool guarded) {
         // -- WP P1DCFIX -- for the time set in the Snapshots window (30 s unless set)
         auto *snapshots = Registrar::instance<SnapshotsController>();
         const uint32_t timeout = snapshots ? uint32_t(snapshots->guardTimeoutS()) : 0;
+        const QPointer<DeviceSession> session = m_ctx.activeSession();   // -- WP MDQT2b --
         m_ctx.device->write(
             QStringLiteral("configuration import"),
             [text, options, reply, timeout](FfiCore *c) {
@@ -494,13 +506,14 @@ void FilesController::applyConfiguration(int blocks, bool guarded) {
                          })).object();
                 return reply->value(QLatin1String("ok")).toBool();
             },
-            [this, reply](bool ok) {
+            [this, reply, session](bool ok) {
                 setImporting(false);
                 if (!ok) {
                     showError(refusal(*reply));
                     return;
                 }
-                if (auto *snapshots = Registrar::instance<SnapshotsController>()) snapshots->guardStarted(*reply);
+                // -- WP MDQT2b -- with the device it was begun on
+                if (auto *snapshots = Registrar::instance<SnapshotsController>()) snapshots->guardStarted(*reply, session);
             });
         return;
     }
@@ -541,6 +554,15 @@ void FilesController::applyConfiguration(int blocks, bool guarded) {
 
 void FilesController::cancelImport() { m_pending.clear(); }
 
+// -- WP MDQT2b -- The device a question was asked about is still the active
+// one; when it is not, nothing is done, and that is said
+bool FilesController::stillAskedOf() {
+    const bool same = m_askedOf == m_ctx.activeSession();
+    m_askedOf = nullptr;
+    if (!same) showError(tr("Another device is shown now. Nothing was changed."));
+    return same;
+}
+
 // ---- Saves -----------------------------------------------------------------------
 
 void FilesController::saveMasterVolume() {
@@ -561,7 +583,7 @@ void FilesController::saveMasterVolume() {
 
 // -- WP QPI2 --
 void FilesController::answerDevice(const QString &op, const QString &answer) {
-    if (answer != QLatin1String("accept") || !needDevice()) return;
+    if (answer != QLatin1String("accept") || !stillAskedOf() || !needDevice()) return;
     const int slot = m_ctx.device->presets()->activeSlot();
     if (slot < 0) {
         showError(tr("Still identifying the device. Try again in a moment."));
@@ -642,9 +664,11 @@ QString FilesController::templatesDir() {
 QString FilesController::saveName() const { return QFileInfo(m_documentPath).completeBaseName(); }
 
 void FilesController::readOffline() {
+    const QPointer<DeviceSession> asked = m_ctx.activeSession();   // -- WP MDQT2b --
     m_ctx.core->worker()->call(
         this, [](FfiCore *c) { return readSized([c](char *b, uint32_t n) { return dspi_offline_document(c, b, n); }); },
-        [this](QByteArray reply) {
+        [this, asked](QByteArray reply) {
+            if (asked != m_ctx.activeSession()) return;
             const QJsonObject o = QJsonDocument::fromJson(reply).object();
             const bool offline = o.value(QLatin1String("offline")).toBool();
             const QString file = offline ? o.value(QLatin1String("fileName")).toString() : QString();

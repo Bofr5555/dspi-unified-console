@@ -5,6 +5,7 @@
 #include <QJsonObject>
 #include <QStringList>
 #include <QObject>
+#include <QPointer>
 #include <QString>
 #include <QVariantMap>
 #include <QTimer>
@@ -13,6 +14,7 @@
 
 #include "Registrar.h"
 
+class DeviceSession;
 class QJSEngine;
 class QQmlEngine;
 
@@ -108,6 +110,7 @@ private:
     AppContext m_ctx;
     bool m_hubSession = false;
     bool m_canAck = false;
+    QPointer<DeviceSession> m_session;   // -- WP MDQT2b -- the device whose hub alarms show
 };
 
 #endif // NOTICECENTER_H

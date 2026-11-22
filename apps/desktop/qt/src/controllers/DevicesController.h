@@ -16,6 +16,7 @@ struct AppContext;
 class Core;
 class DeviceModel;
 class DeviceRegistry;
+class DeviceSession;
 class LinkController;
 class QQmlEngine;
 class QJSEngine;
@@ -77,7 +78,13 @@ public:
     // -- WP MDQT1 -- The "Open devices" list: make one active (it stays open, so
     // nothing is asked), or close it (the active one's unsaved changes are)
     Q_INVOKABLE void chooseOpen(const QString &id);
+    // -- WP MDQT2b -- Closing asks about that device's own unsaved changes,
+    // active or not, and is refused (a notice) while a firmware update or a
+    // core voltage calibration runs on it. The device tabs close through here.
     Q_INVOKABLE void closeOpen(const QString &id);
+    // -- WP MDQT2b -- Why the open device `id` cannot be closed or replaced
+    // now ("" when it can): a firmware update or a calibration runs on it
+    Q_INVOKABLE QString pinnedText(const QString &id) const;
 
     // This app's own hub (sharing), which is not listed as another one
     void setOwnHubId(const QString &id);
@@ -106,6 +113,9 @@ private:
     void browseActive();
     bool takeOpen(const QString &serial, bool remote);
     void refuse(const QString &error);
+    // -- WP MDQT2b -- pinnedText() of a session; Classic's replace refused while the active one is pinned
+    QString pinnedBy(DeviceSession *session) const;
+    bool refusedPinned();
 
     FfiCore *m_core;   // the active device's: the browse runs on it
     DeviceRegistry *m_registry;   // -- WP MDQT1 --

@@ -17,6 +17,8 @@
 #include "Registrar.h"
 
 class DeviceModel;
+class DeviceRegistry;
+class DeviceSession;
 class LinkController;
 class QJSEngine;
 class QQmlEngine;
@@ -201,6 +203,14 @@ private:
 
     FfiCore *m_core;
     DeviceModel *m_device;
+    // -- WP MDQT2b -- as SystemController: the active device's core, taken
+    // again on a switch, when the hub's identity (LinkController's, the
+    // active one's too) and the core change together; `m_epoch` drops answers
+    // asked before it
+    DeviceRegistry *m_registry;
+    QPointer<DeviceSession> m_session;
+    quint64 m_epoch = 0;
+    void rebind();
     QPointer<LinkController> m_link;
     QThreadPool m_pool;
     QTimer m_timer;

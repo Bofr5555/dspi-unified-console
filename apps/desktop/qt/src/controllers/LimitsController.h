@@ -10,10 +10,13 @@
 #include <QtQml/qqmlregistration.h>
 #include <cstdint>
 #include <functional>
+#include <memory>
+#include <vector>
 
 #include "CoreApi.h"
 #include "Registrar.h"
 
+class DeviceSession;
 class QJSEngine;
 class QQmlEngine;
 
@@ -191,6 +194,18 @@ private:
     // The hub's admin events, on a core thread: re-read on the GUI thread's say
     static void hubEventThunk(const char *kind, const char *eventJson, void *self);
     void onHubEvent(const QJsonObject &event);
+    // -- WP MDQT2b -- One listener per open device's core (events of the
+    // active one only are acted on); `asked` the session a read was asked of:
+    // its answer counts while that one is still active
+    struct HubListener {
+        LimitsController *self;
+        DeviceSession *session;   // compared, never followed off the GUI thread
+    };
+    void listen(DeviceSession *session);
+    void unlisten(DeviceSession *session);
+    bool current(const DeviceSession *asked) const { return asked == m_ctx.activeSession(); }
+    std::vector<std::unique_ptr<HubListener>> m_listeners;
+    bool m_lockDue = false;   // a new hub connection: its first read asks the hub for the lock
 
     AppContext m_ctx;
     int m_busy = 0;

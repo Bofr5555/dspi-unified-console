@@ -2,6 +2,8 @@
 
 #include "Core.h"
 #include "DeviceModel.h"
+#include "DeviceRegistry.h"   // -- WP MDQT2b --
+#include "DeviceSession.h"
 #include "LinkController.h"
 #include "Registrar.h"
 
@@ -80,12 +82,14 @@ QJsonValue orNull(const QString &s) { return s.isEmpty() ? QJsonValue() : QJsonV
 } // namespace
 
 InstallationController::InstallationController(const AppContext &ctx, QObject *parent)
-    : QObject(parent), m_core(ctx.core->handle()), m_device(ctx.device) {
+    : QObject(parent), m_core(ctx.core->handle()), m_device(ctx.device), m_registry(ctx.registry), m_session(ctx.activeSession()) {
     m_pool.setMaxThreadCount(1);
     m_pool.setExpiryTimeout(-1);
     m_timer.setInterval(kPollMs);
     connect(&m_timer, &QTimer::timeout, this, &InstallationController::refresh);
     connect(m_device, &DeviceModel::snapshotApplied, this, &InstallationController::updatePolling);
+    // -- WP MDQT2b -- with SystemController
+    if (m_registry) connect(m_registry, &DeviceRegistry::activeChanged, this, &InstallationController::updatePolling);
     // No wait here, as SystemController: LinkController's quit ends a request
     // under way; the destructor waits afterwards
     connect(qApp, &QCoreApplication::aboutToQuit, this, [this] {
@@ -159,6 +163,7 @@ void InstallationController::setShown(bool shown) {
 // shown; a draft with edits waits for the same hub (a link that came back),
 // and applyView drops it on another
 void InstallationController::updatePolling() {
+    if (m_registry && m_registry->active() != m_session) rebind();   // -- WP MDQT2b --
     if (writable() != m_wasWritable) {
         m_wasWritable = writable();
         emit viewChanged();
@@ -181,17 +186,46 @@ void InstallationController::updatePolling() {
     }
 }
 
+// -- WP MDQT2b -- Another device is the active one: its core from now on;
+// the view and the draft of the one left go (never one hub's edits saved to
+// another), and an answer still on its way is dropped
+void InstallationController::rebind() {
+    m_session = m_registry->active();
+    m_core = m_session ? m_session->handle() : nullptr;
+    ++m_epoch;
+    m_timer.stop();
+    m_available = false;
+    m_error.clear();
+    m_role.clear();
+    m_hub.clear();
+    m_seen = QJsonArray();
+    m_latest = QJsonObject();
+    m_dirty = false;
+    m_current = false;
+    m_stale = false;
+    setMessage(QString(), false);
+    if (m_core) takeDraft(QJsonObject());
+    m_current = false;
+    emit viewChanged();
+    emit editableChanged();
+}
+
 void InstallationController::refresh() {
-    if (m_shutDown || m_reading) return;
+    if (m_shutDown || m_reading || !m_core) return;
     m_reading = true;
     FfiCore *core = m_core;
     const QString hub = hubKey();
-    m_pool.start([this, core, hub] {
+    const quint64 epoch = m_epoch;   // -- WP MDQT2b --
+    m_pool.start([this, core, hub, epoch] {
         const QJsonObject o = call([core](char *b, uint32_t n) { return dspi_installation_view(core, b, n); });
         QMetaObject::invokeMethod(
             this,
-            [this, o, hub] {
+            [this, o, hub, epoch] {
                 m_reading = false;
+                if (epoch != m_epoch) {   // -- WP MDQT2b -- the device left's
+                    if (m_timer.isActive()) refresh();
+                    return;
+                }
                 applyView(o, hub);
             },
             Qt::QueuedConnection);
@@ -607,7 +641,8 @@ void InstallationController::save() {
     FfiCore *core = m_core;
     const QString hub = m_hub;
     const QByteArray draft = json(m_draft);
-    m_pool.start([this, core, hub, draft] {
+    const quint64 epoch = m_epoch;   // -- WP MDQT2b --
+    m_pool.start([this, core, hub, draft, epoch] {
         // Called once, never again: a reply too long for the buffer means it
         // has happened (fns_misc/installation.rs). Then the installation as it
         // is now, saved or not
@@ -618,8 +653,13 @@ void InstallationController::save() {
         const QJsonObject view = call([core](char *b, uint32_t n) { return dspi_installation_view(core, b, n); });
         QMetaObject::invokeMethod(
             this,
-            [this, hub, saved, tooLong, view] {
+            [this, hub, saved, tooLong, view, epoch] {
                 --m_busy;
+                // -- WP MDQT2b -- saved on the device left: its words are not this one's
+                if (epoch != m_epoch) {
+                    emit editableChanged();
+                    return;
+                }
                 const bool sameHub = hub == m_hub && hub == hubKey();
                 if (sameHub && (tooLong || isOk(saved))) {
                     // Until the view is read, there is no draft to edit

@@ -4,6 +4,7 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QObject>
+#include <QPointer>
 #include <QString>
 #include <QVariantList>
 #include <QtQml/qqmlregistration.h>
@@ -11,6 +12,7 @@
 #include "Poller.h"
 #include "Registrar.h"
 
+class DeviceSession;
 class QJSEngine;
 class QQmlEngine;
 
@@ -96,6 +98,7 @@ private:
     quint64 m_newestHubId = 0;
     int m_generation = 0;
     Poller::Id m_poll = -1;
+    QPointer<DeviceSession> m_session;   // -- WP MDQT2b -- the device the list and the hub watch are of
 };
 
 #endif // EVENTSCONTROLLER_H

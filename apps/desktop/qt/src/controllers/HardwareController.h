@@ -3,6 +3,7 @@
 
 #include <QList>
 #include <QObject>
+#include <QPointer>
 #include <QString>
 #include <QStringList>
 #include <QVariantList>
@@ -16,6 +17,8 @@
 #include "CoreApi.h"
 #include "PinMap.h"
 #include "Registrar.h"
+
+class DeviceSession;
 
 class QQmlEngine;
 class QJSEngine;
@@ -140,6 +143,9 @@ public:
     QVariantMap i2cOutcome() const { return m_i2cOutcome; }
 
     bool pending() const;
+    // -- WP MDQT2b -- pending() for `session`'s device: the active one's, or
+    // what was held for one switched away from (kept in its session)
+    bool pendingOn(DeviceSession *session) const;
     bool liveOnly() const;
     bool saving() const { return m_saving; }
     bool busy() const;
@@ -261,6 +267,7 @@ private:
     class OutputPart;
 
     void onSnapshot();
+    void rebind();   // -- WP MDQT2b --
     void joinParts();
     void readFeatures();
     void readState();
@@ -311,6 +318,7 @@ private:
     QString m_saveFailure;
     QString m_heldNote;
     bool m_partsJoined = false;
+    QPointer<DeviceSession> m_session;   // -- WP MDQT2b -- the session the draft is of
 };
 
 #endif // HARDWARECONTROLLER_H

@@ -4,6 +4,7 @@
 #include "CoreApi.h"
 #include "CoreWorker.h"
 #include "DeviceModel.h"
+#include "DeviceSession.h"   // -- WP MDQT2b --
 #include "Shell.h"
 #include "NoticeCenter.h"
 #include "Snapshot.h"
@@ -14,6 +15,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QLocale>
+#include <QPointer>
 #include <memory>
 
 static const Registrar::Controller<HistoryController> historyController;
@@ -157,6 +159,7 @@ void HistoryController::reload() {
         return;
     }
     m_reading = true;
+    const QPointer<DeviceSession> asked = m_ctx.activeSession();   // -- WP MDQT2b --
     m_ctx.core->worker()->call(
         this,
         [](FfiCore *c) {
@@ -167,8 +170,15 @@ void HistoryController::reload() {
             j.entries = jsonValue(reply).toArray();
             return j;
         },
-        [this](const Journal &j) {
+        [this, asked](const Journal &j) {
             m_reading = false;
+            // -- WP MDQT2b -- the journal of a device that is not the active
+            // one any more: not shown, the active one's is read instead
+            if (asked != m_ctx.activeSession()) {
+                m_again = false;
+                reload();
+                return;
+            }
             QVariantList list;
             for (const QJsonValue &v : j.entries) {
                 const QJsonObject e = v.toObject();

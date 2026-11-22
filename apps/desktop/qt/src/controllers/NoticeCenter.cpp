@@ -1,6 +1,7 @@
 #include "NoticeCenter.h"
 
 #include "DeviceModel.h"
+#include "DeviceSession.h"   // -- WP MDQT2b --
 #include "Snapshot.h"
 // -- WP P2QT --
 #include "Core.h"
@@ -10,6 +11,7 @@
 #include "CoreApi.h"
 
 #include <QJSEngine>
+#include <QPointer>
 #include <QLocale>   // -- WP P2QT --
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -157,20 +159,28 @@ void NoticeCenter::onSnapshot() {
     if (!m_ctx.core) return;
     const bool hub = m_ctx.device->connected() && m_ctx.device->remote();
     m_canAck = hub && !m_ctx.device->readOnly();
+    // -- WP MDQT2b -- another device is the active one: the alarms shown are
+    // its hub's, read anew (another hub's are never acknowledged on this one)
+    if (m_ctx.activeSession() != m_session) {
+        m_session = m_ctx.activeSession();
+        for (const QString &id : alarmIds()) dropAlarm(id);
+        m_hubSession = false;
+    }
     if (hub == m_hubSession) return;
     m_hubSession = hub;
     if (!hub) {
         for (const QString &id : alarmIds()) dropAlarm(id);
         return;
     }
+    const QPointer<DeviceSession> asked = m_ctx.activeSession();   // -- WP MDQT2b --
     m_ctx.core->worker()->call(
         this,
         [](FfiCore *c) {
             // Unsupported (no `alarms` cap, an upstream hub) sends nothing: no notice
             return readSized([c](char *b, uint32_t n) { return dspi_hub_alarms(c, nullptr, "active", b, n); }, 16384);
         },
-        [this](const QByteArray &reply) {
-            if (!m_hubSession) return;
+        [this, asked](const QByteArray &reply) {
+            if (!m_hubSession || asked != m_ctx.activeSession()) return;
             const QJsonObject o = QJsonDocument::fromJson(reply).object();
             for (const QJsonValue &v : o.value(QLatin1String("value")).toArray()) showAlarm(v.toObject());
         });
