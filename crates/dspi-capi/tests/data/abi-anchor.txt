@@ -2070,6 +2070,11 @@ const char *target_json,
 char *buf,
 uint32_t len);
 uint32_t dspi_core_set_close(struct FfiCoreSet *set, const char *id, char *buf, uint32_t len);
+struct FfiCore *dspi_core_set_main(struct FfiCoreSet *set);
+uint32_t dspi_core_set_device_of(struct FfiCoreSet *set,
+const struct FfiCore *core,
+char *buf,
+uint32_t len);
 uint32_t dspi_core_set_list(struct FfiCoreSet *set, char *buf, uint32_t len);
 struct FfiCore *dspi_core_set_core(struct FfiCoreSet *set, const char *id);
 uint32_t dspi_core_set_find_serial(struct FfiCoreSet *set,
