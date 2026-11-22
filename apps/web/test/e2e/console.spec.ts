@@ -105,7 +105,7 @@ test("standalone ?readonly: the volume control is off and says why", async ({ pa
 
 test("About: Weeb Labs' links are marked as theirs, from assets/about.json", async ({ page }) => {
   await page.goto("/");
-  await appMenu(page, "About");
+  await appMenu(page, "About uConsole"); // -- WP WEBM4 -- actions.json's words, "About {app}"
   const about = page.getByRole("dialog", { name: "About" });
   await expect(about.getByRole("heading", { name: "Weeb Labs: links and support" })).toBeVisible();
   await expect(about.getByText("This console is made by Bofr5555, not Weeb Labs.", { exact: false })).toBeVisible();
@@ -118,7 +118,7 @@ test("About: Weeb Labs' links are marked as theirs, from assets/about.json", asy
 test("About: the licence notice and its three section 7 terms, from assets/about.json", async ({ page }) => {
   const licence = JSON.parse(readFileSync(new URL("../../../../assets/about.json", import.meta.url), "utf8")).licence;
   await page.goto("/");
-  await appMenu(page, "About");
+  await appMenu(page, "About uConsole"); // -- WP WEBM4 -- actions.json's words, "About {app}"
   const about = page.getByRole("dialog", { name: "About" });
   await expect(about.getByRole("heading", { name: licence.title, exact: true })).toBeVisible();
   await expect(about.getByText(licence.statement)).toBeVisible();

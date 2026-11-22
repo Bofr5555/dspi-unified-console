@@ -182,6 +182,14 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
   pages by group beside the page. The Installation tab also shows in the Advanced mode, and edits an S/PDIF
   source and the outputs it sends its time base on, groups of units, and the source a new zone plays. Measuring
   several units uses a unit's open tab rather than a second connection to it. (WP WEBM3)
+- Web console: Ctrl+K (Cmd+K on a Mac), or Search in the top bar, opens the command palette. Type part of a name to find
+  a command, a section or page, a channel, a Settings page or another open device; each command shows its shortcut, and
+  one that cannot be used now is listed greyed with the reason. Right-click (or the menu key, or Shift+F10) on a channel,
+  a preset slot, a device tab, a band or the EQ graph opens its menu. The app menu, these menus and the palette use the
+  desktop app's words and groups. The bell in the top bar opens the notifications: what waits on each open device, and
+  what was said earlier. Settings › Appearance puts the sections in a rail or in tabs along the top, the device tabs in
+  the top bar or at the top of the rail, sets the theme (system, light or dark) and shows or hides the inspector; this
+  browser keeps the choice. (WP WEBM4)
 - The System screen has an Installation tab in the Installer mode on a hub. It lists the units the hub sees that
   are not in the installation, with Join (name, room, role and what feeds it), and edits each unit's room, role and
   upstream, the rooms and the zones. The hub's own check runs as you edit and shows a problem where it is; Save lists

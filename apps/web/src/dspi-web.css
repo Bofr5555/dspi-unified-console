@@ -1468,6 +1468,8 @@
 @container top (max-width: 340px) {
   .dspi-web .app-menu .menu > button { max-width: 4rem; }
   .dspi-web .top .user { max-width: 3rem; }
+  /* no room: the app menu has Search… and Notifications */
+  .dspi-web .top-search, .dspi-web .bell { display: none; }
 }
 @container console (max-width: 720px) {
   .dspi-web .rail-list { position: static; flex-direction: row; max-height: none; overflow: visible; padding: 0.25rem 0.5rem; }
@@ -1595,4 +1597,112 @@
   .dspi-web .settings-nav { position: static; gap: 0.35rem; }
   .dspi-web .settings-group-list { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 0.35rem; }
   .dspi-web .settings-nav .settings-group { flex: 0 0 6.5rem; }
+}
+
+/* -- WP WEBM4 -- Menus of actions.json's rows (ui/menus): a row's check, words and shortcut; why it is greyed */
+.dspi-web .action-row { display: flex; align-items: center; gap: 0.5rem; width: 100%; text-align: left; border: 0; border-radius: 4px; padding: 0.35rem 0.6rem 0.35rem 0.4rem; white-space: nowrap; background: none; color: inherit; font: inherit; }
+.dspi-web .action-row:focus-visible, .dspi-web .action-row:hover:not(:disabled) { background: var(--bg); outline: none; }
+.dspi-web .action-row:disabled { color: var(--muted); }
+.dspi-web .action-row.danger:not(:disabled) { color: var(--bad); }
+.dspi-web .action-check { flex: none; width: 1rem; text-align: center; color: var(--accent); }
+.dspi-web .action-row[aria-checked="true"] .action-check::before { content: "✓"; }
+.dspi-web .action-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.dspi-web .action-keys { flex: none; margin-left: 1rem; color: var(--muted); font-size: 0.8rem; }
+.dspi-web .action-keys::after { content: attr(data-keys); }
+.dspi-web .action-reason { display: block; padding: 0 0.6rem 0.3rem 1.9rem; font-size: 0.75rem; color: var(--muted); white-space: normal; max-width: 18rem; }
+.dspi-web .menu-heading { padding: 0.2rem 0.6rem; font-size: 0.75rem; color: var(--muted); }
+.dspi-web .context-menu { position: fixed; z-index: 30; list-style: none; margin: 0; padding: 0.25rem; min-width: 13rem; max-width: calc(100vw - 8px); max-height: calc(100vh - 8px); overflow: auto; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 6px 20px rgb(0 0 0 / 0.18); }
+
+/* -- WP WEBM4 -- The top bar's search (the command palette) and bell (the notification drawer) */
+.dspi-web .top-fill { flex: 1; }
+.dspi-web .top-search { flex: none; margin-left: auto; display: inline-flex; align-items: center; gap: 0.4rem; min-height: 2rem; padding: 0.2rem 0.55rem; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--muted); font-size: 0.85rem; }
+.dspi-web .top-search:hover { color: var(--text); background: var(--selection); }
+.dspi-web .top-search-key, .dspi-web .palette-keys { font: inherit; font-size: 0.75rem; padding: 0 0.3rem; border: 1px solid var(--line); border-radius: 4px; color: var(--muted); background: var(--bg); }
+.dspi-web .top .user { margin-left: 0; }
+.dspi-web .bell { position: relative; flex: none; display: inline-flex; align-items: center; justify-content: center; min-width: 2.25rem; min-height: 2.25rem; border: 0; border-radius: 6px; background: none; color: var(--text); padding: 0; }
+.dspi-web .bell:hover, .dspi-web .bell[aria-expanded="true"] { background: var(--selection); }
+.dspi-web .bell-count { position: absolute; top: 0.15rem; right: 0.1rem; min-width: 1rem; height: 1rem; padding: 0 0.2rem; box-sizing: border-box; border-radius: 0.5rem; background: var(--bad); color: var(--panel); font-size: 0.65rem; font-weight: 700; line-height: 1rem; text-align: center; }
+@container top (max-width: 480px) {
+  .dspi-web .top .user { max-width: 3.5rem; }
+  .dspi-web .app-menu .menu > button { max-width: 6.5rem; }
+}
+@container top (max-width: 340px) {
+  .dspi-web .app-menu .menu > button { max-width: 4rem; }
+  .dspi-web .top .user { max-width: 3rem; }
+  /* no room: the app menu has Search… and Notifications */
+  .dspi-web .top-search, .dspi-web .bell { display: none; }
+}
+@container top (max-width: 720px) {
+  .dspi-web .top-search-text, .dspi-web .top-search-key { display: none; }
+  .dspi-web .top-search { min-width: 2.25rem; justify-content: center; border-color: transparent; background: none; }
+}
+
+/* -- WP WEBM4 -- The command palette */
+.dspi-web .palette { width: min(640px, calc(100vw - 32px)); max-height: calc(100vh - 96px); margin: 64px auto auto; padding: 0; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--text); box-shadow: 0 12px 40px rgb(0 0 0 / 0.3); overflow: hidden; }
+.dspi-web .palette[open] { display: flex; flex-direction: column; }
+.dspi-web .palette::backdrop { background: rgb(0 0 0 / 0.35); }
+.dspi-web .palette-field { flex: none; width: 100%; box-sizing: border-box; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; padding: 0.8rem 1rem; font-size: 1rem; background: none; color: var(--text); }
+.dspi-web .palette-field:focus { outline: none; }
+.dspi-web .palette-list { list-style: none; margin: 0; padding: 0.3rem; overflow: auto; min-height: 0; }
+.dspi-web .palette-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "title keys" "where keys"; align-items: center; column-gap: 0.75rem; padding: 0.4rem 0.6rem; border-radius: 6px; cursor: pointer; }
+.dspi-web .palette-row.on { background: var(--selection); }
+.dspi-web .palette-row.off { cursor: default; }
+.dspi-web .palette-row.off .palette-title { color: var(--muted); }
+.dspi-web .palette-title { grid-area: title; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dspi-web .palette-matched, .dspi-web .palette-where { color: var(--muted); font-size: 0.8rem; }
+.dspi-web .palette-where { grid-area: where; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dspi-web .palette-keys { grid-area: keys; }
+.dspi-web .palette-none { margin: 0; padding: 0.8rem 1rem; color: var(--muted); }
+
+/* -- WP WEBM4 -- The notification drawer, under the top bar on the right */
+.dspi-web .drawer { position: fixed; top: var(--top-h); right: 0; z-index: 20; width: min(420px, calc(100vw - 16px)); box-sizing: border-box; max-height: calc(100vh - var(--top-h) - 8px); overflow: auto; padding: 0.4rem 0.75rem 0.75rem; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-top: 0; border-radius: 0 0 0 10px; box-shadow: 0 10px 30px rgb(0 0 0 / 0.2); }
+.dspi-web .drawer-head { display: flex; align-items: center; gap: 0.5rem; }
+.dspi-web .drawer-head h2, .dspi-web .drawer-head h3 { flex: 1; margin: 0.3rem 0; font-size: 1rem; }
+.dspi-web .drawer-head h3 { font-size: 0.8rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.dspi-web .drawer-close { min-width: 2.25rem; min-height: 2.25rem; border: 0; background: none; font-size: 1.2rem; color: var(--muted); border-radius: 6px; }
+.dspi-web .drawer-close:hover { background: var(--selection); color: var(--text); }
+.dspi-web .drawer-earlier { margin-top: 0.6rem; }
+.dspi-web .drawer-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.35rem; }
+.dspi-web .drawer-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.15rem 0.5rem; align-items: baseline; padding: 0.4rem 0.55rem; border-left: 3px solid var(--muted); border-radius: 4px; background: var(--bg); }
+.dspi-web .drawer-error { border-left-color: var(--bad); }
+.dspi-web .drawer-warning { border-left-color: var(--warn); }
+.dspi-web .drawer-device { grid-column: 1 / -1; font-size: 0.75rem; color: var(--muted); }
+.dspi-web .drawer-text { min-width: 0; overflow-wrap: anywhere; font-size: 0.9rem; }
+.dspi-web .drawer-time { color: var(--muted); font-size: 0.75rem; font-variant-numeric: tabular-nums; }
+.dspi-web .drawer-actions { grid-column: 1 / -1; display: flex; gap: 0.4rem; justify-content: flex-end; }
+.dspi-web .drawer-empty { margin: 0.4rem 0; color: var(--muted); }
+
+/* -- WP WEBM4 -- Settings › Appearance */
+.dspi-web .appearance-choice { border: 0; margin: 0 0 0.6rem; padding: 0; min-width: 0; }
+.dspi-web .appearance-choice legend { font-weight: 600; padding: 0; margin-bottom: 0.2rem; }
+.dspi-web .appearance-choice label { display: inline-flex; align-items: center; gap: 0.35rem; margin-right: 1rem; min-height: 2rem; }
+.dspi-web .appearance-choice:disabled { color: var(--muted); }
+
+/* -- WP WEBM4 -- The device tabs at the rail's top (Settings › Appearance › Device tabs): a wider rail, its sections in rows */
+.dspi-web[data-device-tabs="rail"] .shell-body { grid-template-columns: 11.5rem minmax(0, 1fr); }
+.dspi-web[data-device-tabs="rail"] .rail-list button { flex-direction: row; justify-content: flex-start; gap: 0.5rem; padding: 0.45rem 0.6rem; font-size: 0.85rem; }
+.dspi-web[data-device-tabs="rail"] .rail-text { position: static; width: auto; height: auto; overflow: visible; clip: auto; clip-path: none; }
+.dspi-web .rail-devices { padding: 0.4rem 0.35rem 0.3rem; border-bottom: 1px solid var(--line); }
+.dspi-web .rail-devices .device-tabs { flex-direction: column; align-items: stretch; padding: 0; gap: 2px; }
+.dspi-web .rail .rail-devices button { flex-direction: row; align-items: center; font-size: 0.85rem; line-height: 1.3; color: var(--muted); }
+.dspi-web .rail .rail-devices [aria-selected="true"] { color: var(--text); }
+.dspi-web .rail .rail-devices .device-tab-close { padding: 0 0.5rem; height: 1.6rem; }
+.dspi-web .rail-devices .device-tab-row { flex-direction: column; overflow: visible; }
+.dspi-web .rail-devices .device-tab { border-radius: 8px; }
+.dspi-web .rail-devices .device-tab:has([aria-selected="true"]) { background: var(--selection); }
+.dspi-web .rail-devices .device-tab > [role="tab"] { flex: 1; min-height: 2.25rem; max-width: none; padding: 0 0.2rem 0 0.5rem; border-radius: 8px 0 0 8px; }
+.dspi-web .rail-devices .device-tab-kind { display: none; }
+.dspi-web .rail-devices .device-add { align-self: stretch; text-align: left; border-radius: 8px; padding: 0.3rem 0.6rem; }
+@container console (max-width: 980px) and (min-width: 720.02px) {
+  .dspi-web[data-device-tabs="rail"] .shell-body { grid-template-columns: 11.5rem minmax(0, 1fr); }
+}
+@container console (max-width: 720px) {
+  .dspi-web[data-device-tabs="rail"] .shell-body { grid-template-columns: minmax(0, 1fr); }
+  .dspi-web[data-device-tabs="rail"] .rail-list button { flex-direction: column; gap: 0.2rem; padding: 0.45rem 0.1rem 0.4rem; font-size: 0.72rem; }
+  /* the device tabs scroll in their own row, the sections in theirs */
+  .dspi-web[data-device-tabs="rail"] .rail { overflow-x: visible; }
+  .dspi-web[data-device-tabs="rail"] .rail-list { overflow-x: auto; scrollbar-width: none; }
+  .dspi-web .rail-devices { padding: 0.25rem 0.5rem; overflow-x: auto; scrollbar-width: none; }
+  .dspi-web .rail-devices .device-tabs, .dspi-web .rail-devices .device-tab-row { flex-direction: row; }
+  .dspi-web .rail-devices .device-add { align-self: center; }
 }

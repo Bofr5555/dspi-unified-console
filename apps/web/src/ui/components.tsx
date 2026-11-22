@@ -19,6 +19,7 @@ import { SenderScreen } from "../screens/device/DeviceScreen"; // -- WP PGWEB --
 import type { ComponentChildren } from "preact";
 import { Frame } from "./shell/Frame";
 import { CONNECT, sectionsFor, type Page, type SectionId } from "./shell/sections";
+import type { ActionBoard } from "./menus/board"; // -- WP WEBM4 --
 
 export function useSessionState(s: Session) {
   const [, bump] = useState(0);
@@ -358,6 +359,9 @@ export interface ShellProps {
   /** The shortcut list is open (the app menu opens it too). */
   shortcuts: boolean;
   onShortcuts: (on: boolean) => void;
+  // -- WP WEBM4 --
+  /** Where the device's view says what it can do now (the app menu's and the command palette's rows). */
+  board?: ActionBoard;
 }
 
 const NO_PAGES: ReadonlyMap<SectionId, string> = new Map();
