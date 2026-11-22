@@ -211,6 +211,9 @@ void layoutPart(SmokeDriver &d, LayoutController *layout, MeasureController *mc,
     a->model()->write(QStringLiteral("rbfix volume"), [](FfiCore *c) { return dspi_set_user_volume(c, -20.0f); });
     idle(a);
     d.app().shell->trigger(QStringLiteral("tools.measure"));
+    // An earlier section may have left another microphone chosen
+    d.waitFor(5000, [&] { return mc->simAvailable(); });
+    mc->setMicChoice(QStringLiteral("sim"));
     d.waitFor(5000, [&] { return mc->simAvailable() && mc->micChoice() == QLatin1String("sim") && !mc->setupOutputs().isEmpty(); });
     d.check("rbfix: Measure is a page, nothing runs, the layout may be switched",
             d.app().shell->pageAction() == QLatin1String("tools.measure") && layout->switchBlocker().isEmpty());
@@ -227,6 +230,9 @@ void layoutPart(SmokeDriver &d, LayoutController *layout, MeasureController *mc,
     QSignalSpy blocked(layout, &LayoutController::switchBlockerChanged);
     mc->start();
     d.check("rbfix: a measurement runs on the first", d.waitFor(8000, [&] { return mc->measuring(); }));
+    if (!mc->measuring())
+        std::printf("smoke: rbfix: no measurement: %s %s %s %s\n", qPrintable(mc->error()), qPrintable(mc->setupProblem()),
+                    qPrintable(mc->playBlocker()), qPrintable(mc->issueText()));
     // Another device and another page are shown
     r->activate(b);
     d.app().shell->trigger(QStringLiteral("edit.settings"));
