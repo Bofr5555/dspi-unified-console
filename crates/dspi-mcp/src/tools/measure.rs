@@ -35,9 +35,9 @@ use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use dspi_core::actor::{ActorId, ActorScope, JobActor, WriteHook};
 use dspi_core::measure::{
-    MeasureCoupler, MeasureDocCurvesOptions, MeasureIssue, MeasurePhase, MeasurePlacement,
-    MeasurePreflight, MeasureRolloffSetup, MeasureRolloffStage, MeasureRunKind, MeasureSetup,
-    MeasureSystemPhase, MeasureSystemPurpose, MeasureSystemSetup, MeasureSystemUnit,
+    MeasureCoupler, MeasureDocCurvesOptions, MeasureIssue, MeasureLayoutOutput, MeasurePhase,
+    MeasurePlacement, MeasurePreflight, MeasureRolloffSetup, MeasureRolloffStage, MeasureRunKind,
+    MeasureSetup, MeasureSystemPhase, MeasureSystemPurpose, MeasureSystemSetup, MeasureSystemUnit,
     MeasureSystemUnitCheck, MeasureTuneOptions, MeasureTuneStage, MeasureTuneState,
     ROLLOFF_START_HZ, measure_doc_curves,
 };
@@ -1495,7 +1495,7 @@ static TUNE_PROPOSE: Tool = Tool {
     handler: |call, args| {
         let core = call.core()?;
         state(core)?;
-        confirmed_layout(core)?;
+        let confirmed = confirmed_layout(core)?;
         let measurement = match args.get("measurement").and_then(Value::as_str) {
             Some(id) => id.to_owned(),
             None => {
@@ -1524,9 +1524,10 @@ static TUNE_PROPOSE: Tool = Tool {
             }
         };
         let flag = |k: &str| args.get(k).and_then(Value::as_bool).unwrap_or(false);
-        // The outputs and groups the device suggests, cut to the outputs
-        // the measurement has; the roles are the user's
-        // (`roles_from_layout`).
+        // -- WP FUNC1 -- The outputs of the user's confirmed layout that the
+        // measurement has (the device's own suggestion leaves out an output
+        // no input feeds, and an empty list means every output); their
+        // roles and groups are the user's (`roles_from_layout`).
         let text = if measurement.trim_start().starts_with('{') {
             measurement.clone()
         } else {
@@ -1542,7 +1543,24 @@ static TUNE_PROPOSE: Tool = Tool {
         let mut layout = core
             .measure_layout_proposal()
             .map_err(|e| refusal(call, e))?;
-        layout.outputs.retain(|o| measured.contains(&o.output));
+        let suggested = std::mem::take(&mut layout.outputs);
+        layout.outputs = confirmed
+            .outputs
+            .iter()
+            .filter(|o| measured.contains(&o.output))
+            .map(|o| {
+                let known = suggested.iter().find(|s| s.output == o.output);
+                known.cloned().unwrap_or_else(|| MeasureLayoutOutput {
+                    output: o.output,
+                    ..MeasureLayoutOutput::default()
+                })
+            })
+            .collect();
+        if layout.outputs.is_empty() {
+            return Err(ToolError::new(
+                "the measurement has no output of the user's speaker layout",
+            ));
+        }
         let p = core
             .measure_tune_propose(
                 measurement,
