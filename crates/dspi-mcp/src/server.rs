@@ -4,8 +4,8 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use dspi_core::actor::{ActorId, register_actor};
-use dspi_core::{CoreSet, DeviceId};
+use dspi_core::actor::{ActorId, ActorScope, EMBEDDER, register_actor};
+use dspi_core::{CoreSet, DeviceId, DspiCore, GuardPhase};
 use serde_json::{Map, Value, json};
 
 use crate::activity::{Activity, ActivityEntry, Outcome};
@@ -15,8 +15,42 @@ use crate::protocol::{
     MODERN_VERSIONS, PARSE_ERROR, RpcError,
 };
 use crate::rate::{Bucket, READ_LIMIT, RateLimit, WRITE_LIMIT};
-use crate::registry::{self, Policy, ReadOnlyPolicy, Registry, RunCtx, ToolClass};
+use crate::registry::{
+    self, AgentGuards, Policy, ReadOnlyPolicy, Registry, RunCtx, Tool, ToolClass,
+};
 use crate::{ClientId, prompts, resources, untrusted};
+// -- WP MCP2a --
+use crate::confirm::{
+    AnswerError, CONFIRM_HOLD_MS, ConfirmEvent, ConfirmState, Confirmation, Confirmations,
+    WAITING_PER_CLIENT,
+};
+use crate::policy::WriteKey;
+
+// -- WP MCP2a --
+/// A drag the user has marked for this long, with none of the user's
+/// changes meanwhile, is taken as stale: a control destroyed while pressed
+/// never said it let go (review RA, MCP0 item 4). The server clears the mark
+/// and tries the agent's write once more.
+pub const STALE_DRAG_MS: u64 = 10_000;
+
+// -- WP MCP2a --
+/// [`Server::handle_held`]'s answer.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Handled {
+    /// The reply now (`None` for a notification or a response).
+    Reply(Option<String>),
+    /// A tool call held for the user's word: [`Server::resume`] gives its
+    /// reply once the confirmation has ended.
+    Held(u64),
+}
+
+/// A drag the server watches (-- WP MCP2a --): since when it has refused the
+/// agent, and the user's newest change then (id and time).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct DragWatch {
+    since_ms: u64,
+    mark: (u64, u64),
+}
 
 /// How a [`Server`] is set up.
 #[derive(Clone)]
@@ -66,6 +100,12 @@ pub struct Server {
     clients: BTreeMap<ClientId, Client>,
     next_client: u64,
     activity: Activity,
+    // -- WP MCP2a --
+    confirms: Confirmations,
+    /// The confirmation the request being handled opened.
+    held: Option<u64>,
+    guards: AgentGuards,
+    drags: BTreeMap<String, DragWatch>,
 }
 
 impl Server {
@@ -84,6 +124,10 @@ impl Server {
             clients: BTreeMap::new(),
             next_client: 0,
             activity: Activity::default(),
+            confirms: Confirmations::default(),
+            held: None,
+            guards: AgentGuards::new(),
+            drags: BTreeMap::new(),
         }
     }
 
@@ -109,9 +153,17 @@ impl Server {
         id
     }
 
-    /// The client is gone. Its activity stays.
+    /// The client is gone. Its activity stays; its waiting confirmations end
+    /// with nothing changed (-- WP MCP2a --).
     pub fn disconnect(&mut self, client: ClientId) {
         self.clients.remove(&client);
+        for id in self.confirms.of_client(client) {
+            self.confirms.end(
+                id,
+                ConfirmState::Gone,
+                tool_error("the agent disconnected; nothing was changed"),
+            );
+        }
     }
 
     /// The client's actor, once it has called or named itself.
@@ -389,9 +441,10 @@ impl Server {
                 ));
             }
         };
-        let Some((actor, label)) = self.actor(client) else {
+        let Some((_, label)) = self.actor(client) else {
             return Err(RpcError::new(INVALID_REQUEST, "unknown client"));
         };
+        self.tick(now_ms); // -- WP MCP2a --
         let mut entry = ActivityEntry {
             id: 0,
             at_ms: now_ms,
@@ -421,19 +474,83 @@ impl Server {
             self.activity.push(entry);
             return Ok(tool_error(&msg));
         }
-        let ctx = RunCtx {
-            set: &self.set,
-            active: self.active.as_ref(),
-            policy: self.config.policy.as_ref(),
-            activity: &self.activity,
-            client,
-            actor,
-            client_label: &label,
+        // -- WP MCP2a -- the policy's judgement, holds and the drag retry
+        self.held = None;
+        Ok(self.run_tool(now_ms, tool, args, Vec::new(), entry))
+    }
+
+    // -- WP MCP2a --
+    /// Run `tool` for the client of `entry` under `grant`, retry once past a
+    /// stale drag, keep the guard book, hold what needs the user, and log it.
+    fn run_tool(
+        &mut self,
+        now_ms: u64,
+        tool: &'static Tool,
+        args: &Map<String, Value>,
+        grant: Vec<WriteKey>,
+        mut entry: ActivityEntry,
+    ) -> Value {
+        let client = entry.client;
+        let Some(actor) = self.clients.get(&client).and_then(|c| c.actor) else {
+            return tool_error("unknown client");
         };
-        let out = registry::run(&ctx, tool, args);
-        entry.device = out.device;
+        let label = entry.client_label.clone();
+        let regranted = !grant.is_empty();
+        let mut out = self.run_once(client, actor, &label, tool, args, grant.clone());
+        if out.judging.editing
+            && let Some(dev) = out.device.clone()
+            && self.drag_is_stale(&dev, now_ms)
+        {
+            if let Some(core) = self.device_core(&dev) {
+                core.set_dragging(false);
+            }
+            self.drags.remove(&dev);
+            out = self.run_once(client, actor, &label, tool, args, grant);
+        }
+        if let Some(dev) = out.device.clone() {
+            if !out.judging.editing {
+                self.drags.remove(&dev);
+            }
+            if let Some(g) = out.judging.guard_begun {
+                self.guards.insert(dev.clone(), (client, g));
+            }
+            if out.judging.guard_ended.is_some() {
+                self.guards.remove(&dev);
+            }
+        }
+        entry.device.clone_from(&out.device);
         entry.journal_ids = out.journal_ids;
+        let asked = !out.judging.asked.is_empty() && out.judging.refused.is_none();
         let result = match out.result {
+            Err(_) if asked && regranted => {
+                let msg = "the device changed since the user allowed this, so nothing more was \
+                           changed; read it again and call the tool again";
+                entry.outcome = Outcome::Error;
+                entry.detail = msg.to_owned();
+                tool_error(msg)
+            }
+            Err(_) if asked && self.confirms.waiting_of(client) >= WAITING_PER_CLIENT => {
+                let msg = "the user has not yet answered this agent's earlier confirmations; \
+                           wait for those (dspi_get_confirmation) before asking again";
+                entry.outcome = Outcome::Error;
+                entry.detail = msg.to_owned();
+                tool_error(msg)
+            }
+            Err(_) if asked => {
+                let id = self.confirms.open(
+                    client,
+                    &label,
+                    tool.name,
+                    out.device.clone(),
+                    out.judging.asked,
+                    args.clone(),
+                    now_ms,
+                );
+                self.held = Some(id);
+                entry.outcome = Outcome::Held;
+                entry.detail = format!("waiting for the user's confirmation {id}");
+                held_result(id)
+            }
             Ok(data) => tool_ok(data),
             Err(e) => {
                 entry.outcome = Outcome::Error;
@@ -442,7 +559,229 @@ impl Server {
             }
         };
         self.activity.push(entry);
-        Ok(result)
+        result
+    }
+
+    /// One run of `tool` through the registry (-- WP MCP2a --).
+    fn run_once(
+        &self,
+        client: ClientId,
+        actor: ActorId,
+        label: &str,
+        tool: &Tool,
+        args: &Map<String, Value>,
+        grant: Vec<WriteKey>,
+    ) -> registry::RunOutcome {
+        let ctx = RunCtx {
+            set: &self.set,
+            active: self.active.as_ref(),
+            policy: self.config.policy.as_ref(),
+            activity: &self.activity,
+            client,
+            actor,
+            client_label: label,
+            grant,
+            confirmations: Some(&self.confirms),
+            guards: Some(&self.guards),
+        };
+        registry::run(&ctx, tool, args)
+    }
+
+    /// The open core with id text `dev`.
+    fn device_core(&self, dev: &str) -> Option<Arc<DspiCore>> {
+        DeviceId::parse(dev).and_then(|id| self.set.core(&id))
+    }
+
+    /// Whether the drag that refused an agent on `dev` is stale: marked for
+    /// [`STALE_DRAG_MS`] with no change by the user meanwhile.
+    fn drag_is_stale(&mut self, dev: &str, now_ms: u64) -> bool {
+        let Some(core) = self.device_core(dev) else {
+            return false;
+        };
+        let mark = core
+            .history(200)
+            .into_iter()
+            .find(|e| e.actor == EMBEDDER)
+            .map_or((0, 0), |e| (e.id, e.at_ms));
+        let w = self.drags.entry(dev.to_owned()).or_insert(DragWatch {
+            since_ms: now_ms,
+            mark,
+        });
+        if w.mark != mark {
+            *w = DragWatch {
+                since_ms: now_ms,
+                mark,
+            };
+            return false;
+        }
+        now_ms.saturating_sub(w.since_ms) >= STALE_DRAG_MS
+    }
+
+    // -- WP MCP2a --
+    /// One message, holding a tool call that needs the user's word: the
+    /// transport keeps the request open and calls [`Server::resume`] until it
+    /// gives the reply (at the latest [`CONFIRM_HOLD_MS`] later).
+    pub fn handle_held(&mut self, client: ClientId, now_ms: u64, text: &str) -> Handled {
+        let Ok(msg) = serde_json::from_str::<Value>(text) else {
+            return Handled::Reply(self.handle(client, now_ms, text));
+        };
+        let rpc_id = msg.get("id").cloned().unwrap_or(Value::Null);
+        let modern = msg
+            .pointer("/params/_meta")
+            .and_then(|m| m.get(META_VERSION))
+            .is_some();
+        self.held = None;
+        let reply = self.handle_value(client, now_ms, msg);
+        match self.held.take() {
+            Some(id) => {
+                if let Some(c) = self.confirms.get_mut(id) {
+                    c.request = Some((rpc_id, modern));
+                }
+                Handled::Held(id)
+            }
+            None => Handled::Reply(reply.map(|r| r.to_string())),
+        }
+    }
+
+    /// The reply to a request [`Server::handle_held`] held, once its
+    /// confirmation has ended; `None` while it waits, and for an id that
+    /// held no request.
+    pub fn resume(&mut self, id: u64, now_ms: u64) -> Option<String> {
+        self.tick(now_ms);
+        let c = self.confirms.get(id)?;
+        if c.state == ConfirmState::Waiting || c.request.is_none() {
+            return None;
+        }
+        let c = self.confirms.remove(id)?;
+        let (rpc_id, modern) = c.request?;
+        let mut result = c.result.unwrap_or_else(|| tool_error("no outcome"));
+        if modern && let Some(r) = result.as_object_mut() {
+            r.insert("resultType".into(), json!("complete"));
+        }
+        Some(protocol::reply(&rpc_id, result).to_string())
+    }
+
+    /// The user's answer to confirmation `id` (the app's sheet). Allow runs
+    /// the call now, with a grant for the writes the user saw.
+    pub fn answer_confirmation(
+        &mut self,
+        id: u64,
+        allow: bool,
+        now_ms: u64,
+    ) -> Result<(), AnswerError> {
+        self.tick(now_ms);
+        let c = self.confirms.get(id).ok_or(AnswerError::Unknown)?;
+        if c.state != ConfirmState::Waiting {
+            return Err(AnswerError::Ended(c.state));
+        }
+        let (client, tool_name, args, grant) = (c.client, c.tool, c.args.clone(), c.grant());
+        let entry = ActivityEntry {
+            id: 0,
+            at_ms: now_ms,
+            client,
+            client_label: c.client_label.clone(),
+            tool: tool_name.to_owned(),
+            device: c.device.clone(),
+            write: true,
+            outcome: Outcome::Ok,
+            journal_ids: Vec::new(),
+            detail: String::new(),
+        };
+        let tool = self.registry.get(tool_name);
+        let gone = !self.clients.contains_key(&client);
+        let (state, result) = match tool {
+            _ if !allow => {
+                let msg = "the user declined this change in the app; nothing was changed. \
+                           Do not try it again unless the user asks.";
+                self.activity.push(ActivityEntry {
+                    outcome: Outcome::Error,
+                    detail: format!("declined by the user (confirmation {id})"),
+                    ..entry
+                });
+                (ConfirmState::Denied, tool_error(msg))
+            }
+            Some(_) if gone => (
+                ConfirmState::Gone,
+                tool_error("the agent disconnected; nothing was changed"),
+            ),
+            None => (ConfirmState::Gone, tool_error("no such tool")),
+            Some(tool) => {
+                // A re-run has a grant, so it never holds anew.
+                let result = self.run_tool(now_ms, tool, &args, grant, entry);
+                (ConfirmState::Allowed, result)
+            }
+        };
+        self.confirms.end(id, state, result);
+        Ok(())
+    }
+
+    /// Confirmation `id`, waiting or ended (kept a while).
+    pub fn confirmation(&self, id: u64) -> Option<&Confirmation> {
+        self.confirms.get(id)
+    }
+
+    /// The confirmations waiting for the user, oldest first, as the sheet
+    /// shows them.
+    pub fn waiting_confirmations(&self) -> Vec<Value> {
+        self.confirms
+            .waiting()
+            .into_iter()
+            .map(Confirmation::to_json)
+            .collect()
+    }
+
+    /// What the app should hear of since it last asked.
+    pub fn take_confirm_events(&mut self) -> Vec<ConfirmEvent> {
+        self.confirms.take_events()
+    }
+
+    /// Drive the clocks: lapse unanswered confirmations, and the agents'
+    /// guarded applies (the revert at their timeout). Call it from the app's
+    /// poll; every request does too. A guard's poll runs as its agent with no
+    /// hook (a revert is never refused), or as the app once the agent is
+    /// gone.
+    pub fn tick(&mut self, now_ms: u64) {
+        for id in self.confirms.lapsed(now_ms) {
+            if let Some(c) = self.confirms.get(id) {
+                self.activity.push(ActivityEntry {
+                    id: 0,
+                    at_ms: now_ms,
+                    client: c.client,
+                    client_label: c.client_label.clone(),
+                    tool: c.tool.to_owned(),
+                    device: c.device.clone(),
+                    write: true,
+                    outcome: Outcome::Error,
+                    journal_ids: Vec::new(),
+                    detail: format!("not answered in time (confirmation {id})"),
+                });
+            }
+            let secs = CONFIRM_HOLD_MS / 1000;
+            self.confirms.end(
+                id,
+                ConfirmState::Expired,
+                tool_error(&format!(
+                    "the user did not answer within {secs} s; nothing was changed"
+                )),
+            );
+        }
+        let guards: Vec<(String, (ClientId, u64))> =
+            self.guards.iter().map(|(d, g)| (d.clone(), *g)).collect();
+        for (dev, (client, guard)) in guards {
+            let Some(core) = self.device_core(&dev) else {
+                self.guards.remove(&dev);
+                continue;
+            };
+            let actor = self.clients.get(&client).and_then(|c| c.actor);
+            let status = {
+                let _scope = actor.map(|a| ActorScope::enter(&core, a, None));
+                core.apply_poll()
+            };
+            if status.id != guard || !matches!(status.phase, GuardPhase::Waiting | GuardPhase::Lost)
+            {
+                self.guards.remove(&dev);
+            }
+        }
     }
 
     fn read_resource(
@@ -490,4 +829,26 @@ fn tool_ok(data: Value) -> Value {
 /// A tool's error, for the model to read and correct.
 fn tool_error(msg: &str) -> Value {
     json!({"content": [{"type": "text", "text": msg}], "isError": true})
+}
+
+// -- WP MCP2a --
+/// A held call's answer for a transport that cannot hold it: not an error;
+/// the agent asks `dspi_get_confirmation` for the outcome.
+fn held_result(id: u64) -> Value {
+    let secs = CONFIRM_HOLD_MS / 1000;
+    let data = json!({
+        "status": "awaiting_confirmation",
+        "confirmation_id": id,
+        "expires_in_s": secs,
+    });
+    let text = format!(
+        "The user must confirm this change in the app (confirmation {id}, up to {secs} s). \
+         Nothing has been changed yet. Call dspi_get_confirmation with confirmation_id {id} \
+         for the outcome."
+    );
+    json!({
+        "content": [{"type": "text", "text": text}],
+        "structuredContent": data,
+        "isError": false,
+    })
 }

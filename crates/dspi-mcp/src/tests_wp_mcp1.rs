@@ -330,6 +330,9 @@ fn wp_mcp1_the_tool_list_is_fixed_read_only_and_described() {
     let r = modern(&mut s, c, "tools/list", json!({}));
     let tools = r["result"]["tools"].as_array().unwrap();
     let names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
+    // -- WP MCP2a -- the read tools come first; the edit tools follow (MCP2a's test)
+    let names = &names[..12];
+    let tools = &tools[..12];
     assert_eq!(
         names,
         [
