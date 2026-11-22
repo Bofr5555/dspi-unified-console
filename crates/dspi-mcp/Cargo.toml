@@ -14,6 +14,19 @@ repository.workspace = true
 dspi-core = { path = "../dspi-core", default-features = false }
 dspi-proto.workspace = true
 serde_json.workspace = true
+# -- WP MCP3 -- the transports (feature `http`): all four already in the lock
+# through dspi-hub and dspi-link, at the versions they use.
+httparse = { version = "1", optional = true }
+sha2 = { version = "0.11", optional = true }
+getrandom = { version = "0.4", optional = true }
+data-encoding = { version = "2", optional = true }
+log = { workspace = true, optional = true }
+
+# -- WP MCP3 --
+[features]
+# The loopback HTTP listener, the per-client tokens and pairing, and the stdio
+# relay (http.rs, auth.rs, relay.rs). Off, the crate stays sans-IO.
+http = ["dep:httparse", "dep:sha2", "dep:getrandom", "dep:data-encoding", "dep:log"]
 
 [dev-dependencies]
 # A measurement document for the tests (a workspace crate, already a dependency

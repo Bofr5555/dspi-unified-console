@@ -7,18 +7,21 @@
 #include "Poller.h"
 #include "Registrar.h"
 #include "Shell.h"
+#include "TokenStore.h"   // -- WP MCP3 --
 
 #include "CoreApi.h"
 
 #include <QApplication>
 #include <QCommandLineParser>
 #include <QDir>
+#include <QJsonDocument>   // -- WP MCP3 --
 #include <QJsonObject>
 #include <QQmlApplicationEngine>
 #include <QQuickStyle>
 #include <QSettings>
 #include <QStandardPaths>
 #include <cstdio>
+#include <cstring>   // -- WP MCP3 --
 #include <memory>
 
 #ifdef DSPI_SMOKE
@@ -42,11 +45,15 @@ struct CommandLine {
     const QCommandLineOption version{ { QStringLiteral("v"), QStringLiteral("version") },
                                       QApplication::translate("main", "Displays version information.") };
     const QCommandLineOption demo{ QStringLiteral("demo"), QApplication::translate("main", "Open the demo device.") };
+    // -- WP MCP3 -- read before the parse in main() (relayIfAsked); listed for --help
+    const QCommandLineOption mcp{ QStringLiteral("mcp"),
+                                  QApplication::translate("main", "Relay an AI agent's MCP messages between standard input and output and the running app (Settings, AI agents).") };
     CommandLine() {
         parser.setApplicationDescription(AppIdentity::displayName());
         parser.addHelpOption();
         parser.addOption(version);
         parser.addOption(demo);
+        parser.addOption(mcp);   // -- WP MCP3 --
         MeasureSpike::addOptions(parser);   // -- WP P5QCAP -- hidden development switches
     }
 };
@@ -82,6 +89,39 @@ static int answerInformational(int argc, char *argv[]) {
     return -1;
 }
 
+// -- WP MCP3 -- --mcp: an agent host (Claude Desktop, an IDE) starts the app's
+// binary as a local MCP server with pipes, and it relays them to the running
+// app's loopback endpoint (dspi_mcp_relay_stdio) with no window. This is also
+// the Windows answer: a GUI-subsystem program gets no console, but handles a
+// parent passes it (STARTF_USESTDHANDLES, which every host's spawn uses for
+// pipes) are its standard input and output all the same, and Rust's stdio
+// reads them through GetStdHandle. The token is kept in the system's secret
+// store under "mcp-relay", as the hub tokens are. The port is the one
+// Settings, AI agents keeps in "mcp/port". Returns the exit code, or -1 to go on.
+static void keepRelayToken(const char *token, void *store) {
+    auto *tokens = static_cast<TokenStore *>(store);
+    if (token) tokens->save(QStringLiteral("mcp-relay"), QString::fromUtf8(token));
+    else tokens->forget(QStringLiteral("mcp-relay"));
+}
+
+static int relayIfAsked(int argc, char *argv[]) {
+    bool asked = false;
+    for (int i = 1; i < argc; ++i) asked = asked || std::strcmp(argv[i], "--mcp") == 0;
+    if (!asked) return -1;
+    // For QSettings and the Secret Service's D-Bus; no display.
+    QCoreApplication core(argc, argv);
+    const QSettings settings;
+    const int port = settings.value(QStringLiteral("mcp/port"), 47860).toInt();
+    auto tokens = TokenStore::forThisUser(nullptr);
+    const QJsonObject config{
+        { QStringLiteral("port"), port },
+        { QStringLiteral("token"), tokens->load(QStringLiteral("mcp-relay")) },
+        { QStringLiteral("name"), AppIdentity::displayName() + QStringLiteral(" (--mcp)") },
+    };
+    const QByteArray json = QJsonDocument(config).toJson(QJsonDocument::Compact);
+    return dspi_mcp_relay_stdio(json.constData(), keepRelayToken, tokens.get());
+}
+
 // -- WP MDQT1 -- The app's data folders, for every core the app opens and before
 // the first device (dspi_core_set_config): the same ones the controllers name
 // for the main core, and the speaker layouts' (ROLE0), which none names.
@@ -112,6 +152,8 @@ int main(int argc, char *argv[]) {
     QApplication::setApplicationVersion(AppIdentity::version());
     // -- WP QTCLI -- --help and --version answer before the GUI exists
     if (const int answered = answerInformational(argc, argv); answered >= 0) return answered;
+    // -- WP MCP3 -- the agents' stdio relay: no window, no core
+    if (const int relayed = relayIfAsked(argc, argv); relayed >= 0) return relayed;
     QApplication app(argc, argv);
     QApplication::setApplicationDisplayName(AppIdentity::displayName());
     // The desktop entry (packaging/linux/uconsole-for-dspi.desktop): Wayland's app id
