@@ -64,7 +64,8 @@ pub struct ActivityEntry {
     pub outcome: Outcome,
     /// The journal ids of the changes it made, for `revert_entry`.
     pub journal_ids: Vec<u64>,
-    /// In the server's words: the error's text, or "".
+    /// In the server's words: the error's text, the changes of a write that
+    /// ran (-- WP MCP4 --), or "".
     pub detail: String,
 }
 
@@ -127,5 +128,103 @@ impl Activity {
     /// Whether none are.
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
+    }
+}
+
+// -- WP MCP4 --
+/// The most changes [`words`] names.
+const WORDS_MAX: usize = 4;
+
+/// A tool result's `changes` in words for the app's log: "Out 3 output gain
+/// -6 dB to -1 dB; ...", "" without any. Numbers, switches and filter types
+/// only: a text value (a name) is left out.
+pub fn words(data: &Value) -> String {
+    let Some(changes) = data.get("changes").and_then(Value::as_array) else {
+        return String::new();
+    };
+    let mut out: Vec<String> = changes.iter().take(WORDS_MAX).map(change_words).collect();
+    let more = changes.len().saturating_sub(WORDS_MAX);
+    if more > 0 {
+        out.push(format!("{more} more"));
+    }
+    out.join("; ")
+}
+
+fn change_words(c: &Value) -> String {
+    let what = c.get("what").and_then(Value::as_str).unwrap_or("change");
+    let (what, unit) = match (what.strip_suffix("_db"), what.strip_suffix("_ms")) {
+        (Some(w), _) => (w, " dB"),
+        (_, Some(w)) => (w, " ms"),
+        _ => (what, ""),
+    };
+    let at = |key: &str, word: &str| {
+        c.get(key)
+            .and_then(Value::as_u64)
+            .map(|n| format!("{word} {}", n.saturating_add(1)))
+    };
+    let mut line: Vec<String> = [
+        at("input", "In"),
+        at("output", "Out"),
+        at("channel", "channel"),
+        at("slot", "band"),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+    line.push(what.replace('_', " "));
+    let value = |key: &str| c.get(key).and_then(|v| value_words(v, unit));
+    match (value("before"), value("after")) {
+        (Some(b), Some(a)) => line.push(format!("{b} to {a}")),
+        (None, Some(a)) => line.push(a),
+        _ => {}
+    }
+    line.join(" ")
+}
+
+fn number(v: &Value) -> Option<String> {
+    let x = v.as_f64()?;
+    let text = format!("{x:.2}");
+    let text = text.trim_end_matches('0').trim_end_matches('.');
+    Some(if text == "-0" { "0" } else { text }.to_owned())
+}
+
+fn value_words(v: &Value, unit: &str) -> Option<String> {
+    match v {
+        Value::Bool(b) => Some(if *b { "on" } else { "off" }.to_owned()),
+        Value::Number(_) => number(v).map(|n| format!("{n}{unit}")),
+        // A crossover's slots
+        Value::Array(a) => {
+            let parts: Vec<String> = a.iter().filter_map(|x| value_words(x, "")).collect();
+            if parts.len() != a.len() {
+                None
+            } else if parts.is_empty() {
+                Some("none".to_owned())
+            } else {
+                Some(parts.join(" + "))
+            }
+        }
+        // A filter, or a route
+        Value::Object(o) => {
+            if o.get("free").and_then(Value::as_bool) == Some(true) {
+                return Some("flat".to_owned());
+            }
+            let mut parts = Vec::new();
+            if let Some(t) = o.get("type_label").and_then(Value::as_str) {
+                parts.push(t.to_owned());
+            }
+            if let Some(on) = o.get("on").and_then(Value::as_bool) {
+                parts.push(if on { "on" } else { "off" }.to_owned());
+            }
+            for (key, unit) in [("freq_hz", " Hz"), ("gain_db", " dB")] {
+                if let Some(n) = o.get(key).and_then(number) {
+                    parts.push(format!("{n}{unit}"));
+                }
+            }
+            if let Some(n) = o.get("q").and_then(number) {
+                parts.push(format!("Q {n}"));
+            }
+            (!parts.is_empty()).then(|| parts.join(" "))
+        }
+        Value::Null | Value::String(_) => None,
     }
 }
