@@ -37,7 +37,7 @@ export const CONNECT_PAGE: Page = { id: CONNECT, label: "Open a DSPi" };
 
 export const SECTIONS: readonly SectionDef[] = [
   { id: "overview", title: "Overview", pages: ["main", "overview", "sender"] },
-  { id: "equaliser", title: "Equaliser", pages: ["eq", "inputs"] },
+  { id: "equaliser", title: "Equaliser", pages: ["eq", "xover", "delays", "inputs"] }, // -- WP WEBM2 -- PEQ | Crossover | Delay & gain
   { id: "routing", title: "Routing", pages: ["matrix"] },
   { id: "effects", title: "Effects", pages: ["effects"] },
   { id: "measure", title: "Measure", pages: ["measure"] },

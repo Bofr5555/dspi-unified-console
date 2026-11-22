@@ -4,6 +4,8 @@
 import type { ComponentChildren, RefObject } from "preact";
 import { PageTabs, Rail } from "./Rail";
 import { pageToOpen, type Section, type SectionId } from "./sections";
+// -- WP WEBM2 -- the inspector beside the page
+import { InspectorArea } from "../inspector/Inspector";
 
 export function Frame(props: {
   root?: RefObject<HTMLDivElement | null>;
@@ -37,9 +39,12 @@ export function Frame(props: {
             <PageTabs pages={section.pages} current={props.page} onPage={props.onPage} />
             {props.tools}
           </div>
-          <div class="page" data-page={props.page}>
-            {props.children}
-          </div>
+          {/* -- WP WEBM2 -- a page may fill the inspector beside it (ui/inspector) */}
+          <InspectorArea>
+            <div class="page" data-page={props.page}>
+              {props.children}
+            </div>
+          </InspectorArea>
           {props.foot}
         </div>
       </div>

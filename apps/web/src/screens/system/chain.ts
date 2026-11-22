@@ -16,7 +16,7 @@ import { effectTarget, type EffectId } from "../effects/model";
 
 /** Where a block opens: a screen, and on the EQ screen a channel and its PEQ or XO tab. */
 export interface ChainTarget {
-  screen: "main" | "eq" | "matrix" | "effects";
+  screen: "main" | "eq" | "matrix" | "effects" | "xover" | "delays"; // -- WP WEBM2 -- the Equaliser's Crossover and Delay & gain tabs
   wire?: number;
   tab?: "peq" | "xo";
   /** On the Effects screen: the effect it opens at. */

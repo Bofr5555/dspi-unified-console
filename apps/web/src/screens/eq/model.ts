@@ -482,6 +482,17 @@ export function bandLabel(b: number, p: FilterParams): string {
   return `Band ${b + 1}: ${parts.join(", ")}`;
 }
 
+// -- WP WEBM2 --
+/** The on-graph label of the chosen band, in short: "3 · Bell · 1.20kHz · +3.0 dB · Q 1.410". */
+export function bandTag(b: number, p: FilterParams): string {
+  const s = shapeOf(p.filterType);
+  const parts = [String(b + 1), s ? s.shape.title : typeName(p.filterType), `${shortFreq(p.freq)}Hz`];
+  if (usesGain(p.filterType)) parts.push(`${shortGain(p.gain)} dB`);
+  if (usesQ(p.filterType)) parts.push(`Q ${qText(p.q)}`);
+  if (p.bypass) parts.push("off");
+  return parts.join(" · ");
+}
+
 // ---------------------------------------------------------------- colours
 
 /** One hue per band (`PeqBandPalette`), so a band keeps its colour in the list. */
