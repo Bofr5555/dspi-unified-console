@@ -8330,6 +8330,11 @@ void dspi_core_set_free(struct FfiCoreSet *set);
  * "tlsAdvertised"}`: a unit behind a hub on its own session, with a credential
  * the app holds. JSON `{ok, id}`, or the failure (module docs). Blocks for the
  * connect sequence: not on the UI thread.
+ *
+ * -- WP MDQT1 -- It acts once, whatever the buffer: a reply that does not fit
+ * (the returned length is over `len`) writes nothing, but the device is open.
+ * Do not call it again for the id (it would open a second demo, or be refused
+ * as `already_open`): `dspi_core_set_list` has it. 4096 bytes hold any reply.
  */
 uint32_t dspi_core_set_open(struct FfiCoreSet *set,
                             const char *target_json,
@@ -8346,7 +8351,26 @@ uint32_t dspi_core_set_open(struct FfiCoreSet *set,
 uint32_t dspi_core_set_close(struct FfiCoreSet *set, const char *id, char *buf, uint32_t len);
 
 /**
- * The open devices, in the order they were opened: JSON `{ok, value: [{id,
+ * The set's main core, for every `dspi_*` call: there with a device or
+ * without, the same pointer each time, until `dspi_core_set_free`. Never pass
+ * it to `dspi_core_free`. Closing the device open on it
+ * (`dspi_core_set_close`) leaves it, and its callbacks, in place. Null for a
+ * null handle.
+ */
+struct FfiCore *dspi_core_set_main(struct FfiCoreSet *set);
+
+/**
+ * The open device `core` (a handle of this set) has, as the last
+ * `dspi_core_set_list` or poll saw it: its row as there, in `{ok, value}`;
+ * `value` null with no device. Does not wait on a device.
+ */
+uint32_t dspi_core_set_device_of(struct FfiCoreSet *set,
+                                 const struct FfiCore *core,
+                                 char *buf,
+                                 uint32_t len);
+
+/**
+ * The open devices, in the order they were opened (the main core's first): JSON `{ok, value: [{id,
  * label, transport, serial, state}]}`. `transport` is `usb`, `hub`, `link`,
  * `demo` or `file`; `state` is `live`, `reconnecting` or `lost`.
  */
@@ -8374,7 +8398,9 @@ uint32_t dspi_core_set_find_serial(struct FfiCoreSet *set,
  * Set the folders every core of the set gets, now and from now on. `config`
  * is JSON `{limitsDir, snapshotDir, measureDir, eventLogDir, linkDir,
  * speakerLayoutDir}`; an absent or empty one is not set. JSON `{ok}`, or the first core's failure.
- * Blocking file I/O.
+ * Blocking file I/O. -- WP MDQT1 -- Call it before opening devices (the limits
+ * and the speaker layout are then in force from the first); a folder that
+ * cannot be used fails this call, and never an open.
  */
 uint32_t dspi_core_set_config(struct FfiCoreSet *set,
                               const char *config_json,
