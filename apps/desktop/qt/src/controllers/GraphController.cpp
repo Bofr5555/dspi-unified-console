@@ -2,7 +2,9 @@
 #include "GraphController.h"
 
 #include "DeviceModel.h"
+#include "DeviceRegistry.h"
 #include "Poller.h"
+#include "SessionState.h"
 
 #include <QtMath>
 #include <cmath>
@@ -69,7 +71,7 @@ bool GraphController::Chain::operator==(const Chain &o) const {
 }
 
 GraphController::GraphController(const AppContext &ctx, QObject *parent)
-    : QObject(parent), m_device(ctx.device), m_poller(ctx.poller) {
+    : QObject(parent), m_registry(ctx.registry), m_device(ctx.device), m_poller(ctx.poller) {
     m_settings.beginGroup(QStringLiteral("graph"));
     // A stored number, or `fallback` when it is missing or not a number
     auto stored = [this](const char *key, double fallback) {
@@ -87,6 +89,7 @@ GraphController::GraphController(const AppContext &ctx, QObject *parent)
     for (int f = 0; f < FlagCount; ++f)
         m_on[size_t(f)] = m_settings.value(QLatin1String(kFlagKeys[f].key), kFlagKeys[f].initially).toBool();
 
+    m_shown = view();
     connect(m_device, &DeviceModel::snapshotApplied, this, &GraphController::onSnapshot);
     if (m_poller) connect(m_poller, &Poller::statusChanged, this, &GraphController::onStatus);
 }
@@ -94,27 +97,47 @@ GraphController::GraphController(const AppContext &ctx, QObject *parent)
 // ---- Curves ------------------------------------------------------------------
 
 GraphController::Chain GraphController::chainOf(const DspState &s, int channel) const {
+    const std::shared_ptr<View> own = view();
     Chain c;
     for (int b = 0; b < BANDS_PER_CHANNEL; ++b) c.bands[c.count++] = s.filters[channel][b];
     // Crossovers are an output's only
-    if (channel >= m_firstOutput)
+    if (channel >= own->firstOutput)
         for (int b = 0; b < MAX_XOVER_BANDS; ++b) c.bands[c.count++] = s.xover[channel][b];
     // The global bypass flattens the stereo input pair, as the Mac draws it
     c.flat = s.bypass && channel < 2;
     return c;
 }
 
+// -- WP MDQT2a --
+std::shared_ptr<GraphController::View> GraphController::view() const {
+    return sessionState<View>(m_registry ? m_registry->active() : nullptr, QStringLiteral("GraphController"));
+}
+
 void GraphController::onSnapshot() {
+    readDevice();
+    // -- WP MDQT2a -- another device is the active one: its curves, with the
+    // page and the curves the user left on show there
+    const std::shared_ptr<View> now = view();
+    if (now == m_shown) return;
+    m_shown = now;
+    ++m_curveRev;
+    emit curvesChanged();
+    emit selectionChanged();
+    emit visibilityChanged();
+}
+
+void GraphController::readDevice() {
+    const std::shared_ptr<View> own = view();
     const DspState *s = m_device->state();
     const uint64_t generation = m_device->snapshot().generation;
     if (!s) {
-        if (m_channelCount == 0) return;
-        m_channelCount = m_firstOutput = m_outputCount = 0;
-        for (auto &v : m_mag) v.clear();
-        for (auto &v : m_phase) v.clear();
-        for (auto &v : m_phaseUnwrapped) v.clear();
-        m_chains.fill(Chain{});
-        m_gainPreview.clear();
+        if (own->channelCount == 0) return;
+        own->channelCount = own->firstOutput = own->outputCount = 0;
+        for (auto &v : own->mag) v.clear();
+        for (auto &v : own->phase) v.clear();
+        for (auto &v : own->phaseUnwrapped) v.clear();
+        own->chains.fill(Chain{});
+        own->gainPreview.clear();
         ++m_curveRev;
         emit curvesChanged();
         return;
@@ -123,42 +146,42 @@ void GraphController::onSnapshot() {
     const int firstOutput = qBound(0, int(s->num_input_channels), MAX_INPUTS);
     const int outputs = qBound(0, int(s->num_output_channels), MAX_OUTPUTS);
     const int count = qMin(firstOutput + outputs, int(MAX_CHANNELS));
-    const bool channelSetChanged = count != m_channelCount || firstOutput != m_firstOutput || generation != m_generation;
-    m_firstOutput = firstOutput;
-    m_outputCount = outputs;
-    m_channelCount = count;
-    m_generation = generation;
+    const bool channelSetChanged = count != own->channelCount || firstOutput != own->firstOutput || generation != own->generation;
+    own->firstOutput = firstOutput;
+    own->outputCount = outputs;
+    own->channelCount = count;
+    own->generation = generation;
 
     bool changed = channelSetChanged;
     for (int ch = 0; ch < MAX_CHANNELS; ++ch) {
         if (ch >= count) {
-            if (!m_mag[ch].isEmpty()) {
-                m_mag[ch].clear();
-                m_phase[ch].clear();
-                m_phaseUnwrapped[ch].clear();
+            if (!own->mag[ch].isEmpty()) {
+                own->mag[ch].clear();
+                own->phase[ch].clear();
+                own->phaseUnwrapped[ch].clear();
                 changed = true;
             }
-            m_chains[ch] = Chain{};
+            own->chains[ch] = Chain{};
             continue;
         }
         const Chain chain = chainOf(*s, ch);
-        if (!m_mag[ch].isEmpty() && chain == m_chains[ch]) continue;
-        m_chains[ch] = chain;
+        if (!own->mag[ch].isEmpty() && chain == own->chains[ch]) continue;
+        own->chains[ch] = chain;
         QVector<double> mag(MAGNITUDE_POINTS, 0.0), phase(MAGNITUDE_POINTS, 0.0), unwrapped(MAGNITUDE_POINTS, 0.0);
         if (!chain.flat) {
             dspi_compute_magnitude_curve(chain.bands.data(), chain.count, mag.data());
             dspi_compute_phase_curve(chain.bands.data(), chain.count, false, phase.data());
             dspi_compute_phase_curve(chain.bands.data(), chain.count, true, unwrapped.data());
         }
-        m_mag[ch] = mag;
-        m_phase[ch] = phase;
-        m_phaseUnwrapped[ch] = unwrapped;
+        own->mag[ch] = mag;
+        own->phase[ch] = phase;
+        own->phaseUnwrapped[ch] = unwrapped;
         changed = true;
     }
     for (int o = 0; o < MAX_OUTPUTS; ++o) {
         const double gain = o < outputs && qIsFinite(s->output_gain_db[o]) ? s->output_gain_db[o] : 0.0;
-        if (gain != m_gain[o]) {
-            m_gain[o] = gain;
+        if (gain != own->gain[o]) {
+            own->gain[o] = gain;
             changed = true;
         }
     }
@@ -168,19 +191,19 @@ void GraphController::onSnapshot() {
     std::array<bool, MAX_OUTPUTS> enabled{};
     for (int o = 0; o < outputs; ++o) enabled[o] = s->output_enabled[o];
     if (channelSetChanged) {
-        m_enabled = enabled;
-        m_popOutSet = false;
+        own->enabled = enabled;
+        own->popOutSet = false;
         resetDefaultVisibility();
-    } else if (enabled != m_enabled) {
+    } else if (enabled != own->enabled) {
         bool vis = false;
         for (int o = 0; o < outputs; ++o) {
-            if (enabled[o] == m_enabled[o]) continue;
-            if (m_selected < 0) {
-                m_visible[size_t(firstOutput + o)] = enabled[o];
+            if (enabled[o] == own->enabled[o]) continue;
+            if (own->selected < 0) {
+                own->visible[size_t(firstOutput + o)] = enabled[o];
                 vis = true;
             }
         }
-        m_enabled = enabled;
+        own->enabled = enabled;
         if (vis) emit visibilityChanged();
     }
 
@@ -191,18 +214,21 @@ void GraphController::onSnapshot() {
 }
 
 const QVector<double> &GraphController::magnitudes(int channel) const {
-    return channel >= 0 && channel < m_channelCount ? m_mag[size_t(channel)] : noCurve();
+    const std::shared_ptr<View> own = view();
+    return channel >= 0 && channel < own->channelCount ? own->mag[size_t(channel)] : noCurve();
 }
 
 const QVector<double> &GraphController::phases(int channel, bool unwrapped) const {
-    if (channel < 0 || channel >= m_channelCount) return noCurve();
-    return unwrapped ? m_phaseUnwrapped[size_t(channel)] : m_phase[size_t(channel)];
+    const std::shared_ptr<View> own = view();
+    if (channel < 0 || channel >= own->channelCount) return noCurve();
+    return unwrapped ? own->phaseUnwrapped[size_t(channel)] : own->phase[size_t(channel)];
 }
 
 double GraphController::outputGain(int channel) const {
-    const int output = channel - m_firstOutput;
-    if (channel < m_firstOutput || output >= m_outputCount || output < 0) return 0;
-    return m_gainPreview.value(output, m_gain[size_t(output)]);
+    const std::shared_ptr<View> own = view();
+    const int output = channel - own->firstOutput;
+    if (channel < own->firstOutput || output >= own->outputCount || output < 0) return 0;
+    return own->gainPreview.value(output, own->gain[size_t(output)]);
 }
 
 QVariantList GraphController::magnitudeCurve(int channel) const {
@@ -219,15 +245,17 @@ QVariantList GraphController::phaseCurve(int channel) const {
 }
 
 void GraphController::previewOutputGain(int output, double db) {
+    const std::shared_ptr<View> own = view();
     if (output < 0 || output >= MAX_OUTPUTS || !qIsFinite(db)) return;
-    if (m_gainPreview.contains(output) && m_gainPreview.value(output) == db) return;
-    m_gainPreview.insert(output, db);
+    if (own->gainPreview.contains(output) && own->gainPreview.value(output) == db) return;
+    own->gainPreview.insert(output, db);
     ++m_curveRev;
     emit curvesChanged();
 }
 
 void GraphController::endOutputGainPreview(int output) {
-    if (!m_gainPreview.remove(output)) return;
+    const std::shared_ptr<View> own = view();
+    if (!own->gainPreview.remove(output)) return;
     ++m_curveRev;
     emit curvesChanged();
 }
@@ -242,73 +270,86 @@ void GraphController::setOverlayChannel(int channel) {
 // ---- Visibility --------------------------------------------------------------
 
 int GraphController::effectiveInputs() const {
+    const std::shared_ptr<View> own = view();
     // The inputs the host plays into, as the device reports them; all of the
     // device's inputs before the first status read
     const int active = m_poller ? m_poller->activeInputs() : 0;
-    return active > 0 ? qMin(active, m_firstOutput) : m_firstOutput;
+    return active > 0 ? qMin(active, own->firstOutput) : own->firstOutput;
 }
 
 void GraphController::applyDefaults(Visibility &v) const {
+    const std::shared_ptr<View> own = view();
     v.fill(false);
     const int inputs = effectiveInputs();
     for (int i = 0; i < inputs; ++i) v[size_t(i)] = true;
-    for (int o = 0; o < m_outputCount && m_firstOutput + o < MAX_CHANNELS; ++o)
-        v[size_t(m_firstOutput + o)] = m_enabled[size_t(o)];
+    for (int o = 0; o < own->outputCount && own->firstOutput + o < MAX_CHANNELS; ++o)
+        v[size_t(own->firstOutput + o)] = own->enabled[size_t(o)];
 }
 
 void GraphController::resetDefaultVisibility() {
-    m_haveSaved = false;
-    m_inputsShown = effectiveInputs();
+    const std::shared_ptr<View> own = view();
+    own->haveSaved = false;
+    own->inputsShown = effectiveInputs();
     // A channel page keeps its soloed curve until the user leaves it
-    if (m_selected >= 0) return;
-    applyDefaults(m_visible);
+    if (own->selected >= 0) return;
+    applyDefaults(own->visible);
     emit visibilityChanged();
 }
 
 void GraphController::onStatus() {
+    // -- WP MDQT2a -- no status read yet (of a device just made the active one)
+    if (m_poller->activeInputs() <= 0) return;
+    const std::shared_ptr<View> own = view();
     // The host's channel count changed: a new default set of input curves
-    if (connected() && effectiveInputs() != m_inputsShown) resetDefaultVisibility();
+    if (connected() && effectiveInputs() != own->inputsShown) resetDefaultVisibility();
 }
 
 void GraphController::select(int channel, int partner) {
+    const std::shared_ptr<View> own = view();
     if (channel >= MAX_CHANNELS) channel = -1;
     if (channel < 0) {
-        if (m_selected < 0) return;
-        m_selected = -1;
+        if (own->selected < 0) return;
+        own->selected = own->partner = -1;
         // Back to the overview: the pills as the user left them there
-        if (m_haveSaved) m_visible = m_savedOverview;
-        else applyDefaults(m_visible);
-        m_haveSaved = false;
+        if (own->haveSaved) own->visible = own->savedOverview;
+        else applyDefaults(own->visible);
+        own->haveSaved = false;
     } else {
+        // -- WP MDQT2a -- back on the device: its page as it was left
+        if (channel == own->selected && partner == own->partner) return;
+        own->partner = partner;
         // Only a step in from the overview is remembered, never a soloed page
-        if (m_selected < 0) {
-            m_savedOverview = m_visible;
-            m_haveSaved = true;
+        if (own->selected < 0) {
+            own->savedOverview = own->visible;
+            own->haveSaved = true;
         }
-        m_selected = channel;
-        m_visible.fill(false);
-        m_visible[size_t(channel)] = true;
-        if (partner >= 0 && partner < MAX_CHANNELS) m_visible[size_t(partner)] = true;
+        own->selected = channel;
+        own->visible.fill(false);
+        own->visible[size_t(channel)] = true;
+        if (partner >= 0 && partner < MAX_CHANNELS) own->visible[size_t(partner)] = true;
     }
     emit selectionChanged();
     emit visibilityChanged();
 }
 
 bool GraphController::isCurveVisible(int channel) const {
-    return channel >= 0 && channel < MAX_CHANNELS && m_visible[size_t(channel)];
+    const std::shared_ptr<View> own = view();
+    return channel >= 0 && channel < MAX_CHANNELS && own->visible[size_t(channel)];
 }
 
 void GraphController::setCurveVisible(int channel, bool visible) {
-    if (channel < 0 || channel >= MAX_CHANNELS || m_visible[size_t(channel)] == visible) return;
-    m_visible[size_t(channel)] = visible;
+    const std::shared_ptr<View> own = view();
+    if (channel < 0 || channel >= MAX_CHANNELS || own->visible[size_t(channel)] == visible) return;
+    own->visible[size_t(channel)] = visible;
     emit visibilityChanged();
 }
 
 void GraphController::toggleCurve(int channel) { setCurveVisible(channel, !isCurveVisible(channel)); }
 
 QList<int> GraphController::popOutVisibleChannels() const {
+    const std::shared_ptr<View> own = view();
     if (popoutFollowsSelection()) return visibleChannels();
-    if (m_popOutSet) return channelsOf(m_popOut);
+    if (own->popOutSet) return channelsOf(own->popOut);
     // Until its first change, the pop-out's own set is the defaults
     Visibility v{};
     applyDefaults(v);
@@ -320,17 +361,18 @@ bool GraphController::isPopOutCurveVisible(int channel) const {
 }
 
 void GraphController::togglePopOutCurve(int channel) {
+    const std::shared_ptr<View> own = view();
     if (popoutFollowsSelection()) {
         toggleCurve(channel);
         return;
     }
     if (channel < 0 || channel >= MAX_CHANNELS) return;
-    if (!m_popOutSet) {
+    if (!own->popOutSet) {
         // The pop-out's own set starts with every active input and enabled output
-        applyDefaults(m_popOut);
-        m_popOutSet = true;
+        applyDefaults(own->popOut);
+        own->popOutSet = true;
     }
-    m_popOut[size_t(channel)] = !m_popOut[size_t(channel)];
+    own->popOut[size_t(channel)] = !own->popOut[size_t(channel)];
     emit visibilityChanged();
 }
 
@@ -372,9 +414,10 @@ void GraphController::setFlag(Flag f, bool on) {
 }
 
 void GraphController::setPopoutFollowsSelection(bool on) {
+    const std::shared_ptr<View> own = view();
     if (on == popoutFollowsSelection()) return;
     // Switched off, the pop-out starts again from the default curves
-    m_popOutSet = false;
+    own->popOutSet = false;
     setFlag(PopoutFollows, on);
     emit visibilityChanged();
 }

@@ -6,6 +6,8 @@
 #include "ChannelController.h"
 #include "Core.h"
 #include "DeviceModel.h"
+#include "SessionModel.h"
+#include "SessionState.h"
 #include "Shell.h"
 #include "SiggenController.h"
 #include "Snapshot.h"
@@ -19,6 +21,7 @@
 #include <QWindow>
 #include <cmath>
 #include <memory>
+#include <utility>
 
 static const Registrar::Controller<SidebarController> sidebarController;
 
@@ -53,12 +56,20 @@ SidebarController::SidebarController(const AppContext &ctx, QObject *parent) : Q
     // Edit > Copy / Paste with no text field focused: the selected channel's
     // parameters (MenuTable.trigger gives a focused field the text first)
     ctx.shell->addHandler(QStringLiteral("edit.copy"), this, [this]() {
-        if (m_selected >= 0) copyChannel(m_selected);
+        if (selectedChannel() >= 0) copyChannel(selectedChannel());
     });
     ctx.shell->addHandler(QStringLiteral("edit.paste"), this, [this]() {
-        if (m_selected >= 0) pasteChannel(m_selected);
+        if (selectedChannel() >= 0) pasteChannel(selectedChannel());
     });
+    m_shown = state();
 }
+
+// -- WP MDQT2a --
+std::shared_ptr<SidebarController::State> SidebarController::stateOf(DeviceSession *session) const {
+    return sessionState<State>(session, QStringLiteral("SidebarController"));
+}
+
+std::shared_ptr<SidebarController::State> SidebarController::state() const { return stateOf(m_ctx.activeSession()); }
 
 // ---- Tapers --------------------------------------------------------------------
 
@@ -169,26 +180,38 @@ bool SidebarController::sourceSupported() const { return m_ctx.device->state() !
 int SidebarController::source() const { return m_ctx.device->state() ? m_ctx.device->state()->input_source : SourceUsb; }
 
 QString SidebarController::selectedKind() const {
-    if (m_selected < 0) return QStringLiteral("overview");
-    return m_selected < m_ctx.device->channels()->inputCount() ? QStringLiteral("input") : QStringLiteral("output");
+    const int selected = selectedChannel();
+    if (selected < 0) return QStringLiteral("overview");
+    return selected < m_ctx.device->channels()->inputCount() ? QStringLiteral("input") : QStringLiteral("output");
 }
 
 int SidebarController::selectedIndex() const {
-    if (m_selected < 0) return -1;
+    const int selected = selectedChannel();
+    if (selected < 0) return -1;
     const ChannelListModel *rows = m_ctx.device->channels();
-    const int row = rows->rowOfChannel(m_selected);
+    const int row = rows->rowOfChannel(selected);
     return row < 0 ? -1 : rows->get(row, QStringLiteral("number")).toInt();
 }
 
 void SidebarController::onSnapshot() {
     DeviceModel *device = m_ctx.device;
+    const std::shared_ptr<State> st = state();
+    const bool moved = st != m_shown;   // -- WP MDQT2a -- another device is the active one
+    m_shown = st;
     watchLinks();
     // A page whose row went away (no device, the output switched off) goes back
     // to the overview, as the Mac's sidebar does
-    if (m_selected >= 0) {
+    if (st->selected >= 0) {
         const ChannelListModel *rows = device->channels();
-        const int row = rows->rowOfChannel(m_selected);
+        const int row = rows->rowOfChannel(st->selected);
         if (!device->connected() || row < 0 || !rows->get(row, QStringLiteral("outputEnabled")).toBool()) select(-1);
+    }
+    // -- WP MDQT2a -- The page the device was left on, and what was last read of it
+    if (moved) {
+        emit selectionChanged();
+        emit unsavedChanged();
+        emit capsChanged();
+        emit presetBusyChanged();
     }
     updateHighlight();
     emit deviceChanged();
@@ -200,17 +223,18 @@ void SidebarController::onSnapshot() {
 // by the core and read without device traffic; the generator's capabilities
 // once per connection.
 void SidebarController::readExtras() {
-    if (m_extrasInFlight) {
-        m_extrasAgain = true;
+    const std::shared_ptr<State> st = state();
+    if (st->extrasInFlight) {
+        st->extrasAgain = true;
         return;
     }
     if (!m_ctx.device->connected()) {
-        applyExtras(Extras{});
+        applyExtras(st, Extras{}, false);
         return;
     }
-    m_extrasInFlight = true;
+    st->extrasInFlight = true;
     const uint64_t generation = m_ctx.device->snapshot().generation;
-    const bool needCaps = generation != m_capsGeneration;
+    const bool needCaps = generation != st->capsGeneration;
     m_ctx.core->worker()->call(
         this,
         [needCaps](FfiCore *c) {
@@ -236,43 +260,27 @@ void SidebarController::readExtras() {
             }
             return e;
         },
-        [this, generation](Extras e) {
-            m_extrasInFlight = false;
-            if (e.capsRead) {
-                m_capsGeneration = generation;
-                if (e.siggenMask != m_siggenMask) {
-                    m_siggenMask = e.siggenMask;
-                    emit capsChanged();
-                }
-            } else {
-                e.siggenMask = m_siggenMask;
-            }
-            applyExtras(e);
-            if (m_extrasAgain) {
-                m_extrasAgain = false;
-                readExtras();
-            }
+        [this, st, generation](Extras e) {
+            st->extrasInFlight = false;
+            if (e.capsRead) st->capsGeneration = generation;
+            else e.siggenMask = st->extras.siggenMask;
+            applyExtras(st, e, true);
+            // -- WP MDQT2a -- a device left is read again when it is back
+            if (std::exchange(st->extrasAgain, false) && st == state()) readExtras();
         });
 }
 
-void SidebarController::applyExtras(const Extras &e) {
-    if (e.dirty != m_unsaved || e.changes != m_unsavedLines) {
-        m_unsaved = e.dirty;
-        m_unsavedLines = e.changes;
+void SidebarController::applyExtras(const std::shared_ptr<State> &st, const Extras &e, bool connected) {
+    const Extras before = std::exchange(st->extras, e);
+    if (!connected) st->capsGeneration = 0;
+    if (st != state()) return;   // -- WP MDQT2a -- of the device left
+    if (e.dirty != before.dirty || e.changes != before.changes) {
         emit unsavedChanged();
         emit deviceChanged(); // the "*" on the preset's title
     }
-    if (!m_ctx.device->connected() && m_siggenMask) {
-        m_siggenMask = 0;
-        m_capsGeneration = 0;
-        emit capsChanged();
-    }
-    if (e.namesSupported != m_sourceNamesSupported || e.sourceNames != m_sourceNames || e.presence != m_presence) {
-        m_sourceNamesSupported = e.namesSupported;
-        m_sourceNames = e.sourceNames;
-        m_presence = e.presence;
+    if (e.siggenMask != before.siggenMask) emit capsChanged();
+    if (e.namesSupported != before.namesSupported || e.sourceNames != before.sourceNames || e.presence != before.presence)
         rebuildSources();
-    }
 }
 
 // USB, S/PDIF 1, the optional S/PDIF inputs that are switched on, I2S, then
@@ -281,7 +289,7 @@ void SidebarController::rebuildSources() {
     QVariantList list;
     if (const DspState *s = m_ctx.device->state()) {
         QList<int> values = { SourceUsb, SourceSpdif };
-        if (m_presence & kPresenceSpdifInputs)
+        if (state()->extras.presence & kPresenceSpdifInputs)
             for (int i = 1; i < 4; ++i)
                 if (s->spdif_inputs_enabled >> i & 1) values.append(SourceSpdif2 + i - 1);
         values.append(SourceI2s);
@@ -300,8 +308,9 @@ void SidebarController::rebuildSources() {
 
 void SidebarController::select(int channel) {
     if (channel >= 0 && m_ctx.device->channels()->rowOfChannel(channel) < 0) channel = -1;
-    if (channel == m_selected) return;
-    m_selected = channel;
+    const std::shared_ptr<State> st = state();
+    if (channel == st->selected) return;
+    st->selected = channel;
     emit selectionChanged();
     updateHighlight();
 }
@@ -324,9 +333,9 @@ void SidebarController::watchLinks() {
 
 void SidebarController::updateHighlight() {
     int mask = 0;
-    if (m_selected >= 0) {
-        mask = 1 << m_selected;
-        const int partner = linkedPartner(m_selected);
+    if (const int selected = selectedChannel(); selected >= 0) {
+        mask = 1 << selected;
+        const int partner = linkedPartner(selected);
         if (partner >= 0) mask |= 1 << partner;
     }
     if (mask == m_highlighted) return;
@@ -357,6 +366,9 @@ void SidebarController::copyChannel(int channel) {
     const int row = m_ctx.device->channels()->rowOfChannel(channel);
     const QString name = row >= 0 ? m_ctx.device->channels()->get(row, QStringLiteral("label")).toString() : QString();
     const quint64 copy = ++m_copies;
+    m_workerClip = std::make_shared<QByteArray>();   // -- WP MDQT2a -- this copy's own
+    m_clipSession = m_ctx.activeSession();
+    m_clipPending = true;
     m_hasClip = true;
     m_clipName = name;
     emit clipboardChanged();
@@ -378,7 +390,14 @@ void SidebarController::copyChannel(int channel) {
                 if (auto *notices = Registrar::instance<NoticeCenter>(); notices && !key.isEmpty())
                     notices->postKey(key, o.value(QLatin1String("error")).toString());
             }
+            // -- WP MDQT2a -- the pastes on other devices that waited for this copy
+            const QList<WaitingPaste> waiting = std::exchange(m_waitingPastes, {});
+            for (const WaitingPaste &w : waiting) {
+                if (w.copy != copy) m_waitingPastes.append(w);
+                else if (clip && w.session) pasteTo(w.session, w.channel, w.partner, std::make_shared<QByteArray>(doc));
+            }
             if (copy != m_copies) return;   // a newer copy was asked for since
+            m_clipPending = false;
             m_clip = clip ? doc : QByteArray();
             if (!clip) {
                 m_hasClip = false;
@@ -396,10 +415,19 @@ void SidebarController::copyChannel(int channel) {
 // worker's, read when the paste runs: the last copy asked for before it.
 void SidebarController::pasteChannel(int channel) {
     if (!m_hasClip || !m_ctx.device->state() || channel < 0 || channel >= MAX_CHANNELS) return;
-    std::shared_ptr<QByteArray> held = m_workerClip;
     const int partner = linkedPartner(channel);
+    // -- WP MDQT2a -- on another device than the one copied from: the copy's answer
+    DeviceSession *session = m_ctx.activeSession();
+    if (session == m_clipSession) pasteTo(session, channel, partner, m_workerClip);
+    else if (m_clipPending && m_clipSession) m_waitingPastes.append({ m_copies, session, channel, partner });
+    else pasteTo(session, channel, partner, std::make_shared<QByteArray>(m_clip));
+}
+
+// `held` is the clip, filled by the time the paste runs on `session`'s worker
+void SidebarController::pasteTo(DeviceSession *session, int channel, int partner, const std::shared_ptr<QByteArray> &held) {
     auto reply = std::make_shared<QJsonObject>();
-    apply(
+    QPointer<SessionModel> model = session->model();
+    model->write(
         QStringLiteral("paste channel %1").arg(channel),
         [held, channel, partner, reply](FfiCore *c) {
             if (held->isEmpty()) return false;   // the copy failed: nothing to paste
@@ -413,20 +441,20 @@ void SidebarController::pasteChannel(int channel) {
             if (reply->isEmpty()) reply->insert(QStringLiteral("ok"), false);
             return reply->value(QLatin1String("ok")).toBool();
         },
-        [this, reply](bool ok) {
+        [model, reply](bool ok) {
             if (ok) return;
             NoticeCenter *notices = Registrar::instance<NoticeCenter>();
             if (!notices) return;
             const QString key = reply->value(QLatin1String("noticeKey")).toString();
             if (!key.isEmpty()) notices->postKey(key, reply->value(QLatin1String("error")).toString());
             // Refused here before the core saw it: a device this app only reads
-            else if (reply->isEmpty() && m_ctx.device->readOnly()) notices->postKey(QStringLiteral("read_only"));
+            else if (reply->isEmpty() && model && model->readOnly()) notices->postKey(QStringLiteral("read_only"));
         });
 }
 
 // -- WP QPI3 -- the generator's controller plays it (one owner of its writes)
 void SidebarController::identifyOutput(int output) {
-    if (output < 0 || output >= 16 || !(uint16_t(1u << output) & m_siggenMask)) return;
+    if (output < 0 || output >= 16 || !(uint16_t(1u << output) & state()->extras.siggenMask)) return;
     if (auto *siggen = Registrar::instance<SiggenController>()) siggen->playIdent(output);
 }
 
@@ -503,7 +531,10 @@ void SidebarController::setSource(int value) {
     apply(QStringLiteral("input source"), [value](FfiCore *c) { return dspi_set_input_source(c, uint8_t(value)); });
 }
 
-QString SidebarController::sourceName(int value) const { return value >= 0 && value < m_sourceNames.size() ? m_sourceNames.at(value) : QString(); }
+QString SidebarController::sourceName(int value) const {
+    const QStringList names = state()->extras.sourceNames;
+    return value >= 0 && value < names.size() ? names.at(value) : QString();
+}
 
 QString SidebarController::sourceTitle(int value) const {
     const QString name = sourceName(value);
@@ -512,7 +543,7 @@ QString SidebarController::sourceTitle(int value) const {
 
 QString SidebarController::builtInSourceTitle(int value) const {
     const DspState *s = m_ctx.device->state();
-    const bool optionalSpdif = s && (m_presence & kPresenceSpdifInputs) && (s->spdif_inputs_enabled & 0x0E);
+    const bool optionalSpdif = s && (state()->extras.presence & kPresenceSpdifInputs) && (s->spdif_inputs_enabled & 0x0E);
     switch (value) {
     case SourceUsb: return tr("USB");
     case SourceSpdif: return optionalSpdif ? tr("S/PDIF 1") : tr("S/PDIF");
@@ -526,7 +557,7 @@ QString SidebarController::builtInSourceTitle(int value) const {
 }
 
 void SidebarController::renameSource(int value, const QString &name) {
-    if (!m_sourceNamesSupported || value < 0 || value > SourceLast) return;
+    if (!sourceNamesSupported() || value < 0 || value > SourceLast) return;
     const QByteArray clean = sanitizeSourceName(name.trimmed()).toUtf8();
     if (QString::fromUtf8(clean) == sourceName(value)) return;
     apply(QStringLiteral("input source name %1").arg(value),
@@ -554,14 +585,15 @@ QStringList SidebarController::presetTitles() const {
     if (!m_ctx.device->state()) return titles;
     const int active = m_ctx.device->presets()->activeSlot();
     for (int slot = 0; slot < MAX_PRESETS; ++slot)
-        titles.append(slot == active && m_unsaved ? presetTitle(slot) + QLatin1Char('*') : presetTitle(slot));
+        titles.append(slot == active && unsaved() ? presetTitle(slot) + QLatin1Char('*') : presetTitle(slot));
     return titles;
 }
 
 QString SidebarController::unsavedSummary() const {
     QStringList lines;
-    for (int i = 0; i < m_unsavedLines.size() && i < kSummaryLines; ++i) lines.append(QStringLiteral("• ") + m_unsavedLines.at(i));
-    const int more = int(m_unsavedLines.size()) - kSummaryLines;
+    const QStringList unsavedLines = unsavedChanges();
+    for (int i = 0; i < unsavedLines.size() && i < kSummaryLines; ++i) lines.append(QStringLiteral("• ") + unsavedLines.at(i));
+    const int more = int(unsavedLines.size()) - kSummaryLines;
     // -- WP QPI2 -- spelt out: without a .qm "%n ... (s)" shows the "(s)"
     if (more == 1) lines.append(tr("…and 1 more change"));
     else if (more > 1) lines.append(tr("…and %1 more changes").arg(more));
@@ -572,17 +604,26 @@ QString SidebarController::presetFailure(uint8_t status) {
     return status == kPresetLocked ? tr("Another console is applying changes") : tr("error %1").arg(status);
 }
 
-void SidebarController::setPresetBusy(bool busy) {
-    if (busy == m_presetBusy) return;
-    m_presetBusy = busy;
-    emit presetBusyChanged();
+void SidebarController::setPresetBusy(const std::shared_ptr<State> &st, bool busy) {
+    if (busy == st->presetBusy) return;
+    st->presetBusy = busy;
+    if (st == state()) emit presetBusyChanged();
+}
+
+// -- WP MDQT2a --
+void SidebarController::presetAlert(const QPointer<DeviceSession> &session, const QString &title, const QString &text) {
+    if (!session || session == m_ctx.activeSession()) emit presetFailed(title, text);
+    //: %1 is a device's name, %2 what failed on it ("Save Failed")
+    else emit presetFailed(tr("%1: %2").arg(session->title(), title), text);
 }
 
 // A preset operation through the write path: `op` returns a PRESET_* status
 // and a failure shows `failText` with "%1" filled from it
 void SidebarController::runPreset(const QString &what, std::function<uint8_t(FfiCore *)> op, const QString &failTitle,
                                   const QString &failText) {
-    setPresetBusy(true);
+    const std::shared_ptr<State> st = state();
+    const QPointer<DeviceSession> session = m_ctx.activeSession();
+    setPresetBusy(st, true);
     auto status = std::make_shared<uint8_t>(0xFF);
     apply(
         what,
@@ -590,17 +631,20 @@ void SidebarController::runPreset(const QString &what, std::function<uint8_t(Ffi
             *status = op(c);
             return *status == PRESET_OK;
         },
-        [this, status, failTitle, failText](bool ok) {
-            setPresetBusy(false);
-            if (!ok && !failTitle.isEmpty()) emit presetFailed(failTitle, failText.arg(presetFailure(*status)));
+        [this, st, session, status, failTitle, failText](bool ok) {
+            setPresetBusy(st, false);
+            if (!ok && !failTitle.isEmpty()) presetAlert(session, failTitle, failText.arg(presetFailure(*status)));
         });
 }
 
 // Asks the core, after every write queued so far, whether anything is unsaved
 void SidebarController::requestPresetSwitch(int slot) {
     const int active = m_ctx.device->presets()->activeSlot();
-    if (slot < 0 || slot >= MAX_PRESETS || slot == active || m_presetBusy || !m_ctx.device->connected()) return;
-    setPresetBusy(true);
+    if (slot < 0 || slot >= MAX_PRESETS || slot == active || presetBusy() || !m_ctx.device->connected()) return;
+    const std::shared_ptr<State> st = state();
+    const QPointer<DeviceSession> session = m_ctx.activeSession();
+    const uint64_t generation = m_ctx.device->snapshot().generation;
+    setPresetBusy(st, true);
     m_ctx.core->worker()->call(
         this,
         [](FfiCore *c) {
@@ -610,30 +654,45 @@ void SidebarController::requestPresetSwitch(int slot) {
                 lines.append(v.toString());
             return std::make_pair(dspi_preset_dirty(c), lines);
         },
-        [this, slot](std::pair<bool, QStringList> r) {
-            setPresetBusy(false);
-            m_unsavedLines = r.second;
-            m_unsaved = r.first;
-            emit unsavedChanged();
-            if (r.first) emit unsavedQuestion(QStringLiteral("switch"), slot, unsavedSummary());
-            else loadSlot(slot);
+        [this, st, session, generation, slot](std::pair<bool, QStringList> r) {
+            setPresetBusy(st, false);
+            st->extras.changes = r.second;
+            st->extras.dirty = r.first;
+            const bool active = st == state();
+            if (active) emit unsavedChanged();
+            // -- WP MDQT2a -- another device there by now: nothing is loaded into
+            // it, and nobody is left to ask about this one's changes
+            if (!session || session->model()->snapshot().generation != generation) return;
+            if (!r.first) {
+                loadSlot(session, slot);
+            } else if (active) {
+                m_askedOf = generation;
+                emit unsavedQuestion(QStringLiteral("switch"), slot, unsavedSummary());
+            }
         });
 }
 
 void SidebarController::requestPresetCopy(int destination) {
     const int active = m_ctx.device->presets()->activeSlot();
-    if (destination < 0 || destination >= MAX_PRESETS || destination == active || active < 0 || m_presetBusy) return;
-    if (m_unsaved) emit unsavedQuestion(QStringLiteral("copy"), destination, unsavedSummary());
-    else copySlot(active, destination, QString());
+    if (destination < 0 || destination >= MAX_PRESETS || destination == active || active < 0 || presetBusy()) return;
+    if (unsaved()) {
+        m_askedOf = m_ctx.device->snapshot().generation;   // -- WP MDQT2a --
+        emit unsavedQuestion(QStringLiteral("copy"), destination, unsavedSummary());
+    } else {
+        copySlot(active, destination, QString());
+    }
 }
 
 void SidebarController::resolveUnsaved(const QString &op, int slot, const QString &answer) {
+    // -- WP MDQT2a -- asked of another device, or before this one was reopened
+    const uint64_t askedOf = std::exchange(m_askedOf, 0);
+    if (askedOf == 0 || askedOf != m_ctx.device->snapshot().generation) return;
     const int active = m_ctx.device->presets()->activeSlot();
     if (answer != QLatin1String("accept") && answer != QLatin1String("alternative")) return;
     const bool save = answer == QLatin1String("accept");
     if (op == QLatin1String("switch")) {
         if (save) saveThenLoad(active, slot);
-        else loadSlot(slot);
+        else loadSlot(m_ctx.activeSession(), slot);
     } else if (op == QLatin1String("copy") && active >= 0) {
         copySlot(active, slot, save ? QStringLiteral("save") : QStringLiteral("discard"));
     }
@@ -644,18 +703,20 @@ QString SidebarController::loadFailure(uint8_t status) {
                                     : tr("Failed to load preset (%1).").arg(presetFailure(status));
 }
 
-void SidebarController::loadSlot(int slot) {
-    setPresetBusy(true);
+void SidebarController::loadSlot(DeviceSession *session, int slot) {
+    const std::shared_ptr<State> st = stateOf(session);
+    const QPointer<DeviceSession> at = session;
+    setPresetBusy(st, true);
     auto status = std::make_shared<uint8_t>(0xFF);
-    apply(
+    session->model()->write(
         QStringLiteral("preset load"),
         [slot, status](FfiCore *c) {
             *status = dspi_load_preset(c, uint8_t(slot));
             return *status == PRESET_OK;
         },
-        [this, status](bool ok) {
-            setPresetBusy(false);
-            if (!ok) emit presetFailed(tr("Load Failed"), loadFailure(*status));
+        [this, st, at, status](bool ok) {
+            setPresetBusy(st, false);
+            if (!ok) presetAlert(at, tr("Load Failed"), loadFailure(*status));
         });
 }
 
@@ -670,13 +731,15 @@ static bool nameIfEmpty(FfiCore *c, int slot) {
 
 void SidebarController::saveThenLoad(int previous, int slot) {
     if (previous < 0) {
-        loadSlot(slot);
+        loadSlot(m_ctx.activeSession(), slot);
         return;
     }
     // 1: the save failed (the switch stops), 2: the load failed
     auto stage = std::make_shared<int>(0);
     auto status = std::make_shared<uint8_t>(PRESET_OK);
-    setPresetBusy(true);
+    const std::shared_ptr<State> st = state();
+    const QPointer<DeviceSession> session = m_ctx.activeSession();
+    setPresetBusy(st, true);
     apply(
         QStringLiteral("preset load"),
         [previous, slot, stage, status](FfiCore *c) {
@@ -690,20 +753,20 @@ void SidebarController::saveThenLoad(int previous, int slot) {
             if (*status != PRESET_OK) *stage = 2;
             return *status == PRESET_OK;
         },
-        [this, stage, status](bool ok) {
-            setPresetBusy(false);
+        [this, st, session, stage, status](bool ok) {
+            setPresetBusy(st, false);
             if (ok) return;
             if (*stage == 1)
-                emit presetFailed(tr("Save Failed"),
-                                  tr("Failed to save preset (%1). Preset switch aborted.").arg(presetFailure(*status)));
+                presetAlert(session, tr("Save Failed"),
+                            tr("Failed to save preset (%1). Preset switch aborted.").arg(presetFailure(*status)));
             else
-                emit presetFailed(tr("Load Failed"), loadFailure(*status));
+                presetAlert(session, tr("Load Failed"), loadFailure(*status));
         });
 }
 
 void SidebarController::savePreset() {
     const int slot = m_ctx.device->presets()->activeSlot();
-    if (slot < 0 || m_presetBusy) return;
+    if (slot < 0 || presetBusy()) return;
     runPreset(
         QStringLiteral("preset save"),
         [slot](FfiCore *c) {
@@ -754,14 +817,14 @@ void SidebarController::setDefaultPreset() {
 // The core waits until the slot is gone and, for the active slot, loads the
 // factory defaults
 void SidebarController::clearPreset(int slot) {
-    if (!presetOccupied(slot) || m_presetBusy) return;
+    if (!presetOccupied(slot) || presetBusy()) return;
     runPreset(QStringLiteral("preset clear"), [slot](FfiCore *c) { return Confirm::deletePreset(c, uint8_t(slot)); },
               tr("Clear Failed"), tr("Failed to clear preset (%1)."));
 }
 
 void SidebarController::clearAllPresets() {
     const DspState *s = m_ctx.device->state();
-    if (!s || m_presetBusy) return;
+    if (!s || presetBusy()) return;
     const uint16_t occupied = s->preset_occupied;
     const int active = m_ctx.device->presets()->activeSlot();
     runPreset(

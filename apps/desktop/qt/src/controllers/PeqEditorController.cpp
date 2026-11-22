@@ -4,6 +4,8 @@
 
 #include "ChannelController.h"
 #include "DeviceModel.h"
+#include "DeviceRegistry.h"
+#include "SessionState.h"
 
 #include <QCoreApplication>
 #include <QRegularExpression>
@@ -262,7 +264,27 @@ namespace {
 ChannelController *channels() { return Registrar::instance<ChannelController>(); }
 } // namespace
 
-PeqEditorController::PeqEditorController(const AppContext &ctx, QObject *parent) : QObject(parent), m_ctx(ctx) {}
+PeqEditorController::PeqEditorController(const AppContext &ctx, QObject *parent) : QObject(parent), m_ctx(ctx) {
+    // -- WP MDQT2a --
+    connect(ctx.registry, &DeviceRegistry::activeLeaving, this, &PeqEditorController::letGo);
+    connect(ctx.registry, &DeviceRegistry::activeChanged, this, [this] {
+        m_switching = false;
+        emit selectionChanged();
+        bump();
+    });
+}
+
+// -- WP MDQT2a --
+std::shared_ptr<PeqEditorController::State> PeqEditorController::state() const {
+    return sessionState<State>(m_ctx.activeSession(), QStringLiteral("PeqEditorController"));
+}
+
+void PeqEditorController::letGo() {
+    m_switching = true;
+    m_pointed = -1;
+    setRowHovered(-1);
+    endLive();
+}
 
 void PeqEditorController::bump() {
     ++m_rev;
@@ -270,7 +292,8 @@ void PeqEditorController::bump() {
 }
 
 QList<int> PeqEditorController::selected() const {
-    QList<int> out(m_selected.cbegin(), m_selected.cend());
+    const QSet<int> &s = selection();
+    QList<int> out(s.cbegin(), s.cend());
     std::sort(out.begin(), out.end());
     return out;
 }
@@ -289,25 +312,35 @@ void PeqEditorController::setPointedBand(int band) {
 }
 
 void PeqEditorController::setEditedChannel(int channel) {
-    if (channel == m_edited) return;
-    m_edited = channel;
-    m_selected.clear();
-    m_rowAnchor = m_rowHovered = m_pointed = -1;
+    const std::shared_ptr<State> st = state();
+    if (channel == st->edited) return;
+    st->edited = channel;
+    // -- WP MDQT2a -- no channel while the pages move to another device's is
+    // not the user leaving this one: its selection waits for it
+    const bool keeps = channel < 0 ? m_switching : channel == st->selectedOn;
+    if (!keeps) {
+        st->selected.clear();
+        st->rowAnchor = -1;
+        st->selectedOn = channel;
+    }
+    m_rowHovered = m_pointed = -1;
     m_live.clear();
     emit selectionChanged();
     bump();
 }
 
 void PeqEditorController::setSelection(const QSet<int> &bands) {
-    if (bands == m_selected) return;
-    m_selected = bands;
+    const std::shared_ptr<State> st = state();
+    if (bands == st->selected) return;
+    st->selected = bands;
     bump();
 }
 
 void PeqEditorController::forget() {
-    m_rowAnchor = -1;
-    const bool any = !m_selected.isEmpty() || m_pointed >= 0 || m_rowHovered >= 0;
-    m_selected.clear();
+    const std::shared_ptr<State> st = state();
+    st->rowAnchor = -1;
+    const bool any = !st->selected.isEmpty() || m_pointed >= 0 || m_rowHovered >= 0;
+    st->selected.clear();
     m_pointed = m_rowHovered = -1;
     if (!any) return;
     emit selectionChanged();
@@ -316,26 +349,27 @@ void PeqEditorController::forget() {
 }
 
 void PeqEditorController::rowClicked(int band, int modifiers) {
-    if (m_edited < 0 || band < 0 || band >= BANDS_PER_CHANNEL) return;
+    const std::shared_ptr<State> st = state();
+    if (st->edited < 0 || band < 0 || band >= BANDS_PER_CHANNEL) return;
     QSet<int> next;
-    int from = m_rowAnchor >= 0 && m_selected.contains(m_rowAnchor) ? m_rowAnchor
-             : m_selected.size() == 1                                ? *m_selected.cbegin()
-                                                                     : -1;
+    int from = st->rowAnchor >= 0 && st->selected.contains(st->rowAnchor) ? st->rowAnchor
+             : st->selected.size() == 1                                    ? *st->selected.cbegin()
+                                                                           : -1;
     if (modifiers & Qt::ControlModifier) {
-        next = m_selected;
+        next = st->selected;
         if (!next.remove(band)) next.insert(band);
-        m_rowAnchor = band;
+        st->rowAnchor = band;
     } else if ((modifiers & Qt::ShiftModifier) && from >= 0) {
         // The anchor stays, so a second Shift-click reshapes the run
         for (int b = qMin(from, band); b <= qMax(from, band); ++b)
-            if (Peq::isGraphBand(this->band(m_edited, b, false))) next.insert(b);
-        m_rowAnchor = from;
+            if (Peq::isGraphBand(this->band(st->edited, b, false))) next.insert(b);
+        st->rowAnchor = from;
     } else {
         next = { band };
-        m_rowAnchor = band;
+        st->rowAnchor = band;
     }
-    if (next == m_selected) return;
-    m_selected = next;
+    if (next == st->selected) return;
+    st->selected = next;
     emit selectionChanged();
     bump();
 }

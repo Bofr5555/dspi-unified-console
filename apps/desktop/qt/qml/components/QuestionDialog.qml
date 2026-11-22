@@ -26,6 +26,9 @@ Dialog {
     property string rejectText: qsTr("Cancel")
     property string alternativeText
     property bool destructive: false
+    // -- WP MDQT2a -- It is about the active device: refused when another one
+    // becomes active, since its answer would go there
+    property bool ofDevice: false
     signal answered(string answer)
 
     // Set when a button answered, so the close that follows is not taken
@@ -34,6 +37,10 @@ Dialog {
     function finish(answer) {
         pending = answer
         close()
+    }
+    Connections {   // -- WP MDQT2a --
+        target: dialog.ofDevice && dialog.visible ? DeviceRegistry : null
+        function onActiveLeaving() { dialog.finish("reject") }
     }
     onAboutToShow: pending = ""
     onOpened: acceptButton.forceActiveFocus()

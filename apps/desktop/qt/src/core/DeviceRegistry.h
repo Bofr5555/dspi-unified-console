@@ -100,6 +100,10 @@ public:
 
 signals:
     void devicesChanged();
+    // -- WP MDQT2a -- Another device is about to become the active one; the one
+    // left still is, everywhere. What is half-edited (a held handle, a typed
+    // field) is finished or let go of now: it must not land on the next one.
+    void activeLeaving();
     void activeChanged();
     // Just before activeChanged(): DeviceModel's, which moves first
     void activeMoved();

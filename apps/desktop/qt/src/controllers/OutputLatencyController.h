@@ -2,10 +2,13 @@
 #define OUTPUTLATENCYCONTROLLER_H
 
 #include <QObject>
+#include <QPointer>
 #include <QString>
 #include <QVariantList>
 #include <QtQml/qqmlregistration.h>
+#include <memory>
 
+#include "DeviceSession.h"
 #include "HardwareController.h"
 #include "Registrar.h"
 
@@ -42,12 +45,12 @@ public:
         return Registrar::instance<OutputLatencyController>();
     }
 
-    bool supported() const { return m_supported && !m_options.isEmpty(); }
+    bool supported() const { return state()->supported && !state()->options.isEmpty(); }
     QVariantList options() const;
-    int selectedId() const { return m_edited ? m_choice : m_requested; }
-    int requestedId() const { return m_requested; }
-    bool edited() const { return m_edited; }
-    bool held() const { return m_held; }
+    int selectedId() const { return state()->edited ? state()->choice : state()->requested; }
+    int requestedId() const { return state()->requested; }
+    bool edited() const { return state()->edited; }
+    bool held() const { return state()->held; }
     QString caption() const;
 
     // Reads the status and the options again (the page shows, the source moved)
@@ -75,22 +78,29 @@ private:
         bool pending = false;
         QList<Option> options;
     };
+    // -- WP MDQT2a -- The setting, the choice and the wait for it are the device's own
+    struct State {
+        bool supported = false;
+        QList<Option> options;
+        int requested = 0;
+        bool devicePending = false;
+        int choice = 0;
+        bool edited = false;
+        bool held = false;
+        int heldChecks = 0;
+        QString serial;
+        int lastSource = -1;
+    };
+    std::shared_ptr<State> state() const;
+    void onSnapshot();
     static Reading read(FfiCore *c, bool withOptions);
-    void take(const Reading &r, bool withOptions);
-    void setHeld(bool held);
-    void checkHeld();
+    void take(const std::shared_ptr<State> &st, const Reading &r, bool withOptions);
+    void setHeld(const std::shared_ptr<State> &st, bool held);
+    // Reads on `session`, whichever device shows
+    void checkHeld(const QPointer<DeviceSession> &session, const std::shared_ptr<State> &st);
 
     AppContext m_ctx;
-    bool m_supported = false;
-    QList<Option> m_options;
-    int m_requested = 0;
-    bool m_devicePending = false;
-    int m_choice = 0;
-    bool m_edited = false;
-    bool m_held = false;
-    int m_heldChecks = 0;
-    QString m_serial;
-    int m_lastSource = -1;
+    std::shared_ptr<State> m_shown;   // -- WP MDQT2a -- the State last announced
 };
 
 #endif // OUTPUTLATENCYCONTROLLER_H

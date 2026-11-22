@@ -5,10 +5,12 @@
 #include "CoreApi.h"
 #include "DeviceModel.h"
 #include "Poller.h"
+#include "SessionState.h"
 #include "Snapshot.h"
 
 #include <QJsonObject>
 #include <QSettings>
+#include <utility>
 
 static const Registrar::Controller<DashboardController> dashboardController;
 
@@ -34,7 +36,7 @@ QString trimmed(double value, int decimals, bool sign, bool keepOne) {
 DashboardController::DashboardController(const AppContext &ctx, QObject *parent) : QObject(parent), m_ctx(ctx) {
     m_cardsPerRow = qBound(0, QSettings().value(kCardsPerRowKey, 0).toInt(), kMaxCardsPerRow);
 
-    connect(ctx.device, &DeviceModel::snapshotApplied, this, &DashboardController::fetchCards);
+    connect(ctx.device, &DeviceModel::snapshotApplied, this, &DashboardController::onSnapshot);
 
     m_staleTimer.setSingleShot(true);
     connect(&m_staleTimer, &QTimer::timeout, this, [this]() { setStale(m_ctx.poller && m_ctx.poller->running()); });
@@ -43,7 +45,26 @@ DashboardController::DashboardController(const AppContext &ctx, QObject *parent)
         connect(ctx.poller, &Poller::runningChanged, this, &DashboardController::onRunning);
         connect(ctx.poller, &Poller::slowTransportChanged, this, &DashboardController::onRunning);
     }
+    m_shown = state();
     onRunning();
+    fetchCards();
+}
+
+// -- WP MDQT2a --
+std::shared_ptr<DashboardController::State> DashboardController::state() const {
+    return sessionState<State>(m_ctx.activeSession(), QStringLiteral("DashboardController"));
+}
+
+void DashboardController::onSnapshot() {
+    if (const std::shared_ptr<State> st = state(); st != m_shown) {
+        // Another device is the active one: its marks, the cards last read of
+        // it (read again below), and its meters start over
+        m_shown = st;
+        emit clipLatchedChanged();
+        rebuild();
+        setStale(false);
+        onRunning();
+    }
     fetchCards();
 }
 
@@ -61,7 +82,7 @@ int DashboardController::columnsFor(int chosen, qreal width, int count) {
 }
 
 bool DashboardController::clipped(int channel) const {
-    return channel >= 0 && channel < 32 && (m_clipLatched >> channel) & 1u;
+    return channel >= 0 && channel < 32 && (clipLatched() >> channel) & 1u;
 }
 
 QString DashboardController::typeCode(int type) {
@@ -108,29 +129,29 @@ int DashboardController::staleAfterMs() const {
 // The output cards come from the core's mirror; one read at a time, and one
 // more if the state changed meanwhile
 void DashboardController::fetchCards() {
-    if (m_cardsInFlight) {
-        m_cardsAgain = true;
+    const std::shared_ptr<State> st = state();
+    if (st->cardsInFlight) {
+        st->cardsAgain = true;
         return;
     }
     if (!m_ctx.device->connected()) {
-        m_outputCards = QJsonArray();
+        st->outputCards = QJsonArray();
         rebuild();
         return;
     }
-    m_cardsInFlight = true;
+    st->cardsInFlight = true;
     m_ctx.core->worker()->call(
         this,
         [](FfiCore *c) {
             return jsonValue(readSized([c](char *b, uint32_t n) { return dspi_output_cards(c, b, n); })).toArray();
         },
-        [this](const QJsonArray &cards) {
-            m_cardsInFlight = false;
-            m_outputCards = cards;
+        [this, st](const QJsonArray &cards) {
+            st->cardsInFlight = false;
+            st->outputCards = cards;
+            const bool again = std::exchange(st->cardsAgain, false);
+            if (st != state()) return;   // -- WP MDQT2a -- of the device left
             rebuild();
-            if (m_cardsAgain) {
-                m_cardsAgain = false;
-                fetchCards();
-            }
+            if (again) fetchCards();
         });
 }
 
@@ -166,7 +187,8 @@ void DashboardController::rebuild() {
 
         const int inputs = int(s->num_input_channels);
         const int outputs = int(s->num_output_channels);
-        for (const QJsonValue &v : std::as_const(m_outputCards)) {
+        const QJsonArray outputCards = state()->outputCards;
+        for (const QJsonValue &v : outputCards) {
             const QJsonObject o = v.toObject();
             const int left = o.value(QLatin1String("left")).toInt(-1);
             const QJsonValue rightValue = o.value(QLatin1String("right"));
@@ -188,6 +210,8 @@ void DashboardController::rebuild() {
 }
 
 void DashboardController::onMeters() {
+    // -- WP MDQT2a -- no reading: the meters start over for another device
+    if (m_ctx.poller->peaks().isEmpty()) return;
     // A reading came: the meters are current
     setStale(false);
     m_staleTimer.start(staleAfterMs());
@@ -195,14 +219,15 @@ void DashboardController::onMeters() {
     // The Mac's latch: new clip bits are held, and the hold restarts with each
     // new one; after the hold with none new, the marks and the device's flags clear
     const uint flags = m_ctx.poller->clipFlags();
-    const uint fresh = flags & ~m_clipLatched;
+    const std::shared_ptr<State> st = state();
+    const uint fresh = flags & ~st->clipLatched;
     if (fresh) {
-        m_clipLatched |= flags;
-        m_lastClip.start();
+        st->clipLatched |= flags;
+        st->lastClip.start();
         emit clipLatchedChanged();
-    } else if (m_clipLatched && m_lastClip.isValid() && m_lastClip.elapsed() > kClipHoldMs) {
-        m_clipLatched = 0;
-        m_lastClip.invalidate();
+    } else if (st->clipLatched && st->lastClip.isValid() && st->lastClip.elapsed() > kClipHoldMs) {
+        st->clipLatched = 0;
+        st->lastClip.invalidate();
         emit clipLatchedChanged();
         // -- WP QP16 -- A read-only device takes the clear too (behaviour.md §14.2)
         m_ctx.device->writeEvenReadOnly(QStringLiteral("clear clips"), [](FfiCore *c) { return dspi_clear_clips(c); });
@@ -216,9 +241,9 @@ void DashboardController::onRunning() {
         // No device: nothing is late, and the marks belong to the device that went
         m_staleTimer.stop();
         setStale(false);
-        if (m_clipLatched) {
-            m_clipLatched = 0;
-            m_lastClip.invalidate();
+        if (const std::shared_ptr<State> st = state(); st->clipLatched) {
+            st->clipLatched = 0;
+            st->lastClip.invalidate();
             emit clipLatchedChanged();
         }
     }

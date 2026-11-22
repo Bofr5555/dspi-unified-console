@@ -3,7 +3,9 @@
 
 #include "Core.h"
 #include "DeviceModel.h"
+#include "SessionState.h"
 
+#include <QPointer>
 #include <QVector>
 
 static const Registrar::Controller<NamesController> namesController;
@@ -25,25 +27,35 @@ NamesController::NamesController(const AppContext &ctx, QObject *parent) : QObje
     connect(m_ctx.device, &DeviceModel::snapshotApplied, this, &NamesController::onSnapshot);
 }
 
+// -- WP MDQT2a --
+std::shared_ptr<NamesController::State> NamesController::state() const {
+    return sessionState<State>(m_ctx.activeSession(), QStringLiteral("NamesController"));
+}
+
 void NamesController::onSnapshot() {
+    const std::shared_ptr<State> st = state();
+    const bool moved = st != m_shown;   // -- WP MDQT2a -- another device is the active one
+    m_shown = st;
     if (!m_ctx.device->connected()) {
-        m_sourcesSupported = m_deviceSupported = false;
-        emit changed();
+        st->sourcesSupported = st->deviceSupported = false;
+        if (moved) touched();
+        else emit changed();
         return;
     }
     // Drafts belong to the device they were typed for
-    if (m_ctx.device->serial() != m_serial) {
-        m_serial = m_ctx.device->serial();
-        m_drafts.clear();
-        m_deviceDraftSet = false;
+    if (m_ctx.device->serial() != st->serial) {
+        st->serial = m_ctx.device->serial();
+        st->drafts.clear();
+        st->deviceDraftSet = false;
     }
-    readNames();
+    if (moved) touched();
+    readNames(m_ctx.activeSession(), st);
 }
 
 // The core's cached names (no traffic); a rename from another console arrives
 // as a notification and a snapshot, which reads them again
-void NamesController::readNames() {
-    m_ctx.core->worker()->call(
+void NamesController::readNames(DeviceSession *session, const std::shared_ptr<State> &st) {
+    session->worker()->call(
         this,
         [](FfiCore *c) {
             Names n;
@@ -60,19 +72,24 @@ void NamesController::readNames() {
             n.deviceName = QString::fromUtf8(buf);
             return n;
         },
-        [this](const Names &n) {
-            m_sourcesSupported = n.sources;
-            m_deviceSupported = n.device;
-            m_stored = n.stored;
-            m_storedDevice = n.deviceName;
+        [this, st](const Names &n) {
+            st->sourcesSupported = n.sources;
+            st->deviceSupported = n.device;
+            st->stored = n.stored;
+            st->storedDevice = n.deviceName;
             // A draft that now equals the stored name is no longer an edit
-            for (auto it = m_drafts.begin(); it != m_drafts.end();) {
-                if (it.value() == m_stored.value(it.key())) it = m_drafts.erase(it);
+            for (auto it = st->drafts.begin(); it != st->drafts.end();) {
+                if (it.value() == st->stored.value(it.key())) it = st->drafts.erase(it);
                 else ++it;
             }
-            if (m_deviceDraftSet && m_deviceDraft == m_storedDevice) m_deviceDraftSet = false;
-            touched();
+            if (st->deviceDraftSet && st->deviceDraft == st->storedDevice) st->deviceDraftSet = false;
+            if (st == state()) touched();   // -- WP MDQT2a --
         });
+}
+
+QString NamesController::deviceName() const {
+    const std::shared_ptr<State> st = state();
+    return st->deviceDraftSet ? st->deviceDraft : st->storedDevice;
 }
 
 QList<int> NamesController::sourceOptions() const {
@@ -117,6 +134,7 @@ QVariantList NamesController::sources() const {
     const QVariantMap state = hw ? hw->hw() : QVariantMap();
     const QVariantList spdifPins = state.value(QStringLiteral("spdifPins")).toList();
     const QHash<int, QString> pending = pendingSources();
+    const std::shared_ptr<State> st = this->state();
     for (int source : sourceOptions()) {
         // Where the source comes in, so similar ones can be told apart
         QString detail;
@@ -131,12 +149,12 @@ QVariantList NamesController::sources() const {
             break;
         }
         }
-        const QString stored = m_stored.value(source);
+        const QString stored = st->stored.value(source);
         out.append(QVariantMap{ { QStringLiteral("source"), source },
                                 { QStringLiteral("title"), builtInTitle(source) },
                                 { QStringLiteral("detail"), detail },
                                 { QStringLiteral("stored"), stored },
-                                { QStringLiteral("text"), m_drafts.value(source, stored) },
+                                { QStringLiteral("text"), st->drafts.value(source, stored) },
                                 { QStringLiteral("edited"), pending.contains(source) } });
     }
     return out;
@@ -144,16 +162,18 @@ QVariantList NamesController::sources() const {
 
 QString NamesController::setSourceName(int source, const QString &text) {
     const QString clean = HardwareController::sanitizeName(text);
-    if (clean == m_stored.value(source)) m_drafts.remove(source);
-    else m_drafts.insert(source, clean);
+    const std::shared_ptr<State> st = state();
+    if (clean == st->stored.value(source)) st->drafts.remove(source);
+    else st->drafts.insert(source, clean);
     touched();
     return clean;
 }
 
 QString NamesController::setDeviceName(const QString &text) {
     const QString clean = HardwareController::sanitizeName(text);
-    m_deviceDraftSet = clean != m_storedDevice;
-    m_deviceDraft = clean;
+    const std::shared_ptr<State> st = state();
+    st->deviceDraftSet = clean != st->storedDevice;
+    st->deviceDraft = clean;
     touched();
     return clean;
 }
@@ -161,27 +181,31 @@ QString NamesController::setDeviceName(const QString &text) {
 // Edited names that differ from the stored ones, trimmed as they are saved
 QHash<int, QString> NamesController::pendingSources() const {
     QHash<int, QString> out;
-    if (!m_sourcesSupported) return out;
-    for (auto it = m_drafts.cbegin(); it != m_drafts.cend(); ++it) {
+    const std::shared_ptr<State> st = state();
+    if (!st->sourcesSupported) return out;
+    for (auto it = st->drafts.cbegin(); it != st->drafts.cend(); ++it) {
         const QString trimmed = it.value().trimmed();
-        if (trimmed != m_stored.value(it.key())) out.insert(it.key(), trimmed);
+        if (trimmed != st->stored.value(it.key())) out.insert(it.key(), trimmed);
     }
     return out;
 }
 
 const QString *NamesController::pendingDeviceName() const {
-    if (!m_deviceSupported || !m_deviceDraftSet || m_deviceDraft.trimmed() == m_storedDevice) return nullptr;
-    return &m_deviceDraft;
+    const std::shared_ptr<State> st = state();
+    if (!st->deviceSupported || !st->deviceDraftSet || st->deviceDraft.trimmed() == st->storedDevice) return nullptr;
+    return &st->deviceDraft;
 }
 
 bool NamesController::hasPending() const { return !pendingSources().isEmpty() || pendingDeviceName(); }
 
 void NamesController::save(std::function<void(const QStringList &)> done) {
     const QHash<int, QString> sources = pendingSources();
-    const QHash<int, QString> sentDrafts = m_drafts;
+    const std::shared_ptr<State> st = state();
+    const QPointer<DeviceSession> session = m_ctx.activeSession();
+    const QHash<int, QString> sentDrafts = st->drafts;
     const bool sendDevice = pendingDeviceName() != nullptr;
-    const QString device = m_deviceDraft.trimmed();
-    const QString sentDevice = m_deviceDraft;
+    const QString device = st->deviceDraft.trimmed();
+    const QString sentDevice = st->deviceDraft;
     QList<int> order = sources.keys();
     std::sort(order.begin(), order.end());
     // Back to back, so the device can usually store them in one flash pass
@@ -196,22 +220,23 @@ void NamesController::save(std::function<void(const QStringList &)> done) {
             if (sendDevice && !dspi_set_device_name(c, deviceUtf8.constData())) refused->append(-1);
             return refused->isEmpty();
         },
-        [this, sentDrafts, sendDevice, sentDevice, refused, done](bool) {
+        [this, st, session, sentDrafts, sendDevice, sentDevice, refused, done](bool) {
             // Keep a field typed into again while the save was on its way
             for (auto it = sentDrafts.cbegin(); it != sentDrafts.cend(); ++it)
-                if (!refused->contains(it.key()) && m_drafts.value(it.key()) == it.value()) m_drafts.remove(it.key());
-            if (sendDevice && !refused->contains(-1) && m_deviceDraft == sentDevice) m_deviceDraftSet = false;
+                if (!refused->contains(it.key()) && st->drafts.value(it.key()) == it.value()) st->drafts.remove(it.key());
+            if (sendDevice && !refused->contains(-1) && st->deviceDraft == sentDevice) st->deviceDraftSet = false;
             QStringList failures;
             for (int s : std::as_const(*refused))
                 failures << (s < 0 ? tr("the device name") : tr("the name of %1").arg(builtInTitle(s)));
-            readNames();
+            if (session) readNames(session, st);
             done(failures);
         });
 }
 
 void NamesController::revert() {
-    m_drafts.clear();
-    m_deviceDraftSet = false;
+    const std::shared_ptr<State> st = state();
+    st->drafts.clear();
+    st->deviceDraftSet = false;
     touched();
 }
 
