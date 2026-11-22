@@ -72,12 +72,24 @@ pub(crate) fn default_dir() -> Option<PathBuf> {
     dirs::data_local_dir().map(|d| d.join(COMMAND).join("measurements"))
 }
 
-/// Name the measurement folder on `core`.
+/// Name the measurement folder on `core` (and, -- WP ROLE0 --, the speaker
+/// layouts' folder beside it).
 fn name_dir(core: &DspiCore, dir: Option<&Path>) -> Result<(), u8> {
     match dir {
-        Some(d) => core
-            .measure_set_dir(d.to_string_lossy().into_owned())
-            .map_err(|e| fail(&e)),
+        Some(d) => {
+            if let Some(parent) = d.parent()
+                && let Err(e) = core.speaker_layout_set_dir(
+                    parent
+                        .join("speaker-layouts")
+                        .to_string_lossy()
+                        .into_owned(),
+                )
+            {
+                eprintln!("{COMMAND}: the speaker layouts' folder: {e}");
+            }
+            core.measure_set_dir(d.to_string_lossy().into_owned())
+                .map_err(|e| fail(&e))
+        }
         None => {
             eprintln!("{COMMAND}: this computer has no local data folder for documents");
             Err(exit::TRANSPORT)
@@ -820,6 +832,33 @@ pub(crate) struct RunArgs {
     pub sweep_ms: u32,
 }
 
+// -- WP ROLE0 --
+/// The layout to measure and tune with: the proposal's outputs and feeds,
+/// with each output's role, speaker and group from the device's stored
+/// speaker layout (outputs it leaves out are left out). With no stored
+/// layout, the proposal as it is, and a warning that its roles are guessed.
+pub(crate) fn roles_layout(core: &DspiCore) -> Result<MeasureLayout, DspiError> {
+    let mut layout = core.measure_layout_proposal()?;
+    match core.speaker_layout()? {
+        Some(stored) => layout
+            .outputs
+            .retain_mut(|o| match stored.output(o.output) {
+                Some(r) => {
+                    o.role = r.role;
+                    o.speaker = r.speaker.clone();
+                    o.group = r.group;
+                    true
+                }
+                None => false,
+            }),
+        None => eprintln!(
+            "{COMMAND}: warning: no speaker layout is stored for this DSPi: the roles are \
+             guessed from its filters; confirm them in Settings › Speakers"
+        ),
+    }
+    Ok(layout)
+}
+
 /// `uconsole --demo measure run`: a walked measurement of the layout's
 /// outputs with the demo's simulated microphone, filed in this console's
 /// store. Nothing anywhere plays: the room is arithmetic.
@@ -830,7 +869,7 @@ pub(crate) fn measure_run(core: &DspiCore, a: &RunArgs, show: bool, json: bool) 
              its simulated microphone; measure a DSPi in the web or desktop console",
         );
     }
-    let layout = match core.measure_layout_proposal() {
+    let layout = match roles_layout(core) {
         Ok(l) => l,
         Err(e) => return fail_json(&e, json),
     };
@@ -926,7 +965,7 @@ fn layout_for(core: &DspiCore, doc: &Value) -> Result<MeasureLayout, DspiError> 
         .filter_map(|o| o.get("output").and_then(Value::as_u64))
         .filter_map(|o| u8::try_from(o).ok())
         .collect();
-    let mut layout = core.measure_layout_proposal()?;
+    let mut layout = roles_layout(core)?;
     layout.outputs.retain(|o| measured.contains(&o.output));
     if layout.outputs.is_empty() {
         return Err(DspiError::InvalidArgument {

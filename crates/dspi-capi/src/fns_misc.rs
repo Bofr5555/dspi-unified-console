@@ -110,6 +110,8 @@ mod protocol;
 mod measure_curv;
 // -- WP PGFWX -- the update target and the update check
 mod firmware_update;
+// -- WP ROLE0 -- the speaker layout (MPLAN 2.2)
+mod speaker_layout;
 
 // ── Replies ──────────────────────────────────────────────────────────
 

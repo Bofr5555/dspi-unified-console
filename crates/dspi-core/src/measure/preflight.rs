@@ -129,7 +129,8 @@ fn has_highpass(bands: &[BandSpec], min_hz: f32, min_slope: u8) -> bool {
 }
 
 /// The tweeter rule's corner and slope for `role` (S6): the plan's numbers,
-/// or the limits profile's for that output where it names them.
+/// or the limits profile's for that output where it names them, a high way
+/// never below [`tweeter_floor`] (-- WP ROLE0 --).
 pub(crate) fn tweeter_rule(
     role: MeasureRole,
     output: u8,
@@ -143,7 +144,27 @@ pub(crate) fn tweeter_rule(
     let o = profile.and_then(|p| p.output(output));
     let hz = o.and_then(|o| o.highpass_min_hz).unwrap_or(hz);
     let slope = o.and_then(|o| o.highpass_min_slope_db).unwrap_or(slope);
-    Some((hz, slope))
+    Some(tweeter_floor(role, hz, slope))
+}
+
+// -- WP ROLE0 -- owner 2026-11-22: never below 1 kHz on a tweeter
+/// The hard floor of a high way's rule: a corner of at least 1 kHz and a
+/// slope of at least 12 dB/octave, whatever a limits profile says (a profile
+/// may only raise them). `role` is the effective role. Other ways keep
+/// `hz` and `slope` as they are.
+pub(crate) fn tweeter_floor(role: MeasureRole, hz: f32, slope: u8) -> (f32, u8) {
+    if role == MeasureRole::High {
+        (
+            if hz.is_nan() {
+                HIGH_MIN_HZ
+            } else {
+                hz.max(HIGH_MIN_HZ)
+            },
+            slope.max(MIN_SLOPE_DB),
+        )
+    } else {
+        (hz, slope)
+    }
 }
 
 /// The rules over the mirror and the facts (pure: the tests call it).
@@ -282,22 +303,29 @@ pub(crate) fn judge(
                 format!("output {n} is muted"),
             );
         }
-        // S6: the tweeter rule.
+        // S6: the tweeter rule, on the effective role (-- WP ROLE0 --): a
+        // high-pass at 1 kHz or above makes it a high way whatever its label.
         let chain = chain_of(s, o);
-        if let Some((hz, slope)) = tweeter_rule(spec.role, o, profile) {
+        let role = super::effective_role(spec.role, &chain);
+        if let Some((hz, slope)) = tweeter_rule(role, o, profile) {
             let bands: Vec<BandSpec> = chain.peq.iter().chain(&chain.crossover).copied().collect();
             if !has_highpass(&bands, hz, slope) {
+                let way = if role == MeasureRole::High {
+                    "high"
+                } else {
+                    "middle"
+                };
+                let why = if role == spec.role {
+                    format!("output {n} is a {way} way")
+                } else {
+                    format!("output {n} has a high-pass at 1 kHz or above, so it is a {way} way,")
+                };
                 block(
                     "measure.tweeter_highpass",
                     Some(o),
                     format!(
-                        "output {n} is a {} way and has no active high-pass of at least {slope} \
-                         dB/octave at {hz:.0} Hz or above",
-                        if spec.role == MeasureRole::High {
-                            "high"
-                        } else {
-                            "middle"
-                        }
+                        "{why} and has no active high-pass of at least {slope} dB/octave at \
+                         {hz:.0} Hz or above"
                     ),
                 );
             }

@@ -133,6 +133,8 @@ pub mod sws_a;
 pub mod protocol;
 // -- WP PGFWX -- the update target and the update check
 pub mod firmware;
+// -- WP ROLE0 -- the speaker layout (MPLAN 2.2)
+pub mod speaker_layout;
 
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 #[allow(unsafe_code)]

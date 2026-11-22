@@ -88,6 +88,7 @@ pub(crate) fn unit_plan(setup: &MeasureSystemSetup, unit: &MeasureSystemUnit) ->
         capture_rate_hz: setup.capture_rate_hz,
         name: setup.name.clone(),
         start_level_only: false,
+        roles_from_layout: false, // -- WP ROLE0 --
     })
 }
 

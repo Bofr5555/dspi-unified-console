@@ -186,6 +186,11 @@ pub struct MeasureLiveSetup {
     pub averaging: MeasureRtaAveraging,
     /// The RTA's bands per octave (1 to 48; 0: 3).
     pub bands_per_octave: u8,
+    // -- WP ROLE0 --
+    /// Take `role` from the device's stored speaker layout (MPLAN 2.2);
+    /// refused (`measure.layout_unconfirmed`) while it is not confirmed.
+    #[cfg_attr(feature = "uniffi", uniffi(default = false))]
+    pub roles_from_layout: bool,
 }
 
 /// A curve as the live graph draws it (10 Hz to 22 kHz, 1/48 octave).
@@ -928,6 +933,7 @@ fn check_setup(setup: &MeasureLiveSetup) -> Result<(MeasureSetup, Response, bool
         capture_rate_hz: setup.capture_rate_hz,
         name: "Live".into(),
         start_level_only: false,
+        roles_from_layout: false, // -- WP ROLE0 -- resolved by the start
     };
     // Every bound a run has, checked now.
     Plan::new(&session_setup)?;
@@ -1387,6 +1393,21 @@ impl DspiCore {
     /// [`DspiError::ReadOnly`], [`DspiError::Denied`], [`DspiError::Locked`],
     /// [`DspiError::Disconnected`] as `measure_start`, with nothing sent.
     pub fn measure_live_start(&self, setup: MeasureLiveSetup) -> Result<MeasureLiveState> {
+        // -- WP ROLE0 -- the role from the speaker layout when asked
+        let mut setup = setup;
+        if setup.roles_from_layout {
+            let roles = self.setup_roles(MeasureSetup {
+                outputs: vec![MeasureOutput {
+                    output: setup.output,
+                    ..MeasureOutput::default()
+                }],
+                roles_from_layout: true,
+                ..MeasureSetup::default()
+            })?;
+            if let Some(o) = roles.outputs.first() {
+                setup.role = o.role;
+            }
+        }
         let (session_setup, target, headphones) = check_setup(&setup)?;
         let plan = Plan::new(&session_setup)?;
         let mut guard = self.measure.live_lock();

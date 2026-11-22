@@ -202,31 +202,111 @@ fn channel(src: &LabelSource, out: usize) -> String {
     }
 }
 
-/// The band an output's active filters pass.
-pub fn band(filters: &[LabelFilter]) -> Band {
-    let (mut low, mut high) = (false, false);
-    for f in filters.iter().filter(|f| !f.bypass) {
-        let t = FilterType::from_raw(f.filter_type);
-        let high_pass = match t {
-            FilterType::LowPass | FilterType::LowPass1 => false,
-            FilterType::HighPass | FilterType::HighPass1 => true,
-            _ => match dspi_proto::xover::meta(f.filter_type) {
-                Some(m) => m.high_pass,
-                None => continue,
-            },
-        };
-        if high_pass {
-            high |= f.freq >= HIGH_PASS_SPLIT_HZ;
-        } else {
-            low |= f.freq <= LOW_PASS_SPLIT_HZ;
+// -- WP ROLE0 -- one inference for the labels and the measurement's layout
+/// A low pass at or below this, with no high pass, is a subwoofer.
+pub const SUB_LOW_PASS_HZ: f32 = 120.0;
+/// An active high pass at or above this makes an output a tweeter for safety,
+/// whatever the user called it (MPLAN 2.2, the effective role).
+pub const TWEETER_HIGH_PASS_HZ: f32 = 1_000.0;
+/// A corner within this of a threshold counts (the registry's quantisation).
+const HZ_SLACK: f32 = 0.5;
+
+/// What an output drives, as its filters (and, for a sub, its name) suggest
+/// it, or as the user's speaker layout says.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DriverRole {
+    /// No band-splitting filter.
+    Full,
+    /// A low pass at or below [`SUB_LOW_PASS_HZ`] alone, or a name with "sub".
+    Sub,
+    /// Only a low pass: a woofer.
+    Low,
+    /// Both: a midrange.
+    Mid,
+    /// Only a high pass: a tweeter.
+    High,
+}
+
+impl DriverRole {
+    /// The band a label shows for it.
+    pub fn band(self) -> Band {
+        match self {
+            DriverRole::Full => Band::Full,
+            DriverRole::Sub | DriverRole::Low => Band::Low,
+            DriverRole::Mid => Band::Mid,
+            DriverRole::High => Band::High,
         }
     }
-    match (low, high) {
-        (false, false) => Band::Full,
-        (true, false) => Band::Low,
-        (false, true) => Band::High,
-        (true, true) => Band::Mid,
+}
+
+/// The active band-splitting corners: the lowest low pass at or below
+/// [`LOW_PASS_SPLIT_HZ`] and the highest high pass at or above
+/// [`HIGH_PASS_SPLIT_HZ`].
+#[derive(Debug, Clone, Copy, Default)]
+struct Split {
+    low_pass: Option<f32>,
+    high_pass: Option<f32>,
+}
+
+/// Whether `f` is a high pass (`Some(true)`), a low pass (`Some(false)`), or
+/// neither (a bell, a shelf, an all-pass).
+fn pass_kind(f: &LabelFilter) -> Option<bool> {
+    match FilterType::from_raw(f.filter_type) {
+        FilterType::LowPass | FilterType::LowPass1 => Some(false),
+        FilterType::HighPass | FilterType::HighPass1 => Some(true),
+        _ => dspi_proto::xover::meta(f.filter_type).map(|m| m.high_pass),
     }
+}
+
+fn split(filters: &[LabelFilter]) -> Split {
+    let mut s = Split::default();
+    for f in filters.iter().filter(|f| !f.bypass && f.freq.is_finite()) {
+        match pass_kind(f) {
+            Some(true) if f.freq >= HIGH_PASS_SPLIT_HZ => {
+                s.high_pass = Some(s.high_pass.map_or(f.freq, |h| h.max(f.freq)));
+            }
+            Some(false) if f.freq <= LOW_PASS_SPLIT_HZ => {
+                s.low_pass = Some(s.low_pass.map_or(f.freq, |l| l.min(f.freq)));
+            }
+            _ => {}
+        }
+    }
+    s
+}
+
+/// The one inference of what an output drives (MPLAN 2.2): the labels'
+/// band and the measurement's layout proposal both come from it. A name
+/// containing "sub" (any case) makes it a sub.
+pub fn driver_role(filters: &[LabelFilter], name: &str) -> DriverRole {
+    if name.to_lowercase().contains("sub") {
+        return DriverRole::Sub;
+    }
+    let s = split(filters);
+    match (s.low_pass, s.high_pass) {
+        (Some(f), None) if f <= SUB_LOW_PASS_HZ + HZ_SLACK => DriverRole::Sub,
+        (Some(_), None) => DriverRole::Low,
+        (Some(_), Some(_)) => DriverRole::Mid,
+        (None, Some(_)) => DriverRole::High,
+        (None, None) => DriverRole::Full,
+    }
+}
+
+/// The role the safety rules use (MPLAN 2.2): the stricter of `user` (the
+/// speaker layout's, or a caller's) and what the filters show. An output with
+/// an active high pass at or above [`TWEETER_HIGH_PASS_HZ`] is a tweeter,
+/// whatever it is called. Only that escalates: a lower high pass (a
+/// satellite's) leaves the user's role, which would otherwise hold a
+/// satellite to the tweeter's corner.
+pub fn effective_role(user: DriverRole, filters: &[LabelFilter]) -> DriverRole {
+    let tweeter = filters.iter().any(|f| {
+        !f.bypass && pass_kind(f) == Some(true) && f.freq >= TWEETER_HIGH_PASS_HZ - HZ_SLACK
+    });
+    if tweeter { DriverRole::High } else { user }
+}
+
+/// The band an output's active filters pass.
+pub fn band(filters: &[LabelFilter]) -> Band {
+    driver_role(filters, "").band()
 }
 
 /// Every output's label, in output order.
@@ -771,5 +851,47 @@ mod tests_bug1 {
         let l = &output_labels(&s)[0];
         assert!(!l.user_named);
         assert_eq!(l.label, "Out 1 · R · Low");
+    }
+}
+
+// -- WP ROLE0 --
+#[cfg(test)]
+mod tests_wp_role0 {
+    use super::*;
+
+    fn f(filter_type: u8, freq: f32) -> LabelFilter {
+        LabelFilter {
+            filter_type,
+            bypass: false,
+            freq,
+        }
+    }
+
+    #[test]
+    fn wp_role0_one_inference_with_the_labels_thresholds() {
+        use DriverRole as D;
+        let cases: &[(&[LabelFilter], &str, DriverRole)] = &[
+            (&[], "", D::Full),
+            (&[f(5, 100.0)], "", D::Full), // below the split: a subsonic filter
+            (&[f(5, 150.0)], "", D::High),
+            (&[f(4, 12_500.0)], "", D::Full), // above the split: a trim
+            (&[f(4, 12_000.0)], "", D::Low),
+            (&[f(4, 120.0)], "", D::Sub),
+            (&[f(4, 121.0)], "", D::Low),
+            (&[f(5, 300.0), f(4, 3_000.0)], "", D::Mid),
+            (&[f(5, 300.0), f(4, 80.0)], "", D::Mid),
+            (&[f(4, 3_000.0)], "my sub", D::Sub),
+            (&[f(5, 3_000.0)], "Subwoofer", D::Sub),
+        ];
+        for (filters, name, want) in cases {
+            assert_eq!(driver_role(filters, name), *want, "{filters:?} {name}");
+            // The label's band is the same inference, name aside.
+            assert_eq!(band(filters), driver_role(filters, "").band());
+        }
+        // A bypassed or non-finite filter is no filter.
+        let mut off = f(5, 3_000.0);
+        off.bypass = true;
+        assert_eq!(driver_role(&[off], ""), D::Full);
+        assert_eq!(driver_role(&[f(5, f32::NAN)], ""), D::Full);
     }
 }
