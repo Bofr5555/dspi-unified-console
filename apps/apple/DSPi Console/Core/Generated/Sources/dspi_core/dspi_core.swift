@@ -1446,7 +1446,7 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * (review P5TRUST) for the first Keep of an auto-tune whose verify did
      * not pass (`measure.tune.keep_unverified`, as
      * [`DspiCore::measure_tune_keep`]'s: the guard is the tune's whichever
-     * call keeps it), and (WP P5HOLD) while that tune's verify runs
+     * call keeps it; every Keep of it by another actor, WP RCFIX), and (WP P5HOLD) while that tune's verify runs
      * (`measure.tune.keep_during_verify`).
      */
     func applyConfirm() throws  -> GuardedApply
@@ -4727,7 +4727,8 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * (nothing changes; the applied record's `message` says why): the
      * client shows it and asks the user again, and only a second Keep, at
      * least a second later, keeps it (as `measure_tune_keep`). A new
-     * verify asks again.
+     * verify asks again. Another actor than the embedder is refused every
+     * time (WP RCFIX).
      *
      * Errors: [`DspiError::InvalidArgument`] with nothing applied, or the
      * first Keep after a failed verify.
@@ -4910,7 +4911,9 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * `measure.tune.keep_unverified` (nothing changes, the guard runs on;
      * the state's `issue` says it): the client shows why and asks the user
      * again, and only a second Keep, on the user's explicit confirmation,
-     * keeps it. A new verify, Revert or another apply ask again.
+     * keeps it. A new verify, Revert or another apply ask again. Another
+     * actor than the embedder ([`crate::actor::ActorScope`]) is refused every
+     * time (WP RCFIX).
      *
      * Errors: [`DspiError::InvalidArgument`] when no tune is applied, while
      * a verify runs, or the first Keep after a failed verify;
@@ -7372,7 +7375,7 @@ open func applyAtTimeBase(timeBase: UInt8, frame: UInt64, op: UInt8, arg: UInt8,
      * (review P5TRUST) for the first Keep of an auto-tune whose verify did
      * not pass (`measure.tune.keep_unverified`, as
      * [`DspiCore::measure_tune_keep`]'s: the guard is the tune's whichever
-     * call keeps it), and (WP P5HOLD) while that tune's verify runs
+     * call keeps it; every Keep of it by another actor, WP RCFIX), and (WP P5HOLD) while that tune's verify runs
      * (`measure.tune.keep_during_verify`).
      */
 open func applyConfirm()throws  -> GuardedApply  {
@@ -12330,7 +12333,8 @@ open func measureSystemCapturePush(firstFrame: UInt64, samples: [Float], rateHz:
      * (nothing changes; the applied record's `message` says why): the
      * client shows it and asks the user again, and only a second Keep, at
      * least a second later, keeps it (as `measure_tune_keep`). A new
-     * verify asks again.
+     * verify asks again. Another actor than the embedder is refused every
+     * time (WP RCFIX).
      *
      * Errors: [`DspiError::InvalidArgument`] with nothing applied, or the
      * first Keep after a failed verify.
@@ -12598,7 +12602,9 @@ open func measureTuneApply(proposalId: UInt32, guardS: UInt32)throws  -> Guarded
      * `measure.tune.keep_unverified` (nothing changes, the guard runs on;
      * the state's `issue` says it): the client shows why and asks the user
      * again, and only a second Keep, on the user's explicit confirmation,
-     * keeps it. A new verify, Revert or another apply ask again.
+     * keeps it. A new verify, Revert or another apply ask again. Another
+     * actor than the embedder ([`crate::actor::ActorScope`]) is refused every
+     * time (WP RCFIX).
      *
      * Errors: [`DspiError::InvalidArgument`] when no tune is applied, while
      * a verify runs, or the first Keep after a failed verify;
@@ -71063,7 +71069,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_apply_at_time_base() != 14078) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_apply_confirm() != 2216) {
+    if (uniffi_dspi_core_checksum_method_dspicore_apply_confirm() != 31619) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_apply_guard_begin() != 27268) {
@@ -71933,7 +71939,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_measure_system_capture_push() != 35486) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_measure_system_keep() != 28143) {
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_system_keep() != 41799) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_measure_system_preflight() != 38600) {
@@ -71978,7 +71984,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_measure_tune_apply() != 43151) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_measure_tune_keep() != 20934) {
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_tune_keep() != 52796) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_measure_tune_proposal() != 54513) {

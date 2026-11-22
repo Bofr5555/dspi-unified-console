@@ -8633,7 +8633,8 @@ uint32_t dspi_mcp_measure_take(struct FfiMcp *mcp, uint64_t id, char *buf, uint3
 /**
  * How request `id` went: `started` true once `dspi_mcp_measure_begin`
  * started it, false with `note` (the reason, in words; may be null) when it
- * could not. False when the request was not open.
+ * could not. False when the request was not open (withdrawn meanwhile: stop
+ * what was started).
  */
 bool dspi_mcp_measure_report(struct FfiMcp *mcp, uint64_t id, bool started, const char *note);
 
@@ -8644,7 +8645,8 @@ bool dspi_mcp_measure_report(struct FfiMcp *mcp, uint64_t id, bool started, cons
  * rules judge it again (the preflight, the tweeter's floor, the level caps,
  * the limits). Reply: the job's state as its own start gives it (`{ok,
  * ...}`: a measurement's, the low-end search's, the tune's or the system
- * session's), or `{ok: false, code: "refused", error}` with nothing played.
+ * session's), or `{ok: false, code: "refused", error}` with nothing played (a
+ * blocker, or the request is not taken any more: withdrawn, reported).
  * Needs no MCP handle.
  */
 uint32_t dspi_mcp_measure_begin(struct FfiCore *core,

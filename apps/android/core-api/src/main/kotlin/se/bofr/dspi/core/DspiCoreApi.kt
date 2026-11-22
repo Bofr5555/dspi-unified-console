@@ -1437,7 +1437,7 @@ interface DspiCoreApi : AutoCloseable {
      * (review P5TRUST) for the first Keep of an auto-tune whose verify did
      * not pass (`measure.tune.keep_unverified`, as
      * [`DspiCore::measure_tune_keep`]'s: the guard is the tune's whichever
-     * call keeps it), and (WP P5HOLD) while that tune's verify runs
+     * call keeps it; every Keep of it by another actor, WP RCFIX), and (WP P5HOLD) while that tune's verify runs
      * (`measure.tune.keep_during_verify`).
      */
     @Throws(DspiException::class)
@@ -3968,7 +3968,8 @@ interface DspiCoreApi : AutoCloseable {
      * (nothing changes; the applied record's `message` says why): the
      * client shows it and asks the user again, and only a second Keep, at
      * least a second later, keeps it (as `measure_tune_keep`). A new
-     * verify asks again.
+     * verify asks again. Another actor than the embedder is refused every
+     * time (WP RCFIX).
      *
      * Errors: [`DspiError::InvalidArgument`] with nothing applied, or the
      * first Keep after a failed verify.
@@ -4111,7 +4112,9 @@ interface DspiCoreApi : AutoCloseable {
      * `measure.tune.keep_unverified` (nothing changes, the guard runs on;
      * the state's `issue` says it): the client shows why and asks the user
      * again, and only a second Keep, on the user's explicit confirmation,
-     * keeps it. A new verify, Revert or another apply ask again.
+     * keeps it. A new verify, Revert or another apply ask again. Another
+     * actor than the embedder ([`crate::actor::ActorScope`]) is refused every
+     * time (WP RCFIX).
      *
      * Errors: [`DspiError::InvalidArgument`] when no tune is applied, while
      * a verify runs, or the first Keep after a failed verify;
