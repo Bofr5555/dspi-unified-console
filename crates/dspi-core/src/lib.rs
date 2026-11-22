@@ -392,6 +392,11 @@ pub use measure::{
 };
 // -- WP ATDEMO --
 pub use measure::MeasureSystemSimInfo;
+// -- WP ROLL1 -- the roll-off search
+pub use measure::{
+    MeasureRolloffEnd, MeasureRolloffResult, MeasureRolloffSetup, MeasureRolloffStage,
+    MeasureRolloffState, ROLLOFF_START_HZ, ROLLOFF_START_MAX_HZ, ROLLOFF_STOP_DB,
+};
 
 /// The embedder API. Create one per app with [`DspiCore::new`].
 ///

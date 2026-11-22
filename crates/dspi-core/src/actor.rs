@@ -207,6 +207,9 @@ struct Acting {
     core: u64,
     actor: ActorId,
     hook: Option<WriteHook>,
+    // -- WP ROLL1 --
+    /// Attribution only ([`JobActor::attribute`]): no drag gate, no hook.
+    attribute_only: bool,
 }
 
 thread_local! {
@@ -227,7 +230,11 @@ pub(crate) fn next_core_key() -> u64 {
 /// Thread-scoped: work the core does on its own threads (a measurement's
 /// volume and signal-generator writes, the guarded apply's revert on timeout)
 /// runs outside any scope, so it is journalled as [`EMBEDDER`] and skips the
-/// hook, whoever started it.
+/// hook, whoever started it. -- WP ROLL1 -- A job carries its starter as a
+/// [`JobActor`]: the tune's guard revert from `measure_tune_tick` is
+/// attributed to the actor that applied it (never refused or judged), and
+/// a session's generator writes are the embedder's, unjudged, whoever ticks
+/// it.
 ///
 /// -- WP MCP1 -- (review RA, MCP0 item 6) Also:
 /// - `actor` is never [`EMBEDDER`]: a scope for the app itself would only
@@ -259,6 +266,7 @@ impl<'a> ActorScope<'a> {
                 core: key,
                 actor,
                 hook,
+                attribute_only: false, // -- WP ROLL1 --
             })
         });
         Self {
@@ -303,6 +311,19 @@ pub(crate) fn current(key: u64) -> ActorId {
     })
 }
 
+// -- WP ROLL1 --
+/// Whether this thread's newest scope on the core keyed `key` attributes
+/// only ([`JobActor::attribute`]): its writes pass the drag gate.
+fn attribute_only(key: u64) -> bool {
+    ACTING.with(|a| {
+        a.borrow()
+            .iter()
+            .rev()
+            .find(|s| s.core == key)
+            .is_some_and(|s| s.attribute_only)
+    })
+}
+
 /// The actor and hook of this thread's newest scope on the core keyed
 /// `key`, when that scope has a hook.
 fn hook(key: u64) -> Option<(ActorId, WriteHook)> {
@@ -331,7 +352,8 @@ pub(crate) fn gate(inner: &mut Inner) -> Result<()> {
     if current(inner.actor_key) == EMBEDDER {
         return Ok(());
     }
-    if inner.dragging() {
+    // -- WP ROLL1 -- a job's own write (a revert on timeout) is never refused
+    if inner.dragging() && !attribute_only(inner.actor_key) {
         return Err(DspiError::ConfirmationRequired {
             code: USER_EDITING.into(),
             msg: "The user is editing a control on this device; try again when they let go.".into(),
@@ -493,3 +515,70 @@ mod tests_wp_mcp0;
 #[cfg(test)]
 #[path = "actor/tests_wp_mcp1.rs"]
 mod tests_wp_mcp1;
+
+// -- WP ROLL1 -- (review RA item 5) a job's actor
+/// Who started a job the core drives from whichever thread ticks it (a
+/// measurement, the roll-off search, a tune and its guard): captured on the
+/// starting call's thread, carried with the job, and entered again around
+/// the job's own writes on another thread.
+///
+/// - [`JobActor::capture`] takes this thread's actor on a core: the newest
+///   [`ActorScope`]'s, or [`EMBEDDER`] outside one. The measurement calls
+///   capture it themselves at their start; a layer that starts a job on one
+///   thread and drives it from another needs nothing more.
+/// - [`JobActor::attribute`] enters an **attribution-only** scope: the
+///   History names the actor and the embedder hears of the change, but the
+///   write is neither refused while the user drags nor shown to a hook. It
+///   is for the job's own safety writes (a guard's revert on timeout), which
+///   must never be refused. It also works for the embedder's job: a job
+///   ticked on a thread inside an agent's [`ActorScope`] (an MCP server
+///   polling it) is still the embedder's, unjudged. Anything the actor
+///   chooses to do goes through its own calls under its own [`ActorScope`],
+///   hook and all.
+/// - The measurement session's generator writes (its configuration, START
+///   and STOP) run under the embedder's attribution-only scope whoever
+///   ticks it: a STOP must never wait for the drag gate or a hook.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct JobActor(ActorId);
+
+impl JobActor {
+    /// This thread's actor on `core` (the newest scope's, or [`EMBEDDER`]).
+    /// Takes the core's lock: never call it with the lock held.
+    pub fn capture(core: &DspiCore) -> JobActor {
+        JobActor(current(core.lock().actor_key))
+    }
+
+    /// A job of `actor` (tests and embedders that track the actor
+    /// themselves).
+    pub fn of(actor: ActorId) -> JobActor {
+        JobActor(actor)
+    }
+
+    /// The actor: [`EMBEDDER`] for the app's own job.
+    pub fn actor(self) -> ActorId {
+        self.0
+    }
+
+    /// Make this thread's writes on `core` the job actor's, for attribution
+    /// only, until the scope is dropped (the embedder's too: inside an
+    /// agent's scope they are the embedder's again, unjudged). Takes the
+    /// core's lock: never call it with the lock held.
+    pub fn attribute(self, core: &DspiCore) -> ActorScope<'_> {
+        let key = core.lock().actor_key;
+        let serial = next_scope_serial();
+        ACTING.with(|a| {
+            a.borrow_mut().push(Acting {
+                serial,
+                core: key,
+                actor: self.0,
+                hook: None,
+                attribute_only: true,
+            })
+        });
+        ActorScope {
+            core,
+            serial,
+            _thread: PhantomData,
+        }
+    }
+}

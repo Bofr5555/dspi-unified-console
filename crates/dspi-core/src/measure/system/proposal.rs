@@ -1886,6 +1886,9 @@ fn documents(
             ratio_ppm: 0.0,
             timing: None,
             ramp_steps: Vec::new(),
+            // -- WP ROLL1 --
+            f1_hz: u.plan.sweep.f1_hz,
+            aligns: true,
         };
         let chains = u.ctx.chains.clone();
         let ctx = DocContext {

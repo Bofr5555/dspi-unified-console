@@ -993,6 +993,47 @@ fn wp_atcore_each_unit_preflight_refusal_names_its_unit() {
     assert!(matches!(plan::refusal(&pre), Some(DspiError::Denied)));
 }
 
+// -- WP ROLL1 -- one sweep from 20 Hz plays every unit: no tweeter in it
+#[test]
+fn wp_roll1_a_tweeter_is_refused_in_a_measurement_across_units() {
+    let mut s = setup(&[("A", &[0, 1]), ("B", &[0])]);
+    let mut hub = two_units();
+    let checks = vec![check(&s, "A", Vec::new()), check(&s, "B", Vec::new())];
+    let (pre, _) = plan::preflight(&s, &checks, &mut hub).unwrap();
+    assert!(pre.clear, "{pre:?}");
+    // Unit A's output 1 has a 2 kHz high-pass: a tweeter, called Full.
+    let mut a = check(&s, "A", Vec::new());
+    let mut ctx: UnitContext = serde_json::from_str(&a.context).unwrap();
+    ctx.chains[1].1.crossover = vec![dspi_measure::types::BandSpec {
+        filter_type: 35,
+        bypass: false,
+        freq: 2_000.0,
+        q: 0.707,
+        gain: 0.0,
+        qp: 0.0,
+    }];
+    a.context = serde_json::to_string(&ctx).unwrap();
+    let (pre, _) = plan::preflight(&s, &[a, check(&s, "B", Vec::new())], &mut hub).unwrap();
+    assert!(!pre.clear);
+    let b = pre
+        .blockers
+        .iter()
+        .find(|b| b.key == "measure.tweeter_stimulus")
+        .unwrap();
+    assert_eq!((b.serial.as_str(), b.output), ("A", Some(1)));
+    assert!(b.message.contains("output 2 is a tweeter"), "{}", b.message);
+    // Called a tweeter, flat chain: refused too.
+    s.units[1].outputs[0].role = MeasureRole::High;
+    let checks = vec![check(&s, "A", Vec::new()), check(&s, "B", Vec::new())];
+    let (pre, _) = plan::preflight(&s, &checks, &mut hub).unwrap();
+    assert!(
+        pre.blockers
+            .iter()
+            .any(|b| b.key == "measure.tweeter_stimulus" && b.serial == "B"),
+        "{pre:?}"
+    );
+}
+
 #[test]
 fn wp_atcore_a_hub_without_the_cap_gives_the_notice() {
     let core = crate::DspiCore::new();

@@ -71,7 +71,7 @@ pub(crate) fn check_config(c: &SiggenConfig) -> Result<()> {
 }
 
 fn sweep(
-    plan: &Plan,
+    sc: &dspi_measure::stimulus::SweepConfig,
     mask: u16,
     invert: u16,
     walk: bool,
@@ -87,8 +87,8 @@ fn sweep(
         level_db: level,
         duration_ms: ms,
         repeat,
-        gap_ms: plan.sweep.gap_ms,
-        p: vec![plan.sweep.f1_hz, plan.sweep.f2_hz, 0.0, 0.0],
+        gap_ms: sc.gap_ms,
+        p: vec![sc.f1_hz, sc.f2_hz, 0.0, 0.0],
     }
 }
 
@@ -106,25 +106,35 @@ fn pink(output: u8, level: f32, ms: u32) -> SiggenConfig {
     }
 }
 
-/// A ramp step of `output` at `level`: the run's own stimulus, short (S3).
-pub(crate) fn ramp_config(plan: &Plan, output: u8, level: f32) -> SiggenConfig {
+/// A ramp step of `output` at `level`: the run's own stimulus, short (S3);
+/// -- WP ROLL1 -- `run`'s band, never below `output`'s floor.
+pub(crate) fn ramp_config(
+    plan: &Plan,
+    run: &super::plan::RunSpec,
+    output: u8,
+    level: f32,
+) -> SiggenConfig {
     if plan.kind == MeasureRunKind::Pink {
         return pink(output, level, RAMP_PINK_MS);
     }
     let mask = 1u16.checked_shl(u32::from(output)).unwrap_or(0);
-    sweep(plan, mask, 0, false, level, RAMP_SWEEP_MS, 1)
+    let mut sc = plan.sweep_of(run);
+    sc.f1_hz = sc.f1_hz.max(plan.floor_of(&[output]));
+    sweep(&sc, mask, 0, false, level, RAMP_SWEEP_MS, 1)
 }
 
 /// The run's configuration at `level`.
 pub(crate) fn run_config(plan: &Plan, run: &super::plan::RunSpec, level: f32) -> SiggenConfig {
     let mask = run.mask();
     let ms = plan.sweep.duration_ms;
+    // -- WP ROLL1 -- the run's own band
+    let sc = plan.sweep_of(run);
     match plan.kind {
         // `WALK` on one output changes nothing; it keeps the status's walked
         // output for the cycle-identity check.
-        MeasureRunKind::Walked => sweep(plan, mask, 0, true, level, ms, plan.passes),
-        MeasureRunKind::Summed => sweep(plan, mask, run.invert_mask, false, level, ms, 1),
-        MeasureRunKind::LiveSweep => sweep(plan, mask, 0, false, level, ms, 1),
+        MeasureRunKind::Walked => sweep(&sc, mask, 0, true, level, ms, plan.passes),
+        MeasureRunKind::Summed => sweep(&sc, mask, run.invert_mask, false, level, ms, 1),
+        MeasureRunKind::LiveSweep => sweep(&sc, mask, 0, false, level, ms, 1),
         MeasureRunKind::Pink => pink(
             run.outputs.first().copied().unwrap_or(0),
             level,
@@ -171,6 +181,11 @@ pub(crate) struct RunResult {
     pub(crate) timing: Option<super::MeasureTiming>,
     /// The ramp's steps before this run, as judged (WP P5RAMPFIX).
     pub(crate) ramp_steps: Vec<super::safety::StepRecord>,
+    // -- WP ROLL1 --
+    /// The run's sweep start, Hz (0 for pink noise).
+    pub(crate) f1_hz: f32,
+    /// The run's arrivals are its alignment group's.
+    pub(crate) aligns: bool,
 }
 
 fn mic_on(grid: &LogGrid, plan: &Plan) -> Option<Response> {
@@ -299,6 +314,8 @@ pub(crate) fn walked_result(
             0.0
         },
         ramp_steps: Vec::new(),
+        f1_hz: 0.0,
+        aligns: true,
     })
 }
 
@@ -325,6 +342,8 @@ pub(crate) fn pink_result(spectrum: &Response, output: u8, level_db: f32) -> Res
         max_residual_us: None,
         ratio_ppm: 0.0,
         ramp_steps: Vec::new(),
+        f1_hz: 0.0,
+        aligns: true,
     })
 }
 
@@ -356,16 +375,44 @@ pub(crate) fn document(plan: &Plan, runs: &[RunResult], ctx: &DocContext<'_>) ->
             .flat_map(|r| r.outputs.iter().map(move |o| (r, o)))
             .filter(|(_, o)| o.output == spec.output)
             .collect();
-        let Some((r0, o0)) = mine.first().copied() else {
+        // -- WP ROLL1 -- the response from the widest-band runs, one per
+        // position: a non-tweeter's full-band run beside its group's
+        // band-limited one. The arrival from position 1's: see `arrival`.
+        let lowest = mine
+            .iter()
+            .map(|(r, _)| r.f1_hz)
+            .fold(f32::INFINITY, f32::min);
+        let mine: Vec<(&RunResult, &OutputResult)> = mine
+            .into_iter()
+            .filter(|(r, _)| r.f1_hz <= lowest)
+            .collect();
+        let Some((_, o0)) = mine.first().copied() else {
             continue;
         };
+        // Each on its group's one timing origin (phase and arrival).
+        let on_origin: Vec<(Response, Option<f64>)> = mine
+            .iter()
+            .map(|(r, o)| match origin_shift(runs, r) {
+                Some((ms, reliable)) => (
+                    shifted(&o.response, ms),
+                    reliable.then_some(o.arrival_ms + ms),
+                ),
+                None => (o.response.clone(), None),
+            })
+            .collect();
+        let arrival_ms = on_origin.first().and_then(|(_, a)| *a);
         let (response, spread) = if mine.len() > 1 {
-            let responses: Vec<Response> = mine.iter().map(|(_, o)| o.response.clone()).collect();
+            let responses: Vec<Response> = on_origin.iter().map(|(r, _)| r.clone()).collect();
             let avg =
                 dspi_measure::position::average_for(&plan.placement, &responses).map_err(e)?;
             (avg.response, Some(avg.spread_db))
         } else {
-            (o0.response.clone(), None)
+            (
+                on_origin
+                    .first()
+                    .map_or_else(|| o0.response.clone(), |(r, _)| r.clone()),
+                None,
+            )
         };
         let mut curve = Curve::from_response(&response);
         curve.spread_db = spread;
@@ -404,7 +451,7 @@ pub(crate) fn document(plan: &Plan, runs: &[RunResult], ctx: &DocContext<'_>) ->
             role: spec.role.way(),
             speaker: spec.speaker.clone(),
             chain: chain.into(),
-            arrival_ms: r0.timing_reliable.then_some(o0.arrival_ms),
+            arrival_ms,
             response: curve,
             extra,
         });
@@ -466,7 +513,9 @@ pub(crate) fn document(plan: &Plan, runs: &[RunResult], ctx: &DocContext<'_>) ->
                     -120.0
                 },
                 device_rate_hz: ctx.device_rate_hz,
-                extra: Map::new(),
+                // -- WP ROLL1 -- the outputs swept from the tweeter floor
+                // (an unknown key to every reader, kept on write)
+                extra: floor_extra(plan),
             },
             capture: CaptureInfo {
                 rate_hz: plan.capture_rate_hz,
@@ -518,6 +567,152 @@ pub(crate) fn document(plan: &Plan, runs: &[RunResult], ctx: &DocContext<'_>) ->
         extra: Map::new(),
     };
     doc.to_text().map_err(e)
+}
+
+// -- WP ROLL1 --
+/// How much later its group's timing origin is than run `r`'s, ms, and
+/// whether that origin's timing is reliable: 0 and `r`'s own for every run
+/// but a band-limited one beside a full-band one. A group of a tweeter and
+/// other ways is measured twice at a position: its tweeters from 1 kHz with
+/// a reference way (run A), and its other ways full band (run B). The
+/// group's origin is B's: the other ways' responses and arrivals are B's;
+/// a tweeter's are A's moved onto B's origin by the reference, the way both
+/// runs measured (the best heard in A, by its SNR, should there be several),
+/// so the tweeter against that way is A's own difference and the ways below
+/// against each other B's. `None` when the shift cannot be had (no phase,
+/// no shared band).
+fn origin_shift(runs: &[RunResult], r: &RunResult) -> Option<(f64, bool)> {
+    if !r.aligns {
+        return Some((0.0, r.timing_reliable));
+    }
+    // Run A: its run B is the non-aligning run of the same position that
+    // shares a way with it.
+    let Some(b) = runs.iter().find(|b| {
+        !b.aligns
+            && b.position == r.position
+            && b.outputs
+                .iter()
+                .any(|x| r.outputs.iter().any(|y| y.output == x.output))
+    }) else {
+        return Some((0.0, r.timing_reliable));
+    };
+    let snr = |x: &OutputResult| -> f64 {
+        let v: Vec<f64> = x.snr_db.iter().copied().filter(|s| s.is_finite()).collect();
+        if v.is_empty() {
+            f64::NEG_INFINITY
+        } else {
+            v.iter().sum::<f64>() / v.len() as f64
+        }
+    };
+    let shift = b
+        .outputs
+        .iter()
+        .filter_map(|xb| {
+            let xa = r.outputs.iter().find(|y| y.output == xb.output)?;
+            Some((snr(xa), frame_shift_ms(xa, xb, f64::from(r.f1_hz))?))
+        })
+        .max_by(|p, q| p.0.total_cmp(&q.0))?;
+    Some((shift.1, r.timing_reliable && b.timing_reliable))
+}
+
+/// `resp` with its phase moved `shift_ms` later (onto a later origin).
+fn shifted(resp: &Response, shift_ms: f64) -> Response {
+    let mut out = resp.clone();
+    if shift_ms != 0.0
+        && let (Some(p), Ok(freqs)) = (out.phase_deg.as_mut(), resp.grid.freqs())
+    {
+        for (v, f) in p.iter_mut().zip(&freqs) {
+            *v -= 360.0 * f * shift_ms / 1000.0;
+        }
+    }
+    out
+}
+
+/// How much later run B's timing origin is than run A's, ms, from one way
+/// measured in both (`a` in A, played from `f1_hz` up, `b` in B): its
+/// arrivals' difference, corrected by the slope of its phases' difference
+/// about those arrivals over the trusted band both share (within 20 dB of
+/// its loudest there). The onset alone would not do: seen from 1 kHz up, a
+/// way low-passed near the tweeter's crossover rings narrowband, and its
+/// onset moves by a good part of a millisecond. `None` without phase or a
+/// shared band.
+fn frame_shift_ms(a: &OutputResult, b: &OutputResult, f1_hz: f64) -> Option<f64> {
+    use std::f64::consts::{PI, TAU};
+    let (ra, rb) = (&a.response, &b.response);
+    if ra.grid != rb.grid {
+        return None;
+    }
+    let freqs = ra.grid.freqs().ok()?;
+    let (pa, pb) = (ra.phase_deg.as_ref()?, rb.phase_deg.as_ref()?);
+    let ok = |r: &Response, i: usize| {
+        r.valid
+            .as_ref()
+            .is_none_or(|v| v.get(i).copied().unwrap_or(false))
+    };
+    let lo = f1_hz * 2f64.powf(1.0 / 6.0);
+    let shared: Vec<usize> = (0..freqs.len())
+        .filter(|i| freqs.get(*i).is_some_and(|f| *f >= lo) && ok(ra, *i) && ok(rb, *i))
+        .collect();
+    let top = shared
+        .iter()
+        .filter_map(|i| ra.mag_db.get(*i))
+        .copied()
+        .fold(f64::NEG_INFINITY, f64::max);
+    let (ta, tb) = (a.arrival_ms / 1000.0, b.arrival_ms / 1000.0);
+    let mut prev: Option<f64> = None;
+    let mut offset = 0.0;
+    let (mut num, mut den) = (0.0, 0.0);
+    for i in shared {
+        let (Some(f), Some(m), Some(x), Some(y)) =
+            (freqs.get(i), ra.mag_db.get(i), pa.get(i), pb.get(i))
+        else {
+            continue;
+        };
+        if *m < top - 20.0 {
+            continue;
+        }
+        let w = TAU * f;
+        // The phases about each arrival, their difference wrapped and then
+        // unwrapped along the grid.
+        let d = ((x.to_radians() + w * ta) - (y.to_radians() + w * tb) + PI).rem_euclid(TAU) - PI;
+        if let Some(q) = prev {
+            if d - q > PI {
+                offset -= TAU;
+            } else if d - q < -PI {
+                offset += TAU;
+            }
+        }
+        prev = Some(d);
+        num += (d + offset) * w;
+        den += w * w;
+    }
+    if den <= 0.0 {
+        return None;
+    }
+    let shift = b.arrival_ms - a.arrival_ms + num / den * 1000.0;
+    shift.is_finite().then_some(shift)
+}
+
+/// The stimulus' `tweeterFloor`: the high ways measured from 1 kHz up, and
+/// the floor (empty when the plan has none).
+fn floor_extra(plan: &Plan) -> Map<String, serde_json::Value> {
+    let mut m = Map::new();
+    let high: Vec<u8> = plan
+        .outputs
+        .iter()
+        .filter(|o| o.role == super::MeasureRole::High)
+        .map(|o| o.output)
+        .collect();
+    if !high.is_empty() {
+        m.insert(
+            "tweeterFloor".into(),
+            serde_json::json!({
+                "hz": super::plan::TWEETER_STIMULUS_FLOOR_HZ,
+                "outputs": high,
+            }),
+        );
+    }
+    m
 }
 
 /// `secs` since the Unix epoch as ISO-8601 UTC (`2026-11-16T22:41:35Z`).
