@@ -903,10 +903,16 @@ fn wp_mcp1_resources_and_prompts() {
         let r = modern(&mut s, c, "resources/read", json!({"uri": bad}));
         assert_eq!(r["error"]["code"], json!(INVALID_PARAMS), "{bad}");
     }
-    let hub = DeviceId::hub("h/1", "S");
+    // -- WP INT2 -- a hub's id never holds a `/` (MDQT1): one that did is no id
+    let hub = DeviceId::hub("h%2F1", "S");
     assert_eq!(
         crate::resources::decode_id(&crate::resources::encode_id(&hub)),
         Some(hub)
+    );
+    let slash = DeviceId::hub("h/1", "S");
+    assert_eq!(
+        crate::resources::decode_id(&crate::resources::encode_id(&slash)),
+        None
     );
 
     let r = modern(&mut s, c, "prompts/list", json!({}));
