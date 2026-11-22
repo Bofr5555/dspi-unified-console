@@ -122,12 +122,15 @@ void networkingSection(SmokeDriver &d) {
     auto *w = qobject_cast<QQuickWindow *>(d.app().shell->openWindow(QStringLiteral("edit.settings")));
     d.check(QStringLiteral("qp14: the Settings window opens"), w && d.waitFor(3000, [&]() { return w->isVisible(); }));
     if (!w) return;
-    d.check(QStringLiteral("qp14: Networking is listed after Advanced"),
+    // -- WP INT3 -- LAY3's Appearance stands between them (the Mac's order)
+    d.check(QStringLiteral("qp14: Networking is listed after Advanced and Appearance"),
             [&]() {
                 QStringList ids;
                 for (const QVariant &row : settings->sidebarRows(QString()))
                     if (row.toMap().contains(QStringLiteral("id"))) ids << row.toMap().value(QStringLiteral("id")).toString();
-                return ids.indexOf(QStringLiteral("networking")) == ids.indexOf(QStringLiteral("advanced")) + 1;
+                const qsizetype advanced = ids.indexOf(QStringLiteral("advanced"));
+                return advanced >= 0 && ids.indexOf(QStringLiteral("appearance")) == advanced + 1 &&
+                       ids.indexOf(QStringLiteral("networking")) == advanced + 2;
             }());
     const auto searched = [&](const char *query) {
         for (const QVariant &row : settings->sidebarRows(QString::fromLatin1(query)))
