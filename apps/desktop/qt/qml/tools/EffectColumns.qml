@@ -18,11 +18,9 @@ Flickable {
     boundsBehavior: Flickable.StopAtBounds
     ScrollBar.vertical: AppScrollBar {}
 
-    // A window opened again starts at the top, as the Mac's does
-    Connections {
-        target: body.Window.window
-        function onVisibleChanged() { if (body.Window.window.visible) body.contentY = 0 }
-    }
+    // Its panel's `shown`: opened again, it starts at the top, as the Mac's does
+    required property bool shown   // -- WP LAY1a --
+    onShownChanged: if (shown) contentY = 0
 
     RowLayout {
         id: row

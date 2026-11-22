@@ -28,16 +28,16 @@ ApplicationWindow {
     }
 
     // -- WP QTPOP -- Fitted to its content: when it shows, and when the
-    // content's own size changes while it shows (never because the window's
-    // size changed), the window takes the height at which none of `fitBodies`
-    // (its scrolling Flickables; a ScrollView's contentItem) scrolls, never
-    // less than defaultHeight and, growing, no more than Shell.fitCap (the
-    // main window's size and the screen's, less 48 px each side), beyond
-    // which the body scrolls. It widens only when a body's content is wider
-    // than it. A size the person gives it sticks: once they resize it during
-    // a showing, a refit may grow it but never shrinks it. Lists of records
-    // are no fit body: they scroll by design. With no fit body showing, the
-    // size is left alone.
+    // content's own size changes while it shows (never because the person
+    // changed the window's size), the window takes the height at which none of
+    // `fitBodies` (its scrolling Flickables; a ScrollView's contentItem)
+    // scrolls, never less than defaultHeight and, growing, no more than
+    // Shell.fitCap (the main window's size and the screen's, less 48 px each
+    // side), beyond which the body scrolls. It widens only when a body's
+    // content is wider than it. A size the person gives it sticks: once they
+    // resize it during a showing, a refit may grow it but never shrinks it.
+    // Lists of records are no fit body: they scroll by design. With no fit body
+    // showing, the size is left alone.
     property var fitBodies: []
     // How much more room the content wants than the bodies have (less than 0
     // when it is shorter); NaN with no fit body showing. Read when fitting,
@@ -61,6 +61,24 @@ ApplicationWindow {
         }
         return sum
     }
+    // -- WP LAY1a -- The size the bodies are laid out in. A window resized while
+    // hidden shows its first frame at its new size with its content still laid
+    // out in the old one (its resize event comes later, or not at all), so the
+    // fit counts from here and never from the window's own size.
+    readonly property real fitLaidWidth: contentItem.width
+    readonly property real fitLaidHeight: contentItem.height + (header && header.visible ? header.height : 0)
+    // -- WP LAY1a -- The bodies' own sizes: layouts that follow the window only
+    // after a fit has measured them change these, not the content, and it fits
+    // again; unless the person resized the window in this showing (that is
+    // known by the next frame): then it is their resize.
+    readonly property real fitBodySize: {
+        let sum = 0
+        for (const b of fitBodies) {
+            if (b && b.visible && !isNaN(b.contentHeight)) sum += b.height + b.width / 65536
+        }
+        return sum
+    }
+    property bool fitBodyPending: false
     property bool fitPending: false
     property bool fitShown: false       // fitted once in this showing
     property bool fitUserSized: false   // resized by the person in this showing
@@ -87,7 +105,13 @@ ApplicationWindow {
     }
     onHeightChanged: fitSizeChanged()
     onFitContentSizeChanged: if (!fitReflow) fitLater()
+    onFitBodySizeChanged: {
+        if (!visible || fitUserSized) return
+        fitBodyPending = true
+        update()
+    }
     onVisibleChanged: {
+        fitBodyPending = false
         fitShown = false
         fitUserSized = false
         fitReflow = false
@@ -98,11 +122,13 @@ ApplicationWindow {
     // text is briefly very tall before its width is set)
     onFrameSwapped: {
         fitReflow = false
+        if (fitBodyPending && !fitUserSized) fitPending = true
+        fitBodyPending = false
         if (!fitPending) return
         fitPending = false
         if (!visible || isNaN(fitExtraHeight)) return
-        const w = fitExtraWidth > 0.5 ? Math.ceil(width + fitExtraWidth) : width
-        let h = Math.max(defaultHeight, Math.ceil(height + fitExtraHeight))
+        const w = fitExtraWidth > 0.5 ? Math.max(width, Math.ceil(fitLaidWidth + fitExtraWidth)) : width
+        let h = Math.max(defaultHeight, Math.ceil(fitLaidHeight + fitExtraHeight))
         if (fitUserSized) h = Math.max(h, height)
         fitAsked = Qt.size(width, height)
         if (w !== width || Math.abs(h - height) > 0.5) {

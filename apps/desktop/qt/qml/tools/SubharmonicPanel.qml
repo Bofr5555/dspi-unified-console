@@ -8,17 +8,13 @@ import UConsole
 // band levels; on the right selectivity and the sub ceiling (wire V30), the LF
 // boost and the outputs with their sub meters and the pair link. Firmware
 // before wire V29 gets a note instead. Closing the window switches Solo off.
-ToolWindow {
-    id: window
-    objectName: "SubharmonicWindow"
-    windowId: "subharmonic"
-    defaultWidth: 780
-    defaultHeight: 620
-    minimumWidth: 740
-    minimumHeight: 612
+// -- WP LAY1a -- A panel (Panel.qml): PanelTable's row for
+// tools.subharmonic gives its window's title and sizes.
+Panel {
+    id: panel
+    objectName: "SubharmonicPanel"
     // -- WP QTPOP --
     fitBodies: [body]
-    title: qsTr("Subharmonic Synthesizer")
 
     readonly property bool writable: ToolsController.writable && ToolsController.subharmSupported
     readonly property bool unsupported: ToolsController.connected && !ToolsController.subharmSupported
@@ -31,8 +27,9 @@ ToolWindow {
     function liveOr(row, key) { return isNaN(row.liveValue) ? value(key) : row.liveValue }
 
     // -- WP QPI3 -- its polls run while it is on screen, not while minimised
-    readonly property bool polling: visible && visibility !== Window.Minimized
+    readonly property bool polling: onScreen
     onPollingChanged: ToolsController.windowShown("subharmonic", polling)
+    Component.onDestruction: ToolsController.windowShown("subharmonic", false)   // -- WP LAY1a -- a page host unloaded
 
     ColumnLayout {
         anchors.fill: parent
@@ -44,20 +41,20 @@ ToolWindow {
             iconName: "waves-arrow-down"
             title: qsTr("Subharmonic Synthesizer")
             subtitle: qsTr("Generates a subharmonic at half the frequency of the source's bass")
-            on: window.on
-            switchEnabled: window.writable
+            on: panel.on
+            switchEnabled: panel.writable
             onToggled: on => ToolsController.setSubharm("enabled", on ? 1 : 0)
 
             // Monitoring solo: it latches, and closing the window clears it
             AppButton {
                 id: solo
                 objectName: "SubharmonicWindow.solo"
-                visible: window.extended
+                visible: panel.extended
                 readonly property bool soloed: ToolsController.subharmSolo
                 text: qsTr("SOLO")
                 primary: soloed
-                enabled: window.writable && window.on
-                opacity: window.on ? 1 : 0.4
+                enabled: panel.writable && panel.on
+                opacity: panel.on ? 1 : 0.4
                 toolTip: soloed ? qsTr("The selected outputs are carrying the synthesized sub only - the program signal is muted on them. Closing this window switches it off.")
                                 : qsTr("Mute the program signal on the selected outputs so the synthesized sub can be heard or measured on its own. Never saved to a preset.")
                 onClicked: ToolsController.setSubharmSolo(!soloed)
@@ -70,7 +67,7 @@ ToolWindow {
 
         ToolUnsupported {
             objectName: "SubharmonicWindow.unsupported"
-            visible: window.unsupported
+            visible: panel.unsupported
             Layout.fillWidth: true
             Layout.fillHeight: true
             Layout.margins: 24
@@ -80,8 +77,9 @@ ToolWindow {
 
         EffectColumns {
             id: body
+            shown: panel.shown
             objectName: "SubharmonicWindow.body"
-            visible: !window.unsupported
+            visible: !panel.unsupported
             Layout.fillWidth: true
             Layout.fillHeight: true
 
@@ -94,7 +92,7 @@ ToolWindow {
                         EffectMenuButton {
                             id: startingPoints
                             objectName: "SubharmonicWindow.startingPoints"
-                            enabled: window.writable
+                            enabled: panel.writable
                             text: qsTr("Apply preset")
                             Instantiator {
                                 model: ToolsController.subharmStartingPoints
@@ -114,11 +112,11 @@ ToolWindow {
                         objectName: "SubharmonicWindow.graph"
                         Layout.fillWidth: true
                         Layout.preferredHeight: 188
-                        active: window.on
-                        graph: ToolsController.subharmGraph(window.liveOr(lowRow, "low"), window.liveOr(highRow, "high"),
-                                                            window.extended ? window.liveOr(topRow, "top") : -30,
-                                                            window.liveOr(boostRow, "boost"),
-                                                            window.extended ? window.liveOr(ceilingRow, "ceiling") : 0)
+                        active: panel.on
+                        graph: ToolsController.subharmGraph(panel.liveOr(lowRow, "low"), panel.liveOr(highRow, "high"),
+                                                            panel.extended ? panel.liveOr(topRow, "top") : -30,
+                                                            panel.liveOr(boostRow, "boost"),
+                                                            panel.extended ? panel.liveOr(ceilingRow, "ceiling") : 0)
                     }
                     // The worst-case gain of this setting, the graph's caption
                     RowLayout {
@@ -154,11 +152,11 @@ ToolWindow {
                         id: lowRow
                         objectName: "SubharmonicWindow.low"
                         Layout.fillWidth: true
-                        enabled: window.writable
+                        enabled: panel.writable
                         title: qsTr("24 - 36 Hz")
                         subtitle: qsTr("Derived from %1").arg(qsTr("48 - 72 Hz"))
                         unit: qsTr("dB")
-                        value: window.value("low")
+                        value: panel.value("low")
                         from: -30
                         to: 12
                         scrollStep: 0.5
@@ -174,11 +172,11 @@ ToolWindow {
                         id: highRow
                         objectName: "SubharmonicWindow.high"
                         Layout.fillWidth: true
-                        enabled: window.writable
+                        enabled: panel.writable
                         title: qsTr("36 - 56 Hz")
                         subtitle: qsTr("Derived from %1").arg(qsTr("72 - 112 Hz"))
                         unit: qsTr("dB")
-                        value: window.value("high")
+                        value: panel.value("high")
                         from: -30
                         to: 12
                         scrollStep: 0.5
@@ -189,17 +187,17 @@ ToolWindow {
                         onLive: v => ToolsController.setSubharm("high", v)
                         onCommit: v => ToolsController.setSubharm("high", v)
                     }
-                    EffectRule { visible: window.extended }
+                    EffectRule { visible: panel.extended }
                     ToolParameterRow {
                         id: topRow
                         objectName: "SubharmonicWindow.top"
-                        visible: window.extended
+                        visible: panel.extended
                         Layout.fillWidth: true
-                        enabled: window.writable
+                        enabled: panel.writable
                         title: qsTr("56 - 80 Hz")
                         subtitle: qsTr("Derived from %1").arg(qsTr("112 - 160 Hz"))
                         unit: qsTr("dB")
-                        value: window.value("top")
+                        value: panel.value("top")
                         from: -30
                         to: 12
                         scrollStep: 0.5
@@ -215,7 +213,7 @@ ToolWindow {
             rightItems: [
                 ColumnLayout {
                     objectName: "SubharmonicWindow.selectivity"
-                    visible: window.extended
+                    visible: panel.extended
                     Layout.fillWidth: true
                     spacing: 14
                     SectionHeading { text: qsTr("Selectivity") }
@@ -225,17 +223,17 @@ ToolWindow {
                         ToolSegments {
                             objectName: "SubharmonicWindow.mode"
                             Layout.fillWidth: true
-                            enabled: window.writable
+                            enabled: panel.writable
                             label: qsTr("Selectivity")
                             model: [qsTr("All material"), qsTr("Percussive"), qsTr("Sustained")]
-                            current: window.selectMode
+                            current: panel.selectMode
                             onChosen: index => ToolsController.setSubharm("select", index)
                         }
                         Text {
                             objectName: "SubharmonicWindow.mode.summary"
                             Layout.fillWidth: true
-                            text: window.selectMode === 1 ? qsTr("A short sub burst after each attack - extends kicks, not the bass line.")
-                                : window.selectMode === 2 ? qsTr("The sub opens once a band has been ringing - extends bass notes, not kicks.")
+                            text: panel.selectMode === 1 ? qsTr("A short sub burst after each attack - extends kicks, not the bass line.")
+                                : panel.selectMode === 2 ? qsTr("The sub opens once a band has been ringing - extends bass notes, not kicks.")
                                 : qsTr("Every band signal is treated alike.")
                             font: Theme.fontCaption
                             color: Theme.textMuted
@@ -243,9 +241,9 @@ ToolWindow {
                             HoverHandler { id: modeHover }
                             HelpTip {
                                 visible: modeHover.hovered
-                                text: window.selectMode === 1
+                                text: panel.selectMode === 1
                                       ? qsTr("A short sub burst after each attack, so a kick can be extended without extending the bass line under it. The most robust of the three: a held note gets nothing between kicks.")
-                                      : window.selectMode === 2
+                                      : panel.selectMode === 2
                                         ? qsTr("The sub opens only after a band has been ringing, so bass notes are extended and kicks are not. A kick landing in the same band ducks the held note's sub, which pumps on a four-on-the-floor line - shorten the hold or lower the depth to soften it.")
                                         : qsTr("Every band signal is treated alike. Choose percussive or sustained to weight the synthesized sub toward one kind of bass material; the gate decides per band from time behaviour, so it cannot separate two sources sounding at once in the same band.")
                             }
@@ -254,12 +252,12 @@ ToolWindow {
                     // Depth and hold do nothing while every band signal is treated alike
                     ToolParameterRow {
                         objectName: "SubharmonicWindow.depth"
-                        visible: window.selectMode !== 0
+                        visible: panel.selectMode !== 0
                         Layout.fillWidth: true
-                        enabled: window.writable
+                        enabled: panel.writable
                         title: qsTr("Depth")
                         unit: qsTr("%")
-                        value: window.value("depth")
+                        value: panel.value("depth")
                         from: 0
                         to: 100
                         decimals: 0
@@ -271,26 +269,26 @@ ToolWindow {
                     }
                     ToolParameterRow {
                         objectName: "SubharmonicWindow.hold"
-                        visible: window.selectMode !== 0
+                        visible: panel.selectMode !== 0
                         Layout.fillWidth: true
-                        enabled: window.writable
+                        enabled: panel.writable
                         title: qsTr("Hold")
                         unit: qsTr("ms")
-                        value: window.value("hold")
+                        value: panel.value("hold")
                         from: 50
                         to: 400
                         decimals: 0
                         scrollStep: 10
                         resetValue: 150
-                        help: window.selectMode === 1 ? qsTr("The length of the sub burst after each attack.")
+                        help: panel.selectMode === 1 ? qsTr("The length of the sub burst after each attack.")
                                                       : qsTr("How long a band must ring before its sub opens. Every note's first hold period has no sub, so staccato bass lines get little.")
                         onLive: v => ToolsController.setSubharm("hold", v)
                         onCommit: v => ToolsController.setSubharm("hold", v)
                     }
                 },
-                EffectRule { visible: window.extended },
+                EffectRule { visible: panel.extended },
                 ColumnLayout {
-                    visible: window.extended
+                    visible: panel.extended
                     Layout.fillWidth: true
                     spacing: 14
                     SectionHeading { text: qsTr("Sub ceiling") }
@@ -298,10 +296,10 @@ ToolWindow {
                         id: ceilingRow
                         objectName: "SubharmonicWindow.ceiling"
                         Layout.fillWidth: true
-                        enabled: window.writable
+                        enabled: panel.writable
                         title: qsTr("Threshold")
                         unit: qsTr("dB")
-                        value: window.value("ceiling")
+                        value: panel.value("ceiling")
                         from: -40
                         to: 0
                         decimals: 0
@@ -314,7 +312,7 @@ ToolWindow {
                         onCommit: v => ToolsController.setSubharm("ceiling", v)
                     }
                 },
-                EffectRule { visible: window.extended },
+                EffectRule { visible: panel.extended },
                 ColumnLayout {
                     Layout.fillWidth: true
                     spacing: 14
@@ -323,10 +321,10 @@ ToolWindow {
                         id: boostRow
                         objectName: "SubharmonicWindow.boost"
                         Layout.fillWidth: true
-                        enabled: window.writable
+                        enabled: panel.writable
                         title: qsTr("70 Hz bell")
                         unit: qsTr("dB")
-                        value: window.value("boost")
+                        value: panel.value("boost")
                         from: 0
                         to: 6
                         scrollStep: 0.5
@@ -346,7 +344,7 @@ ToolWindow {
                         text: qsTr("Outputs")
                         EffectMenuButton {
                             objectName: "SubharmonicWindow.outputs.presets"
-                            enabled: window.writable
+                            enabled: panel.writable
                             text: qsTr("Presets")
                             AppMenuItem {
                                 objectName: "SubharmonicWindow.outputs.sub"
@@ -378,12 +376,12 @@ ToolWindow {
                             ColumnLayout {
                                 id: chipColumn
                                 required property int index
-                                readonly property bool on: (window.mask & (1 << index)) !== 0
+                                readonly property bool on: (panel.mask & (1 << index)) !== 0
                                 Layout.fillWidth: true
                                 spacing: 3
                                 EffectChip {
                                     objectName: "SubharmonicWindow.output." + chipColumn.index
-                                    enabled: window.writable
+                                    enabled: panel.writable
                                     on: chipColumn.on
                                     text: String(chipColumn.index + 1)
                                     toolTip: { ToolsController.revision; return ToolsController.outputName(chipColumn.index) }
@@ -392,7 +390,7 @@ ToolWindow {
                                 // The synthesized sub alone, not the output
                                 Meter {
                                     objectName: "SubharmonicWindow.meter." + chipColumn.index
-                                    visible: window.extended
+                                    visible: panel.extended
                                     Layout.fillWidth: true
                                     Layout.preferredHeight: 3
                                     opacity: chipColumn.on ? 1 : 0.25
@@ -405,7 +403,7 @@ ToolWindow {
                         }
                     }
                     RowLayout {
-                        visible: window.extended
+                        visible: panel.extended
                         Layout.fillWidth: true
                         Layout.topMargin: 4
                         ColumnLayout {
@@ -414,7 +412,7 @@ ToolWindow {
                             Text {
                                 text: qsTr("Link output pairs")
                                 font: Theme.fontBody
-                                color: window.writable ? Theme.text : Theme.textDisabled
+                                color: panel.writable ? Theme.text : Theme.textDisabled
                             }
                             Text {
                                 Layout.fillWidth: true
@@ -432,8 +430,8 @@ ToolWindow {
                         AppSwitch {
                             objectName: "SubharmonicWindow.linkPairs"
                             text: ""
-                            enabled: window.writable
-                            checked: window.value("link") !== 0
+                            enabled: panel.writable
+                            checked: panel.value("link") !== 0
                             onToggled: ToolsController.setSubharm("link", checked ? 1 : 0)
                             Accessible.name: qsTr("Link output pairs")
                         }

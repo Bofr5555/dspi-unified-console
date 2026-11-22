@@ -14,15 +14,11 @@ import UConsole
 //
 // Everything that writes is disabled on read-only firmware. Opened by
 // Tools > Matrix Mixer... and the quick strip.
-ToolWindow {
-    id: window
-    objectName: "MatrixWindow"
-    windowId: "matrix"
-    defaultWidth: 960
-    defaultHeight: 660
-    minimumWidth: 480
-    minimumHeight: 320
-    title: qsTr("Matrix Mixer")
+// -- WP LAY1a -- A panel (Panel.qml): PanelTable's row for
+// tools.matrix gives its window's title and sizes.
+Panel {
+    id: panel
+    objectName: "MatrixPanel"
 
     readonly property int columnWidth: 72
     readonly property int labelWidth: 80
@@ -39,16 +35,10 @@ ToolWindow {
 
     function column(o) { return MatrixController.revision < 0 ? undefined : MatrixController.column(o) }
 
-    // -- WP QPI5 -- Fitted to the table on every show, as the Mac's is, within
-    // the screen (beyond it the view scrolls)
-    function fitToTable() {
-        if (cols <= 0) return
-        const edge = 2 * Theme.spacingLarge + 12   // the margins and a scroll bar
-        const w = table.width + edge, h = table.height + edge
-        width = Math.max(minimumWidth, Screen.desktopAvailableWidth > 0 ? Math.min(w, Screen.desktopAvailableWidth) : w)
-        height = Math.max(minimumHeight, Screen.desktopAvailableHeight > 0 ? Math.min(h, Screen.desktopAvailableHeight) : h)
-    }
-    onVisibleChanged: if (visible) fitToTable()
+    // -- WP QPI5 -- Its window is fitted to the table on every show, as the
+    // Mac's is, within the screen (beyond it the view scrolls)
+    readonly property int edge: 2 * Theme.spacingLarge + 12   // the margins and a scroll bar
+    showSize: cols > 0 ? Qt.size(table.width + edge, table.height + edge) : Qt.size(0, 0)
     function source(r) { return MatrixController.revision < 0 ? undefined : MatrixController.row(r) }
     // Stereo keeps one L/R separator; 8 channels are grouped in pairs
     function dividerAfter(r) { return wide ? (r % 2 === 1 && r < rows - 1) : r === 0 && rows > 1 }
@@ -93,9 +83,9 @@ ToolWindow {
         id: controlRow
         property string label
         default property alias cells: cellRow.data
-        height: window.controlRowHeight
+        height: panel.controlRowHeight
         Text {
-            width: window.labelWidth - 8
+            width: panel.labelWidth - 8
             height: parent.height
             text: controlRow.label
             font: Theme.fontHeading
@@ -121,7 +111,7 @@ ToolWindow {
             objectName: "Matrix.table"
             x: Theme.spacingLarge
             y: Theme.spacingLarge
-            width: window.labelWidth + window.cols * window.columnWidth
+            width: panel.labelWidth + panel.cols * panel.columnWidth
             height: body.implicitHeight + 4
             radius: 10
             color: Theme.panel
@@ -134,24 +124,24 @@ ToolWindow {
 
                 // ---- Column headers --------------------------------------
                 Row {
-                    Item { width: window.labelWidth; height: window.headerHeight }
+                    Item { width: panel.labelWidth; height: panel.headerHeight }
                     Repeater {
-                        model: window.cols
+                        model: panel.cols
                         Item {
                             id: header
                             required property int index
-                            readonly property var col: window.column(index)
+                            readonly property var col: panel.column(index)
                             objectName: "Matrix.header." + index
                             property string shownName: col ? col.label : ""
-                            width: window.columnWidth
-                            height: window.headerHeight
+                            width: panel.columnWidth
+                            height: panel.headerHeight
 
                             Column {
                                 anchors.centerIn: parent
                                 width: parent.width - 4
                                 spacing: 3
                                 Text {
-                                    visible: window.renaming !== header.index
+                                    visible: panel.renaming !== header.index
                                     width: parent.width
                                     height: 2 * Math.ceil(fontMetrics.height)
                                     text: header.shownName
@@ -172,7 +162,7 @@ ToolWindow {
                                 BorderedField {
                                     id: renameField
                                     objectName: "Matrix.header." + header.index + ".rename"
-                                    visible: window.renaming === header.index
+                                    visible: panel.renaming === header.index
                                     width: parent.width
                                     font: Theme.fontSmall
                                     horizontalAlignment: TextInput.AlignHCenter
@@ -185,14 +175,14 @@ ToolWindow {
                                         selectAll()
                                     }
                                     onCommitted: t => {
-                                        if (window.renaming !== header.index) return
-                                        window.renaming = -1
+                                        if (panel.renaming !== header.index) return
+                                        panel.renaming = -1
                                         if (header.col && t.trim() !== header.col.name)
                                             MatrixController.renameOutput(header.index, t)
                                     }
-                                    Keys.onEscapePressed: window.renaming = -1
-                                    onActiveFocusChanged: if (!activeFocus && window.renaming === header.index)
-                                        Qt.callLater(() => { if (window.renaming === header.index) window.renaming = -1 })
+                                    Keys.onEscapePressed: panel.renaming = -1
+                                    onActiveFocusChanged: if (!activeFocus && panel.renaming === header.index)
+                                        Qt.callLater(() => { if (panel.renaming === header.index) panel.renaming = -1 })
                                 }
                                 Row {
                                     anchors.horizontalCenter: parent.horizontalCenter
@@ -209,17 +199,17 @@ ToolWindow {
                                         iconName: "chevron-down"
                                         iconSize: 12
                                         toolTip: qsTr("%1 options").arg(header.shownName)
-                                        onClicked: window.openMenu(header.index, menuButton)
+                                        onClicked: panel.openMenu(header.index, menuButton)
                                     }
                                 }
                             }
                             TapHandler {
                                 acceptedButtons: Qt.RightButton
-                                onTapped: window.openMenu(header.index, header)
+                                onTapped: panel.openMenu(header.index, header)
                             }
                             HelpTip {
                                 text: header.shownName
-                                visible: headerHover.hovered && window.renaming !== header.index
+                                visible: headerHover.hovered && panel.renaming !== header.index
                             }
                             HoverHandler { id: headerHover }
                         }
@@ -233,7 +223,7 @@ ToolWindow {
                     objectName: "Matrix.routing"
                     text: qsTr("ROUTING")
                     RowLayout {
-                        visible: window.wide
+                        visible: panel.wide
                         anchors.right: parent.right
                         anchors.rightMargin: 10
                         anchors.verticalCenter: parent.verticalCenter
@@ -259,20 +249,20 @@ ToolWindow {
 
                 Item {
                     width: table.width
-                    height: window.rows * window.crosspointHeight
+                    height: panel.rows * panel.crosspointHeight
 
                     // Source labels
                     Column {
                         Repeater {
-                            model: window.rows
+                            model: panel.rows
                             Item {
                                 id: srcRow
                                 required property int index
-                                readonly property var src: window.source(index)
+                                readonly property var src: panel.source(index)
                                 objectName: "Matrix.row." + index
                                 property string shownName: src ? src.name : ""
-                                width: window.labelWidth
-                                height: window.crosspointHeight
+                                width: panel.labelWidth
+                                height: panel.crosspointHeight
                                 Column {
                                     anchors.centerIn: parent
                                     spacing: 4
@@ -287,17 +277,17 @@ ToolWindow {
                                             color: ChannelPalette.input(srcRow.index)
                                         }
                                         Text {
-                                            width: Math.min(implicitWidth, window.labelWidth - 20)
+                                            width: Math.min(implicitWidth, panel.labelWidth - 20)
                                             text: srcRow.shownName
                                             font.pixelSize: Theme.fontSmall.pixelSize
-                                            font.weight: window.wide ? Font.DemiBold : Font.Medium
+                                            font.weight: panel.wide ? Font.DemiBold : Font.Medium
                                             color: Theme.text
                                             elide: Text.ElideRight
                                         }
                                     }
                                     MatrixField {
                                         objectName: "Matrix.row." + srcRow.index + ".trim"
-                                        visible: window.wide && srcRow.src && srcRow.src.input >= 0
+                                        visible: panel.wide && srcRow.src && srcRow.src.input >= 0
                                         anchors.horizontalCenter: parent.horizontalCenter
                                         kind: "gain"
                                         value: srcRow.src ? srcRow.src.trim : 0
@@ -317,27 +307,27 @@ ToolWindow {
 
                     // Crosspoints
                     Grid {
-                        x: window.labelWidth
-                        columns: Math.max(1, window.cols)
+                        x: panel.labelWidth
+                        columns: Math.max(1, panel.cols)
                         Repeater {
                             model: MatrixController.model
                             MatrixCell {
-                                width: window.columnWidth
-                                height: window.crosspointHeight
-                                inputName: { const s = window.source(input); return s ? s.name : "" }
-                                outputName: { const c = window.column(output); return c ? c.label : "" }
+                                width: panel.columnWidth
+                                height: panel.crosspointHeight
+                                inputName: { const s = panel.source(input); return s ? s.name : "" }
+                                outputName: { const c = panel.column(output); return c ? c.label : "" }
                             }
                         }
                     }
 
                     // Row separators
                     Repeater {
-                        model: window.rows
+                        model: panel.rows
                         Rule {
                             required property int index
-                            visible: window.dividerAfter(index)
-                            indent: window.labelWidth
-                            y: (index + 1) * window.crosspointHeight
+                            visible: panel.dividerAfter(index)
+                            indent: panel.labelWidth
+                            y: (index + 1) * panel.crosspointHeight
                             opacity: 0.6
                         }
                     }
@@ -352,13 +342,13 @@ ToolWindow {
                     objectName: "Matrix.enableRow"
                     label: qsTr("ENABLE")
                     Repeater {
-                        model: window.cols
+                        model: panel.cols
                         Item {
                             id: enableCell
                             required property int index
-                            readonly property var col: window.column(index)
-                            width: window.columnWidth
-                            height: window.controlRowHeight
+                            readonly property var col: panel.column(index)
+                            width: panel.columnWidth
+                            height: panel.controlRowHeight
                             IconButton {
                                 objectName: "Matrix.enable." + enableCell.index
                                 anchors.centerIn: parent
@@ -379,18 +369,18 @@ ToolWindow {
                         }
                     }
                 }
-                Rule { indent: window.labelWidth; opacity: 0.6 }
+                Rule { indent: panel.labelWidth; opacity: 0.6 }
 
                 ControlRow {
                     label: qsTr("GAIN")
                     Repeater {
-                        model: window.cols
+                        model: panel.cols
                         Item {
                             id: gainCell
                             required property int index
-                            readonly property var col: window.column(index)
-                            width: window.columnWidth
-                            height: window.controlRowHeight
+                            readonly property var col: panel.column(index)
+                            width: panel.columnWidth
+                            height: panel.controlRowHeight
                             opacity: col && col.enabled ? 1 : 0.3
                             MatrixField {
                                 objectName: "Matrix.gain." + gainCell.index
@@ -405,18 +395,18 @@ ToolWindow {
                         }
                     }
                 }
-                Rule { indent: window.labelWidth; opacity: 0.6 }
+                Rule { indent: panel.labelWidth; opacity: 0.6 }
 
                 ControlRow {
                     label: qsTr("DELAY")
                     Repeater {
-                        model: window.cols
+                        model: panel.cols
                         Item {
                             id: delayCell
                             required property int index
-                            readonly property var col: window.column(index)
-                            width: window.columnWidth
-                            height: window.controlRowHeight
+                            readonly property var col: panel.column(index)
+                            width: panel.columnWidth
+                            height: panel.controlRowHeight
                             opacity: col && col.enabled ? 1 : 0.3
                             MatrixField {
                                 objectName: "Matrix.delay." + delayCell.index
@@ -431,19 +421,19 @@ ToolWindow {
                         }
                     }
                 }
-                Rule { indent: window.labelWidth; opacity: 0.6 }
+                Rule { indent: panel.labelWidth; opacity: 0.6 }
 
                 ControlRow {
                     label: qsTr("MUTE")
                     Repeater {
-                        model: window.cols
+                        model: panel.cols
                         Item {
                             id: muteCell
                             required property int index
-                            readonly property var col: window.column(index)
+                            readonly property var col: panel.column(index)
                             readonly property bool muted: col ? col.muted === true : false
-                            width: window.columnWidth
-                            height: window.controlRowHeight
+                            width: panel.columnWidth
+                            height: panel.controlRowHeight
                             opacity: col && col.enabled ? 1 : 0.3
                             IconButton {
                                 objectName: "Matrix.mute." + muteCell.index
@@ -470,7 +460,7 @@ ToolWindow {
     AppMenu {
         id: columnMenu
         objectName: "Matrix.columnMenu"
-        readonly property var col: window.menuOutput >= 0 ? window.column(window.menuOutput) : undefined
+        readonly property var col: panel.menuOutput >= 0 ? panel.column(panel.menuOutput) : undefined
         readonly property bool canIdentify: DeviceModel.connected && SidebarController.identifySupported
 
         AppMenuItem {
@@ -480,7 +470,7 @@ ToolWindow {
             height: visible ? implicitHeight : 0
             // A switched-off output would play nothing
             enabled: MatrixController.writable && columnMenu.col !== undefined && columnMenu.col.enabled === true
-            onTriggered: SidebarController.identifyOutput(window.menuOutput)
+            onTriggered: SidebarController.identifyOutput(panel.menuOutput)
         }
         MenuSeparator {
             visible: columnMenu.canIdentify
@@ -490,7 +480,7 @@ ToolWindow {
             objectName: "Matrix.menu.rename"
             text: qsTr("Rename")
             enabled: MatrixController.writable
-            onTriggered: window.renaming = window.menuOutput
+            onTriggered: panel.renaming = panel.menuOutput
         }
         MenuSeparator {}
         AppMenuItem {

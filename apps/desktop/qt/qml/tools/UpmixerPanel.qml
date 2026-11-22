@@ -9,17 +9,11 @@ import UConsole
 // engine runs), and where the derived channels appear in the matrix. The
 // status polls about 16 times a second while the window shows. RP2350 with
 // wire V26 or newer only; anything else gets a note.
-ToolWindow {
-    id: window
-    objectName: "UpmixerWindow"
-    windowId: "upmixer"
-    defaultWidth: 400
-    defaultHeight: 720
-    minimumWidth: 400
-    maximumWidth: 400
-    minimumHeight: 400
-    maximumHeight: 1200
-    title: qsTr("Stereo Upmixer")
+// -- WP LAY1a -- A panel (Panel.qml): PanelTable's row for
+// tools.upmixer gives its window's title and sizes.
+Panel {
+    id: panel
+    objectName: "UpmixerPanel"
     // -- WP QTPOP --
     fitBodies: [body]
 
@@ -36,14 +30,15 @@ ToolWindow {
     function value(key) { return ToolsController.revision < 0 ? 0 : ToolsController.upmix(key) }
 
     // -- WP QPI3 -- its polls run while it is on screen, not while minimised
-    readonly property bool polling: visible && visibility !== Window.Minimized
+    readonly property bool polling: onScreen
     onPollingChanged: ToolsController.windowShown("upmixer", polling)
+    Component.onDestruction: ToolsController.windowShown("upmixer", false)   // -- WP LAY1a -- a page host unloaded
 
     component UpmixRow: ToolParameterRow {
         property string key
         Layout.fillWidth: true
-        enabled: window.writable
-        value: window.value(key)
+        enabled: panel.writable
+        value: panel.value(key)
         onLive: v => ToolsController.setUpmix(key, v)
         onCommit: v => ToolsController.setUpmix(key, v)
     }
@@ -89,15 +84,15 @@ ToolWindow {
             iconName: "layout-grid"
             title: qsTr("Stereo Upmixer")
             subtitle: qsTr("Derive Centre and Surround from stereo")
-            on: window.value("enabled") !== 0
-            switchEnabled: window.writable
+            on: panel.value("enabled") !== 0
+            switchEnabled: panel.writable
             onToggled: on => ToolsController.setUpmix("enabled", on ? 1 : 0)
         }
         EffectRule {}
 
         ToolUnsupported {
             objectName: "UpmixerWindow.unsupported"
-            visible: window.unsupported
+            visible: panel.unsupported
             Layout.fillWidth: true
             Layout.fillHeight: true
             Layout.margins: 24
@@ -109,7 +104,7 @@ ToolWindow {
         Flickable {
             id: body
             objectName: "UpmixerWindow.body"
-            visible: !window.unsupported
+            visible: !panel.unsupported
             Layout.fillWidth: true
             Layout.fillHeight: true
             contentHeight: column.implicitHeight + 2 * Theme.spacingLarge
@@ -136,55 +131,55 @@ ToolWindow {
                             width: 8
                             height: 8
                             radius: 4
-                            color: !ToolsController.connected ? Theme.textMuted : window.active ? Theme.success : Theme.warning
+                            color: !ToolsController.connected ? Theme.textMuted : panel.active ? Theme.success : Theme.warning
                         }
                         Text {
                             objectName: "UpmixerWindow.status.text"
                             text: !ToolsController.connected ? qsTr("No device connected")
-                                : window.active ? qsTr("Active - processing audio")
-                                : window.status.parked === 1 ? qsTr("Idle: upmixer disabled")
-                                : window.status.parked === 2 ? qsTr("Idle: input is not stereo")
-                                : window.status.parked === 3 ? qsTr("Idle: sample rate above 48 kHz")
+                                : panel.active ? qsTr("Active - processing audio")
+                                : panel.status.parked === 1 ? qsTr("Idle: upmixer disabled")
+                                : panel.status.parked === 2 ? qsTr("Idle: input is not stereo")
+                                : panel.status.parked === 3 ? qsTr("Idle: sample rate above 48 kHz")
                                 : qsTr("Idle")
                             font: Theme.fontSmall
-                            color: window.active ? Theme.text : Theme.textMuted
+                            color: panel.active ? Theme.text : Theme.textMuted
                         }
                     }
                     // Kept in place at zero opacity while unused, so the height never changes
                     Gauge {
                         objectName: "UpmixerWindow.correlation"
                         Layout.fillWidth: true
-                        opacity: window.active ? 1 : 0
+                        opacity: panel.active ? 1 : 0
                         label: qsTr("Correlation")
-                        level: ((window.status.correlation || 0) + 1) / 2
-                        figure: ((window.status.correlation || 0) >= 0 ? "+" : "") + (window.status.correlation || 0).toFixed(2)
+                        level: ((panel.status.correlation || 0) + 1) / 2
+                        figure: ((panel.status.correlation || 0) >= 0 ? "+" : "") + (panel.status.correlation || 0).toFixed(2)
                         color: Theme.accent
                     }
                     Gauge {
                         objectName: "UpmixerWindow.centerGain"
                         Layout.fillWidth: true
-                        opacity: window.active && !window.centreOff ? 1 : 0
+                        opacity: panel.active && !panel.centreOff ? 1 : 0
                         label: qsTr("Centre gain")
-                        level: window.status.center || 0
-                        figure: qsTr("%1%").arg(Math.round((window.status.center || 0) * 100))
+                        level: panel.status.center || 0
+                        figure: qsTr("%1%").arg(Math.round((panel.status.center || 0) * 100))
                         color: Theme.success
                     }
                     Gauge {
                         objectName: "UpmixerWindow.lsGain"
                         Layout.fillWidth: true
-                        opacity: window.active && window.surroundOn ? 1 : 0
+                        opacity: panel.active && panel.surroundOn ? 1 : 0
                         label: qsTr("Ls gain")
-                        level: window.status.ls || 0
-                        figure: qsTr("%1%").arg(Math.round((window.status.ls || 0) * 100))
+                        level: panel.status.ls || 0
+                        figure: qsTr("%1%").arg(Math.round((panel.status.ls || 0) * 100))
                         color: Theme.warning
                     }
                     Gauge {
                         objectName: "UpmixerWindow.rsGain"
                         Layout.fillWidth: true
-                        opacity: window.active && window.surroundOn ? 1 : 0
+                        opacity: panel.active && panel.surroundOn ? 1 : 0
                         label: qsTr("Rs gain")
-                        level: window.status.rs || 0
-                        figure: qsTr("%1%").arg(Math.round((window.status.rs || 0) * 100))
+                        level: panel.status.rs || 0
+                        figure: qsTr("%1%").arg(Math.round((panel.status.rs || 0) * 100))
                         color: Theme.danger
                     }
                 }
@@ -201,16 +196,16 @@ ToolWindow {
                             Layout.preferredWidth: 90
                             text: qsTr("Centre")
                             font: Theme.fontBody
-                            color: window.writable ? Theme.text : Theme.textDisabled
+                            color: panel.writable ? Theme.text : Theme.textDisabled
                         }
                         // Off is wire value 2 but sits first, to line up with Surround
                         ToolSegments {
                             objectName: "UpmixerWindow.centre"
                             Layout.fillWidth: true
-                            enabled: window.writable
+                            enabled: panel.writable
                             label: qsTr("Centre")
                             model: [qsTr("Off"), qsTr("Sinner"), qsTr("Logician")]
-                            current: window.centerMode === 2 ? 0 : window.centerMode + 1
+                            current: panel.centerMode === 2 ? 0 : panel.centerMode + 1
                             onChosen: index => ToolsController.setUpmix("center", index === 0 ? 2 : index - 1)
                         }
                     }
@@ -220,15 +215,15 @@ ToolWindow {
                             Layout.preferredWidth: 90
                             text: qsTr("Surround")
                             font: Theme.fontBody
-                            color: window.writable ? Theme.text : Theme.textDisabled
+                            color: panel.writable ? Theme.text : Theme.textDisabled
                         }
                         ToolSegments {
                             objectName: "UpmixerWindow.surround"
                             Layout.fillWidth: true
-                            enabled: window.writable
+                            enabled: panel.writable
                             label: qsTr("Surround")
                             model: [qsTr("Off"), qsTr("Sinner"), qsTr("Logician")]
-                            current: window.surroundMode
+                            current: panel.surroundMode
                             onChosen: index => ToolsController.setUpmix("surround", index)
                         }
                     }
@@ -242,10 +237,10 @@ ToolWindow {
                 }
 
                 // ---- Centre: gone with its engine ----
-                EffectRule { visible: !window.centreOff }
+                EffectRule { visible: !panel.centreOff }
                 ColumnLayout {
                     objectName: "UpmixerWindow.centreSection"
-                    visible: !window.centreOff
+                    visible: !panel.centreOff
                     Layout.fillWidth: true
                     spacing: 14
                     SectionHeading { text: qsTr("Centre") }
@@ -284,10 +279,10 @@ ToolWindow {
                         caption: qsTr("Voice presence bell at 3 kHz (Q 0.6). Positive brings voices forward, negative pushes them back (Syn-style). Stored in 0.5 dB steps.")
                     }
                     // The steering controls drive the Logician centre only
-                    EffectRule { visible: window.centerMode === 1 }
+                    EffectRule { visible: panel.centerMode === 1 }
                     UpmixRow {
                         objectName: "UpmixerWindow.threshold"
-                        visible: window.centerMode === 1
+                        visible: panel.centerMode === 1
                         key: "threshold"
                         title: qsTr("Correlation Threshold")
                         unit: qsTr("%")
@@ -297,10 +292,10 @@ ToolWindow {
                         scrollStep: 1
                         caption: qsTr("Correlation gate. Below this, nothing is extracted; above it, extraction scales up to full. Raise to extract only strongly-correlated content.")
                     }
-                    EffectRule { visible: window.centerMode === 1 }
+                    EffectRule { visible: panel.centerMode === 1 }
                     UpmixRow {
                         objectName: "UpmixerWindow.attack"
-                        visible: window.centerMode === 1
+                        visible: panel.centerMode === 1
                         key: "attack"
                         title: qsTr("Attack")
                         unit: qsTr("ms")
@@ -310,10 +305,10 @@ ToolWindow {
                         scrollStep: 1
                         caption: qsTr("Centre gain rise time (Logician mode).")
                     }
-                    EffectRule { visible: window.centerMode === 1 }
+                    EffectRule { visible: panel.centerMode === 1 }
                     UpmixRow {
                         objectName: "UpmixerWindow.release"
-                        visible: window.centerMode === 1
+                        visible: panel.centerMode === 1
                         key: "release"
                         title: qsTr("Release")
                         unit: qsTr("ms")
@@ -323,10 +318,10 @@ ToolWindow {
                         scrollStep: 5
                         caption: qsTr("Centre gain fall time (Logician mode).")
                     }
-                    EffectRule { visible: window.centerMode === 1 }
+                    EffectRule { visible: panel.centerMode === 1 }
                     UpmixRow {
                         objectName: "UpmixerWindow.detector"
-                        visible: window.centerMode === 1
+                        visible: panel.centerMode === 1
                         key: "detector"
                         title: qsTr("Detector HPF")
                         unit: qsTr("Hz")
@@ -339,10 +334,10 @@ ToolWindow {
                 }
 
                 // ---- Surround: gone with its engine ----
-                EffectRule { visible: window.surroundOn }
+                EffectRule { visible: panel.surroundOn }
                 ColumnLayout {
                     objectName: "UpmixerWindow.surroundSection"
-                    visible: window.surroundOn
+                    visible: panel.surroundOn
                     Layout.fillWidth: true
                     spacing: 14
                     SectionHeading { text: qsTr("Surround") }

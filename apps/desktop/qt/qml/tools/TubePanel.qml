@@ -9,17 +9,13 @@ import UConsole
 // parameter: the transfer curve with the harmonics at full scale, the stage
 // and the outputs on the left; the character and the output stage on the
 // right. The choice is remembered. Firmware before wire V31 gets a note.
-ToolWindow {
-    id: window
-    objectName: "TubeWindow"
-    windowId: "tube"
-    defaultWidth: 780
-    defaultHeight: 664
-    minimumWidth: 740
-    minimumHeight: 400
+// -- WP LAY1a -- A panel (Panel.qml): PanelTable's row for
+// tools.tube gives its window's title and sizes.
+Panel {
+    id: panel
+    objectName: "TubePanel"
     // -- WP QTPOP --
     fitBodies: [basic, advanced]
-    title: qsTr("Tube Modeller")
 
     property bool advanced: false
     readonly property bool writable: ToolsController.writable && ToolsController.tubeSupported
@@ -33,19 +29,20 @@ ToolWindow {
 
     function value(key) { return ToolsController.revision < 0 ? 0 : ToolsController.tube(key) }
 
-    onVisibleChanged: ToolsController.windowShown("tube", visible)
+    onShownChanged: ToolsController.windowShown("tube", shown)
+    Component.onDestruction: ToolsController.windowShown("tube", false)   // -- WP LAY1a -- a page host unloaded
 
     Settings {
         category: "tools/tube"
-        property alias advanced: window.advanced
+        property alias advanced: panel.advanced
     }
 
-    // One parameter row of the window: its key, and the graph follows its drag
+    // One parameter row of the panel: its key, and the graph follows its drag
     component TubeRow: ToolParameterRow {
         property string key
         Layout.fillWidth: true
-        enabled: window.writable
-        value: window.value(key)
+        enabled: panel.writable
+        value: panel.value(key)
         onLive: v => ToolsController.setTube(key, v)
         onCommit: v => ToolsController.setTube(key, v)
     }
@@ -80,7 +77,7 @@ ToolWindow {
             text: qsTr("Outputs")
             EffectMenuButton {
                 objectName: outputs.prefix + ".presets"
-                enabled: window.writable
+                enabled: panel.writable
                 text: qsTr("Presets")
                 AppMenuItem {
                     objectName: outputs.prefix + ".all"
@@ -112,8 +109,8 @@ ToolWindow {
                 EffectChip {
                     required property int index
                     objectName: outputs.prefix + "." + index
-                    enabled: window.writable
-                    on: (window.mask & (1 << index)) !== 0
+                    enabled: panel.writable
+                    on: (panel.mask & (1 << index)) !== 0
                     text: String(index + 1)
                     toolTip: { ToolsController.revision; return ToolsController.outputName(index) }
                     onClicked: ToolsController.toggleTubeOutput(index)
@@ -132,24 +129,24 @@ ToolWindow {
             iconName: "tube"
             title: qsTr("Tube Modeller")
             subtitle: qsTr("Valve-style harmonic colour, supply sag and a tube amplifier's output stage")
-            on: window.on
-            switchEnabled: window.writable
+            on: panel.on
+            switchEnabled: panel.writable
             onToggled: on => ToolsController.setTube("enabled", on ? 1 : 0)
 
             ToolSegments {
                 objectName: "TubeWindow.mode"
-                visible: !window.unsupported
+                visible: !panel.unsupported
                 label: qsTr("Basic or Advanced")
                 model: [qsTr("Basic"), qsTr("Advanced")]
-                current: window.advanced ? 1 : 0
-                onChosen: index => window.advanced = index === 1
+                current: panel.advanced ? 1 : 0
+                onChosen: index => panel.advanced = index === 1
             }
         }
         EffectRule {}
 
         ToolUnsupported {
             objectName: "TubeWindow.unsupported"
-            visible: window.unsupported
+            visible: panel.unsupported
             Layout.fillWidth: true
             Layout.fillHeight: true
             Layout.margins: 24
@@ -160,8 +157,9 @@ ToolWindow {
         // ---- Basic: the tube on show, the shelf, drive and mix ----
         EffectColumns {
             id: basic
+            shown: panel.shown
             objectName: "TubeWindow.basic"
-            visible: !window.unsupported && !window.advanced
+            visible: !panel.unsupported && !panel.advanced
             Layout.fillWidth: true
             Layout.fillHeight: true
 
@@ -179,8 +177,8 @@ ToolWindow {
                     Canvas {
                         id: pool
                         anchors.fill: parent
-                        opacity: window.on ? 1 : 0
-                        Behavior on opacity { NumberAnimation { duration: window.on ? 900 : 600; easing.type: Easing.InOutQuad } }
+                        opacity: panel.on ? 1 : 0
+                        Behavior on opacity { NumberAnimation { duration: panel.on ? 900 : 600; easing.type: Easing.InOutQuad } }
                         readonly property bool dark: Theme.dark
                         onDarkChanged: requestPaint()
                         onWidthChanged: requestPaint()
@@ -205,7 +203,7 @@ ToolWindow {
                             Layout.alignment: Qt.AlignHCenter
                             Layout.preferredWidth: 168
                             Layout.preferredHeight: 280
-                            readonly property int family: ToolsController.tubeFamily(window.type)
+                            readonly property int family: ToolsController.tubeFamily(panel.type)
                             TubeIllustration {
                                 objectName: "TubeWindow.tube"
                                 anchors.fill: parent
@@ -218,15 +216,15 @@ ToolWindow {
                                 family: parent.family
                                 part: TubeIllustration.Heater
                                 // A heater takes a moment to glow and a little less to go dark
-                                opacity: window.on ? 1 : 0
-                                Behavior on opacity { NumberAnimation { duration: window.on ? 900 : 600; easing.type: Easing.InOutQuad } }
+                                opacity: panel.on ? 1 : 0
+                                Behavior on opacity { NumberAnimation { duration: panel.on ? 900 : 600; easing.type: Easing.InOutQuad } }
                             }
                             TubeIllustration {
                                 objectName: "TubeWindow.bloom"
                                 anchors.fill: parent
                                 family: parent.family
                                 part: TubeIllustration.Bloom
-                                opacity: window.on ? ToolsController.tubeGlow : 0
+                                opacity: panel.on ? ToolsController.tubeGlow : 0
                                 Behavior on opacity { NumberAnimation { duration: 100; easing.type: Easing.OutQuad } }
                             }
                         }
@@ -236,7 +234,7 @@ ToolWindow {
                             Text {
                                 objectName: "TubeWindow.showcase.name"
                                 Layout.alignment: Qt.AlignHCenter
-                                text: window.row ? window.row.name : qsTr("Custom")
+                                text: panel.row ? panel.row.name : qsTr("Custom")
                                 font.family: Theme.fontTitle.family
                                 font.pixelSize: 17
                                 font.weight: Font.DemiBold
@@ -246,9 +244,9 @@ ToolWindow {
                                 objectName: "TubeWindow.showcase.caption"
                                 Layout.fillWidth: true
                                 horizontalAlignment: Text.AlignHCenter
-                                text: !window.row ? qsTr("Character set by hand. Pick a tube to load one, or fine-tune it in Advanced.")
-                                    : window.row.pushPull && !window.xfmr ? qsTr("%1. Meant for use with the output stage, in Advanced.").arg(window.row.style)
-                                    : qsTr("%1.").arg(window.row.style)
+                                text: !panel.row ? qsTr("Character set by hand. Pick a tube to load one, or fine-tune it in Advanced.")
+                                    : panel.row.pushPull && !panel.xfmr ? qsTr("%1. Meant for use with the output stage, in Advanced.").arg(panel.row.style)
+                                    : qsTr("%1.").arg(panel.row.style)
                                 font: Theme.fontCaption
                                 color: Theme.textMuted
                                 wrapMode: Text.Wrap
@@ -300,8 +298,8 @@ ToolWindow {
                                             readonly property var tubeRow: ToolsController.tubeTypes[tubeType]
                                             objectName: "TubeWindow.type." + tubeType
                                             Layout.preferredWidth: 1
-                                            enabled: window.writable
-                                            on: window.type === tubeType
+                                            enabled: panel.writable
+                                            on: panel.type === tubeType
                                             text: tubeRow.shortName
                                             toolTip: qsTr("%1: %2").arg(tubeRow.name).arg(tubeRow.style)
                                             onClicked: ToolsController.setTube("type", tubeType)
@@ -346,8 +344,9 @@ ToolWindow {
         // ---- Advanced: every parameter ----
         EffectColumns {
             id: advanced
+            shown: panel.shown
             objectName: "TubeWindow.advanced"
-            visible: !window.unsupported && window.advanced
+            visible: !panel.unsupported && panel.advanced
             Layout.fillWidth: true
             Layout.fillHeight: true
 
@@ -360,7 +359,7 @@ ToolWindow {
                         EffectMenuButton {
                             id: tubePoints
                             objectName: "TubeWindow.startingPoints"
-                            enabled: window.writable
+                            enabled: panel.writable
                             text: qsTr("Apply preset")
                             Instantiator {
                                 model: ToolsController.tubeStartingPoints
@@ -381,8 +380,8 @@ ToolWindow {
                         objectName: "TubeWindow.graph"
                         Layout.fillWidth: true
                         Layout.preferredHeight: 188
-                        active: window.on
-                        function pick(row, key) { return isNaN(row.liveValue) ? window.value(key) : row.liveValue }
+                        active: panel.on
+                        function pick(row, key) { return isNaN(row.liveValue) ? panel.value(key) : row.liveValue }
                         graph: ToolsController.tubeGraph(pick(driveRow, "drive"), pick(biasRow, "bias"), pick(asymRow, "asym"),
                                                          pick(hardnessRow, "hardness"), pick(mixRow, "mix"), pick(trimRow, "trim"))
                     }
@@ -427,24 +426,24 @@ ToolWindow {
                                 Layout.fillWidth: true
                                 text: qsTr("Tube")
                                 font: Theme.fontBody
-                                color: window.writable ? Theme.text : Theme.textDisabled
+                                color: panel.writable ? Theme.text : Theme.textDisabled
                             }
                             AppComboBox {
                                 objectName: "TubeWindow.typePicker"
                                 implicitWidth: 190
                                 label: qsTr("Tube")
-                                enabled: window.writable
+                                enabled: panel.writable
                                 model: ToolsController.tubeTypes.map(r => r.name)
-                                currentIndex: window.type
+                                currentIndex: panel.type
                                 onActivated: index => ToolsController.setTube("type", index)
                             }
                         }
                         Text {
                             objectName: "TubeWindow.typeCaption"
                             Layout.fillWidth: true
-                            text: !window.row ? qsTr("Character controls as set, no tube row applied.")
-                                : window.row.pushPull && !window.xfmr ? qsTr("%1. Meant for use with the output stage on.").arg(window.row.style)
-                                : qsTr("%1.").arg(window.row.style)
+                            text: !panel.row ? qsTr("Character controls as set, no tube row applied.")
+                                : panel.row.pushPull && !panel.xfmr ? qsTr("%1. Meant for use with the output stage on.").arg(panel.row.style)
+                                : qsTr("%1.").arg(panel.row.style)
                             font: Theme.fontCaption
                             color: Theme.textMuted
                             wrapMode: Text.Wrap
@@ -504,7 +503,7 @@ ToolWindow {
                         text: qsTr("Character")
                         Text {
                             objectName: "TubeWindow.characterFrom"
-                            text: window.row ? qsTr("from %1").arg(window.row.name) : qsTr("custom")
+                            text: panel.row ? qsTr("from %1").arg(panel.row.name) : qsTr("custom")
                             font: Theme.fontCaption
                             color: Theme.textMuted
                         }
@@ -557,7 +556,7 @@ ToolWindow {
                         decimals: 0
                         scrollStep: 1
                         resetValue: 15
-                        opacity: window.rectifier === 0 ? 0.5 : 1
+                        opacity: panel.rectifier === 0 ? 0.5 : 1
                         help: qsTr("Supply-sag compression: sustained heavy drive pulls the gain down slowly, then recovers. The rectifier below scales the depth and sets the timing.")
                     }
                     ColumnLayout {
@@ -566,22 +565,22 @@ ToolWindow {
                         Text {
                             text: qsTr("Rectifier")
                             font: Theme.fontBody
-                            color: window.writable ? Theme.text : Theme.textDisabled
+                            color: panel.writable ? Theme.text : Theme.textDisabled
                         }
                         ToolSegments {
                             objectName: "TubeWindow.rectifier"
                             Layout.fillWidth: true
-                            enabled: window.writable
+                            enabled: panel.writable
                             label: qsTr("Rectifier")
                             model: ToolsController.tubeRectifiers.map(r => r.name)
-                            current: window.rectifier
+                            current: panel.rectifier
                             onChosen: index => ToolsController.setTube("rectifier", index)
                         }
                         Text {
                             objectName: "TubeWindow.rectifier.summary"
                             Layout.fillWidth: true
-                            readonly property var rect: window.rectifier > 0 && window.rectifier < ToolsController.tubeRectifiers.length
-                                                        ? ToolsController.tubeRectifiers[window.rectifier] : null
+                            readonly property var rect: panel.rectifier > 0 && panel.rectifier < ToolsController.tubeRectifiers.length
+                                                        ? ToolsController.tubeRectifiers[panel.rectifier] : null
                             text: rect ? qsTr("Sag depth x%1, %2 ms attack, %3 ms release.").arg(rect.depth.toFixed(1)).arg(Math.round(rect.attack)).arg(Math.round(rect.release))
                                        : qsTr("No sag: the supply holds up however hard the stage is driven.")
                             font: Theme.fontCaption
@@ -616,8 +615,8 @@ ToolWindow {
                         AppSwitch {
                             objectName: "TubeWindow.xfmr"
                             text: ""
-                            enabled: window.writable
-                            checked: window.xfmr
+                            enabled: panel.writable
+                            checked: panel.xfmr
                             onToggled: ToolsController.setTube("xfmr", checked ? 1 : 0)
                             Accessible.name: qsTr("Output stage")
                         }
@@ -631,7 +630,7 @@ ToolWindow {
                     TubeRow {
                         id: dampingRow
                         objectName: "TubeWindow.damping"
-                        visible: window.xfmr
+                        visible: panel.xfmr
                         key: "damping"
                         title: qsTr("Damping Factor")
                         unit: ""
@@ -644,16 +643,16 @@ ToolWindow {
                     }
                     Text {
                         objectName: "TubeWindow.lift"
-                        visible: window.xfmr
+                        visible: panel.xfmr
                         Layout.fillWidth: true
-                        readonly property var lift: ToolsController.transformerLift(isNaN(dampingRow.liveValue) ? window.value("damping") : dampingRow.liveValue)
+                        readonly property var lift: ToolsController.transformerLift(isNaN(dampingRow.liveValue) ? panel.value("damping") : dampingRow.liveValue)
                         text: qsTr("+%1 dB at resonance, +%2 dB at the top.").arg(lift.bell.toFixed(1)).arg(lift.top.toFixed(1))
                         font: Theme.fontCaption
                         color: Theme.textMuted
                     }
                     TubeRow {
                         objectName: "TubeWindow.resonance"
-                        visible: window.xfmr
+                        visible: panel.xfmr
                         key: "resonance"
                         title: qsTr("Speaker Resonance")
                         unit: qsTr("Hz")

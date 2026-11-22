@@ -92,7 +92,7 @@ void tablePart(SmokeDriver &d, Shell *shell) {
     d.check(QStringLiteral("lay0: PanelTable has the two pilots"),
             rows.size() >= 2 && !shell->panel(QStringLiteral("tools.stats")).isEmpty()
                 && !shell->panel(QStringLiteral("tools.interruptMonitor")).isEmpty());
-    d.check(QStringLiteral("lay0: a window that is no panel has no row"), shell->panel(QStringLiteral("tools.matrix")).isEmpty());
+    d.check(QStringLiteral("lay0: a window that is no panel has no row"), shell->panel(QStringLiteral("smoke.window")).isEmpty());
     QStringList bad;
     QStringList seen;
     for (const QVariant &v : rows) {
@@ -184,15 +184,16 @@ void pageHostPart(SmokeDriver &d, Shell *shell) {
             shell->pageHost() == host && host->property("action").toString() == action
                 && host->property("section").toString() == QLatin1String("analyse") && window && !window->isVisible());
     host->setProperty("action", QString());
-    shell->trigger(QStringLiteral("tools.matrix"));
-    QWindow *matrix = nullptr;
+    // -- WP LAY1a -- (was tools.matrix, now a panel)
+    shell->trigger(QStringLiteral("smoke.window"));
+    QWindow *plain = nullptr;
     d.waitFor(3000, [&] {
-        matrix = shell->openWindow(QStringLiteral("tools.matrix"));
-        return matrix && matrix->isVisible();
+        plain = shell->openWindow(QStringLiteral("smoke.window"));
+        return plain && plain->isVisible();
     });
     d.check(QStringLiteral("lay0: a window that is no panel still opens as a window"),
-            matrix && matrix->isVisible() && host->property("action").toString().isEmpty());
-    if (matrix) matrix->close();
+            plain && plain->isVisible() && host->property("action").toString().isEmpty());
+    if (plain) plain->close();
     host->setProperty("take", false);
     shell->trigger(action);
     d.check(QStringLiteral("lay0: a page host that declines lets the window open"),

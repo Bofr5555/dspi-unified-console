@@ -18,4 +18,10 @@ Item {
     property string actionId: ""
     // The scrolling Flickables a window fits its height to (ToolWindow.fitBodies)
     property var fitBodies: []
+    // -- WP LAY1a -- The size its window takes each time it shows, within the
+    // screen (the matrix: its table), instead of fitting `fitBodies`; empty for none
+    property size showSize: Qt.size(0, 0)
+    // -- WP LAY1a -- Shown, and its window not minimised: while a person can
+    // see it, what polls at a meter's rate may (-- WP QPI3 --)
+    readonly property bool onScreen: shown && Window.visibility !== Window.Minimized
 }

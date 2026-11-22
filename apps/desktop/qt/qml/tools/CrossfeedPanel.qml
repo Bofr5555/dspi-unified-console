@@ -10,15 +10,11 @@ import UConsole
 // pair map on firmware that has it. While a preset other than Custom is
 // chosen the parameter rows are dimmed and show that preset's own values;
 // moving one makes the preset Custom.
-ToolWindow {
-    id: window
-    objectName: "CrossfeedWindow"
-    windowId: "crossfeed"
-    defaultWidth: 780
-    defaultHeight: 470
-    minimumWidth: 740
-    minimumHeight: 460
-    title: qsTr("Crossfeed")
+// -- WP LAY1a -- A panel (Panel.qml): PanelTable's row for
+// tools.crossfeed gives its window's title and sizes.
+Panel {
+    id: panel
+    objectName: "CrossfeedPanel"
     // -- WP QTPOP --
     fitBodies: [body]
 
@@ -54,7 +50,7 @@ ToolWindow {
             title: qsTr("Crossfeed")
             subtitle: qsTr("BS2B Bauer Stereophonic-to-Binaural")
             on: EffectsController.crossfeedOn
-            switchEnabled: window.writable
+            switchEnabled: panel.writable
             onToggled: on => EffectsController.setEnabled("crossfeed", on)
         }
         EffectRule {}
@@ -68,10 +64,10 @@ ToolWindow {
             boundsBehavior: Flickable.StopAtBounds
             ScrollBar.vertical: AppScrollBar {}
 
-            // Opened again, the window starts at the top, as the Mac's does
+            // Opened again, the panel starts at the top, as the Mac's does
             Connections {
-                target: window
-                function onVisibleChanged() { if (window.visible) body.contentY = 0 }
+                target: panel
+                function onShownChanged() { if (panel.shown) body.contentY = 0 }
             }
 
             RowLayout {
@@ -130,7 +126,7 @@ ToolWindow {
                                 objectName: "CrossfeedWindow.preset." + index
                                 Layout.fillWidth: true
                                 implicitHeight: presetContent.implicitHeight
-                                enabled: window.writable
+                                enabled: panel.writable
                                 hoverEnabled: true
                                 focusPolicy: Qt.StrongFocus
                                 onClicked: EffectsController.setCrossfeedPreset(index)
@@ -197,13 +193,13 @@ ToolWindow {
                         objectName: "CrossfeedWindow.parameters"
                         Layout.fillWidth: true
                         spacing: 14
-                        opacity: window.custom ? 1 : 0.5
+                        opacity: panel.custom ? 1 : 0.5
                         SectionHeading { text: qsTr("Parameters") }
                         EffectParameterRow {
                             id: freqRow
                             objectName: "CrossfeedWindow.freq"
                             Layout.fillWidth: true
-                            enabled: window.writable
+                            enabled: panel.writable
                             title: qsTr("Cutoff Frequency")
                             unit: qsTr("Hz")
                             value: EffectsController.crossfeedShownFreq
@@ -219,7 +215,7 @@ ToolWindow {
                             id: feedRow
                             objectName: "CrossfeedWindow.feed"
                             Layout.fillWidth: true
-                            enabled: window.writable
+                            enabled: panel.writable
                             title: qsTr("Feed Level")
                             unit: qsTr("dB")
                             value: EffectsController.crossfeedShownFeed
@@ -252,24 +248,24 @@ ToolWindow {
                         }
                         AppSwitch {
                             objectName: "CrossfeedWindow.itd"
-                            enabled: window.writable
+                            enabled: panel.writable
                             checked: EffectsController.crossfeedItd
                             onToggled: EffectsController.setCrossfeedItd(checked)
                             Accessible.name: qsTr("Interaural Time Delay")
                         }
                     }
 
-                    EffectRule { visible: window.showPairs }
+                    EffectRule { visible: panel.showPairs }
                     ColumnLayout {
                         objectName: "CrossfeedWindow.pairs"
-                        visible: window.showPairs
+                        visible: panel.showPairs
                         Layout.fillWidth: true
                         spacing: 10
                         EffectSection {
                             text: qsTr("Output Pairs")
                             EffectMenuButton {
                                 objectName: "CrossfeedWindow.pairs.presets"
-                                enabled: window.writable && EffectsController.crossfeedMaskSupported
+                                enabled: panel.writable && EffectsController.crossfeedMaskSupported
                                 text: qsTr("Presets")
                                 AppMenuItem {
                                     objectName: "CrossfeedWindow.pairs.all"
@@ -297,14 +293,14 @@ ToolWindow {
                         }
                         CrossfeedPairMap {
                             id: pairMap
-                            visible: window.showPairMap
+                            visible: panel.showPairMap
                             Layout.fillWidth: true
                         }
                         // One chip per pair: two columns with the map, one row without
                         GridLayout {
-                            objectName: window.showPairMap ? "CrossfeedWindow.pairChips" : "CrossfeedWindow.plainPairChips"
+                            objectName: panel.showPairMap ? "CrossfeedWindow.pairChips" : "CrossfeedWindow.plainPairChips"
                             Layout.fillWidth: true
-                            columns: window.showPairMap ? 2 : Math.max(1, EffectsController.crossfeedPairCount)
+                            columns: panel.showPairMap ? 2 : Math.max(1, EffectsController.crossfeedPairCount)
                             columnSpacing: 6
                             rowSpacing: 6
                             Repeater {
@@ -312,10 +308,10 @@ ToolWindow {
                                 EffectChip {
                                     required property int index
                                     objectName: "CrossfeedWindow.pair." + index
-                                    enabled: window.writable && EffectsController.crossfeedMaskSupported
+                                    enabled: panel.writable && EffectsController.crossfeedMaskSupported
                                     on: (EffectsController.crossfeedPairMask & (1 << index)) !== 0
-                                    text: window.pairLabel(index)
-                                    toolTip: window.pairTip(index)
+                                    text: panel.pairLabel(index)
+                                    toolTip: panel.pairTip(index)
                                     onClicked: EffectsController.toggleCrossfeedPair(index)
                                 }
                             }

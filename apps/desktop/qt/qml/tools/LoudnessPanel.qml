@@ -7,17 +7,13 @@ import UConsole
 // curve as it is 40 dB below the reference level on the left; the reference
 // level, the intensity and, on firmware with the output mask (wire V19), the
 // outputs on the right.
-ToolWindow {
-    id: window
-    objectName: "LoudnessWindow"
-    windowId: "loudness"
-    defaultWidth: 780
-    defaultHeight: 400
-    minimumWidth: 740
-    minimumHeight: 390
+// -- WP LAY1a -- A panel (Panel.qml): PanelTable's row for
+// tools.loudness gives its window's title and sizes.
+Panel {
+    id: panel
+    objectName: "LoudnessPanel"
     // -- WP QTPOP --
     fitBodies: [body]
-    title: qsTr("Loudness Compensation")
 
     readonly property bool writable: EffectsController.writable
 
@@ -32,13 +28,14 @@ ToolWindow {
             title: qsTr("Loudness Compensation")
             subtitle: qsTr("ISO 226:2003 Fletcher-Munson")
             on: EffectsController.loudnessOn
-            switchEnabled: window.writable
+            switchEnabled: panel.writable
             onToggled: on => EffectsController.setEnabled("loudness", on)
         }
         EffectRule {}
 
         EffectColumns {
             id: body
+            shown: panel.shown
             Layout.fillWidth: true
             Layout.fillHeight: true
 
@@ -71,7 +68,7 @@ ToolWindow {
                         id: refRow
                         objectName: "LoudnessWindow.ref"
                         Layout.fillWidth: true
-                        enabled: window.writable
+                        enabled: panel.writable
                         title: qsTr("Reference SPL")
                         unit: qsTr("dB")
                         value: EffectsController.loudnessRef
@@ -87,7 +84,7 @@ ToolWindow {
                         id: intensityRow
                         objectName: "LoudnessWindow.intensity"
                         Layout.fillWidth: true
-                        enabled: window.writable
+                        enabled: panel.writable
                         title: qsTr("Intensity")
                         unit: qsTr("%")
                         value: EffectsController.loudnessIntensity
@@ -109,7 +106,7 @@ ToolWindow {
                         text: qsTr("Outputs")
                         EffectMenuButton {
                             objectName: "LoudnessWindow.outputs.presets"
-                            enabled: window.writable
+                            enabled: panel.writable
                             text: qsTr("Presets")
                             AppMenuItem {
                                 objectName: "LoudnessWindow.outputs.all"
@@ -143,7 +140,7 @@ ToolWindow {
                             EffectChip {
                                 required property int index
                                 objectName: "LoudnessWindow.output." + index
-                                enabled: window.writable
+                                enabled: panel.writable
                                 on: (EffectsController.loudnessMask & (1 << index)) !== 0
                                 text: String(index + 1)
                                 toolTip: { EffectsController.revision; return EffectsController.outputName(index) }

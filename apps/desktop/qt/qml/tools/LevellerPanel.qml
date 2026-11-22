@@ -7,15 +7,11 @@ import UConsole
 // least 380×400): the header with the switch, then one scrolling column: the
 // channel masks (with more than two inputs, on firmware with them, wire V18),
 // amount, speed, largest gain, gate and lookahead.
-ToolWindow {
-    id: window
-    objectName: "LevellerWindow"
-    windowId: "leveller"
-    defaultWidth: 380
-    defaultHeight: 540
-    minimumWidth: 380
-    minimumHeight: 400
-    title: qsTr("Volume Leveller")
+// -- WP LAY1a -- A panel (Panel.qml): PanelTable's row for
+// tools.leveller gives its window's title and sizes.
+Panel {
+    id: panel
+    objectName: "LevellerPanel"
     // -- WP QTPOP --
     fitBodies: [body]
 
@@ -56,7 +52,7 @@ ToolWindow {
                 EffectChip {
                     required property int index
                     objectName: "LevellerWindow." + (maskRow.detector ? "detector." : "apply.") + index
-                    enabled: window.writable
+                    enabled: panel.writable
                     on: (maskRow.mask & (1 << index)) !== 0
                     text: String(index + 1)
                     toolTip: { EffectsController.revision; return EffectsController.inputName(index) }
@@ -77,7 +73,7 @@ ToolWindow {
             title: qsTr("Volume Leveller")
             subtitle: qsTr("Upward Dynamic Range Compression")
             on: EffectsController.levellerOn
-            switchEnabled: window.writable
+            switchEnabled: panel.writable
             onToggled: on => EffectsController.setEnabled("leveller", on)
         }
         EffectRule {}
@@ -107,7 +103,7 @@ ToolWindow {
                         text: qsTr("Channels")
                         EffectMenuButton {
                             objectName: "LevellerWindow.channels.presets"
-                            enabled: window.writable
+                            enabled: panel.writable
                             text: qsTr("Presets")
                             AppMenuItem {
                                 objectName: "LevellerWindow.channels.all"
@@ -143,7 +139,7 @@ ToolWindow {
                 EffectParameterRow {
                     objectName: "LevellerWindow.amount"
                     Layout.fillWidth: true
-                    enabled: window.writable
+                    enabled: panel.writable
                     title: qsTr("Amount")
                     unit: qsTr("%")
                     value: EffectsController.levellerAmount
@@ -167,7 +163,7 @@ ToolWindow {
                         objectName: "LevellerWindow.speed"
                         Layout.fillWidth: true
                         label: qsTr("Speed")
-                        enabled: window.writable
+                        enabled: panel.writable
                         currentIndex: EffectsController.levellerSpeed
                         AppTabButton {
                             objectName: "LevellerWindow.speed.0"
@@ -188,7 +184,7 @@ ToolWindow {
                     Text {
                         objectName: "LevellerWindow.speedText"
                         Layout.fillWidth: true
-                        text: window.speedTexts[EffectsController.levellerSpeed] || window.speedTexts[1]
+                        text: panel.speedTexts[EffectsController.levellerSpeed] || panel.speedTexts[1]
                         font: Theme.fontCaption
                         color: Theme.textMuted
                         wrapMode: Text.Wrap
@@ -198,7 +194,7 @@ ToolWindow {
                 EffectParameterRow {
                     objectName: "LevellerWindow.maxGain"
                     Layout.fillWidth: true
-                    enabled: window.writable
+                    enabled: panel.writable
                     title: qsTr("Max Gain")
                     unit: qsTr("dB")
                     value: EffectsController.levellerMaxGain
@@ -213,7 +209,7 @@ ToolWindow {
                 EffectParameterRow {
                     objectName: "LevellerWindow.gate"
                     Layout.fillWidth: true
-                    enabled: window.writable
+                    enabled: panel.writable
                     title: qsTr("Gate Threshold")
                     unit: qsTr("dB")
                     value: EffectsController.levellerGate
@@ -245,7 +241,7 @@ ToolWindow {
                     }
                     AppSwitch {
                         objectName: "LevellerWindow.lookahead"
-                        enabled: window.writable
+                        enabled: panel.writable
                         checked: EffectsController.levellerLookahead
                         onToggled: EffectsController.setLevellerLookahead(checked)
                         Accessible.name: qsTr("Lookahead")
