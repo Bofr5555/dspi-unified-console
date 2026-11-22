@@ -31,6 +31,7 @@ AbstractButton {
             spacing: 1
             Text {
                 Layout.fillWidth: true
+                textFormat: Text.PlainText
                 text: row.title
                 font: Theme.fontBody
                 color: row.enabled ? Theme.text : Theme.textDisabled
@@ -39,6 +40,7 @@ AbstractButton {
             Text {
                 Layout.fillWidth: true
                 visible: row.subtitle.length > 0
+                textFormat: Text.PlainText
                 text: row.subtitle
                 font: Theme.fontSmall
                 color: row.enabled ? Theme.textMuted : Theme.textDisabled

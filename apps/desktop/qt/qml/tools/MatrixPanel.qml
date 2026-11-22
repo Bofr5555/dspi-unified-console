@@ -87,6 +87,7 @@ Panel {
         Text {
             width: panel.labelWidth - 8
             height: parent.height
+            textFormat: Text.PlainText
             text: controlRow.label
             font: Theme.fontHeading
             color: Theme.textMuted
@@ -144,6 +145,7 @@ Panel {
                                     visible: panel.renaming !== header.index
                                     width: parent.width
                                     height: 2 * Math.ceil(fontMetrics.height)
+                                    textFormat: Text.PlainText
                                     text: header.shownName
                                     font.pixelSize: Theme.fontSmall.pixelSize
                                     font.weight: Font.Medium
@@ -278,6 +280,7 @@ Panel {
                                         }
                                         Text {
                                             width: Math.min(implicitWidth, panel.labelWidth - 20)
+                                            textFormat: Text.PlainText
                                             text: srcRow.shownName
                                             font.pixelSize: Theme.fontSmall.pixelSize
                                             font.weight: panel.wide ? Font.DemiBold : Font.Medium

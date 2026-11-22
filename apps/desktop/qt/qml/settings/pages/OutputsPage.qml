@@ -41,6 +41,7 @@ SettingsPage {
                 }
                 Text {
                     Layout.preferredWidth: 64
+                    textFormat: Text.PlainText
                     text: row.modelData.title
                     font: Theme.fontBody
                     color: page.editable ? Theme.text : Theme.textDisabled

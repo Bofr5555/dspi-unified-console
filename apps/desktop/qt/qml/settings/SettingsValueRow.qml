@@ -14,6 +14,7 @@ RowLayout {
     spacing: Theme.spacing
 
     Text {
+        textFormat: Text.PlainText
         text: row.title
         font: Theme.fontBody
         color: Theme.text

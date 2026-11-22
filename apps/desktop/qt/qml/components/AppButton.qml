@@ -40,6 +40,7 @@ Button {
             }
             Text {
                 anchors.verticalCenter: parent.verticalCenter
+                textFormat: Text.PlainText
                 text: button.text
                 font: button.font
                 color: button.enabled ? button.ink : Theme.textDisabled

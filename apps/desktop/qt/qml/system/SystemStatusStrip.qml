@@ -44,6 +44,7 @@ Rectangle {
             id: summary
             objectName: "SystemStatusStrip.summary"
             Layout.fillWidth: true
+            textFormat: Text.PlainText
             text: SystemController.summary
                   + (SystemController.recalledScene.length ? "   ·   " + qsTr("Scene: %1").arg(SystemController.recalledScene) : "")
                   + (SystemController.systemMute === true ? "   ·   " + qsTr("System mute on") : "")
@@ -53,6 +54,7 @@ Rectangle {
         }
         Text {
             visible: SystemController.alarms.length > 0
+            textFormat: Text.PlainText
             text: qsTr("%n alarm(s)", "", SystemController.alarms.length)
             font: Theme.fontSmall
             color: Theme.alarmRaised

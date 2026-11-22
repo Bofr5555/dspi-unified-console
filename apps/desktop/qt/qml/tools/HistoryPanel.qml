@@ -83,6 +83,7 @@ Panel {
                             spacing: 0
                             Text {
                                 Layout.fillWidth: true
+                                textFormat: Text.PlainText
                                 text: row.modelData.title
                                 font: Theme.fontBody
                                 color: Theme.text
@@ -91,6 +92,7 @@ Panel {
                             Text {
                                 Layout.fillWidth: true
                                 visible: text.length > 0
+                                textFormat: Text.PlainText
                                 text: row.modelData.detail
                                 font: Theme.fontSmall
                                 color: Theme.textMuted

@@ -17,6 +17,7 @@ MenuBar {
             color: title.highlighted ? Theme.controlHover : "transparent"
         }
         contentItem: Text {
+            textFormat: Text.PlainText
             text: title.text.replace("&", "")
             color: Theme.text
             font: title.font

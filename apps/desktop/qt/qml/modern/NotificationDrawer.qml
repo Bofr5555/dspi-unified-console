@@ -149,6 +149,7 @@ Item {
                         Layout.rightMargin: Theme.spacing
                         Layout.alignment: Qt.AlignTop
                         Layout.topMargin: 3
+                        textFormat: Text.PlainText
                         text: time
                         font: Theme.fontSmall
                         color: Theme.textMuted

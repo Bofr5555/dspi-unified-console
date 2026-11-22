@@ -34,6 +34,7 @@ ColumnLayout {
         objectName: "SpeakersStep.state"
         visible: DeviceModel.connected
         Layout.fillWidth: true
+        textFormat: Text.PlainText
         text: step.confirmed ? step.stage.confirmed || "" : step.sc.saidError ? step.sc.said : step.sc.bannerText(true)
         font: Theme.fontBody
         color: step.sc.saidError && !step.confirmed ? Theme.dangerText : step.confirmed ? Theme.success : Theme.textMuted

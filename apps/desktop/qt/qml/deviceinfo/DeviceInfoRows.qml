@@ -37,6 +37,7 @@ ColumnLayout {
             required property int index
             objectName: "DeviceInfoRows.note." + index
             Layout.fillWidth: true
+            textFormat: Text.PlainText
             text: modelData
             font: Theme.fontSmall
             color: Theme.textMuted

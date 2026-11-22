@@ -77,6 +77,7 @@ ColumnLayout {
             Text {
                 objectName: "OutputDetail.title"
                 Layout.fillWidth: true
+                textFormat: Text.PlainText
                 text: page.label
                 font: Theme.fontTitle
                 color: Theme.text

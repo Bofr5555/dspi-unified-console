@@ -39,6 +39,7 @@ Panel {
         }
         Text {
             Layout.fillWidth: true
+            textFormat: Text.PlainText
             text: valueRow.value
             font: Theme.fontMono
             color: valueRow.muted ? Theme.textMuted : Theme.text
@@ -270,6 +271,7 @@ Panel {
                             }
                             Text {
                                 Layout.alignment: Qt.AlignHCenter
+                                textFormat: Text.PlainText
                                 text: stepItem.modelData
                                 font.pixelSize: Theme.fontCaption.pixelSize
                                 font.bold: stepItem.index === stepItem.current
@@ -316,6 +318,7 @@ Panel {
                 Text {
                     objectName: "FirmwareWindow.statusTitle"
                     Layout.alignment: Qt.AlignHCenter
+                    textFormat: Text.PlainText
                     text: panel.fw.statusTitle
                     font.pixelSize: Theme.fontBody.pixelSize
                     font.bold: true
@@ -327,6 +330,7 @@ Panel {
                     Layout.maximumWidth: 340
                     Layout.alignment: Qt.AlignHCenter
                     horizontalAlignment: Text.AlignHCenter
+                    textFormat: Text.PlainText
                     text: panel.fw.statusMessage
                     font: Theme.fontSmall
                     color: Theme.textMuted
@@ -520,6 +524,7 @@ Panel {
             Text {
                 objectName: "FirmwareWindow.guardMessage"
                 Layout.fillWidth: true
+                textFormat: Text.PlainText
                 text: FirmwareController.guardMessage
                 font: Theme.fontBody
                 color: Theme.text

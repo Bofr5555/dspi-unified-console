@@ -146,6 +146,7 @@ Rectangle {
             }
         }
         Text {
+            textFormat: Text.PlainText
             text: meter.shownName
             font: Qt.font({ family: Theme.fontMono.family, pixelSize: Theme.fontCaption.pixelSize })
             color: Theme.text

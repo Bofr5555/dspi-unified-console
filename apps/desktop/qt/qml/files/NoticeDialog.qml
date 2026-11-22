@@ -68,6 +68,7 @@ Dialog {
             }
             Text {
                 width: heading.width - mark.width - heading.spacing
+                textFormat: Text.PlainText
                 text: notice.title
                 font: Theme.fontTitle
                 color: Theme.text
@@ -87,6 +88,7 @@ Dialog {
             id: body
             objectName: "NoticeDialog.text"
             width: parent.width
+            textFormat: Text.PlainText
             text: notice.text
             font: Theme.fontBody
             color: Theme.text

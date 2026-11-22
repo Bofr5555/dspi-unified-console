@@ -37,6 +37,7 @@ ColumnLayout {
         Layout.fillWidth: true
         Text {
             Layout.fillWidth: true
+            textFormat: Text.PlainText
             text: content.title
             font: Theme.fontTitle
             color: Theme.text
@@ -163,6 +164,7 @@ ColumnLayout {
                         Text {
                             objectName: "DevicesPopup.phaseText"
                             Layout.fillWidth: true
+                            textFormat: Text.PlainText
                             text: content.inSession && LinkController.hubName.length
                                   ? LinkController.hubName + ": " + LinkController.phaseText
                                   : LinkController.phaseText
@@ -174,6 +176,7 @@ ColumnLayout {
                             objectName: "DevicesPopup.unsecured"
                             Layout.alignment: Qt.AlignTop
                             visible: LinkController.unsecured
+                            textFormat: Text.PlainText
                             text: "(" + LinkController.unsecuredLabel + ")"
                             font: Theme.fontBody
                             color: Theme.dangerText
@@ -190,6 +193,7 @@ ColumnLayout {
                         Layout.fillWidth: true
                         visible: content.inSession && LinkController.encrypted && LinkController.hubKey.length > 0
                         //: %1 is the hub key's fingerprint, SHA256:K7Q2-M9XD-…
+                        textFormat: Text.PlainText
                         text: qsTr("Encrypted · hub key %1").arg(LinkController.hubKey)
                         font: Theme.fontSmall
                         color: Theme.textMuted
@@ -198,6 +202,7 @@ ColumnLayout {
                     Text {
                         Layout.fillWidth: true
                         visible: content.phase === "reconnecting" && LinkController.reconnectAttempt > 0
+                        textFormat: Text.PlainText
                         text: qsTr("Attempt %1, next try in %2 s").arg(LinkController.reconnectAttempt)
                               .arg(Math.ceil(LinkController.reconnectInMs / 1000))
                         font: Theme.fontSmall
@@ -207,6 +212,7 @@ ColumnLayout {
                         Layout.fillWidth: true
                         visible: (content.phase === "closed" || content.phase === "refused")
                                  && LinkController.closeReason.length > 0
+                        textFormat: Text.PlainText
                         text: LinkController.closeReason
                         font: Theme.fontSmall
                         color: Theme.text
@@ -247,6 +253,7 @@ ColumnLayout {
                 objectName: "DevicesPopup.error"
                 Layout.fillWidth: true
                 visible: LinkController.errorText.length > 0
+                textFormat: Text.PlainText
                 text: LinkController.errorText
                 font: Theme.fontSmall
                 color: Theme.warning
@@ -265,6 +272,7 @@ ColumnLayout {
             Text {
                 Layout.fillWidth: true
                 visible: DevicesController.lookForHubs && DevicesController.browseError.length > 0
+                textFormat: Text.PlainText
                 text: DevicesController.browseError
                 font: Theme.fontSmall
                 color: Theme.warning
@@ -299,6 +307,7 @@ ColumnLayout {
                 Layout.fillWidth: true
                 Layout.leftMargin: 32
                 visible: DevicesController.hubs.length === 0
+                textFormat: Text.PlainText
                 text: DevicesController.lookForHubs ? qsTr("Looking for hubs…") : qsTr("No hubs added.")
                 font: Theme.fontSmall
                 color: Theme.textMuted

@@ -210,6 +210,7 @@ ScrollView {
             spacing: Theme.spacingSmall
             Text {
                 Layout.fillWidth: true
+                textFormat: Text.PlainText
                 text: mc.targetName.length ? qsTr("Target: %1").arg(mc.targetName) : qsTr("Target: the placement's default (our own curve)")
                 font: Theme.fontSmall
                 color: Theme.textMuted
@@ -262,6 +263,7 @@ ScrollView {
         Text {
             objectName: "MeasureLive.state"
             Layout.fillWidth: true
+            textFormat: Text.PlainText
             text: mc.liveText
             font: Theme.fontBody
             color: Theme.text
@@ -269,6 +271,7 @@ ScrollView {
         Text {
             visible: text.length > 0
             Layout.fillWidth: true
+            textFormat: Text.PlainText
             text: mc.liveIssueText
             font: Theme.fontBody
             color: Theme.dangerText
@@ -366,6 +369,7 @@ ScrollView {
                 spacing: 4
                 Text {
                     visible: (mc.proposal.reason || "").length === 0
+                    textFormat: Text.PlainText
                     text: mc.proposal.label || ""
                     font.pixelSize: Theme.fontBody.pixelSize
                     font.weight: Font.DemiBold
@@ -376,6 +380,7 @@ ScrollView {
                     Text {
                         required property string modelData
                         Layout.fillWidth: true
+                        textFormat: Text.PlainText
                         text: "• " + modelData
                         font: Theme.fontBody
                         color: Theme.text
@@ -425,6 +430,7 @@ ScrollView {
                 objectName: "MeasureLive.said"
                 visible: text.length > 0
                 Layout.fillWidth: true
+                textFormat: Text.PlainText
                 text: mc.liveSaid
                 font: Theme.fontBody
                 color: Theme.text

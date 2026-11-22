@@ -19,6 +19,7 @@ RowLayout {
     }
     Text {
         Layout.fillWidth: true
+        textFormat: Text.PlainText
         text: line.text
         font: Theme.fontBody
         color: Theme.text

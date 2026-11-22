@@ -11,6 +11,7 @@ TabButton {
     focusPolicy: Qt.StrongFocus
 
     contentItem: Text {
+        textFormat: Text.PlainText
         text: tab.text
         font: tab.font
         color: tab.checked ? Theme.textOnAccent : tab.enabled ? Theme.text : Theme.textDisabled

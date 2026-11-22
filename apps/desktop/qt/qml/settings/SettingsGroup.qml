@@ -29,6 +29,7 @@ ColumnLayout {
         }
         Text {
             Layout.fillWidth: true
+            textFormat: Text.PlainText
             text: group.title
             font: Qt.font({ pixelSize: Theme.fontBody.pixelSize, weight: Font.DemiBold })
             color: Theme.text
@@ -64,6 +65,7 @@ ColumnLayout {
     Text {
         visible: group.footer.length > 0
         Layout.fillWidth: true
+        textFormat: Text.PlainText
         text: group.footer
         font: Theme.fontSmall
         color: group.footerColor

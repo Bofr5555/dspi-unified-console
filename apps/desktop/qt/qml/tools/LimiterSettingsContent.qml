@@ -49,6 +49,7 @@ ColumnLayout {
             Text {
                 objectName: "LimiterSettings.output"
                 Layout.fillWidth: true
+                textFormat: Text.PlainText
                 text: content.outputName
                 font: Theme.fontCaption
                 color: Theme.textMuted
@@ -136,6 +137,7 @@ ColumnLayout {
             Text {
                 objectName: "LimiterSettings.groupSummary"
                 Layout.fillWidth: true
+                textFormat: Text.PlainText
                 text: ToolsController.revision < 0 ? "" : ToolsController.limiterLinkSummary(content.output)
                 font: Theme.fontCaption
                 color: Theme.textMuted

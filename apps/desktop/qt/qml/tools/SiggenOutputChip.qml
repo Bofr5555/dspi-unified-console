@@ -31,6 +31,7 @@ AbstractButton {
         spacing: 4
         Text {
             Layout.fillWidth: true
+            textFormat: Text.PlainText
             text: chip.text
             font: Qt.font({ pixelSize: Theme.fontSmall.pixelSize, weight: chip.selected ? Font.DemiBold : Font.Normal })
             color: chip.selected ? Theme.text : chip.enabled ? Theme.textMuted : Theme.textDisabled

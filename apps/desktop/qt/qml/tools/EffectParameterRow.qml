@@ -30,6 +30,7 @@ ColumnLayout {
         Layout.fillWidth: true
         Text {
             Layout.fillWidth: true
+            textFormat: Text.PlainText
             text: row.title
             font: Theme.fontBody
             color: row.enabled ? Theme.text : Theme.textDisabled

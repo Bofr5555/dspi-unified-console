@@ -174,6 +174,7 @@ Panel {
                             spacing: 0
                             Text {
                                 Layout.fillWidth: true
+                                textFormat: Text.PlainText
                                 text: row.modelData.name
                                 font: Theme.fontBody
                                 color: Theme.text
@@ -182,6 +183,7 @@ Panel {
                             Text {
                                 Layout.fillWidth: true
                                 visible: text.length > 0
+                                textFormat: Text.PlainText
                                 text: row.modelData.note
                                 font: Theme.fontSmall
                                 color: Theme.textMuted
@@ -204,6 +206,7 @@ Panel {
                             ToolTip.text: qsTr("The hub holds a different snapshot under this one's id. This console keeps its own copy.")
                         }
                         Text {
+                            textFormat: Text.PlainText
                             text: row.modelData.saved
                             font: Theme.fontMono
                             color: Theme.textMuted
@@ -221,6 +224,7 @@ Panel {
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.Wrap
                     visible: list.count === 0
+                    textFormat: Text.PlainText
                     text: !panel.hasDevice ? qsTr("No Device Connected")
                           : panel.simple ? qsTr("No snapshots of this device yet. They are captured in Advanced mode.")
                                           : qsTr("No snapshots of this device yet. Capture keeps its settings as they are now.")
@@ -357,6 +361,7 @@ Panel {
             objectName: "SnapshotsWindow.hubProblem"
             Layout.fillWidth: true
             visible: text.length > 0
+            textFormat: Text.PlainText
             text: SnapshotsController.hubProblem
             font: Theme.fontSmall
             color: Theme.warning
@@ -405,6 +410,7 @@ Panel {
                         spacing: Theme.spacingSmall
                         Text {
                             Layout.fillWidth: true
+                            textFormat: Text.PlainText
                             text: hubRow.modelData.note.length
                                   //: A snapshot's name and its note
                                   ? qsTr("%1 · %2").arg(hubRow.modelData.name).arg(hubRow.modelData.note)
@@ -419,6 +425,7 @@ Panel {
                             tint: Theme.accent
                         }
                         Text {
+                            textFormat: Text.PlainText
                             text: hubRow.modelData.saved
                             font: Theme.fontMono
                             color: Theme.textMuted
@@ -611,6 +618,7 @@ Panel {
                     Text {
                         Layout.leftMargin: Theme.spacingSmall
                         Layout.preferredWidth: 180
+                        textFormat: Text.PlainText
                         text: change.modelData.section + " · " + change.modelData.item
                         font: Theme.fontSmall
                         color: Theme.text
@@ -619,6 +627,7 @@ Panel {
                     Text {
                         Layout.fillWidth: true
                         //: A value in A, then in B
+                        textFormat: Text.PlainText
                         text: qsTr("%1 → %2").arg(change.modelData.before).arg(change.modelData.after)
                         font: Theme.fontSmall
                         color: Theme.textMuted

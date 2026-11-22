@@ -77,6 +77,7 @@ Dialog {
             leftPadding: Theme.spacingLarge
             rightPadding: Theme.spacingLarge
             topPadding: Theme.spacingLarge
+            textFormat: Text.PlainText
             text: dialog.title
             font: Theme.fontTitle
             color: Theme.text
@@ -95,6 +96,7 @@ Dialog {
         Text {
             id: bodyText
             width: parent.width
+            textFormat: Text.PlainText
             text: dialog.text
             font: Theme.fontBody
             color: Theme.text

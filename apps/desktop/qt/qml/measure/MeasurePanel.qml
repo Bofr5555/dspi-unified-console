@@ -111,6 +111,7 @@ Panel {
             objectName: "Measure.error"
             visible: text.length > 0
             Layout.fillWidth: true
+            textFormat: Text.PlainText
             text: MeasureController.error
             font: Theme.fontBody
             color: Theme.dangerText
@@ -121,6 +122,7 @@ Panel {
             objectName: "Measure.said"
             visible: text.length > 0 && MeasureController.error.length === 0
             Layout.fillWidth: true
+            textFormat: Text.PlainText
             text: MeasureController.said
             font: Theme.fontBody
             color: Theme.text
@@ -129,6 +131,7 @@ Panel {
         Text {
             visible: panel.blocked
             Layout.fillWidth: true
+            textFormat: Text.PlainText
             text: MeasureController.playBlocker
             font: Theme.fontBody
             color: Theme.warning

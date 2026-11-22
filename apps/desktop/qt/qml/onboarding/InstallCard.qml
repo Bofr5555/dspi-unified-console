@@ -57,6 +57,7 @@ Rectangle {
         Text {
             objectName: "GettingStarted.cardTitle"
             Layout.fillWidth: true
+            textFormat: Text.PlainText
             text: card.heading
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.Wrap
@@ -67,6 +68,7 @@ Rectangle {
         Text {
             objectName: "GettingStarted.cardText"
             Layout.fillWidth: true
+            textFormat: Text.PlainText
             text: card.detail
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.Wrap

@@ -69,6 +69,7 @@ Panel {
         }
         Text {
             Layout.alignment: Qt.AlignHCenter
+            textFormat: Text.PlainText
             text: parent.headline
             font: Theme.fontTitle
             color: Theme.text
@@ -78,6 +79,7 @@ Panel {
             Layout.maximumWidth: 360
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.WordWrap
+            textFormat: Text.PlainText
             text: parent.caption
             font: Theme.fontSmall
             color: Theme.textMuted
@@ -113,6 +115,7 @@ Panel {
             Text {
                 objectName: "SpectrumWindow.page"
                 property string shownName: text
+                textFormat: Text.PlainText
                 text: { DeviceModel.revision; return RtaController.pageTitle }
                 font: Qt.font({ pixelSize: Theme.fontSmall.pixelSize, weight: Font.DemiBold })
                 color: Theme.text
@@ -167,6 +170,7 @@ Panel {
                                 }
                                 Text {
                                     anchors.verticalCenter: parent.verticalCenter
+                                    textFormat: Text.PlainText
                                     text: panel.infoOf(entry.modelData).name
                                     font: Qt.font({ pixelSize: 10, strikeout: entry.isHidden })
                                     color: Theme.textMuted
@@ -287,6 +291,7 @@ Panel {
                                     color: panel.colorOf(barCell.modelData)
                                 }
                                 Text {
+                                    textFormat: Text.PlainText
                                     text: panel.infoOf(barCell.modelData).name
                                     font: Qt.font({ pixelSize: 10, weight: Font.DemiBold })
                                     color: Theme.textMuted
@@ -350,6 +355,7 @@ Panel {
                 objectName: "SpectrumWindow.telemetry"
                 Layout.fillWidth: true
                 Layout.minimumWidth: 0
+                textFormat: Text.PlainText
                 text: RtaController.statusParts.concat(RtaController.bassText !== "" ? [RtaController.bassText] : []).join("   ")
                 font: parent.mono
                 color: Theme.textMuted

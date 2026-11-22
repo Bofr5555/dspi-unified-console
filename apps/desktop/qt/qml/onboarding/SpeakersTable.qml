@@ -82,6 +82,7 @@ ColumnLayout {
             required property string modelData
             objectName: "Speakers.note"
             Layout.fillWidth: true
+            textFormat: Text.PlainText
             text: modelData
             font: Theme.fontSmall
             color: Theme.textMuted

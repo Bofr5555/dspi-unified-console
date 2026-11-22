@@ -26,6 +26,7 @@ ColumnLayout {
         }
         Text {
             objectName: "Cs.remotes.count"
+            textFormat: Text.PlainText
             text: qsTr("%1/%2").arg(section.subs.length).arg(section.receiver.maxRemotes || 0)
             font: Theme.fontSmall
             color: Theme.textMuted

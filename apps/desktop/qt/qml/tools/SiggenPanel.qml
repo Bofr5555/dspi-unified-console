@@ -82,6 +82,7 @@ Panel {
             spacing: 1
             Layout.fillWidth: true
             Text {
+                textFormat: Text.PlainText
                 text: optionRow.label
                 font: Theme.fontBody
                 color: Theme.text
@@ -163,6 +164,7 @@ Panel {
                         NumberAnimation { target: dot; property: "scale"; to: 1.0; duration: 700; easing.type: Easing.InOutQuad }
                     }
                     Text {
+                        textFormat: Text.PlainText
                         text: pill.shownName
                         font: Qt.font({ pixelSize: Theme.fontCaption.pixelSize, weight: Font.DemiBold })
                         color: SiggenController.playing ? Theme.text : Theme.textMuted
@@ -569,6 +571,7 @@ Panel {
                 Text {
                     objectName: "SiggenWindow.title"
                     property string shownName: text
+                    textFormat: Text.PlainText
                     text: SiggenController.transportTitle
                     font: Qt.font({ pixelSize: Theme.fontSmall.pixelSize, weight: Font.Medium })
                     color: Theme.text
@@ -578,6 +581,7 @@ Panel {
                 Text {
                     objectName: "SiggenWindow.detail"
                     property string shownName: text
+                    textFormat: Text.PlainText
                     text: SiggenController.transportDetail
                     font: Qt.font({ family: Theme.fontMono.family, pixelSize: Theme.fontCaption.pixelSize })
                     color: Theme.textMuted

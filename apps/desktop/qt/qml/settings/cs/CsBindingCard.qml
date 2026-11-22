@@ -30,6 +30,7 @@ CsCard {
         Text {
             objectName: card.objectName + ".inactive"
             Layout.fillWidth: true
+            textFormat: Text.PlainText
             text: card.rec.inactiveReason || ""
             font: Theme.fontSmall
             color: Theme.warning
@@ -67,6 +68,7 @@ CsCard {
                 onCommitted: v => CsController.setAuxLevel(card.rec.slot, v)
             }
             Text {
+                textFormat: Text.PlainText
                 text: qsTr("%1%").arg(Math.round(level.value))
                 font: Theme.fontMono
                 color: Theme.text

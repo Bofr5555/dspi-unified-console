@@ -66,6 +66,7 @@ SettingsPage {
             Text {
                 objectName: "SpeakersPage.state"
                 Layout.fillWidth: true
+                textFormat: Text.PlainText
                 text: page.confirmed ? qsTr("Confirmed.")
                       : page.sc.edited && page.sc.status !== "none" ? qsTr("Changed: not kept until you confirm.") : ""
                 font: Theme.fontSmall
@@ -77,6 +78,7 @@ SettingsPage {
             objectName: "SpeakersPage.said"
             visible: text.length > 0
             Layout.fillWidth: true
+            textFormat: Text.PlainText
             text: page.sc.said
             font: Theme.fontSmall
             color: page.sc.saidError ? Theme.dangerText : Theme.textMuted

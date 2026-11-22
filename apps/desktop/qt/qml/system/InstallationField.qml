@@ -14,6 +14,7 @@ ColumnLayout {
 
     Text {
         visible: field.title.length > 0
+        textFormat: Text.PlainText
         text: field.title
         font: Theme.fontSmall
         color: Theme.textMuted

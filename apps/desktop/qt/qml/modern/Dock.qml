@@ -178,6 +178,7 @@ Rectangle {
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
                     visible: !dock.narrow
+                    textFormat: Text.PlainText
                     text: toggle.text
                     font: Theme.fontBody
                     color: toggle.ink
@@ -202,6 +203,7 @@ Rectangle {
     }
 
     component CpuLoad: Text {
+        textFormat: Text.PlainText
         required property int core
         required property int load
         readonly property bool live: Poller.running

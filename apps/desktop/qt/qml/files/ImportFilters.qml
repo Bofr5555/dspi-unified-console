@@ -69,6 +69,7 @@ Dialog {
             leftPadding: Theme.spacingLarge
             rightPadding: Theme.spacingLarge
             topPadding: Theme.spacingLarge
+            textFormat: Text.PlainText
             text: picker.title
             font: Theme.fontTitle
             color: Theme.text
@@ -87,6 +88,7 @@ Dialog {
             id: promptText
             objectName: "ImportFilters.prompt"
             width: parent.width
+            textFormat: Text.PlainText
             text: picker.prompt
             font: Theme.fontBody
             color: Theme.text

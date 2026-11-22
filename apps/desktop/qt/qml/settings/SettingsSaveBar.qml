@@ -52,6 +52,7 @@ Rectangle {
                 objectName: "SaveBar.subtitle"
                 Layout.fillWidth: true
                 // Control Surfaces changes are live already: say so when that is all
+                textFormat: Text.PlainText
                 text: bar.hw.liveOnly ? qsTr("Your controls are live now; saving keeps them across a reboot.")
                                       : qsTr("Saving writes these settings to the device's flash.")
                 font: Theme.fontCaption
@@ -62,6 +63,7 @@ Rectangle {
                 objectName: "SaveBar.failure"
                 Layout.fillWidth: true
                 visible: text.length > 0
+                textFormat: Text.PlainText
                 text: bar.hw.saveFailure
                 font: Theme.fontSmall
                 color: Theme.warning
@@ -73,6 +75,7 @@ Rectangle {
                 objectName: "SaveBar.held"
                 Layout.fillWidth: true
                 visible: text.length > 0
+                textFormat: Text.PlainText
                 text: bar.hw.heldNote
                 font: Theme.fontSmall
                 color: Theme.warning

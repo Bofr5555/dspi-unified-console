@@ -52,6 +52,7 @@ ColumnLayout {
     Text {
         visible: text.length > 0
         Layout.fillWidth: true
+        textFormat: Text.PlainText
         text: mc.documentsNote
         font: Theme.fontSmall
         color: Theme.textMuted
@@ -98,6 +99,7 @@ ColumnLayout {
                         onCommitted: t => { if (t !== row.modelData.name) mc.renameDocument(row.modelData.id, row.modelData.where === "hub" ? "hub" : "local", t) }
                     }
                     Text {
+                        textFormat: Text.PlainText
                         text: tab.kindWords(row.modelData.kind) + " · " + tab.whereWords(row.modelData.where) +
                               (row.modelData.saved ? " · " + row.modelData.saved : "") + (row.modelData.serial ? " · " + row.modelData.serial : "")
                         font: Theme.fontSmall

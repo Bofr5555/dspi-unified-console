@@ -224,6 +224,7 @@ ScrollView {
                 objectName: "MeasureSetup.layoutSaved"
                 visible: text.length > 0
                 Layout.fillWidth: true
+                textFormat: Text.PlainText
                 text: SpeakersController.said
                 font: Theme.fontSmall
                 color: SpeakersController.saidError ? Theme.dangerText : Theme.textMuted
@@ -318,6 +319,7 @@ ScrollView {
             }
             Text {
                 Layout.fillWidth: true
+                textFormat: Text.PlainText
                 text: mc.setupProblem
                 font: Theme.fontBody
                 color: Theme.warning
@@ -341,6 +343,7 @@ ScrollView {
                 Text {
                     required property var modelData
                     Layout.fillWidth: true
+                    textFormat: Text.PlainText
                     text: (modelData.kind === "blocker" ? "• " : qsTr("Warning: ")) + modelData.text
                     font: Theme.fontBody
                     color: modelData.kind === "blocker" ? Theme.dangerText : Theme.warning
@@ -356,6 +359,7 @@ ScrollView {
             Text {
                 objectName: "MeasureSetup.phase"
                 Layout.fillWidth: true
+                textFormat: Text.PlainText
                 text: mc.phaseText
                 font: Theme.fontBody
                 color: Theme.text
@@ -374,6 +378,7 @@ ScrollView {
                 objectName: "MeasureSetup.issue"
                 visible: text.length > 0 && !mc.measuring
                 Layout.fillWidth: true
+                textFormat: Text.PlainText
                 text: mc.issueText
                 font: Theme.fontBody
                 color: mc.phase === "aborted" ? Theme.textMuted : Theme.dangerText
@@ -383,6 +388,7 @@ ScrollView {
                 objectName: "MeasureSetup.timing"
                 visible: text.length > 0
                 Layout.fillWidth: true
+                textFormat: Text.PlainText
                 text: mc.timingText
                 font: Theme.fontBody
                 color: mc.timingReliable ? Theme.success : Theme.warning

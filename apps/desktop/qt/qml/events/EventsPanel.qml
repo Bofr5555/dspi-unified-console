@@ -54,6 +54,7 @@ Panel {
             objectName: "Events.problem"
             Layout.fillWidth: true
             visible: text.length > 0
+            textFormat: Text.PlainText
             text: EventsController.problem
             font: Theme.fontSmall
             color: Theme.warning
@@ -97,6 +98,7 @@ Panel {
                         Text {
                             Layout.alignment: Qt.AlignTop
                             Layout.topMargin: 5
+                            textFormat: Text.PlainText
                             text: row.modelData.time
                             font: Theme.fontMono
                             color: Theme.textMuted
@@ -111,6 +113,7 @@ Panel {
                             spacing: 0
                             Text {
                                 Layout.fillWidth: true
+                                textFormat: Text.PlainText
                                 text: row.modelData.count > 1
                                       //: An event and how many times it happened in a row
                                       ? qsTr("%1 (×%2)").arg(row.modelData.text).arg(row.modelData.count)
@@ -122,6 +125,7 @@ Panel {
                             Text {
                                 Layout.fillWidth: true
                                 visible: text.length > 0
+                                textFormat: Text.PlainText
                                 text: row.modelData.detail
                                 font: Theme.fontSmall
                                 color: Theme.textMuted
@@ -135,6 +139,7 @@ Panel {
                             Layout.maximumWidth: 160
                             visible: row.modelData.by.length > 0
                             //: Who caused an event: a console, an API key or a schedule, by name
+                            textFormat: Text.PlainText
                             text: qsTr("by %1").arg(row.modelData.by)
                             font: Theme.fontSmall
                             color: Theme.textMuted
@@ -153,6 +158,7 @@ Panel {
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.Wrap
                     visible: list.count === 0
+                    textFormat: Text.PlainText
                     text: !DeviceModel.connected ? qsTr("No Device Connected")
                         : EventsController.busy ? qsTr("Reading…")
                         : qsTr("No events yet")

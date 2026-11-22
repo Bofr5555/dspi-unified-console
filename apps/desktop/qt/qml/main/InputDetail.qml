@@ -89,6 +89,7 @@ ColumnLayout {
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
                         width: 52
+                        textFormat: Text.PlainText
                         text: qsTr("Link %1").arg(page.pairLabel)
                         font: Theme.fontSmall
                         color: page.linked ? Theme.accentText : Theme.textMuted

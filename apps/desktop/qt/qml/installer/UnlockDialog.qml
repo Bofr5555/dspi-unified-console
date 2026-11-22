@@ -59,6 +59,7 @@ Dialog {
             leftPadding: Theme.spacingLarge
             rightPadding: Theme.spacingLarge
             topPadding: Theme.spacingLarge
+            textFormat: Text.PlainText
             text: dialog.title
             font: Theme.fontTitle
             color: Theme.text
@@ -73,6 +74,7 @@ Dialog {
         Text {
             objectName: "UnlockDialog.scope"
             Layout.fillWidth: true
+            textFormat: Text.PlainText
             text: LimitsController.scopeText
             font: Theme.fontBody
             color: Theme.textMuted
@@ -92,6 +94,7 @@ Dialog {
             objectName: "UnlockDialog.error"
             Layout.fillWidth: true
             visible: text.length > 0
+            textFormat: Text.PlainText
             text: LimitsController.pinError
             font: Theme.fontSmall
             color: Theme.dangerText

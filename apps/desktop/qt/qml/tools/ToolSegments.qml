@@ -43,6 +43,7 @@ Rectangle {
                 focusPolicy: Qt.TabFocus
                 contentItem: Text {
                     id: label
+                    textFormat: Text.PlainText
                     text: segment.text
                     font: Theme.fontSmall
                     color: segment.chosenNow ? Theme.textOnAccent : segment.enabled ? Theme.text : Theme.textDisabled

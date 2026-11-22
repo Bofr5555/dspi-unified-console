@@ -34,11 +34,13 @@ Panel {
         RowLayout {
             spacing: 6
             Text {
+                textFormat: Text.PlainText
                 text: maskRow.label
                 font: Theme.fontBody
                 color: Theme.text
             }
             Text {
+                textFormat: Text.PlainText
                 text: maskRow.hint
                 font: Theme.fontCaption
                 color: Theme.textMuted

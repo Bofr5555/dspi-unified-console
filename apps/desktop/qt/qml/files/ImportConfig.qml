@@ -93,6 +93,7 @@ Dialog {
             leftPadding: Theme.spacingLarge
             rightPadding: Theme.spacingLarge
             topPadding: Theme.spacingLarge
+            textFormat: Text.PlainText
             text: options.title
             font: Theme.fontTitle
             color: Theme.text
@@ -111,6 +112,7 @@ Dialog {
             id: promptText
             objectName: "ImportConfig.prompt"
             Layout.fillWidth: true
+            textFormat: Text.PlainText
             text: options.prompt
             font: Theme.fontBody
             color: Theme.text
@@ -147,6 +149,7 @@ Dialog {
             objectName: "ImportConfig.summary"
             Layout.fillWidth: true
             Layout.topMargin: Theme.spacingSmall
+            textFormat: Text.PlainText
             text: options.shownRows.length === 0
                   ? qsTr("Nothing on the device would change.")
                   : options.shownRows.length === 1 ? qsTr("1 value on the device would change:")
@@ -184,6 +187,7 @@ Dialog {
                     Text {
                         Layout.leftMargin: Theme.spacingSmall
                         Layout.preferredWidth: 190
+                        textFormat: Text.PlainText
                         text: change.modelData.section + " · " + change.modelData.item
                         font: Theme.fontSmall
                         color: Theme.text
@@ -193,6 +197,7 @@ Dialog {
                         Layout.fillWidth: true
                         Layout.rightMargin: Theme.spacingSmall
                         //: A value on the device now, then after the import
+                        textFormat: Text.PlainText
                         text: qsTr("%1 → %2").arg(change.modelData.before).arg(change.modelData.after)
                         font: Theme.fontSmall
                         color: Theme.textMuted

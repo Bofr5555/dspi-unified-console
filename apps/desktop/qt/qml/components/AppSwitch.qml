@@ -34,6 +34,7 @@ Switch {
     }
     contentItem: Text {
         rightPadding: control.indicator.width + control.spacing
+        textFormat: Text.PlainText
         text: control.text
         font: control.font
         color: control.enabled ? Theme.text : Theme.textDisabled

@@ -22,6 +22,7 @@ AbstractButton {
             spacing: 2
             Text {
                 anchors.verticalCenter: parent.verticalCenter
+                textFormat: Text.PlainText
                 text: button.text
                 font: Theme.fontSmall
                 color: button.enabled ? Theme.accentText : Theme.textDisabled

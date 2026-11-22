@@ -84,6 +84,7 @@ ItemDelegate {
             visible: !row.renaming
             Layout.preferredWidth: row.nameWidth
             Layout.leftMargin: 8
+            textFormat: Text.PlainText
             text: row.label
             font: Theme.fontBody
             color: Theme.text

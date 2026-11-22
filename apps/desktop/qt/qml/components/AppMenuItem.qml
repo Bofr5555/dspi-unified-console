@@ -21,6 +21,7 @@ MenuItem {
         Text {
             Layout.fillWidth: true
             leftPadding: item.checkable ? 18 : 6
+            textFormat: Text.PlainText
             text: item.text
             font: item.font
             color: item.enabled ? Theme.text : Theme.textDisabled
@@ -29,6 +30,7 @@ MenuItem {
         Text {
             visible: item.shortcutText.length > 0
             rightPadding: 6
+            textFormat: Text.PlainText
             text: item.shortcutText
             font: Theme.fontSmall
             color: Theme.textMuted

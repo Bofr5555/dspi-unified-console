@@ -200,6 +200,7 @@ Item {
             spacing: Theme.spacing
             Text {
                 Layout.alignment: Qt.AlignHCenter
+                textFormat: Text.PlainText
                 text: nameDialog.title
                 font: Theme.fontTitle
                 color: Theme.text
@@ -216,6 +217,7 @@ Item {
             Text {
                 visible: nameDialog.hint.length > 0
                 Layout.fillWidth: true
+                textFormat: Text.PlainText
                 text: nameDialog.hint
                 font: Theme.fontSmall
                 color: Theme.textMuted
@@ -291,6 +293,7 @@ Item {
             }
             Text {
                 Layout.fillWidth: true
+                textFormat: Text.PlainText
                 text: failure.text
                 font: Theme.fontBody
                 color: Theme.text

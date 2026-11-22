@@ -41,6 +41,7 @@ RowLayout {
         visible: text.length > 0
         // A refusal shows while its draft is kept, so it can be fixed
         readonly property bool failed: applyRow.isError && applyRow.message.length > 0
+        textFormat: Text.PlainText
         text: failed || (applyRow.message.length > 0 && !applyRow.dirty) ? applyRow.message
             : applyRow.dirty && !applyRow.ready ? applyRow.hint : ""
         font: Theme.fontSmall

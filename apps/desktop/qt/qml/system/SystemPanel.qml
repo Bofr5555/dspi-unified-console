@@ -83,6 +83,7 @@ Panel {
         visible: !SystemController.available
         horizontalAlignment: Text.AlignHCenter
         wrapMode: Text.Wrap
+        textFormat: Text.PlainText
         text: SystemController.error.length > 0 && DeviceModel.remote
               ? SystemController.error
               : qsTr("Open a DSPi on a hub with an audio link to see its installation here.")
@@ -143,6 +144,7 @@ Panel {
                 Text {
                     objectName: "SystemWindow.summary"
                     Layout.fillWidth: true
+                    textFormat: Text.PlainText
                     text: SystemController.summary
                     font: Theme.fontTitle
                     color: Theme.text
@@ -152,6 +154,7 @@ Panel {
                 }
                 Text {
                     objectName: "SystemWindow.role"
+                    textFormat: Text.PlainText
                     text: qsTr("Role on the hub: %1").arg(panel.roleTitle(SystemController.role))
                     font: Theme.fontSmall
                     color: Theme.textMuted
@@ -160,6 +163,7 @@ Panel {
             Text {
                 Layout.fillWidth: true
                 visible: SystemController.error.length > 0
+                textFormat: Text.PlainText
                 text: SystemController.error
                 font: Theme.fontSmall
                 color: Theme.warning
@@ -170,6 +174,7 @@ Panel {
                 delegate: Text {
                     required property var modelData
                     Layout.fillWidth: true
+                    textFormat: Text.PlainText
                     text: qsTr("%1: %2").arg(modelData.subject).arg(modelData.message)
                           + (modelData.state === "acknowledged" ? " " + qsTr("(acknowledged)") : "")
                     font: Theme.fontSmall
@@ -211,6 +216,7 @@ Panel {
                 objectName: "SystemWindow.recallNote"
                 Layout.fillWidth: true
                 visible: !panel.simple && !SystemController.mayRecall && SystemController.scenes.length > 0
+                textFormat: Text.PlainText
                 text: SystemController.recallNote
                 font: Theme.fontSmall
                 color: Theme.textMuted
@@ -222,6 +228,7 @@ Panel {
                 Text {
                     objectName: "SystemWindow.recallResult"
                     Layout.fillWidth: true
+                    textFormat: Text.PlainText
                     text: SystemController.lastRecall.message || ""
                     font: Theme.fontBody
                     color: SystemController.lastRecall.taken ? Theme.text : Theme.dangerText
@@ -232,6 +239,7 @@ Panel {
                 Text {
                     Layout.fillWidth: true
                     visible: text.length > 0
+                    textFormat: Text.PlainText
                     text: (SystemController.lastRecall.writes || [])
                           .map(w => qsTr("%1 · %2: %3").arg(w.unit).arg(w.what).arg(w.resultWord)).join("    ")
                     font: Theme.fontSmall
@@ -261,6 +269,7 @@ Panel {
                     spacing: 0
 
                     component Cell: Text {
+                        textFormat: Text.PlainText
                         property int cellWidth: 90
                         Layout.preferredWidth: cellWidth
                         font: Theme.fontSmall
@@ -409,6 +418,7 @@ Panel {
                 delegate: Text {
                     required property string modelData
                     Layout.fillWidth: true
+                    textFormat: Text.PlainText
                     text: modelData
                     font: Theme.fontSmall
                     color: Theme.warning
@@ -426,6 +436,7 @@ Panel {
                 objectName: "SystemWindow.editNote"
                 Layout.fillWidth: true
                 visible: !panel.simple && !SystemController.mayEdit
+                textFormat: Text.PlainText
                 text: qsTr("%1 This part is read only.").arg(SystemController.editNote)
                 font: Theme.fontSmall
                 color: Theme.textMuted
@@ -472,6 +483,7 @@ Panel {
                 }
                 Text {
                     Layout.fillWidth: true
+                    textFormat: Text.PlainText
                     text: qsTr("In use: %1 frames (%2)").arg(SystemController.systemDelayFrames).arg(panel.ms(SystemController.systemDelayMs))
                     font: Theme.fontSmall
                     color: Theme.textMuted
@@ -486,6 +498,7 @@ Panel {
                         spacing: Theme.spacing
                         Text {
                             Layout.preferredWidth: 220
+                            textFormat: Text.PlainText
                             text: qsTr("Lip sync, %1").arg(roomRow.modelData.name)
                             font: Theme.fontBody
                             color: Theme.text
@@ -514,6 +527,7 @@ Panel {
                         spacing: Theme.spacing
                         Text {
                             Layout.preferredWidth: 220
+                            textFormat: Text.PlainText
                             text: qsTr("Measured latency, %1").arg(latencyRow.modelData.name)
                             font: Theme.fontBody
                             color: Theme.text
@@ -554,6 +568,7 @@ Panel {
                         spacing: Theme.spacing
                         Text {
                             Layout.preferredWidth: 220
+                            textFormat: Text.PlainText
                             text: qsTr("USB-direct, %1").arg(usbRow.modelData.name)
                             font: Theme.fontBody
                             color: Theme.text
@@ -640,6 +655,7 @@ Panel {
                 Text {
                     objectName: "SystemWindow.actionMessage"
                     Layout.fillWidth: true
+                    textFormat: Text.PlainText
                     text: SystemController.actionMessage
                     font: Theme.fontSmall
                     color: SystemController.actionFailed ? Theme.dangerText : Theme.textMuted

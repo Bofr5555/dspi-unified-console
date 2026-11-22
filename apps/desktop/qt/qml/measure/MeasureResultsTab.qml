@@ -30,6 +30,7 @@ ScrollView {
             Text {
                 objectName: "MeasureResults.name"
                 Layout.fillWidth: true
+                textFormat: Text.PlainText
                 text: mc.hasResult ? (mc.resultName || qsTr("Measurement")) : qsTr("No measurement yet: run one on the Measure tab, or open a measurement file.")
                 font: mc.hasResult ? Theme.fontTitle : Theme.fontBody
                 color: mc.hasResult ? Theme.text : Theme.textMuted
@@ -43,6 +44,7 @@ ScrollView {
         Text {
             visible: mc.hasResult
             Layout.fillWidth: true
+            textFormat: Text.PlainText
             text: mc.resultSummary
             font: Theme.fontSmall
             color: Theme.textMuted
@@ -53,6 +55,7 @@ ScrollView {
             visible: mc.hasResult
             Layout.fillWidth: true
             readonly property var reliable: mc.resultTimingReliable
+            textFormat: Text.PlainText
             text: mc.resultTiming.length ? mc.resultTiming : qsTr("No timing: a single sweep is magnitude only.")
             font: Theme.fontBody
             color: reliable === true ? Theme.success : reliable === false ? Theme.warning : Theme.textMuted
@@ -117,6 +120,7 @@ ScrollView {
                 }
                 Text {
                     Layout.fillWidth: true
+                    textFormat: Text.PlainText
                     text: modelData.role + (modelData.speaker ? qsTr(", speaker %1").arg(modelData.speaker) : "") +
                           (modelData.arrivalMs !== undefined && modelData.arrivalMs !== null ? qsTr(", arrives at %1 ms").arg(Number(modelData.arrivalMs).toFixed(3)) : "")
                     font: Theme.fontSmall

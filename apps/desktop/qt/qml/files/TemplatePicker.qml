@@ -43,6 +43,7 @@ Dialog {
         leftPadding: Theme.spacingLarge
         rightPadding: Theme.spacingLarge
         topPadding: Theme.spacingLarge
+        textFormat: Text.PlainText
         text: picker.title
         font: Theme.fontTitle
         color: Theme.text
@@ -104,6 +105,7 @@ Dialog {
                         spacing: 0
                         Text {
                             Layout.fillWidth: true
+                            textFormat: Text.PlainText
                             text: row.modelData.name
                             font: Theme.fontBody
                             color: Theme.text
@@ -112,6 +114,7 @@ Dialog {
                         Text {
                             Layout.fillWidth: true
                             //: %1 the platform, %2 and %3 the input and output counts, %4 "shipped" or "yours"
+                            textFormat: Text.PlainText
                             text: qsTr("%1, %2 in, %3 out · %4").arg(row.modelData.platform).arg(row.modelData.inputs)
                                       .arg(row.modelData.outputs)
                                       .arg(row.modelData.builtin ? qsTr("shipped with the app") : qsTr("saved here"))
@@ -125,6 +128,7 @@ Dialog {
                             objectName: "TemplatePicker.status." + row.index
                             Layout.fillWidth: true
                             visible: text.length > 0
+                            textFormat: Text.PlainText
                             text: row.modelData.status || ""
                             font: Theme.fontSmall
                             color: Theme.warning

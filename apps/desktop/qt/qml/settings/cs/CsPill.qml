@@ -33,6 +33,7 @@ Item {
         objectName: pill.objectName.length ? pill.objectName + ".text" : ""
         x: dot.x + dot.width + 5
         y: (pill.height - implicitHeight) / 2
+        textFormat: Text.PlainText
         text: pill.text
         font: Qt.font({ pixelSize: Theme.fontCaption.pixelSize, weight: Font.Medium })
         color: pill.tint
