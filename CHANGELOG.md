@@ -72,6 +72,12 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
   you can keep a tune whose verify did not pass. (WP MCP5)
 - The speaker layout's banner says a layout was "set outside this app (a configuration file or another app)" instead
   of claiming a configuration file brought it. (WP MCP5)
+- **AI agents know where the sound comes from.** They are told that a DSPi has no player and plays what its input
+  receives, and which input is in use. A new read-only tool, `dspi_get_host_audio`, tells them whether each open DSPi
+  is an output of the computer the console runs on, whether it is the default output, its format, which apps play to
+  it and the system volume (PipeWire or ALSA on Linux, Windows audio, Core Audio on macOS). It never changes the
+  default output; the agent tells you how. When the system cannot be read, the agent hears "unknown" and why.
+  (WP FEAT3)
 - AI agents have a manual page, docs/manual/ai-agents.md: the configuration for Claude Desktop, Claude Code, Cursor and
   VS Code (with the token kept out of your shell's history), what is asked, what agents can never do, and undo. The
   agents' endpoint follows MCP 2026-07-28 more closely (its error codes for a missing `_meta` and a contradicting header;

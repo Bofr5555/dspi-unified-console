@@ -260,6 +260,8 @@ impl FfiMcp {
             .get("measuring")
             .and_then(Value::as_bool)
             .unwrap_or(false);
+        // -- WP FEAT3 -- dspi_get_host_audio reads this computer's audio
+        server_config.host_audio = Some(dspi_mcp::host_audio::system());
         let mut server = Server::new(Arc::clone(&self.set), server_config);
         server.set_active_device(lock(&self.active).clone());
         let listener = Arc::clone(&self.listener);

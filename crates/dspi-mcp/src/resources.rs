@@ -19,11 +19,24 @@ pub const FILTER_TYPES_URI: &str = "dspi://filter-types";
 // -- WP MCP2b -- the paragraph on wholesale writes, flash and effects
 // -- WP MCP2c -- the section on hubs, the audio link and Installation setup
 // -- WP MCP5 -- the section on measuring
+// -- WP FEAT3 -- the section on where the sound comes from
 pub const GUIDE: &str = "# DSPi: how to read it well
 
 A DSPi is a digital signal processor for loudspeakers. The console app has one or more DSPis
 open; `dspi_list_devices` lists them. Every tool takes an optional `device`; without it the
 device the app shows is used.
+
+## Where the sound comes from
+- A DSPi has no player and no music of its own: it plays what its input source receives.
+  Music is chosen, started, paused and turned up or down in another program or box (a
+  player, a streaming app, a TV, a game), never by these tools.
+- `dspi_get_overview`'s `programme` names the input source in use (USB, S/PDIF, I2S, ADAT,
+  the audio link) and what feeds that kind of input; `dspi_set_source` switches it.
+- With USB, the computer connected to the DSPi plays to it as an audio output.
+  `dspi_get_host_audio` (read only) says, for the computer running this app, whether each
+  DSPi is an output, whether it is the default, what plays to it and the OS volume. No
+  tool changes the default output or moves an app: tell the user how
+  (`how_to_set_default`). `dspi_get_meters` shows whether signal arrives.
 
 ## Channels
 - Inputs and outputs are numbered from 0. Name them `{\"input\": n}` or `{\"output\": n}`.

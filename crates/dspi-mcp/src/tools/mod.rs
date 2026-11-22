@@ -20,3 +20,5 @@ pub mod info;
 pub mod installation;
 // -- WP MCP5 --
 pub mod measure;
+// -- WP FEAT3 --
+pub mod host;
