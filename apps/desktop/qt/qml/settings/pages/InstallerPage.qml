@@ -182,6 +182,8 @@ SettingsPage {
             Text {
                 Layout.fillWidth: true
                 text: ToolsController.unprotectedText
+                // -- WP INT4 -- it names the outputs, which are the user's text
+                textFormat: Text.PlainText
                 font: Theme.fontSmall
                 color: Theme.text
                 wrapMode: Text.Wrap
