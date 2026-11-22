@@ -267,6 +267,93 @@ fn wp_mcp3_the_server_through_c() {
     dspi_core_set_free(set);
 }
 
+/// What [`calls_back`] works on.
+struct CallsBack {
+    mcp: *mut FfiMcp,
+    /// The clients listed from inside `clientsChanged`, each time.
+    listed: Mutex<Vec<usize>>,
+}
+
+// SAFETY: the handle takes calls from any thread; the rest is a mutex.
+unsafe impl Send for CallsBack {}
+// SAFETY: as for Send.
+unsafe impl Sync for CallsBack {}
+
+/// The app's natural listener: on `clientsChanged` it lists the clients, reads
+/// the status and (once, for "nested") adds another from inside.
+extern "C" fn calls_back(event: *const c_char, user: *mut c_void) {
+    // SAFETY: `user` is the test's `CallsBack`, alive for the process.
+    let t = unsafe { &*user.cast::<CallsBack>() };
+    // SAFETY: the server passes a NUL-terminated string that lives for the call.
+    let text = unsafe { CStr::from_ptr(event) }.to_str().unwrap();
+    if !text.contains("clientsChanged") {
+        return;
+    }
+    let clients = reply(|b, l| dspi_mcp_clients(t.mcp, b, l));
+    let rows = clients["value"].as_array().unwrap();
+    t.listed.lock().unwrap().push(rows.len());
+    assert_eq!(
+        reply(|b, l| dspi_mcp_status(t.mcp, b, l))["running"],
+        json!(true)
+    );
+    dspi_mcp_pause(t.mcp, false);
+    if rows.iter().any(|c| c["name"] == "Nested") || rows.len() != 1 {
+        return;
+    }
+    assert_eq!(add(t.mcp, "Nested")["ok"], json!(true));
+    // Still inside the first event's callback: refused.
+    dspi_mcp_set_listener(t.mcp, None, ptr::null_mut());
+}
+
+/// -- WP RBFIX -- review RB R4: `clientsChanged` comes inside the call that
+/// caused it, with nothing of the handle locked.
+#[test]
+fn wp_rbfix_a_listener_may_call_back_from_clients_changed() {
+    let set = demo_set();
+    let t: &'static CallsBack = Box::leak(Box::new(CallsBack {
+        mcp: dspi_mcp_new(set),
+        listed: Mutex::default(),
+    }));
+    let user = ptr::from_ref(t).cast_mut().cast();
+    dspi_mcp_set_listener(t.mcp, Some(calls_back), user);
+    let port = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port();
+    let dir = scratch("callback");
+    let config = json!({"port": port, "storeDir": dir.to_str().unwrap()}).to_string();
+    assert_eq!(start(t.mcp, &config)["ok"], json!(true));
+
+    let set = set as usize;
+    let (done, ended) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        // By hand, with one more added from inside the event.
+        let first = add(t.mcp, "First");
+        assert_eq!(first["ok"], json!(true));
+        assert_eq!(*t.listed.lock().unwrap(), [1, 2]);
+        // A pairing allowed.
+        let (status, _) = post(port, "/pair", None, &json!({"name": "Paired"}));
+        assert_eq!(status, 200);
+        let id = reply(|b, l| dspi_mcp_status(t.mcp, b, l))["pairing"]["id"]
+            .as_u64()
+            .unwrap();
+        assert!(dspi_mcp_pairing_answer(t.mcp, id, true));
+        assert_eq!(*t.listed.lock().unwrap(), [1, 2, 3]);
+        // A client removed.
+        assert!(dspi_mcp_revoke(t.mcp, first["id"].as_u64().unwrap()));
+        assert_eq!(*t.listed.lock().unwrap(), [1, 2, 3, 2]);
+        assert!(dspi_mcp_stop(t.mcp));
+        done.send(()).unwrap();
+    });
+    ended
+        .recv_timeout(Duration::from_secs(60))
+        .expect("a call back from clientsChanged deadlocked or failed");
+    assert!(TcpStream::connect(("127.0.0.1", port)).is_err());
+    dspi_mcp_free(t.mcp);
+    dspi_core_set_free(set as *mut FfiCoreSet);
+}
+
 #[test]
 fn wp_mcp3_the_relay_refuses_a_bad_configuration() {
     let bad = CString::new("{").unwrap();

@@ -33,8 +33,11 @@
 //!
 //! **Threads.** Any thread. `dspi_mcp_start` binds and `dspi_mcp_stop` waits
 //! for the listening threads, briefly. The listener runs on the server's
-//! threads with no lock held; from inside it, `dspi_mcp_set_listener` and
-//! `dspi_mcp_free` are refused.
+//! threads, or inside the call that caused the event (`dspi_mcp_add_client`,
+//! `dspi_mcp_revoke`, `dspi_mcp_pairing_answer`: `clientsChanged`), with none
+//! of this handle's state locked: it may call every function here but
+//! `dspi_mcp_set_listener` and `dspi_mcp_free`, which are refused. It must not
+//! wait for another thread that sets the listener.
 //!
 //! **The stdio relay** (`dspi_mcp_relay_stdio`) is the app's `--mcp` mode: an
 //! agent host starts the app's binary with pipes, and it relays between them
@@ -93,7 +96,7 @@ fn in_callback() -> bool {
 /// The handle behind `struct FfiMcp *`.
 pub struct FfiMcp {
     set: Arc<CoreSet>,
-    running: Mutex<Option<HttpServer>>,
+    running: Mutex<Option<Arc<HttpServer>>>,
     listener: Arc<RwLock<Option<CListener>>>,
     /// The last start's folder, for the clients while stopped.
     store_dir: Mutex<Option<PathBuf>>,
@@ -144,14 +147,21 @@ fn unix_s() -> u64 {
 }
 
 impl FfiMcp {
+    // -- WP RBFIX -- (review RB R4)
+    /// The running server, `running` released: what is called on it may call
+    /// the listener, which may call back in here.
+    fn server(&self) -> Option<Arc<HttpServer>> {
+        lock(&self.running).clone()
+    }
+
     /// Run `f` on the clients: the running server's, or the stored ones.
     fn on_clients<T>(
         &self,
         on_server: impl FnOnce(&HttpServer) -> T,
         on_store: impl FnOnce(&mut Clients) -> T,
     ) -> Result<T, Value> {
-        if let Some(s) = lock(&self.running).as_ref() {
-            return Ok(on_server(s));
+        if let Some(s) = self.server() {
+            return Ok(on_server(&s));
         }
         let Some(dir) = lock(&self.store_dir).clone() else {
             return Err(failure(
@@ -193,9 +203,10 @@ impl FfiMcp {
             if let Some(l) = guard.as_ref()
                 && let Ok(text) = CString::new(e.to_json().to_string())
             {
-                IN_CALLBACK.with(|c| c.set(true));
+                // -- WP RBFIX -- an event of a call made inside an event's callback
+                let outer = IN_CALLBACK.with(|c| c.replace(true));
                 (l.callback)(text.as_ptr(), l.user_data);
-                IN_CALLBACK.with(|c| c.set(false));
+                IN_CALLBACK.with(|c| c.set(outer));
             }
         });
         let http = HttpConfig {
@@ -208,7 +219,7 @@ impl FfiMcp {
                 s.set_paused(*lock(&self.paused));
                 let addresses: Vec<String> = s.addrs().iter().map(ToString::to_string).collect();
                 let reply = ok(json!({"port": s.port(), "addresses": addresses}));
-                *running = Some(s);
+                *running = Some(Arc::new(s));
                 *lock(&self.store_dir) = store_dir;
                 reply
             }
@@ -287,7 +298,7 @@ pub extern "C" fn dspi_mcp_start(
 pub extern "C" fn dspi_mcp_stop(mcp: *mut FfiMcp) -> bool {
     with_mcp(mcp, false, |m| {
         let running = lock(&m.running).take();
-        running.map(HttpServer::stop).is_some()
+        running.map(|s| s.stop()).is_some()
     })
 }
 
@@ -297,7 +308,7 @@ pub extern "C" fn dspi_mcp_stop(mcp: *mut FfiMcp) -> bool {
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_mcp_status(mcp: *mut FfiMcp, buf: *mut c_char, len: u32) -> u32 {
     with_mcp(mcp, 0, |m| {
-        let reply = match lock(&m.running).as_ref() {
+        let reply = match m.server() {
             Some(s) => ok(s.status()),
             None => ok(json!({"running": false, "paused": *lock(&m.paused)})),
         };
@@ -382,8 +393,7 @@ pub extern "C" fn dspi_mcp_revoke(mcp: *mut FfiMcp, id: u64) -> bool {
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_mcp_pairing_answer(mcp: *mut FfiMcp, request: u64, allow: bool) -> bool {
     with_mcp(mcp, false, |m| {
-        lock(&m.running)
-            .as_ref()
+        m.server()
             .is_some_and(|s| s.pairing_answer(request, allow).unwrap_or(false))
     })
 }
@@ -394,7 +404,7 @@ pub extern "C" fn dspi_mcp_pairing_answer(mcp: *mut FfiMcp, request: u64, allow:
 pub extern "C" fn dspi_mcp_pause(mcp: *mut FfiMcp, paused: bool) {
     with_mcp(mcp, (), |m| {
         *lock(&m.paused) = paused;
-        if let Some(s) = lock(&m.running).as_ref() {
+        if let Some(s) = m.server() {
             s.set_paused(paused);
         }
     });
@@ -407,7 +417,7 @@ pub extern "C" fn dspi_mcp_pause(mcp: *mut FfiMcp, paused: bool) {
 pub extern "C" fn dspi_mcp_activity(mcp: *mut FfiMcp, n: u32, buf: *mut c_char, len: u32) -> u32 {
     with_mcp(mcp, 0, |m| {
         let n = usize::try_from(n).unwrap_or(usize::MAX);
-        let rows: Vec<Value> = lock(&m.running).as_ref().map_or_else(Vec::new, |s| {
+        let rows: Vec<Value> = m.server().map_or_else(Vec::new, |s| {
             s.with_server(|srv| srv.activity(n).iter().map(|e| e.to_json()).collect())
         });
         copy_text(&json!({"ok": true, "value": rows}).to_string(), buf, len)
@@ -428,7 +438,7 @@ pub extern "C" fn dspi_mcp_set_active_device(mcp: *mut FfiMcp, id: *const c_char
             }
         };
         *lock(&m.active) = active.clone();
-        if let Some(s) = lock(&m.running).as_ref() {
+        if let Some(s) = m.server() {
             s.with_server(|srv| srv.set_active_device(active));
         }
         true

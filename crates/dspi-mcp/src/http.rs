@@ -266,7 +266,7 @@ impl Shared {
 pub struct HttpServer {
     shared: Arc<Shared>,
     addrs: Vec<SocketAddr>,
-    accepting: Vec<JoinHandle<()>>,
+    accepting: Mutex<Vec<JoinHandle<()>>>,
 }
 
 impl std::fmt::Debug for HttpServer {
@@ -339,7 +339,7 @@ impl HttpServer {
         Ok(Self {
             shared,
             addrs,
-            accepting,
+            accepting: Mutex::new(accepting),
         })
     }
 
@@ -440,12 +440,9 @@ impl HttpServer {
     }
 
     /// Stop listening. A request in progress finishes; later ones on open
-    /// connections get 503. The clients' last use is written down.
-    pub fn stop(mut self) {
-        self.shutdown();
-    }
-
-    fn shutdown(&mut self) {
+    /// connections get 503. The clients' last use is written down. A second
+    /// call does nothing.
+    pub fn stop(&self) {
         if self.shared.stopping.swap(true, Ordering::SeqCst) {
             return;
         }
@@ -454,7 +451,8 @@ impl HttpServer {
             // Wake the accepting thread; it sees `stopping` and ends.
             let _ = TcpStream::connect_timeout(a, Duration::from_millis(500));
         }
-        for h in self.accepting.drain(..) {
+        let accepting = std::mem::take(&mut *lock(&self.accepting));
+        for h in accepting {
             let _ = h.join();
         }
         if let Err(e) = lock(&self.shared.auth).clients.save() {
@@ -465,7 +463,7 @@ impl HttpServer {
 
 impl Drop for HttpServer {
     fn drop(&mut self) {
-        self.shutdown();
+        self.stop();
     }
 }
 
