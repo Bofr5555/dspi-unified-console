@@ -48,6 +48,16 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun openDemoAlink(): Unit = throw NotImplementedError("open_demo_alink")
 
+    override fun installationView(): InstallationView = throw NotImplementedError("installation_view")
+
+    override fun installationDraftEdit(draft: InstallationDraft, edits: List<InstallationEdit>): InstallationDraft = throw NotImplementedError("installation_draft_edit")
+
+    override fun installationValidate(draft: InstallationDraft): List<InstallationIssue> = throw NotImplementedError("installation_validate")
+
+    override fun installationDiff(draft: InstallationDraft): List<String> = throw NotImplementedError("installation_diff")
+
+    override fun installationSave(draft: InstallationDraft): AlinkSystemSaved = throw NotImplementedError("installation_save")
+
     override fun alinkSystemView(): AlinkSystemView = throw NotImplementedError("alink_system_view")
 
     override fun alinkSystemSave(revision: Long, edits: AlinkSystemEdits): Long = throw NotImplementedError("alink_system_save")
@@ -486,6 +496,8 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun history(n: Long): List<HistoryEntry> = throw NotImplementedError("history")
 
+    override fun revertEntry(id: Long): HistoryMove = throw NotImplementedError("revert_entry")
+
     override fun limitsSetDir(dir: String): Unit = throw NotImplementedError("limits_set_dir")
 
     override fun limitsProfileDocument(): String = throw NotImplementedError("limits_profile_document")
@@ -915,6 +927,14 @@ open class UnimplementedDspiCore : DspiCoreApi {
     override fun snapshotImport(text: String, name: String, note: String): SnapshotInfo = throw NotImplementedError("snapshot_import")
 
     override fun snapshotListMerged(serial: String): SnapshotMergedList = throw NotImplementedError("snapshot_list_merged")
+
+    override fun speakerLayoutSetDir(dir: String): Unit = throw NotImplementedError("speaker_layout_set_dir")
+
+    override fun speakerLayout(): SpeakerLayout? = throw NotImplementedError("speaker_layout")
+
+    override fun speakerLayoutPropose(): SpeakerLayout = throw NotImplementedError("speaker_layout_propose")
+
+    override fun speakerLayoutSet(layout: SpeakerLayout): SpeakerLayout = throw NotImplementedError("speaker_layout_set")
 
     override fun siggenFetchCaps(): SiggenCaps = throw NotImplementedError("siggen_fetch_caps")
 

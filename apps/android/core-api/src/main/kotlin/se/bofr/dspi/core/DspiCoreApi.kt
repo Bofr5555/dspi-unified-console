@@ -208,6 +208,61 @@ interface DspiCoreApi : AutoCloseable {
     fun openDemoAlink()
 
     /**
+     * The installation on the hub this session is on, as a draft to edit,
+     * with the units the hub sees that it does not hold. Every role may
+     * read it; `may_edit` says whether this one may save. Blocks on the
+     * network: keep it off a UI thread.
+     *
+     * Errors: [`DspiError::Disconnected`] with no hub session,
+     * [`DspiError::Link`] with the hub's code or the client's.
+     */
+    @Throws(DspiException::class)
+    fun installationView(): InstallationView
+
+    /**
+     * `edits` made on `draft`, in order, all or none. Sends nothing.
+     *
+     * Errors: [`DspiError::InvalidArgument`] naming the edit that cannot be
+     * made (an id that does not exist or is taken, a serial already in the
+     * installation, a name too long) or a draft that is not a model.
+     */
+    @Throws(DspiException::class)
+    fun installationDraftEdit(draft: InstallationDraft, edits: List<InstallationEdit>): InstallationDraft
+
+    /**
+     * The hub's own validator on `draft`: empty when the hub would take it,
+     * else why not, naming the element. Sends nothing.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a draft that is not a model.
+     */
+    @Throws(DspiException::class)
+    fun installationValidate(draft: InstallationDraft): List<InstallationIssue>
+
+    /**
+     * What saving `draft` would change, one sentence per change, in the
+     * model's order. Sends nothing.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a draft that is not a model.
+     */
+    @Throws(DspiException::class)
+    fun installationDiff(draft: InstallationDraft): List<String>
+
+    /**
+     * Save `draft` as the installation: one `system.set` the hub takes only
+     * while its model is still at the draft's revision. Checked here first
+     * with the hub's validator. Returns the new revision and the hub's
+     * warnings. Admin only. Blocks.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a draft the hub would
+     * refuse (nothing sent); [`DspiError::ReadOnly`] in the client
+     * read-only mode (nothing sent, not even the read); [`DspiError::Link`]
+     * `conflict` when the installation changed on the hub meanwhile (read
+     * it again), `denied` for another role; [`DspiError::Disconnected`].
+     */
+    @Throws(DspiException::class)
+    fun installationSave(draft: InstallationDraft): AlinkSystemSaved
+
+    /**
      * The audio link's installation on the hub this session is on: its
      * elements with their alink state, the rooms, the scenes, alarms and a
      * one-line summary. Reads `system.status` (and `system.get` when the
@@ -1922,6 +1977,9 @@ interface DspiCoreApi : AutoCloseable {
      * polls (a few times). On Android there is nothing to enumerate (the
      * app gets USB broadcasts instead); there it only closes a connection
      * whose stream ended, and apps need not call it.
+     *
+     * -- WP MD0 -- A core in a [`crate::CoreSet`] does nothing here: the set
+     * scans once for all its cores ([`crate::CoreSet::poll_hotplug`]).
      */
     fun pollHotplug()
 
@@ -3028,6 +3086,31 @@ interface DspiCoreApi : AutoCloseable {
      * reconnect starts with none. Empty with no device.
      */
     fun history(n: Long): List<HistoryEntry>
+
+    /**
+     * Revert one change by its id ([`HistoryEntry::id`]), wherever it is
+     * in the history: write back the value it replaced (and what the device
+     * moved with it) through the typed setters, as undo does, but only
+     * while every value it set is still what it left there. Otherwise
+     * nothing is written and the reply reports the conflict: `entry`
+     * `None`, `skipped` the values someone has changed since, `note` who.
+     * A change already undone gives `entry` `None` and a note saying so.
+     * The change then leaves the undo and redo stacks; the reversal is
+     * journalled as an undo.
+     *
+     * An actor other than this app (`crate::actor`) may revert only its
+     * own changes: [`DspiError::ConfirmationRequired`] with code
+     * `not_own_entry` otherwise. The app may revert any.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device, or when the
+     * connection changed during the call; [`DspiError::InvalidArgument`]
+     * for an id the history does not hold (another connection's, or one
+     * past the newest 1000), for a change undo cannot reverse
+     * ([`HistoryEntry::undoable`]) and for a reversal by undo or redo; the
+     * setters' errors, after which the values already written back stay.
+     */
+    @Throws(DspiException::class)
+    fun revertEntry(id: Long): HistoryMove
 
     /**
      * Keep limits profiles (and their PIN hashes) in files under `dir`, the
@@ -5545,6 +5628,56 @@ interface DspiCoreApi : AutoCloseable {
      * UI thread.
      */
     fun snapshotListMerged(serial: String): SnapshotMergedList
+
+    /**
+     * Keep speaker layouts in files under `dir`, the app's own data folder,
+     * one subfolder per device serial (created when first written; "" forgets
+     * the folder). Layouts set before a folder was named are written to it
+     * where it holds none for that device.
+     *
+     * Errors: [`DspiError::Unsupported`] on the web (no files: the page keeps
+     * the layout and sets it again with [`DspiCore::speaker_layout_set`]).
+     */
+    @Throws(DspiException::class)
+    fun speakerLayoutSetDir(dir: String)
+
+    /**
+     * The open device's speaker layout as the user set it; `None` when none
+     * was set (show [`DspiCore::speaker_layout_propose`] to confirm). Reads
+     * the host's file, not the device.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device.
+     */
+    @Throws(DspiException::class)
+    fun speakerLayout(): SpeakerLayout?
+
+    /**
+     * What the device's filters and routing suggest (the inference the
+     * output labels use): each enabled output that plays an input, its role
+     * from its filters (or "sub" in its name), its speaker from its
+     * programme source, one group per speaker. Never confirmed, never saved.
+     * Reads the mirror only.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device.
+     */
+    @Throws(DspiException::class)
+    fun speakerLayoutPropose(): SpeakerLayout
+
+    /**
+     * Keep `layout` as the open device's speaker layout, stamped now, with
+     * its `confirmed_by_user` as given. **For the user's own screens only**
+     * (the Getting Started step, Settings › Speakers, the Measure tables):
+     * an agent never sets roles (MPLAN 2.2). Returns what was kept.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device;
+     * [`DspiError::InvalidArgument`] for an output twice, one the device
+     * lacks, more than 16, or a speaker name over 64 characters (nothing
+     * kept); [`DspiError::Io`] when the file cannot be written;
+     * [`DspiError::ConfirmationRequired`] `user_only` inside another actor's
+     * [`crate::actor::ActorScope`] (WP INT1).
+     */
+    @Throws(DspiException::class)
+    fun speakerLayoutSet(layout: SpeakerLayout): SpeakerLayout
 
     /**
      * The generator's capabilities: the `REQ_SIGGEN_GET_CAPS` header and
