@@ -424,7 +424,7 @@ Panel {
                             readonly property var col: panel.column(index)
                             width: panel.columnWidth
                             height: panel.controlRowHeight
-                            opacity: col && col.enabled ? 1 : 0.3
+                            opacity: col && col.enabled ? 1 : Theme.dim(0.3)
                             MatrixField {
                                 objectName: "Matrix.gain." + gainCell.index
                                 anchors.centerIn: parent
@@ -450,7 +450,7 @@ Panel {
                             readonly property var col: panel.column(index)
                             width: panel.columnWidth
                             height: panel.controlRowHeight
-                            opacity: col && col.enabled ? 1 : 0.3
+                            opacity: col && col.enabled ? 1 : Theme.dim(0.3)
                             MatrixField {
                                 objectName: "Matrix.delay." + delayCell.index
                                 anchors.centerIn: parent
@@ -477,7 +477,7 @@ Panel {
                             readonly property bool muted: col ? col.muted === true : false
                             width: panel.columnWidth
                             height: panel.controlRowHeight
-                            opacity: col && col.enabled ? 1 : 0.3
+                            opacity: col && col.enabled ? 1 : Theme.dim(0.3)
                             IconButton {
                                 objectName: "Matrix.mute." + muteCell.index
                                 anchors.centerIn: parent

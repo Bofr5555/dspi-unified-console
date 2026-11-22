@@ -127,7 +127,8 @@ public:
     using ExtraDone = std::function<void(FfiCore *core, const QString &id, const QString &code, const QString &error)>;
     void openExtra(const QJsonObject &target, ExtraDone done);
     void closeExtra(const QString &id);
-    // The serials the extra cores hold (open, or on their way)
+    // The serials the extra cores hold (open, on their way, or closing:
+    // -- WP LAY7 -- extrasChanged() when one is opened or given back)
     QStringList extraSerials() const { return m_extras.values() + m_extraOpening; }
 
 signals:
@@ -154,6 +155,7 @@ signals:
     // that the Stop goes out while the device is still there.
     void sessionStopping(DeviceSession *session);
     void openFailed(const QString &code, const QString &error);
+    void extrasChanged();   // -- WP LAY7 -- extraSerials()
     void configFailed(const QString &error);
     // -- WP XDEV1 -- (review RB B4) A write the core refused on a device that
     // is not the active one (a limit, the lock...: SessionModel::writeRefused),

@@ -22,7 +22,13 @@ AbstractButton {
     readonly property string shownName: FilesController.offline
         //: %1 is the open file's name
         ? qsTr("File: %1").arg(FilesController.offlineFile)
-        : DeviceModel.connected ? DeviceModel.deviceTitle : qsTr("No Devices")
+        : DeviceModel.connected ? activeTitle || DeviceModel.deviceTitle : qsTr("No Devices")
+    // -- WP LAY7 -- Of several open devices (left open by Modern) the one shown,
+    // as its tab and the device list name it (Demo 2)
+    readonly property string activeTitle: {
+        const row = DeviceRegistry.devices.length > 1 ? DeviceRegistry.devices.find(d => d.active) : null
+        return row ? row.title : ""
+    }
     readonly property string notice: LinkController.lockNotice
     // -- WP SECQT --
     readonly property bool unsecured: DeviceModel.remote && LinkController.unsecured && !FilesController.offline

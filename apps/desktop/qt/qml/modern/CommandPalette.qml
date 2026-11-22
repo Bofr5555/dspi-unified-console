@@ -64,6 +64,16 @@ Popup {
         target: commands.visible ? DeviceRegistry : null
         function onDevicesChanged() { commands.refill() }
     }
+    // -- WP LAY7 -- (review RC, RC10) what can be undone, and whether the layout
+    // may be switched: the grey rows follow
+    Connections {
+        target: commands.visible ? HistoryController : null
+        function onChanged() { commands.refill() }
+    }
+    Connections {
+        target: commands.visible ? LayoutController : null
+        function onSwitchBlockerChanged() { commands.refill() }
+    }
     Connections {
         target: LayoutController
         function onLayoutChanging() { commands.close() }

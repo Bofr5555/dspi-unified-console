@@ -45,7 +45,8 @@ class UnsavedGuard : public QObject {
     Q_OBJECT
     QML_ELEMENT
     QML_SINGLETON
-    // A question (or its save) is under way; another path asking meanwhile is dropped
+    // A question (or its save) is under way; another path asking meanwhile is
+    // dropped (-- WP LAY7 -- with a notice, and the question comes forward)
     Q_PROPERTY(bool asking READ asking NOTIFY askingChanged)
     // Closing the main window asks first. Not while the close only hides it
     // (QGuiApplication::quitOnLastWindowClosed() false, or this set false by a
@@ -81,6 +82,9 @@ public:
     // -- WP QP16 -- The settings question's answer: "accept" (Discard and
     // Switch) goes on to the preset's question, anything else stops
     Q_INVOKABLE void answerSettings(const QString &answer);
+    // -- WP LAY7 -- The busy question's answer: "accept" goes on to the presets'
+    // questions, anything else stays
+    Q_INVOKABLE void answerBusy(const QString &answer);
 
     // The core's lines as the question lists them: at most 15, then a count
     static QString summary(const QStringList &lines);
@@ -98,6 +102,11 @@ signals:
     // switch discards (the Mac's "Unsaved Settings Changes"); answered with
     // answerSettings()
     void settingsQuestion(const QString &title, const QString &text);
+    // -- WP LAY7 -- (review RB B5) Before quitting: a firmware update or a core
+    // voltage calibration runs on an open device, shown or not
+    // (DevicesController::pinnedBy), which quitting breaks off; answered with
+    // answerBusy()
+    void busyQuestion(const QString &title, const QString &text);
 
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
@@ -107,6 +116,8 @@ private:
     // -- WP MDQT2b -- the devices asked about, in turn
     void begin(const QString &op, QList<DeviceSession *> targets, QObject *ctx, std::function<void()> proceed);
     void askNext();
+    QStringList busyTexts() const;   // -- WP LAY7 --
+    void refuseSecond(const QString &op);   // -- WP LAY7 --
     void settleThenRead();
     void read();
     void proceed();
@@ -129,6 +140,8 @@ private:
     QList<QPointer<DeviceSession>> m_targets;   // still to be asked about
     QPointer<DeviceSession> m_target;           // the one asked about now
     QString m_title;
+    // -- WP LAY7 -- a question is on show (not settling, not saving)
+    bool m_shown = false;
 };
 
 #endif // UNSAVEDGUARD_H

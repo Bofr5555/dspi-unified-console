@@ -52,6 +52,12 @@ MenuItem {
         size: 12
         color: Theme.textMuted
     }
+    // -- WP LAY7 -- the text is drawn by the row itself, not the style's label
+    Accessible.role: Accessible.MenuItem
+    Accessible.name: text
+    Accessible.checkable: checkable
+    Accessible.checked: checked
+
     background: Rectangle {
         color: item.highlighted ? Theme.selection : "transparent"
         radius: Theme.radiusSmall

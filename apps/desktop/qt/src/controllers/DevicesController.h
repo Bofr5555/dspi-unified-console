@@ -85,6 +85,8 @@ public:
     // -- WP MDQT2b -- Why the open device `id` cannot be closed or replaced
     // now ("" when it can): a firmware update or a calibration runs on it
     Q_INVOKABLE QString pinnedText(const QString &id) const;
+    // -- WP MDQT2b -- pinnedText() of a session
+    QString pinnedBy(DeviceSession *session) const;
 
     // This app's own hub (sharing), which is not listed as another one
     void setOwnHubId(const QString &id);
@@ -113,8 +115,7 @@ private:
     void browseActive();
     bool takeOpen(const QString &serial, bool remote);
     void refuse(const QString &error);
-    // -- WP MDQT2b -- pinnedText() of a session; Classic's replace refused while the active one is pinned
-    QString pinnedBy(DeviceSession *session) const;
+    // -- WP MDQT2b -- Classic's replace refused while the active one is pinned
     bool refusedPinned();
 
     FfiCore *m_core;   // the active device's: the browse runs on it

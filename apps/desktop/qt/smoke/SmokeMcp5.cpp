@@ -150,16 +150,34 @@ void otherDevice(SmokeDriver &d, MeasureController *mc, const std::function<QJso
     d.check("mcp5: nothing was measured on it", !on || !on->awake());
 
     args.insert(QStringLiteral("device"), b->id());
-    const QJsonObject r = call("dspi_measure_start", args);
+    QJsonObject r = call("dspi_measure_start", args);
     d.check("mcp5: a start on the other device is a request too", !r.value(QLatin1String("isError")).toBool(true));
     d.check("mcp5: it runs there, with its simulated microphone", d.waitFor(15000, [&] {
         for (MeasureSession *m : mc->sessions())
             if (m->session() == b) on = m;
         return on && on->measuring();
-    }) && on->micChoice() == QLatin1String("sim") && !mc->measuring());
+    }) && on->micChoice() == QLatin1String("sim"));
     if (!on) return;
     QObject *page = shell->pageHost();
-    d.check("mcp5: Measure's page comes up", page->property("pageKey").toString() == QLatin1String("measure/measure") && !d.object(QStringLiteral("MeasureWindow")));
+    // -- WP LAY7 -- (INT5 follow-up 3) Measure was last on Documents, and A was shown
+    d.check("mcp5: the asked device is shown, on Measure's measuring tab",
+            registry->active() == b && mc->measuring() && page->property("pageKey").toString() == QLatin1String("measure/measure")
+                && page->property("tab").toString() == QLatin1String("measure") && !d.object(QStringLiteral("MeasureWindow")));
+    d.check("mcp5: it says who asked for it there", mc->runningText().startsWith(QString::fromUtf8("Requested by AI · Smoke agent")));
+    call("dspi_measure_stop", { { QStringLiteral("device"), b->id() } });
+    d.check("mcp5: stopped", d.waitFor(10000, [&] { return !on->running(); }));
+
+    // -- WP LAY7 -- Something runs on the device shown: that stays shown
+    registry->activate(a);
+    d.waitIdle();
+    const QJsonObject here = call("dspi_measure_start", QJsonObject{ { QStringLiteral("device"), a->id() }, { QStringLiteral("outputs"), QJsonArray{ 0 } },
+                                                                     { QStringLiteral("sweep_ms"), 4000 }, { QStringLiteral("passes"), 8 } });
+    d.check("mcp5: a run on the device shown", !here.value(QLatin1String("isError")).toBool(true) && d.waitFor(15000, [&] { return mc->measuring(); }));
+    go("measure", "documents");
+    go("overview", "");
+    r = call("dspi_measure_start", args);
+    d.check("mcp5: the other device's run beside it", !r.value(QLatin1String("isError")).toBool(true) && d.waitFor(15000, [&] { return on->measuring(); }));
+    d.check("mcp5: what runs stays shown, on the measuring tab", registry->active() == a && mc->measuring() && page->property("tab").toString() == QLatin1String("measure"));
     d.check("mcp5: the device shown says what runs on the other, and who asked", d.waitFor(3000, [&] {
         const QVariantList others = mc->otherRuns();
         return others.size() == 1 && others.first().toMap().value(QStringLiteral("text")).toString().startsWith(QString::fromUtf8("Requested by AI · Smoke agent"));
@@ -175,7 +193,7 @@ void otherDevice(SmokeDriver &d, MeasureController *mc, const std::function<QJso
     d.waitFor(3000, [&] { return shell->shownWindows().contains(QStringLiteral("tools.measure")); });
     shell->closeWindow(QStringLiteral("tools.measure"));
     d.spin(300);
-    d.check("mcp5: the window's close stops the shown device's only", on->measuring());
+    d.check("mcp5: the window's close stops the shown device's only", on->measuring() && d.waitFor(10000, [&] { return !mc->running(); }));
     const QJsonObject stopped = call("dspi_measure_stop", { { QStringLiteral("device"), b->id() } });
     d.check("mcp5: the agent's Stop stops it there",
             stopped.value(QLatin1String("structuredContent")).toObject().value(QLatin1String("stopped")).toArray().contains(

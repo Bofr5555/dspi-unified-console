@@ -8,7 +8,9 @@
 #include "DeviceModel.h"
 #include "DeviceRegistry.h"   // -- WP MDQT2b --
 #include "DeviceSession.h"
+#include "DevicesController.h"   // -- WP LAY7 --
 #include "HardwareController.h"   // -- WP QP16 --
+#include "NoticeCenter.h"   // -- WP LAY7 --
 #include "PresetModel.h"
 #include "SessionModel.h"   // -- WP MDQT2b --
 #include "Shell.h"
@@ -133,11 +135,16 @@ void UnsavedGuard::ask(const QString &op, QObject *ctx, std::function<void()> pr
 
 void UnsavedGuard::begin(const QString &op, QList<DeviceSession *> targets, QObject *ctx, std::function<void()> proceed) {
     // One question at a time, as the Mac's modal alert allows
-    if (m_asking) return;
+    if (m_asking) {
+        refuseSecond(op);   // -- WP LAY7 --
+        return;
+    }
     m_targets.clear();
     for (DeviceSession *s : targets)
         if (s && s->model()->connected()) m_targets << s;
-    if (m_targets.isEmpty()) {
+    // -- WP LAY7 -- leaving the app breaks off what pins a device
+    const QStringList busy = op == QLatin1String("device") ? QStringList() : busyTexts();
+    if (m_targets.isEmpty() && busy.isEmpty()) {
         proceed();
         return;
     }
@@ -145,7 +152,47 @@ void UnsavedGuard::begin(const QString &op, QList<DeviceSession *> targets, QObj
     m_ctxObject = ctx;
     m_proceed = std::move(proceed);
     setAsking(true);
-    askNext();
+    if (busy.isEmpty()) {
+        askNext();
+        return;
+    }
+    bringBack();
+    m_shown = true;
+    emit busyQuestion(tr("A Device Is Busy"), busy.join(QLatin1Char('\n')) + QStringLiteral("\n\n") + tr("Quitting now breaks it off. Quit anyway?"));
+}
+
+// -- WP LAY7 --
+QStringList UnsavedGuard::busyTexts() const {
+    QStringList texts;
+    const auto *devices = Registrar::instance<DevicesController>();
+    if (!devices || !m_ctx.registry) return texts;
+    for (DeviceSession *s : m_ctx.registry->sessions()) {
+        const QString text = devices->pinnedBy(s);
+        if (!text.isEmpty()) texts << text;
+    }
+    return texts;
+}
+
+void UnsavedGuard::answerBusy(const QString &answer) {
+    if (!m_asking) return;
+    m_shown = false;
+    if (answer == QLatin1String("accept")) askNext();
+    else finish();
+}
+
+// A path asking while another one's question is open: it is dropped, and the
+// person hears why. The same path again before its question shows (a double
+// click) says nothing: the question is on its way.
+void UnsavedGuard::refuseSecond(const QString &op) {
+    if (!m_shown && op == m_op) return;
+    if (m_shown && m_window) {
+        bringBack();
+        m_window->raise();
+        m_window->requestActivate();
+    }
+    if (auto *notices = Registrar::instance<NoticeCenter>())
+        notices->post(m_shown ? tr("Answer the open question first.")
+                              : tr("Still checking for unsaved changes. Try again in a moment."));
 }
 
 // The next device with something unsaved, or on with the path when none is left
@@ -170,6 +217,7 @@ void UnsavedGuard::askNext() {
     const HardwareController *hardware = Registrar::instance<HardwareController>();
     if (m_op == QLatin1String("device") && hardware && hardware->pendingOn(m_target)) {
         bringBack();
+        m_shown = true;   // -- WP LAY7 --
         emit settingsQuestion(tr("Unsaved Settings Changes"),
                               m_target == m_ctx.activeSession()
                                   ? tr("Settings has pending changes for the current device that have not been saved. "
@@ -185,6 +233,7 @@ void UnsavedGuard::askNext() {
 // -- WP QP16 --
 void UnsavedGuard::answerSettings(const QString &answer) {
     if (!m_asking) return;
+    m_shown = false;   // -- WP LAY7 --
     if (answer == QLatin1String("accept")) settleThenRead();
     else finish();
 }
@@ -220,12 +269,14 @@ void UnsavedGuard::read() {
             return;
         }
         bringBack();
+        m_shown = true;   // -- WP LAY7 --
         emit question(m_op, summary(r.second));
     });
 }
 
 void UnsavedGuard::answer(const QString &answer) {
     if (!m_asking) return;
+    m_shown = false;   // -- WP LAY7 --
     if (answer == QLatin1String("alternative")) {
         askNext();   // -- WP MDQT2b -- the next device, if any
         return;
@@ -266,6 +317,7 @@ void UnsavedGuard::answer(const QString &answer) {
             const QString why = failure(*status);
             bringBack();
             if (m_op == QLatin1String("quit")) {
+                m_shown = true;   // -- WP LAY7 --
                 emit saveFailed(m_op, tr("Save Failed"), tr("Failed to save preset (%1). Quit anyway?").arg(why));
                 return;   // still asking: answerSaveFailed() decides
             }
@@ -276,6 +328,7 @@ void UnsavedGuard::answer(const QString &answer) {
 
 void UnsavedGuard::answerSaveFailed(const QString &answer) {
     if (!m_asking) return;
+    m_shown = false;   // -- WP LAY7 --
     if (answer == QLatin1String("accept")) proceed();
     else finish();
 }
@@ -294,6 +347,7 @@ void UnsavedGuard::finish() {
     m_targets.clear();   // -- WP MDQT2b --
     m_target = nullptr;
     m_title.clear();
+    m_shown = false;   // -- WP LAY7 --
     setAsking(false);
 }
 
@@ -322,6 +376,7 @@ void UnsavedGuard::wire(QQuickWindow *window) {
 // Nothing can be unsaved: no device, or the sidebar's last reading says clean
 // and nothing changed or is queued since
 bool UnsavedGuard::cleanForSure() const {
+    if (!busyTexts().isEmpty()) return false;   // -- WP LAY7 --
     // -- WP MDQT2b -- another open device is not known clean without asking it
     if (m_ctx.registry)
         for (DeviceSession *s : m_ctx.registry->sessions())

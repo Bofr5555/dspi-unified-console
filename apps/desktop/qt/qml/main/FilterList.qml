@@ -229,9 +229,14 @@ Rectangle {
         parent: Overlay.overlay
         title: qsTr("Clear All Bands?")
         // -- WP P1QT2 -- one undo step now (Edit > Undo puts every band back)
+        // -- WP LAY7 -- (review RC, RC11) Modern has no Edit menu (its words are ContextMenus')
         text: list.clearsInput && ChannelController.revision >= 0 && ChannelController.linkedPartner(list.channel) >= 0 // -- WP LAY4 --
-              ? qsTr("Every band on both channels of the linked pair will be reset to its default (flat) state. Edit > Undo puts them back.")
-              : qsTr("Every band in this list will be reset to its default (flat) state. Edit > Undo puts them back.")
+              ? (LayoutController.modern
+                 ? qsTr("Every band on both channels of the linked pair will be reset to its default (flat) state. Undo puts them back.")
+                 : qsTr("Every band on both channels of the linked pair will be reset to its default (flat) state. Edit > Undo puts them back."))
+              : LayoutController.modern
+                ? qsTr("Every band in this list will be reset to its default (flat) state. Undo puts them back.")
+                : qsTr("Every band in this list will be reset to its default (flat) state. Edit > Undo puts them back.")
         acceptText: qsTr("Clear All")
         onAnswered: answer => {
             if (answer !== "accept") return

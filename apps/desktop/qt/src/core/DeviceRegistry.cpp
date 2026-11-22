@@ -175,11 +175,16 @@ void DeviceRegistry::readRows() {
             return rows;
         },
         [this, cores](const QList<QVariantMap> &rows) {
+            bool all = true;
             for (DeviceSession *s : std::as_const(m_sessions)) {
                 const qsizetype at = cores.indexOf(s->handle());
                 if (at >= 0) s->setRow(rows.at(at));
+                else all = false;
             }
             emit devicesChanged();
+            // -- WP LAY7 -- one opened while this reading was queued, whose own
+            // reading found it queued and left it at that
+            if (!all) readRows();
         });
 }
 
@@ -302,10 +307,12 @@ void DeviceRegistry::openExtra(const QJsonObject &target, ExtraDone done) {
                 QString error = o.reply.value(QLatin1String("error")).toString();
                 if (code == QLatin1String("already_open")) error = alreadyOpen(serial);
                 if (done) done(nullptr, QString(), code, error);
+                emit extrasChanged();   // -- WP LAY7 --
                 return;
             }
             m_extras.insert(id, serial);
             if (done) done(o.core, id, QString(), QString());
+            emit extrasChanged();   // -- WP LAY7 --
         });
 }
 
@@ -316,7 +323,10 @@ void DeviceRegistry::closeExtra(const QString &id) {
     // Its serial is held until the set gave it back
     run(
         m_opener, [set, wire] { return isOk(actOnce([&](char *b, uint32_t n) { return dspi_core_set_close(set, wire.constData(), b, n); })); },
-        [this, id](bool) { m_extras.remove(id); });
+        [this, id](bool) {
+            m_extras.remove(id);
+            emit extrasChanged();   // -- WP LAY7 --
+        });
 }
 
 void DeviceRegistry::open(const QJsonObject &target, Done done, bool activate) {

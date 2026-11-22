@@ -193,7 +193,7 @@ Panel {
                         objectName: "CrossfeedWindow.parameters"
                         Layout.fillWidth: true
                         spacing: 14
-                        opacity: panel.custom ? 1 : 0.5
+                        opacity: panel.custom ? 1 : Theme.dim(0.5)
                         SectionHeading { text: qsTr("Parameters") }
                         EffectParameterRow {
                             id: freqRow

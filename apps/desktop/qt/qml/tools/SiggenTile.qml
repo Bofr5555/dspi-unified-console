@@ -17,7 +17,7 @@ AbstractButton {
     focusPolicy: Qt.TabFocus
 
     background: Rectangle {
-        color: tile.chosen ? Qt.alpha(Theme.accent, 0.16) : (tile.hovered && tile.enabled ? Theme.controlHover : Theme.control)
+        color: tile.chosen ? Qt.alpha(Theme.accent, Theme.dark ? 0.16 : 0.12) : (tile.hovered && tile.enabled ? Theme.controlHover : Theme.control)
         border.color: tile.visualFocus ? Theme.focusRing : (tile.chosen ? Qt.alpha(Theme.accent, 0.7) : Theme.separator)
         border.width: tile.visualFocus ? 2 : 1
         opacity: tile.enabled ? 1 : 0.6

@@ -190,6 +190,11 @@ public:
     // their Stop on the page. Anywhere else nothing would show those any
     // more: every device's stops.
     Q_INVOKABLE void panelClosing(bool pageRemains);
+    // -- WP LAY7 -- Brings Measure forward (its page or its window) on one of its
+    // parts ("measure", "tune", "units"...); the shown panel takes it with
+    // takePart(), "" when nothing was asked
+    void showPart(const QString &part);
+    Q_INVOKABLE QString takePart();
     // -- WP RBFIX -- The devices stopAll() would stop something on ("" for none)
     QString runsOn() const;
 
@@ -413,6 +418,7 @@ signals:
     // -- WP MDQT2c --
     void otherRunsChanged();
     void runsChanged();   // -- WP RBFIX -- runsOn()
+    void partAsked();   // -- WP LAY7 -- takePart()
     // Another device is shown: a tab's own drafts start over (a placement chosen
     // for the last one is not assumed for it)
     void deviceSwitched();
@@ -442,6 +448,7 @@ private:
     QVariantList m_others;
     bool m_shutDown = false;
     int m_panels = 0;   // -- WP LAY5b -- panelShown()
+    QString m_askedPart;   // -- WP LAY7 -- showPart()
 };
 
 #endif // MEASURECONTROLLER_H

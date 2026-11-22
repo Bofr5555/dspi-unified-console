@@ -43,7 +43,9 @@ else
     # -- review AT-E -- Rule kept, total raised again: the main run is 592 s
     # quiet after WP ATQTSIM (atqtsim-units 77 s, p5demo-sim 83 s), so twice
     # quiet is 1184 s; 900 s left a loaded host a third of the run as margin.
-    timeout 1200 "$app" "${args[@]}" > "$out/log.txt" 2>&1
+    # -- WP LAY7 -- Rule kept, total raised: 966 s quiet after wave 5, about
+    # 1035 s with both layouts' galleries and accessibility passes.
+    timeout 2400 "$app" "${args[@]}" > "$out/log.txt" 2>&1
     code=$?
     grep -E '^(smoke:|FAIL)' "$out/log.txt"
 fi
@@ -129,6 +131,11 @@ extra=0
 if [ -z "${DSPI_SMOKE_HW:-}" ] && [ -z "${DSPI_SMOKE_SECTION:-}" ]; then
     # QD7: nothing connected and the demo not open
     launch demo-entry '' DSPI_SMOKE_DEMO_ENTRY=1 -- || failed demo-entry $?
+    # -- WP LAY7 -- and in Modern, with what else starts in it
+    modern='[ui]\nlayout=modern\n'
+    launch demo-entry-modern "$modern" DSPI_SMOKE_DEMO_ENTRY=modern -- || failed demo-entry-modern $?
+    launch tray-hidden-modern "[tray]\nshowInTray=true\nstartMinimised=true\n$modern" DSPI_SMOKE_TRAY=hidden DSPI_SMOKE_TRAY_PROBE=1 -- --demo || failed tray-hidden-modern $?
+    launch hw-dry-modern "$modern" DSPI_SMOKE_HW=dry -- --demo || failed hw-dry-modern $?
     # §12.1: the tray settings on; the stand-in says whether the desktop has a tray.
     # A launch that does not quit by itself exits 3.
     tray_on='[tray]\nshowInTray=true\nstartMinimised=true\n'

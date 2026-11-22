@@ -93,6 +93,11 @@ QtObject {
     readonly property color connected: "#34c759"
     readonly property color disconnected: "#ff3b30"
 
+    // -- WP LAY7 -- The opacity of what is off but can be read and changed (a
+    // disabled output's cells, an Off band): Classic's is the Mac's, in Modern it
+    // stays at 3:1 or over (smoke section lay7-contrast)
+    function dim(opacity) { return LayoutController.modern ? Math.max(0.75, opacity) : opacity }
+
     // Banners: background and edge per kind ("info", "warning", "error")
     function bannerFill(kind) {
         if (kind === "error") return dark ? "#4a1f1c" : "#fde8e6"
