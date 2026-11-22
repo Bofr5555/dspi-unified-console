@@ -407,7 +407,10 @@ fn wp_role0_the_layout_round_trips_through_config_export_and_import() {
     let got = other.speaker_layout().unwrap().unwrap();
     assert_eq!(got.serial, "ROLE0-CFG2");
     assert_eq!(got.outputs, layout.outputs);
-    assert!(got.confirmed_by_user);
+    // Review RA F1: an import is never confirmed, whatever the file says,
+    // so measuring refuses until the user confirms it on this device.
+    assert!(!got.confirmed_by_user);
+    assert!(other.confirmed_speaker_layout().is_err());
     // The old option bits import every audio block, the layout with them.
     let third = core_as("ROLE0-CFG3");
     let r = import(&third, 0);

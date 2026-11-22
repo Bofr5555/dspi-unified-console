@@ -379,7 +379,10 @@ impl DspiCore {
 
     /// Keep an imported document's `meta.speakerLayout` for the open device:
     /// outputs it lacks are dropped, the rest kept as the document has them
-    /// (confirmed or not). Returns whether one was kept.
+    /// but always **unconfirmed**, whatever the file says: the export blanks
+    /// the serial, so an import cannot know it is the same speaker, and roles
+    /// come from the user's own setup step (review RA F1). Returns whether one
+    /// was kept.
     pub(crate) fn import_speaker_layout(&self, doc: &Value) -> bool {
         let Some(v) = doc.get("meta").and_then(|m| m.get(META_BLOCK)) else {
             return false;
@@ -402,6 +405,7 @@ impl DspiCore {
             }
         }
         layout.notes.clear();
+        layout.confirmed_by_user = false;
         match self.speaker_layout_set(layout) {
             Ok(_) => true,
             Err(e) => {
