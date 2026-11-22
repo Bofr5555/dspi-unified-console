@@ -155,6 +155,24 @@ void measureAll(SmokeDriver &d, const QString &phase, bool checkHeavy) {
         auto *quick = qobject_cast<QQuickWindow *>(window);
         d.check(QStringLiteral("qtpop: %1 opens").arg(type), open && quick);
         if (!open || !quick) continue;
+        // -- WP INT1 -- Judge the fit, not an earlier section's hand size:
+        // lkui1-system and atqt-units resize the System window by hand for
+        // their screenshots, and a size the person gives a window is kept
+        // (QTPOP2, and ToolWindow's Settings keep it across showings), so it
+        // may be past the cap. Shown again from its default size, as a first
+        // opening is: resized while it shows (a showing's hand size ends with
+        // it), so its layout has followed before it closes.
+        const QSize first(quick->property("defaultWidth").toInt(), quick->property("defaultHeight").toInt());
+        if (!first.isEmpty()) window->resize(first);
+        d.spin(200);
+        window->close();
+        d.spin(100);
+        const bool again = d.waitFor(3000, [&] {
+            window = shell->openWindow(action);
+            return window && window->isVisible();
+        });
+        d.check(QStringLiteral("qtpop: %1 opens again from its default size").arg(type), again && window == quick);
+        if (!again || window != quick) continue;
         const bool heavy = checkHeavy && kHeavy.contains(type);
         if (type == QLatin1String("SettingsWindow") && settings) {
             for (const QVariant &row : settings->sidebarRows(QString())) {
