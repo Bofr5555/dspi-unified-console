@@ -1,24 +1,29 @@
 // -- WP LAY3 -- The Modern shell on the demo device: every PanelTable action
 // shows its panel on its page (and only there: one panel, one place), the rail,
 // the page tabs, the arrangements, the device tabs (a second demo opened beside
-// the first through the registry, as Modern will once keepOpen is on), the
+// the first, as Modern does with keepOpen on; -- WP INT3 -- an edit on each
+// stays on its own device), the
 // device switcher, the top bar, the dock, the status strip, the notification
 // drawer, and the way back to Classic. Then the Modern gallery: every page at
 // 1280x800 and the sections at 1000x660, dark and light, to gallery/modern-*.
 #include "SmokeDriver.h"
 
+#include "ChannelController.h"   // -- WP INT3 --
 #include "Core.h"
 #include "DeviceInfoController.h"
 #include "DeviceModel.h"
 #include "DeviceRegistry.h"
+#include "DeviceSession.h"   // -- WP INT3 --
 #include "DevicesController.h"
 #include "LayoutController.h"
 #include "NoticeCenter.h"
 #include "OnboardingController.h"
 #include "Registrar.h"
+#include "SessionModel.h"   // -- WP INT3 --
 #include "SettingsController.h"
 #include "Shell.h"
 #include "SidebarController.h"
+#include "Snapshot.h"   // -- WP INT3 --
 #include "StatsController.h"
 
 #include <QCoreApplication>
@@ -31,6 +36,7 @@
 #include <QTest>
 #include <QWindow>
 #include <algorithm>
+#include <cmath>   // -- WP INT3 --
 #include <functional>
 #include <memory>
 
@@ -91,7 +97,8 @@ void shellPart(Modern &m) {
     m.check("the page host is the shell's, on the Overview", m.host() && m.section() == QLatin1String("overview"));
     m.check("the dashboard is the Overview", m.visible(QStringLiteral("OverviewSection")) && m.visible(QStringLiteral("Dashboard")));
     auto *registry = DeviceRegistry::instance();
-    m.check("choosing a device still replaces (keepOpen waits for MDQT2a-c)", registry && !registry->keepOpen());
+    // -- WP INT3 -- KEEPOPEN is on: MDQT2a-c rebound every controller
+    m.check("choosing a device opens it beside the others (keepOpen)", registry && registry->keepOpen());
     for (const char *name : { "AppMenuButton", "DeviceTabs", "TopBar.preset", "TopBar.ab", "TopBar.search", "TopBar.ai", "TopBar.theme",
                               "TopBar.undo", "TopBar.redo", "TopBar.history", "TopBar.save", "TopBar.bell", "NavRail", "Dock.source",
                               "Dock.mode", "Dock.volume", "Dock.mute", "Dock.bypass", "Dock.meters" })
@@ -363,6 +370,48 @@ void noticesPart(Modern &m) {
     m.check("a dismissed notice is kept under Earlier", bell && bell->property("shownCount").toInt() == before && drawer && drawer->property("kept").toInt() >= 1);
 }
 
+// -- WP INT3 -- Several devices on (KEEPOPEN): an edit on A, a switch to B by
+// its tab, an edit there, back to A. Each edit is on the device it was made on
+// (the core's state, and each session's own setter count), and both survive.
+void editsPart(Modern &m, const QString &first, const QString &second, const std::function<bool(const QString &)> &clickTab) {
+    auto *registry = DeviceRegistry::instance();
+    auto *cc = Registrar::instance<ChannelController>();
+    DeviceSession *a = registry->session(first), *b = registry->session(second);
+    m.check("int3: two sessions", a && b && a != b && cc);
+    if (!a || !b || !cc) return;
+    const auto idle = [&](DeviceSession *s) {
+        return m.d.waitFor(8000, [&] { return !s->model()->busy() && s->worker()->pending() == 0; });
+    };
+    const auto near = [](double x, double y, double tol) { return std::abs(x - y) <= tol; };
+    const auto shown = [&](double freq) { return near(cc->band(0, 0, false).value(QStringLiteral("freq")).toDouble(), freq, 0.5); };
+    const auto show = [&](const QString &id, DeviceSession *s) {
+        return clickTab(id) && m.d.waitFor(3000, [&] { return registry->active() == s; }) && m.d.waitIdle() && idle(s);
+    };
+    m.check("int3: A's tab makes A active", show(first, a));
+    const int setsB = b->model()->settersRun();
+    cc->setBandType(0, 0, false, FILTER_PEAKING);
+    cc->setBandValue(0, 0, false, QStringLiteral("freq"), 432);
+    cc->setBandValue(0, 0, false, QStringLiteral("gain"), 4.5);
+    // B's tab at once: A's writes may still be on their way
+    m.check("int3: B's tab makes B active", show(second, b));
+    m.check("int3: B shows its own band, not A's edit", !shown(432));
+    m.check("int3: A's edit landed on A and nothing on B", idle(a) && b->model()->settersRun() == setsB);
+    const int setsA = a->model()->settersRun();
+    cc->setBandType(0, 0, false, FILTER_LOWSHELF);
+    cc->setBandValue(0, 0, false, QStringLiteral("freq"), 1234);
+    cc->setBandValue(0, 0, false, QStringLiteral("gain"), -2.5);
+    m.check("int3: B's edit landed on B and nothing on A",
+            idle(b) && b->model()->settersRun() > setsB && a->model()->settersRun() == setsA);
+    const int setsB2 = b->model()->settersRun();
+    m.check("int3: back on A by its tab", show(first, a));
+    m.check("int3: A shows its own edit", m.d.waitFor(2000, [&] { return shown(432); }));
+    m.check("int3: nothing more on either", idle(a) && idle(b) && a->model()->settersRun() == setsA && b->model()->settersRun() == setsB2);
+    const FilterParams fa = a->model()->state()->filters[0][0], fb = b->model()->state()->filters[0][0];
+    m.check("int3: A keeps its edit", fa.filter_type == FILTER_PEAKING && near(fa.freq, 432, 0.5) && near(fa.gain, 4.5, 0.05));
+    m.check("int3: B keeps its own", fb.filter_type == FILTER_LOWSHELF && near(fb.freq, 1234, 0.5) && near(fb.gain, -2.5, 0.05));
+    m.check("int3: and B's page shows B's", show(second, b) && m.d.waitFor(2000, [&] { return shown(1234); }));
+}
+
 void devicesPart(Modern &m) {
     auto *registry = DeviceRegistry::instance();
     auto *devices = Registrar::instance<DevicesController>();
@@ -390,8 +439,8 @@ void devicesPart(Modern &m) {
     m.go("overview");
     m.d.spin(100);
 
-    // A second device beside it, through the registry (no UI opens one until keepOpen is on)
-    registry->openDemo();
+    // A second device beside it, as Open Demo does (-- WP INT3 -- with keepOpen on)
+    devices->chooseDemo();
     const bool two = m.d.waitFor(15000, [&] { return registry->devices().size() == 2 && registry->activeId() != first; });
     m.d.waitIdle();
     m.d.spin(200);
@@ -409,6 +458,7 @@ void devicesPart(Modern &m) {
     m.click(tabName(second));
     m.check("and back", m.d.waitFor(3000, [&] { return registry->activeId() == second; }));
     m.d.waitIdle();
+    editsPart(m, first, second, [&](const QString &id) { return m.click(tabName(id)); });   // -- WP INT3 --
     // Device tabs at the rail's top
     m.layout->arrangement()->setProperty("deviceTabs", QStringLiteral("rail"));
     m.d.spin(150);
@@ -418,6 +468,11 @@ void devicesPart(Modern &m) {
     m.layout->arrangement()->setProperty("deviceTabs", QStringLiteral("topBar"));
     m.d.spin(150);
     const bool closed = m.click(QStringLiteral("DeviceRow.close.") + second);
+    // -- WP INT3 -- the tab's device has editsPart's change: the question, Discard
+    QObject *unsaved = m.d.object(QStringLiteral("FilesHost.unsavedQuestion"));
+    m.check("int3: closing an edited tab asks first",
+            unsaved && m.d.waitFor(3000, [&] { return unsaved->property("opened").toBool(); }));
+    if (unsaved) QMetaObject::invokeMethod(unsaved, "finish", Q_ARG(QVariant, QStringLiteral("alternative")));
     m.check("a tab closes its device, the neighbour is active", closed && m.d.waitFor(8000, [&] { return registry->devices().size() == 1 && registry->activeId() == first; }));
     m.d.waitIdle();
     m.d.spin(200);

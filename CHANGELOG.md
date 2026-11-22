@@ -49,6 +49,10 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
   switch came (or whose Getting Started was never finished) was counted as new and now opens in Modern: choose "Switch to
   the Classic Layout" in the uConsole menu to go back. Modern's pages are still being filled in. (WP LAY3)
 - A theme setting (Settings › Appearance, and Modern's top bar): the system's, light or dark. (WP LAY3)
+- Modern opens several devices at once: a DSPi chosen (on USB, through a hub, or the demo) opens in a tab of its own
+  beside the others, and each tab keeps its device's edits, pages, history, drafts and running measurement. Closing a
+  tab asks about that device's unsaved changes; quitting asks about each open device. Classic still shows one device
+  and replaces it. (WP MDQT2a, MDQT2b, MDQT2c, INT3)
 
 ### Android
 - DSPi Link is reachable from the main page (owner report on 0.14.0: only through the settings

@@ -31,10 +31,9 @@ Item {
     readonly property bool devicesPage: pages.visible && pages.section === "devices" && pages.tab === "devices"
 
     // -- WP LAY3 -- KEEPOPEN: several devices at once (a chosen device opens in a
-    // tab beside the others). Off until every controller follows the active
-    // device (MDQT2a-c, and INT2's follow-up 1: System and Installation); the
-    // integration then sets this to true, and changes nothing else here.
-    readonly property bool severalDevices: false
+    // tab beside the others). -- WP INT3 -- on: every controller follows the
+    // active device (MDQT2a-c, with INT2's follow-up 1 in MDQT2b).
+    readonly property bool severalDevices: true
     Binding {
         target: DeviceRegistry
         property: "keepOpen"
