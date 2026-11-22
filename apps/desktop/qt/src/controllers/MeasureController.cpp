@@ -259,8 +259,11 @@ void MeasureController::agentRequest(const QJsonObject &ticket) {
     s->onLoop(
         s, [](FfiCore *) { return QByteArray(); },
         [s, ticket, back, id](const QByteArray &) {
-            s->startForAgent(ticket, [back, id](bool started, const QString &note) {
-                if (back) back->reportMeasure(id, started, note);
+            QPointer<MeasureSession> run(s);
+            s->startForAgent(ticket, [back, id, run](bool started, const QString &note) {
+                if (back) back->reportMeasure(id, started, note, [run] {   // -- WP RCFIX --
+                    if (run) run->stop();
+                });
             });
         });
 }

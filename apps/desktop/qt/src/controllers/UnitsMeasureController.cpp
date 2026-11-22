@@ -1714,8 +1714,11 @@ void UnitsMeasureController::agentRequest(const QJsonObject &ticket) {
     if (!ai) return;
     const quint64 id = quint64(ticket.value(QLatin1String("request_id")).toDouble());
     QPointer<AiController> back(ai);
-    const auto done = [back, id](bool started, const QString &note) {
-        if (back) back->reportMeasure(id, started, note);
+    const auto done = [this, back, id](bool started, const QString &note) {
+        QPointer<UnitsMeasureController> self(this);
+        if (back) back->reportMeasure(id, started, note, [self] {   // -- WP RCFIX --
+            if (self) self->stop();
+        });
     };
     MeasureSession *m = measure();
     if (!m || m_shutDown) {

@@ -275,6 +275,13 @@ void measureSection(SmokeDriver &d) {
                 QStringLiteral("measurement")) &&
                 d.waitFor(10000, [&] { return !mc->running(); }));
 
+    // -- WP RCFIX -- (review RC, RC4) a start whose request was withdrawn meanwhile
+    // is stopped; one that could not start has nothing to stop
+    int withdrawn = 0;
+    ai->reportMeasure(999999, false, QString(), [&withdrawn] { withdrawn += 10; });
+    ai->reportMeasure(999999, true, QString(), [&withdrawn] { ++withdrawn; });
+    d.check("mcp5: the app hears that a started request was withdrawn, and stops it", d.waitFor(5000, [&] { return withdrawn == 1; }));
+
     shell->closeWindow(QStringLiteral("tools.measure"));
     otherDevice(d, mc, call, outs);
 

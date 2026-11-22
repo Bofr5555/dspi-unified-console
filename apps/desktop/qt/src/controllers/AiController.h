@@ -178,7 +178,9 @@ public:
     // { request_id, device, kind, loop, actor, client_name, what, setup }); the
     // view that runs it starts it with dspi_mcp_measure_begin on the device's
     // core and says how it went here. Every request ends in exactly one report.
-    void reportMeasure(quint64 request, bool started, const QString &note);
+    // -- WP RCFIX -- (review RC, RC4) `withdrawn`: the job started, but the request
+    // was withdrawn meanwhile (its agent gone, agents turned off): stop it
+    void reportMeasure(quint64 request, bool started, const QString &note, std::function<void()> withdrawn = {});
 
 signals:
     void stateChanged();

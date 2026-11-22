@@ -602,14 +602,14 @@ fn wp_mcp5_an_unconfirmed_layout_is_refused() {
     }
     assert!(s.measure_requests().is_empty());
     assert!(!core.measure_state().active);
+    // Asked for while it was confirmed, not confirmed any more.
+    layout(&core, true);
+    ok_at(&mut s, c, 0, "dspi_measure_start", json!({"outputs": [0]}));
+    let req = s.measure_requests()[0]["request_id"].as_u64().unwrap();
+    let ticket = s.measure_take(req).unwrap();
+    layout(&core, false);
     assert_eq!(
-        crate::tools::measure::begin(
-            &core,
-            &json!({"kind": "measure", "actor": s.actor_of(c).unwrap(),
-                    "setup": {"outputs": [{"output": 0}], "rolesFromLayout": true}}),
-            48_000
-        )
-        .unwrap_err(),
+        measure::begin(&core, &ticket, 48_000).unwrap_err(),
         LAYOUT_TEXT,
         "the core refuses it too, at the app's start"
     );
@@ -751,14 +751,13 @@ fn wp_mcp5_test_signals_follow_the_setting_and_the_hard_rules_stay() {
 
     // The tweeter never gets pink noise or a sweep below 1 kHz: the app's
     // start with a forged setup is refused by the core.
-    let e = measure::begin(
-        &core,
-        &json!({"kind": "measure", "actor": s.actor_of(c).unwrap(),
-                "setup": {"kind": "pink", "outputs": [{"output": 2}], "rolesFromLayout": true}}),
-        48_000,
-    )
-    .unwrap_err();
+    ok_at(&mut s, c, 0, "dspi_measure_start", args);
+    let id = s.measure_requests()[0]["request_id"].as_u64().unwrap();
+    let mut forged = s.measure_take(id).unwrap();
+    forged["setup"] = json!({"kind": "pink", "outputs": [{"output": 2}], "rolesFromLayout": true});
+    let e = measure::begin(&core, &forged, 48_000).unwrap_err();
     assert!(e.contains("measure.tweeter_stimulus"), "{e}");
+    s.measure_report(id, false, &e);
     assert!(!core.measure_state().active);
 }
 
@@ -839,6 +838,56 @@ fn wp_mcp5_requests_lapse_are_declined_stopped_and_withdrawn() {
     // Agents turned off: what they started stops, what waits is withdrawn.
     s.stop_agents(now);
     assert!(!core.measure_state().active);
+
+    // -- WP RCFIX -- (review RC, RC4) A taken one does not lapse while the app
+    // opens the microphone; it starts and the agent reads that it runs.
+    let take = |s: &mut Server| {
+        let id = s.measure_requests()[0]["request_id"].as_u64().unwrap();
+        (id, s.measure_take(id).unwrap())
+    };
+    ok_at(&mut s, c, now, "dspi_measure_start", args.clone());
+    let (id, ticket) = take(&mut s);
+    now += REQUEST_TTL_MS + 1;
+    s.tick(now);
+    assert_eq!(
+        status(&mut s, c, now)["request"]["state"],
+        json!("starting")
+    );
+    measure::begin(&core, &ticket, 48_000).unwrap();
+    assert!(s.measure_report(id, true, ""));
+    assert_eq!(status(&mut s, c, now)["request"]["state"], json!("running"));
+    // Its ticket starts nothing again.
+    core.measure_stop();
+    assert!(measure::begin(&core, &ticket, 48_000).is_err());
+    s.tick(now + 1_000);
+    // The agent's Stop, or the agent gone, while the app opens the
+    // microphone: nothing starts, and the app hears it may not run.
+    ok_at(&mut s, c, now, "dspi_measure_start", args.clone());
+    let (id, ticket) = take(&mut s);
+    ok_at(&mut s, c, now, "dspi_measure_stop", json!({}));
+    let e = measure::begin(&core, &ticket, 48_000).unwrap_err();
+    assert!(e.contains("withdrawn"), "{e}");
+    assert!(!s.measure_report(id, true, ""));
+    let gone = s.connect();
+    ok_at(&mut s, gone, now, "dspi_measure_start", args.clone());
+    let (id, ticket) = take(&mut s);
+    s.disconnect(gone);
+    let e = measure::begin(&core, &ticket, 48_000).unwrap_err();
+    assert!(e.contains("withdrawn"), "{e}");
+    assert!(!core.measure_state().active, "nothing was played");
+    assert!(!s.measure_report(id, true, ""));
+    let log = s.measure_log();
+    assert_eq!(log.last().unwrap()["state"], json!("cancelled"), "{log:?}");
+    // One taken from a server that is gone.
+    {
+        let mut other = server(&set, ConfirmMode::NeverAsk, true);
+        let c2 = other.connect();
+        ok_at(&mut other, c2, now, "dspi_measure_start", args.clone());
+        let (_, ticket) = take(&mut other);
+        drop(other);
+        assert!(measure::begin(&core, &ticket, 48_000).is_err());
+        assert!(!core.measure_state().active);
+    }
 
     // A client gone: its waiting request is withdrawn.
     ok_at(&mut s, c, now, "dspi_measure_start", args.clone());

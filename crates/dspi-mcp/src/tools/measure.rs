@@ -29,7 +29,8 @@
 //! - **A Keep after a verify that did not pass is the user's** (the core's
 //!   "second Keep"): the agent's Keep is refused then.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use dspi_core::actor::{ActorId, ActorScope, JobActor, WriteHook};
@@ -80,8 +81,8 @@ pub static TOOLS: &[&Tool] = &[
     &SYSTEM_REVERT,
 ];
 
-/// A request the app has not taken (or taken and not started) within this
-/// lapses: the app is not there to measure.
+/// A request the app has not taken within this lapses: the app is not there
+/// to measure. -- WP RCFIX -- A taken one does not: the app is starting it.
 pub const REQUEST_TTL_MS: u64 = 30_000;
 
 /// The requests a store keeps, ended ones included (the oldest ended go).
@@ -221,6 +222,26 @@ pub struct Request {
     /// The finished measurement's document, kept for `dspi_tune_propose`
     /// when the store could not file it.
     pub document: Option<String>,
+    // -- WP RCFIX --
+    /// Its ticket's number while it is taken ([`TICKETS`]), 0 else.
+    ticket_no: u64,
+}
+
+// -- WP RCFIX -- (review RC, RC4)
+/// The numbers of the tickets whose request is taken: [`begin`], which has no
+/// store, starts no other (its agent gone, agents turned off, reported).
+static TICKETS: Mutex<BTreeSet<u64>> = Mutex::new(BTreeSet::new());
+
+fn tickets() -> MutexGuard<'static, BTreeSet<u64>> {
+    TICKETS.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+/// A new ticket's number, live.
+fn new_ticket() -> u64 {
+    static NEXT: AtomicU64 = AtomicU64::new(1);
+    let no = NEXT.fetch_add(1, Ordering::Relaxed);
+    tickets().insert(no);
+    no
 }
 
 impl Request {
@@ -243,6 +264,7 @@ impl Request {
     pub fn ticket(&self) -> Value {
         json!({
             "request_id": self.id,
+            "ticket_no": self.ticket_no,
             "device": self.device,
             "kind": self.kind.as_str(),
             "loop": self.kind.loop_word(),
@@ -251,6 +273,16 @@ impl Request {
             "what": self.what,
             "setup": self.setup,
         })
+    }
+
+    // -- WP RCFIX --
+    /// After a change of state: the ticket of a request no longer taken
+    /// starts nothing.
+    fn void_ticket(&mut self) {
+        if self.state != RequestState::Taken && self.ticket_no != 0 {
+            tickets().remove(&self.ticket_no);
+            self.ticket_no = 0;
+        }
     }
 
     fn agent_view(&self) -> Value {
@@ -328,6 +360,7 @@ impl Jobs {
         let mut i = self.lock();
         if let Some(r) = i.requests.get_mut(&id) {
             f(r);
+            r.void_ticket(); // -- WP RCFIX --
             i.changed = true;
         }
     }
@@ -374,13 +407,15 @@ impl Jobs {
             return None;
         }
         r.state = RequestState::Taken;
+        r.ticket_no = new_ticket(); // -- WP RCFIX --
         let t = r.ticket();
         i.changed = true;
         Some(t)
     }
 
     /// The app says how request `id` went: started (`ok`) or declined with
-    /// `note`. False when it was not taken (or no longer open).
+    /// `note`. False when it was not taken (or no longer open): the app stops
+    /// what it started.
     pub fn report(&self, id: u64, ok: bool, note: &str) -> bool {
         let mut i = self.lock();
         let Some(r) = i.requests.get_mut(&id) else {
@@ -395,6 +430,7 @@ impl Jobs {
             r.state = RequestState::Declined;
             r.note = untrusted::note(note);
         }
+        r.void_ticket(); // -- WP RCFIX --
         i.changed = true;
         true
     }
@@ -414,19 +450,32 @@ impl Jobs {
         std::mem::take(&mut self.lock().changed)
     }
 
-    /// `client` went: what it asked for and nobody took is withdrawn (what
-    /// runs runs on; the user sees it and can stop it).
+    /// `client` went: what it asked for and has not started is withdrawn,
+    /// -- WP RCFIX -- taken or not (what runs runs on; the user sees it and
+    /// can stop it).
     pub fn forget(&self, client: ClientId) {
         let mut i = self.lock();
         let mut any = false;
         for r in i.requests.values_mut() {
-            if r.client == client && r.state == RequestState::Waiting {
+            if r.client == client && r.state.open() {
                 r.state = RequestState::Cancelled;
                 r.note = "the agent disconnected".into();
+                r.void_ticket();
                 any = true;
             }
         }
         i.changed |= any;
+    }
+}
+
+// -- WP RCFIX --
+impl Drop for Jobs {
+    /// The server is gone: its tickets start nothing.
+    fn drop(&mut self) {
+        for r in self.lock().requests.values_mut() {
+            r.state = RequestState::Cancelled;
+            r.void_ticket();
+        }
     }
 }
 
@@ -438,14 +487,29 @@ pub fn tick(set: &CoreSet, jobs: &Jobs, now_ms: u64) {
             RequestState::Waiting | RequestState::Taken if r.at_ms == 0 => {
                 jobs.update(r.id, |q| q.at_ms = now_ms.max(1));
             }
-            RequestState::Waiting | RequestState::Taken
-                if now_ms.saturating_sub(r.at_ms) >= REQUEST_TTL_MS =>
-            {
+            RequestState::Waiting if now_ms.saturating_sub(r.at_ms) >= REQUEST_TTL_MS => {
                 jobs.update(r.id, |q| {
+                    // -- WP RCFIX -- taken meanwhile: the app is starting it
+                    if q.state != RequestState::Waiting {
+                        return;
+                    }
                     q.state = RequestState::Lapsed;
                     q.note = "the app did not start it in time (is the app's window open?); \
                               nothing was played"
                         .into();
+                });
+            }
+            // -- WP RCFIX -- nothing can start it any more
+            RequestState::Taken
+                if DeviceId::parse(&r.device)
+                    .and_then(|d| set.core(&d))
+                    .is_none() =>
+            {
+                jobs.update(r.id, |q| {
+                    if q.state == RequestState::Taken {
+                        q.state = RequestState::Declined;
+                        q.note = "the device was closed; nothing was played".into();
+                    }
                 });
             }
             RequestState::Started => {
@@ -578,13 +642,22 @@ fn ended(core: &DspiCore, r: &Request) -> Option<(String, Option<String>)> {
 /// drives the job as its own and reports with `Server::measure_report`. The
 /// job runs as the agent, attribution only: the core's own rules (the
 /// preflight again, the tweeter floor, the level caps, the limits) judge
-/// it; the policy judged the request.
+/// it; the policy judged the request. -- WP RCFIX -- A ticket whose request
+/// is not taken any more (the agent disconnected or stopped it, agents turned
+/// off, reported already) starts nothing.
 pub fn begin(core: &DspiCore, ticket: &Value, rate_hz: u32) -> Result<Value, String> {
     let kind = ticket
         .get("kind")
         .and_then(Value::as_str)
         .and_then(JobKind::of)
         .ok_or("not a measurement request")?;
+    let live = ticket
+        .get("ticket_no")
+        .and_then(Value::as_u64)
+        .is_some_and(|no| tickets().contains(&no));
+    if !live {
+        return Err("the request was withdrawn; nothing was played".into());
+    }
     let actor = ticket
         .get("actor")
         .and_then(Value::as_u64)
@@ -935,6 +1008,7 @@ fn request(call: &Call<'_>, kind: JobKind, setup: Value, what: String) -> ToolRe
         at_ms: 0,
         filed_id: String::new(),
         document: None,
+        ticket_no: 0,
     });
     Ok(json!({
         "ok": true,

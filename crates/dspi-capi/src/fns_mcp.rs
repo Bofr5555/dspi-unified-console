@@ -728,7 +728,8 @@ pub extern "C" fn dspi_mcp_measure_take(
 
 /// How request `id` went: `started` true once `dspi_mcp_measure_begin`
 /// started it, false with `note` (the reason, in words; may be null) when it
-/// could not. False when the request was not open.
+/// could not. False when the request was not open (withdrawn meanwhile: stop
+/// what was started).
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_mcp_measure_report(
     mcp: *mut FfiMcp,
@@ -749,7 +750,8 @@ pub extern "C" fn dspi_mcp_measure_report(
 /// rules judge it again (the preflight, the tweeter's floor, the level caps,
 /// the limits). Reply: the job's state as its own start gives it (`{ok,
 /// ...}`: a measurement's, the low-end search's, the tune's or the system
-/// session's), or `{ok: false, code: "refused", error}` with nothing played.
+/// session's), or `{ok: false, code: "refused", error}` with nothing played (a
+/// blocker, or the request is not taken any more: withdrawn, reported).
 /// Needs no MCP handle.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_mcp_measure_begin(

@@ -226,11 +226,13 @@ void AiController::takeMeasureRequests() {
              });
 }
 
-void AiController::reportMeasure(quint64 request, bool started, const QString &note) {
+void AiController::reportMeasure(quint64 request, bool started, const QString &note, std::function<void()> withdrawn) {
     FfiMcp *mcp = m_mcp;
     const QByteArray text = note.toUtf8();
     onThread([mcp, request, started, text] { return dspi_mcp_measure_report(mcp, request, started, text.constData()); },
-             [](bool) {});
+             [started, withdrawn = std::move(withdrawn)](bool taken) {
+                 if (started && !taken && withdrawn) withdrawn();   // -- WP RCFIX --
+             });
 }
 
 void AiController::setPairing(const QJsonObject &pairing) {
