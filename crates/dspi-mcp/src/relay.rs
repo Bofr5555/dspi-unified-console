@@ -164,6 +164,27 @@ struct Reply {
     body: Vec<u8>,
 }
 
+// -- WP MCP2c --
+/// A 404 that is the app's "no such session" (`http.rs` `Response::error`:
+/// code -32000, no id), not a JSON-RPC reply of the agent's request (an
+/// unknown method's -32601 carries its id).
+fn session_gone(reply: &Reply) -> bool {
+    serde_json::from_slice::<Value>(&reply.body)
+        .ok()
+        .and_then(|v| v.pointer("/error/code").and_then(Value::as_i64))
+        == Some(-32000)
+}
+
+/// [`session_gone`] on a 404 with `body` (tests).
+#[cfg(test)]
+pub(crate) fn tests_wp_mcp2c_session_gone(body: &[u8]) -> bool {
+    session_gone(&Reply {
+        status: 404,
+        session: None,
+        body: body.to_vec(),
+    })
+}
+
 /// POST `body` to `path` on the app; `headers` are added as given.
 fn post(
     cfg: &RelayConfig,
@@ -360,7 +381,12 @@ impl Relay<'_> {
                 Err(_) => return Sent::Failed(NOT_RUNNING_TEXT.into()),
             };
         }
-        if reply.status == 404 && self.session.is_some() && self.renew_session() {
+        // -- WP MCP2c -- only the app's "no such session" (review RB: not any 404)
+        if reply.status == 404
+            && session_gone(&reply)
+            && self.session.is_some()
+            && self.renew_session()
+        {
             reply = match self.send_once(msg) {
                 Ok(r) => r,
                 Err(_) => return Sent::Failed(NOT_RUNNING_TEXT.into()),
@@ -434,7 +460,7 @@ impl Relay<'_> {
                 .and_then(Value::as_str)
                 .unwrap_or("pairing was refused")
                 .to_owned();
-            self.say(&why);
+            self.say(&crate::untrusted::note(&why)); // -- WP MCP2c --
             return Err(format!("DSPi Console: {why}"));
         }
         let ticket = v
@@ -443,6 +469,9 @@ impl Relay<'_> {
             .unwrap_or("")
             .to_owned();
         let code = v.get("code").and_then(Value::as_str).unwrap_or("");
+        // -- WP MCP2c -- the agent's own name, cleaned for the terminal (review RB)
+        let name = crate::untrusted::clean(&name, crate::untrusted::CLIENT_MAX_BYTES);
+        let code = crate::untrusted::name(code);
         self.say(&format!(
             "DSPi Console asks you to allow \"{name}\". Check that it shows the code {code}, then click Allow."
         ));

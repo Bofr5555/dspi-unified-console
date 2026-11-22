@@ -216,6 +216,10 @@ struct Mcp {
     sessions: BTreeMap<String, Session>,
     /// Counts session uses, to find the least recently used.
     uses: u64,
+    // -- WP MCP2c -- review RB: a request authorised just before a revoke
+    // must not make the revoked client a principal again
+    /// Paired clients revoked while serving (ids are never reused).
+    revoked: std::collections::BTreeSet<u64>,
 }
 
 struct Auth {
@@ -307,6 +311,7 @@ impl HttpServer {
                 principals: BTreeMap::new(),
                 sessions: BTreeMap::new(),
                 uses: 0,
+                revoked: std::collections::BTreeSet::new(), // -- WP MCP2c --
             }),
             auth: Mutex::new(Auth {
                 clients,
@@ -375,6 +380,7 @@ impl HttpServer {
         let removed = lock(&self.shared.auth).clients.revoke(id);
         {
             let mut mcp = lock(&self.shared.mcp);
+            mcp.revoked.insert(id); // -- WP MCP2c --
             if let Some(cid) = mcp.principals.remove(&id) {
                 mcp.server.disconnect(cid);
             }
@@ -868,14 +874,36 @@ fn mismatch(id: &Value, what: &str) -> Response {
     )
 }
 
-/// The server's client for paired client `owner`, made on first use.
-fn client_for(mcp: &mut Mcp, owner: u64) -> ClientId {
+/// The server's client for paired client `owner`, made on first use;
+/// `None` once `owner` was revoked (-- WP MCP2c --: a request authorised
+/// before the revoke and served after it).
+fn client_for(mcp: &mut Mcp, owner: u64) -> Option<ClientId> {
+    if mcp.revoked.contains(&owner) {
+        return None;
+    }
     if let Some(c) = mcp.principals.get(&owner) {
-        return *c;
+        return Some(*c);
     }
     let c = mcp.server.connect();
     mcp.principals.insert(owner, c);
-    c
+    Some(c)
+}
+
+// -- WP MCP2c --
+/// Whether a revoked paired client `owner` would become a principal again
+/// (tests: review RB's revoke race). False is right.
+#[cfg(test)]
+pub(crate) fn tests_wp_mcp2c_revoked_becomes_a_principal() -> bool {
+    let mut mcp = Mcp {
+        server: Server::new(dspi_core::CoreSet::new(), crate::ServerConfig::default()),
+        principals: BTreeMap::new(),
+        sessions: BTreeMap::new(),
+        uses: 0,
+        revoked: std::collections::BTreeSet::from([5]),
+    };
+    let again = client_for(&mut mcp, 5).is_some() || mcp.principals.contains_key(&5);
+    // Another client still is one.
+    again || client_for(&mut mcp, 6).is_none()
 }
 
 fn new_session_id() -> Option<String> {
@@ -1019,7 +1047,9 @@ fn forward(
     let now_ms = shared.now_ms();
     let reply = {
         let mut mcp = lock(&shared.mcp);
-        let client = client_for(&mut mcp, owner);
+        let Some(client) = client_for(&mut mcp, owner) else {
+            return unauthorised(); // -- WP MCP2c --
+        };
         mcp.server.handle_value(client, now_ms, msg)
     };
     match reply {
@@ -1037,7 +1067,9 @@ fn forward(
 fn relay_reply(shared: &Shared, owner: u64, msg: Value, status: u16) -> Response {
     let now_ms = shared.now_ms();
     let mut mcp = lock(&shared.mcp);
-    let client = client_for(&mut mcp, owner);
+    let Some(client) = client_for(&mut mcp, owner) else {
+        return unauthorised(); // -- WP MCP2c --
+    };
     match mcp.server.handle_value(client, now_ms, msg) {
         Some(r) => Response::json(status, r),
         None => Response::empty(202),
@@ -1047,7 +1079,9 @@ fn relay_reply(shared: &Shared, owner: u64, msg: Value, status: u16) -> Response
 fn initialize(shared: &Shared, owner: u64, msg: Value) -> Response {
     let now_ms = shared.now_ms();
     let mut mcp = lock(&shared.mcp);
-    let client = client_for(&mut mcp, owner);
+    let Some(client) = client_for(&mut mcp, owner) else {
+        return unauthorised(); // -- WP MCP2c --
+    };
     let Some(reply) = mcp.server.handle_value(client, now_ms, msg) else {
         return Response::empty(202);
     };

@@ -864,8 +864,10 @@ version = "0.14.0"
 dependencies = [
  "data-encoding",
  "dspi-core",
+ "dspi-hub",
  "dspi-measure",
  "dspi-proto",
+ "dspi-transport",
  "getrandom 0.4.3",
  "httparse",
  "log",
