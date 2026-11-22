@@ -77,6 +77,9 @@ public:
     // -- WP ATQT -- the several-units step's session on the hub
     // (dspi_measure_system_tick; the blocks to dspi_measure_system_capture_push)
     std::atomic<bool> system{ false };
+    // -- WP MCP5 -- the low-end search (dspi_measure_rolloff_tick; its segments'
+    // blocks to dspi_measure_capture_push)
+    std::atomic<bool> rolloff{ false };
 
     explicit MeasureLoop(FfiCore *core) : m_core(core) {}
     FfiCore *core() const { return m_core; }
@@ -104,6 +107,8 @@ signals:
     void passiveFrame(const QByteArray &json);
     // -- WP ATQT -- the several-units session's state (MeasureSystemState)
     void systemState(const QByteArray &json);
+    // -- WP MCP5 -- the low-end search's state (MeasureRolloffState)
+    void rolloffState(const QByteArray &json);
 
 private:
     void tick();
@@ -118,6 +123,8 @@ private:
     int m_passiveTicks = 0;   // -- WP P5QUI2 --
     QByteArray m_lastSystem;   // -- WP ATQT --
     qint64 m_systemAt = 0;     // -- WP ATQT --
+    QByteArray m_lastRolloff;  // -- WP MCP5 --
+    qint64 m_rolloffAt = 0;    // -- WP MCP5 --
 };
 
 class MeasureSession : public QObject {
@@ -272,6 +279,13 @@ public:
     void nextPosition();
     // Stop: the run, the live view and the tune's runs, the microphone
     void stop();
+    // -- WP MCP5 -- An AI agent's request (a ticket from AiController): the
+    // microphone as for start(), then the job (dspi_mcp_measure_begin: a
+    // measurement, the low-end search, the tune's runs) driven as this view's
+    // own and said as "Requested by AI · name". `done` once: started, or why not.
+    void startForAgent(const QJsonObject &ticket, std::function<void(bool started, const QString &note)> done);
+    // "AI · name" while an agent's request runs here, "" otherwise
+    QString agentLabel() const { return m_agentLabel; }
 
     // ---- The result ----
     void setOutputShown(int output, bool shown);
@@ -462,6 +476,10 @@ private:
     bool m_tuneRunning = false;
     // The session's last run was the tune's (its result is not the window's)
     bool m_tuneSession = false;
+    // -- WP MCP5 -- the low-end search runs; "AI · name" while an agent's request does
+    bool m_rolloffRunning = false;
+    QString m_agentLabel;
+    void onRolloffState(const QByteArray &json);
 
     QByteArray m_result;
     QString m_resultFrom;

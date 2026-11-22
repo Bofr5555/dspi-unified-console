@@ -400,11 +400,15 @@ void SpeakersController::writeBack(int output, const QString &role, const QStrin
 
 QString SpeakersController::bannerText(bool here) const {
     const QString s = status();
+    // -- WP MCP5 -- (review RB C4) "imported" is any unconfirmed layout this console
+    // did not write: a configuration file or another app (never an agent: no tool
+    // writes it), so the words do not claim a file
     if (s == QLatin1String("imported"))
-        return here ? tr("Imported speaker layout: these roles came with a configuration file. Check that they match this "
-                         "DSPi's speakers, then confirm them.")
-                    : tr("Imported speaker layout: these roles came with a configuration file. Check that they match this "
-                         "DSPi's speakers, then confirm them in Settings › Speakers.");
+        return here ? tr("Imported speaker layout: these roles were set outside this app (a configuration file or "
+                         "another app). Check that they match this DSPi's speakers, then confirm them.")
+                    : tr("Imported speaker layout: these roles were set outside this app (a configuration file or "
+                         "another app). Check that they match this DSPi's speakers, then confirm them in Settings › "
+                         "Speakers.");
     if (s == QLatin1String("unconfirmed"))
         return here ? tr("Not confirmed yet: check which output drives what, then confirm.")
                     : tr("Your speaker layout is not confirmed yet. Check which output drives what, then confirm it in "

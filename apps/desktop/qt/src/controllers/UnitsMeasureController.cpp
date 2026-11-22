@@ -12,6 +12,8 @@
 #include "MeasureController.h"
 #include "SessionModel.h"
 #include "NoticeCenter.h"
+#include "AiController.h"   // -- WP MCP5 --
+#include "Shell.h"          // -- WP MCP5 --
 
 #include "CoreApi.h"
 
@@ -151,6 +153,9 @@ UnitsMeasureController::UnitsMeasureController(const AppContext &ctx, QObject *p
     // The other controllers exist once every constructor has run
     QMetaObject::invokeMethod(this, [this] {
         rehost();   // -- WP MDQT2c --
+        // -- WP MCP5 -- an AI agent's runs across units
+        if (auto *ai = Registrar::instance<AiController>())
+            connect(ai, &AiController::measureRequested, this, &UnitsMeasureController::agentRequest);
         if (auto *link = Registrar::instance<LinkController>()) {
             connect(link, &LinkController::devicesChanged, this, [this] {
                 if (m_entered) refreshUnits();
@@ -1139,7 +1144,11 @@ void UnitsMeasureController::updateRunning() {
     emit stateChanged();
     if (MeasureSession *m = measure()) {
         const bool on = running();
-        m->setSystemRun(on, on ? (phaseText().isEmpty() ? tr("Measuring across units.") : phaseText()) : QString(), [this] { stop(); });
+        if (!on && !m_starting) m_agentLabel.clear();   // -- WP MCP5 --
+        QString text = on ? (phaseText().isEmpty() ? tr("Measuring across units.") : phaseText()) : QString();
+        //: %1 is "AI · " and the agent's name, %2 what plays
+        if (on && !m_agentLabel.isEmpty()) text = tr("Requested by %1: %2").arg(m_agentLabel, text);   // -- WP MCP5 --
+        m->setSystemRun(on, text, [this] { stop(); });
     }
 }
 
@@ -1662,3 +1671,89 @@ void UnitsMeasureController::revert() {
                emit stepDone(QStringLiteral("revert"), true);
            });
 }
+
+// -- WP MCP5 -- An AI agent's measurement across units, its summed check or its
+// verify: the checks were the agent's tool's (each unit's roles from its own
+// confirmed speaker layout); here the microphone, then dspi_mcp_measure_begin on
+// the device shown, driven as this view's own session.
+void UnitsMeasureController::agentRequest(const QJsonObject &ticket) {
+    if (ticket.value(QLatin1String("loop")).toString() != QLatin1String("system")) return;
+    auto *ai = Registrar::instance<AiController>();
+    if (!ai) return;
+    const quint64 id = quint64(ticket.value(QLatin1String("request_id")).toDouble());
+    QPointer<AiController> back(ai);
+    const auto done = [back, id](bool started, const QString &note) {
+        if (back) back->reportMeasure(id, started, note);
+    };
+    MeasureSession *m = measure();
+    if (!m || m_shutDown) {
+        done(false, tr("The Measure view is not ready."));
+        return;
+    }
+    if (ticket.value(QLatin1String("device")).toString() != m_ctx.registry->activeId() || !m->isActive()) {
+        done(false, tr("Measuring across units runs on the device the app shows: ask the user to show that device."));
+        return;
+    }
+    if (running() || m_starting || m->running()) {
+        done(false, tr("Something already runs on this device in the app; nothing was played."));
+        return;
+    }
+    if (!m->playBlocker().isEmpty()) {
+        done(false, m->playBlocker());
+        return;
+    }
+    m_ctx.shell->showTool(QStringLiteral("tools.measure"));
+    clearWords();
+    const QString kind = ticket.value(QLatin1String("kind")).toString();
+    const QByteArray setup = QJsonDocument(ticket.value(QLatin1String("setup")).toObject().value(QLatin1String("setup")).toObject())
+                                 .toJson(QJsonDocument::Compact);
+    const QByteArray text = QJsonDocument(ticket).toJson(QJsonDocument::Compact);
+    const quint64 epoch = m_epoch;
+    m_starting = true;
+    m_agentLabel = ticket.value(QLatin1String("client_name")).toString();
+    updateRunning();
+    setBusy(tr("Starting"));
+    openMicForRun([this, m, epoch, done, text, kind, setup](bool ok, int rateHz) {
+        if (!ok || epoch != m_epoch) {
+            m_starting = false;
+            setBusy(QString());
+            m->closeMic();
+            updateRunning();
+            done(false, ok ? tr("Stopped in the app before it began.")
+                           : (m->error().isEmpty() ? tr("The microphone could not be opened.") : m->error()));
+            return;
+        }
+        m_micOurs = true;
+        onLoop([text, rateHz](FfiCore *c) {
+                   return once([&](char *b, uint32_t l) { return dspi_mcp_measure_begin(c, text.constData(), uint32_t(rateHz), b, l); });
+               },
+               [this, m, epoch, done, kind, setup](const QByteArray &r) {
+                   m_starting = false;
+                   setBusy(QString());
+                   const QJsonObject st = object(r);
+                   if (!isOk(st)) {
+                       m_micOurs = false;
+                       m->closeMic();
+                       updateRunning();
+                       fail(st, QStringLiteral("start"));
+                       done(false, str(st, "error"));
+                       return;
+                   }
+                   if (kind == QLatin1String("system")) {
+                       m_measured = setup;
+                       m_result = {};
+                       m_arrivals.clear();
+                       m_delays.clear();
+                       m_graph.clear();
+                       emit resultChanged();
+                       setProposal({});
+                       setApplied({});
+                       disarm();
+                   }
+                   beginSession(st);
+                   done(true, QString());
+                   if (epoch != m_epoch) stop();
+               });
+    });
+}
+

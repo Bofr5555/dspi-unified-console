@@ -23,6 +23,7 @@
 #include <QJSEngine>
 #include <QJsonDocument>
 #include <QLocale>
+#include <QMetaMethod>   // -- WP MCP5 --
 #include <QSaveFile>
 #include <QSettings>
 #include <QStandardPaths>
@@ -186,7 +187,47 @@ void AiController::onEvent(const QJsonObject &event) {
         setPairing(event);
     } else if (what == QLatin1String("pairingEnded")) {
         if (event.value(QLatin1String("id")) == m_pairing.value(QLatin1String("id"))) setPairing({});
+    } else if (what == QLatin1String("measureRequests")) {
+        takeMeasureRequests();   // -- WP MCP5 --
     }
+}
+
+// -- WP MCP5 -- An agent's measurement requests: each taken once, its ticket to
+// the Measure views. A request no view takes is reported at once, so the agent
+// hears why instead of waiting for the server's lapse.
+void AiController::takeMeasureRequests() {
+    FfiMcp *mcp = m_mcp;
+    onThread([mcp] { return parse(readSized([mcp](char *b, uint32_t n) { return dspi_mcp_measure_requests(mcp, b, n); }, 4096)); },
+             [this, mcp](const QJsonObject &reply) {
+                 for (const QJsonValue &v : reply.value(QLatin1String("value")).toArray()) {
+                     const quint64 id = quint64(v.toObject().value(QLatin1String("request_id")).toDouble());
+                     if (id == 0 || m_measureTaken.contains(id)) continue;
+                     m_measureTaken.insert(id);
+                     // Taking acts: one buffer that holds any ticket, never a second call
+                     onThread(
+                         [mcp, id] {
+                             QByteArray buf(1 << 22, '\0');
+                             const uint32_t needed = dspi_mcp_measure_take(mcp, id, buf.data(), uint32_t(buf.size()));
+                             if (needed == 0 || needed > uint32_t(buf.size())) return QJsonObject();
+                             return parse(QByteArray(buf.constData(), int(needed) - 1));
+                         },
+                              [this, id](const QJsonObject &taken) {
+                                  if (!isOk(taken)) return;   // withdrawn or lapsed meanwhile
+                                  const QJsonObject ticket = taken.value(QLatin1String("ticket")).toObject();
+                                  if (isSignalConnected(QMetaMethod::fromSignal(&AiController::measureRequested)))
+                                      emit measureRequested(ticket);
+                                  else
+                                      reportMeasure(id, false, tr("The app's Measure view is not available."));
+                              });
+                 }
+             });
+}
+
+void AiController::reportMeasure(quint64 request, bool started, const QString &note) {
+    FfiMcp *mcp = m_mcp;
+    const QByteArray text = note.toUtf8();
+    onThread([mcp, request, started, text] { return dspi_mcp_measure_report(mcp, request, started, text.constData()); },
+             [](bool) {});
 }
 
 void AiController::setPairing(const QJsonObject &pairing) {
@@ -239,6 +280,7 @@ void AiController::startServer() {
         { QStringLiteral("storeDir"), QDir::toNativeSeparators(m_storeDir) },
         { QStringLiteral("appVersion"), AppIdentity::version() },
         { QStringLiteral("templateDir"), QDir::toNativeSeparators(FilesController::templatesDir()) },
+        { QStringLiteral("measuring"), true },   // -- WP MCP5 -- the Measure views take agents' requests
     };
     const QByteArray json = QJsonDocument(config).toJson(QJsonDocument::Compact);
     onThread(

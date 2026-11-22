@@ -6,6 +6,8 @@
 #include "DeviceSession.h"
 #include "NoticeCenter.h"
 #include "SpeakersController.h"
+#include "AiController.h"   // -- WP MCP5 --
+#include "Shell.h"          // -- WP MCP5 --
 
 #include <QCoreApplication>
 #include <QThread>
@@ -33,6 +35,15 @@ MeasureController::MeasureController(const AppContext &ctx, QObject *parent) : Q
                 connect(sc, &SpeakersController::storedChanged, this, [this, sc](const QString &origin) {
                     if (origin != QLatin1String("measure")) session()->takeLayout(sc->stored());
                 });
+        },
+        Qt::QueuedConnection);
+    // -- WP MCP5 -- an AI agent's measurement requests (the several units' run is
+    // UnitsMeasureController's)
+    QMetaObject::invokeMethod(
+        this,
+        [this] {
+            if (auto *ai = Registrar::instance<AiController>())
+                connect(ai, &AiController::measureRequested, this, &MeasureController::agentRequest);
         },
         Qt::QueuedConnection);
     // Before the cores go (main.cpp shuts them down after the event loop)
@@ -207,3 +218,27 @@ QString MeasureController::runsOn() const {
         if (const MeasureSession *s = m_sessions.value(d); s && s->underWay()) titles << d->title();
     return titles.join(QStringLiteral(", "));
 }
+
+// -- WP MCP5 -- An AI agent's request: the Measure view comes up and the device's
+// session runs it as its own start, said as "Requested by AI · name"; the
+// outcome goes back to the agent (AiController::reportMeasure).
+void MeasureController::agentRequest(const QJsonObject &ticket) {
+    if (ticket.value(QLatin1String("loop")).toString() == QLatin1String("system")) return;
+    auto *ai = Registrar::instance<AiController>();
+    if (!ai) return;
+    const quint64 id = quint64(ticket.value(QLatin1String("request_id")).toDouble());
+    const QString device = ticket.value(QLatin1String("device")).toString();
+    DeviceSession *on = m_ctx.registry->session(device);
+    if (m_shutDown || !on) {
+        ai->reportMeasure(id, false, tr("That device is no longer open in the app."));
+        return;
+    }
+    MeasureSession *s = m_sessions.value(on);
+    if (!s) s = make(on);
+    m_ctx.shell->showTool(QStringLiteral("tools.measure"));
+    QPointer<AiController> back(ai);
+    s->startForAgent(ticket, [back, id](bool started, const QString &note) {
+        if (back) back->reportMeasure(id, started, note);
+    });
+}
+

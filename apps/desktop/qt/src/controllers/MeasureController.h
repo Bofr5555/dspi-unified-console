@@ -419,6 +419,9 @@ private:
     void drop(DeviceSession *device);
     void shutdown();
     MeasureSession *byId(const QString &id) const;
+    // -- WP MCP5 -- an AI agent's request (AiController::measureRequested): run
+    // on its device's session, shown as "Requested by AI · name"
+    void agentRequest(const QJsonObject &ticket);
 
     AppContext m_ctx;
     mutable QHash<DeviceSession *, MeasureSession *> m_sessions;
