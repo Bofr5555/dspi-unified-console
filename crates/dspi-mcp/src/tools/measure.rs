@@ -37,8 +37,9 @@ use dspi_core::actor::{ActorId, ActorScope, JobActor, WriteHook};
 use dspi_core::measure::{
     MeasureCoupler, MeasureDocCurvesOptions, MeasureIssue, MeasurePhase, MeasurePlacement,
     MeasurePreflight, MeasureRolloffSetup, MeasureRolloffStage, MeasureRunKind, MeasureSetup,
-    MeasureSystemPhase, MeasureSystemSetup, MeasureSystemUnit, MeasureSystemUnitCheck,
-    MeasureTuneOptions, MeasureTuneStage, MeasureTuneState, measure_doc_curves,
+    MeasureSystemPhase, MeasureSystemPurpose, MeasureSystemSetup, MeasureSystemUnit,
+    MeasureSystemUnitCheck, MeasureTuneOptions, MeasureTuneStage, MeasureTuneState,
+    measure_doc_curves,
 };
 use dspi_core::{CoreSet, DeviceId, DspiCore, DspiError, SpeakerLayout};
 use serde_json::{Map, Value, json};
@@ -550,11 +551,11 @@ fn ended(core: &DspiCore, r: &Request) -> Option<(String, Option<String>)> {
     match r.kind {
         JobKind::Measure => {
             let st = core.measure_state();
-            if st.active {
-                return None;
-            }
             if st.actor != r.actor {
                 return Some(("another measurement replaced it".into(), None));
+            }
+            if st.active {
+                return None;
             }
             match st.phase {
                 MeasurePhase::Done => Some((
@@ -572,6 +573,10 @@ fn ended(core: &DspiCore, r: &Request) -> Option<(String, Option<String>)> {
         }
         JobKind::Rolloff => {
             let st = core.measure_rolloff_state();
+            // -- WP RCFIX -- (review RC, RC5) the user's search is the user's
+            if st.actor != r.actor {
+                return Some(("another low-end search replaced it".into(), None));
+            }
             if st.running {
                 return None;
             }
@@ -595,6 +600,15 @@ fn ended(core: &DspiCore, r: &Request) -> Option<(String, Option<String>)> {
         }
         JobKind::TuneSumCheck | JobKind::TuneVerify => {
             let st = core.measure_tune_state();
+            // -- WP RCFIX -- (review RC, RC5) the step the tune is at now is
+            // of the request's kind, else its outcome is another step's
+            let before_apply = matches!(
+                st.stage,
+                MeasureTuneStage::Idle | MeasureTuneStage::Proposed | MeasureTuneStage::SumCheck
+            );
+            if before_apply != (r.kind == JobKind::TuneSumCheck) {
+                return Some(("the runs ended; the tune has moved on".into(), None));
+            }
             if st.running {
                 return None;
             }
@@ -613,6 +627,18 @@ fn ended(core: &DspiCore, r: &Request) -> Option<(String, Option<String>)> {
         }
         JobKind::System | JobKind::SystemSumCheck | JobKind::SystemVerify => {
             let st = core.measure_system_state();
+            // -- WP RCFIX -- (review RC, RC5)
+            let purpose = match r.kind {
+                JobKind::SystemSumCheck => MeasureSystemPurpose::SumCheck,
+                JobKind::SystemVerify => MeasureSystemPurpose::Verify,
+                _ => MeasureSystemPurpose::Measure,
+            };
+            if st.purpose != purpose {
+                return Some((
+                    "the runs across units ended; another run replaced them".into(),
+                    None,
+                ));
+            }
             if st.active {
                 return None;
             }

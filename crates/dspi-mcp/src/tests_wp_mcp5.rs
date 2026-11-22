@@ -955,3 +955,45 @@ fn wp_mcp5_the_measurement_list_and_read() {
     assert!(p["proposal_id"].is_u64(), "{p}");
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+// -- WP RCFIX -- (review RC, RC5)
+/// The user's low-end search, started before the tick that sees the agent's
+/// end, is never filed under the agent's request.
+#[test]
+fn wp_rcfix_the_users_search_is_not_the_agents() {
+    let (set, _id, core) = demo();
+    layout(&core, true);
+    let mut s = server(&set, ConfirmMode::NeverAsk, true);
+    let c = s.connect();
+    let args = json!({"output": 2, "start_hz": 4000});
+    let r = ok_at(&mut s, c, 0, "dspi_measure_rolloff_start", args);
+    assert_eq!(r["status"], json!("waiting_for_app"), "{r}");
+    let id = r["request_id"].as_u64().unwrap();
+    app_takes(&mut s, &core);
+    assert_eq!(status(&mut s, c, 100)["request"]["state"], json!("running"));
+    core.measure_rolloff_stop();
+    let mine = core
+        .measure_rolloff_start(dspi_core::measure::MeasureRolloffSetup {
+            output: 2,
+            sweep_ms: 1_000,
+            start_level_only: true,
+            ..Default::default()
+        })
+        .unwrap();
+    assert_eq!(mine.actor, dspi_core::actor::EMBEDDER);
+    let st = status(&mut s, c, 1_000);
+    assert_eq!(st["request"]["state"], json!("ended"), "{st}");
+    let note = st["request"]["note"].as_str().unwrap();
+    assert!(note.contains("replaced"), "{note}");
+    assert_eq!(st["request"]["filed_measurement_id"], json!(""), "{st}");
+    // The user's runs on, and ends as the user's.
+    assert!(core.measure_rolloff_state().running);
+    core.measure_rolloff_stop();
+    s.tick(2_000);
+    let log = s.measure_log();
+    let r = log
+        .iter()
+        .find(|r| r["request_id"].as_u64() == Some(id))
+        .unwrap();
+    assert_eq!(r["note"].as_str(), Some(note), "{log:?}");
+}
