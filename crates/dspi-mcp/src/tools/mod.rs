@@ -7,5 +7,10 @@ pub mod read;
 pub mod apply;
 pub mod edit;
 // -- WP MCP2b --
+pub mod autoeq;
+pub mod effects;
+pub mod files;
+pub mod library;
+pub mod names;
 // -- WP MCP2c --
 // -- WP MCP5 --

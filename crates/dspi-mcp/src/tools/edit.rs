@@ -386,13 +386,14 @@ pub(crate) fn execute(
     }))
 }
 
+// -- WP MCP2b -- pub(crate): `newest`, `own_ids_since`
 /// The newest journal id on `core`, 0 for none.
-fn newest(core: &DspiCore) -> u64 {
+pub(crate) fn newest(core: &DspiCore) -> u64 {
     core.history(1).first().map_or(0, |e| e.id)
 }
 
 /// `actor`'s own journal ids newer than `since`, oldest first, once each.
-fn own_ids_since(core: &DspiCore, actor: u32, since: u64) -> Vec<u64> {
+pub(crate) fn own_ids_since(core: &DspiCore, actor: u32, since: u64) -> Vec<u64> {
     let mut ids: Vec<u64> = core
         .history(200)
         .into_iter()
@@ -406,7 +407,9 @@ fn own_ids_since(core: &DspiCore, actor: u32, since: u64) -> Vec<u64> {
 
 // ---------------------------------------------------------- the arguments
 
-fn u8_arg(args: &Map<String, Value>, key: &str) -> Option<u8> {
+// -- WP MCP2b -- pub(crate): `u8_arg`, `bool_arg`, `channel`, `schema`, `with_target`,
+// `write_result_schema`
+pub(crate) fn u8_arg(args: &Map<String, Value>, key: &str) -> Option<u8> {
     args.get(key)
         .and_then(Value::as_u64)
         .map(|v| u8::try_from(v).unwrap_or(u8::MAX))
@@ -416,7 +419,7 @@ fn f32_arg(args: &Map<String, Value>, key: &str) -> Option<f32> {
     args.get(key).and_then(Value::as_f64).map(|v| v as f32)
 }
 
-fn bool_arg(args: &Map<String, Value>, key: &str) -> Option<bool> {
+pub(crate) fn bool_arg(args: &Map<String, Value>, key: &str) -> Option<bool> {
     args.get(key).and_then(Value::as_bool)
 }
 
@@ -425,7 +428,10 @@ fn need<T>(v: Option<T>, key: &str) -> Result<T, ToolError> {
 }
 
 /// The wire channel a call names, as a `u8`, and whether it is an output.
-fn channel(st: &DspState, args: &Map<String, Value>) -> Result<(u8, bool, u8), ToolError> {
+pub(crate) fn channel(
+    st: &DspState,
+    args: &Map<String, Value>,
+) -> Result<(u8, bool, u8), ToolError> {
     let t = target(st, args)?;
     let ch = u8::try_from(t.channel).map_err(|_| ToolError::new("no such channel"))?;
     let index = u8::try_from(t.index).map_err(|_| ToolError::new("no such channel"))?;
@@ -506,12 +512,12 @@ fn slot_schema(free_ok: bool) -> Value {
     }
 }
 
-fn schema(props: Map<String, Value>, required: &[&str]) -> Value {
+pub(crate) fn schema(props: Map<String, Value>, required: &[&str]) -> Value {
     json!({"type": "object", "properties": props, "required": required,
            "additionalProperties": false})
 }
 
-fn with_target(extra: Value) -> Map<String, Value> {
+pub(crate) fn with_target(extra: Value) -> Map<String, Value> {
     let mut m = target_props();
     if let Value::Object(e) = extra {
         m.extend(e);
@@ -519,7 +525,7 @@ fn with_target(extra: Value) -> Map<String, Value> {
     m
 }
 
-fn write_result_schema() -> Value {
+pub(crate) fn write_result_schema() -> Value {
     json!({"type": "object", "required": ["ok", "changes"],
            "properties": {"ok": {"type": "boolean"}, "changes": {"type": "array"},
                           "undo_id": {"type": ["integer", "null"]}}})

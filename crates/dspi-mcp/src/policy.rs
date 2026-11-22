@@ -159,6 +159,9 @@ pub enum RiskKind {
     FlashWrite,
     /// The installation saved (every unit). -- for MCP2c --
     InstallationSave,
+    // -- WP MCP2b --
+    /// The input source changed (another signal plays).
+    Source,
 }
 
 impl RiskKind {
@@ -177,6 +180,7 @@ impl RiskKind {
             Self::Recall => "recall",
             Self::FlashWrite => "flash_write",
             Self::InstallationSave => "installation_save",
+            Self::Source => "source", // -- WP MCP2b --
         }
     }
 }
@@ -270,6 +274,12 @@ pub struct Judging {
     pub guard_begun: Option<u64>,
     /// The guarded apply the call ended (keep or revert).
     pub guard_ended: Option<u64>,
+    // -- WP MCP2b --
+    /// A wholesale write the user allowed as a whole (a recall, a preset
+    /// load, an import: [`require`]'s static class): the hook asks nothing
+    /// more of it, but still refuses, and refuses a lowered tweeter
+    /// protection too ([`umbrella`]).
+    pub wholesale: bool,
 }
 
 /// A call's [`Judging`], shared by the tool and the hook.
@@ -358,6 +368,48 @@ pub fn require(
     Err(ToolError::new(HELD_TEXT))
 }
 
+// -- WP MCP2b --
+/// A static class for a quiet write the hook cannot see (a crossfeed pair
+/// map, a snapshot's name): asked under "ask on everything" only, refused
+/// under a policy that is not [`AgentPolicy`]. The grant key is
+/// `static.change` with `indices`.
+pub fn require_change(cell: &JudgingCell, what: &str, indices: &[u8]) -> Result<(), ToolError> {
+    let mut j = lock(cell);
+    let Some(mode) = j.mode else {
+        return Err(ToolError::new(
+            "the server's policy does not let agents do this",
+        ));
+    };
+    let key = WriteKey::new("static.change", indices, ParamValue::Trigger);
+    if mode != ConfirmMode::AskEverything || j.grant.contains(&key) {
+        return Ok(());
+    }
+    j.asked.push(Risk {
+        kind: RiskKind::Change,
+        what: what.to_owned(),
+        output: None,
+        keys: vec![key],
+    });
+    Err(ToolError::new(HELD_TEXT))
+}
+
+/// A wholesale write's verdict once the user allowed it whole
+/// ([`Judging::wholesale`]): what it would ask passes, but a lowered tweeter
+/// protection is refused, as the user was not told of it. -- WP MCP2b --
+pub fn umbrella(verdict: Verdict) -> Verdict {
+    match verdict {
+        Verdict::Ask(risks) => match risks.iter().find(|r| r.kind == RiskKind::TweeterCrossing) {
+            Some(r) => Verdict::Refuse(format!(
+                "{}: a wholesale change (a recall, a preset load, an import) may not remove or \
+                 lower a tweeter's high-pass; the user can do it in the app.",
+                r.output.map_or_else(|| "an output".to_owned(), out_word)
+            )),
+            None => Verdict::Pass,
+        },
+        other => other,
+    }
+}
+
 /// Whether `code` (a [`DspiError::ConfirmationRequired`]'s) is a refusal no
 /// confirmation can lift: never retried, never asked (review RA, MCP0 item
 /// 7). `user_editing` is not one (retry), nor is [`AGENT_CONFIRM`] (asked).
@@ -425,6 +477,7 @@ pub fn judge(state: &DspState, writes: &[WriteKey], j: &Judging) -> Verdict {
     let mut refusals = Vec::new();
     judge_values(state, &after, writes, &mut risks);
     judge_highpass(state, &after, writes, &j.roles, &mut risks, &mut refusals);
+    judge_effects(state, &after, writes, &mut risks); // -- WP MCP2b --
     if let Some(why) = refusals.into_iter().next() {
         return Verdict::Refuse(why);
     }
@@ -458,7 +511,8 @@ pub fn judge(state: &DspState, writes: &[WriteKey], j: &Judging) -> Verdict {
 /// other is a change all the same, asked about under "ask on everything"
 /// (MCP2b adds the effects' rules).
 fn weighed(path: &str) -> bool {
-    path.starts_with("eq.")
+    fx_weighed(path) // -- WP MCP2b --
+        || path.starts_with("eq.")
         || matches!(
             path,
             "vol.user"
@@ -655,7 +709,7 @@ pub fn apply(st: &mut DspState, w: &WriteKey) {
                 _ => {}
             }
         }
-        _ => {}
+        _ => apply_fx(st, w), // -- WP MCP2b --
     }
 }
 
@@ -980,6 +1034,249 @@ fn highpass_verdict(
     }
 }
 
+// -- WP MCP2b --
+// ------------------------------------------------------------- the effects
+
+/// The effect values [`apply_fx`] models: the ones that can add level, and
+/// the limiter that holds it.
+const FX_WEIGHED: &[&str] = &[
+    "loud.on",
+    "loud.ref",
+    "loud.intensity",
+    "lev.on",
+    "lev.maxgain",
+    "bass.on",
+    "bass.harmonics",
+    "bass.drive",
+    "bass.original",
+    "sub.on",
+    "sub.low",
+    "sub.high",
+    "sub.top",
+    "sub.boost",
+    "sub.ceiling",
+    "tube.on",
+    "tube.drive",
+    "tube.trim",
+    "limit.on",
+    "limit.threshold",
+];
+
+fn fx_weighed(path: &str) -> bool {
+    FX_WEIGHED.contains(&path)
+}
+
+/// A value as a number, whatever its kind.
+fn number(v: &ParamValue) -> Option<f32> {
+    match v {
+        ParamValue::Float(f) => Some(*f),
+        ParamValue::Bool(b) => Some(if *b { 1.0 } else { 0.0 }),
+        ParamValue::Int(i) => Some(*i as f32),
+        ParamValue::Choice(c) => Some(f32::from(*c)),
+        ParamValue::Mask(m) => Some(*m as f32),
+        _ => None,
+    }
+}
+
+/// The subharmonic synth's and the tube's values by parameter id (their
+/// paths carry no index).
+fn fx_slot(path: &str) -> Option<(bool, u8)> {
+    Some(match path {
+        "sub.on" => (true, 0),
+        "sub.low" => (true, 2),
+        "sub.high" => (true, 3),
+        "sub.top" => (true, 4),
+        "sub.boost" => (true, 5),
+        "sub.ceiling" => (true, 9),
+        "tube.on" => (false, 0),
+        "tube.drive" => (false, 3),
+        "tube.trim" => (false, 13),
+        _ => return None,
+    })
+}
+
+/// Put an effect write into `st` (the paths in [`FX_WEIGHED`]). A limiter
+/// write to output 0xFF is every output's.
+fn apply_fx(st: &mut DspState, w: &WriteKey) {
+    let Some(x) = number(&w.after) else {
+        return;
+    };
+    let on = x != 0.0;
+    match w.path.as_str() {
+        "loud.on" => st.loudness_enabled = on,
+        "loud.ref" => st.loudness_ref_spl = x,
+        "loud.intensity" => st.loudness_intensity = x,
+        "lev.on" => st.leveller_enabled = on,
+        "lev.maxgain" => st.leveller_max_gain_db = x,
+        "bass.on" => st.psybass_enabled = on,
+        "bass.harmonics" => st.psybass_harmonics_db = x,
+        "bass.drive" => st.psybass_drive_db = x,
+        "bass.original" => st.psybass_original_db = x,
+        "limit.on" | "limit.threshold" => {
+            let o = w.indices.first().copied().unwrap_or(0);
+            let n = st.num_output_channels;
+            let outs: Vec<u8> = if o == 0xFF { (0..n).collect() } else { vec![o] };
+            for o in outs {
+                if w.path == "limit.on" {
+                    set(&mut st.limiter_enabled, o, on);
+                } else {
+                    set(&mut st.limiter_threshold_db, o, x);
+                }
+            }
+        }
+        path => {
+            if let Some((sub, i)) = fx_slot(path) {
+                let v = if sub { &mut st.subharm } else { &mut st.tube };
+                set(v, i, x);
+            }
+        }
+    }
+}
+
+/// One effect's switch and levels, before and after: (path prefix, word,
+/// on before, on after, [(level, before, after)]).
+type FxLevels<'a> = (&'a str, &'a str, bool, bool, Vec<(&'a str, f32, f32)>);
+
+/// The effects that can add level: turned on, or a level raised while on;
+/// a limiter turned off or its ceiling raised.
+fn judge_effects(before: &DspState, after: &DspState, writes: &[WriteKey], risks: &mut Vec<Risk>) {
+    let touched = |prefix: &str| writes.iter().any(|w| w.path.starts_with(prefix));
+    let keys = |prefix: &str| -> Vec<WriteKey> {
+        writes
+            .iter()
+            .filter(|w| w.path.starts_with(prefix))
+            .cloned()
+            .collect()
+    };
+    let louder = |a: f32, b: f32| b > a + LOUDER_EPS_DB;
+    let fx: [FxLevels<'_>; 5] = [
+        (
+            "loud.",
+            "Loudness",
+            before.loudness_enabled,
+            after.loudness_enabled,
+            vec![
+                ("reference", before.loudness_ref_spl, after.loudness_ref_spl),
+                (
+                    "intensity",
+                    before.loudness_intensity,
+                    after.loudness_intensity,
+                ),
+            ],
+        ),
+        (
+            "lev.",
+            "Leveller",
+            before.leveller_enabled && before.leveller_max_gain_db > 0.0,
+            after.leveller_enabled && after.leveller_max_gain_db > 0.0,
+            vec![(
+                "max gain",
+                before.leveller_max_gain_db,
+                after.leveller_max_gain_db,
+            )],
+        ),
+        (
+            "bass.",
+            "Psychoacoustic bass",
+            before.psybass_enabled,
+            after.psybass_enabled,
+            vec![
+                (
+                    "harmonics",
+                    before.psybass_harmonics_db,
+                    after.psybass_harmonics_db,
+                ),
+                ("drive", before.psybass_drive_db, after.psybass_drive_db),
+                (
+                    "original bass",
+                    before.psybass_original_db,
+                    after.psybass_original_db,
+                ),
+            ],
+        ),
+        (
+            "sub.",
+            "Subharmonic synth",
+            get(&before.subharm, 0) != 0.0,
+            get(&after.subharm, 0) != 0.0,
+            [
+                ("low", 2),
+                ("high", 3),
+                ("top", 4),
+                ("boost", 5),
+                ("ceiling", 9),
+            ]
+            .iter()
+            .map(|(w, i)| (*w, get(&before.subharm, *i), get(&after.subharm, *i)))
+            .collect(),
+        ),
+        (
+            "tube.",
+            "Tube",
+            get(&before.tube, 0) != 0.0,
+            get(&after.tube, 0) != 0.0,
+            vec![
+                ("drive", get(&before.tube, 3), get(&after.tube, 3)),
+                ("trim", get(&before.tube, 13), get(&after.tube, 13)),
+            ],
+        ),
+    ];
+    for (prefix, word, was_on, is_on, levels) in fx {
+        if !touched(prefix) || !is_on {
+            continue;
+        }
+        let what = if was_on {
+            let raised: Vec<String> = levels
+                .iter()
+                .filter(|(_, a, b)| louder(*a, *b))
+                .map(|(w, a, b)| format!("{w} from {a:.1} to {b:.1}"))
+                .collect();
+            if raised.is_empty() {
+                continue;
+            }
+            format!("{word} raised: {}", raised.join(", "))
+        } else {
+            format!("Turn on {word} (it adds level)")
+        };
+        risks.push(Risk {
+            kind: RiskKind::Louder,
+            what,
+            output: None,
+            keys: keys(prefix),
+        });
+    }
+    if !touched("limit.") {
+        return;
+    }
+    for o in 0..before.num_output_channels {
+        if !get(&before.limiter_enabled, o) {
+            continue;
+        }
+        let (a, b) = (
+            get(&before.limiter_threshold_db, o),
+            get(&after.limiter_threshold_db, o),
+        );
+        let what = if !get(&after.limiter_enabled, o) {
+            format!("Turn off {}'s limiter", out_word(o))
+        } else if louder(a, b) {
+            format!(
+                "{} limiter ceiling up from {} to {}",
+                out_word(o),
+                db(a),
+                db(b)
+            )
+        } else {
+            continue;
+        };
+        risks.push(Risk {
+            kind: RiskKind::Louder,
+            what,
+            output: Some(o),
+            keys: keys("limit."),
+        });
+    }
+}
+
 // ------------------------------------------------------------- the policy
 
 /// The policy the app runs agents under: the setting, the judgement and the
@@ -1027,7 +1324,14 @@ impl AgentPolicy {
             if writes.is_empty() {
                 return Ok(());
             }
-            match judge(p.state, &writes, &j) {
+            let verdict = judge(p.state, &writes, &j);
+            // -- WP MCP2b -- a wholesale write the user allowed whole
+            let verdict = if j.wholesale {
+                umbrella(verdict)
+            } else {
+                verdict
+            };
+            match verdict {
                 Verdict::Pass => Ok(()),
                 Verdict::Ask(risks) => {
                     j.asked.extend(risks);

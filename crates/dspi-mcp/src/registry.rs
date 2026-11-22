@@ -16,7 +16,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use dspi_core::actor::{ActorId, ActorScope, WriteHook};
-use dspi_core::{CoreSet, DeviceId, DspiCore, DspiError, OpenDevice};
+use dspi_core::{AutoEqLibrary, CoreSet, DeviceId, DspiCore, DspiError, OpenDevice};
 use serde_json::{Map, Value, json};
 
 use crate::activity::Activity;
@@ -109,7 +109,12 @@ impl Registry {
         // -- WP MCP2a -- the edit tools, the batch and its guard
         tools.extend(tools::edit::TOOLS.iter().copied());
         tools.extend(tools::apply::TOOLS.iter().copied());
-        // -- WP MCP2b --
+        // -- WP MCP2b -- effects, presets and snapshots, files, AutoEQ, names
+        tools.extend(tools::effects::TOOLS.iter().copied());
+        tools.extend(tools::library::TOOLS.iter().copied());
+        tools.extend(tools::files::TOOLS.iter().copied());
+        tools.extend(tools::autoeq::TOOLS.iter().copied());
+        tools.extend(tools::names::TOOLS.iter().copied());
         // -- WP MCP2c --
         // -- WP MCP5 --
         Self { tools }
@@ -262,6 +267,11 @@ pub struct Call<'a> {
     pub confirmations: Option<&'a Confirmations>,
     /// The guarded apply this client began on the device, if one waits.
     pub agent_guard: Option<u64>,
+    // -- WP MCP2b --
+    /// The app's AutoEQ database.
+    pub autoeq: Option<&'a Arc<AutoEqLibrary>>,
+    /// The user's template folder.
+    pub template_dir: &'a str,
     core: Option<&'a DspiCore>,
 }
 
@@ -305,6 +315,11 @@ pub struct RunCtx<'a> {
     pub confirmations: Option<&'a Confirmations>,
     /// The agents' guarded applies.
     pub guards: Option<&'a AgentGuards>,
+    // -- WP MCP2b --
+    /// The app's AutoEQ database.
+    pub autoeq: Option<&'a Arc<AutoEqLibrary>>,
+    /// The user's template folder.
+    pub template_dir: &'a str,
 }
 
 /// What [`run`] did.
@@ -407,6 +422,8 @@ pub fn run(ctx: &RunCtx<'_>, tool: &Tool, args: &Map<String, Value>) -> RunOutco
             judging: JudgingCell::default(),
             confirmations: ctx.confirmations,
             agent_guard: None,
+            autoeq: ctx.autoeq, // -- WP MCP2b --
+            template_dir: ctx.template_dir,
             core: None,
         };
         let result = (tool.handler)(&mut call, args);
@@ -460,6 +477,8 @@ pub fn run(ctx: &RunCtx<'_>, tool: &Tool, args: &Map<String, Value>) -> RunOutco
             judging: Arc::clone(&judging),
             confirmations: ctx.confirmations,
             agent_guard,
+            autoeq: ctx.autoeq, // -- WP MCP2b --
+            template_dir: ctx.template_dir,
             core: Some(&core),
         };
         (tool.handler)(&mut call, args)

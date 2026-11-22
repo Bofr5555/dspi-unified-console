@@ -63,3 +63,7 @@ mod tests_wp_mcp1;
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_mcp2a;
+// -- WP MCP2b --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_mcp2b;
