@@ -162,6 +162,10 @@ pub enum RiskKind {
     // -- WP MCP2b --
     /// The input source changed (another signal plays).
     Source,
+    // -- WP MCP2c --
+    /// A change on the hub that every unit of the installation hears: an
+    /// alignment (each unit re-anchors), a scene recall, USB-direct modes.
+    System,
 }
 
 impl RiskKind {
@@ -181,6 +185,7 @@ impl RiskKind {
             Self::FlashWrite => "flash_write",
             Self::InstallationSave => "installation_save",
             Self::Source => "source", // -- WP MCP2b --
+            Self::System => "system", // -- WP MCP2c --
         }
     }
 }
@@ -1060,6 +1065,14 @@ const FX_WEIGHED: &[&str] = &[
     "tube.trim",
     "limit.on",
     "limit.threshold",
+    // -- WP MCP2c -- the outputs an effect plays on (review RB E2), and the
+    // upmixer's switch (E3)
+    "loud.mask",
+    "lev.masks",
+    "bass.mask",
+    "sub.mask",
+    "tube.mask",
+    "up.on",
 ];
 
 fn fx_weighed(path: &str) -> bool {
@@ -1088,7 +1101,9 @@ fn fx_slot(path: &str) -> Option<(bool, u8)> {
         "sub.top" => (true, 4),
         "sub.boost" => (true, 5),
         "sub.ceiling" => (true, 9),
+        "sub.mask" => (true, 1), // -- WP MCP2c --
         "tube.on" => (false, 0),
+        "tube.mask" => (false, 1), // -- WP MCP2c --
         "tube.drive" => (false, 3),
         "tube.trim" => (false, 13),
         _ => return None,
@@ -1112,6 +1127,16 @@ fn apply_fx(st: &mut DspState, w: &WriteKey) {
         "bass.harmonics" => st.psybass_harmonics_db = x,
         "bass.drive" => st.psybass_drive_db = x,
         "bass.original" => st.psybass_original_db = x,
+        // -- WP MCP2c --
+        "loud.mask" => st.loudness_output_mask = x as u16,
+        "bass.mask" => st.psybass_output_mask = x as u16,
+        "lev.masks" => {
+            // Detector in the low byte, apply in the high one (write_param's).
+            let [det, app, ..] = (x as u32).to_le_bytes();
+            st.leveller_detector_mask = det;
+            st.leveller_apply_mask = app;
+        }
+        "up.on" => set(&mut st.upmix, 0, if on { 1.0 } else { 0.0 }),
         "limit.on" | "limit.threshold" => {
             let o = w.indices.first().copied().unwrap_or(0);
             let n = st.num_output_channels;
@@ -1245,6 +1270,7 @@ fn judge_effects(before: &DspState, after: &DspState, writes: &[WriteKey], risks
             keys: keys(prefix),
         });
     }
+    judge_masks(before, after, writes, risks); // -- WP MCP2c --
     if !touched("limit.") {
         return;
     }
@@ -1273,6 +1299,82 @@ fn judge_effects(before: &DspState, after: &DspState, writes: &[WriteKey], risks
             what,
             output: Some(o),
             keys: keys("limit."),
+        });
+    }
+}
+
+// -- WP MCP2c --
+/// An effect that adds level, already on, now also on an output it did not
+/// play on: louder for that output (review RB E2). Turned on in the same
+/// call, the turn-on is asked already. The upmixer turned on feeds the
+/// centre and surround outputs: an output enabled, in effect (E3).
+fn judge_masks(before: &DspState, after: &DspState, writes: &[WriteKey], risks: &mut Vec<Risk>) {
+    let keys = |path: &str| -> Vec<WriteKey> {
+        writes.iter().filter(|w| w.path == path).cloned().collect()
+    };
+    let masks: [(&str, &str, bool, u32, u32); 5] = [
+        (
+            "loud.mask",
+            "Loudness",
+            before.loudness_enabled && after.loudness_enabled,
+            u32::from(before.loudness_output_mask),
+            u32::from(after.loudness_output_mask),
+        ),
+        (
+            "lev.masks",
+            "Leveller",
+            before.leveller_enabled && after.leveller_enabled && after.leveller_max_gain_db > 0.0,
+            u32::from(before.leveller_apply_mask),
+            u32::from(after.leveller_apply_mask),
+        ),
+        (
+            "bass.mask",
+            "Psychoacoustic bass",
+            before.psybass_enabled && after.psybass_enabled,
+            u32::from(before.psybass_output_mask),
+            u32::from(after.psybass_output_mask),
+        ),
+        (
+            "sub.mask",
+            "Subharmonic synth",
+            get(&before.subharm, 0) != 0.0 && get(&after.subharm, 0) != 0.0,
+            get(&before.subharm, 1) as u32,
+            get(&after.subharm, 1) as u32,
+        ),
+        (
+            "tube.mask",
+            "Tube",
+            get(&before.tube, 0) != 0.0 && get(&after.tube, 0) != 0.0,
+            get(&before.tube, 1) as u32,
+            get(&after.tube, 1) as u32,
+        ),
+    ];
+    for (path, word, on, was, now) in masks {
+        if !on || !writes.iter().any(|w| w.path == path) {
+            continue;
+        }
+        let added = now & !was;
+        for o in 0..after.num_output_channels.min(16) {
+            if added & 1u32.wrapping_shl(u32::from(o)) == 0 {
+                continue;
+            }
+            risks.push(Risk {
+                kind: RiskKind::Louder,
+                what: format!("{word} now also on {} (it adds level)", out_word(o)),
+                output: Some(o),
+                keys: keys(path),
+            });
+        }
+    }
+    if writes.iter().any(|w| w.path == "up.on")
+        && get(&before.upmix, 0) == 0.0
+        && get(&after.upmix, 0) != 0.0
+    {
+        risks.push(Risk {
+            kind: RiskKind::Enable,
+            what: "Turn on the upmixer (it plays on the centre and surround outputs)".to_owned(),
+            output: None,
+            keys: keys("up.on"),
         });
     }
 }

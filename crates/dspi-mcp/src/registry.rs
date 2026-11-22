@@ -115,7 +115,13 @@ impl Registry {
         tools.extend(tools::files::TOOLS.iter().copied());
         tools.extend(tools::autoeq::TOOLS.iter().copied());
         tools.extend(tools::names::TOOLS.iter().copied());
-        // -- WP MCP2c --
+        // -- WP MCP2c -- the audio link, Installation setup, hubs, analysis,
+        // limits and firmware (the hub-side ones need the feature `link`)
+        tools.extend(tools::alink::TOOLS.iter().copied());
+        tools.extend(tools::installation::TOOLS.iter().copied());
+        tools.extend(tools::hub::TOOLS.iter().copied());
+        tools.extend(tools::analysis::TOOLS.iter().copied());
+        tools.extend(tools::info::TOOLS.iter().copied());
         // -- WP MCP5 --
         Self { tools }
     }
@@ -242,6 +248,19 @@ pub struct DeviceRow {
     pub firmware: String,
     /// It is the device the app shows.
     pub active: bool,
+    // -- WP MCP2c --
+    /// For a device on a DSPi Link hub: this session's role and encryption.
+    pub hub: Option<HubRow>,
+}
+
+// -- WP MCP2c --
+/// What a device-less tool may know of a device's hub session.
+#[derive(Debug, Clone, Default)]
+pub struct HubRow {
+    /// The role the hub gave the session: `viewer`, `control`, `admin`.
+    pub role: String,
+    /// `verified`, `offered`, `off`, `local` or `unknown`.
+    pub encryption: String,
 }
 
 /// One tool call's context.
@@ -272,6 +291,9 @@ pub struct Call<'a> {
     pub autoeq: Option<&'a Arc<AutoEqLibrary>>,
     /// The user's template folder.
     pub template_dir: &'a str,
+    // -- WP MCP2c --
+    /// The agents' Installation drafts.
+    pub installation: Option<&'a tools::installation::Drafts>,
     core: Option<&'a DspiCore>,
 }
 
@@ -320,6 +342,9 @@ pub struct RunCtx<'a> {
     pub autoeq: Option<&'a Arc<AutoEqLibrary>>,
     /// The user's template folder.
     pub template_dir: &'a str,
+    // -- WP MCP2c --
+    /// The agents' Installation drafts.
+    pub installation: Option<&'a tools::installation::Drafts>,
 }
 
 /// What [`run`] did.
@@ -398,16 +423,16 @@ pub fn run(ctx: &RunCtx<'_>, tool: &Tool, args: &Map<String, Value>) -> RunOutco
             .list()
             .into_iter()
             .map(|open| {
-                let firmware = ctx
-                    .set
-                    .core(&open.id)
-                    .map(|c| firmware(&c))
-                    .unwrap_or_default();
+                let core = ctx.set.core(&open.id);
+                let firmware = core.as_deref().map(firmware).unwrap_or_default();
                 let active = ctx.active == Some(&open.id);
+                // -- WP MCP2c --
+                let hub = core.as_deref().and_then(|c| tools::hub::row(&open.id, c));
                 DeviceRow {
                     open,
                     firmware,
                     active,
+                    hub,
                 }
             })
             .collect();
@@ -424,6 +449,7 @@ pub fn run(ctx: &RunCtx<'_>, tool: &Tool, args: &Map<String, Value>) -> RunOutco
             agent_guard: None,
             autoeq: ctx.autoeq, // -- WP MCP2b --
             template_dir: ctx.template_dir,
+            installation: ctx.installation, // -- WP MCP2c --
             core: None,
         };
         let result = (tool.handler)(&mut call, args);
@@ -479,6 +505,7 @@ pub fn run(ctx: &RunCtx<'_>, tool: &Tool, args: &Map<String, Value>) -> RunOutco
             agent_guard,
             autoeq: ctx.autoeq, // -- WP MCP2b --
             template_dir: ctx.template_dir,
+            installation: ctx.installation, // -- WP MCP2c --
             core: Some(&core),
         };
         (tool.handler)(&mut call, args)

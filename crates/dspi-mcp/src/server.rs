@@ -114,6 +114,9 @@ pub struct Server {
     held: Option<u64>,
     guards: AgentGuards,
     drags: BTreeMap<String, DragWatch>,
+    // -- WP MCP2c --
+    /// The agents' Installation drafts, by client and hub.
+    installation: crate::tools::installation::Drafts,
 }
 
 impl Server {
@@ -136,6 +139,7 @@ impl Server {
             held: None,
             guards: AgentGuards::new(),
             drags: BTreeMap::new(),
+            installation: crate::tools::installation::Drafts::default(), // -- WP MCP2c --
         }
     }
 
@@ -165,6 +169,7 @@ impl Server {
     /// with nothing changed (-- WP MCP2a --).
     pub fn disconnect(&mut self, client: ClientId) {
         self.clients.remove(&client);
+        self.installation.forget(client); // -- WP MCP2c --
         for id in self.confirms.of_client(client) {
             self.confirms.end(
                 id,
@@ -593,6 +598,7 @@ impl Server {
             guards: Some(&self.guards),
             autoeq: self.config.autoeq.as_ref(), // -- WP MCP2b --
             template_dir: &self.config.template_dir,
+            installation: Some(&self.installation), // -- WP MCP2c --
         };
         registry::run(&ctx, tool, args)
     }

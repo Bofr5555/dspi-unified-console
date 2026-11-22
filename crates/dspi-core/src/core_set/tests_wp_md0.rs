@@ -359,7 +359,10 @@ fn wp_md0_a_document_opens_as_a_file() {
 
 #[test]
 fn wp_md0_every_core_gets_the_shared_folders() {
-    let root = std::env::temp_dir()
+    // -- WP MCP2c -- beside the test binary, as ROLE0's scratch: never tmpfs
+    let root = std::env::current_exe()
+        .unwrap()
+        .with_file_name("test-scratch")
         .join("wp-md0-core-set")
         .join(format!("{}", std::process::id()));
     let dir = |n: &str| {

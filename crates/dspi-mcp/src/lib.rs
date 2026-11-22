@@ -81,3 +81,7 @@ mod tests_wp_mcp2b;
 #[cfg(test)]
 #[cfg(feature = "http")]
 mod tests_wp_mcp3;
+// -- WP MCP2c --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
+mod tests_wp_mcp2c;

@@ -51,7 +51,7 @@ crossterm = "0.28"
 qrcodegen = "1.8"
 # -- WP MCP3 -- `uconsole mcp`: the stdio relay to DSPi Console's MCP server.
 # A workspace crate; its `http` feature adds nothing new to the lock.
-dspi-mcp = { path = "../../crates/dspi-mcp", features = ["http"] }
+dspi-mcp = { path = "../../crates/dspi-mcp", features = ["http", "link"] }  # -- WP MCP2c -- link: the hub tools
 
 # -- WP TM11 -- `uconsole hub` keeps the machine awake on Windows.
 [target.'cfg(windows)'.dependencies]
