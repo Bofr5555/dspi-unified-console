@@ -5,14 +5,21 @@
 // and the agent reads that it ended; an unconfirmed speaker layout is refused
 // before anything reaches the app; the "imported" banner no longer claims a
 // configuration file (review RB C4).
+// -- WP INT5 -- and in Modern, on a device that is not the one shown and whose
+// measurement thread sleeps (LAY5b).
 #include "SmokeDriver.h"
 
 #include "AiController.h"
 #include "Core.h"
 #include "CoreWorker.h"
 #include "DeviceModel.h"
+#include "DeviceRegistry.h"
+#include "DeviceSession.h"
+#include "LayoutController.h"
 #include "MeasureController.h"
+#include "MeasureSession.h"
 #include "Registrar.h"
+#include "SessionModel.h"
 #include "Shell.h"
 #include "SpeakersController.h"
 
@@ -24,6 +31,7 @@ extern "C" {
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QQuickItem>
 #include <QQuickWindow>
 #include <QTcpServer>
 #include <QTcpSocket>
@@ -104,6 +112,84 @@ QJsonObject setLayout(SmokeDriver &d, bool confirmed) {
     });
 }
 
+// -- WP INT5 -- Modern, its Measure page not shown, the request for a second
+// device that is not shown either and was never measured on
+void otherDevice(SmokeDriver &d, MeasureController *mc, const std::function<QJsonObject(const char *, const QJsonObject &)> &call,
+                 QJsonObject args) {
+    auto *layout = Registrar::instance<LayoutController>();
+    auto *registry = DeviceRegistry::instance();
+    Shell *shell = d.app().shell;
+    layout->setLayout(QStringLiteral("modern"));
+    d.check("mcp5: in Modern", d.waitFor(5000, [&] { return shell->pageHost() != nullptr; }));
+    if (!shell->pageHost()) return;
+    d.spin(200);
+    const auto go = [&](const char *section, const char *tab) {
+        QVariant ok;
+        QMetaObject::invokeMethod(shell->pageHost(), "go", Q_RETURN_ARG(QVariant, ok), Q_ARG(QVariant, QString::fromLatin1(section)),
+                                  Q_ARG(QVariant, QString::fromLatin1(tab)));
+        d.waitIdle();
+        d.spin(100);
+    };
+    go("measure", "documents");
+    go("overview", "");
+    DeviceSession *a = registry->active();
+    registry->openDemo();
+    d.check("mcp5: a second demo", d.waitFor(10000, [&] { return registry->opening() == 0 && registry->sessions().size() == 2; }));
+    DeviceSession *b = registry->sessions().value(1);
+    if (!a || !b) return;
+    registry->activate(b);
+    d.waitIdle();
+    b->model()->write(QStringLiteral("mcp5 volume"), [](FfiCore *c) { return dspi_set_user_volume(c, -20.0f); });
+    setLayout(d, true);
+    registry->activate(a);
+    d.waitIdle();
+    d.spin(200);
+    MeasureSession *on = nullptr;
+    for (MeasureSession *m : mc->sessions())
+        if (m->session() == b) on = m;
+    d.check("mcp5: nothing was measured on it", !on || !on->awake());
+
+    args.insert(QStringLiteral("device"), b->id());
+    const QJsonObject r = call("dspi_measure_start", args);
+    d.check("mcp5: a start on the other device is a request too", !r.value(QLatin1String("isError")).toBool(true));
+    d.check("mcp5: it runs there, with its simulated microphone", d.waitFor(15000, [&] {
+        for (MeasureSession *m : mc->sessions())
+            if (m->session() == b) on = m;
+        return on && on->measuring();
+    }) && on->micChoice() == QLatin1String("sim") && !mc->measuring());
+    if (!on) return;
+    QObject *page = shell->pageHost();
+    d.check("mcp5: Measure's page comes up", page->property("pageKey").toString() == QLatin1String("measure/measure") && !d.object(QStringLiteral("MeasureWindow")));
+    d.check("mcp5: the device shown says what runs on the other, and who asked", d.waitFor(3000, [&] {
+        const QVariantList others = mc->otherRuns();
+        return others.size() == 1 && others.first().toMap().value(QStringLiteral("text")).toString().startsWith(QString::fromUtf8("Requested by AI · Smoke agent"));
+    }));
+    QQuickItem *row = d.item(QStringLiteral("Measure.otherRun"));
+    d.check("mcp5: with its Stop on every part of the page", row && row->isVisible());
+    d.grab(d.mainWindow(), QStringLiteral("mcp5-other-device.png"));
+    go("measure", "tune");
+    d.check("mcp5: it goes on over a tab", on->measuring() && row && row->isVisible());
+    go("overview", "");
+    d.check("mcp5: and over a section", on->measuring());
+    shell->openWindow(QStringLiteral("tools.measure"));
+    d.waitFor(3000, [&] { return shell->shownWindows().contains(QStringLiteral("tools.measure")); });
+    shell->closeWindow(QStringLiteral("tools.measure"));
+    d.spin(300);
+    d.check("mcp5: the window's close stops the shown device's only", on->measuring());
+    const QJsonObject stopped = call("dspi_measure_stop", { { QStringLiteral("device"), b->id() } });
+    d.check("mcp5: the agent's Stop stops it there",
+            stopped.value(QLatin1String("structuredContent")).toObject().value(QLatin1String("stopped")).toArray().contains(
+                QStringLiteral("measurement")) &&
+                d.waitFor(10000, [&] { return !on->running(); }));
+
+    registry->close(b->id());
+    d.waitFor(10000, [&] { return registry->sessions().size() == 1; });
+    go("overview", "");
+    layout->setLayout(QStringLiteral("classic"));
+    d.waitFor(5000, [&] { return shell->pageHost() == nullptr; });
+    d.spin(200);
+}
+
 void measureSection(SmokeDriver &d) {
     d.allowSectionTime(240);
     auto *ai = Registrar::instance<AiController>();
@@ -118,8 +204,6 @@ void measureSection(SmokeDriver &d) {
     const QJsonObject before = onWorker(d, [](FfiCore *c) { return fill([c](char *b, uint32_t l) { return dspi_speaker_layout(c, b, l); }); });
     device->write(QStringLiteral("mcp5 volume"), [](FfiCore *c) { return dspi_set_user_volume(c, -20.0f); });
     d.waitIdle();
-    d.check("mcp5: the simulated microphone is the Measure view's",
-            d.waitFor(5000, [&] { return mc->simAvailable() && mc->micChoice() == QLatin1String("sim"); }));
 
     // Agents on, never asking (the start's question is dspi-mcp's, tested there)
     const int port = freePort();
@@ -166,6 +250,7 @@ void measureSection(SmokeDriver &d) {
                     QLatin1String("waiting_for_app"));
     d.check("mcp5: the Measure view comes up and runs it",
             d.waitFor(10000, [&] { return mc->measuring(); }) && shell->shownWindows().contains(QStringLiteral("tools.measure")));
+    d.check("mcp5: the simulated microphone is the Measure view's", mc->simAvailable() && mc->micChoice() == QLatin1String("sim"));
     d.check("mcp5: it says who asked for it", mc->runningText().startsWith(QString::fromUtf8("Requested by AI · Smoke agent")));
     if (auto *w = qobject_cast<QQuickWindow *>(shell->openWindow(QStringLiteral("tools.measure"))))
         d.grab(w, QStringLiteral("mcp5-requested.png"));
@@ -190,6 +275,9 @@ void measureSection(SmokeDriver &d) {
                 QStringLiteral("measurement")) &&
                 d.waitFor(10000, [&] { return !mc->running(); }));
 
+    shell->closeWindow(QStringLiteral("tools.measure"));
+    otherDevice(d, mc, call, outs);
+
     // As it was
     ai->setEnabled(false);
     d.waitFor(10000, [&] { return !ai->running() && !ai->busy(); });
@@ -203,7 +291,6 @@ void measureSection(SmokeDriver &d) {
         const QByteArray text = QJsonDocument(l).toJson(QJsonDocument::Compact);
         onWorker(d, [text](FfiCore *c) { return fill([c, &text](char *b, uint32_t l) { return dspi_speaker_layout_set(c, text.constData(), b, l); }); });
     }
-    shell->closeWindow(QStringLiteral("tools.measure"));
     d.waitIdle();
     d.spin(200);
 }

@@ -251,8 +251,14 @@ void MeasureController::agentRequest(const QJsonObject &ticket) {
     if (!s) s = make(on);
     m_ctx.shell->showTool(QStringLiteral("tools.measure"));
     QPointer<AiController> back(ai);
-    s->startForAgent(ticket, [back, id](bool started, const QString &note) {
-        if (back) back->reportMeasure(id, started, note);
-    });
+    // -- WP INT5 -- A device not looked at yet sleeps (LAY5b): which microphone
+    // it has is known once the reads of its wake() are in
+    s->onLoop(
+        s, [](FfiCore *) { return QByteArray(); },
+        [s, ticket, back, id](const QByteArray &) {
+            s->startForAgent(ticket, [back, id](bool started, const QString &note) {
+                if (back) back->reportMeasure(id, started, note);
+            });
+        });
 }
 
