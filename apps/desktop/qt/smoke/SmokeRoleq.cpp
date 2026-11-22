@@ -6,10 +6,9 @@
 // the measure.layout_unconfirmed refusal in words through its prefix; and
 // Android's getting_started.json without the step.
 //
-// The layouts live in the core's memory here: the app does not name a folder
-// yet (speaker_layout_set_dir is MDQT1's, with the devices). The section ends
-// with the proposal confirmed, so the Measure sections after it measure the
-// outputs and roles they did before.
+// The layouts live in this run's <AppData>/speaker-layouts (the run has a HOME
+// of its own). The section ends with the proposal confirmed, so the Measure
+// sections after it measure the outputs and roles they did before.
 #include "SmokeDriver.h"
 
 #include "Core.h"
@@ -22,11 +21,14 @@
 #include "Shell.h"
 #include "SpeakersController.h"
 
+#include <QDirIterator>
+#include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QQuickItem>
 #include <QQuickWindow>
+#include <QStandardPaths>
 #include <functional>
 
 namespace {
@@ -174,6 +176,14 @@ void roleqSection(SmokeDriver &d) {
         const QJsonObject kept = storedLayout(d);
         d.check(QStringLiteral("roleq: the core has it, confirmed, with the proposal's outputs"),
                 kept.value(QLatin1String("confirmedByUser")).toBool() && kept.value(QLatin1String("outputs")).toArray() == proposedOuts);
+        // -- WP INT2 -- in the folder main.cpp names (MDQT1)
+        QDirIterator files(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + QStringLiteral("/speaker-layouts"),
+                           { QStringLiteral("speaker_layout.json") }, QDir::Files, QDirIterator::Subdirectories);
+        QFile file(files.hasNext() ? files.next() : QString());
+        const QJsonObject onDisk = file.open(QIODevice::ReadOnly) ? QJsonDocument::fromJson(file.readAll()).object() : QJsonObject();
+        d.check(QStringLiteral("roleq: it is kept in the app's speaker-layouts folder"),
+                onDisk.value(QLatin1String("confirmedByUser")).toBool()
+                    && onDisk.value(QLatin1String("updatedMs")) == kept.value(QLatin1String("updatedMs")));
         d.spin(100);
         d.check(QStringLiteral("roleq: the step says it is confirmed"),
                 state && state->property("text").toString().startsWith(QLatin1String("Confirmed.")));
@@ -234,6 +244,10 @@ void roleqSection(SmokeDriver &d) {
 
     // ---- An imported layout: unconfirmed, flagged ---------------------------------------
     QJsonObject imported = storedLayout(d);
+    // -- WP INT2 -- an import this console has not read yet, then a Measure edit
+    keepUnconfirmed(d, imported);
+    sc->writeBack(out, was);
+    d.check(QStringLiteral("roleq: an edit right after an import does not take the import for this console's own"), isImported(d, sc));
     imported = keepUnconfirmed(d, imported);
     sc->reload();
     d.check(QStringLiteral("roleq: an unconfirmed layout this console did not write reads as imported"),

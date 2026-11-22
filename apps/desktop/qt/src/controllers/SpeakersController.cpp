@@ -49,6 +49,13 @@ QJsonObject layoutOf(const QJsonObject &reply) {
     return l;
 }
 
+qint64 stampOf(const QJsonObject &layout) { return layout.value(QLatin1String("updatedMs")).toVariant().toLongLong(); }
+
+// What this console wrote last for a device (its updatedMs)
+QString writtenKey(const QString &serial) {
+    return QStringLiteral("speakers/written/") + QString::fromLatin1(serial.toUtf8().toHex());
+}
+
 QJsonObject rowIn(const QJsonObject &layout, int output) {
     for (const QJsonValue &v : layout.value(QLatin1String("outputs")).toArray())
         if (v.toObject().value(QLatin1String("output")).toInt() == output) return v.toObject();
@@ -164,24 +171,24 @@ void SpeakersController::onSnapshot() {
     }
 }
 
-QString SpeakersController::writtenKey() const {
-    return QStringLiteral("speakers/written/") + QString::fromLatin1(m_serial.toUtf8().toHex());
+void SpeakersController::remember(const QString &serial, const QJsonObject &kept) {
+    QSettings().setValue(writtenKey(serial), stampOf(kept));
 }
 
-void SpeakersController::remember(const QJsonObject &kept) {
-    QSettings().setValue(writtenKey(), kept.value(QLatin1String("updatedMs")).toVariant().toLongLong());
+// An unconfirmed layout this console did not write came with an import
+bool SpeakersController::imported(const QString &serial, const QJsonObject &layout) {
+    if (layout.isEmpty() || layout.value(QLatin1String("confirmedByUser")).toBool()) return false;
+    return QSettings().value(writtenKey(serial), qint64(-1)).toLongLong() != stampOf(layout);
 }
 
 QString SpeakersController::status() const {
     if (m_serial.isEmpty()) return QStringLiteral("disconnected");
     if (m_stored.isEmpty()) return QStringLiteral("none");
     if (m_stored.value(QLatin1String("confirmedByUser")).toBool()) return QStringLiteral("confirmed");
-    // An unconfirmed layout this console did not write came with an import
-    const qint64 written = QSettings().value(writtenKey(), qint64(-1)).toLongLong();
-    return written == stamp() ? QStringLiteral("unconfirmed") : QStringLiteral("imported");
+    return imported(m_serial, m_stored) ? QStringLiteral("imported") : QStringLiteral("unconfirmed");
 }
 
-qint64 SpeakersController::stamp() const { return m_stored.value(QLatin1String("updatedMs")).toVariant().toLongLong(); }
+qint64 SpeakersController::stamp() const { return stampOf(m_stored); }
 
 bool SpeakersController::editable() const { return m_editable; }
 
@@ -321,7 +328,7 @@ void SpeakersController::confirm() {
                 say(tr("Not confirmed: %1").arg(r.isEmpty() ? tr("the core did not answer.") : str(o, "error")), true);
                 return;
             }
-            remember(layoutOf(o));
+            remember(m_serial, layoutOf(o));
             setStored(layoutOf(o), QStringLiteral("confirm"));
             say(tr("Confirmed: the measurement takes its roles from this layout."), false);
         });
@@ -330,6 +337,7 @@ void SpeakersController::confirm() {
 void SpeakersController::writeBack(int output, const QString &role, const QString &speaker, int group) {
     if (!m_editable || m_serial.isEmpty()) return;
     const quint64 generation = m_generation;
+    const QString serial = m_serial;
     // Read, change and keep in one job: two quick edits never undo each other
     m_ctx.core->worker()->call(
         this,
@@ -339,18 +347,22 @@ void SpeakersController::writeBack(int output, const QString &role, const QStrin
             // The confirmation stays as it was: only Confirm confirms
             base.insert(QStringLiteral("confirmedByUser"), stored.value(QLatin1String("confirmedByUser")).toBool());
             base.insert(QStringLiteral("notes"), stored.value(QLatin1String("notes")).toArray());
-            return setLayout(c, withRow(base, output, role, speaker, group));
+            return std::make_pair(stored, setLayout(c, withRow(base, output, role, speaker, group)));
         },
-        [this, generation](const QByteArray &r) {
-            if (generation != m_generation) return;
+        [this, generation, serial](const std::pair<QJsonObject, QByteArray> &p) {
+            const QByteArray &r = p.second;
             const QJsonObject o = object(r);
+            // -- WP INT2 -- The layouts are files now (MDQT1's folder): what was
+            // kept is remembered also when another device is active by now, and
+            // judged by the layout it replaced, not by the one last read here.
+            // An imported layout stays imported until Confirm
+            if (isOk(o) && !imported(serial, p.first)) remember(serial, layoutOf(o));
+            if (generation != m_generation) return;
             if (!isOk(o)) {
                 say(tr("Not saved to your speaker layout: %1").arg(r.isEmpty() ? tr("the core did not answer.") : str(o, "error")),
                     true);
                 return;
             }
-            // An imported layout stays imported until Confirm
-            if (status() != QLatin1String("imported")) remember(layoutOf(o));
             setStored(layoutOf(o), QStringLiteral("measure"));
             say(tr("Saved to your speaker layout."), false);
         });

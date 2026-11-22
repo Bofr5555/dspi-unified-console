@@ -27,8 +27,8 @@ class QJSEngine;
 //   "imported" (an unconfirmed layout this console did not write: it came with
 //   an imported configuration, review RA F1), "confirmed". What this console
 //   wrote last is speakers/written/<serial hex> = its updatedMs.
-// - Where the layouts live is the core's (speaker_layout_set_dir, named by
-//   whoever opens devices); without a folder they last as long as the core.
+// - Where the layouts live is the core's: <AppData>/speaker-layouts, which
+//   main.cpp names for every core of the set (MDQT1, dspi_core_set_config).
 class SpeakersController : public QObject {
     Q_OBJECT
     QML_ELEMENT
@@ -103,8 +103,8 @@ private:
     void say(const QString &text, bool error);
     void setField(int output, const QString &field, const QVariant &value);
     QJsonObject draftLayout() const;
-    void remember(const QJsonObject &kept);
-    QString writtenKey() const;
+    static void remember(const QString &serial, const QJsonObject &kept);
+    static bool imported(const QString &serial, const QJsonObject &layout);
     QVariantList outputs() const;
 
     AppContext m_ctx;
