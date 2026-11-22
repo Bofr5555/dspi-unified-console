@@ -18,7 +18,8 @@
 //!   member's [`DspiCore::scan_devices`] lists the units its set holds without
 //!   opening them.
 //! - **Shared configuration** ([`CoreSetConfig`]): the limits, snapshot,
-//!   measurement and event-log folders and the hub memory's folder, applied to
+//!   measurement, event-log and speaker-layout folders and the hub memory's
+//!   folder, applied to
 //!   every core the set opens. Cores naming the same hub-memory folder share
 //!   one memory (`link/hub_memory.rs` keeps one cache per file for the
 //!   process), so a hub learnt by one core is known to all.
@@ -337,6 +338,8 @@ pub struct CoreSetConfig {
     pub event_log_dir: String,
     /// [`DspiCore::link_set_dir`]: the hub memory.
     pub link_dir: String,
+    /// [`DspiCore::speaker_layout_set_dir`]. -- WP INT1 -- (ROLE0 x MD0)
+    pub speaker_layout_dir: String,
 }
 
 impl CoreSetConfig {
@@ -363,6 +366,10 @@ impl CoreSetConfig {
         #[cfg(feature = "link")]
         if !self.link_dir.is_empty() {
             keep(core.link_set_dir(self.link_dir.clone()));
+        }
+        // -- WP INT1 -- (ROLE0 x MD0)
+        if !self.speaker_layout_dir.is_empty() {
+            keep(core.speaker_layout_set_dir(self.speaker_layout_dir.clone()));
         }
         first
     }

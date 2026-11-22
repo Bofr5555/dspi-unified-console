@@ -275,8 +275,8 @@ pub extern "C" fn dspi_core_set_find_serial(
 }
 
 /// Set the folders every core of the set gets, now and from now on. `config`
-/// is JSON `{limitsDir, snapshotDir, measureDir, eventLogDir, linkDir}`; an
-/// absent or empty one is not set. JSON `{ok}`, or the first core's failure.
+/// is JSON `{limitsDir, snapshotDir, measureDir, eventLogDir, linkDir,
+/// speakerLayoutDir}`; an absent or empty one is not set. JSON `{ok}`, or the first core's failure.
 /// Blocking file I/O.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_core_set_config(
@@ -295,6 +295,7 @@ pub extern "C" fn dspi_core_set_config(
             measure_dir: field(&v, "measureDir"),
             event_log_dir: field(&v, "eventLogDir"),
             link_dir: field(&v, "linkDir"),
+            speaker_layout_dir: field(&v, "speakerLayoutDir"), // -- WP INT1 --
         };
         json_reply(s.set.set_config(config).map(|()| serde_json::Map::new()))
     })

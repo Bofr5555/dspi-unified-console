@@ -375,6 +375,7 @@ fn wp_md0_every_core_gets_the_shared_folders() {
         measure_dir: dir("measure"),
         event_log_dir: dir("events"),
         link_dir: dir("link"),
+        speaker_layout_dir: dir("speaker-layouts"), // -- WP INT1 --
     };
     set.set_config(config.clone()).unwrap();
     let late = set.core(&set.open(DeviceTarget::Demo).unwrap()).unwrap();
@@ -393,6 +394,24 @@ fn wp_md0_every_core_gets_the_shared_folders() {
             .unwrap()
             .next()
             .is_some()
+    );
+    // -- WP INT1 -- the speaker-layout folder is forwarded too (ROLE0 x MD0):
+    // a layout one core confirms is in the folder and the other core reads it.
+    let mut layout = late.speaker_layout_propose().unwrap();
+    layout.confirmed_by_user = true;
+    late.speaker_layout_set(layout).unwrap();
+    assert!(
+        std::fs::read_dir(&config.speaker_layout_dir)
+            .unwrap()
+            .next()
+            .is_some(),
+        "the layout is in the shared folder"
+    );
+    assert!(
+        early
+            .speaker_layout()
+            .unwrap()
+            .is_some_and(|l| l.confirmed_by_user)
     );
     let _ = std::fs::remove_dir_all(&root);
 }
