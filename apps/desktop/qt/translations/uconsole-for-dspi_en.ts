@@ -266,7 +266,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Changes that make something louder, unmute or switch on an output, load or save a preset, or lower a tweeter&apos;s protection wait for your answer. Others are made at once.</source>
+        <source>Changes that make something louder, unmute or switch on an output, load or save a preset, or lower a tweeter&apos;s protection, and test signals, wait for your answer. Other changes are made at once.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
