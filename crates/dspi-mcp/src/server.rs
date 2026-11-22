@@ -317,7 +317,10 @@ impl Server {
         }
         let meta = params.get("_meta").and_then(Value::as_object);
         let modern = meta.and_then(|m| m.get(META_VERSION));
-        let era = if method == "initialize" {
+        // -- WP MCP6 -- `initialize` with the modern `_meta` is a modern
+        // request for a method 2026-07-28 removed (the conformance suite's
+        // sep-2575-http-server-method-not-found-404-initialize)
+        let era = if method == "initialize" && modern.is_none() {
             Era::Legacy
         } else if let Some(version) = modern {
             let version = version.as_str().unwrap_or("");
@@ -354,7 +357,8 @@ impl Server {
         let mut result = match (era, method) {
             (Era::Legacy, "initialize") => self.initialize(client, params),
             (Era::Modern, "server/discover") => Ok(self.discover()),
-            (_, "ping") => Ok(json!({})),
+            // -- WP MCP6 -- 2026-07-28 removed `ping`
+            (Era::Legacy, "ping") => Ok(json!({})),
             (_, "tools/list") => {
                 no_cursor(params)?;
                 let tools: Vec<Value> = self.registry.tools().iter().map(|t| t.listing()).collect();
@@ -389,6 +393,15 @@ impl Server {
                 "tools/list" | "resources/list" | "resources/templates/list" | "prompts/list"
             ) {
                 r.insert("ttlMs".into(), json!(LIST_TTL_MS));
+                r.insert("cacheScope".into(), json!("private"));
+            }
+            // -- WP MCP6 -- 2026-07-28's ReadResourceResult is cacheable too:
+            // the guide and the filter types are fixed while the server runs,
+            // a device's state and the rest are read afresh each time.
+            if method == "resources/read" {
+                let uri = params.get("uri").and_then(Value::as_str).unwrap_or("");
+                let fixed = matches!(uri, resources::GUIDE_URI | resources::FILTER_TYPES_URI);
+                r.insert("ttlMs".into(), json!(if fixed { LIST_TTL_MS } else { 0 }));
                 r.insert("cacheScope".into(), json!("private"));
             }
         }
@@ -1035,7 +1048,14 @@ impl Server {
             client_label: &label,
             version: &self.config.version,
         };
-        let contents = resources::read(&ctx, uri)?;
+        // -- WP MCP6 -- "not found" names the URI in `data` (2026-07-28,
+        // SEP-2164: SHOULD); the client's own text, cut
+        let contents = resources::read(&ctx, uri).map_err(|mut e| {
+            if e.code == INVALID_PARAMS && e.data.is_none() {
+                e.data = Some(json!({"uri": untrusted::clean(uri, 512)}));
+            }
+            e
+        })?;
         Ok(json!({"contents": contents}))
     }
 }

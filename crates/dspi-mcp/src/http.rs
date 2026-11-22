@@ -1303,14 +1303,27 @@ fn post_mcp(shared: &Shared, request: &Request) -> Answer {
         // A response to the server, which sends no requests.
         return Response::empty(202).into();
     };
-    if method == "initialize" {
+    // -- WP MCP6 -- only a legacy `initialize`: with the modern `_meta` it is a
+    // method 2026-07-28 removed, which the server answers (404 below)
+    if method == "initialize" && version.is_none() {
         return initialize(shared, &owner, msg).into();
     }
     if let Some(version) = version {
+        let header = |n: &str| request.header(n).ok().flatten();
+        // -- WP MCP6 -- a header that names another version than the body is
+        // a mismatch, before the version is judged (the conformance suite's
+        // sep-2575-http-server-header-mismatch-400)
+        let said = header("MCP-Protocol-Version");
+        if said.is_some_and(|h| h != version) {
+            return mismatch(
+                &id,
+                "MCP-Protocol-Version must equal the _meta protocol version",
+            )
+            .into();
+        }
         // Modern: the headers must say what the body says.
         if MODERN_VERSIONS.contains(&version) {
-            let header = |n: &str| request.header(n).ok().flatten();
-            if header("MCP-Protocol-Version") != Some(version) {
+            if said != Some(version) {
                 return mismatch(
                     &id,
                     "MCP-Protocol-Version must equal the _meta protocol version",
@@ -1341,6 +1354,19 @@ fn post_mcp(shared: &Shared, request: &Request) -> Answer {
             METHOD_NOT_FOUND => 404,
             _ => 200,
         });
+    }
+    // -- WP MCP6 -- the header says 2026-07-28 but the body has no `_meta`
+    // version: the request is modern and lacks it, -32602 (the conformance
+    // suite's sep-2575-request-meta-invalid-*), not an unsupported version
+    if let Ok(Some(v)) = request.header("MCP-Protocol-Version")
+        && MODERN_VERSIONS.contains(&v)
+    {
+        let why = format!("a {v} request carries `_meta` with `{META_VERSION}`");
+        return Response::json(
+            400,
+            protocol::error_reply(&id, &RpcError::new(INVALID_PARAMS, why)),
+        )
+        .into();
     }
     // Legacy: a session from `initialize`.
     if let Ok(Some(v)) = request.header("MCP-Protocol-Version")

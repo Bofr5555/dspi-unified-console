@@ -82,6 +82,13 @@
 #                                     run-clients.sh ts): the build container and
 #                                     NODE from images.conf; needs the DSPi-Link
 #                                     clone in work/consoles (README there)
+#       mcp-conformance               -- WP MCP6 -- dspi-mcp's loopback endpoint against
+#                                     the official MCP conformance suite, both spec eras
+#                                     (2025-11-25 and 2026-07-28 requirement sets, with
+#                                     the deliberate gaps in ci/mcp-conformance/baseline-
+#                                     *.yml), and the official TypeScript SDK's client
+#                                     (ci/mcp-conformance/run.sh): NODE from images.conf,
+#                                     npm ci from the lockfile
 #       web                           the web client (apps/web/tools/ci.sh): npm ci
 #                                     from the lockfile, typecheck, unit tests, and
 #                                     e2e in Chromium and Firefox on the demo
@@ -142,7 +149,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --crate) crates+=("$2"); shift 2 ;;
     --step) steps+=("$2"); shift 2 ;;
-    --all) steps=(fetch fmt clippy test windows-gnu android-contract licences deny firmware-digests windows-msvc android android-tests android-aab wasm wasm-core qt qt-offscreen qt-windows terminal proptest kotlin swift ios-check drift conformance-ts web); shift ;;
+    --all) steps=(fetch fmt clippy test windows-gnu android-contract licences deny firmware-digests windows-msvc android android-tests android-aab wasm wasm-core qt qt-offscreen qt-windows terminal proptest kotlin swift ios-check drift conformance-ts mcp-conformance web); shift ;;
     --all-clients) exec ci/matrix.sh ;;
     -h|--help) sed -n "2,/^set -euo/p" "$0" | sed '$d'; exit 0 ;;
     *) echo "unknown argument $1" >&2; exit 2 ;;
@@ -358,6 +365,9 @@ for s in "${steps[@]}"; do
     conformance-ts)
       # -- WP HB8 --
       crates/dspi-hub/tests/conformance/run-clients.sh ts ;;
+    mcp-conformance)
+      # -- WP MCP6 --
+      ci/mcp-conformance/run.sh ;;
     web)
       # -- WP WB5 --
       apps/web/tools/ci.sh ;;
