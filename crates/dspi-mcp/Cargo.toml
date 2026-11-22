@@ -1,0 +1,21 @@
+[package]
+name = "dspi-mcp"
+description = "The DSPi console's MCP server: protocol (both spec eras), tools, resources and prompts over a CoreSet (sans-IO)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+# -- WP MCP1 -- hand-written protocol, no rmcp and no tokio (owner decision
+# 2026-11-21, MPLAN 3.1). Sans-IO: the transports (MCP3) feed `Server::handle`.
+[dependencies]
+# Without `usb`: the embedder's own dspi-core dependency picks the transports.
+dspi-core = { path = "../dspi-core", default-features = false }
+dspi-proto.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+# A measurement document for the tests (a workspace crate, already a dependency
+# of dspi-core).
+dspi-measure.workspace = true
