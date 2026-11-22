@@ -12,6 +12,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 /// The public `DspiCore` methods a binding cannot carry: the argument is a Rust
 /// trait object. Everything else is exported.
 const NOT_EXPORTED: &[&str] = &[
+    // -- WP MCP2a -- Rust-only: the MCP server asks who opened the undo group
+    // (actors exist only in the process; no binding has them).
+    "undo_group_owner",
     // -- WP ATDEMO -- The demo hub's simulated microphone for a measurement across
     // units: the web and Qt only (Android has no system measurement screen yet,
     // PLAN-AT Later); through the wasm and C bindings.

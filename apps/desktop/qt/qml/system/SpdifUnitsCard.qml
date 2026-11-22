@@ -48,6 +48,7 @@ ColumnLayout {
                 spacing: Theme.spacing
                 Text {
                     Layout.preferredWidth: 180
+                    textFormat: Text.PlainText
                     text: row.modelData.name
                     font: Theme.fontBody
                     color: Theme.text
@@ -57,6 +58,7 @@ ColumnLayout {
                 Text {
                     visible: row.source || !card.editable
                     Layout.preferredWidth: 170
+                    textFormat: Text.PlainText
                     text: row.source ? qsTr("Source") : qsTr("Follows %1").arg(row.modelData.sourceName || row.modelData.source)
                     font: Theme.fontBody
                     color: Theme.text
@@ -88,6 +90,7 @@ ColumnLayout {
                 }
                 Text {
                     visible: row.source && !card.editable
+                    textFormat: Text.PlainText
                     text: row.modelData.slotsWord
                     font: Theme.fontBody
                     color: Theme.text
@@ -115,6 +118,7 @@ ColumnLayout {
                 }
                 Text {
                     visible: !(row.source && card.editable)
+                    textFormat: Text.PlainText
                     text: row.source ? qsTr("D %1").arg(row.modelData.d !== null && row.modelData.d !== undefined ? row.modelData.d : qsTr("the hub's"))
                                      : qsTr("D %1").arg(row.modelData.unitD !== null && row.modelData.unitD !== undefined ? row.modelData.unitD : "–")
                     font: Theme.fontSmall
@@ -123,6 +127,7 @@ ColumnLayout {
                 Text {
                     objectName: "SystemWindow.spdifState." + row.modelData.id
                     Layout.fillWidth: true
+                    textFormat: Text.PlainText
                     text: row.modelData.stateWord
                     font: Theme.fontBody
                     color: row.modelData.lockError ? Theme.dangerText : !row.modelData.connected ? Theme.offline : Theme.text
@@ -140,6 +145,7 @@ ColumnLayout {
                 objectName: "SystemWindow.spdifNoTimeBase." + row.modelData.id
                 Layout.fillWidth: true
                 visible: row.modelData.noTimeBase
+                textFormat: Text.PlainText
                 text: qsTr("%1: %2 %3 %4").arg(card.noTimeBase.title || qsTr("This S/PDIF source does not carry a DSPi time base"))
                           .arg(row.modelData.name).arg(card.noTimeBase.reason || "").arg(card.noTimeBase.action || "")
                 font: Theme.fontSmall
@@ -182,6 +188,7 @@ ColumnLayout {
         delegate: Text {
             required property string modelData
             Layout.fillWidth: true
+            textFormat: Text.PlainText
             text: qsTr("To save: %1").arg(modelData)
             font: Theme.fontSmall
             color: Theme.textMuted

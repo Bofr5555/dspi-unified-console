@@ -19,6 +19,7 @@ AbstractButton {
     checkable: false
 
     contentItem: Text {
+        textFormat: Text.PlainText
         text: chip.text
         font: Theme.fontSmall
         color: chip.on ? Theme.textOnAccent : chip.enabled ? Theme.textMuted : Theme.textDisabled

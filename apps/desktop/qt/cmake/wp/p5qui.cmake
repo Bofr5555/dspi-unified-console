@@ -5,7 +5,7 @@ list(APPEND DSPI_APP_SOURCES
     src/controllers/MeasureController.h src/controllers/MeasureController.cpp
     src/controllers/TuneController.h src/controllers/TuneController.cpp)
 list(APPEND DSPI_QML_FILES
-    qml/measure/MeasureWindow.qml
+    qml/measure/MeasurePanel.qml   # -- WP LAY1b -- was MeasureWindow.qml
     qml/measure/MeasureGraph.qml
     qml/measure/MeasureSetupTab.qml
     qml/measure/MeasureResultsTab.qml

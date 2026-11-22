@@ -6893,7 +6893,10 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * where it holds none for that device.
      *
      * Errors: [`DspiError::Unsupported`] on the web (no files: the page keeps
-     * the layout and sets it again with [`DspiCore::speaker_layout_set`]).
+     * the layout and sets it again with [`DspiCore::speaker_layout_set`]);
+     * -- WP MDQT1 -- [`DspiError::Io`] when a layout set before could not be
+     * written there: the folder is named all the same, and that layout stays
+     * in force in memory until a later call or a save writes it.
      */
     func speakerLayoutSetDir(dir: String) throws 
     
@@ -15479,7 +15482,10 @@ open func speakerLayoutSet(layout: SpeakerLayout)throws  -> SpeakerLayout  {
      * where it holds none for that device.
      *
      * Errors: [`DspiError::Unsupported`] on the web (no files: the page keeps
-     * the layout and sets it again with [`DspiCore::speaker_layout_set`]).
+     * the layout and sets it again with [`DspiCore::speaker_layout_set`]);
+     * -- WP MDQT1 -- [`DspiError::Io`] when a layout set before could not be
+     * written there: the folder is named all the same, and that layout stays
+     * in force in memory until a later call or a save writes it.
      */
 open func speakerLayoutSetDir(dir: String)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_speaker_layout_set_dir(self.uniffiClonePointer(),
@@ -71416,7 +71422,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_speaker_layout_set() != 50039) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_speaker_layout_set_dir() != 8445) {
+    if (uniffi_dspi_core_checksum_method_dspicore_speaker_layout_set_dir() != 19602) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_test_dac_mute() != 36228) {

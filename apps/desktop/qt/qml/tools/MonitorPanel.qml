@@ -16,8 +16,8 @@ Panel {
     readonly property var monitor: MonitorController
 
     onShownChanged: MonitorController.windowShown = shown
-    Component.onCompleted: MonitorController.windowShown = shown
-    Component.onDestruction: MonitorController.windowShown = false   // -- WP LAY0 -- a page host unloaded
+    Component.onCompleted: if (shown) MonitorController.windowShown = true   // -- WP LAY3 -- another host may show it
+    Component.onDestruction: if (shown) MonitorController.windowShown = false   // -- WP LAY0 -- a page host unloaded
 
     Shortcut {
         sequence: "Ctrl+P"

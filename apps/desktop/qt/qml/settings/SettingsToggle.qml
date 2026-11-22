@@ -20,6 +20,7 @@ RowLayout {
         spacing: 2
         Layout.fillWidth: true
         Text {
+            textFormat: Text.PlainText
             text: row.title
             font: Theme.fontBody
             color: row.enabled ? Theme.text : Theme.textDisabled
@@ -27,6 +28,7 @@ RowLayout {
             Layout.fillWidth: true
         }
         Text {
+            textFormat: Text.PlainText
             text: row.caption
             font: Theme.fontSmall
             color: row.enabled ? Theme.textMuted : Theme.textDisabled

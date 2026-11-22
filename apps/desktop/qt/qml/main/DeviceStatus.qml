@@ -70,6 +70,7 @@ AbstractButton {
         Text {
             objectName: "DeviceStatus.text"
             Layout.fillWidth: true
+            textFormat: Text.PlainText
             text: button.notice.length ? button.notice : button.shownName
             font: Theme.fontSmall
             color: button.notice.length ? Theme.warning

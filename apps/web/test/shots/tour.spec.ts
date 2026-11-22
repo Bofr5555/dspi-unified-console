@@ -15,6 +15,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { pbkdf2Sync, randomBytes } from "node:crypto";
 import { createInterface } from "node:readline";
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { hasPage, openPage } from "../nav";
 
 type OwnHub = { port: number; pin: string; child: ChildProcess; store: string };
 
@@ -126,30 +127,29 @@ async function shot(page: Page, name: string, o: { of?: Locator; full?: boolean 
   await page.emulateMedia({ colorScheme: null });
 }
 
-const tab = (session: Locator, name: string) => session.getByRole("tab", { name });
 
 test.describe("one device: the core's demo", () => {
   test("main, EQ, matrix, a system of one unit, the three modes", async ({ page }) => {
     const session = await openDemo(page);
     await expect(session.getByRole("meter").first()).toBeVisible();
     await shot(page, "demo-main");
-    await tab(session, "EQ").click();
+    await openPage(session, "EQ");
     await expect(session.locator("canvas").first()).toBeVisible();
     await shot(page, "demo-eq");
-    await tab(session, "Matrix").click();
+    await openPage(session, "Matrix");
     await shot(page, "demo-matrix");
-    await tab(session, "System").click();
+    await openPage(session, "System");
     await expect(session.getByRole("region", { name: "System" }).getByText("One device, shown as a single unit.")).toBeVisible();
     await shot(page, "demo-single-unit");
     // -- WP WB8 -- Undo and Redo beside the tabs, after a change; the event log and Save Diagnostics…
-    await tab(session, "Main").click();
+    await openPage(session, "Main");
     const volume = session.getByRole("slider", { name: "Volume" });
     await volume.fill("150");
     await volume.dispatchEvent("change");
     const undo = session.getByRole("group", { name: "Undo and Redo" });
     await expect(undo.getByRole("button", { name: "Undo" })).toBeEnabled();
     await shot(page, "demo-undo", { full: false });
-    await tab(session, "Events").click();
+    await openPage(session, "Events");
     const events = session.getByRole("region", { name: "Event log" });
     await expect(events.getByRole("row").filter({ hasText: "Connected" })).toHaveCount(1);
     await shot(page, "demo-events");
@@ -159,7 +159,7 @@ test.describe("one device: the core's demo", () => {
     await setMode(session, page, "Installer", "mode-dialog");
     await shot(page, "demo-installer");
     await setMode(session, page, "Simple");
-    await expect(tab(session, "System")).toHaveCount(0);
+    expect(await hasPage(session, "System")).toBe(false);
     await shot(page, "demo-simple");
   });
 });
@@ -170,7 +170,7 @@ test.describe("snapshots and files on the core's demo", () => {
   test("snapshots, A/B, safe apply, import preview, an offline file", async ({ page }) => {
     const mac = new URL("../../../../tests/fixtures/preset/mac-swift-v32.dspipreset", import.meta.url).pathname;
     const session = await openDemo(page);
-    await tab(session, "Snapshots").click();
+    await openPage(session, "Snapshots");
     const screen = session.getByRole("region", { name: "Snapshots" });
     const capture = async (name: string, note: string) => {
       await screen.getByLabel("Name").fill(name);
@@ -179,10 +179,10 @@ test.describe("snapshots and files on the core's demo", () => {
     };
     await capture("Evening", "Warm, -3 dB on the tops");
     const gain = session.getByRole("region", { name: "Outputs" });
-    await tab(session, "Main").click();
+    await openPage(session, "Main");
     await gain.getByRole("slider").first().fill("-4");
     await gain.getByRole("slider").first().dispatchEvent("change");
-    await tab(session, "Snapshots").click();
+    await openPage(session, "Snapshots");
     await capture("Bright", "Output 1 at -4 dB");
     await expect(screen.getByRole("list", { name: "Held snapshots" }).getByRole("listitem")).toHaveCount(2);
     await shot(page, "demo-snapshots");
@@ -208,7 +208,7 @@ test.describe("snapshots and files on the core's demo", () => {
     await shot(page, "demo-safe-apply", { full: false });
     await guard.getByRole("button", { name: "Revert" }).click();
     await expect(guard).toHaveCount(0);
-    await tab(session, "Files").click();
+    await openPage(session, "Files");
     await session.getByRole("region", { name: "Files" }).getByLabel("Configuration file to import").setInputFiles(mac);
     const preview = session.getByRole("region", { name: "Import preview" });
     await preview.getByRole("group", { name: "What to import" }).getByRole("checkbox", { name: /^EQ/ }).uncheck();
@@ -266,7 +266,7 @@ test.describe("an audio link installation on the hub", () => {
     await expect(rail.getByLabel("Alarms")).toHaveText("1 alarm", { timeout: 10_000 });
     await shot(page, "hub-rail-mute-alarm");
     // -- WP WB8 -- the event log: the alarm beside the unit's own records
-    await tab(session, "Events").click();
+    await openPage(session, "Events");
     const events = session.getByRole("region", { name: "Event log" });
     await expect(events.getByRole("row").filter({ hasText: "Alarm" }).first()).toBeVisible();
     await shot(page, "hub-events");
@@ -277,7 +277,7 @@ test.describe("an audio link installation on the hub", () => {
     test.setTimeout(60_000);
     hub = await linkHub(["--open", "--forget-clients"]);
     const mine = await openUnit(page, hub, "DEMO-ALINK-A");
-    await tab(mine, "Main").click();
+    await openPage(mine, "Main");
     const set = async (s: Locator, pos: string) => {
       const v = s.getByRole("slider", { name: "Volume" });
       await v.fill(pos);
@@ -290,7 +290,7 @@ test.describe("an audio link installation on the hub", () => {
     const other = await browser.newPage();
     try {
       const theirs = await openUnit(other, hub, "DEMO-ALINK-A");
-      await tab(theirs, "Main").click();
+      await openPage(theirs, "Main");
       await set(theirs, "100");
       await expect(mine.locator(".volume-value")).not.toHaveText(mineShown, { timeout: 10_000 });
     } finally {
@@ -395,7 +395,7 @@ test.describe("P1WB2: the Installer page, AutoEQ, the lock", () => {
   test("the Installer page and AutoEQ's preview on the core's demo", async ({ page }) => {
     const session = await openDemo(page);
     await setMode(session, page, "Installer");
-    await tab(session, "Installer").click();
+    await openPage(session, "Installer");
     const limits = session.getByRole("region", { name: "Limits" });
     await expect(limits).toBeVisible();
     await shot(page, "demo-installer-page");
@@ -407,7 +407,7 @@ test.describe("P1WB2: the Installer page, AutoEQ, the lock", () => {
     await shot(page, "demo-limits-held", { of: limits });
     await shot(page, "demo-power-on", { of: session.getByRole("region", { name: "At power-on" }) });
     await limits.getByRole("button", { name: "Clear Profile" }).click();
-    await tab(session, "EQ").click();
+    await openPage(session, "EQ");
     await session.getByRole("button", { name: "AutoEQ…" }).click();
     const panel = session.getByRole("region", { name: "AutoEQ" });
     const profile = { id: "o/Sony A", manufacturer: "Sony", model: "A", preamp: -4, filters: [{ type: "PK", freq: 105, q: 0.7, gain: 6 }, { type: "HSC", freq: 8000, q: 0.7, gain: -3 }] };

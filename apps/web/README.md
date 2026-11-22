@@ -166,10 +166,28 @@ Link address; the standalone page lists it first), or a fleet server's page
 whose server carries Link to its hubs through its own origin. A standalone page
 can list any hub, but only hubs without the check answer it.
 
+## The shell (WEBM1, the Modern layout)
+
+`src/ui/shell/`: the desktop app's Modern layout (rail and page tabs), the web's only one.
+
+- **Sections** (`sections.ts`): the rail's sections, with the desktop's ids and names, and the
+  screens of `src/ui/screens.tsx` that are their pages. A mode's screens decide which sections
+  show. A new screen is one row in `SCREENS` and its id in one section.
+- **Device tabs** (`DeviceTabs.tsx`): the open sessions. Only the one on show is mounted; where each
+  was left is kept in `places.ts`. **One session per DSPi** (`open-rule.ts`): a unit already open
+  over USB or a hub is not opened again. Demo devices and files are not units.
+- **Frame** (`Frame.tsx`): a session's bar (`SessionBar.tsx`: preset, Undo and Redo, Save to device,
+  the lock), the rail (`Rail.tsx`), the status strip (what limits the device now), the page and the
+  dock (`Dock.tsx`: source, volume, meters).
+- **Arrangement**: `?nav=tabs` (or `MountOptions.navigation`, or this viewer's
+  `dspi-web.arrangement` in storage) puts the sections across the top instead.
+- The layout follows the console's own width (container queries), as a host page may show several.
+- The e2e tests go around through `test/nav.ts`.
+
 ## The main window (WB6a)
 
 `src/screens/main/`, one per session, inside its view (`src/ui/screens.tsx`
-lists a session's screens; the tab row appears once a slice adds a second).
+lists a session's screens). Its volume card is in the dock since WEBM1.
 The macOS Console's main window is the floor:
 
 - **Volume**: User or Master Volume (the Console's sidebar choice, kept for this
@@ -408,6 +426,7 @@ The web step also runs the hosting routes on the real `uconsole` (`test/e2e/host
 | `src/fleet/` | installations, sources, access; `LocalBackend`; what this page can reach |
 | `src/ui/` | Preact components and the session model |
 | `src/ui/screens.tsx` | a session's screens (WB6 slices) |
+| `src/ui/shell/` | the Modern shell (WEBM1): sections, device tabs, frame, dock |
 | `src/screens/main/` | the main window (WB6a): volume, presets, inputs and outputs; `model.ts` the tapers and layout |
 | `src/screens/eq/` | the EQ (WB6b): graph, chip, band list; `model.ts` its logic, `draw.ts` the canvas; `Linkwitz.tsx` the Transform's panel (WB6c) |
 | `src/screens/outputs/` | WB6c: an output's settings card (`OutputCard.tsx`), the level and delay control (`Level.tsx`, SL1), the limiter (`Limiter.tsx`), the crossover (`Crossover.tsx`); `model.ts` their logic |

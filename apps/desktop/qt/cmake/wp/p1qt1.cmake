@@ -4,7 +4,7 @@
 list(APPEND DSPI_APP_SOURCES
     src/controllers/SnapshotsController.h src/controllers/SnapshotsController.cpp)
 list(APPEND DSPI_QML_FILES
-    qml/snapshots/SnapshotsWindow.qml
+    qml/snapshots/SnapshotsPanel.qml   # -- WP LAY1b -- was SnapshotsWindow.qml
     qml/snapshots/SafeApplyBanner.qml
     qml/files/FileBanner.qml
     qml/files/TemplatePicker.qml)

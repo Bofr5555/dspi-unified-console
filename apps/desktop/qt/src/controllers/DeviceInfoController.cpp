@@ -4,12 +4,14 @@
 
 #include "Core.h"
 #include "DeviceModel.h"
+#include "DeviceSession.h"   // -- WP MDQT2b --
 #include "Shell.h"
 #include "Snapshot.h"
 
 #include "CoreApi.h"
 
 #include <QCoreApplication>
+#include <QPointer>
 #include <QJSEngine>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -17,7 +19,7 @@
 #include <memory>
 
 static const Registrar::Controller<DeviceInfoController> deviceInfoController;
-static const Registrar::Banner senderBanner("SenderBanner", 9);   // -- WP QTSENDER --
+static const Registrar::Banner senderBanner("SenderBanner", 9, Registrar::Blocking);   // -- WP QTSENDER --
 
 namespace {
 
@@ -194,6 +196,11 @@ void DeviceInfoController::read() {
         },
         [this](std::pair<uint64_t, QByteArray> r) {
             m_reading = false;
+            // -- WP MDQT2b -- read of a device switched away from: the active one's next
+            if (r.first != m_ctx.device->snapshot().generation) {
+                onSnapshot();
+                return;
+            }
             ++m_reads;
             m_readFor = r.first;
             const QJsonObject p = parse(r.second);

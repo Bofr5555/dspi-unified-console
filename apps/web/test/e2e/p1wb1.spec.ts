@@ -7,6 +7,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { openDevices, openPage } from "../nav";
 
 type Clients = { dspiClients: { call(m: string, p: unknown): Promise<unknown> }[] };
 type State = { outputGainDb: number[]; masterVolumeDb: number; userMute: boolean; bypass: boolean; activePresetSlot: number };
@@ -38,13 +39,12 @@ async function openDemo(page: Page): Promise<Locator> {
   return session;
 }
 
-const tab = (session: Locator, name: string) => session.getByRole("tab", { name, exact: true });
 
 /** -- WP P1DCFIX -- (F6) the page's own unsaved indicator (Main's Presets card) shows; then back to `back`. */
 async function unsavedShown(session: Locator, back = "Snapshots") {
-  await tab(session, "Main").click();
+  await openPage(session, "Main");
   await expect(session.getByText("Unsaved changes", { exact: true })).toBeVisible();
-  await tab(session, back).click();
+  await openPage(session, back);
 }
 
 async function noSidewaysScroll(page: Page) {
@@ -54,7 +54,7 @@ async function noSidewaysScroll(page: Page) {
 test("P1WB1 snapshots: capture downloads, recall puts every value back, Open Snapshot… brings one back", async ({ page }) => {
   const errors = errorsOf(page);
   const session = await openDemo(page);
-  await tab(session, "Snapshots").click();
+  await openPage(session, "Snapshots");
   const screen = session.getByRole("region", { name: "Snapshots" });
   await screen.getByLabel("Name").fill("Kväll ✓");
   await screen.getByLabel("Note").fill("before the gig");
@@ -93,7 +93,7 @@ test("P1WB1 snapshots: capture downloads, recall puts every value back, Open Sna
 test("P1WB1 A/B and safe apply: the toggle in the scene bar and its key, off during a countdown; Keep, Revert", async ({ page }) => {
   const errors = errorsOf(page);
   const session = await openDemo(page);
-  await tab(session, "Snapshots").click();
+  await openPage(session, "Snapshots");
   const screen = session.getByRole("region", { name: "Snapshots" });
   await call(page, "write", { path: "out.gain", indices: [0], value: { float: -4 } });
   await screen.getByLabel("Name").fill("Bright");
@@ -142,7 +142,7 @@ test("P1WB1 A/B and safe apply: the toggle in the scene bar and its key, off dur
 test("P1WB1 import: the preview's rows per block before anything is written; only the chosen block changes", async ({ page }) => {
   const errors = errorsOf(page);
   const session = await openDemo(page);
-  await tab(session, "Files").click();
+  await openPage(session, "Files");
   const files = session.getByRole("region", { name: "Files" });
   const before = await coreState(page);
   await files.getByLabel("Configuration file to import").setInputFiles(MAC_PATH.pathname);
@@ -186,13 +186,14 @@ test("P1WB1 offline: Open File… and New from Template… open sessions with no
   await expect(doc.getByRole("region", { name: "Presets" })).toBeVisible();
   await doc.getByRole("complementary", { name: "Status" }).getByText("a file").waitFor();
 
+  await openDevices(one); // -- WP WEBM1 --
   await filesSide.getByRole("button", { name: "New from Template…" }).click();
   await filesSide.getByRole("list", { name: "Templates" }).getByRole("button", { name: /Open template/ }).first().click();
   await expect(one.getByRole("tablist", { name: "Open DSPi" }).getByRole("tab")).toHaveCount(2);
   const tpl = one.getByRole("article").first();
   await expect(tpl.locator(".device-meta")).toContainText(/File: .*\.dspipreset/);
   // An edit, then Save File: the document as it stands.
-  await tab(tpl, "Files").click();
+  await openPage(tpl, "Files");
   const [dl] = await Promise.all([page.waitForEvent("download"), tpl.getByRole("button", { name: "Save File" }).click()]);
   expect(JSON.parse(readFileSync(await dl.path(), "utf8")).meta.kind).toBe("template");
   if (test.info().project.name === "narrow") await noSidewaysScroll(page);
@@ -209,7 +210,7 @@ test("P1WB1 keys: Qt's table, never while a text field has focus", async ({ page
   await page.keyboard.press("Control+b");
   await expect.poll(async () => (await coreState(page)).bypass).toBe(true);
   // A text field keeps its keys.
-  await tab(session, "Snapshots").click();
+  await openPage(session, "Snapshots");
   await session.getByRole("region", { name: "Snapshots" }).getByLabel("Name").focus();
   await page.keyboard.press("Control+m");
   await page.waitForTimeout(300);
@@ -277,7 +278,7 @@ test.describe("over DSPi Link", () => {
     const session = page.getByRole("article").last();
     await session.getByRole("list", { name: /DSPis on/ }).getByRole("listitem").first().getByRole("button", { name: "Open" }).click();
     await expect(session.locator(".device-meta")).toContainText("DEMO");
-    await tab(session, "Snapshots").click();
+    await openPage(session, "Snapshots");
     const screen = session.getByRole("region", { name: "Snapshots" });
     await expect(screen).toContainText("Every recall here can be taken back");
     await screen.getByLabel("Name").fill("Site");
@@ -292,7 +293,7 @@ test.describe("over DSPi Link", () => {
     await expect(guard).toHaveCount(0);
     await expect(screen.getByRole("status", { name: "Result" })).toBeVisible();
     // And an import there is guarded too: no plain Import button.
-    await tab(session, "Files").click();
+    await openPage(session, "Files");
     await session.getByRole("region", { name: "Files" }).getByLabel("Configuration file to import").setInputFiles(MAC_PATH.pathname);
     const preview = session.getByRole("region", { name: "Import preview" });
     await expect(preview.getByRole("button", { name: "Import with Rollback" })).toBeVisible();

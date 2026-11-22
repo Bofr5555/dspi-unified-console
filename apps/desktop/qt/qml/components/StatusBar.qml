@@ -58,6 +58,7 @@ Rectangle {
                 color: bar.stateColor(bar.connectionState)
             }
             Text {
+                textFormat: Text.PlainText
                 text: bar.connectionText.length ? bar.connectionText : bar.stateName(bar.connectionState)
                 font: Theme.fontSmall
                 color: Theme.text
@@ -70,6 +71,7 @@ Rectangle {
         Text {
             objectName: "StatusBar.scene"
             visible: bar.sceneText.length > 0
+            textFormat: Text.PlainText
             text: bar.sceneText
             font: Theme.fontSmall
             color: Theme.textMuted
@@ -79,6 +81,7 @@ Rectangle {
         Text {
             objectName: "StatusBar.mode"
             visible: bar.modeText.length > 0
+            textFormat: Text.PlainText
             text: bar.modeText
             font: Theme.fontSmall
             color: Theme.textMuted

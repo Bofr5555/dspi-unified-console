@@ -15,6 +15,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { openPage } from "../nav";
 
 const DEMO = "DEMO0000DSPI0001";
 
@@ -27,7 +28,6 @@ function errorsOf(page: Page) {
   return errors;
 }
 
-const tab = (session: Locator, name: string) => session.getByRole("tab", { name, exact: true });
 
 async function setMode(session: Locator, page: Page, mode: "Simple" | "Advanced" | "Installer") {
   await session.getByRole("complementary", { name: "Status" }).getByRole("button", { name: /^Mode:/ }).click();
@@ -39,7 +39,7 @@ async function setMode(session: Locator, page: Page, mode: "Simple" | "Advanced"
 
 async function installerPage(session: Locator, page: Page): Promise<void> {
   await setMode(session, page, "Installer");
-  await tab(session, "Installer").click();
+  await openPage(session, "Installer");
   await expect(session.getByRole("region", { name: "Limits" })).toBeVisible();
 }
 

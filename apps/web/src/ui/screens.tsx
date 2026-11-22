@@ -1,7 +1,11 @@
 // The screens of one session (WP WB6a): each WB6 slice adds its screen here.
 // They live inside the session's view, never on the page: a fleet page shows
-// several sessions at once, each with its own screen chosen. The tab row shows
-// only once there is more than one screen.
+// several sessions at once, each with its own screen chosen.
+//
+// -- WP WEBM1 -- A screen is a page of one of the shell's sections
+// (ui/shell/sections.ts): the rail chooses the section, the tabs beside the
+// page's title its page. Switching device tabs comes back to the page the
+// session was left at (ui/shell/places.ts).
 //
 // -- WP WB6b -- (c6p WB6a-4) What belongs to the session rather than to one
 // screen lives here, so switching screens keeps it: the modal questions, the
@@ -25,8 +29,8 @@ import { StatusRail } from "../screens/system/StatusRail";
 import { SystemScreen, useFeed } from "../screens/system/SystemScreen";
 // -- WP WB8 -- the event log (with Save Diagnostics…), undo and redo
 import { EventsScreen } from "../screens/events/EventsScreen";
-import { useSessionState } from "./components";
-import { StepNotice, UndoButtons, useUndoKeys } from "./undo";
+import { useSessionState, type ShellProps } from "./components";
+import { StepNotice, useUndoKeys } from "./undo";
 // -- WP P1WB1 -- snapshots, A/B, safe apply, files; the keys Qt's table has
 import { SnapshotDesk } from "../screens/snapshots/model";
 import { AbBar, GuardBar } from "../screens/snapshots/Bars";
@@ -73,6 +77,13 @@ import { OverviewScreen } from "../screens/overview/OverviewScreen";
 import { MeasureScreen } from "../screens/measure/MeasureScreen"; // -- WP P5WMS --
 import { DeviceScreen } from "../screens/device/DeviceScreen"; // -- WP PGWEB --
 
+// -- WP WEBM1 -- the Modern shell
+import { Frame } from "./shell/Frame";
+import { Dock } from "./shell/Dock";
+import { SessionBar } from "./shell/SessionBar";
+import { CONNECT, sectionOf, sectionsFor } from "./shell/sections";
+import { placeOf } from "./shell/places";
+
 /** A question in a modal dialog; the answer is the chosen button's value, or "cancel". */
 export interface Question {
   title: string;
@@ -115,7 +126,7 @@ export interface ScreenDef {
 }
 
 export const SCREENS: ScreenDef[] = [
-  { id: "main", label: "Main", View: MainScreen },
+  { id: "main", label: "Dashboard", View: MainScreen },
   // -- WP WB6b --
   { id: "eq", label: "EQ", View: EqScreen },
   // -- WP WB6G -- (UI-MODES: "Channels and EQ", every mode)
@@ -124,7 +135,7 @@ export const SCREENS: ScreenDef[] = [
   { id: "matrix", label: "Matrix", View: MatrixScreen },
   // -- WP WB6H -- (UI-MODES: "Dynamics and effects", in every mode)
   { id: "effects", label: "Effects", View: EffectsScreen },
-  { id: "overview", label: "Overview", View: OverviewScreen }, // -- WP P3OV -- (PLAN-P3 U1, OD-P3j: every mode)
+  { id: "overview", label: "All Channels", View: OverviewScreen }, // -- WP P3OV -- (PLAN-P3 U1, OD-P3j: every mode)
   // -- WP SW3 -- (UI-MODES: the Pro layer, not in Simple)
   { id: "system", label: "System", View: SystemScreen },
   // -- WP P1WB1 -- (Advanced and Installer: setting up and handing over;
@@ -210,8 +221,16 @@ function isMode(m: string): m is Mode {
   return m === "simple" || m === "advanced" || m === "installer";
 }
 
-export function Screens(props: { session: Session }) {
-  const session = props.session;
+export function Screens(props: {
+  session: Session;
+  // -- WP WEBM1 --
+  shell: ShellProps;
+  /** The session's own part of its bar (name, Disconnect), and of the status strip (the link, an error). */
+  head: ComponentChildren;
+  strip: ComponentChildren;
+  meters: ComponentChildren;
+}) {
+  const { session, shell } = props;
   // -- WP SW3 -- one system feed per session, and the mode remembered for its device
   const system = useMemo(() => new SystemFeed(session), [session]);
   useEffect(() => {
@@ -258,19 +277,33 @@ export function Screens(props: { session: Session }) {
   const [unlocking, setUnlocking] = useState(false);
   const hubCaps = useHubCaps(session, st.link?.phase ?? "").caps; // -- WP P2WB2 --
   const shown = lockedUser ? lockedScreens() : withDeviceScreen(withHubSettings(withHubScreen(screensFor(mode, feed.kind === "hub"), mode, hubScreenShown(hubView?.caps ?? null)), mode, hubSettingsShown(hubCaps), HUB_SETTINGS_DEF)); // -- WP P2WB1 -- the hub screen; -- WP P2WB2 -- withHubSettings; -- WP PGWEB -- withDeviceScreen
-  const [chosen, setChosen] = useState<string | null>(null);
+  // -- WP WEBM1 -- the page is the session's, not the view's; the devices' page is the shell's
+  const place = useMemo(() => placeOf(session), [session]);
+  const [chosen, setChosenState] = useState<string | null>(place.screen);
+  const setChosen = useCallback(
+    (id: string) => {
+      place.screen = id;
+      setChosenState(id);
+      shell.onPicking(false);
+    },
+    [place, shell.onPicking],
+  );
   const current = chosen ?? shown[0]!.id;
   const screen = shown.find((x) => x.id === current) ?? shown[0]!;
+  const sections = sectionsFor(shown);
+  const page = shell.picking ? CONNECT : screen.id;
+  place.last.set(sectionOf(page), page);
   // -- WP WB6D -- a tab chosen opens its screen as it was; `openAt` opens one at a channel
   const [target, setTarget] = useState<ChainTarget | null>(null);
   const setCurrent = (id: string) => {
+    if (id === CONNECT) return shell.onPicking(true); // -- WP WEBM1 --
     setTarget(null);
     setChosen(id);
   };
   const openAt = useCallback((t: ChainTarget) => {
     setTarget(t);
     setChosen(t.screen);
-  }, []);
+  }, [setChosen]);
   const [question, setQuestion] = useState<(Question & { answer: (v: string) => void }) | null>(null);
   // -- WP WB8 -- undo and redo: the buttons follow the session's state; the keys act on this view
   // (-- WP P1WB2 -- `st` is read above, for the lock)
@@ -339,8 +372,8 @@ export function Screens(props: { session: Session }) {
   const openScreen = useCallback((a: OpenAction) => {
     setTarget((a.at ? { screen: a.screen, ...a.at } : null) as ChainTarget | null);
     setChosen(a.screen);
-  }, []);
-  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  }, [setChosen]);
+  const { shortcuts: shortcutsOpen, onShortcuts: setShortcutsOpen } = shell; // -- WP WEBM1 -- the app menu opens it too
   const shownIds = new Set(shown.map((x) => x.id));
   const shownRef = useRef(shownIds);
   shownRef.current = shownIds;
@@ -370,66 +403,83 @@ export function Screens(props: { session: Session }) {
     };
   }, [session, unsaved]);
 
+  // -- WP WEBM1 -- the scenes and the preset slots are the Overview's and their own pages' (the bar's picker recalls on every page)
+  const section = sectionOf(page);
+  const pro = mode !== "simple" && !lockedUser;
   return (
-    <div class="session-screens" ref={root}>
-      {/* -- WP SW3 -- on an installation, the scene bar */}
-      {mode !== "simple" && !lockedUser ? <SceneBar feed={system} session={session} ask={ask} /> : null}
-      {/* -- WP WB6E -- the device's preset slots, in Advanced and Installer (the Pro layer; Simple keeps the Main window's picker) */}
-      {mode !== "simple" && !lockedUser ? <SlotBar session={session} ask={ask} unsaved={unsaved} /> : null}
-      {/* -- WP P1WB2 -- the locked-user front page's banner; the Installer mode asking for its PIN */}
-      {lockedUser && st.lock ? <LockedBanner session={session} lock={st.lock} /> : null}
-      {choice?.needsPin && !lockedUser ? (
-        <div class="banner banner-pin" role="status">
-          <span>The Installer mode needs the installer's PIN.</span>
-          <button type="button" onClick={() => setUnlocking(true)}>
-            Unlock…
-          </button>
-        </div>
-      ) : null}
-      {unlocking ? <UnlockDialog session={session} lock={st.lock} onDone={() => setUnlocking(false)} /> : null}
-      {/* -- WP HUBADMIN -- the hub's recovery code, shown once: here, so it stays when the new PIN closes the Installer mode */}
-      {st.hubRecovery ? <RecoveryCode session={session} code={st.hubRecovery} /> : null}
-      {/* -- WP P1WB1 -- the scene bar's host-side half: the A/B toggle; a safe apply's countdown in every mode */}
-      {/* -- WP P1DCFIX -- the A/B toggle in every mode too (Simple has the compare) */}
-      {lockedUser ? null : <AbBar desk={desk} />}
-      <GuardBar desk={desk} />
-      {/* -- WP P2WB1 -- the hub's alarms to acknowledge, on every screen */}
-      {lockedUser ? null : <HubAlarmBanner feed={hub} onShow={shownIds.has(HUB_SCREEN_ID) ? () => setCurrent(HUB_SCREEN_ID) : null} />}
-      {/* -- WP WB8 -- the tabs and, beside them, Undo and Redo */}
-      <div class="screen-bar">
-        {shown.length > 1 ? (
-          <div class="screen-tabs" role="tablist" aria-label="Screens">
-            {shown.map((x) => (
-              <button type="button" role="tab" key={x.id} aria-selected={x === screen} onClick={() => setCurrent(x.id)}>
-                {x.label}
+    <Frame
+      root={root}
+      screens
+      bar={
+        <>
+          {props.head}
+          <SessionBar session={session} state={st} desk={desk} ask={ask} unsaved={unsaved} locked={lockedUser} onUnlock={() => setUnlocking(true)} />
+        </>
+      }
+      strip={
+        <>
+          {props.strip}
+          {/* -- WP P1WB2 -- the locked-user front page's banner; the Installer mode asking for its PIN */}
+          {lockedUser && st.lock ? <LockedBanner session={session} lock={st.lock} /> : null}
+          {choice?.needsPin && !lockedUser ? (
+            <div class="banner banner-pin" role="status">
+              <span>The Installer mode needs the installer's PIN.</span>
+              <button type="button" onClick={() => setUnlocking(true)}>
+                Unlock…
               </button>
-            ))}
-          </div>
-        ) : null}
-        <UndoButtons session={session} state={st} />
-      </div>
-      {/* -- WP WB6L -- the quick strip (M60), on every screen as the Console's sidebar row */}
-      {lockedUser ? null : (
-        <QuickStrip session={session} screens={shownIds} current={screen.id} open={openScreen} leave={() => setCurrent(shown[0]!.id)} onHelp={() => setShortcutsOpen(true)} />
+            </div>
+          ) : null}
+          {unlocking ? <UnlockDialog session={session} lock={st.lock} onDone={() => setUnlocking(false)} /> : null}
+          {/* -- WP HUBADMIN -- the hub's recovery code, shown once: here, so it stays when the new PIN closes the Installer mode */}
+          {st.hubRecovery ? <RecoveryCode session={session} code={st.hubRecovery} /> : null}
+          {/* -- WP P1WB1 -- the scene bar's host-side half: the A/B toggle; a safe apply's countdown in every mode */}
+          {/* -- WP P1DCFIX -- the A/B toggle in every mode too (Simple has the compare) */}
+          {lockedUser ? null : <AbBar desk={desk} />}
+          <GuardBar desk={desk} />
+          {/* -- WP P2WB1 -- the hub's alarms to acknowledge, on every screen */}
+          {lockedUser ? null : <HubAlarmBanner feed={hub} onShow={shownIds.has(HUB_SCREEN_ID) ? () => setCurrent(HUB_SCREEN_ID) : null} />}
+          <StepNotice session={session} notice={st.notice} />
+        </>
+      }
+      sections={sections}
+      page={page}
+      last={place.last}
+      onPage={setCurrent}
+      tools={
+        // -- WP WB6L -- the quick strip (M60); -- WP WEBM1 -- the Overview's: the sections reach the rest from every page
+        section === "overview" && !lockedUser ? (
+          <QuickStrip session={session} screens={shownIds} current={screen.id} open={openScreen} leave={() => setCurrent(shown[0]!.id)} onHelp={() => setShortcutsOpen(true)} />
+        ) : null
+      }
+      foot={
+        // -- WP SW3 -- the status rail, below the screen as a status bar
+        <StatusRail
+          feed={system}
+          session={session}
+          mode={mode}
+          choice={choice}
+          modes={modes}
+          onMode={(m, every) => {
+            saveMode(safeLocalStorage(), serial, m, every);
+            setMode(m);
+          }}
+        >
+          {/* -- WP WB6F -- */}
+          <HealthRail session={session} feed={health} />
+        </StatusRail>
+      }
+      dock={<Dock session={session} state={st} locked={lockedUser} meters={props.meters} />}
+    >
+      {/* -- WP SW3 -- on an installation, the scene bar */}
+      {pro && (section === "overview" || section === "system") ? <SceneBar feed={system} session={session} ask={ask} /> : null}
+      {/* -- WP WB6E -- the device's preset slots, in Advanced and Installer (the Pro layer; Simple keeps the Main window's picker) */}
+      {pro && (section === "overview" || section === "library") ? <SlotBar session={session} ask={ask} unsaved={unsaved} /> : null}
+      {page === CONNECT ? (
+        shell.connect
+      ) : (
+        <screen.View session={session} ask={ask} unsaved={unsaved} system={system} mode={mode} desk={desk} open={openAt} target={target} hub={hub} /* -- WP P2WB1 -- */ />
       )}
       {shortcutsOpen ? <ShortcutsDialog screens={shownIds} onClose={() => setShortcutsOpen(false)} /> : null}
-      <StepNotice session={session} notice={st.notice} />
-      <screen.View session={session} ask={ask} unsaved={unsaved} system={system} mode={mode} desk={desk} open={openAt} target={target} hub={hub} /* -- WP P2WB1 -- */ />
-      {/* -- WP SW3 -- the status rail, below the screen as a status bar */}
-      <StatusRail
-        feed={system}
-        session={session}
-        mode={mode}
-        choice={choice}
-        modes={modes}
-        onMode={(m, every) => {
-          saveMode(safeLocalStorage(), serial, m, every);
-          setMode(m);
-        }}
-      >
-        {/* -- WP WB6F -- */}
-        <HealthRail session={session} feed={health} />
-      </StatusRail>
       {question ? (
         <Dialog
           title={question.title}
@@ -439,7 +489,7 @@ export function Screens(props: { session: Session }) {
           {question.body}
         </Dialog>
       ) : null}
-    </div>
+    </Frame>
   );
 }
 

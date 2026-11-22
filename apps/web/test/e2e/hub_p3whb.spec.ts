@@ -10,6 +10,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { openPage } from "../nav";
 
 const DEMO = "DEMO0000DSPI0001";
 const AWAY = "DEMO-OFFLINE-0042";
@@ -113,7 +114,7 @@ test.describe("P3WHB on a hub", () => {
     const session = page.getByRole("article").last();
     await expect(session.locator(".device-meta")).toContainText(DEMO);
     await setMode(session, page, "Advanced");
-    await session.getByRole("tab", { name: "Hub", exact: true }).click();
+    await openPage(session, "Hub");
 
     const board = session.getByRole("region", { name: "Health board" });
     const own = board.locator("tr.hub-health-row").filter({ hasText: DEMO });

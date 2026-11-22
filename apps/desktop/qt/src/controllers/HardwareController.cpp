@@ -4,6 +4,7 @@
 
 #include "Core.h"
 #include "DeviceModel.h"
+#include "DeviceSession.h"   // -- WP MDQT2b --
 #include "NamesController.h"
 #include "OutputLatencyController.h"
 #include "PinMap.h"
@@ -312,6 +313,7 @@ bool HardwareController::stm32() const { return m_ctx.device->platformName() == 
 
 void HardwareController::onSnapshot() {
     joinParts();
+    if (m_ctx.activeSession() != m_session) rebind();   // -- WP MDQT2b --
     const DeviceSnapshot &snap = m_ctx.device->snapshot();
     // A different device: what was held belongs to the old one (the Mac's
     // resetForNewDevice); a re-plug of the same unit keeps it
@@ -346,7 +348,78 @@ void HardwareController::onSnapshot() {
     pendingMaybeChanged();
 }
 
+// -- WP MDQT2b -- Another device is the active one: the draft held for the
+// one left waits in its session (a switch back finds it), the new one's
+// comes back, and its features are read again
+namespace {
+const QString kStash = QStringLiteral("HardwareController");
+} // namespace
+
+void HardwareController::rebind() {
+    if (m_session) {
+        QVariantMap &held = m_session->stash(kStash);
+        held.clear();
+        if (m_globalEdited || m_outputEdited) {
+            held = { { QStringLiteral("serial"), m_serial },
+                     { QStringLiteral("globalEdited"), m_globalEdited },
+                     { QStringLiteral("outputEdited"), m_outputEdited },
+                     { QStringLiteral("startupMode"), m_draft.startupMode },
+                     { QStringLiteral("defaultSlot"), m_draft.defaultSlot },
+                     { QStringLiteral("masterVolumeMode"), m_draft.masterVolumeMode },
+                     { QStringLiteral("outputConfigMode"), m_draft.outputConfigMode },
+                     { QStringLiteral("muteEnabled"), m_draft.muteEnabled },
+                     { QStringLiteral("muteActiveLow"), m_draft.muteActiveLow },
+                     { QStringLiteral("mutePin"), m_draft.mutePin },
+                     { QStringLiteral("muteHoldMs"), m_draft.muteHoldMs },
+                     { QStringLiteral("muteReleaseMs"), m_draft.muteReleaseMs } };
+            if (m_outputBaseline)
+                held.insert(QStringLiteral("outputBaseline"),
+                            QByteArray(reinterpret_cast<const char *>(m_outputBaseline.get()), sizeof(DspState)));
+        }
+    }
+    m_session = m_ctx.activeSession();
+    QVariantMap held;
+    if (m_session) held = std::exchange(m_session->stash(kStash), QVariantMap());
+    m_serial = held.value(QStringLiteral("serial")).toString();
+    m_globalEdited = held.value(QStringLiteral("globalEdited")).toBool();
+    m_outputEdited = held.value(QStringLiteral("outputEdited")).toBool();
+    if (m_globalEdited) {
+        m_draft.startupMode = held.value(QStringLiteral("startupMode")).toInt();
+        m_draft.defaultSlot = held.value(QStringLiteral("defaultSlot")).toInt();
+        m_draft.masterVolumeMode = held.value(QStringLiteral("masterVolumeMode")).toInt();
+        m_draft.outputConfigMode = held.value(QStringLiteral("outputConfigMode")).toInt();
+        m_draft.muteEnabled = held.value(QStringLiteral("muteEnabled")).toBool();
+        m_draft.muteActiveLow = held.value(QStringLiteral("muteActiveLow")).toBool();
+        m_draft.mutePin = held.value(QStringLiteral("mutePin")).toInt();
+        m_draft.muteHoldMs = held.value(QStringLiteral("muteHoldMs")).toInt();
+        m_draft.muteReleaseMs = held.value(QStringLiteral("muteReleaseMs")).toInt();
+    }
+    m_outputBaseline.reset();
+    const QByteArray base = held.value(QStringLiteral("outputBaseline")).toByteArray();
+    if (base.size() == int(sizeof(DspState))) {
+        auto state = std::make_shared<DspState>();
+        std::memcpy(state.get(), base.constData(), sizeof(DspState));
+        m_outputBaseline = state;
+    }
+    m_generation = 0;
+    m_has.clear();
+    m_saveFailure.clear();
+    m_uartOutcome.clear();
+    m_i2cOutcome.clear();
+    setStatus(QString(), false);
+    emit draftChanged();
+    emit interfacesChanged();
+}
+
+bool HardwareController::pendingOn(DeviceSession *session) const {
+    if (!session) return false;
+    if (session == m_ctx.activeSession()) return pending();
+    const QVariantMap &held = session->stash(kStash);
+    return held.value(QStringLiteral("globalEdited")).toBool() || held.value(QStringLiteral("outputEdited")).toBool();
+}
+
 void HardwareController::readFeatures() {
+    const QPointer<DeviceSession> asked = m_ctx.activeSession();   // -- WP MDQT2b --
     m_ctx.core->worker()->call(
         this,
         [](FfiCore *c) {
@@ -357,7 +430,8 @@ void HardwareController::readFeatures() {
                 f.insert(QString::fromLatin1(name), dspi_feature_present(c, name));
             return f;
         },
-        [this](const QVariantMap &f) {
+        [this, asked](const QVariantMap &f) {
+            if (asked != m_ctx.activeSession()) return;   // -- WP MDQT2b -- the device left's
             const DspState *s = m_ctx.device->state();
             const bool rp40 = rp2040();
             auto on = [&f](const char *name) { return f.value(QString::fromLatin1(name)).toBool(); };
@@ -518,6 +592,7 @@ void HardwareController::readSurfaces() {
         take({});
         return;
     }
+    const QPointer<DeviceSession> asked = m_ctx.activeSession();   // -- WP MDQT2b --
     m_ctx.core->worker()->call(
         this,
         [](FfiCore *c) {
@@ -528,7 +603,9 @@ void HardwareController::readSurfaces() {
             for (uint32_t i = 0; i < n; ++i) uses.append({ pins[i], owners[i] });
             return uses;
         },
-        take);
+        [take, asked, this](const QList<PinMap::SurfacePin> &uses) {
+            if (asked == m_ctx.activeSession()) take(uses);   // -- WP MDQT2b --
+        });
 }
 
 // ---- pins --------------------------------------------------------------------------------

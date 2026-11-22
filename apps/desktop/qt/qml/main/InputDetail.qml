@@ -89,6 +89,7 @@ ColumnLayout {
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
                         width: 52
+                        textFormat: Text.PlainText
                         text: qsTr("Link %1").arg(page.pairLabel)
                         font: Theme.fontSmall
                         color: page.linked ? Theme.accentText : Theme.textMuted
@@ -177,6 +178,7 @@ ColumnLayout {
     QuestionDialog {
         id: linkQuestion
         objectName: "InputDetail.linkQuestion"
+        ofDevice: true   // -- WP MDQT2a --
         parent: Overlay.overlay
         rejectText: qsTr("Cancel")
         onAnswered: answer => {

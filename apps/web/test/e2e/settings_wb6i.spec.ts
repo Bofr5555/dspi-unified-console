@@ -8,6 +8,7 @@
 // the demo device.
 
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { openPage } from "../nav";
 
 type Clients = { dspiClients: { call(m: string, p: unknown): Promise<unknown> }[] };
 type State = { channelNames: string[]; numInputChannels: number; outputPins: number[] };
@@ -35,7 +36,6 @@ async function openDemo(page: Page): Promise<Locator> {
   return session;
 }
 
-const tab = (session: Locator, name: string) => session.getByRole("tab", { name, exact: true });
 const nav = (session: Locator) => session.getByRole("navigation", { name: "Settings pages" });
 
 async function setMode(session: Locator, page: Page, mode: "Simple" | "Advanced" | "Installer") {
@@ -55,7 +55,7 @@ async function noSidewaysScroll(page: Page) {
 test("WB6I Settings: device name and latency through the core; Reset Channel Names is one undo step; debug information kept; help links", async ({ page }) => {
   const errors = errorsOf(page);
   const session = await openDemo(page);
-  await tab(session, "Settings").click();
+  await openPage(session, "Settings");
   await expect(nav(session).getByRole("button", { name: "Global" })).toHaveAttribute("aria-current", "page");
 
   // Device name: written by the core, read back in the snapshot.
@@ -106,7 +106,7 @@ test("WB6I Settings: device name and latency through the core; Reset Channel Nam
 
   await page.reload();
   const again = await openDemo(page);
-  await tab(again, "Settings").click();
+  await openPage(again, "Settings");
   await nav(again).getByRole("button", { name: "Advanced" }).click();
   await expect(again.getByRole("region", { name: "Diagnostics" }).getByLabel(/Show Debug Information/)).toBeChecked();
   await again.getByRole("region", { name: "Diagnostics" }).getByLabel(/Show Debug Information/).uncheck();
@@ -116,7 +116,7 @@ test("WB6I Settings: device name and latency through the core; Reset Channel Nam
 test("WB6I Pins: every GPIO the device reports; a move goes through the core and a refusal is said; not in Simple", async ({ page }) => {
   const errors = errorsOf(page);
   const session = await openDemo(page);
-  await tab(session, "Settings").click();
+  await openPage(session, "Settings");
   await nav(session).getByRole("button", { name: "Pins" }).click();
   const pins = session.getByRole("region", { name: "Pins" });
   const st = await coreState(page);
@@ -146,7 +146,7 @@ test("WB6I Pins: every GPIO the device reports; a move goes through the core and
   await noSidewaysScroll(page);
 
   await setMode(session, page, "Simple");
-  await tab(session, "Settings").click();
+  await openPage(session, "Settings");
   await expect(nav(session).getByRole("button", { name: "Pins" })).toHaveCount(0);
   await expect(nav(session).getByRole("button", { name: "Core Voltage" })).toHaveCount(0);
   await setMode(session, page, "Advanced");
@@ -157,7 +157,7 @@ test("WB6I Graphing: applied to the EQ graph at once (a redraw, the cursor reado
   test.skip(test.info().project.name === "narrow", "the cursor readout is the mouse's");
   const errors = errorsOf(page);
   const session = await openDemo(page);
-  await tab(session, "EQ").click();
+  await openPage(session, "EQ");
   await session.locator(".eq-pick", { hasText: "OUT1" }).click();
   const graph = session.getByRole("application", { name: /^EQ graph, OUT1/ });
   await expect(graph).toBeVisible();
@@ -168,11 +168,11 @@ test("WB6I Graphing: applied to the EQ graph at once (a redraw, the cursor reado
   await expect(readout).toContainText(/Hz/);
   await expect(readout).toContainText(/dB/);
 
-  await tab(session, "Settings").click();
+  await openPage(session, "Settings");
   await nav(session).getByRole("button", { name: "Graphing" }).click();
   await session.getByRole("region", { name: "Scale & Grid" }).getByLabel("Show Gain Readout").uncheck();
   await session.getByRole("region", { name: "Scale & Grid" }).getByLabel("Min Frequency").selectOption("100");
-  await tab(session, "EQ").click();
+  await openPage(session, "EQ");
   const graph2 = session.getByRole("application", { name: /^EQ graph/ });
   await graph2.evaluate((e) => e.scrollIntoView({ block: "center" }));
   const b2 = (await graph2.boundingBox())!;
@@ -181,13 +181,13 @@ test("WB6I Graphing: applied to the EQ graph at once (a redraw, the cursor reado
   await expect(graph2.locator(".eq-readout")).toHaveText(/^10\d Hz$/);
   const drawsBefore = await graph2.locator("canvas").evaluate((c) => (c as unknown as { dspiDraws?: number }).dspiDraws ?? 0);
 
-  await tab(session, "Settings").click();
+  await openPage(session, "Settings");
   await nav(session).getByRole("button", { name: "Graphing" }).click();
   await session.getByRole("region", { name: "Graph Appearance" }).getByLabel(/Graph Line Glow/).check();
   await session.getByRole("button", { name: "Restore Defaults" }).click();
   await expect(session.getByRole("region", { name: "Graph Appearance" }).getByLabel(/Graph Line Glow/)).not.toBeChecked();
   await expect(session.getByRole("region", { name: "Scale & Grid" }).getByLabel("Min Frequency")).toHaveValue("20");
-  await tab(session, "EQ").click();
+  await openPage(session, "EQ");
   await expect.poll(() => session.getByRole("application", { name: /^EQ graph/ }).locator("canvas").evaluate((c) => (c as unknown as { dspiDraws?: number }).dspiDraws ?? 0)).toBeGreaterThan(0);
   expect(drawsBefore).toBeGreaterThan(0);
   expect(errors).toEqual([]);
@@ -199,7 +199,7 @@ test("WB6I Core Voltage: the Installer mode's; the core's word asked; a trial st
   const demo = await call<{ device: { demo: boolean } }>(page, "state");
   expect(demo.device.demo).toBe(true);
   await setMode(session, page, "Installer");
-  await tab(session, "Settings").click();
+  await openPage(session, "Settings");
   await nav(session).getByRole("button", { name: "Advanced" }).click();
   await expect(session.getByRole("region", { name: "Core Voltage" })).toContainText("Running at 1.20 V");
   await session.getByRole("region", { name: "Core Voltage" }).getByRole("button", { name: "Open…" }).click();

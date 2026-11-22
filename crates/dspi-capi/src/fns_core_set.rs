@@ -9,17 +9,23 @@
 //! freed: a call another thread makes on it late answers as a core with no
 //! device (`Disconnected`), never touches freed memory.
 //!
+//! -- WP MDQT1 -- `dspi_core_set_main` is the app's main core: there from the
+//! start, with a device or without, and never retired. What an app does with a
+//! core while no device is open (looking for hubs, dialling one) it does on
+//! that one; a device opened on it through `dspi_select_device` and the like is
+//! in the set like the others, under its id.
+//!
 //! Replies are JSON, as in `fns_misc`'s docs. A set's own failures have the
 //! codes `already_open` (with `id`, the device the unit is open as), `full`
 //! and `unknown`; a failure to open the device is the device's reply.
 
-use std::collections::BTreeMap;
 use std::ffi::{CString, c_char, c_void};
 use std::ptr;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use dspi_core::{
     CoreSet, CoreSetConfig, CoreSetError, CoreSetEvent, CoreSetListener, DeviceId, DeviceTarget,
+    DspiCore,
 };
 use serde_json::{Value, json};
 
@@ -31,8 +37,10 @@ use crate::{FfiCore, guard};
 /// The handle behind `struct FfiCoreSet *`.
 pub struct FfiCoreSet {
     set: Arc<CoreSet>,
-    /// The `FfiCore` handed out per id, boxed so its address stays put.
-    handles: Mutex<BTreeMap<String, Box<FfiCore>>>,
+    /// The `FfiCore` handed out per core, boxed so its address stays put
+    /// (-- WP MDQT1 -- not per id: an id follows the device).
+    #[allow(clippy::vec_box)]
+    handles: Mutex<Vec<Box<FfiCore>>>,
     /// Handles of closed devices, kept until the set is freed (review RA F2);
     /// still boxed, since C holds their addresses.
     #[allow(clippy::vec_box)]
@@ -40,8 +48,25 @@ pub struct FfiCoreSet {
 }
 
 impl FfiCoreSet {
-    fn handles(&self) -> std::sync::MutexGuard<'_, BTreeMap<String, Box<FfiCore>>> {
+    #[allow(clippy::vec_box)]
+    fn handles(&self) -> std::sync::MutexGuard<'_, Vec<Box<FfiCore>>> {
         self.handles.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// The handle of `core`, the same one each time.
+    fn handle(&self, core: Arc<DspiCore>) -> *mut FfiCore {
+        let mut handles = self.handles();
+        if let Some(h) = handles.iter_mut().find(|h| Arc::ptr_eq(&h.core, &core)) {
+            return ptr::from_mut::<FfiCore>(h.as_mut());
+        }
+        let state = Box::new(DspState::from(&core.get_state()));
+        let mut handle = Box::new(FfiCore {
+            core,
+            state: Mutex::new(state),
+        });
+        let p = ptr::from_mut::<FfiCore>(handle.as_mut());
+        handles.push(handle);
+        p
     }
 }
 
@@ -55,6 +80,13 @@ fn with_set<T>(p: *const FfiCoreSet, fail: T, f: impl FnOnce(&FfiCoreSet) -> T) 
         // valid until `dspi_core_set_free`; that is the C caller's contract.
         f(unsafe { &*p })
     })
+}
+
+// -- WP MCP3 --
+/// The set behind `p`, for the MCP server (`fns_mcp`); `None` for null.
+#[cfg(feature = "mcp")]
+pub(crate) fn set_arc(p: *const FfiCoreSet) -> Option<Arc<CoreSet>> {
+    with_set(p, None, |s| Some(Arc::clone(&s.set)))
 }
 
 /// A text reply from the set (`fns_misc`'s rules): the bytes needed, 0 for a
@@ -140,7 +172,7 @@ pub extern "C" fn dspi_core_set_new() -> *mut FfiCoreSet {
         crate::init_logger();
         Box::into_raw(Box::new(FfiCoreSet {
             set: CoreSet::new(),
-            handles: Mutex::new(BTreeMap::new()),
+            handles: Mutex::new(Vec::new()),
             retired: Mutex::new(Vec::new()),
         }))
     })
@@ -160,6 +192,14 @@ pub extern "C" fn dspi_core_set_free(set: *mut FfiCoreSet) {
         // used again after this call; the C caller's contract.
         let handle = unsafe { Box::from_raw(set) };
         handle.set.set_listener(None);
+        // -- WP MDQT1 -- the main core as `dspi_core_free` would leave it
+        let main = handle.set.main_core();
+        unset_callbacks(&main);
+        #[cfg(feature = "link")]
+        main.link_close();
+        #[cfg(feature = "mdns")]
+        main.link_browse_stop();
+        main.disconnect();
         let ids: Vec<DeviceId> = handle.set.list().into_iter().map(|d| d.id).collect();
         for id in ids {
             let _ = close(&handle, &id);
@@ -167,25 +207,44 @@ pub extern "C" fn dspi_core_set_free(set: *mut FfiCoreSet) {
     });
 }
 
+/// No callback of `core` runs after this.
+fn unset_callbacks(core: &DspiCore) {
+    core.set_notify_listener(None);
+    core.rta_set_listener(None);
+    core.set_hotplug_callback(None);
+    #[cfg(feature = "link")]
+    core.set_link_listener(None);
+}
+
 /// Unset the callbacks of the handle for `id`, close the device, then retire
-/// the handle: it lives on, with no device, until the set is freed.
+/// the handle: it lives on, with no device, until the set is freed. The main
+/// core keeps both: it goes on with no device.
 fn close(s: &FfiCoreSet, id: &DeviceId) -> Result<(), CoreSetError> {
-    if let Some(core) = s.set.core(id) {
-        core.set_notify_listener(None);
-        core.rta_set_listener(None);
-        core.set_hotplug_callback(None);
-        #[cfg(feature = "link")]
-        core.set_link_listener(None);
+    let core = s.set.core(id);
+    let main = core
+        .as_ref()
+        .is_some_and(|c| Arc::ptr_eq(c, &s.set.main_core()));
+    if main {
+        return s.set.close(id);
     }
-    let closed = s.set.close(id);
-    let handle = s.handles().remove(id.as_str());
-    if let Some(h) = handle {
+    if let Some(core) = &core {
+        unset_callbacks(core);
+        // -- WP MDQT1 -- a browse of its own ends with it
+        #[cfg(feature = "mdns")]
+        core.link_browse_stop();
+    }
+    s.set.close(id)?;
+    let mut handles = s.handles();
+    let at = handles
+        .iter()
+        .position(|h| core.as_ref().is_some_and(|c| Arc::ptr_eq(&h.core, c)));
+    if let Some(at) = at {
         s.retired
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
-            .push(h);
+            .push(handles.remove(at));
     }
-    closed
+    Ok(())
 }
 
 /// Open the device `target` names on a core of its own and add it to the set.
@@ -195,6 +254,11 @@ fn close(s: &FfiCoreSet, id: &DeviceId) -> Result<(), CoreSetError> {
 /// "tlsAdvertised"}`: a unit behind a hub on its own session, with a credential
 /// the app holds. JSON `{ok, id}`, or the failure (module docs). Blocks for the
 /// connect sequence: not on the UI thread.
+///
+/// -- WP MDQT1 -- It acts once, whatever the buffer: a reply that does not fit
+/// (the returned length is over `len`) writes nothing, but the device is open.
+/// Do not call it again for the id (it would open a second demo, or be refused
+/// as `already_open`): `dspi_core_set_list` has it. 4096 bytes hold any reply.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_core_set_open(
     set: *mut FfiCoreSet,
@@ -243,7 +307,35 @@ pub extern "C" fn dspi_core_set_close(
     })
 }
 
-/// The open devices, in the order they were opened: JSON `{ok, value: [{id,
+// -- WP MDQT1 --
+/// The set's main core, for every `dspi_*` call: there with a device or
+/// without, the same pointer each time, until `dspi_core_set_free`. Never pass
+/// it to `dspi_core_free`. Closing the device open on it
+/// (`dspi_core_set_close`) leaves it, and its callbacks, in place. Null for a
+/// null handle.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_core_set_main(set: *mut FfiCoreSet) -> *mut FfiCore {
+    with_set(set, ptr::null_mut(), |s| s.handle(s.set.main_core()))
+}
+
+// -- WP MDQT1 --
+/// The open device `core` (a handle of this set) has, as the last
+/// `dspi_core_set_list` or poll saw it: its row as there, in `{ok, value}`;
+/// `value` null with no device. Does not wait on a device.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_core_set_device_of(
+    set: *mut FfiCoreSet,
+    core: *const FfiCore,
+    buf: *mut c_char,
+    len: u32,
+) -> u32 {
+    set_text(set, buf, len, |s| {
+        let device = crate::with_core(core, None, |c| s.set.device_of(&c.core));
+        json!({ "ok": true, "value": device }).to_string()
+    })
+}
+
+/// The open devices, in the order they were opened (the main core's first): JSON `{ok, value: [{id,
 /// label, transport, serial, state}]}`. `transport` is `usb`, `hub`, `link`,
 /// `demo` or `file`; `state` is `live`, `reconnecting` or `lost`.
 #[unsafe(no_mangle)]
@@ -265,15 +357,7 @@ pub extern "C" fn dspi_core_set_core(set: *mut FfiCoreSet, id: *const c_char) ->
         let Some(core) = s.set.core(&id) else {
             return ptr::null_mut();
         };
-        let mut handles = s.handles();
-        let handle = handles.entry(id.as_str().to_owned()).or_insert_with(|| {
-            let state = Box::new(DspState::from(&core.get_state()));
-            Box::new(FfiCore {
-                core,
-                state: Mutex::new(state),
-            })
-        });
-        ptr::from_mut::<FfiCore>(handle.as_mut())
+        s.handle(core)
     })
 }
 
@@ -295,7 +379,9 @@ pub extern "C" fn dspi_core_set_find_serial(
 /// Set the folders every core of the set gets, now and from now on. `config`
 /// is JSON `{limitsDir, snapshotDir, measureDir, eventLogDir, linkDir,
 /// speakerLayoutDir}`; an absent or empty one is not set. JSON `{ok}`, or the first core's failure.
-/// Blocking file I/O.
+/// Blocking file I/O. -- WP MDQT1 -- Call it before opening devices (the limits
+/// and the speaker layout are then in force from the first); a folder that
+/// cannot be used fails this call, and never an open.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_core_set_config(
     set: *mut FfiCoreSet,
@@ -391,3 +477,7 @@ pub extern "C" fn dspi_core_set_set_listener(
 #[cfg(test)]
 #[path = "fns_core_set/tests_wp_md0.rs"]
 mod tests_wp_md0;
+
+#[cfg(test)]
+#[path = "fns_core_set/tests_wp_mdqt1.rs"]
+mod tests_wp_mdqt1;

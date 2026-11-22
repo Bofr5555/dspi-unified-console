@@ -2,6 +2,7 @@
 #define UNSAVEDGUARD_H
 
 #include <QElapsedTimer>
+#include <QList>
 #include <QObject>
 #include <QPointer>
 #include <QStringList>
@@ -10,6 +11,7 @@
 
 #include "Registrar.h"
 
+class DeviceSession;
 class QJSEngine;
 class QQmlEngine;
 class QQuickWindow;
@@ -32,6 +34,13 @@ class QQuickWindow;
 // goes on (a failed save stops a device switch; quitting then asks "Quit
 // anyway?"); Discard goes on; Cancel stops. The host (files/FilesHost.qml)
 // shows `question` and calls answer().
+//
+// -- WP MDQT2b -- Several open devices: each has its own preset and changes.
+// Closing a device (a tab, the Open devices list) asks about that one, active
+// or not, and saves into its own active slot; quitting and closing the main
+// window ask about every open device in turn, the active one first (a Cancel
+// stops there). `deviceTitle` names the device asked about while more than one
+// is open.
 class UnsavedGuard : public QObject {
     Q_OBJECT
     QML_ELEMENT
@@ -43,6 +52,8 @@ class UnsavedGuard : public QObject {
     // tray that hides the window instead), as the Mac asks nothing when it
     // hides to the menu bar.
     Q_PROPERTY(bool askOnClose READ askOnClose WRITE setAskOnClose NOTIFY askOnCloseChanged)
+    // -- WP MDQT2b -- The device the question is about, "" while it is the only one open
+    Q_PROPERTY(QString deviceTitle READ deviceTitle NOTIFY askingChanged)
 public:
     UnsavedGuard(const AppContext &ctx, QObject *parent = nullptr);
     static UnsavedGuard *create(QQmlEngine *, QJSEngine *);
@@ -57,6 +68,10 @@ public:
     // ask() through the one instance; without one, or with no `op` (the same
     // device again), `proceed` runs at once
     static void before(const QString &op, QObject *ctx, std::function<void()> proceed);
+    // -- WP MDQT2b -- ask() about `session`'s device, before it is closed
+    // (op "device"); without an instance `proceed` runs at once
+    static void beforeClosing(DeviceSession *session, QObject *ctx, std::function<void()> proceed);
+    QString deviceTitle() const { return m_title; }
 
     // The question's answer: "accept" (Save), "alternative" (Discard) or
     // "reject" (Cancel)
@@ -89,6 +104,9 @@ protected:
 
 private:
     void setAsking(bool asking);
+    // -- WP MDQT2b -- the devices asked about, in turn
+    void begin(const QString &op, QList<DeviceSession *> targets, QObject *ctx, std::function<void()> proceed);
+    void askNext();
     void settleThenRead();
     void read();
     void proceed();
@@ -107,6 +125,10 @@ private:
     QPointer<QQuickWindow> m_window;
     bool m_closePass = false;      // the next close of the main window goes through
     bool m_quitting = false;       // the person chose to quit: every close goes through
+    // -- WP MDQT2b --
+    QList<QPointer<DeviceSession>> m_targets;   // still to be asked about
+    QPointer<DeviceSession> m_target;           // the one asked about now
+    QString m_title;
 };
 
 #endif // UNSAVEDGUARD_H

@@ -5,6 +5,7 @@
 // and dashboard cards per row (M59). What the page did is read back from the core (a direct call).
 
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { openPage, rail } from "../nav";
 
 type Client = { call(m: string, p: unknown): Promise<unknown> };
 type G = { dspiClients: Client[] };
@@ -30,7 +31,7 @@ async function connect(page: Page, venue = "Venue A"): Promise<Locator> {
   const one = page.locator("#one");
   await one.getByRole("region", { name: venue }).getByRole("button", { name: "Connect" }).click();
   const session = one.getByRole("article", { name: "DSPi" });
-  await expect(session.getByRole("tab", { name: "EQ" })).toBeVisible();
+  await expect(rail(session)).toBeVisible();
   return session;
 }
 
@@ -69,7 +70,7 @@ test("WB6J M22: the main screen's bar strip shows the chosen tap's channels from
 test("WB6J M23 M22: a channel's page draws its spectrum over the EQ graph and in its own bars", async ({ page }) => {
   const errors = errorsOf(page);
   const session = await connect(page);
-  await session.getByRole("tab", { name: "EQ" }).click();
+  await openPage(session, "EQ");
   await session.locator(".eq-pick", { hasText: "OUT1" }).click();
   await session.getByRole("button", { name: "Spectrum on Graph" }).click();
   const overlay = session.locator("canvas.rta-overlay");
@@ -93,7 +94,7 @@ test("WB6J M23 M22: a channel's page draws its spectrum over the EQ graph and in
 test("WB6J M46: the signal generator plays only on Play, shows what it does, and stops", async ({ page }) => {
   const errors = errorsOf(page);
   const session = await connect(page);
-  await session.getByRole("tab", { name: "Signal Generator" }).click();
+  await openPage(session, "Signal Generator");
   const gen = session.getByRole("region", { name: "Signal Generator" });
   await expect(gen.locator(".siggen-title")).toHaveText("Ready · Sine");
   expect((await call<Status>(page, "siggenStatus")).state).toBe(0);
@@ -119,7 +120,7 @@ test("WB6J M46: the signal generator plays only on Play, shows what it does, and
 test("WB6J M46: Identify from an output's page and from the matrix plays channel-ID blips on that output alone", async ({ page }) => {
   const errors = errorsOf(page);
   const session = await connect(page);
-  await session.getByRole("tab", { name: "EQ" }).click();
+  await openPage(session, "EQ");
   await session.locator(".eq-pick", { hasText: "OUT2" }).click();
   await session.getByRole("button", { name: "Identify" }).click();
   await expect.poll(async () => (await call<Config>(page, "siggenConfig")).channelMask).toBe(2);
@@ -127,14 +128,14 @@ test("WB6J M46: Identify from an output's page and from the matrix plays channel
   expect([cfg.signalType, cfg.levelDb, cfg.repeat]).toEqual([14, -12, 2]);
   await call(page, "siggenControl", { action: "stopNow" });
   // The matrix's column menu.
-  await session.getByRole("tab", { name: "Matrix" }).click();
+  await openPage(session, "Matrix");
   const matrix = session.getByRole("region", { name: "Matrix Mixer" });
   await matrix.locator("th.m-out").first().getByRole("button").first().click();
   await matrix.getByRole("menuitem", { name: "Identify" }).click();
   await expect.poll(async () => (await call<Config>(page, "siggenConfig")).channelMask).toBe(1);
   expect((await call<Status>(page, "siggenStatus")).signalType).toBe(14);
   // The generator's page shows what plays.
-  await session.getByRole("tab", { name: "Signal Generator" }).click();
+  await openPage(session, "Signal Generator");
   await expect(session.getByRole("region", { name: "Signal Generator" }).locator(".siggen-title")).toHaveText(/Channel ID|Ready/);
   expect(errors).toEqual([]);
 });
@@ -142,11 +143,11 @@ test("WB6J M46: Identify from an output's page and from the matrix plays channel
 test("WB6J M46: read only, the generator and Identify are off and nothing plays", async ({ page }) => {
   // Venue B is this console's view-only installation.
   const session = await connect(page, "Venue B");
-  await session.getByRole("tab", { name: "Signal Generator" }).click();
+  await openPage(session, "Signal Generator");
   const gen = session.getByRole("region", { name: "Signal Generator" });
   await expect(gen.getByRole("button", { name: "Play" })).toBeDisabled();
   await expect(gen.locator(".siggen-title")).toHaveText("You can view this DSPi but not change it");
-  await session.getByRole("tab", { name: "EQ" }).click();
+  await openPage(session, "EQ");
   await session.locator(".eq-pick", { hasText: "OUT1" }).click();
   await expect(session.getByRole("button", { name: "Identify" })).toBeDisabled();
   expect((await call<Status>(page, "siggenStatus")).state).toBe(0);
@@ -155,7 +156,7 @@ test("WB6J M46: read only, the generator and Identify are off and nothing plays"
 test("WB6J M53: Stats for nerbs shows the core's readings and resets the watermarks", async ({ page }) => {
   const errors = errorsOf(page);
   const session = await connect(page);
-  await session.getByRole("tab", { name: "Stats for nerbs" }).click();
+  await openPage(session, "Stats for nerbs");
   const stats = session.getByRole("region", { name: "Stats for nerbs" });
   await expect(stats.getByRole("region", { name: "System Information" })).toBeVisible();
   await expect(stats.getByRole("region", { name: "Device Information" })).toContainText("Firmware");
@@ -168,7 +169,7 @@ test("WB6J M53: Stats for nerbs shows the core's readings and resets the waterma
 test("WB6J M54: the Interrupt Monitor lists the device's notifications; Pause, Clear", async ({ page }) => {
   const errors = errorsOf(page);
   const session = await connect(page);
-  await session.getByRole("tab", { name: "Interrupt Monitor" }).click();
+  await openPage(session, "Interrupt Monitor");
   const mon = session.getByRole("region", { name: "Interrupt Monitor" });
   await expect(mon.getByRole("status")).toContainText("Listening");
   // A notification of the demo's: the generator starting and stopping.
@@ -188,7 +189,7 @@ test("WB6J M54: the Interrupt Monitor lists the device's notifications; Pause, C
 test("WB6J M22: the Analyser screen shows the strip with its chooser", async ({ page }) => {
   const errors = errorsOf(page);
   const session = await connect(page);
-  await session.getByRole("tab", { name: "Analyser" }).click();
+  await openPage(session, "Analyser");
   const strip = session.getByRole("region", { name: "Spectrum" });
   await expect(strip.getByRole("heading", { name: "Spectrum Analyser" })).toBeVisible();
   await strip.getByRole("button", { name: "Show Bars" }).click();

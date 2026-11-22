@@ -36,6 +36,7 @@ ColumnLayout {
             }
             Text {
                 Layout.fillWidth: true
+                textFormat: Text.PlainText
                 text: section.title
                 font: Theme.fontHeading
                 color: heading.hovered ? Theme.text : Theme.textMuted

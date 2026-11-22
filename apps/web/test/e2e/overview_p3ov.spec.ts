@@ -11,6 +11,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { openPage } from "../nav";
 
 type State = { numOutputChannels: number; outputGainDb: number[]; outputMuted: boolean[] };
 type Client = { call(m: string, p: unknown): Promise<unknown> };
@@ -48,7 +49,7 @@ async function openOverview(page: Page, venue = "Venue A", query = "one") {
   const one = page.locator("#one");
   await one.getByRole("region", { name: venue }).getByRole("button", { name: "Connect" }).click();
   const session = one.getByRole("article").first();
-  await session.getByRole("tab", { name: "Overview", exact: true }).click();
+  await openPage(session, "Overview");
   const overview = session.getByRole("region", { name: "Overview" });
   await expect(overview).toBeVisible();
   return { session, overview };
@@ -118,13 +119,13 @@ test("P3OV: an inline gain edit lands and shows on the Outputs page; an inline m
   expect(top).toBeGreaterThan(-4);
 
   // The Outputs page (OUT2's output card on the EQ screen) shows it.
-  await session.getByRole("tab", { name: "EQ", exact: true }).click();
+  await openPage(session, "EQ");
   await session.locator(".eq-pick", { hasText: "OUT2" }).click();
   const card = session.getByRole("region", { name: /^Output settings, OUT2/ });
   await expect(card.getByRole("textbox", { name: "Gain" })).toHaveValue("-4.0 dB");
 
   // Mute inline, then Undo: the same journal as every write.
-  await session.getByRole("tab", { name: "Overview", exact: true }).click();
+  await openPage(session, "Overview");
   const mute = rowOf(overview, 1).getByRole("button", { name: /^OUT2 .* mute$/ });
   const was = (await core(page)).outputMuted[1] === true;
   await mute.click();
@@ -221,7 +222,7 @@ async function hubOverview(page: Page, hub: OwnHub): Promise<Locator> {
   const picker = page.getByRole("navigation", { name: "DSPi devices" });
   await picker.getByRole("listitem").filter({ hasText: "· online" }).getByRole("button", { name: "Connect" }).click();
   const session = page.getByRole("article").last();
-  await session.getByRole("tab", { name: "Overview", exact: true }).click();
+  await openPage(session, "Overview");
   const overview = session.getByRole("region", { name: "Overview" });
   await expect(overview).toBeVisible();
   return overview;

@@ -17,6 +17,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { expect, test, type Page, type TestInfo } from "@playwright/test";
+import { appMenu, openDevices } from "../nav";
 
 const linkWords = (await import("../../../../ci/generated/web/link-words.json", { with: { type: "json" } })).default as {
   link: { key: string; text: string; action: string | null }[];
@@ -321,6 +322,7 @@ test.describe("served by uconsole web on localhost", () => {
     const usbSession = page.getByRole("article").last();
     await expect(usbSession.locator(".device-meta")).toHaveText("RP2350 · firmware 1.1.6 · MOCKA001");
 
+    await openDevices(page); // -- WP WEBM1 --
     const hubSession = await openHubDemo(page, `localhost:${LOCAL_PORT}`);
     await writeOnce(hubSession, info, "-18.0");
     // Both open at once, each its own session.
@@ -342,7 +344,7 @@ test.describe("the static build", () => {
     await expect(page.getByRole("link", { name: "Hub page" })).toHaveCount(0);
     // The build's source link (DSPI_WEB_SOURCE_URL), when the build was given one.
     if (process.env.DSPI_WEB_SOURCE_URL) {
-      await page.getByRole("button", { name: "About" }).click();
+      await appMenu(page, "About");
       await expect(page.getByRole("link", { name: "Source code" })).toHaveAttribute("href", process.env.DSPI_WEB_SOURCE_URL);
     }
     const notices = await (await request.get(`${PLAIN}/THIRD-PARTY-NOTICES.txt`)).text();

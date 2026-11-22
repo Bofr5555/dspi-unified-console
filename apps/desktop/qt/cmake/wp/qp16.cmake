@@ -7,7 +7,7 @@ list(APPEND DSPI_APP_SOURCES
     src/platform/BootloaderLocator.h src/platform/BootloaderLocator.cpp
     src/platform/DeviceAccess.h src/platform/DeviceAccess.cpp)
 list(APPEND DSPI_QML_FILES
-    qml/tools/FirmwareWindow.qml
+    qml/tools/FirmwarePanel.qml   # -- WP LAY1b -- was FirmwareWindow.qml
     qml/banners/FirmwareBanner.qml
     qml/banners/ReadOnlyBanner.qml
     qml/banners/DelayRefusalBanner.qml

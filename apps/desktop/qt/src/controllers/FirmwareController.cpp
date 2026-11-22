@@ -7,6 +7,8 @@
 #include "Core.h"
 #include "DeviceInfoController.h"   // -- WP PGQT --
 #include "DeviceModel.h"
+#include "DeviceSession.h"   // -- WP MDQT2b --
+#include "SessionModel.h"
 #include "FilesController.h"
 #include "Shell.h"
 #include "Snapshot.h"
@@ -435,6 +437,9 @@ void FirmwareController::askGuard(const QJsonObject &verdict, std::function<void
 
 void FirmwareController::resetRun() {
     if (m_state == Writing || m_state == WaitingForDevice) return;
+    // -- WP MDQT2b -- the next run is the active device's
+    if (m_run) disconnect(m_run->model(), nullptr, this, nullptr);
+    m_run = nullptr;
     m_installing = false;
     m_armed = false;
     m_confirmed = false;
@@ -491,6 +496,12 @@ void FirmwareController::begin(bool reboot) {
     // An ended run is reset first (Try Again, Update Another Board)
     if (underWay() || m_installing || m_confirmed || m_watchers == 0) return;
     if (custom() && !m_customProblem.isEmpty()) return;
+    // -- WP MDQT2b -- the run is this device's from here on
+    if (m_run != m_ctx.activeSession()) {
+        if (m_run) disconnect(m_run->model(), nullptr, this, nullptr);
+        m_run = m_ctx.activeSession();
+        if (m_run) connect(m_run->model(), &SessionModel::applied, this, &FirmwareController::onRunApplied);
+    }
     const auto proceed = [this, reboot] {
         m_confirmed = true;
         m_armed = true;
@@ -584,10 +595,11 @@ void FirmwareController::cancelGuard() {
 }
 
 void FirmwareController::enterBootloaderForInstall() {
-    if (!m_ctx.device->connected() || m_rebootRequested) return;
+    SessionModel *device = runModel();   // -- WP MDQT2b -- the run's device
+    if (!device->connected() || m_rebootRequested) return;
     m_rebootRequested = true;
-    m_leftGeneration = m_ctx.device->snapshot().generation;
-    m_ctx.device->writeEvenReadOnly(QStringLiteral("enter bootloader"), [](FfiCore *c) { return Confirm::enterBootloader(c); },   // -- WP P1QT2 -- token
+    m_leftGeneration = device->snapshot().generation;
+    device->writeEvenReadOnly(QStringLiteral("enter bootloader"), [](FfiCore *c) { return Confirm::enterBootloader(c); },   // -- WP P1QT2 -- token
                                     [this](bool sent) {
                                         if (sent || m_installing) return;
                                         m_armed = false;
@@ -632,7 +644,7 @@ void FirmwareController::install(const BootloaderLocator::Board &board) {
     // bootloader, while the core still keeps it (no other device opened since):
     // a record kept from another board is never passed; without it the
     // voltage is unknown, as the core's gate then takes it too
-    const DeviceSnapshot &now = m_ctx.device->snapshot();
+    const DeviceSnapshot &now = runModel()->snapshot();   // -- WP MDQT2b --
     m_useTarget = m_boardRead && !m_target.isEmpty() && m_rebootRequested &&
                   !(now.connected && now.generation != m_targetConnection);
     const QByteArray target = m_useTarget ? m_target : QByteArray();
@@ -665,7 +677,7 @@ void FirmwareController::write(const BootloaderLocator::Board &board, const Imag
     const int chip = board.chip;
     const int required = m_useTarget ? m_requiredMv : 0;   // -- WP PGQT -- never another board's record
     const QByteArray typed = m_typed.toUtf8();
-    m_ctx.core->worker()->call(
+    runWorker()->call(   // -- WP MDQT2b -- the run's core
         this,
         [bytes, drive, chip, required, typed](FfiCore *c) {
             // -- WP P1QT2 -- with a token minted now, the board waiting in its
@@ -693,32 +705,86 @@ void FirmwareController::write(const BootloaderLocator::Board &board, const Imag
 }
 
 void FirmwareController::checkReturned() {
-    if (m_state != WaitingForDevice || m_checking || !m_ctx.device->connected()) return;
+    // -- WP MDQT2b -- the run's device, not whichever is active
+    const SessionModel *device = runModel();
+    if (m_state != WaitingForDevice || m_checking || !device->connected()) return;
     // The connection the device left on is not the one it comes back on
-    if (m_leftGeneration != 0 && m_ctx.device->snapshot().generation == m_leftGeneration) return;
+    if (m_leftGeneration != 0 && device->snapshot().generation == m_leftGeneration) return;
     if (m_writtenVersion.isEmpty()) {
         // An image that names no version: back, but nothing to check it against
         m_unconfirmed = true;
-        m_verifiedVersion = runningVersion();
+        m_verifiedVersion = runVersion();
         m_verifyDeadline.stop();
         setState(Verified);
         return;
     }
     m_checking = true;
     const QByteArray version = m_writtenVersion.toUtf8();
-    m_ctx.core->worker()->call(
+    runWorker()->call(
         this, [version](FfiCore *c) { return int(dspi_firmware_version_matches(c, version.constData())); },
         [this](int matches) {
             m_checking = false;
             if (m_state != WaitingForDevice) return;
             if (matches == 1) {
-                m_verifiedVersion = runningVersion();
+                m_verifiedVersion = runVersion();
                 m_verifyDeadline.stop();
                 setState(Verified);
             } else if (matches == 0) {
-                fail(VersionMismatch, runningVersion());
+                fail(VersionMismatch, runVersion());
             }
         });
+}
+
+// ---- -- WP MDQT2b -- Several devices ---------------------------------------------
+
+SessionModel *FirmwareController::runModel() const {
+    DeviceSession *s = m_run ? m_run.data() : m_ctx.activeSession();
+    return s->model();
+}
+
+CoreWorker *FirmwareController::runWorker() const {
+    DeviceSession *s = m_run ? m_run.data() : m_ctx.activeSession();
+    return s->worker();
+}
+
+QString FirmwareController::runVersion() const {
+    const SessionModel *device = runModel();
+    const DspState *s = device->connected() ? device->state() : nullptr;
+    if (!s || (s->fw_major == 0 && s->fw_minor == 0 && s->fw_patch == 0)) return QString();
+    return describe(s->fw_major, s->fw_minor, s->fw_patch, s->fw_beta);
+}
+
+// The run's device changed while another one is active (the active one's
+// snapshot calls checkReturned itself)
+void FirmwareController::onRunApplied() {
+    if (m_run && m_run != m_ctx.activeSession()) checkReturned();
+}
+
+bool FirmwareController::runsOn(const DeviceSession *session) const {
+    return session && m_run == session && underWay();
+}
+
+QString FirmwareController::runDevice() const {
+    if (!m_run || m_run == m_ctx.activeSession() || !underWay()) return QString();
+    return m_run->title();
+}
+
+void FirmwareController::pretendRunForTest(DeviceSession *session) {
+    if (m_run) disconnect(m_run->model(), nullptr, this, nullptr);
+    m_run = session;
+    m_verifyDeadline.stop();
+    if (!session) {
+        m_confirmed = false;
+        m_installing = false;
+        setState(Idle);
+        return;
+    }
+    connect(session->model(), &SessionModel::applied, this, &FirmwareController::onRunApplied);
+    m_confirmed = true;
+    m_installing = true;
+    m_writtenVersion = QStringLiteral("0.0.1");
+    m_leftGeneration = session->model()->snapshot().generation;
+    setState(WaitingForDevice);
 }
 
 // ---- The installer as the Getting Started wizard drives it (QP17) ------------

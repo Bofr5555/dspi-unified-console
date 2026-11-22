@@ -22,6 +22,10 @@ class QQmlEngine;
 //
 // The state is read again after every snapshot (a write of this app's own
 // raises no notification) and on NOTIFY_HISTORY.
+//
+// -- WP MDQT2b -- Each open device has its own journal (its core's): the
+// window shows the active one's, read again on a switch; a read asked of the
+// one left is dropped.
 class HistoryController : public QObject {
     Q_OBJECT
     QML_ELEMENT

@@ -26,6 +26,36 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
   (events, history, snapshots, the AutoEQ list) and the Matrix window keep their own sizes. The Import Filters,
   New from Template and Import Device Configuration dialogs show their whole list when the main window has room
   (they stopped at 320, 320 and 200 px). (WP QTPOP)
+- Window > System… has an **Installation** tab on a hub (Advanced) for setting up the hub's installation: it lists the
+  DSPi units the hub has seen that are not in it, with **Join** (name, room, role, what feeds it), and edits each
+  unit's name, room, role and feed, the senders and fan-outs, rooms, zones and groups. What the hub would refuse is said
+  on the field; what Save would change is listed beside it. Only an Admin of the hub can save; everyone else reads. If
+  the installation was changed elsewhere meanwhile, Save is withdrawn and Reload offered. (WP INSTQ)
+- Your speaker layout: which output drives what (full range, sub, woofer, mid, tweeter). Getting Started has a
+  Speakers step and Settings has a Speakers page, both pre-filled from the DSPi's filters and routing; Confirm keeps
+  it. The Measure tables start from it, and a role, speaker or group changed there is saved to it without confirming
+  it. Measure shows a banner while the layout is not confirmed, also when it came with an imported configuration.
+  (WP ROLEQ)
+- Choosing another DSPi (on USB, or the demo) first stops what plays on the one that is left: a signal from the Signal
+  Generator (faded), a measurement or the live view; an auto-tune not kept yet goes back. Measure no longer takes the
+  placement chosen for another device. (WP MDQT2c)
+- A second layout, **Modern**: one window with a rail of sections (Overview, Equaliser, Routing, Effects, Measure, Analyse,
+  Library, System, Devices, Settings), every tool on a page with tabs, the open device as a tab at the top, the volume,
+  meters, Mute and Bypass EQ in a dock along the bottom, and no menu bar (the uConsole button holds the menus, and every
+  keyboard shortcut works). States that limit what can be done show in a strip under the top bar; other notices are behind
+  the bell. Any tool page can be opened in its own window. Settings › Appearance switches between Classic and Modern at any
+  time, and arranges Modern; the device, the selected channel and open tool windows stay. **New installs start in Modern**;
+  an install whose Getting Started was finished keeps Classic. An install made with a development build since the layout
+  switch came (or whose Getting Started was never finished) was counted as new and now opens in Modern: choose "Switch to
+  the Classic Layout" in the uConsole menu to go back. Modern's pages are still being filled in. (WP LAY3)
+- A theme setting (Settings › Appearance, and Modern's top bar): the system's, light or dark. (WP LAY3)
+- While a measurement runs, Modern cannot be switched to Classic (that closed the Measure page and stopped it without a
+  word): Settings › Appearance names the device it runs on. (WP RBFIX)
+- A name with markup in it (a device's, a hub's, a room's, a channel's) is shown as it is written. (WP RBFIX)
+- Modern opens several devices at once: a DSPi chosen (on USB, through a hub, or the demo) opens in a tab of its own
+  beside the others, and each tab keeps its device's edits, pages, history, drafts and running measurement. Closing a
+  tab asks about that device's unsaved changes; quitting asks about each open device. Classic still shows one device
+  and replaces it. (WP MDQT2a, MDQT2b, MDQT2c, INT3)
 
 ### Android
 - DSPi Link is reachable from the main page (owner report on 0.14.0: only through the settings
@@ -63,6 +93,27 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
   tiles have a fainter blue fill so their blue text stays readable. Every Material colour role is now the app's own,
   so no Material lavender or pink remains (slider tracks, the active preset row, Settings' selected page, menus,
   dialogs, snackbars). (WP ANBAR)
+
+### Web console
+- The Modern layout. The sections (Overview, Equaliser, Routing, Effects, Measure, Analyse, Library, System, Devices,
+  Settings) are in a rail on the left, and each section's pages are tabs beside its title. A row of device tabs along
+  the top holds the open devices, with how each is reached, its state and an unsaved mark; + opens another, and
+  closing a tab asks about unsaved changes first. Each device comes back at the page it was left at. Above the pages:
+  the preset picker, Undo and Redo, Save to device. Below them, on every page: the input source (new on the web), the
+  volume with Mute and Bypass, and the meters. On a narrow screen the rail is a row. (WP WEBM1)
+- A DSPi is open once: another entry for a DSPi that is already open (over USB and through a hub, or through two hubs)
+  shows the open one and says so, rather than making a second session. (WP WEBM1)
+- The System screen has an Installation tab in the Installer mode on a hub. It lists the units the hub sees that
+  are not in the installation, with Join (name, room, role and what feeds it), and edits each unit's room, role and
+  upstream, the rooms and the zones. The hub's own check runs as you edit and shows a problem where it is; Save lists
+  what changes and needs the hub's Admin role. If someone else saved meanwhile, nothing is overwritten: the tab reads
+  the installation again and offers to make your changes again on it. A hub with no installation can get its first
+  one here. (WP INSTW)
+- Settings › Speakers says which output drives what (full range, sub, woofer, mid,
+  tweeter), suggested from the filters and confirmed by you. The Measure setup starts from it,
+  and a way, speaker or group changed there is saved to it. A banner on both says when the
+  layout is not confirmed, or came with an imported configuration and needs checking. The
+  browser keeps it per DSPi. (WP ROLEW)
 
 ## 0.14.0 (2026-11-20)
 

@@ -113,6 +113,7 @@ Rectangle {
                 Text {
                     objectName: card.base + ".summary"
                     Layout.fillWidth: true
+                    textFormat: Text.PlainText
                     text: card.rec.summary || ""
                     font: Theme.fontSmall
                     color: card.rec.running === true ? Theme.success : Theme.textMuted

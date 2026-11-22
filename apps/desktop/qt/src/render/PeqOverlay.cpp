@@ -3,6 +3,7 @@
 
 #include "ChannelController.h"
 #include "DeviceModel.h"
+#include "DeviceRegistry.h"   // -- WP MDQT2a --
 #include "GraphController.h"
 #include "PeqEditorController.h"
 #include "Registrar.h"
@@ -91,6 +92,9 @@ PeqOverlay::PeqOverlay(QQuickItem *parentItem) : QQuickPaintedItem(parentItem) {
         }
         m_editor->reveal(m_hovered);
     });
+    // -- WP MDQT2a --
+    if (DeviceRegistry *registry = DeviceRegistry::instance())
+        connect(registry, &DeviceRegistry::activeLeaving, this, &PeqOverlay::leaveDevice);
 }
 
 PeqOverlay::~PeqOverlay() {
@@ -231,6 +235,19 @@ void PeqOverlay::configure() {
         && m_graph->isCurveVisible(ch) && !(cc->crossoverTabShown() && ch >= m_graph->firstOutput());
     const int next = edits ? ch : -1;
 
+    // -- WP MDQT2a -- ... and to the connection: of another one's bands nothing
+    // is written to this one (leaveDevice wrote what was left)
+    const uint64_t generation = device ? device->snapshot().generation : 0;
+    const bool other = generation != m_generation;
+    m_generation = generation;
+    if (other) {
+        m_device.stop();
+        m_commit.stop();
+        m_deviceDirty.clear();
+        m_live.clear();
+        m_editor->endLive();
+        holdDrag(false);
+    }
     // A pending wheel or key edit belongs to the channel it was made on
     if (next != m_channel) commitLive();
     const int old = m_channel;
@@ -245,7 +262,7 @@ void PeqOverlay::configure() {
     if (next >= 0) readBands(bands, statics);
     m_statics = statics;
 
-    if (old != next || next < 0) {
+    if (old != next || next < 0 || other) {
         resetInteraction();
         m_committed = m_shown = bands;
         m_animFrom.reset();
@@ -268,9 +285,18 @@ void PeqOverlay::configure() {
     refreshChip();
     // -- WP QPI2 -- an editor taking over (the pop-out, a page) shows the
     // selection in its band bar at once
-    if (old != next && next >= 0) pinChipToSelection();
+    if ((old != next || other) && next >= 0) pinChipToSelection();
     invalidate();
-    if (old != next) emit viewChanged();
+    if (old != next || other) emit viewChanged();
+}
+
+// -- WP MDQT2a --
+void PeqOverlay::leaveDevice() {
+    commitLive();
+    resetInteraction();
+    m_menuTargets.clear();
+    m_menuBand = -1;
+    m_chipAdjustStart.reset();
 }
 
 void PeqOverlay::updateOwnership() {

@@ -73,6 +73,7 @@ Dialog {
             Layout.fillWidth: true
             Layout.topMargin: Theme.spacingLarge
             Layout.rightMargin: Theme.spacingLarge
+            textFormat: Text.PlainText
             text: dialog.title
             font: Theme.fontTitle
             color: Theme.text
@@ -91,6 +92,7 @@ Dialog {
         Text {
             objectName: "PairingDialog.text"
             Layout.fillWidth: true
+            textFormat: Text.PlainText
             text: LinkController.phaseText
             font: Theme.fontBody
             color: Theme.text
@@ -138,6 +140,7 @@ Dialog {
             spacing: 2
             Text {
                 Layout.fillWidth: true
+                textFormat: Text.PlainText
                 text: qsTr("This connection is not encrypted (%1): the PIN crosses the network as plain text.")
                       .arg(LinkController.unsecuredLabel)
                 font: Theme.fontSmall
@@ -189,6 +192,7 @@ Dialog {
             objectName: "PairingDialog.error"
             Layout.fillWidth: true
             visible: LinkController.errorText.length > 0
+            textFormat: Text.PlainText
             text: LinkController.errorText
             font: Theme.fontSmall
             color: Theme.warning

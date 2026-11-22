@@ -19,6 +19,7 @@ RowLayout {
         Layout.fillWidth: true
         Text {
             Layout.fillWidth: true
+            textFormat: Text.PlainText
             text: row.title
             font: Theme.fontBody
             color: row.enabled ? Theme.text : Theme.textDisabled
@@ -27,6 +28,7 @@ RowLayout {
         Text {
             Layout.fillWidth: true
             visible: text.length > 0
+            textFormat: Text.PlainText
             text: row.caption
             font: Theme.fontSmall
             color: row.enabled ? row.captionColor : Theme.textDisabled

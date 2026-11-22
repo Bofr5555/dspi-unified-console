@@ -45,6 +45,7 @@ ColumnLayout {
             spacing: 2
             Text {
                 Layout.fillWidth: true
+                textFormat: Text.PlainText
                 text: row.title
                 font: Theme.fontBody
                 color: row.enabled ? Theme.text : Theme.textDisabled
@@ -58,6 +59,7 @@ ColumnLayout {
             Text {
                 visible: row.subtitle.length > 0
                 Layout.fillWidth: true
+                textFormat: Text.PlainText
                 text: row.subtitle
                 font: Theme.fontCaption
                 color: Theme.textMuted
@@ -97,6 +99,7 @@ ColumnLayout {
                 Text {
                     anchors.fill: parent
                     anchors.rightMargin: 6
+                    textFormat: Text.PlainText
                     text: row.offText
                     font: Theme.fontMono
                     color: row.enabled ? Theme.textMuted : Theme.textDisabled
@@ -127,12 +130,14 @@ ColumnLayout {
         visible: row.ends.length === 2
         Layout.fillWidth: true
         Text {
+            textFormat: Text.PlainText
             text: row.ends.length === 2 ? row.ends[0] : ""
             font: Theme.fontCaption
             color: Theme.textMuted
         }
         Item { Layout.fillWidth: true }
         Text {
+            textFormat: Text.PlainText
             text: row.ends.length === 2 ? row.ends[1] : ""
             font: Theme.fontCaption
             color: Theme.textMuted
@@ -141,6 +146,7 @@ ColumnLayout {
     Text {
         visible: row.caption.length > 0
         Layout.fillWidth: true
+        textFormat: Text.PlainText
         text: row.caption
         font: Theme.fontCaption
         color: Theme.textMuted

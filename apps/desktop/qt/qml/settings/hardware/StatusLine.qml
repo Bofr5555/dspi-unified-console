@@ -20,6 +20,7 @@ RowLayout {
     Text {
         objectName: line.objectName.length ? line.objectName + ".text" : ""
         Layout.fillWidth: true
+        textFormat: Text.PlainText
         text: line.text
         font: Theme.fontSmall
         color: line.error ? Theme.warning : Theme.textMuted

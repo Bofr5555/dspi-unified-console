@@ -45,6 +45,7 @@ ScrollView {
         Text {
             objectName: "MeasureTune.stage"
             Layout.fillWidth: true
+            textFormat: Text.PlainText
             text: tc.stageText
             font: Theme.fontTitle
             // -- WP REVERTW -- a revert not fully successful is an error
@@ -55,6 +56,7 @@ ScrollView {
             objectName: "MeasureTune.error"
             visible: text.length > 0
             Layout.fillWidth: true
+            textFormat: Text.PlainText
             text: tc.error
             font: Theme.fontBody
             color: Theme.dangerText
@@ -63,6 +65,7 @@ ScrollView {
         Text {
             visible: text.length > 0
             Layout.fillWidth: true
+            textFormat: Text.PlainText
             text: tc.issueText
             font: Theme.fontBody
             color: Theme.dangerText
@@ -76,6 +79,7 @@ ScrollView {
             visible: tab.beforeApply
             Text {
                 Layout.fillWidth: true
+                textFormat: Text.PlainText
                 text: mc.hasResult ? qsTr("From \"%1\".").arg(mc.resultName || qsTr("the measurement"))
                                    : qsTr("No measurement yet: measure on the Measure tab, or open one on Results.")
                 font: Theme.fontBody
@@ -122,6 +126,7 @@ ScrollView {
                     }
                     Text {
                         Layout.fillWidth: true
+                        textFormat: Text.PlainText
                         text: modelData.feed
                         font: Theme.fontSmall
                         color: Theme.textMuted
@@ -132,6 +137,7 @@ ScrollView {
             Text {
                 visible: text.length > 0
                 Layout.fillWidth: true
+                textFormat: Text.PlainText
                 text: tc.layoutNote
                 font: Theme.fontSmall
                 color: Theme.textMuted
@@ -180,6 +186,7 @@ ScrollView {
                 Text {
                     required property string modelData
                     Layout.fillWidth: true
+                    textFormat: Text.PlainText
                     text: qsTr("Warning: %1").arg(modelData)
                     font: Theme.fontBody
                     color: Theme.warning
@@ -187,6 +194,7 @@ ScrollView {
                 }
             }
             Text {
+                textFormat: Text.PlainText
                 text: tc.writes.length ? qsTr("Changes (%1):").arg(tc.writes.length) : qsTr("No change proposed.")
                 font.pixelSize: Theme.fontBody.pixelSize
                 font.weight: Font.DemiBold
@@ -198,6 +206,7 @@ ScrollView {
                 Text {
                     required property var modelData
                     Layout.fillWidth: true
+                    textFormat: Text.PlainText
                     text: "• " + modelData.words + (modelData.timing ? qsTr(" (a timing change: after the summed check)") : "")
                     font: Theme.fontBody
                     color: Theme.text
@@ -216,6 +225,7 @@ ScrollView {
                 Text {
                     required property string modelData
                     Layout.fillWidth: true
+                    textFormat: Text.PlainText
                     text: "• " + modelData
                     font: Theme.fontSmall
                     color: Theme.textMuted
@@ -235,6 +245,7 @@ ScrollView {
                 Text {
                     required property string modelData
                     Layout.fillWidth: true
+                    textFormat: Text.PlainText
                     text: "• " + modelData
                     font: Theme.fontBody
                     color: Theme.warning
@@ -246,6 +257,7 @@ ScrollView {
                 Text {
                     required property string modelData
                     Layout.fillWidth: true
+                    textFormat: Text.PlainText
                     text: modelData
                     font: Theme.fontSmall
                     color: Theme.textMuted
@@ -263,6 +275,7 @@ ScrollView {
                 objectName: "MeasureTune.sumCheck"
                 visible: text.length > 0
                 Layout.fillWidth: true
+                textFormat: Text.PlainText
                 text: tc.sumCheckText
                 font: Theme.fontBody
                 color: tc.sumCheck === "failed" ? Theme.warning : tc.sumCheck === "passed" ? Theme.success : Theme.text
@@ -303,6 +316,7 @@ ScrollView {
                 objectName: "MeasureTune.guard"
                 visible: tc.applied
                 Layout.fillWidth: true
+                textFormat: Text.PlainText
                 text: tc.guardText
                 font: Theme.fontBody
                 color: Theme.text
@@ -310,6 +324,7 @@ ScrollView {
             }
             Text {
                 visible: tc.running
+                textFormat: Text.PlainText
                 text: tc.runText
                 font: Theme.fontBody
                 color: Theme.text
@@ -325,6 +340,7 @@ ScrollView {
                 objectName: "MeasureTune.verify"
                 visible: text.length > 0
                 Layout.fillWidth: true
+                textFormat: Text.PlainText
                 text: tc.verifyText
                 font: Theme.fontBody
                 color: tc.verifyPassed ? Theme.success : Theme.warning
@@ -358,6 +374,7 @@ ScrollView {
                 objectName: "MeasureTune.kept"
                 visible: tc.stage === "kept" && text.length > 0
                 Layout.fillWidth: true
+                textFormat: Text.PlainText
                 text: tc.keptText
                 font: Theme.fontBody
                 color: Theme.success
@@ -393,6 +410,7 @@ ScrollView {
                     onClicked: tc.abKeep("b")
                 }
                 Text {
+                    textFormat: Text.PlainText
                     text: tc.abText
                     font: Theme.fontBody
                     color: Theme.text
@@ -404,6 +422,7 @@ ScrollView {
     QuestionDialog {
         id: applyQuestion
         objectName: "MeasureTune.applyQuestion"
+        ofDevice: true   // -- WP MDQT2c --
         parent: Overlay.overlay
         title: qsTr("Apply the auto-tune?")
         text: qsTr("Every change above is written as one undo step, after a snapshot \"Before auto-tune\" is filed and the checks are run again. It goes back by itself unless you Keep it.")
@@ -417,6 +436,7 @@ ScrollView {
     QuestionDialog {
         id: keepQuestion
         objectName: "MeasureTune.keepQuestion"
+        ofDevice: true   // -- WP MDQT2c --
         parent: Overlay.overlay
         title: qsTr("Keep a tune the verify did not confirm?")
         text: TuneController.keepConfirmText

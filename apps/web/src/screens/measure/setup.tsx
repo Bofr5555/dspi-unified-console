@@ -2,11 +2,14 @@
 // and its calibration file, the placement and the coupler, the outputs with their ways, speakers
 // and alignment groups, the sweep; then the core's preflight in words. Nothing is played here.
 
-import { useEffect } from "preact/hooks";
+import { useEffect, useState } from "preact/hooks";
 import { measureCall } from "../../core/measure-protocol";
 import { noticeRow } from "../../ui/texts";
 import type { MeasureTabProps } from "./MeasureScreen";
-import { COUPLERS, PLACEMENTS, ROLES, TWO_PASSES_HINT, countRange, draftProblem, initialDraft, micSummary, preflightLines, setupOf, withOutputs, type MeasureDraft, type OutputDraft } from "./model";
+import { COUPLERS, PLACEMENTS, ROLES, TWO_PASSES_HINT, countRange, draftProblem, initialDraft, layoutKey, micSummary, preflightLines, setupOf, withLayout, withOutputs, type MeasureDraft, type OutputDraft } from "./model";
+// -- WP ROLEW -- the rows from the speaker layout, an edit written back, the banner
+import { SAVED_TO_LAYOUT, bannerOf, baseOf, withRow } from "../settings/speakers/model";
+import { useSpeakerLayout } from "../settings/speakers/use-layout";
 
 const field = { display: "flex", flexDirection: "column", gap: "2px", minWidth: 0 } as const;
 const row = { display: "flex", flexWrap: "wrap", gap: "8px 16px", alignItems: "flex-end" } as const;
@@ -30,14 +33,28 @@ export function download(text: string, fileName: string, type = "application/jso
 }
 
 export function SetupPanel(props: MeasureTabProps) {
-  const { desk, outputs, outputName } = props;
+  const { desk, outputs, outputName, session } = props;
   const d = desk.draft ?? initialDraft(outputs);
+  // -- WP ROLEW --
+  const layout = useSpeakerLayout(session);
+  const base = baseOf(layout.view);
+  const [saved, setSaved] = useState<{ error: boolean; text: string } | null>(null);
   useEffect(() => {
-    const next = withOutputs(desk.draft ?? initialDraft(outputs), outputs);
+    const cur = withOutputs(desk.draft ?? initialDraft(outputs), outputs);
+    const next = layout.loaded && !desk.running ? withLayout(cur, base) : cur;
     if (next !== desk.draft) desk.setDraft(next);
-  }, [outputs.join(",")]);
+  }, [outputs.join(","), layout.loaded, layoutKey(base)]);
   const set = (patch: Partial<MeasureDraft>) => desk.setDraft({ ...d, ...patch });
   const setOut = (o: number, patch: Partial<OutputDraft>) => set({ outputs: d.outputs.map((x) => (x.output === o ? { ...x, ...patch } : x)) });
+  /** An edit of a row's way, speaker or group, kept in the speaker layout too (confirmed as it was). */
+  const writeBack = async (o: number, patch: Partial<OutputDraft>) => {
+    const row = d.outputs.find((x) => x.output === o);
+    if (!row || session.readOnlyReason) return;
+    const r = { ...row, ...patch };
+    const why = await layout.keep(withRow(layout.view.stored ?? layout.view.proposal, o, { role: r.role, speaker: r.speaker.trim(), group: r.group }), !!layout.view.stored?.confirmedByUser);
+    setSaved(why ? { error: true, text: `Not saved to your speaker layout: ${why}` } : { error: false, text: SAVED_TO_LAYOUT });
+  };
+  const banner = layout.loaded ? bannerOf(layout.view) : null;
   const running = desk.running;
   const problem = draftProblem(d);
   const range = countRange(d.placement);
@@ -65,6 +82,16 @@ export function SetupPanel(props: MeasureTabProps) {
       <div class="card-head">
         <strong>Setup</strong>
       </div>
+      {banner ? (
+        <div class="banner" role="status" aria-label="Speaker layout" data-kind={banner.kind} style={{ flexWrap: "wrap", margin: 0 }}>
+          <span style={{ flex: "1 1 14em", minWidth: 0 }}>{banner.text}</span>
+        </div>
+      ) : null}
+      {layout.view.problem ? (
+        <p class="error" role="alert" aria-label="Speaker layout problem">
+          {layout.view.problem}
+        </p>
+      ) : null}
 
       <fieldset style={{ border: 0, padding: 0, margin: 0, ...row }} disabled={running}>
         <label style={field}>
@@ -175,7 +202,12 @@ export function SetupPanel(props: MeasureTabProps) {
                     </label>
                   </td>
                   <td>
-                    <select aria-label={`Way of ${outputName(o.output)}`} value={o.role} onChange={(e) => setOut(o.output, { role: (e.currentTarget as HTMLSelectElement).value as OutputDraft["role"] })}>
+                    <select aria-label={`Way of ${outputName(o.output)}`} value={o.role} onChange={(e) => {
+                        const role = (e.currentTarget as HTMLSelectElement).value as OutputDraft["role"];
+                        setOut(o.output, { role });
+                        void writeBack(o.output, { role });
+                      }}
+                    >
                       {ROLES.map((r) => (
                         <option key={r.id} value={r.id}>
                           {r.label}
@@ -184,10 +216,10 @@ export function SetupPanel(props: MeasureTabProps) {
                     </select>
                   </td>
                   <td>
-                    <input type="text" aria-label={`Speaker of ${outputName(o.output)}`} size={4} maxLength={16} value={o.speaker} onInput={(e) => setOut(o.output, { speaker: (e.currentTarget as HTMLInputElement).value })} />
+                    <input type="text" aria-label={`Speaker of ${outputName(o.output)}`} size={4} maxLength={16} value={o.speaker} onInput={(e) => setOut(o.output, { speaker: (e.currentTarget as HTMLInputElement).value })} onChange={(e) => void writeBack(o.output, { speaker: (e.currentTarget as HTMLInputElement).value })} />
                   </td>
                   <td>
-                    <input type="number" aria-label={`Group of ${outputName(o.output)}`} min={0} max={15} step={1} style={{ width: "4em" }} value={o.group} onInput={(e) => setOut(o.output, { group: Math.max(0, Math.min(15, Math.trunc(Number((e.currentTarget as HTMLInputElement).value) || 0))) })} />
+                    <input type="number" aria-label={`Group of ${outputName(o.output)}`} min={0} max={15} step={1} style={{ width: "4em" }} value={o.group} onInput={(e) => setOut(o.output, { group: Math.max(0, Math.min(15, Math.trunc(Number((e.currentTarget as HTMLInputElement).value) || 0))) })} onChange={(e) => void writeBack(o.output, { group: Math.max(0, Math.min(15, Math.trunc(Number((e.currentTarget as HTMLInputElement).value) || 0))) })} />
                   </td>
                 </tr>
               ))}
@@ -195,6 +227,11 @@ export function SetupPanel(props: MeasureTabProps) {
           </table>
         </div>
         <p class="muted">A mid or a tweeter is measured only through an active high-pass; the core checks it (the tweeter rule).</p>
+        {saved ? (
+          <p class={saved.error ? "error" : "note"} role="status" aria-label="Speaker layout saved">
+            {saved.text}
+          </p>
+        ) : null}
       </fieldset>
 
       {lines.length || desk.preflight ? (

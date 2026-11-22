@@ -240,6 +240,17 @@ export class SystemFeed {
     this.set(got.role ? { model: got.model, revision: got.revision, role: got.role as Role } : { model: got.model, revision: got.revision });
   }
 
+  // -- WP INSTW --
+  /**
+   * Read the installation again after the Installation tab saved it: a hub that had none
+   * (this device alone) may have one now, and one that had one may have none.
+   */
+  async reread(): Promise<void> {
+    if (!this.onHub) return;
+    this.set({ model: null, kind: "loading" });
+    await this.refresh();
+  }
+
   /** `system.scene.apply`: recall a scene at one alink frame on every unit. */
   async recall(sceneId: string): Promise<void> {
     const name = this.state.model?.scenes.find((s) => s.id === sceneId)?.name || sceneId;

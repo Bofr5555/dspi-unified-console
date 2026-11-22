@@ -2,16 +2,19 @@
    Light and dark from the system; a host page may set data-theme on .dspi-web. */
 
 .dspi-web {
-  --bg: #f7f7f8;
-  --panel: #ffffff;
-  --text: #1c1c1f;
-  --muted: #5f6068;
-  --line: #d9d9de;
-  --accent: #2f6fde;
-  --ok: #1f8a4c;
-  --warn: #a86400;
-  --bad: #c0362c;
-  --meter: #2f9e5c;
+  /* -- WP WEBM1 -- neutral greys (MODLAY's Grey) */
+  --bg: #f3f3f3;
+  --panel: #fbfbfb;
+  --chrome: #ebebeb;
+  --selection: #dedede;
+  --text: #1b1b1b;
+  --muted: #5a5a5a;
+  --line: #d6d6d6;
+  --accent: #2563eb;
+  --ok: #1c7532;
+  --warn: #875200;
+  --bad: #b42318;
+  --meter: #2b7d43;
   color: var(--text);
   background: var(--bg);
   font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -20,25 +23,32 @@
 }
 @media (prefers-color-scheme: dark) {
   .dspi-web:not([data-theme="light"]) {
-    --bg: #17171a;
-    --panel: #212126;
-    --text: #ececf1;
-    --muted: #a0a0aa;
-    --line: #34343b;
-    --accent: #6c9dff;
+    --bg: #202020;
+    --panel: #2a2a2a;
+    --chrome: #1a1a1a;
+    --selection: #3b3b3b;
+    --text: #e8e8e8;
+    --muted: #a6a6a6;
+    --line: #404040;
+    --accent: #7aaeff;
     --ok: #4cc27f;
-    --warn: #e0a040;
-    --bad: #ff6b5e;
+    --warn: #e0a030;
+    --bad: #ff7468;
     --meter: #4cc27f;
   }
 }
 .dspi-web[data-theme="dark"] {
-  --bg: #17171a;
-  --panel: #212126;
-  --text: #ececf1;
-  --muted: #a0a0aa;
-  --line: #34343b;
-  --accent: #6c9dff;
+  --bg: #202020;
+  --panel: #2a2a2a;
+  --chrome: #1a1a1a;
+  --selection: #3b3b3b;
+  --text: #e8e8e8;
+  --muted: #a6a6a6;
+  --line: #404040;
+  --accent: #7aaeff;
+  --ok: #4cc27f;
+  --warn: #e0a030;
+  --bad: #ff7468;
   --meter: #4cc27f;
 }
 .dspi-web *,
@@ -72,31 +82,6 @@
 }
 .dspi-web a { color: var(--accent); }
 
-.dspi-web .top {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  padding: 0.6rem 1rem;
-  border-bottom: 1px solid var(--line);
-  background: var(--panel);
-}
-.dspi-web .top .user { margin-left: auto; color: var(--muted); }
-.dspi-web .top .about-button { margin-left: auto; }
-.dspi-web .top .user + .about-button { margin-left: 0; }
-/* -- WP WB7 -- the serving hub's own page */
-.dspi-web .top .hub-page { margin-left: auto; color: var(--muted); }
-.dspi-web .top .hub-page + .about-button, .dspi-web .top .user + .hub-page { margin-left: 0; }
-
-.dspi-web .body {
-  display: grid;
-  grid-template-columns: minmax(15rem, 20rem) 1fr;
-  gap: 1rem;
-  padding: 1rem;
-}
-@media (max-width: 720px) {
-  .dspi-web .body { grid-template-columns: 1fr; padding: 1rem 16px; }
-}
-
 .dspi-web .picker .installation {
   background: var(--panel);
   border: 1px solid var(--line);
@@ -124,21 +109,11 @@
 .dspi-web .pin-entry .error { flex-basis: 100%; }
 .dspi-web .hub-devices { list-style: none; margin: 0.75rem 0; padding: 0; }
 
-.dspi-web .sessions { min-width: 0; }
-.dspi-web .tabs { display: flex; gap: 0.25rem; margin-bottom: 0.5rem; flex-wrap: wrap; }
-.dspi-web .tabs [aria-selected="true"] { border-color: var(--accent); }
-.dspi-web .session {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 0.75rem 1rem 1rem;
-}
-.dspi-web .strip { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
-.dspi-web .strip .close { margin-left: auto; }
 .dspi-web .device-meta { color: var(--muted); font-size: 0.85rem; }
 .dspi-web .dot { width: 0.6rem; height: 0.6rem; border-radius: 50%; background: var(--muted); }
 .dspi-web .dot-open { background: var(--ok); }
 .dspi-web .dot-failed { background: var(--bad); }
+.dspi-web .dot-away, .dspi-web .dot-pairing, .dspi-web .dot-choosing { background: var(--warn); } /* -- WP WEBM1 -- */
 .dspi-web .badge {
   font-size: 0.75rem;
   padding: 0.05rem 0.45rem;
@@ -162,7 +137,6 @@
 .dspi-web .error { color: var(--bad); }
 .dspi-web .empty { color: var(--muted); }
 
-.dspi-web .controls { display: grid; gap: 1rem; margin-top: 1rem; }
 .dspi-web .meters { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.3rem; }
 .dspi-web .meter { display: grid; grid-template-columns: 4.5rem 1fr; align-items: center; gap: 0.5rem; }
 .dspi-web .meter-name { color: var(--muted); font-size: 0.85rem; }
@@ -195,8 +169,6 @@
   position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
   overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
 }
-.dspi-web .screen-tabs { display: flex; gap: 0.25rem; flex-wrap: wrap; }
-.dspi-web .screen-tabs [aria-selected="true"] { border-color: var(--accent); }
 .dspi-web .main-screen {
   display: grid;
   gap: 0.75rem;
@@ -204,7 +176,9 @@
   align-items: start;
 }
 .dspi-web .card {
-  border: 1px solid var(--line);
+  /* -- WP WEBM1 -- apart from the page by its tone, not a line; the line's room stays for what marks a card */
+  border: 1px solid transparent;
+  background: var(--panel);
   border-radius: 8px;
   padding: 0.6rem 0.75rem;
   min-width: 0;
@@ -676,19 +650,13 @@
 /* -- WP SW3 -- whole pixels, so what follows the rail and the scene bar stays on the pixel grid */
 .dspi-web .sys-rail, .dspi-web .sys-scenes { font-size: 13px; line-height: 20px; padding: 5px 8px; margin: 8px 0; }
 .dspi-web button.sys-rail-item, .dspi-web .sys-scene { font-size: 13px; line-height: 20px; padding: 1px 8px; }
-/* -- WP SW3 -- with the System tab the row is four: one line, scrolling sideways when narrow */
-.dspi-web .screen-tabs { flex-wrap: nowrap; overflow-x: auto; }
-.dspi-web .screen-tabs > button { flex: none; }
 /* -- fixup sw3x -- */
 .dspi-web .sys-rail-refused { color: var(--bad); }
 .dspi-web .sys-stale { border-color: var(--bad); }
 .dspi-web .sys abbr[title] { text-decoration: underline dotted; cursor: help; }
 
-/* -- WP WB8 -- Undo and Redo beside the screen tabs; what a step left alone */
-.dspi-web .session-screens { display: contents; }
-.dspi-web .screen-bar { display: flex; align-items: center; gap: 0.5rem; min-width: 0; }
-.dspi-web .screen-bar .screen-tabs { flex: 1; min-width: 0; }
-.dspi-web .undo-redo { display: flex; gap: 0.25rem; flex: none; margin-left: auto; }
+/* -- WP WB8 -- Undo and Redo; what a step left alone */
+.dspi-web .undo-redo { display: flex; gap: 0.25rem; flex: none; }
 .dspi-web .step-notice { display: flex; align-items: center; gap: 0.5rem; margin: 0; padding: 0.35rem 0.6rem; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
 .dspi-web .step-notice.warn { border-color: var(--warn); }
 .dspi-web .step-notice span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
@@ -761,16 +729,9 @@
 .dspi-web .import-blocks .check { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.9rem; }
 .dspi-web .file-badge { overflow-wrap: anywhere; }
 .dspi-web .open-files .template-list { list-style: none; padding: 0; margin: 0.35rem 0 0; }
-.dspi-web .side { min-width: 0; }
 .dspi-web .open-files { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 0.75rem; margin-bottom: 1rem; }
 .dspi-web .open-files h2 { margin-top: 0; }
 .dspi-web .open-files ul { list-style: none; margin: 0; padding: 0; }
-/* -- WP P1WB1 -- seven tabs do not fit one line at 375 px: they wrap there, nothing past the page's edge */
-@media (max-width: 560px) {
-  .dspi-web .screen-tabs { flex-wrap: wrap; overflow-x: visible; }
-  /* whole pixels per row, so the screens below keep their sub-pixel layout when the rows wrap */
-  .dspi-web .screen-tabs > button { line-height: 20px; padding-top: 5px; padding-bottom: 5px; }
-}
 /* -- WP P1WB2 -- the Installer page, the lock, notices, stale meters, AutoEQ */
 .dspi-web .installer-screen { display: grid; gap: 0.75rem; min-width: 0; }
 .dspi-web .installer-screen .card { min-width: 0; overflow-wrap: anywhere; }
@@ -1316,3 +1277,200 @@
   .dspi-web .raw-form input, .dspi-web .raw-form .raw-data input { width: 100%; }
   .dspi-web .raw-form label { flex: 1 1 100%; }
 }
+
+/* -- WP INSTW -- the System screen's Installation tab: cards that wrap down to 375 px */
+.dspi-web .sys-inst-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(18rem, 100%), 1fr)); gap: 0.6rem; }
+.dspi-web .sys-inst-card { display: grid; gap: 0.2rem; }
+.dspi-web .sys-inst .sys-inline { flex-wrap: wrap; min-width: 0; max-width: 100%; }
+.dspi-web .sys-inst select, .dspi-web .sys-inst input:not([type="checkbox"]) { max-width: 100%; min-width: 0; }
+.dspi-web .sys-inst-name { flex: 1 1 8rem; }
+.dspi-web .sys-inst h4 { margin: 0.75rem 0 0.35rem; }
+
+/* -- WP WEBM1 -- the Modern shell (MODLAY, variant B): the top row with the app menu and the device
+   tabs, a device's bar, the rail of sections, the page under the status strip, the dock. Surfaces
+   are told apart by tone, not by lines. Its widths are the console's own (a container query): a
+   host page may show consoles side by side. Narrow: the rail is a row, the bar wraps, the dock has
+   two lines; only the dock stays in sight then. */
+.dspi-web { --top-h: 2.75rem; --bar-h: 2.9rem; --dock-h: 3.1rem; display: flex; flex-direction: column; }
+.dspi-web .shell-icon { width: 1.15rem; height: 1.15rem; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+.dspi-web .top { container: top / inline-size; display: flex; align-items: center; gap: 0.5rem; height: var(--top-h); padding: 0 0.5rem; background: var(--chrome); position: sticky; top: 0; z-index: 8; min-width: 0; }
+.dspi-web .app-menu { flex: none; }
+.dspi-web .app-menu .menu > button { border-color: transparent; background: none; font-weight: 600; max-width: 11rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0.3rem 0.6rem; }
+.dspi-web .app-menu .menu > button:hover { background: var(--selection); }
+.dspi-web .app-menu .menu [role="menu"] { left: 0; right: auto; }
+.dspi-web .top .user { margin-left: auto; color: var(--muted); font-size: 0.85rem; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dspi-web .device-tabs { display: flex; align-items: stretch; gap: 0.15rem; flex: 0 1 auto; min-width: 0; align-self: stretch; padding-top: 0.3rem; }
+.dspi-web .device-tab-row { display: flex; gap: 0.15rem; min-width: 0; overflow-x: auto; scrollbar-width: none; position: relative; }
+.dspi-web .device-tab-row::-webkit-scrollbar { display: none; }
+.dspi-web .device-tab { display: flex; align-items: center; flex: 0 0 auto; border-radius: 8px 8px 0 0; background: none; }
+.dspi-web .device-tab:has([aria-selected="true"]) { background: var(--bg); }
+.dspi-web .device-tab:not(:has([aria-selected="true"])):hover { background: var(--selection); }
+.dspi-web .device-tab > [role="tab"] { display: flex; align-items: center; gap: 0.4rem; height: 100%; border: 0; border-radius: 8px 0 0 0; background: none; padding: 0 0.2rem 0 0.65rem; font-size: 0.85rem; max-width: 15rem; min-width: 0; color: var(--muted); }
+.dspi-web .device-tab > [role="tab"][aria-selected="true"] { color: var(--text); }
+.dspi-web .device-tab-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.dspi-web .device-tab-kind { flex: none; font-size: 0.7rem; color: var(--muted); }
+.dspi-web .device-tab .dot { flex: none; }
+.dspi-web .device-tab-unsaved { flex: none; color: var(--accent); visibility: hidden; }
+.dspi-web .device-tab-unsaved.on { visibility: visible; }
+.dspi-web .device-tab-close { border: 0; background: none; padding: 0 0.5rem; height: 1.6rem; color: var(--muted); border-radius: 6px; }
+.dspi-web .device-tab-close:hover { background: var(--selection); color: var(--text); }
+.dspi-web .device-tab > [role="tab"]:focus-visible, .dspi-web .rail button:focus-visible, .dspi-web .page-tabs button:focus-visible { outline-offset: -2px; }
+.dspi-web .device-add { flex: none; align-self: center; border: 0; background: none; padding: 0.1rem 0.6rem; font-size: 1.1rem; line-height: 1.3; color: var(--muted); }
+.dspi-web .device-add:hover, .dspi-web .device-add[aria-pressed="true"] { background: var(--selection); color: var(--text); }
+.dspi-web .shell-note { display: flex; align-items: center; gap: 0.5rem; margin: 0; padding: 0.4rem 1rem; background: var(--selection); }
+.dspi-web .shell-note span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.dspi-web .shell-note .dismiss { flex: none; padding: 0 0.5rem; }
+
+.dspi-web .sessions { flex: 1; min-width: 0; display: flex; flex-direction: column; container: console / inline-size; }
+.dspi-web .session, .dspi-web .shell { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.dspi-web .session-bar { display: flex; align-items: center; gap: 0.35rem 0.75rem; min-height: var(--bar-h); padding: 0.3rem 0.75rem; background: var(--bg); min-width: 0; }
+.dspi-web .strip { display: flex; align-items: center; gap: 0.6rem; flex: 1 1 12rem; min-width: 0; }
+.dspi-web .strip .dot { flex: none; }
+.dspi-web .strip .device-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 3rem; flex: 0 1 auto; }
+.dspi-web .strip .device-meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 0 1 auto; }
+.dspi-web .strip .badge { flex: none; }
+.dspi-web .strip .file-badge { white-space: nowrap; }
+.dspi-web .strip .close { flex: none; margin-left: auto; border-color: transparent; background: none; color: var(--muted); padding: 0.25rem 0.5rem; }
+.dspi-web .strip .close:hover { background: var(--selection); color: var(--text); }
+.dspi-web .session-actions { display: flex; align-items: center; gap: 0.4rem; flex: none; min-width: 0; }
+.dspi-web .session-actions button, .dspi-web .session-actions select { height: 2rem; }
+.dspi-web .bar-preset { width: 10rem; min-width: 5rem; }
+.dspi-web .session-actions .undo-redo button { border-color: transparent; background: none; }
+.dspi-web .session-actions .undo-redo button:not(:disabled):hover { background: var(--selection); }
+.dspi-web .save-split { display: inline-flex; flex: none; }
+.dspi-web .bar-save { display: inline-flex; align-items: center; gap: 0.4rem; border-color: transparent; border-radius: 6px 0 0 6px; background: #2563eb; color: #fff; font-weight: 600; white-space: nowrap; }
+.dspi-web .bar-count { min-width: 1.3rem; text-align: center; border-radius: 999px; font-size: 0.75rem; background: rgb(255 255 255 / 0.25); visibility: hidden; }
+.dspi-web .bar-count.on { visibility: visible; }
+.dspi-web .save-split .menu > button { border-color: transparent; border-left: 1px solid rgb(255 255 255 / 0.35); border-radius: 0 6px 6px 0; background: #2563eb; color: #fff; padding: 0 0.5rem; font-size: 0; }
+.dspi-web .save-split .menu > button > span { font-size: 0.9rem; }
+.dspi-web .bar-lock { flex: none; display: inline-flex; align-items: center; padding: 0 0.5rem; border-color: transparent; background: none; }
+
+.dspi-web .shell-body { flex: 1; display: grid; grid-template-columns: 4.9rem minmax(0, 1fr); min-width: 0; }
+.dspi-web .rail { background: var(--chrome); min-width: 0; }
+.dspi-web .sessions > .shell .rail-list { top: var(--top-h); }
+.dspi-web .rail-list { position: sticky; top: calc(var(--top-h) + var(--bar-h)); display: flex; flex-direction: column; gap: 2px; padding: 0.4rem 0.35rem; max-height: calc(100vh - var(--top-h) - var(--bar-h) - var(--dock-h)); overflow-y: auto; scrollbar-width: thin; }
+.dspi-web .rail button { position: relative; display: flex; flex-direction: column; align-items: center; gap: 0.2rem; flex: none; border: 0; border-radius: 8px; background: none; padding: 0.45rem 0.1rem 0.4rem; font-size: 0.72rem; line-height: 1.2; color: var(--muted); }
+.dspi-web .rail button:hover { background: var(--selection); color: var(--text); }
+.dspi-web .rail button[aria-current="page"] { background: var(--selection); color: var(--text); font-weight: 600; }
+.dspi-web .rail button[aria-current="page"]::before { content: ""; position: absolute; left: -0.35rem; top: 0.6rem; bottom: 0.6rem; width: 3px; border-radius: 2px; background: var(--accent); }
+.dspi-web .rail button[aria-current="page"] .shell-icon { color: var(--accent); }
+.dspi-web .rail button:not(.rail-foot) + .rail-foot { margin-top: auto; }
+.dspi-web .shell-main { min-width: 0; padding: 0.5rem 1rem 1rem; display: flex; flex-direction: column; gap: 0.6rem; background: var(--bg); }
+.dspi-web .status-strip { display: contents; }
+.dspi-web .status-strip > * { margin: 0; }
+.dspi-web .status-strip > .banner, .dspi-web .status-strip > .guard-bar, .dspi-web .status-strip > .sys-scenes { background: var(--panel); }
+.dspi-web .shell-main .guard-bar { top: calc(var(--top-h) + var(--bar-h) + 0.25rem); }
+.dspi-web .page-head { display: flex; align-items: center; gap: 0.25rem 0.9rem; flex-wrap: wrap; min-width: 0; min-height: 2.2rem; }
+.dspi-web .page-title { margin: 0; font-size: 1.1rem; font-weight: 650; }
+.dspi-web .page-tabs { display: flex; gap: 0.1rem; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.dspi-web .page-tabs::-webkit-scrollbar { display: none; }
+.dspi-web .page-tabs button { flex: none; border: 0; border-radius: 6px 6px 0 0; border-bottom: 2px solid transparent; background: none; padding: 0.35rem 0.7rem; color: var(--muted); line-height: 1.3; }
+.dspi-web .page-tabs button:hover { color: var(--text); background: var(--selection); }
+.dspi-web .page-tabs button[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); }
+.dspi-web .page-head .quick-strip { margin-left: auto; }
+.dspi-web .page { display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; flex: 1; }
+.dspi-web .page > * { min-width: 0; }
+.dspi-web .page > .sys-scenes { margin: 0; border-color: transparent; }
+.dspi-web .shell-main > .sys-rail { margin: 0; border-color: transparent; }
+.dspi-web .devices-page { display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; }
+.dspi-web .devices-page > p { margin: 0; }
+.dspi-web .devices-columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(20rem, 100%), 1fr)); gap: 0 1rem; align-items: start; max-width: 60rem; }
+.dspi-web .devices-columns .installation, .dspi-web .devices-columns .open-files { border-color: transparent; }
+
+.dspi-web .dock { position: sticky; bottom: 0; z-index: 6; display: flex; flex-wrap: wrap; align-items: center; gap: 0.2rem 1rem; min-height: var(--dock-h); padding: 0.35rem 0.75rem; background: var(--chrome); min-width: 0; }
+.dspi-web .dock select, .dspi-web .dock button { height: 1.9rem; }
+.dspi-web .dock button { padding: 0 0.7rem; }
+.dspi-web .dock-source { flex: none; max-width: 8rem; }
+.dspi-web .dock .volume-card { display: flex; align-items: center; gap: 0.75rem; flex: 1 1 18rem; min-width: 0; border: 0; background: none; padding: 0; }
+.dspi-web .dock .volume-card .card-head { display: contents; }
+.dspi-web .dock .volume-mode { flex: none; }
+.dspi-web .dock .volume-slider { order: 1; flex: 1 1 6rem; margin: 0; }
+.dspi-web .dock .volume-value { order: 2; flex: none; }
+.dspi-web .dock .toggles { order: 3; flex: none; }
+.dspi-web .dock-meters { flex: 0 1 auto; min-width: 0; }
+.dspi-web .dock .meters { display: flex; gap: 2px; height: 1.9rem; }
+.dspi-web .dock .meter { display: flex; width: 7px; flex: 0 1 7px; min-width: 2px; }
+.dspi-web .dock .meter-name { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.dspi-web .dock .meter-bar { position: relative; width: 100%; height: 100%; border-radius: 2px; }
+.dspi-web .dock .meter-bar > span { position: absolute; bottom: 0; left: 0; width: 100% !important; height: var(--level, 0%); }
+.dspi-web .dock .meters-stale { margin: 0; font-size: 0.75rem; }
+
+@container console (max-width: 1080px) {
+  .dspi-web .bar-save-text, .dspi-web .session-actions .ur-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+  .dspi-web .session-actions .ur-icon { display: inline; }
+  .dspi-web .bar-save { position: relative; }
+}
+@container console (min-width: 720.02px) {
+  .dspi-web .session-bar { position: sticky; top: var(--top-h); z-index: 7; }
+}
+@container console (max-width: 980px) and (min-width: 720.02px) {
+  .dspi-web .shell-body { grid-template-columns: 3.2rem minmax(0, 1fr); }
+  .dspi-web .rail-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); }
+}
+/* The rail as a row: a narrow console, and (the tabs arrangement, variant A) any */
+@container console (max-width: 720px) {
+  .dspi-web .shell-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr; }
+  .dspi-web .session-bar { flex-wrap: wrap; }
+  .dspi-web .session-actions { flex: 1 1 100%; }
+  .dspi-web .session-actions .save-split { margin-left: auto; }
+  .dspi-web .strip { flex: 1 1 100%; flex-wrap: wrap; gap: 0.1rem 0.5rem; }
+  .dspi-web .strip .device-meta { order: 5; flex: 1 1 100%; }
+  .dspi-web .bar-preset { flex: 1 1 6rem; width: auto; }
+  .dspi-web .shell-main .guard-bar { top: 0; }
+  .dspi-web .page-tabs { flex: 1 1 100%; order: 2; }
+  .dspi-web .page-head .quick-strip { margin-left: 0; order: 3; }
+  .dspi-web .page-head .strip-button { min-width: 2.05rem; padding: 0.25rem 0.3rem; }
+  .dspi-web .shell-main { padding: 0.5rem 16px 1rem; }
+  .dspi-web .session-bar, .dspi-web .dock { padding-left: 16px; padding-right: 16px; }
+  .dspi-web .dock { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 0.3rem 0.5rem; }
+  .dspi-web .dock .volume-card { display: contents; }
+  .dspi-web .dock .volume-mode { grid-area: 1 / 1; max-width: 6.5rem; }
+  .dspi-web .dock .volume-slider { grid-area: 1 / 2; }
+  .dspi-web .dock .volume-value { grid-area: 1 / 3; min-width: 4.6rem; }
+  .dspi-web .dock-source { grid-area: 2 / 1; max-width: 6.5rem; width: 100%; }
+  .dspi-web .dock .toggles { grid-area: 2 / 2; }
+  .dspi-web .dock-meters { grid-area: 2 / 3; width: 6.5rem; justify-self: end; }
+  .dspi-web .dock .meters { justify-content: flex-end; gap: 1px; }
+  .dspi-web .dock .meters-stale { position: absolute; left: 16px; right: 16px; bottom: 100%; background: var(--chrome); }
+  .dspi-web .dock button { padding: 0 0.5rem; }
+}
+/* A console in a sliver of a host page: everything in reach, nothing kept in sight */
+@container console (max-width: 340px) {
+  .dspi-web .shell-main { padding-left: 8px; padding-right: 8px; }
+  .dspi-web .session-bar, .dspi-web .dock { padding-left: 8px; padding-right: 8px; }
+  .dspi-web .session-actions { flex-wrap: wrap; }
+  .dspi-web .dock { position: static; grid-template-columns: minmax(0, 1fr) auto; }
+  .dspi-web .dock .volume-value { grid-area: 1 / 2; }
+  .dspi-web .dock .volume-slider { grid-area: 2 / 1 / 3 / 3; }
+  .dspi-web .dock .toggles { grid-area: 3 / 1 / 4 / 3; }
+  .dspi-web .dock-source { grid-area: 4 / 1; }
+  .dspi-web .dock-meters { grid-area: 4 / 2; }
+}
+@media (max-width: 720px) {
+  .dspi-web .top { position: static; }
+}
+@container top (max-width: 720px) {
+  .dspi-web .device-tab-kind { display: none; }
+  .dspi-web .top .user { max-width: 6rem; }
+  .dspi-web .device-tabs { min-width: 2.2rem; }
+}
+@container top (max-width: 340px) {
+  .dspi-web .app-menu .menu > button { max-width: 4rem; }
+  .dspi-web .top .user { max-width: 3rem; }
+}
+@container console (max-width: 720px) {
+  .dspi-web .rail-list { position: static; flex-direction: row; max-height: none; overflow: visible; padding: 0.25rem 0.5rem; }
+  .dspi-web .rail { overflow-x: auto; scrollbar-width: none; position: relative; }
+  .dspi-web .rail::-webkit-scrollbar { display: none; }
+  .dspi-web .rail button { min-width: 4.1rem; }
+  .dspi-web .rail button[aria-current="page"]::before { left: 0.8rem; right: 0.8rem; width: auto; top: auto; bottom: 0; height: 3px; }
+}
+.dspi-web[data-nav="tabs"] .shell-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr; }
+.dspi-web[data-nav="tabs"] .rail { overflow-x: auto; scrollbar-width: none; position: relative; }
+.dspi-web[data-nav="tabs"] .rail-list { position: static; flex-direction: row; max-height: none; height: auto; overflow: visible; padding: 0.25rem 0.5rem; }
+.dspi-web[data-nav="tabs"] .rail button { flex-direction: row; gap: 0.4rem; padding: 0.35rem 0.7rem; font-size: 0.85rem; }
+.dspi-web[data-nav="tabs"] .rail button:not(.rail-foot) + .rail-foot { margin-top: 0; margin-left: auto; }
+.dspi-web[data-nav="tabs"] .rail button[aria-current="page"]::before { left: 0.7rem; right: 0.7rem; width: auto; top: auto; bottom: 0; height: 2px; }
+.dspi-web[data-nav="tabs"] .rail-text { position: static; width: auto; height: auto; clip: auto; clip-path: none; }
+.dspi-web[data-nav="tabs"] .page-title { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }

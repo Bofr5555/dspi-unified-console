@@ -28,31 +28,47 @@ class QJSEngine;
 //   "topBar" (the open devices as tabs in the top bar, the default) or
 //   "rail" (at the rail's top). The Modern shell reads them; another package
 //   declares a further key with arrangement->declare().
-// Until the Modern shell exists (WP LAY3), Modern shows the Classic shell.
 class LayoutController : public QObject {
     Q_OBJECT
     QML_ELEMENT
     QML_SINGLETON
     Q_PROPERTY(QString layout READ layout WRITE setLayout NOTIFY layoutChanged)
     Q_PROPERTY(bool modern READ modern NOTIFY layoutChanged)
+    // -- WP RBFIX -- Why the layout cannot be switched now ("" when it can):
+    // leaving Modern closes the Measure page, which stops every measurement
+    Q_PROPERTY(QString switchBlocker READ switchBlocker NOTIFY switchBlockerChanged)
     Q_PROPERTY(PrefsMap *arrangement READ arrangement CONSTANT)
+    // -- WP LAY3 -- "system" (the default), "light" or "dark" (ui/theme): the
+    // colour scheme of both layouts. DSPI_COLOR_SCHEME wins at the start.
+    Q_PROPERTY(QString theme READ theme WRITE setTheme NOTIFY themeChanged)
 public:
     static constexpr const char *kLayoutKey = "ui/layout";
+    static constexpr const char *kThemeKey = "ui/theme";
 
     LayoutController(const AppContext &ctx, QObject *parent);
     static LayoutController *create(QQmlEngine *, QJSEngine *) { return Registrar::instance<LayoutController>(); }
 
     QString layout() const { return m_layout; }
-    // "classic" or "modern"; anything else is ignored
+    // "classic" or "modern"; anything else is ignored. -- WP RBFIX -- Refused
+    // with a notice while there is a switchBlocker
     void setLayout(const QString &layout);
     bool modern() const { return m_layout == QLatin1String("modern"); }
+    QString switchBlocker() const;
     PrefsMap *arrangement() const { return m_arrangement; }
+    QString theme() const { return m_theme; }
+    // "system", "light" or "dark"; anything else is ignored
+    void setTheme(const QString &theme);
 
 signals:
+    void layoutChanging();   // -- WP LAY3 -- the loaded shell is about to go
     void layoutChanged();
+    void switchBlockerChanged();   // -- WP RBFIX --
+    void themeChanged();   // -- WP LAY3 --
 
 private:
+    AppContext m_ctx;
     QString m_layout;
+    QString m_theme = QStringLiteral("system");
     PrefsMap *m_arrangement;
 };
 

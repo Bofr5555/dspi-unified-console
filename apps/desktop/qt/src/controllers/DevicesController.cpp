@@ -1,9 +1,15 @@
 #include "DevicesController.h"
 
 #include "Core.h"
+#include "CoreVoltageController.h"   // -- WP MDQT2b --
 #include "DeviceModel.h"
+#include "DeviceRegistry.h"   // -- WP MDQT1 --
+#include "DeviceSession.h"
+#include "FirmwareController.h"   // -- WP MDQT2b --
 #include "LinkController.h"
+#include "NoticeCenter.h"
 #include "Registrar.h"
+#include "SessionModel.h"
 #include "Shell.h"
 #include "Snapshot.h"
 #include "UnsavedGuard.h"   // -- WP QP15 --
@@ -15,6 +21,7 @@
 #include <QQmlApplicationEngine>
 #include <QQmlComponent>
 #include <QQuickItem>
+#include <QPointer>
 #include <QQuickWindow>
 #include <QSettings>
 #include <QVector>
@@ -40,7 +47,8 @@ QVariantList scanUsb(FfiCore *c) {
 } // namespace
 
 DevicesController::DevicesController(const AppContext &ctx, QObject *parent)
-    : QObject(parent), m_core(ctx.core->handle()), m_coreObject(ctx.core), m_device(ctx.device), m_engine(ctx.engine) {
+    : QObject(parent), m_core(ctx.core->handle()), m_registry(ctx.registry), m_coreObject(ctx.core), m_device(ctx.device),
+      m_engine(ctx.engine) {
     m_reader.setMaxThreadCount(1);
     m_reader.setExpiryTimeout(-1);
     m_lookForHubs = QSettings().value(QLatin1String(kLookForHubs), true).toBool();
@@ -56,6 +64,15 @@ DevicesController::DevicesController(const AppContext &ctx, QObject *parent)
     });
     connect(ctx.core, &Core::deviceEvent, this, [this] {
         if (m_listShown) rescan();
+    });
+    // -- WP MDQT1 --
+    connect(m_registry, &DeviceRegistry::activeChanged, this, &DevicesController::browseActive);
+    connect(m_registry, &DeviceRegistry::openFailed, this, [this](const QString &, const QString &error) { refuse(error); });
+    connect(m_registry, &DeviceRegistry::configFailed, this, [](const QString &error) {
+        if (auto *notices = Registrar::instance<NoticeCenter>())
+            //: %1 is the system's reason
+            notices->post(tr("A data folder cannot be used, so what belongs in it is not kept: %1").arg(error),
+                          QStringLiteral("warning"));
     });
     // The list and the prompt live in the main window, made once it exists
     if (auto *app = qobject_cast<QQmlApplicationEngine *>(ctx.engine)) {
@@ -87,7 +104,7 @@ void DevicesController::wire(QQuickWindow *window) {
         connect(l, &LinkController::dialFailed, this, [this](const QString &hubId) {
             if (hubId.isEmpty() || !m_browseRunning) return;
             const QByteArray id = hubId.toUtf8();
-            m_reader.start([this, id] { dspi_link_browse_verify(m_core, id.constData()); });
+            m_reader.start([c = m_core, id] { dspi_link_browse_verify(c, id.constData()); });   // -- WP MDQT1 -- c
         });
     }
     QQmlComponent component(m_engine, QStringLiteral("UConsole"), QStringLiteral("DevicesHost"));
@@ -184,9 +201,8 @@ void DevicesController::readHubs() {
     // A session waiting to reconnect follows its hub to where it is announced now
     const QByteArray follow =
         m_link && m_link->phase() == QLatin1String("reconnecting") ? m_link->hubId().toUtf8() : QByteArray();
-    m_reader.start([this, follow] {
+    m_reader.start([this, follow, c = m_core] {   // -- WP MDQT1 -- c, which may be another by then
         m_readQueued = false;
-        FfiCore *c = m_core;
         const QJsonObject o = QJsonDocument::fromJson(
                                   readSized([c](char *b, uint32_t n) { return dspi_link_browse_hubs(c, b, n); }, 4096))
                                   .object();
@@ -209,9 +225,92 @@ void DevicesController::readHubs() {
 
 // ---- Choosing ----------------------------------------------------------------
 
+// -- WP MDQT1 --
+// The browse runs on the active device's core, whose session it follows to a
+// new address (dspi_link_browse_reresolve)
+void DevicesController::browseActive() {
+    if (m_shutDown) return;
+    if (m_browseRunning) {
+        m_browseRunning = false;
+        dspi_link_browse_stop(m_core);
+    }
+    m_core = m_coreObject->handle();
+    updateBrowse();
+}
+
+void DevicesController::refuse(const QString &error) {
+    if (auto *notices = Registrar::instance<NoticeCenter>())
+        notices->post(error.isEmpty() ? tr("The device did not open.") : error, QStringLiteral("warning"));
+}
+
+// The unit is open in a session that is not the active one: made active when
+// it is reached the same way, refused when not
+bool DevicesController::takeOpen(const QString &serial, bool remote) {
+    DeviceSession *holder = m_registry->holder(serial);
+    if (!holder || holder == m_registry->active()) return false;
+    if (holder->model()->remote() == remote) {
+        m_registry->activate(holder);
+    } else {
+        //: %1 is the device's serial number
+        refuse(remote ? tr("%1 is already open over USB. Close it there first.").arg(serial)
+                      : tr("%1 is already open through a hub. Close it there first.").arg(serial));
+    }
+    return true;
+}
+
+void DevicesController::chooseOpen(const QString &id) { m_registry->activate(id); }
+
+void DevicesController::closeOpen(const QString &id) {
+    // -- WP MDQT2b -- that device's question, and not while a job pins it
+    DeviceSession *session = m_registry->session(id);
+    if (!session) return;
+    const QString pinned = pinnedBy(session);
+    if (!pinned.isEmpty()) {
+        refuse(pinned);
+        return;
+    }
+    const QPointer<DeviceSession> asked = session;
+    UnsavedGuard::beforeClosing(session, this, [this, id, asked] {
+        if (!asked) return;
+        const QString now = pinnedBy(asked);
+        if (now.isEmpty()) m_registry->close(id);
+        else refuse(now);
+    });
+}
+
+// -- WP MDQT2b --
+QString DevicesController::pinnedText(const QString &id) const { return pinnedBy(m_registry->session(id)); }
+
+QString DevicesController::pinnedBy(DeviceSession *session) const {
+    if (!session) return QString();
+    const auto *firmware = Registrar::instance<FirmwareController>();
+    //: %1 is a device's name
+    if (firmware && firmware->runsOn(session)) return tr("A firmware update is under way on %1. Wait for it to finish.").arg(session->title());
+    const auto *voltage = Registrar::instance<CoreVoltageController>();
+    //: %1 is a device's name
+    if (voltage && voltage->calibratingOn(session))
+        return tr("A core voltage calibration runs on %1. End it on its Core Voltage page first.").arg(session->title());
+    return QString();
+}
+
+// Classic replaces the active device: not while a job pins it
+bool DevicesController::refusedPinned() {
+    if (m_registry->keepOpen()) return false;
+    const QString pinned = pinnedBy(m_registry->active());
+    if (pinned.isEmpty()) return false;
+    refuse(pinned);
+    return true;
+}
+
 void DevicesController::chooseDemo() {
+    // -- WP MDQT1 -- beside the open ones
+    if (m_registry->keepOpen()) {
+        m_registry->openDemo();
+        return;
+    }
     // -- WP QP15 -- another device: the unsaved-changes question first (M42, QD37)
     const bool same = m_device->demo() && !m_device->remote();
+    if (!same && refusedPinned()) return;   // -- WP MDQT2b --
     UnsavedGuard::before(same ? QString() : QStringLiteral("device"), this, [this] {
         if (LinkController *l = link(); l && (l->inSession() || m_device->remote())) l->leaveForLocal();
         m_device->openDemo();
@@ -219,9 +318,15 @@ void DevicesController::chooseDemo() {
 }
 
 void DevicesController::chooseUsb(const QString &serial) {
-    if (serial.isEmpty()) return;
+    if (serial.isEmpty() || takeOpen(serial, false)) return;   // -- WP MDQT1 --
+    // -- WP MDQT1 -- beside the open ones
+    if (m_registry->keepOpen() && m_registry->holder(serial) != m_registry->active()) {
+        m_registry->openUsb(serial);
+        return;
+    }
     // -- WP QP15 -- another device: the unsaved-changes question first (M42, QD37)
     const bool same = serial == m_device->serial() && !m_device->demo() && !m_device->remote();
+    if (!same && refusedPinned()) return;   // -- WP MDQT2b --
     UnsavedGuard::before(same ? QString() : QStringLiteral("device"), this, [this, serial] {
         if (LinkController *l = link(); l && (l->inSession() || m_device->remote())) l->leaveForLocal();
         m_device->selectDevice(serial);
@@ -243,8 +348,15 @@ bool DevicesController::connectAddress(const QString &address) {
 }
 
 void DevicesController::chooseHubDevice(int handle, const QString &serial) {
+    if (takeOpen(serial, true)) return;   // -- WP MDQT1 --
+    // -- WP MDQT1 -- beside the open ones
+    if (m_registry->keepOpen() && m_registry->holder(serial) != m_registry->active()) {
+        if (LinkController *l = link()) l->bindDevice(handle, serial);
+        return;
+    }
     // -- WP QP15 -- another device: the unsaved-changes question first (M42)
     const bool same = serial == m_device->serial() && m_device->remote();
+    if (!same && refusedPinned()) return;   // -- WP MDQT2b --
     UnsavedGuard::before(same ? QString() : QStringLiteral("device"), this, [this, handle, serial] {
         if (LinkController *l = link()) l->bindDevice(handle, serial);
     });

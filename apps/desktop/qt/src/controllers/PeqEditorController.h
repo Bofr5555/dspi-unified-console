@@ -9,6 +9,7 @@
 #include <QString>
 #include <QVariant>
 #include <QtQml/qqmlregistration.h>
+#include <memory>
 
 #include "CoreApi.h"
 #include "Registrar.h"
@@ -116,15 +117,15 @@ public:
 
     int revision() const { return m_rev; }
     QList<int> selected() const;
-    const QSet<int> &selection() const { return m_selected; }
+    const QSet<int> &selection() const { return state()->selected; }
     int rowHovered() const { return m_rowHovered; }
     void setRowHovered(int band);
     int pointedBand() const { return m_pointed; }
     void setPointedBand(int band);
-    int editedChannel() const { return m_edited; }
+    int editedChannel() const { return state()->edited; }
     void setEditedChannel(int channel);
 
-    Q_INVOKABLE bool isSelected(int band) const { return m_selected.contains(band); }
+    Q_INVOKABLE bool isSelected(int band) const { return selection().contains(band); }
     // {freq, gain, q} while the graph drags the band, else null
     Q_INVOKABLE QVariant live(int band) const;
     // A click on a band's number in the list, with the modifiers of a click
@@ -156,14 +157,23 @@ signals:
     void showRow(int band);
 
 private:
+    // -- WP MDQT2a -- The channel edited and its selection are the device's own
+    struct State {
+        int edited = -1;
+        int selectedOn = -1;   // the channel `selected` belongs to
+        QSet<int> selected;
+        int rowAnchor = -1;
+    };
+    std::shared_ptr<State> state() const;
+    // The pointer and a drag's live values stay behind with the device left
+    void letGo();
     void bump();
 
     AppContext m_ctx;
-    QSet<int> m_selected;
-    int m_rowAnchor = -1;
+    // A switch is under way: the pages move to the next device's channels
+    bool m_switching = false;
     int m_rowHovered = -1;
     int m_pointed = -1;
-    int m_edited = -1;
     QHash<int, FilterParams> m_live;
     int m_rev = 0;
 };

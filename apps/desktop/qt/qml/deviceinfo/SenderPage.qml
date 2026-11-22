@@ -30,6 +30,7 @@ Rectangle {
             }
             Text {
                 Layout.fillWidth: true
+                textFormat: Text.PlainText
                 text: qsTr("Serial %1 · firmware %2").arg(DeviceModel.serial)
                     .arg(DeviceModel.firmwareVersion.length ? DeviceModel.firmwareVersion : qsTr("unknown"))
                 font: Theme.fontSmall
@@ -56,6 +57,7 @@ Rectangle {
                     objectName: "SenderPage.alinkProblem"
                     Layout.fillWidth: true
                     visible: text.length > 0
+                    textFormat: Text.PlainText
                     text: DeviceInfoController.alinkProblem
                     font: Theme.fontSmall
                     color: Theme.warning

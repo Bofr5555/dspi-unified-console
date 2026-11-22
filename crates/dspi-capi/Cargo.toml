@@ -35,8 +35,15 @@ dspi-transport.workspace = true
 # -- WP HB6 --
 # The hub the dspi_hub_* functions start, with the app as its local session.
 dspi-hub = { workspace = true, features = ["app"], optional = true }
+# -- WP MCP3 --
+# The MCP server for AI agents and its loopback transport (the dspi_mcp_* functions).
+dspi-mcp = { path = "../dspi-mcp", features = ["http"], optional = true }
 
 [features]
+# -- WP MCP3 -- on by default: the Qt app calls dspi_mcp_* whatever else it is
+# built with (its --mcp relay mode, Settings, AI agents), so every build script's
+# feature list gets it without naming it.
+default = ["mcp"]
 link = ["dspi-core/link"]
 midir = ["dspi-core/midir"]
 # -- WP CG2 --
@@ -46,6 +53,8 @@ mdns = ["dspi-core/mdns", "dspi-hub?/mdns"]
 # Sharing this machine's devices: the dspi_hub_* functions. `app` puts the app's own
 # core on the hub, which is what a console does while sharing.
 hub = ["dep:dspi-hub"]
+# -- WP MCP3 --
+mcp = ["dep:dspi-mcp"]
 
 [dev-dependencies]
 # -- WP Q1 --

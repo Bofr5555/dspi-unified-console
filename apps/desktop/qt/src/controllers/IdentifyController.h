@@ -3,11 +3,13 @@
 
 #include <QJsonObject>
 #include <QObject>
+#include <QPointer>
 #include <QString>
 #include <QtQml/qqmlregistration.h>
 
 #include "Registrar.h"
 
+class DeviceSession;
 class QJSEngine;
 class QQmlEngine;
 
@@ -58,6 +60,7 @@ private:
     bool m_remote = false;
     int m_writes = 0;
     int m_probe = 0;
+    QPointer<DeviceSession> m_session;   // -- WP MDQT2b -- the device probed
 };
 
 #endif // IDENTIFYCONTROLLER_H

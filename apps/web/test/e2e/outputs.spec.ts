@@ -7,6 +7,7 @@
 // delay rule (owner, SL1) is tested on the writes the page sends.
 
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { openPage, rail } from "../nav";
 
 type Band = { filterType: number; bypass: boolean; freq: number; q: number; gain: number; qp: number };
 type State = {
@@ -78,14 +79,14 @@ async function connect(page: Page, venue = "Venue A", url = "/test/embed.html") 
   const one = page.locator("#one");
   await one.getByRole("region", { name: venue }).getByRole("button", { name: "Connect" }).click();
   const session = one.getByRole("article", { name: "DSPi" });
-  await expect(session.getByRole("tab", { name: "EQ" })).toBeVisible();
+  await expect(rail(session)).toBeVisible();
   return session;
 }
 
 /** Console one on OUT1's page (the EQ screen with OUT1 chosen): the session and its settings card. */
 async function openOut1(page: Page, venue = "Venue A", url = "/test/embed.html") {
   const session = await connect(page, venue, url);
-  await session.getByRole("tab", { name: "EQ" }).click();
+  await openPage(session, "EQ");
   await session.locator(".eq-pick", { hasText: "OUT1" }).click();
   const card = session.getByRole("region", { name: /^Output settings, OUT1/ });
   await expect(card).toBeVisible();
@@ -94,7 +95,7 @@ async function openOut1(page: Page, venue = "Venue A", url = "/test/embed.html")
 
 async function openMatrix(page: Page, venue = "Venue A", url = "/test/embed.html") {
   const session = await connect(page, venue, url);
-  await session.getByRole("tab", { name: "Matrix" }).click();
+  await openPage(session, "Matrix");
   const matrix = session.getByRole("region", { name: "Matrix Mixer" });
   await expect(matrix).toBeVisible();
   return { session, matrix };
@@ -497,7 +498,7 @@ test("WB6c redraws: the output page and the matrix change nothing while idle; a 
   await page.waitForTimeout(300);
   expect(await draws(graph)).toBe(n0);
 
-  await session.getByRole("tab", { name: "Matrix" }).click();
+  await openPage(session, "Matrix");
   await expect(session.getByRole("region", { name: "Matrix Mixer" })).toBeVisible();
   await page.waitForTimeout(300);
   await watch("#one .matrix-screen");
@@ -512,7 +513,7 @@ test("WB6c read only: a view-only session shows the output page and the matrix w
   await expect(card.getByRole("button", { name: "Mute" })).toBeDisabled();
   await session.getByRole("tab", { name: "XO" }).click();
   await expect(session.getByRole("combobox", { name: "Crossover 1 family" })).toBeDisabled();
-  await session.getByRole("tab", { name: "Matrix" }).click();
+  await openPage(session, "Matrix");
   const matrix = session.getByRole("region", { name: "Matrix Mixer" });
   const buttons = matrix.getByRole("button");
   const n = await buttons.count();
@@ -527,7 +528,7 @@ test.describe("375 px, in every browser", () => {
     page.evaluate((inside) => {
       const w = document.documentElement.clientWidth;
       return Array.from(document.querySelectorAll<HTMLElement>(".dspi-web *"))
-        .filter((e) => e.getBoundingClientRect().right > w + 0.5 && !e.closest(".eq-channels") && !e.closest(inside))
+        .filter((e) => e.getBoundingClientRect().right > w + 0.5 && !e.closest(".eq-channels, .rail, .page-tabs, .device-tab-row") && !e.closest(inside))
         .map((e) => `${e.tagName.toLowerCase()}.${e.className} ${Math.round(e.getBoundingClientRect().right)}`)
         .slice(0, 8);
     }, inside);
@@ -547,7 +548,7 @@ test.describe("375 px, in every browser", () => {
     expect((await screen.boundingBox())!.height).toBe(h0);
     await page.screenshot({ path: test.info().outputPath("output-375.png"), fullPage: true });
 
-    await session.getByRole("tab", { name: "Matrix" }).click();
+    await openPage(session, "Matrix");
     const scroll = session.getByRole("region", { name: "Matrix", exact: true });
     await expect(scroll).toBeVisible();
     expect(await overflow(page, ".matrix-scroll")).toEqual([]);

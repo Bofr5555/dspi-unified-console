@@ -34,6 +34,7 @@ Rectangle {
             Layout.fillWidth: true
             spacing: 2
             Text {
+                textFormat: Text.PlainText
                 text: header.title
                 font: Theme.fontTitle
                 color: Theme.text
@@ -42,6 +43,7 @@ Rectangle {
             }
             Text {
                 Layout.fillWidth: true
+                textFormat: Text.PlainText
                 text: header.subtitle
                 font: Theme.fontCaption
                 color: Theme.textMuted

@@ -42,6 +42,30 @@ ScrollView {
     // The draft
     property int output: mc.outputs.length ? mc.outputs[0].output : 0
     property string role: "full"
+    // -- WP ROLEQ -- the output's role from the speaker layout (else the
+    // suggestion); a change here is written back to it
+    function layoutRole() {
+        const r = SpeakersController.roleOf(tab.output)
+        if (r.length) tab.role = r
+    }
+    onOutputChanged: layoutRole()
+    Component.onCompleted: { SpeakersController.reload(); layoutRole() }
+    Connections {
+        target: SpeakersController
+        function onStoredChanged() { tab.layoutRole() }
+    }
+    // -- WP MDQT2c -- another device: its draft starts over (a placement chosen
+    // for the last one is never assumed for it)
+    Connections {
+        target: MeasureController
+        function onDeviceSwitched() {
+            tab.placementChoice = ""
+            tab.couplerChoice = ""
+            tab.at = tab.from = tab.to = ""
+            tab.output = tab.mc.outputs.length ? tab.mc.outputs[0].output : 0
+            tab.layoutRole()
+        }
+    }
     property string mode: "sweep"
     // -- WP P5FOLLOW -- (coordinator, headphone safety) no default placement:
     // the person's choice here, else the Setup tab's when it is a live one
@@ -79,6 +103,11 @@ ScrollView {
         width: tab.availableWidth
         spacing: Theme.spacing
 
+        // -- WP ROLEQ -- while the speaker layout is not confirmed
+        SpeakersBanner {
+            objectName: "MeasureLive.speakersBanner"
+            Layout.fillWidth: true
+        }
         RowLayout {
             spacing: Theme.spacingSmall
             Text {
@@ -126,13 +155,17 @@ ScrollView {
                 onActivated: index => tab.output = mc.outputs[index].output
             }
             AppComboBox {
+                objectName: "MeasureLive.role"
                 label: qsTr("Way")
                 width: 150
                 enabled: tab.editable
                 model: tab.roles
                 textRole: "text"
                 currentIndex: tab.indexOf(tab.roles, tab.role)
-                onActivated: index => tab.role = tab.roles[index].id
+                onActivated: index => {
+                    tab.role = tab.roles[index].id
+                    SpeakersController.writeBack(tab.output, tab.role)   // -- WP ROLEQ --
+                }
             }
             AppComboBox {
                 label: qsTr("Placement")
@@ -177,6 +210,7 @@ ScrollView {
             spacing: Theme.spacingSmall
             Text {
                 Layout.fillWidth: true
+                textFormat: Text.PlainText
                 text: mc.targetName.length ? qsTr("Target: %1").arg(mc.targetName) : qsTr("Target: the placement's default (our own curve)")
                 font: Theme.fontSmall
                 color: Theme.textMuted
@@ -229,6 +263,7 @@ ScrollView {
         Text {
             objectName: "MeasureLive.state"
             Layout.fillWidth: true
+            textFormat: Text.PlainText
             text: mc.liveText
             font: Theme.fontBody
             color: Theme.text
@@ -236,6 +271,7 @@ ScrollView {
         Text {
             visible: text.length > 0
             Layout.fillWidth: true
+            textFormat: Text.PlainText
             text: mc.liveIssueText
             font: Theme.fontBody
             color: Theme.dangerText
@@ -333,6 +369,7 @@ ScrollView {
                 spacing: 4
                 Text {
                     visible: (mc.proposal.reason || "").length === 0
+                    textFormat: Text.PlainText
                     text: mc.proposal.label || ""
                     font.pixelSize: Theme.fontBody.pixelSize
                     font.weight: Font.DemiBold
@@ -343,6 +380,7 @@ ScrollView {
                     Text {
                         required property string modelData
                         Layout.fillWidth: true
+                        textFormat: Text.PlainText
                         text: "• " + modelData
                         font: Theme.fontBody
                         color: Theme.text
@@ -392,6 +430,7 @@ ScrollView {
                 objectName: "MeasureLive.said"
                 visible: text.length > 0
                 Layout.fillWidth: true
+                textFormat: Text.PlainText
                 text: mc.liveSaid
                 font: Theme.fontBody
                 color: Theme.text

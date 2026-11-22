@@ -50,9 +50,18 @@ ScrollView {
         return -1
     }
 
+    // -- WP ROLEQ -- the rows come from the speaker layout and write back to it
+    Component.onCompleted: SpeakersController.reload()
+
     ColumnLayout {
         width: tab.availableWidth
         spacing: Theme.spacing
+
+        // -- WP ROLEQ -- while the speaker layout is not confirmed
+        SpeakersBanner {
+            objectName: "MeasureSetup.speakersBanner"
+            Layout.fillWidth: true
+        }
 
         Card {
             title: qsTr("Microphone")
@@ -181,6 +190,7 @@ ScrollView {
                         onToggled: mc.setOutputOn(modelData.output, checked)
                     }
                     AppComboBox {
+                        objectName: "MeasureSetup.role." + modelData.output
                         label: qsTr("Way")
                         Layout.preferredWidth: 150
                         enabled: tab.editable && modelData.on
@@ -190,6 +200,7 @@ ScrollView {
                         onActivated: index => mc.setOutputRole(modelData.output, tab.roles[index].id)
                     }
                     BorderedField {
+                        objectName: "MeasureSetup.speaker." + modelData.output
                         label: qsTr("Speaker")
                         Layout.preferredWidth: 60
                         enabled: tab.editable && modelData.on
@@ -206,6 +217,18 @@ ScrollView {
                         onCommitted: value => mc.setOutputGroup(modelData.output, Math.round(value))
                     }
                 }
+            }
+            // -- WP ROLEQ -- a way, speaker or group changed here is kept in
+            // the speaker layout (not confirmed by it)
+            Text {
+                objectName: "MeasureSetup.layoutSaved"
+                visible: text.length > 0
+                Layout.fillWidth: true
+                textFormat: Text.PlainText
+                text: SpeakersController.said
+                font: Theme.fontSmall
+                color: SpeakersController.saidError ? Theme.dangerText : Theme.textMuted
+                wrapMode: Text.WordWrap
             }
             AppButton {
                 text: qsTr("Propose from the Device")
@@ -296,6 +319,7 @@ ScrollView {
             }
             Text {
                 Layout.fillWidth: true
+                textFormat: Text.PlainText
                 text: mc.setupProblem
                 font: Theme.fontBody
                 color: Theme.warning
@@ -319,6 +343,7 @@ ScrollView {
                 Text {
                     required property var modelData
                     Layout.fillWidth: true
+                    textFormat: Text.PlainText
                     text: (modelData.kind === "blocker" ? "• " : qsTr("Warning: ")) + modelData.text
                     font: Theme.fontBody
                     color: modelData.kind === "blocker" ? Theme.dangerText : Theme.warning
@@ -334,6 +359,7 @@ ScrollView {
             Text {
                 objectName: "MeasureSetup.phase"
                 Layout.fillWidth: true
+                textFormat: Text.PlainText
                 text: mc.phaseText
                 font: Theme.fontBody
                 color: Theme.text
@@ -352,6 +378,7 @@ ScrollView {
                 objectName: "MeasureSetup.issue"
                 visible: text.length > 0 && !mc.measuring
                 Layout.fillWidth: true
+                textFormat: Text.PlainText
                 text: mc.issueText
                 font: Theme.fontBody
                 color: mc.phase === "aborted" ? Theme.textMuted : Theme.dangerText
@@ -361,6 +388,7 @@ ScrollView {
                 objectName: "MeasureSetup.timing"
                 visible: text.length > 0
                 Layout.fillWidth: true
+                textFormat: Text.PlainText
                 text: mc.timingText
                 font: Theme.fontBody
                 color: mc.timingReliable ? Theme.success : Theme.warning

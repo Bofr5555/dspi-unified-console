@@ -10,10 +10,12 @@
 #include <QVector>
 #include <QtQml/qqmlregistration.h>
 #include <array>
+#include <memory>
 
 #include "CoreApi.h"
 
 class DeviceModel;
+class DeviceRegistry;
 class Poller;
 class QQmlEngine;
 class QJSEngine;
@@ -106,9 +108,9 @@ public:
     GraphController(const AppContext &ctx, QObject *parent);
     static GraphController *create(QQmlEngine *, QJSEngine *) { return Registrar::instance<GraphController>(); }
 
-    int selectedChannel() const { return m_selected; }
+    int selectedChannel() const { return view()->selected; }
     int curveRevision() const { return m_curveRev; }
-    QList<int> visibleChannels() const { return channelsOf(m_visible); }
+    QList<int> visibleChannels() const { return channelsOf(view()->visible); }
     QList<int> popOutVisibleChannels() const;
     int overlayChannel() const { return m_overlayChannel; }
     void setOverlayChannel(int channel);
@@ -123,9 +125,9 @@ public:
     // An output channel's gain in dB, with a live preview winning; 0 for inputs
     double outputGain(int channel) const;
     // Wire channels: inputs 0..firstOutput-1, then the outputs
-    int firstOutput() const { return m_firstOutput; }
-    int channelCount() const { return m_channelCount; }
-    bool connected() const { return m_channelCount > 0; }
+    int firstOutput() const { return view()->firstOutput; }
+    int channelCount() const { return view()->channelCount; }
+    bool connected() const { return view()->channelCount > 0; }
 
     // QML
     Q_INVOKABLE QVariantList magnitudeCurve(int channel) const;
@@ -220,7 +222,34 @@ private:
         bool operator==(const Chain &o) const;
     };
 
+    // -- WP MDQT2a -- What is the device's own: its curves, and which of them
+    // and which page the user has on show
+    struct View {
+        // Curves per wire channel
+        std::array<Chain, MAX_CHANNELS> chains{};
+        std::array<QVector<double>, MAX_CHANNELS> mag, phase, phaseUnwrapped;
+        std::array<double, MAX_OUTPUTS> gain{};
+        QHash<int, double> gainPreview;
+        int firstOutput = 0;
+        int channelCount = 0;
+        int outputCount = 0;
+        uint64_t generation = 0;
+        std::array<bool, MAX_OUTPUTS> enabled{};
+
+        // Visibility and selection
+        Visibility visible{};
+        Visibility popOut{};
+        bool popOutSet = false;
+        Visibility savedOverview{};
+        bool haveSaved = false;
+        int selected = -1;
+        int partner = -1;
+        int inputsShown = 0;
+    };
+    // The active device's, and never another one's
+    std::shared_ptr<View> view() const;
     void onSnapshot();
+    void readDevice();
     void onStatus();
     Chain chainOf(const DspState &s, int channel) const;
     void applyDefaults(Visibility &v) const;
@@ -228,32 +257,15 @@ private:
     static QList<int> channelsOf(const Visibility &v);
     void store(const QString &key, const QVariant &value);
 
+    DeviceRegistry *m_registry;   // -- WP MDQT2a --
     DeviceModel *m_device;
     Poller *m_poller;
     QSettings m_settings;
 
-    // Curves per wire channel
-    std::array<Chain, MAX_CHANNELS> m_chains{};
-    std::array<QVector<double>, MAX_CHANNELS> m_mag, m_phase, m_phaseUnwrapped;
-    std::array<double, MAX_OUTPUTS> m_gain{};
-    QHash<int, double> m_gainPreview;
-    int m_firstOutput = 0;
-    int m_channelCount = 0;
-    int m_outputCount = 0;
-    uint64_t m_generation = 0;
-    std::array<bool, MAX_OUTPUTS> m_enabled{};
+    std::shared_ptr<View> m_shown;   // -- WP MDQT2a -- the View last announced
     int m_curveRev = 0;
-
-    // Visibility and selection
-    Visibility m_visible{};
-    Visibility m_popOut{};
-    bool m_popOutSet = false;
-    Visibility m_savedOverview{};
-    bool m_haveSaved = false;
-    int m_selected = -1;
     int m_overlayChannel = -1;
     bool m_poppedOut = false;
-    int m_inputsShown = 0;
 
     // Preferences
     struct Scale {

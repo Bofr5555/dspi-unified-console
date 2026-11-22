@@ -191,6 +191,7 @@ SettingsPage {
                         color: Theme.pinRoleTints[index]
                     }
                     Text {
+                        textFormat: Text.PlainText
                         text: modelData
                         font: Theme.fontSmall
                         color: Theme.textMuted
@@ -246,6 +247,7 @@ SettingsPage {
                         }
                         Text {
                             Layout.fillWidth: true
+                            textFormat: Text.PlainText
                             text: modelData.label
                             font: Theme.fontSmall
                             color: Theme.text

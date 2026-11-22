@@ -4,6 +4,7 @@
 #include <QHash>
 #include <QJsonObject>
 #include <QObject>
+#include <QPointer>
 #include <QString>
 #include <QThreadPool>
 #include <QTimer>
@@ -16,6 +17,8 @@
 #include "Registrar.h"
 
 class DeviceModel;
+class DeviceRegistry;
+class DeviceSession;
 class QJSEngine;
 class QQmlEngine;
 struct FfiCore;
@@ -236,6 +239,12 @@ private:
 
     FfiCore *m_core;
     DeviceModel *m_device;
+    // -- WP MDQT2b -- the active device's core, taken again on a switch;
+    // `m_epoch` counts the switches, and an answer of an older one is dropped
+    DeviceRegistry *m_registry;
+    QPointer<DeviceSession> m_session;
+    quint64 m_epoch = 0;
+    void rebind();
     QThreadPool m_pool;
     QTimer m_timer;
     std::atomic<bool> m_reading{ false };

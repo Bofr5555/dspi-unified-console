@@ -108,6 +108,7 @@ SettingsPage {
                     Text {
                         objectName: "Networking.status"
                         Layout.fillWidth: true
+                        textFormat: Text.PlainText
                         text: HubController.statusLine
                         font: Theme.fontBody
                         color: Theme.textMuted
@@ -150,6 +151,7 @@ SettingsPage {
             Text {
                 objectName: "Networking.errorText"
                 Layout.fillWidth: true
+                textFormat: Text.PlainText
                 text: HubController.lastError
                 font: Theme.fontBody
                 color: Theme.warning
@@ -397,6 +399,7 @@ SettingsPage {
                     required property string modelData
                     Layout.fillWidth: true
                     Layout.leftMargin: 22
+                    textFormat: Text.PlainText
                     text: "• " + modelData
                     font: Theme.fontBody
                     color: Theme.text
@@ -507,6 +510,7 @@ SettingsPage {
                     spacing: 2
                     Text {
                         Layout.fillWidth: true
+                        textFormat: Text.PlainText
                         text: clientRow.modelData.name
                         font: Theme.fontBody
                         color: Theme.text
@@ -514,6 +518,7 @@ SettingsPage {
                     }
                     Text {
                         Layout.fillWidth: true
+                        textFormat: Text.PlainText
                         text: clientRow.modelData.online ? qsTr("Connected now")
                               : clientRow.modelData.lastSeen > 0
                                 ? qsTr("Last seen %1 ago").arg(page.ago(clientRow.modelData.lastSeen))
@@ -585,6 +590,7 @@ SettingsPage {
             }
             Text {
                 Layout.fillWidth: true
+                textFormat: Text.PlainText
                 text: DevicesController.browseError
                 font: Theme.fontBody
                 color: Theme.warning
@@ -611,6 +617,7 @@ SettingsPage {
                     spacing: 2
                     Text {
                         Layout.fillWidth: true
+                        textFormat: Text.PlainText
                         text: hubRow.modelData.name
                         font: Theme.fontBody
                         color: Theme.text
@@ -620,6 +627,7 @@ SettingsPage {
                         Layout.fillWidth: true
                         readonly property int devices: hubRow.modelData.deviceCount || 0
                         readonly property string where: hubRow.modelData.host + ":" + hubRow.modelData.port
+                        textFormat: Text.PlainText
                         text: devices === 1 ? qsTr("%1, 1 device").arg(where)
                                             : qsTr("%1, %2 devices").arg(where).arg(devices)
                         font: Theme.fontSmall

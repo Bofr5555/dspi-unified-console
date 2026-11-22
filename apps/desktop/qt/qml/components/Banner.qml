@@ -19,6 +19,7 @@ Rectangle {
     property string text
     property string iconName: kind === "info" ? "info" : "triangle-alert"
     property bool dismissable: false
+    property int textFormat: Text.PlainText   // -- WP MDQT2c -- (WP RBFIX: plain unless a banner says otherwise)
     default property alias actions: buttons.data
     signal dismissed()
 
@@ -44,6 +45,7 @@ Rectangle {
         Text {
             Layout.fillWidth: true
             text: banner.text
+            textFormat: banner.textFormat
             font: Theme.fontBody
             color: Theme.text
             wrapMode: Text.Wrap

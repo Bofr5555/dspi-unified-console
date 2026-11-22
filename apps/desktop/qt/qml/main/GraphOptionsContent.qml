@@ -121,6 +121,7 @@ Item {
                 Layout.preferredWidth: 18
             }
             Text {
+                textFormat: Text.PlainText
                 text: row.text
                 color: row.lit ? Theme.textOnAccent : Theme.text
                 font: Theme.fontBody

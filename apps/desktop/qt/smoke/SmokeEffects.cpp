@@ -31,6 +31,9 @@ struct Win {
     QQuickWindow *w = nullptr;
 
     QQuickItem *item(const QString &name) const { return w ? d.item(name, w->contentItem()) : nullptr; }
+    // -- WP LAY1a -- the window's panel: its state is there
+    QObject *panel() const { return w ? w->property("content").value<QQuickItem *>() : nullptr; }
+    bool editingPairs() const { return panel() && panel()->property("editingPairs").toBool(); }
     // A menu row (not in the item tree while its menu is closed)
     QObject *row(const QString &name) const { return w ? w->findChild<QObject *>(name) : nullptr; }
     // Scrolls the window's body until `it` is in view, as a person would
@@ -303,7 +306,7 @@ void crossfeed(SmokeDriver &d) {
     d.check(QStringLiteral("qp7: Custom opens the editor on the current pairs"),
             d.waitFor(1000, [&]() { return win.shows(QStringLiteral("CrossfeedWindow.pairMap.editor")); }) &&
                 map && map->property("draft").toList().size() == ext->pairCount());
-    d.check(QStringLiteral("qp7: the window says it is editing"), win.w->property("editingPairs").toBool());
+    d.check(QStringLiteral("qp7: the window says it is editing"), win.editingPairs());
     // One output twice in a pair
     QMetaObject::invokeMethod(map, "setDraft", Q_ARG(QVariant, 0), Q_ARG(QVariant, QStringLiteral("right")), Q_ARG(QVariant, 2));
     d.spin(30);
@@ -328,7 +331,7 @@ void crossfeed(SmokeDriver &d) {
     win.click(QStringLiteral("CrossfeedWindow.pairMap.editor.apply"));
     d.check(QStringLiteral("qp7: Apply writes the map and closes the editor"),
             d.waitFor(3000, [&]() { return ext->choice() == QLatin1String("custom") && !ext->busy(); }) &&
-                !win.w->property("editingPairs").toBool());
+                !win.editingPairs());
     const QByteArray custom = deviceMap(d);
     d.check(QStringLiteral("qp7: the device reads back the custom map"),
             custom.size() == 4 && uint8_t(custom.at(0)) == 0x01 && uint8_t(custom.at(1)) == 0x23 && custom.at(2) == 0 && custom.at(3) == 0);
@@ -360,7 +363,7 @@ void crossfeed(SmokeDriver &d) {
     d.check(QStringLiteral("qp7: a stall hides the pair map"),
             d.waitFor(2000, [&]() { return !ext->hasPairMap() && !ext->busy(); }) &&
                 !win.shows(QStringLiteral("CrossfeedWindow.pairMap")));
-    d.check(QStringLiteral("qp7: a stall closes the editor"), !win.w->property("editingPairs").toBool());
+    d.check(QStringLiteral("qp7: a stall closes the editor"), !win.editingPairs());
     d.check(QStringLiteral("qp7: a stall leaves the plain chips"),
             win.shows(QStringLiteral("CrossfeedWindow.plainPairChips")) &&
                 win.item(QStringLiteral("CrossfeedWindow.pair.0"))->property("text").toString() == QLatin1String("1"));

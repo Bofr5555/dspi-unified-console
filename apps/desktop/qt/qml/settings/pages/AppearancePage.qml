@@ -4,8 +4,8 @@ import UConsole
 
 // -- WP LAY0 -- Settings > Appearance: the layout (Classic or Modern) and how
 // Modern is arranged (LayoutController). Applied at once: the main window
-// swaps its shell and keeps the device and the selection. Not in the sidebar
-// until the Modern shell is there (WP LAY3).
+// swaps its shell and keeps the device and the selection. -- WP LAY3 -- And the
+// theme (both layouts).
 SettingsPage {
     id: page
     objectName: "AppearancePage"
@@ -13,15 +13,33 @@ SettingsPage {
     SettingsGroup {
         title: qsTr("Layout")
         iconName: "layout-grid"
-        footer: qsTr("Classic is the Mac console's layout: a menu bar and tool windows. Modern puts every tool on a page of one window.")
+        // -- WP RBFIX -- why it is not on offer now
+        footer: LayoutController.switchBlocker.length ? LayoutController.switchBlocker :
+            qsTr("Classic is the Mac console's layout: a menu bar and tool windows. Modern puts every tool on a page of one window.")
         SettingsPickerRow {
             objectName: "Appearance.layout"
+            enabled: LayoutController.switchBlocker.length === 0
             inline: true
             label: qsTr("Layout")
             values: ["classic", "modern"]
             texts: [qsTr("Classic"), qsTr("Modern")]
             value: LayoutController.layout
             onChosen: v => LayoutController.layout = v
+        }
+    }
+
+    // -- WP LAY3 --
+    SettingsGroup {
+        title: qsTr("Theme")
+        iconName: "sun"
+        SettingsPickerRow {
+            objectName: "Appearance.theme"
+            inline: true
+            label: qsTr("Theme")
+            values: ["system", "light", "dark"]
+            texts: [qsTr("System"), qsTr("Light"), qsTr("Dark")]
+            value: LayoutController.theme
+            onChosen: v => LayoutController.theme = v
         }
     }
 

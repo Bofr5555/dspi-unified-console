@@ -9,6 +9,7 @@
 
 import { mkdirSync } from "node:fs";
 import { expect, test, type APIRequestContext, type Locator, type Page } from "@playwright/test";
+import { openPage, rail as sections } from "../nav";
 
 type Clients = { dspiClients: { call(m: string, p: unknown): Promise<unknown> }[] };
 
@@ -106,7 +107,7 @@ test("WB6F health: a clip that ends stays listed, marked ended, until acknowledg
   await expect(healthButton(session)).toHaveText("Health: 1 problem");
   // It stays: still listed a while later, and on another screen.
   await page.waitForTimeout(1500);
-  await session.getByRole("tab", { name: "EQ" }).click();
+  await openPage(session, "EQ");
   await expect(item).toHaveAttribute("data-state", "ended");
   await shot(page, "clip-ended", rail(session));
   await item.getByRole("button", { name: "Acknowledge" }).click();
@@ -131,7 +132,7 @@ test("WB6F health: a clip opens the panel; acknowledged while on, it stays marke
   await expect(healthButton(session)).toHaveAttribute("aria-expanded", "true");
   await shot(page, "clip-on", rail(session));
   // Another screen: still there (the feed is the session's, not a screen's).
-  await session.getByRole("tab", { name: "EQ" }).click();
+  await openPage(session, "EQ");
   await expect(item).toBeVisible();
   await item.getByRole("button", { name: "Acknowledge" }).click();
   await expect(item).toHaveAttribute("data-state", "acknowledged");

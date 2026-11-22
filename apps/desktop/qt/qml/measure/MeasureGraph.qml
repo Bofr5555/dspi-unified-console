@@ -245,6 +245,7 @@ Rectangle {
                         color: root.colourOf(modelData)
                     }
                     Text {
+                        textFormat: Text.PlainText
                         text: modelData.label + (modelData.kind === "target" ? qsTr(" (dashed)") : modelData.kind === "predicted" ? qsTr(" (dotted)") : "")
                         font.pixelSize: 9
                         color: Theme.text

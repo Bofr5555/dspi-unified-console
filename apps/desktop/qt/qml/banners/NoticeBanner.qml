@@ -12,6 +12,7 @@ Banner {
     kind: notice.kind !== undefined ? notice.kind : "info"
     iconName: kind === "info" ? "circle-check" : kind === "error" ? "circle-alert" : "triangle-alert"
     text: notice.text !== undefined ? notice.text : ""
+    textFormat: Text.PlainText   // -- WP MDQT2c -- it can hold a device's name
     visible: text.length > 0
     dismissable: true
     onDismissed: NoticeCenter.dismiss()

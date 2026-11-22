@@ -1,0 +1,25 @@
+{
+  "before": "done",
+  "stage": {
+    "id": "speakers",
+    "label": "Speakers",
+    "title": "Which output drives what?",
+    "paragraphs": [
+      {
+        "id": "speakers.intro",
+        "text": "Tell uConsole what each output plays: a full-range speaker, a woofer, a mid, a tweeter or a subwoofer. The suggestion comes from the DSPi's filters and routing: check it, then confirm."
+      },
+      {
+        "id": "speakers.safety",
+        "text": "The measurement and its safety checks take each output's role from here. An output with an active high-pass at 1 kHz or above is measured as a tweeter, whatever its role here."
+      }
+    ],
+    "no_device": "Connect your DSPi to set this up. You can also do it later in Settings › Speakers.",
+    "confirmed": "Confirmed. You can change it later in Settings › Speakers.",
+    "later": "You can skip this step and confirm the layout later in Settings › Speakers.",
+    "buttons": {
+      "confirm": "Confirm",
+      "suggestion": "Use the Suggestion"
+    }
+  }
+}

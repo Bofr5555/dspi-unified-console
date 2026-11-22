@@ -3,8 +3,11 @@
 
 #include <QJsonObject>
 #include <QObject>
+#include <QPointer>
+#include <QSet>
 #include <QString>
 #include <QStringList>
+#include <QTimer>
 #include <QVariantList>
 #include <QtQml/qqmlregistration.h>
 #include <functional>
@@ -12,6 +15,7 @@
 #include "Poller.h"
 #include "Registrar.h"
 
+class DeviceSession;
 class QJSEngine;
 class QQmlEngine;
 
@@ -32,6 +36,14 @@ class QQmlEngine;
 // - Recalls, toggles and guarded applies are writes (DeviceModel::write); the
 //   store's own calls (capture, rename, note, delete, export, import) run on
 //   the worker. A success is the change itself or a notice, never a modal.
+//
+// -- WP MDQT2b -- Several open devices: the list, the compare and the
+// countdown are the active device's (each core keeps its own), read again on
+// a switch, and an answer asked of the device left is dropped. A safe apply
+// that waits on a device the person switched away from keeps being driven on
+// that device's own core (on USB and the demo the revert at the timeout is the
+// client's poll): `guardsElsewhere` names those devices, and the end is a
+// notice that names the device.
 class SnapshotsController : public QObject {
     Q_OBJECT
     QML_ELEMENT
@@ -91,6 +103,9 @@ class SnapshotsController : public QObject {
     // Why the hub's list is missing on a hub that should have it, in the
     // core's notice row's words; "" otherwise
     Q_PROPERTY(QString hubProblem READ hubProblem NOTIFY hubChanged)
+    // -- WP MDQT2b -- The other open devices whose safe apply waits for Keep
+    // or Revert (their titles); each is driven on its own core meanwhile
+    Q_PROPERTY(QStringList guardsElsewhere READ guardsElsewhere NOTIFY guardChanged)
 public:
     // How often the guard is driven while it waits (the countdown bar's tick)
     static constexpr int kGuardPollMs = 250;
@@ -154,8 +169,15 @@ public:
     Q_INVOKABLE void keep();
     Q_INVOKABLE void revert();
 
-    // A guarded apply begun elsewhere (FilesController's import): its state
-    void guardStarted(const QJsonObject &state);
+    // A guarded apply begun elsewhere (FilesController's import): its state.
+    // -- WP MDQT2b -- `on`, the session it was begun on: one that is not the
+    // active one now has its guard driven there
+    void guardStarted(const QJsonObject &state, DeviceSession *on = nullptr);
+    // -- WP MDQT2b --
+    QStringList guardsElsewhere() const;
+    // Whether a safe apply waits on `session` (the active one's, or one driven
+    // in the background)
+    bool guardWaitingOn(const DeviceSession *session) const;
 
     // -- WP P2QT -- The hub's store
     bool hubAvailable() const { return m_hubAvailable; }
@@ -225,6 +247,15 @@ private:
     QVariantList m_hubSnapshots;
     QString m_hubProblem;
     int m_reloads = 0;
+    // -- WP MDQT2b -- the session shown, and the others whose guard is driven
+    // here until it ends (a poll each, never two at once)
+    void rebind();
+    void drive(DeviceSession *session);
+    void driveTick();
+    QPointer<DeviceSession> m_session;
+    QList<QPointer<DeviceSession>> m_driven;
+    QSet<const DeviceSession *> m_driving;
+    QTimer m_driveTimer;
 };
 
 #endif // SNAPSHOTSCONTROLLER_H

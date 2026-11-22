@@ -13,6 +13,7 @@ ColumnLayout {
 
     Text {
         Layout.fillWidth: true
+        textFormat: Text.PlainText
         text: heading.text
         font: heading.caps ? Theme.fontHeading : Theme.fontTitle
         color: heading.caps ? Theme.textMuted : Theme.text

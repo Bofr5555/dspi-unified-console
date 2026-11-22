@@ -17,7 +17,7 @@ list(APPEND DSPI_QML_FILES
     qml/banners/NoticeBanner.qml
     qml/banners/DemoBanner.qml
     qml/main/ModeWindow.qml
-    qml/tools/HistoryWindow.qml)
+    qml/tools/HistoryPanel.qml)   # -- WP LAY1b -- was HistoryWindow.qml
 list(APPEND DSPI_SMOKE_SOURCES smoke/Qp18Notices.h smoke/SmokePolish.cpp smoke/SmokeAccess.cpp)
 
 # The Windows host format (WASAPI, the device tree)

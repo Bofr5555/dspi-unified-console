@@ -5,10 +5,12 @@
 #include "CoreApi.h"
 #include "CoreWorker.h"
 #include "DeviceModel.h"
+#include "SessionState.h"
 
 #include <QClipboard>
 #include <QDateTime>
 #include <QGuiApplication>
+#include <utility>
 #include <vector>
 
 static const Registrar::Controller<MonitorController> monitorController;
@@ -52,16 +54,58 @@ void MonitorLines::clear() {
     emit countChanged();
 }
 
+// -- WP MDQT2c --
+void MonitorLines::show(const QStringList &lines) {
+    if (lines == m_lines) return;
+    beginResetModel();
+    m_lines = lines;
+    endResetModel();
+    emit countChanged();
+}
+
 MonitorController::MonitorController(const AppContext &ctx, QObject *parent)
     : QObject(parent), m_ctx(ctx), m_lines(new MonitorLines(this)) {
+    m_announced = state();
+    m_cursor->last = m_announced->last;
     if (ctx.poller) {
         m_poll = ctx.poller->add(
             QStringLiteral("interrupt monitor"), kPollMs, this,
-            [last = m_last](FfiCore *c) { return readAfter(c, last->load()); },
+            [cursor = m_cursor](FfiCore *c) {
+                std::shared_ptr<std::atomic<uint64_t>> last;
+                {
+                    std::lock_guard<std::mutex> hold(cursor->lock);
+                    last = cursor->last;
+                }
+                return readAfter(c, last->load());
+            },
             [this](const Batch &b) { apply(b); });
         updatePoll();
     }
-    connect(ctx.device, &DeviceModel::snapshotApplied, this, &MonitorController::stateTextChanged);
+    connect(ctx.device, &DeviceModel::snapshotApplied, this, &MonitorController::onSnapshot);
+}
+
+// -- WP MDQT2c --
+MonitorController::StatePtr MonitorController::state() const {
+    return sessionState<State>(m_ctx.activeSession(), QStringLiteral("MonitorController"));
+}
+
+void MonitorController::onSnapshot() {
+    const StatePtr st = state();
+    if (st != m_announced) {
+        // Another device: its rows; a read of the last one still out is dropped
+        // (Poller) and made again when it is shown again
+        m_announced->rows = m_lines->lines();
+        m_announced = st;
+        {
+            std::lock_guard<std::mutex> hold(m_cursor->lock);
+            m_cursor->last = st->last;
+        }
+        m_lines->show(std::exchange(st->rows, {}));
+        updatePoll();
+        emit pauseChanged();
+        emit appended();
+    }
+    emit stateTextChanged();
 }
 
 MonitorController::Batch MonitorController::readAfter(FfiCore *core, uint64_t after) {
@@ -80,9 +124,10 @@ MonitorController::Batch MonitorController::readAfter(FfiCore *core, uint64_t af
 }
 
 void MonitorController::apply(const Batch &batch) {
-    if (batch.last <= m_last->load()) return;
-    m_last->store(batch.last);
-    if (m_paused || m_skipping || batch.lines.isEmpty()) return;
+    const StatePtr st = state();
+    if (batch.last <= st->last->load()) return;
+    st->last->store(batch.last);
+    if (st->paused || st->skipping || batch.lines.isEmpty()) return;
     QStringList rows;
     rows.reserve(batch.lines.size());
     for (const QString &line : batch.lines) rows.append(shown(line));
@@ -101,8 +146,9 @@ QString MonitorController::shown(const QString &coreLine) {
 }
 
 void MonitorController::setPaused(bool paused) {
-    if (m_paused == paused) return;
-    m_paused = paused;
+    const StatePtr st = state();
+    if (st->paused == paused) return;
+    st->paused = paused;
     if (!paused) skipToEnd();
     updatePoll();
     emit pauseChanged();
@@ -113,14 +159,15 @@ void MonitorController::skipToEnd() {
     // What was logged while paused is dropped, as the Mac's log drops it. The
     // worker runs jobs in order, so a poll read before this is applied (and
     // dropped) before it, and one read after it starts past the skipped lines.
-    m_skipping = true;
+    const StatePtr st = state();
+    st->skipping = true;
     m_ctx.core->worker()->call(
         this,
         // One read takes all the core keeps (kLimit lines fit in its rounds)
-        [last = m_last](FfiCore *c) { return readAfter(c, last->load()).last; },
-        [this](uint64_t end) {
-            if (end > m_last->load()) m_last->store(end);
-            m_skipping = false;
+        [last = st->last](FfiCore *c) { return readAfter(c, last->load()).last; },
+        [st](uint64_t end) {
+            if (end > st->last->load()) st->last->store(end);
+            st->skipping = false;
         });
 }
 
@@ -131,17 +178,17 @@ void MonitorController::setWindowShown(bool shown) {
     emit windowShownChanged();
 }
 
-bool MonitorController::paused() const { return m_paused; }
+bool MonitorController::paused() const { return state()->paused; }
 bool MonitorController::windowShown() const { return m_shown; }
 
 QString MonitorController::status() const {
     if (!m_ctx.device->connected()) return QStringLiteral("inactive");
-    return m_paused ? QStringLiteral("paused") : QStringLiteral("listening");
+    return paused() ? QStringLiteral("paused") : QStringLiteral("listening");
 }
 
 void MonitorController::updatePoll() {
     // Paused, the core keeps logging; Resume skips it
-    if (m_ctx.poller) m_ctx.poller->setEnabled(m_poll, m_shown && !m_paused);
+    if (m_ctx.poller) m_ctx.poller->setEnabled(m_poll, m_shown && !paused());
 }
 
 void MonitorController::clear() {

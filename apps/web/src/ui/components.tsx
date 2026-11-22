@@ -15,6 +15,10 @@ import { aboutData, linkText } from "./texts";
 import { Screens } from "./screens";
 import { meterNames } from "../screens/main/model";
 import { SenderScreen } from "../screens/device/DeviceScreen"; // -- WP PGWEB --
+// -- WP WEBM1 -- the Modern shell
+import type { ComponentChildren } from "preact";
+import { Frame } from "./shell/Frame";
+import { CONNECT, sectionsFor, type Page, type SectionId } from "./shell/sections";
 
 export function useSessionState(s: Session) {
   const [, bump] = useState(0);
@@ -272,41 +276,41 @@ export function TabLabel(props: { session: Session }) {
   );
 }
 
-export function SessionView(props: { session: Session; onClose: () => void }) {
+export function SessionView(props: { session: Session; onClose: () => void; shell: ShellProps }) {
   const s = props.session;
   const st = useSessionState(s);
   const snap = st.snapshot;
   const ro = s.readOnlyReason;
-  return (
-    <article class="session" aria-label={snap?.device.name ?? "DSPi"} data-status={st.status}>
-      <header class="strip">
-        <span class={`dot dot-${st.status}`} aria-hidden="true" />
-        <strong class="device-name">{snap?.device.name ?? "Connecting"}</strong>
-        {snap && st.document ? (
-          // -- WP P1WB1 -- a document opened with no device: its file in place of a serial
-          <span class="device-meta">
-            {snap.device.platform} · <span class="badge file-badge">File: {st.document.fileName || st.document.name}</span>
-          </span>
-        ) : snap ? (
-          <span class="device-meta">
-            {snap.device.platform} · firmware {snap.device.firmware}
-            {snap.device.serial ? ` · ${snap.device.serial}` : ""}
-          </span>
-        ) : null}
-        {ro ? (
-          <span class="badge read-only" title={ro}>
-            Read only
-          </span>
-        ) : null}
-        {/* -- WP WB6a -- a screen may hold the user back first (unsaved changes) */}
-        <button type="button" class="close" onClick={() => void s.mayLeave().then((go) => go && props.onClose())}>
-          Disconnect
-        </button>
-      </header>
+  // -- WP WEBM1 -- the parts of the shell's frame (ui/shell/Frame.tsx) that are the same whatever the session shows
+  const head = (
+    <header class="strip">
+      <span class={`dot dot-${st.status}`} aria-hidden="true" />
+      <strong class="device-name">{snap?.device.name ?? "Connecting"}</strong>
+      {snap && st.document ? (
+        // -- WP P1WB1 -- a document opened with no device: its file in place of a serial
+        <span class="device-meta">
+          {snap.device.platform} · <span class="badge file-badge">File: {st.document.fileName || st.document.name}</span>
+        </span>
+      ) : snap ? (
+        <span class="device-meta">
+          {snap.device.platform} · firmware {snap.device.firmware}
+          {snap.device.serial ? ` · ${snap.device.serial}` : ""}
+        </span>
+      ) : null}
+      {ro ? (
+        <span class="badge read-only" title={ro}>
+          Read only
+        </span>
+      ) : null}
+      {/* -- WP WB6a -- a screen may hold the user back first (unsaved changes) */}
+      <button type="button" class="close" onClick={() => void s.mayLeave().then((go) => go && props.onClose())}>
+        Disconnect
+      </button>
+    </header>
+  );
+  const strip = (
+    <>
       {st.link && st.link.phase !== "bound" ? <LostLinkBanner phase={st.link} onClose={props.onClose} /> : null}
-      {/* -- WP WB4b -- Link's steps before a DSPi is open */}
-      {st.status === "pairing" ? <PinEntry session={s} error={st.pinError} /> : null}
-      {st.status === "choosing" ? <HubChooser session={s} /> : null}
       {ro ? <p class="note read-only-reason">{ro}</p> : null}
       {st.error ? (
         // -- WP P1WB2 -- with its notice row (P1NT) when the core's table has one: title, reason, what to do
@@ -321,19 +325,54 @@ export function SessionView(props: { session: Session; onClose: () => void }) {
           </p>
         )
       ) : null}
-      {/* -- WP PGWEB -- the alink sender: its own page, no DSP screen and no meters */}
-      {snap && st.status === "open" && st.protocol?.deviceKind === "alinkSender" ? (
-        <div class="controls">
-          <SenderScreen session={s} />
-        </div>
-      ) : snap && st.status === "open" ? (
-        <div class="controls">
-          {/* -- WP WB6a -- the session's screens (WB6 slices); the skeleton's volume is the main window's now */}
-          <Screens session={s} />
-          <Meters session={s} names={meterNames(snap.state, snap.outputLabels)} />
-        </div>
-      ) : null}
+    </>
+  );
+  const open = snap && st.status === "open" ? snap : null;
+  // -- WP PGWEB -- the alink sender: its own page, no DSP screen and no meters
+  const sender = open !== null && st.protocol?.deviceKind === "alinkSender";
+  return (
+    <article class="session" aria-label={snap?.device.name ?? "DSPi"} data-status={st.status}>
+      {open && !sender ? (
+        // -- WP WB6a -- the session's screens (WB6 slices); the skeleton's volume is the main window's now
+        <Screens session={s} shell={props.shell} head={head} strip={strip} meters={<Meters session={s} names={meterNames(open.state, open.outputLabels)} />} />
+      ) : (
+        <BareFrame shell={props.shell} sender={sender} bar={head} strip={strip}>
+          {/* -- WP WB4b -- Link's steps before a DSPi is open */}
+          {st.status === "pairing" ? <PinEntry session={s} error={st.pinError} /> : null}
+          {st.status === "choosing" ? <HubChooser session={s} /> : null}
+          {sender ? <SenderScreen session={s} /> : null}
+        </BareFrame>
+      )}
     </article>
+  );
+}
+
+// -- WP WEBM1 --
+/** What the page's shell gives a session's view. */
+export interface ShellProps {
+  /** The devices' page is on show in place of the session's. */
+  picking: boolean;
+  onPicking: (on: boolean) => void;
+  /** That page. */
+  connect: ComponentChildren;
+  /** The shortcut list is open (the app menu opens it too). */
+  shortcuts: boolean;
+  onShortcuts: (on: boolean) => void;
+}
+
+const NO_PAGES: ReadonlyMap<SectionId, string> = new Map();
+const OVERVIEW_PAGES: Page[] = [{ id: "sender", label: "Sender" }];
+
+/** The frame of a session with no screens: not open yet (or no longer), or an alink sender. */
+function BareFrame(props: { shell: ShellProps; sender: boolean; bar: ComponentChildren; strip: ComponentChildren; children: ComponentChildren }) {
+  const { shell } = props;
+  const sections = sectionsFor(props.sender ? OVERVIEW_PAGES : []);
+  // Not open yet: the page is part of getting to a device, as the devices' own page is.
+  const page = shell.picking || !props.sender ? CONNECT : "sender";
+  return (
+    <Frame bar={props.bar} strip={props.strip} sections={sections} page={page} last={NO_PAGES} onPage={(id) => shell.onPicking(id === CONNECT)}>
+      {shell.picking ? shell.connect : props.children}
+    </Frame>
   );
 }
 
@@ -457,10 +496,10 @@ function Meters(props: { session: Session; names: string[] }) {
         const db = levels[i] ?? -90;
         const pct = Math.max(0, Math.min(100, ((db + 90) / 90) * 100));
         return (
-          <li key={`${i}-${n}`} class="meter">
+          <li key={`${i}-${n}`} class="meter" title={n /* -- WP WEBM1 -- the dock has no room for the names */}>
             <span class="meter-name">{n}</span>
             <span class="meter-bar" role="meter" aria-valuemin={-90} aria-valuemax={0} aria-valuenow={Math.round(db)} aria-label={n}>
-              <span style={{ width: `${pct}%` }} />
+              <span style={{ width: `${pct}%`, "--level": `${pct}%` /* -- WP WEBM1 -- upright in the dock */ }} />
             </span>
           </li>
         );

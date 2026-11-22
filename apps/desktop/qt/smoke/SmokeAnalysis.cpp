@@ -68,6 +68,10 @@ struct Qp9Window {
     QString shownName(const QString &name) const {
         QQuickItem *it = item(name);
         return it ? it->property("shownName").toString() : QString();
+    }    // -- WP LAY1b -- a panel's window (PanelWindow): the panel, whose properties the old window had
+    QObject *panel() const {
+        QObject *p = w ? w->property("content").value<QObject *>() : nullptr;
+        return p ? p : w;
     }
 };
 
@@ -469,7 +473,7 @@ void spectrumSection(SmokeDriver &d) {
     Qp9Window qp9Rta(d, "tools.spectrum");
     d.check("qp9: Spectrum Analyser... opens its window", qp9Rta.w && qp9Rta.w->title() == QLatin1String("Spectrum Analyser"));
     if (qp9Rta.w) {
-        d.check("qp9: both views, as the page shows both", qp9Rta.w->property("mode").toInt() == 2
+        d.check("qp9: both views, as the page shows both", qp9Rta.panel()->property("mode").toInt() == 2
                                                                && d.waitFor(2000, [rta] { return rta->viewActive(QStringLiteral("window.curves"))
                                                                                                  && rta->viewActive(QStringLiteral("window.bars")); }));
         d.check("qp9: the page's title", qp9Rta.shownName("SpectrumWindow.page") == QLatin1String("Dashboard"));
@@ -478,7 +482,7 @@ void spectrumSection(SmokeDriver &d) {
                    && rta->statusParts().value(0).contains(QStringLiteral("each refreshed every"));
         }));
         qp9Rta.click("SpectrumWindow.legend.1");
-        d.check("qp9: the legend hides a channel here only", qp9Rta.w->property("visibleChannels").toList().size() == 1
+        d.check("qp9: the legend hides a channel here only", qp9Rta.panel()->property("visibleChannels").toList().size() == 1
                                                                  && rta->ownChannels().size() == 2);
         d.check("qp9: the window's curves draw", d.waitFor(3000, [&] {
             QQuickItem *c = qp9Rta.item("SpectrumWindow.curves");

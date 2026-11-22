@@ -66,6 +66,7 @@ Item {
                 Text {
                     objectName: "MeasureUnits.phase"
                     Layout.fillWidth: true
+                    textFormat: Text.PlainText
                     text: tab.uc.phaseText
                     font: Theme.fontBody
                     color: Theme.text
@@ -75,6 +76,7 @@ Item {
                 Text {
                     objectName: "MeasureUnits.simOn"
                     visible: tab.uc.simOn
+                    textFormat: Text.PlainText
                     text: tab.uc.simLabel
                     font: Theme.fontSmall
                     color: Theme.textMuted
@@ -88,12 +90,24 @@ Item {
             }
         }
 
+        // -- WP MDQT2c -- it still runs, or waits in its guard, on another device
+        Text {
+            objectName: "MeasureUnits.held"
+            visible: text.length > 0
+            Layout.fillWidth: true
+            textFormat: Text.PlainText
+            text: tab.uc.heldWords
+            font: Theme.fontBody
+            color: Theme.warning
+            wrapMode: Text.WordWrap
+        }
         // Not on our hub
         Text {
             objectName: "MeasureUnits.unavailable"
             visible: tab.uc.unavailable.length > 0
             Layout.fillWidth: true
             property string key: tab.uc.unavailableKey
+            textFormat: Text.PlainText
             text: {
                 const r = tab.notice(key)
                 return r && r.title ? r.title + ". " + tab.uc.unavailable : tab.uc.unavailable
@@ -143,6 +157,7 @@ Item {
                         property string key: "measure_system_placement"
                         visible: text.length > 0
                         Layout.fillWidth: true
+                        textFormat: Text.PlainText
                         text: tab.uc.placementProblem
                         font: Theme.fontSmall
                         color: Theme.warning
@@ -194,6 +209,7 @@ Item {
                             Text {
                                 visible: unitBox.modelData.opening
                                 Layout.leftMargin: 24
+                                textFormat: Text.PlainText
                                 text: qsTr("Opening %1…").arg(unitBox.modelData.serial)
                                 font: Theme.fontSmall
                                 color: Theme.textMuted
@@ -203,6 +219,7 @@ Item {
                                 visible: unitBox.modelData.chosen && unitBox.modelData.error.length > 0
                                 Layout.fillWidth: true
                                 Layout.leftMargin: 24
+                                textFormat: Text.PlainText
                                 text: unitBox.modelData.error
                                 font: Theme.fontSmall
                                 color: Theme.dangerText
@@ -312,6 +329,7 @@ Item {
                         }
                         Text {
                             visible: tab.uc.busy.length > 0
+                            textFormat: Text.PlainText
                             text: qsTr("%1…").arg(tab.uc.busy)
                             font: Theme.fontSmall
                             color: Theme.textMuted
@@ -321,6 +339,7 @@ Item {
                         objectName: "MeasureUnits.blocker"
                         visible: text.length > 0 && tab.uc.placementProblem.length === 0
                         Layout.fillWidth: true
+                        textFormat: Text.PlainText
                         text: tab.uc.blocker
                         font: Theme.fontSmall
                         color: Theme.textMuted
@@ -332,6 +351,7 @@ Item {
                             required property var modelData
                             objectName: "MeasureUnits.preflight." + (modelData.key || "ready") + "." + (modelData.serial || "")
                             Layout.fillWidth: true
+                            textFormat: Text.PlainText
                             text: modelData.text
                             font: Theme.fontSmall
                             color: modelData.kind === "blocker" ? Theme.dangerText : modelData.kind === "ready" ? Theme.success : Theme.textMuted
@@ -343,6 +363,7 @@ Item {
                         property string key: "measure_system_runs"
                         visible: text.length > 0
                         Layout.fillWidth: true
+                        textFormat: Text.PlainText
                         text: tab.uc.runsText
                         font: Theme.fontSmall
                         color: Theme.text
@@ -355,6 +376,7 @@ Item {
                     property string key: tab.uc.errorKey
                     visible: text.length > 0
                     Layout.fillWidth: true
+                    textFormat: Text.PlainText
                     text: tab.uc.error
                     font: Theme.fontBody
                     color: Theme.dangerText
@@ -365,6 +387,7 @@ Item {
                     objectName: "MeasureUnits.said"
                     visible: text.length > 0 && tab.uc.error.length === 0
                     Layout.fillWidth: true
+                    textFormat: Text.PlainText
                     text: tab.uc.said
                     font: Theme.fontBody
                     color: Theme.text
@@ -375,6 +398,7 @@ Item {
                     property string key: tab.uc.issueKey
                     visible: text.length > 0 && !tab.uc.running
                     Layout.fillWidth: true
+                    textFormat: Text.PlainText
                     text: tab.uc.issueText
                     font: Theme.fontBody
                     color: Theme.dangerText
@@ -392,6 +416,7 @@ Item {
                     Text {
                         objectName: "MeasureUnits.timing"
                         Layout.fillWidth: true
+                        textFormat: Text.PlainText
                         text: tab.uc.timingText
                         font: Theme.fontBody
                         color: tab.uc.timingReliable ? Theme.textMuted : Theme.dangerText
@@ -410,6 +435,7 @@ Item {
                         delegate: Text {
                             required property var modelData
                             Layout.fillWidth: true
+                            textFormat: Text.PlainText
                             text: qsTr("%1: arrives %2; offered: %3").arg(modelData.label).arg(modelData.arrival).arg(modelData.offered)
                             font: Theme.fontSmall
                             color: Theme.text
@@ -421,6 +447,7 @@ Item {
                         delegate: Text {
                             required property var modelData
                             Layout.fillWidth: true
+                            textFormat: Text.PlainText
                             text: qsTr("%1 to %2: %3; offered: %4").arg(modelData.from).arg(modelData.to).arg(modelData.delay).arg(modelData.offered)
                             font: Theme.fontSmall
                             color: Theme.text
@@ -432,6 +459,7 @@ Item {
                         delegate: Text {
                             required property string modelData
                             Layout.fillWidth: true
+                            textFormat: Text.PlainText
                             text: modelData
                             font: Theme.fontSmall
                             color: Theme.textMuted
@@ -458,6 +486,7 @@ Item {
                         delegate: Text {
                             required property string modelData
                             Layout.fillWidth: true
+                            textFormat: Text.PlainText
                             text: modelData
                             font: Theme.fontSmall
                             color: Theme.text
@@ -468,6 +497,7 @@ Item {
                         delegate: Text {
                             required property string modelData
                             Layout.fillWidth: true
+                            textFormat: Text.PlainText
                             text: modelData
                             font: Theme.fontSmall
                             color: Theme.textMuted
@@ -479,6 +509,7 @@ Item {
                         delegate: Text {
                             required property var modelData
                             Layout.fillWidth: true
+                            textFormat: Text.PlainText
                             text: modelData.text
                             font: Theme.fontSmall
                             color: modelData.failed ? Theme.dangerText : Theme.text
@@ -489,6 +520,7 @@ Item {
                         objectName: "MeasureUnits.proposalNotice"
                         visible: text.length > 0
                         Layout.fillWidth: true
+                        textFormat: Text.PlainText
                         text: tab.uc.proposalNotice
                         font: Theme.fontSmall
                         color: Theme.textMuted
@@ -499,6 +531,7 @@ Item {
                         objectName: "MeasureUnits.guardNote"
                         visible: text.length > 0 && (tab.uc.stage === "none" || tab.uc.stage === "kept" || tab.uc.stage === "reverted" || tab.uc.stage === "revert_incomplete")
                         Layout.fillWidth: true
+                        textFormat: Text.PlainText
                         text: tab.uc.guardNote
                         font: Theme.fontSmall
                         color: Theme.textMuted
@@ -528,6 +561,7 @@ Item {
                             property string key: tab.uc.applyWhyKey
                             visible: !tab.uc.mayApply && text.length > 0
                             Layout.fillWidth: true
+                            textFormat: Text.PlainText
                             text: tab.uc.applyWhy
                             font: Theme.fontSmall
                             color: Theme.textMuted
@@ -543,6 +577,7 @@ Item {
                         Text {
                             objectName: "MeasureUnits.appliedText"
                             Layout.fillWidth: true
+                            textFormat: Text.PlainText
                             text: tab.uc.appliedText
                             font: Theme.fontBody
                             color: tab.uc.verifyFailed ? Theme.dangerText : Theme.text
@@ -552,6 +587,7 @@ Item {
                             objectName: "MeasureUnits.guard"
                             visible: text.length > 0
                             Layout.fillWidth: true
+                            textFormat: Text.PlainText
                             text: tab.uc.guardText
                             font: Theme.fontBody
                             color: Theme.warning
@@ -601,6 +637,7 @@ Item {
                                 spacing: Theme.spacingSmall
                                 Text {
                                     Layout.fillWidth: true
+                                    textFormat: Text.PlainText
                                     text: tab.uc.keepQuestionText
                                     font: Theme.fontBody
                                     color: Theme.text
@@ -629,6 +666,7 @@ Item {
                         // -- WP REVERTW -- a revert not fully successful: its own stage, in the danger colour
                         visible: tab.uc.stage === "kept" || tab.uc.stage === "reverted" || tab.uc.stage === "revert_incomplete"
                         Layout.fillWidth: true
+                        textFormat: Text.PlainText
                         text: tab.uc.appliedText
                         font: Theme.fontBody
                         color: tab.uc.stage === "revert_incomplete" ? Theme.dangerText : Theme.text

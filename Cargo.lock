@@ -745,6 +745,7 @@ dependencies = [
  "dspi-core",
  "dspi-hub",
  "dspi-link",
+ "dspi-mcp",
  "dspi-proto",
  "dspi-transport",
  "env_logger",
@@ -858,6 +859,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "dspi-mcp"
+version = "0.14.0"
+dependencies = [
+ "data-encoding",
+ "dspi-core",
+ "dspi-measure",
+ "dspi-proto",
+ "getrandom 0.4.3",
+ "httparse",
+ "log",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
 name = "dspi-measure"
 version = "0.14.0"
 dependencies = [
@@ -908,6 +924,7 @@ dependencies = [
  "dspi-core",
  "dspi-hub",
  "dspi-link",
+ "dspi-mcp",
  "dspi-proto",
  "dspi-session",
  "dspi-transport",

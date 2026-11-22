@@ -24,6 +24,7 @@ Rectangle {
         spacing: Theme.spacingSmall
         Text {
             visible: card.title.length > 0
+            textFormat: Text.PlainText
             text: card.title
             font: Theme.fontHeading
             color: Theme.textMuted

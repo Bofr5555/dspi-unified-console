@@ -92,7 +92,7 @@ void tablePart(SmokeDriver &d, Shell *shell) {
     d.check(QStringLiteral("lay0: PanelTable has the two pilots"),
             rows.size() >= 2 && !shell->panel(QStringLiteral("tools.stats")).isEmpty()
                 && !shell->panel(QStringLiteral("tools.interruptMonitor")).isEmpty());
-    d.check(QStringLiteral("lay0: a window that is no panel has no row"), shell->panel(QStringLiteral("tools.matrix")).isEmpty());
+    d.check(QStringLiteral("lay0: a window that is no panel has no row"), shell->panel(QStringLiteral("smoke.window")).isEmpty());
     QStringList bad;
     QStringList seen;
     for (const QVariant &v : rows) {
@@ -184,15 +184,16 @@ void pageHostPart(SmokeDriver &d, Shell *shell) {
             shell->pageHost() == host && host->property("action").toString() == action
                 && host->property("section").toString() == QLatin1String("analyse") && window && !window->isVisible());
     host->setProperty("action", QString());
-    shell->trigger(QStringLiteral("tools.matrix"));
-    QWindow *matrix = nullptr;
+    // -- WP LAY1a -- (was tools.matrix, now a panel)
+    shell->trigger(QStringLiteral("smoke.window"));
+    QWindow *plain = nullptr;
     d.waitFor(3000, [&] {
-        matrix = shell->openWindow(QStringLiteral("tools.matrix"));
-        return matrix && matrix->isVisible();
+        plain = shell->openWindow(QStringLiteral("smoke.window"));
+        return plain && plain->isVisible();
     });
     d.check(QStringLiteral("lay0: a window that is no panel still opens as a window"),
-            matrix && matrix->isVisible() && host->property("action").toString().isEmpty());
-    if (matrix) matrix->close();
+            plain && plain->isVisible() && host->property("action").toString().isEmpty());
+    if (plain) plain->close();
     host->setProperty("take", false);
     shell->trigger(action);
     d.check(QStringLiteral("lay0: a page host that declines lets the window open"),
@@ -243,23 +244,21 @@ void switchPart(SmokeDriver &d, Shell *shell, LayoutController *layout) {
     // app's, not this section's spin)
     QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
     d.check(QStringLiteral("lay0: the switch reloads the shell in the same window, the old one gone"),
-            reloaded && !before && after->objectName() == QLatin1String("ClassicShell") && d.mainWindow() == main);
+            reloaded && !before && after->objectName() == QLatin1String("ModernShell") && d.mainWindow() == main);   // -- WP LAY3 --
     d.waitIdle();
     d.spin(200);
-    QObject *menuAfter = main->property("menuBar").value<QObject *>();
-    d.check(QStringLiteral("lay0: the new shell's menu bar is the window's, the old one gone"),
-            !menuBefore && menuAfter && menuAfter->objectName() == QLatin1String("Menu.bar")
-                && menuAfter == after->property("menuBar").value<QObject *>()
-                && d.object(QStringLiteral("Menu.tools.stats")) != nullptr);
+    d.check(QStringLiteral("lay0: Modern has no menu bar, Classic's is gone"),   // -- WP LAY3 --
+            !menuBefore && !main->property("menuBar").value<QObject *>() && d.object(QStringLiteral("Menu.tools.stats")) == nullptr);
     d.check(QStringLiteral("lay0: the switch keeps the device session"),
             device->connected() && device->demo() && device->property("serial").toString() == serial);
-    QQuickItem *bar = d.item(QStringLiteral("Sidebar"));
+    QQuickItem *bar = d.item(QStringLiteral("RightPane"));   // -- WP LAY3 -- on the Equaliser page
     d.check(QStringLiteral("lay0: the switch keeps the selection"),
             main->property("selectedChannel").toInt() == 0 && bar && bar->property("selectedChannel").toInt() == 0
                 && sidebar && sidebar->selectedChannel() == 0);
     d.check(QStringLiteral("lay0: an open tool window stays open"), stats && stats->isVisible());
     shell->trigger(QStringLiteral("tools.stats"));
-    d.check(QStringLiteral("lay0: Modern without its shell opens panels in windows"), shell->pageHost() == nullptr && stats && stats->isVisible());
+    d.check(QStringLiteral("lay0: Modern keeps a panel in its open window"),   // -- WP LAY3 --
+            shell->pageHost() != nullptr && shell->pageAction().isEmpty() && stats && stats->isVisible());
 
     layout->setLayout(QStringLiteral("classic"));
     d.waitFor(3000, [&] { return shellNow() && shellNow() != after; });
@@ -283,8 +282,8 @@ void appearancePart(SmokeDriver &d, Shell *shell) {
     bool listed = false;
     for (const QVariant &row : settings->sidebarRows(QString()))
         listed = listed || row.toMap().value(QStringLiteral("id")).toString() == QLatin1String("appearance");
-    d.check(QStringLiteral("lay0: Appearance is a page, not in the sidebar until Modern is there"),
-            !listed && settings->pageType(QStringLiteral("appearance")) == QLatin1String("AppearancePage"));
+    d.check(QStringLiteral("lay0: Appearance is a page in the sidebar"),   // -- WP LAY3 -- the Modern shell is there
+            listed && settings->pageType(QStringLiteral("appearance")) == QLatin1String("AppearancePage"));
     const QString page = settings->currentPage();
     settings->showPage(QStringLiteral("appearance"));
     QWindow *window = nullptr;

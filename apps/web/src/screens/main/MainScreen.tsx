@@ -14,7 +14,6 @@ import type { ScreenProps } from "../../ui/screens";
 import { ChannelList } from "./Channels";
 import { inputRows, liveInputs, outputRows } from "./model";
 import { PresetsCard, type PresetView } from "./Presets";
-import { VolumeCard } from "./Volume";
 // -- WP WB6J -- the analyser's bar strip (M22) and cards per row (M59)
 import { SpectrumStrip, tapNames } from "../analysis/SpectrumStrip";
 import { MAX_CARDS_PER_ROW, columnsFor, perRowLabel, perRowSummary, usePerRow } from "../analysis/dashboard";
@@ -110,14 +109,7 @@ export function MainScreen(props: ScreenProps) {
       <div class="main-spectrum">
         <SpectrumStrip session={session} names={tapNames(s, snap?.outputLabels)} />
       </div>
-      <VolumeCard
-        session={session}
-        userDb={s.userVolumeDb}
-        masterDb={s.masterVolumeDb}
-        mute={s.userMute}
-        bypass={s.bypass}
-        disabled={ro}
-      />
+      {/* -- WP WEBM1 -- the volume card is in the dock, on every page (ui/shell/Dock.tsx) */}
       <PresetsCard session={session} view={presetView} dirty={dirty} disabled={ro} ask={ask} unsaved={unsaved} />
       <ChannelList
         session={session}

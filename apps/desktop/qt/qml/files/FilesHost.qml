@@ -88,7 +88,10 @@ Item {
             settingsQuestion.open()
         }
         function onQuestion(op, summary) {
-            unsaved.text = qsTr("The current preset has unsaved changes:\n\n%1\n\nSave before continuing?").arg(summary)
+            // -- WP MDQT2b -- with several devices open, the one asked about
+            unsaved.text = UnsavedGuard.deviceTitle !== ""
+                ? qsTr("The current preset of %1 has unsaved changes:\n\n%2\n\nSave before continuing?").arg(UnsavedGuard.deviceTitle).arg(summary)
+                : qsTr("The current preset has unsaved changes:\n\n%1\n\nSave before continuing?").arg(summary)
             unsaved.open()
         }
         function onSaveFailed(op, title, text) {

@@ -10,6 +10,8 @@ import { useEffect, useState } from "preact/hooks";
 import type { ScreenProps } from "../../ui/screens";
 import { AlinkClock } from "./AlinkClock";
 import { SignalChain } from "./SignalChain"; // -- WP WB6D --
+import { InstallationTab } from "./installation/InstallationTab"; // -- WP INSTW --
+import type { ComponentChildren } from "preact";
 import type { FeedState, SystemFeed } from "./feed";
 import { NO_ALINK, NO_USB_DIRECT, alinkRoleWord, lockWord, roomsView, slotWord, topology, type TopoNode, type UnitView } from "./model";
 
@@ -26,12 +28,33 @@ export function useFeed(feed: SystemFeed): FeedState {
 
 export function SystemScreen(props: ScreenProps) {
   const feed = props.system;
+  const [tab, setTab] = useState<"overview" | "installation">("overview"); // -- WP INSTW --
   if (!feed) return null;
+  // -- WP INSTW -- on a hub, the Installer mode sets the installation up in its own tab
+  const tabs = props.mode === "installer" && feed.onHub;
+  if (tabs && tab === "installation") return <SystemTabs tab={tab} show={setTab}><InstallationTab feed={feed} session={props.session} ask={props.ask} /></SystemTabs>;
   // -- WP WB6D -- the device's signal chain, whatever the system's state
-  return (
+  const overview = (
     <>
       <SystemView feed={feed} installer={props.mode === "installer"} ask={props.ask} />
       <SignalChain session={props.session} open={props.open} />
+    </>
+  );
+  return tabs ? <SystemTabs tab={tab} show={setTab}>{overview}</SystemTabs> : overview;
+}
+
+// -- WP INSTW --
+function SystemTabs(props: { tab: "overview" | "installation"; show: (t: "overview" | "installation") => void; children: ComponentChildren }) {
+  return (
+    <>
+      <div class="screen-tabs" role="tablist" aria-label="System">
+        {(["overview", "installation"] as const).map((t) => (
+          <button type="button" role="tab" key={t} aria-selected={props.tab === t} onClick={() => props.show(t)}>
+            {t === "overview" ? "Status" : "Installation"}
+          </button>
+        ))}
+      </div>
+      {props.children}
     </>
   );
 }

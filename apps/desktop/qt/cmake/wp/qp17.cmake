@@ -8,7 +8,7 @@ list(APPEND DSPI_QML_FILES
     qml/onboarding/StepDots.qml
     qml/onboarding/InstallCard.qml
     qml/onboarding/InfoRow.qml
-    qml/onboarding/WhatsNewWindow.qml
+    qml/onboarding/WhatsNewPanel.qml   # -- WP LAY1b -- was WhatsNewWindow.qml
     qml/onboarding/HelpHost.qml
     qml/onboarding/AboutLicenceSection.qml
     qml/onboarding/OnboardingDeveloperSection.qml

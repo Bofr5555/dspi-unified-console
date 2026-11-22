@@ -172,6 +172,7 @@ Rectangle {
         Text {
             objectName: bar.objectName + ".channel"
             Layout.maximumWidth: 110
+            textFormat: Text.PlainText
             text: bar.channelLabel(bar.channel)
             font: Theme.fontSmall
             color: Theme.textMuted

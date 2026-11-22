@@ -97,6 +97,9 @@ static void autoEqSection(SmokeDriver &d) {
     d.check(QStringLiteral("qp15: Browse Profiles opens the browser"),
             d.waitFor(3000, [&]() { return (browser = topWindow(QStringLiteral("AutoEqWindow"))) && browser->isVisible(); }));
     if (!browser) return;
+    // -- WP LAY1b -- the browser is a panel in a PanelWindow: its properties are the panel's
+    QObject *browserPanel = browser->property("content").value<QObject *>();
+    if (!browserPanel) return;
     d.check(QStringLiteral("qp15: the browser's title and size are the Mac's"),
             browser->title() == QLatin1String("AutoEQ - Browse Profiles") && browser->minimumWidth() == 450);
     AutoEqProfileModel *list = aeq->profiles();
@@ -107,7 +110,7 @@ static void autoEqSection(SmokeDriver &d) {
         allMatch = allMatch && list->data(list->index(r), AutoEqProfileModel::DisplayName).toString().contains(QLatin1String("HD 600"), Qt::CaseInsensitive);
     d.check(QStringLiteral("qp15: the search narrows the list"), allMatch && list->rowCount() < builtIn);
     const QString id = list->idAt(0);
-    browser->setProperty("selectedId", id);
+    browserPanel->setProperty("selectedId", id);
     QObject *apply = browser->findChild<QObject *>(QStringLiteral("AutoEqWindow.apply"));
     d.check(QStringLiteral("qp15: a selection enables Apply"), apply && apply->property("enabled").toBool());
     QObject *selected = browser->findChild<QObject *>(QStringLiteral("AutoEqWindow.selectedName"));
@@ -119,13 +122,13 @@ static void autoEqSection(SmokeDriver &d) {
     QObject *empty = browser->findChild<QObject *>(QStringLiteral("AutoEqWindow.empty"));
     d.check(QStringLiteral("qp15: no match says so"),
             list->rowCount() == 0 && empty && empty->property("text").toString() == QLatin1String("No headphones found matching \"zzzz no such headphone\""));
-    d.check(QStringLiteral("qp15: a profile the search hides is not applied"), browser->property("selectedId").toString().isEmpty());
+    d.check(QStringLiteral("qp15: a profile the search hides is not applied"), browserPanel->property("selectedId").toString().isEmpty());
     list->setSearchText(QString());
 
     // ---- Apply: the profile on inputs 1 and 2 ----
     const DspState before = *device->state();
-    browser->setProperty("selectedId", id);
-    QMetaObject::invokeMethod(browser, "applySelected");
+    browserPanel->setProperty("selectedId", id);
+    QMetaObject::invokeMethod(browserPanel, "applySelected");
     d.check(QStringLiteral("qp15: Apply closes the browser"), d.waitFor(2000, [&]() { return !browser->isVisible(); }));
     d.waitIdle();
     QFile builtInFile(AutoEqController::builtInDatabasePath());

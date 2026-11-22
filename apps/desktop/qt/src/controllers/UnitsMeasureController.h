@@ -42,6 +42,7 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QObject>
+#include <QPointer>
 #include <QString>
 #include <QStringList>
 #include <QThreadPool>
@@ -54,7 +55,8 @@
 
 #include "Registrar.h"
 
-class MeasureController;
+class LinkSession;
+class MeasureSession;
 class QJSEngine;
 class QQmlEngine;
 struct FfiCore;
@@ -98,6 +100,8 @@ class UnitsMeasureController : public QObject {
     // ---- The run ----
     // A run, a summed check or a verify holds the hub's session (or starts)
     Q_PROPERTY(bool running READ running NOTIFY stateChanged)
+    // -- WP MDQT2c -- what it shows is another open device's, in words; "" else
+    Q_PROPERTY(QString heldWords READ heldWords NOTIFY hostChanged)
     Q_PROPERTY(QString phase READ phase NOTIFY stateChanged)
     Q_PROPERTY(QString purpose READ purpose NOTIFY stateChanged)
     // Where it is, in words, with the settle wait in the core's words
@@ -209,6 +213,7 @@ public:
     QString blocker() const;
     QVariantList preflightLines() const { return m_preflightLines; }
 
+    QString heldWords() const;   // -- WP MDQT2c --
     bool running() const { return m_starting || m_state.value(QLatin1String("active")).toBool(); }
     QString phase() const { return m_state.value(QLatin1String("phase")).toString(QStringLiteral("idle")); }
     QString purpose() const { return m_state.value(QLatin1String("purpose")).toString(QStringLiteral("measure")); }
@@ -309,6 +314,7 @@ public:
 
 signals:
     void availabilityChanged();
+    void hostChanged();   // -- WP MDQT2c --
     void formChanged();
     void preflightChanged();
     void stateChanged();
@@ -327,7 +333,10 @@ private:
     struct UnitCore;
     using UnitPtr = std::shared_ptr<UnitCore>;
 
-    MeasureController *measure() const;
+    MeasureSession *measure() const;
+    // -- WP MDQT2c --
+    LinkSession *hostLink() const;
+    void rehost();
     QString ownSerial() const;
     void refreshUnits();
     void openUnit(const QString &serial);
@@ -365,6 +374,8 @@ private:
     QString arrivalWords(const QJsonObject &a) const;
 
     AppContext m_ctx;
+    QPointer<MeasureSession> m_host;   // -- WP MDQT2c -- see measure()
+    bool m_hosted = false;             // -- WP MDQT2c -- there has been one
     Calls m_calls = &UnitsMeasureController::coreCall;
     QThreadPool m_pool;   // the units' connections: open, close
     bool m_shutDown = false;

@@ -14,13 +14,23 @@ HubFeed *HubFeed::of(Core *core) {
 
 HubFeed::HubFeed(Core *core) : QObject(core), m_core(core) {
     // Setting it does no I/O; the events come on the Link session's thread
-    if (FfiCore *h = core->handle()) dspi_hub_server_set_listener(h, &HubFeed::thunk, this);
+    listen();
+    // -- WP MDQT1 -- the active device's session, whichever it is
+    connect(core, &Core::activeChanged, this, &HubFeed::listen);
+}
+
+void HubFeed::listen() {
+    FfiCore *h = m_core->handle();
+    if (h == m_handle) return;
+    if (m_handle) dspi_hub_server_set_listener(m_handle, nullptr, nullptr);
+    m_handle = h;
+    if (h) dspi_hub_server_set_listener(h, &HubFeed::thunk, this);
 }
 
 // Waits for an event in progress, so none reaches this object afterwards (a
 // freed core has no handle and sends none)
 HubFeed::~HubFeed() {
-    if (FfiCore *h = m_core ? m_core->handle() : nullptr) dspi_hub_server_set_listener(h, nullptr, nullptr);
+    if (m_handle && m_core && m_core->handle()) dspi_hub_server_set_listener(m_handle, nullptr, nullptr);
 }
 
 // On the core's thread with no core lock held: only post the event home

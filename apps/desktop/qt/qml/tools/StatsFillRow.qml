@@ -34,6 +34,7 @@ Rectangle {
             border.color: fillRow.tint
         }
         Text {
+            textFormat: Text.PlainText
             text: fillRow.entry.title || ""
             font: Qt.font({ pixelSize: Theme.fontCaption.pixelSize, weight: Font.Medium })
             color: Theme.text

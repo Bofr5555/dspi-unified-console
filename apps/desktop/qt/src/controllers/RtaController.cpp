@@ -5,9 +5,12 @@
 #include "Core.h"
 #include "CoreWorker.h"
 #include "DeviceModel.h"
+#include "DeviceRegistry.h"
+#include "DeviceSession.h"
 #include "GraphController.h"
 #include "LinkController.h"
 #include "PrefsMap.h"
+#include "SessionState.h"
 #include "SettingsController.h"
 
 #include <QCoreApplication>
@@ -38,13 +41,13 @@ const char *const kChannelPagesShowSpectrum = "channelPagesShowSpectrum";
 } // namespace
 
 // What the analyser thread hands over: the latest picture, caps and ownership
-struct RtaController::Shared {
+struct RtaController::Shared : std::enable_shared_from_this<RtaController::Shared> {
     std::mutex lock;
     std::shared_ptr<RtaSnapshot> snap = std::make_shared<RtaSnapshot>();
     RtaCapsInfo caps{};
     RtaOwnership owner{};
     std::atomic<bool> queued{ false };
-    QObject *target = nullptr;
+    RtaController *target = nullptr;
     FfiCore *core = nullptr;
 };
 
@@ -89,8 +92,7 @@ bool RtaController::Selection::parse(const QString &key, Selection *out) {
 // ---- Life ----
 
 RtaController::RtaController(const AppContext &ctx, QObject *parent)
-    : QObject(parent), m_ctx(ctx), m_prefs(new PrefsMap(QStringLiteral("spectrum"), this)),
-      m_shared(std::make_shared<Shared>()), m_snap(std::make_shared<RtaSnapshot>()) {
+    : QObject(parent), m_ctx(ctx), m_prefs(new PrefsMap(QStringLiteral("spectrum"), this)) {
     m_prefs->declare(QLatin1String(kDashboardSource), QString());
     m_prefs->declare(QLatin1String(kDashboardOtherSide), QString());
     m_prefs->declare(QLatin1String(kDashboardShowGraph), true);
@@ -106,29 +108,62 @@ RtaController::RtaController(const AppContext &ctx, QObject *parent)
             push();
         }
     });
-    m_snap->first_band = 0xFF;
-
-    m_release.core = ctx.core;
-    m_shared->target = this;
-    m_shared->core = ctx.core->handle();
-    Shared *shared = m_shared.get();
-    ctx.core->worker()->post([shared](FfiCore *c) { dspi_rta_set_callback(c, &RtaController::thunk, shared); });
+    listen();
+    m_announced = state();
+    // -- WP MDQT2c --
+    connect(ctx.registry, &DeviceRegistry::activeLeaving, this, [this] { stopAsking(m_ctx.activeSession()); });
+    connect(ctx.registry, &DeviceRegistry::sessionClosing, this, &RtaController::unlisten);
     connect(ctx.device, &DeviceModel::snapshotApplied, this, &RtaController::onSnapshot);
     // The other controllers exist once every constructor has run
     QMetaObject::invokeMethod(this, &RtaController::connectLater, Qt::QueuedConnection);
 }
 
-// Dead in the app: main.cpp shuts the core down before the controllers go,
-// so the handle is null here; the smoke's cores the same
-RtaController::CallbackRelease::~CallbackRelease() {
-    if (FfiCore *c = core ? core->handle() : nullptr) dspi_rta_set_callback(c, nullptr, nullptr);
+// Dead in the app: main.cpp shuts the cores down before the controllers go, so
+// the handles are null here; the smoke's cores the same
+RtaController::~RtaController() {
+    for (DeviceSession *s : m_ctx.registry->sessions())
+        if (FfiCore *c = s->handle()) dspi_rta_set_callback(c, nullptr, nullptr);
+}
+
+// ---- Several devices (-- WP MDQT2c --) ----
+
+RtaController::State::State() { snap->first_band = 0xFF; }
+
+RtaController::StatePtr RtaController::state() const {
+    return sessionState<State>(m_ctx.activeSession(), QStringLiteral("RtaController"));
+}
+
+void RtaController::listen() {
+    const StatePtr st = state();
+    if (st->shared) return;
+    st->shared = std::make_shared<Shared>();
+    st->shared->target = this;
+    st->shared->core = m_ctx.core->handle();
+    Shared *shared = st->shared.get();   // until unlisten(), or the cores' end
+    m_ctx.core->worker()->post([shared](FfiCore *c) { dspi_rta_set_callback(c, &RtaController::thunk, shared); });
+}
+
+void RtaController::stopAsking(DeviceSession *session) {
+    const StatePtr st = sessionState<State>(session, QStringLiteral("RtaController"));
+    if (!st->sentOnce) return;
+    st->sentOnce = false;   // asked again when it is active again
+    st->watching = false;
+    st->request.mask = 0;
+    session->worker()->post([r = st->request](FfiCore *c) { dspi_rta_set_request_watching(c, &r, false); });
+}
+
+// Before its core closes; what the callback uses lives until it is unset
+void RtaController::unlisten(DeviceSession *session) {
+    const StatePtr st = sessionState<State>(session, QStringLiteral("RtaController"));
+    if (!st->shared) return;
+    session->worker()->post([held = st->shared](FfiCore *c) { dspi_rta_set_callback(c, nullptr, nullptr); });
 }
 
 void RtaController::connectLater() {
     if (auto *graph = Registrar::instance<GraphController>()) {
         connect(graph, &GraphController::selectionChanged, this, &RtaController::onPageChanged);
         // -- WP QPI3 -- a channel page open at start gets its selection too
-        m_page = -1;
+        state()->page = -1;
         onPageChanged();
     }
     if (auto *settings = Registrar::instance<SettingsController>()) {
@@ -163,35 +198,47 @@ void RtaController::thunk(void *user) {
         shared->caps = caps;
         shared->owner = owner;
     }
-    if (!shared->queued.exchange(true))
-        QMetaObject::invokeMethod(shared->target, "onPicture", Qt::QueuedConnection);
+    if (!shared->queued.exchange(true)) {
+        // -- WP MDQT2c -- by then it may be another device's, or gone
+        std::weak_ptr<Shared> of = shared->weak_from_this();
+        RtaController *target = shared->target;
+        QMetaObject::invokeMethod(
+            target,
+            [target, of] {
+                const std::shared_ptr<Shared> from = of.lock();
+                if (!from) return;
+                from->queued.store(false);
+                if (from == target->state()->shared) target->onPicture();
+            },
+            Qt::QueuedConnection);
+    }
 }
 
 void RtaController::onPicture() {
-    m_shared->queued.store(false);
+    const StatePtr st = state();
     std::shared_ptr<RtaSnapshot> snap;
     RtaCapsInfo caps{};
     RtaOwnership owner{};
     {
-        std::lock_guard<std::mutex> hold(m_shared->lock);
-        snap = m_shared->snap;
-        caps = m_shared->caps;
-        owner = m_shared->owner;
+        std::lock_guard<std::mutex> hold(st->shared->lock);
+        snap = st->shared->snap;
+        caps = st->shared->caps;
+        owner = st->shared->owner;
     }
     if (!snap) return;
-    const bool capsNew = caps.supported != m_caps.supported || caps.max_bands != m_caps.max_bands
-        || caps.order_max != m_caps.order_max || caps.input_channels != m_caps.input_channels
-        || caps.output_channels != m_caps.output_channels
-        || !std::equal(std::begin(caps.centres), std::end(caps.centres), std::begin(m_caps.centres));
-    const bool ownerNew = owner.following != m_owner.following || owner.tap != m_owner.tap || owner.mask != m_owner.mask;
-    const bool pictureNew = snap->version != m_version || snap->tap != m_snap->tap || snap->count != m_snap->count;
-    const bool telemetryNew = snap->telemetry_version != m_telemetry || snap->running != m_snap->running
-        || snap->config_rejected != m_snap->config_rejected;
-    m_snap = snap;
-    m_caps = caps;
-    m_owner = owner;
-    m_version = snap->version;
-    m_telemetry = snap->telemetry_version;
+    const bool capsNew = caps.supported != state()->caps.supported || caps.max_bands != state()->caps.max_bands
+        || caps.order_max != state()->caps.order_max || caps.input_channels != state()->caps.input_channels
+        || caps.output_channels != state()->caps.output_channels
+        || !std::equal(std::begin(caps.centres), std::end(caps.centres), std::begin(state()->caps.centres));
+    const bool ownerNew = owner.following != state()->owner.following || owner.tap != state()->owner.tap || owner.mask != state()->owner.mask;
+    const bool pictureNew = snap->version != state()->version || snap->tap != state()->snap->tap || snap->count != state()->snap->count;
+    const bool telemetryNew = snap->telemetry_version != state()->telemetry || snap->running != state()->snap->running
+        || snap->config_rejected != state()->snap->config_rejected;
+    state()->snap = snap;
+    state()->caps = caps;
+    state()->owner = owner;
+    state()->version = snap->version;
+    state()->telemetry = snap->telemetry_version;
     if (capsNew) {
         emit analyserChanged();
         emit selectionChanged();   // the channels available follow the caps
@@ -210,19 +257,36 @@ void RtaController::onPicture() {
 
 void RtaController::onSnapshot() {
     const DeviceSnapshot &snap = m_ctx.device->snapshot();
+    // -- WP MDQT2c -- another device is active: its analyser, its last picture
+    const StatePtr st = state();
+    if (st != m_announced) {
+        m_announced = st;
+        listen();
+        onPicture();   // what came in while it was not shown
+        startAnalyser();
+        ++m_pictureRevision;
+        emit analyserChanged();
+        emit ownershipChanged();
+        emit selectionChanged();
+        emit readingsChanged();
+        emit pictureChanged();
+        emit requestChanged();
+        onPageChanged();
+        push();
+    }
     if (!snap.connected) {
-        if (m_generation != 0) {
-            m_generation = 0;
-            m_readOnlyRefused = false;
+        if (state()->generation != 0) {
+            state()->generation = 0;
+            state()->readOnlyRefused = false;
             emit analyserChanged();
             emit selectionChanged();
         }
         return;
     }
-    if (snap.generation != m_generation) {
-        m_generation = snap.generation;
-        if (m_readOnlyRefused) {
-            m_readOnlyRefused = false;
+    if (snap.generation != state()->generation) {
+        state()->generation = snap.generation;
+        if (state()->readOnlyRefused) {
+            state()->readOnlyRefused = false;
             emit analyserChanged();
         }
         // The core keeps the request across connections; a new worker is needed
@@ -246,9 +310,10 @@ void RtaController::openAnalyser() {
         startAnalyser();
         return;
     }
-    if (m_askedGeneration == m_generation) return;
-    m_askedGeneration = m_generation;
-    const uint64_t generation = m_generation;
+    const StatePtr st = state();
+    if (st->askedGeneration == st->generation) return;
+    st->askedGeneration = st->generation;
+    const uint64_t generation = st->generation;
     m_ctx.core->worker()->call(
         this,
         [](FfiCore *c) {
@@ -256,18 +321,18 @@ void RtaController::openAnalyser() {
             dspi_rta_start(c);
             return dspi_read_only_refusals(c) != before;
         },
-        [this, generation](bool refused) {
-            if (generation != m_generation || refused == m_readOnlyRefused) return;
-            m_readOnlyRefused = refused;
-            emit analyserChanged();
+        [this, st, generation](bool refused) {
+            if (generation != st->generation || refused == st->readOnlyRefused) return;
+            st->readOnlyRefused = refused;
+            if (st == state()) emit analyserChanged();
         });
 }
 
 void RtaController::onPageChanged() {
     auto *graph = Registrar::instance<GraphController>();
     const int page = graph ? graph->selectedChannel() : -1;
-    if (page == m_page) return;
-    m_page = page;
+    if (page == state()->page) return;
+    state()->page = page;
     if (page >= 0) {
         // A channel page starts on its own channel (or nothing, by the preference)
         const int inputs = m_ctx.device->numInputs();
@@ -275,8 +340,8 @@ void RtaController::onPageChanged() {
         s.tap = page < inputs ? RTA_TAP_INPUT : RTA_TAP_OUTPUT;
         if (m_prefs->value(QLatin1String(kChannelPagesShowSpectrum)).toBool())
             s.channels = { page < inputs ? page : page - inputs };
-        m_pageSelection = s;
-        m_pageOtherKnown = false;
+        state()->pageSelection = s;
+        state()->pageOtherKnown = false;
     }
     emit selectionChanged();
     push();
@@ -284,18 +349,18 @@ void RtaController::onPageChanged() {
 
 // ---- The state as QML reads it ----
 
-bool RtaController::available() const { return ready() && m_caps.supported; }
-int RtaController::largestOrder() const { return m_caps.order_max; }
+bool RtaController::available() const { return ready() && state()->caps.supported; }
+int RtaController::largestOrder() const { return state()->caps.order_max; }
 int RtaController::pictureRevision() const { return m_pictureRevision; }
-bool RtaController::onDashboard() const { return m_page < 0; }
+bool RtaController::onDashboard() const { return state()->page < 0; }
 int RtaController::ownTap() const { return own().tap; }
 QList<int> RtaController::ownChannels() const { return own().channels; }
 int RtaController::drawnTap() const { return drawn().tap; }
 QList<int> RtaController::drawnChannels() const { return drawn().channels; }
-bool RtaController::following() const { return m_owner.following; }
-bool RtaController::analysing() const { return m_snap->running; }
-bool RtaController::refused() const { return m_snap->config_rejected; }
-bool RtaController::watching() const { return m_request.mask != 0 || m_watching; }
+bool RtaController::following() const { return state()->owner.following; }
+bool RtaController::analysing() const { return state()->snap->running; }
+bool RtaController::refused() const { return state()->snap->config_rejected; }
+bool RtaController::watching() const { return state()->request.mask != 0 || state()->watching; }
 int RtaController::requestsSent() const { return m_requestsSent; }
 
 // ---- Selections ----
@@ -304,7 +369,7 @@ QList<int> RtaController::available(int tap) const {
     QList<int> out;
     const ChannelListModel *rows = m_ctx.device->channels();
     if (!rows || !ready()) return out;
-    const int capsLimit = tap == RTA_TAP_INPUT ? m_caps.input_channels : m_caps.output_channels;
+    const int capsLimit = tap == RTA_TAP_INPUT ? state()->caps.input_channels : state()->caps.output_channels;
     const int limit = std::min(capsLimit > 0 ? capsLimit : 16, 16);
     const int inputs = m_ctx.device->numInputs();
     for (int r = 0; r < rows->rowCount(); ++r) {
@@ -343,14 +408,14 @@ RtaController::Selection RtaController::dashboardSelection() const {
 }
 
 RtaController::Selection RtaController::own() const {
-    return m_page < 0 ? dashboardSelection() : restricted(m_pageSelection);
+    return state()->page < 0 ? dashboardSelection() : restricted(state()->pageSelection);
 }
 
 RtaController::Selection RtaController::drawn() const {
-    if (!m_owner.following) return own();
-    Selection s{ m_owner.tap == RTA_TAP_INPUT ? RTA_TAP_INPUT : RTA_TAP_OUTPUT, {} };
+    if (!state()->owner.following) return own();
+    Selection s{ state()->owner.tap == RTA_TAP_INPUT ? RTA_TAP_INPUT : RTA_TAP_OUTPUT, {} };
     for (int c = 0; c < 16; ++c)
-        if (m_owner.mask & (1u << c)) s.channels.append(c);
+        if (state()->owner.mask & (1u << c)) s.channels.append(c);
     return s;
 }
 
@@ -364,15 +429,15 @@ void RtaController::setPref(const char *key, const QVariant &value) {
 void RtaController::storeDashboard(const Selection &s) { setPref(kDashboardSource, s.key()); }
 
 void RtaController::setOwn(const Selection &s, bool takeBack) {
-    if (m_page < 0) {
+    if (state()->page < 0) {
         storeDashboard(s);
     } else {
-        m_pageSelection = s;
+        state()->pageSelection = s;
         setPref(kChannelPagesShowSpectrum, !s.channels.isEmpty());
     }
     emit selectionChanged();
     push();
-    if (takeBack && m_owner.following) takeControl();
+    if (takeBack && state()->owner.following) takeControl();
 }
 
 void RtaController::toggleChannel(int channel) {
@@ -387,9 +452,9 @@ void RtaController::toggleChannel(int channel) {
 void RtaController::switchSide(int tap) {
     tap = tap == RTA_TAP_INPUT ? RTA_TAP_INPUT : RTA_TAP_OUTPUT;
     const Selection current = drawn();
-    if (current.tap == tap && !m_owner.following) return;
+    if (current.tap == tap && !state()->owner.following) return;
     Selection entering{ tap, {} };
-    if (m_page < 0) {
+    if (state()->page < 0) {
         Selection other;
         const QString key = m_prefs->value(QLatin1String(kDashboardOtherSide)).toString();
         if (Selection::parse(key, &other) && other.tap == tap) entering = other;
@@ -399,16 +464,16 @@ void RtaController::switchSide(int tap) {
         if (leaving.tap != tap) setPref(kDashboardOtherSide, leaving.key());
         storeDashboard(entering);
     } else {
-        if (m_pageOtherKnown && m_pageOtherSide.tap == tap) entering = m_pageOtherSide;
+        if (state()->pageOtherKnown && state()->pageOtherSide.tap == tap) entering = state()->pageOtherSide;
         if (current.tap != tap) {
-            m_pageOtherSide = m_pageSelection;
-            m_pageOtherKnown = true;
+            state()->pageOtherSide = state()->pageSelection;
+            state()->pageOtherKnown = true;
         }
-        m_pageSelection = entering;
+        state()->pageSelection = entering;
     }
     emit selectionChanged();
     push();
-    if (m_owner.following) takeControl();
+    if (state()->owner.following) takeControl();
 }
 
 void RtaController::clearSelection() { setOwn({ drawn().tap, {} }, true); }
@@ -418,20 +483,20 @@ void RtaController::takeControl() {
 }
 
 bool RtaController::showGraph() const {
-    return m_prefs->value(QLatin1String(m_page < 0 ? kDashboardShowGraph : kChannelShowGraph)).toBool();
+    return m_prefs->value(QLatin1String(state()->page < 0 ? kDashboardShowGraph : kChannelShowGraph)).toBool();
 }
 void RtaController::setShowGraph(bool on) {
     if (on == showGraph()) return;
-    setPref(m_page < 0 ? kDashboardShowGraph : kChannelShowGraph, on);
+    setPref(state()->page < 0 ? kDashboardShowGraph : kChannelShowGraph, on);
     emit selectionChanged();
     push();
 }
 bool RtaController::showBars() const {
-    return m_prefs->value(QLatin1String(m_page < 0 ? kDashboardShowBars : kChannelShowBars)).toBool();
+    return m_prefs->value(QLatin1String(state()->page < 0 ? kDashboardShowBars : kChannelShowBars)).toBool();
 }
 void RtaController::setShowBars(bool on) {
     if (on == showBars()) return;
-    setPref(m_page < 0 ? kDashboardShowBars : kChannelShowBars, on);
+    setPref(state()->page < 0 ? kDashboardShowBars : kChannelShowBars, on);
     emit selectionChanged();
     push();
 }
@@ -461,9 +526,9 @@ QVariantList RtaController::channels(int tap) const {
 }
 
 QString RtaController::pageTitle() const {
-    if (m_page < 0) return QCoreApplication::translate("RtaController", "Dashboard");
+    if (state()->page < 0) return QCoreApplication::translate("RtaController", "Dashboard");
     const ChannelListModel *rows = m_ctx.device->channels();
-    const int row = rows ? rows->rowOfChannel(m_page) : -1;
+    const int row = rows ? rows->rowOfChannel(state()->page) : -1;
     const QString label = row >= 0 ? rows->get(row, QStringLiteral("label")).toString() : QString();
     return label.isEmpty() ? QCoreApplication::translate("RtaController", "Channel") : label;
 }
@@ -493,13 +558,13 @@ void RtaController::push() {
     r.avg_ms = uint16_t(std::clamp(m_settings ? m_settings->value(QStringLiteral("avgMs")).toInt() : 300, 0, 65535));
     r.peak_decay_db_s =
         uint8_t(std::clamp(m_settings ? qRound(m_settings->value(QStringLiteral("peakDecay")).toDouble()) : 12, 0, 255));
-    const bool same = m_sentOnce && r.tap == m_request.tap && r.mask == m_request.mask && r.wants_bins == m_request.wants_bins
-        && r.fft_order == m_request.fft_order && r.avg_ms == m_request.avg_ms
-        && r.peak_decay_db_s == m_request.peak_decay_db_s && any == m_watching;
+    const bool same = state()->sentOnce && r.tap == state()->request.tap && r.mask == state()->request.mask && r.wants_bins == state()->request.wants_bins
+        && r.fft_order == state()->request.fft_order && r.avg_ms == state()->request.avg_ms
+        && r.peak_decay_db_s == state()->request.peak_decay_db_s && any == state()->watching;
     if (same) return;
-    m_request = r;
-    m_watching = any;
-    m_sentOnce = true;
+    state()->request = r;
+    state()->watching = any;
+    state()->sentOnce = true;
     ++m_requestsSent;
     m_ctx.core->worker()->post([r, any](FfiCore *c) { dspi_rta_set_request_watching(c, &r, any); });
     emit requestChanged();
@@ -522,27 +587,27 @@ double RtaController::smoothing() const {
 double RtaController::smoothingTau() const {
     const double amount = smoothing();
     if (amount <= 0) return 0;
-    const double interval = std::isfinite(m_snap->refresh_interval_s) ? double(m_snap->refresh_interval_s) : 0.0;
+    const double interval = std::isfinite(state()->snap->refresh_interval_s) ? double(state()->snap->refresh_interval_s) : 0.0;
     return std::clamp(interval * amount, 0.035, 0.40);
 }
 
 int RtaController::bandCount() const {
     int most = 0;
-    for (int i = 0; i < m_snap->count && i < RTA_MAX_CHANNELS; ++i) most = std::max<int>(most, m_snap->frames[i].n_bands);
+    for (int i = 0; i < state()->snap->count && i < RTA_MAX_CHANNELS; ++i) most = std::max<int>(most, state()->snap->frames[i].n_bands);
     if (most > 0) return std::min(most, RTA_MAX_BANDS);
-    return std::min(std::max<int>(m_caps.max_bands, 34), RTA_MAX_BANDS);
+    return std::min(std::max<int>(state()->caps.max_bands, 34), RTA_MAX_BANDS);
 }
 
 bool RtaController::bandVisible(int band) const {
     if (band < 0 || band >= RTA_MAX_BANDS) return false;
-    if (m_snap->sample_rate != 0) return (m_snap->populated >> band) & 1u;
+    if (state()->snap->sample_rate != 0) return (state()->snap->populated >> band) & 1u;
     // No status read yet: the Mac's rule at 48 kHz and the requested size,
     // so the bars show at once
-    const int bass = m_caps.bass_bands > 0 ? m_caps.bass_bands : 14;
+    const int bass = state()->caps.bass_bands > 0 ? state()->caps.bass_bands : 14;
     if (band < bass) return true;
     const double fc = 1000.0 * std::pow(10.0, (band - 20) / 10.0);
     const double lo = fc * std::pow(10.0, -0.05), hi = fc * std::pow(10.0, 0.05);
-    const int order = m_request.fft_order ? m_request.fft_order : 10;
+    const int order = state()->request.fft_order ? state()->request.fft_order : 10;
     const double n = double(1 << order);
     const double binHz = 48000.0 / n;
     return std::max(1.0, std::ceil(lo / binHz)) <= std::min(n / 2 - 1, std::floor(hi / binHz));
@@ -577,7 +642,7 @@ QString RtaController::shortHz(double hz) {
 }
 
 QStringList RtaController::statusParts() const {
-    const RtaSnapshot &s = *m_snap;
+    const RtaSnapshot &s = *state()->snap;
     QStringList parts;
     if (!s.running || s.live_count == 0) {
         parts.append(QCoreApplication::translate("RtaController", "idle"));
@@ -595,22 +660,22 @@ QStringList RtaController::statusParts() const {
 }
 
 QString RtaController::bassText() const {
-    const uint16_t b = m_snap->bass_busy_us_per_s;
+    const uint16_t b = state()->snap->bass_busy_us_per_s;
     if (b == 0) return QString();
     const QString n = QString::number(b / 10000.0, 'f', 2);
     return QCoreApplication::translate("RtaController", "bass %1%").arg(b == 0xFFFF ? QStringLiteral("≥") + n : n);
 }
 
 QString RtaController::lowBandText() const {
-    const RtaSnapshot &s = *m_snap;
+    const RtaSnapshot &s = *state()->snap;
     const int order = m_settings ? m_settings->value(QStringLiteral("fftOrder")).toInt() : 10;
-    if (!s.running || order >= m_caps.order_max || s.first_band == 0xFF || s.first_band < 1 || s.first_band >= m_caps.max_bands)
+    if (!s.running || order >= state()->caps.order_max || s.first_band == 0xFF || s.first_band < 1 || s.first_band >= state()->caps.max_bands)
         return QString();
     return QCoreApplication::translate("RtaController", "shaded bands below %1 Hz need a larger transform size in Settings")
-        .arg(shortHz(m_caps.centres[s.first_band]));
+        .arg(shortHz(state()->caps.centres[s.first_band]));
 }
 
 QString RtaController::rangeText() const {
-    if (m_caps.dynamic_range_db == 0) return QString();
-    return QCoreApplication::translate("RtaController", "%1/%2 dB range").arg(m_caps.dynamic_range_db).arg(m_caps.bass_dynamic_range_db);
+    if (state()->caps.dynamic_range_db == 0) return QString();
+    return QCoreApplication::translate("RtaController", "%1/%2 dB range").arg(state()->caps.dynamic_range_db).arg(state()->caps.bass_dynamic_range_db);
 }

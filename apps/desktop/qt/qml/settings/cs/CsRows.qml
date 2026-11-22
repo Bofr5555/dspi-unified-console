@@ -55,6 +55,7 @@ ColumnLayout {
             }
             Text {
                 Layout.fillWidth: true
+                textFormat: Text.PlainText
                 text: parent.row.detail || ""
                 font: Theme.fontSmall
                 color: parent.row.warning === true ? Theme.warning : Theme.textMuted

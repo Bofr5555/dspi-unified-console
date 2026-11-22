@@ -18,8 +18,22 @@ ToolWindow {
     defaultWidth: panel.width
     defaultHeight: panel.height
     minimumWidth: panel.minWidth || 0
-    minimumHeight: panel.minHeight || 0
+    minimumHeight: Math.max(panel.minHeight || 0, body.item ? body.item.minimumHeight : 0)   // -- WP LAY1b -- the panel's own
+    maximumWidth: panel.maxWidth || 16777215   // -- WP LAY1a -- (a Window's own maximum)
+    maximumHeight: panel.maxHeight || 16777215
     fitBodies: body.item ? body.item.fitBodies : []
+    // -- WP LAY1b --
+    onClosing: if (body.item) body.item.closing()
+
+    // -- WP LAY1a -- A panel that says its size (the matrix: its table) gets it
+    // on every show
+    function fitToPanel() {
+        const want = body.item ? body.item.showSize : Qt.size(0, 0)
+        if (want.width <= 0 || want.height <= 0) return
+        width = Math.max(minimumWidth, Screen.desktopAvailableWidth > 0 ? Math.min(want.width, Screen.desktopAvailableWidth) : want.width)
+        height = Math.max(minimumHeight, Screen.desktopAvailableHeight > 0 ? Math.min(want.height, Screen.desktopAvailableHeight) : want.height)
+    }
+    onVisibleChanged: if (visible) fitToPanel()
 
     Loader {
         id: body
@@ -45,5 +59,16 @@ ToolWindow {
         property: "actionId"
         value: window.actionId
         when: body.item !== null
+    }
+    // -- WP LAY1b --
+    Binding {
+        target: window
+        property: "font"
+        value: body.item ? body.item.windowFont : undefined
+        when: body.item !== null && body.item.windowFont !== undefined
+    }
+    Connections {
+        target: body.item
+        function onCloseRequested() { window.close() }
     }
 }

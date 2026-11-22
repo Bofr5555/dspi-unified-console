@@ -90,6 +90,7 @@ Rectangle {
                         }
                         Text {
                             Layout.fillWidth: true
+                            textFormat: Text.PlainText
                             text: column.modelData.heading
                             font: card.nameFont
                             color: Theme.textMuted

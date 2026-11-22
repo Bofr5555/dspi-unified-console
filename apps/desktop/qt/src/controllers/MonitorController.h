@@ -8,6 +8,7 @@
 #include <atomic>
 #include <cstdint>
 #include <memory>
+#include <mutex>
 
 #include "Poller.h"
 #include "Registrar.h"
@@ -33,6 +34,8 @@ public:
     // Appends `lines` and drops the oldest past kLimit
     void append(const QStringList &lines);
     void clear();
+    // -- WP MDQT2c -- another device's lines
+    void show(const QStringList &lines);
     const QStringList &lines() const { return m_lines; }
 
 signals:
@@ -53,6 +56,8 @@ private:
 // - Pause drops what arrives meanwhile, as the Mac does: on Resume the lines
 //   logged while paused are skipped. Pause lives here, so it survives closing
 //   the window.
+// - -- WP MDQT2c -- Each device has its own rows, its own Pause and its own place
+//   in its core's log; a device that is not shown is caught up on when it is again.
 // - Clear empties the rows and the core's log (ids go on rising, so no line
 //   is read twice).
 // - Copy puts every row on the clipboard, one per line.
@@ -80,7 +85,7 @@ public:
     void setWindowShown(bool shown);
     QString status() const;
 
-    Q_INVOKABLE void togglePause() { setPaused(!m_paused); }
+    Q_INVOKABLE void togglePause() { setPaused(!paused()); }
     Q_INVOKABLE void clear();
     Q_INVOKABLE void copyAll() const;
     // The text Copy puts on the clipboard
@@ -104,6 +109,23 @@ private:
         uint64_t last = 0;
         QStringList lines;
     };
+    // -- WP MDQT2c -- one device's
+    struct State {
+        // The last line read; the poll reads it on the worker
+        std::shared_ptr<std::atomic<uint64_t>> last = std::make_shared<std::atomic<uint64_t>>(0);
+        bool paused = false;
+        // A Resume's skip to the log's end is under way: batches until then are dropped
+        bool skipping = false;
+        QStringList rows;   // while another device is shown
+    };
+    using StatePtr = std::shared_ptr<State>;
+    StatePtr state() const;
+    // What the poll reads after, on the worker: the shown device's
+    struct Cursor {
+        std::mutex lock;
+        std::shared_ptr<std::atomic<uint64_t>> last;
+    };
+    void onSnapshot();
     static Batch readAfter(FfiCore *core, uint64_t after);
     void apply(const Batch &batch);
     void skipToEnd();
@@ -112,12 +134,9 @@ private:
     AppContext m_ctx;
     MonitorLines *m_lines;
     Poller::Id m_poll = 0;
-    // The last line read; the poll reads it on the worker
-    std::shared_ptr<std::atomic<uint64_t>> m_last = std::make_shared<std::atomic<uint64_t>>(0);
-    bool m_paused = false;
     bool m_shown = false;
-    // A Resume's skip to the log's end is under way: batches until then are dropped
-    bool m_skipping = false;
+    StatePtr m_announced;   // -- WP MDQT2c -- whose rows are shown
+    std::shared_ptr<Cursor> m_cursor = std::make_shared<Cursor>();
 };
 
 #endif // MONITORCONTROLLER_H

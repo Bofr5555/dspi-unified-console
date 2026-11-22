@@ -7,6 +7,7 @@
 // from the core's own state (a direct call).
 
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { appMenu, openPage } from "../nav";
 
 type Band = { filterType: number; bypass: boolean; freq: number; q: number; gain: number; qp: number };
 type State = { numInputChannels: number; filters: Band[][]; outputGainDb: number[] };
@@ -42,7 +43,7 @@ async function openEq(page: Page, venue = "Venue A") {
   const one = page.locator("#one");
   await one.getByRole("region", { name: venue }).getByRole("button", { name: "Connect" }).click();
   const session = one.getByRole("article", { name: "DSPi" });
-  await session.getByRole("tab", { name: "EQ" }).click();
+  await openPage(session, "EQ");
   await expect(session.locator(".eq-pick").first()).toBeVisible();
   return session;
 }
@@ -117,7 +118,7 @@ test("WBCLIP M45: Ctrl/Cmd+C and +V on the chosen channel; a linked input pastes
   expect((await core(page)).filters.slice(0, 2)).toEqual(s0.filters.slice(0, 2));
 
   // The shortcut list names them.
-  await session.getByRole("button", { name: "Keyboard Shortcuts" }).click();
+  await appMenu(page.locator("#one"), "Keyboard Shortcuts"); // -- WP WEBM1 --
   const list = page.getByRole("dialog", { name: "Keyboard Shortcuts" });
   await expect(list.getByText("Copy Parameters")).toBeVisible();
   await expect(list.getByText("Paste Parameters")).toBeVisible();
@@ -132,7 +133,7 @@ test("WBCLIP M45: the matrix column menu copies and pastes an output", async ({ 
   const errors = errorsOf(page);
   const session = await openEq(page);
   await shapeOut1(page);
-  await session.getByRole("tab", { name: "Matrix" }).click();
+  await openPage(session, "Matrix");
   const matrix = session.getByRole("region", { name: "Matrix Mixer" });
   const column = (n: number) => matrix.locator("th.m-out").nth(n).getByRole("button").first();
   await column(1).click();
@@ -166,7 +167,7 @@ test("WBCLIP read only: a view-only session copies but never pastes, by menu or 
   await page.waitForTimeout(200);
   const s1 = await core(page);
   expect([s1.filters, s1.outputGainDb]).toEqual([s0.filters, s0.outputGainDb]);
-  await session.getByRole("tab", { name: "Matrix" }).click();
+  await openPage(session, "Matrix");
   const matrix = session.getByRole("region", { name: "Matrix Mixer" });
   await expect(matrix.locator("th.m-out").first().getByRole("button").first()).toBeDisabled();
 });

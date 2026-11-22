@@ -6,6 +6,7 @@
 
 import { readFileSync } from "node:fs";
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { openPage } from "../nav";
 
 type Band = { filterType: number; freq: number; q: number; gain: number };
 type State = { filters: Band[][] };
@@ -35,7 +36,6 @@ async function openDemo(page: Page): Promise<Locator> {
   return session;
 }
 
-const tab = (session: Locator, name: string) => session.getByRole("tab", { name, exact: true });
 
 async function noSidewaysScroll(page: Page) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
@@ -48,7 +48,7 @@ test("WB6K M28: Export Filters downloads the bands; Import Filters… on the cho
   const session = await openDemo(page);
   await setBand(page, 0, 5);
   await setBand(page, 1, 3);
-  await tab(session, "Files").click();
+  await openPage(session, "Files");
   const files = session.getByRole("region", { name: "Files" });
   const card = files.getByRole("region", { name: "Filters" });
   const [dl] = await Promise.all([page.waitForEvent("download"), card.getByRole("button", { name: "Export Filters" }).click()]);
@@ -86,7 +86,7 @@ test("WB6K M28: Export Filters downloads the bands; Import Filters… on the cho
 test("WB6K M30: Save Master Volume and Save Output Configuration store the live values", async ({ page }) => {
   const errors = errorsOf(page);
   const session = await openDemo(page);
-  await tab(session, "Files").click();
+  await openPage(session, "Files");
   const files = session.getByRole("region", { name: "Files" });
   const card = files.getByRole("region", { name: "Save to the device" });
   await card.getByRole("button", { name: "Save Master Volume" }).click();
@@ -100,7 +100,7 @@ test("WB6K M30: Save Master Volume and Save Output Configuration store the live 
 test("WB6K M32: Update Database: the built-in one, Download (the page's GET, a local fixture), Import File refused, Reset to Built-in", async ({ page, baseURL }) => {
   const errors = errorsOf(page);
   const session = await openDemo(page);
-  await tab(session, "Files").click();
+  await openPage(session, "Files");
   const card = session.getByRole("region", { name: "AutoEQ database" });
   await card.getByRole("button", { name: "Update Database…" }).click();
   const current = card.getByRole("status", { name: "Current database" });
@@ -126,7 +126,7 @@ test("WB6K M32: Update Database: the built-in one, Download (the page's GET, a l
   // Kept for the next visit, in the page's storage.
   await page.reload();
   const again = await openDemo(page);
-  await tab(again, "Files").click();
+  await openPage(again, "Files");
   const card2 = again.getByRole("region", { name: "AutoEQ database" });
   await card2.getByRole("button", { name: "Update Database…" }).click();
   await expect(card2.getByRole("status", { name: "Current database" })).toContainText("3 profiles (your own)");
@@ -140,7 +140,7 @@ test("WB6K M32: Update Database: the built-in one, Download (the page's GET, a l
 test("WB6K M31: Browse Profiles and Favorite Profiles in the AutoEQ panel; a found profile previews; Clear Favorites", async ({ page }) => {
   const errors = errorsOf(page);
   const session = await openDemo(page);
-  await tab(session, "EQ").click();
+  await openPage(session, "EQ");
   await session.getByRole("button", { name: "AutoEQ…" }).click();
   const panel = session.getByRole("region", { name: "AutoEQ" });
   await panel.getByLabel("Search profiles").fill("sennheiser hd 600");
@@ -159,7 +159,7 @@ test("WB6K M31: Browse Profiles and Favorite Profiles in the AutoEQ panel; a fou
   await expect(panel).toContainText("No profile matches “zzzz no such headphone”.");
   if (test.info().project.name === "narrow") await noSidewaysScroll(page);
 
-  await tab(session, "Files").click();
+  await openPage(session, "Files");
   const card = session.getByRole("region", { name: "AutoEQ database" });
   await card.getByRole("button", { name: "Update Database…" }).click();
   await expect(card.getByRole("list", { name: "Favorite Profiles" })).toContainText("Sennheiser HD 600");
@@ -172,27 +172,27 @@ test("WB6K M31: Browse Profiles and Favorite Profiles in the AutoEQ panel; a fou
 test("WB6K: the .dspipreset carries the input pair links, and an import with routing restores them", async ({ page }) => {
   const errors = errorsOf(page);
   const session = await openDemo(page);
-  await tab(session, "Inputs").click();
+  await openPage(session, "Inputs");
   const link = session.getByRole("region", { name: "Input trims" }).getByRole("button", { name: "Link 1/2" });
   await expect(link).toHaveAttribute("aria-pressed", "true");
 
-  await tab(session, "Files").click();
+  await openPage(session, "Files");
   const files = session.getByRole("region", { name: "Files" });
   const [dl] = await Promise.all([page.waitForEvent("download"), files.getByRole("button", { name: "Export Configuration" }).click()]);
   const text = readFileSync(await dl.path(), "utf8");
   expect(JSON.parse(text).global.inputPairLinked[0]).toBe(true);
 
-  await tab(session, "Inputs").click();
+  await openPage(session, "Inputs");
   await link.click();
   await expect(link).toHaveAttribute("aria-pressed", "false");
 
-  await tab(session, "Files").click();
+  await openPage(session, "Files");
   await files.getByLabel("Configuration file to import").setInputFiles({ name: "links.dspipreset", mimeType: "application/json", buffer: Buffer.from(text) });
   const preview = files.getByRole("region", { name: "Import preview" });
   await preview.getByRole("checkbox", { name: /Routing and matrix/ }).check();
   await preview.getByRole("button", { name: "Import", exact: true }).click();
   await expect(files.getByRole("status", { name: "Result" })).toContainText("Imported “");
-  await tab(session, "Inputs").click();
+  await openPage(session, "Inputs");
   await expect(link).toHaveAttribute("aria-pressed", "true");
   expect(errors).toEqual([]);
 });

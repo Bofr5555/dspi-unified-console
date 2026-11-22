@@ -5,6 +5,7 @@
 #include <QHash>
 #include <QVector>
 #include <QtQml/qqmlregistration.h>
+#include <utility>
 
 struct DspState;
 
@@ -60,6 +61,9 @@ public:
     // Drops one staged edit (a refused write), or all of them
     void unstage(int input, int output);
     void unstageAll();
+    // -- WP MDQT2a -- Another device's staged edits in place of these, which are
+    // returned; update() follows and shows them
+    QHash<int, Cell> swapStaged(const QHash<int, Cell> &staged) { return std::exchange(m_staged, staged); }
     int stagedCount() const { return int(m_staged.size()); }
 
 signals:

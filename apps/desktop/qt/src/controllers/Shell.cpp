@@ -58,9 +58,11 @@ void Shell::addWindow(const QString &action, const QString &type) {
     m_windowTypes.insert(action, type);
 }
 
-void Shell::setBanners(const QStringList &types) {
-    if (types == m_banners) return;
+void Shell::setBanners(const QStringList &types, const QStringList &blocking, const QStringList &notice) {
+    if (types == m_banners && blocking == m_blockingBanners && notice == m_noticeBanners) return;
     m_banners = types;
+    m_blockingBanners = blocking;   // -- WP LAY3 --
+    m_noticeBanners = notice;
     emit bannersChanged();
 }
 
@@ -98,22 +100,49 @@ void Shell::trigger(const QString &action) {
         return;
     }
     if (m_windowTypes.contains(action)) {
-        // -- WP LAY0 -- a panel goes to its page while the shell has pages
-        if (m_pageHost) {
-            const QVariantMap row = panel(action);
-            QVariant shown;
-            if (!row.isEmpty()
-                && QMetaObject::invokeMethod(m_pageHost.data(), "showPanel", Q_RETURN_ARG(QVariant, shown),
-                                             Q_ARG(QVariant, row))
-                && (shown.canConvert<QJSValue>() ? shown.value<QJSValue>().toBool() : shown.toBool()))
-                return;
-        }
-        openWindow(action);
+        showTool(action);
         return;
     }
     qInfo("Shell: nothing handles \"%s\" yet", qPrintable(action));
     m_lastUnhandled = action;
     emit lastUnhandledChanged();
+}
+
+// -- WP LAY3 -- (was trigger()'s)
+void Shell::showTool(const QString &action) {
+    // -- WP LAY0 -- a panel goes to its page while the shell has pages
+    if (m_pageHost) {
+        const QVariantMap row = panel(action);
+        QVariant shown;
+        if (!row.isEmpty()
+            && QMetaObject::invokeMethod(m_pageHost.data(), "showPanel", Q_RETURN_ARG(QVariant, shown),
+                                         Q_ARG(QVariant, row))
+            && (shown.canConvert<QJSValue>() ? shown.value<QJSValue>().toBool() : shown.toBool()))
+            return;
+    }
+    openWindow(action);
+}
+
+void Shell::closeWindow(const QString &action) {
+    if (const QPointer<QWindow> w = m_windows.value(action); w && w->isVisible()) w->close();
+    if (m_shownWindows.removeAll(action) > 0) emit shownWindowsChanged();
+}
+
+void Shell::toolWindowClosing() {
+    QPointer<QWindow> w = qobject_cast<QWindow *>(sender());
+    // Once the close is through: what the window's panel says as it goes
+    // (a poll stopped) comes before a page's panel starts again
+    QMetaObject::invokeMethod(this, [this, w]() {
+        if (w && w->isVisible()) return;   // refused
+        for (auto it = m_windows.cbegin(); it != m_windows.cend(); ++it)
+            if ((!it.value() || it.value() == w) && m_shownWindows.removeAll(it.key()) > 0) emit shownWindowsChanged();
+    }, Qt::QueuedConnection);
+}
+
+void Shell::setPageAction(const QString &action) {
+    if (action == m_pageAction) return;
+    m_pageAction = action;
+    emit pageActionChanged();
 }
 
 QWindow *Shell::openWindow(const QString &action) {
@@ -141,6 +170,14 @@ QWindow *Shell::openWindow(const QString &action) {
         QJSEngine::setObjectOwnership(w, QJSEngine::CppOwnership);
         // -- WP QTSENDER -- ToolWindow greys its content by it
         if (w->metaObject()->indexOfProperty("actionId") >= 0) w->setProperty("actionId", action);
+        // -- WP LAY3 -- QQuickWindow's signal; its event type is private
+        if (w->metaObject()->indexOfSignal("closing(QQuickCloseEvent*)") >= 0)
+            connect(w.data(), SIGNAL(closing(QQuickCloseEvent *)), this, SLOT(toolWindowClosing()));
+    }
+    // -- WP LAY3 -- before it shows (shownWindows' order)
+    if (!m_shownWindows.contains(action)) {
+        m_shownWindows.append(action);
+        emit shownWindowsChanged();
     }
     w->show();
     w->raise();

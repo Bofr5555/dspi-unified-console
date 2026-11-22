@@ -9,6 +9,7 @@ ToolTip {
     timeout: 8000
     font: Theme.fontSmall
     contentItem: Text {
+        textFormat: Text.PlainText
         text: tip.text
         font: tip.font
         color: Theme.tooltipText

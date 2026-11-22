@@ -41,6 +41,7 @@ AbstractButton {
         }
         Text {
             anchors { top: picture.bottom; topMargin: 2; horizontalCenter: parent.horizontalCenter }
+            textFormat: Text.PlainText
             text: tile.text
             color: tile.ink
             font.pixelSize: 9

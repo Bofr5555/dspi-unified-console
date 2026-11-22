@@ -17,6 +17,7 @@ AbstractButton {
 
     contentItem: Text {
         id: label
+        textFormat: Text.PlainText
         text: pill.text
         font: Theme.fontCaption
         color: !pill.checkable || pill.checked ? Theme.textOnTint : Theme.text

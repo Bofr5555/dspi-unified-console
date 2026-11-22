@@ -6550,7 +6550,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_speaker_layout_set() != 50039.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_speaker_layout_set_dir() != 8445.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_speaker_layout_set_dir() != 19602.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_test_dac_mute() != 36228.toShort()) {
@@ -13809,7 +13809,10 @@ public interface DspiCoreInterface {
      * where it holds none for that device.
      *
      * Errors: [`DspiError::Unsupported`] on the web (no files: the page keeps
-     * the layout and sets it again with [`DspiCore::speaker_layout_set`]).
+     * the layout and sets it again with [`DspiCore::speaker_layout_set`]);
+     * -- WP MDQT1 -- [`DspiError::Io`] when a layout set before could not be
+     * written there: the folder is named all the same, and that layout stays
+     * in force in memory until a later call or a save writes it.
      */
     fun `speakerLayoutSetDir`(`dir`: kotlin.String)
     
@@ -24712,7 +24715,10 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
      * where it holds none for that device.
      *
      * Errors: [`DspiError::Unsupported`] on the web (no files: the page keeps
-     * the layout and sets it again with [`DspiCore::speaker_layout_set`]).
+     * the layout and sets it again with [`DspiCore::speaker_layout_set`]);
+     * -- WP MDQT1 -- [`DspiError::Io`] when a layout set before could not be
+     * written there: the folder is named all the same, and that layout stays
+     * in force in memory until a later call or a save writes it.
      */
     @Throws(DspiException::class)override fun `speakerLayoutSetDir`(`dir`: kotlin.String)
         = 

@@ -12,6 +12,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { openPage } from "../nav";
 
 const ONE = "DEMO-ALINK-A";
 const TWO = "DEMO-ALINK-D";
@@ -119,7 +120,6 @@ async function openUnit(page: Page, hub: OwnHub, serial: string): Promise<Locato
   return session;
 }
 
-const tab = (session: Locator, name: string) => session.getByRole("tab", { name, exact: true });
 const line = (panel: Locator, serial: string) => panel.locator(`li.hub-result[data-serial="${serial}"]`);
 
 if (!process.env.DSPI_TERM) {
@@ -142,7 +142,7 @@ test.describe("P3WGR on a hub", () => {
     const errors = errorsOf(page);
     hub = await startHub(seededStore(false), "--open");
     const session = await openUnit(page, hub, ONE);
-    await tab(session, "Hub").click();
+    await openPage(session, "Hub");
     const groups = session.getByRole("region", { name: "Groups" });
     await expect(groups).toContainText("The hub has no groups yet.");
 
@@ -191,11 +191,11 @@ test.describe("P3WGR on a hub", () => {
     await expect(result).toHaveCount(0);
 
     // A snapshot of the open DSPi on the hub, for the bulk apply.
-    await tab(session, "Snapshots").click();
+    await openPage(session, "Snapshots");
     const onHub = session.getByRole("region", { name: "On the hub" });
     await onHub.getByRole("button", { name: "Save to the Hub" }).click();
     await expect(onHub.getByRole("status")).toContainText("to the hub");
-    await tab(session, "Hub").click();
+    await openPage(session, "Hub");
 
     // A guarded bulk apply, kept with one Keep.
     const bulk = groups.locator(".hub-bulk");
@@ -245,7 +245,7 @@ test.describe("P3WGR on a hub", () => {
     const errors = errorsOf(page);
     hub = await startHub(seededStore(true), "--pair");
     const session = await openUnit(page, hub, ONE);
-    await tab(session, "Hub").click();
+    await openPage(session, "Hub");
     await expect(session.getByRole("region", { name: "Devices on the hub" }).locator(".hub-role-tag")).toHaveText("Control");
     const groups = session.getByRole("region", { name: "Groups" });
     const details = groups.locator(".hub-group");

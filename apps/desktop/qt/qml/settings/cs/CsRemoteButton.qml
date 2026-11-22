@@ -49,6 +49,7 @@ Rectangle {
             }
             Text {
                 objectName: card.objectName + ".code"
+                textFormat: Text.PlainText
                 text: card.rec.codeText || ""
                 font: card.rec.learned === true ? Theme.fontMono : Theme.fontSmall
                 color: card.rec.learned === true ? Theme.text : Theme.textMuted
@@ -56,6 +57,7 @@ Rectangle {
             Text {
                 Layout.fillWidth: true
                 visible: !card.expanded && card.rec.learned === true
+                textFormat: Text.PlainText
                 text: card.rec.summary || ""
                 font: Theme.fontSmall
                 color: Theme.textMuted
@@ -89,6 +91,7 @@ Rectangle {
             objectName: card.objectName + ".learnMessage"
             visible: card.learning && CsController.learnMessage.length > 0
             Layout.fillWidth: true
+            textFormat: Text.PlainText
             text: CsController.learnMessage
             font: Theme.fontSmall
             color: Theme.textMuted
@@ -113,6 +116,7 @@ Rectangle {
             Text {
                 objectName: card.objectName + ".message"
                 Layout.fillWidth: true
+                textFormat: Text.PlainText
                 text: card.rec.message || ""
                 font: Theme.fontSmall
                 color: card.rec.isError === true ? Theme.warning : Theme.textMuted

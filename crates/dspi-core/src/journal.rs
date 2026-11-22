@@ -1232,6 +1232,23 @@ impl DspiCore {
     }
 }
 
+// -- WP MCP2a --
+impl DspiCore {
+    /// Who opened the undo group open now on this connection
+    /// ([`DspiCore::begin_group`]): [`crate::actor::EMBEDDER`] or an actor;
+    /// `None` when none is open (or no device is). An agent's layer asks it
+    /// before a group of its own, which would otherwise nest into the
+    /// user's (review RA, MCP0 item 9). Rust-only: actors exist only in the
+    /// process.
+    pub fn undo_group_owner(&self) -> Option<crate::actor::ActorId> {
+        self.lock()
+            .conn
+            .as_ref()
+            .filter(|c| c.undo_group.is_open())
+            .map(|c| c.undo_group.actor)
+    }
+}
+
 impl DspiCore {
     /// [`DspiCore::undo`]. A change someone else has overwritten since (the
     /// mirror no longer holds the value this client left) is not reversed:

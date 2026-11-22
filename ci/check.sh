@@ -236,7 +236,12 @@ for s in "${steps[@]}"; do
       # test under Wine (install over an earlier install, refused while the app
       # runs, the notices, uninstall). The update feed is left out here: a CI
       # build is not a release.
-      $RUN "BUILD_DIR=/work/build-desktop-win64 DSPI_UPDATE_FEED_URL= apps/desktop/packaging/windows/build-windows.sh /work/dist-windows && apps/desktop/packaging/windows/test-installer.sh /work/dist-windows/uConsole-for-DSPi-*-windows-x86_64-setup.exe" ;;
+      # -- WP RBFIX -- The setup tested is the one just built, by its name (the
+      # CMake project's version, as build-windows.sh names it): dist-windows keeps
+      # the setups of earlier versions, and a glob took whichever sorts first.
+      version=$(sed -n 's/^project(uconsole-for-dspi VERSION \([0-9.]*\).*/\1/p' apps/desktop/qt/CMakeLists.txt)
+      [ -n "$version" ] || { echo "qt-windows: no version in apps/desktop/qt/CMakeLists.txt's project()" >&2; exit 1; }
+      $RUN "BUILD_DIR=/work/build-desktop-win64 DSPI_UPDATE_FEED_URL= apps/desktop/packaging/windows/build-windows.sh /work/dist-windows && apps/desktop/packaging/windows/test-installer.sh /work/dist-windows/uConsole-for-DSPi-$version-windows-x86_64-setup.exe" ;;
     proptest)
       # Every property test function is named proptest_* (PLAN §1.9).
       $RUN "PROPTEST_CASES=20000 cargo test --workspace --all-features --release -- proptest_" ;;

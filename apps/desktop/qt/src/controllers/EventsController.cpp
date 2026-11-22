@@ -6,11 +6,13 @@
 #include "CoreApi.h"
 #include "CoreWorker.h"
 #include "DeviceModel.h"
+#include "DeviceSession.h"   // -- WP MDQT2b --
 #include "HubFeed.h"
 #include "NoticeCenter.h"
 #include "Snapshot.h"
 
 #include <QDateTime>
+#include <QPointer>
 #include <QDir>
 #include <QJSEngine>
 #include <QJsonArray>
@@ -47,7 +49,7 @@ Page localPage(FfiCore *c) {
 }
 } // namespace
 
-EventsController::EventsController(const AppContext &ctx, QObject *parent) : QObject(parent), m_ctx(ctx) {
+EventsController::EventsController(const AppContext &ctx, QObject *parent) : QObject(parent), m_ctx(ctx), m_session(ctx.activeSession()) {
     // The core keeps the log in the app's data folder, one file per serial
     const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + QStringLiteral("/events");
     const QByteArray d = QDir::toNativeSeparators(dir).toUtf8();
@@ -118,7 +120,23 @@ void EventsController::onSnapshot() {
     const bool connected = m_ctx.device->connected();
     const QString serial = m_ctx.device->serial();
     const bool remote = m_ctx.device->remote();
-    if (connected == m_connected && serial == m_serial && remote == m_remote) return;
+    // -- WP MDQT2b -- another device is the active one: the hub's watch of the
+    // one left ends there, and its list is not this one's
+    const bool switched = m_ctx.activeSession() != m_session;
+    if (switched) {
+        if (m_watching && m_session)
+            m_session->worker()->post([](FfiCore *c) {
+                char buf[1024];
+                dspi_hub_events_watch(c, false, nullptr, buf, sizeof buf);
+            });
+        m_watching = false;
+        m_session = m_ctx.activeSession();
+        if (!m_entries.isEmpty()) {
+            m_entries.clear();
+            emit entriesChanged();
+        }
+    }
+    if (!switched && connected == m_connected && serial == m_serial && remote == m_remote) return;
     m_connected = connected;
     m_serial = serial;
     m_remote = remote;

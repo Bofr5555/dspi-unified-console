@@ -3,9 +3,11 @@
 
 #include "Core.h"
 #include "DeviceModel.h"
+#include "DeviceSession.h"   // -- WP MDQT2b --
 #include "Snapshot.h"
 
 #include <QJsonArray>
+#include <QPointer>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QVariantMap>
@@ -154,10 +156,12 @@ bool ExtController::write(const QByteArray &map) {
 void ExtController::refresh() {
     if (!m_ctx.device->connected()) return;
     ++m_busy;
+    const QPointer<DeviceSession> asked = m_ctx.activeSession();   // -- WP MDQT2b --
     m_ctx.core->worker()->call(
         this, [](FfiCore *c) { return readSized([c](char *b, uint32_t n) { return dspi_ext_status(c, b, n); }); },
-        [this](const QByteArray &status) {
+        [this, asked](const QByteArray &status) {
             --m_busy;
+            if (asked != m_ctx.activeSession()) return;   // -- WP MDQT2b -- the next device's read follows
             readStatus(m_override.isEmpty() ? status : m_override);
             takeMap();
             emit changed();

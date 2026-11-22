@@ -46,11 +46,30 @@ QJsonDocument coreJson(uint32_t (*fill)(char *, uint32_t), uint32_t first) {
     return QJsonDocument::fromJson(readSized([fill](char *buf, uint32_t len) { return fill(buf, len); }, first));
 }
 
+// -- WP ROLEQ -- The Speakers step ("Which output drives what?"): its own
+// asset, assets/onboarding/speakers.json, so the core's getting_started.json
+// (which Android's wizard renders) stays without it. Its stage goes in before
+// the stage it names (`before`), else before the last one.
+void withSpeakersStep(QVariantMap &wizard) {
+    QFile f(QStringLiteral(":/onboarding/speakers.json"));
+    if (!f.open(QIODevice::ReadOnly)) return;
+    const QJsonObject doc = QJsonDocument::fromJson(f.readAll()).object();
+    const QVariantMap stage = doc.value(QLatin1String("stage")).toObject().toVariantMap();
+    QVariantList stages = wizard.value(QStringLiteral("stages")).toList();
+    if (stage.isEmpty() || stages.isEmpty()) return;
+    qsizetype at = stages.size() - 1;
+    for (qsizetype i = 0; i < stages.size(); ++i)
+        if (stages[i].toMap().value(QStringLiteral("id")) == doc.value(QLatin1String("before")).toString()) at = i;
+    stages.insert(at, stage);
+    wizard.insert(QStringLiteral("stages"), stages);
+}
+
 } // namespace
 
 OnboardingController::OnboardingController(const AppContext &ctx, QObject *parent) : QObject(parent), m_ctx(ctx) {
     // Compiled into the core: no device, no lock, fine on this thread
     m_gettingStarted = coreJson(dspi_onboarding_getting_started_json, 16384).object().toVariantMap();
+    withSpeakersStep(m_gettingStarted);
     m_releases = coreJson(dspi_onboarding_whats_new_json, 16384).array().toVariantList();
     // Newest first whatever the file's order (the Mac's rule)
     std::stable_sort(m_releases.begin(), m_releases.end(), [](const QVariant &a, const QVariant &b) {
@@ -84,7 +103,7 @@ void OnboardingController::showReleaseNotesIfUnread() {
     // on and starts caught up; after an update the unread notes open once
     const QString shown = whatsNewShown();
     if (shown.isEmpty()) markWhatsNewRead();
-    else if (!unreadSince(shown).isEmpty()) m_ctx.shell->openWindow(QStringLiteral("help.whatsNew"));
+    else if (!unreadSince(shown).isEmpty()) m_ctx.shell->showTool(QStringLiteral("help.whatsNew"));   // -- WP LAY3 --
 }
 
 void OnboardingController::setInstaller(QObject *installer) {

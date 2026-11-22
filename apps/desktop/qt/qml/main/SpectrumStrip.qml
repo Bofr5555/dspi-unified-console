@@ -71,6 +71,7 @@ Rectangle {
                     }
                     Text {
                         Layout.fillWidth: true
+                        textFormat: Text.PlainText
                         text: strip.infoOf(cell.modelData).name
                         color: Theme.textMuted
                         font.pixelSize: 9

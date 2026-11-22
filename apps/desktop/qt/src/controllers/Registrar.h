@@ -6,6 +6,8 @@
 
 class Core;
 class DeviceModel;
+class DeviceRegistry;
+class DeviceSession;
 class Poller;
 class Shell;
 class QQmlEngine;
@@ -18,6 +20,16 @@ struct AppContext {
     Shell *shell;
     QQmlEngine *engine;
     Poller *poller;   // periodic reads: add a poll here, never a timer of your own
+    // -- WP MDQT1 -- The open devices. `core`, `device` and `poller` are facades
+    // over the active one, whichever it is at each call: do not keep
+    // core->handle() or core->worker(). On DeviceRegistry::activeChanged (also
+    // Core::activeChanged) a controller reads again what it shows; `device` has
+    // emitted snapshotApplied for the new one by then, with another connection
+    // generation, as after a device switch. A result asked of the device left
+    // still arrives: compare activeSession(). State that is one device's goes
+    // into its core or its session's stash().
+    DeviceRegistry *registry;
+    DeviceSession *activeSession() const;
 };
 
 // How a work package adds a controller, a banner or a tool window without
@@ -54,7 +66,10 @@ struct AppContext {
 //
 // Banner: a QML type of module UConsole that BannerHost stacks under the menu
 // bar; `order` sorts them, lowest on top, then by name. The banner shows and
-// hides itself (its own `visible`).
+// hides itself (its own `visible`). -- WP LAY3 -- `kind` says where Modern shows
+// it (Classic stacks them all): Blocking in the status strip (a state that
+// limits what can be done), Notice in the notification drawer (the default),
+// ClassicOnly nowhere (a page shows it).
 //
 // Window: a QML type (usually a ToolWindow) that Shell opens for a menu row's
 // action id, made once and raised afterwards.
@@ -70,9 +85,12 @@ struct ControllerEntry {
     const QMetaObject *meta;
     Factory make;
 };
+// -- WP LAY3 --
+enum BannerKind { Notice, Blocking, ClassicOnly };
 struct BannerEntry {
     const char *type;
     int order;
+    BannerKind kind;
 };
 struct WindowEntry {
     const char *action;
@@ -94,7 +112,7 @@ struct Controller {
 };
 
 struct Banner {
-    explicit Banner(const char *type, int order = 0) { banners().push_back({ type, order }); }
+    explicit Banner(const char *type, int order = 0, BannerKind kind = Notice) { banners().push_back({ type, order, kind }); }
 };
 
 struct Window {

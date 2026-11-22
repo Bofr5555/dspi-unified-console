@@ -77,9 +77,18 @@ export function noticeRow(key: string): NoticeRecord | null {
   return rows?.get(key) ?? null;
 }
 
+// -- WP ROLEW -- "invalid argument: measure.layout_unconfirmed: …"
+export const LAYOUT_UNCONFIRMED_PREFIX = /^(?:invalid argument: )?measure\.layout_unconfirmed:/;
+
 /** A failure's notice: its key's row, with the core's own words as the detail. Null without one. */
 export function noticeOf(e: unknown): NoticeRecord | null {
   if (!(e instanceof CoreCallError) || !e.noticeKey) return null;
+  // -- WP ROLEW -- a measurement refused for want of a confirmed speaker layout comes as `invalid`
+  // with its key as the message's prefix (review RA): the prefix is matched, never the whole message
+  if (LAYOUT_UNCONFIRMED_PREFIX.test(e.message)) {
+    const r = noticeRow("measure.layout_unconfirmed");
+    if (r) return { ...r, detail: [r.reason, r.action].filter(Boolean).join(" ") };
+  }
   const row = noticeRow(e.noticeKey);
   return row ? { ...row, detail: e.message } : null;
 }

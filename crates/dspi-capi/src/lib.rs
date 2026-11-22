@@ -49,6 +49,9 @@ mod fns_link;
 mod fns_hub;
 // -- WP MD0 -- one core per open device
 mod fns_core_set;
+// -- WP MCP3 -- the MCP server for AI agents
+#[cfg(feature = "mcp")]
+mod fns_mcp;
 
 /// Run `f`, turning a panic into `fail`. Every exported function goes
 /// through this.
@@ -221,6 +224,8 @@ mod tests {
             "src/fns_browse.rs",
             "src/fns_link.rs",
             "src/fns_hub.rs",
+            // -- WP INT3 -- (MCP3's, in the header since INT3 regenerated it)
+            "src/fns_mcp.rs",
         ]
         .map(read)
         .concat();

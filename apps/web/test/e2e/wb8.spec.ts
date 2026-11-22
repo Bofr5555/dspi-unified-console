@@ -9,6 +9,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { mkdirSync, readFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { hasPage, openPage } from "../nav";
 
 type Clients = { dspiClients: { call(m: string, p: unknown): Promise<unknown> }[] };
 type Band = { filterType: number; freq: number; gain: number };
@@ -75,10 +76,11 @@ test("WB8 undo: the buttons and the keys step back and forward through the core'
   await expect(undoButton(session)).toBeDisabled();
   await expect(redoButton(session)).toBeDisabled();
   const start = (await coreState(page)).userVolumeDb;
-  // -- fixup wb8 -- Undo and Redo sit in the tab row at every width: the row is no taller than the tabs
-  const bar = (await session.locator(".screen-bar").boundingBox())!;
-  const tabs = (await session.locator(".screen-tabs").boundingBox())!;
-  expect(Math.abs(bar.height - tabs.height)).toBeLessThan(0.5);
+  // -- WP WEBM1 -- Undo and Redo sit in the device's bar, in one line with the preset picker at every width
+  const bar = (await session.getByRole("group", { name: "Device actions" }).boundingBox())!;
+  const picker = (await session.getByRole("combobox", { name: "Recall preset" }).boundingBox())!;
+  // (two consoles side by side at 375 px are slivers, where it wraps)
+  if (test.info().project.name !== "narrow") expect(Math.abs(bar.height - picker.height)).toBeLessThan(0.5);
 
   await setVolume(session, "128");
   await expect.poll(async () => (await coreState(page)).userVolumeDb).not.toBe(start);
@@ -151,7 +153,7 @@ async function drawn(graph: Locator) {
 
 test("WB8 undo: a graph drag is one step; a text field keeps Ctrl+Z for itself", async ({ page }) => {
   const session = await openDemo(page);
-  await session.getByRole("tab", { name: "EQ" }).click();
+  await openPage(session, "EQ");
   await session.locator(".eq-pick", { hasText: "OUT1" }).click();
   const graph = session.getByRole("application", { name: /^EQ graph, OUT1/ });
   await graph.evaluate((e) => e.scrollIntoView({ block: "center" }));
@@ -204,7 +206,7 @@ test("WB8 events: a clip is listed with its time, unit and text, and copies as t
   const errors = errorsOf(page);
   if (browserName === "chromium") await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   const session = await openDemo(page, "Venue A", "?one");
-  await session.getByRole("tab", { name: "Events" }).click();
+  await openPage(session, "Events");
   const log = session.getByRole("region", { name: "Event log" });
   await expect(log.getByRole("heading", { name: "Event log" })).toBeVisible();
   // The connection is the first record.
@@ -246,7 +248,7 @@ test("WB8 events: without the Clipboard API Copy as Text copies the older way, a
     Object.defineProperty(Navigator.prototype, "clipboard", { get: () => undefined, configurable: true });
   });
   const session = await openDemo(page, "Venue A", "?one");
-  await session.getByRole("tab", { name: "Events" }).click();
+  await openPage(session, "Events");
   const log = session.getByRole("region", { name: "Event log" });
   await expect(log.getByRole("row").filter({ hasText: "Connected" })).toHaveCount(1);
   await log.getByRole("button", { name: "Copy as Text" }).click();
@@ -274,7 +276,7 @@ test("WB8 events: without the Clipboard API Copy as Text copies the older way, a
 
 test("WB8 diagnostics: Save Diagnostics… hands over the core's zip; Simple mode has no Events screen", async ({ page }) => {
   const session = await openDemo(page, "Venue A", "?one");
-  await session.getByRole("tab", { name: "Events" }).click();
+  await openPage(session, "Events");
   const log = session.getByRole("region", { name: "Event log" });
   const [download] = await Promise.all([page.waitForEvent("download"), log.getByRole("button", { name: "Save Diagnostics…" }).click()]);
   expect(download.suggestedFilename()).toMatch(/^dspi-diagnostics-\d{8}-\d{6}Z\.zip$/);
@@ -291,7 +293,7 @@ test("WB8 diagnostics: Save Diagnostics… hands over the core's zip; Simple mod
   const dialog = page.getByRole("dialog", { name: "Mode" });
   await dialog.getByRole("radio", { name: "Simple" }).check();
   await dialog.getByRole("button", { name: "Use" }).click();
-  await expect(session.getByRole("tab", { name: "Events" })).toHaveCount(0);
+  expect(await hasPage(session, "Events")).toBe(false);
   await expect(session.getByRole("button", { name: "Save Diagnostics…" })).toHaveCount(0);
   // Undo stays: it is not a mode's.
   await expect(undoButton(session)).toBeVisible();
@@ -342,7 +344,7 @@ test.describe("WB8 on a hub", () => {
     test.setTimeout(60_000);
     hub = await linkHub();
     const mine = await openUnit(page, hub, "DEMO-ALINK-A");
-    await mine.getByRole("tab", { name: "Main" }).click();
+    await openPage(mine, "Main");
     const before = await mine.locator(".volume-value").textContent();
     await setVolume(mine, "128");
     await expect(mine.locator(".volume-value")).not.toHaveText(before!);
@@ -351,7 +353,7 @@ test.describe("WB8 on a hub", () => {
     const other = await browser.newPage();
     try {
       const theirs = await openUnit(other, hub, "DEMO-ALINK-A");
-      await theirs.getByRole("tab", { name: "Main" }).click();
+      await openPage(theirs, "Main");
       await setVolume(theirs, "100");
       await expect(theirs.locator(".volume-value")).not.toHaveText(mineShown);
       // Their change reaches this console as a notification.
@@ -378,7 +380,7 @@ test.describe("WB8 on a hub", () => {
     await mute.click();
     await expect(mute).toContainText(": on", { timeout: 10_000 });
     await expect(rail.getByLabel("Alarms")).toHaveText("1 alarm", { timeout: 10_000 });
-    await session.getByRole("tab", { name: "Events" }).click();
+    await openPage(session, "Events");
     const log = session.getByRole("region", { name: "Event log" });
     const alarm = log.getByRole("row").filter({ hasText: "Alarm" });
     await expect(alarm.first()).toBeVisible();

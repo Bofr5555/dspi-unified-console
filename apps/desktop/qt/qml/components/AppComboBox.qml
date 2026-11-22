@@ -25,6 +25,7 @@ ComboBox {
         height: Theme.rowHeight
         highlighted: control.highlightedIndex === index
         contentItem: Text {
+            textFormat: Text.PlainText
             text: control.textRole ? row.model[control.textRole] : row.model.modelData
             font: control.font
             color: Theme.text
@@ -46,6 +47,7 @@ ComboBox {
         color: control.enabled ? Theme.textMuted : Theme.textDisabled
     }
     contentItem: Text {
+        textFormat: Text.PlainText
         text: control.displayText
         font: control.font
         color: control.enabled ? Theme.text : Theme.textDisabled

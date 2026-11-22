@@ -127,6 +127,7 @@ Rectangle {
                             Text {
                                 anchors.verticalCenter: parent.verticalCenter
                                 width: Math.min(implicitWidth, 90)
+                                textFormat: Text.PlainText
                                 text: routeRow.inputName
                                 font.pixelSize: Theme.fontSmall.pixelSize
                                 font.weight: routeRow.on ? Font.DemiBold : Font.Normal

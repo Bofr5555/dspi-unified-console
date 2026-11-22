@@ -13,6 +13,7 @@
 #include <memory>
 
 #include "CoreApi.h"
+#include "DeviceSession.h"
 #include "Registrar.h"
 
 class QJSEngine;
@@ -103,7 +104,7 @@ public:
     // What the device can store as a source name: printable ASCII, 31 characters
     Q_INVOKABLE static QString sanitizeSourceName(const QString &name);
 
-    int selectedChannel() const { return m_selected; }
+    int selectedChannel() const { return state()->selected; }
     QString selectedKind() const;
     int selectedIndex() const;
     int highlightedMask() const { return m_highlighted; }
@@ -112,7 +113,7 @@ public:
     bool derivedLabels() const;
     bool hasClipboard() const { return m_hasClip; }   // -- WP CLIPQT --
     QString clipboardName() const { return m_clipName; }
-    bool identifySupported() const { return m_siggenMask != 0; }
+    bool identifySupported() const { return state()->extras.siggenMask != 0; }
     QString volumeMode() const { return m_masterMode ? QStringLiteral("master") : QStringLiteral("user"); }
     void setVolumeMode(const QString &mode);
     int sidebarWidth() const { return m_sidebarWidth; }
@@ -129,11 +130,11 @@ public:
     bool sourceSupported() const;
     int source() const;
     QVariantList sources() const { return m_sources; }
-    bool sourceNamesSupported() const { return m_sourceNamesSupported; }
+    bool sourceNamesSupported() const { return state()->extras.namesSupported; }
     QStringList presetTitles() const;
-    bool unsaved() const { return m_unsaved; }
-    QStringList unsavedChanges() const { return m_unsavedLines; }
-    bool presetBusy() const { return m_presetBusy; }
+    bool unsaved() const { return state()->extras.dirty; }
+    QStringList unsavedChanges() const { return state()->extras.changes; }
+    bool presetBusy() const { return state()->presetBusy; }
 
     // Selection
     Q_INVOKABLE void select(int channel);
@@ -212,26 +213,48 @@ private:
         uint16_t siggenMask = 0;
         bool capsRead = false;
     };
+    // -- WP MDQT2a -- What is the device's own: the page on show, what was read
+    // of it, and its preset operation under way
+    struct State {
+        int selected = -1;
+        Extras extras;
+        uint64_t capsGeneration = 0;
+        bool extrasInFlight = false;
+        bool extrasAgain = false;
+        bool presetBusy = false;
+    };
+    // A paste asked of a device while the copy, of another one, is on its way
+    struct WaitingPaste {
+        quint64 copy;
+        QPointer<DeviceSession> session;
+        int channel, partner;
+    };
+    std::shared_ptr<State> state() const;
+    std::shared_ptr<State> stateOf(DeviceSession *session) const;
 
     void apply(const QString &what, std::function<bool(FfiCore *)> setter, std::function<void(bool)> done = {});
     void onSnapshot();
     void readExtras();
-    void applyExtras(const Extras &e);
+    void applyExtras(const std::shared_ptr<State> &st, const Extras &e, bool connected);
+    void pasteTo(DeviceSession *session, int channel, int partner, const std::shared_ptr<QByteArray> &clip);
     void rebuildSources();
     void updateHighlight();
     void watchLinks();
     void runPreset(const QString &what, std::function<uint8_t(FfiCore *)> op, const QString &failTitle,
                    const QString &failText);
-    void loadSlot(int slot);
+    void loadSlot(DeviceSession *session, int slot);
+    // An alert; of a device that is not the active one any more, it says which
+    void presetAlert(const QPointer<DeviceSession> &session, const QString &title, const QString &text);
     void saveThenLoad(int previous, int slot);
     void copySlot(int source, int destination, const QString &preOp);
-    void setPresetBusy(bool busy);
+    void setPresetBusy(const std::shared_ptr<State> &st, bool busy);
     void trackWindow(const QString &action);
     static QString presetFailure(uint8_t status);
     static QString loadFailure(uint8_t status);
 
     AppContext m_ctx;
-    int m_selected = -1;
+    std::shared_ptr<State> m_shown;   // -- WP MDQT2a -- the State last announced
+    uint64_t m_askedOf = 0;           // -- WP MDQT2a -- the connection an unsaved question is about, 0 for none
     int m_highlighted = 0;
     bool m_watchingLinks = false;
     // -- WP CLIPQT -- the core's clip document (dspi.channelClip), and the
@@ -246,20 +269,16 @@ private:
     // answer to an older one changes nothing.
     bool m_hasClip = false;
     quint64 m_copies = 0;
+    // -- WP MDQT2a -- That holds on the device copied from: each copy has its
+    // own clip, and a paste on another device (another worker) takes the copy's
+    // answer, waiting for it when it is not there yet.
     std::shared_ptr<QByteArray> m_workerClip = std::make_shared<QByteArray>();
+    QPointer<DeviceSession> m_clipSession;
+    bool m_clipPending = false;
+    QList<WaitingPaste> m_waitingPastes;
     bool m_masterMode = false;
     int m_sidebarWidth = 0;
     QVariantList m_sources;
-    bool m_sourceNamesSupported = false;
-    QStringList m_sourceNames;
-    uint8_t m_presence = 0;
-    uint16_t m_siggenMask = 0;
-    uint64_t m_capsGeneration = 0;
-    bool m_unsaved = false;
-    QStringList m_unsavedLines;
-    bool m_presetBusy = false;
-    bool m_extrasInFlight = false;
-    bool m_extrasAgain = false;
     QHash<QString, QPointer<QWindow>> m_windows;
 };
 

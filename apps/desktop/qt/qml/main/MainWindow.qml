@@ -5,7 +5,7 @@ import UConsole
 
 // The main window: the system's frame, the theme, and the shell of the layout
 // in use (-- WP LAY0 -- ClassicShell: the menu bar, the banners, and the
-// sidebar beside the right pane, mockups section 1). A 1000×660 minimum (the
+// sidebar beside the right pane, mockups section 1; -- WP LAY3 -- ModernShell). A 1000×660 minimum (the
 // Mac's is 1000×780; -- WP QTTWEAK -- 660 fits a 1366×768 screen with a
 // title bar and a taskbar).
 ApplicationWindow {
@@ -52,10 +52,10 @@ ApplicationWindow {
             mainWindow: window
         }
     }
-    // Modern shows the Classic shell until WP LAY3 brings ModernShell
+    // -- WP LAY3 --
     Component {
         id: modernShell
-        ClassicShell {
+        ModernShell {
             mainWindow: window
         }
     }

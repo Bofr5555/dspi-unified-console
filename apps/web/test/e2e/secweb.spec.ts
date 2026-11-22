@@ -19,6 +19,7 @@ import { networkInterfaces } from "node:os";
 import { createInterface } from "node:readline";
 import { expect, test, type Browser, type Locator, type Page } from "@playwright/test";
 import { fingerprint } from "../../src/fleet/security";
+import { openPage } from "../nav";
 
 const DEMO = "DEMO0000DSPI0001";
 
@@ -79,7 +80,6 @@ function lanAddress(): string | null {
 
 const CONSOLE = ["--console", "dist", "--open", "--forget-clients"];
 const picker = (page: Page) => page.getByRole("navigation", { name: "DSPi devices" });
-const tab = (session: Locator, name: string) => session.getByRole("tab", { name, exact: true });
 const connection = (session: Locator) => session.getByRole("complementary", { name: "Status" }).getByLabel("Connection", { exact: true });
 
 async function openDemo(page: Page, host: string): Promise<Locator> {
@@ -102,7 +102,7 @@ async function hubSettings(page: Page, session: Locator): Promise<Locator> {
   const dialog = page.getByRole("dialog", { name: "Mode" });
   await dialog.getByRole("radio", { name: "Advanced" }).check();
   await dialog.getByRole("button", { name: "Use" }).click();
-  await tab(session, "Hub Settings").click();
+  await openPage(session, "Hub Settings");
   return session.locator(".hub-settings-screen");
 }
 

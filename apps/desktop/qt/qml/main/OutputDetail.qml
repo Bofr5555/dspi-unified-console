@@ -77,6 +77,7 @@ ColumnLayout {
             Text {
                 objectName: "OutputDetail.title"
                 Layout.fillWidth: true
+                textFormat: Text.PlainText
                 text: page.label
                 font: Theme.fontTitle
                 color: Theme.text
@@ -134,6 +135,7 @@ ColumnLayout {
     QuestionDialog {
         id: core1Question
         objectName: "OutputDetail.core1Question"
+        ofDevice: true   // -- WP MDQT2a --
         parent: Overlay.overlay
         onAnswered: answer => { if (answer === "accept") ChannelController.confirmOutputEnable(page.output) }
     }

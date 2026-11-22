@@ -37,6 +37,7 @@ AbstractButton {
         Text {
             id: name
             anchors { left: dot.right; leftMargin: 6; right: parent.right; rightMargin: 8; verticalCenter: parent.verticalCenter }
+            textFormat: Text.PlainText
             text: chip.text
             font: Qt.font({ pixelSize: Theme.fontSmall.pixelSize, weight: chip.on ? Font.DemiBold : Font.Normal })
             color: chip.on ? Theme.text : Theme.textMuted

@@ -2,6 +2,8 @@
 
 #include "Core.h"
 #include "DeviceModel.h"
+#include "DeviceRegistry.h"   // -- WP MDQT2b --
+#include "DeviceSession.h"
 #include "Registrar.h"
 
 #include <QCoreApplication>
@@ -15,7 +17,7 @@ extern "C" {
 }
 
 static const Registrar::Controller<SystemController> systemController;
-static const Registrar::Banner systemStrip("SystemStatusStrip", 30);
+static const Registrar::Banner systemStrip("SystemStatusStrip", 30, Registrar::ClassicOnly);
 static const Registrar::Window systemWindow("window.system", "SystemWindow");
 
 namespace {
@@ -74,12 +76,15 @@ QVariant parseUs(const QString &text, bool *ok) {
 } // namespace
 
 SystemController::SystemController(const AppContext &ctx, QObject *parent)
-    : QObject(parent), m_core(ctx.core->handle()), m_device(ctx.device) {
+    : QObject(parent), m_core(ctx.core->handle()), m_device(ctx.device), m_registry(ctx.registry), m_session(ctx.activeSession()) {
     m_pool.setMaxThreadCount(1);
     m_pool.setExpiryTimeout(-1);
     m_timer.setInterval(kPollMs);
     connect(&m_timer, &QTimer::timeout, this, &SystemController::refresh);
     connect(m_device, &DeviceModel::snapshotApplied, this, &SystemController::updatePolling);
+    // -- WP MDQT2b -- with InstallationController, so the System panel's two
+    // tabs are always of the same hub
+    if (m_registry) connect(m_registry, &DeviceRegistry::activeChanged, this, &SystemController::updatePolling);
     // No wait here: a hub request may take its 15 s, and LinkController's quit
     // closes the session, which ends it; the destructor waits afterwards
     connect(qApp, &QCoreApplication::aboutToQuit, this, [this] {
@@ -126,6 +131,7 @@ QStringList SystemController::issues() const {
 // Polls only while a hub's device is open: a device the console holds itself
 // has no installation to read
 void SystemController::updatePolling() {
+    if (m_registry && m_registry->active() != m_session) rebind();   // -- WP MDQT2b --
     // -- fixup lk1 -- the read-only state moves with the device's snapshot
     if (writable() != m_wasWritable) {
         m_wasWritable = writable();
@@ -153,33 +159,65 @@ void SystemController::updatePolling() {
     }
 }
 
+// -- WP MDQT2b -- Another device is the active one: its core from now on, and
+// nothing of the one left (its view, draft, last recall and message) stays;
+// an answer still on its way is dropped
+void SystemController::rebind() {
+    m_session = m_registry->active();
+    m_core = m_session ? m_session->handle() : nullptr;
+    ++m_epoch;
+    m_timer.stop();
+    m_available = false;
+    m_view = QJsonObject();
+    m_error.clear();
+    setLists(QJsonObject());
+    emit viewChanged();
+    m_lastRecall.clear();
+    m_recalledScene.clear();
+    emit recallChanged();
+    setAction(QString(), false);
+    clearDraft();
+}
+
 void SystemController::run(std::function<QJsonObject(FfiCore *)> job, std::function<void(const QJsonObject &)> done) {
     if (m_shutDown) return;
     ++m_busy;
     emit busyChanged();
     FfiCore *core = m_core;
-    m_pool.start([this, core, job = std::move(job), done = std::move(done)] {
+    if (!core) {
+        --m_busy;
+        emit busyChanged();
+        return;
+    }
+    const quint64 epoch = m_epoch;   // -- WP MDQT2b --
+    m_pool.start([this, core, epoch, job = std::move(job), done = std::move(done)] {
         const QJsonObject o = job(core);
         QMetaObject::invokeMethod(
             this,
-            [this, o, done] {
+            [this, o, done, epoch] {
                 --m_busy;
                 emit busyChanged();
-                done(o);
+                if (epoch == m_epoch) done(o);
             },
             Qt::QueuedConnection);
     });
 }
 
 void SystemController::refresh() {
-    if (m_shutDown || m_reading.exchange(true)) return;
+    if (m_shutDown || !m_core || m_reading.exchange(true)) return;
     FfiCore *core = m_core;
-    m_pool.start([this, core] {
+    const quint64 epoch = m_epoch;   // -- WP MDQT2b --
+    m_pool.start([this, core, epoch] {
         const QJsonObject o = call([core](char *b, uint32_t n) { return dspi_alink_system_view(core, b, n); });
         QMetaObject::invokeMethod(
             this,
-            [this, o] {
+            [this, o, epoch] {
                 m_reading = false;
+                // -- WP MDQT2b -- the device left's: the new one's is read now
+                if (epoch != m_epoch) {
+                    if (m_timer.isActive()) refresh();
+                    return;
+                }
                 applyView(o);
             },
             Qt::QueuedConnection);
