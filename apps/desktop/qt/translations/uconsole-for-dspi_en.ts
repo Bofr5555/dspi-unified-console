@@ -4382,7 +4382,15 @@ Do you wish to proceed?</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Every band on both channels of the linked pair will be reset to its default (flat) state. Undo puts them back.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Every band on both channels of the linked pair will be reset to its default (flat) state. Edit &gt; Undo puts them back.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Every band in this list will be reset to its default (flat) state. Undo puts them back.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -7728,6 +7736,10 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
     </message>
     <message>
         <source>Choose devices in Device &gt; Devices…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Choose devices in the Devices section…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -17806,6 +17818,22 @@ This wiring is a board-level setting: it is stored on the device, survives prese
     </message>
     <message>
         <source>…and %1 more changes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>A Device Is Busy</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Quitting now breaks it off. Quit anyway?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Answer the open question first.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Still checking for unsaved changes. Try again in a moment.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
