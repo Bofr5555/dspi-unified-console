@@ -5636,7 +5636,10 @@ interface DspiCoreApi : AutoCloseable {
      * where it holds none for that device.
      *
      * Errors: [`DspiError::Unsupported`] on the web (no files: the page keeps
-     * the layout and sets it again with [`DspiCore::speaker_layout_set`]).
+     * the layout and sets it again with [`DspiCore::speaker_layout_set`]);
+     * -- WP MDQT1 -- [`DspiError::Io`] when a layout set before could not be
+     * written there: the folder is named all the same, and that layout stays
+     * in force in memory until a later call or a save writes it.
      */
     @Throws(DspiException::class)
     fun speakerLayoutSetDir(dir: String)
