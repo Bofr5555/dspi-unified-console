@@ -377,7 +377,7 @@ SettingsPage {
                     selectByMouse: true
                     font: Qt.font({ family: Theme.fontMono.family, pixelSize: Theme.fontTitle.pixelSize })
                     color: Theme.accentText
-                    selectionColor: Theme.selection
+                    selectionColor: Theme.textSelection
                     Accessible.role: Accessible.StaticText
                     Accessible.name: qsTr("Recovery code")
                 }

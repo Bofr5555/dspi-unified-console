@@ -120,7 +120,7 @@ Panel {
                 wrapMode: TextEdit.NoWrap
                 font: Qt.font({ family: Theme.fontMono.family, pixelSize: Theme.fontSmall.pixelSize })
                 color: Theme.text
-                selectionColor: Theme.selection
+                selectionColor: Theme.textSelection
                 selectedTextColor: Theme.text
             }
         }

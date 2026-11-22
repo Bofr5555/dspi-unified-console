@@ -47,7 +47,8 @@ Rectangle {
     readonly property string what: crossover ? qsTr("Crossover band %1").arg(band + 1) : qsTr("Band %1").arg(band + 1)
 
     objectName: "BandRow." + (crossover ? "xo." : "") + band
-    implicitHeight: 36
+    property int rowHeight: 36 // -- WP LAY4 -- Modern's are denser
+    implicitHeight: rowHeight
     implicitWidth: line.implicitWidth + 2 * Theme.spacingLarge
     color: selected ? Theme.selection : "transparent"
     enabled: ChannelController.writable

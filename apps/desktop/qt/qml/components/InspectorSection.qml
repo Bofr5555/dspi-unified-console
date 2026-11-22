@@ -12,6 +12,7 @@ ColumnLayout {
     id: section
     property string title
     property bool expanded: true
+    property string summary: "" // -- WP LAY4 -- a few words at the heading's right
     // `visible` is the effective visibility: false while an ancestor is hidden
     readonly property bool shown: visible && expanded
     default property alias content: body.data
@@ -42,6 +43,16 @@ ColumnLayout {
                 color: heading.hovered ? Theme.text : Theme.textMuted
                 elide: Text.ElideRight
             }
+            // -- WP LAY4 --
+            Text {
+                visible: section.summary.length > 0
+                Layout.maximumWidth: heading.width / 2
+                textFormat: Text.PlainText
+                text: section.summary
+                font: Theme.fontSmall
+                color: Theme.textMuted
+                elide: Text.ElideRight
+            }
         }
         background: Rectangle {
             radius: Theme.radiusSmall
@@ -52,7 +63,7 @@ ColumnLayout {
 
         Accessible.role: Accessible.Button
         Accessible.name: section.title
-        Accessible.description: section.expanded ? qsTr("Expanded") : qsTr("Collapsed")
+        Accessible.description: [section.expanded ? qsTr("Expanded") : qsTr("Collapsed"), section.summary].filter(s => s.length).join(", ")
         Accessible.onPressAction: heading.clicked()
     }
 

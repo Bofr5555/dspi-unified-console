@@ -19,6 +19,13 @@ ColumnLayout {
     property int selectedChannel: -1
     // The other half of a linked input pair shown with it, or -1 (QP2)
     property int linkedPartner: -1
+    // -- WP LAY4 -- Modern's Equaliser: the graph's height where the page has its
+    // own, without the drag strip, and without the band bar (the label on the
+    // graph and the inspector have its place)
+    property real plotHeight: GraphController.graphHeight
+    property bool resizable: true
+    property bool bandBar: true
+    readonly property alias graph: plot
 
     spacing: 0
     Accessible.role: Accessible.Pane
@@ -53,16 +60,16 @@ ColumnLayout {
         id: plot
         visible: !GraphController.poppedOut
         Layout.fillWidth: true
-        Layout.preferredHeight: GraphController.graphHeight
+        Layout.preferredHeight: host.plotHeight
     }
 
     Loader {
         objectName: "GraphHost.peqDock"
         readonly property string type: GraphController.slotType(GraphController.PeqDock)
-        visible: !GraphController.poppedOut
+        visible: host.bandBar && !GraphController.poppedOut
         Layout.fillWidth: true
         Layout.topMargin: item ? 6 : 0 // -- WP QPI2 --
-        active: type !== ""
+        active: host.bandBar && type !== ""
         sourceComponent: active ? Qt.createComponent("UConsole", type) : null
         onLoaded: if ("plot" in item) item.plot = plot
     }
@@ -71,7 +78,7 @@ ColumnLayout {
     Item {
         id: strip
         objectName: "GraphHost.resize"
-        visible: !GraphController.poppedOut
+        visible: host.resizable && !GraphController.poppedOut
         Layout.fillWidth: true
         implicitHeight: 12
         Accessible.role: Accessible.Separator

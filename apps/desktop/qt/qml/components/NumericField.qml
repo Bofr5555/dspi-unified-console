@@ -89,7 +89,7 @@ FocusScope {
         horizontalAlignment: TextInput.AlignRight
         font: Theme.fontMono
         color: field.enabled ? Theme.text : Theme.textDisabled
-        selectionColor: Theme.selection
+        selectionColor: Theme.textSelection
         selectedTextColor: Theme.text
         selectByMouse: true
         clip: true

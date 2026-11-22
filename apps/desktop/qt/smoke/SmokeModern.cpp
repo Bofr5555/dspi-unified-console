@@ -245,7 +245,7 @@ void selectionPart(Modern &m) {
     m.d.waitIdle();
     m.d.spin(150);
     m.check("the Equaliser has a channel selected, its page under the graph",
-            sidebar && sidebar->selectedChannel() >= 0 && m.visible(QStringLiteral("GraphHost")) && m.visible(QStringLiteral("EqualiserSection.channels")));
+            sidebar && sidebar->selectedChannel() >= 0 && m.visible(QStringLiteral("GraphHost")) && m.visible(QStringLiteral("EqualiserPeq.channels")));
     m.check("the window's selection follows", m.main->property("selectedChannel").toInt() == sidebar->selectedChannel());
     m.go("overview");
     m.d.spin(50);
