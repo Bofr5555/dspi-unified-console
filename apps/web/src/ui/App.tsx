@@ -28,7 +28,7 @@ import { Palette } from "./palette/Palette";
 import { paletteEntries } from "./palette/entries";
 import { deviceName, NoticeLog } from "./drawer/notices";
 import { BellButton, Drawer, useNotices } from "./drawer/Drawer";
-import { deviceTabsInRail, loadArrangement, saveArrangement, type Arrangement } from "./arrangement/arrangement";
+import { deviceTabsInRail, inspectorShown, loadArrangement, saveArrangement, setInspectorShown, type Arrangement } from "./arrangement/arrangement";
 import { AppearanceDialog, ArrangementContext, RailTopContext } from "./arrangement/Appearance";
 import { DeviceTabs } from "./shell/DeviceTabs";
 import { appleKeys } from "./undo";
@@ -87,6 +87,12 @@ export function App(props: { options: ConsoleOptions }) {
       saveArrangement(store, { ...a, navigation: a.navigation !== was.navigation ? a.navigation : loadArrangement(store).navigation });
       return a;
     });
+  }, []);
+  // -- WP WEBM5 -- (review RC6) the inspector's choice, for every frame and Settings › Appearance at once
+  const [inspector, setInspector] = useState(() => inspectorShown(safeLocalStorage()));
+  const showInspector = useCallback((v: "shown" | "hidden") => {
+    setInspectorShown(safeLocalStorage(), v);
+    setInspector(v);
   }, []);
   const [appearance, setAppearance] = useState(false);
   const board = useMemo(() => new ActionBoard(), []);
@@ -276,7 +282,13 @@ export function App(props: { options: ConsoleOptions }) {
   const onShortcutList = status === "open" && current?.state.protocol?.deviceKind !== "alinkSender" ? () => setShortcuts(true) : null;
   const files: Record<string, Handler> = props.options.readOnly
     ? {}
-    : { "file.openFile": { run: () => onPicking(true) }, "file.newFromTemplate": { run: () => onPicking(true) } };
+    : // -- WP WEBM5 -- (review RC16) with a device open (Simple mode: no Files page) the rows say where they go
+      current
+      ? {
+          "file.openFile": { run: () => onPicking(true), text: "Open File on the Devices Page…" },
+          "file.newFromTemplate": { run: () => onPicking(true), text: "New from Template on the Devices Page…" },
+        }
+      : { "file.openFile": { run: () => onPicking(true) }, "file.newFromTemplate": { run: () => onPicking(true) } };
   board.app = {
     ...files,
     "device.devices": { run: () => onPicking(true) },
@@ -358,7 +370,7 @@ export function App(props: { options: ConsoleOptions }) {
 
   return (
     // -- WP WEBM4 -- the arrangement as this viewer has it (its theme only when not the system's)
-    <ArrangementContext.Provider value={{ arrangement, arrange }}>
+    <ArrangementContext.Provider value={{ arrangement, arrange, inspector, showInspector /* -- WP WEBM5 -- */ }}>
     <RailTopContext.Provider value={tabsInRail ? deviceTabs : null}>
     <div
       ref={root}

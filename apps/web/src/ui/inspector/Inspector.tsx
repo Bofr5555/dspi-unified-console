@@ -7,8 +7,8 @@ import type { ComponentChildren } from "preact";
 import { createContext } from "preact";
 import { createPortal } from "preact/compat";
 import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
-import { safeLocalStorage } from "../../fleet/local";
-import { bandInInspector, loadCollapsed, placement, saveCollapsed, type Placement } from "./model";
+import { useArrangement } from "../arrangement/Appearance";
+import { bandInInspector, placement, type Placement } from "./model";
 
 interface Slot {
   /** Where `Inspect` draws, null before the panel is mounted. */
@@ -40,7 +40,9 @@ export function InspectorArea(props: { children: ComponentChildren }) {
   const [body, setBody] = useState<HTMLElement | null>(null);
   const [users, setUsers] = useState(0);
   const [width, setWidth] = useState(0);
-  const [collapsed, setCollapsed] = useState(() => loadCollapsed(safeLocalStorage()));
+  // -- WP WEBM5 -- (review RC6) the console's choice, so Settings › Appearance applies at once
+  const { inspector, showInspector } = useArrangement();
+  const collapsed = inspector === "hidden";
   const coarse = useCoarse();
   useLayoutEffect(() => {
     const el = row.current;
@@ -55,10 +57,7 @@ export function InspectorArea(props: { children: ComponentChildren }) {
   const use = useCallback((d: 1 | -1) => setUsers((n) => n + d), []);
   const place = placement(width, collapsed);
   const slot = useMemo<Slot>(() => ({ body, placement: place, coarse, use }), [body, place, coarse, use]);
-  const toggle = () => {
-    saveCollapsed(safeLocalStorage(), !collapsed);
-    setCollapsed(!collapsed);
-  };
+  const toggle = () => showInspector(collapsed ? "shown" : "hidden");
   const shown = users > 0;
   return (
     <SlotContext.Provider value={slot}>

@@ -640,3 +640,29 @@ test("WEBM3: Open in the console closes the desk's own core first; the tab's cor
   assert.equal(rig.desk.units[1]!.tab, "Hub");
   assert.equal(await rig.desk.handOver("B"), false, "not while it measures");
 });
+
+// -- WP WEBM5 -- (review RC8) the tab that lent its core closed: the borrowed core is dropped and
+// the desk opens one of its own, rather than failing on the closed one until the unit is unchosen
+test("WEBM5: a unit's tab closed: its core is no longer borrowed; the desk opens its own and measures on it", async () => {
+  const shared: Call[] = [];
+  const b = tabOf("B", shared);
+  let inTab = true;
+  const rig = deskRig("control", { heldBy: (s) => (s === "B" && inTab ? b.held : null) });
+  await rig.desk.enter();
+  rig.desk.setDraft({ ...withUnit(withUnit(rig.desk.draft, "A", true), "B", true), placement: "listeningPosition" });
+  await until(() => rig.desk.units[1]!.outputs.length === 3);
+  assert.equal(rig.desk.units[1]!.tab, "Hub");
+  inTab = false; // the tab closed (its core with it)
+  assert.equal(await rig.desk.start(), false);
+  assert.match(rig.desk.error, /B: .*its tab was closed/);
+  assert.equal(rig.desk.units[1]!.tab, "");
+  await until(() => rig.calls.some((c) => c.core === "B" && c.method === "open"));
+  await until(() => rig.desk.units[1]!.outputs.length === 2);
+  const judged = shared.filter((c) => c.method === "measureSystemUnitCheck").length;
+  assert.equal(await rig.desk.start(), true, rig.desk.error);
+  assert.ok(rig.calls.some((c) => c.core === "B" && c.method === "measureSystemUnitCheck"), "judged on the desk's own core");
+  assert.equal(shared.filter((c) => c.method === "measureSystemUnitCheck").length, judged, "never on the closed tab's");
+  await rig.desk.leave();
+  assert.deepEqual(rig.disposed, ["B"]);
+  assert.equal(b.disposed(), false);
+});

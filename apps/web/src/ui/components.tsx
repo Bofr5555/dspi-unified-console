@@ -272,7 +272,9 @@ export function TabLabel(props: { session: Session }) {
   const st = useSessionState(props.session);
   return (
     <>
-      {props.session.installationName} · {st.snapshot?.device.name ?? "Connecting"}
+      {/* -- WP WEBM5 -- the site's part is left to screen readers where the top bar is narrow */}
+      <span class="device-tab-site">{props.session.installationName} · </span>
+      {st.snapshot?.device.name ?? "Connecting"}
     </>
   );
 }

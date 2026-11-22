@@ -1706,3 +1706,31 @@
   .dspi-web .rail-devices .device-tabs, .dspi-web .rail-devices .device-tab-row { flex-direction: row; }
   .dspi-web .rail-devices .device-add { align-self: center; }
 }
+
+/* -- WP WEBM5 -- (review RC13) 44 px tap targets at a phone's width: the top bar's search and bell,
+   menu rows (context menus are portalled out of the console's container, so by the viewport or a
+   finger), the drawer's close, Appearance's choices and the device tabs at the rail's top */
+@container top (max-width: 720px) {
+  .dspi-web .bell, .dspi-web .top-search, .dspi-web .device-add { min-width: 44px; min-height: 44px; }
+  .dspi-web .app-menu .menu > button { min-height: 44px; }
+  /* the tabs take the bar's full height (44 px), and shrink to an ellipsis before the row scrolls */
+  .dspi-web .device-tabs { padding-top: 0; }
+  .dspi-web .device-tab { flex: 0 1 auto; min-width: 6.5rem; }
+  .dspi-web .device-tab > [role="tab"] { flex: 1 1 auto; }
+  /* the device's name only; its site stays in the tab's accessible name */
+  .dspi-web .top .device-tab-site { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+}
+@container top (max-width: 480px) {
+  /* the device tabs need the room: the app menu has Search… (and Ctrl+K opens it) */
+  .dspi-web .top-search { display: none; }
+}
+@media (max-width: 720px), (pointer: coarse) {
+  .dspi-web .action-row { min-height: 44px; }
+  .dspi-web .drawer-close { min-width: 44px; min-height: 44px; }
+}
+@container console (max-width: 720px) {
+  .dspi-web .appearance-choice label { min-height: 44px; }
+  .dspi-web .page-tabs button { min-height: 44px; }
+  .dspi-web .rail-devices .device-tab > [role="tab"] { min-height: 44px; }
+  .dspi-web .rail .rail-devices .device-tab-close { min-width: 44px; height: 44px; }
+}
