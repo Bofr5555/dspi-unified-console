@@ -322,8 +322,12 @@ impl DspiCore {
     /// Errors: [`DspiError::Disconnected`] with no device;
     /// [`DspiError::InvalidArgument`] for an output twice, one the device
     /// lacks, more than 16, or a speaker name over 64 characters (nothing
-    /// kept); [`DspiError::Io`] when the file cannot be written.
+    /// kept); [`DspiError::Io`] when the file cannot be written;
+    /// [`DspiError::ConfirmationRequired`] `user_only` inside another actor's
+    /// [`crate::actor::ActorScope`] (WP INT1).
     pub fn speaker_layout_set(&self, layout: SpeakerLayout) -> Result<SpeakerLayout> {
+        // -- WP INT1 -- only the user sets it (also on an agent's import)
+        crate::actor::user_only(self, "The speaker layout")?;
         let (serial, outputs) = {
             let mut inner = self.lock();
             let serial = inner.conn()?.serial.clone();

@@ -495,3 +495,40 @@ fn wp_role0_the_tweeter_floor_of_1khz_is_hard() {
     core.set_filter(n_in, 0, band(HP6, 1_200.0)).unwrap();
     assert!(s6(MeasureRole::Full), "6 dB/octave is below the floor's 12");
 }
+
+// -- WP INT1 -- (ROLE0 x MCP0)
+#[test]
+fn wp_int1_an_agent_cannot_set_the_speaker_layout() {
+    use crate::actor::{ActorScope, USER_ONLY, register_actor};
+    let core = core_as("INT1-AGENT");
+    let agent = register_actor("AI · INT1");
+    let layout = confirmed(&[(0, MeasureRole::Full), (1, MeasureRole::High)]);
+    {
+        let _scope = ActorScope::enter(&core, agent, None);
+        match core.speaker_layout_set(layout.clone()) {
+            Err(DspiError::ConfirmationRequired { code, .. }) => assert_eq!(code, USER_ONLY),
+            other => panic!("an agent set the layout: {other:?}"),
+        }
+        // Nor through an import the agent makes: the device part applies,
+        // the layout stays behind.
+        let source = core_as("INT1-SRC");
+        source.speaker_layout_set(layout.clone()).unwrap();
+        let text = source.config_export("S".into(), "t".into(), 0).unwrap();
+        let t = core.confirm_token(crate::ConfirmOp::ConfigImport);
+        let r: Value = serde_json::from_str(&core.config_import_confirmed(
+            text,
+            IMPORT_BY_BLOCK | IMPORT_CROSSOVER,
+            u32::MAX,
+            Some(t),
+        ))
+        .unwrap();
+        assert_eq!(
+            (r["ok"].clone(), r["speakerLayout"].clone()),
+            (true.into(), false.into()),
+            "{r}"
+        );
+    }
+    assert_eq!(core.speaker_layout().unwrap(), None);
+    // The app itself still sets it.
+    assert!(core.speaker_layout_set(layout).unwrap().confirmed_by_user);
+}

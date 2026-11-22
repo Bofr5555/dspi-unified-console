@@ -72,6 +72,24 @@ pub const USER_EDITING: &str = "user_editing";
 /// [`DspiCore::revert_entry`] by an actor of a change it did not make.
 pub const NOT_OWN_ENTRY: &str = "not_own_entry";
 
+// -- WP INT1 -- (ROLE0 x MCP0)
+/// [`DspiError::ConfirmationRequired`]'s code for a call only the embedder's
+/// user may make, such as [`DspiCore::speaker_layout_set`]: the speaker
+/// layout is the user's word on which output drives a tweeter, and the
+/// safety rules trust it. Nothing was written.
+pub const USER_ONLY: &str = "user_only";
+
+/// Refuse `what` unless this thread acts as the embedder on `core`.
+pub(crate) fn user_only(core: &DspiCore, what: &str) -> Result<()> {
+    if current(core.lock().actor_key) == EMBEDDER {
+        return Ok(());
+    }
+    Err(DspiError::ConfirmationRequired {
+        code: USER_ONLY.into(),
+        msg: format!("{what} is the user's to set, in the app; an agent cannot set it"),
+    })
+}
+
 /// The longest actor label kept, in characters.
 const LABEL_MAX_CHARS: usize = 64;
 
