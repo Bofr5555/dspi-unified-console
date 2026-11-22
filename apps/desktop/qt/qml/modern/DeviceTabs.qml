@@ -98,11 +98,18 @@ Item {
         readonly property bool unsecured: active && DeviceModel.remote && LinkController.unsecured && !FilesController.offline
         readonly property string name: none ? (FilesController.offline ? FilesController.offlineFile : qsTr("No Device"))
                                             : modelData.title
+        // -- WP INT3 -- a job on this device (MDQT2c) and what keeps it from closing (MDQT2b)
+        readonly property bool busy: !none && modelData.busy === true
+        readonly property string pinned: {
+            FirmwareController.runDevice; CoreVoltageController.calibrating   // re-read when either changes
+            return none ? "" : DevicesController.pinnedText(modelData.id)
+        }
         // What the tab shows, for the smoke driver
         readonly property string shownName: name + (unsecured ? " (" + LinkController.unsecuredLabel + ")" : "")
         readonly property string detail: none ? qsTr("Choose a device")
             : modelData.state === "lost" ? qsTr("Not connected")
             : modelData.state === "reconnecting" ? qsTr("Reconnecting…")
+            : busy && modelData.job ? modelData.job   // -- WP INT3 --
             : tabs.transportName(modelData)
               //: %1 is the firmware's version
               + (active && DeviceModel.firmwareVersion.length ? " · " + qsTr("firmware %1").arg(DeviceModel.firmwareVersion) : "")
@@ -122,7 +129,7 @@ Item {
                 anchors.rightMargin: 2
                 visible: !tabs.vertical
                 spacing: 6
-                StateDot { row: tab.modelData }
+                StateDot { row: tab.modelData; busy: tab.busy }
                 ColumnLayout {
                     Layout.fillWidth: true
                     spacing: 0
@@ -168,8 +175,9 @@ Item {
                     visible: !tab.none
                     iconName: "x"
                     iconSize: 12
+                    enabled: tab.pinned === ""   // -- WP INT3 -- closeOpen refuses it anyway, with a notice
                     //: %1 is a device's name
-                    toolTip: qsTr("Close %1").arg(tab.name)
+                    toolTip: tab.pinned !== "" ? tab.pinned : qsTr("Close %1").arg(tab.name)
                     onClicked: DevicesController.closeOpen(tab.modelData.id)
                 }
             }
@@ -180,6 +188,7 @@ Item {
                 StateDot {
                     anchors.horizontalCenter: parent.horizontalCenter
                     row: tab.modelData
+                    busy: tab.busy
                 }
                 NameText {
                     anchors.horizontalCenter: parent.horizontalCenter
@@ -231,7 +240,8 @@ Item {
         HelpTip {
             visible: tab.hovered
             text: [tab.shownName, tab.detail,
-                   tab.active && DeviceModel.remote ? LinkController.sessionTip : tab.modelData.serial].filter(t => t.length).join("\n")
+                   tab.active && DeviceModel.remote ? LinkController.sessionTip : tab.modelData.serial,
+                   tab.pinned].filter(t => t && t.length).join("\n")   // -- WP INT3 -- pinned
         }
         Accessible.role: Accessible.PageTab
         Accessible.name: shownName
@@ -242,12 +252,25 @@ Item {
 
     component StateDot: Rectangle {
         required property var row
+        property bool busy: false   // -- WP INT3 -- a ring while a job runs on the device
         implicitWidth: 8
         implicitHeight: 8
         radius: 4
         color: row.state === "live" ? (row.clip ? Theme.danger : Theme.connected)
              : row.state === "reconnecting" ? Theme.warning
              : row.state === "none" ? Theme.offline : Theme.disconnected
+        border.width: busy ? 2 : 0
+        border.color: Theme.accent
+        Rectangle {
+            visible: parent.busy
+            anchors.centerIn: parent
+            width: parent.width + 6
+            height: width
+            radius: width / 2
+            color: "transparent"
+            border.width: 1
+            border.color: Theme.accent
+        }
     }
     component NameText: Text {
         property bool active: false
