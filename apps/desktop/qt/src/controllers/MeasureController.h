@@ -181,6 +181,8 @@ public:
     Q_INVOKABLE void showOther(const QString &id);
     // The window is closed: what it started stops, on every device
     Q_INVOKABLE void stopAll();
+    // -- WP RBFIX -- The devices stopAll() would stop something on ("" for none)
+    QString runsOn() const;
 
     bool connected() const { return session()->connected(); }
     QString playBlocker() const { return session()->playBlocker(); }
@@ -401,6 +403,7 @@ signals:
     void stored(const QString &op, bool ok);
     // -- WP MDQT2c --
     void otherRunsChanged();
+    void runsChanged();   // -- WP RBFIX -- runsOn()
     // Another device is shown: a tab's own drafts start over (a placement chosen
     // for the last one is not assumed for it)
     void deviceSwitched();

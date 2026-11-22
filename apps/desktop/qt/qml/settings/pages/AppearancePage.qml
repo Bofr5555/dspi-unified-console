@@ -13,9 +13,12 @@ SettingsPage {
     SettingsGroup {
         title: qsTr("Layout")
         iconName: "layout-grid"
-        footer: qsTr("Classic is the Mac console's layout: a menu bar and tool windows. Modern puts every tool on a page of one window.")
+        // -- WP RBFIX -- why it is not on offer now
+        footer: LayoutController.switchBlocker.length ? LayoutController.switchBlocker :
+            qsTr("Classic is the Mac console's layout: a menu bar and tool windows. Modern puts every tool on a page of one window.")
         SettingsPickerRow {
             objectName: "Appearance.layout"
+            enabled: LayoutController.switchBlocker.length === 0
             inline: true
             label: qsTr("Layout")
             values: ["classic", "modern"]

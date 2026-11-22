@@ -1,6 +1,8 @@
 // -- WP LAY0 -- The layout switch (LayoutController.h)
 #include "LayoutController.h"
 
+#include "MeasureController.h"   // -- WP RBFIX --
+#include "NoticeCenter.h"
 #include "PrefsMap.h"
 #include "SettingsController.h"
 #include "Shell.h"
@@ -49,10 +51,37 @@ LayoutController::LayoutController(const AppContext &ctx, QObject *parent)
         m_theme = theme;
         if (qEnvironmentVariableIsEmpty("DSPI_COLOR_SCHEME")) m_ctx.shell->setColorSchemeOverride(schemeOf(m_theme));
     }
+    // -- WP RBFIX --
+    connect(this, &LayoutController::layoutChanged, this, &LayoutController::switchBlockerChanged);
+    connect(ctx.shell, &Shell::shownWindowsChanged, this, &LayoutController::switchBlockerChanged);
+    QMetaObject::invokeMethod(
+        this,
+        [this] {
+            auto *measure = Registrar::instance<MeasureController>();
+            if (!measure) return;
+            connect(measure, &MeasureController::runsChanged, this, &LayoutController::switchBlockerChanged);
+            emit switchBlockerChanged();
+        },
+        Qt::QueuedConnection);
+}
+
+// -- WP RBFIX -- Only where the switch would stop them: the Measure panel on its
+// page in Modern. A window of its own stays open over the switch.
+QString LayoutController::switchBlocker() const {
+    if (!modern() || m_ctx.shell->shownWindows().contains(QLatin1String("tools.measure"))) return QString();
+    const auto *measure = Registrar::instance<MeasureController>();
+    const QString on = measure ? measure->runsOn() : QString();
+    //: %1 is a device's name (or several)
+    return on.isEmpty() ? QString() : tr("A measurement is running on %1. Switching the layout would stop it: stop it first.").arg(on);
 }
 
 void LayoutController::setLayout(const QString &layout) {
     if (!known(layout) || layout == m_layout) return;
+    // -- WP RBFIX --
+    if (const QString why = switchBlocker(); !why.isEmpty()) {
+        if (auto *notices = Registrar::instance<NoticeCenter>()) notices->post(why, QStringLiteral("warning"));
+        return;
+    }
     emit layoutChanging();   // -- WP LAY3 --
     m_layout = layout;
     QSettings().setValue(QLatin1String(kLayoutKey), m_layout);

@@ -98,7 +98,9 @@ MeasureSession *MeasureController::make(DeviceSession *device) const {
     });
     connect(s, &MeasureSession::runningChanged, self, [self, s] {
         if (!s->isActive()) self->checkOthers();
+        emit self->runsChanged();   // -- WP RBFIX --
     });
+    connect(s, &MeasureSession::passiveChanged, self, &MeasureController::runsChanged);   // -- WP RBFIX --
     // The microphone and its calibration are the console's
     connect(s, &MeasureSession::inputChosen, self, [self, s](const QString &choice) {
         self->m_input = choice;
@@ -142,6 +144,7 @@ void MeasureController::onSwitched() {
 void MeasureController::drop(DeviceSession *device) {
     delete m_sessions.take(device);
     checkOthers();
+    emit runsChanged();   // -- WP RBFIX --
 }
 
 // ---- What runs where -------------------------------------------------------------------
@@ -195,4 +198,12 @@ void MeasureController::showOther(const QString &id) { m_ctx.registry->activate(
 void MeasureController::stopAll() {
     for (MeasureSession *s : std::as_const(m_sessions))
         if (s->isActive() || s->underWay()) s->stop();
+}
+
+// -- WP RBFIX --
+QString MeasureController::runsOn() const {
+    QStringList titles;
+    for (DeviceSession *d : m_ctx.registry->sessions())
+        if (const MeasureSession *s = m_sessions.value(d); s && s->underWay()) titles << d->title();
+    return titles.join(QStringLiteral(", "));
 }
