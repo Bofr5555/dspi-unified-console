@@ -104,12 +104,13 @@ const LABEL_MAX_CHARS: usize = 64;
 static LABELS: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
 /// Register an actor with a label for the history ("AI · Claude Code"):
-/// control characters are dropped and the label is cut to 64 characters.
-/// Each call gives a new actor, never [`EMBEDDER`].
+/// control and format characters (bidi overrides, zero-width ones) are
+/// dropped and the label is cut to 64 characters. Each call gives a new
+/// actor, never [`EMBEDDER`].
 pub fn register_actor(label: &str) -> ActorId {
     let label: String = label
         .chars()
-        .filter(|c| !c.is_control())
+        .filter(|c| !c.is_control() && !is_format(*c))
         .take(LABEL_MAX_CHARS)
         .collect();
     let mut labels = LABELS.lock().unwrap_or_else(|p| p.into_inner());
@@ -117,6 +118,36 @@ pub fn register_actor(label: &str) -> ActorId {
     // Past u32::MAX registrations the newest number is reused; a process
     // never gets there.
     ActorId::try_from(labels.len()).unwrap_or(ActorId::MAX)
+}
+
+/// Whether `c` is a Unicode format character (general category `Cf`, Unicode
+/// 15.1): invisible, and some (U+202E) reorder the text around them, so an
+/// agent's label could make the History read other than it is (review RA F6).
+fn is_format(c: char) -> bool {
+    matches!(
+        c,
+        '\u{00AD}'
+            | '\u{0600}'..='\u{0605}'
+            | '\u{061C}'
+            | '\u{06DD}'
+            | '\u{070F}'
+            | '\u{0890}'..='\u{0891}'
+            | '\u{08E2}'
+            | '\u{180E}'
+            | '\u{200B}'..='\u{200F}'
+            | '\u{202A}'..='\u{202E}'
+            | '\u{2060}'..='\u{2064}'
+            | '\u{2066}'..='\u{206F}'
+            | '\u{FEFF}'
+            | '\u{FFF9}'..='\u{FFFB}'
+            | '\u{110BD}'
+            | '\u{110CD}'
+            | '\u{13430}'..='\u{1343F}'
+            | '\u{1BCA0}'..='\u{1BCA3}'
+            | '\u{1D173}'..='\u{1D17A}'
+            | '\u{E0001}'
+            | '\u{E0020}'..='\u{E007F}'
+    )
 }
 
 /// The label `actor` was registered with; `None` for [`EMBEDDER`] and for a

@@ -126,6 +126,16 @@ fn wp_mcp0_history_names_the_actor_and_scopes_are_per_thread_and_core() {
     let agent = register_actor("AI · Claude\u{7} Code");
     assert_eq!(actor_label(agent).as_deref(), Some("AI · Claude Code"));
     assert_eq!(actor_label(EMBEDDER), None);
+    // Review RA F6: format characters go too (a bidi override would make
+    // the History read backwards; zero-width ones hide in a label).
+    let tricky =
+        register_actor("AI \u{202E}edoC\u{202C}\u{200B}\u{2066}·\u{FEFF}\u{E0041} X\u{00AD}");
+    assert_eq!(actor_label(tricky).as_deref(), Some("AI edoC· X"));
+    assert_eq!(
+        actor_label(register_actor("Ärlig agent · 日本 ✓")).as_deref(),
+        Some("Ärlig agent · 日本 ✓"),
+        "other text stays"
+    );
     {
         let _scope = ActorScope::enter(&core, agent, None);
         core.set_output_gain(0, -1.0).unwrap();
