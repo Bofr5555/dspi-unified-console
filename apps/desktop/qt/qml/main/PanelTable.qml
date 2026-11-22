@@ -36,6 +36,12 @@ QtObject {
             action: "tools.interruptMonitor", panel: "MonitorPanel", windowId: "interruptMonitor",
             section: "analyse", tab: "interruptMonitor", title: qsTr("Interrupt Monitor"), icon: "activity",
             width: 900, height: 480, minWidth: 720, minHeight: 320
+        },
+        // -- WP INSTQ -- the audio link's installation (System)
+        {
+            action: "window.system", panel: "SystemPanel", windowId: "system",
+            section: "system", tab: "status", title: qsTr("System"), icon: "network",
+            width: 860, height: 640, minWidth: 560, minHeight: 360
         }
     ]
 

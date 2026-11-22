@@ -26,6 +26,11 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
   (events, history, snapshots, the AutoEQ list) and the Matrix window keep their own sizes. The Import Filters,
   New from Template and Import Device Configuration dialogs show their whole list when the main window has room
   (they stopped at 320, 320 and 200 px). (WP QTPOP)
+- Window > System… has an **Installation** tab on a hub (Advanced) for setting up the hub's installation: it lists the
+  DSPi units the hub has seen that are not in it, with **Join** (name, room, role, what feeds it), and edits each
+  unit's name, room, role and feed, the senders and fan-outs, rooms, zones and groups. What the hub would refuse is said
+  on the field; what Save would change is listed beside it. Only an Admin of the hub can save; everyone else reads. If
+  the installation was changed elsewhere meanwhile, Save is withdrawn and Reload offered. (WP INSTQ)
 
 ### Android
 - DSPi Link is reachable from the main page (owner report on 0.14.0: only through the settings

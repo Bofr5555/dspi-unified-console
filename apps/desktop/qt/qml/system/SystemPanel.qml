@@ -10,22 +10,22 @@ import UConsole
 // the Clock-and-audio-links editor. Simple shows the status only; the editor and the
 // scene bar are Advanced's (docs/UI-MODES.md). The hub's role decides what may
 // be changed: a Viewer gets nothing that writes.
-ToolWindow {
-    id: window
-    objectName: "SystemWindow"
-    windowId: "system"
-    defaultWidth: 860
-    defaultHeight: 640
-    minimumWidth: 560
-    minimumHeight: 360
-    title: qsTr("System")
+Panel {
+    id: panel
     // -- WP QTPOP --
-    fitBodies: [flick]
+    fitBodies: [flick, installation.body]
+
+    // -- WP INSTQ -- The tabs: the status and its editor, and the installation's
+    // setup (Advanced). A host with tabs of its own (Modern's System section)
+    // shows InstallationPanel itself and turns these off
+    property bool installationTab: true
+    readonly property bool tabbed: installationTab && !simple && SystemController.available
+    readonly property bool onInstallation: tabbed && tabs.currentIndex === 1
 
     readonly property bool simple: ModeController.mode === "simple"
     readonly property bool editable: SystemController.mayEdit && !SystemController.busy
 
-    onVisibleChanged: if (visible) SystemController.refresh()
+    onShownChanged: if (shown) SystemController.refresh()
 
     function healthColor(h) {
         if (h === "ok") return Theme.success
@@ -62,7 +62,7 @@ ToolWindow {
         property var write: t => true
         function sync() { if (!activeFocus) text = read() }
         Layout.preferredWidth: 80
-        enabled: window.editable
+        enabled: panel.editable
         Accessible.name: label
         Component.onCompleted: sync()
         Connections {
@@ -90,10 +90,34 @@ ToolWindow {
         color: Theme.textMuted
     }
 
+    // -- WP INSTQ --
+    AppTabBar {
+        id: tabs
+        objectName: "SystemWindow.tabs"
+        label: qsTr("System")
+        visible: panel.tabbed
+        anchors { top: parent.top; left: parent.left; right: parent.right; margins: Theme.spacing }
+        AppTabButton { objectName: "SystemWindow.tab.status"; text: qsTr("Status") }
+        AppTabButton { objectName: "SystemWindow.tab.installation"; text: qsTr("Installation") }
+    }
+    InstallationPanel {
+        id: installation
+        anchors { top: tabs.bottom; topMargin: Theme.spacingSmall; left: parent.left; right: parent.right; bottom: parent.bottom }
+        visible: panel.onInstallation
+        shown: panel.shown && panel.onInstallation
+        locked: panel.locked
+    }
+
     Flickable {
         id: flick
-        anchors.fill: parent
-        visible: SystemController.available
+        anchors {
+            top: panel.tabbed ? tabs.bottom : parent.top
+            topMargin: panel.tabbed ? Theme.spacingSmall : 0
+            left: parent.left
+            right: parent.right
+            bottom: parent.bottom
+        }
+        visible: SystemController.available && !panel.onInstallation
         contentWidth: width
         contentHeight: column.implicitHeight + 2 * Theme.spacing
         clip: true
@@ -114,7 +138,7 @@ ToolWindow {
                     implicitWidth: 10
                     implicitHeight: 10
                     radius: 5
-                    color: window.healthColor(SystemController.health)
+                    color: panel.healthColor(SystemController.health)
                 }
                 Text {
                     objectName: "SystemWindow.summary"
@@ -128,7 +152,7 @@ ToolWindow {
                 }
                 Text {
                     objectName: "SystemWindow.role"
-                    text: qsTr("Role on the hub: %1").arg(window.roleTitle(SystemController.role))
+                    text: qsTr("Role on the hub: %1").arg(panel.roleTitle(SystemController.role))
                     font: Theme.fontSmall
                     color: Theme.textMuted
                 }
@@ -157,13 +181,13 @@ ToolWindow {
             // ---- Scene bar (Advanced) --------------------------------------
             SectionHeading {
                 Layout.fillWidth: true
-                visible: !window.simple && SystemController.scenes.length > 0
+                visible: !panel.simple && SystemController.scenes.length > 0
                 text: qsTr("Scenes")
             }
             Flow {
                 objectName: "SystemWindow.scenes"
                 Layout.fillWidth: true
-                visible: !window.simple && SystemController.scenes.length > 0
+                visible: !panel.simple && SystemController.scenes.length > 0
                 spacing: Theme.spacingSmall
                 Repeater {
                     model: SystemController.scenes
@@ -186,14 +210,14 @@ ToolWindow {
             Text {
                 objectName: "SystemWindow.recallNote"
                 Layout.fillWidth: true
-                visible: !window.simple && !SystemController.mayRecall && SystemController.scenes.length > 0
+                visible: !panel.simple && !SystemController.mayRecall && SystemController.scenes.length > 0
                 text: SystemController.recallNote
                 font: Theme.fontSmall
                 color: Theme.textMuted
             }
             ColumnLayout {
                 Layout.fillWidth: true
-                visible: !window.simple && SystemController.lastRecall.message !== undefined
+                visible: !panel.simple && SystemController.lastRecall.message !== undefined
                 spacing: 2
                 Text {
                     objectName: "SystemWindow.recallResult"
@@ -334,7 +358,7 @@ ToolWindow {
                                         implicitWidth: 8
                                         implicitHeight: 8
                                         radius: 4
-                                        color: window.stateColor(unitRow.modelData)
+                                        color: panel.stateColor(unitRow.modelData)
                                     }
                                     Cell {
                                         cellWidth: 118
@@ -343,8 +367,8 @@ ToolWindow {
                                         color: unitRow.modelData.pending ? Theme.warning : Theme.text
                                         ToolTip.visible: pendingHover.hovered && unitRow.modelData.pending
                                         ToolTip.text: qsTr("The audio link delay the system delay asks for is not written to this unit yet (unit: %1 frames, hop offset %2)")
-                                                      .arg(window.frames(unitRow.modelData.unitAlinkDelayFrames))
-                                                      .arg(window.frames(unitRow.modelData.unitHopOffset))
+                                                      .arg(panel.frames(unitRow.modelData.unitAlinkDelayFrames))
+                                                      .arg(panel.frames(unitRow.modelData.unitHopOffset))
                                         HoverHandler { id: pendingHover }
                                     }
                                 }
@@ -352,9 +376,9 @@ ToolWindow {
                                     objectName: "SystemWindow.delay." + unitRow.modelData.id
                                     cellWidth: 120
                                     text: unitRow.usb
-                                          ? qsTr("%1 smp").arg(window.frames(unitRow.modelData.usbDelaySamples)) + "  " + window.ms(unitRow.modelData.usbDelayMs)
+                                          ? qsTr("%1 smp").arg(panel.frames(unitRow.modelData.usbDelaySamples)) + "  " + panel.ms(unitRow.modelData.usbDelayMs)
                                           : unitRow.modelData.kind === "unit"
-                                          ? window.frames(unitRow.modelData.alinkDelayFrames) + "  " + window.ms(unitRow.modelData.alinkDelayMs)
+                                          ? panel.frames(unitRow.modelData.alinkDelayFrames) + "  " + panel.ms(unitRow.modelData.alinkDelayMs)
                                           : unitRow.modelData.hopDelayFrames !== undefined && unitRow.modelData.hopDelayFrames !== null
                                             ? qsTr("+%1 frames").arg(unitRow.modelData.hopDelayFrames) : "–"
                                 }
@@ -366,7 +390,7 @@ ToolWindow {
                                           : unitRow.modelData.alinkDelayMin !== undefined && unitRow.modelData.alinkDelayMin !== null
                                           ? unitRow.modelData.alinkDelayMin + "–" + unitRow.modelData.alinkDelayMax : "–"
                                 }
-                                Cell { cellWidth: 70; text: unitRow.usb ? "–" : window.frames(unitRow.modelData.hopOffset) }
+                                Cell { cellWidth: 70; text: unitRow.usb ? "–" : panel.frames(unitRow.modelData.hopOffset) }
                                 Cell {
                                     cellWidth: 80
                                     text: unitRow.usb
@@ -395,13 +419,13 @@ ToolWindow {
             // ---- Clock and audio links (Advanced) --------------------------------
             SectionHeading {
                 Layout.fillWidth: true
-                visible: !window.simple
+                visible: !panel.simple
                 text: qsTr("Clock and audio links")
             }
             Text {
                 objectName: "SystemWindow.editNote"
                 Layout.fillWidth: true
-                visible: !window.simple && !SystemController.mayEdit
+                visible: !panel.simple && !SystemController.mayEdit
                 text: qsTr("%1 This part is read only.").arg(SystemController.editNote)
                 font: Theme.fontSmall
                 color: Theme.textMuted
@@ -410,7 +434,7 @@ ToolWindow {
             GridLayout {
                 objectName: "SystemWindow.editor"
                 Layout.fillWidth: true
-                visible: !window.simple
+                visible: !panel.simple
                 columns: 3
                 columnSpacing: Theme.spacing
                 rowSpacing: Theme.spacingSmall
@@ -429,12 +453,12 @@ ToolWindow {
                         objectName: "SystemWindow.delayAuto"
                         text: qsTr("Automatic")
                         checked: SystemController.draftDelayAuto
-                        enabled: window.editable
+                        enabled: panel.editable
                         onToggled: SystemController.setSystemDelay(checked, SystemController.systemDelayFrames)
                     }
                     DraftField {
                         objectName: "SystemWindow.delayFrames"
-                        enabled: window.editable && !SystemController.draftDelayAuto
+                        enabled: panel.editable && !SystemController.draftDelayAuto
                         validator: IntValidator { bottom: 0; top: 65535 }
                         label: qsTr("System delay in frames")
                         read: () => String(SystemController.draftDelayFrames)
@@ -448,7 +472,7 @@ ToolWindow {
                 }
                 Text {
                     Layout.fillWidth: true
-                    text: qsTr("In use: %1 frames (%2)").arg(SystemController.systemDelayFrames).arg(window.ms(SystemController.systemDelayMs))
+                    text: qsTr("In use: %1 frames (%2)").arg(SystemController.systemDelayFrames).arg(panel.ms(SystemController.systemDelayMs))
                     font: Theme.fontSmall
                     color: Theme.textMuted
                 }
@@ -515,7 +539,7 @@ ToolWindow {
             GridLayout {
                 objectName: "SystemWindow.usbEditor"
                 Layout.fillWidth: true
-                visible: !window.simple && SystemController.usbUnits.length > 0
+                visible: !panel.simple && SystemController.usbUnits.length > 0
                 columns: 3
                 columnSpacing: Theme.spacing
                 rowSpacing: Theme.spacingSmall
@@ -539,7 +563,7 @@ ToolWindow {
                             objectName: "SystemWindow.usbMode." + usbRow.modelData.id
                             implicitWidth: 130
                             label: qsTr("USB mode of %1").arg(usbRow.modelData.name)
-                            enabled: window.editable
+                            enabled: panel.editable
                             model: [qsTr("Its own"), qsTr("Off"), qsTr("Rate lock"), qsTr("Phase lock")]
                             currentIndex: Math.max(0, usbRow.modes.indexOf(SystemController.usbModeOf(usbRow.modelData.id)))
                             onActivated: i => SystemController.setUsbMode(usbRow.modelData.id, usbRow.modes[i])
@@ -548,7 +572,7 @@ ToolWindow {
                             objectName: "SystemWindow.onLockError." + usbRow.modelData.id
                             implicitWidth: 240
                             label: qsTr("What %1 does when it can't lock").arg(usbRow.modelData.name)
-                            enabled: window.editable
+                            enabled: panel.editable
                             model: [qsTr("Mute when it can't lock"), qsTr("Play unaligned when it can't lock")]
                             currentIndex: Math.max(0, usbRow.actions.indexOf(SystemController.onLockErrorOf(usbRow.modelData.id)))
                             onActivated: i => SystemController.setOnLockError(usbRow.modelData.id, usbRow.actions[i])
@@ -563,7 +587,7 @@ ToolWindow {
                     Layout.columnSpan: 3
                     text: qsTr("Keep USB-direct units aligned")
                     checked: SystemController.keepUsbAligned
-                    enabled: window.editable
+                    enabled: panel.editable
                     onToggled: SystemController.setKeepUsbAligned(checked)
                     ToolTip.visible: hovered
                     ToolTip.text: qsTr("When a USB-direct stream's start moves, the hub writes their output delays again by itself")
@@ -572,13 +596,13 @@ ToolWindow {
             // -- WP ATQT -- the S/PDIF units: a follower's source, a source's slots and D
             SpdifUnitsCard {
                 Layout.fillWidth: true
-                visible: !window.simple && (SystemController.spdifUnits.length > 0 || window.editable)
-                editable: window.editable
+                visible: !panel.simple && (SystemController.spdifUnits.length > 0 || panel.editable)
+                editable: panel.editable
             }
             Text {
                 objectName: "SystemWindow.stale"
                 Layout.fillWidth: true
-                visible: !window.simple && SystemController.stale
+                visible: !panel.simple && SystemController.stale
                 text: qsTr("The installation changed on the hub while you edited it. Save is withdrawn: reload it and make your changes again.")
                 font: Theme.fontBody
                 color: Theme.warning
@@ -586,14 +610,14 @@ ToolWindow {
             }
             RowLayout {
                 Layout.fillWidth: true
-                visible: !window.simple
+                visible: !panel.simple
                 spacing: Theme.spacingSmall
                 AppButton {
                     objectName: "SystemWindow.save"
                     text: qsTr("Save")
                     primary: true
                     visible: !SystemController.stale
-                    enabled: window.editable && SystemController.dirty
+                    enabled: panel.editable && SystemController.dirty
                     toolTip: SystemController.mayEdit ? qsTr("Save the changes on the hub") : SystemController.editNote
                     onClicked: SystemController.save()
                 }
@@ -607,7 +631,7 @@ ToolWindow {
                 AppButton {
                     objectName: "SystemWindow.align"
                     text: qsTr("Align audio link delays…")
-                    enabled: window.editable && !SystemController.dirty
+                    enabled: panel.editable && !SystemController.dirty
                     toolTip: SystemController.mayEdit
                              ? qsTr("Align every unit: write the audio link delays the system delay asks for")
                              : SystemController.editNote
