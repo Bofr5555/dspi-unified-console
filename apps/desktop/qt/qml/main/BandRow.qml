@@ -64,6 +64,18 @@ Rectangle {
         onHoveredChanged: if (row.active || !hovered) row.hoverChanged(row.band, hovered)
     }
 
+    // -- WP LAY3b -- Modern: the band's right-click menu, also by the menu key
+    TapHandler {
+        acceptedButtons: Qt.RightButton
+        enabled: LayoutController.modern
+        onTapped: point => ContextMenus.band(row.channel, row.band, row.crossover, row, point.position.x, point.position.y)
+    }
+    Keys.onPressed: event => {
+        event.accepted = LayoutController.modern
+            && (event.key === Qt.Key_Menu || (event.key === Qt.Key_F10 && event.modifiers === Qt.ShiftModifier))
+        if (event.accepted) ContextMenus.band(row.channel, row.band, row.crossover, row, Theme.spacingLarge, row.height)
+    }
+
     function chooseType(t) { ChannelController.setBandType(channel, band, crossover, t) }
     function setValue(field, v) { ChannelController.setBandValue(channel, band, crossover, field, v) }
 

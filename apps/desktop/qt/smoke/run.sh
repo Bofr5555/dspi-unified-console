@@ -95,6 +95,13 @@ if [ -n "$noisy" ]; then
     [ "${DSPI_SMOKE_HW:-}" = replug ] || exit 1
 fi
 
+# -- WP LAY3b -- The table of actions the web and the Terminal read is the app's
+# (section lay3b-actions; tools/actions.sh writes it)
+if [ -f "$out/actions.json" ] && ! diff -u "$(dirname "$0")/../../../../assets/actions.json" "$out/actions.json"; then
+    echo "FAIL assets/actions.json is not MenuTable's: run ci/run.sh 'apps/desktop/qt/tools/actions.sh'" >&2
+    exit 1
+fi
+
 # -- WP QP19 -- The other launches, each with its own home and settings:
 #   launch <dir> <settings lines> [VAR=value...] -- [app arguments...]
 # Its exit code is the app's, after the log checks of the main run.

@@ -56,6 +56,13 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
   beside the others, and each tab keeps its device's edits, pages, history, drafts and running measurement. Closing a
   tab asks about that device's unsaved changes; quitting asks about each open device. Classic still shows one device
   and replaces it. (WP MDQT2a, MDQT2b, MDQT2c, INT3)
+- Modern layout: the actions are where they act. A right-click (or the menu key) on a channel, a band (its row or its dot
+  on the graph), the graph or a preset slot opens its menu: rename, copy and paste, mute, identify, routing, headphone
+  profile and Clear PEQ on a channel; shape, slope, bypass, invert, copy and paste of one band, and reset on a band or
+  the selected bands; add a band here, the selection, spectrum, phase, pop-out and settings on the graph; recall, save,
+  rename, startup preset, copy and clear on a slot, also in the preset picker's list. Undo has a ▾ with the recent
+  changes and History. The app button's menu holds only the global actions (files, settings, help, quit). A device tab's
+  Close is greyed while a firmware update or a core voltage calibration runs there, with the reason. (WP LAY3b)
 
 ### Android
 - DSPi Link is reachable from the main page (owner report on 0.14.0: only through the settings

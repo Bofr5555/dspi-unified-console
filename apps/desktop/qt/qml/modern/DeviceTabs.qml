@@ -210,32 +210,24 @@ Item {
         // Right-click reconnects, as Classic's device button does, and Close
         TapHandler {
             acceptedButtons: Qt.RightButton
-            onTapped: point => tabMenu.popup(tab, point.position.x, point.position.y)
+            onTapped: point => tabMenu.popupFor({}, tab, point.position.x, point.position.y)
         }
-        AppMenu {
+        // -- WP LAY3b -- from MenuTable; a pinned device's Close says why not
+        ActionMenu {
             id: tabMenu
             objectName: tabs.objectName + ".menu." + tab.modelData.id
-            AppMenuItem {
-                text: MenuTable.textOf("device.identify", false)
-                enabled: tab.active && IdentifyController.available
-                onTriggered: Shell.trigger("device.identify")
-            }
-            AppMenuItem {
-                text: MenuTable.textOf("device.reconnect", false)
+            place: "device"
+            handlers: ({
+                "device.identify": { enabled: () => tab.active },
                 // Except during a hub session (behaviour.md §3)
-                enabled: tab.active && !DeviceModel.remote
-                onTriggered: Shell.trigger("device.reconnect")
-            }
-            AppMenuItem {
-                text: MenuTable.textOf("device.firmwareUpdate", false)
-                enabled: tab.active && DeviceModel.platformName !== "STM32H723"
-                onTriggered: Shell.trigger("device.firmwareUpdate")
-            }
-            AppMenuItem {
-                text: qsTr("Close")
-                enabled: !tab.none
-                onTriggered: DevicesController.closeOpen(tab.modelData.id)
-            }
+                "device.reconnect": { enabled: () => tab.active && !DeviceModel.remote },
+                "device.firmwareUpdate": { enabled: () => tab.active },
+                "device.close": {
+                    enabled: () => !tab.none,
+                    why: () => tab.pinned,
+                    run: () => DevicesController.closeOpen(tab.modelData.id)
+                }
+            })
         }
         HelpTip {
             visible: tab.hovered

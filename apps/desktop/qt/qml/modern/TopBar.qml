@@ -66,10 +66,17 @@ Rectangle {
                 // The device says which slot is active, not the click
                 currentIndex = Qt.binding(() => bar.activeSlot)
             }
+            // -- WP LAY3b -- a right-click on a slot in the list: that slot's menu
+            rowMenus: true
+            onRowMenu: (index, row, x, y) => {
+                const at = row.mapToItem(bar, x, y)
+                popup.close()
+                ContextMenus.slot(index, bar.dialogs, bar, at.x, at.y)
+            }
             TapHandler {
                 acceptedButtons: Qt.RightButton
                 onTapped: point => {
-                    if (bar.writable && bar.dialogs) bar.dialogs.popupPresetMenu(presetBox, point.position.x, point.position.y)
+                    ContextMenus.slot(bar.activeSlot, bar.dialogs, presetBox, point.position.x, point.position.y)   // -- WP LAY3b --
                 }
             }
         }
@@ -81,7 +88,7 @@ Rectangle {
             iconSize: 14
             toolTip: qsTr("Preset Slot…")
             enabled: bar.writable && !SidebarController.presetBusy && bar.activeSlot >= 0
-            onClicked: if (bar.dialogs) bar.dialogs.popupPresetMenu(slotButton, 0, slotButton.height + 2)
+            onClicked: ContextMenus.slot(bar.activeSlot, bar.dialogs, slotButton, 0, slotButton.height + 2)   // -- WP LAY3b --
         }
         ToolSegments {
             objectName: "TopBar.ab"
@@ -236,12 +243,22 @@ Rectangle {
         }
 
         // ---- Undo, redo, save
-        IconButton {
+        // -- WP LAY3b -- Undo ▾: what was changed last, and History
+        SplitButton {
             objectName: "TopBar.undo"
+            window: bar.window
+            action: "edit.undo"
+            place: "history"
             iconName: "undo-2"
             toolTip: MenuTable.textOf("edit.undo", false)
-            enabled: HistoryController.canUndo && MenuTable.available("edit.undo")
-            onClicked: MenuTable.trigger(bar.window, "edit.undo")
+            handlers: ({
+                "history.recent": {
+                    rows: () => HistoryController.entries.slice(0, 8).map((e, i) => ({
+                        name: i, text: e.detail.length ? e.title + "  " + e.detail : e.title, detail: e.time, value: i
+                    })),
+                    run: () => Shell.trigger("edit.history")
+                }
+            })
         }
         IconButton {
             objectName: "TopBar.redo"
@@ -250,19 +267,12 @@ Rectangle {
             enabled: HistoryController.canRedo && MenuTable.available("edit.redo")
             onClicked: MenuTable.trigger(bar.window, "edit.redo")
         }
-        IconButton {
-            objectName: "TopBar.history"
-            iconName: "clock"
-            toolTip: MenuTable.textOf("edit.history", false)
-            enabled: MenuTable.available("edit.history")
-            onClicked: Shell.trigger("edit.history")
-        }
         SplitButton {
             objectName: "TopBar.save"
             visible: !DeviceInfoController.sender
             window: bar.window
             action: "device.commit"
-            actions: ["device.revert", "file.saveMasterVolume", "file.saveOutputConfiguration", "device.factoryReset"]
+            place: "save"   // -- WP LAY3b --
             iconName: "hard-drive"
             text: bar.tight ? "" : qsTr("Save to Device")
             toolTip: qsTr("Save to Device")

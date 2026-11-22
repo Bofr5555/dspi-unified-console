@@ -217,7 +217,13 @@ merges do not conflict, nothing generated or listed is edited by two of them:
   `qt/smoke/names/<wp>.md`; `NAMES.md` holds only the rule.
 - **The menu table** (`qml/main/MenuTable.qml`) has every row already; a
   package fills a row through `Shell` and edits the table only to add a row,
-  under its `// -- WP <ID> --` marker.
+  under its `// -- WP <ID> --` marker. A new row whose tool is no panel needs
+  its place in the Modern layout (`modern`, the table's `places`); what acts on
+  one thing (a channel, a band, a slot) is a row of `itemRows`, with its
+  handler where its menu is (`qml/modern/ContextMenus.qml`).
+- **`assets/actions.json`**, the actions for the web and the Terminal, is made
+  from that table by `qt/tools/actions.sh` and checked by `qt-offscreen`; like
+  the `.ts`, the coordinator runs it after a merge that changes the table.
 - **The parked files' table** below is updated by the coordinator when a
   package that adapts a parked file is merged.
 

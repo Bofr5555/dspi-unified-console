@@ -399,6 +399,7 @@ private:
     // Menus
     QSet<int> m_menuTargets;
     int m_menuBand = -1;
+    QPointF m_menuPoint;   // -- WP LAY3b -- where the graph menu was asked for
 
     // Wheel sessions
     int m_wheelTarget = -1;

@@ -969,13 +969,7 @@ void PeqOverlay::setShape(const QSet<int> &bands, int shape, int order) {
         int type = Peq::typeFor(shape, order);
         if (type < 0) type = Peq::typeFor(shape, 2);
         if (type < 0 || !m_available.contains(type)) continue;
-        const FilterParams was = current(b);
-        FilterParams p = was;
-        p.filter_type = uint8_t(type);
-        // Leaving the Linkwitz Transform drops its fp back to 0 dB
-        if (was.filter_type == FILTER_LINKWITZ_TRANSFORM || !Peq::usesGain(type)) p.gain = 0;
-        if (Peq::usesQ(type) && !Peq::usesQ(was.filter_type)) p.q = shape == Peq::Bell || shape == Peq::Notch ? 1.0f : 0.707f;
-        changes.insert(b, p);
+        changes.insert(b, Peq::reshaped(current(b), type));   // -- WP LAY3b -- shared with the band menu
     }
     commitNow(changes);
 }
@@ -1490,6 +1484,7 @@ void PeqOverlay::openMenu(const QPointF &p, int band) {
         m_menuTargets = selection();
     }
     m_menuBand = band;
+    m_menuPoint = p;   // -- WP LAY3b --
     emit menuRequested(p.x(), p.y());
 }
 
@@ -1499,6 +1494,7 @@ QVariantMap PeqOverlay::menuModel() const {
         const int n = int(m_menuTargets.size());
         const FilterParams p = current(m_menuBand);
         m[QStringLiteral("kind")] = QStringLiteral("band");
+        m[QStringLiteral("band")] = m_menuBand;   // -- WP LAY3b --
         m[QStringLiteral("title")] = n > 1 ? tr("%1 Bands").arg(n) : tr("Band %1").arg(m_menuBand + 1);
         // Shape and typed values are the chip's; the menu offers the slope
         int shape = -1, order = 0;
@@ -1519,6 +1515,7 @@ QVariantMap PeqOverlay::menuModel() const {
     } else {
         const int n = int(selection().size());
         m[QStringLiteral("kind")] = QStringLiteral("graph");
+        m[QStringLiteral("addBand")] = freeSlot() >= 0;   // -- WP LAY3b --
         m[QStringLiteral("selectAll")] = !graphBands().isEmpty();
         m[QStringLiteral("deselect")] = n > 0;
         m[QStringLiteral("delete")] = n == 0 ? QString() : n > 1 ? tr("Delete %1 Selected Bands").arg(n) : tr("Delete Selected Band");
@@ -1537,6 +1534,8 @@ void PeqOverlay::menuAction(const QString &action, int argument) {
         invertGain(m_menuTargets);
     } else if (action == QLatin1String("delete")) {
         deleteBands(m_menuTargets);
+    } else if (action == QLatin1String("addBand")) {   // -- WP LAY3b --
+        createBand(creation(m_menuPoint, false));
     } else if (action == QLatin1String("selectAll")) {
         const QList<int> all = graphBands();
         setSelection(QSet<int>(all.cbegin(), all.cend()));
