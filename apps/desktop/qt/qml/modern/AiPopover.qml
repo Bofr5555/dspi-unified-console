@@ -18,11 +18,20 @@ PopoverPanel {
     // The newest changes made; reads and questions are only in the whole activity
     readonly property var changes: ai.activity.filter(r => r.write && r.outcome === "ok").slice(0, 4)
 
+    // -- WP LAY7 -- The rows are made anew when the activity changes: the Undo that
+    // had the keyboard gets it back on its own change's new row
+    property var undoKey: undefined
+    function focusLost() {
+        const f = body.Window.activeFocusItem
+        return !f || f === body || f === body.parent
+    }
+
     margins: Theme.spacingSmall
     padding: 0
     height: Math.min(implicitHeight, maxHeight)
     onAskingChanged: if (asking) close()
     onOpened: {
+        undoKey = undefined
         ai.refresh()
         allow.forceActiveFocus(Qt.PopupFocusReason)
     }
@@ -192,6 +201,10 @@ PopoverPanel {
                     required property int index
                     readonly property bool kept: modelData.undo === "changed" || modelData.undo === "closed" && modelData.undoNote.length > 0
                     objectName: "AiPopover.change." + index
+                    Component.onCompleted: {   // -- WP LAY7 --
+                        if (popover.opened && popover.undoKey === modelData.key && undo.visible && popover.focusLost())
+                            undo.forceActiveFocus(Qt.TabFocusReason)
+                    }
                     Layout.fillWidth: true
                     spacing: Theme.spacingSmall
                     ColumnLayout {
@@ -230,6 +243,7 @@ PopoverPanel {
                         text: qsTr("Undo")
                         //: %1 is what an AI agent did
                         Accessible.name: qsTr("Undo: %1").arg(change.modelData.detail.length ? change.modelData.detail : change.modelData.title)
+                        onActiveFocusChanged: if (activeFocus) popover.undoKey = change.modelData.key   // -- WP LAY7 --
                         onClicked: popover.ai.undo(change.modelData.key)
                     }
                 }

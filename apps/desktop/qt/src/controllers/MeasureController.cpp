@@ -9,9 +9,12 @@
 #include "TuneSession.h"   // -- WP RCFIX --
 #include "AiController.h"   // -- WP MCP5 --
 #include "Shell.h"          // -- WP MCP5 --
+#include "SiggenController.h"   // -- WP LAY7 --
+#include "UnsavedGuard.h"       // -- WP LAY7 --
 
 #include <QCoreApplication>
 #include <QThread>
+#include <utility>
 
 static const Registrar::Controller<MeasureController> measureController;
 static const Registrar::Window measureWindow("tools.measure", "MeasureWindow");
@@ -228,6 +231,15 @@ void MeasureController::panelClosing(bool pageRemains) {
     else stopAll();
 }
 
+// -- WP LAY7 --
+void MeasureController::showPart(const QString &part) {
+    m_askedPart = part;
+    m_ctx.shell->showTool(QStringLiteral("tools.measure"));
+    emit partAsked();
+}
+
+QString MeasureController::takePart() { return std::exchange(m_askedPart, QString()); }
+
 // -- WP RBFIX --
 QString MeasureController::runsOn() const {
     QStringList titles;
@@ -252,7 +264,14 @@ void MeasureController::agentRequest(const QJsonObject &ticket) {
     }
     MeasureSession *s = m_sessions.value(on);
     if (!s) s = make(on);
-    m_ctx.shell->showTool(QStringLiteral("tools.measure"));
+    // -- WP LAY7 -- (INT5 follow-up 3) on the device it runs on, and the tab it is
+    // run from. Not over something the person does on the device shown, which a
+    // switch may end (the live view, the generator, a drag), nor under a question.
+    const auto *siggen = Registrar::instance<SiggenController>();
+    const auto *unsaved = Registrar::instance<UnsavedGuard>();
+    if (on != m_ctx.activeSession() && !session()->underWay() && !m_ctx.device->dragging() && !(siggen && siggen->playing()) && !(unsaved && unsaved->asking()))
+        m_ctx.registry->activate(on);
+    showPart(ticket.value(QLatin1String("loop")).toString() == QLatin1String("tune") ? QStringLiteral("tune") : QStringLiteral("measure"));
     QPointer<AiController> back(ai);
     // -- WP INT5 -- A device not looked at yet sleeps (LAY5b): which microphone
     // it has is known once the reads of its wake() are in

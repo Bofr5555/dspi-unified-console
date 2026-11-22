@@ -17,7 +17,7 @@ AbstractButton {
     implicitHeight: 26
     hoverEnabled: true
     focusPolicy: Qt.TabFocus
-    opacity: matrixEnabled ? 1 : 0.4
+    opacity: matrixEnabled ? 1 : Theme.dim(0.4)
 
     background: Rectangle {
         radius: 6

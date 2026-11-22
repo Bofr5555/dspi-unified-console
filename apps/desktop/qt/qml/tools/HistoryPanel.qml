@@ -67,7 +67,7 @@ Panel {
                     height: Theme.rowHeight + 10
                     color: ListView.isCurrentItem && list.activeFocus ? Theme.selection
                          : index % 2 ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.03) : "transparent"
-                    opacity: row.modelData.undoable ? 1 : 0.6
+                    opacity: row.modelData.undoable ? 1 : Theme.dim(0.6)
                     RowLayout {
                         anchors.fill: parent
                         anchors.leftMargin: Theme.spacingSmall

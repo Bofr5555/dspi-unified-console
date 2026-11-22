@@ -2,6 +2,7 @@
 
 #include "AppIdentity.h"
 #include "DeviceSession.h"
+#include "LayoutController.h"   // -- WP LAY7 --
 #include "SessionModel.h"
 #include "Snapshot.h"
 #include "TokenStore.h"
@@ -288,7 +289,9 @@ QString LinkSession::sessionTip() const {
             name = device.value(QStringLiteral("name")).toString();
     }
     if (name.isEmpty()) name = tr("DSPi");
-    const QString where = tr("Choose devices in Device > Devices…");
+    // -- WP LAY7 -- (review RC, RC11) Modern has no menu bar
+    const LayoutController *layout = Registrar::instance<LayoutController>();
+    const QString where = layout && layout->modern() ? tr("Choose devices in the Devices section…") : tr("Choose devices in Device > Devices…");
     if (m_hubName.isEmpty()) return tr("%1 (%2)").arg(name, m_boundSerial) + QLatin1Char('\n') + where;
     return tr("%1 via %2 (%3)").arg(name, m_hubName, m_boundSerial) + QLatin1Char('\n') + where;
 }

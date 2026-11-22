@@ -26,7 +26,7 @@ Item {
     objectName: "Matrix.cell." + input + "." + output
     implicitWidth: 72
     implicitHeight: 78
-    opacity: outputEnabled ? 1 : 0.3
+    opacity: outputEnabled ? 1 : Theme.dim(0.3)
     enabled: MatrixController.writable
 
     Column {

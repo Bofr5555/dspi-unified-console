@@ -163,7 +163,7 @@ Rectangle {
                     text: ChannelController.typeName(row.type)
                     font: Theme.fontBody
                     color: typeButton.enabled ? Theme.text : Theme.textDisabled
-                    opacity: row.bypassed || !row.active ? 0.45 : 1
+                    opacity: row.bypassed || !row.active ? Theme.dim(0.45) : 1
                     elide: Text.ElideRight
                 }
                 Icon { name: "chevrons-up-down"; size: 10; color: Theme.textMuted }
@@ -184,7 +184,7 @@ Rectangle {
             visible: !row.crossover && row.active && row.linkwitz
             Layout.preferredWidth: 104
             Layout.preferredHeight: 24
-            opacity: row.bypassed ? 0.45 : 1
+            opacity: row.bypassed ? Theme.dim(0.45) : 1
             IconButton {
                 id: linkwitzButton
                 objectName: row.objectName + ".linkwitz"
@@ -207,7 +207,7 @@ Rectangle {
         RowLayout {
             visible: !row.crossover && row.active && !row.linkwitz
             spacing: Theme.spacing
-            opacity: row.bypassed ? 0.45 : 1
+            opacity: row.bypassed ? Theme.dim(0.45) : 1
             ChannelValueField {
                 objectName: row.objectName + ".freq"
                 label: qsTr("%1 frequency").arg(row.what)
@@ -256,13 +256,13 @@ Rectangle {
             label: qsTr("%1 family").arg(row.what)
             model: ChannelController.crossoverFamilies()
             currentIndex: ChannelController.familyOf(row.type)
-            opacity: row.bypassed || !row.active ? 0.45 : 1
+            opacity: row.bypassed || !row.active ? Theme.dim(0.45) : 1
             onActivated: index => ChannelController.setCrossoverFamily(row.channel, row.band, index)
         }
         RowLayout {
             visible: row.crossover && row.active
             spacing: Theme.spacing
-            opacity: row.bypassed ? 0.45 : 1
+            opacity: row.bypassed ? Theme.dim(0.45) : 1
             AppComboBox {
                 objectName: row.objectName + ".direction"
                 Layout.preferredWidth: 100

@@ -48,6 +48,13 @@ ColumnLayout {
         ListView {
             id: list
             objectName: log.prefix + ".list"
+            // -- WP LAY7 -- The rows are made anew when the activity changes: the
+            // Undo that had the keyboard gets it back on its own row
+            property var undoKey: undefined
+            function focusLost() {
+                const f = Window.activeFocusItem
+                return !f || f === list || f === list.contentItem
+            }
             anchors.fill: parent
             anchors.margins: 1
             clip: true
@@ -64,6 +71,9 @@ ColumnLayout {
                 required property var modelData
                 required property int index
                 objectName: log.prefix + ".row." + index
+                Component.onCompleted: {   // -- WP LAY7 --
+                    if (list.undoKey === modelData.key && undo.visible && list.focusLost()) undo.forceActiveFocus(Qt.TabFocusReason)
+                }
                 width: ListView.view.width
                 height: line.implicitHeight + 10
                 color: ListView.isCurrentItem && list.activeFocus ? Theme.selection
@@ -123,7 +133,11 @@ ColumnLayout {
                         color: row.modelData.outcome === "error" ? Theme.warning : Theme.textMuted
                     }
                     AppButton {
+                        id: undo
                         objectName: log.prefix + ".row." + row.index + ".undo"
+                        onActiveFocusChanged: {   // -- WP LAY7 --
+                            if (activeFocus) list.undoKey = row.modelData.key
+                        }
                         visible: row.modelData.undo === "can" || row.modelData.undo === "busy"
                         enabled: row.modelData.undo === "can"
                         text: qsTr("Undo")
