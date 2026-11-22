@@ -10,6 +10,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { openPage } from "../nav";
 
 const DEMO = "DEMO0000DSPI0001";
 const AWAY = "DEMO-OFFLINE-0042";
@@ -88,7 +89,6 @@ async function openDemo(page: Page, hub: OwnHub): Promise<Locator> {
   return session;
 }
 
-const tab = (session: Locator, name: string) => session.getByRole("tab", { name, exact: true });
 
 if (!process.env.DSPI_TERM) {
   test("P2WB3: the Terminal's binary is there", () => {
@@ -110,7 +110,7 @@ test.describe("P2WB3 on a hub", () => {
     const errors = errorsOf(page);
     hub = await startHub(seededStore());
     const session = await openDemo(page, hub);
-    await tab(session, "Hub").click();
+    await openPage(session, "Hub");
     const devices = session.getByRole("region", { name: "Devices on the hub" });
     const own = devices.getByRole("row").filter({ hasText: DEMO });
     await expect(own).toContainText("Online (open here)");
@@ -160,7 +160,7 @@ test.describe("P2WB3 on a hub", () => {
     await noSidewaysScroll(page);
 
     // The MQTT wording.
-    await tab(session, "Hub Settings").click();
+    await openPage(session, "Hub Settings");
     await expect(session.getByRole("region", { name: "MQTT and Home Assistant" })).toContainText("a broker not on the hub's machine");
     expect(errors).toEqual([]);
   });
@@ -174,19 +174,19 @@ test.describe("P2WB3 on a hub", () => {
     const second = await openDemo(other, hub);
 
     // The first console shows the hub's history; the second identifies: the record comes as the hub sends it.
-    await tab(first, "Events").click();
+    await openPage(first, "Events");
     const log = first.getByRole("region", { name: "Event log" });
     await log.getByLabel("Source").selectOption("hub");
     await expect(log.locator(".hub-history")).toBeVisible();
-    await tab(second, "Hub").click();
+    await openPage(second, "Hub");
     await second.getByRole("region", { name: "Devices on the hub" }).getByRole("row").filter({ hasText: DEMO }).getByRole("button", { name: "Identify" }).click();
     await expect(log.locator(".hub-event-list tbody tr").filter({ hasText: "Identify: blink" }).first()).toBeVisible({ timeout: 15_000 });
 
     // The first console's "On the hub" list; the second saves to the hub: it is listed here without a reload.
-    await tab(first, "Snapshots").click();
+    await openPage(first, "Snapshots");
     const onHub = first.getByRole("region", { name: "On the hub" });
     await expect(onHub).toContainText("No snapshots on the hub");
-    await tab(second, "Snapshots").click();
+    await openPage(second, "Snapshots");
     const theirs = second.getByRole("region", { name: "On the hub" });
     await theirs.getByRole("button", { name: "Save to the Hub" }).click();
     await expect(theirs.getByRole("status")).toContainText("to the hub");
@@ -207,7 +207,7 @@ test.describe("P2WB3 on a hub", () => {
     await expect(result).toBeVisible();
     await expect(bar.getByRole("button", { name: "Keep" })).toHaveCount(0);
     // The hub's history has the recall and its revert.
-    await tab(first, "Events").click();
+    await openPage(first, "Events");
     await log.getByLabel("Source").selectOption("hub");
     await expect(log.locator(".hub-event-list tbody tr").filter({ hasText: /Recall/i }).first()).toBeVisible({ timeout: 15_000 });
     expect(errors).toEqual([]);

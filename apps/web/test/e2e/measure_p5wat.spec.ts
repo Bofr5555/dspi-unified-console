@@ -11,6 +11,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { openPage, rail } from "../nav";
 
 test.skip(({ browserName }) => browserName === "webkit", "Chromium and Firefox only");
 
@@ -39,11 +40,11 @@ async function tuneScreen(page: Page): Promise<{ screen: Locator; tune: (name: s
   const one = page.locator("#one");
   await one.getByRole("region", { name: "Venue A" }).getByRole("button", { name: "Connect" }).click();
   const session = one.getByRole("article", { name: "DSPi" });
-  await expect(session.getByRole("tab", { name: "EQ" })).toBeVisible();
+  await expect(rail(session)).toBeVisible();
   const token = await call<string>(page, "confirmToken", { op: "config_import" });
   await call(page, "configImport", { text: TEMPLATE, token });
   await call(page, "write", { path: "vol.user", value: { float: -20 } });
-  await session.getByRole("tablist", { name: "Screens" }).getByRole("tab", { name: "Measure" }).click();
+  await openPage(session, "Measure");
   const screen = session.getByRole("region", { name: "Measure" });
   await screen.getByRole("tablist", { name: "Measurement" }).getByRole("tab", { name: "Auto-tune" }).click();
   return { screen, tune: (name: string) => screen.getByRole("region", { name }) };
@@ -229,7 +230,7 @@ test("P5WAT: through the hub as Control: a document filed and renamed on the hub
     await session.getByRole("button", { name: "Pair" }).click();
     await session.getByRole("list", { name: /DSPis on/ }).getByRole("listitem").filter({ hasText: DEMO.slice(-8) }).getByRole("button", { name: "Open" }).click();
     await expect(session.locator(".device-meta")).toContainText(DEMO);
-    await session.getByRole("tablist", { name: "Screens" }).getByRole("tab", { name: "Measure" }).click();
+    await openPage(session, "Measure");
     const screen = session.getByRole("region", { name: "Measure" });
     await screen.getByRole("tablist", { name: "Measurement" }).getByRole("tab", { name: "Documents" }).click();
     const docs = screen.getByRole("region", { name: "Measurement documents" });

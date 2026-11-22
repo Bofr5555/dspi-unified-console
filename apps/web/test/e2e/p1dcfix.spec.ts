@@ -4,6 +4,7 @@
 // project (Chromium, Firefox, Chromium at 375 px).
 
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { hasPage, openPage } from "../nav";
 
 type Clients = { dspiClients: { call(m: string, p: unknown): Promise<unknown> }[] };
 
@@ -30,7 +31,6 @@ async function openDemo(page: Page): Promise<Locator> {
   return session;
 }
 
-const tab = (session: Locator, name: string) => session.getByRole("tab", { name, exact: true });
 
 async function setMode(session: Locator, page: Page, mode: "Simple" | "Advanced") {
   await session.getByRole("complementary", { name: "Status" }).getByRole("button", { name: /^Mode:/ }).click();
@@ -44,7 +44,7 @@ test("P1DCFIX Simple: Snapshots with Recall and A/B only; B toggles, not in a te
   const errors = errorsOf(page);
   const session = await openDemo(page);
   // Advanced: capture one (the rollback time is here, 30 s by default).
-  await tab(session, "Snapshots").click();
+  await openPage(session, "Snapshots");
   const screen = session.getByRole("region", { name: "Snapshots" });
   await expect(screen.getByLabel("Rollback time (s)")).toHaveValue("30");
   await call(page, "write", { path: "out.gain", indices: [0], value: { float: -5 } });
@@ -61,8 +61,8 @@ test("P1DCFIX Simple: Snapshots with Recall and A/B only; B toggles, not in a te
 
   // Simple: the list, Recall and Compare; no capture, open, download, remove, rollback choice or time; no Files.
   await setMode(session, page, "Simple");
-  await expect(tab(session, "Files")).toHaveCount(0);
-  await tab(session, "Snapshots").click();
+  expect(await hasPage(session, "Files")).toBe(false);
+  await openPage(session, "Snapshots");
   await expect(screen.getByRole("button", { name: "Capture" })).toHaveCount(0);
   await expect(screen.getByRole("button", { name: "Open Snapshot…" })).toHaveCount(0);
   await expect(screen.getByLabel("Rollback time (s)")).toHaveCount(0);

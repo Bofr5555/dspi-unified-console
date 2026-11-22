@@ -6,6 +6,7 @@
 // A redraw probe shows the canvas and the core idle while nothing changes.
 
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { openPage } from "../nav";
 
 type Band = { filterType: number; bypass: boolean; freq: number; q: number; gain: number };
 type Clients = { dspiClients: { call(m: string, p: unknown): Promise<unknown> }[] };
@@ -37,7 +38,7 @@ async function openEq(page: Page, venue = "Venue A") {
   const one = page.locator("#one");
   await one.getByRole("region", { name: venue }).getByRole("button", { name: "Connect" }).click();
   const session = one.getByRole("article", { name: "DSPi" });
-  await session.getByRole("tab", { name: "EQ" }).click();
+  await openPage(session, "EQ");
   await session.locator(".eq-pick", { hasText: "OUT1" }).click();
   const graph = session.getByRole("application", { name: /^EQ graph, OUT1/ });
   await expect(graph).toBeVisible();
@@ -345,7 +346,7 @@ test("WB6b unsaved: the session's state survives a screen switch; the host page 
   const two = page.locator("#two");
   await two.getByRole("region", { name: "Venue A" }).getByRole("button", { name: "Connect" }).click();
   const session = two.getByRole("article", { name: "DSPi" });
-  await session.getByRole("tab", { name: "EQ" }).click();
+  await openPage(session, "EQ");
   await session.locator(".eq-pick", { hasText: "OUT1" }).click();
   const list = session.getByRole("region", { name: /^Bands of OUT1/ });
   const slot = (await out1(page)).findIndex((b) => b.filterType === 0);
@@ -354,10 +355,10 @@ test("WB6b unsaved: the session's state survives a screen switch; the host page 
   await expect.poll(unsaved).toBe(true);
   expect(await page.evaluate(() => (globalThis as unknown as { dspiUnsavedChanges: boolean[] }).dspiUnsavedChanges)).toEqual([true]);
   // The Main screen shows it too; Disconnect asks from the EQ screen as well.
-  await session.getByRole("tab", { name: "Main" }).click();
+  await openPage(session, "Main");
   // -- WP WB6F -- exact: the status rail says "· unsaved changes" too
   await expect(session.getByText("Unsaved changes", { exact: true })).toBeVisible();
-  await session.getByRole("tab", { name: "EQ" }).click();
+  await openPage(session, "EQ");
   await session.getByRole("button", { name: "Disconnect" }).click();
   const prompt = page.getByRole("dialog", { name: "Unsaved Changes" });
   await expect(prompt).toBeVisible();
@@ -379,7 +380,7 @@ test("WB6b leave prompt: on by default, while something is unsaved the browser a
   const one = page.locator("#one");
   await one.getByRole("region", { name: "Venue A" }).getByRole("button", { name: "Connect" }).click();
   const session = one.getByRole("article", { name: "DSPi" });
-  await session.getByRole("tab", { name: "EQ" }).click();
+  await openPage(session, "EQ");
   await session.locator(".eq-pick", { hasText: "OUT1" }).click();
   const slot = (await out1(page)).findIndex((b) => b.filterType === 0);
   await session.getByRole("region", { name: /^Bands of OUT1/ }).getByRole("combobox", { name: `Band ${slot + 1} type` }).selectOption("1");
@@ -399,7 +400,7 @@ test.describe("375 px, in every browser", () => {
     await page.goto("/test/embed.html?one");
     await page.locator("#one").getByRole("region", { name: "Venue A" }).getByRole("button", { name: "Connect" }).click();
     const session = page.locator("#one").getByRole("article", { name: "DSPi" });
-    await session.getByRole("tab", { name: "EQ" }).click();
+    await openPage(session, "EQ");
     await session.locator(".eq-pick", { hasText: "OUT1" }).click();
     const graph = session.getByRole("application", { name: /^EQ graph, OUT1/ });
     await drawn(graph);
@@ -408,7 +409,7 @@ test.describe("375 px, in every browser", () => {
       page.evaluate(() => {
         const w = document.documentElement.clientWidth;
         const wide = Array.from(document.querySelectorAll<HTMLElement>(".dspi-web *"))
-          .filter((e) => e.getBoundingClientRect().right > w + 0.5 && !e.closest(".eq-channels"))
+          .filter((e) => e.getBoundingClientRect().right > w + 0.5 && !e.closest(".eq-channels, .rail, .page-tabs, .device-tab-row") /* -- WP WEBM1 -- rows that scroll on their own */)
           .map((e) => `${e.tagName.toLowerCase()}.${e.className} ${Math.round(e.getBoundingClientRect().right)}`);
         return wide.slice(0, 8);
       });

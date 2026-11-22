@@ -13,6 +13,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { expect, test, type Browser, type Locator, type Page } from "@playwright/test";
+import { openPage } from "../nav";
 
 type OwnHub = { port: number; pin: string; child: ChildProcess };
 
@@ -73,7 +74,7 @@ async function installerTab(session: Locator, page: Page): Promise<Locator> {
   await dialog.getByRole("radio", { name: "Installer" }).check();
   await dialog.getByRole("button", { name: "Use" }).click();
   await expect(session.getByRole("button", { name: "Mode: Installer" })).toBeVisible();
-  await session.getByRole("tab", { name: "System", exact: true }).click();
+  await openPage(session, "System");
   await session.getByRole("tablist", { name: "System" }).getByRole("tab", { name: "Installation" }).click();
   const inst = session.getByRole("region", { name: "Installation", exact: true });
   await expect(inst.getByRole("heading", { name: "Units" })).toBeVisible();

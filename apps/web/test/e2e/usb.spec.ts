@@ -6,6 +6,7 @@
 // console.spec.ts checks that Firefox says why.
 
 import { expect, test, type Page } from "@playwright/test";
+import { openDevices } from "../nav";
 
 test.skip(({ browserName }) => browserName !== "chromium", "WebUSB is Chromium's");
 
@@ -48,7 +49,10 @@ test("WB4a: two DSPis on USB at once: the picker, an allowed DSPi, write with re
   await usbRow.getByRole("button", { name: "Connect" }).click();
   const session = page.locator("article.session");
   await expect(session.locator(".device-meta")).toHaveText("RP2350 · firmware 1.1.6 · MOCKA001");
+  await openDevices(page); // -- WP WEBM1 -- the list of devices is a page of its own
   await expect(rowA.getByRole("button")).toHaveText("Open");
+  const tabs = page.getByRole("tablist", { name: "Open DSPi" }).getByRole("tab");
+  await tabs.click();
   await expect(session.locator(".volume-value")).toHaveText("0.0 dB");
 
   // A write, read back from the device.
@@ -64,8 +68,8 @@ test("WB4a: two DSPis on USB at once: the picker, an allowed DSPi, write with re
   await expect(session.locator(".device-name")).toHaveText("Stage left");
 
   // B at the same time, in its own session.
+  await openDevices(page);
   await rowB.getByRole("button", { name: "Connect" }).click();
-  const tabs = page.getByRole("tablist", { name: "Open DSPi" }).getByRole("tab");
   await expect(tabs).toHaveCount(2);
   await expect(session.locator(".device-meta")).toHaveText("RP2350 · firmware 1.1.6 · MOCKB002");
   await expect(session.locator(".volume-value")).toHaveText("0.0 dB");
@@ -78,6 +82,8 @@ test("WB4a: two DSPis on USB at once: the picker, an allowed DSPi, write with re
   // Unplug A: its session ends in the core's words, it leaves the list, B goes on.
   await mock(page, "unplug", "MOCKA001");
   await expect(session.getByRole("alert")).toHaveText("Device not connected");
+  await openDevices(page);
+  await expect(rowB).toHaveCount(1);
   await expect(rowA).toHaveCount(0);
   await tabs.filter({ hasText: "This console · DSPi" }).click();
   await expect(session.locator(".device-meta")).toContainText("MOCKB002");
@@ -86,6 +92,9 @@ test("WB4a: two DSPis on USB at once: the picker, an allowed DSPi, write with re
   await expect(session.locator(".volume-value")).toHaveText("-18.0 dB");
 
   await session.getByRole("button", { name: "Disconnect" }).click();
+  // -- WP WEBM1 -- the lost one keeps its tab (what it was) until it is closed
+  await expect(tabs).toHaveCount(1);
+  await page.getByRole("button", { name: "Close Stage left" }).click();
   await expect(tabs).toHaveCount(0);
   expect(errors).toEqual([]);
 });

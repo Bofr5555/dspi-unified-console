@@ -3,7 +3,7 @@
 //!
 //!   dspi-link-fakehub [--bind 0.0.0.0:11915] [--auth none|window:PIN|fixed:PIN]
 //!                     [--bridge] [--role viewer|control|admin] [--name NAME]
-//!                     [--max-sessions N] [--no-board] [--rta]
+//!                     [--max-sessions N] [--no-board] [--rta] [--serial S]
 //!
 //! Faults, one command per line on stdin:
 //!   stall | unstall          the network goes dark, or comes back (TCP stays up)
@@ -133,6 +133,8 @@ fn main() {
             "--max-sessions" => cfg.max_sessions = Some(val().parse().expect("--max-sessions N")),
             "--no-board" => cfg.board_attached = false,
             "--rta" => cfg.rta = true, // -- WP AN3 / QD8 --
+            // -- WP WEBM1 --
+            "--serial" => cfg.serial = val(),
             other => panic!("unknown argument {other}"),
         }
     }

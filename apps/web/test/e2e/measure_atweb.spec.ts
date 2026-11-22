@@ -17,6 +17,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { createInterface } from "node:readline";
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { openPage, rail as sections } from "../nav";
 
 test.skip(({ browserName }) => browserName === "webkit", "Chromium and Firefox only");
 // Chromium's headless shell has no getUserMedia: the full Chromium, headless (as P5WMS).
@@ -88,7 +89,7 @@ async function setMode(session: Locator, page: Page, mode: "Advanced" | "Install
 /** The Measure screen's "Several units" tab. */
 async function severalUnits(session: Locator, page: Page): Promise<Locator> {
   await setMode(session, page, "Advanced");
-  await session.getByRole("tablist", { name: "Screens" }).getByRole("tab", { name: "Measure" }).click();
+  await openPage(session, "Measure");
   const screen = session.getByRole("region", { name: "Measure" });
   await screen.getByRole("tablist", { name: "Measurement" }).getByRole("tab", { name: "Several units" }).click();
   const tab = screen.getByRole("region", { name: "Several units" });
@@ -297,7 +298,7 @@ test.describe("ATWEB: measuring several units on the hub", () => {
     hub = await measureHub(["--open", "--forget-clients"]);
     const session = await openUnit(page, hub, A);
     await setMode(session, page, "Installer");
-    await session.getByRole("tablist", { name: "Screens" }).getByRole("tab", { name: "System" }).click();
+    await openPage(session, "System");
     const panel = session.getByRole("region", { name: "Clock and audio links" });
     const table = panel.getByRole("table", { name: "S/PDIF units" });
     await expect(table.getByRole("row", { name: "S/PDIF clock of S/PDIF source" })).toContainText("Source");
@@ -314,8 +315,8 @@ test("ATWEB: a console not on the DSPi hub says that measuring several units nee
   const one = page.locator("#one");
   await one.getByRole("region", { name: "Venue A" }).getByRole("button", { name: "Connect" }).click();
   const session = one.getByRole("article", { name: "DSPi" });
-  await expect(session.getByRole("tab", { name: "EQ" })).toBeVisible();
-  await session.getByRole("tablist", { name: "Screens" }).getByRole("tab", { name: "Measure" }).click();
+  await expect(sections(session)).toBeVisible();
+  await openPage(session, "Measure");
   const screen = session.getByRole("region", { name: "Measure" });
   await screen.getByRole("tablist", { name: "Measurement" }).getByRole("tab", { name: "Several units" }).click();
   const note = screen.getByRole("region", { name: "Several units" }).getByRole("note");

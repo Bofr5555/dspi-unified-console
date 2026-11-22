@@ -13,6 +13,7 @@ import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expectPage, hasPage, openPage } from "../nav";
 
 type OwnHub = { port: number; pin: string; child: ChildProcess; store: string };
 
@@ -141,7 +142,7 @@ test.describe("SW3: an audio link installation on the hub", () => {
     hub = await linkHub(["--open", "--forget-clients"]);
     const session = await openUnit(page, hub, "DEMO-ALINK-A");
     // On an installation the System view is the first screen (Advanced).
-    await expect(session.getByRole("tab", { name: "System" })).toHaveAttribute("aria-selected", "true");
+    await expectPage(session, "System");
     const system = session.getByRole("region", { name: "System" });
     const main = system.getByRole("region", { name: "Room Main room" });
     await expect(main.getByText("Inside")).toBeVisible();
@@ -541,8 +542,8 @@ test("SW3: one device on its own is a system of one unit; Simple has no System v
   const session = page.getByRole("article").last();
   await expect(session.locator(".device-meta")).toBeVisible();
   // Today's main window stays first; the System view follows.
-  await expect(session.getByRole("tab", { name: "Main" })).toHaveAttribute("aria-selected", "true");
-  await session.getByRole("tab", { name: "System" }).click();
+  await expectPage(session, "Main");
+  await openPage(session, "System");
   const system = session.getByRole("region", { name: "System" });
   await expect(system.getByText("One device, shown as a single unit.")).toBeVisible();
   const unit = system.getByLabel(/^Unit /);
@@ -554,8 +555,8 @@ test("SW3: one device on its own is a system of one unit; Simple has no System v
   await expect(session.getByLabel("Scenes", { exact: true })).toHaveCount(0);
   await shot(page, "single-unit");
   await setMode(session, page, "Simple");
-  await expect(session.getByRole("tab", { name: "System" })).toHaveCount(0);
-  await expect(session.getByRole("tab", { name: "Main" })).toBeVisible();
+  expect(await hasPage(session, "System")).toBe(false);
+  expect(await hasPage(session, "Main")).toBe(true);
   // Remembered for this device.
   await page.reload();
   await picker(page).getByRole("listitem").filter({ hasText: "Demo DSPi" }).getByRole("button", { name: "Connect" }).click();

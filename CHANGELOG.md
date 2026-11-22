@@ -75,6 +75,14 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
   dialogs, snackbars). (WP ANBAR)
 
 ### Web console
+- The Modern layout. The sections (Overview, Equaliser, Routing, Effects, Measure, Analyse, Library, System, Devices,
+  Settings) are in a rail on the left, and each section's pages are tabs beside its title. A row of device tabs along
+  the top holds the open devices, with how each is reached, its state and an unsaved mark; + opens another, and
+  closing a tab asks about unsaved changes first. Each device comes back at the page it was left at. Above the pages:
+  the preset picker, Undo and Redo, Save to device. Below them, on every page: the input source (new on the web), the
+  volume with Mute and Bypass, and the meters. On a narrow screen the rail is a row. (WP WEBM1)
+- A DSPi is open once: another entry for a DSPi that is already open (over USB and through a hub, or through two hubs)
+  shows the open one and says so, rather than making a second session. (WP WEBM1)
 - The System screen has an Installation tab in the Installer mode on a hub. It lists the units the hub sees that
   are not in the installation, with Join (name, room, role and what feeds it), and edits each unit's room, role and
   upstream, the rooms and the zones. The hub's own check runs as you edit and shows a problem where it is; Save lists

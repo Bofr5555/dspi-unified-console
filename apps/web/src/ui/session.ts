@@ -147,6 +147,9 @@ export class Session {
   // -- WP P2WB1 --
   /** Open another DSPi of this session's hub in the console (set by the page for a hub session); null where it cannot. */
   openDevice: ((serial: string) => void) | null = null;
+  // -- WP WEBM1 --
+  /** Why the page may not open the DSPi `serial` in this session (it is open in another one), "" when it may (set by the page). */
+  refuseOpen: ((serial: string) => string) | null = null;
 
   constructor(
     readonly id: string,
@@ -426,6 +429,9 @@ export class Session {
   /** Open one of the hub's DSPis (`choosing`). */
   async choose(serial: string): Promise<void> {
     if (!this.hub || this.state.status !== "choosing") return;
+    // -- WP WEBM1 -- one session per DSPi
+    const refused = this.refuseOpen?.(serial) ?? "";
+    if (refused) return this.report(refused);
     this.deviceId = serial;
     try {
       await this.load({ kind: "hub", url: this.hub.url, deviceId: serial });

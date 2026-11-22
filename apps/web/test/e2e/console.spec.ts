@@ -6,6 +6,7 @@
 
 import { readFileSync } from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
+import { appMenu, openDevices } from "../nav";
 
 type Clients = { dspiClients: { call(m: string, p: unknown): Promise<unknown> }[] };
 
@@ -104,7 +105,7 @@ test("standalone ?readonly: the volume control is off and says why", async ({ pa
 
 test("About: Weeb Labs' links are marked as theirs, from assets/about.json", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "About" }).click();
+  await appMenu(page, "About");
   const about = page.getByRole("dialog", { name: "About" });
   await expect(about.getByRole("heading", { name: "Weeb Labs: links and support" })).toBeVisible();
   await expect(about.getByText("This console is made by Bofr5555, not Weeb Labs.", { exact: false })).toBeVisible();
@@ -117,7 +118,7 @@ test("About: Weeb Labs' links are marked as theirs, from assets/about.json", asy
 test("About: the licence notice and its three section 7 terms, from assets/about.json", async ({ page }) => {
   const licence = JSON.parse(readFileSync(new URL("../../../../assets/about.json", import.meta.url), "utf8")).licence;
   await page.goto("/");
-  await page.getByRole("button", { name: "About" }).click();
+  await appMenu(page, "About");
   const about = page.getByRole("dialog", { name: "About" });
   await expect(about.getByRole("heading", { name: licence.title, exact: true })).toBeVisible();
   await expect(about.getByText(licence.statement)).toBeVisible();
@@ -145,6 +146,7 @@ test("embedded: two consoles on one page, each with its user, roles and sessions
   // Console one: Venue A with control, Venue B view only, both open at once.
   await one.getByRole("region", { name: "Venue A" }).getByRole("button", { name: "Connect" }).click();
   await expect(one.getByRole("article", { name: "DSPi" }).getByRole("slider", { name: "Volume" })).toBeEnabled();
+  await openDevices(one); // -- WP WEBM1 --
   await one.getByRole("region", { name: "Venue B" }).getByRole("button", { name: "Connect" }).click();
   // -- WP WB6b -- the sessions' tabs (a session's own screens have tabs too)
   await expect(one.getByRole("tablist", { name: "Open DSPi" }).getByRole("tab")).toHaveCount(2);

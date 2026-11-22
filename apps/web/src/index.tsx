@@ -17,6 +17,9 @@ import type { FleetBackend } from "./fleet/types";
 import { App, type ConsoleOptions } from "./ui/App";
 // -- WP WB6b --
 import { UnsavedWatch } from "./ui/unsaved";
+// -- WP WEBM1 --
+import { loadNavigation, type Navigation } from "./ui/shell/sections";
+import { safeLocalStorage } from "./fleet/local";
 
 export interface MountOptions {
   /** Default: a LocalBackend (standalone). */
@@ -38,6 +41,9 @@ export interface MountOptions {
    * and uses `unsaved()` and `onUnsavedChange`.
    */
   leavePrompt?: boolean;
+  // -- WP WEBM1 --
+  /** Where the sections are: in a rail, or as tabs across the top. Default: as this viewer has it (a rail). */
+  navigation?: Navigation;
 }
 
 // -- WP WB7 -- set at build time (tools/build.mjs, DSPI_WEB_SOURCE_URL)
@@ -63,6 +69,7 @@ export function mount(el: HTMLElement, opts: MountOptions = {}): MountedConsole 
     hubPage: opts.hubPage ?? null,
     readOnly: opts.readOnly ?? false,
     unsaved: new UnsavedWatch(opts.leavePrompt ?? true),
+    navigation: opts.navigation ?? loadNavigation(safeLocalStorage()), // -- WP WEBM1 --
   };
   const watch = options.unsaved!;
   render(<App options={options} />, el);
@@ -81,3 +88,5 @@ export { VIEW_ONLY_REASON } from "./fleet/types";
 export type { Access, FleetBackend, FleetUser, Installation, Source } from "./fleet/types";
 // -- WP P1WB2 --
 export type { PinnedMode } from "./fleet/types";
+// -- WP WEBM1 --
+export type { Navigation } from "./ui/shell/sections";

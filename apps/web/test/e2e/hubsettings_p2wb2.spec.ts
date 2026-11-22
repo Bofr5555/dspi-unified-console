@@ -16,6 +16,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { createInterface } from "node:readline";
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { hasPage, openPage } from "../nav";
 
 const DEMO = "DEMO0000DSPI0001";
 
@@ -28,7 +29,6 @@ function errorsOf(page: Page) {
   return errors;
 }
 
-const tab = (session: Locator, name: string) => session.getByRole("tab", { name, exact: true });
 
 async function setMode(session: Locator, page: Page, mode: "Simple" | "Advanced" | "Installer") {
   await session.getByRole("complementary", { name: "Status" }).getByRole("button", { name: /^Mode:/ }).click();
@@ -143,7 +143,7 @@ test.describe("P2WB2 on a hub", () => {
     hub = await startHub(["--open", "--forget-clients"], false);
     const session = await openHub(page, hub);
     await setMode(session, page, "Advanced");
-    await tab(session, "Hub Settings").click();
+    await openPage(session, "Hub Settings");
     const screen = session.locator(".hub-settings-screen");
     await expect(screen.locator(".hub-role")).toContainText("Admin");
     await expect(screen.getByRole("note", { name: "Read-only" })).toHaveCount(0);
@@ -225,7 +225,7 @@ test.describe("P2WB2 on a hub", () => {
     await expect(screen.getByRole("region", { name: "MQTT and Home Assistant" }).getByRole("status", { name: "Broker connection" })).toContainText("Off");
 
     // Shared snapshots: the DSPi now, saved to the hub, listed as the hub's, recalled.
-    await tab(session, "Snapshots").click();
+    await openPage(session, "Snapshots");
     const onHub = session.getByRole("region", { name: "On the hub" });
     await expect(onHub).toContainText("No snapshots on the hub");
     await onHub.getByRole("button", { name: "Save to the Hub" }).click();
@@ -252,7 +252,7 @@ test.describe("P2WB2 on a hub", () => {
     hub = await startHub(["--pair"], true);
     const session = await openHub(page, hub);
     await setMode(session, page, "Advanced");
-    await tab(session, "Hub Settings").click();
+    await openPage(session, "Hub Settings");
     const screen = session.locator(".hub-settings-screen");
     const ro = screen.getByRole("note", { name: "Read-only" });
     await expect(ro).toHaveAttribute("data-key", "installer.hub_settings_role");
@@ -284,9 +284,9 @@ test("P2WB2 direct: the demo DSPi has no hub settings page and no On the hub sec
   const session = one.getByRole("article").first();
   await expect(session.getByRole("region", { name: "Presets" })).toBeVisible();
   await setMode(session, page, "Advanced");
-  await expect(tab(session, "Events")).toBeVisible();
-  await expect(tab(session, "Hub Settings")).toHaveCount(0);
-  await tab(session, "Snapshots").click();
+  expect(await hasPage(session, "Events")).toBe(true);
+  expect(await hasPage(session, "Hub Settings")).toBe(false);
+  await openPage(session, "Snapshots");
   await expect(session.getByRole("region", { name: "Snapshots" })).toBeVisible();
   await expect(session.getByRole("region", { name: "On the hub" })).toHaveCount(0);
   expect(errors).toEqual([]);

@@ -5,6 +5,7 @@
 // "imported" banner until it is confirmed (review RA F1).
 
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { openPage } from "../nav";
 
 type Clients = { dspiClients: { call(m: string, p: unknown): Promise<unknown> }[] };
 
@@ -30,10 +31,8 @@ async function openDemo(page: Page): Promise<Locator> {
   return session;
 }
 
-const screenTab = (session: Locator, name: string) => session.getByRole("tablist", { name: "Screens" }).getByRole("tab", { name, exact: true });
-
 async function speakersPage(session: Locator): Promise<Locator> {
-  await screenTab(session, "Settings").click();
+  await openPage(session, "Settings");
   await session.getByRole("navigation", { name: "Settings pages" }).getByRole("button", { name: "Speakers" }).click();
   const page = session.getByRole("region", { name: "Speakers" });
   await expect(page.getByRole("list", { name: "Speaker layout" })).toBeVisible();
@@ -41,7 +40,7 @@ async function speakersPage(session: Locator): Promise<Locator> {
 }
 
 async function measureSetup(session: Locator): Promise<Locator> {
-  await screenTab(session, "Measure").click();
+  await openPage(session, "Measure");
   const setup = session.getByRole("region", { name: "Measurement setup" });
   await expect(setup).toBeVisible();
   return setup;

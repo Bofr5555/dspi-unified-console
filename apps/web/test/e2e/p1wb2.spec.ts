@@ -11,6 +11,7 @@ import { pbkdf2Sync, randomBytes } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { expect, test, type APIRequestContext, type Locator, type Page } from "@playwright/test";
+import { hasPage, openPage, rail as sections } from "../nav";
 
 type Clients = { dspiClients: { call(m: string, p: unknown): Promise<unknown> }[] };
 type State = { outputGainDb: number[]; presetDefaultSlot: number; presetStartupMode: number; activePresetSlot: number; filters: { filterType: number }[][]; limiterEnabled: boolean[]; numOutputChannels: number };
@@ -54,7 +55,6 @@ async function openDemo(page: Page): Promise<Locator> {
   return session;
 }
 
-const tab = (session: Locator, name: string) => session.getByRole("tab", { name, exact: true });
 
 async function setMode(session: Locator, page: Page, mode: "Simple" | "Advanced" | "Installer") {
   await session.getByRole("complementary", { name: "Status" }).getByRole("button", { name: /^Mode:/ }).click();
@@ -79,9 +79,9 @@ test("P1WB2 Installer: a limit narrowed below the device is held and reported; a
   const dialog = page.getByRole("dialog", { name: "Mode" });
   await expect(dialog.getByRole("radio")).toHaveCount(3);
   await dialog.getByRole("button", { name: "Cancel" }).click();
-  await expect(tab(session, "Installer")).toHaveCount(0);
+  expect(await hasPage(session, "Installer")).toBe(false);
   await setMode(session, page, "Installer");
-  await tab(session, "Installer").click();
+  await openPage(session, "Installer");
   const limits = session.getByRole("region", { name: "Limits" });
   // No PIN on the web, nothing locked, nothing asked.
   await expect(session.getByRole("region", { name: "Installer lock" })).toContainText("No installer PIN is set: nothing is locked.");
@@ -111,7 +111,7 @@ test("P1WB2 Installer: a limit narrowed below the device is held and reported; a
     ),
   );
   expect(r).toBe("limit_exceeded");
-  await tab(session, "Main").click();
+  await openPage(session, "Main");
   const outputs = session.getByRole("region", { name: "Outputs" });
   const slider = outputs.getByRole("slider").nth(1);
   await slider.fill("6");
@@ -126,7 +126,7 @@ test("P1WB2 Installer: a limit narrowed below the device is held and reported; a
   const again = await openDemo(page);
   await expect.poll(async () => (await call<{ text: string }>(page, "limitsProfile")).text).toContain('"maxGainDb": 2');
   await setMode(again, page, "Installer");
-  await tab(again, "Installer").click();
+  await openPage(again, "Installer");
   await expect(again.getByRole("region", { name: "Limits" }).getByRole("group", { name: /^OUT2/ }).getByLabel("Highest gain (dB)")).toHaveValue("2");
   await again.getByRole("region", { name: "Limits" }).getByRole("button", { name: "Clear Profile" }).click();
   await expect.poll(async () => (await call<{ text: string }>(page, "limitsProfile")).text).toBe("");
@@ -139,7 +139,7 @@ test("P1WB2 Installer: outputs without a limiter, Protect all outputs; power-on 
   await call(page, "write", { path: "limit.on", indices: [255], value: { bool: false } });
   await call(page, "write", { path: "out.gain", indices: [0], value: { float: 0 } });
   await setMode(session, page, "Installer");
-  await tab(session, "Installer").click();
+  await openPage(session, "Installer");
   const limits = session.getByRole("region", { name: "Limits" });
   const warning = limits.getByRole("status", { name: "Outputs without a limiter" });
   await expect(warning).toContainText("above -10 dB gain");
@@ -202,7 +202,7 @@ test("P1WB2 tokens and groups: tokens on, Save asks and saves; an EQ Clear All i
   await expect(session.locator("p.error")).toHaveCount(0);
 
   // Clear All on the EQ: one undo puts every band back.
-  await tab(session, "EQ").click();
+  await openPage(session, "EQ");
   for (const b of [0, 1, 2]) await call(page, "filter", { channel: 0, band: b, filterType: 1, freq: 300 + 200 * b, q: 1, gain: 4, bypass: false, qp: 1 });
   await call(page, "endGroup");
   const list = session.getByRole("region", { name: /^Bands of IN1/ });
@@ -219,7 +219,7 @@ test("P1WB2 tokens and groups: tokens on, Save asks and saves; an EQ Clear All i
 test("P1WB2 AutoEQ: a profile previewed on the graph writes nothing; Apply writes the pair and keeps the state before", async ({ page }) => {
   const errors = errorsOf(page);
   const session = await openDemo(page);
-  await tab(session, "EQ").click();
+  await openPage(session, "EQ");
   await session.getByRole("button", { name: "AutoEQ…" }).click();
   const panel = session.getByRole("region", { name: "AutoEQ" });
   const profile = { id: "o/Sony A", manufacturer: "Sony", model: "A", preamp: -4, filters: [{ type: "PK", freq: 105, q: 0.7, gain: 3 }] };
@@ -333,6 +333,7 @@ test.describe("P1WB2 on a hub", () => {
     const banner = session.getByRole("region", { name: "Locked" });
     await expect(banner).toContainText("Locked by the installer: only volume, mute and presets can be changed.");
     await expect(banner).toContainText("Venue A: volume and presets only, please.");
+    await expect(sections(session).getByRole("button")).toHaveText(["Overview", "Devices"]);
     await expect(session.getByRole("tab")).toHaveCount(0);
     await shot(page, "locked-user");
     await noSidewaysScroll(page);
@@ -406,7 +407,7 @@ test.describe("P1WB2 a fleet's pinned mode", () => {
     await expect(session.locator(".device-meta")).toContainText(FAKE_SERIAL);
     const rail = session.getByRole("complementary", { name: "Status" });
     await expect(rail.getByRole("button", { name: "Mode: Simple (pinned)" })).toBeVisible();
-    await expect(session.getByRole("tab", { name: "System", exact: true })).toHaveCount(0);
+    expect(await hasPage(session, "System")).toBe(false);
     await rail.getByRole("button", { name: /^Mode:/ }).click();
     const dialog = page.getByRole("dialog", { name: "Mode" });
     await expect(dialog).toContainText("This console is pinned to Simple for this DSPi.");
