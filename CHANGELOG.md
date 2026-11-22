@@ -63,6 +63,11 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
   robot icon beside the device in Classic and the AI button in Modern), tagged in the History, and Pause and Stop are
   there at any time. Nothing on your network can reach it; from another computer, go through SSH
   (docs/mcp-ssh-forwarding.md). The agent starts this app with `--mcp`, or the Terminal's `uconsole mcp`. (WP MCP4)
+- AI agents have a manual page, docs/manual/ai-agents.md: the configuration for Claude Desktop, Claude Code, Cursor and
+  VS Code (with the token kept out of your shell's history), what is asked, what agents can never do, and undo. The
+  agents' endpoint follows MCP 2026-07-28 more closely (its error codes for a missing `_meta` and a contradicting header;
+  `initialize` and `ping` are not modern methods; resources say how long they may be kept), checked against the
+  official MCP conformance suite in both protocol versions. (WP MCP6)
 - Modern's Equaliser: three pages. **PEQ** has the channel in one strip over the graph (name, Enabled, input mix, gain,
   delay, mute, polarity, limiter; an input's link and preamp), a label on the graph with the selected band's values, the
   RTA, Phase, All Curves and pop-out switches in the graph's corner, and a denser band table. **Crossover** has every
