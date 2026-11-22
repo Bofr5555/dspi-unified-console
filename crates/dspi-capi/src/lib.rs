@@ -215,6 +215,9 @@ mod tests {
             "src/fns_misc/firmware_update.rs",
             // -- WP INST0 --
             "src/fns_misc/installation.rs",
+            // -- WP INT1 -- (MD0's and ROLE0's, in the header since INT1 regenerated it)
+            "src/fns_core_set.rs",
+            "src/fns_misc/speaker_layout.rs",
             "src/fns_browse.rs",
             "src/fns_link.rs",
             "src/fns_hub.rs",
