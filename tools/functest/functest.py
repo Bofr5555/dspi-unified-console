@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
-"""The function test: a real AI agent tunes a simulated home theatre through the
-desktop app's MCP server (README.md). Host side: standard library only; the app
-runs in a container with no USB, no sound device and no network.
+"""The function test: a real AI agent, or a replay of one, tunes a simulated home
+theatre through the desktop app's MCP server (README.md). Host side: standard
+library only; the app runs in a container with no USB, no sound device and no
+network. run.sh is the way in.
 
-    functest.py run  --name r1 [--confirm never_ask|ask_risky] [--steps 1,2,3]
-                     [--unconfirmed Centre] [--prompts FILE]
+    functest.py run  --name r1 [--story F] [--confirm never_ask|ask_risky] [--steps 1,2,3] [--replay F] [--keep]
     functest.py up   --name r1 ...         the app, set up, left running
-    functest.py ask  --name r1 "a prompt"  one more prompt to the same agent
+    functest.py ask  --name r1 --steps 1   the story's prompt, or: ask --name r1 --label l "the words"
     functest.py save --name r1 label       the state now
-    functest.py down --name r1             History, screenshots, stop
-    functest.py judge DIR                  the numbers of a saved run again
+    functest.py down --name r1             History, screenshots, stop, the verdict
 """
 import argparse
 import json
@@ -21,6 +20,8 @@ import subprocess
 import sys
 import threading
 import time
+import tomllib
+import uuid
 
 HERE = pathlib.Path(__file__).resolve().parent
 REPO = HERE.parent.parent
@@ -31,7 +32,6 @@ WORK = CACHE / "work" / BRANCH
 AGENT = os.environ.get("FUNCTEST_AGENT", "claude2")
 MODEL = os.environ.get("FUNCTEST_MODEL", "opus")
 CONTAINER_WORK = "/work"
-BLOCKED = "VIOLATION"
 
 
 def image():
@@ -98,9 +98,12 @@ class Run:
         self.stop = threading.Event()
         self.watcher = None
 
+    def story(self):
+        return tomllib.loads((self.dir / "story.toml").read_text())
+
     # ------------------------------------------------------------- the app
 
-    def up(self, confirm, unconfirmed):
+    def up(self, confirm, story):
         if self.dir.exists():
             raise SystemExit(f"{self.dir} exists: choose another --name")
         for d in ("home/.config/uconsole-for-dspi", "sim", "agent"):
@@ -108,6 +111,8 @@ class Run:
         (self.dir / "home/.config/uconsole-for-dspi/uconsole-for-dspi.conf").write_text(
             "[onboarding]\nsetupDone=true\n")
         shutil.copy(HERE / "scenario.json", self.dir / "scenario.json")
+        shutil.copy(story, self.dir / "story.toml")
+        unconfirmed = self.story().get("unconfirmed", [])
         (CACHE / "work/empty").mkdir(parents=True, exist_ok=True)
         c = f"{CONTAINER_WORK}/runs/{self.name}"
         env = {"HOME": f"{c}/home", "XDG_CONFIG_HOME": f"{c}/home/.config", "XDG_DATA_HOME": f"{c}/home/.local/share",
@@ -222,12 +227,17 @@ class Run:
         cmd = [AGENT, "-p", prompt, "--mcp-config", str(self.dir / "agent/mcp.json"), "--strict-mcp-config",
                "--allowedTools", "mcp__dspi", "--tools", os.environ.get("FUNCTEST_TOOLS", "ToolSearch,ListMcpResourcesTool,ReadMcpResourceTool"),
                "--setting-sources", "project", "--model", MODEL, "--output-format", "stream-json", "--verbose"]
+        # A run is one session of its own: never resumed by another run, nothing remembered
         if meta["session"]:
             cmd += ["--resume", meta["session"]]
+        else:
+            meta["session"] = str(uuid.uuid4())
+            cmd += ["--session-id", meta["session"]]
         path = self.dir / f"transcript-{n}-{label}.jsonl"
         log(f"step {n} ({label}): the agent works ...")
         start = time.time()
-        env = dict(os.environ, MCP_TOOL_TIMEOUT="120000", MCP_TIMEOUT="60000")
+        env = dict(os.environ, MCP_TOOL_TIMEOUT="120000", MCP_TIMEOUT="60000",
+                   CLAUDE_CODE_DISABLE_AUTO_MEMORY="1", CLAUDE_CODE_DISABLE_CLAUDE_MDS="1")
         with open(path, "w") as f, open(self.dir / "agent/stderr.log", "a") as err:
             try:
                 p = subprocess.run(cmd, cwd=self.dir / "agent", stdout=f, stderr=err, stdin=subprocess.DEVNULL,
@@ -252,6 +262,24 @@ class Run:
         self.save(f"{n}-{label}")
         (self.dir / f"transcript-{n}-{label}.md").write_text(readable(path))
         log(f"step {n} ended ({code}) after {round(time.time() - start)} s:", tools_used(path))
+        return code
+
+    def replay(self, label, calls, player):
+        """A step of a replay script, in place of the agent."""
+        meta = json.loads(self.meta.read_text())
+        n = len(meta["steps"]) + 1
+        log(f"step {n} ({label}): the replay plays {len(calls)} calls ...")
+        start = time.time()
+        try:
+            done, code = player.step(calls), 0
+        except (RuntimeError, ValueError) as e:
+            done, code = [], f"replay: {e}"
+        meta["steps"].append({"n": n, "label": label, "prompt": "(replay)", "code": code,
+                              "seconds": round(time.time() - start), "answer": "", "replay": done})
+        self.meta.write_text(json.dumps(meta, indent=1))
+        self.save(f"{n}-{label}")
+        log(f"step {n} ended ({code}) after {round(time.time() - start)} s:",
+            [(x["tool"], x["got"]) for x in done if x["wrong"]] or "as the script says")
         return code
 
     # -------------------------------------------------------------- the state
@@ -293,16 +321,10 @@ class Run:
         subprocess.run(["podman", "rm", "-f", self.container], capture_output=True)
 
     def verdict(self):
-        """The main safety check: what the oracle saw."""
-        f = self.dir / "sim/oracle.jsonl"
-        lines = [json.loads(x) for x in f.read_text().splitlines()] if f.exists() else []
-        bad = [x for x in lines if x["kind"] == BLOCKED]
-        warn = [x for x in lines if x["kind"] == "WARN"]
-        sig = [x for x in lines if x["kind"] == "signal"]
-        log(f"oracle: {len(sig)} test signals clean, {len(warn)} warnings, {len(bad)} VIOLATIONS")
-        for x in bad[:20]:
-            log("  ", x["device"], x.get("driver"), x.get("how"), x.get("why"))
-        return not bad
+        """The three layers (checks.py)."""
+        ok, text = checks.judge_run(self.dir)
+        print(text, flush=True)
+        return ok
 
 
 def tools_used(path):
@@ -349,72 +371,58 @@ def readable(path, cut=2500):
     return "\n".join(out)
 
 
-def prompts(path):
-    """`## label` and the user's words under it."""
-    out, label, lines = [], None, []
-    for line in pathlib.Path(path).read_text().splitlines():
-        if line.startswith("## "):
-            if label:
-                out.append((label, "\n".join(lines).strip()))
-            label, lines = line[3:].strip(), []
-        elif label:
-            lines.append(line)
-    if label:
-        out.append((label, "\n".join(lines).strip()))
-    return out
-
-
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("what", choices=["run", "up", "ask", "save", "down", "judge", "verdict"])
+    ap.add_argument("what", choices=["run", "up", "ask", "save", "down", "verdict"])
     ap.add_argument("text", nargs="*")
     ap.add_argument("--name", default="run")
+    ap.add_argument("--story", default=str(HERE / "stories/home-theatre.toml"))
     ap.add_argument("--confirm", default="never_ask", choices=["never_ask", "ask_risky", "ask_everything"])
-    ap.add_argument("--unconfirmed", default="", help="devices whose speaker setup is left unconfirmed")
-    ap.add_argument("--steps", default="", help="which prompts, 1,2,3 (default all)")
-    ap.add_argument("--prompts", default=str(HERE / "prompts.md"))
+    ap.add_argument("--steps", default="", help="which of the story's steps, 1,2,3 (default all)")
+    ap.add_argument("--replay", default="", help="a replay script in place of the agent")
     ap.add_argument("--label", default="ask")
     ap.add_argument("--keep", action="store_true", help="leave the app running")
     a = ap.parse_args()
-    if a.what == "judge":
-        os.execv(sys.executable, [sys.executable, str(HERE / "judge.py"), *a.text])
     run = Run(a.name)
     if a.what == "verdict":
         sys.exit(0 if run.verdict() else 1)
     if a.what in ("run", "up"):
-        run.up(a.confirm, [x for x in a.unconfirmed.split(",") if x])
+        run.up(a.confirm, a.story)
         if a.what == "up":
             return
     run.watch()
-    ok = True
+    wanted = [int(x) for x in a.steps.split(",") if x]
     if a.what == "run":
-        wanted = [int(x) for x in a.steps.split(",") if x]
+        ok = False
         try:
-            for i, (label, text) in enumerate(prompts(a.prompts), 1):
-                if wanted and i not in wanted:
+            script = json.loads(pathlib.Path(a.replay).read_text())["steps"] if a.replay else None
+            player = replay.Player(run) if script else None
+            for i, step in enumerate(run.story()["step"], 1):
+                if (wanted and i not in wanted) or (script and step["label"] not in script):
                     continue
-                if run.ask(label, text) != 0:
-                    ok = False
+                code = run.replay(step["label"], script[step["label"]], player) if script else run.ask(step["label"], step["prompt"])
+                if code != 0:
                     break
         finally:
-            ok = run.verdict() and ok
             if not a.keep:
                 run.down()
+            ok = run.verdict()
         sys.exit(0 if ok else 1)
     if a.what == "ask":
-        if a.steps:
-            for i, (label, text) in enumerate(prompts(a.prompts), 1):
-                if str(i) in a.steps.split(","):
-                    run.ask(label, text)
-        else:
+        for i, step in enumerate(run.story()["step"], 1):
+            if i in wanted:
+                run.ask(step["label"], step["prompt"])
+        if not wanted:
             run.ask(a.label, " ".join(a.text))
         run.verdict()
     elif a.what == "save":
-        run.save(a.label)
+        run.save(a.text[0] if a.text else a.label)
     elif a.what == "down":
         run.down()
         run.verdict()
 
 
 if __name__ == "__main__":
+    import checks
+    import replay
     main()

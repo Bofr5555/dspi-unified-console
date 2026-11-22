@@ -380,7 +380,8 @@ impl Room {
     /// `serial`'s generator was stopped now.
     pub(crate) fn stops(&self, serial: &str) {
         for a in lock(&self.air).iter_mut().filter(|a| a.serial == serial) {
-            let now = a.from.elapsed().as_secs_f64() + self.spec.latency_ms / 1000.0;
+            // What is in the air still arrives: the latency and the room's ring
+            let now = a.from.elapsed().as_secs_f64() + self.spec.latency_ms / 1000.0 + 1.0;
             a.end = Some(a.end.map_or(now, |e| e.min(now)));
         }
     }
@@ -498,7 +499,12 @@ impl Room {
                     }
                     l.playing = Some((ms, bytes));
                 }
-                _ => l.playing = None,
+                _ => {
+                    // Over, or stopped by whoever: its sound ends with it
+                    if l.playing.take().is_some() {
+                        self.stops(&dev.serial);
+                    }
+                }
             }
         }
         if changed {

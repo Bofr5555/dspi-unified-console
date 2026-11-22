@@ -1,0 +1,25 @@
+# Product bugs the function test found (FUNC1), as a replay that fails until they are fixed:
+#   run.sh --replay replay/known-bugs.json --story stories/known-bugs.toml
+# Move a step to replay/smoke.json once its bug is closed.
+name = "known-bugs"
+
+[[step]]
+label = "tweeter-without-highpass"
+
+[[step]]
+label = "low-highpass"
+
+# A tune applied before anything is routed: its polarity write goes to no crosspoint
+[[step]]
+label = "lost-polarity"
+
+  [[step.expect]]
+  what = "the kept (and verified) tune sums at the seat"
+  kind = "holes"
+  inputs = ["L"]
+  band_hz = [300, 8000]
+  pass_db = -6
+  near_db = -9
+
+[[step]]
+label = "sub-tune"
