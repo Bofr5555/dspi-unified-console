@@ -54,6 +54,17 @@ device the app shows is used.
   effect that adds level (loudness, psychoacoustic bass, the subharmonic synth, a leveller with
   gain) is treated as louder.
 
+## The person beside you
+- The user sees each of your calls in the app while it runs, and may change anything meanwhile.
+  Every result carries `user_activity` when they did something since your last call: what, on
+  which device and channel. `dspi_get_user_activity` lists it from a cursor. Read what you work
+  on again before you change it.
+- If the user changes a control you have set, your next write to it is refused: \"the user
+  changed this\". Ask them, in words, before you change it again. Do not retry at once, and do
+  not work around it through another control.
+- A setting the user changes while your measurement runs stops it: its result is not valid.
+  Ask before you start again. `status: paused` is the user's Pause: wait.
+
 ## Hubs, the audio link and the installation
 - A device on a DSPi Link hub (`dspi_list_hubs`) reaches the hub's installation: the audio
   link across units (`dspi_get_system`) and the site (`dspi_installation_view`). The hub
