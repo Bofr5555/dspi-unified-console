@@ -233,6 +233,10 @@ merges do not conflict, nothing generated or listed is edited by two of them:
 - **`assets/actions.json`**, the actions for the web and the Terminal, is made
   from that table by `qt/tools/actions.sh` and checked by `qt-offscreen`; like
   the `.ts`, the coordinator runs it after a merge that changes the table.
+- **The command palette** (`qml/modern/CommandPalette.qml`, Modern's Ctrl+K)
+  lists what is in the menu table, `SectionTable`, the channels, the Settings
+  pages with their search terms and the open devices: a new row, tab or page is
+  in it without a line there. No row and no panel may take Ctrl+K.
 - **The parked files' table** below is updated by the coordinator when a
   package that adapts a parked file is merged.
 

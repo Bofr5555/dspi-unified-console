@@ -30,9 +30,6 @@ Panel {
 
     onShownChanged: if (shown) SettingsController.ensureShown()
 
-    // -- WP LAY3 -- Modern's top bar search
-    function focusSearch() { search.forceActiveFocus() }
-
     RowLayout {
         anchors.fill: parent
         spacing: 0

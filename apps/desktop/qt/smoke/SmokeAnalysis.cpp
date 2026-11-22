@@ -250,8 +250,11 @@ void monitorSection(SmokeDriver &d) {
                                                               && mon->text().count(QLatin1Char('\n')) == mon->lines()->rowCount());
     d.grab(qp9Mon.w, QStringLiteral("window-monitor.png"));
     d.check("qp9: the window has the keyboard", qp9Mon.focus());
+    // -- WP LAY6 -- (Ctrl+K before: the command palette's now)
     QTest::keyClick(qp9Mon.w, Qt::Key_K, Qt::ControlModifier);
-    d.check("qp9: Ctrl+K clears", mon->lines()->rowCount() == 0);
+    d.check("qp9: Ctrl+K does not clear", mon->lines()->rowCount() > 0);
+    QTest::keyClick(qp9Mon.w, Qt::Key_L, Qt::ControlModifier);
+    d.check("qp9: Ctrl+L clears", mon->lines()->rowCount() == 0);
     renameElsewhere("Qp9 Monitor D");
     d.check("qp9: after Clear only new lines", d.waitFor(3000, [&] { return hasLine(QStringLiteral("Qp9 Monitor D")); })
                                                    && !hasLine(QStringLiteral("Qp9 Monitor C")));

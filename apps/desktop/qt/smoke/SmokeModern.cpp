@@ -306,12 +306,12 @@ void topBarPart(Modern &m) {
     m.d.grab(m.main, QStringLiteral("modern-ai.png"));
     m.d.spin(200);
 
+    // -- WP LAY6 -- (its own section, lay6-palette)
     m.click(QStringLiteral("TopBar.search"));
+    QObject *palette = m.d.object(QStringLiteral("CommandPalette"));
+    m.check("the search opens the command palette", palette && m.d.waitFor(1000, [&] { return palette->property("opened").toBool(); }));
+    if (palette) QMetaObject::invokeMethod(palette, "close");
     m.d.spin(100);
-    QQuickItem *search = m.d.item(QStringLiteral("Settings.search"));
-    m.check("the search goes to the settings' search", m.shell->pageAction() == QLatin1String("edit.settings") && search
-            && m.main->activeFocusItem() && (m.main->activeFocusItem() == search || search->isAncestorOf(m.main->activeFocusItem())));
-    if (m.main->activeFocusItem()) m.main->activeFocusItem()->setFocus(false);
 
     // The dock
     sidebar->setVolumeMode(QStringLiteral("user"));

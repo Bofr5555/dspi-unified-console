@@ -168,6 +168,10 @@ public:
     Q_INVOKABLE QString pageTitle(const QString &id) const;
     Q_INVOKABLE QString pageType(const QString &id) const;
     Q_INVOKABLE QString pageIcon(const QString &id) const;
+    // -- WP LAY6 -- For the command palette: every page of the sidebar that is
+    // shown now, in order: [{id, title, icon, group, terms, enabled}]; `group` is
+    // its heading, `enabled` false for one the alink sender greys
+    Q_INVOKABLE QVariantList searchEntries() const;
     // The QML types other packages registered for page `id`, in order
     Q_INVOKABLE QStringList sectionTypes(const QString &id) const;
 

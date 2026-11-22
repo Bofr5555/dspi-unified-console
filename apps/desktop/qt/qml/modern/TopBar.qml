@@ -106,7 +106,7 @@ Rectangle {
 
         Item { Layout.fillWidth: true; Layout.preferredWidth: 1 }
 
-        // ---- Search (the command palette is WP LAY6's; until then the settings' search)
+        // ---- Search: the command palette (-- WP LAY6 --)
         AbstractButton {
             id: search
             objectName: "TopBar.search"
@@ -114,7 +114,7 @@ Rectangle {
             Layout.maximumWidth: bar.compact ? 32 : 300
             Layout.preferredWidth: bar.compact ? 32 : 240
             implicitHeight: 28
-            text: qsTr("Search settings…")
+            text: qsTr("Search settings, channels, commands…")
             hoverEnabled: true
             focusPolicy: Qt.TabFocus
             onClicked: bar.searchRequested()
@@ -132,10 +132,25 @@ Rectangle {
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
                         visible: !bar.compact
+                        // -- WP LAY6 -- up to the shortcut
+                        width: Math.min(implicitWidth, search.width - 14 - keys.implicitWidth - 8 - 3 * parent.spacing - 8)
+                        elide: Text.ElideRight
                         text: search.text
                         font: Theme.fontBody
                         color: Theme.textMuted
                     }
+                }
+                // -- WP LAY6 --
+                Text {
+                    id: keys
+                    objectName: "TopBar.search.keys"
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.right: parent.right
+                    anchors.rightMargin: 8
+                    visible: !bar.compact
+                    text: PaletteController.shortcut
+                    font: Theme.fontSmall
+                    color: Theme.textMuted
                 }
             }
             background: Rectangle {
@@ -145,7 +160,7 @@ Rectangle {
                 border.color: Theme.focusRing
             }
             HelpTip {
-                text: search.text
+                text: search.text + " (" + PaletteController.shortcut + ")"   // -- WP LAY6 --
                 visible: bar.compact && search.hovered
             }
             Accessible.role: Accessible.Button

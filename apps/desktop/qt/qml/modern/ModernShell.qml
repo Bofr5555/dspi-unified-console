@@ -90,11 +90,7 @@ Item {
             showDevices: !shell.deviceRow && !shell.railDevices
             notifications: drawer.waiting
             onBellClicked: drawer.toggle()
-            onSearchRequested: {
-                Shell.trigger("edit.settings")
-                const page = pages.page("settings/settings")
-                if (page && page.content && page.content.focusSearch) page.content.focusSearch()
-            }
+            onSearchRequested: PaletteController.open()   // -- WP LAY6 --
         }
         NavRail {
             Layout.fillWidth: true
@@ -205,6 +201,11 @@ Item {
     }
     PresetDialogs {
         id: presetDialogs
+    }
+    // -- WP LAY6 -- Ctrl+K and the top bar's search (PaletteController.opening)
+    CommandPalette {
+        window: shell.mainWindow
+        pages: pages
     }
 
     // ---- The device switcher (Device > Devices…, the tabs' "+")
