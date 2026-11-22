@@ -159,7 +159,7 @@ It is frozen at wire **V26**. It has nothing from V27–V32 (limiter, subharmoni
 | # | Feature | macOS (ref) | iOS | Qt desktop | Terminal | Android | Windows C# |
 |---|---|---|---|---|---|---|---|
 | D1 | Preset slots (save, rename, clear, copy, default) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| D2 | Commit, revert, factory reset | ✓ (+ Edit > Undo, Redo, Cmd-Z / Shift-Cmd-Z: the core's journal, `Core/CoreUndo.swift`, SWMAC1; see section 4) | ✓ (+ Undo and Redo toolbar buttons, SWMAC1) | ✓ (+ undo, redo and History: the core's journal, `HistoryController`, `qml/tools/HistoryWindow.qml`) | ✓ (+ undo journal) | ✓ (+ confirmation tokens; + Undo and Redo in the strip at the top, Ctrl+Z / Ctrl+Shift+Z, Ctrl+Y: the core's journal, AN42) | ✓ |
+| D2 | Commit, revert, factory reset | ✓ (+ Edit > Undo, Redo, Cmd-Z / Shift-Cmd-Z: the core's journal, `Core/CoreUndo.swift`, SWMAC1; see section 4) | ✓ (+ Undo and Redo toolbar buttons, SWMAC1) | ✓ (+ undo, redo and History: the core's journal, `HistoryController`, `qml/tools/HistoryPanel.qml`) | ✓ (+ undo journal) | ✓ (+ confirmation tokens; + Undo and Redo in the strip at the top, Ctrl+Z / Ctrl+Shift+Z, Ctrl+Y: the core's journal, AN42) | ✓ |
 | D3 | Unsaved-changes marker and diff | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ (+ IO undo) |
 | D4 | Filter files (REW / AutoEQ / Console) | ✓ | ✗ "Not available yet" | ✓ | ✓ (+ Windows dialect) | ✓ SAF | ✓ |
 | D5 | `.dspipreset` config document | ✓ | ✗ "Not available yet" | ✓ | ✓ (`--dry-run`) | ✓ (+ share sheet) | ✗ |
@@ -181,7 +181,7 @@ It is frozen at wire **V26**. It has nothing from V27–V32 (limiter, subharmoni
 
 | # | Feature | macOS (ref) | iOS | Qt desktop | Terminal | Android | Windows C# |
 |---|---|---|---|---|---|---|---|
-| F1 | Firmware update (UF2) | ✓ bundled 1.1.6 final, wizard, downgrade | n.a. (no DriverKit, MIDI only), **but the window still shows and waits forever** | ✓ bundled **1.1.6 final** for RP2040 and RP2350, verify, downgrade note, enter bootloader, export the configuration first, custom `.uf2`; hidden on STM32H723; no download, as on the Mac (`FirmwareController`, `qml/tools/FirmwareWindow.qml`) | ◐ finds the drive; you copy by hand | ✓ PICOBOOT or SAF copy, bundled **beta5** or local `.uf2` | ◐ reboot to bootloader only |
+| F1 | Firmware update (UF2) | ✓ bundled 1.1.6 final, wizard, downgrade | n.a. (no DriverKit, MIDI only), **but the window still shows and waits forever** | ✓ bundled **1.1.6 final** for RP2040 and RP2350, verify, downgrade note, enter bootloader, export the configuration first, custom `.uf2`; hidden on STM32H723; no download, as on the Mac (`FirmwareController`, `qml/tools/FirmwarePanel.qml`) | ◐ finds the drive; you copy by hand | ✓ PICOBOOT or SAF copy, bundled **beta5** or local `.uf2` | ◐ reboot to bootloader only |
 | F2 | Enter bootloader | ✓ | ◐ request works but nothing can flash afterwards | ✓ | ✓ | ✓ | ✓ |
 | F3 | App self-update | ✓ GitHub, signed zip | n.a. (App Store) | ✓ opt-in GitHub release feed over https, privacy line, update banner (Settings > Updates, `AppUpdater`); only in the project's own Windows files, AppImage and tar.gz, never in the `.deb`, `.rpm` or AUR package | ✗ | n.a. (Play / sideload) | ✗ |
 
@@ -476,7 +476,7 @@ M3 and M14 (`fw.install`) are deleted: no hub implements them (`PLAN-CLIENTS.md`
 | # | Feature | Qt | Terminal | Android | iOS |
 |---|---|---|---|---|---|
 | M15 | App self-update | have: opt-in, Settings > Updates (`AppUpdater`); only in the project's own Windows files, AppImage and tar.gz | n.a.: package manager | n.a.: Play | n.a.: App Store |
-| M16 | Firmware wizard: bundled image, verify, downgrade, enter bootloader without installing, export configuration before flashing (`FirmwareUpdateView.swift:384-385`); hidden on STM32H723 (`DSPi_ConsoleApp.swift:11974`) | have (`FirmwareController`, `qml/tools/FirmwareWindow.qml`) | TM3 (non-graphical) | have most; AN18 | n.a.: no USB bootloader (owner); **SW18**: no window, no Tools entry, no `.uf2` in the iOS target; the banner and the wizard point to a computer |
+| M16 | Firmware wizard: bundled image, verify, downgrade, enter bootloader without installing, export configuration before flashing (`FirmwareUpdateView.swift:384-385`); hidden on STM32H723 (`DSPi_ConsoleApp.swift:11974`) | have (`FirmwareController`, `qml/tools/FirmwarePanel.qml`) | TM3 (non-graphical) | have most; AN18 | n.a.: no USB bootloader (owner); **SW18**: no window, no Tools entry, no `.uf2` in the iOS target; the banner and the wizard point to a computer |
 | M41 | Firmware mismatch banner: any version other than the expected one (`FirmwareUpdateView.swift:481-526`, `DSPViewModel.swift:2099-2106`) | **have**: `qml/banners/FirmwareBanner.qml`, `FirmwareController` (expected version: the bundled images', 1.1.6) | TM4 | **partial**: shown only for an incompatible wire format, never for another version on the same format (`feature-home/HomeModel.kt:89-97`, `feature-home/FirmwareMismatchBanner.kt:35-42`). **AN18**, with the updated images | **have (SW18)**: shown, with no Update or Details button on iOS; it says to use a computer |
 
 **Onboarding** (Terminal: decided, skips)

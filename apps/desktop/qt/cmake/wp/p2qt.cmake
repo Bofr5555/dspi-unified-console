@@ -6,5 +6,5 @@ list(APPEND DSPI_APP_SOURCES
     src/controllers/HubFeed.h src/controllers/HubFeed.cpp
     src/controllers/EventsController.h src/controllers/EventsController.cpp
     src/controllers/IdentifyController.h src/controllers/IdentifyController.cpp)
-list(APPEND DSPI_QML_FILES qml/events/EventsWindow.qml)
+list(APPEND DSPI_QML_FILES qml/events/EventsPanel.qml)   # -- WP LAY1b -- was EventsWindow.qml
 list(APPEND DSPI_SMOKE_SOURCES smoke/SmokeHubPages.cpp)

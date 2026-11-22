@@ -10,7 +10,7 @@ list(APPEND DSPI_QML_FILES
     qml/files/ImportFilters.qml
     qml/files/ImportConfig.qml
     qml/files/ImportProgress.qml
-    qml/tools/AutoEqWindow.qml
+    qml/tools/AutoEqPanel.qml   # -- WP LAY1b -- was AutoEqWindow.qml
     qml/tools/AutoEqRow.qml
     qml/tools/AutoEqUpdateDialog.qml
     qml/tools/AutoEqRebuild.qml)

@@ -8,15 +8,11 @@ import UConsole
 // tiles and the outputs on the left; level, parameters, timing and options
 // scrolling on the right), and the transport at the bottom. Space starts it
 // and stops it with a fade. Closing the window leaves the generator playing.
-ToolWindow {
-    id: window
-    objectName: "SiggenWindow"
-    windowId: "signalGenerator"
-    defaultWidth: 780
-    defaultHeight: 500
-    minimumWidth: 740
-    minimumHeight: 500
-    title: qsTr("Signal Generator")
+// -- WP LAY1b -- A panel (Panel.qml): PanelTable's row for tools.signalGenerator gives
+// its window's title and sizes.
+Panel {
+    id: panel
+    objectName: "SiggenPanel"
     // -- WP QTPOP --
     fitBodies: [right]
 
@@ -24,13 +20,14 @@ ToolWindow {
     readonly property bool enabledControls: SiggenController.controlsEnabled
     readonly property var currentType: SiggenController.types[SiggenController.signalType]
 
-    onVisibleChanged: SiggenController.windowShown = visible
-    Component.onCompleted: SiggenController.windowShown = visible
+    onShownChanged: SiggenController.windowShown = shown
+    Component.onCompleted: SiggenController.windowShown = shown
+    Component.onDestruction: SiggenController.windowShown = false   // -- WP LAY1b -- a page host unloaded
 
     // Space: Start, or the faded Stop (a focused text field keeps it)
     Shortcut {
         sequence: "Space"
-        enabled: !window.senderLocked   // -- WP QTSENDER --
+        enabled: panel.shown && !panel.locked   // -- WP QTSENDER -- // -- WP LAY1b -- only while it shows
         onActivated: SiggenController.toggle()
     }
 
@@ -247,14 +244,14 @@ ToolWindow {
                                 text: modelData.label
                                 toolTip: modelData.blurb
                                 chosen: SiggenController.signalType === modelData.id
-                                enabled: window.enabledControls
+                                enabled: panel.enabledControls
                                 onClicked: SiggenController.selectType(modelData.id)
                             }
                         }
                     }
                     Caption {
                         objectName: "SiggenWindow.blurb"
-                        text: window.currentType ? window.currentType.blurb : ""
+                        text: panel.currentType ? panel.currentType.blurb : ""
                     }
                 }
 
@@ -270,13 +267,13 @@ ToolWindow {
                         AppButton {
                             objectName: "SiggenWindow.all"
                             text: qsTr("All")
-                            enabled: window.enabledControls
+                            enabled: panel.enabledControls
                             onClicked: SiggenController.allOutputs()
                         }
                         AppButton {
                             objectName: "SiggenWindow.none"
                             text: qsTr("None")
-                            enabled: window.enabledControls
+                            enabled: panel.enabledControls
                             onClicked: SiggenController.noOutputs()
                         }
                     }
@@ -296,7 +293,7 @@ ToolWindow {
                                 inverted: selected && (SiggenController.invertMask & (1 << index)) !== 0
                                 walking: SiggenController.playing && SiggenController.walkOutput === index
                                 matrixEnabled: { DeviceModel.revision; return SiggenController.outputEnabled(index) }
-                                enabled: window.enabledControls
+                                enabled: panel.enabledControls
                                 onClicked: SiggenController.stepOutput(index)
                             }
                         }
@@ -346,7 +343,7 @@ ToolWindow {
                                 scrollStep: 1
                                 minValue: -120
                                 maxValue: 0
-                                enabled: window.enabledControls
+                                enabled: panel.enabledControls
                                 onCommitted: v => SiggenController.setLevel(v, false)
                             }
                         }
@@ -357,7 +354,7 @@ ToolWindow {
                             from: -80
                             to: 0
                             value: SiggenController.levelDb
-                            enabled: window.enabledControls
+                            enabled: panel.enabledControls
                             onValueMoved: v => SiggenController.setLevel(v, true)
                             onCommitted: v => SiggenController.setLevel(v, true)
                         }
@@ -369,7 +366,7 @@ ToolWindow {
                     // Parameters (types with none show no section)
                     ColumnLayout {
                         id: paramSection
-                        readonly property var descs: window.currentType ? window.currentType.params : []
+                        readonly property var descs: panel.currentType ? panel.currentType.params : []
                         readonly property bool any: descs.some(p => p.semantic !== SiggenController.Unused)
                         visible: any
                         spacing: 6
@@ -381,7 +378,7 @@ ToolWindow {
                             objectName: "SiggenWindow.isp"
                             visible: SiggenController.signalType === SiggenController.Isp
                             Layout.fillWidth: true
-                            enabled: window.enabledControls
+                            enabled: panel.enabledControls
                             currentIndex: Math.round(SiggenController.params[0])
                             ToolTip.visible: hovered
                             ToolTip.text: qsTr("Sample-peak-normalized sequences with a known inter-sample true-peak over. Set the level at or below the headroom the over should fit into.")
@@ -414,7 +411,7 @@ ToolWindow {
                                     scrollStep: modelData.semantic === SiggenController.Ratio ? 0.1 : 1
                                     minValue: modelData.min
                                     maxValue: modelData.max > 0 ? modelData.max : Infinity
-                                    enabled: window.enabledControls
+                                    enabled: panel.enabledControls
                                     onCommitted: v => SiggenController.setParameter(index, v)
                                 }
                             }
@@ -430,13 +427,13 @@ ToolWindow {
                             AppButton {
                                 objectName: "SiggenWindow.presetSmpte"
                                 text: qsTr("SMPTE 60/7k")
-                                enabled: window.enabledControls
+                                enabled: panel.enabledControls
                                 onClicked: SiggenController.applyPreset("smpte")
                             }
                             AppButton {
                                 objectName: "SiggenWindow.presetCcif"
                                 text: qsTr("CCIF 19k/20k")
-                                enabled: window.enabledControls
+                                enabled: panel.enabledControls
                                 onClicked: SiggenController.applyPreset("ccif")
                             }
                         }
@@ -472,7 +469,7 @@ ToolWindow {
                                 stripTrailingZeros: true
                                 scrollStep: 0.5
                                 minValue: timingSection.sweep ? 0.01 : 0
-                                enabled: window.enabledControls
+                                enabled: panel.enabledControls
                                 onCommitted: v => SiggenController.setDurationSeconds(v, timingSection.sweep ? 0.01 : 0)
                             }
                         }
@@ -493,7 +490,7 @@ ToolWindow {
                                 scrollStep: 1
                                 minValue: 0
                                 maxValue: 65535
-                                enabled: window.enabledControls
+                                enabled: panel.enabledControls
                                 onCommitted: v => SiggenController.setRepeat(v)
                             }
                         }
@@ -510,7 +507,7 @@ ToolWindow {
                                 scrollStep: 50
                                 minValue: 0
                                 maxValue: 65535
-                                enabled: window.enabledControls
+                                enabled: panel.enabledControls
                                 onCommitted: v => SiggenController.setGapMs(v)
                             }
                         }
@@ -528,7 +525,7 @@ ToolWindow {
                             label: qsTr("Bypass output EQ (RAW)")
                             caption: qsTr("Skips crossover and PEQ on the selected outputs. Trim, master volume, mute and delay still apply.")
                             checked: (SiggenController.flags & 1) !== 0
-                            switchEnabled: window.enabledControls
+                            switchEnabled: panel.enabledControls
                             onToggled: on => SiggenController.setOption(1, on)
                         }
                         OptionRow {
@@ -538,7 +535,7 @@ ToolWindow {
                             label: qsTr("Decorrelate channels")
                             caption: qsTr("Independent noise per output instead of one copied signal.")
                             checked: (SiggenController.flags & 2) !== 0
-                            switchEnabled: window.enabledControls
+                            switchEnabled: panel.enabledControls
                             onToggled: on => SiggenController.setOption(2, on)
                         }
                         OptionRow {
@@ -548,7 +545,7 @@ ToolWindow {
                             caption: channelId ? qsTr("Channel ID always walks: each output plays its channel number as counted blips.")
                                                : qsTr("Plays the selected outputs sequentially instead of together.")
                             checked: channelId || (SiggenController.flags & 4) !== 0
-                            switchEnabled: window.enabledControls && !channelId
+                            switchEnabled: panel.enabledControls && !channelId
                             onToggled: on => SiggenController.setOption(4, on)
                         }
                     }
@@ -593,7 +590,7 @@ ToolWindow {
                 visible: SiggenController.playing
                 iconName: "square"
                 toolTip: qsTr("Stop immediately, no fade")
-                enabled: window.enabledControls
+                enabled: panel.enabledControls
                 onClicked: SiggenController.stopPlaying(true)
             }
             AppButton {
@@ -602,7 +599,7 @@ ToolWindow {
                 text: qsTr("Stop")
                 iconName: "circle-x"
                 destructive: true
-                enabled: window.enabledControls
+                enabled: panel.enabledControls
                 onClicked: SiggenController.stopPlaying(false)
             }
             AppButton {

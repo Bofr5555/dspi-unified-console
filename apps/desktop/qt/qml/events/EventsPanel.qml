@@ -7,17 +7,14 @@ import UConsole
 // first. "On this console" is this computer's own log; "On the hub" is the
 // hub's shared history over DSPi Link, with who caused each record (only on a
 // hub that keeps one). EventsController reads both through the core.
-ToolWindow {
-    id: window
-    objectName: "EventsWindow"
-    windowId: "events"
-    defaultWidth: 560
-    defaultHeight: 480
-    minimumWidth: 400
-    minimumHeight: 280
-    title: qsTr("Events")
+// -- WP LAY1b -- A panel (Panel.qml): PanelTable's row for device.events gives
+// its window's title and sizes.
+Panel {
+    id: panel
+    objectName: "EventsPanel"
 
-    onVisibleChanged: EventsController.active = visible
+    onShownChanged: EventsController.active = shown
+    Component.onDestruction: EventsController.active = false   // -- WP LAY1b -- a page host unloaded
 
     ColumnLayout {
         anchors.fill: parent

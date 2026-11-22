@@ -18,8 +18,10 @@ ToolWindow {
     defaultWidth: panel.width
     defaultHeight: panel.height
     minimumWidth: panel.minWidth || 0
-    minimumHeight: panel.minHeight || 0
+    minimumHeight: Math.max(panel.minHeight || 0, body.item ? body.item.minimumHeight : 0)   // -- WP LAY1b -- the panel's own
     fitBodies: body.item ? body.item.fitBodies : []
+    // -- WP LAY1b --
+    onClosing: if (body.item) body.item.closing()
 
     Loader {
         id: body
@@ -45,5 +47,22 @@ ToolWindow {
         property: "actionId"
         value: window.actionId
         when: body.item !== null
+    }
+    // -- WP LAY1b --
+    Binding {
+        target: body.item
+        property: "minimized"
+        value: window.visibility === Window.Minimized
+        when: body.item !== null
+    }
+    Binding {
+        target: window
+        property: "font"
+        value: body.item ? body.item.windowFont : undefined
+        when: body.item !== null && body.item.windowFont !== undefined
+    }
+    Connections {
+        target: body.item
+        function onCloseRequested() { window.close() }
     }
 }

@@ -7,17 +7,13 @@ import UConsole
 // headline, version and items from the core's notes, newest first, then Done.
 // Help > What's New opens it, and it opens by itself once after an update.
 // Showing it counts the notes of this build's firmware as read.
-ToolWindow {
-    id: window
-    objectName: "WhatsNewWindow"
-    windowId: "whatsNew"
-    title: qsTr("What's New")
-    defaultWidth: 460
-    defaultHeight: 420
-    minimumWidth: 360
-    minimumHeight: 280
+// -- WP LAY1b -- A panel (Panel.qml): PanelTable's row for help.whatsNew gives
+// its window's title and sizes.
+Panel {
+    id: panel
+    objectName: "WhatsNewPanel"
 
-    onVisibleChanged: if (visible) OnboardingController.markWhatsNewRead()
+    onShownChanged: if (shown) OnboardingController.markWhatsNewRead()
 
     ListView {
         id: list
@@ -127,12 +123,13 @@ ToolWindow {
             }
             primary: true
             text: qsTr("Done")
-            onClicked: window.close()
+            onClicked: panel.close()
         }
     }
 
     Shortcut {
         sequences: ["Escape", "Return", "Enter"]
-        onActivated: window.close()
+        enabled: panel.shown   // -- WP LAY1b -- only while it shows
+        onActivated: panel.close()
     }
 }

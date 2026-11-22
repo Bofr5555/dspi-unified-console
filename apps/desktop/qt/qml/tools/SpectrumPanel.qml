@@ -9,15 +9,11 @@ import UConsole
 // here only, and the analyser's status bar with "Following another console"
 // and Take control. It shows only what the page already shows; it asks for
 // the analyser while it is on screen.
-ToolWindow {
-    id: window
-    objectName: "SpectrumWindow"
-    windowId: "spectrum"
-    defaultWidth: 860
-    defaultHeight: 560
-    minimumWidth: 620
-    minimumHeight: 420
-    title: qsTr("Spectrum Analyser")
+// -- WP LAY1b -- A panel (Panel.qml): PanelTable's row for tools.spectrum gives
+// its window's title and sizes.
+Panel {
+    id: panel
+    objectName: "SpectrumPanel"
 
     // 0 Curves, 1 Bars, 2 Both: taken from the page on every show
     property int mode: 0
@@ -27,7 +23,7 @@ ToolWindow {
                                       && (RtaController.ownChannels.length > 0 || RtaController.following)
     readonly property var drawn: RtaController.drawnChannels
     readonly property var visibleChannels: drawn.filter(c => !hidden[RtaController.drawnTap + ":" + c])
-    readonly property bool rendering: visible && visibility !== Window.Minimized
+    readonly property bool rendering: shown && !minimized   // -- WP LAY1b -- its host says
     readonly property bool curvesOn: rendering && available && mode !== 1 && visibleChannels.length > 0
     readonly property bool barsOn: rendering && available && mode !== 0 && visibleChannels.length > 0
 
@@ -36,7 +32,7 @@ ToolWindow {
         mode = RtaController.showGraph && RtaController.showBars ? 2 : RtaController.showBars ? 1 : 0
         RtaController.openAnalyser()
     }
-    onVisibleChanged: if (visible) takeFromPage()
+    onShownChanged: if (shown) takeFromPage()
     onCurvesOnChanged: RtaController.setView("window.curves", RtaController.Curves, curvesOn)
     onBarsOnChanged: RtaController.setView("window.bars", RtaController.Bars, barsOn)
     // Hidden channels no longer drawn are forgotten
@@ -122,20 +118,20 @@ ToolWindow {
                 color: Theme.text
             }
             Text {
-                visible: window.available
+                visible: panel.available
                 text: RtaController.drawnTap === 0 ? qsTr("Inputs") : qsTr("Outputs")
                 font: Theme.fontSmall
                 color: Theme.textMuted
             }
             Rectangle {
-                visible: window.available
+                visible: panel.available
                 implicitWidth: 1
                 implicitHeight: 12
                 color: Theme.separator
             }
             // The legend: a click hides or shows a channel here only
             Flickable {
-                visible: window.available
+                visible: panel.available
                 Layout.fillWidth: true
                 Layout.minimumWidth: 0
                 Layout.preferredWidth: 0
@@ -148,11 +144,11 @@ ToolWindow {
                     spacing: 10
                     anchors.verticalCenter: parent.verticalCenter
                     Repeater {
-                        model: window.drawn
+                        model: panel.drawn
                         AbstractButton {
                             id: entry
                             required property int modelData
-                            readonly property bool isHidden: window.hidden[RtaController.drawnTap + ":" + modelData] === true
+                            readonly property bool isHidden: panel.hidden[RtaController.drawnTap + ":" + modelData] === true
                             objectName: "SpectrumWindow.legend." + modelData
                             implicitWidth: entryRow.implicitWidth
                             implicitHeight: 18
@@ -166,12 +162,12 @@ ToolWindow {
                                     width: 6
                                     height: 6
                                     radius: 3
-                                    color: window.colorOf(entry.modelData)
+                                    color: panel.colorOf(entry.modelData)
                                     opacity: entry.isHidden ? 0.25 : 1
                                 }
                                 Text {
                                     anchors.verticalCenter: parent.verticalCenter
-                                    text: window.infoOf(entry.modelData).name
+                                    text: panel.infoOf(entry.modelData).name
                                     font: Qt.font({ pixelSize: 10, strikeout: entry.isHidden })
                                     color: Theme.textMuted
                                     opacity: entry.isHidden ? 0.4 : 1
@@ -188,24 +184,24 @@ ToolWindow {
                                 visible: entry.hovered
                             }
                             Accessible.role: Accessible.CheckBox
-                            Accessible.name: window.infoOf(entry.modelData).name
+                            Accessible.name: panel.infoOf(entry.modelData).name
                             Accessible.checked: !isHidden
-                            onClicked: window.toggleHidden(modelData)
+                            onClicked: panel.toggleHidden(modelData)
                         }
                     }
                 }
             }
-            Item { visible: !window.available; Layout.fillWidth: true }
+            Item { visible: !panel.available; Layout.fillWidth: true }
             AppTabBar {
                 objectName: "SpectrumWindow.mode"
                 label: qsTr("View")
-                enabled: window.available
-                currentIndex: window.mode
+                enabled: panel.available
+                currentIndex: panel.mode
                 ToolTip.visible: hovered
                 ToolTip.text: qsTr("How this window draws the page's spectrum. It does not change the main window.")
-                AppTabButton { text: qsTr("Curves"); onClicked: window.mode = 0 }
-                AppTabButton { text: qsTr("Bars"); onClicked: window.mode = 1 }
-                AppTabButton { text: qsTr("Both"); onClicked: window.mode = 2 }
+                AppTabButton { text: qsTr("Curves"); onClicked: panel.mode = 0 }
+                AppTabButton { text: qsTr("Bars"); onClicked: panel.mode = 1 }
+                AppTabButton { text: qsTr("Both"); onClicked: panel.mode = 2 }
             }
         }
         Rectangle { visible: RtaController.available; Layout.fillWidth: true; implicitHeight: 1; color: Theme.separator }
@@ -213,7 +209,7 @@ ToolWindow {
         // ---- Content ----
         Notice {
             objectName: "SpectrumWindow.hidden"
-            visible: RtaController.available && !window.available
+            visible: RtaController.available && !panel.available
             Layout.fillWidth: true
             Layout.fillHeight: true
             icon: "eye-off"
@@ -223,7 +219,7 @@ ToolWindow {
                      : qsTr("This window shows the spectrum of the open channel page. Choose channels and switch the spectrum on from the gear on the response graph.")
         }
         Rectangle {
-            visible: RtaController.available && window.available
+            visible: RtaController.available && panel.available
             Layout.fillWidth: true
             Layout.fillHeight: true
             color: Theme.panel
@@ -231,7 +227,7 @@ ToolWindow {
             Notice {
                 objectName: "SpectrumWindow.allHidden"
                 anchors.fill: parent
-                visible: window.visibleChannels.length === 0
+                visible: panel.visibleChannels.length === 0
                 icon: "eye-off"
                 headline: qsTr("Every channel is hidden in this window")
                 caption: qsTr("Click a channel name above to show it again.")
@@ -241,19 +237,19 @@ ToolWindow {
                 anchors.fill: parent
                 anchors.margins: Theme.spacing
                 spacing: Theme.spacing
-                visible: window.visibleChannels.length > 0
+                visible: panel.visibleChannels.length > 0
 
                 RtaSurface {
                     objectName: "SpectrumWindow.curves"
-                    visible: window.mode !== 1
+                    visible: panel.mode !== 1
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     Layout.preferredHeight: 1
-                    active: window.curvesOn
+                    active: panel.curvesOn
                     grid: true
                     tap: RtaController.drawnTap
-                    channels: window.visibleChannels
-                    colors: window.visibleChannels.map(c => window.colorOf(c))
+                    channels: panel.visibleChannels
+                    colors: panel.visibleChannels.map(c => panel.colorOf(c))
                     minFreq: GraphController.minFreq
                     maxFreq: GraphController.maxFreq
                     glow: GraphController.showGraphGlow
@@ -265,8 +261,8 @@ ToolWindow {
                 GridLayout {
                     id: barGrid
                     objectName: "SpectrumWindow.bars"
-                    readonly property int n: window.visibleChannels.length
-                    visible: window.mode !== 0
+                    readonly property int n: panel.visibleChannels.length
+                    visible: panel.mode !== 0
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     Layout.preferredHeight: 1
@@ -274,7 +270,7 @@ ToolWindow {
                     columnSpacing: Theme.spacing
                     rowSpacing: Theme.spacing
                     Repeater {
-                        model: window.visibleChannels
+                        model: panel.visibleChannels
                         ColumnLayout {
                             id: barCell
                             required property int modelData
@@ -288,10 +284,10 @@ ToolWindow {
                                     width: 6
                                     height: 6
                                     radius: 3
-                                    color: window.colorOf(barCell.modelData)
+                                    color: panel.colorOf(barCell.modelData)
                                 }
                                 Text {
-                                    text: window.infoOf(barCell.modelData).name
+                                    text: panel.infoOf(barCell.modelData).name
                                     font: Qt.font({ pixelSize: 10, weight: Font.DemiBold })
                                     color: Theme.textMuted
                                     elide: Text.ElideRight
@@ -300,10 +296,10 @@ ToolWindow {
                             RtaBars {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
-                                active: window.barsOn
+                                active: panel.barsOn
                                 tap: RtaController.drawnTap
                                 channel: barCell.modelData
-                                tint: window.colorOf(barCell.modelData)
+                                tint: panel.colorOf(barCell.modelData)
                                 frequencyLabels: true
                                 dbLabels: true
                                 gridColor: Theme.text
@@ -395,7 +391,7 @@ ToolWindow {
             }
             Text {
                 objectName: "SpectrumWindow.lowBands"
-                visible: !RtaController.refused && !RtaController.following && window.available && window.mode !== 0
+                visible: !RtaController.refused && !RtaController.following && panel.available && panel.mode !== 0
                          && RtaController.lowBandText !== ""
                 text: RtaController.lowBandText
                 font: parent.mono
@@ -404,7 +400,7 @@ ToolWindow {
             Text {
                 objectName: "SpectrumWindow.range"
                 visible: !RtaController.refused && !RtaController.following
-                         && !(window.available && window.mode !== 0 && RtaController.lowBandText !== "")
+                         && !(panel.available && panel.mode !== 0 && RtaController.lowBandText !== "")
                          && RtaController.rangeText !== ""
                 text: RtaController.rangeText
                 font: parent.mono

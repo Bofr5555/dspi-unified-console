@@ -462,12 +462,15 @@ static void autoEqPreviewSection(SmokeDriver &d) {
     auto *browser = qobject_cast<QQuickWindow *>(topWindow(QStringLiteral("AutoEqWindow")));
     d.check("p1qt2: the browser opens", browser && d.waitFor(3000, [&] { return browser->isVisible(); }));
     if (!browser) return;
+    // -- WP LAY1b -- the browser is a panel in a PanelWindow: its properties are the panel's
+    QObject *browserPanel = browser->property("content").value<QObject *>();
+    if (!browserPanel) return;
     aeq->profiles()->setSearchText(QStringLiteral("HD 600"));
     const QString id = aeq->profiles()->idAt(0);
     aeq->setPair(outPair);
     const int sent = device->settersRun();
     const DspState before = st(d);
-    browser->setProperty("selectedId", id);
+    browserPanel->setProperty("selectedId", id);
     d.check("p1qt2: the preview comes from the core",
             d.waitFor(5000, [&] {
                 const QVariantMap p = aeq->preview();
@@ -485,7 +488,7 @@ static void autoEqPreviewSection(SmokeDriver &d) {
     shootBoth(d, browser, QStringLiteral("autoeq-preview"));
 
     // Apply: only the chosen outputs change, one undo puts them back
-    QMetaObject::invokeMethod(browser, "applySelected");
+    QMetaObject::invokeMethod(browserPanel, "applySelected");
     d.check("p1qt2: Apply closes the browser", d.waitFor(3000, [&] { return !browser->isVisible(); }));
     d.waitIdle();
     bool outChanged = false;

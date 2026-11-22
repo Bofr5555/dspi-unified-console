@@ -9,15 +9,11 @@ import UConsole
 // -- WP P1QT2 -- Before Apply: the channel pair it goes to (any two inputs or
 // outputs, P1AQ) and the core's preview of what it would do, drawn on a graph
 // (nothing is sent until Apply; the outputs' gain is left alone).
-ToolWindow {
-    id: window
-    objectName: "AutoEqWindow"
-    windowId: "autoeq"
-    title: qsTr("AutoEQ - Browse Profiles")
-    defaultWidth: 600
-    defaultHeight: 640
-    minimumWidth: 450
-    minimumHeight: 460
+// -- WP LAY1b -- A panel (Panel.qml): PanelTable's row for autoeq.browse gives
+// its window's title and sizes.
+Panel {
+    id: panel
+    objectName: "AutoEqPanel"
 
     property string selectedId
     readonly property var selected: selectedId.length ? AutoEqController.profile(selectedId) : ({})
@@ -32,14 +28,14 @@ ToolWindow {
         AutoEqController.apply(selectedId)
         close()
     }
-    onVisibleChanged: if (visible) search.forceActiveFocus()
+    onShownChanged: if (shown) search.forceActiveFocus()
 
     // The selection follows the list: a profile the search hides is not applied
     Connections {
         target: AutoEqController.profiles
         function onModelReset() {
-            if (window.selectedId.length && AutoEqController.profiles.rowOf(window.selectedId) < 0) window.selectedId = ""
-            list.currentIndex = AutoEqController.profiles.rowOf(window.selectedId)
+            if (panel.selectedId.length && AutoEqController.profiles.rowOf(panel.selectedId) < 0) panel.selectedId = ""
+            list.currentIndex = AutoEqController.profiles.rowOf(panel.selectedId)
         }
     }
 
@@ -73,10 +69,10 @@ ToolWindow {
                         list.forceActiveFocus()
                         if (list.currentIndex < 0 && list.count > 0) list.currentIndex = 0
                     }
-                    Keys.onReturnPressed: window.applySelected()
+                    Keys.onReturnPressed: panel.applySelected()
                     Keys.onEscapePressed: {
                         if (text.length) AutoEqController.profiles.searchText = ""
-                        else window.close()
+                        else panel.close()
                     }
                 }
                 IconButton {
@@ -116,14 +112,14 @@ ToolWindow {
                 ScrollBar.vertical: AppScrollBar {}
                 Accessible.role: Accessible.List
                 Accessible.name: qsTr("Headphones")
-                onCurrentIndexChanged: if (currentIndex >= 0) window.selectedId = AutoEqController.profiles.idAt(currentIndex)
-                Keys.onReturnPressed: window.applySelected()
-                Keys.onEscapePressed: window.close()
+                onCurrentIndexChanged: if (currentIndex >= 0) panel.selectedId = AutoEqController.profiles.idAt(currentIndex)
+                Keys.onReturnPressed: panel.applySelected()
+                Keys.onEscapePressed: panel.close()
                 delegate: AutoEqRow {
-                    selected: profileId === window.selectedId
+                    selected: profileId === panel.selectedId
                     onChosen: {
                         list.currentIndex = index
-                        window.selectedId = profileId
+                        panel.selectedId = profileId
                     }
                 }
             }
@@ -192,15 +188,15 @@ ToolWindow {
                 Layout.fillWidth: true
                 implicitHeight: 130
                 title: qsTr("The profile's response on the chosen channels")
-                curves: window.previewShown
-                        ? window.preview.curves.map(c => ({ points: c.points, color: c.index === 0 ? Theme.accentText : Theme.warning }))
+                curves: panel.previewShown
+                        ? panel.preview.curves.map(c => ({ points: c.points, color: c.index === 0 ? Theme.accentText : Theme.warning }))
                         : []
-                gridDb: window.previewShown ? window.preview.gridDb : []
-                gridY: window.previewShown ? window.preview.gridY : []
-                badge: window.previewShown ? qsTr("Preview") : ""
+                gridDb: panel.previewShown ? panel.preview.gridDb : []
+                gridY: panel.previewShown ? panel.preview.gridY : []
+                badge: panel.previewShown ? qsTr("Preview") : ""
                 Text {
                     anchors.centerIn: parent
-                    visible: !window.previewShown
+                    visible: !panel.previewShown
                     text: qsTr("Select a headphone to see what it would do")
                     font: Theme.fontSmall
                     color: Theme.textMuted
@@ -210,8 +206,8 @@ ToolWindow {
                 objectName: "AutoEqWindow.previewText"
                 Layout.fillWidth: true
                 visible: text.length > 0
-                text: window.previewShown
-                      ? [window.preview.levelText, window.preview.notes].filter(t => t && t.length).join("\n")
+                text: panel.previewShown
+                      ? [panel.preview.levelText, panel.preview.notes].filter(t => t && t.length).join("\n")
                       : ""
                 font: Theme.fontCaption
                 color: Theme.textMuted
@@ -239,11 +235,11 @@ ToolWindow {
                 Column {
                     Layout.fillWidth: true
                     spacing: 2
-                    visible: window.hasSelection
+                    visible: panel.hasSelection
                     Text {
                         objectName: "AutoEqWindow.selectedName"
                         width: parent.width
-                        text: window.selected.name || ""
+                        text: panel.selected.name || ""
                         font: Theme.fontTitle
                         color: Theme.text
                         elide: Text.ElideRight
@@ -256,17 +252,17 @@ ToolWindow {
                             color: Theme.textMuted
                         }
                         Text {
-                            text: window.selected.sourceName || ""
+                            text: panel.selected.sourceName || ""
                             font: Theme.fontSmall
                             color: Theme.textMuted
                         }
                         Icon {
-                            name: window.selected.formFactorIcon || "headphones"
+                            name: panel.selected.formFactorIcon || "headphones"
                             size: 12
                             color: Theme.textMuted
                         }
                         Text {
-                            text: window.selected.formFactor || ""
+                            text: panel.selected.formFactor || ""
                             font: Theme.fontSmall
                             color: Theme.textMuted
                         }
@@ -274,7 +270,7 @@ ToolWindow {
                 }
                 Text {
                     Layout.fillWidth: true
-                    visible: !window.hasSelection
+                    visible: !panel.hasSelection
                     text: qsTr("Select a headphone to apply its EQ profile")
                     font: Theme.fontBody
                     color: Theme.textMuted
@@ -283,14 +279,14 @@ ToolWindow {
                 AppButton {
                     objectName: "AutoEqWindow.cancel"
                     text: qsTr("Cancel")
-                    onClicked: window.close()
+                    onClicked: panel.close()
                 }
                 AppButton {
                     objectName: "AutoEqWindow.apply"
                     text: qsTr("Apply")
                     primary: true
-                    enabled: window.hasSelection && AutoEqController.canApply
-                    onClicked: window.applySelected()
+                    enabled: panel.hasSelection && AutoEqController.canApply
+                    onClicked: panel.applySelected()
                 }
             }
         }
