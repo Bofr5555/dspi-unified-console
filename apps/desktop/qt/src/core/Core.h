@@ -2,64 +2,52 @@
 #define CORE_H
 
 #include <QObject>
-#include <QTimer>
-#include <atomic>
 
 #include "CoreWorker.h"
+#include "DeviceSession.h"
 
 struct FfiCore;
+class DeviceRegistry;
 
-// Owns the core handle (one per process), its worker thread and the core's
-// callbacks. Not seen by QML: screens reach the device through DeviceModel and
-// the controllers, which post their calls to worker().
-//
-// The callbacks run on the core's threads and only schedule work here:
-// - notifications: notificationsWaiting() on the GUI thread, once per batch;
-// - hot-plug: deviceEvent() on the GUI thread, from the polls this object runs
-//   on the worker every 500 ms once startHotplug() was called.
+// The core of the active device (-- WP MDQT1 -- a facade over DeviceRegistry's
+// active session). Not seen by QML: screens reach the device through
+// DeviceModel and the controllers, which post their calls to worker(). Ask for
+// worker() and handle() at each call: they are another device's after
+// activeChanged(). What must stay with one device takes its DeviceSession.
 class Core : public QObject {
     Q_OBJECT
 public:
-    // Takes ownership of `core` (from dspi_core_new, not null).
-    explicit Core(FfiCore *core, QObject *parent = nullptr);
+    explicit Core(DeviceRegistry *registry, QObject *parent = nullptr);
     ~Core() override;
 
-    CoreWorker *worker() { return &m_worker; }
+    CoreWorker *worker();
     // -- WP QP13 -- The handle, for the core's calls documented as safe from any
-    // thread (the Link session's, dspi-capi's fns_link.rs), which LinkController
+    // thread (the Link session's, dspi-capi's fns_link.rs), which LinkSession
     // runs on threads of its own so a dial never holds up this worker. Null
     // after shutdown().
-    FfiCore *handle() const { return m_ffi; }
+    FfiCore *handle() const;
+    // The main session's worker: what is the app's and no device's (sharing
+    // through the app's own hub), whichever device is active
+    CoreWorker *mainWorker();
 
-    // Scans once (the core announces every unit present as arrived otherwise),
-    // then polls for hot-plug on the worker.
+    // Scans once, then polls for hot-plug.
     void startHotplug();
 
-    // Stops the polls and the worker and frees the core. Afterwards nothing
-    // reaches the core again; safe to call twice.
+    // Stops the polls and the workers and frees the cores. Afterwards nothing
+    // reaches a core again; safe to call twice.
     void shutdown();
-    bool isShutDown() const { return m_ffi == nullptr; }
+    bool isShutDown() const;
 
-    enum DeviceEvent { Arrived = 0, Departed = 1 };
+    enum DeviceEvent { Arrived = DeviceSession::Arrived, Departed = DeviceSession::Departed };
 
 signals:
-    // Packets are waiting: DeviceModel processes them on the worker.
-    void notificationsWaiting();
     // A DSPi came (Arrived) or went (Departed), from a hot-plug poll.
     void deviceEvent(int event, const QString &serial);
+    // Another device is the active one
+    void activeChanged();
 
 private:
-    static void notifyThunk(void *self);
-    static void hotplugThunk(uint8_t event, const char *serial, void *self);
-    void pollHotplug();
-
-    FfiCore *m_ffi;
-    CoreWorker m_worker;
-    QTimer m_hotplugTimer;
-    std::atomic<bool> m_notifyQueued{false};
-    std::atomic<bool> m_pollInFlight{false};
-
-    friend class DeviceModel;   // clears m_notifyQueued when it processes a batch
+    DeviceRegistry *m_registry;
 };
 
 #endif // CORE_H

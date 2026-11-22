@@ -23,6 +23,16 @@
 //!   every core the set opens. Cores naming the same hub-memory folder share
 //!   one memory (`link/hub_memory.rs` keeps one cache per file for the
 //!   process), so a hub learnt by one core is known to all.
+//! - **The main core** (WP MDQT1, [`CoreSet::main_core`]): the one core that
+//!   lives as long as the set, with a device or without. An app opens its
+//!   first device on it and, where choosing a device replaces the open one
+//!   (the Classic layout), every next one too, through the core's own opens.
+//!   It is a member like the others; with no device open it is not listed.
+//! - **An id follows the device.** A member core opened on another device
+//!   (the user replaced it) is listed under that device's id from then on, and
+//!   its old serial is given back; a core claims a serial before it opens it
+//!   ([`DspiCore::select_device`], [`DspiCore::link_select_device`]). So an id
+//!   never means another device than it says: [`CoreSet::core`] checks.
 //! - [`CoreSet::open`], [`CoreSet::close`], [`CoreSet::list`] and events
 //!   ([`CoreSetListener`]): opened, closed, lost, reconnecting, restored, and
 //!   the bus's arrivals and departures.
@@ -38,7 +48,9 @@
 
 use std::collections::BTreeMap;
 use std::fmt;
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError, Weak};
+
+use dspi_transport::TransportKind;
 
 use crate::hotplug::{Membership, Reserved};
 use crate::records::DeviceInfo;
@@ -51,6 +63,9 @@ pub const CORE_SET_CAP: usize = 8;
 /// is up (the hub lists its devices once the session is authenticated).
 #[cfg(feature = "link")]
 const HUB_LIST_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// How long [`CoreSet::list`] waits for a core that is busy.
+const LIST_WAIT: std::time::Duration = std::time::Duration::from_millis(100);
 
 /// A stable name for an open device: `<kind>:<rest>`, see the module docs.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -83,7 +98,8 @@ impl DeviceId {
     }
 
     /// An id as text, as [`DeviceId::as_str`] gives it. `None` for text that
-    /// is no id (an unknown kind, or no serial where one belongs).
+    /// is no id (an unknown kind, no serial where one belongs, or a `/` in a
+    /// hub's id: where the serial starts would be a guess).
     pub fn parse(text: &str) -> Option<Self> {
         let id = Self(text.to_owned());
         let (kind, rest) = text.split_once(':')?;
@@ -91,7 +107,7 @@ impl DeviceId {
             "usb" => !rest.is_empty(),
             "hub" | "link" => rest
                 .split_once('/')
-                .is_some_and(|(a, s)| !a.is_empty() && !s.is_empty()),
+                .is_some_and(|(a, s)| !a.is_empty() && !s.is_empty() && !s.contains('/')),
             "demo" | "file" => rest.parse::<u32>().is_ok(),
             _ => false,
         };
@@ -226,14 +242,15 @@ pub struct HubTarget {
     pub tls_advertised: bool,
 }
 
+/// The id of the unit `serial` on the hub `hub_id` at `url`. A hub that names
+/// no id, or (-- WP MDQT1 --, the id is the operator's text) one with a `/`,
+/// goes by its address.
 #[cfg(feature = "link")]
-impl HubTarget {
-    fn id(&self) -> DeviceId {
-        if self.hub_id.is_empty() {
-            DeviceId::link(host_port(&self.url), &self.serial)
-        } else {
-            DeviceId::hub(&self.hub_id, &self.serial)
-        }
+fn hub_unit_id(hub_id: &str, url: &str, serial: &str) -> DeviceId {
+    if hub_id.is_empty() || hub_id.contains('/') {
+        DeviceId::link(host_port(url), serial)
+    } else {
+        DeviceId::hub(hub_id, serial)
     }
 }
 
@@ -344,6 +361,9 @@ pub struct CoreSetConfig {
 
 impl CoreSetConfig {
     /// Apply it to `core`: every folder is tried, the first failure returned.
+    /// -- WP MDQT1 -- [`CoreSet::set_config`] reports that failure; an open
+    /// logs it and goes on, as a core on its own does: a data folder that
+    /// cannot be used must not keep a device from opening.
     fn apply(&self, core: &DspiCore) -> crate::Result<()> {
         let mut first = Ok(());
         let mut keep = |r: crate::Result<()>| {
@@ -375,26 +395,132 @@ impl CoreSetConfig {
     }
 }
 
-/// One open device.
+// -- WP MDQT1 --
+/// What a core has open, as far as its id goes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Held {
+    Nothing,
+    /// A unit on USB (open, or gone and to be reopened).
+    Usb(String),
+    /// A unit bound through a hub.
+    #[cfg_attr(not(feature = "link"), allow(dead_code))]
+    Hub {
+        hub_id: String,
+        url: String,
+        serial: String,
+    },
+    Demo(String),
+    /// A document, by its connection: another one is another device.
+    File {
+        generation: u64,
+        name: String,
+        serial: String,
+    },
+}
+
+impl Held {
+    /// Read what `core` has open. Takes its lock; no I/O.
+    fn of(core: &DspiCore) -> Self {
+        Self::read(&core.lock())
+    }
+
+    fn read(inner: &crate::Inner) -> Self {
+        if let Some(c) = &inner.conn {
+            let serial = c.serial.clone();
+            if c.vid != 0 || matches!(c.caps.kind, TransportKind::Usb | TransportKind::Midi) {
+                return Self::Usb(serial);
+            }
+            if let Some(d) = &c.document {
+                return Self::File {
+                    generation: c.generation,
+                    name: d.file_name.clone(),
+                    serial,
+                };
+            }
+            if c.caps.kind != TransportKind::Link {
+                return Self::Demo(serial);
+            }
+        }
+        #[cfg(feature = "link")]
+        if let Some((hub_id, url, serial)) = inner.link.as_ref().and_then(|s| s.bound_unit()) {
+            return Self::Hub {
+                hub_id: hub_id.to_owned(),
+                url: url.to_owned(),
+                serial: serial.to_owned(),
+            };
+        }
+        match &inner.selected {
+            Some(s) if inner.conn.is_none() => Self::Usb(s.clone()),
+            _ => Self::Nothing,
+        }
+    }
+
+    /// The same device, as far as its id goes.
+    fn same(&self, other: &Self) -> bool {
+        match (self, other) {
+            // A hub that is being dialled again has not named itself yet
+            (
+                Self::Hub { hub_id, serial, .. },
+                Self::Hub {
+                    hub_id: h,
+                    serial: s,
+                    ..
+                },
+            ) => serial == s && (hub_id == h || hub_id.is_empty() || h.is_empty()),
+            (Self::Demo(_), Self::Demo(_)) => true,
+            (a, b) => a == b,
+        }
+    }
+
+    fn serial(&self) -> &str {
+        match self {
+            Self::Nothing => "",
+            Self::Usb(s)
+            | Self::Demo(s)
+            | Self::Hub { serial: s, .. }
+            | Self::File { serial: s, .. } => s,
+        }
+    }
+
+    /// The serial it reserves: a real unit's.
+    fn reserves(&self) -> Option<&str> {
+        match self {
+            Self::Usb(s) | Self::Hub { serial: s, .. } => Some(s),
+            _ => None,
+        }
+    }
+}
+
+/// One open device, or the main core with none.
 struct Entry {
-    id: DeviceId,
+    /// `None` only for the main core with no device.
+    id: Option<DeviceId>,
     core: Arc<DspiCore>,
     label: String,
     serial: String,
     state: DeviceLiveness,
     /// Its token in the reservations.
     token: u64,
+    // -- WP MDQT1 --
+    /// What it held when `id` was given.
+    held: Held,
+    main: bool,
 }
 
 impl Entry {
-    fn view(&self) -> OpenDevice {
-        OpenDevice {
-            id: self.id.clone(),
+    fn is(&self, id: &DeviceId) -> bool {
+        self.id.as_ref() == Some(id)
+    }
+
+    fn view(&self) -> Option<OpenDevice> {
+        let id = self.id.clone()?;
+        Some(OpenDevice {
+            transport: id.transport(),
+            id,
             label: self.label.clone(),
-            transport: self.id.transport(),
             serial: self.serial.clone(),
             state: self.state,
-        }
+        })
     }
 }
 
@@ -417,6 +543,45 @@ struct SetState {
     inaccessible: u32,
 }
 
+impl SetState {
+    // -- WP MDQT1 --
+    fn next_number(&mut self, file: bool) -> u32 {
+        let n = if file {
+            &mut self.next_file
+        } else {
+            &mut self.next_demo
+        };
+        *n = n.saturating_add(1);
+        *n
+    }
+
+    /// The id for what a core was found to hold, and the label to go with it;
+    /// `None` for nothing.
+    fn name(&mut self, held: &Held, name: &str) -> Option<(DeviceId, String)> {
+        let named = |serial: &str| {
+            let text = if name.trim().is_empty() { serial } else { name };
+            text.to_owned()
+        };
+        match held {
+            Held::Nothing => None,
+            Held::Usb(s) => Some((DeviceId::usb(s), named(s))),
+            #[cfg(feature = "link")]
+            Held::Hub {
+                hub_id,
+                url,
+                serial,
+            } => Some((hub_unit_id(hub_id, url, serial), named(serial))),
+            #[cfg(not(feature = "link"))]
+            Held::Hub { .. } => None,
+            Held::Demo(_) => {
+                let n = self.next_number(false);
+                Some((DeviceId::demo(n), format!("Demo {n}")))
+            }
+            Held::File { name, .. } => Some((DeviceId::file(self.next_number(true)), name.clone())),
+        }
+    }
+}
+
 /// The open devices of an app, one core each. Create one per app with
 /// [`CoreSet::new`].
 pub struct CoreSet {
@@ -424,22 +589,99 @@ pub struct CoreSet {
     /// The serials held, shared with the cores (`hotplug::Membership`).
     reserved: Reserved,
     listener: Slot<dyn CoreSetListener>,
+    // -- WP MDQT1 --
+    /// Held over one [`CoreSet::sync`], so what one read is not undone by an
+    /// older reading. Never taken with a core's lock or the set's held.
+    syncing: Mutex<()>,
+    me: Weak<CoreSet>,
 }
 
-impl Default for CoreSet {
-    fn default() -> Self {
-        Self {
-            state: Mutex::new(SetState::default()),
-            reserved: Arc::default(),
-            listener: Slot::default(),
+// -- WP MDQT1 --
+/// An open in progress: its slot and its serial are given back, and its core
+/// shut, when it goes without having become an entry (a failure, or a panic in
+/// the embedder's closure).
+struct Opening<'a> {
+    set: &'a CoreSet,
+    token: u64,
+    core: Option<Arc<DspiCore>>,
+    /// It is an entry now: nothing to give back.
+    entered: bool,
+}
+
+impl Drop for Opening<'_> {
+    fn drop(&mut self) {
+        if self.entered {
+            return;
         }
+        // Shut first, then give the serial back: until the device is closed
+        // another open of it would fail on the busy interface.
+        if let Some(core) = &self.core {
+            shut_core(core);
+            core.lock().hotplug.member = None;
+        }
+        self.set.release(self.token);
+        let mut s = self.set.lock();
+        s.pending = s.pending.saturating_sub(1);
     }
 }
 
 impl CoreSet {
     /// An empty set. No I/O.
     pub fn new() -> Arc<Self> {
-        Arc::new(Self::default())
+        Arc::new_cyclic(|me| Self {
+            state: Mutex::new(SetState::default()),
+            reserved: Arc::default(),
+            listener: Slot::default(),
+            syncing: Mutex::default(),
+            me: Weak::clone(me),
+        })
+    }
+
+    // -- WP MDQT1 --
+    /// The core that lives as long as the set, with a device or without (the
+    /// module docs): made on the first call, configured as every other, never
+    /// removed. [`CoreSet::close`] of its device leaves it with none.
+    pub fn main_core(&self) -> Arc<DspiCore> {
+        let (core, config, broker) = {
+            let mut s = self.lock();
+            if let Some(e) = s.entries.iter().find(|e| e.main) {
+                return Arc::clone(&e.core);
+            }
+            let token = s.next_token;
+            s.next_token = token.wrapping_add(1);
+            let core = DspiCore::new();
+            s.entries.insert(
+                0,
+                Entry {
+                    id: None,
+                    core: Arc::clone(&core),
+                    label: String::new(),
+                    serial: String::new(),
+                    state: DeviceLiveness::Lost,
+                    token,
+                    held: Held::Nothing,
+                    main: true,
+                },
+            );
+            core.lock().hotplug.member = Some(self.membership(token));
+            (core, s.config.clone(), s.broker.clone())
+        };
+        if broker.is_some() {
+            core.take_device_broker(broker);
+        }
+        if let Err(e) = config.apply(&core) {
+            log::warn!("the main core was not fully configured: {e}");
+        }
+        core
+    }
+
+    /// The place of the core with `token` in this set.
+    fn membership(&self, token: u64) -> Membership {
+        Membership {
+            token,
+            reserved: Arc::clone(&self.reserved),
+            set: Weak::clone(&self.me),
+        }
     }
 
     fn lock(&self) -> MutexGuard<'_, SetState> {
@@ -466,6 +708,8 @@ impl CoreSet {
     /// is tried; the first failure is returned (a core whose installer PIN is
     /// set refuses a new limits folder while locked, as
     /// [`DspiCore::limits_set_dir`] does). Blocking file I/O.
+    /// Call it before opening devices: a speaker layout or a limits profile
+    /// is the device's own only once its folder is named.
     pub fn set_config(&self, config: CoreSetConfig) -> crate::Result<()> {
         let cores = {
             let mut s = self.lock();
@@ -489,21 +733,47 @@ impl CoreSet {
     /// it back (`None`) for every core, as [`DspiCore::set_device_broker`]
     /// does for one, and for the set's own scans. The ids of the devices
     /// whose connection could not stay are returned: they stay in the set,
-    /// lost, for the caller to select again through their core once the new
-    /// owner has the unit.
+    /// lost, and come back on the next polls through the new owner.
     pub fn set_device_broker(&self, broker: Option<Arc<dyn DeviceBroker>>) -> Vec<DeviceId> {
+        let before: Vec<DeviceId> = self.list().into_iter().map(|d| d.id).collect();
+        self.route_usb(broker, None);
+        let lost = self.list();
+        before
+            .into_iter()
+            .filter(|id| {
+                lost.iter()
+                    .any(|d| d.id == *id && d.state == DeviceLiveness::Lost)
+            })
+            .collect()
+    }
+
+    // -- WP MDQT1 --
+    /// Every core's USB through `broker`. The connections that could not stay
+    /// are closed; those of the cores other than `caller` are armed to reopen
+    /// on the next polls. `caller`'s serial is returned: it reopens its own.
+    pub(crate) fn route_usb(
+        &self,
+        broker: Option<Arc<dyn DeviceBroker>>,
+        caller: Option<&DspiCore>,
+    ) -> Option<String> {
         let cores = {
             let mut s = self.lock();
             s.broker = broker.clone();
             s.entries
                 .iter()
-                .map(|e| (e.id.clone(), Arc::clone(&e.core)))
+                .map(|e| Arc::clone(&e.core))
                 .collect::<Vec<_>>()
         };
-        cores
-            .into_iter()
-            .filter_map(|(id, core)| core.set_device_broker(broker.clone()).map(|_| id))
-            .collect()
+        let mut own = None;
+        for core in cores {
+            let closed = core.take_device_broker(broker.clone());
+            if caller.is_some_and(|c| std::ptr::eq(c, &raw const *core)) {
+                own = closed;
+            } else if let Some(serial) = closed {
+                core.arm_reopen(serial);
+            }
+        }
+        own
     }
 
     /// Open `target` on a core of its own and add it: its id, or why not.
@@ -527,21 +797,20 @@ impl CoreSet {
             }
             #[cfg(feature = "link")]
             DeviceTarget::Hub(hub) => {
-                self.open_with(hub.id(), String::new(), |c| open_hub(c, &hub))
+                if hub.hub_id.contains('/') {
+                    return Err(CoreSetError::Device(DspiError::InvalidArgument {
+                        msg: "a hub id with a / names no device".into(),
+                    }));
+                }
+                let id = hub_unit_id(&hub.hub_id, &hub.url, &hub.serial);
+                self.open_with(id, String::new(), |c| open_hub(c, &hub))
             }
         }
     }
 
     /// The next demo or document number, from 1.
     fn take_number(&self, file: bool) -> u32 {
-        let mut s = self.lock();
-        let n = if file {
-            &mut s.next_file
-        } else {
-            &mut s.next_demo
-        };
-        *n = n.saturating_add(1);
-        *n
+        self.lock().next_number(file)
     }
 
     /// Open a device the embedder dials itself (an interactive pairing, a
@@ -549,23 +818,33 @@ impl CoreSet {
     /// configured and with the serial of `id` reserved for it, and the device
     /// is added when it returns `Ok` with a device connected. `label` ""
     /// takes the unit's name. On a failure nothing is added and the core is
-    /// closed.
+    /// closed; so it is when `open` connected another unit than `id` names
+    /// (-- WP MDQT1 --, review RA: the reservation would be another's).
     pub fn open_with(
         &self,
         id: DeviceId,
         label: String,
         open: impl FnOnce(&DspiCore) -> crate::Result<()>,
     ) -> std::result::Result<DeviceId, CoreSetError> {
+        // -- WP MDQT1 -- `hub:a/b/S` from a hub id with a `/`: whose serial?
+        if DeviceId::parse(id.as_str()).is_none() {
+            return Err(CoreSetError::Device(DspiError::InvalidArgument {
+                msg: format!("{id} is no device id"),
+            }));
+        }
+        // What the cores hold now, so a serial given up is free
+        self.refresh();
         let serial = id.serial().map(str::to_owned);
-        let (token, config, broker) = {
+        let (token, config, broker, bus) = {
             let mut s = self.lock();
-            if s.entries.iter().any(|e| e.id == id) {
+            if s.entries.iter().any(|e| e.is(&id)) {
                 return Err(CoreSetError::AlreadyOpen {
                     serial: serial.unwrap_or_default(),
                     id,
                 });
             }
-            if s.entries.len().saturating_add(s.pending) >= CORE_SET_CAP {
+            let open = s.entries.iter().filter(|e| e.id.is_some()).count();
+            if open.saturating_add(s.pending) >= CORE_SET_CAP {
                 return Err(CoreSetError::Full);
             }
             let token = s.next_token;
@@ -581,62 +860,61 @@ impl CoreSet {
                 reserved.insert(serial.clone(), (token, id.as_str().to_owned()));
             }
             s.pending = s.pending.saturating_add(1);
-            (token, s.config.clone(), s.broker.clone())
+            (
+                token,
+                s.config.clone(),
+                s.broker.clone(),
+                s.last_bus.clone(),
+            )
         };
 
-        let core = DspiCore::new();
-        core.lock().hotplug.member = Some(Membership {
+        let mut opening = Opening {
+            set: self,
             token,
-            reserved: Arc::clone(&self.reserved),
-        });
+            core: None,
+            entered: false,
+        };
+        let core = DspiCore::new();
+        opening.core = Some(Arc::clone(&core));
+        core.lock().hotplug.member = Some(self.membership(token));
+        core.seed_bus(bus);
         if broker.is_some() {
-            core.set_device_broker(broker);
+            core.take_device_broker(broker);
         }
-        let opened = config
-            .apply(&core)
-            .and_then(|()| open(&core))
-            .and_then(|()| {
-                if core.is_connected() {
-                    Ok(())
-                } else {
-                    Err(DspiError::Disconnected)
-                }
-            });
-        if let Err(e) = opened {
-            // Shut first, then give the serial back: until the device is
-            // closed another open of it would fail on the busy interface.
-            shut_core(&core);
-            self.release(token);
-            {
-                let mut s = self.lock();
-                s.pending = s.pending.saturating_sub(1);
-            }
-            return Err(e.into());
+        if let Err(e) = config.apply(&core) {
+            log::warn!("{id}: not fully configured: {e}");
         }
-
-        let serial_now = core
-            .lock()
-            .conn
-            .as_ref()
-            .map(|c| c.serial.clone())
-            .unwrap_or_default();
+        open(&core)?;
+        let serial_now = match &core.lock().conn {
+            Some(c) => c.serial.clone(),
+            None => return Err(DspiError::Disconnected.into()),
+        };
+        if serial.as_ref().is_some_and(|s| *s != serial_now) {
+            return Err(CoreSetError::Device(DspiError::InvalidArgument {
+                msg: format!("{id} was asked for, {serial_now} was opened"),
+            }));
+        }
         let label = if label.is_empty() {
             label_of(&core, &id, &serial_now)
         } else {
             label
         };
+        let held = Held::of(&core);
         let entry = Entry {
-            id: id.clone(),
+            id: Some(id.clone()),
             core,
             label,
             serial: serial_now.clone(),
             state: DeviceLiveness::Live,
             token,
+            held,
+            main: false,
         };
         {
             let mut s = self.lock();
             s.pending = s.pending.saturating_sub(1);
             s.entries.push(entry);
+            opening.entered = true;
         }
         self.emit(vec![CoreSetEvent {
             kind: CoreSetEventKind::Opened,
@@ -653,24 +931,36 @@ impl CoreSet {
 
     /// Close the device `id` and drop it from the set: its Link session ends
     /// and its connection closes; the core handed out by [`CoreSet::core`] is
-    /// left with nothing open. Blocks while closing.
+    /// left with nothing open. The main core stays in the set. Blocks while
+    /// closing.
     pub fn close(&self, id: &DeviceId) -> std::result::Result<(), CoreSetError> {
-        let entry = {
-            let mut s = self.lock();
-            let at = s.entries.iter().position(|e| e.id == *id).ok_or_else(|| {
-                CoreSetError::Unknown {
-                    id: id.as_str().to_owned(),
+        self.refresh(); // -- WP MDQT1 -- the id may be another device's by now
+        let (entry, main) =
+            {
+                let mut s = self.lock();
+                let at = s.entries.iter().position(|e| e.is(id)).ok_or_else(|| {
+                    CoreSetError::Unknown {
+                        id: id.as_str().to_owned(),
+                    }
+                })?;
+                match s.entries.get(at) {
+                    Some(e) if e.main => (None, Some(Arc::clone(&e.core))),
+                    _ => (Some(s.entries.remove(at)), None),
                 }
-            })?;
-            s.entries.remove(at)
-        };
+            };
+        if let Some(core) = main {
+            shut_core(&core);
+            self.refresh(); // the closed event, and the serial given back
+            return Ok(());
+        }
+        let Some(entry) = entry else { return Ok(()) };
         // Shut first, then give the serial back (review RA F3).
         shut_core(&entry.core);
         entry.core.lock().hotplug.member = None;
         self.release(entry.token);
         self.emit(vec![CoreSetEvent {
             kind: CoreSetEventKind::Closed,
-            id: entry.id.as_str().to_owned(),
+            id: id.as_str().to_owned(),
             serial: entry.serial,
         }]);
         Ok(())
@@ -678,25 +968,169 @@ impl CoreSet {
 
     /// Close every device, as [`CoreSet::close`] does for one.
     pub fn close_all(&self) {
-        let ids: Vec<DeviceId> = self.lock().entries.iter().map(|e| e.id.clone()).collect();
+        let ids: Vec<DeviceId> = self
+            .lock()
+            .entries
+            .iter()
+            .filter_map(|e| e.id.clone())
+            .collect();
         for id in ids {
             let _ = self.close(&id);
         }
     }
 
-    /// The open devices, in the order they were opened.
+    /// The open devices, the main core's first, then in the order they were
+    /// opened. A core that stays inside a device call is listed as it was last
+    /// seen, so this waits a tenth of a second on each at most.
     pub fn list(&self) -> Vec<OpenDevice> {
-        self.lock().entries.iter().map(Entry::view).collect()
+        self.emit(self.sync(false));
+        self.lock().entries.iter().filter_map(Entry::view).collect()
     }
 
     /// The core of the open device `id`, which every `DspiCore` call works
     /// on. It stays usable after [`CoreSet::close`], with nothing open.
+    /// -- WP MDQT1 -- `None` too when the core has another device open by now
+    /// (the user replaced it), whose own id gives it: waits for a device call
+    /// in progress on it. Whoever keeps the core across such a moment compares
+    /// `connection_generation` to know it is still that device.
     pub fn core(&self, id: &DeviceId) -> Option<Arc<DspiCore>> {
+        let (core, held) = self
+            .lock()
+            .entries
+            .iter()
+            .find(|e| e.is(id))
+            .map(|e| (Arc::clone(&e.core), e.held.clone()))?;
+        let now = Held::of(&core);
+        if now == Held::Nothing || now.same(&held) {
+            return Some(core);
+        }
+        self.refresh();
         self.lock()
             .entries
             .iter()
-            .find(|e| e.id == *id)
+            .find(|e| e.is(id))
             .map(|e| Arc::clone(&e.core))
+    }
+
+    // -- WP MDQT1 --
+    /// The open device `core` (one of the set's) has, as last seen.
+    pub fn device_of(&self, core: &Arc<DspiCore>) -> Option<OpenDevice> {
+        self.lock()
+            .entries
+            .iter()
+            .find(|e| Arc::ptr_eq(&e.core, core))
+            .and_then(Entry::view)
+    }
+
+    /// Take in what the cores hold now (their own opens and closes) and tell
+    /// the listener. Waits for device calls in progress.
+    pub fn refresh(&self) {
+        self.emit(self.sync(true));
+    }
+
+    /// [`CoreSet::refresh`]'s events, to be emitted with no lock held.
+    /// `wait` false passes over a core that stays inside a device call.
+    fn sync(&self, wait: bool) -> Vec<CoreSetEvent> {
+        let _one = self.syncing.lock().unwrap_or_else(PoisonError::into_inner);
+        let cores: Vec<(u64, Arc<DspiCore>)> = self
+            .lock()
+            .entries
+            .iter()
+            .map(|e| (e.token, Arc::clone(&e.core)))
+            .collect();
+        let mut seen = Vec::with_capacity(cores.len());
+        for (token, core) in cores {
+            let Some(inner) = (if wait {
+                Some(core.lock())
+            } else {
+                lock_briefly(&core)
+            }) else {
+                continue;
+            };
+            let held = Held::read(&inner);
+            let name = inner
+                .conn
+                .as_ref()
+                .map(|c| c.device_name.clone())
+                .unwrap_or_default();
+            let state = liveness(&inner);
+            drop(inner);
+            seen.push((token, held, name, state));
+        }
+
+        let mut events = Vec::new();
+        let mut s = self.lock();
+        for (token, held, name, state) in seen {
+            let Some(at) = s.entries.iter().position(|e| e.token == token) else {
+                continue; // closed meanwhile
+            };
+            let Some(e) = s.entries.get(at) else { continue };
+            let nothing = held == Held::Nothing;
+            let moved = !held.same(&e.held);
+            let named = if moved && (!nothing || e.main) {
+                Some(s.name(&held, &name))
+            } else {
+                None
+            };
+            let Some(e) = s.entries.get_mut(at) else {
+                continue;
+            };
+            if let Some(named) = named {
+                if let Some(old) = e.id.take() {
+                    events.push(CoreSetEvent {
+                        kind: CoreSetEventKind::Closed,
+                        id: old.as_str().to_owned(),
+                        serial: e.serial.clone(),
+                    });
+                }
+                let before = std::mem::replace(&mut e.held, held);
+                e.serial = e.held.serial().to_owned();
+                e.state = state;
+                if let Some((id, label)) = named {
+                    events.push(CoreSetEvent {
+                        kind: CoreSetEventKind::Opened,
+                        id: id.as_str().to_owned(),
+                        serial: e.serial.clone(),
+                    });
+                    e.id = Some(id);
+                    e.label = label;
+                } else {
+                    e.label.clear();
+                }
+                // Only what it held: a serial it has claimed since is kept.
+                let id = e.id.as_ref().map(|i| i.as_str().to_owned());
+                let now = e.held.reserves().map(str::to_owned);
+                let mut reserved = self.reserved();
+                if let Some(old) = before.reserves().filter(|o| Some(*o) != now.as_deref()) {
+                    reserved.retain(|x, (t, _)| *t != token || x != old);
+                }
+                if let (Some(serial), Some(id)) = (now, id) {
+                    match reserved.get(&serial) {
+                        Some((t, _)) if *t != token => {
+                            log::warn!("{serial} is open twice: {id} is not its first holder");
+                        }
+                        _ => {
+                            reserved.insert(serial, (token, id));
+                        }
+                    }
+                }
+                continue;
+            }
+            let Some(id) = e.id.clone().filter(|_| e.state != state) else {
+                continue;
+            };
+            e.state = state;
+            events.push(CoreSetEvent {
+                kind: match state {
+                    DeviceLiveness::Live => CoreSetEventKind::Restored,
+                    DeviceLiveness::Reconnecting => CoreSetEventKind::Reconnecting,
+                    DeviceLiveness::Lost => CoreSetEventKind::Lost,
+                },
+                id: id.as_str().to_owned(),
+                serial: e.serial.clone(),
+            });
+        }
+        events
     }
 
     /// The open device whose unit has this serial.
@@ -779,44 +1213,16 @@ impl CoreSet {
                     .map(|x| bus(CoreSetEventKind::Arrived, x)),
             );
             s.last_bus = Some(now);
-            let cores: Vec<(DeviceId, Arc<DspiCore>)> = s
-                .entries
-                .iter()
-                .map(|e| (e.id.clone(), Arc::clone(&e.core)))
-                .collect();
+            let cores: Vec<Arc<DspiCore>> = s.entries.iter().map(|e| Arc::clone(&e.core)).collect();
             (cores, events)
         };
 
         // Every core diffs the one list against its own last; only the
         // core that selected a serial reopens it.
-        let mut states = Vec::with_capacity(cores.len());
-        for (id, core) in cores {
+        for core in cores {
             core.poll_with(|| list.clone(), |serial| reopen(&core, serial));
-            states.push((id, liveness(&core)));
         }
-
-        {
-            let mut s = self.lock();
-            for (id, state) in states {
-                let Some(e) = s.entries.iter_mut().find(|e| e.id == id) else {
-                    continue; // closed meanwhile
-                };
-                if e.state == state {
-                    continue;
-                }
-                let kind = match state {
-                    DeviceLiveness::Live => CoreSetEventKind::Restored,
-                    DeviceLiveness::Reconnecting => CoreSetEventKind::Reconnecting,
-                    DeviceLiveness::Lost => CoreSetEventKind::Lost,
-                };
-                e.state = state;
-                events.push(CoreSetEvent {
-                    kind,
-                    id: id.as_str().to_owned(),
-                    serial: e.serial.clone(),
-                });
-            }
-        }
+        events.extend(self.sync(true));
         self.emit(events);
     }
 }
@@ -824,16 +1230,39 @@ impl CoreSet {
 impl Drop for CoreSet {
     fn drop(&mut self) {
         self.close_all();
+        // -- WP MDQT1 -- the main core, with what it has not been seen to open
+        for e in std::mem::take(&mut self.lock().entries) {
+            shut_core(&e.core);
+            e.core.lock().hotplug.member = None;
+        }
     }
 }
 
-/// Whether `core`'s device can be used now.
-fn liveness(core: &DspiCore) -> DeviceLiveness {
+// -- WP MDQT1 --
+/// `core`'s lock, unless something holds it for longer than a moment (a device
+/// call; a Link session's own looks are far shorter than this).
+fn lock_briefly(core: &DspiCore) -> Option<MutexGuard<'_, crate::Inner>> {
+    let start = dspi_transport::clock::Instant::now();
+    loop {
+        if let Some(inner) = core.try_lock() {
+            return Some(inner);
+        }
+        if start.elapsed() >= LIST_WAIT {
+            return None;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+}
+
+/// Whether the device behind `inner` can be used now.
+fn liveness(inner: &crate::Inner) -> DeviceLiveness {
     #[cfg(feature = "link")]
-    if core.lock().link.is_some() && core.link_status().phase == crate::LinkPhase::Reconnecting {
+    if let Some(s) = &inner.link
+        && s.reconnecting(inner.conn.as_ref().map(|c| c.generation))
+    {
         return DeviceLiveness::Reconnecting;
     }
-    if core.is_connected() {
+    if inner.conn.is_some() {
         DeviceLiveness::Live
     } else {
         DeviceLiveness::Lost
@@ -899,3 +1328,7 @@ fn open_hub(core: &DspiCore, hub: &HubTarget) -> crate::Result<()> {
 #[cfg(test)]
 #[path = "core_set/tests_wp_md0.rs"]
 mod tests_wp_md0;
+
+#[cfg(test)]
+#[path = "core_set/tests_wp_mdqt1.rs"]
+mod tests_wp_mdqt1;

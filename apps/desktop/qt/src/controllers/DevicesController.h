@@ -15,6 +15,7 @@
 struct AppContext;
 class Core;
 class DeviceModel;
+class DeviceRegistry;
 class LinkController;
 class QQmlEngine;
 class QJSEngine;
@@ -62,13 +63,21 @@ public:
     Q_INVOKABLE void closeList() { setListShown(false); }
     // Lists the DSPis on USB again; opens nothing
     Q_INVOKABLE void rescan();
-    // A local device: the hub's session is left first
+    // A local device: the hub's session is left first. -- WP MDQT1 -- It replaces
+    // the active device, or with DeviceRegistry.keepOpen opens beside it. One
+    // that is open already becomes the active one; open by another way (a
+    // hub's unit that is on USB too), it is refused with a notice: one session
+    // per device.
     Q_INVOKABLE void chooseDemo();
     Q_INVOKABLE void chooseUsb(const QString &serial);
     // A hub from `hubs`: dialled at its URL and held to its id
     Q_INVOKABLE void connectFound(const QVariantMap &hub);
     Q_INVOKABLE bool connectAddress(const QString &address);
     Q_INVOKABLE void chooseHubDevice(int handle, const QString &serial);
+    // -- WP MDQT1 -- The "Open devices" list: make one active (it stays open, so
+    // nothing is asked), or close it (the active one's unsaved changes are)
+    Q_INVOKABLE void chooseOpen(const QString &id);
+    Q_INVOKABLE void closeOpen(const QString &id);
 
     // This app's own hub (sharing), which is not listed as another one
     void setOwnHubId(const QString &id);
@@ -93,8 +102,13 @@ private:
     void updateBrowse();
     void readHubs();
     void shutdown();
+    // -- WP MDQT1 --
+    void browseActive();
+    bool takeOpen(const QString &serial, bool remote);
+    void refuse(const QString &error);
 
-    FfiCore *m_core;
+    FfiCore *m_core;   // the active device's: the browse runs on it
+    DeviceRegistry *m_registry;   // -- WP MDQT1 --
     Core *m_coreObject;
     DeviceModel *m_device;
     QQmlEngine *m_engine;

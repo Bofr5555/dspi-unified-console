@@ -61,7 +61,8 @@ By hand, in the container:
     qt/cmake/wp/             each work package's own file list (<wp>.cmake)
     qt/src/main.cpp          the app's start and end
     qt/src/AppIdentity.h     the display name, the settings names, the project's links
-    qt/src/core/             the core wrapper: Core, CoreWorker, DeviceModel, the list models
+    qt/src/core/             the core wrapper: DeviceRegistry, DeviceSession, SessionModel (per device);
+                             Core, DeviceModel, Poller (the active one); CoreWorker, the list models
     qt/src/controllers/      Registrar, Shell; one controller per feature
     qt/src/platform/         the icon provider, the token store, tray and system integration,
                              the update checker (AppUpdater), the bootloader locator,
@@ -84,9 +85,17 @@ By hand, in the container:
 
 ## How the app talks to the core
 
-- **One thread calls the core:** `CoreWorker`. Every blocking call (reads,
-  writes, scans, hot-plug polls, files) is posted to it and its result comes
-  back to the GUI thread as a queued call. Nothing in QML calls the core.
+- **One core per open device** (WP MDQT1): `DeviceRegistry` over the core's
+  `CoreSet`, a `DeviceSession` each (its core, `CoreWorker`, `SessionModel` and
+  stash), one of them active. `Core`, `DeviceModel`, `Poller` and
+  `LinkController` are facades over the active one: ask them at each call, never
+  keep a handle or a worker, and read again on `activeChanged`. Classic replaces
+  the active device on its own core; `DeviceRegistry.keepOpen` opens beside it.
+  The main session's core is there with no device too.
+- **One thread calls a core:** its `CoreWorker`. Every blocking call (reads,
+  writes, scans, files) is posted to it and its result comes back to the GUI
+  thread as a queued call. The hot-plug poll (one for every core) and the opens
+  run on the registry's own threads. Nothing in QML calls the core.
 - **The state** is read on the worker as a whole snapshot (`DeviceSnapshot`:
   a copy of the core's state record, the device's name, the output labels) and
   applied by `DeviceModel` on the GUI thread. QML binds to `DeviceModel`'s

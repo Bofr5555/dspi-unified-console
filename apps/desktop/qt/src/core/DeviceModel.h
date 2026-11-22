@@ -4,29 +4,32 @@
 #include <QObject>
 #include <QString>
 #include <QtQml/qqmlregistration.h>
-#include <QHash>
-#include <atomic>
 #include <functional>
-#include <memory>
 
 #include "ChannelListModel.h"
 #include "PresetModel.h"
 #include "Snapshot.h"
 
 class Core;
+class DeviceRegistry;
+class SessionModel;
 class QQmlEngine;
 class QJSEngine;
 
-// The device as the GUI sees it: the last snapshot the worker read, as
-// properties and list models QML binds to. GUI thread only.
+// The active device as the GUI sees it: the last snapshot of it, as properties
+// and list models QML binds to. GUI thread only. -- WP MDQT1 -- A facade over the
+// active session's SessionModel (DeviceRegistry), which holds the state: when
+// another session becomes active, everything here is that one's, said as after a
+// device switch (snapshotApplied, stateChanged(0)).
 //
 // Reads: every change of the device (connect, a notification, a write) ends in
-// a new snapshot, applied here, then stateChanged(flags).
+// a new snapshot, then stateChanged(flags).
 //
 // Writes: one path. A controller calls write() with the dspi_* setter; the
-// setter runs on the worker, followed by a fresh snapshot; a refusal emits
-// writeFailed(). QML never calls the core: it calls a controller's invokable,
-// which validates and calls write(). Undo, if it comes, hooks in here.
+// setter runs on the worker of the device that was active then, followed by a
+// fresh snapshot; a refusal emits writeFailed(). QML never calls the core: it
+// calls a controller's invokable, which validates and calls write(). `done` runs
+// whether that device is still the active one or not.
 class DeviceModel : public QObject {
     Q_OBJECT
     QML_ELEMENT
@@ -50,7 +53,7 @@ class DeviceModel : public QObject {
     // -- WP QP13 -- The open device is a hub's, bound through DSPi Link
     Q_PROPERTY(bool remote READ remote NOTIFY snapshotApplied)
 public:
-    explicit DeviceModel(Core *core, QObject *parent = nullptr);
+    DeviceModel(Core *core, DeviceRegistry *registry, QObject *parent = nullptr);
     ~DeviceModel() override;
 
     // The one instance, made in main() before QML loads.
@@ -60,11 +63,11 @@ public:
     // Opens the demo device, or the first DSPi found, then starts the hot-plug polls.
     void start(bool demo);
 
-    bool connected() const { return m_snap.connected; }
-    bool demo() const { return m_demo; }
+    bool connected() const;
+    bool demo() const;
     bool readOnly() const;
-    QString serial() const { return m_serial; }
-    QString deviceName() const { return m_snap.deviceName; }
+    QString serial() const;
+    QString deviceName() const;
     QString deviceTitle() const;
     QString platformName() const;
     QString firmwareVersion() const;
@@ -73,15 +76,17 @@ public:
     int numInputs() const;
     int numOutputs() const;
     int revision() const { return m_revision; }
-    bool busy() const { return m_busy; }
+    bool busy() const;
     ChannelListModel *channels() const { return m_channels; }
     PresetModel *presets() const { return m_presets; }
 
     // The last snapshot's state record; null when not connected. For
     // controllers reading fields no property exposes. GUI thread.
-    const DspState *state() const { return m_snap.state.get(); }
-    const DeviceSnapshot &snapshot() const { return m_snap; }
+    const DspState *state() const;
+    const DeviceSnapshot &snapshot() const;
     Core *core() const { return m_core; }
+    // -- WP MDQT1 -- The active session's own
+    SessionModel *active() const { return m_active; }
 
     // The write path (see the class comment). `what` names the write for
     // writeFailed and the log, and is its coalescing key: a write whose `what`
@@ -99,7 +104,7 @@ public:
     // outside its own drag. endDrag() with no drag does nothing.
     Q_INVOKABLE void beginDrag();
     Q_INVOKABLE void endDrag();
-    bool dragging() const { return m_drag != 0; }
+    bool dragging() const;
 
     // Re-reads the device on the worker (dspi_fetch_all), then a snapshot.
     Q_INVOKABLE void refresh();
@@ -111,23 +116,18 @@ public:
     // 31 bytes of UTF-8; false, with nothing sent, for a longer name or no device.
     Q_INVOKABLE bool setChannelName(int channel, const QString &name);
 
-    // -- WP QP13 -- A device bound through a DSPi Link session (LinkController).
+    // -- WP QP13 -- A device bound through a DSPi Link session (LinkSession).
     // While one is, a scan, a hot-plug arrival and reconnect() leave the
     // connection alone: no local device opens under the session.
-    bool remote() const { return m_remote; }
-    // After dspi_link_select_device: reads the device and shows it as `serial`.
-    void adoptRemote(const QString &serial);
-    // The session is gone: forget the hub's device and read what is left.
-    void leaveRemote();
-
+    bool remote() const;
     // -- WP P1QT1 -- After dspi_open_document: an offline document is the open
     // "device" (`serial` the core's OFFLINE-DOCUMENT). A reconnect re-reads it;
     // opening the demo, a DSPi or a hub's device leaves it.
     void adoptDocument(const QString &serial);
-    bool document() const { return m_document; }
+    bool document() const;
 
     // Setters the worker ran so far (the smoke driver's coalescing check)
-    int settersRun() const { return m_settersRun.load(); }
+    int settersRun() const;
 
     // -- WP QP16 -- write() for the few requests a read-only device still
     // takes: clearing the clip marks and entering the bootloader (behaviour.md
@@ -153,31 +153,15 @@ signals:
     void writeRefused(const QString &what, const QString &noticeKey, const QString &message);
 
 private:
-    struct PendingWrite;
-    void apply(const DeviceSnapshot &snap, uint flags);
-    void onNotifications();
-    void onDeviceEvent(int event, const QString &serial);
-    void track(int delta);
+    void rebind();
+    void onApplied(uint flags);
 
     Core *m_core;
+    DeviceRegistry *m_registry;
+    SessionModel *m_active = nullptr;
     ChannelListModel *m_channels;
     PresetModel *m_presets;
-    DeviceSnapshot m_snap;
-    QString m_serial;
-    bool m_demo = false;
     int m_revision = 0;
-    int m_inFlight = 0;
-    bool m_busy = false;
-    QHash<QString, std::shared_ptr<PendingWrite>> m_queuedWrites;
-    std::atomic<int> m_settersRun{ 0 };
-    bool m_remote = false;   // -- WP QP13 --
-    bool m_document = false;   // -- WP P1QT1 --
-    // -- WP QTGAP1 -- the drag under way (0: none), and the last one's number
-    quint64 m_drag = 0;
-    quint64 m_drags = 0;
-    // -- WP QP16 --
-    void post(const QString &what, std::function<bool(FfiCore *)> setter, std::function<void(bool)> done,
-              bool evenReadOnly);
 };
 
 #endif // DEVICEMODEL_H

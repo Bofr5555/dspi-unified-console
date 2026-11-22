@@ -52,6 +52,7 @@ Poller::Poller(Core *core, DeviceModel *device, QObject *parent) : QObject(paren
         m_activeInputs = inputs;
         emit statusChanged();
     });
+    connect(core, &Core::activeChanged, this, &Poller::rebind);   // -- WP MDQT1 --
     connect(device, &DeviceModel::snapshotApplied, this, &Poller::updateRunning);
     updateRunning();
 }
@@ -147,6 +148,21 @@ void Poller::updateRunning() {
     emit runningChanged();
 }
 
+// -- WP MDQT1 --
+void Poller::rebind() {
+    ++m_epoch;
+    for (const std::shared_ptr<Poll> &poll : std::as_const(m_polls)) poll->inFlight = false;
+    m_peaks.clear();
+    m_clipFlags = 0;
+    m_peakHold.clear();
+    m_peakMax.clear();
+    m_clipHold = 0;
+    m_cpu0 = m_cpu1 = m_activeInputs = 0;
+    emit metersChanged();
+    emit statusChanged();
+    setSlowTransport(m_device->remote());
+}
+
 void Poller::tick(Id id) {
     const std::shared_ptr<Poll> poll = m_polls.value(id);
     if (!poll || !m_running) return;
@@ -161,9 +177,9 @@ void Poller::tick(Id id) {
     // only m_polls (the GUI thread) owns a Poll and its timer
     m_core->worker()->call(
         this, [run](FfiCore *c) mutable { return run(c); },
-        [this, id](std::function<void()> apply) {
+        [this, id, epoch = m_epoch](std::function<void()> apply) {
             const std::shared_ptr<Poll> poll = m_polls.value(id);
-            if (!poll) return;
+            if (!poll || epoch != m_epoch) return;   // -- WP MDQT1 -- another device's by now
             poll->inFlight = false;
             ++poll->counts.completed;
             if (poll->hasCtx && !poll->ctx) return;

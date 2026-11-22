@@ -286,7 +286,9 @@ void HubController::startHub() {
             // The app's devices go through the hub from now on; the core reopens the
             // open one, so it is read again
             FfiHub *hub = m_hub;
-            m_core->worker()->call(this, [hub](FfiCore *c) { return dspi_hub_attach_app(hub, c); },
+            // -- WP MDQT1 -- the main core, which outlives every device: it takes
+            // the whole set's USB with it
+            m_core->mainWorker()->call(this, [hub](FfiCore *c) { return dspi_hub_attach_app(hub, c); },
                                    [this](bool attached) {
                                        if (!attached) qWarning("HubController: the app did not attach to the hub");
                                        m_device->refresh();

@@ -470,18 +470,19 @@ impl DspiCore {
     /// With a [`crate::DeviceBroker`] set, the broker opens it instead, on any
     /// platform.
     pub fn select_device(&self, serial: String) -> Result<()> {
+        // -- WP MD0 --, -- WP MDQT1 -- with a broker too
+        self.claim(&format!("usb:{serial}"), &serial)?;
         // -- WP HB0 -- A broker owns USB: never claim the interface here.
         if let Some(broker) = self.broker() {
             return self.select_brokered(&*broker, serial);
         }
         #[cfg(any(not(feature = "usb"), target_os = "android"))]
         {
-            let _ = serial;
+            self.unclaim(&serial);
             Err(DspiError::Unsupported)
         }
         #[cfg(all(feature = "usb", not(target_os = "android")))]
         {
-            self.refuse_held_by_another(&serial)?; // -- WP MD0 --
             self.lock().selected = Some(serial.clone());
             // Close first: the device may be the one we hold, and a second
             // claim of its interface 2 would fail.

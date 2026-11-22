@@ -535,3 +535,29 @@ fn wp_int1_an_agent_cannot_set_the_speaker_layout() {
     // The app itself still sets it.
     assert!(core.speaker_layout_set(layout).unwrap().confirmed_by_user);
 }
+
+// -- WP MDQT1 --
+/// A layout confirmed before the folder was named, and a folder that cannot be
+/// written: said, and still in force (review RA, ROLE0 item 3).
+#[test]
+fn wp_mdqt1_a_failed_migration_is_said_and_loses_nothing() {
+    let core = core_as("MIGRATE1");
+    let kept = core
+        .speaker_layout_set(confirmed(&[(0, MeasureRole::High)]))
+        .unwrap();
+    let dir = scratch("migration");
+    std::fs::create_dir_all(&dir).unwrap();
+    let blocked = dir.join("a-file");
+    std::fs::write(&blocked, "x").unwrap();
+    assert!(matches!(
+        core.speaker_layout_set_dir(blocked.join("layouts").display().to_string()),
+        Err(DspiError::Io { .. })
+    ));
+    assert_eq!(core.speaker_layout().unwrap(), Some(kept.clone()));
+    // Naming a folder that works writes it.
+    let good = dir.join("layouts").display().to_string();
+    core.speaker_layout_set_dir(good.clone()).unwrap();
+    let again = core_as("MIGRATE1");
+    again.speaker_layout_set_dir(good).unwrap();
+    assert_eq!(again.speaker_layout().unwrap(), Some(kept));
+}

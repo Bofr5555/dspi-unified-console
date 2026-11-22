@@ -6,6 +6,7 @@
 #include <QString>
 
 class Core;
+struct FfiCore;
 
 // -- WP P2QT -- The hub's own events past DSPi Link (P2CC1, P2CC2:
 // `event.added`, `inventory.changed`, `snapshot.changed`, `alarm.changed`,
@@ -32,8 +33,10 @@ signals:
 private:
     explicit HubFeed(Core *core);
     static void thunk(const char *kind, const char *eventJson, void *self);
+    void listen();   // -- WP MDQT1 --
 
     Core *m_core;
+    FfiCore *m_handle = nullptr;   // -- WP MDQT1 -- the core it listens to
 };
 
 #endif // HUBFEED_H

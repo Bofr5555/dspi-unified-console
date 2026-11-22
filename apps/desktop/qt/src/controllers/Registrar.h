@@ -6,6 +6,8 @@
 
 class Core;
 class DeviceModel;
+class DeviceRegistry;
+class DeviceSession;
 class Poller;
 class Shell;
 class QQmlEngine;
@@ -18,6 +20,16 @@ struct AppContext {
     Shell *shell;
     QQmlEngine *engine;
     Poller *poller;   // periodic reads: add a poll here, never a timer of your own
+    // -- WP MDQT1 -- The open devices. `core`, `device` and `poller` are facades
+    // over the active one, whichever it is at each call: do not keep
+    // core->handle() or core->worker(). On DeviceRegistry::activeChanged (also
+    // Core::activeChanged) a controller reads again what it shows; `device` has
+    // emitted snapshotApplied for the new one by then, with another connection
+    // generation, as after a device switch. A result asked of the device left
+    // still arrives: compare activeSession(). State that is one device's goes
+    // into its core or its session's stash().
+    DeviceRegistry *registry;
+    DeviceSession *activeSession() const;
 };
 
 // How a work package adds a controller, a banner or a tool window without
