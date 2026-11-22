@@ -1,0 +1,11 @@
+{
+  "name": "dspi-mcp-conformance",
+  "private": true,
+  "description": "WP MCP6: the official MCP conformance suite and the official TypeScript SDK's client against dspi-mcp (ci/mcp-conformance/run.sh)",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "dependencies": {
+    "@modelcontextprotocol/conformance": "0.2.0-alpha.12",
+    "@modelcontextprotocol/sdk": "1.32.2"
+  }
+}

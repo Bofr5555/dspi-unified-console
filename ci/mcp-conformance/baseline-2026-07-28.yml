@@ -1,0 +1,54 @@
+# WP MCP6: what the 2026-07-28 requirement set asks of a server that dspi-mcp deliberately
+# does not do. Read by ci/mcp-conformance/run.sh (--expected-failures). A scenario that
+# fails outside this list fails the step; one that passes inside it fails it too (a stale
+# entry: remove it). Not-scored scenarios (the tasks extension, pending ones) are reported
+# and never fail the step.
+server:
+  # A capability this server does not declare (protocol.rs: no completions): -32601.
+  - completion-complete
+  # The suite's reference-fixture tools, resources and prompts (test_simple_text,
+  # test://static-text, test_simple_prompt, …): this server has its dspi_* ones only.
+  # tools-list, resources-list, prompts-list, caching and sep-2164-resource-not-found
+  # pass; sdk-client.mjs walks dspi-mcp's own (in the 2025-11-25 era).
+  - tools-call-simple-text
+  - tools-call-image
+  - tools-call-audio
+  - tools-call-embedded-resource
+  - tools-call-mixed-content
+  - tools-call-error
+  - tools-call-with-progress
+  - resources-read-text
+  - resources-read-binary
+  - resources-templates-read
+  - prompts-get-simple
+  - prompts-get-with-args
+  - prompts-get-embedded-resource
+  - prompts-get-with-image
+  # InputRequiredResult (SEP-2322) needs the fixture's tools that ask the client for
+  # input; no dspi_* tool asks the client anything (the user answers in the app), so
+  # this server never returns one. unsupported-methods and validate-input pass;
+  # missing-input-response and ignore-extra-params only warn that the fixture's tool is
+  # missing, which the suite's baseline logic counts as a failure.
+  - input-required-result-basic-elicitation
+  - input-required-result-basic-sampling
+  - input-required-result-basic-list-roots
+  - input-required-result-request-state
+  - input-required-result-multiple-input-requests
+  - input-required-result-multi-round
+  - input-required-result-non-tool-request
+  - input-required-result-result-type
+  - input-required-result-tampered-state
+  - input-required-result-capability-check
+  - input-required-result-missing-input-response
+  - input-required-result-ignore-extra-params
+  # server-stateless: four checks need the fixture's diagnostic tools
+  # (test_missing_capability, test_streaming_elicitation, test_logging_tool) and are
+  # untestable here. Its other checks (_meta validation, headers, -32022, removed
+  # methods 404, no session) pass.
+  - server-stateless:sep-2575-server-rejects-undeclared-capability
+  - server-stateless:sep-2575-missing-capability-http-400
+  - server-stateless:sep-2575-http-server-no-independent-requests-on-stream
+  - server-stateless:sep-2575-server-no-log-without-loglevel
+  # Deliberately stricter than the spec (MCP3, http.rs): every request with an Origin
+  # header is refused, a loopback Origin too. See baseline-2025-11-25.yml.
+  - dns-rebinding-protection:localhost-host-valid-accepted
