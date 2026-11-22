@@ -4,8 +4,10 @@
 //! A `struct FfiCoreSet *` from `dspi_core_set_new` holds the open devices.
 //! `dspi_core_set_core` hands out a `struct FfiCore *` for one of them, which
 //! every `dspi_*` function takes as usual. That handle belongs to the set: it
-//! stays valid until `dspi_core_set_close` of its id or `dspi_core_set_free`,
-//! and must never be given to `dspi_core_free`.
+//! stays valid until `dspi_core_set_free` and must never be given to
+//! `dspi_core_free`. After `dspi_core_set_close` of its id it is retired, not
+//! freed: a call another thread makes on it late answers as a core with no
+//! device (`Disconnected`), never touches freed memory.
 //!
 //! Replies are JSON, as in `fns_misc`'s docs. A set's own failures have the
 //! codes `already_open` (with `id`, the device the unit is open as), `full`
@@ -31,6 +33,10 @@ pub struct FfiCoreSet {
     set: Arc<CoreSet>,
     /// The `FfiCore` handed out per id, boxed so its address stays put.
     handles: Mutex<BTreeMap<String, Box<FfiCore>>>,
+    /// Handles of closed devices, kept until the set is freed (review RA F2);
+    /// still boxed, since C holds their addresses.
+    #[allow(clippy::vec_box)]
+    retired: Mutex<Vec<Box<FfiCore>>>,
 }
 
 impl FfiCoreSet {
@@ -135,13 +141,15 @@ pub extern "C" fn dspi_core_set_new() -> *mut FfiCoreSet {
         Box::into_raw(Box::new(FfiCoreSet {
             set: CoreSet::new(),
             handles: Mutex::new(BTreeMap::new()),
+            retired: Mutex::new(Vec::new()),
         }))
     })
 }
 
 /// Free a set: its listener is unset, every device is closed as by
-/// `dspi_core_set_close`, and every `FfiCore` it handed out dies. Null is
-/// ignored. Blocks while closing.
+/// `dspi_core_set_close`, and every `FfiCore` it handed out dies, those of
+/// devices closed earlier too. No other thread may be inside a call on any of
+/// them. Null is ignored. Blocks while closing.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_core_set_free(set: *mut FfiCoreSet) {
     if set.is_null() {
@@ -159,8 +167,8 @@ pub extern "C" fn dspi_core_set_free(set: *mut FfiCoreSet) {
     });
 }
 
-/// Unset the callbacks of the handle for `id`, close the device, then drop
-/// the handle.
+/// Unset the callbacks of the handle for `id`, close the device, then retire
+/// the handle: it lives on, with no device, until the set is freed.
 fn close(s: &FfiCoreSet, id: &DeviceId) -> Result<(), CoreSetError> {
     if let Some(core) = s.set.core(id) {
         core.set_notify_listener(None);
@@ -170,7 +178,13 @@ fn close(s: &FfiCoreSet, id: &DeviceId) -> Result<(), CoreSetError> {
         core.set_link_listener(None);
     }
     let closed = s.set.close(id);
-    s.handles().remove(id.as_str());
+    let handle = s.handles().remove(id.as_str());
+    if let Some(h) = handle {
+        s.retired
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(h);
+    }
     closed
 }
 
@@ -205,8 +219,11 @@ pub extern "C" fn dspi_core_set_open(
     })
 }
 
-/// Close the device `id` and drop it from the set; the `FfiCore` handed out
-/// for it dies (its callbacks are unset first). JSON `{ok}`, or `unknown`.
+/// Close the device `id` and drop it from the set. The `FfiCore` handed out
+/// for it has its callbacks unset and is retired, not freed: until
+/// `dspi_core_set_free` it stays valid and answers as a core with no device
+/// (`Disconnected`), so a call another thread is making on it is safe. A later
+/// open of the same id hands out a new pointer. JSON `{ok}`, or `unknown`.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_core_set_close(
     set: *mut FfiCoreSet,
@@ -236,8 +253,9 @@ pub extern "C" fn dspi_core_set_list(set: *mut FfiCoreSet, buf: *mut c_char, len
 
 /// The core of the open device `id`, for every `dspi_*` call; null for an id
 /// that is not open. The set owns it: it stays valid until
-/// `dspi_core_set_close` of `id` or `dspi_core_set_free`, the same pointer
-/// each time. Never pass it to `dspi_core_free`.
+/// `dspi_core_set_free` (with no device after `dspi_core_set_close` of `id`),
+/// the same pointer each time while the device is open. Never pass it to
+/// `dspi_core_free`.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_core_set_core(set: *mut FfiCoreSet, id: *const c_char) -> *mut FfiCore {
     with_set(set, ptr::null_mut(), |s| {

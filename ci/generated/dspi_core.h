@@ -8316,8 +8316,9 @@ struct FfiCoreSet *dspi_core_set_new(void);
 
 /**
  * Free a set: its listener is unset, every device is closed as by
- * `dspi_core_set_close`, and every `FfiCore` it handed out dies. Null is
- * ignored. Blocks while closing.
+ * `dspi_core_set_close`, and every `FfiCore` it handed out dies, those of
+ * devices closed earlier too. No other thread may be inside a call on any of
+ * them. Null is ignored. Blocks while closing.
  */
 void dspi_core_set_free(struct FfiCoreSet *set);
 
@@ -8336,8 +8337,11 @@ uint32_t dspi_core_set_open(struct FfiCoreSet *set,
                             uint32_t len);
 
 /**
- * Close the device `id` and drop it from the set; the `FfiCore` handed out
- * for it dies (its callbacks are unset first). JSON `{ok}`, or `unknown`.
+ * Close the device `id` and drop it from the set. The `FfiCore` handed out
+ * for it has its callbacks unset and is retired, not freed: until
+ * `dspi_core_set_free` it stays valid and answers as a core with no device
+ * (`Disconnected`), so a call another thread is making on it is safe. A later
+ * open of the same id hands out a new pointer. JSON `{ok}`, or `unknown`.
  */
 uint32_t dspi_core_set_close(struct FfiCoreSet *set, const char *id, char *buf, uint32_t len);
 
@@ -8351,8 +8355,9 @@ uint32_t dspi_core_set_list(struct FfiCoreSet *set, char *buf, uint32_t len);
 /**
  * The core of the open device `id`, for every `dspi_*` call; null for an id
  * that is not open. The set owns it: it stays valid until
- * `dspi_core_set_close` of `id` or `dspi_core_set_free`, the same pointer
- * each time. Never pass it to `dspi_core_free`.
+ * `dspi_core_set_free` (with no device after `dspi_core_set_close` of `id`),
+ * the same pointer each time while the device is open. Never pass it to
+ * `dspi_core_free`.
  */
 struct FfiCore *dspi_core_set_core(struct FfiCoreSet *set, const char *id);
 

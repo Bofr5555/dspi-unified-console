@@ -177,3 +177,34 @@ fn wp_md0_a_hub_unit_through_c_holds_its_serial() {
     assert_eq!(hub.sessions().len(), 1);
     dspi_core_set_free(set);
 }
+
+/// Review RA F2: a closed device's handle is retired, not freed, so a call
+/// another thread makes on it late answers "no device" until the set is freed.
+#[test]
+fn wp_md0_a_closed_devices_handle_stays_valid_until_the_set_is_freed() {
+    let set = dspi_core_set_new();
+    let a = open(set, r#"{"kind":"demo"}"#);
+    let ca = core_of(set, &a["id"]);
+    assert!(dspi_is_connected(ca));
+    let worker = ca as usize;
+    let late = std::thread::spawn(move || {
+        let ca = worker as *mut FfiCore;
+        // Racing the close: before it the call works, after it it is
+        // refused; neither touches freed memory.
+        for _ in 0..200 {
+            let _ = dspi_set_master_volume(ca, -20.0);
+            // SAFETY: the handle stays valid until dspi_core_set_free.
+            let _ = unsafe { (*dspi_get_state(ca)).master_volume_db };
+        }
+    });
+    assert_eq!(close(set, "demo:1"), json!({"ok": true}));
+    late.join().unwrap();
+    assert!(!dspi_is_connected(ca), "a retired handle has no device");
+    assert!(!dspi_set_master_volume(ca, -10.0));
+    assert!(!dspi_get_state(ca).is_null(), "still a live handle");
+    let b = open(set, r#"{"kind":"demo"}"#);
+    let cb = core_of(set, &b["id"]);
+    assert!(!cb.is_null() && cb != ca, "a new open gets a new handle");
+    assert!(dspi_is_connected(cb));
+    dspi_core_set_free(set);
+}
