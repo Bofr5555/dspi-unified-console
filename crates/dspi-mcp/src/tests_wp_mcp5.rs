@@ -786,6 +786,20 @@ fn wp_mcp5_without_a_measure_view_measuring_is_not_available() {
     assert!(s.measure_requests().is_empty());
 }
 
+// The first real agent stopped here: the overview said it may not measure.
+#[test]
+fn wp_func1_the_overview_says_an_agent_may_measure_where_it_may() {
+    let (set, _id, _core) = demo();
+    for measuring in [true, false] {
+        let mut s = server(&set, ConfirmMode::AskRisky, measuring);
+        let c = s.connect();
+        let o = ok_at(&mut s, c, 0, "dspi_get_overview", json!({}));
+        assert_eq!(o["agent_may"]["measure"], json!(measuring));
+        let l = ok_at(&mut s, c, 0, "dspi_get_limits", json!({}));
+        assert_eq!(l["agent_may"]["measure"], json!(measuring));
+    }
+}
+
 #[test]
 fn wp_mcp5_requests_lapse_are_declined_stopped_and_withdrawn() {
     let (set, _id, core) = demo();

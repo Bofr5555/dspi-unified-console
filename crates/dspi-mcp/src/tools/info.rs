@@ -43,7 +43,7 @@ static GET_LIMITS: Tool = Tool {
             "profile": profile,
             "app_read_only": core.client_read_only(),
             "confirmation_setting": mode,
-            "agent_may": call.policy.agent_may(),
+            "agent_may": call.agent_may(),
         }))
     },
 };

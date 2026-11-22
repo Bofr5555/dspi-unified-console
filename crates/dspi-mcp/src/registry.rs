@@ -321,6 +321,20 @@ impl Call<'_> {
             .map(|d| d.as_str().to_owned())
             .unwrap_or_default()
     }
+
+    // -- WP FUNC1 --
+    /// What the agent may do, for the overview: the policy's flags, with
+    /// `measure` true where the policy lets it write and the app has a Measure
+    /// view that takes requests (the policy does not know the app).
+    pub(crate) fn agent_may(&self) -> Value {
+        let mut may = self.policy.agent_may();
+        if let Some(o) = may.as_object_mut() {
+            let write = o.get("write").and_then(Value::as_bool).unwrap_or(false);
+            let measure = write && self.measure.is_some_and(tools::measure::Jobs::host);
+            o.insert("measure".into(), json!(measure));
+        }
+        may
+    }
 }
 
 /// What [`run`] needs from the server.
