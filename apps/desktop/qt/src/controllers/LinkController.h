@@ -184,7 +184,8 @@ public:
     Q_INVOKABLE void pair(const QString &pin);
     Q_INVOKABLE void bindDevice(int handle, const QString &serial);
     // Leave the hub, also during a dial. Returns at once. The device that was
-    // open before the session opens again.
+    // open before the session opens again. -- WP RBFIX -- A device opened beside
+    // the others is closed instead, through DevicesController::closeOpen.
     Q_INVOKABLE void closeSession();
     // Leave the hub for a local device the caller opens next: nothing reopens.
     void leaveForLocal();

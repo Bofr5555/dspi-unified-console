@@ -2,6 +2,7 @@
 
 #include "DeviceRegistry.h"
 #include "DeviceSession.h"
+#include "DevicesController.h"   // -- WP RBFIX --
 #include "Poller.h"
 #include "Registrar.h"
 #include "SessionModel.h"
@@ -199,9 +200,10 @@ void LinkController::closeSession() {
         showSubject();
         return;
     }
-    // A device opened beside the others goes with its hub session
+    // A device opened beside the others goes with its hub session. -- WP RBFIX --
+    // As its tab closes it: its unsaved question first, refused while pinned
     if (m_registry && !m_registry->active()->isMain() && !m_subject->boundSerial().isEmpty()) {
-        m_registry->close(m_registry->activeId());
+        if (auto *devices = Registrar::instance<DevicesController>()) devices->closeOpen(m_registry->activeId());
         return;
     }
     m_subject->closeSession();
