@@ -141,6 +141,8 @@ struct Palette {
         QObject *h = shell->pageHost();
         return h ? h->property("section").toString() + QLatin1Char('/') + h->property("tab").toString() : QString();
     }
+    // -- WP INT5 -- The page itself, whichever of its panel's parts shows (LAY5b)
+    QString pageKey() const { return shell->pageHost() ? shell->pageHost()->property("pageKey").toString() : QString(); }
     void go(const char *section, const char *tab) const {
         QVariant ok;
         QMetaObject::invokeMethod(shell->pageHost(), "go", Q_RETURN_ARG(QVariant, ok), Q_ARG(QVariant, QString::fromLatin1(section)),
@@ -279,6 +281,10 @@ void contentsPart(Palette &p) {
     }
     for (const char *page : { "equaliser/peq", "equaliser/crossover", "equaliser/delay" })
         p.check(QStringLiteral("page %1 is in it").arg(QLatin1String(page)), ids.contains(QStringLiteral("page:") + QLatin1String(page)));
+    // -- WP INT5 -- the parts of LAY5b's panels, those there now
+    for (const char *page : { "measure/results", "measure/tune", "system/clock", "settings/control" })
+        p.check(QStringLiteral("the part %1 is in it").arg(QLatin1String(page)), ids.contains(QStringLiteral("page:") + QLatin1String(page)));
+    p.check("a tab that is not there now is not", !ids.contains(QStringLiteral("page:measure/passive")));
     int pages = 0;
     for (const QVariant &v : p.settings->sidebarRows(QString())) {
         const QString id = v.toMap().value(QStringLiteral("id")).toString();
@@ -375,7 +381,7 @@ void runPart(Palette &p) {
 
     // A settings page, on the page and (RB) in its own window
     p.check("a settings page opens on the Settings page",
-            p.runTyped(QStringLiteral("unwrap"), QStringLiteral("settings:graphing")) && p.at() == QLatin1String("settings/settings")
+            p.runTyped(QStringLiteral("unwrap"), QStringLiteral("settings:graphing")) && p.pageKey() == QLatin1String("settings/settings")
                 && p.settings->currentPage() == QLatin1String("graphing"));
     p.go("overview", "overview");
     QWindow *window = p.shell->openWindow(QStringLiteral("edit.settings"));

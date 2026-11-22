@@ -105,12 +105,15 @@ Popup {
 
         // ---- The sections, and their pages that no menu row opens
         const free = !OnboardingController.wizardShown
+        // -- WP INT5 -- a panel's part (LAY5b) too: the panel's row opens the part it was on
+        const own = t => !t.row || t.part.length > 0 || !MenuTable.row(t.row.action)
         for (const s of SectionTable.sections) {
             const open = free && (!sender || s.sender === true)
-            const tabs = SectionTable.tabs(s.id).filter(t => !t.quiet)
+            // -- WP INT5 -- the tabs that are there now (LAY5b)
+            const tabs = SectionTable.tabs(s.id).filter(t => !t.quiet && SectionTable.shows(s.id, t.tab))
             const only = tabs.length === 1 ? tabs[0] : null
             // Its only page is a tool of the same name: that row says it
-            if (!only || !only.row || only.title !== s.title || !MenuTable.row(only.row.action))
+            if (!only || own(only) || only.title !== s.title)
                 add({
                     id: "section:" + s.id, kind: "section", arg: s.id, icon: s.icon, enabled: open,
                     //: %1 is a section of the app (Equaliser, Effects…)
@@ -118,7 +121,7 @@ Popup {
                 })
             if (only && !only.row) continue
             for (const t of tabs)
-                if (!t.row || !MenuTable.row(t.row.action))
+                if (own(t))
                     add({ id: "page:" + t.key, kind: "page", arg: t.key, icon: t.icon, enabled: open, title: t.title, where: s.title })
         }
 
