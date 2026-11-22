@@ -259,7 +259,9 @@ Rectangle {
                     }
                 }
                 ColumnLayout {
-                    visible: !wizard.onBoard
+                    // -- WP ROLEQ -- none on a stage without rows (the Speakers
+                    // step): an emptied column kept its old rows' height
+                    visible: !wizard.onBoard && (wizard.stage.rows || []).length > 0
                     Layout.fillWidth: true
                     spacing: Theme.spacing
                     Repeater {
@@ -269,6 +271,19 @@ Rectangle {
                             objectName: "GettingStarted.row"
                             iconName: wizard.iconFor(modelData.icon)
                             text: wizard.wording(modelData)
+                        }
+                    }
+                }
+                // -- WP ROLEQ -- the Speakers step's table and its Confirm
+                // (assets/onboarding/speakers.json, OnboardingController)
+                Loader {
+                    objectName: "GettingStarted.speakers"
+                    active: wizard.stage.id === "speakers"
+                    visible: active
+                    Layout.fillWidth: true
+                    sourceComponent: Component {
+                        SpeakersStep {
+                            stage: wizard.stage
                         }
                     }
                 }

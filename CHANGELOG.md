@@ -26,6 +26,11 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
   (events, history, snapshots, the AutoEQ list) and the Matrix window keep their own sizes. The Import Filters,
   New from Template and Import Device Configuration dialogs show their whole list when the main window has room
   (they stopped at 320, 320 and 200 px). (WP QTPOP)
+- Your speaker layout: which output drives what (full range, sub, woofer, mid, tweeter). Getting Started has a
+  Speakers step and Settings has a Speakers page, both pre-filled from the DSPi's filters and routing; Confirm keeps
+  it. The Measure tables start from it, and a role, speaker or group changed there is saved to it without confirming
+  it. Measure shows a banner while the layout is not confirmed, also when it came with an imported configuration.
+  (WP ROLEQ)
 
 ### Android
 - DSPi Link is reachable from the main page (owner report on 0.14.0: only through the settings

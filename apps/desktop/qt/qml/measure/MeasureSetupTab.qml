@@ -50,9 +50,18 @@ ScrollView {
         return -1
     }
 
+    // -- WP ROLEQ -- the rows come from the speaker layout and write back to it
+    Component.onCompleted: SpeakersController.reload()
+
     ColumnLayout {
         width: tab.availableWidth
         spacing: Theme.spacing
+
+        // -- WP ROLEQ -- while the speaker layout is not confirmed
+        SpeakersBanner {
+            objectName: "MeasureSetup.speakersBanner"
+            Layout.fillWidth: true
+        }
 
         Card {
             title: qsTr("Microphone")
@@ -181,6 +190,7 @@ ScrollView {
                         onToggled: mc.setOutputOn(modelData.output, checked)
                     }
                     AppComboBox {
+                        objectName: "MeasureSetup.role." + modelData.output
                         label: qsTr("Way")
                         Layout.preferredWidth: 150
                         enabled: tab.editable && modelData.on
@@ -190,6 +200,7 @@ ScrollView {
                         onActivated: index => mc.setOutputRole(modelData.output, tab.roles[index].id)
                     }
                     BorderedField {
+                        objectName: "MeasureSetup.speaker." + modelData.output
                         label: qsTr("Speaker")
                         Layout.preferredWidth: 60
                         enabled: tab.editable && modelData.on
@@ -206,6 +217,17 @@ ScrollView {
                         onCommitted: value => mc.setOutputGroup(modelData.output, Math.round(value))
                     }
                 }
+            }
+            // -- WP ROLEQ -- a way, speaker or group changed here is kept in
+            // the speaker layout (not confirmed by it)
+            Text {
+                objectName: "MeasureSetup.layoutSaved"
+                visible: text.length > 0
+                Layout.fillWidth: true
+                text: SpeakersController.said
+                font: Theme.fontSmall
+                color: SpeakersController.saidError ? Theme.dangerText : Theme.textMuted
+                wrapMode: Text.WordWrap
             }
             AppButton {
                 text: qsTr("Propose from the Device")

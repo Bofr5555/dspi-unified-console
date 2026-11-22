@@ -220,7 +220,8 @@ private:
     void deviceWrite(const QString &step, std::function<QByteArray(FfiCore *)> job, std::function<void(const QJsonObject &)> done);
     void fail(const QString &text);
     void track(int delta);
-    void setOutputField(int output, const QString &field, const QVariant &value);
+    // -- WP ROLEQ -- whether it changed (written back to the speaker layout)
+    bool setOutputField(int output, const QString &field, const QVariant &value);
     QByteArray layoutJson() const;
     QByteArray optionsJson() const;
     void endRuns();
