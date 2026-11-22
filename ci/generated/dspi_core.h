@@ -8372,6 +8372,10 @@ void dspi_core_set_free(struct FfiCoreSet *set);
  * the app holds. JSON `{ok, id}`, or the failure (module docs). Blocks for the
  * connect sequence: not on the UI thread.
  *
+ * -- WP INT5 -- `"extra": true` beside the kind: a device the app uses itself
+ * without showing it (a unit measured with others). `dspi_core_set_list` says
+ * `"extra": true` of it, and AI agents are not offered it.
+ *
  * -- WP MDQT1 -- It acts once, whatever the buffer: a reply that does not fit
  * (the returned length is over `len`) writes nothing, but the device is open.
  * Do not call it again for the id (it would open a second demo, or be refused
