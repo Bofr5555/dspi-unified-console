@@ -72,11 +72,29 @@ Item {
                         anchors.verticalCenter: parent ? parent.verticalCenter : undefined
                         onCheckedChanged: if (checked) flick.reveal(button)
                         onVisualFocusChanged: if (visualFocus) flick.reveal(button)
-                        contentItem: Text {
-                            text: button.text
-                            font: Theme.fontBody
-                            color: button.checked ? Theme.text : Theme.textMuted
-                            verticalAlignment: Text.AlignVCenter
+                        // -- WP LAY5a -- on or off (an effect's, the generator's)
+                        readonly property var dot: SectionTable.dot(bar.section, modelData.tab)
+                        contentItem: Row {
+                            spacing: 6
+                            Rectangle {
+                                objectName: button.objectName + ".dot"
+                                property bool on: button.dot === true
+                                visible: button.dot !== null
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 7
+                                height: 7
+                                radius: 3.5
+                                // A ring when off: not the colour alone
+                                color: on ? Theme.success : "transparent"
+                                border.width: on ? 0 : 1
+                                border.color: Theme.textMuted
+                            }
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: button.text
+                                font: Theme.fontBody
+                                color: button.checked ? Theme.text : Theme.textMuted
+                            }
                         }
                         background: Rectangle {
                             radius: Theme.radiusSmall
@@ -93,7 +111,8 @@ Item {
                         }
                         onClicked: bar.chosen(modelData.tab)
                         Accessible.role: Accessible.PageTab
-                        Accessible.name: text
+                        //: %1 is an effect's tab
+                        Accessible.name: dot === null ? text : dot ? qsTr("%1, on").arg(text) : qsTr("%1, off").arg(text) // -- WP LAY5a --
                         Accessible.selected: checked
                         Accessible.onPressAction: button.clicked()
                     }
