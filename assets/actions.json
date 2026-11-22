@@ -351,6 +351,14 @@
       ]
     },
     {
+      "id": "device.aiAgents",
+      "text": "AI Agents…",
+      "menu": "Device",
+      "places": [
+        "page.settings/aiAgents"
+      ]
+    },
+    {
       "id": "device.firmwareUpdate",
       "text": "Firmware Update…",
       "menu": "Device",
