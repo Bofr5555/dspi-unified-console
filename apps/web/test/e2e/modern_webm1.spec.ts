@@ -3,7 +3,7 @@
 // and values; a tab's close button asks about unsaved changes; the rail and the tabs across the
 // top; the dock on every page. Screenshots in both themes when SHOTS_DIR names a directory.
 
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { appMenu, expectPage, openDevices, openPage, pageTab, pageTabs, rail, section } from "../nav";
 
 function errorsOf(page: Page) {
@@ -194,8 +194,15 @@ test("WEBM1: arranged as tabs across the top (variant A), the same sections and 
   await page.goto("/?nav=tabs");
   await page.getByRole("listitem").filter({ hasText: "Demo DSPi" }).getByRole("button", { name: "Connect" }).click();
   const session = page.getByRole("article").first();
-  const nav = (await rail(session).boundingBox())!;
-  const body = (await session.locator(".shell-main").boundingBox())!;
+  // -- WP INT3 -- measured once the view has settled: in Firefox the page's box
+  // was null for a moment after Connect (3 runs in 10), visible or not
+  const settled = async (l: Locator) => {
+    let box: Awaited<ReturnType<Locator["boundingBox"]>> = null;
+    await expect.poll(async () => (box = await l.boundingBox()) !== null).toBe(true);
+    return box!;
+  };
+  const nav = await settled(rail(session));
+  const body = await settled(session.locator(".shell-main"));
   expect(nav.y + nav.height).toBeLessThanOrEqual(body.y + 0.5);
   expect(nav.height).toBeLessThan(80);
   await openPage(session, "Signal Generator");
