@@ -3,10 +3,12 @@
 
 #include "Core.h"
 #include "DeviceModel.h"
+#include "DeviceSession.h"   // -- WP MDQT2b --
 #include "SettingsController.h"
 #include "Snapshot.h"
 
 #include <QJsonArray>
+#include <QPointer>
 #include <QJsonDocument>
 #include <QTimer>
 #include <algorithm>
@@ -255,7 +257,10 @@ void CsController::onSnapshot() {
     }
     // Another device: what was held belongs to the old one. A re-plug of the
     // same unit keeps the drafts and reads the configuration again.
-    if (m_ctx.device->serial() != m_serial) {
+    // -- WP MDQT2b -- another open device is another device (two demos share a serial)
+    const bool switched = m_ctx.activeSession() != m_session;
+    m_session = m_ctx.activeSession();
+    if (switched || m_ctx.device->serial() != m_serial) {
         clear();
         m_serial = m_ctx.device->serial();
         m_generation = snap.generation;

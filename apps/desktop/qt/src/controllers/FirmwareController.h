@@ -5,6 +5,7 @@
 #include <QJsonObject>
 #include <QElapsedTimer>
 #include <QObject>
+#include <QPointer>
 #include <QString>
 #include <QTimer>
 #include <QtQml/qqmlregistration.h>
@@ -13,7 +14,10 @@
 #include "BootloaderLocator.h"
 #include "Registrar.h"
 
+class CoreWorker;
+class DeviceSession;
 class QJSEngine;
+class SessionModel;
 class QQmlEngine;
 
 // -- WP QP16 -- Firmware: the update window (the Mac's FirmwareUpdateView and
@@ -34,6 +38,13 @@ class QQmlEngine;
 //
 // Hidden on STM32H723: the app bundles no firmware for it and its menu row is
 // hidden there.
+//
+// -- WP MDQT2b -- Several open devices: a run is the device's that was active
+// when the person committed to it. Its restart, write and return check stay
+// on that device's session whichever device is active meanwhile (another
+// device's connection is never taken for the one coming back), and it pins
+// that device: it cannot be closed or replaced until the run ends (runsOn,
+// DevicesController). `runDevice` names it while another one is active.
 class FirmwareController : public QObject {
     Q_OBJECT
     QML_ELEMENT
@@ -104,6 +115,9 @@ class FirmwareController : public QObject {
     Q_PROPERTY(QString failure READ errorText NOTIFY stateChanged)
     Q_PROPERTY(double fraction READ fraction NOTIFY stateChanged)
     Q_PROPERTY(bool mundane READ mundane NOTIFY stateChanged)
+    // -- WP MDQT2b -- The device the run under way is on, while it is not the
+    // active one ("" otherwise)
+    Q_PROPERTY(QString runDevice READ runDevice NOTIFY stateChanged)
 public:
     enum State { Idle, WaitingForBoard, WaitingForVolume, Ready, Writing, WaitingForDevice, Verified, Failed };
     Q_ENUM(State)
@@ -191,6 +205,12 @@ public:
     Q_INVOKABLE void openWindow();
 
     BootloaderLocator *locator() const { return m_locator; }
+    // -- WP MDQT2b -- a run is under way on `session`'s device
+    bool runsOn(const DeviceSession *session) const;
+    QString runDevice() const;
+    // The smoke driver: a run on `session` waiting for its device to come
+    // back (null ends it)
+    void pretendRunForTest(DeviceSession *session);
     // The smoke driver's knobs
     void setTimeoutsForTest(int volumeWaitMs, int verifyMs);
     // Another expected version ("": the bundled images' again)
@@ -288,6 +308,12 @@ private:
     QString m_generationChange;
     bool m_useTarget = false;   // the write passes the target's voltage record
     bool senderConnected() const;
+    // -- WP MDQT2b -- the run's session (the active one's before a run), and its model
+    QPointer<DeviceSession> m_run;
+    SessionModel *runModel() const;
+    CoreWorker *runWorker() const;
+    void onRunApplied();
+    QString runVersion() const;   // runningVersion() of the run's device
     // The check before the write: the update check on this run's target, or
     // the voltage rule alone with the voltage unknown (a board not read by
     // this run). Worker thread.

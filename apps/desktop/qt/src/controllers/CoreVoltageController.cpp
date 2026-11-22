@@ -5,6 +5,7 @@
 #include "Core.h"
 #include "CoreWorker.h"
 #include "DeviceModel.h"
+#include "DeviceSession.h"   // -- WP MDQT2b --
 #include "ExtController.h"
 #include "SettingsController.h"
 #include "Snapshot.h"
@@ -51,6 +52,15 @@ Reply readFlow(FfiCore *c, bool poll) {
     return { view, status };
 }
 
+// -- WP MDQT2b -- the phases of a run under way (the core's Phase::busy)
+const QStringList &runningPhases() {
+    static const QStringList running{ QStringLiteral("clearing"), QStringLiteral("starting_trial"),
+                                      QStringLiteral("soaking"),  QStringLiteral("passed"),
+                                      QStringLiteral("ending"),   QStringLiteral("committing") };
+    return running;
+}
+const QString kStash = QStringLiteral("CoreVoltageController");
+
 } // namespace
 
 CoreVoltageController::CoreVoltageController(const AppContext &ctx, QObject *parent) : QObject(parent), m_ctx(ctx) {
@@ -92,14 +102,34 @@ void CoreVoltageController::onState() {
 
 void CoreVoltageController::refresh() {
     if (!m_ctx.device->connected()) return;
+    const QPointer<DeviceSession> asked = m_ctx.activeSession();   // -- WP MDQT2b --
     m_ctx.core->worker()->call(this, [](FfiCore *c) { return readFlow(c, true); },
-                               [this](const Reply &r) { apply(r.first, r.second); });
+                               [this, asked](const Reply &r) { applyFor(asked, r.first, r.second); });
+}
+
+// -- WP MDQT2b --
+void CoreVoltageController::applyFor(DeviceSession *asked, const QByteArray &view, const QByteArray &status) {
+    if (!asked) return;
+    if (asked == m_ctx.activeSession()) {
+        apply(view, status);
+        return;
+    }
+    const QJsonObject v = QJsonDocument::fromJson(view).object();
+    if (v.value(QLatin1String("ok")).toBool()) asked->stash(kStash).insert(QStringLiteral("phase"), v.value(QLatin1String("phase")).toString());
+}
+
+bool CoreVoltageController::calibratingOn(DeviceSession *session) const {
+    if (!session) return false;
+    if (session == m_ctx.activeSession()) return calibrating();
+    return runningPhases().contains(session->stash(kStash).value(QStringLiteral("phase")).toString());
 }
 
 void CoreVoltageController::apply(const QByteArray &view, const QByteArray &status) {
     if (!m_ctx.device->connected()) return;
     const QJsonObject v = QJsonDocument::fromJson(view).object();
     if (v.value(QLatin1String("ok")).toBool()) m_view = v.toVariantMap();
+    // -- WP MDQT2b -- kept in the session: what pins it once another is active
+    if (DeviceSession *s = m_ctx.activeSession()) s->stash(kStash).insert(QStringLiteral("phase"), phase());
     const QJsonObject s = v.value(QLatin1String("status")).isObject()
                               ? v.value(QLatin1String("status")).toObject()
                               : QJsonDocument::fromJson(status).object();
@@ -139,10 +169,7 @@ QString CoreVoltageController::phase() const {
 
 bool CoreVoltageController::calibrating() const {
     // The core's Phase::busy: a manual request would disturb these
-    static const QStringList running{ QStringLiteral("clearing"), QStringLiteral("starting_trial"),
-                                      QStringLiteral("soaking"),  QStringLiteral("passed"),
-                                      QStringLiteral("ending"),   QStringLiteral("committing") };
-    return running.contains(phase());
+    return runningPhases().contains(phase());
 }
 
 bool CoreVoltageController::writable() const {
@@ -217,17 +244,20 @@ void CoreVoltageController::request(const QString &what, std::function<uint8_t(F
     ++m_busy;
     ++m_requests;
     emit flowChanged();
+    const QPointer<DeviceSession> asked = m_ctx.activeSession();   // -- WP MDQT2b --
     m_ctx.device->write(
         what, [setter = std::move(setter)](FfiCore *c) { return setter(c) == 0; },
-        [this, what](bool ok) {
+        [this, what, asked](bool ok) {
             --m_busy;
             // The flow as the request left it, with the core's reason for a refusal
-            m_ctx.core->worker()->call(this, [](FfiCore *c) { return readFlow(c, false); },
-                                       [this, what, ok](const Reply &r) {
-                                           apply(r.first, r.second);
-                                           if (!ok)
-                                               emit refused(what, m_view.value(QStringLiteral("lastError")).toString());
-                                       });
+            // (-- WP MDQT2b -- read on the device it was asked of)
+            if (asked)
+                asked->worker()->call(this, [](FfiCore *c) { return readFlow(c, false); },
+                                      [this, what, ok, asked](const Reply &r) {
+                                          applyFor(asked, r.first, r.second);
+                                          if (!ok && asked == m_ctx.activeSession())
+                                              emit refused(what, m_view.value(QStringLiteral("lastError")).toString());
+                                      });
             emit flowChanged();
         });
 }
@@ -294,11 +324,12 @@ void CoreVoltageController::manualClear() {
 
 void CoreVoltageController::demoEvent(int event, uint32_t seconds) {
     if (!m_ctx.device->connected()) return;
+    const QPointer<DeviceSession> asked = m_ctx.activeSession();   // -- WP MDQT2b --
     m_ctx.core->worker()->call(
         this,
         [event, seconds](FfiCore *c) {
             dspi_core_vreg_demo_event(c, code8(event), seconds);
             return readFlow(c, true);
         },
-        [this](const Reply &r) { apply(r.first, r.second); });
+        [this, asked](const Reply &r) { applyFor(asked, r.first, r.second); });
 }

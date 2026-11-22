@@ -5,6 +5,7 @@
 #include "Core.h"
 #include "CoreWorker.h"
 #include "DeviceModel.h"
+#include "DeviceSession.h"   // -- WP MDQT2b --
 #include "FilesController.h"
 #include "HubFeed.h"   // -- WP P2QT --
 #include "NoticeCenter.h"
@@ -125,6 +126,10 @@ SnapshotsController::SnapshotsController(const AppContext &ctx, QObject *parent)
                         : tr("Keep these settings? They go back in {s} s unless you press Keep.");
     // -- WP P2QT -- the hub's store changed (any console's save, rename or delete)
     if (HubFeed *feed = HubFeed::of(ctx.core)) connect(feed, &HubFeed::hubEvent, this, &SnapshotsController::onHubEvent);
+    // -- WP MDQT2b -- the guards left waiting on other devices, at the bar's rate
+    m_session = ctx.activeSession();
+    m_driveTimer.setInterval(kGuardPollMs);
+    connect(&m_driveTimer, &QTimer::timeout, this, &SnapshotsController::driveTick);
 }
 
 void SnapshotsController::setGuardTimeoutS(int seconds) {
@@ -184,9 +189,11 @@ void SnapshotsController::failed(const QJsonObject &reply, const QString &fallba
 // ---- The device changed ------------------------------------------------------------
 
 void SnapshotsController::onSnapshotApplied() {
+    const bool switched = m_ctx.activeSession() != m_session;   // -- WP MDQT2b --
+    if (switched) rebind();
     const bool connected = m_ctx.device->connected();
     const QString serial = m_ctx.device->serial();
-    const bool changed = connected != m_connected || serial != m_serial;
+    const bool changed = switched || connected != m_connected || serial != m_serial;
     m_connected = connected;
     m_serial = serial;
     if (changed) {
@@ -194,10 +201,11 @@ void SnapshotsController::onSnapshotApplied() {
         reloadAb();
     }
     // Over DSPi Link the default may change with the session; no I/O
+    const QPointer<DeviceSession> asked = m_ctx.activeSession();   // -- WP MDQT2b --
     m_ctx.core->worker()->call(
         this, [](FfiCore *c) { return dspi_apply_guard_default(c); },
-        [this](bool on) {
-            if (on == m_guardDefault) return;
+        [this, asked](bool on) {
+            if (asked != m_ctx.activeSession() || on == m_guardDefault) return;
             m_guardDefault = on;
             emit guardChanged();
         });
@@ -205,13 +213,92 @@ void SnapshotsController::onSnapshotApplied() {
     if (connected && guardPhase() == QLatin1String("lost")) reloadGuard();
 }
 
+// ---- -- WP MDQT2b -- Several devices ---------------------------------------------------
+
+// Another device is the active one: a guard that waits on the one left is
+// driven there, the new one's list, compare and guard are read
+void SnapshotsController::rebind() {
+    DeviceSession *left = m_session;
+    m_session = m_ctx.activeSession();
+    const QString phase = guardPhase();
+    if (left && (phase == QLatin1String("waiting") || phase == QLatin1String("lost"))) drive(left);
+    m_driven.removeAll(m_session);
+    m_guard = QJsonObject();
+    m_ctx.poller->setEnabled(m_poll, false);
+    m_abActive = false;
+    m_abSide.clear();
+    m_abAName.clear();
+    m_abBName.clear();
+    m_abRows.clear();
+    m_toggling = 0;
+    emit abChanged();
+    emit guardChanged();
+    reloadGuard();
+}
+
+void SnapshotsController::drive(DeviceSession *session) {
+    if (!session || session == m_ctx.activeSession() || m_driven.contains(session)) return;
+    m_driven.append(session);
+    if (!m_driveTimer.isActive()) m_driveTimer.start();
+    emit guardChanged();
+    driveTick();
+}
+
+// One poll of each guard driven here, on its own device's worker
+void SnapshotsController::driveTick() {
+    m_driven.removeAll(nullptr);
+    for (const QPointer<DeviceSession> &s : std::as_const(m_driven)) {
+        if (s == m_ctx.activeSession() || m_driving.contains(s.data())) continue;
+        m_driving.insert(s.data());
+        const DeviceSession *key = s.data();
+        s->worker()->call(
+            this, [](FfiCore *c) { return object(readSized([c](char *b, uint32_t n) { return dspi_apply_poll(c, b, n); })); },
+            [this, key, s](const QJsonObject &o) {
+                m_driving.remove(key);
+                if (!s || !m_driven.contains(s) || !isOk(o)) return;
+                const QString phase = o.value(QLatin1String("phase")).toString();
+                if (phase == QLatin1String("waiting") || phase == QLatin1String("lost")) return;
+                // It ended there: its words, with the device's name
+                m_driven.removeAll(s);
+                if (m_driven.isEmpty()) m_driveTimer.stop();
+                emit guardChanged();
+                auto *notices = Registrar::instance<NoticeCenter>();
+                const QString message = o.value(QLatin1String("message")).toString();
+                if (!notices || message.isEmpty() || phase == QLatin1String("idle")) return;
+                const QString kind = phase == QLatin1String("kept") ? QStringLiteral("info")
+                                   : phase == QLatin1String("reverted") ? QStringLiteral("warning")
+                                                                       : QStringLiteral("error");
+                //: %1 is a device's name, %2 how its safe apply ended
+                notices->post(tr("%1: %2").arg(s->title(), message), kind);
+            });
+    }
+    if (m_driven.isEmpty()) m_driveTimer.stop();
+}
+
+QStringList SnapshotsController::guardsElsewhere() const {
+    QStringList out;
+    for (const QPointer<DeviceSession> &s : m_driven)
+        if (s && s != m_ctx.activeSession()) out << s->title();
+    return out;
+}
+
+bool SnapshotsController::guardWaitingOn(const DeviceSession *session) const {
+    if (!session) return false;
+    if (session == m_ctx.activeSession()) return guardWaiting() || guardPhase() == QLatin1String("lost");
+    for (const QPointer<DeviceSession> &s : m_driven)
+        if (s == session) return true;
+    return false;
+}
+
 // ---- The store -----------------------------------------------------------------------
 
 void SnapshotsController::storeCall(const QString &op, std::function<QByteArray(FfiCore *)> job,
                                     std::function<void(const QJsonObject &)> done) {
     track(1);
-    m_ctx.core->worker()->call(this, std::move(job), [this, op, done](QByteArray reply) {
+    const QPointer<DeviceSession> asked = m_ctx.activeSession();   // -- WP MDQT2b --
+    m_ctx.core->worker()->call(this, std::move(job), [this, op, done, asked](QByteArray reply) {
         track(-1);
+        if (asked != m_ctx.activeSession()) return;   // -- WP MDQT2b -- the store of the device left
         const QJsonObject o = object(reply);
         if (!isOk(o)) failed(o, tr("The snapshot could not be stored."));
         else if (done) done(o);
@@ -258,7 +345,7 @@ void SnapshotsController::reload() {
         },
         [this, n](const Lists &l) {
             track(-1);
-            if (n != m_reloads) return;   // a newer read follows
+            if (n != m_reloads) return;   // a newer read follows (-- WP MDQT2b -- a switch reads again too)
             // The merged list's word on each id: where it is, and the local copies
             const QJsonObject merged = object(l.merged);
             QHash<QString, QString> where;
@@ -401,6 +488,7 @@ void SnapshotsController::writeCall(const QString &what, std::function<QByteArra
                                     std::function<void(bool, const QJsonObject &)> done) {
     auto reply = std::make_shared<QJsonObject>();
     track(1);
+    const QPointer<DeviceSession> asked = m_ctx.activeSession();   // -- WP MDQT2b --
     // Each its own key: two toggles in a row are two, not the newest one
     m_ctx.device->write(
         QStringLiteral("%1 %2").arg(what).arg(++m_writes),
@@ -408,8 +496,17 @@ void SnapshotsController::writeCall(const QString &what, std::function<QByteArra
             *reply = object(job(c));
             return isOk(*reply);
         },
-        [this, reply, done](bool ok) {
+        [this, reply, done, asked](bool ok) {
             track(-1);
+            // -- WP MDQT2b -- a write of the device left: its compare and
+            // guard are not this one's (a guard it began is driven there)
+            if (asked != m_ctx.activeSession()) {
+                const QJsonObject guard = reply->contains(QLatin1String("guardState"))
+                                              ? reply->value(QLatin1String("guardState")).toObject()
+                                              : *reply;
+                if (asked && guard.value(QLatin1String("phase")).toString() == QLatin1String("waiting")) drive(asked);
+                return;
+            }
             done(ok, *reply);
         });
 }
@@ -466,9 +563,11 @@ void SnapshotsController::setAb(const QJsonObject &o) {
     if (!active) m_abRows.clear();
     emit abChanged();
     if (!active || !pairChanged) return;
+    const QPointer<DeviceSession> asked = m_ctx.activeSession();   // -- WP MDQT2b --
     m_ctx.core->worker()->call(
         this, [](FfiCore *c) { return readSized([c](char *b, uint32_t n) { return dspi_ab_diff(c, b, n); }); },
-        [this](QByteArray reply) {
+        [this, asked](QByteArray reply) {
+            if (asked != m_ctx.activeSession()) return;
             const QJsonObject d = object(reply);
             QVariantList rows;
             if (isOk(d))
@@ -479,9 +578,12 @@ void SnapshotsController::setAb(const QJsonObject &o) {
 }
 
 void SnapshotsController::reloadAb() {
+    const QPointer<DeviceSession> asked = m_ctx.activeSession();   // -- WP MDQT2b --
     m_ctx.core->worker()->call(
         this, [](FfiCore *c) { return readSized([c](char *b, uint32_t n) { return dspi_ab_state(c, b, n); }); },
-        [this](QByteArray reply) { setAb(object(reply)); });
+        [this, asked](QByteArray reply) {
+            if (asked == m_ctx.activeSession()) setAb(object(reply));
+        });
 }
 
 void SnapshotsController::abStart(const QString &aId, const QString &bId) {
@@ -529,7 +631,14 @@ void SnapshotsController::abKeep(const QString &side) {
 
 // ---- The safe apply ---------------------------------------------------------------------------
 
-void SnapshotsController::guardStarted(const QJsonObject &state) { setGuard(state); }
+void SnapshotsController::guardStarted(const QJsonObject &state, DeviceSession *on) {
+    // -- WP MDQT2b -- begun on a device that is not the active one any more
+    if (on && on != m_ctx.activeSession()) {
+        drive(on);
+        return;
+    }
+    setGuard(state);
+}
 
 void SnapshotsController::setGuard(const QJsonObject &state) {
     const QString before = guardPhase();
@@ -580,9 +689,11 @@ QString SnapshotsController::guardRevertText() const {
 }
 
 void SnapshotsController::reloadGuard() {
+    const QPointer<DeviceSession> asked = m_ctx.activeSession();   // -- WP MDQT2b --
     m_ctx.core->worker()->call(
         this, [](FfiCore *c) { return readSized([c](char *b, uint32_t n) { return dspi_apply_poll(c, b, n); }); },
-        [this](QByteArray reply) {
+        [this, asked](QByteArray reply) {
+            if (asked != m_ctx.activeSession()) return;
             const QJsonObject o = object(reply);
             if (isOk(o)) setGuard(o);
         });
@@ -591,10 +702,12 @@ void SnapshotsController::reloadGuard() {
 void SnapshotsController::keep() {
     if (guardPhase() != QLatin1String("waiting") && guardPhase() != QLatin1String("lost")) return;
     track(1);
+    const QPointer<DeviceSession> asked = m_ctx.activeSession();   // -- WP MDQT2b --
     m_ctx.core->worker()->call(
         this, [](FfiCore *c) { return object(once([&](char *b, uint32_t n) { return dspi_apply_confirm(c, b, n); })); },
-        [this](QJsonObject o) {
+        [this, asked](QJsonObject o) {
             track(-1);
+            if (asked != m_ctx.activeSession()) return;
             if (isOk(o)) setGuard(o);
             else failed(o, tr("Nothing waits for Keep."));
         });
@@ -602,10 +715,12 @@ void SnapshotsController::keep() {
 
 void SnapshotsController::revert() {
     track(1);
+    const QPointer<DeviceSession> asked = m_ctx.activeSession();   // -- WP MDQT2b --
     m_ctx.core->worker()->call(
         this, [](FfiCore *c) { return object(once([&](char *b, uint32_t n) { return dspi_apply_revert(c, b, n); })); },
-        [this](QJsonObject o) {
+        [this, asked](QJsonObject o) {
             track(-1);
+            if (asked != m_ctx.activeSession()) return;
             if (isOk(o)) setGuard(o);
             else failed(o, tr("There is nothing to revert."));
         });

@@ -5,6 +5,7 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QObject>
+#include <QPointer>
 #include <QQueue>
 #include <QString>
 #include <QStringList>
@@ -244,6 +245,7 @@ private:
     Poller::Id m_learnPoll = 0;
     Poller::Id m_macroPoll = 0;
     Poller::Id m_displayPoll = 0;
+    QPointer<DeviceSession> m_session;   // -- WP MDQT2b -- the device the drafts are of
 };
 
 #endif // CSCONTROLLER_H

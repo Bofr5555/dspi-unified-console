@@ -5,6 +5,8 @@
 #include "Core.h"
 #include "CoreWorker.h"
 #include "DeviceModel.h"
+#include "DeviceRegistry.h"   // -- WP MDQT2b --
+#include "DeviceSession.h"
 #include "NoticeCenter.h"
 #include "SettingsController.h"
 #include "Snapshot.h"
@@ -14,8 +16,10 @@
 #include <QJSEngine>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QPointer>
 #include <QStandardPaths>
 #include <cmath>
+#include <utility>
 #include <memory>
 
 namespace {
@@ -75,7 +79,12 @@ LimitsController::LimitsController(const AppContext &ctx, QObject *parent) : QOb
     });
     connect(ctx.device, &DeviceModel::snapshotApplied, this, &LimitsController::onSnapshot);
     // -- WP HUBADMIN -- the hub's admin events (a core thread; no I/O to set)
-    if (FfiCore *h = ctx.core->handle()) dspi_hub_admin_set_listener(h, &LimitsController::hubEventThunk, this);
+    // -- WP MDQT2b -- on every open device's core, as each opens and goes
+    if (ctx.registry) {
+        for (DeviceSession *s : ctx.registry->sessions()) listen(s);
+        connect(ctx.registry, &DeviceRegistry::sessionOpened, this, &LimitsController::listen);
+        connect(ctx.registry, &DeviceRegistry::sessionClosing, this, &LimitsController::unlisten);
+    }
     // -- WP P1EFIX -- the editor's ranges: the core's table, no copy here. The
     // call takes no core handle and does not block (stateless text).
     const QJsonArray rows = object(readSized([](char *b, uint32_t n) { return dspi_limits_field_ranges(b, n); }, 4096))
@@ -90,7 +99,28 @@ LimitsController::LimitsController(const AppContext &ctx, QObject *parent) : QOb
 // -- WP HUBADMIN -- Waits for an event in progress, so none reaches this
 // object afterwards (a freed core has no handle and sends none)
 LimitsController::~LimitsController() {
-    if (FfiCore *h = m_ctx.core ? m_ctx.core->handle() : nullptr) dspi_hub_admin_set_listener(h, nullptr, nullptr);
+    // -- WP MDQT2b -- each core's that has one
+    while (!m_listeners.empty()) unlisten(m_listeners.back()->session);
+}
+
+// -- WP MDQT2b --
+void LimitsController::listen(DeviceSession *session) {
+    FfiCore *h = session ? session->handle() : nullptr;
+    if (!h) return;
+    for (const auto &l : m_listeners)
+        if (l->session == session) return;
+    m_listeners.push_back(std::make_unique<HubListener>(HubListener{ this, session }));
+    dspi_hub_admin_set_listener(h, &LimitsController::hubEventThunk, m_listeners.back().get());
+}
+
+void LimitsController::unlisten(DeviceSession *session) {
+    for (auto it = m_listeners.begin(); it != m_listeners.end(); ++it) {
+        if ((*it)->session != session) continue;
+        // Waits for an event in progress, so the listener can go
+        if (FfiCore *h = session->handle()) dspi_hub_admin_set_listener(h, nullptr, nullptr);
+        m_listeners.erase(it);
+        return;
+    }
 }
 
 LimitsController *LimitsController::create(QQmlEngine *, QJSEngine *) {
@@ -187,6 +217,7 @@ void LimitsController::onSnapshot() {
     const bool fresh = snap.generation != m_generation;
     m_generation = snap.generation;
     if (fresh) {
+        m_lockDue = m_ctx.device->remote();   // -- WP MDQT2b -- asked by the read that runs for it
         m_primeHeld = true;
         m_hub = QJsonObject();   // -- WP HUBADMIN -- another device, another copy
         m_target = QJsonObject();   // -- WP HUBADMINF -- F4: and not editable until read
@@ -202,13 +233,14 @@ void LimitsController::onSnapshot() {
         return;
     }
     m_reading = true;
-    const bool hub = fresh && m_ctx.device->remote();
+    const bool hub = std::exchange(m_lockDue, false);
     // -- WP HUBADMIN -- the hub's copy once per connection (a round trip)
     const bool hubState = m_hubDue;
     m_hubDue = false;
-    m_ctx.core->worker()->call(this, [hub, hubState](FfiCore *c) { return readAll(c, hub, hubState); }, [this](const Read &r) {
+    const QPointer<DeviceSession> asked = m_ctx.activeSession();   // -- WP MDQT2b --
+    m_ctx.core->worker()->call(this, [hub, hubState](FfiCore *c) { return readAll(c, hub, hubState); }, [this, asked](const Read &r) {
         m_reading = false;
-        apply(r);
+        if (current(asked)) apply(r);   // -- WP MDQT2b -- the switch's snapshot asked for the next read
         if (m_readAgain) {
             m_readAgain = false;
             onSnapshot();
@@ -219,8 +251,9 @@ void LimitsController::onSnapshot() {
 void LimitsController::refresh() {
     if (!connected()) return;
     track(1);
-    m_ctx.core->worker()->call(this, [](FfiCore *c) { return readAll(c, false); }, [this](const Read &r) {
-        apply(r);
+    const QPointer<DeviceSession> asked = m_ctx.activeSession();   // -- WP MDQT2b --
+    m_ctx.core->worker()->call(this, [](FfiCore *c) { return readAll(c, false); }, [this, asked](const Read &r) {
+        if (current(asked)) apply(r);
         track(-1);
     });
 }
@@ -335,6 +368,7 @@ void LimitsController::clearLimits() {
         return;
     }
     track(1);
+    const QPointer<DeviceSession> asked = m_ctx.activeSession();   // -- WP MDQT2b --
     m_ctx.core->worker()->call(
         this,
         [](FfiCore *c) {
@@ -342,7 +376,12 @@ void LimitsController::clearLimits() {
             Read after = readAll(c, false);   // after the call, in this order
             return std::make_pair(reply, after);
         },
-        [this](const std::pair<QJsonObject, Read> &r) {
+        [this, asked](const std::pair<QJsonObject, Read> &r) {
+            // -- WP MDQT2b -- the reply of a device switched away from
+            if (!current(asked)) {
+                track(-1);
+                return;
+            }
             if (!isOk(r.first))
                 if (auto *n = notices()) n->postKey(r.first.value(QLatin1String("noticeKey")).toString(), r.first.value(QLatin1String("error")).toString());
             apply(r.second);
@@ -373,6 +412,7 @@ void LimitsController::sendProfile(const QString &what) {
     }
     track(1);
     emit changed();
+    const QPointer<DeviceSession> asked = m_ctx.activeSession();   // -- WP MDQT2b --
     m_ctx.core->worker()->call(
         this,
         [text](FfiCore *c) {
@@ -380,7 +420,12 @@ void LimitsController::sendProfile(const QString &what) {
             Read after = readAll(c, false);   // after the call, in this order
             return std::make_pair(reply, after);
         },
-        [this](const std::pair<QJsonObject, Read> &r) {
+        [this, asked](const std::pair<QJsonObject, Read> &r) {
+            // -- WP MDQT2b -- the reply of a device switched away from
+            if (!current(asked)) {
+                track(-1);
+                return;
+            }
             if (isOk(r.first)) {
                 postHeld(r.first);
                 // Shown just now: not again as a hold from elsewhere
@@ -442,6 +487,7 @@ void LimitsController::setPinError(const QJsonObject &reply) {
 void LimitsController::pinCall(std::function<QByteArray(FfiCore *)> call, std::function<void(const QJsonObject &)> then) {
     if (!connected()) return;
     track(1);
+    const QPointer<DeviceSession> asked = m_ctx.activeSession();   // -- WP MDQT2b --
     m_ctx.core->worker()->call(
         this,
         [call](FfiCore *c) {
@@ -449,7 +495,12 @@ void LimitsController::pinCall(std::function<QByteArray(FfiCore *)> call, std::f
             Read after = readAll(c, false);   // after the call: the order of make_pair's arguments is not
             return std::make_pair(reply, after);
         },
-        [this, then](const std::pair<QJsonObject, Read> &r) {
+        [this, asked, then](const std::pair<QJsonObject, Read> &r) {
+            // -- WP MDQT2b -- the reply of a device switched away from
+            if (!current(asked)) {
+                track(-1);
+                return;
+            }
             setPinError(r.first);
             apply(r.second);
             if (then) then(r.first);
@@ -615,6 +666,7 @@ void LimitsController::adminCall(std::function<QByteArray(FfiCore *)> call, std:
                                  bool asPinError) {
     if (!connected()) return;
     track(1);
+    const QPointer<DeviceSession> asked = m_ctx.activeSession();   // -- WP MDQT2b --
     m_ctx.core->worker()->call(
         this,
         [call](FfiCore *c) {
@@ -622,7 +674,12 @@ void LimitsController::adminCall(std::function<QByteArray(FfiCore *)> call, std:
             Read after = readAll(c, false);   // after the call, in this order
             return std::make_pair(reply, after);
         },
-        [this, then, asPinError](const std::pair<QJsonObject, Read> &r) {
+        [this, asked, then, asPinError](const std::pair<QJsonObject, Read> &r) {
+            // -- WP MDQT2b -- the reply of a device switched away from
+            if (!current(asked)) {
+                track(-1);
+                return;
+            }
             if (asPinError) setPinError(r.first);
             else if (!isOk(r.first))
                 if (auto *n = notices()) n->postKey(r.first.value(QLatin1String("noticeKey")).toString(), r.first.value(QLatin1String("error")).toString());
@@ -634,9 +691,17 @@ void LimitsController::adminCall(std::function<QByteArray(FfiCore *)> call, std:
 
 // A core thread, no core lock held: copy the event and return
 void LimitsController::hubEventThunk(const char *, const char *eventJson, void *self) {
-    auto *lc = static_cast<LimitsController *>(self);
+    // -- WP MDQT2b -- the listener of one session's core
+    const auto *l = static_cast<const HubListener *>(self);
+    LimitsController *lc = l->self;
+    const DeviceSession *session = l->session;
     const QByteArray json(eventJson ? eventJson : "");
-    QMetaObject::invokeMethod(lc, [lc, json] { lc->onHubEvent(object(json)); }, Qt::QueuedConnection);
+    QMetaObject::invokeMethod(
+        lc,
+        [lc, session, json] {
+            if (lc->current(session)) lc->onHubEvent(object(json));
+        },
+        Qt::QueuedConnection);
 }
 
 // The hub changed its copy (another Admin, or this one): the lock the core

@@ -12,6 +12,7 @@
 #include "Poller.h"
 #include "Registrar.h"
 
+class DeviceSession;
 class ExtController;
 class QJSEngine;
 
@@ -27,6 +28,11 @@ class QJSEngine;
 //   none sends nothing; the core judges the limits and the word again.
 // - The page is SettingsRegistry page "coreVoltage", group Hidden: only the
 //   Advanced page opens it, and it is unavailable without the extension.
+// - -- WP MDQT2b -- Several open devices: the page is the active device's (each
+//   core runs its own flow). The last phase read of each device stays in its
+//   session, so a calibration under way pins its device (calibratingOn,
+//   DevicesController: it is not closed or replaced meanwhile); an answer of
+//   a device switched away from updates only that.
 class CoreVoltageController : public QObject {
     Q_OBJECT
     QML_ELEMENT
@@ -102,6 +108,8 @@ public:
     void demoEvent(int event, uint32_t seconds);
     // Requests handed to DeviceModel::write so far (the smoke's checks)
     int requests() const { return m_requests; }
+    // -- WP MDQT2b -- a calibration runs on `session`'s device, as last read
+    bool calibratingOn(DeviceSession *session) const;
 
 signals:
     void flowChanged();
@@ -113,6 +121,8 @@ private:
     // One request: `setter` returns the core's status byte
     void request(const QString &what, std::function<uint8_t(FfiCore *)> setter);
     void apply(const QByteArray &view, const QByteArray &status);
+    // -- WP MDQT2b -- apply() when `asked` is the active one; its phase kept either way
+    void applyFor(DeviceSession *asked, const QByteArray &view, const QByteArray &status);
     void onState();
     void onExt();
     void updatePage();

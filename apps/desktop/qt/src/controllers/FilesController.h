@@ -13,6 +13,7 @@
 
 class QFileDialog;
 class QJsonObject;
+class DeviceSession;
 class QJSEngine;
 class QQmlEngine;
 class QQuickWindow;
@@ -136,6 +137,10 @@ private:
     bool m_offline = false;
     QString m_offlineFile;
     QString m_documentPath;   // where Save File writes; "" for a template
+    // -- WP MDQT2b -- the device a question (an import's options, a Device menu
+    // question) was asked about: its answer goes there, or nowhere
+    QPointer<DeviceSession> m_askedOf;
+    bool stillAskedOf();
 };
 
 #endif // FILESCONTROLLER_H
