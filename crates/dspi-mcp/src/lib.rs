@@ -17,6 +17,9 @@
 //! | [`untrusted`] | the sanitiser for text nobody vetted | MCP1 |
 //! | [`activity`] | what the agents did | MCP1 |
 //! | [`rate`] | token buckets on the caller's clock | MCP1 |
+//! | `http` | the loopback listener (feature `http`) | MCP3 |
+//! | `auth` | per-client tokens and pairing (feature `http`) | MCP3 |
+//! | `relay` | the stdio relay to the listener (feature `http`) | MCP3 |
 //!
 //! Safety rests on the core, not on this crate's good behaviour: every tool
 //! call runs inside a `dspi_core::actor::ActorScope` on the device it
@@ -40,6 +43,13 @@ pub mod resources;
 pub mod server;
 pub mod tools;
 pub mod untrusted;
+// -- WP MCP3 -- the transports
+#[cfg(feature = "http")]
+pub mod auth;
+#[cfg(feature = "http")]
+pub mod http;
+#[cfg(feature = "http")]
+pub mod relay;
 
 pub use registry::{Policy, ReadOnlyPolicy};
 pub use server::{Server, ServerConfig};
@@ -51,3 +61,7 @@ pub struct ClientId(pub u64);
 
 #[cfg(test)]
 mod tests_wp_mcp1;
+// -- WP MCP3 --
+#[cfg(test)]
+#[cfg(feature = "http")]
+mod tests_wp_mcp3;
