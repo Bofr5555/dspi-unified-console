@@ -31,6 +31,11 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
   unit's name, room, role and feed, the senders and fan-outs, rooms, zones and groups. What the hub would refuse is said
   on the field; what Save would change is listed beside it. Only an Admin of the hub can save; everyone else reads. If
   the installation was changed elsewhere meanwhile, Save is withdrawn and Reload offered. (WP INSTQ)
+- Your speaker layout: which output drives what (full range, sub, woofer, mid, tweeter). Getting Started has a
+  Speakers step and Settings has a Speakers page, both pre-filled from the DSPi's filters and routing; Confirm keeps
+  it. The Measure tables start from it, and a role, speaker or group changed there is saved to it without confirming
+  it. Measure shows a banner while the layout is not confirmed, also when it came with an imported configuration.
+  (WP ROLEQ)
 
 ### Android
 - DSPi Link is reachable from the main page (owner report on 0.14.0: only through the settings

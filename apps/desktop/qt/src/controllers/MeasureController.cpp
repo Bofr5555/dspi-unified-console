@@ -11,6 +11,7 @@
 #include "LinkController.h"
 #include "NoticeCenter.h"
 #include "Shell.h"
+#include "SpeakersController.h"
 
 #include "CoreApi.h"
 
@@ -133,6 +134,28 @@ QByteArray once(const std::function<uint32_t(char *, uint32_t)> &call, int bytes
 // The state replies of the pushes and the ticks: a tick or a push is never
 // repeated (a repeated block is a frame fault, S5)
 constexpr int kStateBytes = 1 << 18;
+
+// -- WP ROLEQ -- A speaker layout's (or a proposal's) outputs into the setup
+// rows: role, speaker and group; `choose` also ticks exactly its outputs.
+// Whether any row is in it.
+bool layoutInto(QVariantList &rows, const QJsonArray &outs, bool choose) {
+    bool any = false;
+    for (QVariant &v : rows) {
+        QVariantMap m = v.toMap();
+        if (choose) m.insert(QStringLiteral("on"), false);
+        for (const QJsonValue &x : outs) {
+            const QJsonObject p = x.toObject();
+            if (p.value(QLatin1String("output")).toInt() != m.value(QStringLiteral("output")).toInt()) continue;
+            if (choose) m.insert(QStringLiteral("on"), true);
+            m.insert(QStringLiteral("role"), str(p, "role"));
+            m.insert(QStringLiteral("speaker"), str(p, "speaker"));
+            m.insert(QStringLiteral("group"), p.value(QLatin1String("group")).toInt());
+            any = true;
+        }
+        v = m;
+    }
+    return any;
+}
 
 } // namespace
 
@@ -449,6 +472,25 @@ MeasureController::MeasureController(const AppContext &ctx, QObject *parent) : Q
     });
     connect(m_capture, &AudioCapture::inputsChanged, this, &MeasureController::refreshInputs);
     connect(ctx.device, &DeviceModel::snapshotApplied, this, &MeasureController::onSnapshot);
+    // -- WP ROLEQ -- the speaker layout changed elsewhere (Confirm, an
+    // import): the rows take its roles, the chosen outputs stay
+    QMetaObject::invokeMethod(
+        this,
+        [this] {
+            auto *sc = Registrar::instance<SpeakersController>();
+            if (!sc) return;
+            connect(sc, &SpeakersController::storedChanged, this, [this, sc](const QString &origin) {
+                if (origin == QLatin1String("measure") || sc->stored().isEmpty()) return;
+                QVariantList rows = m_setupOutputs;
+                layoutInto(rows, sc->stored().value(QLatin1String("outputs")).toArray(), false);
+                if (rows == m_setupOutputs) return;
+                m_setupOutputs = rows;
+                m_preflightDone = false;
+                emit setupChanged();
+                emit preflightChanged();
+            });
+        },
+        Qt::QueuedConnection);
     // Before the core goes (main.cpp shuts it down after the event loop):
     // whatever this window started is stopped first
     connect(qApp, &QCoreApplication::aboutToQuit, this, &MeasureController::shutdown);
@@ -609,7 +651,7 @@ void MeasureController::onSnapshot() {
     refreshAccess();
     if (changedDevice) {
         refreshSim();
-        if (connected()) proposeLayout();
+        if (connected()) fillFromLayout();   // -- WP ROLEQ --
         reloadDocuments();
     }
 }
@@ -747,26 +789,38 @@ void MeasureController::clearMic() {
 
 // ---- The setup -------------------------------------------------------------------------
 
-void MeasureController::setOutputField(int output, const QString &field, const QVariant &value) {
+bool MeasureController::setOutputField(int output, const QString &field, const QVariant &value) {
     for (QVariant &v : m_setupOutputs) {
         QVariantMap m = v.toMap();
         if (m.value(QStringLiteral("output")).toInt() != output) continue;
-        if (m.value(field) == value) return;
+        if (m.value(field) == value) return false;
         m.insert(field, value);
         v = m;
         m_preflightDone = false;
         emit setupChanged();
         emit preflightChanged();
-        return;
+        return true;
     }
+    return false;
 }
 
 void MeasureController::setOutputOn(int output, bool on) { setOutputField(output, QStringLiteral("on"), on); }
-void MeasureController::setOutputRole(int output, const QString &role) { setOutputField(output, QStringLiteral("role"), role); }
-void MeasureController::setOutputSpeaker(int output, const QString &speaker) {
-    setOutputField(output, QStringLiteral("speaker"), speaker.trimmed().left(16));
+// -- WP ROLEQ -- a role, speaker or group is written back to the speaker
+// layout ("Saved to your speaker layout."), its confirmation as it was
+void MeasureController::setOutputRole(int output, const QString &role) {
+    if (!setOutputField(output, QStringLiteral("role"), role)) return;
+    if (auto *sc = Registrar::instance<SpeakersController>()) sc->writeBack(output, role);
 }
-void MeasureController::setOutputGroup(int output, int group) { setOutputField(output, QStringLiteral("group"), std::clamp(group, 0, 15)); }
+void MeasureController::setOutputSpeaker(int output, const QString &speaker) {
+    const QString name = speaker.trimmed().left(16);
+    if (!setOutputField(output, QStringLiteral("speaker"), name) || name.isEmpty()) return;
+    if (auto *sc = Registrar::instance<SpeakersController>()) sc->writeBack(output, QString(), name);
+}
+void MeasureController::setOutputGroup(int output, int group) {
+    group = std::clamp(group, 0, 15);
+    if (!setOutputField(output, QStringLiteral("group"), group)) return;
+    if (auto *sc = Registrar::instance<SpeakersController>()) sc->writeBack(output, QString(), QString(), group);
+}
 
 void MeasureController::setPlacement(const QString &p) {
     if (p == m_placement) return;
@@ -854,27 +908,25 @@ QByteArray MeasureController::setupJson(int rateHz) const {
     return compact(s);
 }
 
-void MeasureController::proposeLayout() {
-    onLoop(this, [](FfiCore *c) { return reply([&](char *b, uint32_t l) { return dspi_measure_layout_proposal(c, b, l); }); },
+void MeasureController::proposeLayout() { fillSetup(false); }
+
+void MeasureController::fillFromLayout() { fillSetup(true); }
+
+void MeasureController::fillSetup(bool fromLayout) {
+    onLoop(this,
+           [fromLayout](FfiCore *c) {
+               // -- WP ROLEQ -- the stored speaker layout first, when asked
+               if (fromLayout) {
+                   QByteArray stored = reply([&](char *b, uint32_t l) { return dspi_speaker_layout(c, b, l); });
+                   const QJsonObject o = object(stored);
+                   if (isOk(o) && !o.value(QLatin1String("outputs")).toArray().isEmpty()) return stored;
+               }
+               return reply([&](char *b, uint32_t l) { return dspi_measure_layout_proposal(c, b, l); });
+           },
            [this](const QByteArray &r) {
                const QJsonObject o = object(r);
                if (!isOk(o)) return;   // a device without outputs fed: the setup stays as it is
-               const QJsonArray outs = o.value(QLatin1String("outputs")).toArray();
-               bool any = false;
-               for (QVariant &v : m_setupOutputs) {
-                   QVariantMap m = v.toMap();
-                   m.insert(QStringLiteral("on"), false);
-                   for (const QJsonValue &x : outs) {
-                       const QJsonObject p = x.toObject();
-                       if (p.value(QLatin1String("output")).toInt() != m.value(QStringLiteral("output")).toInt()) continue;
-                       m.insert(QStringLiteral("on"), true);
-                       m.insert(QStringLiteral("role"), str(p, "role"));
-                       m.insert(QStringLiteral("speaker"), str(p, "speaker"));
-                       m.insert(QStringLiteral("group"), p.value(QLatin1String("group")).toInt());
-                       any = true;
-                   }
-                   v = m;
-               }
+               const bool any = layoutInto(m_setupOutputs, o.value(QLatin1String("outputs")).toArray(), true);
                // Nothing proposed: the first two outputs, full range
                if (!any)
                    for (int i = 0; i < m_setupOutputs.size() && i < 2; ++i) {

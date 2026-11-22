@@ -4,6 +4,7 @@
 #include "Core.h"
 #include "DeviceModel.h"
 #include "MeasureController.h"
+#include "SpeakersController.h"
 #include "NoticeCenter.h" // -- WP REVERTW --
 
 #include "CoreApi.h"
@@ -228,7 +229,28 @@ void TuneController::onResult() {
 void TuneController::reloadLayout() {
     MeasureController *m = measure();
     if (!m) return;
-    m->onLoop(this, [](FfiCore *c) { return MeasureController::reply([&](char *b, uint32_t l) { return dspi_measure_layout_proposal(c, b, l); }); },
+    m->onLoop(this,
+              [](FfiCore *c) {
+                  // -- WP ROLEQ -- the proposal's feeds with the roles,
+                  // speakers and groups of the stored speaker layout
+                  const QByteArray proposal = MeasureController::reply([&](char *b, uint32_t l) { return dspi_measure_layout_proposal(c, b, l); });
+                  const QJsonObject stored = MeasureController::object(
+                      MeasureController::reply([&](char *b, uint32_t l) { return dspi_speaker_layout(c, b, l); }));
+                  QJsonObject o = MeasureController::object(proposal);
+                  if (!isOk(o) || !stored.value(QLatin1String("outputs")).isArray()) return proposal;
+                  QJsonArray outs;
+                  for (const QJsonValue &v : o.value(QLatin1String("outputs")).toArray()) {
+                      QJsonObject p = v.toObject();
+                      for (const QJsonValue &x : stored.value(QLatin1String("outputs")).toArray()) {
+                          const QJsonObject l = x.toObject();
+                          if (l.value(QLatin1String("output")) != p.value(QLatin1String("output"))) continue;
+                          for (const char *k : { "role", "speaker", "group" }) p.insert(QLatin1String(k), l.value(QLatin1String(k)));
+                      }
+                      outs.append(p);
+                  }
+                  o.insert(QStringLiteral("outputs"), outs);
+                  return QJsonDocument(o).toJson(QJsonDocument::Compact);
+              },
               [this, m](const QByteArray &r) {
                   const QJsonObject o = MeasureController::object(r);
                   if (!isOk(o)) {
@@ -262,23 +284,35 @@ void TuneController::reloadLayout() {
               });
 }
 
-void TuneController::setOutputField(int output, const QString &field, const QVariant &value) {
+bool TuneController::setOutputField(int output, const QString &field, const QVariant &value) {
     for (QVariant &v : m_layout) {
         QVariantMap m = v.toMap();
         if (m.value(QStringLiteral("output")).toInt() != output || m.value(field) == value) continue;
         m.insert(field, value);
         v = m;
         emit layoutChanged();
-        return;
+        return true;
     }
+    return false;
 }
 
 void TuneController::setOutputOn(int output, bool on) { setOutputField(output, QStringLiteral("on"), on); }
-void TuneController::setOutputRole(int output, const QString &role) { setOutputField(output, QStringLiteral("role"), role); }
-void TuneController::setOutputSpeaker(int output, const QString &speaker) {
-    setOutputField(output, QStringLiteral("speaker"), speaker.trimmed().left(16));
+// -- WP ROLEQ -- a role, speaker or group is written back to the speaker
+// layout, its confirmation as it was (only Confirm confirms)
+void TuneController::setOutputRole(int output, const QString &role) {
+    if (!setOutputField(output, QStringLiteral("role"), role)) return;
+    if (auto *sc = Registrar::instance<SpeakersController>()) sc->writeBack(output, role);
 }
-void TuneController::setOutputGroup(int output, int group) { setOutputField(output, QStringLiteral("group"), std::clamp(group, 0, 15)); }
+void TuneController::setOutputSpeaker(int output, const QString &speaker) {
+    const QString name = speaker.trimmed().left(16);
+    if (!setOutputField(output, QStringLiteral("speaker"), name) || name.isEmpty()) return;
+    if (auto *sc = Registrar::instance<SpeakersController>()) sc->writeBack(output, QString(), name);
+}
+void TuneController::setOutputGroup(int output, int group) {
+    group = std::clamp(group, 0, 15);
+    if (!setOutputField(output, QStringLiteral("group"), group)) return;
+    if (auto *sc = Registrar::instance<SpeakersController>()) sc->writeBack(output, QString(), QString(), group);
+}
 
 void TuneController::setKeepCrossover(bool on) {
     if (on == m_keepCrossover) return;

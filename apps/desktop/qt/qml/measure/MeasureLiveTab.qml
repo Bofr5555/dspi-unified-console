@@ -42,6 +42,18 @@ ScrollView {
     // The draft
     property int output: mc.outputs.length ? mc.outputs[0].output : 0
     property string role: "full"
+    // -- WP ROLEQ -- the output's role from the speaker layout (else the
+    // suggestion); a change here is written back to it
+    function layoutRole() {
+        const r = SpeakersController.roleOf(tab.output)
+        if (r.length) tab.role = r
+    }
+    onOutputChanged: layoutRole()
+    Component.onCompleted: { SpeakersController.reload(); layoutRole() }
+    Connections {
+        target: SpeakersController
+        function onStoredChanged() { tab.layoutRole() }
+    }
     property string mode: "sweep"
     // -- WP P5FOLLOW -- (coordinator, headphone safety) no default placement:
     // the person's choice here, else the Setup tab's when it is a live one
@@ -79,6 +91,11 @@ ScrollView {
         width: tab.availableWidth
         spacing: Theme.spacing
 
+        // -- WP ROLEQ -- while the speaker layout is not confirmed
+        SpeakersBanner {
+            objectName: "MeasureLive.speakersBanner"
+            Layout.fillWidth: true
+        }
         RowLayout {
             spacing: Theme.spacingSmall
             Text {
@@ -126,13 +143,17 @@ ScrollView {
                 onActivated: index => tab.output = mc.outputs[index].output
             }
             AppComboBox {
+                objectName: "MeasureLive.role"
                 label: qsTr("Way")
                 width: 150
                 enabled: tab.editable
                 model: tab.roles
                 textRole: "text"
                 currentIndex: tab.indexOf(tab.roles, tab.role)
-                onActivated: index => tab.role = tab.roles[index].id
+                onActivated: index => {
+                    tab.role = tab.roles[index].id
+                    SpeakersController.writeBack(tab.output, tab.role)   // -- WP ROLEQ --
+                }
             }
             AppComboBox {
                 label: qsTr("Placement")

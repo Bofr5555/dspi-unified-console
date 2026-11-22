@@ -352,6 +352,9 @@ public:
     Q_INVOKABLE void setOutputGroup(int output, int group);
     // The layout the device's state suggests (roles, speakers, groups)
     Q_INVOKABLE void proposeLayout();
+    // -- WP ROLEQ -- the rows from the stored speaker layout (its outputs
+    // chosen), else the proposal; done when a device opens
+    Q_INVOKABLE void fillFromLayout();
     Q_INVOKABLE void preflight();
     // Preflight, the microphone, then the run
     Q_INVOKABLE void start();
@@ -472,6 +475,7 @@ signals:
 
 private:
     void onSnapshot();
+    void fillSetup(bool fromLayout);   // -- WP ROLEQ --
     void onSessionState(const QByteArray &json);
     void onLiveState(const QByteArray &json);
     void onLiveFrame(const QByteArray &json);
@@ -479,7 +483,9 @@ private:
     void storeCall(const QString &op, std::function<QByteArray(FfiCore *)> job,
                    std::function<void(const QByteArray &)> done = {});
     QByteArray setupJson(int rateHz) const;
-    void setOutputField(int output, const QString &field, const QVariant &value);
+    // -- WP ROLEQ -- whether it changed (a role, speaker or group change is
+    // written back to the speaker layout)
+    bool setOutputField(int output, const QString &field, const QVariant &value);
     void refreshSim();
     void takeResult();
     void fileImported(const QByteArray &doc);

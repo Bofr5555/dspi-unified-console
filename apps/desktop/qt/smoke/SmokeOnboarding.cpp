@@ -238,7 +238,8 @@ void onboardingSection(SmokeDriver &d) {
                 && qp17AllShown(welcome.value(QStringLiteral("paragraphs")).toList(), shown)
                 && qp17AllShown(welcome.value(QStringLiteral("rows")).toList(), shown));
     d.check(QStringLiteral("qp17: Welcome is resolved, the counter filled in"),
-            qp17Resolved(shown) && shown.contains(QStringLiteral("Step 1 of 3")));
+            qp17Resolved(shown)
+                && shown.contains(QStringLiteral("Step 1 of %1").arg(words.value(QStringLiteral("stages")).toList().size())));
     d.check(QStringLiteral("qp17: the wizard's buttons have the core's words"),
             shown.contains(buttons.value(QStringLiteral("skip")).toString())
                 && shown.contains(buttons.value(QStringLiteral("continue")).toString()));
@@ -303,11 +304,13 @@ void onboardingSection(SmokeDriver &d) {
     d.check(QStringLiteral("qp17: a verified install offers Continue"),
             qp17Item(wizard, QStringLiteral("GettingStarted.continue"))->property("visible").toBool());
     click("GettingStarted.continue");
+    // -- WP ROLEQ -- the Speakers step comes before Done (SmokeRoleq checks it)
+    if (wizard->property("stage").toMap().value(QStringLiteral("id")) == QLatin1String("speakers")) click("GettingStarted.continue");
 
     shown = shownNow();
     const QVariantMap done = qp17Stage(words, "done");
     d.check(QStringLiteral("qp17: Done shows the core's paragraphs and rows, resolved"),
-            wizard->property("current").toInt() == 2 && qp17AllShown(done.value(QStringLiteral("paragraphs")).toList(), shown)
+            wizard->property("onLast").toBool() && qp17AllShown(done.value(QStringLiteral("paragraphs")).toList(), shown)
                 && qp17AllShown(done.value(QStringLiteral("rows")).toList(), shown) && qp17Resolved(shown));
     const QString joined = shown.join(QLatin1Char('\n'));
     d.check(QStringLiteral("qp17: Done names no host device and this app's settings page"),
