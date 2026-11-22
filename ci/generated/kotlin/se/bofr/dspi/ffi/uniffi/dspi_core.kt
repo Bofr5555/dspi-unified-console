@@ -2166,6 +2166,26 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -2767,6 +2787,16 @@ fun uniffi_dspi_core_checksum_method_dspicore_image_extras(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_inaccessible_devices(
 ): Short
+fun uniffi_dspi_core_checksum_method_dspicore_installation_diff(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_installation_draft_edit(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_installation_save(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_installation_validate(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_installation_view(
+): Short
 fun uniffi_dspi_core_checksum_method_dspicore_installer_lock(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_installer_lock_cover(
@@ -3053,6 +3083,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_reset_info_at_connect(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_reset_meter_max(
 ): Short
+fun uniffi_dspi_core_checksum_method_dspicore_revert_entry(
+): Short
 fun uniffi_dspi_core_checksum_method_dspicore_rta_get_caps(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_rta_get_ownership(
@@ -3290,6 +3322,14 @@ fun uniffi_dspi_core_checksum_method_dspicore_snapshot_rename(
 fun uniffi_dspi_core_checksum_method_dspicore_snapshot_set_dir(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_snapshot_set_note(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_speaker_layout(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_speaker_layout_propose(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_speaker_layout_set(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_speaker_layout_set_dir(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_test_dac_mute(
 ): Short
@@ -3884,6 +3924,16 @@ fun uniffi_dspi_core_fn_method_dspicore_image_extras(`ptr`: Pointer,uniffi_out_e
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_inaccessible_devices(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Int
+fun uniffi_dspi_core_fn_method_dspicore_installation_diff(`ptr`: Pointer,`draft`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_installation_draft_edit(`ptr`: Pointer,`draft`: RustBuffer.ByValue,`edits`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_installation_save(`ptr`: Pointer,`draft`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_installation_validate(`ptr`: Pointer,`draft`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_installation_view(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_installer_lock(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_installer_lock_cover(`ptr`: Pointer,`pages`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -4170,6 +4220,8 @@ fun uniffi_dspi_core_fn_method_dspicore_reset_info_at_connect(`ptr`: Pointer,uni
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_reset_meter_max(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_dspi_core_fn_method_dspicore_revert_entry(`ptr`: Pointer,`id`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_rta_get_caps(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_rta_get_ownership(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
@@ -4408,6 +4460,14 @@ fun uniffi_dspi_core_fn_method_dspicore_snapshot_set_dir(`ptr`: Pointer,`dir`: R
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_snapshot_set_note(`ptr`: Pointer,`id`: RustBuffer.ByValue,`note`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_speaker_layout(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_speaker_layout_propose(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_speaker_layout_set(`ptr`: Pointer,`layout`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_speaker_layout_set_dir(`ptr`: Pointer,`dir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
 fun uniffi_dspi_core_fn_method_dspicore_test_dac_mute(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_undo(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
@@ -5677,6 +5737,21 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_inaccessible_devices() != 62282.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_installation_diff() != 36787.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_installation_draft_edit() != 19407.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_installation_save() != 31866.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_installation_validate() != 58522.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_installation_view() != 16120.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_installer_lock() != 14116.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -6058,7 +6133,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_pin_map() != 51158.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_poll_hotplug() != 29460.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_poll_hotplug() != 19582.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_preamp_max_db() != 3403.toShort()) {
@@ -6104,6 +6179,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_reset_meter_max() != 60815.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_revert_entry() != 18006.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_rta_get_caps() != 59838.toShort()) {
@@ -6461,6 +6539,18 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_snapshot_set_note() != 19310.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_speaker_layout() != 33225.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_speaker_layout_propose() != 65330.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_speaker_layout_set() != 50039.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_speaker_layout_set_dir() != 8445.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_test_dac_mute() != 36228.toShort()) {
@@ -10652,6 +10742,56 @@ public interface DspiCoreInterface {
     fun `inaccessibleDevices`(): kotlin.UInt
     
     /**
+     * What saving `draft` would change, one sentence per change, in the
+     * model's order. Sends nothing.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a draft that is not a model.
+     */
+    fun `installationDiff`(`draft`: InstallationDraft): List<kotlin.String>
+    
+    /**
+     * `edits` made on `draft`, in order, all or none. Sends nothing.
+     *
+     * Errors: [`DspiError::InvalidArgument`] naming the edit that cannot be
+     * made (an id that does not exist or is taken, a serial already in the
+     * installation, a name too long) or a draft that is not a model.
+     */
+    fun `installationDraftEdit`(`draft`: InstallationDraft, `edits`: List<InstallationEdit>): InstallationDraft
+    
+    /**
+     * Save `draft` as the installation: one `system.set` the hub takes only
+     * while its model is still at the draft's revision. Checked here first
+     * with the hub's validator. Returns the new revision and the hub's
+     * warnings. Admin only. Blocks.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a draft the hub would
+     * refuse (nothing sent); [`DspiError::ReadOnly`] in the client
+     * read-only mode (nothing sent, not even the read); [`DspiError::Link`]
+     * `conflict` when the installation changed on the hub meanwhile (read
+     * it again), `denied` for another role; [`DspiError::Disconnected`].
+     */
+    fun `installationSave`(`draft`: InstallationDraft): AlinkSystemSaved
+    
+    /**
+     * The hub's own validator on `draft`: empty when the hub would take it,
+     * else why not, naming the element. Sends nothing.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a draft that is not a model.
+     */
+    fun `installationValidate`(`draft`: InstallationDraft): List<InstallationIssue>
+    
+    /**
+     * The installation on the hub this session is on, as a draft to edit,
+     * with the units the hub sees that it does not hold. Every role may
+     * read it; `may_edit` says whether this one may save. Blocks on the
+     * network: keep it off a UI thread.
+     *
+     * Errors: [`DspiError::Disconnected`] with no hub session,
+     * [`DspiError::Link`] with the hub's code or the client's.
+     */
+    fun `installationView`(): InstallationView
+    
+    /**
      * Lock the open device again on this console (the end of an unlock).
      *
      * Errors: [`DspiError::Disconnected`]; [`DspiError::InstallerLock`]
@@ -12018,6 +12158,9 @@ public interface DspiCoreInterface {
      * polls (a few times). On Android there is nothing to enumerate (the
      * app gets USB broadcasts instead); there it only closes a connection
      * whose stream ended, and apps need not call it.
+     *
+     * -- WP MD0 -- A core in a [`crate::CoreSet`] does nothing here: the set
+     * scans once for all its cores ([`crate::CoreSet::poll_hotplug`]).
      */
     fun `pollHotplug`()
     
@@ -12269,6 +12412,30 @@ public interface DspiCoreInterface {
      * read. A new connection does this too. Never fails.
      */
     fun `resetMeterMax`()
+    
+    /**
+     * Revert one change by its id ([`HistoryEntry::id`]), wherever it is
+     * in the history: write back the value it replaced (and what the device
+     * moved with it) through the typed setters, as undo does, but only
+     * while every value it set is still what it left there. Otherwise
+     * nothing is written and the reply reports the conflict: `entry`
+     * `None`, `skipped` the values someone has changed since, `note` who.
+     * A change already undone gives `entry` `None` and a note saying so.
+     * The change then leaves the undo and redo stacks; the reversal is
+     * journalled as an undo.
+     *
+     * An actor other than this app (`crate::actor`) may revert only its
+     * own changes: [`DspiError::ConfirmationRequired`] with code
+     * `not_own_entry` otherwise. The app may revert any.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device, or when the
+     * connection changed during the call; [`DspiError::InvalidArgument`]
+     * for an id the history does not hold (another connection's, or one
+     * past the newest 1000), for a change undo cannot reverse
+     * ([`HistoryEntry::undoable`]) and for a reversal by undo or redo; the
+     * setters' errors, after which the values already written back stay.
+     */
+    fun `revertEntry`(`id`: kotlin.ULong): HistoryMove
     
     /**
      * The device's analyser as the worker probed it: `supported` false
@@ -13599,6 +13766,52 @@ public interface DspiCoreInterface {
      * Errors as [`DspiCore::snapshot_rename`].
      */
     fun `snapshotSetNote`(`id`: kotlin.String, `note`: kotlin.String): SnapshotInfo
+    
+    /**
+     * The open device's speaker layout as the user set it; `None` when none
+     * was set (show [`DspiCore::speaker_layout_propose`] to confirm). Reads
+     * the host's file, not the device.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device.
+     */
+    fun `speakerLayout`(): SpeakerLayout?
+    
+    /**
+     * What the device's filters and routing suggest (the inference the
+     * output labels use): each enabled output that plays an input, its role
+     * from its filters (or "sub" in its name), its speaker from its
+     * programme source, one group per speaker. Never confirmed, never saved.
+     * Reads the mirror only.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device.
+     */
+    fun `speakerLayoutPropose`(): SpeakerLayout
+    
+    /**
+     * Keep `layout` as the open device's speaker layout, stamped now, with
+     * its `confirmed_by_user` as given. **For the user's own screens only**
+     * (the Getting Started step, Settings › Speakers, the Measure tables):
+     * an agent never sets roles (MPLAN 2.2). Returns what was kept.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device;
+     * [`DspiError::InvalidArgument`] for an output twice, one the device
+     * lacks, more than 16, or a speaker name over 64 characters (nothing
+     * kept); [`DspiError::Io`] when the file cannot be written;
+     * [`DspiError::ConfirmationRequired`] `user_only` inside another actor's
+     * [`crate::actor::ActorScope`] (WP INT1).
+     */
+    fun `speakerLayoutSet`(`layout`: SpeakerLayout): SpeakerLayout
+    
+    /**
+     * Keep speaker layouts in files under `dir`, the app's own data folder,
+     * one subfolder per device serial (created when first written; "" forgets
+     * the folder). Layouts set before a folder was named are written to it
+     * where it holds none for that device.
+     *
+     * Errors: [`DspiError::Unsupported`] on the web (no files: the page keeps
+     * the layout and sets it again with [`DspiCore::speaker_layout_set`]).
+     */
+    fun `speakerLayoutSetDir`(`dir`: kotlin.String)
     
     /**
      * Pulse the mute output for about a second, so an installer can hear
@@ -18660,6 +18873,111 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
+     * What saving `draft` would change, one sentence per change, in the
+     * model's order. Sends nothing.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a draft that is not a model.
+     */
+    @Throws(DspiException::class)override fun `installationDiff`(`draft`: InstallationDraft): List<kotlin.String> {
+            return FfiConverterSequenceString.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_installation_diff(
+        it, FfiConverterTypeInstallationDraft.lower(`draft`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * `edits` made on `draft`, in order, all or none. Sends nothing.
+     *
+     * Errors: [`DspiError::InvalidArgument`] naming the edit that cannot be
+     * made (an id that does not exist or is taken, a serial already in the
+     * installation, a name too long) or a draft that is not a model.
+     */
+    @Throws(DspiException::class)override fun `installationDraftEdit`(`draft`: InstallationDraft, `edits`: List<InstallationEdit>): InstallationDraft {
+            return FfiConverterTypeInstallationDraft.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_installation_draft_edit(
+        it, FfiConverterTypeInstallationDraft.lower(`draft`),FfiConverterSequenceTypeInstallationEdit.lower(`edits`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Save `draft` as the installation: one `system.set` the hub takes only
+     * while its model is still at the draft's revision. Checked here first
+     * with the hub's validator. Returns the new revision and the hub's
+     * warnings. Admin only. Blocks.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a draft the hub would
+     * refuse (nothing sent); [`DspiError::ReadOnly`] in the client
+     * read-only mode (nothing sent, not even the read); [`DspiError::Link`]
+     * `conflict` when the installation changed on the hub meanwhile (read
+     * it again), `denied` for another role; [`DspiError::Disconnected`].
+     */
+    @Throws(DspiException::class)override fun `installationSave`(`draft`: InstallationDraft): AlinkSystemSaved {
+            return FfiConverterTypeAlinkSystemSaved.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_installation_save(
+        it, FfiConverterTypeInstallationDraft.lower(`draft`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * The hub's own validator on `draft`: empty when the hub would take it,
+     * else why not, naming the element. Sends nothing.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a draft that is not a model.
+     */
+    @Throws(DspiException::class)override fun `installationValidate`(`draft`: InstallationDraft): List<InstallationIssue> {
+            return FfiConverterSequenceTypeInstallationIssue.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_installation_validate(
+        it, FfiConverterTypeInstallationDraft.lower(`draft`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * The installation on the hub this session is on, as a draft to edit,
+     * with the units the hub sees that it does not hold. Every role may
+     * read it; `may_edit` says whether this one may save. Blocks on the
+     * network: keep it off a UI thread.
+     *
+     * Errors: [`DspiError::Disconnected`] with no hub session,
+     * [`DspiError::Link`] with the hub's code or the client's.
+     */
+    @Throws(DspiException::class)override fun `installationView`(): InstallationView {
+            return FfiConverterTypeInstallationView.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_installation_view(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * Lock the open device again on this console (the end of an unlock).
      *
      * Errors: [`DspiError::Disconnected`]; [`DspiError::InstallerLock`]
@@ -21344,6 +21662,9 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
      * polls (a few times). On Android there is nothing to enumerate (the
      * app gets USB broadcasts instead); there it only closes a connection
      * whose stream ended, and apps need not call it.
+     *
+     * -- WP MD0 -- A core in a [`crate::CoreSet`] does nothing here: the set
+     * scans once for all its cores ([`crate::CoreSet::poll_hotplug`]).
      */override fun `pollHotplug`()
         = 
     callWithPointer {
@@ -21755,6 +22076,41 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 }
     }
     
+    
+
+    
+    /**
+     * Revert one change by its id ([`HistoryEntry::id`]), wherever it is
+     * in the history: write back the value it replaced (and what the device
+     * moved with it) through the typed setters, as undo does, but only
+     * while every value it set is still what it left there. Otherwise
+     * nothing is written and the reply reports the conflict: `entry`
+     * `None`, `skipped` the values someone has changed since, `note` who.
+     * A change already undone gives `entry` `None` and a note saying so.
+     * The change then leaves the undo and redo stacks; the reversal is
+     * journalled as an undo.
+     *
+     * An actor other than this app (`crate::actor`) may revert only its
+     * own changes: [`DspiError::ConfirmationRequired`] with code
+     * `not_own_entry` otherwise. The app may revert any.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device, or when the
+     * connection changed during the call; [`DspiError::InvalidArgument`]
+     * for an id the history does not hold (another connection's, or one
+     * past the newest 1000), for a change undo cannot reverse
+     * ([`HistoryEntry::undoable`]) and for a reversal by undo or redo; the
+     * setters' errors, after which the values already written back stay.
+     */
+    @Throws(DspiException::class)override fun `revertEntry`(`id`: kotlin.ULong): HistoryMove {
+            return FfiConverterTypeHistoryMove.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_revert_entry(
+        it, FfiConverterULong.lower(`id`),_status)
+}
+    }
+    )
+    }
     
 
     
@@ -24278,6 +24634,95 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     }
     )
     }
+    
+
+    
+    /**
+     * The open device's speaker layout as the user set it; `None` when none
+     * was set (show [`DspiCore::speaker_layout_propose`] to confirm). Reads
+     * the host's file, not the device.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device.
+     */
+    @Throws(DspiException::class)override fun `speakerLayout`(): SpeakerLayout? {
+            return FfiConverterOptionalTypeSpeakerLayout.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_speaker_layout(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * What the device's filters and routing suggest (the inference the
+     * output labels use): each enabled output that plays an input, its role
+     * from its filters (or "sub" in its name), its speaker from its
+     * programme source, one group per speaker. Never confirmed, never saved.
+     * Reads the mirror only.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device.
+     */
+    @Throws(DspiException::class)override fun `speakerLayoutPropose`(): SpeakerLayout {
+            return FfiConverterTypeSpeakerLayout.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_speaker_layout_propose(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Keep `layout` as the open device's speaker layout, stamped now, with
+     * its `confirmed_by_user` as given. **For the user's own screens only**
+     * (the Getting Started step, Settings › Speakers, the Measure tables):
+     * an agent never sets roles (MPLAN 2.2). Returns what was kept.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device;
+     * [`DspiError::InvalidArgument`] for an output twice, one the device
+     * lacks, more than 16, or a speaker name over 64 characters (nothing
+     * kept); [`DspiError::Io`] when the file cannot be written;
+     * [`DspiError::ConfirmationRequired`] `user_only` inside another actor's
+     * [`crate::actor::ActorScope`] (WP INT1).
+     */
+    @Throws(DspiException::class)override fun `speakerLayoutSet`(`layout`: SpeakerLayout): SpeakerLayout {
+            return FfiConverterTypeSpeakerLayout.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_speaker_layout_set(
+        it, FfiConverterTypeSpeakerLayout.lower(`layout`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Keep speaker layouts in files under `dir`, the app's own data folder,
+     * one subfolder per device serial (created when first written; "" forgets
+     * the folder). Layouts set before a folder was named are written to it
+     * where it holds none for that device.
+     *
+     * Errors: [`DspiError::Unsupported`] on the web (no files: the page keeps
+     * the layout and sets it again with [`DspiCore::speaker_layout_set`]).
+     */
+    @Throws(DspiException::class)override fun `speakerLayoutSetDir`(`dir`: kotlin.String)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_speaker_layout_set_dir(
+        it, FfiConverterString.lower(`dir`),_status)
+}
+    }
+    
     
 
     
@@ -33938,7 +34383,21 @@ data class HistoryEntry (
      * The undo group's label ([`DspiCore::begin_group`]) when the change
      * was written inside one; `None` otherwise.
      */
-    var `label`: kotlin.String?
+    var `label`: kotlin.String?, 
+    /**
+     * The change's id, for [`DspiCore::revert_entry`]: unique in the
+     * process, the same for every value of one step.
+     */
+    var `id`: kotlin.ULong, 
+    /**
+     * Who made it: 0 for this app itself, another number for an actor the
+     * app registered (an AI agent, `crate::actor`).
+     */
+    var `actor`: kotlin.UInt, 
+    /**
+     * The actor's label ("AI · Claude Code"); `None` for this app itself.
+     */
+    var `actorLabel`: kotlin.String?
 ) {
     
     companion object
@@ -33958,6 +34417,9 @@ public object FfiConverterTypeHistoryEntry: FfiConverterRustBuffer<HistoryEntry>
             FfiConverterULong.read(buf),
             FfiConverterBoolean.read(buf),
             FfiConverterOptionalString.read(buf),
+            FfiConverterULong.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterOptionalString.read(buf),
         )
     }
 
@@ -33969,7 +34431,10 @@ public object FfiConverterTypeHistoryEntry: FfiConverterRustBuffer<HistoryEntry>
             FfiConverterTypeHistorySource.allocationSize(value.`source`) +
             FfiConverterULong.allocationSize(value.`atMs`) +
             FfiConverterBoolean.allocationSize(value.`undoable`) +
-            FfiConverterOptionalString.allocationSize(value.`label`)
+            FfiConverterOptionalString.allocationSize(value.`label`) +
+            FfiConverterULong.allocationSize(value.`id`) +
+            FfiConverterUInt.allocationSize(value.`actor`) +
+            FfiConverterOptionalString.allocationSize(value.`actorLabel`)
     )
 
     override fun write(value: HistoryEntry, buf: ByteBuffer) {
@@ -33981,6 +34446,9 @@ public object FfiConverterTypeHistoryEntry: FfiConverterRustBuffer<HistoryEntry>
             FfiConverterULong.write(value.`atMs`, buf)
             FfiConverterBoolean.write(value.`undoable`, buf)
             FfiConverterOptionalString.write(value.`label`, buf)
+            FfiConverterULong.write(value.`id`, buf)
+            FfiConverterUInt.write(value.`actor`, buf)
+            FfiConverterOptionalString.write(value.`actorLabel`, buf)
     }
 }
 
@@ -38382,6 +38850,271 @@ public object FfiConverterTypeInputLockStatus: FfiConverterRustBuffer<InputLockS
 
 
 /**
+ * A model being edited: the one read at `revision` (`base`) and the edits
+ * made on it (`model`), both the hub's JSON as text. Saving sends `model`
+ * with `revision`; the diff compares it with `base`.
+ */
+data class InstallationDraft (
+    /**
+     * The hub's revision the draft was read at (0 for a new installation).
+     */
+    var `revision`: kotlin.ULong, 
+    /**
+     * The model as read, JSON.
+     */
+    var `base`: kotlin.String, 
+    /**
+     * The model with the edits, JSON.
+     */
+    var `model`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeInstallationDraft: FfiConverterRustBuffer<InstallationDraft> {
+    override fun read(buf: ByteBuffer): InstallationDraft {
+        return InstallationDraft(
+            FfiConverterULong.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: InstallationDraft) = (
+            FfiConverterULong.allocationSize(value.`revision`) +
+            FfiConverterString.allocationSize(value.`base`) +
+            FfiConverterString.allocationSize(value.`model`)
+    )
+
+    override fun write(value: InstallationDraft, buf: ByteBuffer) {
+            FfiConverterULong.write(value.`revision`, buf)
+            FfiConverterString.write(value.`base`, buf)
+            FfiConverterString.write(value.`model`, buf)
+    }
+}
+
+
+
+/**
+ * One reason the hub would refuse a draft.
+ */
+data class InstallationIssue (
+    /**
+     * The element it is about; "" for the installation as a whole.
+     */
+    var `subject`: kotlin.String, 
+    /**
+     * The hub's words.
+     */
+    var `message`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeInstallationIssue: FfiConverterRustBuffer<InstallationIssue> {
+    override fun read(buf: ByteBuffer): InstallationIssue {
+        return InstallationIssue(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: InstallationIssue) = (
+            FfiConverterString.allocationSize(value.`subject`) +
+            FfiConverterString.allocationSize(value.`message`)
+    )
+
+    override fun write(value: InstallationIssue, buf: ByteBuffer) {
+            FfiConverterString.write(value.`subject`, buf)
+            FfiConverterString.write(value.`message`, buf)
+    }
+}
+
+
+
+/**
+ * A speaker on one of a unit's outputs.
+ */
+data class InstallationSpeaker (
+    /**
+     * The unit's output, from 0.
+     */
+    var `output`: kotlin.UByte, 
+    /**
+     * From the speaker to the listening position, metres.
+     */
+    var `distanceM`: kotlin.Float
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeInstallationSpeaker: FfiConverterRustBuffer<InstallationSpeaker> {
+    override fun read(buf: ByteBuffer): InstallationSpeaker {
+        return InstallationSpeaker(
+            FfiConverterUByte.read(buf),
+            FfiConverterFloat.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: InstallationSpeaker) = (
+            FfiConverterUByte.allocationSize(value.`output`) +
+            FfiConverterFloat.allocationSize(value.`distanceM`)
+    )
+
+    override fun write(value: InstallationSpeaker, buf: ByteBuffer) {
+            FfiConverterUByte.write(value.`output`, buf)
+            FfiConverterFloat.write(value.`distanceM`, buf)
+    }
+}
+
+
+
+/**
+ * A DSPi the hub sees that the installation does not hold.
+ */
+data class InstallationUnseen (
+    /**
+     * Its USB serial: what [`InstallationEdit::AddUnit`] takes.
+     */
+    var `serial`: kotlin.String, 
+    /**
+     * Its name when last seen.
+     */
+    var `name`: kotlin.String, 
+    /**
+     * Attached now.
+     */
+    var `online`: kotlin.Boolean, 
+    /**
+     * The firmware version; "" when unknown.
+     */
+    var `fw`: kotlin.String, 
+    /**
+     * Output channels.
+     */
+    var `outputs`: kotlin.UByte
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeInstallationUnseen: FfiConverterRustBuffer<InstallationUnseen> {
+    override fun read(buf: ByteBuffer): InstallationUnseen {
+        return InstallationUnseen(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterUByte.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: InstallationUnseen) = (
+            FfiConverterString.allocationSize(value.`serial`) +
+            FfiConverterString.allocationSize(value.`name`) +
+            FfiConverterBoolean.allocationSize(value.`online`) +
+            FfiConverterString.allocationSize(value.`fw`) +
+            FfiConverterUByte.allocationSize(value.`outputs`)
+    )
+
+    override fun write(value: InstallationUnseen, buf: ByteBuffer) {
+            FfiConverterString.write(value.`serial`, buf)
+            FfiConverterString.write(value.`name`, buf)
+            FfiConverterBoolean.write(value.`online`, buf)
+            FfiConverterString.write(value.`fw`, buf)
+            FfiConverterUByte.write(value.`outputs`, buf)
+    }
+}
+
+
+
+/**
+ * What [`DspiCore::installation_view`] reads.
+ */
+data class InstallationView (
+    /**
+     * The model's revision on the hub.
+     */
+    var `revision`: kotlin.ULong, 
+    /**
+     * This session's role on the hub (`viewer`, `control`, `admin`).
+     */
+    var `role`: kotlin.String, 
+    /**
+     * The role may save (admin).
+     */
+    var `mayEdit`: kotlin.Boolean, 
+    /**
+     * A draft of the model as it is.
+     */
+    var `draft`: InstallationDraft, 
+    /**
+     * The units the hub sees that the installation does not hold, as the
+     * hub's inventory orders them (online first).
+     */
+    var `unseen`: List<InstallationUnseen>, 
+    /**
+     * The hub keeps an inventory: false for one without (`unseen` is then
+     * empty, not "none").
+     */
+    var `inventory`: kotlin.Boolean
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeInstallationView: FfiConverterRustBuffer<InstallationView> {
+    override fun read(buf: ByteBuffer): InstallationView {
+        return InstallationView(
+            FfiConverterULong.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterTypeInstallationDraft.read(buf),
+            FfiConverterSequenceTypeInstallationUnseen.read(buf),
+            FfiConverterBoolean.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: InstallationView) = (
+            FfiConverterULong.allocationSize(value.`revision`) +
+            FfiConverterString.allocationSize(value.`role`) +
+            FfiConverterBoolean.allocationSize(value.`mayEdit`) +
+            FfiConverterTypeInstallationDraft.allocationSize(value.`draft`) +
+            FfiConverterSequenceTypeInstallationUnseen.allocationSize(value.`unseen`) +
+            FfiConverterBoolean.allocationSize(value.`inventory`)
+    )
+
+    override fun write(value: InstallationView, buf: ByteBuffer) {
+            FfiConverterULong.write(value.`revision`, buf)
+            FfiConverterString.write(value.`role`, buf)
+            FfiConverterBoolean.write(value.`mayEdit`, buf)
+            FfiConverterTypeInstallationDraft.write(value.`draft`, buf)
+            FfiConverterSequenceTypeInstallationUnseen.write(value.`unseen`, buf)
+            FfiConverterBoolean.write(value.`inventory`, buf)
+    }
+}
+
+
+
+/**
  * A PIN just set ([`DspiCore::installer_pin_set`]).
  */
 data class InstallerPin (
@@ -40852,7 +41585,12 @@ data class MeasureLiveSetup (
     /**
      * The RTA's bands per octave (1 to 48; 0: 3).
      */
-    var `bandsPerOctave`: kotlin.UByte
+    var `bandsPerOctave`: kotlin.UByte, 
+    /**
+     * Take `role` from the device's stored speaker layout (MPLAN 2.2);
+     * refused (`measure.layout_unconfirmed`) while it is not confirmed.
+     */
+    var `rolesFromLayout`: kotlin.Boolean = false
 ) {
     
     companion object
@@ -40880,6 +41618,7 @@ public object FfiConverterTypeMeasureLiveSetup: FfiConverterRustBuffer<MeasureLi
             FfiConverterUInt.read(buf),
             FfiConverterTypeMeasureRtaAveraging.read(buf),
             FfiConverterUByte.read(buf),
+            FfiConverterBoolean.read(buf),
         )
     }
 
@@ -40899,7 +41638,8 @@ public object FfiConverterTypeMeasureLiveSetup: FfiConverterRustBuffer<MeasureLi
             FfiConverterOptionalFloat.allocationSize(value.`splCapDb`) +
             FfiConverterUInt.allocationSize(value.`captureRateHz`) +
             FfiConverterTypeMeasureRtaAveraging.allocationSize(value.`averaging`) +
-            FfiConverterUByte.allocationSize(value.`bandsPerOctave`)
+            FfiConverterUByte.allocationSize(value.`bandsPerOctave`) +
+            FfiConverterBoolean.allocationSize(value.`rolesFromLayout`)
     )
 
     override fun write(value: MeasureLiveSetup, buf: ByteBuffer) {
@@ -40919,6 +41659,7 @@ public object FfiConverterTypeMeasureLiveSetup: FfiConverterRustBuffer<MeasureLi
             FfiConverterUInt.write(value.`captureRateHz`, buf)
             FfiConverterTypeMeasureRtaAveraging.write(value.`averaging`, buf)
             FfiConverterUByte.write(value.`bandsPerOctave`, buf)
+            FfiConverterBoolean.write(value.`rolesFromLayout`, buf)
     }
 }
 
@@ -41377,7 +42118,15 @@ data class MeasureSetup (
      * the ceiling is the start level, so the ramp never goes above it; every
      * other rule unchanged (P5SPIKE's timing test).
      */
-    var `startLevelOnly`: kotlin.Boolean
+    var `startLevelOnly`: kotlin.Boolean, 
+    /**
+     * Take each output's role, speaker and group from the device's stored
+     * speaker layout instead of `outputs` (MPLAN 2.2, `roles: "layout"`);
+     * with no outputs listed, every output of the layout. Refused
+     * (`measure.layout_unconfirmed`) while the user has not confirmed the
+     * layout.
+     */
+    var `rolesFromLayout`: kotlin.Boolean = false
 ) {
     
     companion object
@@ -41404,6 +42153,7 @@ public object FfiConverterTypeMeasureSetup: FfiConverterRustBuffer<MeasureSetup>
             FfiConverterUInt.read(buf),
             FfiConverterString.read(buf),
             FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
         )
     }
 
@@ -41422,7 +42172,8 @@ public object FfiConverterTypeMeasureSetup: FfiConverterRustBuffer<MeasureSetup>
             FfiConverterOptionalFloat.allocationSize(value.`splCapDb`) +
             FfiConverterUInt.allocationSize(value.`captureRateHz`) +
             FfiConverterString.allocationSize(value.`name`) +
-            FfiConverterBoolean.allocationSize(value.`startLevelOnly`)
+            FfiConverterBoolean.allocationSize(value.`startLevelOnly`) +
+            FfiConverterBoolean.allocationSize(value.`rolesFromLayout`)
     )
 
     override fun write(value: MeasureSetup, buf: ByteBuffer) {
@@ -41441,6 +42192,7 @@ public object FfiConverterTypeMeasureSetup: FfiConverterRustBuffer<MeasureSetup>
             FfiConverterUInt.write(value.`captureRateHz`, buf)
             FfiConverterString.write(value.`name`, buf)
             FfiConverterBoolean.write(value.`startLevelOnly`, buf)
+            FfiConverterBoolean.write(value.`rolesFromLayout`, buf)
     }
 }
 
@@ -43188,7 +43940,14 @@ data class MeasureTuneOptions (
     /**
      * See `fit_min_hz`.
      */
-    var `fitMaxHz`: kotlin.Double
+    var `fitMaxHz`: kotlin.Double, 
+    /**
+     * Take the layout's roles, speakers and groups from the device's stored
+     * speaker layout (MPLAN 2.2, `roles: "layout"`); a layout with no
+     * outputs then means every output of it. Refused
+     * (`measure.layout_unconfirmed`) while the user has not confirmed it.
+     */
+    var `rolesFromLayout`: kotlin.Boolean = false
 ) {
     
     companion object
@@ -43209,6 +43968,7 @@ public object FfiConverterTypeMeasureTuneOptions: FfiConverterRustBuffer<Measure
             FfiConverterDouble.read(buf),
             FfiConverterDouble.read(buf),
             FfiConverterDouble.read(buf),
+            FfiConverterBoolean.read(buf),
         )
     }
 
@@ -43221,7 +43981,8 @@ public object FfiConverterTypeMeasureTuneOptions: FfiConverterRustBuffer<Measure
             FfiConverterBoolean.allocationSize(value.`keepEq`) +
             FfiConverterDouble.allocationSize(value.`windowOctaves`) +
             FfiConverterDouble.allocationSize(value.`fitMinHz`) +
-            FfiConverterDouble.allocationSize(value.`fitMaxHz`)
+            FfiConverterDouble.allocationSize(value.`fitMaxHz`) +
+            FfiConverterBoolean.allocationSize(value.`rolesFromLayout`)
     )
 
     override fun write(value: MeasureTuneOptions, buf: ByteBuffer) {
@@ -43234,6 +43995,7 @@ public object FfiConverterTypeMeasureTuneOptions: FfiConverterRustBuffer<Measure
             FfiConverterDouble.write(value.`windowOctaves`, buf)
             FfiConverterDouble.write(value.`fitMinHz`, buf)
             FfiConverterDouble.write(value.`fitMaxHz`, buf)
+            FfiConverterBoolean.write(value.`rolesFromLayout`, buf)
     }
 }
 
@@ -46981,6 +47743,124 @@ public object FfiConverterTypeSpdifRxStatus: FfiConverterRustBuffer<SpdifRxStatu
 
 
 /**
+ * Which output drives what, for one device.
+ */
+data class SpeakerLayout (
+    /**
+     * The device's serial (set by the core; "" in an exported copy).
+     */
+    var `serial`: kotlin.String, 
+    /**
+     * The outputs, each once, in output order.
+     */
+    var `outputs`: List<SpeakerLayoutOutput>, 
+    /**
+     * The user confirmed it (the Getting Started step, Settings ›
+     * Speakers). A proposal is never confirmed.
+     */
+    var `confirmedByUser`: kotlin.Boolean, 
+    /**
+     * When it was set, ms since the Unix epoch; 0 for a proposal.
+     */
+    var `updatedMs`: kotlin.Long, 
+    /**
+     * Remarks in words (a proposal's: outputs left out and why).
+     */
+    var `notes`: List<kotlin.String>
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeSpeakerLayout: FfiConverterRustBuffer<SpeakerLayout> {
+    override fun read(buf: ByteBuffer): SpeakerLayout {
+        return SpeakerLayout(
+            FfiConverterString.read(buf),
+            FfiConverterSequenceTypeSpeakerLayoutOutput.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterLong.read(buf),
+            FfiConverterSequenceString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: SpeakerLayout) = (
+            FfiConverterString.allocationSize(value.`serial`) +
+            FfiConverterSequenceTypeSpeakerLayoutOutput.allocationSize(value.`outputs`) +
+            FfiConverterBoolean.allocationSize(value.`confirmedByUser`) +
+            FfiConverterLong.allocationSize(value.`updatedMs`) +
+            FfiConverterSequenceString.allocationSize(value.`notes`)
+    )
+
+    override fun write(value: SpeakerLayout, buf: ByteBuffer) {
+            FfiConverterString.write(value.`serial`, buf)
+            FfiConverterSequenceTypeSpeakerLayoutOutput.write(value.`outputs`, buf)
+            FfiConverterBoolean.write(value.`confirmedByUser`, buf)
+            FfiConverterLong.write(value.`updatedMs`, buf)
+            FfiConverterSequenceString.write(value.`notes`, buf)
+    }
+}
+
+
+
+/**
+ * One output of the layout.
+ */
+data class SpeakerLayoutOutput (
+    /**
+     * The output, 0-based.
+     */
+    var `output`: kotlin.UByte, 
+    /**
+     * What it drives.
+     */
+    var `role`: MeasureRole, 
+    /**
+     * The speaker it belongs to (`L`, `R`, `Sub`, or the user's word).
+     */
+    var `speaker`: kotlin.String, 
+    /**
+     * Its alignment group: the outputs of one speaker share one.
+     */
+    var `group`: kotlin.UByte
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeSpeakerLayoutOutput: FfiConverterRustBuffer<SpeakerLayoutOutput> {
+    override fun read(buf: ByteBuffer): SpeakerLayoutOutput {
+        return SpeakerLayoutOutput(
+            FfiConverterUByte.read(buf),
+            FfiConverterTypeMeasureRole.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterUByte.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: SpeakerLayoutOutput) = (
+            FfiConverterUByte.allocationSize(value.`output`) +
+            FfiConverterTypeMeasureRole.allocationSize(value.`role`) +
+            FfiConverterString.allocationSize(value.`speaker`) +
+            FfiConverterUByte.allocationSize(value.`group`)
+    )
+
+    override fun write(value: SpeakerLayoutOutput, buf: ByteBuffer) {
+            FfiConverterUByte.write(value.`output`, buf)
+            FfiConverterTypeMeasureRole.write(value.`role`, buf)
+            FfiConverterString.write(value.`speaker`, buf)
+            FfiConverterUByte.write(value.`group`, buf)
+    }
+}
+
+
+
+/**
  * One statistics poll.
  */
 data class StatsTick (
@@ -49175,6 +50055,756 @@ public object FfiConverterTypeHostTransportKind : FfiConverterRustBuffer<HostTra
                 Unit
             }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
+    }
+}
+
+
+
+
+
+/**
+ * One edit of a draft. An `id` left out is made from the name (or the
+ * serial); every id an edit names must exist, every serial is in the
+ * installation once. JSON: `{"op": "addUnit", "serial": ..., ...}`.
+ */
+sealed class InstallationEdit {
+    
+    /**
+     * Add the unit with this serial, in `room`, as `role`, fed by
+     * `upstream` (none for a USB-direct unit).
+     */
+    data class AddUnit(
+        /**
+         * Its USB serial.
+         */
+        val `serial`: kotlin.String, 
+        /**
+         * Its id; `None`: made from the name or the serial.
+         */
+        val `id`: kotlin.String?, 
+        /**
+         * What people call it.
+         */
+        val `name`: kotlin.String, 
+        /**
+         * Where it stands.
+         */
+        val `room`: kotlin.String?, 
+        /**
+         * How the programme reaches it.
+         */
+        val `role`: InstallationRole, 
+        /**
+         * What feeds it: a sender, a fan-out or a repeater (an S/PDIF
+         * source for a follower).
+         */
+        val `upstream`: kotlin.String?) : InstallationEdit() {
+        companion object
+    }
+    
+    /**
+     * Remove an element of any kind. What names it as a member (a zone's
+     * rooms, a group's units, a unit's room, a zone's source, a source's
+     * sender) forgets it, and scene actions aimed at it go; an element it
+     * fed is left for the validator to point out.
+     */
+    data class RemoveElement(
+        /**
+         * The element.
+         */
+        val `id`: kotlin.String) : InstallationEdit() {
+        companion object
+    }
+    
+    /**
+     * Rename an element of any kind.
+     */
+    data class RenameElement(
+        /**
+         * The element.
+         */
+        val `id`: kotlin.String, 
+        /**
+         * The new name.
+         */
+        val `name`: kotlin.String) : InstallationEdit() {
+        companion object
+    }
+    
+    /**
+     * Put a unit in a room, or in none.
+     */
+    data class SetUnitRoom(
+        /**
+         * The unit.
+         */
+        val `id`: kotlin.String, 
+        /**
+         * The room; `None`: no room.
+         */
+        val `room`: kotlin.String?) : InstallationEdit() {
+        companion object
+    }
+    
+    /**
+     * Change a unit's role. The fields the new role cannot have go (a
+     * USB-direct unit's upstream, an S/PDIF follower's slots).
+     */
+    data class SetUnitRole(
+        /**
+         * The unit.
+         */
+        val `id`: kotlin.String, 
+        /**
+         * Its new role.
+         */
+        val `role`: InstallationRole) : InstallationEdit() {
+        companion object
+    }
+    
+    /**
+     * Set what feeds a unit, and which output of it.
+     */
+    data class SetUnitUpstream(
+        /**
+         * The unit.
+         */
+        val `id`: kotlin.String, 
+        /**
+         * The element feeding it.
+         */
+        val `upstream`: kotlin.String, 
+        /**
+         * Which output of the upstream element, for the record.
+         */
+        val `output`: kotlin.UByte?) : InstallationEdit() {
+        companion object
+    }
+    
+    /**
+     * A USB-direct unit's mode and what it does in lock error.
+     */
+    data class SetUnitUsbMode(
+        /**
+         * The unit.
+         */
+        val `id`: kotlin.String, 
+        /**
+         * `off`, `rate_lock` or `phase_lock`; `None`: the unit's own.
+         */
+        val `mode`: kotlin.String?, 
+        /**
+         * Play unaligned in lock error instead of muting.
+         */
+        val `playUnaligned`: kotlin.Boolean) : InstallationEdit() {
+        companion object
+    }
+    
+    /**
+     * A unit's speakers by output. A speaker on an output that stays keeps
+     * its measured arrival.
+     */
+    data class SetUnitSpeakers(
+        /**
+         * The unit.
+         */
+        val `id`: kotlin.String, 
+        /**
+         * Its speakers.
+         */
+        val `speakers`: List<InstallationSpeaker>) : InstallationEdit() {
+        companion object
+    }
+    
+    /**
+     * Make a unit an S/PDIF time-base source on the output slots of
+     * `tx_mask`, or (0) not one.
+     */
+    data class SetSpdifSource(
+        /**
+         * The unit.
+         */
+        val `id`: kotlin.String, 
+        /**
+         * Bit n: S/PDIF output slot n carries the time base; 0: not a source.
+         */
+        val `txMask`: kotlin.UByte) : InstallationEdit() {
+        companion object
+    }
+    
+    /**
+     * Add a room.
+     */
+    data class AddRoom(
+        /**
+         * Its id; `None`: made from the name.
+         */
+        val `id`: kotlin.String?, 
+        /**
+         * What people call it.
+         */
+        val `name`: kotlin.String) : InstallationEdit() {
+        companion object
+    }
+    
+    /**
+     * Add a zone of `rooms`, playing `source`.
+     */
+    data class AddZone(
+        /**
+         * Its id; `None`: made from the name.
+         */
+        val `id`: kotlin.String?, 
+        /**
+         * What people call it.
+         */
+        val `name`: kotlin.String, 
+        /**
+         * Its rooms.
+         */
+        val `rooms`: List<kotlin.String>, 
+        /**
+         * What it plays.
+         */
+        val `source`: kotlin.String?) : InstallationEdit() {
+        companion object
+    }
+    
+    /**
+     * A zone's rooms.
+     */
+    data class SetZoneRooms(
+        /**
+         * The zone.
+         */
+        val `id`: kotlin.String, 
+        /**
+         * Its rooms.
+         */
+        val `rooms`: List<kotlin.String>) : InstallationEdit() {
+        companion object
+    }
+    
+    /**
+     * Add a group of `units`.
+     */
+    data class AddGroup(
+        /**
+         * Its id; `None`: made from the name.
+         */
+        val `id`: kotlin.String?, 
+        /**
+         * What people call it.
+         */
+        val `name`: kotlin.String, 
+        /**
+         * Its units.
+         */
+        val `units`: List<kotlin.String>) : InstallationEdit() {
+        companion object
+    }
+    
+    /**
+     * A group's units.
+     */
+    data class SetGroupUnits(
+        /**
+         * The group.
+         */
+        val `id`: kotlin.String, 
+        /**
+         * Its units.
+         */
+        val `units`: List<kotlin.String>) : InstallationEdit() {
+        companion object
+    }
+    
+    /**
+     * Add a sender (the audio link's clock).
+     */
+    data class AddSender(
+        /**
+         * Its id; `None`: made from the name or the serial.
+         */
+        val `id`: kotlin.String?, 
+        /**
+         * What people call it.
+         */
+        val `name`: kotlin.String, 
+        /**
+         * Its USB serial when the hub can reach it.
+         */
+        val `serial`: kotlin.String?) : InstallationEdit() {
+        companion object
+    }
+    
+    /**
+     * Add a fan-out fed by `upstream`.
+     */
+    data class AddFanOut(
+        /**
+         * Its id; `None`: made from the name or the serial.
+         */
+        val `id`: kotlin.String?, 
+        /**
+         * What people call it.
+         */
+        val `name`: kotlin.String, 
+        /**
+         * Its USB serial when the hub can reach it.
+         */
+        val `serial`: kotlin.String?, 
+        /**
+         * What feeds it: a sender, a fan-out or a repeater.
+         */
+        val `upstream`: kotlin.String, 
+        /**
+         * Which output of the upstream element, for the record.
+         */
+        val `output`: kotlin.UByte?) : InstallationEdit() {
+        companion object
+    }
+    
+    /**
+     * The installation's own settings; `None` leaves one as it is.
+     */
+    data class SetSystem(
+        /**
+         * 44100, 48000 or 96000.
+         */
+        val `rateHz`: kotlin.UInt?, 
+        /**
+         * Change the system delay to `d_frames`.
+         */
+        val `setD`: kotlin.Boolean, 
+        /**
+         * The system delay in frames; `None`: automatic.
+         */
+        val `dFrames`: kotlin.UShort?, 
+        /**
+         * Keep USB-direct units aligned.
+         */
+        val `keepUsbAligned`: kotlin.Boolean?) : InstallationEdit() {
+        companion object
+    }
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeInstallationEdit : FfiConverterRustBuffer<InstallationEdit>{
+    override fun read(buf: ByteBuffer): InstallationEdit {
+        return when(buf.getInt()) {
+            1 -> InstallationEdit.AddUnit(
+                FfiConverterString.read(buf),
+                FfiConverterOptionalString.read(buf),
+                FfiConverterString.read(buf),
+                FfiConverterOptionalString.read(buf),
+                FfiConverterTypeInstallationRole.read(buf),
+                FfiConverterOptionalString.read(buf),
+                )
+            2 -> InstallationEdit.RemoveElement(
+                FfiConverterString.read(buf),
+                )
+            3 -> InstallationEdit.RenameElement(
+                FfiConverterString.read(buf),
+                FfiConverterString.read(buf),
+                )
+            4 -> InstallationEdit.SetUnitRoom(
+                FfiConverterString.read(buf),
+                FfiConverterOptionalString.read(buf),
+                )
+            5 -> InstallationEdit.SetUnitRole(
+                FfiConverterString.read(buf),
+                FfiConverterTypeInstallationRole.read(buf),
+                )
+            6 -> InstallationEdit.SetUnitUpstream(
+                FfiConverterString.read(buf),
+                FfiConverterString.read(buf),
+                FfiConverterOptionalUByte.read(buf),
+                )
+            7 -> InstallationEdit.SetUnitUsbMode(
+                FfiConverterString.read(buf),
+                FfiConverterOptionalString.read(buf),
+                FfiConverterBoolean.read(buf),
+                )
+            8 -> InstallationEdit.SetUnitSpeakers(
+                FfiConverterString.read(buf),
+                FfiConverterSequenceTypeInstallationSpeaker.read(buf),
+                )
+            9 -> InstallationEdit.SetSpdifSource(
+                FfiConverterString.read(buf),
+                FfiConverterUByte.read(buf),
+                )
+            10 -> InstallationEdit.AddRoom(
+                FfiConverterOptionalString.read(buf),
+                FfiConverterString.read(buf),
+                )
+            11 -> InstallationEdit.AddZone(
+                FfiConverterOptionalString.read(buf),
+                FfiConverterString.read(buf),
+                FfiConverterSequenceString.read(buf),
+                FfiConverterOptionalString.read(buf),
+                )
+            12 -> InstallationEdit.SetZoneRooms(
+                FfiConverterString.read(buf),
+                FfiConverterSequenceString.read(buf),
+                )
+            13 -> InstallationEdit.AddGroup(
+                FfiConverterOptionalString.read(buf),
+                FfiConverterString.read(buf),
+                FfiConverterSequenceString.read(buf),
+                )
+            14 -> InstallationEdit.SetGroupUnits(
+                FfiConverterString.read(buf),
+                FfiConverterSequenceString.read(buf),
+                )
+            15 -> InstallationEdit.AddSender(
+                FfiConverterOptionalString.read(buf),
+                FfiConverterString.read(buf),
+                FfiConverterOptionalString.read(buf),
+                )
+            16 -> InstallationEdit.AddFanOut(
+                FfiConverterOptionalString.read(buf),
+                FfiConverterString.read(buf),
+                FfiConverterOptionalString.read(buf),
+                FfiConverterString.read(buf),
+                FfiConverterOptionalUByte.read(buf),
+                )
+            17 -> InstallationEdit.SetSystem(
+                FfiConverterOptionalUInt.read(buf),
+                FfiConverterBoolean.read(buf),
+                FfiConverterOptionalUShort.read(buf),
+                FfiConverterOptionalBoolean.read(buf),
+                )
+            else -> throw RuntimeException("invalid enum value, something is very wrong!!")
+        }
+    }
+
+    override fun allocationSize(value: InstallationEdit) = when(value) {
+        is InstallationEdit.AddUnit -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`serial`)
+                + FfiConverterOptionalString.allocationSize(value.`id`)
+                + FfiConverterString.allocationSize(value.`name`)
+                + FfiConverterOptionalString.allocationSize(value.`room`)
+                + FfiConverterTypeInstallationRole.allocationSize(value.`role`)
+                + FfiConverterOptionalString.allocationSize(value.`upstream`)
+            )
+        }
+        is InstallationEdit.RemoveElement -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`id`)
+            )
+        }
+        is InstallationEdit.RenameElement -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`id`)
+                + FfiConverterString.allocationSize(value.`name`)
+            )
+        }
+        is InstallationEdit.SetUnitRoom -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`id`)
+                + FfiConverterOptionalString.allocationSize(value.`room`)
+            )
+        }
+        is InstallationEdit.SetUnitRole -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`id`)
+                + FfiConverterTypeInstallationRole.allocationSize(value.`role`)
+            )
+        }
+        is InstallationEdit.SetUnitUpstream -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`id`)
+                + FfiConverterString.allocationSize(value.`upstream`)
+                + FfiConverterOptionalUByte.allocationSize(value.`output`)
+            )
+        }
+        is InstallationEdit.SetUnitUsbMode -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`id`)
+                + FfiConverterOptionalString.allocationSize(value.`mode`)
+                + FfiConverterBoolean.allocationSize(value.`playUnaligned`)
+            )
+        }
+        is InstallationEdit.SetUnitSpeakers -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`id`)
+                + FfiConverterSequenceTypeInstallationSpeaker.allocationSize(value.`speakers`)
+            )
+        }
+        is InstallationEdit.SetSpdifSource -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`id`)
+                + FfiConverterUByte.allocationSize(value.`txMask`)
+            )
+        }
+        is InstallationEdit.AddRoom -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterOptionalString.allocationSize(value.`id`)
+                + FfiConverterString.allocationSize(value.`name`)
+            )
+        }
+        is InstallationEdit.AddZone -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterOptionalString.allocationSize(value.`id`)
+                + FfiConverterString.allocationSize(value.`name`)
+                + FfiConverterSequenceString.allocationSize(value.`rooms`)
+                + FfiConverterOptionalString.allocationSize(value.`source`)
+            )
+        }
+        is InstallationEdit.SetZoneRooms -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`id`)
+                + FfiConverterSequenceString.allocationSize(value.`rooms`)
+            )
+        }
+        is InstallationEdit.AddGroup -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterOptionalString.allocationSize(value.`id`)
+                + FfiConverterString.allocationSize(value.`name`)
+                + FfiConverterSequenceString.allocationSize(value.`units`)
+            )
+        }
+        is InstallationEdit.SetGroupUnits -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`id`)
+                + FfiConverterSequenceString.allocationSize(value.`units`)
+            )
+        }
+        is InstallationEdit.AddSender -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterOptionalString.allocationSize(value.`id`)
+                + FfiConverterString.allocationSize(value.`name`)
+                + FfiConverterOptionalString.allocationSize(value.`serial`)
+            )
+        }
+        is InstallationEdit.AddFanOut -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterOptionalString.allocationSize(value.`id`)
+                + FfiConverterString.allocationSize(value.`name`)
+                + FfiConverterOptionalString.allocationSize(value.`serial`)
+                + FfiConverterString.allocationSize(value.`upstream`)
+                + FfiConverterOptionalUByte.allocationSize(value.`output`)
+            )
+        }
+        is InstallationEdit.SetSystem -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterOptionalUInt.allocationSize(value.`rateHz`)
+                + FfiConverterBoolean.allocationSize(value.`setD`)
+                + FfiConverterOptionalUShort.allocationSize(value.`dFrames`)
+                + FfiConverterOptionalBoolean.allocationSize(value.`keepUsbAligned`)
+            )
+        }
+    }
+
+    override fun write(value: InstallationEdit, buf: ByteBuffer) {
+        when(value) {
+            is InstallationEdit.AddUnit -> {
+                buf.putInt(1)
+                FfiConverterString.write(value.`serial`, buf)
+                FfiConverterOptionalString.write(value.`id`, buf)
+                FfiConverterString.write(value.`name`, buf)
+                FfiConverterOptionalString.write(value.`room`, buf)
+                FfiConverterTypeInstallationRole.write(value.`role`, buf)
+                FfiConverterOptionalString.write(value.`upstream`, buf)
+                Unit
+            }
+            is InstallationEdit.RemoveElement -> {
+                buf.putInt(2)
+                FfiConverterString.write(value.`id`, buf)
+                Unit
+            }
+            is InstallationEdit.RenameElement -> {
+                buf.putInt(3)
+                FfiConverterString.write(value.`id`, buf)
+                FfiConverterString.write(value.`name`, buf)
+                Unit
+            }
+            is InstallationEdit.SetUnitRoom -> {
+                buf.putInt(4)
+                FfiConverterString.write(value.`id`, buf)
+                FfiConverterOptionalString.write(value.`room`, buf)
+                Unit
+            }
+            is InstallationEdit.SetUnitRole -> {
+                buf.putInt(5)
+                FfiConverterString.write(value.`id`, buf)
+                FfiConverterTypeInstallationRole.write(value.`role`, buf)
+                Unit
+            }
+            is InstallationEdit.SetUnitUpstream -> {
+                buf.putInt(6)
+                FfiConverterString.write(value.`id`, buf)
+                FfiConverterString.write(value.`upstream`, buf)
+                FfiConverterOptionalUByte.write(value.`output`, buf)
+                Unit
+            }
+            is InstallationEdit.SetUnitUsbMode -> {
+                buf.putInt(7)
+                FfiConverterString.write(value.`id`, buf)
+                FfiConverterOptionalString.write(value.`mode`, buf)
+                FfiConverterBoolean.write(value.`playUnaligned`, buf)
+                Unit
+            }
+            is InstallationEdit.SetUnitSpeakers -> {
+                buf.putInt(8)
+                FfiConverterString.write(value.`id`, buf)
+                FfiConverterSequenceTypeInstallationSpeaker.write(value.`speakers`, buf)
+                Unit
+            }
+            is InstallationEdit.SetSpdifSource -> {
+                buf.putInt(9)
+                FfiConverterString.write(value.`id`, buf)
+                FfiConverterUByte.write(value.`txMask`, buf)
+                Unit
+            }
+            is InstallationEdit.AddRoom -> {
+                buf.putInt(10)
+                FfiConverterOptionalString.write(value.`id`, buf)
+                FfiConverterString.write(value.`name`, buf)
+                Unit
+            }
+            is InstallationEdit.AddZone -> {
+                buf.putInt(11)
+                FfiConverterOptionalString.write(value.`id`, buf)
+                FfiConverterString.write(value.`name`, buf)
+                FfiConverterSequenceString.write(value.`rooms`, buf)
+                FfiConverterOptionalString.write(value.`source`, buf)
+                Unit
+            }
+            is InstallationEdit.SetZoneRooms -> {
+                buf.putInt(12)
+                FfiConverterString.write(value.`id`, buf)
+                FfiConverterSequenceString.write(value.`rooms`, buf)
+                Unit
+            }
+            is InstallationEdit.AddGroup -> {
+                buf.putInt(13)
+                FfiConverterOptionalString.write(value.`id`, buf)
+                FfiConverterString.write(value.`name`, buf)
+                FfiConverterSequenceString.write(value.`units`, buf)
+                Unit
+            }
+            is InstallationEdit.SetGroupUnits -> {
+                buf.putInt(14)
+                FfiConverterString.write(value.`id`, buf)
+                FfiConverterSequenceString.write(value.`units`, buf)
+                Unit
+            }
+            is InstallationEdit.AddSender -> {
+                buf.putInt(15)
+                FfiConverterOptionalString.write(value.`id`, buf)
+                FfiConverterString.write(value.`name`, buf)
+                FfiConverterOptionalString.write(value.`serial`, buf)
+                Unit
+            }
+            is InstallationEdit.AddFanOut -> {
+                buf.putInt(16)
+                FfiConverterOptionalString.write(value.`id`, buf)
+                FfiConverterString.write(value.`name`, buf)
+                FfiConverterOptionalString.write(value.`serial`, buf)
+                FfiConverterString.write(value.`upstream`, buf)
+                FfiConverterOptionalUByte.write(value.`output`, buf)
+                Unit
+            }
+            is InstallationEdit.SetSystem -> {
+                buf.putInt(17)
+                FfiConverterOptionalUInt.write(value.`rateHz`, buf)
+                FfiConverterBoolean.write(value.`setD`, buf)
+                FfiConverterOptionalUShort.write(value.`dFrames`, buf)
+                FfiConverterOptionalBoolean.write(value.`keepUsbAligned`, buf)
+                Unit
+            }
+        }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
+    }
+}
+
+
+
+
+
+/**
+ * A unit's role in the installation: how the programme reaches it.
+ */
+
+enum class InstallationRole {
+    
+    /**
+     * It plays the audio link from its upstream (a sender, a fan-out or a
+     * repeater).
+     */
+    RECEIVER,
+    /**
+     * A receiver that also re-emits the stream to the units naming it.
+     */
+    REPEATER,
+    /**
+     * It follows an S/PDIF source unit's time base (its upstream).
+     */
+    SPDIF_FOLLOWER,
+    /**
+     * USB directly from the host; no upstream.
+     */
+    USB_DIRECT;
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeInstallationRole: FfiConverterRustBuffer<InstallationRole> {
+    override fun read(buf: ByteBuffer) = try {
+        InstallationRole.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: InstallationRole) = 4UL
+
+    override fun write(value: InstallationRole, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
     }
 }
 
@@ -52331,6 +53961,38 @@ public object FfiConverterOptionalTypeSnapshotRecall: FfiConverterRustBuffer<Sna
 /**
  * @suppress
  */
+public object FfiConverterOptionalTypeSpeakerLayout: FfiConverterRustBuffer<SpeakerLayout?> {
+    override fun read(buf: ByteBuffer): SpeakerLayout? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeSpeakerLayout.read(buf)
+    }
+
+    override fun allocationSize(value: SpeakerLayout?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeSpeakerLayout.allocationSize(value)
+        }
+    }
+
+    override fun write(value: SpeakerLayout?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeSpeakerLayout.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterOptionalTypeAbSide: FfiConverterRustBuffer<AbSide?> {
     override fun read(buf: ByteBuffer): AbSide? {
         if (buf.get().toInt() == 0) {
@@ -53983,6 +55645,90 @@ public object FfiConverterSequenceTypeHubStatsDevice: FfiConverterRustBuffer<Lis
 /**
  * @suppress
  */
+public object FfiConverterSequenceTypeInstallationIssue: FfiConverterRustBuffer<List<InstallationIssue>> {
+    override fun read(buf: ByteBuffer): List<InstallationIssue> {
+        val len = buf.getInt()
+        return List<InstallationIssue>(len) {
+            FfiConverterTypeInstallationIssue.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<InstallationIssue>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeInstallationIssue.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<InstallationIssue>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeInstallationIssue.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeInstallationSpeaker: FfiConverterRustBuffer<List<InstallationSpeaker>> {
+    override fun read(buf: ByteBuffer): List<InstallationSpeaker> {
+        val len = buf.getInt()
+        return List<InstallationSpeaker>(len) {
+            FfiConverterTypeInstallationSpeaker.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<InstallationSpeaker>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeInstallationSpeaker.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<InstallationSpeaker>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeInstallationSpeaker.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeInstallationUnseen: FfiConverterRustBuffer<List<InstallationUnseen>> {
+    override fun read(buf: ByteBuffer): List<InstallationUnseen> {
+        val len = buf.getInt()
+        return List<InstallationUnseen>(len) {
+            FfiConverterTypeInstallationUnseen.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<InstallationUnseen>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeInstallationUnseen.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<InstallationUnseen>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeInstallationUnseen.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterSequenceTypeLimitFieldRange: FfiConverterRustBuffer<List<LimitFieldRange>> {
     override fun read(buf: ByteBuffer): List<LimitFieldRange> {
         val len = buf.getInt()
@@ -55383,6 +57129,34 @@ public object FfiConverterSequenceTypeSpdifBufferStats: FfiConverterRustBuffer<L
 /**
  * @suppress
  */
+public object FfiConverterSequenceTypeSpeakerLayoutOutput: FfiConverterRustBuffer<List<SpeakerLayoutOutput>> {
+    override fun read(buf: ByteBuffer): List<SpeakerLayoutOutput> {
+        val len = buf.getInt()
+        return List<SpeakerLayoutOutput>(len) {
+            FfiConverterTypeSpeakerLayoutOutput.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<SpeakerLayoutOutput>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeSpeakerLayoutOutput.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<SpeakerLayoutOutput>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeSpeakerLayoutOutput.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterSequenceTypeTargetInfo: FfiConverterRustBuffer<List<TargetInfo>> {
     override fun read(buf: ByteBuffer): List<TargetInfo> {
         val len = buf.getInt()
@@ -55457,6 +57231,34 @@ public object FfiConverterSequenceTypeVregChoice: FfiConverterRustBuffer<List<Vr
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeVregChoice.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeInstallationEdit: FfiConverterRustBuffer<List<InstallationEdit>> {
+    override fun read(buf: ByteBuffer): List<InstallationEdit> {
+        val len = buf.getInt()
+        return List<InstallationEdit>(len) {
+            FfiConverterTypeInstallationEdit.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<InstallationEdit>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeInstallationEdit.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<InstallationEdit>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeInstallationEdit.write(it, buf)
         }
     }
 }
