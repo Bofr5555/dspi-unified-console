@@ -55,6 +55,8 @@ mdns = ["dspi-core/mdns", "dspi-hub?/mdns"]
 hub = ["dep:dspi-hub"]
 # -- WP MCP3 --
 mcp = ["dep:dspi-mcp"]
+# -- WP FUNC1 -- the function test's simulated home theatre (tools/functest); off
+sim-scenario = ["dspi-core/sim-scenario"]
 
 [dev-dependencies]
 # -- WP Q1 --
