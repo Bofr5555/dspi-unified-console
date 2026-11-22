@@ -33,7 +33,7 @@
 
 static const Registrar::Controller<SnapshotsController> snapshotsController;
 static const Registrar::Window snapshotsWindow("device.snapshots", "SnapshotsWindow");
-static const Registrar::Banner safeApplyBanner("SafeApplyBanner", 5);
+static const Registrar::Banner safeApplyBanner("SafeApplyBanner", 5, Registrar::Blocking);
 
 namespace {
 // A reply of a call that changes the device: far more than it needs

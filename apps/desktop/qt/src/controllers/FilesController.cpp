@@ -36,7 +36,7 @@
 #include <memory>
 
 static const Registrar::Controller<FilesController> filesController;
-static const Registrar::Banner fileBanner("FileBanner", 36);   // -- WP P1QT1 --
+static const Registrar::Banner fileBanner("FileBanner", 36, Registrar::Blocking);   // -- WP P1QT1 --
 
 namespace {
 // The core refuses a file over 4 MB; one byte more is enough for it to say so

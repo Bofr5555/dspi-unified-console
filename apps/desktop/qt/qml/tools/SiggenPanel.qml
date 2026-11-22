@@ -21,8 +21,8 @@ Panel {
     readonly property var currentType: SiggenController.types[SiggenController.signalType]
 
     onShownChanged: SiggenController.windowShown = shown
-    Component.onCompleted: SiggenController.windowShown = shown
-    Component.onDestruction: SiggenController.windowShown = false   // -- WP LAY1b -- a page host unloaded
+    Component.onCompleted: if (shown) SiggenController.windowShown = true   // -- WP LAY3 -- another host may show it
+    Component.onDestruction: if (shown) SiggenController.windowShown = false   // -- WP LAY1b -- a page host unloaded
 
     // Space: Start, or the faded Stop (a focused text field keeps it)
     Shortcut {

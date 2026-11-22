@@ -30,6 +30,9 @@ Panel {
 
     onShownChanged: if (shown) SettingsController.ensureShown()
 
+    // -- WP LAY3 -- Modern's top bar search
+    function focusSearch() { search.forceActiveFocus() }
+
     RowLayout {
         anchors.fill: parent
         spacing: 0
@@ -129,6 +132,7 @@ Panel {
                 }
                 IconButton {
                     objectName: "Settings.close"
+                    visible: !panel.inPage   // -- WP LAY3 -- the rail leaves a page
                     iconName: "x"
                     toolTip: qsTr("Close")
                     onClicked: panel.close()

@@ -29,7 +29,7 @@ Panel {
     // -- WP QPI3 -- its polls run while it is on screen, not while minimised
     readonly property bool polling: onScreen
     onPollingChanged: ToolsController.windowShown("subharmonic", polling)
-    Component.onDestruction: ToolsController.windowShown("subharmonic", false)   // -- WP LAY1a -- a page host unloaded
+    Component.onDestruction: if (shown) ToolsController.windowShown("subharmonic", false)   // -- WP LAY1a -- a page host unloaded
 
     ColumnLayout {
         anchors.fill: parent

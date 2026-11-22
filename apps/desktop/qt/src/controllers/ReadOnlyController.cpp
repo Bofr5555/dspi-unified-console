@@ -9,8 +9,8 @@
 #include <QJSEngine>
 
 static const Registrar::Controller<ReadOnlyController> readOnlyController;
-static const Registrar::Banner readOnlyBanner("ReadOnlyBanner", 11);
-static const Registrar::Banner delayRefusalBanner("DelayRefusalBanner", 30);
+static const Registrar::Banner readOnlyBanner("ReadOnlyBanner", 11, Registrar::Blocking);
+static const Registrar::Banner delayRefusalBanner("DelayRefusalBanner", 30, Registrar::Blocking);
 
 ReadOnlyController::ReadOnlyController(const AppContext &ctx, QObject *parent) : QObject(parent), m_ctx(ctx) {
     connect(ctx.device, &DeviceModel::snapshotApplied, this, [this] {

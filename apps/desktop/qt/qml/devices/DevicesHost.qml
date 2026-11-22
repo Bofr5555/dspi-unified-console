@@ -24,7 +24,8 @@ Item {
     Connections {
         target: DevicesController
         function onListShownChanged() {
-            if (DevicesController.listShown) list.open()
+            // -- WP LAY3 -- Modern's device switcher shows it there
+            if (DevicesController.listShown && !LayoutController.modern) list.open()
             else list.close()
         }
     }

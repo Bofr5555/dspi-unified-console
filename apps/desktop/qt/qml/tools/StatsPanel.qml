@@ -22,8 +22,8 @@ Panel {
                                         || StatsController.usbErrors.length > 0
 
     onShownChanged: StatsController.windowShown = shown
-    Component.onCompleted: StatsController.windowShown = shown
-    Component.onDestruction: StatsController.windowShown = false   // -- WP LAY0 -- a page host unloaded
+    Component.onCompleted: if (shown) StatsController.windowShown = true   // -- WP LAY3 -- another host may show it
+    Component.onDestruction: if (shown) StatsController.windowShown = false   // -- WP LAY0 -- a page host unloaded
 
     function bandColor(band) {
         if (band === "good") return Theme.success

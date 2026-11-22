@@ -31,6 +31,9 @@ class Shell : public QObject {
     QML_ELEMENT
     QML_SINGLETON
     Q_PROPERTY(QStringList banners READ banners NOTIFY bannersChanged)
+    // -- WP LAY3 -- of those, what Modern's status strip and drawer show
+    Q_PROPERTY(QStringList blockingBanners READ blockingBanners NOTIFY bannersChanged)
+    Q_PROPERTY(QStringList noticeBanners READ noticeBanners NOTIFY bannersChanged)
     Q_PROPERTY(QString lastUnhandled READ lastUnhandled NOTIFY lastUnhandledChanged)
     Q_PROPERTY(bool darkScheme READ darkScheme NOTIFY darkSchemeChanged)
     // The system's fixed-pitch family (Theme.fontMono): Consolas on Windows,
@@ -41,6 +44,12 @@ class Shell : public QObject {
     // `row` on its page and returns true, or false to let a window open. The
     // shell sets it when it loads; it clears itself when the host goes.
     Q_PROPERTY(QObject *pageHost READ pageHost WRITE setPageHost NOTIFY pageHostChanged)
+    // -- WP LAY3 -- The actions whose tool window is open. One is in here before
+    // its window shows and until it is closed (also while the tray hides it), so
+    // a page stops showing the same panel first and takes it back last.
+    Q_PROPERTY(QStringList shownWindows READ shownWindows NOTIFY shownWindowsChanged)
+    // -- WP LAY3 -- The action whose panel the page host shows now, "" for none
+    Q_PROPERTY(QString pageAction READ pageAction WRITE setPageAction NOTIFY pageActionChanged)
 public:
     explicit Shell(QQmlEngine *engine, QObject *parent = nullptr);
     ~Shell() override;
@@ -53,7 +62,7 @@ public:
     void addHandler(const QString &action, QObject *receiver, std::function<void()> handler);
     // Opens the QML type `type` of module UConsole as a window for `action`.
     void addWindow(const QString &action, const QString &type);
-    void setBanners(const QStringList &types);
+    void setBanners(const QStringList &types, const QStringList &blocking = {}, const QStringList &notice = {});
     // Destroys the tool windows it made; main() calls it before the QML engine goes.
     void releaseWindows();
 
@@ -68,6 +77,8 @@ public:
     static QString monospaceFamily();
 
     QStringList banners() const { return m_banners; }
+    QStringList blockingBanners() const { return m_blockingBanners; }
+    QStringList noticeBanners() const { return m_noticeBanners; }
     QString lastUnhandled() const { return m_lastUnhandled; }
 
     Q_INVOKABLE void trigger(const QString &action);
@@ -78,6 +89,15 @@ public:
     // a PanelTable row it is a PanelWindow, also while a page host is set
     // (the Modern "Open in window").
     Q_INVOKABLE QWindow *openWindow(const QString &action);
+    // -- WP LAY3 -- The tool of `action` where the layout shows it: its page with
+    // a page host, else its window. Past the gate and the handlers: for a
+    // controller that shows its own tool; a menu row is trigger()'s.
+    void showTool(const QString &action);
+    // -- WP LAY3 -- Closes the window of `action`, as its close button does
+    Q_INVOKABLE void closeWindow(const QString &action);
+    QStringList shownWindows() const { return m_shownWindows; }
+    QString pageAction() const { return m_pageAction; }
+    void setPageAction(const QString &action);
     // -- WP LAY0 -- PanelTable's row for `action`; empty when its tool is no panel
     Q_INVOKABLE QVariantMap panel(const QString &action) const;
     // Every PanelTable row, in order
@@ -116,6 +136,12 @@ signals:
     void lastUnhandledChanged();
     void darkSchemeChanged();
     void pageHostChanged();   // -- WP LAY0 --
+    void shownWindowsChanged();   // -- WP LAY3 --
+    void pageActionChanged();
+
+private slots:
+    // -- WP LAY3 -- a tool window got a close: gone from shownWindows once it is hidden
+    void toolWindowClosing();
 
 private:
     struct Handler {
@@ -127,6 +153,10 @@ private:
     QHash<QString, QString> m_windowTypes;
     QHash<QString, QPointer<QWindow>> m_windows;
     QStringList m_banners;
+    QStringList m_blockingBanners;   // -- WP LAY3 --
+    QStringList m_noticeBanners;
+    QStringList m_shownWindows;
+    QString m_pageAction;
     QString m_lastUnhandled;
     Qt::ColorScheme m_schemeOverride = Qt::ColorScheme::Unknown;
     // -- WP QP15 --

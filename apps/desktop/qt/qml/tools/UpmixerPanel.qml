@@ -32,7 +32,7 @@ Panel {
     // -- WP QPI3 -- its polls run while it is on screen, not while minimised
     readonly property bool polling: onScreen
     onPollingChanged: ToolsController.windowShown("upmixer", polling)
-    Component.onDestruction: ToolsController.windowShown("upmixer", false)   // -- WP LAY1a -- a page host unloaded
+    Component.onDestruction: if (shown) ToolsController.windowShown("upmixer", false)   // -- WP LAY1a -- a page host unloaded
 
     component UpmixRow: ToolParameterRow {
         property string key

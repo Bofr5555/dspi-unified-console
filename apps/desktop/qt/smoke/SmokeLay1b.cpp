@@ -118,7 +118,7 @@ void windowsPart(SmokeDriver &d, Shell *shell, SettingsController *settings) {
                     && quick->property("windowId").toString() == row.value(QStringLiteral("windowId")).toString());
         d.check(QStringLiteral("lay1b: %1 knows it shows, and its action").arg(QLatin1String(c.panel)),
                 content->property("shown").toBool() && content->property("actionId").toString() == action
-                    && !content->property("locked").toBool() && !content->property("minimized").toBool());
+                    && !content->property("locked").toBool() && content->property("onScreen").toBool());   // -- WP LAY3 -- (was minimized)
 
         if (action == QLatin1String("edit.settings")) {
             d.check(QStringLiteral("lay1b: the Settings window keeps the body font"),
@@ -138,11 +138,11 @@ void windowsPart(SmokeDriver &d, Shell *shell, SettingsController *settings) {
         if (action == QLatin1String("tools.spectrum")) {
             quick->setWindowState(Qt::WindowMinimized);
             d.check(QStringLiteral("lay1b: Spectrum hears its window minimised and stops rendering"),
-                    d.waitFor(2000, [&] { return content->property("minimized").toBool() && !content->property("rendering").toBool(); }));
+                    d.waitFor(2000, [&] { return !content->property("onScreen").toBool() && !content->property("rendering").toBool(); }));
             quick->setWindowState(Qt::WindowNoState);
             quick->show();
             d.check(QStringLiteral("lay1b: and renders again once restored"),
-                    d.waitFor(2000, [&] { return !content->property("minimized").toBool() && content->property("rendering").toBool(); }));
+                    d.waitFor(2000, [&] { return content->property("onScreen").toBool() && content->property("rendering").toBool(); }));
         }
         // The window's close reaches the panel (Measure stops what it started on it)
         QQmlComponent listen(d.app().engine);

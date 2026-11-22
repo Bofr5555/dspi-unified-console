@@ -36,6 +36,16 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
   it. The Measure tables start from it, and a role, speaker or group changed there is saved to it without confirming
   it. Measure shows a banner while the layout is not confirmed, also when it came with an imported configuration.
   (WP ROLEQ)
+- A second layout, **Modern**: one window with a rail of sections (Overview, Equaliser, Routing, Effects, Measure, Analyse,
+  Library, System, Devices, Settings), every tool on a page with tabs, the open device as a tab at the top, the volume,
+  meters, Mute and Bypass EQ in a dock along the bottom, and no menu bar (the uConsole button holds the menus, and every
+  keyboard shortcut works). States that limit what can be done show in a strip under the top bar; other notices are behind
+  the bell. Any tool page can be opened in its own window. Settings › Appearance switches between Classic and Modern at any
+  time, and arranges Modern; the device, the selected channel and open tool windows stay. **New installs start in Modern**;
+  an install whose Getting Started was finished keeps Classic. An install made with a development build since the layout
+  switch came (or whose Getting Started was never finished) was counted as new and now opens in Modern: choose "Switch to
+  the Classic Layout" in the uConsole menu to go back. Modern's pages are still being filled in. (WP LAY3)
+- A theme setting (Settings › Appearance, and Modern's top bar): the system's, light or dark. (WP LAY3)
 
 ### Android
 - DSPi Link is reachable from the main page (owner report on 0.14.0: only through the settings

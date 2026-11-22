@@ -15,7 +15,7 @@ extern "C" {
 }
 
 static const Registrar::Controller<SystemController> systemController;
-static const Registrar::Banner systemStrip("SystemStatusStrip", 30);
+static const Registrar::Banner systemStrip("SystemStatusStrip", 30, Registrar::ClassicOnly);
 static const Registrar::Window systemWindow("window.system", "SystemWindow");
 
 namespace {

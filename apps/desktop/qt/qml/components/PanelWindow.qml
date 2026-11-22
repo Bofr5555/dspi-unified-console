@@ -62,12 +62,6 @@ ToolWindow {
     }
     // -- WP LAY1b --
     Binding {
-        target: body.item
-        property: "minimized"
-        value: window.visibility === Window.Minimized
-        when: body.item !== null
-    }
-    Binding {
         target: window
         property: "font"
         value: body.item ? body.item.windowFont : undefined
