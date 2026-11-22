@@ -9,13 +9,26 @@ Item {
     property bool shown: false
     property Item host: null
 
+    // The device whose overview this is: another one's selection (kept per
+    // device) is no card that was chosen here
+    property string device: ""
+    readonly property string activeDevice: DeviceRegistry.activeId
+    onActiveDeviceChanged: Qt.callLater(selectNone)
+
     // Nothing is selected here: the cards choose
-    onShownChanged: if (shown) SidebarController.select(-1)
+    onShownChanged: if (shown) selectNone()
+    function selectNone() {
+        if (!shown) return
+        device = DeviceRegistry.activeId
+        SidebarController.select(-1)
+    }
     Connections {
         target: SidebarController
         enabled: page.shown
         function onSelectionChanged() {
-            if (SidebarController.selectedChannel >= 0 && page.host) page.host.go("equaliser", "peq")
+            if (SidebarController.selectedChannel < 0) return
+            if (page.device !== DeviceRegistry.activeId) Qt.callLater(page.selectNone)
+            else if (page.host) page.host.go("equaliser", "peq")
         }
     }
 

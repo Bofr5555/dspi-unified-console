@@ -441,7 +441,20 @@ void emptyPart(Modern &m) {
     m.check("and opens it", m.d.waitFor(10000, [&] { return device->connected() && device->demo(); }));
     m.d.waitIdle();
     m.d.spin(200);
-    m.check("a channel is selected again", Registrar::instance<SidebarController>()->selectedChannel() >= 0);
+    auto *sidebar = Registrar::instance<SidebarController>();
+    m.check("a channel is selected again", sidebar->selectedChannel() >= 0);
+    m.go("overview");
+    // Another device while the Overview shows: its cards choose as before
+    registry->close(registry->activeId());
+    m.d.waitFor(5000, [&] { return !device->connected() && registry->devices().isEmpty(); });
+    device->openDemo();
+    m.d.waitFor(10000, [&] { return device->connected() && !registry->devices().isEmpty(); });
+    m.d.waitIdle();
+    m.d.spin(200);
+    m.check("another device leaves the Overview on show", m.section() == QLatin1String("overview") && sidebar->selectedChannel() == -1);
+    sidebar->select(0);
+    m.d.spin(100);
+    m.check("and its card opens the Equaliser", m.section() == QLatin1String("equaliser") && sidebar->selectedChannel() == 0);
     m.go("overview");
 }
 
