@@ -54,6 +54,7 @@ export function OpenFiles(props: {
       const { text } = await list.core.call("templateText", { id: t.id });
       const core = list.core;
       setList(null);
+      held.current = null; // -- WP WEBM1 -- the new session's now: this page goes as it opens, and must not dispose it
       props.onOpen(text, `${t.name}.dspipreset`, core);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));

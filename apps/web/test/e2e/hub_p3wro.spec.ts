@@ -20,6 +20,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { openPage } from "../nav";
 
 const DEMO = "DEMO0000DSPI0001";
 const BENCH = "BENCH0000DSPI001";
@@ -127,7 +128,7 @@ async function openHubScreen(page: Page, hub: OwnHub, scheme: "https" | "http", 
   const dialog = page.getByRole("dialog", { name: "Mode" });
   await dialog.getByRole("radio", { name: "Advanced" }).check();
   await dialog.getByRole("button", { name: "Use" }).click();
-  await session.getByRole("tab", { name: "Hub", exact: true }).click();
+  await openPage(session, "Hub");
   await expect(session.getByRole("region", { name: "Devices on the hub" })).toBeVisible();
   return session;
 }

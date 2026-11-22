@@ -131,7 +131,7 @@ test("WB6e: Recall loads a slot; with unsaved changes it asks first (Cancel, Dis
   s = await coreState(page);
   expect(s.outputGainDb[0]).toBe(-6);
   // The Main window's picker follows the same slot.
-  await expect(session.getByRole("region", { name: "Presets" }).getByRole("combobox", { name: "Preset" })).toHaveValue(String(other));
+  await expect(session.getByRole("region", { name: "Presets" }).getByRole("combobox", { name: "Preset", exact: true })).toHaveValue(String(other));
   expect(errors).toEqual([]);
 });
 

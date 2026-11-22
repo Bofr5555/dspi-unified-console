@@ -5,6 +5,7 @@
 // screen that edits it (EQ at the channel and its PEQ or XO tab, the Matrix, the Main window).
 
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { openPage, expectPage } from "../nav";
 
 type Band = { filterType: number; bypass: boolean };
 type State = {
@@ -44,7 +45,7 @@ async function openChain(page: Page, venue = "Venue A") {
   const one = page.locator("#one");
   await one.getByRole("region", { name: venue }).getByRole("button", { name: "Connect" }).click();
   const session = one.getByRole("article", { name: "DSPi" });
-  await session.getByRole("tab", { name: "System", exact: true }).click();
+  await openPage(session, "System");
   const chain = session.getByRole("region", { name: "Signal chain" });
   await expect(chain).toBeVisible();
   return { session, chain };
@@ -108,7 +109,7 @@ test("WB6d: a change made on another screen shows in the chain (limiter, mute)",
   // OUT1's limiter and mute, on its card on the EQ screen (opened from the chain).
   const n = `OUT${o + 1}`;
   await row.getByRole("button", { name: new RegExp(`^${n} `) }).click();
-  await expect(session.getByRole("tab", { name: "EQ", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expectPage(session, "EQ");
   const card = session.getByRole("region", { name: new RegExp(`^Output settings, ${n}`) });
   await card.getByRole("button", { name: new RegExp(`^Limiter ${n}`) }).click();
   await expect.poll(async () => (await core(page)).limiterEnabled[o]).toBe(!wasOn);
@@ -116,7 +117,7 @@ test("WB6d: a change made on another screen shows in the chain (limiter, mute)",
   await card.getByRole("button", { name: "Mute", exact: true }).click();
   await expect.poll(async () => (await core(page)).outputMuted[o]).toBe(!muted);
   // Back on the System view: the chain says so.
-  await session.getByRole("tab", { name: "System", exact: true }).click();
+  await openPage(session, "System");
   await expect(block(outRow(chain, o), "Limiter")).toContainText(!wasOn ? ": on" : ": off");
   if (!muted) await expect(outRow(chain, o).getByLabel(`Level of ${n}`)).toContainText("Muted");
   else await expect(outRow(chain, o).getByLabel(`Level of ${n}`)).not.toContainText("Muted");
@@ -129,38 +130,38 @@ test("WB6d: a block opens its screen: EQ at the channel and tab, the Matrix, the
   const s = await core(page);
   // IN2's EQ: the EQ screen with IN2 chosen, its PEQ bands.
   await block(chain.getByRole("group", { name: /^Chain IN2 / }), "EQ").getByRole("button").click();
-  await expect(session.getByRole("tab", { name: "EQ", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expectPage(session, "EQ");
   await expect(session.locator(".eq-pick", { hasText: "IN2" })).toHaveAttribute("aria-pressed", "true");
   // OUT1's crossover: OUT1 chosen, the XO tab.
-  await session.getByRole("tab", { name: "System", exact: true }).click();
+  await openPage(session, "System");
   const o1 = s.outputEnabled.findIndex((e) => e !== false);
   await block(outRow(chain, o1), "Crossover").getByRole("button").click();
   await expect(session.locator(".eq-pick", { hasText: `OUT${o1 + 1}` })).toHaveAttribute("aria-pressed", "true");
   const tabs = session.getByRole("tablist", { name: "Bands" });
   if (await tabs.count()) await expect(tabs.getByRole("tab", { name: "XO", exact: true })).toHaveAttribute("aria-selected", "true");
   // A tab chosen by hand opens its screen as it was: PEQ on the first channel.
-  await session.getByRole("tab", { name: "Main", exact: true }).click();
-  await session.getByRole("tab", { name: "EQ", exact: true }).click();
+  await openPage(session, "Main");
+  await openPage(session, "EQ");
   await expect(session.locator(".eq-pick").first()).toHaveAttribute("aria-pressed", "true");
   // The routing summary: the Matrix.
-  await session.getByRole("tab", { name: "System", exact: true }).click();
+  await openPage(session, "System");
   await outRow(chain, o1).getByRole("button", { name: /^Routing of / }).click();
-  await expect(session.getByRole("tab", { name: "Matrix", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expectPage(session, "Matrix");
   await expect(session.getByRole("region", { name: "Matrix Mixer" })).toBeVisible();
   // -- fixup b4fix N3 -- a device-wide effect and an output's effect block: the Effects screen at that effect.
   for (const list of [chain.getByRole("list", { name: "Effects" }), chain.getByRole("list", { name: /^Processing of / })]) {
-    await session.getByRole("tab", { name: "System", exact: true }).click();
+    await openPage(session, "System");
     const fxBlock = list.locator("button[data-block]:not([data-block=eq]):not([data-block=xo]):not([data-block=limiter])").first();
     if (!(await fxBlock.count())) continue;
     const id = (await fxBlock.getAttribute("data-block"))!;
     await fxBlock.click();
-    await expect(session.getByRole("tab", { name: "Effects", exact: true })).toHaveAttribute("aria-selected", "true");
+    await expectPage(session, "Effects");
     await expect(session.locator(`.fx-pick[data-effect="${id}"]`)).toHaveAttribute("aria-selected", "true");
   }
   // The volume: the Main window.
-  await session.getByRole("tab", { name: "System", exact: true }).click();
+  await openPage(session, "System");
   await chain.getByRole("button", { name: /^Volume / }).click();
-  await expect(session.getByRole("tab", { name: "Main", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expectPage(session, "Main");
   expect(errors).toEqual([]);
 });
 
@@ -172,6 +173,6 @@ test("WB6d: a read-only session shows the chain, and its blocks still open their
   const s = await core(page);
   const o = s.outputEnabled.findIndex((e) => e !== false);
   await block(outRow(chain, o), "EQ").getByRole("button").click();
-  await expect(session.getByRole("tab", { name: "EQ", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expectPage(session, "EQ");
   expect(errors).toEqual([]);
 });

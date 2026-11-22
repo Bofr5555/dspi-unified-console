@@ -8,6 +8,7 @@
 // core's real Link phases, in CG10's wording.
 
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
+import { openDevices } from "../nav";
 
 const linkWords = (await import("../../../../ci/generated/web/link-words.json", { with: { type: "json" } })).default as {
   link: { key: string; text: string; action: string | null }[];
@@ -18,6 +19,8 @@ const HUB = `http://127.0.0.1:${Number(process.env.HUB_PORT ?? 8738)}`;
 const PLAIN = `http://127.0.0.1:${Number(process.env.PORT ?? 8737)}`;
 /** The fake hub's DSPi (crates/dspi-link/src/fakehub.rs `HubConfig::default`). */
 const SERIAL = "0123456789ABCDEF";
+/** -- WP WEBM1 -- a second unit, on another hub (`--serial`). */
+const SERIAL_B = "FEDCBA9876543210";
 
 if (!process.env.DSPI_FAKEHUB) {
   test("WB4b: the fake hub is there", () => {
@@ -73,11 +76,38 @@ async function connectServingHub(page: Page, id: number) {
   return page.getByRole("article");
 }
 
-async function chooseAndOpen(session: ReturnType<Page["getByRole"]>) {
-  await expect(session.locator(".banner")).toContainText(words("choose_device").text);
-  const entry = session.getByRole("list", { name: /DSPis on/ }).getByRole("listitem").filter({ hasText: SERIAL.slice(-8) });
-  await entry.getByRole("button", { name: "Open" }).click();
+// -- WP WEBM1 --
+test("one session per DSPi: another entry for a DSPi that is open shows its tab and says so; once closed, it opens", async ({ page, request }) => {
+  const errors = await noPageErrors(page);
+  const a = await newHub(request, "--auth none");
+  // Both sites list the same hub's DSPi.
+  const q = new URLSearchParams({ a: hubAddress(a), b: hubAddress(a), device: SERIAL });
+  await page.goto(`${HUB}/test/fleet-hub.html?${q}`);
+  const entry = (site: string) => page.getByRole("region", { name: site }).getByRole("listitem").filter({ hasText: "Stage rack" }).getByRole("button", { name: "Connect" });
+  await entry("Site A").click();
+  const session = page.getByRole("article");
   await expect(session.locator(".device-meta")).toContainText(SERIAL);
+  const tabs = page.getByRole("tablist", { name: "Open DSPi" }).getByRole("tab");
+  await openDevices(page);
+  // Twice at once: still one session.
+  await entry("Site B").dblclick({ noWaitAfter: true }).catch(() => undefined);
+  await expect(page.getByText(/^This DSPi is already open: Site A · .*, Hub$/)).toBeVisible();
+  await expect(tabs).toHaveCount(1);
+  await expect(tabs.first()).toHaveAttribute("aria-selected", "true");
+  expect(await page.evaluate(() => (globalThis as unknown as { dspiClients: unknown[] }).dspiClients.length)).toBe(1);
+  await session.getByRole("button", { name: "Disconnect" }).click();
+  await expect(tabs).toHaveCount(0);
+  await entry("Site B").click();
+  await expect(session.locator(".device-meta")).toContainText(SERIAL);
+  await expect(tabs).toHaveCount(1);
+  expect(errors).toEqual([]);
+});
+
+async function chooseAndOpen(session: ReturnType<Page["getByRole"]>, serial = SERIAL) {
+  await expect(session.locator(".banner")).toContainText(words("choose_device").text);
+  const entry = session.getByRole("list", { name: /DSPis on/ }).getByRole("listitem").filter({ hasText: serial.slice(-8) });
+  await entry.getByRole("button", { name: "Open" }).click();
+  await expect(session.locator(".device-meta")).toContainText(serial);
   await expect(session.locator(".banner")).toHaveCount(0);
 }
 
@@ -165,10 +195,10 @@ test("the Origin rule: a page from another site is refused by the hub", async ({
   await expect(page.getByRole("article").getByRole("alert")).toContainText("a hub accepts only pages it serves itself");
 });
 
-test("fleet embedding: hubDevices names the DSPi, hubCredentials supplies the token; two hubs, three sessions at once", async ({ page, request }) => {
+test("fleet embedding: hubDevices names the DSPi, hubCredentials supplies the token; two hubs at once, one session per DSPi", async ({ page, request }) => {
   const errors = await noPageErrors(page);
   const a = await newHub(request, "--auth fixed:135790");
-  const b = await newHub(request, "--auth none");
+  const b = await newHub(request, `--auth none --serial ${SERIAL_B}`);
 
   // A token for hub a, as a fleet server would hold one: paired once on the hub's own page.
   const first = await connectServingHub(page, a);
@@ -216,14 +246,25 @@ test("fleet embedding: hubDevices names the DSPi, hubCredentials supplies the to
   // Read again from the hub after the core's own reconnect: its -5, not our -20.
   expect(((await core(page, 0, "state")) as { state: { masterVolumeDb: number } }).state.masterVolumeDb).toBe(-5);
 
-  // Site B: no list from the fleet, so the console asks the hub; twice, two sessions on one hub.
+  // Site B: no list from the fleet, so the console asks the hub.
   const siteB = page.getByRole("region", { name: "Site B" }).getByRole("button", { name: "Connect" });
+  await openDevices(page);
   await siteB.click();
-  await chooseAndOpen(page.getByRole("article"));
+  await chooseAndOpen(page.getByRole("article"), SERIAL_B);
+  // -- WP WEBM1 -- one session per DSPi: hub b's again is refused, in a session that goes on asking.
+  await openDevices(page);
   await siteB.click();
-  await chooseAndOpen(page.getByRole("article"));
+  const third = page.getByRole("article");
+  await third.getByRole("listitem").filter({ hasText: SERIAL_B.slice(-8) }).getByRole("button", { name: "Open" }).click();
+  await expect(third.getByRole("alert")).toHaveText(/^This DSPi is already open: Site B · .*, Hub$/);
+  await expect(third).toHaveAttribute("data-status", "choosing");
+  // The session that has it goes: the third may open it.
+  await page.getByRole("button", { name: /^Close / }).nth(1).click();
+  await expect(page.getByRole("tablist", { name: "Open DSPi" }).getByRole("tab")).toHaveCount(2);
+  await page.getByRole("tablist", { name: "Open DSPi" }).getByRole("tab").nth(1).click();
+  await chooseAndOpen(page.getByRole("article"), SERIAL_B);
   // -- WP WB6b -- the sessions' tabs (a session's own screens have tabs too)
-  await expect(page.getByRole("tablist", { name: "Open DSPi" }).getByRole("tab")).toHaveCount(3);
+  await expect(page.getByRole("tablist", { name: "Open DSPi" }).getByRole("tab")).toHaveCount(2);
 
   // Each session is its own: hub b drops, hub a's session stays bound.
   await fault(request, b, "refuse 503");

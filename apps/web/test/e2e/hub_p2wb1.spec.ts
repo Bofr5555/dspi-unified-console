@@ -10,6 +10,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { openPage } from "../nav";
 
 const DEMO = "DEMO0000DSPI0001";
 const AWAY = "DEMO-OFFLINE-0042";
@@ -133,7 +134,7 @@ test.describe("P2WB1 on a hub", () => {
 
     // The hub screen, in Advanced (monitoring, as the event log).
     await setMode(session, page, "Advanced");
-    await session.getByRole("tab", { name: "Hub", exact: true }).click();
+    await openPage(session, "Hub");
     const devices = session.getByRole("region", { name: "Devices on the hub" });
     const awayRow = devices.getByRole("row", { name: "Bar" });
     await expect(awayRow).toContainText("Offline");
@@ -176,7 +177,7 @@ test.describe("P2WB1 on a hub", () => {
     await expect(banner).toHaveCount(0);
 
     // The events view: "On the hub", the hub's records of this DSPi with who did it.
-    await session.getByRole("tab", { name: "Events", exact: true }).click();
+    await openPage(session, "Events");
     const log = session.getByRole("region", { name: "Event log" });
     await log.getByLabel("Source").selectOption("hub");
     const acked = log.locator(".hub-event-list tbody tr").filter({ hasText: "Alarm acknowledged" });
@@ -208,7 +209,7 @@ test.describe("P2WB1 on a hub", () => {
     await session.getByRole("list", { name: /DSPis on/ }).getByRole("listitem").filter({ hasText: DEMO.slice(-8) }).getByRole("button", { name: "Open" }).click();
     await expect(session.locator(".device-meta")).toContainText(DEMO);
     await setMode(session, page, "Advanced");
-    await session.getByRole("tab", { name: "Hub", exact: true }).click();
+    await openPage(session, "Hub");
     const devices = session.getByRole("region", { name: "Devices on the hub" });
     await expect(devices.locator(".hub-role-tag")).toHaveText("Control");
     await expect(devices.getByRole("row", { name: "Bar" })).toContainText("Offline");

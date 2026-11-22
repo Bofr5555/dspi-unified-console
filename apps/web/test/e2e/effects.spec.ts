@@ -6,6 +6,7 @@
 // with the controls off.
 
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { openPage } from "../nav";
 
 type State = Record<string, unknown> & {
   crossfeedEnabled: boolean;
@@ -42,7 +43,7 @@ async function openEffects(page: Page) {
   const one = page.locator("#one");
   await one.getByRole("region", { name: "Venue A" }).getByRole("button", { name: "Connect" }).click();
   const session = one.getByRole("article", { name: "DSPi" });
-  await session.getByRole("tab", { name: "Effects" }).click();
+  await openPage(session, "Effects");
   const screen = session.getByRole("region", { name: "Effects" });
   await expect(screen.getByRole("tablist", { name: "Effects" })).toBeVisible();
   return { session, screen };
@@ -191,7 +192,7 @@ test("WB6h: a read-only session shows the effects with every control off", async
   await page.goto("/?readonly");
   await page.getByRole("listitem").filter({ hasText: "Demo DSPi" }).getByRole("button", { name: "Connect" }).click();
   const session = page.getByRole("article", { name: "DSPi" });
-  await session.getByRole("tab", { name: "Effects" }).click();
+  await openPage(session, "Effects");
   const screen = session.getByRole("region", { name: "Effects" });
   const panel = await show(screen, "Loudness");
   await expect(panel.getByRole("switch", { name: "Loudness", exact: true })).toBeDisabled();

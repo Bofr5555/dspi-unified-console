@@ -12,6 +12,7 @@
 
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { fileURLToPath } from "node:url";
+import { expectPage, openPage, rail } from "../nav";
 
 type Setup = { requestType: string; recipient: string; request: number; value: number; index: number };
 type Mock = { usbMock: { log(serial: string): Promise<Setup[]> } };
@@ -47,7 +48,7 @@ async function noSidewaysScroll(page: Page) {
 
 async function deviceScreen(session: Locator): Promise<Locator> {
   await expect(session.locator(".volume-value")).toBeVisible();
-  await session.getByRole("tab", { name: "Device", exact: true }).click();
+  await openPage(session, "Device");
   return session.getByRole("region", { name: "Device information" });
 }
 
@@ -91,8 +92,8 @@ for (const g of GENERATIONS) {
     }
     // The protocol is read once per connection: switching screens reads nothing more
     const before = seen.length;
-    await session.getByRole("tab", { name: "Main", exact: true }).click();
-    await session.getByRole("tab", { name: "Device", exact: true }).click();
+    await openPage(session, "Main");
+    await openPage(session, "Device");
     await expect(fact(info, "device-board")).toHaveText(g.board);
     const platformReads = (l: Setup[]) => l.filter((s) => (s.request === 0x20 && s.index === 0x0102) || (s.request === 0x7f && s.index === 2)).length;
     expect(platformReads(await log(page, serial))).toBe(platformReads((await log(page, serial)).slice(0, before)));
@@ -114,8 +115,8 @@ for (const kind of ["sender", "sender-dual"]) {
     await expect(session.getByRole("region", { name: "Audio link" }).locator(".alink-role dd")).toHaveText(/sender/i);
     await expect(session.getByRole("region", { name: "Firmware update check" })).toBeVisible();
     // No DSP screen, no meters
-    await expect(session.getByRole("tab", { name: "Main", exact: true })).toHaveCount(0);
-    await expect(session.getByRole("tab", { name: "EQ", exact: true })).toHaveCount(0);
+    await expect(rail(session).getByRole("button")).toHaveText(["Overview", "Devices"]);
+    await expectPage(session, "Sender");
     await expect(session.locator(".volume-value")).toHaveCount(0);
     await noSidewaysScroll(page);
     const seen = await log(page, serial);

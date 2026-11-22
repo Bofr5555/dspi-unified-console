@@ -6,6 +6,7 @@
 // Every result is read back from each core's own state (a direct call).
 
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { openPage } from "../nav";
 
 type Band = { filterType: number; bypass: boolean; freq: number; q: number; gain: number; qp: number };
 type State = { numInputChannels: number; filters: Band[][]; outputGainDb: number[] };
@@ -32,7 +33,7 @@ async function openEq(page: Page, id: "#one" | "#two") {
   const host = page.locator(id);
   await host.getByRole("region", { name: "Venue A" }).getByRole("button", { name: "Connect" }).click();
   const session = host.getByRole("article", { name: "DSPi" });
-  await session.getByRole("tab", { name: "EQ" }).click();
+  await openPage(session, "EQ");
   await expect(session.locator(".eq-pick").first()).toBeVisible();
   return session;
 }

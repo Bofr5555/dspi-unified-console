@@ -7,6 +7,7 @@
 // page and read back from the core's own state (a direct call).
 
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { openPage } from "../nav";
 
 type Band = { filterType: number; bypass: boolean; freq: number; q: number; gain: number; qp: number };
 type State = { numInputChannels: number; inputPreampDb: number[]; filters: Band[][]; inputSource: number };
@@ -42,7 +43,7 @@ async function openInputs(page: Page, venue = "Venue A") {
   const one = page.locator("#one");
   await one.getByRole("region", { name: venue }).getByRole("button", { name: "Connect" }).click();
   const session = one.getByRole("article", { name: "DSPi" });
-  await session.getByRole("tab", { name: "Inputs" }).click();
+  await openPage(session, "Inputs");
   const trims = session.getByRole("region", { name: "Input trims" });
   await expect(trims).toBeVisible();
   return { session, trims };
@@ -107,7 +108,7 @@ test("WB6G M48: linking a pair that differs asks which side to keep; Cancel leav
 
 test("WB6G M48: an input's EQ page has the link and the trim; a linked band edit reaches both inputs", async ({ page }) => {
   const { session } = await openInputs(page);
-  await session.getByRole("tab", { name: "EQ" }).click();
+  await openPage(session, "EQ");
   await session.locator(".eq-pick", { hasText: "IN1" }).click();
   const header = session.getByRole("region", { name: /^Input settings, IN1/ });
   await expect(header.getByRole("button", { name: "Link 1/2" })).toHaveAttribute("aria-pressed", "true");
@@ -180,7 +181,7 @@ test("WB6G matrix: the 8-channel layout carries each input's trim, through the l
     await c.call("write", { path: "in.source", value: { choice: 2 } });
   }, n);
   await setRange(trimOf(trims, 1), 0);
-  await session.getByRole("tab", { name: "Matrix" }).click();
+  await openPage(session, "Matrix");
   const matrix = session.getByRole("region", { name: "Matrix Mixer" });
   const t3 = matrix.getByRole("textbox", { name: /^Input trim \(preamp\) for IN3 / });
   await expect(t3).toBeVisible();

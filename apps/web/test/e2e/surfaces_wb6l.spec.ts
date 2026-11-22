@@ -14,6 +14,7 @@
 //   between screens.
 
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { appMenu, expectPage, openPage } from "../nav";
 
 type Client = { call(m: string, p: unknown): Promise<unknown> };
 type G = { dspiClients: Client[] };
@@ -41,7 +42,7 @@ async function openSession(page: Page, venue = "Venue A") {
 }
 
 async function openSurfaces(session: Locator) {
-  await session.getByRole("tab", { name: "Control Surfaces", exact: true }).click();
+  await openPage(session, "Control Surfaces");
   await expect(session.getByRole("group", { name: "Volume Knob", exact: true })).toBeVisible();
 }
 
@@ -152,7 +153,7 @@ test("WB6l CG20: a remote button learned from the demo's remote, applied with th
   expect(errors).toEqual([]);
 });
 
-test("WB6l M60: the quick strip switches an effect by its path and opens and leaves the Matrix", async ({ page }) => {
+test("WB6l M60: the quick strip switches an effect by its path and opens the Matrix", async ({ page }) => {
   const errors = errorsOf(page);
   const session = await openSession(page);
   const strip = session.getByRole("toolbar", { name: "Quick access" });
@@ -171,10 +172,11 @@ test("WB6l M60: the quick strip switches an effect by its path and opens and lea
 
   const matrix = strip.getByRole("button", { name: "Matrix Mixer" });
   await matrix.click();
-  await expect(session.getByRole("tab", { name: "Matrix", exact: true })).toHaveAttribute("aria-selected", "true");
-  await expect(matrix).toHaveAttribute("aria-pressed", "true");
-  await matrix.click();
-  await expect(session.getByRole("tab", { name: "Main", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expectPage(session, "Matrix");
+  // -- WP WEBM1 -- the strip is the Overview's; the rail goes back
+  await expect(strip).toHaveCount(0);
+  await openPage(session, "Main");
+  await expect(strip).toBeVisible();
   if (test.info().project.name === "narrow") await noOverflow(page);
   expect(errors).toEqual([]);
 });
@@ -184,7 +186,7 @@ test("WB6l M24: Ctrl+Shift+M opens the Matrix, Shift+? lists the keys, never whi
   const session = await openSession(page);
   const mod = (await page.evaluate(() => /mac/i.test(navigator.platform))) ? "Meta" : "Control";
   await page.keyboard.press(`${mod}+Shift+KeyM`);
-  await expect(session.getByRole("tab", { name: "Matrix", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expectPage(session, "Matrix");
 
   await page.keyboard.press("Shift+Slash");
   const list = page.getByRole("dialog", { name: "Keyboard Shortcuts" });
@@ -197,15 +199,20 @@ test("WB6l M24: Ctrl+Shift+M opens the Matrix, Shift+? lists the keys, never whi
   await expect(list).toHaveCount(0);
 
   // Typing in a field: the key is the field's.
-  await session.getByRole("tab", { name: "Control Surfaces", exact: true }).click();
+  await openPage(session, "Control Surfaces");
   const name = session.getByRole("textbox", { name: "Name of Volume Knob" });
   await name.focus();
   await page.keyboard.press(`${mod}+Shift+KeyM`);
   await page.keyboard.press("Shift+Slash");
-  await expect(session.getByRole("tab", { name: "Control Surfaces", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expectPage(session, "Control Surfaces");
   await expect(list).toHaveCount(0);
-  // The strip's shortcut button opens the same list.
+  // The strip's shortcut button opens the same list, and so does the app menu.
+  await openPage(session, "Main");
   await session.getByRole("toolbar", { name: "Quick access" }).getByRole("button", { name: "Keyboard Shortcuts" }).click();
+  await expect(list).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(list).toHaveCount(0);
+  await appMenu(page.locator("#one"), "Keyboard Shortcuts");
   await expect(list).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(list).toHaveCount(0);
@@ -233,6 +240,6 @@ test("WB6l read only: the editor and the strip show but write nothing; the keys 
   expect(r.ok).toBe(false);
   const mod = (await page.evaluate(() => /mac/i.test(navigator.platform))) ? "Meta" : "Control";
   await page.keyboard.press(`${mod}+Shift+KeyM`);
-  await expect(session.getByRole("tab", { name: "Matrix", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expectPage(session, "Matrix");
   expect(errors).toEqual([]);
 });

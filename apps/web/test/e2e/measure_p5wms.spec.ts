@@ -12,6 +12,7 @@
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { createInterface } from "node:readline";
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { openPage, rail } from "../nav";
 
 test.skip(({ browserName }) => browserName === "webkit", "Chromium and Firefox only");
 // Chromium's headless shell has no getUserMedia: the full Chromium, headless (as capture_p5wcap).
@@ -41,9 +42,9 @@ async function measureScreen(page: Page, venue = "Venue A", lowerVolume = true):
   const one = page.locator("#one");
   await one.getByRole("region", { name: venue }).getByRole("button", { name: "Connect" }).click();
   const session = one.getByRole("article", { name: "DSPi" });
-  await expect(session.getByRole("tab", { name: "EQ" })).toBeVisible();
+  await expect(rail(session)).toBeVisible();
   if (lowerVolume) await call(page, "write", { path: "vol.user", value: { float: -20 } });
-  await session.getByRole("tablist", { name: "Screens" }).getByRole("tab", { name: "Measure" }).click();
+  await openPage(session, "Measure");
   const screen = session.getByRole("region", { name: "Measure" });
   await expect(screen.getByRole("tablist", { name: "Measurement" })).toBeVisible();
   return screen;
@@ -339,12 +340,12 @@ test.describe("passive", () => {
       execFileSync(process.env.DSPI_TERM!, ["hub", "role", String(listed.clients[0]!.cid), "viewer", "--store", store]);
       hub = await demoHub(false, store, port);
       const session = await hubSession(page, hub, false);
-      await session.getByRole("tablist", { name: "Screens" }).getByRole("tab", { name: "Measure" }).click();
+      await openPage(session, "Measure");
       const screen = session.getByRole("region", { name: "Measure" });
       await expect(screen.getByRole("region", { name: "Passive microphone RTA" })).toContainText("hub's Viewer role");
       await passiveListens(page, screen, browserName);
       // Nothing plays: the generator stays idle (its own screen, which a Viewer may read).
-      await session.getByRole("tablist", { name: "Screens" }).getByRole("tab", { name: "Signal Generator" }).click();
+      await openPage(session, "Signal Generator");
       const gen = session.getByRole("region", { name: "Signal Generator" });
       await expect(gen.getByRole("group", { name: "Transport" }).getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);
       expect(errors).toEqual([]);

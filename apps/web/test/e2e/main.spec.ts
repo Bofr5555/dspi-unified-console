@@ -142,7 +142,7 @@ test("WB6a presets: switching asks about unsaved changes (Cancel, Discard, Save)
   const errors = errorsOf(page);
   const session = await openControl(page);
   const presets = session.getByRole("region", { name: "Presets" });
-  const picker = presets.getByRole("combobox", { name: "Preset" });
+  const picker = presets.getByRole("combobox", { name: "Preset", exact: true });
   const start = (await coreState(page)).activePresetSlot;
   const other = start === 1 ? 2 : 1;
   // A second stored slot to switch to (the demo stores only the one it runs).
@@ -210,7 +210,7 @@ test("WB6a presets: the slot menu renames, sets the default, copies and clears",
   const errors = errorsOf(page);
   const session = await openControl(page);
   const presets = session.getByRole("region", { name: "Presets" });
-  const picker = presets.getByRole("combobox", { name: "Preset" });
+  const picker = presets.getByRole("combobox", { name: "Preset", exact: true });
   // Work on slot 3, a copy of what runs, so Set as Default has something to do
   // (the demo starts on its default slot, 1).
   const start = (await coreState(page)).activePresetSlot;
@@ -389,7 +389,7 @@ test("WB6a read only: a view-only session shows the main window with every contr
   await expect(session.getByRole("region", { name: "Presets" })).toBeVisible();
   await expect(session.locator(".read-only-reason")).toHaveText("You can view this DSPi but not change it");
   for (const slider of await session.getByRole("slider").all()) await expect(slider).toBeDisabled();
-  await expect(session.getByRole("combobox", { name: "Preset" })).toBeDisabled();
+  await expect(session.getByRole("combobox", { name: "Preset", exact: true })).toBeDisabled();
   await expect(session.getByRole("button", { name: "Preset actions" })).toBeDisabled();
   for (const name of ["Mute", "Bypass"]) await expect(session.getByRole("button", { name, exact: true })).toBeDisabled();
   for (const b of await session.locator(".ch-name, .ch-mute").all()) await expect(b).toBeDisabled();
@@ -419,7 +419,7 @@ test.describe("375 px, in every browser", () => {
     expect(await overflow()).toEqual([]);
     // One column: the cards are stacked.
     const boxes = await Promise.all(
-      ["Volume", "Presets", "Inputs", "Outputs"].map((n) => session.getByRole("region", { name: n }).boundingBox()),
+      ["Presets", "Inputs", "Outputs"].map((n) => session.getByRole("region", { name: n }).boundingBox()),
     );
     for (let i = 1; i < boxes.length; i++) expect(boxes[i]!.y).toBeGreaterThan(boxes[i - 1]!.y + boxes[i - 1]!.height - 1);
     const height = (await screen.boundingBox())!.height;
