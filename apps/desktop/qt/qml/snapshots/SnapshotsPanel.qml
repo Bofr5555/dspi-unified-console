@@ -15,15 +15,11 @@ import UConsole
 // section lists the hub's (the hub's copy wins on an id both hold): recall one
 // from the hub, copy it here, delete it (an Admin of the hub); "Save to the
 // Hub" files the selected one of this console there.
-ToolWindow {
-    id: window
-    objectName: "SnapshotsWindow"
-    windowId: "snapshots"
-    defaultWidth: 680
-    defaultHeight: 720   // -- WP P2QT -- room for "On the Hub"
-    minimumWidth: 520
-    minimumHeight: 460
-    title: qsTr("Snapshots")
+// -- WP LAY1b -- A panel (Panel.qml): PanelTable's row for device.snapshots gives
+// its window's title and sizes.
+Panel {
+    id: panel
+    objectName: "SnapshotsPanel"
 
     readonly property bool hasDevice: DeviceModel.connected
     readonly property bool writable: hasDevice && !DeviceModel.readOnly
@@ -35,7 +31,7 @@ ToolWindow {
         return null
     }
 
-    onVisibleChanged: if (visible) SnapshotsController.reload()
+    onShownChanged: if (shown) SnapshotsController.reload()
 
     // A side's button: "A: Bench" for a snapshot, "A" alone for the state the
     // compare captured
@@ -91,7 +87,7 @@ ToolWindow {
         RowLayout {
             objectName: "SnapshotsWindow.captureRow"
             Layout.fillWidth: true
-            visible: !window.simple
+            visible: !panel.simple
             spacing: Theme.spacingSmall
             BorderedField {
                 id: captureName
@@ -100,7 +96,7 @@ ToolWindow {
                 Layout.preferredWidth: 200
                 label: qsTr("New snapshot's name")
                 placeholderText: qsTr("Name")
-                enabled: window.hasDevice
+                enabled: panel.hasDevice
                 onAccepted: captureButton.clicked()
             }
             BorderedField {
@@ -110,7 +106,7 @@ ToolWindow {
                 Layout.preferredWidth: 300
                 label: qsTr("New snapshot's note")
                 placeholderText: qsTr("Note (optional)")
-                enabled: window.hasDevice
+                enabled: panel.hasDevice
                 onAccepted: captureButton.clicked()
             }
             AppButton {
@@ -119,7 +115,7 @@ ToolWindow {
                 text: qsTr("Capture")
                 iconName: "plus"
                 primary: true
-                enabled: window.hasDevice && !SnapshotsController.busy
+                enabled: panel.hasDevice && !SnapshotsController.busy
                 toolTip: qsTr("Keep the device's settings as they are now")
                 onClicked: {
                     SnapshotsController.capture(captureName.text, captureNote.text)
@@ -150,7 +146,7 @@ ToolWindow {
                 ScrollBar.vertical: AppScrollBar {}
                 Accessible.role: Accessible.List
                 Accessible.name: qsTr("Snapshots")
-                onCurrentIndexChanged: if (currentIndex >= 0 && currentIndex < count) window.selectedId = model[currentIndex].id
+                onCurrentIndexChanged: if (currentIndex >= 0 && currentIndex < count) panel.selectedId = model[currentIndex].id
 
                 delegate: Rectangle {
                     id: row
@@ -159,14 +155,14 @@ ToolWindow {
                     objectName: "SnapshotsWindow.row." + index
                     width: ListView.view.width
                     height: Theme.rowHeight + 14
-                    color: window.selectedId === row.modelData.id ? Theme.selection
+                    color: panel.selectedId === row.modelData.id ? Theme.selection
                          : index % 2 ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.03) : "transparent"
                     TapHandler {
                         onTapped: {
                             list.currentIndex = row.index
-                            window.selectedId = row.modelData.id
+                            panel.selectedId = row.modelData.id
                         }
-                        onDoubleTapped: if (window.writable) SnapshotsController.recall(row.modelData.id)
+                        onDoubleTapped: if (panel.writable) SnapshotsController.recall(row.modelData.id)
                     }
                     RowLayout {
                         anchors.fill: parent
@@ -225,8 +221,8 @@ ToolWindow {
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.Wrap
                     visible: list.count === 0
-                    text: !window.hasDevice ? qsTr("No Device Connected")
-                          : window.simple ? qsTr("No snapshots of this device yet. They are captured in Advanced mode.")
+                    text: !panel.hasDevice ? qsTr("No Device Connected")
+                          : panel.simple ? qsTr("No snapshots of this device yet. They are captured in Advanced mode.")
                                           : qsTr("No snapshots of this device yet. Capture keeps its settings as they are now.")
                     font: Theme.fontBody
                     color: Theme.textMuted
@@ -238,19 +234,19 @@ ToolWindow {
         RowLayout {
             objectName: "SnapshotsWindow.editRow"
             Layout.fillWidth: true
-            visible: !window.simple
+            visible: !panel.simple
             spacing: Theme.spacingSmall
-            enabled: window.selected !== null
+            enabled: panel.selected !== null
             BorderedField {
                 objectName: "SnapshotsWindow.name"
                 Layout.fillWidth: true
                 Layout.preferredWidth: 200
                 label: qsTr("Snapshot name")
                 placeholderText: qsTr("Name")
-                text: window.selected ? window.selected.name : ""
+                text: panel.selected ? panel.selected.name : ""
                 onCommitted: text => {
-                    if (window.selected && text.trim().length && text !== window.selected.name)
-                        SnapshotsController.rename(window.selectedId, text)
+                    if (panel.selected && text.trim().length && text !== panel.selected.name)
+                        SnapshotsController.rename(panel.selectedId, text)
                 }
             }
             BorderedField {
@@ -259,9 +255,9 @@ ToolWindow {
                 Layout.preferredWidth: 300
                 label: qsTr("Snapshot note")
                 placeholderText: qsTr("Note")
-                text: window.selected ? window.selected.note : ""
+                text: panel.selected ? panel.selected.note : ""
                 onCommitted: text => {
-                    if (window.selected && text !== window.selected.note) SnapshotsController.setNote(window.selectedId, text)
+                    if (panel.selected && text !== panel.selected.note) SnapshotsController.setNote(panel.selectedId, text)
                 }
             }
         }
@@ -271,32 +267,32 @@ ToolWindow {
             AppButton {
                 objectName: "SnapshotsWindow.recall"
                 text: qsTr("Recall")
-                enabled: window.selected !== null && window.writable && !SnapshotsController.guardWaiting
+                enabled: panel.selected !== null && panel.writable && !SnapshotsController.guardWaiting
                 toolTip: qsTr("Put the device back to this snapshot")
-                onClicked: SnapshotsController.recall(window.selectedId)
+                onClicked: SnapshotsController.recall(panel.selectedId)
             }
             AppButton {
                 objectName: "SnapshotsWindow.compare"
                 text: qsTr("Compare with Current")
-                enabled: window.selected !== null && window.writable && !SnapshotsController.abActive
+                enabled: panel.selected !== null && panel.writable && !SnapshotsController.abActive
                          && !SnapshotsController.guardWaiting
                 toolTip: qsTr("A is the device as it is now, B this snapshot")
-                onClicked: SnapshotsController.abStart("", window.selectedId)
+                onClicked: SnapshotsController.abStart("", panel.selectedId)
             }
             AppButton {
                 objectName: "SnapshotsWindow.export"
                 text: qsTr("Export…")
                 iconName: "file-down"
-                visible: !window.simple
-                enabled: window.selected !== null
-                onClicked: SnapshotsController.exportSnapshot(window.selectedId)
+                visible: !panel.simple
+                enabled: panel.selected !== null
+                onClicked: SnapshotsController.exportSnapshot(panel.selectedId)
             }
             AppButton {
                 objectName: "SnapshotsWindow.import"
                 text: qsTr("Import…")
                 iconName: "file-up"
-                visible: !window.simple
-                enabled: window.hasDevice
+                visible: !panel.simple
+                enabled: panel.hasDevice
                 toolTip: qsTr("Keep a configuration file as a snapshot of this device")
                 onClicked: SnapshotsController.importSnapshot()
             }
@@ -305,19 +301,19 @@ ToolWindow {
                 objectName: "SnapshotsWindow.delete"
                 text: qsTr("Delete…")
                 iconName: "trash"
-                visible: !window.simple
-                enabled: window.selected !== null
+                visible: !panel.simple
+                enabled: panel.selected !== null
                 onClicked: {
-                    deleteQuestion.snapshotId = window.selectedId
+                    deleteQuestion.snapshotId = panel.selectedId
                     //: %1 is the snapshot's name
-                    deleteQuestion.text = qsTr("Delete the snapshot “%1”? It cannot be brought back.").arg(window.selected.name)
+                    deleteQuestion.text = qsTr("Delete the snapshot “%1”? It cannot be brought back.").arg(panel.selected.name)
                     deleteQuestion.open()
                 }
             }
         }
         RowLayout {
             Layout.fillWidth: true
-            visible: !window.simple   // -- WP P1DCFIX --
+            visible: !panel.simple   // -- WP P1DCFIX --
             spacing: Theme.spacingSmall
             AppCheckBox {
                 objectName: "SnapshotsWindow.rollback"
@@ -385,7 +381,7 @@ ToolWindow {
                 ScrollBar.vertical: AppScrollBar {}
                 Accessible.role: Accessible.List
                 Accessible.name: qsTr("Snapshots on the hub")
-                onCurrentIndexChanged: if (currentIndex >= 0 && currentIndex < count) window.hubSelectedId = model[currentIndex].id
+                onCurrentIndexChanged: if (currentIndex >= 0 && currentIndex < count) panel.hubSelectedId = model[currentIndex].id
                 delegate: Rectangle {
                     id: hubRow
                     required property var modelData
@@ -393,14 +389,14 @@ ToolWindow {
                     objectName: "SnapshotsWindow.hubRow." + index
                     width: ListView.view.width
                     height: Theme.rowHeight + 6
-                    color: window.hubSelectedId === hubRow.modelData.id ? Theme.selection
+                    color: panel.hubSelectedId === hubRow.modelData.id ? Theme.selection
                          : index % 2 ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.03) : "transparent"
                     TapHandler {
                         onTapped: {
                             hubList.currentIndex = hubRow.index
-                            window.hubSelectedId = hubRow.modelData.id
+                            panel.hubSelectedId = hubRow.modelData.id
                         }
-                        onDoubleTapped: if (window.writable) SnapshotsController.recallFromHub(hubRow.modelData.id)
+                        onDoubleTapped: if (panel.writable) SnapshotsController.recallFromHub(hubRow.modelData.id)
                     }
                     RowLayout {
                         anchors.fill: parent
@@ -452,28 +448,28 @@ ToolWindow {
                 objectName: "SnapshotsWindow.saveToHub"
                 text: qsTr("Save Selected to the Hub")
                 iconName: "network"
-                visible: !window.simple
-                enabled: window.selected !== null && window.selected.where !== "both" && !SnapshotsController.busy
+                visible: !panel.simple
+                enabled: panel.selected !== null && panel.selected.where !== "both" && !SnapshotsController.busy
                          && !DeviceModel.readOnly
                 toolTip: qsTr("Keep the snapshot selected above on the hub too, for every console")
-                onClicked: SnapshotsController.saveToHub(window.selectedId)
+                onClicked: SnapshotsController.saveToHub(panel.selectedId)
             }
             AppButton {
                 objectName: "SnapshotsWindow.hubRecall"
                 text: qsTr("Recall")
                 Accessible.name: qsTr("Recall from the hub")
-                enabled: window.hubSelected !== null && window.writable && !SnapshotsController.guardWaiting
+                enabled: panel.hubSelected !== null && panel.writable && !SnapshotsController.guardWaiting
                 toolTip: qsTr("Put the device back to the hub's snapshot")
-                onClicked: SnapshotsController.recallFromHub(window.hubSelectedId)
+                onClicked: SnapshotsController.recallFromHub(panel.hubSelectedId)
             }
             AppButton {
                 objectName: "SnapshotsWindow.hubCopy"
                 text: qsTr("Copy Here")
                 iconName: "download"
-                visible: !window.simple
-                enabled: window.hubSelected !== null && window.hubSelected.where === "hub" && !SnapshotsController.busy
+                visible: !panel.simple
+                enabled: panel.hubSelected !== null && panel.hubSelected.where === "hub" && !SnapshotsController.busy
                 toolTip: qsTr("Keep a copy of the hub's snapshot on this console")
-                onClicked: SnapshotsController.copyHere(window.hubSelectedId)
+                onClicked: SnapshotsController.copyHere(panel.hubSelectedId)
             }
             Item { Layout.fillWidth: true }
             AppButton {
@@ -481,12 +477,12 @@ ToolWindow {
                 text: qsTr("Delete…")
                 Accessible.name: qsTr("Delete from the hub")
                 iconName: "trash"
-                visible: !window.simple
-                enabled: window.hubSelected !== null && !DeviceModel.readOnly
+                visible: !panel.simple
+                enabled: panel.hubSelected !== null && !DeviceModel.readOnly
                 onClicked: {
-                    hubDeleteQuestion.snapshotId = window.hubSelectedId
+                    hubDeleteQuestion.snapshotId = panel.hubSelectedId
                     //: %1 is the snapshot's name
-                    hubDeleteQuestion.text = qsTr("Delete the snapshot “%1” from the hub? Every console loses it; a copy kept on a console stays there.").arg(window.hubSelected.name)
+                    hubDeleteQuestion.text = qsTr("Delete the snapshot “%1” from the hub? Every console loses it; a copy kept on a console stays there.").arg(panel.hubSelected.name)
                     hubDeleteQuestion.open()
                 }
             }
@@ -513,7 +509,7 @@ ToolWindow {
                 objectName: "SnapshotsWindow.abA"
                 Layout.fillWidth: true
                 label: qsTr("A side")
-                model: window.aChoices.map(r => r.name)
+                model: panel.aChoices.map(r => r.name)
                 currentIndex: 0
             }
             Text {
@@ -526,17 +522,17 @@ ToolWindow {
                 objectName: "SnapshotsWindow.abB"
                 Layout.fillWidth: true
                 label: qsTr("B side")
-                model: window.bChoices.map(r => r.name)
-                currentIndex: window.bChoices.length ? 0 : -1
+                model: panel.bChoices.map(r => r.name)
+                currentIndex: panel.bChoices.length ? 0 : -1
             }
             AppButton {
                 objectName: "SnapshotsWindow.abStart"
                 text: qsTr("Start")
-                enabled: window.writable && bPicker.currentIndex >= 0 && !SnapshotsController.guardWaiting
+                enabled: panel.writable && bPicker.currentIndex >= 0 && !SnapshotsController.guardWaiting
                          && (aPicker.currentIndex <= 0
-                             || window.aChoices[aPicker.currentIndex].id !== window.bChoices[bPicker.currentIndex].id)
-                onClicked: SnapshotsController.abStart(window.aChoices[Math.max(0, aPicker.currentIndex)].id,
-                                                       window.bChoices[bPicker.currentIndex].id)
+                             || panel.aChoices[aPicker.currentIndex].id !== panel.bChoices[bPicker.currentIndex].id)
+                onClicked: SnapshotsController.abStart(panel.aChoices[Math.max(0, aPicker.currentIndex)].id,
+                                                       panel.bChoices[bPicker.currentIndex].id)
             }
         }
         RowLayout {
@@ -545,7 +541,7 @@ ToolWindow {
             spacing: Theme.spacingSmall
             AppButton {
                 objectName: "SnapshotsWindow.abSideA"
-                text: window.sideName("A", SnapshotsController.abAName)
+                text: panel.sideName("A", SnapshotsController.abAName)
                 primary: SnapshotsController.abSide === "a"
                 enabled: SnapshotsController.canToggle
                 onClicked: if (SnapshotsController.abSide !== "a") SnapshotsController.abToggle()
@@ -553,7 +549,7 @@ ToolWindow {
             }
             AppButton {
                 objectName: "SnapshotsWindow.abSideB"
-                text: window.sideName("B", SnapshotsController.abBName)
+                text: panel.sideName("B", SnapshotsController.abBName)
                 primary: SnapshotsController.abSide === "b"
                 enabled: SnapshotsController.canToggle
                 onClicked: if (SnapshotsController.abSide !== "b") SnapshotsController.abToggle()

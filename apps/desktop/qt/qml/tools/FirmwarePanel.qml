@@ -7,24 +7,22 @@ import UConsole
 // versions in play and the image, the four steps, one card for the state the
 // installer is in, the BOOTSEL hints, and the buttons. FirmwareController
 // does the work; nothing is written before Update Firmware.
-ToolWindow {
-    id: window
-    objectName: "FirmwareWindow"
-    windowId: "firmware"
-    defaultWidth: 460
-    defaultHeight: 470
-    minimumWidth: 460
+// -- WP LAY1b -- A panel (Panel.qml): PanelTable's row for device.firmwareUpdate gives
+// its window's title and sizes.
+Panel {
+    id: panel
+    objectName: "FirmwarePanel"
     // -- WP PGQT -- room for the image note or the generation change when one shows
     minimumHeight: 470 + (fw.generationChange.length > 0 || fw.imageNote.length > 0 ? 64 : 0)
-    title: qsTr("Firmware Update")
 
     readonly property var fw: FirmwareController
 
-    onVisibleChanged: {
-        FirmwareController.windowShown(visible)
+    onShownChanged: {
+        FirmwareController.windowShown(shown)
         // A question asked before the window showed (the wizard's run)
-        if (visible && FirmwareController.guardAsking) guard.open()
+        if (shown && FirmwareController.guardAsking) guard.open()
     }
+    Component.onDestruction: if (shown) FirmwareController.windowShown(false)   // -- WP LAY1b -- a page host unloaded
 
     // One "LABEL   value" line with a fixed label column (the Mac's LabeledValueRow)
     component ValueRow: RowLayout {
@@ -76,7 +74,7 @@ ToolWindow {
                 }
                 Text {
                     objectName: "FirmwareWindow.subtitle"
-                    text: qsTr("Install firmware %1 onto a DSPi board").arg(window.fw.imageVersion)
+                    text: qsTr("Install firmware %1 onto a DSPi board").arg(panel.fw.imageVersion)
                     font: Theme.fontCaption
                     color: Theme.textMuted
                 }
@@ -104,14 +102,14 @@ ToolWindow {
                     objectName: "FirmwareWindow.expected"
                     Layout.fillWidth: true
                     label: qsTr("This Console")
-                    value: window.fw.expectedVersion.length ? window.fw.expectedVersion : qsTr("unknown")
+                    value: panel.fw.expectedVersion.length ? panel.fw.expectedVersion : qsTr("unknown")
                 }
                 ValueRow {
                     objectName: "FirmwareWindow.device"
                     Layout.fillWidth: true
                     label: qsTr("Connected device")
-                    value: window.fw.runningVersion.length ? window.fw.runningVersion : qsTr("None")
-                    muted: window.fw.runningVersion.length === 0
+                    value: panel.fw.runningVersion.length ? panel.fw.runningVersion : qsTr("None")
+                    muted: panel.fw.runningVersion.length === 0
                 }
                 RowLayout {
                     Layout.fillWidth: true
@@ -119,12 +117,12 @@ ToolWindow {
                     ValueRow {
                         objectName: "FirmwareWindow.image"
                         Layout.fillWidth: true
-                        label: window.fw.custom ? qsTr("Custom image") : qsTr("Bundled image")
-                        value: window.fw.imageName
+                        label: panel.fw.custom ? qsTr("Custom image") : qsTr("Bundled image")
+                        value: panel.fw.imageName
                     }
                     Icon {
                         objectName: "FirmwareWindow.imageChecked"
-                        visible: window.fw.imageChecked
+                        visible: panel.fw.imageChecked
                         name: "circle-check"
                         size: 14
                         color: Theme.success
@@ -137,14 +135,14 @@ ToolWindow {
                     AppButton {
                         objectName: "FirmwareWindow.chooseImage"
                         text: qsTr("Choose .uf2…")
-                        enabled: !window.fw.confirmed
+                        enabled: !panel.fw.confirmed
                         onClicked: FirmwareController.chooseCustomImage()
                     }
                     AppButton {
                         objectName: "FirmwareWindow.useBundled"
-                        visible: window.fw.custom
+                        visible: panel.fw.custom
                         text: qsTr("Use this Console's firmware instead")
-                        enabled: !window.fw.confirmed
+                        enabled: !panel.fw.confirmed
                         onClicked: FirmwareController.useBundledImage()
                     }
                     Item { Layout.fillWidth: true }
@@ -153,7 +151,7 @@ ToolWindow {
                     objectName: "FirmwareWindow.imageProblem"
                     Layout.fillWidth: true
                     visible: text.length > 0
-                    text: window.fw.imageProblem
+                    text: panel.fw.imageProblem
                     font: Theme.fontSmall
                     color: Theme.warning
                     wrapMode: Text.Wrap
@@ -163,12 +161,12 @@ ToolWindow {
                 ColumnLayout {
                     objectName: "FirmwareWindow.unverified"
                     Layout.fillWidth: true
-                    visible: window.fw.unverifiedLabel.length > 0
+                    visible: panel.fw.unverifiedLabel.length > 0
                     spacing: 2
                     Text {
                         objectName: "FirmwareWindow.unverifiedLabel"
                         Layout.fillWidth: true
-                        text: window.fw.unverifiedLabel
+                        text: panel.fw.unverifiedLabel
                         font: Qt.font({ pixelSize: 13, weight: Font.DemiBold })
                         color: Theme.text
                         wrapMode: Text.Wrap
@@ -176,7 +174,7 @@ ToolWindow {
                     Text {
                         Layout.fillWidth: true
                         visible: text.length > 0
-                        text: window.fw.unverifiedText
+                        text: panel.fw.unverifiedText
                         font: Theme.fontSmall
                         color: Theme.textMuted
                         wrapMode: Text.Wrap
@@ -185,7 +183,7 @@ ToolWindow {
                 RowLayout {
                     objectName: "FirmwareWindow.downgradeNote"
                     Layout.fillWidth: true
-                    visible: window.fw.downgrade && !window.fw.custom
+                    visible: panel.fw.downgrade && !panel.fw.custom
                     spacing: 6
                     Icon {
                         name: "arrow-down-to-line"
@@ -207,7 +205,7 @@ ToolWindow {
                     objectName: "FirmwareWindow.imageNote"
                     Layout.fillWidth: true
                     visible: text.length > 0
-                    text: window.fw.imageNote
+                    text: panel.fw.imageNote
                     font: Theme.fontSmall
                     color: Theme.warning
                     wrapMode: Text.Wrap
@@ -216,7 +214,7 @@ ToolWindow {
                     objectName: "FirmwareWindow.generationChange"
                     Layout.fillWidth: true
                     visible: text.length > 0
-                    text: window.fw.generationChange
+                    text: panel.fw.generationChange
                     font: Theme.fontSmall
                     color: Theme.text
                     wrapMode: Text.Wrap
@@ -231,7 +229,7 @@ ToolWindow {
                 Layout.leftMargin: Theme.spacingSmall
                 Layout.rightMargin: Theme.spacingSmall
                 spacing: 0
-                opacity: window.fw.failed ? 0.4 : 1
+                opacity: panel.fw.failed ? 0.4 : 1
                 readonly property var labels: [qsTr("Prepare"), qsTr("Write"), qsTr("Verify"), qsTr("Done")]
                 Repeater {
                     model: steps.labels
@@ -239,7 +237,7 @@ ToolWindow {
                         id: stepItem
                         required property int index
                         required property string modelData
-                        readonly property int current: window.fw.step
+                        readonly property int current: panel.fw.step
                         readonly property bool last: index === steps.labels.length - 1
                         Layout.fillWidth: index > 0
                         spacing: 0
@@ -299,26 +297,26 @@ ToolWindow {
                         id: statusIcon
                         objectName: "FirmwareWindow.statusIcon"
                         anchors.centerIn: parent
-                        size: window.fw.stage === "verified" ? 32 : 28
-                        name: window.fw.statusBusy ? "loader-circle" : window.fw.statusIcon
-                        color: window.fw.statusTint === "success" ? Theme.success
-                             : window.fw.statusTint === "warning" ? Theme.warning
-                             : window.fw.statusTint === "muted" ? Theme.textMuted
+                        size: panel.fw.stage === "verified" ? 32 : 28
+                        name: panel.fw.statusBusy ? "loader-circle" : panel.fw.statusIcon
+                        color: panel.fw.statusTint === "success" ? Theme.success
+                             : panel.fw.statusTint === "warning" ? Theme.warning
+                             : panel.fw.statusTint === "muted" ? Theme.textMuted
                              : Theme.accentText
                         RotationAnimator on rotation {
-                            running: window.fw.statusBusy && window.visible
+                            running: panel.fw.statusBusy && panel.shown
                             from: 0
                             to: 360
                             duration: 1100
                             loops: Animation.Infinite
                         }
-                        onNameChanged: if (!window.fw.statusBusy) rotation = 0
+                        onNameChanged: if (!panel.fw.statusBusy) rotation = 0
                     }
                 }
                 Text {
                     objectName: "FirmwareWindow.statusTitle"
                     Layout.alignment: Qt.AlignHCenter
-                    text: window.fw.statusTitle
+                    text: panel.fw.statusTitle
                     font.pixelSize: Theme.fontBody.pixelSize
                     font.bold: true
                     color: Theme.text
@@ -329,14 +327,14 @@ ToolWindow {
                     Layout.maximumWidth: 340
                     Layout.alignment: Qt.AlignHCenter
                     horizontalAlignment: Text.AlignHCenter
-                    text: window.fw.statusMessage
+                    text: panel.fw.statusMessage
                     font: Theme.fontSmall
                     color: Theme.textMuted
                     wrapMode: Text.Wrap
                 }
                 ColumnLayout {
                     objectName: "FirmwareWindow.writing"
-                    visible: window.fw.stage === "writing"
+                    visible: panel.fw.stage === "writing"
                     Layout.fillWidth: true
                     spacing: 4
                     ProgressBar {
@@ -346,27 +344,27 @@ ToolWindow {
                     }
                     ValueRow {
                         Layout.fillWidth: true
-                        visible: window.fw.boardName.length > 0
+                        visible: panel.fw.boardName.length > 0
                         label: qsTr("Board")
-                        value: window.fw.boardName
+                        value: panel.fw.boardName
                     }
                     ValueRow {
                         Layout.fillWidth: true
                         label: qsTr("Firmware")
-                        value: window.fw.imageVersion
+                        value: panel.fw.imageVersion
                     }
                 }
                 Item { Layout.fillHeight: true }
                 Accessible.role: Accessible.StatusBar
-                Accessible.name: window.fw.statusTitle
-                Accessible.description: window.fw.statusMessage
+                Accessible.name: panel.fw.statusTitle
+                Accessible.description: panel.fw.statusMessage
             }
 
             // ---- BOOTSEL by hand ----
             RowLayout {
                 objectName: "FirmwareWindow.bootselHint"
                 Layout.fillWidth: true
-                visible: window.fw.showBootselHint
+                visible: panel.fw.showBootselHint
                 spacing: Theme.spacingSmall
                 Icon {
                     Layout.alignment: Qt.AlignTop
@@ -385,7 +383,7 @@ ToolWindow {
             RowLayout {
                 objectName: "FirmwareWindow.manualHint"
                 Layout.fillWidth: true
-                visible: !window.fw.showBootselHint && window.fw.showManualHint && !window.fw.noUpdate   // -- WP PGQT --
+                visible: !panel.fw.showBootselHint && panel.fw.showManualHint && !panel.fw.noUpdate   // -- WP PGQT --
                 spacing: 4
                 Text {
                     text: qsTr("Flashing a UF2 of your own?")
@@ -424,7 +422,7 @@ ToolWindow {
             Layout.topMargin: Theme.spacing
             Layout.bottomMargin: Theme.spacing
             spacing: Theme.spacingSmall
-            readonly property bool done: window.fw.stage === "verified"
+            readonly property bool done: panel.fw.stage === "verified"
             AppButton {
                 objectName: "FirmwareWindow.another"
                 visible: parent.done
@@ -435,11 +433,11 @@ ToolWindow {
                 objectName: "FirmwareWindow.cancel"
                 visible: !parent.done
                 text: qsTr("Cancel")
-                onClicked: window.close()
+                onClicked: panel.close()
             }
             AppButton {
                 objectName: "FirmwareWindow.export"
-                visible: !parent.done && window.fw.showExport
+                visible: !parent.done && panel.fw.showExport
                 enabled: !DeviceInfoController.sender   // -- WP QTSENDER -- the sender has no configuration to export
                 text: qsTr("Export Configuration…")
                 onClicked: FirmwareController.exportConfiguration()
@@ -450,28 +448,28 @@ ToolWindow {
                 visible: parent.done
                 primary: true
                 text: qsTr("Done")
-                onClicked: window.close()
+                onClicked: panel.close()
             }
             AppButton {
                 objectName: "FirmwareWindow.primary"
-                visible: !parent.done && window.fw.primaryText.length > 0
+                visible: !parent.done && panel.fw.primaryText.length > 0
                 primary: true
-                text: window.fw.primaryText
-                enabled: window.fw.failed || (!window.fw.confirmed && !window.fw.guardAsking
-                                              && (!window.fw.custom || window.fw.imageProblem.length === 0)
-                                              && window.fw.imageNote.length === 0)   // -- WP PGQT --
-                onClicked: window.fw.failed ? FirmwareController.resetRun() : FirmwareController.start()
+                text: panel.fw.primaryText
+                enabled: panel.fw.failed || (!panel.fw.confirmed && !panel.fw.guardAsking
+                                              && (!panel.fw.custom || panel.fw.imageProblem.length === 0)
+                                              && panel.fw.imageNote.length === 0)   // -- WP PGQT --
+                onClicked: panel.fw.failed ? FirmwareController.resetRun() : FirmwareController.start()
             }
         }
     }
 
     Shortcut {
         sequences: ["Enter", "Return"]
-        enabled: !guard.visible
+        enabled: panel.shown && !guard.visible   // -- WP LAY1b -- only while it shows
         onActivated: {
-            if (window.fw.stage === "verified") window.close()
-            else if (window.fw.failed) FirmwareController.resetRun()
-            else if (window.fw.primaryText.length && !window.fw.confirmed) FirmwareController.start()
+            if (panel.fw.stage === "verified") panel.close()
+            else if (panel.fw.failed) FirmwareController.resetRun()
+            else if (panel.fw.primaryText.length && !panel.fw.confirmed) FirmwareController.start()
         }
     }
 
@@ -482,8 +480,8 @@ ToolWindow {
         parent: Overlay.overlay
         modal: true
         closePolicy: Popup.CloseOnEscape
-        width: Math.min(400, window.width - 2 * Theme.spacingLarge)
-        x: (window.width - width) / 2
+        width: Math.min(400, panel.width - 2 * Theme.spacingLarge)
+        x: (panel.width - width) / 2
         y: Theme.spacingLarge
         padding: Theme.spacingLarge
         title: qsTr("Before Installing")

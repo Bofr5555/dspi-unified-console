@@ -8,18 +8,14 @@ import UConsole
 // right a title row with back and forward through the pages visited, the page,
 // and the bars other packages register along the bottom (the save bar).
 // Edit > Settings... opens it; Help > About opens it on About.
-ToolWindow {
-    id: window
-    objectName: "SettingsWindow"
-    windowId: "settings"
-    defaultWidth: 860
-    defaultHeight: 630
-    minimumWidth: 640
-    minimumHeight: 480
-    title: qsTr("Settings")
+// -- WP LAY1b -- A panel (Panel.qml): PanelTable's row for edit.settings gives
+// its window's title and sizes.
+Panel {
+    id: panel
+    objectName: "SettingsPanel"
     // -- WP QTPOP --
     fitBodies: [page.item]
-    font: Theme.fontBody
+    windowFont: Theme.fontBody   // -- WP LAY1b -- the window's font, as before
 
     property string query: ""
     readonly property var rows: {
@@ -32,7 +28,7 @@ ToolWindow {
         return hit ? hit.id : ""
     }
 
-    onVisibleChanged: if (visible) SettingsController.ensureShown()
+    onShownChanged: if (shown) SettingsController.ensureShown()
 
     RowLayout {
         anchors.fill: parent
@@ -53,15 +49,15 @@ ToolWindow {
                     id: search
                     objectName: "Settings.search"
                     Layout.fillWidth: true
-                    onTextChanged: window.query = text
+                    onTextChanged: panel.query = text
                     // Down and Return open the first page left (behaviour.md §9)
-                    onOpenFirst: if (window.firstMatch.length) SettingsController.open(window.firstMatch)
+                    onOpenFirst: if (panel.firstMatch.length) SettingsController.open(panel.firstMatch)
                 }
 
                 Text {
                     objectName: "Settings.noMatch"
                     Layout.fillWidth: true
-                    visible: window.rows.length === 0
+                    visible: panel.rows.length === 0
                     text: qsTr("No matching settings")
                     font: Theme.fontSmall
                     color: Theme.textMuted
@@ -76,7 +72,7 @@ ToolWindow {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     clip: true
-                    model: window.rows
+                    model: panel.rows
                     boundsBehavior: Flickable.StopAtBounds
                     ScrollBar.vertical: AppScrollBar {}
                     Accessible.role: Accessible.List
@@ -135,7 +131,7 @@ ToolWindow {
                     objectName: "Settings.close"
                     iconName: "x"
                     toolTip: qsTr("Close")
-                    onClicked: window.close()
+                    onClicked: panel.close()
                 }
             }
             Rectangle {

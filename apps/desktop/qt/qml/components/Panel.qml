@@ -24,4 +24,21 @@ Item {
     // -- WP LAY1a -- Shown, and its window not minimised: while a person can
     // see it, what polls at a meter's rate may (-- WP QPI3 --)
     readonly property bool onScreen: shown && Window.visibility !== Window.Minimized
+
+    // -- WP LAY1b -- What the old windows used of their window, through the host
+    // Its window is minimised (a page host leaves it false); shown stays true
+    property bool minimized: false
+    // The least height its content needs now, when that is more than its
+    // row's minHeight (0: the row's)
+    property int minimumHeight: 0
+    // The font its Controls and popups take from their window (a window's
+    // `font`); undefined leaves the host's. A page host sets it on the page.
+    property var windowFont: undefined
+    // The person closes it (its window's close); a page host emits it when it
+    // takes the panel away for good
+    signal closing()
+    // The panel asks its host to close it: the window closes, a page host
+    // goes back or ignores it
+    signal closeRequested()
+    function close() { closeRequested() }
 }

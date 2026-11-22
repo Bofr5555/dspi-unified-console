@@ -7,7 +7,7 @@ list(APPEND DSPI_APP_SOURCES
     src/controllers/AboutController.h src/controllers/AboutController.cpp
     src/render/PinGrid.h src/render/PinGrid.cpp)
 list(APPEND DSPI_QML_FILES
-    qml/settings/SettingsWindow.qml
+    qml/settings/SettingsPanel.qml   # -- WP LAY1b -- was SettingsWindow.qml
     qml/settings/SettingsSearch.qml
     qml/settings/SettingsSidebarRow.qml
     qml/settings/SettingsPage.qml

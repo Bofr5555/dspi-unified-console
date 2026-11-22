@@ -7,17 +7,13 @@ import UConsole
 // newest first, from the core's journal (HistoryController), with Undo and
 // Redo. A change the core cannot undo (a preset load, an output switched on,
 // a flash write) is listed dimmed and stepped over by Undo.
-ToolWindow {
-    id: window
-    objectName: "HistoryWindow"
-    windowId: "history"
-    defaultWidth: 460
-    defaultHeight: 420
-    minimumWidth: 360
-    minimumHeight: 240
-    title: qsTr("History")
+// -- WP LAY1b -- A panel (Panel.qml): PanelTable's row for edit.history gives
+// its window's title and sizes.
+Panel {
+    id: panel
+    objectName: "HistoryPanel"
 
-    onVisibleChanged: if (visible) HistoryController.reload()
+    onShownChanged: if (shown) HistoryController.reload()
 
     ColumnLayout {
         anchors.fill: parent
