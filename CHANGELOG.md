@@ -41,7 +41,7 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
   placement chosen for another device. (WP MDQT2c)
 - A second layout, **Modern**: one window with a rail of sections (Overview, Equaliser, Routing, Effects, Measure, Analyse,
   Library, System, Devices, Settings), every tool on a page with tabs, the open device as a tab at the top, the volume,
-  meters, Mute and Bypass EQ in a dock along the bottom, and no menu bar (the uConsole button holds the menus, and every
+  meters, Mute and Bypass EQ in a dock along the bottom, and no menu bar (actions are where they act, and every
   keyboard shortcut works). States that limit what can be done show in a strip under the top bar; other notices are behind
   the bell. Any tool page can be opened in its own window. Settings › Appearance switches between Classic and Modern at any
   time, and arranges Modern; the device, the selected channel and open tool windows stay. **New installs start in Modern**;
@@ -56,8 +56,8 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
   beside the others, and each tab keeps its device's edits, pages, history, drafts and running measurement. Closing a
   tab asks about that device's unsaved changes; quitting asks about each open device. Classic still shows one device
   and replaces it. (WP MDQT2a, MDQT2b, MDQT2c, INT3)
-- Modern layout: the actions are where they act. A right-click (or the menu key) on a channel, a band (its row or its dot
-  on the graph), the graph or a preset slot opens its menu: rename, copy and paste, mute, identify, routing, headphone
+- Modern layout: the actions are where they act. A right-click on a channel, a band (its row or its dot on the graph), the
+  graph or a preset slot opens its menu (on the first three the menu key too): rename, copy and paste, mute, identify, routing, headphone
   profile and Clear PEQ on a channel; shape, slope, bypass, invert, copy and paste of one band, and reset on a band or
   the selected bands; add a band here, the selection, spectrum, phase, pop-out and settings on the graph; recall, save,
   rename, startup preset, copy and clear on a slot, also in the preset picker's list. Undo has a ▾ with the recent
