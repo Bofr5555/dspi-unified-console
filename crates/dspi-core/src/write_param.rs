@@ -297,6 +297,15 @@ impl DspiCore {
             Outcome::Accepted => value,
             Outcome::Triggered => Value::Trigger,
         };
+        // -- WP AIVIS -- `Session::write` journalled it: the user's log has it too
+        crate::actor::user::journalled(
+            &mut inner,
+            d.path,
+            ix,
+            None,
+            &back,
+            crate::journal::replay_source().is_some(),
+        );
         if !matches!(d.kind, Kind::Trigger)
             && let Err(e) = crate::connect::refresh_params_locked(&mut inner)
         {

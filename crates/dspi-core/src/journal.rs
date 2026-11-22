@@ -605,6 +605,15 @@ pub(crate) fn journal(inner: &mut Inner, path: &'static str, indices: &[u8], aft
 fn record(inner: &mut Inner, change: Change) {
     // -- WP MCP0 -- another actor's change: the embedder is told
     crate::actor::noted(inner, change.actor, change.path, &change.indices);
+    // -- WP AIVIS -- the user's changes, for the other actors
+    crate::actor::user::journalled(
+        inner,
+        change.path,
+        &change.indices,
+        change.before.as_ref(),
+        &change.after,
+        change.source != ChangeSource::Local,
+    );
     // -- WP P1UG -- a change that ends the history ends the group too; inside
     // a group, a value written again after another writer's change starts a
     // new step (before a band's paths are joined, so the new step holds it)

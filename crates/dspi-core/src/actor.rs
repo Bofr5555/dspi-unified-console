@@ -41,6 +41,11 @@
 //!   history: no undo, and [`DspiCore::revert_entry`] cannot undo them. A
 //!   layer that lets an agent do these must class them itself (review RA F5).
 //!
+//! - **The user took it back** (-- WP AIVIS --, [`user`]). When the embedder's
+//!   user changes a control an actor has set, the actor's next write to it is
+//!   refused too: [`user::USER_CHANGED`]. The user's changes are kept for the
+//!   actors to read ([`user::changes_since`]).
+//!
 //! The hook runs under the core's lock: it must not call the core. Outside a
 //! scope nothing of this runs beyond a thread-local look-up.
 #![warn(
@@ -49,6 +54,9 @@
     clippy::indexing_slicing,
     clippy::arithmetic_side_effects
 )]
+
+// -- WP AIVIS --
+pub mod user;
 
 use std::cell::RefCell;
 use std::marker::PhantomData;
@@ -401,7 +409,13 @@ pub(crate) fn judge(
         state: &inner.state,
         writes: &writes,
         whole,
-    })
+    })?;
+    // -- WP AIVIS -- beside the drag gate: a control the user took back. After
+    // the hook: what it holds for the user's word is asked there.
+    if user::contested(inner) {
+        user::gate(inner, &writes)?;
+    }
+    Ok(())
 }
 
 /// [`judge`] for one value: `path` at `indices` set to `after`.
