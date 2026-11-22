@@ -699,6 +699,10 @@ impl Server {
         };
         let tool = self.registry.get(tool_name);
         let gone = !self.clients.contains_key(&client);
+        let closed = c
+            .device
+            .as_deref()
+            .is_some_and(|d| self.device_core(d).is_none());
         let (state, result) = match tool {
             _ if !allow => {
                 let msg = "the user declined this change in the app; nothing was changed. \
@@ -715,6 +719,16 @@ impl Server {
                 tool_error("the agent disconnected; nothing was changed"),
             ),
             None => (ConfirmState::Gone, tool_error("no such tool")),
+            // -- WP RBFIX -- (review RB R1) never on another device
+            Some(_) if closed => {
+                let msg = "the device this was asked for is no longer open; nothing was changed";
+                self.activity.push(ActivityEntry {
+                    outcome: Outcome::Error,
+                    detail: format!("{msg} (confirmation {id})"),
+                    ..entry
+                });
+                (ConfirmState::Gone, tool_error(msg))
+            }
             Some(tool) => {
                 // A re-run has a grant, so it never holds anew.
                 let result = self.run_tool(now_ms, tool, &args, grant, entry);

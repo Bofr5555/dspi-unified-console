@@ -6,9 +6,10 @@
 //! it as a [`ConfirmEvent`] (`Server::take_confirm_events`), shows the
 //! sheet from [`Confirmation::to_json`], and answers with
 //! `Server::answer_confirmation`. **Allow** runs the call again at once with
-//! a grant for exactly the writes the user saw; anything else it would write
-//! is judged afresh. **Deny**, no answer within the hold, or the agent gone
-//! end it with nothing changed.
+//! a grant for exactly the writes the user saw, on the device the sheet named
+//! (-- WP RBFIX --); anything else it would write is judged afresh. **Deny**,
+//! no answer within the hold, the agent gone or that device closed end it with
+//! nothing changed.
 //!
 //! The agent gets the outcome one of two ways: a transport that can hold a
 //! request (`Server::handle_held`) answers it once the confirmation ends
@@ -41,7 +42,8 @@ pub enum ConfirmState {
     Denied,
     /// Nobody answered within the hold; nothing was changed.
     Expired,
-    /// The agent disconnected before the answer; nothing was changed.
+    /// The agent disconnected or its device was closed before the answer;
+    /// nothing was changed.
     Gone,
 }
 
@@ -79,7 +81,7 @@ pub struct Confirmation {
     pub expires_ms: u64,
     /// Where it stands.
     pub state: ConfirmState,
-    /// The call's arguments, for the re-run.
+    /// The call's arguments, for the re-run, with `device` filled in.
     pub(crate) args: Map<String, Value>,
     /// The tool result the agent gets, once it has ended.
     pub(crate) result: Option<Value>,
@@ -158,9 +160,15 @@ impl Confirmations {
         tool: &'static str,
         device: Option<String>,
         risks: Vec<Risk>,
-        args: Map<String, Value>,
+        mut args: Map<String, Value>,
         now_ms: u64,
     ) -> u64 {
+        // -- WP RBFIX -- (review RB R1) the re-run goes to the device the user
+        // was asked about, whichever one the app shows by then: a grant names
+        // no device.
+        if let Some(d) = &device {
+            args.insert("device".into(), json!(d));
+        }
         self.next = self.next.saturating_add(1);
         let id = self.next;
         self.list.push_back(Confirmation {

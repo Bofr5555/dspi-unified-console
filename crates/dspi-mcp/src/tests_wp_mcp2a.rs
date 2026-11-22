@@ -260,6 +260,52 @@ fn wp_mcp2a_a_louder_change_is_held_and_allow_applies_it_deny_refuses_it() {
     assert!(e.contains("no confirmation"), "{e}");
 }
 
+/// -- WP RBFIX -- review RB R1: a grant names no device, so a held call that
+/// named none is pinned to the device the user was asked about.
+#[test]
+fn wp_rbfix_allow_re_runs_on_the_device_asked_about_or_not_at_all() {
+    let (set, ids) = set_of(2);
+    let (a, b) = (set.core(&ids[0]).unwrap(), set.core(&ids[1]).unwrap());
+    let (mut s, _) = agent_server(&set, ConfirmMode::AskRisky);
+    let c = s.connect();
+    for core in [&a, &b] {
+        core.set_output_gain(2, -6.0).unwrap();
+    }
+
+    // Held with no `device` while the app shows the first; the app shows the
+    // second when the user presses Allow.
+    let louder = json!({"output": 2, "gain_db": -1.0});
+    s.set_active_device(Some(ids[0].clone()));
+    let id = held(&mut s, c, "dspi_set_gain", louder.clone());
+    assert_eq!(
+        s.waiting_confirmations()[0]["device"],
+        json!(ids[0].as_str())
+    );
+    s.set_active_device(Some(ids[1].clone()));
+    s.answer_confirmation(id, true, 1_000).unwrap();
+    assert_eq!((gain(&a, 2), gain(&b, 2)), (-1.0, -6.0));
+    assert_eq!(s.confirmation(id).unwrap().state, ConfirmState::Allowed);
+
+    // The first closed before Allow: refused, the second untouched.
+    a.set_output_gain(2, -6.0).unwrap();
+    s.set_active_device(Some(ids[0].clone()));
+    let id = held(&mut s, c, "dspi_set_gain", louder);
+    set.close(&ids[0]).unwrap();
+    s.set_active_device(Some(ids[1].clone()));
+    s.answer_confirmation(id, true, 2_000).unwrap();
+    assert_eq!(gain(&b, 2), -6.0);
+    assert_eq!(s.confirmation(id).unwrap().state, ConfirmState::Gone);
+    let w = ok(
+        &mut s,
+        c,
+        "dspi_get_confirmation",
+        json!({"confirmation_id": id}),
+    );
+    assert_eq!(w["status"], json!("gone"));
+    let text = w["result"]["content"][0]["text"].as_str().unwrap();
+    assert!(text.contains("no longer open"), "{text}");
+}
+
 #[test]
 fn wp_mcp2a_a_held_request_is_answered_when_the_user_answers_or_after_120_s() {
     let (set, ids) = set_of(1);
