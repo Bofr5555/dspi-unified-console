@@ -130,9 +130,9 @@ class Run:
         scenario = json.loads((self.dir / "scenario.json").read_text())
         for i, dev in enumerate(scenario["devices"]):
             ctl.call("DeviceRegistry", "openDemo")
-            ctl.wait(f"device {i + 1}", lambda: len(ctl.get("DeviceRegistry", "devices")) == i + 1
-                     and ctl.get("DeviceModel", "connected"))
-            time.sleep(1.5)
+            ctl.wait(f"device {i + 1}", lambda: [d.get("serial") for d in ctl.get("DeviceRegistry", "devices")]
+                     == [d["serial"] for d in scenario["devices"][:i + 1]] and ctl.get("DeviceModel", "connected"))
+            time.sleep(1)
         devices = ctl.get("DeviceRegistry", "devices")
         log("open:", [(d.get("id"), d.get("title") or d.get("label"), d.get("serial")) for d in devices])
         if [d.get("serial") for d in devices] != [d["serial"] for d in scenario["devices"]]:
@@ -220,7 +220,7 @@ class Run:
         meta = json.loads(self.meta.read_text())
         n = len(meta["steps"]) + 1
         cmd = [AGENT, "-p", prompt, "--mcp-config", str(self.dir / "agent/mcp.json"), "--strict-mcp-config",
-               "--allowedTools", "mcp__dspi", "--tools", os.environ.get("FUNCTEST_TOOLS", "ToolSearch"),
+               "--allowedTools", "mcp__dspi", "--tools", os.environ.get("FUNCTEST_TOOLS", "ToolSearch,ListMcpResourcesTool,ReadMcpResourceTool"),
                "--setting-sources", "project", "--model", MODEL, "--output-format", "stream-json", "--verbose"]
         if meta["session"]:
             cmd += ["--resume", meta["session"]]

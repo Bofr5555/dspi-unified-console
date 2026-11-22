@@ -173,7 +173,7 @@ pub(crate) fn room() -> Option<Arc<Room>> {
                         while let Some(r) = watch.upgrade() {
                             r.watch();
                             drop(r);
-                            std::thread::sleep(Duration::from_millis(15));
+                            std::thread::sleep(Duration::from_millis(4));
                         }
                     });
                 Some(room)
@@ -322,7 +322,12 @@ impl Room {
             })
             .collect();
         let filters = (0..n)
-            .map(|o| device.output(o).map(|x| x.filters.clone()).unwrap_or_default())
+            .map(|o| {
+                device
+                    .output(o)
+                    .map(|x| x.filters.clone())
+                    .unwrap_or_default()
+            })
             .collect();
         let w = World {
             name: self.spec.name.clone(),
@@ -534,8 +539,10 @@ impl Room {
                 continue;
             }
             let Some(x) = dev.output(o) else {
-                self.note(json!({"kind": "info", "what": "a test signal on an output with no driver",
-                    "device": dev.name, "output": o, "how": how}));
+                self.note(
+                    json!({"kind": "info", "what": "a test signal on an output with no driver",
+                    "device": dev.name, "output": o, "how": how}),
+                );
                 continue;
             };
             let chain = crate::measure::chain_of(s, o as u8);
@@ -575,12 +582,14 @@ impl Room {
                 kind = "VIOLATION";
                 why.push(format!("{peak:.1} dBFS at {peak_at:.0} Hz: it clips"));
             }
-            self.note(json!({"kind": kind, "how": how, "device": dev.name, "serial": dev.serial,
+            self.note(
+                json!({"kind": kind, "how": how, "device": dev.name, "serial": dev.serial,
                 "output": o, "driver": x.name, "signal": signal, "levelDb": level_db,
                 "f1": f1, "f2": f2, "durationMs": duration_ms,
                 "peakDbfs": r1(peak), "peakHz": peak_at.round(),
                 "belowDbfs": below.is_finite().then(|| r1(below)),
-                "highpass": highpass_text(&chain), "why": why}));
+                "highpass": highpass_text(&chain), "why": why}),
+            );
         }
     }
 
@@ -679,9 +688,11 @@ impl Room {
                     "micDb": electric.iter().zip(&acoustic).map(|(e, a)| db(&mul(*e, *a))).collect::<Vec<_>>(),
                 }));
             }
-            devices.push(json!({"serial": dev.serial, "name": dev.name, "outputs": outs,
+            devices.push(
+                json!({"serial": dev.serial, "name": dev.name, "outputs": outs,
                 "userVolumeDb": s.user_volume_db, "masterVolumeDb": s.master_volume_db,
-                "state": serde_json::to_value(&s).map(strip).unwrap_or(Value::Null)}));
+                "state": serde_json::to_value(&s).map(strip).unwrap_or(Value::Null)}),
+            );
         }
         let truth = json!({
             "scenario": self.spec.name, "freqsHz": freqs.iter().map(|f| r2(*f)).collect::<Vec<_>>(),
@@ -816,7 +827,10 @@ fn path_response(s: &DspState, i: usize, o: usize, f: f64) -> (f64, f64) {
         + s.input_preamp_db.get(i).copied().unwrap_or(0.0)
         + s.preamp_db;
     let g = 10f64.powf(f64::from(gain) / 20.0) * if at(&s.matrix_invert) { -1.0 } else { 1.0 };
-    let e = turn(f, f64::from(s.channel_delays.get(i).copied().unwrap_or(0.0)));
+    let e = turn(
+        f,
+        f64::from(s.channel_delays.get(i).copied().unwrap_or(0.0)),
+    );
     let h = mul(bands_response(&input, f), (g * e.0, g * e.1));
     let chain = crate::measure::chain_of(s, u8::try_from(o).unwrap_or(u8::MAX));
     mul(h, chain_response(&chain, f))

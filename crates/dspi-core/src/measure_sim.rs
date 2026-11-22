@@ -423,8 +423,10 @@ mod world {
                         }
                         v
                     };
-                    let signals: Vec<(usize, Vec<f32>, Vec<f32>)> =
-                        outs.iter().map(|o| (*o, own(*o, true), own(*o, false))).collect();
+                    let signals: Vec<(usize, Vec<f32>, Vec<f32>)> = outs
+                        .iter()
+                        .map(|o| (*o, own(*o, true), own(*o, false)))
+                        .collect();
                     let signal = |o: usize, first: bool| -> &[f32] {
                         let s = signals.iter().find(|s| s.0 == o);
                         s.map_or(&[][..], |s| if first { &s.1 } else { &s.2 })
@@ -638,13 +640,12 @@ mod world {
             let rate = st.capture_rate_hz.max(1);
             if feed.mic.is_none() {
                 let outputs = usize::from(self.lock().state.num_output_channels);
+                feed.mic = Some(SimMic::new(feed.seed, outputs, rate));
                 // -- WP FUNC1 -- in the scenario's room when there is one
                 #[cfg(feature = "sim-scenario")]
-                let mic = SimMic::in_scenario(&feed.serial, outputs, rate);
-                #[cfg(not(feature = "sim-scenario"))]
-                let mic = None;
-                feed.mic =
-                    Some(mic.unwrap_or_else(|| SimMic::new(feed.seed, outputs, rate)));
+                if let Some(mic) = SimMic::in_scenario(&feed.serial, outputs, rate) {
+                    feed.mic = Some(mic);
+                }
             }
             if st.generator_starts > feed.seen {
                 feed.seen = st.generator_starts;
@@ -688,8 +689,9 @@ mod world {
                 let (first, mut samples, clipped) = mic.block(feed.next);
                 // -- WP FUNC1 -- one room: the other devices are heard too
                 #[cfg(feature = "sim-scenario")]
-                if let Some(room) = super::scenario::room() {
-                    let at = t0 + Duration::from_secs_f64(first as f64 / f64::from(rate));
+                if let Some(room) = super::scenario::room()
+                    && let Some(at) = t0.checked_add(frames_time(first, rate))
+                {
                     room.mix(&feed.serial, at, rate, &mut samples);
                 }
                 feed.next = first.saturating_add(samples.len() as u64);
@@ -737,11 +739,19 @@ mod world {
             #[cfg(feature = "sim-scenario")]
             if let Some(room) = super::scenario::room() {
                 let r = mic.world.clock.rate_hz;
-                let from = feed.t0.unwrap_or_else(Instant::now)
-                    + Duration::from_secs_f64(feed.next as f64 / f64::from(r.max(1)));
-                room.plays(&feed.serial, from, r, mic.heard());
+                let t0 = feed.t0.unwrap_or_else(Instant::now);
+                if let Some(from) = t0.checked_add(frames_time(feed.next, r)) {
+                    room.plays(&feed.serial, from, r, mic.heard());
+                }
             }
         }
+    }
+
+    // -- WP FUNC1 --
+    /// How long `frames` at `rate` last.
+    #[cfg(feature = "sim-scenario")]
+    fn frames_time(frames: u64, rate: u32) -> Duration {
+        Duration::from_secs_f64(frames as f64 / f64::from(rate.max(1)))
     }
 
     /// Frames at `rate` in `d`, rounded down.
