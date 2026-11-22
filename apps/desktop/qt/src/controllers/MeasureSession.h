@@ -331,6 +331,9 @@ public:
     void setPassiveAveraging(const QString &averaging);
     // Reads the client read-only mode again (playBlocker); also on every snapshot
     void refreshAccess();
+    // -- WP LAY5b -- Starts the measurement thread and makes its reads of the device
+    void wake();
+    bool awake() const { return m_awake; }
 
     // ---- The documents ----
     void reloadDocuments();
@@ -441,6 +444,7 @@ private:
     bool m_starting = false;       // a run's start (the tune's too) is on its way
     bool m_liveStarting = false;
     QThread *m_thread = nullptr;
+    bool m_awake = false;      // -- WP LAY5b -- m_thread runs (wake())
     MeasureLoop *m_loop = nullptr;
     AudioCapture *m_capture = nullptr;
     bool m_shutDown = false;

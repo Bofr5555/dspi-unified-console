@@ -99,7 +99,7 @@ public:
     using Done = std::function<void(DeviceSession *session, const QString &code, const QString &error)>;
     void open(const QJsonObject &target, Done done = {}, bool activate = true);
 
-    // For the device tabs: open beside what is open, choose, close
+    // For the device tabs: open beside what is open, choose
     Q_INVOKABLE void openDemo();
     Q_INVOKABLE void openUsb(const QString &serial);
     // False for an id that is not open
@@ -107,7 +107,9 @@ public:
     void activate(DeviceSession *session);
     // The device is closed and its session goes; the main one stays, with no
     // device. With the active one closed, a neighbour becomes active.
-    Q_INVOKABLE void close(const QString &id);
+    // -- WP LAY5b -- (review RB B2) Not for QML: it asks nothing and heeds no pin.
+    // A person closes a device through DevicesController::closeOpen.
+    void close(const QString &id);
 
     // Opens under way, for the smoke driver
     int opening() const { return m_opening; }

@@ -159,9 +159,15 @@ public:
     // -- WP QP12 -- The control surfaces changed: read their pins again
     void refreshSurfacePins() { readPins(); }
 
-    // The sidebar for `query`: [{heading}] and [{id, title, icon}] rows in
+    // The sidebar for `query`: [{heading}] and [{id, title, icon, group}] rows in
     // order, only pages that match and are shown now; [] when nothing matches.
     Q_INVOKABLE QVariantList sidebarRows(const QString &query) const;
+    // -- WP LAY5b -- Page `id`'s group ("application", "display", "device",
+    // "control"; the one a hidden page is opened from): Modern's Settings tabs; and whether a
+    // group has a page now. `revision` is for QML's sake alone (a binding runs
+    // again when it moves)
+    Q_INVOKABLE QString groupOf(const QString &id) const;
+    Q_INVOKABLE bool groupShown(const QString &group, int revision = 0) const;
     // Whether page `id` matches `query` (title or search terms, ignoring case)
     Q_INVOKABLE bool matches(const QString &id, const QString &query) const;
     Q_INVOKABLE bool isShown(const QString &id) const;

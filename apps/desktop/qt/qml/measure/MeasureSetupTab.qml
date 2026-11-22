@@ -225,7 +225,7 @@ ScrollView {
                 visible: text.length > 0
                 Layout.fillWidth: true
                 textFormat: Text.PlainText
-                text: SpeakersController.said
+                text: SpeakersController.saidMeasure   // -- WP LAY5b -- not Confirm's
                 font: Theme.fontSmall
                 color: SpeakersController.saidError ? Theme.dangerText : Theme.textMuted
                 wrapMode: Text.WordWrap

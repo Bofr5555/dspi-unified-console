@@ -16,12 +16,9 @@ Panel {
     readonly property bool editable: InstallationController.editable
     fitBodies: [flick]
 
-    Binding {
-        target: InstallationController
-        property: "shown"
-        value: panel.shown
-    }
-    Component.onDestruction: if (shown) InstallationController.shown = false
+    // -- WP LAY5b -- counted: a page and a window may each show one
+    onShownChanged: InstallationController.panelShown(shown)
+    Component.onDestruction: if (shown) InstallationController.panelShown(false)
 
     function listOf(ids) {
         return ids.map(id => InstallationController.element(id, InstallationController.generation).name || id).join(", ")
@@ -264,7 +261,8 @@ Panel {
         id: footer
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
         visible: InstallationController.available
-                 && (InstallationController.mayEdit || InstallationController.dirty || InstallationController.message.length > 0)
+                 && (InstallationController.mayEdit || InstallationController.dirty || InstallationController.message.length > 0
+                     || InstallationController.lost.length > 0)
         height: visible ? bar.implicitHeight + 2 * Theme.spacing : 0
         color: Theme.panel
         Rectangle {
@@ -289,6 +287,54 @@ Panel {
                 wrapMode: Text.Wrap
                 Accessible.role: Accessible.AlertMessage
                 Accessible.name: text
+            }
+            // -- WP LAY5b -- what a Reload of a stale draft left out (the web's)
+            ColumnLayout {
+                objectName: "Installation.lost"
+                Layout.fillWidth: true
+                visible: InstallationController.lost.length > 0 && !InstallationController.stale
+                spacing: Theme.spacingSmall
+                property string shownName: InstallationController.lost.join("\n")
+                Text {
+                    Layout.fillWidth: true
+                    text: qsTr("The installation was changed elsewhere and has been read again: these changes were not saved. Make them again on the installation as it is now, or leave them.")
+                    font: Theme.fontBody
+                    color: Theme.warning
+                    wrapMode: Text.Wrap
+                    Accessible.role: Accessible.AlertMessage
+                    Accessible.name: text
+                }
+                Flickable {
+                    Layout.fillWidth: true
+                    implicitHeight: Math.min(lostText.implicitHeight, 80)
+                    contentHeight: lostText.implicitHeight
+                    clip: true
+                    ScrollBar.vertical: AppScrollBar {}
+                    Text {
+                        id: lostText
+                        width: parent.width
+                        text: InstallationController.lost.map(c => "• " + c).join("\n")
+                        textFormat: Text.PlainText
+                        font: Theme.fontSmall
+                        color: Theme.text
+                        wrapMode: Text.Wrap
+                    }
+                }
+                RowLayout {
+                    spacing: Theme.spacingSmall
+                    AppButton {
+                        objectName: "Installation.remake"
+                        text: qsTr("Make Them Again")
+                        primary: true
+                        enabled: panel.editable
+                        onClicked: InstallationController.remake()
+                    }
+                    AppButton {
+                        objectName: "Installation.dropLost"
+                        text: qsTr("Leave Them")
+                        onClicked: InstallationController.dropLost()
+                    }
+                }
             }
             Flickable {
                 Layout.fillWidth: true

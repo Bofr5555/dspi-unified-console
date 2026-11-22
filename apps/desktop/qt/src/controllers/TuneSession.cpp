@@ -62,7 +62,7 @@ void TuneSession::onSnapshot() {
     const QString serial = m_measure->connected() ? m_measure->model()->serial() : QString();
     if (serial == m_serial) return;
     m_serial = serial;
-    if (!serial.isEmpty()) reloadLayout();
+    if (!serial.isEmpty() && m_measure->awake()) reloadLayout();   // -- WP LAY5b -- else at its wake()
 }
 
 // -- WP MDQT2c -- The guard ends with the connection: without Keep it goes back

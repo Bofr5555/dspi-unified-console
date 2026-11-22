@@ -134,6 +134,7 @@ void MeasureController::onSwitched() {
     if (device == m_announced) return;
     m_announced = device;
     session()->entered();
+    if (m_panels > 0) session()->wake();   // -- WP LAY5b --
     emit deviceSwitched();
     emit deviceChanged();
     emit micChanged();
@@ -209,6 +210,19 @@ void MeasureController::showOther(const QString &id) { m_ctx.registry->activate(
 void MeasureController::stopAll() {
     for (MeasureSession *s : std::as_const(m_sessions))
         if (s->isActive() || s->underWay()) s->stop();
+}
+
+// -- WP LAY5b --
+void MeasureController::panelShown(bool shown) {
+    m_panels = qMax(0, m_panels + (shown ? 1 : -1));
+    if (!shown || m_shutDown) return;
+    session()->wake();
+    refreshAccess();
+}
+
+void MeasureController::panelClosing(bool pageRemains) {
+    if (pageRemains) session()->stop();
+    else stopAll();
 }
 
 // -- WP RBFIX --
