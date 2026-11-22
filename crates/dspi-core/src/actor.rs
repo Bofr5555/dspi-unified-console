@@ -123,7 +123,9 @@ pub fn register_actor(label: &str) -> ActorId {
 /// Whether `c` is a Unicode format character (general category `Cf`, Unicode
 /// 15.1): invisible, and some (U+202E) reorder the text around them, so an
 /// agent's label could make the History read other than it is (review RA F6).
-fn is_format(c: char) -> bool {
+/// -- WP MCP1 -- public: `dspi-mcp`'s sanitiser of untrusted text uses the
+/// same table.
+pub fn is_format(c: char) -> bool {
     matches!(
         c,
         '\u{00AD}'
@@ -199,6 +201,9 @@ pub type WriteHook = Arc<dyn Fn(&WriteProposal<'_>) -> Result<()> + Send + Sync>
 
 /// One scope on this thread.
 struct Acting {
+    // -- WP MCP1 -- (review RA, MCP0 item 6) which scope, so a drop removes
+    // its own entry even when scopes are dropped out of order
+    serial: u64,
     core: u64,
     actor: ActorId,
     hook: Option<WriteHook>,
@@ -223,10 +228,21 @@ pub(crate) fn next_core_key() -> u64 {
 /// volume and signal-generator writes, the guarded apply's revert on timeout)
 /// runs outside any scope, so it is journalled as [`EMBEDDER`] and skips the
 /// hook, whoever started it.
+///
+/// -- WP MCP1 -- (review RA, MCP0 item 6) Also:
+/// - `actor` is never [`EMBEDDER`]: a scope for the app itself would only
+///   skip the drag gate's exemption and the own-entry rule's freedom; debug
+///   builds assert it.
+/// - A thread without a scope on a core acts as [`EMBEDDER`] there, so a
+///   layer that serves an agent must enter a scope around every call it makes
+///   for it (the MCP server does, in one place: `dspi-mcp`'s registry).
+/// - Do not hold a scope across an `.await`: on a single-threaded executor
+///   other tasks' calls on that thread would be the actor's too.
+/// - Dropping scopes out of order is allowed; each removes its own entry.
 #[must_use = "the scope ends when it is dropped"]
 pub struct ActorScope<'a> {
     core: &'a DspiCore,
-    key: u64,
+    serial: u64,
     _thread: PhantomData<*const ()>,
 }
 
@@ -234,9 +250,12 @@ impl<'a> ActorScope<'a> {
     /// Make this thread's calls on `core` `actor`'s until the scope is
     /// dropped, each write judged by `hook` first when there is one.
     pub fn enter(core: &'a DspiCore, actor: ActorId, hook: Option<WriteHook>) -> Self {
+        debug_assert!(actor != EMBEDDER, "an ActorScope is for another actor");
         let key = core.lock().actor_key;
+        let serial = next_scope_serial();
         ACTING.with(|a| {
             a.borrow_mut().push(Acting {
+                serial,
                 core: key,
                 actor,
                 hook,
@@ -244,10 +263,16 @@ impl<'a> ActorScope<'a> {
         });
         Self {
             core,
-            key,
+            serial,
             _thread: PhantomData,
         }
     }
+}
+
+/// A new scope's serial. -- WP MCP1 --
+fn next_scope_serial() -> u64 {
+    static NEXT: AtomicU64 = AtomicU64::new(1);
+    NEXT.fetch_add(1, Ordering::Relaxed)
 }
 
 impl Drop for ActorScope<'_> {
@@ -256,7 +281,7 @@ impl Drop for ActorScope<'_> {
     fn drop(&mut self) {
         ACTING.with(|a| {
             let mut a = a.borrow_mut();
-            if let Some(at) = a.iter().rposition(|s| s.core == self.key) {
+            if let Some(at) = a.iter().rposition(|s| s.serial == self.serial) {
                 a.remove(at);
             }
         });
@@ -464,3 +489,7 @@ fn state_diff(inner: &Inner, before: &DspState, after: &DspState) -> Vec<Propose
 #[allow(clippy::arithmetic_side_effects)]
 #[path = "actor/tests_wp_mcp0.rs"]
 mod tests_wp_mcp0;
+// -- WP MCP1 --
+#[cfg(test)]
+#[path = "actor/tests_wp_mcp1.rs"]
+mod tests_wp_mcp1;
