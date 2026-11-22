@@ -507,6 +507,37 @@ fn wp_p5tune_the_bass_modes_are_reduced_within_2_db() {
     );
 }
 
+// A subwoofer alone, low-passed after it was measured: its level is not judged
+// where it plays nothing (the function test's was: ten cuts of 15 dB).
+#[test]
+fn wp_func1_a_subs_eq_is_not_levelled_in_the_reference_band() {
+    let doc = MeasurementDoc::from_text(left_doc()).unwrap();
+    let mut lay = layout(&[0]);
+    lay.outputs[0].role = MeasureRole::Sub;
+    let mut now = start_chains();
+    now[0].crossover[0].freq = 120.0;
+    for low_role in [MeasureRole::Sub, MeasureRole::Low] {
+        lay.outputs[0].role = low_role;
+        let c = maths::compute(
+            &doc,
+            &ways_of(&doc, &lay, &now),
+            &MeasureTuneOptions::default(),
+            &bounds(),
+            &speakers_target(),
+            &Allow::default(),
+            &CoreSectionModel,
+        );
+        let fit = c.speakers[0].fit.as_ref().unwrap();
+        assert!(
+            fit.rms_before_db < 25.0,
+            "{low_role:?}: {}",
+            fit.rms_before_db
+        );
+        let deepest = fit.bands.iter().map(|b| b.band.gain).fold(0.0, f32::min);
+        assert!(deepest > -14.5, "{low_role:?}: {deepest}");
+    }
+}
+
 #[test]
 fn wp_p5tune_a_timing_unreliable_measurement_gets_no_timing_writes() {
     let mut doc = MeasurementDoc::from_text(left_doc()).unwrap();

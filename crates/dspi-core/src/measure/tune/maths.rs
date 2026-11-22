@@ -854,7 +854,14 @@ pub(crate) fn compute(
         };
         // The whole speaker (or a single way) holds the reference band: the
         // fit's level is anchored there (WP P5TRUST, P5FIT's level option).
-        let whole = sp.ways.len() == 1 || (sp.drivers.is_some() && sp.timing);
+        // -- WP FUNC1 -- A subwoofer does not hold it, nor a single way whose
+        // low-pass lies below it: anchored there, all its bass is "too loud".
+        let single = sp.ways.len() == 1
+            && ways.get(first).is_some_and(|w| w.role != MeasureRole::Sub)
+            && chains.get(first).and_then(lowpass_corner).is_none_or(|c| {
+                f64::from(c) >= dspi_measure::target::DEFAULT_REFERENCE_BAND.high_hz
+            });
+        let whole = single || (sp.drivers.is_some() && sp.timing);
         let anchor = if whole && !bounds.headphones {
             let band = dspi_measure::target::DEFAULT_REFERENCE_BAND;
             reference_offset_db(&base, target, band.low_hz, band.high_hz)
