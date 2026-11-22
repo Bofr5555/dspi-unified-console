@@ -4,8 +4,7 @@
 // the first, as Modern does with keepOpen on; -- WP INT3 -- an edit on each
 // stays on its own device), the
 // device switcher, the top bar, the dock, the status strip, the notification
-// drawer, and the way back to Classic. Then the Modern gallery: every page at
-// 1280x800 and the sections at 1000x660, dark and light, to gallery/modern-*.
+// drawer, and the way back to Classic. The pages' pictures are qp19-gallery's.
 #include "SmokeDriver.h"
 
 #include "ChannelController.h"   // -- WP INT3 --
@@ -617,67 +616,6 @@ void backPart(Modern &m) {
     m.check("closed, it does not", !stats->property("windowShown").toBool());
 }
 
-// Nothing of `bar` is cut off or pushed out at the window's width
-bool fits(QQuickItem *bar) {
-    if (!bar) return false;
-    const std::function<bool(QQuickItem *)> inside = [&](QQuickItem *it) {
-        for (QQuickItem *c : it->childItems()) {
-            if (!c->isVisible() || c->width() <= 0 || c->inherits("QQuickFlickable")) continue;
-            const qreal left = c->mapToItem(bar, QPointF(0, 0)).x(), right = c->mapToItem(bar, QPointF(c->width(), 0)).x();
-            if (left < -1 || right > bar->width() + 1) return false;
-        }
-        return true;
-    };
-    for (QQuickItem *row : bar->childItems())
-        if (row->isVisible() && !inside(row)) return false;
-    return inside(bar);
-}
-
-void galleryPart(Modern &m) {
-    const QSize was = m.main->size();
-    const Qt::ColorScheme before = m.shell->colorSchemeOverride();
-    QDir(m.d.outDir()).mkpath(QStringLiteral("gallery"));
-    struct Size {
-        int w, h;
-        bool every;
-    };
-    for (const Size &size : { Size{ 1280, 800, true }, Size{ 1000, 660, false } }) {
-        m.main->resize(size.w, size.h);
-        m.d.waitFor(1000, [&] { return m.main->contentItem()->width() == size.w; });
-        for (const bool dark : { true, false }) {
-            m.shell->setColorSchemeOverride(dark ? Qt::ColorScheme::Dark : Qt::ColorScheme::Light);
-            m.d.spin(300);
-            m.d.check(QStringLiteral("lay3: the top bar fits %1 px").arg(size.w), fits(m.d.item(QStringLiteral("TopBar"))));
-            m.d.check(QStringLiteral("lay3: the dock fits %1 px").arg(size.w), fits(m.d.item(QStringLiteral("Dock"))));
-            QStringList keys{ QStringLiteral("overview/overview"), QStringLiteral("equaliser/peq"), QStringLiteral("devices/devices") };
-            QStringList sections;
-            for (const QVariant &v : m.shell->panels()) {
-                const QVariantMap row = v.toMap();
-                const QString s = row.value(QStringLiteral("section")).toString();
-                if (!size.every && sections.contains(s)) continue;
-                sections << s;
-                keys << s + QLatin1Char('/') + row.value(QStringLiteral("tab")).toString();
-            }
-            for (const QString &key : std::as_const(keys)) {
-                m.go(qPrintable(key.section(QLatin1Char('/'), 0, 0)), qPrintable(key.section(QLatin1Char('/'), 1)));
-                m.d.waitIdle();
-                m.d.spin(250);
-                const QString name = QStringLiteral("gallery/modern-%1-%2-%3.png")
-                                         .arg(size.w).arg(QString(key).replace(QLatin1Char('/'), QLatin1Char('-')),
-                                                          dark ? QStringLiteral("dark") : QStringLiteral("light"));
-                m.d.check(QStringLiteral("lay3: screenshot %1").arg(name), m.d.grab(m.main, name));
-                QQuickItem *scroll = m.d.item(QStringLiteral("PageHost.page.%1.scroll").arg(key));
-                m.d.check(QStringLiteral("lay3: %1 at %2 px needs no sideways scrolling").arg(key).arg(size.w),
-                          scroll && scroll->property("contentWidth").toReal() <= scroll->width() + 0.5);
-            }
-        }
-    }
-    m.shell->setColorSchemeOverride(before);
-    m.main->resize(was);
-    m.go("overview");
-    m.d.spin(300);
-}
-
 void modernSection(SmokeDriver &d) {
     d.allowSectionTime(300);
     Modern m{ d, d.app().shell, Registrar::instance<LayoutController>(), d.mainWindow() };
@@ -714,7 +652,6 @@ void modernSection(SmokeDriver &d) {
     arrangementPart(m);
     wizardPart(m);
     senderPart(m);
-    galleryPart(m);
     backPart(m);
 
     settings->open(page);

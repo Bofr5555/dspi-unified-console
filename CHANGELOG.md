@@ -126,6 +126,15 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
 - A measurement holds every output to the strictest of the role asked for, your confirmed speaker layout's and what its
   filters show, one unit or several. Auto-tune's table follows a Confirm without Reload, and Several units starts from each
   unit's own layout. (WP RCFIX)
+- Quitting, or closing the main window, asks first while a firmware update or a core voltage calibration runs on any
+  open device, shown or not. A second quit or close while a question is open says so, instead of doing nothing. (WP LAY7)
+- A measurement an AI agent starts brings up the device it runs on (unless something runs on the one shown) and
+  Measure's fitting tab: Measure, Auto-tune or Several units. (WP LAY7)
+- Modern: menus and the command palette follow what changes while they are open; what is off (a disabled output, an Off
+  band) is dimmed no further than can be read; the rail scrolls to the section the keyboard is on; menu rows have
+  names for a screen reader; an agent's change keeps the keyboard on its Undo. (WP LAY7)
+- Several units: a unit can be chosen again right after it was unchosen. Measure chooses its outputs again when a DSPi
+  that had none (an audio link sender) has outputs again. Classic names which of several open demos it shows. (WP LAY7)
 
 ### Android
 - DSPi Link is reachable from the main page (owner report on 0.14.0: only through the settings
@@ -208,6 +217,12 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
   of claiming a configuration file brought it. (WP MCP5)
 - A measurement holds every output to the strictest of the role asked for, your confirmed speaker layout's and what its
   filters show: a tweeter that has no crossover yet is never played below 1 kHz. (WP RCFIX)
+- Web console, Modern layout: on a phone's width the top bar's buttons, menu rows, page tabs and the drawer's close are
+  44 px tap targets; a device tab shows its device's name with an ellipsis rather than a clipped start, and Search is in
+  the app menu there. Settings › Appearance › Inspector takes effect at once. Menus and the palette show only shortcuts
+  the web has (no Ctrl+Shift+H for History), and in Simple mode Open File… and New from Template… say they go to the
+  Devices page. Measuring several units no longer fails on a unit whose tab was closed: it opens its own connection.
+  (WP WEBM5)
 
 ## 0.14.0 (2026-11-20)
 

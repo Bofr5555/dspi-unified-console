@@ -23,12 +23,23 @@ Rectangle {
     Accessible.name: qsTr("Sections")
 
     Flickable {
+        id: flick
         anchors.fill: parent
         contentWidth: Math.max(width, grid.implicitWidth)
         contentHeight: Math.max(height, grid.implicitHeight + grid.anchors.topMargin + grid.anchors.bottomMargin)
         boundsBehavior: Flickable.StopAtBounds
         interactive: contentHeight > height || contentWidth > width
         clip: true
+        // -- WP LAY7 -- A section (or a device) below the edge of a low window comes
+        // into sight with the keyboard, and the current one by itself
+        ScrollBar.vertical: AppScrollBar { visible: flick.contentHeight > flick.height }
+        function reveal(item) {
+            const at = item.mapToItem(contentItem, 0, 0)
+            if (at.y < contentY) contentY = Math.max(0, at.y)
+            else if (at.y + item.height > contentY + height) contentY = Math.min(contentHeight - height, at.y + item.height)
+            if (at.x < contentX) contentX = Math.max(0, at.x)
+            else if (at.x + item.width > contentX + width) contentX = Math.min(contentWidth - width, at.x + item.width)
+        }
 
         GridLayout {
             id: grid
@@ -134,6 +145,8 @@ Rectangle {
             }
         }
         onClicked: rail.chosen(modelData.id)
+        onActiveFocusChanged: if (activeFocus) flick.reveal(button)   // -- WP LAY7 --
+        onCheckedChanged: if (checked) Qt.callLater(flick.reveal, button)
         HelpTip {
             text: button.enabled ? "" : qsTr("This is an audio link sender. It has no DSP.")
             visible: button.hovered && text.length > 0

@@ -169,8 +169,8 @@ export function actionEntry(id: string, h: Handler | undefined, session: Session
   return {
     id,
     kind: "action",
-    title: actionTitle(id, session),
-    aliases: ALIASES[id] ?? [],
+    title: h.text ?? actionTitle(id, session), // -- WP WEBM5 -- a handler's own words, as its menu row has them
+    aliases: [...(ALIASES[id] ?? []), ...(h.text ? [actionText(id)] : [])],
     keywords: [d?.text ?? "", d?.menu ?? "", actionShortcut(id)].filter(Boolean),
     where: where(id),
     keys: actionShortcut(id),

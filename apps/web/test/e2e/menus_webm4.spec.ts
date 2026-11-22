@@ -110,7 +110,13 @@ test("WEBM4: the top bar's search; greyed rows say why; other devices are a swit
   const errors = errorsOf(page);
   const { one, session } = await open(page, true);
   // Venue A on show: write rows can be chosen
-  await one.getByRole("button", { name: "Search settings, channels, commands" }).click();
+  // -- WP WEBM5 -- at 480 px and below the top bar leaves the search to the app menu
+  const search = one.getByRole("button", { name: "Search settings, channels, commands" });
+  if (await search.isVisible()) await search.click();
+  else {
+    await one.locator(".app-menu .menu > button").click();
+    await one.getByRole("menuitem", { name: "Search…" }).click();
+  }
   await field(page).fill("mute");
   await expect(option(page, /^Mute/).first()).not.toHaveAttribute("aria-disabled", "true");
   // The other device

@@ -64,6 +64,7 @@ QtObject {
         activity = [row("1:9", "", "", true, "held"), row("1:8", "", "", true, "error"), row("1:7", "", "", false), row("1:6", "can", "", true), row("1:5", "changed", "Changed since: gain", true), row("1:4", "undone", "", true),
                     row("1:3", "can", "", true), row("1:2", "can", "", true)]
     }
+    function newer() { activity = [row("1:12", "can", "", true)].concat(activity) }
     function disconnectAgent(id) { did("disconnect " + id); agents = agents.filter(a => a.id !== id); if (!agents.length) waiting() }
     function setPaused(on) { did("paused " + on); paused = on; state = on ? "paused" : "on" }
     function dismissError() { did("retry") }
@@ -213,6 +214,12 @@ void states(Lay8 &t) {
             && t.text("AiPopover.change.1.who") == QLatin1String("Changed since: gain") && !t.shows("AiPopover.change.2.undo"));
     t.check("it fits", t.fits());
     t.picture("connected");
+    // -- WP LAY7 -- a new change over the one whose Undo has the keyboard
+    if (QQuickItem *undo = t.item("AiPopover.change.0.undo")) undo->forceActiveFocus(Qt::TabFocusReason);
+    t.run("newer");
+    t.check("a new change leaves the keyboard on the same change's Undo", t.item("AiPopover.change.1.undo") && t.item("AiPopover.change.1.undo")->hasActiveFocus()
+            && !t.item("AiPopover.change.0.undo")->hasActiveFocus());
+    t.run("work");
     t.check("Undo undoes that change", t.click("AiPopover.change.0.undo") && t.last() == QLatin1String("undo 1:6"));
 
     // ---- Disconnect

@@ -79,8 +79,23 @@ Item {
         destructive: true
         onAnswered: answer => UnsavedGuard.answerSettings(answer)
     }
+    // -- WP LAY7 -- Quitting while a firmware update or a calibration runs on a device
+    QuestionDialog {
+        id: busyQuestion
+        objectName: "FilesHost.busyQuestion"
+        acceptText: qsTr("Quit")
+        rejectText: qsTr("Cancel")
+        destructive: true
+        onAnswered: answer => UnsavedGuard.answerBusy(answer)
+    }
     Connections {
         target: UnsavedGuard
+        // -- WP LAY7 --
+        function onBusyQuestion(title, text) {
+            busyQuestion.title = title
+            busyQuestion.text = text
+            busyQuestion.open()
+        }
         // -- WP QP16 --
         function onSettingsQuestion(title, text) {
             settingsQuestion.title = title

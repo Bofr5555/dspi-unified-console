@@ -1078,9 +1078,10 @@ void viewerSection(SmokeDriver &d) {
     }
     link->closeSession();
     d.waitFor(10000, [&] { return !link->busy() && !link->inSession(); });
-    device->openDemo();
+    d.waitIdle();   // -- WP LAY7 -- the demo it left comes back by itself
+    if (!device->connected() || !device->demo() || device->remote()) device->openDemo();
     d.check(QStringLiteral("p5qui2: viewer: back on the demo, the generator offered again"),
-            d.waitFor(10000, [&] { return device->connected() && device->demo() && !device->remote(); }) &&
+            d.waitFor(10000, [&] { return device->connected() && device->demo() && !device->remote(); }) && d.waitIdle() &&
                 d.waitFor(3000, [&] { return mc->playBlocker().isEmpty(); }));
 }
 

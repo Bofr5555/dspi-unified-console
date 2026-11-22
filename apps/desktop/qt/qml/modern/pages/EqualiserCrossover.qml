@@ -155,7 +155,7 @@ EqualiserSection {
                                     width: parent.width - 2 * Theme.spacing
                                     height: parent.height
                                     spacing: Theme.spacing
-                                    opacity: row.enabledOut ? 1 : 0.55
+                                    opacity: row.enabledOut ? 1 : Theme.dim(0.55)
                                     RowLayout {
                                         Layout.preferredWidth: table.nameWidth
                                         Layout.maximumWidth: table.nameWidth

@@ -33,6 +33,7 @@ Panel {
     onShownChanged: {
         MeasureController.panelShown(shown)
         leavePassive()
+        Qt.callLater(takePart)   // -- WP LAY7 -- not inside the page's own change
     }
     Component.onDestruction: if (shown) MeasureController.panelShown(false)
 
@@ -44,6 +45,16 @@ Panel {
     function showPart(id) {
         if (paged) partChosen(id)
         else if (partIds.indexOf(id) >= 0) tabs.currentIndex = partIds.indexOf(id)
+    }
+    // -- WP LAY7 -- An AI agent's start brings the tab it is run from
+    function takePart() {
+        if (!shown) return
+        const id = MeasureController.takePart()
+        if (id.length && !blocked) showPart(id)
+    }
+    Connections {
+        target: MeasureController
+        function onPartAsked() { panel.takePart() }
     }
     // Leaving the passive RTA's tab stops it (it gives the microphone back);
     // not a panel that is not shown: the other host's may be on it

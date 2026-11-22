@@ -2,12 +2,16 @@
 
 #include "Core.h"
 #include "DeviceModel.h"
+#include "LayoutController.h"   // -- WP LAY7 --
+#include "Registrar.h"          // -- WP LAY7 --
+#include "Shell.h"              // -- WP LAY7 --
 
 #include <QCoreApplication>
 #include <QDir>
 #include <QElapsedTimer>
 #include <QEventLoop>
 #include <QImage>
+#include <QJSValue>
 #include <QtQml/QQmlApplicationEngine>
 #include <QQuickItem>
 #include <QQuickWindow>
@@ -329,11 +333,30 @@ QQuickWindow *SmokeDriver::mainWindow() const {
     return roots.isEmpty() ? nullptr : qobject_cast<QQuickWindow *>(roots.first());
 }
 
-static QQuickItem *findItem(QQuickItem *scope, const QString &name) {
-    if (!scope) return nullptr;
+// -- WP LAY7 -- visible first: an item that shows, else any
+static QQuickItem *findItem(QQuickItem *scope, const QString &name, bool shown) {
+    if (!scope || (shown && !scope->isVisible())) return nullptr;
     if (scope->objectName() == name) return scope;
     for (QQuickItem *child : scope->childItems())
-        if (QQuickItem *found = findItem(child, name)) return found;
+        if (QQuickItem *found = findItem(child, name, shown)) return found;
+    return nullptr;
+}
+
+static QQuickItem *findItem(QQuickItem *scope, const QString &name) {
+    QQuickItem *found = findItem(scope, name, true);
+    return found ? found : findItem(scope, name, false);
+}
+
+// The popups below the items of a tree: one that is open, else any
+static QObject *findPopup(QQuickItem *scope, const QString &name, QObject **closed) {
+    if (!scope) return nullptr;
+    for (QObject *child : scope->children()) {
+        if (child->objectName() != name || qobject_cast<QQuickItem *>(child)) continue;
+        if (child->property("visible").toBool()) return child;
+        if (!*closed) *closed = child;
+    }
+    for (QQuickItem *child : scope->childItems())
+        if (QObject *found = findPopup(child, name, closed)) return found;
     return nullptr;
 }
 
@@ -349,8 +372,84 @@ QQuickItem *SmokeDriver::item(const QString &name, QQuickItem *scope) const {
 QObject *SmokeDriver::object(const QString &name) const {
     QQuickWindow *w = mainWindow();
     if (!w) return nullptr;
-    if (QObject *o = w->findChild<QObject *>(name)) return o;
-    return item(name);
+    // -- WP LAY7 -- visible first
+    const QList<QObject *> named = w->findChildren<QObject *>(name);
+    for (QObject *o : named) {
+        const QVariant visible = o->property("visible");
+        if (!visible.isValid() || visible.toBool()) return o;   // an Action, say, is never hidden
+    }
+    QQuickItem *it = item(name);
+    if (it && it->isVisible()) return it;
+    QObject *closed = nullptr;
+    if (QObject *open = findPopup(w->contentItem(), name, &closed)) return open;
+    if (!named.isEmpty()) return named.first();
+    return it ? it : closed;
+}
+
+// -- WP LAY7 --
+bool SmokeDriver::switchLayout(const char *layout) {
+    auto *controller = Registrar::instance<LayoutController>();
+    if (!controller) return false;
+    controller->setLayout(QString::fromLatin1(layout));
+    const QString shell = controller->modern() ? QStringLiteral("ModernShell") : QStringLiteral("ClassicShell");
+    QObject *loader = object(QStringLiteral("MainWindow.shell"));
+    const bool ok = controller->layout() == QLatin1String(layout) && waitFor(3000, [&] {
+        const QObject *now = loader ? loader->property("item").value<QObject *>() : nullptr;
+        return now && now->objectName() == shell;
+    });
+    // The old shell goes by deleteLater
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    waitIdle();
+    spin(200);
+    return ok;
+}
+
+QStringList SmokeDriver::modernTabs() const {
+    QStringList keys;
+    QObject *table = m_.engine->singletonInstance<QObject *>("UConsole", "SectionTable");
+    if (!table) return keys;
+    const auto list = [](const QVariant &v) { return v.canConvert<QJSValue>() ? v.value<QJSValue>().toVariant().toList() : v.toList(); };
+    for (const QVariant &s : list(table->property("sections"))) {
+        const QVariant id = s.toMap().value(QStringLiteral("id"));
+        QVariant tabs;
+        QMetaObject::invokeMethod(table, "tabs", Q_RETURN_ARG(QVariant, tabs), Q_ARG(QVariant, id));
+        for (const QVariant &t : list(tabs)) {
+            const QVariantMap tab = t.toMap();
+            QVariant shows;
+            QMetaObject::invokeMethod(table, "shows", Q_RETURN_ARG(QVariant, shows), Q_ARG(QVariant, id),
+                                      Q_ARG(QVariant, tab.value(QStringLiteral("tab"))));
+            if (!tab.value(QStringLiteral("quiet")).toBool() && shows.toBool())
+                keys << id.toString() + QLatin1Char('/') + tab.value(QStringLiteral("tab")).toString();
+        }
+    }
+    return keys;
+}
+
+// Nothing of `bar` is cut off or pushed out at the window's width
+bool SmokeDriver::fits(QQuickItem *bar) {
+    if (!bar) return false;
+    const std::function<bool(QQuickItem *)> inside = [&](QQuickItem *it) {
+        for (QQuickItem *c : it->childItems()) {
+            if (!c->isVisible() || c->width() <= 0 || c->inherits("QQuickFlickable")) continue;
+            const qreal left = c->mapToItem(bar, QPointF(0, 0)).x(), right = c->mapToItem(bar, QPointF(c->width(), 0)).x();
+            if (left < -1 || right > bar->width() + 1) return false;
+        }
+        return true;
+    };
+    for (QQuickItem *row : bar->childItems())
+        if (row->isVisible() && !inside(row)) return false;
+    return inside(bar);
+}
+
+bool SmokeDriver::goTo(const QString &key, int settleMs) {
+    QObject *host = m_.shell->pageHost();
+    QVariant ok;
+    if (!host) return false;
+    QMetaObject::invokeMethod(host, "go", Q_RETURN_ARG(QVariant, ok), Q_ARG(QVariant, key.section(QLatin1Char('/'), 0, 0)),
+                              Q_ARG(QVariant, key.section(QLatin1Char('/'), 1)));
+    waitIdle();
+    spin(settleMs);
+    return host->property("section").toString() + QLatin1Char('/') + host->property("tab").toString() == key;
 }
 
 bool SmokeDriver::grab(QQuickWindow *window, const QString &file) {

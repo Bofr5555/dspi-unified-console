@@ -72,3 +72,16 @@ export function historyRows(entries: readonly HistoryEntry[], label: (path: stri
     };
   });
 }
+
+// -- WP WEBM5 -- (review RC16) the page reads the journal again on every change of the device's
+// state; when it is the same list the rows are not made again.
+/** True when `b` is the same journal as `a` (the same changes, in the same order). */
+export function sameHistory(a: readonly HistoryEntry[], b: readonly HistoryEntry[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i]!;
+    const y = b[i]!;
+    if (x.atMs !== y.atMs || x.path !== y.path || x.source !== y.source || x.undoable !== y.undoable || x.indices.join() !== y.indices.join()) return false;
+  }
+  return true;
+}

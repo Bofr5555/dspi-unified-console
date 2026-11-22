@@ -8,9 +8,11 @@
 // - The pseudo-locale pass (qp18-pseudo, behaviour.md §22): a translator
 //   that marks every string the app translates; each window again (pseudo/),
 //   with the texts that came through unmarked and the ones cut short.
+// -- WP LAY7 -- Then every tab of Modern's sections in the main window.
 #include "SmokeDriver.h"
 
 #include "DeviceModel.h"
+#include "PaletteController.h"   // -- WP LAY7 --
 #include "Registrar.h"
 #include "SettingsController.h"
 #include "Shell.h"
@@ -158,7 +160,7 @@ void countTexts(const QString &where, QQuickItem *root, Totals &t, QStringList *
         for (QChar c : text) letters = letters || (c.isLetter() && c.unicode() < 0x80);
         if (letters && !text.contains(u'[') && text.size() > 2) {
             ++t.unmarked;
-            if (unmarked->size() < 400) unmarked->append(where + QStringLiteral(": ") + text.left(60));
+            if (unmarked->size() < 2000) unmarked->append(where + QStringLiteral(": ") + text.left(60));
         }
         // Qt::ElideLeft is 0: any mode but ElideNone is an ellipsis by design;
         // truncated without one is a maximumLineCount cut
@@ -209,12 +211,26 @@ QList<Stop> stopsOf(SmokeDriver &d) {
                        },
                        []() {} });
     }
+    // -- WP LAY7 -- Modern's pages (their windows are the ones above)
+    SmokeDriver *driver = &d;
+    for (const QString &key : d.modernTabs()) {
+        stops.append({ QStringLiteral("modern-") + QString(key).replace(QLatin1Char('/'), QLatin1Char('-')),
+                       [driver, main, key]() -> QQuickWindow * {
+                           if (!driver->app().shell->pageHost() && !driver->switchLayout("modern")) return nullptr;
+                           return driver->goTo(key) ? main : nullptr;
+                       },
+                       []() {} });
+    }
     return stops;
 }
 
 void visit(SmokeDriver &d, const QList<Stop> &stops, const std::function<void(const QString &, QQuickWindow *)> &fn) {
     for (const Stop &s : stops) {
+        // -- WP LAY7 -- a window left open keeps its panel off Modern's page
+        if (s.name.startsWith(QLatin1String("modern-")) && !d.app().shell->shownWindows().isEmpty())
+            for (const QString &action : d.app().shell->shownWindows()) d.app().shell->closeWindow(action);
         QQuickWindow *w = s.open();
+        if (!w) d.check(QStringLiteral("qp18: %1 shows").arg(s.name), !s.name.startsWith(QLatin1String("modern-")));
         if (!w || !d.waitFor(2000, [w]() { return w->isVisible(); })) {
             s.close();
             continue;
@@ -224,12 +240,62 @@ void visit(SmokeDriver &d, const QList<Stop> &stops, const std::function<void(co
         s.close();
         d.spin(20);
     }
+    if (d.app().shell->pageHost()) d.switchLayout("classic");   // -- WP LAY7 --
     if (QWindow *sw = d.app().shell->openWindow(QStringLiteral("edit.settings"))) sw->close();
     d.mainWindow()->requestActivate();
     d.spin(50);
 }
 
+// -- WP LAY7 -- What opens over Modern's pages
+void modernPopups(SmokeDriver &d, Totals &t) {
+    QQuickWindow *main = d.mainWindow();
+    d.check("qp18: Modern, for its popups", d.switchLayout("modern"));
+    if (!d.app().shell->pageHost()) return;
+    QQuickItem *all = main->contentItem();   // the overlay is in it
+    const auto press = [&](const char *name) {
+        QQuickItem *button = d.item(QString::fromLatin1(name));
+        return button && QMetaObject::invokeMethod(button, "clicked");
+    };
+    const struct {
+        const char *name;
+        std::function<bool()> open;
+    } popups[] = {
+        { "palette", [&] { Registrar::instance<PaletteController>()->open(); return true; } },
+        { "switcher", [&] { d.app().shell->trigger(QStringLiteral("device.devices")); return true; } },
+        { "app menu", [&] { return press("AppMenuButton"); } },
+        { "notifications", [&] { return press("TopBar.bell"); } },
+        { "AI", [&] { return press("TopBar.ai"); } },
+        { "theme", [&] { return press("TopBar.theme"); } },
+    };
+    main->requestActivate();
+    d.waitFor(1000, [&] { return QGuiApplication::focusWindow() == main; });
+    int before = 0;
+    walk(all, [&](QQuickItem *item) { before += item->isVisible(); });
+    for (const auto &p : popups) {
+        const bool pressed = p.open();
+        int shown = 0;
+        const bool open = pressed && d.waitFor(2000, [&] {
+            shown = 0;
+            walk(all, [&](QQuickItem *item) { shown += item->isVisible(); });
+            QQuickItem *drawer = qstrcmp(p.name, "notifications") ? nullptr : d.item(QStringLiteral("NotificationDrawer"));
+            return drawer ? drawer->property("open").toBool() : shown > before + 3;
+        });
+        d.spin(250);
+        d.check(QStringLiteral("qp18: Modern's %1 opens").arg(QLatin1String(p.name)), open);
+        checkNames(d, QStringLiteral("Modern's ") + QLatin1String(p.name), all, t);
+        if (!qstrcmp(p.name, "notifications")) press("TopBar.bell");
+        else QTest::keyClick(main, Qt::Key_Escape);
+        d.waitFor(2000, [&] {
+            int now = 0;
+            walk(all, [&](QQuickItem *item) { now += item->isVisible(); });
+            return now <= before + 3;
+        });
+    }
+    d.switchLayout("classic");
+}
+
 void accessSection(SmokeDriver &d) {
+    d.allowSectionTime(240);   // -- WP LAY7 --
     Shell *shell = d.app().shell;
     QDir().mkpath(d.outDir() + QStringLiteral("/light"));
     const Qt::ColorScheme scheme = shell->colorSchemeOverride();
@@ -247,6 +313,7 @@ void accessSection(SmokeDriver &d) {
         shell->setColorSchemeOverride(scheme);
         d.spin(30);
     });
+    modernPopups(d, t);   // -- WP LAY7 --
     std::printf("smoke: qp18: accessibility: %d controls, %d unnamed; %d windows walked, %d traps\n", t.controls, t.unnamed,
                 t.windows, t.traps);
 }
@@ -256,6 +323,7 @@ void accessSection(SmokeDriver &d) {
 // baseline (clipped.txt), the pseudo run compares with it. Run in the main
 // pass (no DSPI_SMOKE_PSEUDO) it does both halves in turn.
 void pseudoSection(SmokeDriver &d) {
+    d.allowSectionTime(240);   // -- WP LAY7 --
     const QByteArray locale = qgetenv("DSPI_SMOKE_PSEUDO");
     const bool english = locale != "pseudo";
     const bool marked = locale != "en";
@@ -296,6 +364,17 @@ void pseudoSection(SmokeDriver &d) {
         d.grab(w, (locale.isEmpty() ? QStringLiteral("pseudo/%1.png") : QStringLiteral("%1.png")).arg(name));
         countTexts(name, w->contentItem(), t, &unmarked);
     });
+    // -- WP LAY7 -- Modern's bars in the narrowest window, the texts a third longer
+    if (QQuickWindow *main = d.mainWindow(); d.switchLayout("modern")) {
+        const QSize was = main->size();
+        main->resize(1000, 660);
+        d.spin(300);
+        for (const char *bar : { "TopBar", "Dock", "PageTabs" })
+            d.check(QStringLiteral("qp18: Modern's %1 fits 1000 px in the pseudo locale").arg(QLatin1String(bar)), SmokeDriver::fits(d.item(QString::fromLatin1(bar))));
+        d.grab(main, locale.isEmpty() ? QStringLiteral("pseudo/modern-1000.png") : QStringLiteral("modern-1000.png"));
+        main->resize(was);
+        d.switchLayout("classic");
+    }
     QCoreApplication::removeTranslator(&pseudo);
     d.app().engine->retranslate();
     d.spin(150);
@@ -306,6 +385,9 @@ void pseudoSection(SmokeDriver &d) {
                 t.texts, t.unmarked, t.clipped, baseline, t.elided);
     for (const QString &line : std::as_const(t.cut)) std::printf("smoke: qp18: pseudo %s\n", qPrintable(line));
     d.check(QStringLiteral("qp18: the pseudo locale clips no more than English does"), baseline < 0 || t.clipped <= baseline);
+    // -- WP LAY7 -- the menu is a new one: the layout was switched meanwhile
+    quit = d.object(QStringLiteral("Menu.file.quit"));
+    action = quit ? quit->property("action").value<QObject *>() : nullptr;
     d.check(QStringLiteral("qp18: back in English after the pass"),
             action && !action->property("text").toString().startsWith(u'['));
 }

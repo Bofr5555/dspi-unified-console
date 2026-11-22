@@ -5,6 +5,7 @@
 // out, never shown greyed: a handler is what makes a row the web's (`Handlers`).
 
 import table from "../../../../../assets/actions.json";
+import { SHORTCUTS } from "../../screens/shortcuts/table";
 
 export interface ActionDef {
   id: string;
@@ -56,10 +57,18 @@ export function actionText(id: string, on = false): string {
   return (on && d.textOn ? d.textOn : d.text).split("{app}").join(APP_NAME);
 }
 
-/** The shortcut a row shows: its own, or the one of the row it is the same as. */
+// -- WP WEBM5 -- (review RC7) the rows whose key the web binds (screens/shortcuts/table.ts); the
+// presets' one row there stands for Ctrl+1…9
+const BOUND = new Set(SHORTCUTS.map((r) => r.id));
+const bound = (id: string): boolean => BOUND.has(id) || (/^device\.preset[1-9]$/.test(id) && BOUND.has("device.preset"));
+
+/** The shortcut a row shows: its own, or the one of the row it is the same as; none where the web
+ *  binds no such key (Edit History's Ctrl+Shift+H is Firefox's Library). */
 export function actionShortcut(id: string): string {
   const d = byId.get(id);
-  return d?.shortcut ?? (d?.of ? (byId.get(d.of)?.shortcut ?? "") : "");
+  const owner = d?.shortcut ? id : d?.of;
+  const key = owner ? (byId.get(owner)?.shortcut ?? "") : "";
+  return key && bound(owner!) ? key : "";
 }
 
 /** What the web does for a row, now. */

@@ -51,6 +51,7 @@
 #include <QJsonObject>
 #include <QObject>
 #include <QPointer>
+#include <QSet>
 #include <QString>
 #include <QStringList>
 #include <QThreadPool>
@@ -354,6 +355,7 @@ private:
     QJsonObject ownLayout() const;   // -- WP RCFIX --
     void refreshUnits();
     void openUnit(const QString &serial);
+    void openWaiting();   // -- WP LAY7 --
     void readOutputs(const QString &serial, UnitPtr unit, const QString &error);   // -- WP XDEV1 --
     void tabClosing(DeviceSession *session);                                      // -- WP XDEV1 --
     // -- WP MCP5 -- an AI agent's run across units (AiController::measureRequested,
@@ -411,6 +413,7 @@ private:
     QString m_anchor;
     QString m_runName;
     QHash<QString, UnitPtr> m_cores;
+    QSet<QString> m_waiting;   // -- WP LAY7 -- chosen again before their last core had closed
     QVariantList m_preflightLines;
 
     QJsonObject m_state;

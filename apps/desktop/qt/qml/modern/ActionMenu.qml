@@ -72,7 +72,7 @@ AppMenu {
             for (const i of items) {
                 if (i.subMenuOf) {
                     addMenu(i.subMenuOf)
-                    itemAt(count - 1).enabled = i.usable
+                    itemAt(count - 1).enabled = Qt.binding(i.usable)
                 } else {
                     addItem(i)
                 }
@@ -91,6 +91,9 @@ AppMenu {
         if (r.platformHidden && DeviceModel.platformName === r.platformHidden) return
         if (h.shown && !h.shown(target)) return
         const name = menu.objectName + "." + r.id
+        // -- WP LAY7 -- (review RC, RC9) read in the rows' bindings: what begins
+        // while the menu is open (a pin, read-only) greys them too
+        const usable = () => MenuTable.can(r.id) && (!h.enabled || h.enabled(menu.target)) && (!h.why || h.why(menu.target) === "")
         if (r.dynamic || r.submenu) {
             const rows = h.rows ? h.rows(target) : []
             if (rows.length === 0) return
@@ -98,7 +101,7 @@ AppMenu {
             if (r.submenu) {
                 sub = submenuComponent.createObject(menu, { objectName: name, title: h.text ? h.text(target) : r.text })
                 made.push(sub)
-                items.push({ subMenuOf: sub, usable: MenuTable.can(r.id) && (!h.enabled || h.enabled(target)) })
+                items.push({ subMenuOf: sub, usable: usable })
             } else {
                 items.push(made[made.push(headingComponent.createObject(menu.nursery, { objectName: name, text: h.text ? h.text(target) : r.text })) - 1])
             }
@@ -106,8 +109,9 @@ AppMenu {
                 const value = e.value
                 const item = itemComponent.createObject(menu.nursery, {
                     objectName: name + "." + e.name, text: e.text, shortcutText: e.detail || "",
-                    checkable: e.checked !== undefined, enabled: e.enabled !== false
+                    checkable: e.checked !== undefined
                 })
+                item.enabled = Qt.binding(() => e.enabled !== false && usable())
                 // A checkable row would switch itself over
                 if (e.checked !== undefined) item.checked = e.checked
                 item.triggered.connect(() => h.run(menu.target, value))
@@ -119,22 +123,22 @@ AppMenu {
         }
         const id = r.id
         const keys = MenuTable.shortcutOf(r.of || id)
-        const why = h.why ? h.why(target) : ""
         const item = itemComponent.createObject(menu.nursery, {
             objectName: name,
             text: h.text ? h.text(target) : h.on && h.on(target) ? r.on : r.text,
             shortcutText: !h.keys || h.keys(target) ? keys : ""
         })
-        item.enabled = Qt.binding(() => MenuTable.can(id) && why === "" && (!h.enabled || h.enabled(menu.target)))
+        item.enabled = Qt.binding(usable)
         if (h.run) item.triggered.connect(() => h.run(menu.target))
         else item.triggered.connect(() => MenuTable.trigger(menu.window, r.of || id))
         made.push(item)
         items.push(item)
-        if (why !== "") {
-            const reason = reasonComponent.createObject(menu.nursery, { objectName: name + ".why", text: why })
+        if (h.why) {
+            const reason = reasonComponent.createObject(menu.nursery, { objectName: name + ".why" })
+            reason.text = Qt.binding(() => h.why(menu.target))
             made.push(reason)
             items.push(reason)
-            item.Accessible.description = why
+            item.Accessible.description = Qt.binding(() => h.why(menu.target))
         }
     }
 
@@ -157,14 +161,15 @@ AppMenu {
             font: Theme.fontHeading
         }
     }
-    // Why the row above is greyed, wrapped
+    // Why the row above is greyed, wrapped; no room with nothing to say
     Component {
         id: reasonComponent
         MenuItem {
             id: reason
             enabled: false
+            visible: text.length > 0
             implicitWidth: 0
-            implicitHeight: reasonText.implicitHeight + 8
+            implicitHeight: visible ? reasonText.implicitHeight + 8 : 0
             contentItem: Text {
                 id: reasonText
                 leftPadding: 6

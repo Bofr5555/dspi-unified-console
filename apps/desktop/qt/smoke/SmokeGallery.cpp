@@ -3,10 +3,14 @@
 // shown for the demo, and the device list. The PNGs go to <out>/gallery/, and
 // run.sh writes <out>/index.html over them and the other sections' PNGs.
 // Last of the main run, so it shows what the run left: the demo, as it opened.
+// -- WP LAY7 -- In both layouts: then every tab of Modern's sections at 1280x800
+// and 1000x660 (gallery/modern-<width>-<section>-<tab>-<scheme>.png), where
+// nothing is cut off or scrolls sideways.
 #include "SmokeDriver.h"
 
 #include "DeviceModel.h"
 #include "DevicesController.h"
+#include "NoticeCenter.h"
 #include "Registrar.h"
 #include "SettingsController.h"
 #include "Shell.h"
@@ -44,7 +48,46 @@ QStringList settingsPages(SettingsController *settings) {
     return ids;
 }
 
+// -- WP LAY7 -- (was lay3-modern's)
+void modernGallery(SmokeDriver &d) {
+    Shell *shell = d.app().shell;
+    QQuickWindow *main = d.mainWindow();
+    d.check("qp19-gallery: in Modern", d.switchLayout("modern"));
+    if (!shell->pageHost()) return;
+    // What earlier sections said is not over the pages
+    if (auto *notices = Registrar::instance<NoticeCenter>()) notices->clear();
+    const QSize was = main->size();
+    const Qt::ColorScheme before = shell->colorSchemeOverride();
+    const QStringList keys = d.modernTabs();
+    d.check("qp19-gallery: Modern's tabs", keys.size() > 30);
+    for (const QSize &size : { QSize(1280, 800), QSize(1000, 660) }) {
+        main->resize(size);
+        d.waitFor(1000, [&] { return main->contentItem()->width() == size.width(); });
+        for (const Scheme &s : kSchemes) {
+            shell->setColorSchemeOverride(s.scheme);
+            d.spin(300);
+            for (const char *bar : { "TopBar", "Dock", "PageTabs" })
+                d.check(QStringLiteral("qp19-gallery: Modern's %1 fits %2 px").arg(QLatin1String(bar)).arg(size.width()),
+                        SmokeDriver::fits(d.item(QString::fromLatin1(bar))));
+            for (const QString &key : keys) {
+                const bool there = d.goTo(key, 220);
+                const QString name = QStringLiteral("gallery/modern-%1-%2-%3.png")
+                                         .arg(size.width()).arg(QString(key).replace(QLatin1Char('/'), QLatin1Char('-')), QLatin1String(s.name));
+                d.check(QStringLiteral("qp19-gallery: %1").arg(name), there && d.grab(main, name));
+                QQuickItem *scroll = d.item(QStringLiteral("PageHost.page.%1.scroll").arg(shell->pageHost()->property("pageKey").toString()));
+                d.check(QStringLiteral("qp19-gallery: %1 at %2 px needs no sideways scrolling").arg(key).arg(size.width()),
+                        scroll && scroll->property("contentWidth").toReal() <= scroll->width() + 0.5);
+            }
+        }
+    }
+    shell->setColorSchemeOverride(before);
+    main->resize(was);
+    d.goTo(QStringLiteral("overview/overview"));
+    d.check("qp19-gallery: back in Classic", d.switchLayout("classic"));
+}
+
 void gallerySection(SmokeDriver &d) {
+    d.allowSectionTime(300);   // -- WP LAY7 --
     Shell *shell = d.app().shell;
     DeviceModel *device = d.app().device;
     QQuickWindow *main = d.mainWindow();
@@ -130,6 +173,7 @@ void gallerySection(SmokeDriver &d) {
     d.spin(200);
     std::printf("smoke: qp19-gallery: %d screenshots in gallery/\n", shots);
     std::fflush(stdout);
+    modernGallery(d);   // -- WP LAY7 --
 }
 
 const SmokeDriver::Section gallery("qp19-gallery", 900, &gallerySection);

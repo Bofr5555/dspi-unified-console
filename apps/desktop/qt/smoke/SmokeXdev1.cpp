@@ -388,6 +388,31 @@ void hubPart(SmokeDriver &d, DeviceRegistry *r, NoticeCenter *notices) {
     d.check("xdev1: C in a tab is refused while it is measured, in words", refused && why.contains(QLatin1String("being measured"))
                                                                                 && r->sessions().size() == 3 && !r->holder(C));
 
+    // -- WP LAY7 -- (RCFIX follow-up) unchosen and chosen again while its core
+    // still closes, and once more while the next one is on its way
+    const FfiCore *lastCore = uc->unitCore(C);
+    uc->setUnitChosen(C, false);
+    uc->setUnitChosen(C, true);
+    const auto rowOfC = [&] {
+        for (const QVariant &v : uc->units())
+            if (v.toMap().value(QStringLiteral("serial")).toString() == C) return v.toMap();
+        return QVariantMap();
+    };
+    d.check("xdev1: C chosen again at once waits for its serial, said as opening", !uc->unitOpen(C) && rowOfC().value(QStringLiteral("opening")).toBool());
+    d.check("xdev1: and opens again", d.waitFor(25000, [&] { return uc->unitOpen(C); }) && uc->unitCore(C) != lastCore
+                                           && rowOfC().value(QStringLiteral("error")).toString().isEmpty() && !rowOfC().value(QStringLiteral("opening")).toBool());
+    uc->setUnitChosen(C, false);
+    uc->setUnitChosen(C, true);
+    uc->setUnitChosen(C, false);
+    d.check("xdev1: unchosen while it waits, it is not opened",
+            d.waitFor(10000, [&] { return r->extraSerials().isEmpty(); }) && (d.spin(300), !uc->unitOpen(C) && !rowOfC().value(QStringLiteral("opening")).toBool()));
+    uc->setUnitChosen(C, true);
+    uc->setUnitChosen(C, false);
+    uc->setUnitChosen(C, true);
+    d.check("xdev1: chosen again while its connection is on its way, it opens", d.waitFor(25000, [&] { return uc->unitOpen(C); })
+                                                                                     && rowOfC().value(QStringLiteral("error")).toString().isEmpty());
+    d.waitFor(5000, [&] { return r->extraSerials() == QStringList{ C }; });
+
     // The check and a run: every unit's check on its own core
     rec.clear();
     steps.clear();
@@ -396,6 +421,7 @@ void hubPart(SmokeDriver &d, DeviceRegistry *r, NoticeCenter *notices) {
     d.check("xdev1: Check: B on its tab's core, C on its extra core, A on A's",
             checked && allAre(rec.of(B), sb->handle()) && allAre(rec.of(C), uc->unitCore(C)) && allAre(rec.of(A), sa->handle()));
     if (uc->simAvailable()) {
+        uc->setUseSim(true);   // -- WP LAY7 -- atqt-units turns it off
         rec.clear();
         steps.clear();
         uc->setSweepMs(1000);

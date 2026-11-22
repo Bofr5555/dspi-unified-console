@@ -187,6 +187,7 @@ UnitsMeasureController::UnitsMeasureController(const AppContext &ctx, QObject *p
     connect(ctx.registry, &DeviceRegistry::sessionClosing, this, &UnitsMeasureController::rehost, Qt::QueuedConnection);
     // -- WP XDEV1 -- a unit measured on its tab's core: the tab closed
     connect(ctx.registry, &DeviceRegistry::sessionClosing, this, &UnitsMeasureController::tabClosing);
+    connect(ctx.registry, &DeviceRegistry::extrasChanged, this, &UnitsMeasureController::openWaiting);   // -- WP LAY7 --
     connect(ctx.device, &DeviceModel::snapshotApplied, this, [this] {
         rehost();   // -- WP MDQT2c --
         if (m_entered) refreshUnits();
@@ -673,6 +674,12 @@ void UnitsMeasureController::openUnit(const QString &serial) {
     setUnitField(serial, QStringLiteral("opening"), true);
     setUnitField(serial, QStringLiteral("error"), QString());
     setUnitField(serial, QStringLiteral("tab"), QString());
+    // -- WP LAY7 -- (RCFIX follow-up) chosen again while the core it was judged by
+    // is still closing (or opening): it is opened once its serial is free
+    if (!registry->holder(serial) && registry->extraSerials().contains(serial)) {
+        m_waiting.insert(serial);
+        return;
+    }
     QPointer<UnitsMeasureController> self(this);
     // -- WP XDEV1 -- open in a tab: that tab's core, no second session
     if (DeviceSession *tab = registry->holder(serial)) {
@@ -707,6 +714,20 @@ void UnitsMeasureController::openUnit(const QString &serial) {
         }
         self->readOutputs(serial, unit, why);
     });
+}
+
+// -- WP LAY7 -- An extra core was opened or closed: the units that waited for it
+void UnitsMeasureController::openWaiting() {
+    const QStringList held = m_ctx.registry->extraSerials();
+    const QSet<QString> waiting = m_waiting;
+    for (const QString &serial : waiting) {
+        if (m_cores.contains(serial) || !unitRow(serial).value(QStringLiteral("chosen")).toBool()) {
+            m_waiting.remove(serial);   // the open on its way became its connection, or it is not chosen any more
+        } else if (!held.contains(serial)) {
+            m_waiting.remove(serial);
+            openUnit(serial);
+        }
+    }
 }
 
 // The unit's outputs, read on its core off the GUI thread; then it is the
@@ -748,6 +769,7 @@ void UnitsMeasureController::readOutputs(const QString &serial, UnitPtr unit, co
                 return;
             }
             me->m_cores.insert(serial, unit);
+            me->m_waiting.remove(serial);   // -- WP LAY7 --
             me->setUnitField(serial, QStringLiteral("tab"), unit->tab ? unit->tab->title() : QString());
             me->setUnitField(serial, QStringLiteral("outputs"), outputs);
             emit me->stepDone(QStringLiteral("unit"), true);
@@ -780,6 +802,7 @@ bool UnitsMeasureController::unitInTab(const QString &serial) const {
 
 void UnitsMeasureController::closeUnit(const QString &serial) {
     UnitPtr u = m_cores.take(serial);
+    if (m_waiting.remove(serial)) setUnitField(serial, QStringLiteral("opening"), false);   // -- WP LAY7 --
     setUnitField(serial, QStringLiteral("outputs"), QVariantList());
     setUnitField(serial, QStringLiteral("tab"), QString());   // -- WP XDEV1 --
     // Closed off the GUI thread (a loop job may still hold it: then there)
@@ -787,6 +810,9 @@ void UnitsMeasureController::closeUnit(const QString &serial) {
 }
 
 void UnitsMeasureController::closeAll() {
+    // -- WP LAY7 --
+    for (const QString &s : std::as_const(m_waiting)) setUnitField(s, QStringLiteral("opening"), false);
+    m_waiting.clear();
     const QStringList serials = m_cores.keys();
     for (const QString &s : serials) {
         UnitPtr u = m_cores.take(s);
@@ -1737,7 +1763,8 @@ void UnitsMeasureController::agentRequest(const QJsonObject &ticket) {
         done(false, m->playBlocker());
         return;
     }
-    m_ctx.shell->showTool(QStringLiteral("tools.measure"));
+    // -- WP LAY7 -- (INT5 follow-up 3) on its own tab
+    if (auto *mc = Registrar::instance<MeasureController>()) mc->showPart(QStringLiteral("units"));
     clearWords();
     const QString kind = ticket.value(QLatin1String("kind")).toString();
     const QByteArray setup = QJsonDocument(ticket.value(QLatin1String("setup")).toObject().value(QLatin1String("setup")).toObject())

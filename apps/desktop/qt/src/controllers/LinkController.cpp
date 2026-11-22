@@ -72,11 +72,6 @@ void LinkController::addSession(DeviceSession *session) {
 }
 
 void LinkController::dropSession(DeviceSession *session) {
-    if (session->isMain()) {
-        // Its device is closed, not the session: nothing reopens
-        if (LinkSession *l = m_links.value(session); l && l->inSession()) l->leaveForLocal();
-        return;
-    }
     LinkSession *link = m_links.take(session);
     if (!link) return;
     if (link == m_subject) showSubject();

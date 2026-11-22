@@ -727,6 +727,9 @@ void MeasureSession::onSnapshot() {
     }
     const QString serial = connected() ? model()->serial() : QString();
     const bool changedDevice = serial != m_serial;
+    // -- WP LAY7 -- (review RC, RC15) The same unit, with outputs again after it
+    // had none (an alink sender's firmware): the choices were dropped with them
+    const bool outputsBack = m_outputs.isEmpty() && !outs.isEmpty();
     m_serial = serial;
     // -- WP MDQT2c -- another device on this session (Classic replaces it): the
     // placement chosen for the last one is not assumed for it (headphones are
@@ -760,7 +763,7 @@ void MeasureSession::onSnapshot() {
     }
     emit deviceChanged();
     refreshAccess();
-    if (changedDevice) {
+    if (changedDevice || outputsBack) {
         if (m_awake) {   // -- WP LAY5b --
             refreshSim();
             if (connected()) fillFromLayout();   // -- WP ROLEQ --

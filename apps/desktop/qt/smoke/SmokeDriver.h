@@ -80,11 +80,24 @@ public:
     bool waitIdle(int ms = 5000);
     QQuickWindow *mainWindow() const;
     // The first object named `name`: the main window's QObject children, then
-    // its item tree (delegates of views are found there)
+    // its item tree (delegates of views are found there), then the popups of
+    // that tree's items (a Modern page's dialogs). -- WP LAY7 -- One that shows
+    // goes before one that does not: Modern keeps its pages, so a name may be
+    // on several, and an open window has the panel of a page that is kept too.
     QObject *object(const QString &name) const;
     QQuickItem *item(const QString &name, QQuickItem *scope = nullptr) const;
     // Saves a screenshot as <DSPI_SMOKE_OUT>/<file>; false if it came out empty
     bool grab(QQuickWindow *window, const QString &file);
+    // -- WP LAY7 -- Both layouts: switches to "classic" or "modern" and waits for
+    // its shell, the old one gone
+    bool switchLayout(const char *layout);
+    // Modern: every tab of every section that is there now, "section/tab" (the
+    // quiet ones, which have no tab, left out)
+    QStringList modernTabs() const;
+    // Modern: shows "section/tab" and lets it settle
+    bool goTo(const QString &key, int settleMs = 120);
+    // Nothing of `bar` is cut off or pushed out at its width
+    static bool fits(QQuickItem *bar);
     QString outDir() const { return m_out; }
     // -- WP ATQTSIM -- This section may run up to `seconds` (a whole measurement
     // across units); the run's limit still applies when it is longer. Ends with

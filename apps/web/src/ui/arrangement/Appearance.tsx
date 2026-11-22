@@ -3,14 +3,11 @@
 // and, with no device open, from the app menu's Settings….
 
 import { createContext, type ComponentChildren } from "preact";
-import { useContext, useState } from "preact/hooks";
-import { safeLocalStorage } from "../../fleet/local";
+import { useContext } from "preact/hooks";
 import { Dialog } from "../../screens/main/Dialog";
 import {
   CHOICES,
   DEFAULT_ARRANGEMENT,
-  inspectorShown,
-  setInspectorShown,
   withChoice,
   type Arrangement,
 } from "./arrangement";
@@ -18,10 +15,18 @@ import {
 export interface ArrangementHost {
   arrangement: Arrangement;
   arrange: (a: Arrangement) => void;
+  // -- WP WEBM5 -- (review RC6) the inspector's choice, held here so that every frame follows it at once
+  inspector: "shown" | "hidden";
+  showInspector: (v: "shown" | "hidden") => void;
 }
 
 /** The console's arrangement and its setter (App). Without one, the defaults and nothing to set. */
-export const ArrangementContext = createContext<ArrangementHost>({ arrangement: DEFAULT_ARRANGEMENT, arrange: () => undefined });
+export const ArrangementContext = createContext<ArrangementHost>({
+  arrangement: DEFAULT_ARRANGEMENT,
+  arrange: () => undefined,
+  inspector: "shown",
+  showInspector: () => undefined,
+});
 
 /** The open devices' tabs, when the arrangement puts them at the rail's top (else null: the top bar has them). */
 export const RailTopContext = createContext<ComponentChildren>(null);
@@ -31,8 +36,7 @@ export function useArrangement(): ArrangementHost {
 }
 
 export function AppearanceSettings() {
-  const { arrangement, arrange } = useArrangement();
-  const [inspector, setInspector] = useState(() => inspectorShown(safeLocalStorage()));
+  const { arrangement, arrange, inspector, showInspector } = useArrangement();
   return (
     <section class="card settings-card appearance" aria-label="Appearance">
       <h3>Appearance</h3>
@@ -52,8 +56,7 @@ export function AppearanceSettings() {
                   checked={value === v.value}
                   onChange={() => {
                     if (c.key === "inspector") {
-                      setInspectorShown(safeLocalStorage(), v.value as "shown" | "hidden");
-                      setInspector(v.value as "shown" | "hidden");
+                      showInspector(v.value as "shown" | "hidden");
                       return;
                     }
                     const next = withChoice(arrangement, c.key, v.value);
