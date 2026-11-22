@@ -10,12 +10,15 @@ export interface Place {
   screen: string | null;
   /** The last page of each section. */
   last: Map<SectionId, string>;
+  // -- WP WEBM3 --
+  /** The part on show of each screen that has parts (ui/shell/Parts.tsx). */
+  parts: Map<string, string>;
 }
 
 const places = new WeakMap<Session, Place>();
 
 export function placeOf(session: Session): Place {
   let p = places.get(session);
-  if (!p) places.set(session, (p = { screen: null, last: new Map() }));
+  if (!p) places.set(session, (p = { screen: null, last: new Map(), parts: new Map() /* -- WP WEBM3 -- */ }));
   return p;
 }

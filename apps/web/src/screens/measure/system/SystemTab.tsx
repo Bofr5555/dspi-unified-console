@@ -242,11 +242,13 @@ function UnitsPicker(props: { d: SystemDesk; busy: boolean; openDevice?: ((seria
                     </span>
                   );
                 })}
-                {!u.own && props.openDevice ? (
-                  <button type="button" onClick={() => props.openDevice?.(u.serial)}>
+                {!u.own && !u.tab && props.openDevice ? (
+                  // -- WP WEBM3 -- the desk's own core for it goes first: one session per DSPi
+                  <button type="button" disabled={busy} onClick={() => void d.handOver(u.serial).then((ok) => ok && props.openDevice?.(u.serial))}>
                     Open {u.serial} in the console
                   </button>
                 ) : null}
+                {u.tab ? <span class="muted">Measured on its open tab ({u.tab})</span> : null /* -- WP WEBM3 -- */}
               </div>
             ) : null}
           </div>

@@ -21,6 +21,7 @@ const PLACES: Record<string, { section: string; id: string; tab?: string }> = {
   "Stats for nerbs": { section: "Analyse", id: "stats" },
   "Interrupt Monitor": { section: "Analyse", id: "monitor" },
   Snapshots: { section: "Library", id: "snapshots" },
+  History: { section: "Library", id: "history" }, // -- WP WEBM3 --
   Files: { section: "Library", id: "files" },
   System: { section: "System", id: "system" },
   Events: { section: "System", id: "events" },
@@ -43,6 +44,11 @@ export const rail = (session: Locator) => session.getByRole("navigation", { name
 export const section = (session: Locator, name: string) => rail(session).getByRole("button", { name, exact: true });
 export const pageTabs = (session: Locator) => session.getByRole("tablist", { name: "Pages" });
 export const pageTab = (session: Locator, name: string) => pageTabs(session).getByRole("tab", { name: place(name).tab, exact: true });
+// -- WP WEBM3 -- a page's parts (ui/shell/Parts.tsx) are tabs in the page head, outside the page's own region
+const SHELL = 'contains(concat(" ", normalize-space(@class), " "), " shell ")';
+/** The tablist of a page's parts named `name`, from the session's view or anything inside it. */
+export const partsOf = (inside: Locator, name: string) =>
+  inside.locator(`xpath=(ancestor-or-self::*[${SHELL}] | descendant::*[${SHELL}])[last()]`).getByRole("tablist", { name });
 
 /** Go to a screen: its section, then its tab when the section has several pages. */
 export async function openPage(session: Locator, name: string): Promise<void> {

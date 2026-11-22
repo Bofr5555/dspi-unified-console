@@ -62,6 +62,13 @@ const PAGE_TITLES: Record<Page, string> = {
   vreg: "Core Voltage",
 };
 
+// -- WP WEBM3 -- (MODLAY 2) the pages in groups, a short list beside the page (above it on a narrow console)
+const GROUPS: { title: string; pages: Page[] }[] = [
+  { title: "Device", pages: ["global", "pins", "speakers", "advanced", "vreg"] },
+  { title: "Display", pages: ["graphing", "spectrum"] },
+  { title: "Application", pages: ["help"] },
+];
+
 export function SettingsScreen(props: ScreenProps) {
   const { session } = props;
   const mode = props.mode ?? "advanced";
@@ -79,20 +86,33 @@ export function SettingsScreen(props: ScreenProps) {
   return (
     <div class="settings-screen">
       <nav class="settings-nav" aria-label="Settings pages">
-        {pages.map((p) => (
-          <button type="button" key={p} aria-current={p === current ? "page" : undefined} onClick={() => setPage(p)}>
-            {PAGE_TITLES[p]}
-          </button>
-        ))}
+        {/* -- WP WEBM3 -- by group */}
+        {GROUPS.map((g) => {
+          const mine = g.pages.filter((p) => pages.includes(p));
+          return mine.length ? (
+            <div class="settings-group-list" role="group" aria-label={g.title} key={g.title}>
+              <span class="settings-group" aria-hidden="true">
+                {g.title}
+              </span>
+              {mine.map((p) => (
+                <button type="button" key={p} aria-current={p === current ? "page" : undefined} onClick={() => setPage(p)}>
+                  {PAGE_TITLES[p]}
+                </button>
+              ))}
+            </div>
+          ) : null;
+        })}
       </nav>
-      {current === "global" ? <GlobalPage session={session} /> : null}
-      {current === "pins" ? <PinsPage session={session} /> : null}
-      {current === "speakers" ? <SpeakersPage session={session} /> : null /* -- WP ROLEW -- */}
-      {current === "graphing" ? <GraphingPage /> : null}
-      {current === "spectrum" ? <SpectrumPage /> : null}
-      {current === "advanced" ? <AdvancedPage {...props} vregShown={vregShown} onVreg={() => setPage("vreg")} /> : null}
-      {current === "vreg" ? <CoreVoltage session={session} /> : null}
-      {current === "help" ? <HelpPage /> : null}
+      <div class="settings-page">
+        {current === "global" ? <GlobalPage session={session} /> : null}
+        {current === "pins" ? <PinsPage session={session} /> : null}
+        {current === "speakers" ? <SpeakersPage session={session} /> : null /* -- WP ROLEW -- */}
+        {current === "graphing" ? <GraphingPage /> : null}
+        {current === "spectrum" ? <SpectrumPage /> : null}
+        {current === "advanced" ? <AdvancedPage {...props} vregShown={vregShown} onVreg={() => setPage("vreg")} /> : null}
+        {current === "vreg" ? <CoreVoltage session={session} /> : null}
+        {current === "help" ? <HelpPage /> : null}
+      </div>
     </div>
   );
 }

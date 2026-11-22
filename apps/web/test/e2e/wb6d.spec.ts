@@ -156,7 +156,7 @@ test("WB6d: a block opens its screen: EQ at the channel and tab, the Matrix, the
     const id = (await fxBlock.getAttribute("data-block"))!;
     await fxBlock.click();
     await expectPage(session, "Effects");
-    await expect(session.locator(`.fx-pick[data-effect="${id}"]`)).toHaveAttribute("aria-selected", "true");
+    await expect(session.locator(`.page-parts [data-part="${id}"]`) /* -- WP WEBM3 -- the effect's part */).toHaveAttribute("aria-selected", "true");
   }
   // The volume: the Main window.
   await openPage(session, "System");

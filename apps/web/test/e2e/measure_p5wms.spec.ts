@@ -12,7 +12,7 @@
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { createInterface } from "node:readline";
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { openPage, rail } from "../nav";
+import { openPage, partsOf, rail } from "../nav"; // -- WP WEBM3 -- partsOf
 
 test.skip(({ browserName }) => browserName === "webkit", "Chromium and Firefox only");
 // Chromium's headless shell has no getUserMedia: the full Chromium, headless (as capture_p5wcap).
@@ -46,7 +46,7 @@ async function measureScreen(page: Page, venue = "Venue A", lowerVolume = true):
   if (lowerVolume) await call(page, "write", { path: "vol.user", value: { float: -20 } });
   await openPage(session, "Measure");
   const screen = session.getByRole("region", { name: "Measure" });
-  await expect(screen.getByRole("tablist", { name: "Measurement" })).toBeVisible();
+  await expect(partsOf(screen, "Measurement")).toBeVisible();
   return screen;
 }
 
@@ -152,7 +152,7 @@ test("P5FOLLOW: the live view assumes no placement, plays nothing until one is c
   test.skip(!desktop(viewport?.width), "desktop width");
   const errors = errorsOf(page);
   const screen = await measureScreen(page);
-  const tabs = screen.getByRole("tablist", { name: "Measurement" });
+  const tabs = partsOf(screen, "Measurement");
   await tabs.getByRole("tab", { name: "Live" }).click();
   let live = screen.getByRole("region", { name: "Live response" });
   await expect(live.getByLabel("Live placement", { exact: true })).toHaveValue("");
@@ -205,7 +205,7 @@ test("P5WMS: the live view: a curve per sweep with the target, 'cut this peak' p
   test.setTimeout(120_000);
   const errors = errorsOf(page);
   const screen = await measureScreen(page);
-  await screen.getByRole("tablist", { name: "Measurement" }).getByRole("tab", { name: "Live" }).click();
+  await partsOf(screen, "Measurement").getByRole("tab", { name: "Live" }).click();
   const live = screen.getByRole("region", { name: "Live response" });
   await live.getByLabel("Smoothing").selectOption("6");
   // -- WP P5FOLLOW -- no placement assumed: Start live waits for the person, said in words
@@ -283,7 +283,7 @@ test.describe("the browsers' fake microphone", () => {
 
 /** The passive RTA listens (Chromium: the fake microphone's file; Firefox in the image cannot start audio). */
 async function passiveListens(page: Page, screen: Locator, browserName: string) {
-  const tabs = screen.getByRole("tablist", { name: "Measurement" }).getByRole("tab");
+  const tabs = partsOf(screen, "Measurement").getByRole("tab");
   await expect(tabs).toHaveText(["Passive RTA", "Results", "Documents"]); // -- WP P5WAT -- its documents tab (a Viewer reads documents)
   await expect(screen.getByRole("button", { name: "Start measuring" })).toHaveCount(0);
   await expect(screen.getByRole("button", { name: "Start live" })).toHaveCount(0);
@@ -320,7 +320,7 @@ test.describe("passive", () => {
     await passiveListens(page, screen, browserName);
     expect((await call<{ state: number }>(page, "siggenStatus")).state).toBe(0);
     expect((await call<{ active: boolean }>(page, "measureState")).active).toBe(false);
-    await screen.getByRole("tablist", { name: "Measurement" }).getByRole("tab", { name: "Results" }).click();
+    await partsOf(screen, "Measurement").getByRole("tab", { name: "Results" }).click();
     await expect(screen.getByRole("region", { name: "Measurement results" })).toContainText("No measurement yet");
     expect(errors).toEqual([]);
   });
@@ -416,7 +416,7 @@ test("P5WMS: 375 px: every tab of the Measure screen without sideways scroll", a
   await expect(screen.getByRole("list", { name: "Preflight" })).toBeVisible();
   await noSidewaysScroll(page);
   for (const t of ["Results", "Live"]) {
-    await screen.getByRole("tablist", { name: "Measurement" }).getByRole("tab", { name: t }).click();
+    await partsOf(screen, "Measurement").getByRole("tab", { name: t }).click();
     await noSidewaysScroll(page);
   }
   await expect(screen.getByRole("img", { name: "Live response" })).toBeVisible();

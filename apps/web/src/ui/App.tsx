@@ -13,7 +13,7 @@ import { sourceKey, type FleetBackend, type FleetUser, type Installation, type S
 import { About, DevicePicker, SessionView, type ShellProps } from "./components";
 import { Session } from "./session";
 // -- WP WEBM1 -- the Modern shell
-import { alreadyOpenText, holderOf, serialOf } from "./shell/open-rule";
+import { alreadyOpenText, holderOf, serialOf, transportName } from "./shell/open-rule"; // -- WP WEBM3 -- transportName
 import { Rail } from "./shell/Rail";
 import { sectionsFor, type Navigation } from "./shell/sections";
 import { TopBar } from "./shell/TopBar";
@@ -133,6 +133,11 @@ export function App(props: { options: ConsoleOptions }) {
     session.refuseOpen = (serial) => {
       const holder = holderOf(live.current, serial, session);
       return holder ? alreadyOpenText(holder) : "";
+    };
+    // -- WP WEBM3 -- the several-units step measures a unit open in another tab on that tab's core
+    session.heldBy = (serial) => {
+      const holder = holderOf(live.current, serial, session);
+      return holder ? { core: holder.core, state: holder.state, transport: transportName(holder.source) } : null;
     };
     // -- WP P2WB1 -- the hub screen's Open: another DSPi of the same hub, in a session of its own
     if (source.kind === "hub") session.openDevice = (serial) => void open(inst, { kind: "hub", url: source.url, deviceId: serial });
