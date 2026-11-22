@@ -589,6 +589,7 @@ void backPart(Modern &m) {
     m.check("a tab switch does not close a panel", closing && closing->isValid() && closing->count() == 0);
     QPointer<QObject> host = m.shell->pageHost();
     m.check("back in Classic", switchTo(m, QStringLiteral("classic"), "ClassicShell"));
+    m.check("int3: Classic replaces again (keepOpen off)", !DeviceRegistry::instance()->keepOpen());   // -- WP INT3 --
     m.check("a panel that goes with its page hears closing() once", closing && closing->count() == 1);
     m.check("the pages are gone, the menu bar is back",
             !host && !panel && !m.shell->pageHost() && m.shell->pageAction().isEmpty() && m.main->property("menuBar").value<QObject *>());
@@ -599,11 +600,13 @@ void backPart(Modern &m) {
     m.check("polling", stats && stats->property("windowShown").toBool());
     // A window left open over a switch keeps its panel; the page does not show it
     m.check("to Modern with a window open", switchTo(m, QStringLiteral("modern"), "ModernShell"));
+    m.check("int3: Modern turns keepOpen on again", DeviceRegistry::instance()->keepOpen());   // -- WP INT3 --
     m.go("analyse", "stats");
     m.d.spin(100);
     QQuickItem *page = m.page(QStringLiteral("analyse/stats"));
     m.check("the window keeps its panel", window && window->isVisible() && page && page->property("inWindow").toBool() && stats->property("windowShown").toBool());
     m.check("and back with it open", switchTo(m, QStringLiteral("classic"), "ClassicShell"));
+    m.check("int3: and again keepOpen off", !DeviceRegistry::instance()->keepOpen());   // -- WP INT3 --
     m.check("it still polls", window && window->isVisible() && stats->property("windowShown").toBool());
     if (window) window->close();
     m.d.waitFor(1000, [&] { return m.shell->shownWindows().isEmpty() || !m.shell->shownWindows().contains(QStringLiteral("tools.stats")); });

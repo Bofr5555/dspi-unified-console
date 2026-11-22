@@ -233,6 +233,11 @@ Item {
     }
     Connections {
         target: LayoutController
-        function onLayoutChanging() { DevicesController.listShown = false }
+        function onLayoutChanging() {
+            DevicesController.listShown = false
+            // -- WP INT3 -- Classic replaces again: the Binding above is destroyed
+            // with the shell, and a destroyed Binding restores nothing
+            DeviceRegistry.keepOpen = false
+        }
     }
 }
