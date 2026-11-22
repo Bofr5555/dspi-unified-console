@@ -33,8 +33,13 @@ use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
 use dspi_cmd::COMMAND;
-use dspi_hub::system::model::SystemModel;
+// -- WP INST0 -- the model is built with the core's Installation setup edits
+// (one path to a model) and checked by the hub's own validator
+use dspi_core::link::{
+    InstallationEdit, InstallationRole, InstallationSpeaker, installation_apply,
+};
 use dspi_proto::ext::alink_usb::{DEFAULT_D, d_limits};
+use dspi_session::system_model::SystemModel;
 use serde_json::{Map, Value, json};
 
 use crate::exit;
@@ -801,39 +806,51 @@ pub fn unit_script(inst: &Installation, u: &Unit) -> String {
 }
 
 /// The hub's system model for this installation, checked by the hub's own
-/// validation.
+/// validation. -- WP INST0 -- Made as an Installation setup draft would be:
+/// the core's edits on an empty model (`dspi_core::link::installation_apply`).
 pub fn hub_model(inst: &Installation) -> Result<Value, String> {
-    let units: Vec<Value> = inst
-        .units
-        .iter()
-        .map(|u| {
-            let speakers: Vec<Value> = u
+    let mut edits = vec![
+        InstallationEdit::SetSystem {
+            rate_hz: Some(inst.rate),
+            set_d: true,
+            d_frames: inst.d,
+            keep_usb_aligned: Some(inst.keep_aligned),
+        },
+        InstallationEdit::AddRoom {
+            id: Some(inst.name.clone()),
+            name: inst.description.clone(),
+        },
+    ];
+    for u in &inst.units {
+        edits.push(InstallationEdit::AddUnit {
+            serial: u.serial.clone(),
+            id: Some(u.id.clone()),
+            name: u.name.clone(),
+            room: Some(inst.name.clone()),
+            role: InstallationRole::UsbDirect,
+            upstream: None,
+        });
+        edits.push(InstallationEdit::SetUnitUsbMode {
+            id: u.id.clone(),
+            mode: Some(inst.mode.as_str().into()),
+            play_unaligned: u.play_unaligned,
+        });
+        edits.push(InstallationEdit::SetUnitSpeakers {
+            id: u.id.clone(),
+            speakers: u
                 .channels
                 .iter()
-                .map(|c| json!({"output": c.output, "distanceM": c.distance_m}))
-                .collect();
-            json!({
-                "id": u.id,
-                "name": u.name,
-                "serial": u.serial,
-                "room": inst.name,
-                "transport": "usb_direct",
-                "usbMode": inst.mode.as_str(),
-                "onLockError": if u.play_unaligned { "play_unaligned" } else { "mute" },
-                "speakers": speakers,
-            })
-        })
-        .collect();
-    let v = json!({
-        "version": dspi_hub::system::model::MODEL_VERSION,
-        "dFrames": inst.d,
-        "rateHz": inst.rate,
-        "rooms": [{"id": inst.name, "name": inst.description}],
-        "units": units,
-        "keepUsbAligned": inst.keep_aligned,
-    });
-    let model: SystemModel =
-        serde_json::from_value(v).map_err(|e| format!("the hub's model: {e}"))?;
+                .map(|c| InstallationSpeaker {
+                    output: c.output,
+                    distance_m: c.distance_m,
+                })
+                .collect(),
+        });
+    }
+    let mut model = SystemModel::default();
+    for e in &edits {
+        installation_apply(&mut model, e).map_err(|e| format!("the hub's model: {e}"))?;
+    }
     model
         .validate()
         .map_err(|e| format!("the hub's model: {e}"))?;

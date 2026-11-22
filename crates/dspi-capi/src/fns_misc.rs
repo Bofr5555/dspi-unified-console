@@ -112,6 +112,9 @@ mod measure_curv;
 mod firmware_update;
 // -- WP ROLE0 -- the speaker layout (MPLAN 2.2)
 mod speaker_layout;
+// -- WP INST0 -- Installation setup: drafts of the hub's site (DSPi Link only)
+#[cfg(feature = "link")]
+mod installation;
 
 // ── Replies ──────────────────────────────────────────────────────────
 
