@@ -209,9 +209,34 @@ void SettingsController::hookDeviceInfo() {
     });
 }
 
+// -- WP LAY6 -- (was sidebarRows' own)
+static const std::array<const char *, 4> kGroupTitles{ QT_TRANSLATE_NOOP("SettingsController", "Application"),
+                                                       QT_TRANSLATE_NOOP("SettingsController", "Display"),
+                                                       QT_TRANSLATE_NOOP("SettingsController", "System"),
+                                                       QT_TRANSLATE_NOOP("SettingsController", "Control") };
+
+// -- WP LAY6 --
+QVariantList SettingsController::searchEntries() const {
+    QVariantList rows;
+    for (int g = SettingsRegistry::Application; g <= SettingsRegistry::Control; ++g) {
+        for (const auto *p : groupPages(SettingsRegistry::Group(g))) {
+            const QString id = QString::fromLatin1(p->id);
+            if (!isShown(id)) continue;
+            QStringList terms;
+            for (const char *term : p->terms) terms.append(translated(term));
+            terms += m_extraTerms.value(id);
+            rows.append(QVariantMap{ { QStringLiteral("id"), id },
+                                     { QStringLiteral("title"), translated(p->title) },
+                                     { QStringLiteral("icon"), QString::fromLatin1(p->icon) },
+                                     { QStringLiteral("group"), tr(kGroupTitles[size_t(g)]) },
+                                     { QStringLiteral("terms"), terms },
+                                     { QStringLiteral("enabled"), !senderLocked(p) } });
+        }
+    }
+    return rows;
+}
+
 QVariantList SettingsController::sidebarRows(const QString &query) const {
-    static const std::array<const char *, 4> titles{ QT_TR_NOOP("Application"), QT_TR_NOOP("Display"),
-                                                     QT_TR_NOOP("System"), QT_TR_NOOP("Control") };
     QVariantList rows;
     for (int g = SettingsRegistry::Application; g <= SettingsRegistry::Control; ++g) {
         QVariantList pages;
@@ -226,7 +251,7 @@ QVariantList SettingsController::sidebarRows(const QString &query) const {
                                                                           p->group == SettingsRegistry::Control } });
         }
         if (pages.isEmpty()) continue;
-        rows.append(QVariantMap{ { QStringLiteral("heading"), tr(titles[size_t(g)]) } });
+        rows.append(QVariantMap{ { QStringLiteral("heading"), tr(kGroupTitles[size_t(g)]) } });
         rows.append(pages);
     }
     return rows;

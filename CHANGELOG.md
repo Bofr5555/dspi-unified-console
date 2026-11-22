@@ -92,6 +92,10 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
   says why). A change refused on a device that is not the one shown (a limit, the lock) is now a notice that names
   that device. Leaving Modern keeps the other devices open: Classic shows the active one and lists the others under
   Open devices, and back in Modern their tabs are there. (WP XDEV1)
+- In Modern, **Ctrl+K** (or the search in the top bar) opens the command palette: type to find any menu command, page,
+  channel, setting or other open device, and press Enter to run or open it. Each row shows where it is and its shortcut;
+  a setting is found by its own label ("line width"). The search no longer opens Settings itself. (WP LAY6)
+- The Interrupt Monitor clears with **Ctrl+L** instead of Ctrl+K, in both layouts. (WP LAY6)
 
 ### Android
 - DSPi Link is reachable from the main page (owner report on 0.14.0: only through the settings
