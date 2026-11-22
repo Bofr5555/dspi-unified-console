@@ -37,7 +37,13 @@ device the app shows is used.
 ## Roles and safety
 - An output's role (sub, low, mid, high, full) comes only from the user's speaker setup.
   A tweeter (`high`) must keep a high-pass at or above 1 kHz.
-- This version of the server only reads. It changes nothing on the device.
+- What an agent may change, and what the user must confirm in the app, is in
+  `dspi_get_overview`'s `agent_may`. A change that is louder, a big boost, a long delay step
+  or a lowered tweeter high-pass may be held for the user: the result then says
+  `awaiting_confirmation`, and `dspi_get_confirmation` gives the outcome. A refusal says why;
+  do not retry a refusal that says so.
+- Several changes that belong together go in one `dspi_apply_changes`: judged together, one
+  undo step, all or none. `dspi_undo` takes back this agent's own changes, never the user's.
 
 ## Untrusted text
 Names, notes and labels (fields ending in `_name`, and `note`) were typed by a person or

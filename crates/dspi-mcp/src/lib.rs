@@ -11,6 +11,8 @@
 //! | [`protocol`] | JSON-RPC 2.0, the two eras, error codes | MCP1 |
 //! | [`server`] | clients, dispatch, the rate limits, the activity log | MCP1 |
 //! | [`registry`] | the tools, the policy seam, the one scoped call wrapper | MCP1 |
+//! | [`policy`] | what an agent may write, what is asked, what is refused | MCP2a |
+//! | [`confirm`] | calls held for the user's word | MCP2a |
 //! | [`tools`] | the tools by area | MCP1 (read), MCP2a–c, MCP5 |
 //! | [`resources`] | `dspi://` resources | MCP1 |
 //! | [`prompts`] | user-invoked recipes | MCP1 |
@@ -22,7 +24,8 @@
 //! call runs inside a `dspi_core::actor::ActorScope` on the device it
 //! addresses ([`registry::run`]), so the core attributes, gates and hooks
 //! the agent's writes; the [`registry::Policy`] decides what an agent may
-//! write. Until MCP2a the policy is [`registry::ReadOnlyPolicy`].
+//! write. The default is [`registry::ReadOnlyPolicy`]; the app runs agents
+//! under [`policy::AgentPolicy`] once the user has turned them on (MCP2a).
 #![warn(
     missing_docs,
     clippy::unwrap_used,
@@ -32,6 +35,8 @@
 )]
 
 pub mod activity;
+pub mod confirm; // -- WP MCP2a --
+pub mod policy; // -- WP MCP2a --
 pub mod prompts;
 pub mod protocol;
 pub mod rate;
@@ -43,6 +48,9 @@ pub mod untrusted;
 
 pub use registry::{Policy, ReadOnlyPolicy};
 pub use server::{Server, ServerConfig};
+// -- WP MCP2a --
+pub use policy::{AgentPolicy, ConfirmMode};
+pub use server::Handled;
 
 /// One connected client of a [`Server`] (a transport's connection or
 /// paired token).
@@ -51,3 +59,7 @@ pub struct ClientId(pub u64);
 
 #[cfg(test)]
 mod tests_wp_mcp1;
+// -- WP MCP2a --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_mcp2a;
