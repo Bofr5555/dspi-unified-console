@@ -9,7 +9,9 @@ const PLACES: Record<string, { section: string; id: string; tab?: string }> = {
   Main: { section: "Overview", id: "main", tab: "Dashboard" },
   Overview: { section: "Overview", id: "overview", tab: "All Channels" },
   Sender: { section: "Overview", id: "sender" },
-  EQ: { section: "Equaliser", id: "eq" },
+  EQ: { section: "Equaliser", id: "eq", tab: "PEQ" }, // -- WP WEBM2 -- the tab is PEQ (MODLAY 2)
+  Crossover: { section: "Equaliser", id: "xover" }, // -- WP WEBM2 --
+  "Delay & gain": { section: "Equaliser", id: "delays" }, // -- WP WEBM2 --
   Inputs: { section: "Equaliser", id: "inputs" },
   Matrix: { section: "Routing", id: "matrix" },
   Effects: { section: "Effects", id: "effects" },

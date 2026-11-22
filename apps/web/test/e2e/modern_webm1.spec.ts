@@ -218,7 +218,7 @@ test("WEBM1: 375 px in every browser: one row of sections, the dock in two lines
   const bar = (await rail(session).boundingBox())!;
   expect(bar.height).toBeLessThan(80);
   const dock = (await session.locator(".dock").boundingBox())!;
-  expect(dock.height).toBeLessThan(96);
+  expect(dock.height).toBeLessThan(112); // -- WP WEBM2 -- two lines of 44 px tap targets (RB)
   // The device's actions stay in one line.
   const actions = (await session.getByRole("group", { name: "Device actions" }).boundingBox())!;
   expect(actions.height).toBeLessThan(40);

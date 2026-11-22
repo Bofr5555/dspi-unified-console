@@ -14,6 +14,8 @@
 import type { ComponentChildren, FunctionComponent } from "preact";
 import { useCallback, useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { EqScreen } from "../screens/eq/EqScreen";
+import { CrossoverScreen } from "../screens/eq/CrossoverScreen"; // -- WP WEBM2 --
+import { DelaysScreen } from "../screens/eq/DelaysScreen"; // -- WP WEBM2 --
 import { Dialog } from "../screens/main/Dialog";
 import { MainScreen } from "../screens/main/MainScreen";
 // -- WP WB6c --
@@ -128,7 +130,10 @@ export interface ScreenDef {
 export const SCREENS: ScreenDef[] = [
   { id: "main", label: "Dashboard", View: MainScreen },
   // -- WP WB6b --
-  { id: "eq", label: "EQ", View: EqScreen },
+  { id: "eq", label: "PEQ", View: EqScreen }, // -- WP WEBM2 -- the Equaliser's PEQ tab (MODLAY 2)
+  // -- WP WEBM2 -- the Equaliser's Crossover and Delay & gain tabs (setting up: not in Simple)
+  { id: "xover", label: "Crossover", View: CrossoverScreen },
+  { id: "delays", label: "Delay & gain", View: DelaysScreen },
   // -- WP WB6G -- (UI-MODES: "Channels and EQ", every mode)
   { id: "inputs", label: "Inputs", View: InputsScreen },
   // -- WP WB6c --
@@ -160,7 +165,7 @@ export const SCREENS: ScreenDef[] = [
 
 // -- WP P1WB1 --
 /** The screens Simple leaves out besides the Pro layer's: files are for setting up (-- WP P1DCFIX -- Snapshots stay, recall and A/B only). */
-const SETUP = new Set(["files", "surfaces" /* -- WP WB6L -- */]);
+const SETUP = new Set(["files", "surfaces" /* -- WP WB6L -- */, "xover", "delays" /* -- WP WEBM2 -- */]);
 
 // -- WP WB6J -- the tool screens, in Advanced and Installer
 const TOOLS = new Set(["generator", "analyser", "stats", "monitor", "measure" /* -- WP P5WMS -- */]);

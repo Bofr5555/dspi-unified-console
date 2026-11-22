@@ -330,7 +330,7 @@ test("WB6c crossover: family, type, slope and frequency, bypass with the Console
   await page.getByRole("dialog", { name: "Clear All Bands?" }).getByRole("button", { name: "Clear All" }).click();
   await expect.poll(async () => (await core(page)).xover[w]!.map((b) => [b.filterType, b.freq, b.bypass])).toEqual(Array(4).fill([0, 1000, false]));
   // The PEQ tab again: the band list.
-  await session.getByRole("tab", { name: "PEQ" }).click();
+  await session.getByRole("tablist", { name: "Bands" }).getByRole("tab", { name: "PEQ" }).click(); // -- WP WEBM2 -- the page's own tab is PEQ too
   await expect(session.getByRole("region", { name: /^Bands of OUT1/ })).toBeVisible();
 });
 
