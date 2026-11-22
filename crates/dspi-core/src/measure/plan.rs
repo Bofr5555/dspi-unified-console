@@ -53,6 +53,37 @@ pub(crate) const SPL_CAP_SPEAKERS: f32 = 95.0;
 pub(crate) const SPL_CAP_HEADPHONES: f32 = 90.0;
 pub(crate) const SPL_HARD_CAP_SPEAKERS: f32 = 105.0;
 pub(crate) const SPL_HARD_CAP_HEADPHONES: f32 = 100.0;
+// -- WP FEAT2 --
+/// The level caps a setup that names none is held to ([`measure_level_caps`]):
+/// the most an AI agent's measurement may play, which an agent may only lower.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct MeasureLevelCaps {
+    /// The generator's ceiling, peak dBFS (`MeasureSetup::ceiling_db`).
+    pub ceiling_db: f32,
+    /// The SPL cap with a calibrated microphone, dB SPL
+    /// (`MeasureSetup::spl_cap_db`).
+    pub spl_cap_db: f32,
+}
+
+/// The default level caps at `placement`.
+pub fn measure_level_caps(placement: MeasurePlacement) -> MeasureLevelCaps {
+    if placement == MeasurePlacement::Headphones {
+        MeasureLevelCaps {
+            ceiling_db: CEILING_HEADPHONES_DB,
+            spl_cap_db: SPL_CAP_HEADPHONES,
+        }
+    } else {
+        MeasureLevelCaps {
+            ceiling_db: CEILING_SPEAKERS_DB,
+            spl_cap_db: SPL_CAP_SPEAKERS,
+        }
+    }
+}
+
+/// The lowest ceiling a setup may name, peak dBFS.
+pub const MEASURE_CEILING_MIN_DB: f32 = -120.0;
+/// The lowest SPL cap a setup may name, dB SPL.
+pub const MEASURE_SPL_CAP_MIN_DB: f32 = 40.0;
 /// The capture rate when the setup names none, Hz (RC8).
 pub(crate) const CAPTURE_RATE_DEFAULT: u32 = 48_000;
 /// The most outputs a session measures.
@@ -243,7 +274,7 @@ impl Plan {
         };
         let ceiling_db = match setup.ceiling_db {
             None => default_ceiling,
-            Some(c) if c.is_finite() && (-120.0..=hard_cap).contains(&c) => c,
+            Some(c) if c.is_finite() && (MEASURE_CEILING_MIN_DB..=hard_cap).contains(&c) => c,
             Some(c) => {
                 return Err(invalid(format!(
                     "a ceiling of {c} dBFS (at most {hard_cap} dBFS)"
@@ -264,7 +295,7 @@ impl Plan {
         };
         let spl_cap = match setup.spl_cap_db {
             None => default_spl,
-            Some(c) if c.is_finite() && (40.0..=hard_spl).contains(&c) => c,
+            Some(c) if c.is_finite() && (MEASURE_SPL_CAP_MIN_DB..=hard_spl).contains(&c) => c,
             Some(c) => {
                 return Err(invalid(format!(
                     "an SPL cap of {c} dB (40 to {hard_spl} dB SPL)"

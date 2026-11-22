@@ -357,6 +357,10 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
     if let Some(r) = crate::installation::dispatch(&core, &req.method, req.params.clone()) {
         return r;
     }
+    // -- WP FEAT2 -- a room's or zone's volume (src/system_volume.rs)
+    if let Some(r) = crate::system_volume::dispatch(&core, &req.method, req.params.clone()) {
+        return r;
+    }
     // -- WP PGCORE -- the protocol generation and raw paged requests (src/protocol.rs)
     if let Some(r) = crate::protocol::dispatch(&core, &req.method, req.params.clone()) {
         return r;

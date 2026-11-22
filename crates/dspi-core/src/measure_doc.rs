@@ -346,6 +346,44 @@ pub fn target_import(
     .map_err(measure_error)
 }
 
+// -- WP FEAT2 --
+/// Whether the `mic` document `text` scales levels to dB SPL: only then does
+/// a measurement with it hold an SPL cap.
+///
+/// Errors: [`DspiError::InvalidArgument`] for a text that is no `mic`
+/// document.
+pub fn mic_document_has_spl(text: &str) -> Result<bool> {
+    let doc = MicDoc::from_text(text).map_err(measure_error)?;
+    Ok(doc.mic.spl_scale().offset_db.is_some())
+}
+
+// -- WP FEAT2 --
+/// A `target` document of the built-in target `id` ([`target_builtins`]) with
+/// its default parameters, normalised at the default reference band: what
+/// `MeasureTuneOptions::target_document` takes. Not filed.
+///
+/// Errors: [`DspiError::InvalidArgument`] for an id that is none of them.
+pub fn target_builtin_document(id: &str) -> Result<String> {
+    let b = builtins()
+        .into_iter()
+        .find(|b| b.id == id)
+        .ok_or_else(|| invalid("no built-in target has that id"))?;
+    let t = dspi_measure::target::Target {
+        target_use: b.target_use,
+        coupler: b.coupler,
+        definition: dspi_measure::target::TargetDefinition::Builtin { builtin: b.builtin },
+        reference: dspi_measure::target::DEFAULT_REFERENCE_BAND,
+    };
+    TargetDoc {
+        schema_version: dspi_measure::doc::SCHEMA_VERSION,
+        meta: meta(DocKind::Target, &b.name),
+        target: Target::from_target(&b.name, &t, &LogGrid::STANDARD).map_err(measure_error)?,
+        extra: Map::new(),
+    }
+    .to_text()
+    .map_err(measure_error)
+}
+
 /// Every built-in target with its default parameters, in a stable order:
 /// flat, tilt and house for speakers, then each coupler's default.
 #[cfg_attr(feature = "uniffi", uniffi::export)]

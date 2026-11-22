@@ -125,7 +125,12 @@ pub use alink_installation::{
     InstallationDraft, InstallationEdit, InstallationIssue, InstallationRole, InstallationSpeaker,
     InstallationUnseen, InstallationView, installation_apply, installation_changes,
 };
+// -- WP FEAT2 --
 use dspi_session::ext_state::ExtState;
+pub use system_volume::{
+    SYSTEM_VOLUME_MASTER_MIN_DB, SYSTEM_VOLUME_STEP_MAX_DB, SYSTEM_VOLUME_USER_MIN_DB,
+    SystemVolumeAsk, SystemVolumeKind, SystemVolumePlan, SystemVolumeState, SystemVolumeUnit,
+};
 
 /// The role asked for when pairing, as the macOS Console does.
 const PAIR_ROLE: &str = "control";
@@ -4691,6 +4696,14 @@ pub mod alink_system_spdif;
 // -- WP INST0 -- Installation setup: drafts of the hub's site (MPLAN 1.4)
 #[path = "alink/installation.rs"]
 pub mod alink_installation;
+
+// -- WP FEAT2 -- a room's or zone's volume
+#[path = "alink/volume.rs"]
+pub mod system_volume;
+#[cfg(test)]
+#[allow(clippy::indexing_slicing)]
+#[path = "alink/tests_wp_feat2.rs"]
+mod tests_wp_feat2;
 
 // -- WP ATQT --
 #[cfg(test)]
