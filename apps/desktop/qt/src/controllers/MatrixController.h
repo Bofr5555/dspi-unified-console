@@ -6,6 +6,7 @@
 #include <QString>
 #include <QVariantMap>
 #include <QtQml/qqmlregistration.h>
+#include <memory>
 
 #include "MatrixModel.h"
 #include "Registrar.h"
@@ -113,12 +114,17 @@ signals:
     void enableQuestion(int output, const QString &title, const QString &text, const QString &acceptText);
 
 private:
+    // -- WP MDQT2a -- A device's staged crosspoints while another one shows
+    struct State {
+        QHash<int, MatrixModel::Cell> staged;
+    };
     ChannelController *channels() const;
     void onSnapshot();
     void editCell(int input, int output, const std::function<void(MatrixModel::Cell &)> &edit);
 
     AppContext m_ctx;
     MatrixModel *m_model;
+    std::shared_ptr<State> m_shown;   // -- WP MDQT2a -- of the device the model shows
     int m_revision = 0;
 };
 

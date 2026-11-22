@@ -4,6 +4,7 @@
 #include "Core.h"
 #include "DeviceModel.h"
 #include "HardwareController.h" // -- WP QPI2 --
+#include "SessionState.h"
 #include "Snapshot.h"
 
 #include <QJsonArray>
@@ -11,6 +12,7 @@
 #include <QSettings>
 #include <array>
 #include <cmath>
+#include <utility>
 
 static const Registrar::Controller<ChannelController> channelController;
 
@@ -80,6 +82,11 @@ ChannelController::ChannelController(const AppContext &ctx, QObject *parent) : Q
 
 // ---- State ---------------------------------------------------------------
 
+// -- WP MDQT2a --
+std::shared_ptr<ChannelController::State> ChannelController::state() const {
+    return sessionState<State>(m_ctx.activeSession(), QStringLiteral("ChannelController"));
+}
+
 bool ChannelController::writable() const { return m_ctx.device->connected() && !m_ctx.device->readOnly(); }
 
 std::tuple<int, int, int> ChannelController::firmware() const {
@@ -117,20 +124,27 @@ void ChannelController::onSnapshot() {
         m_linksSerial = serial;
         loadLinks();
     }
+    const std::shared_ptr<State> st = state();
+    if (st != m_shown) {   // -- WP MDQT2a -- another device is the active one
+        m_shown = st;
+        emit limitsChanged();
+        m_reduction.clear();
+        emit limiterReductionChanged();
+    }
     if (!snap.connected) {
-        m_staged.clear();
-        m_generation = 0;
-    } else if (snap.generation != m_generation) {
+        st->staged.clear();
+        st->generation = 0;
+    } else if (snap.generation != st->generation) {
         // A device (re)opened: its limits, read once on the worker
-        m_generation = snap.generation;
-        m_staged.clear();
+        st->generation = snap.generation;
+        st->staged.clear();
         m_ctx.core->worker()->call(
             this,
             [](FfiCore *c) { return std::make_pair(double(dspi_max_delay_ms(c)), double(dspi_preamp_max_db(c))); },
-            [this](std::pair<double, double> limits) {
-                if (limits.first > 0) m_maxDelayMs = limits.first;
-                if (limits.second > 0) m_preampMaxDb = limits.second;
-                emit limitsChanged();
+            [this, st](std::pair<double, double> limits) {
+                if (limits.first > 0) st->maxDelayMs = limits.first;
+                if (limits.second > 0) st->preampMaxDb = limits.second;
+                if (st == state()) emit limitsChanged();
             });
     }
     m_ctx.poller->setEnabled(m_limiterPoll, m_limiterWatchers > 0 && limiterSupported());
@@ -274,8 +288,9 @@ bool ChannelController::validBand(int channel, int band, bool crossover) const {
 }
 
 FilterParams ChannelController::current(int channel, int band, bool crossover) const {
-    const auto staged = m_staged.constFind(stageKey(channel, band, crossover));
-    if (staged != m_staged.cend()) return staged->params;
+    const std::shared_ptr<State> st = state();
+    const auto staged = st->staged.constFind(stageKey(channel, band, crossover));
+    if (staged != st->staged.cend()) return staged->params;
     const DspState *s = m_ctx.device->state();
     if (!s || !validBand(channel, band, crossover)) return flatBand();
     return crossover ? s->xover[channel][band] : s->filters[channel][band];
@@ -292,7 +307,8 @@ void ChannelController::writeBand(int channel, int band, bool crossover, const F
     if (!writable() || !validBand(channel, band, crossover)) return;
     const int key = stageKey(channel, band, crossover);
     const quint64 seq = ++m_seq;
-    m_staged.insert(key, { p, seq });
+    const std::shared_ptr<State> st = state();
+    st->staged.insert(key, { p, seq });
     ++m_revision;
     emit changed();
     const auto ch = uint8_t(channel), b = uint8_t(band);
@@ -301,11 +317,12 @@ void ChannelController::writeBand(int channel, int band, bool crossover, const F
     apply(
         what,
         [ch, b, crossover, p](FfiCore *c) { return crossover ? dspi_set_crossover(c, ch, b, p) : dspi_set_filter(c, ch, b, p); },
-        [this, key, seq](bool) {
+        [this, st, key, seq](bool) {
             // The snapshot that came with it is the truth now, unless a newer edit is staged
-            const auto it = m_staged.constFind(key);
-            if (it != m_staged.cend() && it->seq == seq) {
-                m_staged.remove(key);
+            const auto it = st->staged.constFind(key);
+            if (it != st->staged.cend() && it->seq == seq) {
+                st->staged.remove(key);
+                if (st != state()) return;   // -- WP MDQT2a -- of the device left
                 ++m_revision;
                 emit changed();
             }
@@ -317,7 +334,8 @@ void ChannelController::writePairBand(int input, int partner, int band, const Fi
     if (!writable() || !validBand(input, band, false) || !validBand(partner, band, false)) return;
     const int keys[2] = { stageKey(input, band, false), stageKey(partner, band, false) };
     const quint64 seq = ++m_seq;
-    for (const int key : keys) m_staged.insert(key, { p, seq });
+    const std::shared_ptr<State> st = state();
+    for (const int key : keys) st->staged.insert(key, { p, seq });
     ++m_revision;
     emit changed();
     const auto in = uint8_t(input), b = uint8_t(band);
@@ -325,16 +343,16 @@ void ChannelController::writePairBand(int input, int partner, int band, const Fi
     const QString what = QStringLiteral("filter pair %1 band %2").arg(input / 2).arg(band) + m_groupTag;
     apply(
         what, [in, b, p](FfiCore *c) { return dspi_set_input_pair_filter(c, in, b, p); },
-        [this, keys, seq](bool) {
+        [this, st, keys, seq](bool) {
             bool dropped = false;
             for (const int key : keys) {
-                const auto it = m_staged.constFind(key);
-                if (it != m_staged.cend() && it->seq == seq) {
-                    m_staged.remove(key);
+                const auto it = st->staged.constFind(key);
+                if (it != st->staged.cend() && it->seq == seq) {
+                    st->staged.remove(key);
                     dropped = true;
                 }
             }
-            if (dropped) {
+            if (dropped && st == state()) {   // -- WP MDQT2a -- not of the device left
                 ++m_revision;
                 emit changed();
             }
@@ -480,7 +498,7 @@ double ChannelController::preamp(int input) const {
 
 void ChannelController::setPreamp(int input, double db) {
     if (!writable() || input < 0 || input >= numInputs() || !std::isfinite(db)) return;
-    const float v = float(qBound(-60.0, db, m_preampMaxDb));
+    const float v = float(qBound(-60.0, db, preampMaxDb()));
     // -- WP P1QT2 -- A linked pair is one write and one undo step (the core's
     // pair setter, P1UG); never the all-inputs preamp
     if (linkedPartner(input) >= 0) {
@@ -627,6 +645,7 @@ bool ChannelController::requestOutputEnable(int output, bool enabled) {
     if (!writable() || output < 0 || output >= numOutputs()) return true;
     if (enabled && enableWouldConflict(output)) {
         const int pdm = pdmOutput();
+        enableAsked();   // -- WP MDQT2a --
         if (output == pdm)
             emit core1Question(output, tr("Warning"), tr("Outputs %1-%2 will be disabled. Are you sure?").arg(3).arg(pdm),
                                tr("Enable PDM"));
@@ -641,7 +660,13 @@ bool ChannelController::requestOutputEnable(int output, bool enabled) {
     return true;
 }
 
+// -- WP MDQT2a -- Connection generations are the process's, so another device's
+// never matches
+void ChannelController::enableAsked() { m_askedOf = m_ctx.device->snapshot().generation; }
+
 void ChannelController::confirmOutputEnable(int output) {
+    const uint64_t askedOf = std::exchange(m_askedOf, 0);   // -- WP MDQT2a --
+    if (askedOf != 0 && askedOf != m_ctx.device->snapshot().generation) return;
     if (!writable() || output < 0 || output >= numOutputs()) return;
     const int pdm = pdmOutput();
     const auto o = uint8_t(output), p = uint8_t(pdm);

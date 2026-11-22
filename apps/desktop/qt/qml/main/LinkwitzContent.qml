@@ -39,6 +39,10 @@ ColumnLayout {
     function applyDraft() { ChannelController.setLinkwitz(channel, band, f0, q0, fp, qp) }
 
     onActiveChanged: if (active) revert()
+    Connections {   // -- WP MDQT2a -- the draft is the device's it was typed for
+        target: content.active ? DeviceRegistry : null
+        function onActiveChanged() { content.revert() }
+    }
 
     Layout.fillWidth: true
     spacing: Theme.spacing

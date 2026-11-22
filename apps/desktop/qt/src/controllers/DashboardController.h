@@ -7,6 +7,7 @@
 #include <QTimer>
 #include <QVariantList>
 #include <QtQml/qqmlregistration.h>
+#include <memory>
 
 #include "Registrar.h"
 
@@ -58,7 +59,7 @@ public:
     int cardsPerRow() const { return m_cardsPerRow; }
     // 0 is Auto; 1..3 fixed. Saved as dashboard/cardsPerRow.
     void setCardsPerRow(int n);
-    uint clipLatched() const { return m_clipLatched; }
+    uint clipLatched() const { return state()->clipLatched; }
     bool stale() const { return m_stale; }
     int spacing() const { return kSpacing; }
 
@@ -90,6 +91,17 @@ signals:
     void staleChanged();
 
 private:
+    // -- WP MDQT2a -- What is the device's own: another one's slow read holds up
+    // nothing here, and its marks are its own
+    struct State {
+        QJsonArray outputCards;
+        bool cardsInFlight = false;
+        bool cardsAgain = false;
+        uint clipLatched = 0;
+        QElapsedTimer lastClip;
+    };
+    std::shared_ptr<State> state() const;
+    void onSnapshot();
     void fetchCards();
     void rebuild();
     void onMeters();
@@ -99,12 +111,8 @@ private:
 
     AppContext m_ctx;
     QVariantList m_cards;
-    QJsonArray m_outputCards;
-    bool m_cardsInFlight = false;
-    bool m_cardsAgain = false;
+    std::shared_ptr<State> m_shown;   // -- WP MDQT2a -- the State last announced
     int m_cardsPerRow = 0;
-    uint m_clipLatched = 0;
-    QElapsedTimer m_lastClip;
     QTimer m_staleTimer;
     bool m_stale = false;
 };

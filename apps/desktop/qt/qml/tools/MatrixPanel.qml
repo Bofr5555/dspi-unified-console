@@ -500,6 +500,7 @@ Panel {
     QuestionDialog {
         id: enableQuestion
         objectName: "Matrix.enableQuestion"
+        ofDevice: true   // -- WP MDQT2a --
         property int output: -1
         parent: Overlay.overlay
         onAnswered: answer => { if (answer === "accept") MatrixController.confirmEnable(output) }

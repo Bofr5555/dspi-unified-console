@@ -6,7 +6,10 @@
 #include "PresetModel.h"
 #include "SessionModel.h"
 
+#include <QGuiApplication>
 #include <QJSEngine>
+#include <QQuickItem>
+#include <QQuickWindow>
 
 namespace {
 DeviceModel *s_instance = nullptr;
@@ -17,6 +20,7 @@ DeviceModel::DeviceModel(Core *core, DeviceRegistry *registry, QObject *parent)
     : QObject(parent), m_core(core), m_registry(registry), m_channels(new ChannelListModel(this)),
       m_presets(new PresetModel(this)) {
     s_instance = this;
+    connect(registry, &DeviceRegistry::activeLeaving, this, &DeviceModel::letGo);   // -- WP MDQT2a --
     connect(registry, &DeviceRegistry::activeMoved, this, &DeviceModel::rebind);
     rebind();
 }
@@ -30,6 +34,18 @@ DeviceModel *DeviceModel::instance() { return s_instance; }
 DeviceModel *DeviceModel::create(QQmlEngine *, QJSEngine *) {
     QJSEngine::setObjectOwnership(s_instance, QJSEngine::CppOwnership);
     return s_instance;
+}
+
+// -- WP MDQT2a -- The device is about to be left: a field being typed in loses
+// the focus, so that it commits (or drops) its edit as on a click elsewhere, on
+// the device it was made on. (A held slider lets go by itself, CustomSlider.)
+void DeviceModel::letGo() {
+    for (QWindow *w : QGuiApplication::allWindows()) {
+        auto *window = qobject_cast<QQuickWindow *>(w);
+        if (!window) continue;
+        QQuickItem *typed = window->activeFocusItem();
+        if (typed && (typed->inherits("QQuickTextInput") || typed->inherits("QQuickTextEdit"))) typed->setFocus(false);
+    }
 }
 
 void DeviceModel::rebind() {

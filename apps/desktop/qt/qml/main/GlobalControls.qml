@@ -296,6 +296,7 @@ ColumnLayout {
     QuestionDialog {
         id: unsavedQuestion
         objectName: "GlobalControls.unsavedQuestion"
+        ofDevice: true   // -- WP MDQT2a --
         parent: Overlay.overlay
         property string op
         property int slot: -1
@@ -322,6 +323,7 @@ ColumnLayout {
     QuestionDialog {
         id: clearOne
         objectName: "GlobalControls.clearQuestion"
+        ofDevice: true   // -- WP MDQT2a --
         parent: Overlay.overlay
         property int slot: -1
         function ask(s) {
@@ -338,6 +340,7 @@ ColumnLayout {
     QuestionDialog {
         id: clearAll
         objectName: "GlobalControls.clearAllQuestion"
+        ofDevice: true   // -- WP MDQT2a --
         parent: Overlay.overlay
         function ask() { open() }
         title: qsTr("Clear All Presets?")
@@ -358,6 +361,10 @@ ColumnLayout {
         modal: true
         focus: true
         closePolicy: Popup.CloseOnEscape
+        Connections {   // -- WP MDQT2a -- a name for the device that is left
+            target: nameDialog.visible ? DeviceRegistry : null
+            function onActiveLeaving() { nameDialog.close() }
+        }
         width: 280
         x: (parent.width - width) / 2
         y: Math.max(Theme.spacingLarge, (parent.height - implicitHeight) / 3)
@@ -464,6 +471,7 @@ ColumnLayout {
             Text {
                 text: failure.title
                 font: Theme.fontTitle
+                textFormat: Text.PlainText   // -- WP MDQT2a -- it may hold a device's name
                 color: Theme.text
                 Accessible.role: Accessible.Heading
                 Accessible.name: text

@@ -34,6 +34,7 @@ Slider {
     }
 
     onMoved: {
+        if (_left) return   // -- WP MDQT2a --
         if (pressed) {
             if (coalesce.running) {
                 _pending = value
@@ -52,6 +53,8 @@ Slider {
         if (pressed) {
             _dragging = true
             DeviceModel.beginDrag()
+        } else if (_left) {   // -- WP MDQT2a --
+            _left = false
         } else {
             coalesce.stop()
             _pending = NaN
@@ -63,6 +66,22 @@ Slider {
         }
     }
     Component.onDestruction: if (_dragging) DeviceModel.endDrag()
+    // -- WP MDQT2a -- Held while another device becomes the active one: the value
+    // is committed to the one left, and nothing of the rest of the hold reaches
+    // the next one
+    property bool _left: false
+    Connections {
+        target: slider._dragging ? DeviceRegistry : null
+        function onActiveLeaving() {
+            if (!slider._dragging) return
+            coalesce.stop()
+            slider._pending = NaN
+            slider.committed(slider.value)
+            slider._dragging = false
+            slider._left = true
+            DeviceModel.endDrag()
+        }
+    }
 
     // Above the handle and the track: the Slider takes any press it sees and
     // moves to it, so the right button is caught before it gets there. The

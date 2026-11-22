@@ -134,6 +134,7 @@ ColumnLayout {
     QuestionDialog {
         id: core1Question
         objectName: "OutputDetail.core1Question"
+        ofDevice: true   // -- WP MDQT2a --
         parent: Overlay.overlay
         onAnswered: answer => { if (answer === "accept") ChannelController.confirmOutputEnable(page.output) }
     }

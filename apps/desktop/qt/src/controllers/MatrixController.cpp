@@ -5,9 +5,11 @@
 #include "ChannelListModel.h"
 #include "Core.h"
 #include "DeviceModel.h"
+#include "SessionState.h"
 
 #include <QRegularExpression>
 #include <cmath>
+#include <utility>
 #include <vector>
 
 static const Registrar::Controller<MatrixController> matrixController;
@@ -74,6 +76,17 @@ int MatrixController::sourceRows(int inputs, bool upmixDerives, bool surroundOff
 }
 
 void MatrixController::onSnapshot() {
+    // -- WP MDQT2a -- Another device is the active one: the crosspoints staged
+    // for the one left wait in its session; this one's count only while its
+    // writes are on their way
+    const std::shared_ptr<State> st = sessionState<State>(m_ctx.activeSession(), QStringLiteral("MatrixController"));
+    if (st != m_shown) {
+        const QHash<int, MatrixModel::Cell> left =
+            m_model->swapStaged(m_ctx.device->busy() ? std::exchange(st->staged, {}) : QHash<int, MatrixModel::Cell>());
+        if (m_shown) m_shown->staged = left;
+        st->staged.clear();
+        m_shown = st;
+    }
     const DspState *s = m_ctx.device->state();
     const int outputs = s ? m_ctx.device->numOutputs() : 0;
     const bool derive = upmixRows();
@@ -244,6 +257,7 @@ void MatrixController::toggleEnable(int output) {
         return;
     }
     // The window asks; ChannelController's own question is for the output page
+    cc->enableAsked();   // -- WP MDQT2a --
     const int pdm = pdmOutput();
     if (output == pdm)
         emit enableQuestion(output, tr("Warning"), tr("Outputs %1-%2 will be disabled. Are you sure?").arg(3).arg(pdm),

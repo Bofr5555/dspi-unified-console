@@ -207,6 +207,7 @@ Rectangle {
     QuestionDialog {
         id: bypassQuestion
         objectName: list.objectName + ".bypassQuestion"
+        ofDevice: true   // -- WP MDQT2a --
         parent: Overlay.overlay
         title: qsTr("Bypass this output's crossovers?")
         text: qsTr("This sends full-range audio to this output with no crossover protection, which can damage unprotected drivers such as tweeters. Continue only if you are sure.")
@@ -217,6 +218,7 @@ Rectangle {
     QuestionDialog {
         id: clearQuestion
         objectName: list.objectName + ".clearQuestion"
+        ofDevice: true   // -- WP MDQT2a --
         parent: Overlay.overlay
         title: qsTr("Clear All Bands?")
         // -- WP P1QT2 -- one undo step now (Edit > Undo puts every band back)
