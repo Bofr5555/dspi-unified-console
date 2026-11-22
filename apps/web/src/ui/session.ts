@@ -35,6 +35,7 @@ import type { HubToken, HubTokens } from "../fleet/hub-tokens";
 import { loadNotices, noticeOf } from "./texts";
 import { safeLocalStorage } from "../fleet/local";
 import { loadFieldRanges, loadProfile } from "../screens/installer/model";
+import { restoreSpeakerLayout } from "../screens/settings/speakers/use-layout"; // -- WP ROLEW --
 // -- WP SECWEB -- the link's encryption (the browser's TLS or the `uconsole web` proxy's)
 import { UNKNOWN_SECURITY, linkContext, routeLink, securityOf, type LinkContext, type LinkSecurity } from "../fleet/security";
 
@@ -256,6 +257,8 @@ export class Session {
       const viaHub = await this.core.call("installerTarget", undefined).then((t) => t?.copy === "hub", () => false);
       const text = serial && !this.readOnlyReason && !viaHub ? loadProfile(safeLocalStorage(), serial) : "";
       if (text) await this.core.call("limitsApply", { text }).catch(() => undefined);
+      // -- WP ROLEW -- the speaker layout this page keeps for the device (the web has no files)
+      if (serial) await restoreSpeakerLayout(this).catch(() => undefined);
       await this.refreshLock();
     } catch {
       // Nothing of it is needed to show the device.

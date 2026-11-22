@@ -88,6 +88,9 @@ export interface MeasureDraft {
   name: string;
   /** The `mic` document's text ("": uncalibrated). */
   micDocument: string;
+  // -- WP ROLEW --
+  /** The speaker layout the rows were pre-filled from (`layoutKey`), absent before. */
+  layoutFrom?: string;
 }
 
 /** A draft for the device's enabled outputs: the first two chosen, full range, speaker L. */
@@ -110,6 +113,24 @@ export function withOutputs(d: MeasureDraft, outputs: number[]): MeasureDraft {
   const kept = fresh.map((f) => d.outputs.find((o) => o.output === f.output) ?? { ...f, on: false });
   if (kept.length === d.outputs.length && kept.every((o, i) => o === d.outputs[i])) return d;
   return { ...d, outputs: kept };
+}
+
+// -- WP ROLEW -- the rows from the speaker layout (MPLAN 2.2)
+
+/** Which layout the rows came from: the stored one by its stamp, else the proposal; "" for none. */
+export function layoutKey(layout: { updatedMs: number } | null | undefined): string {
+  return layout ? (layout.updatedMs > 0 ? `stored:${layout.updatedMs}` : "proposal") : "";
+}
+
+/** The draft with each output's way, speaker and group from `layout` (the stored one, else the proposal); outputs it lacks and the chosen outputs are kept. */
+export function withLayout(d: MeasureDraft, layout: { updatedMs: number; outputs: { output: number; role: MeasureRole; speaker: string; group: number }[] } | null): MeasureDraft {
+  const key = layoutKey(layout);
+  if (!layout || d.layoutFrom === key) return d;
+  const outputs = d.outputs.map((o) => {
+    const l = layout.outputs.find((x) => x.output === o.output);
+    return l ? { ...o, role: l.role, speaker: l.speaker || o.speaker, group: Math.max(0, Math.min(15, l.group)) } : o;
+  });
+  return { ...d, outputs, layoutFrom: key };
 }
 
 export function countRange(p: MeasurePlacement | null): [number, number] | null {
