@@ -262,6 +262,7 @@ open class FakeDspiCore(
     private val journalEntries = ArrayList<HistoryEntry>()
     private val undoSteps = ArrayList<Step>()
     private val redoSteps = ArrayList<Step>()
+    private var nextEntryId = 1L // -- WP INT1 -- MCP0's entry ids (every write is this app's)
 
     private fun journal(name: String, args: String, before: DspState, source: HistorySource) {
         val e = HistoryEntry(
@@ -272,7 +273,10 @@ open class FakeDspiCore(
             source = source,
             atMs = System.currentTimeMillis(),
             undoable = true,
-            label = if (source == HistorySource.LOCAL && groupDepth > 0) groupLabel else null // -- WP P1UG --, PAIRBANDF
+            label = if (source == HistorySource.LOCAL && groupDepth > 0) groupLabel else null, // -- WP P1UG --, PAIRBANDF
+            id = nextEntryId++,
+            actor = 0L,
+            actorLabel = null
         )
         journalEntries += e
         if (source == HistorySource.LOCAL) {
