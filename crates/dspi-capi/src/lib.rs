@@ -224,6 +224,8 @@ mod tests {
             "src/fns_browse.rs",
             "src/fns_link.rs",
             "src/fns_hub.rs",
+            // -- WP INT3 -- (MCP3's, in the header since INT3 regenerated it)
+            "src/fns_mcp.rs",
         ]
         .map(read)
         .concat();
