@@ -76,16 +76,17 @@ pub fn type_word(code: u8) -> &'static str {
     }
 }
 
-fn empty_schema() -> Value {
+// -- WP MCP2a -- the helpers below are shared with the edit tools (pub(crate))
+pub(crate) fn empty_schema() -> Value {
     json!({"type": "object", "properties": {}, "additionalProperties": false})
 }
 
-fn object_schema() -> Value {
+pub(crate) fn object_schema() -> Value {
     json!({"type": "object"})
 }
 
 /// The `output` / `input` / `channel` choice, for a channel tool's schema.
-fn target_props() -> Map<String, Value> {
+pub(crate) fn target_props() -> Map<String, Value> {
     let mut m = Map::new();
     m.insert(
         "output".into(),
@@ -104,7 +105,7 @@ fn target_props() -> Map<String, Value> {
 }
 
 /// The connected device's state, or an error naming why there is none.
-fn state(core: &DspiCore) -> Result<DspState, ToolError> {
+pub(crate) fn state(core: &DspiCore) -> Result<DspState, ToolError> {
     if !core.is_connected() {
         return Err(ToolError::new(
             "the device is not connected; dspi_list_devices shows its state",
@@ -115,16 +116,16 @@ fn state(core: &DspiCore) -> Result<DspState, ToolError> {
 
 /// Which channel a call names.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct Target {
+pub(crate) struct Target {
     /// The wire channel.
-    channel: usize,
+    pub(crate) channel: usize,
     /// It is an output (else an input).
-    output: bool,
+    pub(crate) output: bool,
     /// Its output or input number.
-    index: usize,
+    pub(crate) index: usize,
 }
 
-fn target(st: &DspState, args: &Map<String, Value>) -> Result<Target, ToolError> {
+pub(crate) fn target(st: &DspState, args: &Map<String, Value>) -> Result<Target, ToolError> {
     let n_in = usize::from(st.num_input_channels);
     let n_out = usize::from(st.num_output_channels);
     let get = |k: &str| {
@@ -202,7 +203,7 @@ fn name_at(v: &[String], i: usize) -> String {
 }
 
 /// One PEQ slot.
-fn band_json(slot: usize, f: &FilterParams) -> Value {
+pub(crate) fn band_json(slot: usize, f: &FilterParams) -> Value {
     let mut b = json!({
         "slot": slot,
         "type": type_word(f.filter_type),
@@ -223,7 +224,7 @@ fn band_json(slot: usize, f: &FilterParams) -> Value {
 }
 
 /// One crossover slot, decoded.
-fn xover_json(slot: usize, f: &FilterParams) -> Option<Value> {
+pub(crate) fn xover_json(slot: usize, f: &FilterParams) -> Option<Value> {
     if f.filter_type == 0 {
         return None;
     }

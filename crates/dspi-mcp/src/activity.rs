@@ -25,6 +25,10 @@ pub enum Outcome {
     Error,
     /// The rate limiter held it back; nothing ran.
     RateLimited,
+    // -- WP MCP2a --
+    /// The policy held it for the user's confirmation; nothing ran yet. The
+    /// answer is an entry of its own.
+    Held,
 }
 
 impl Outcome {
@@ -34,6 +38,7 @@ impl Outcome {
             Self::Ok => "ok",
             Self::Error => "error",
             Self::RateLimited => "rate_limited",
+            Self::Held => "held", // -- WP MCP2a --
         }
     }
 }

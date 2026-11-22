@@ -12,6 +12,7 @@
 //! a core as the user (a thread without a scope acts as the embedder, review
 //! RA MCP0 item 7). A tool that addresses no device gets no core at all.
 
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use dspi_core::actor::{ActorId, ActorScope, WriteHook};
@@ -19,6 +20,8 @@ use dspi_core::{CoreSet, DeviceId, DspiCore, DspiError, OpenDevice};
 use serde_json::{Map, Value, json};
 
 use crate::activity::Activity;
+use crate::confirm::Confirmations; // -- WP MCP2a --
+use crate::policy::{self, Judging, JudgingCell, WriteKey}; // -- WP MCP2a --
 use crate::untrusted;
 use crate::{ClientId, tools};
 
@@ -103,7 +106,9 @@ impl Registry {
         let mut tools: Vec<&'static Tool> = Vec::new();
         // -- WP MCP1 -- the read tools
         tools.extend(tools::read::TOOLS.iter().copied());
-        // -- WP MCP2a --
+        // -- WP MCP2a -- the edit tools, the batch and its guard
+        tools.extend(tools::edit::TOOLS.iter().copied());
+        tools.extend(tools::apply::TOOLS.iter().copied());
         // -- WP MCP2b --
         // -- WP MCP2c --
         // -- WP MCP5 --
@@ -153,7 +158,28 @@ pub trait Policy: Send + Sync {
 
     /// What the overview says an agent may do ("agent may" flags).
     fn agent_may(&self) -> Value;
+
+    // -- WP MCP2a --
+    /// The hook for one call on `core`, sharing `judging` with the tool
+    /// ([`policy::Judging`]: the setting, the user's roles, the grant, what
+    /// was asked). Called before the scope, outside the core's lock, so it
+    /// may read the core. The default ignores both and gives
+    /// [`Policy::write_hook`].
+    fn judging_hook(
+        &self,
+        call: &CallInfo<'_>,
+        core: &DspiCore,
+        judging: &JudgingCell,
+    ) -> Option<WriteHook> {
+        let _ = (core, judging);
+        self.write_hook(call)
+    }
 }
+
+// -- WP MCP2a --
+/// The guarded applies agents began, by device id: the client and the
+/// guard's id.
+pub type AgentGuards = BTreeMap<String, (ClientId, u64)>;
 
 /// [`DspiError::ConfirmationRequired`]'s code from [`ReadOnlyPolicy`]: an
 /// agent may not write at all. No confirmation allows it.
@@ -229,6 +255,13 @@ pub struct Call<'a> {
     pub activity: &'a Activity,
     /// The policy, for the overview's flags.
     pub policy: &'a dyn Policy,
+    // -- WP MCP2a --
+    /// This call's judgement, shared with the hook.
+    pub judging: JudgingCell,
+    /// The held calls (`dspi_get_confirmation`).
+    pub confirmations: Option<&'a Confirmations>,
+    /// The guarded apply this client began on the device, if one waits.
+    pub agent_guard: Option<u64>,
     core: Option<&'a DspiCore>,
 }
 
@@ -265,6 +298,13 @@ pub struct RunCtx<'a> {
     pub actor: ActorId,
     /// Its label.
     pub client_label: &'a str,
+    // -- WP MCP2a --
+    /// The writes the user allowed for this call (a re-run after Allow).
+    pub grant: Vec<WriteKey>,
+    /// The held calls.
+    pub confirmations: Option<&'a Confirmations>,
+    /// The agents' guarded applies.
+    pub guards: Option<&'a AgentGuards>,
 }
 
 /// What [`run`] did.
@@ -276,6 +316,8 @@ pub struct RunOutcome {
     pub result: ToolResult,
     /// The journal ids of the changes the call made on its device.
     pub journal_ids: Vec<u64>,
+    /// What the policy found (-- WP MCP2a --).
+    pub judging: Judging,
 }
 
 /// The device `args` name, or the default: the app's device when it is
@@ -362,13 +404,18 @@ pub fn run(ctx: &RunCtx<'_>, tool: &Tool, args: &Map<String, Value>) -> RunOutco
             devices,
             activity: ctx.activity,
             policy: ctx.policy,
+            judging: JudgingCell::default(),
+            confirmations: ctx.confirmations,
+            agent_guard: None,
             core: None,
         };
         let result = (tool.handler)(&mut call, args);
+        let judging = policy::lock(&call.judging).clone();
         return RunOutcome {
             device: None,
             result,
             journal_ids: Vec::new(),
+            judging,
         };
     }
     let (id, serial, core) = match resolve(ctx.set, ctx.active, args) {
@@ -378,6 +425,7 @@ pub fn run(ctx: &RunCtx<'_>, tool: &Tool, args: &Map<String, Value>) -> RunOutco
                 device: None,
                 result: Err(e),
                 journal_ids: Vec::new(),
+                judging: Judging::default(),
             };
         }
     };
@@ -389,7 +437,15 @@ pub fn run(ctx: &RunCtx<'_>, tool: &Tool, args: &Map<String, Value>) -> RunOutco
         class: tool.class,
         device: Some(&id),
     };
-    let hook = ctx.policy.write_hook(&info);
+    // -- WP MCP2a -- the call's judgement, shared by the hook and the tool
+    let judging = JudgingCell::default();
+    policy::lock(&judging).grant.clone_from(&ctx.grant);
+    let hook = ctx.policy.judging_hook(&info, &core, &judging);
+    let agent_guard = ctx
+        .guards
+        .and_then(|g| g.get(id.as_str()))
+        .filter(|(c, _)| *c == ctx.client)
+        .map(|(_, g)| *g);
     let before = newest_id(&core);
     let result = {
         let _scope = ActorScope::enter(&core, ctx.actor, hook);
@@ -401,10 +457,14 @@ pub fn run(ctx: &RunCtx<'_>, tool: &Tool, args: &Map<String, Value>) -> RunOutco
             devices: Vec::new(),
             activity: ctx.activity,
             policy: ctx.policy,
+            judging: Arc::clone(&judging),
+            confirmations: ctx.confirmations,
+            agent_guard,
             core: Some(&core),
         };
         (tool.handler)(&mut call, args)
     };
+    let judging = policy::lock(&judging).clone();
     // The changes this call made: this actor's entries newer than before.
     let mut journal_ids: Vec<u64> = core
         .history(HISTORY_SCAN)
@@ -418,6 +478,7 @@ pub fn run(ctx: &RunCtx<'_>, tool: &Tool, args: &Map<String, Value>) -> RunOutco
         device: Some(id.as_str().to_owned()),
         result,
         journal_ids,
+        judging,
     }
 }
 
