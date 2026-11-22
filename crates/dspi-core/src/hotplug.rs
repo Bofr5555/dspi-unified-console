@@ -225,6 +225,15 @@ impl DspiCore {
 
 // -- WP MD0 --
 impl DspiCore {
+    /// Forget the selected serial and any armed reopen, so a core its set
+    /// closed never reconnects its unit on its own (review RA F4).
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    pub(crate) fn forget_selected(&self) {
+        let mut inner = self.lock();
+        inner.selected = None;
+        inner.hotplug.retry = None;
+    }
+
     /// The serials this core's set holds, its own included; empty outside a set.
     pub(crate) fn set_reserved(&self) -> Vec<String> {
         let member = self.lock().hotplug.member.clone();

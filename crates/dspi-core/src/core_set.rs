@@ -852,8 +852,10 @@ fn label_of(core: &DspiCore, id: &DeviceId, serial: &str) -> String {
     }
 }
 
-/// End `core`'s Link session and close its device.
+/// End `core`'s Link session and close its device; it keeps no selection,
+/// so no later poll reopens the unit on it.
 fn shut_core(core: &DspiCore) {
+    core.forget_selected();
     #[cfg(feature = "link")]
     core.link_close();
     core.disconnect();

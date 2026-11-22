@@ -684,3 +684,28 @@ fn wp_md0_the_serial_is_released_after_the_device_is_shut() {
     assert_eq!(*held.lock().unwrap(), Some(true), "held while shutting");
     assert_eq!(set.find_serial("R2"), None, "free afterwards");
 }
+
+/// Review RA F4: a closed core forgets its selection and any armed reopen,
+/// so its unit returning (in the same poll or later) never reopens it with
+/// no reservation.
+#[test]
+fn wp_md0_a_closed_core_never_reopens_its_unit() {
+    let set = CoreSet::new();
+    let (id, _remote) = open_fake_usb(&set, "F4");
+    let core = set.core(&id).unwrap();
+    core.lock().selected = Some("F4".into());
+    set.close(&id).unwrap();
+    assert_eq!(core.lock().selected, None);
+    let reopened = AtomicUsize::new(0);
+    for serials in [&[][..], &["F4"][..], &["F4"][..]] {
+        core.poll_with(
+            || bus(serials),
+            |_| {
+                reopened.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            },
+        );
+    }
+    assert_eq!(reopened.load(Ordering::SeqCst), 0);
+    assert!(!core.is_connected());
+}
