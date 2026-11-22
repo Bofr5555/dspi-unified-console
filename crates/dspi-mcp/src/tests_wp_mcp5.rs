@@ -969,6 +969,8 @@ fn wp_rcfix_the_users_search_is_not_the_agents() {
     let r = ok_at(&mut s, c, 0, "dspi_measure_rolloff_start", args);
     assert_eq!(r["status"], json!("waiting_for_app"), "{r}");
     let id = r["request_id"].as_u64().unwrap();
+    let what = s.measure_requests()[0]["what"].clone();
+    assert!(what.as_str().unwrap().contains("from 4 kHz"), "{what}");
     app_takes(&mut s, &core);
     assert_eq!(status(&mut s, c, 100)["request"]["state"], json!("running"));
     core.measure_rolloff_stop();

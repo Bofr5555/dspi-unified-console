@@ -164,7 +164,7 @@ SettingsPage {
                 ? qsTr("Agents' changes are made at once, louder ones and test signals too. Your limits profile and the protection of outputs you set up as tweeters still apply.")
                 : AiController.confirmMode === "ask_everything"
                 ? qsTr("Every change waits for your answer.")
-                : qsTr("Changes that make something louder, unmute or switch on an output, load or save a preset, or lower a tweeter's protection wait for your answer. Others are made at once.")
+                : qsTr("Changes that make something louder, unmute or switch on an output, load or save a preset, or lower a tweeter's protection, and test signals, wait for your answer. Other changes are made at once.")
         footerColor: AiController.confirmMode === "never_ask" ? Theme.warning : Theme.textMuted
         SettingsPickerRow {
             objectName: "AiAgents.confirm"

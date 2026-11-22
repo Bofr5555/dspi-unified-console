@@ -257,6 +257,18 @@ test("ROLEW on the demo: a measurement from an unconfirmed layout is refused in 
   assert.equal(n?.title, "Speaker layout not confirmed");
   assert.match(n!.detail, /Settings › Speakers/);
   assert.doesNotMatch(n!.detail, /ask the user/, "the agent's words are not the person's");
+  // -- WP RCFIX -- (review RC, RC14) pink noise on a tweeter, in its notice's words too.
+  let pink: unknown = null;
+  try {
+    await a.core.call("measurePreflight" as never, { setup: { ...setup, kind: "pink", outputs: [{ ...setup.outputs[0]!, role: "high" }], rolesFromLayout: false } } as never);
+  } catch (e) {
+    pink = e;
+  }
+  assert.match(String(pink), /measure\.tweeter_stimulus: /);
+  const t = noticeOf(pink);
+  assert.equal(t?.key, "measure.tweeter_stimulus");
+  assert.match(t!.detail, /tweeter is never played below 1 kHz/);
+  assert.doesNotMatch(t!.detail, /invalid argument|measure\./);
   // Another refusal keeps its own notice.
   assert.notEqual(noticeOf(new CoreCallError("invalid", "invalid argument: measure.tune.old: x", "invalid"))?.key, LAYOUT_UNCONFIRMED);
 });

@@ -39,7 +39,7 @@ use dspi_core::measure::{
     MeasurePreflight, MeasureRolloffSetup, MeasureRolloffStage, MeasureRunKind, MeasureSetup,
     MeasureSystemPhase, MeasureSystemPurpose, MeasureSystemSetup, MeasureSystemUnit,
     MeasureSystemUnitCheck, MeasureTuneOptions, MeasureTuneStage, MeasureTuneState,
-    measure_doc_curves,
+    ROLLOFF_START_HZ, measure_doc_curves,
 };
 use dspi_core::{CoreSet, DeviceId, DspiCore, DspiError, SpeakerLayout};
 use serde_json::{Map, Value, json};
@@ -1207,10 +1207,16 @@ static ROLLOFF_START: Tool = Tool {
             .measure_preflight(probe)
             .map_err(|e| refusal(call, e))?;
         blocked(&p)?;
+        // -- WP RCFIX -- (review RC, RC16) where this search starts
+        let start = match setup.start_hz {
+            0.0 => ROLLOFF_START_HZ,
+            hz => hz,
+        };
         let what = format!(
-            "Play test sweeps on {} from 8 kHz downwards to find its low end (stops 15 dB \
+            "Play test sweeps on {} from {} kHz downwards to find its low end (stops 15 dB \
              down; a tweeter never below 1 kHz)",
-            outs_words(&[output])
+            outs_words(&[output]),
+            (start / 100.0).round() / 10.0
         );
         policy::require(
             &call.judging,
