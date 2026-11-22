@@ -1316,3 +1316,11 @@
   .dspi-web .raw-form input, .dspi-web .raw-form .raw-data input { width: 100%; }
   .dspi-web .raw-form label { flex: 1 1 100%; }
 }
+
+/* -- WP INSTW -- the System screen's Installation tab: cards that wrap down to 375 px */
+.dspi-web .sys-inst-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(18rem, 100%), 1fr)); gap: 0.6rem; }
+.dspi-web .sys-inst-card { display: grid; gap: 0.2rem; }
+.dspi-web .sys-inst .sys-inline { flex-wrap: wrap; min-width: 0; max-width: 100%; }
+.dspi-web .sys-inst select, .dspi-web .sys-inst input:not([type="checkbox"]) { max-width: 100%; min-width: 0; }
+.dspi-web .sys-inst-name { flex: 1 1 8rem; }
+.dspi-web .sys-inst h4 { margin: 0.75rem 0 0.35rem; }
