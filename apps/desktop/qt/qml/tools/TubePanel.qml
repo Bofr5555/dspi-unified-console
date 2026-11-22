@@ -30,7 +30,7 @@ Panel {
     function value(key) { return ToolsController.revision < 0 ? 0 : ToolsController.tube(key) }
 
     onShownChanged: ToolsController.windowShown("tube", shown)
-    Component.onDestruction: ToolsController.windowShown("tube", false)   // -- WP LAY1a -- a page host unloaded
+    Component.onDestruction: if (shown) ToolsController.windowShown("tube", false)   // -- WP LAY1a -- a page host unloaded
 
     Settings {
         category: "tools/tube"

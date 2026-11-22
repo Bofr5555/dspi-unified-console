@@ -302,7 +302,7 @@ void SettingsController::ensureShown() {
 
 void SettingsController::showPage(const QString &id) {
     open(id);
-    m_ctx.shell->openWindow(QStringLiteral("edit.settings"));
+    m_ctx.shell->showTool(QStringLiteral("edit.settings"));   // -- WP LAY3 -- its page in Modern
 }
 
 // ---- Device facts --------------------------------------------------------------

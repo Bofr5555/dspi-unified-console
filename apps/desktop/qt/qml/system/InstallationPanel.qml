@@ -21,7 +21,7 @@ Panel {
         property: "shown"
         value: panel.shown
     }
-    Component.onDestruction: InstallationController.shown = false
+    Component.onDestruction: if (shown) InstallationController.shown = false
 
     function listOf(ids) {
         return ids.map(id => InstallationController.element(id, InstallationController.generation).name || id).join(", ")

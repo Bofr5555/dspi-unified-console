@@ -103,7 +103,7 @@ void OnboardingController::showReleaseNotesIfUnread() {
     // on and starts caught up; after an update the unread notes open once
     const QString shown = whatsNewShown();
     if (shown.isEmpty()) markWhatsNewRead();
-    else if (!unreadSince(shown).isEmpty()) m_ctx.shell->openWindow(QStringLiteral("help.whatsNew"));
+    else if (!unreadSince(shown).isEmpty()) m_ctx.shell->showTool(QStringLiteral("help.whatsNew"));   // -- WP LAY3 --
 }
 
 void OnboardingController::setInstaller(QObject *installer) {

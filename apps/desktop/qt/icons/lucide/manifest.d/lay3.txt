@@ -1,0 +1,6 @@
+# -- WP LAY3 -- The Modern shell (see ../manifest.txt for the format)
+bell                top bar: notifications
+layout-dashboard    rail: Overview
+library             rail: Library
+mic                 rail: Measure
+waypoints           rail: Routing

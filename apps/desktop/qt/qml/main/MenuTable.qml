@@ -223,6 +223,12 @@ QtObject {
         return found
     }
 
+    // -- WP LAY3 -- A row's shortcut by its id, "" for none (menus that only show it)
+    function shortcutOf(id) {
+        const row = shortcutRows().find(r => r.id === id)
+        return row ? row.shortcut : ""
+    }
+
     // Every action id in the table, in menu order (the smoke driver checks them)
     function allIds() {
         const ids = []

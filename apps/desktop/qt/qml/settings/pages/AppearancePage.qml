@@ -4,8 +4,8 @@ import UConsole
 
 // -- WP LAY0 -- Settings > Appearance: the layout (Classic or Modern) and how
 // Modern is arranged (LayoutController). Applied at once: the main window
-// swaps its shell and keeps the device and the selection. Not in the sidebar
-// until the Modern shell is there (WP LAY3).
+// swaps its shell and keeps the device and the selection. -- WP LAY3 -- And the
+// theme (both layouts).
 SettingsPage {
     id: page
     objectName: "AppearancePage"
@@ -22,6 +22,21 @@ SettingsPage {
             texts: [qsTr("Classic"), qsTr("Modern")]
             value: LayoutController.layout
             onChosen: v => LayoutController.layout = v
+        }
+    }
+
+    // -- WP LAY3 --
+    SettingsGroup {
+        title: qsTr("Theme")
+        iconName: "sun"
+        SettingsPickerRow {
+            objectName: "Appearance.theme"
+            inline: true
+            label: qsTr("Theme")
+            values: ["system", "light", "dark"]
+            texts: [qsTr("System"), qsTr("Light"), qsTr("Dark")]
+            value: LayoutController.theme
+            onChosen: v => LayoutController.theme = v
         }
     }
 

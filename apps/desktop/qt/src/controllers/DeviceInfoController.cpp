@@ -19,7 +19,7 @@
 #include <memory>
 
 static const Registrar::Controller<DeviceInfoController> deviceInfoController;
-static const Registrar::Banner senderBanner("SenderBanner", 9);   // -- WP QTSENDER --
+static const Registrar::Banner senderBanner("SenderBanner", 9, Registrar::Blocking);   // -- WP QTSENDER --
 
 namespace {
 

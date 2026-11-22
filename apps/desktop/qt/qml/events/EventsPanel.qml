@@ -14,7 +14,7 @@ Panel {
     objectName: "EventsPanel"
 
     onShownChanged: EventsController.active = shown
-    Component.onDestruction: EventsController.active = false   // -- WP LAY1b -- a page host unloaded
+    Component.onDestruction: if (shown) EventsController.active = false   // -- WP LAY1b -- a page host unloaded
 
     ColumnLayout {
         anchors.fill: parent

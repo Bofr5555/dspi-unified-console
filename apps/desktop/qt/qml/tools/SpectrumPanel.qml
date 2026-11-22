@@ -23,7 +23,7 @@ Panel {
                                       && (RtaController.ownChannels.length > 0 || RtaController.following)
     readonly property var drawn: RtaController.drawnChannels
     readonly property var visibleChannels: drawn.filter(c => !hidden[RtaController.drawnTap + ":" + c])
-    readonly property bool rendering: shown && !minimized   // -- WP LAY1b -- its host says
+    readonly property bool rendering: onScreen   // -- WP LAY3 -- (was LAY1b's minimized)
     readonly property bool curvesOn: rendering && available && mode !== 1 && visibleChannels.length > 0
     readonly property bool barsOn: rendering && available && mode !== 0 && visibleChannels.length > 0
 

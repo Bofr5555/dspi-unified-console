@@ -66,7 +66,10 @@ struct AppContext {
 //
 // Banner: a QML type of module UConsole that BannerHost stacks under the menu
 // bar; `order` sorts them, lowest on top, then by name. The banner shows and
-// hides itself (its own `visible`).
+// hides itself (its own `visible`). -- WP LAY3 -- `kind` says where Modern shows
+// it (Classic stacks them all): Blocking in the status strip (a state that
+// limits what can be done), Notice in the notification drawer (the default),
+// ClassicOnly nowhere (a page shows it).
 //
 // Window: a QML type (usually a ToolWindow) that Shell opens for a menu row's
 // action id, made once and raised afterwards.
@@ -82,9 +85,12 @@ struct ControllerEntry {
     const QMetaObject *meta;
     Factory make;
 };
+// -- WP LAY3 --
+enum BannerKind { Notice, Blocking, ClassicOnly };
 struct BannerEntry {
     const char *type;
     int order;
+    BannerKind kind;
 };
 struct WindowEntry {
     const char *action;
@@ -106,7 +112,7 @@ struct Controller {
 };
 
 struct Banner {
-    explicit Banner(const char *type, int order = 0) { banners().push_back({ type, order }); }
+    explicit Banner(const char *type, int order = 0, BannerKind kind = Notice) { banners().push_back({ type, order, kind }); }
 };
 
 struct Window {

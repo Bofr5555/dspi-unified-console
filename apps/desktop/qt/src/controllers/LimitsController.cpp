@@ -25,7 +25,7 @@
 namespace {
 
 const Registrar::Controller<LimitsController> limitsController;
-const Registrar::Banner lockBanner("LockBanner", 12);
+const Registrar::Banner lockBanner("LockBanner", 12, Registrar::Blocking);
 
 // Settings > Installer, under Advanced and Networking (OD-P1e). The search
 // finds its rows.

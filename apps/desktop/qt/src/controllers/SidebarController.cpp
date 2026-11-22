@@ -53,6 +53,7 @@ SidebarController::SidebarController(const AppContext &ctx, QObject *parent) : Q
     connect(ctx.shell, &Shell::triggered, this, [this](const QString &action) {
         if (kStripWindows.contains(action)) QTimer::singleShot(0, this, [this, action]() { trackWindow(action); });
     });
+    connect(ctx.shell, &Shell::pageActionChanged, this, &SidebarController::openWindowsChanged);   // -- WP LAY3 --
     // Edit > Copy / Paste with no text field focused: the selected channel's
     // parameters (MenuTable.trigger gives a focused field the text first)
     ctx.shell->addHandler(QStringLiteral("edit.copy"), this, [this]() {
@@ -475,6 +476,11 @@ void SidebarController::toggleWindow(const QString &action) {
         w->close();
         return;
     }
+    // -- WP LAY3 -- its page is on show: back to the page before
+    if (m_ctx.shell->pageHost() && m_ctx.shell->pageAction() == action) {
+        QMetaObject::invokeMethod(m_ctx.shell->pageHost(), "back");
+        return;
+    }
     m_ctx.shell->trigger(action);
 }
 
@@ -496,6 +502,9 @@ QStringList SidebarController::openWindows() const {
     QStringList open;
     for (auto it = m_windows.cbegin(); it != m_windows.cend(); ++it)
         if (it.value() && it.value()->isVisible()) open.append(it.key());
+    // -- WP LAY3 -- and the panel a Modern page shows
+    const QString page = m_ctx.shell->pageAction();
+    if (kStripWindows.contains(page) && !open.contains(page)) open.append(page);
     return open;
 }
 

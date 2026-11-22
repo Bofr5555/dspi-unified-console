@@ -45,9 +45,13 @@ void install(const AppContext &ctx, QObject *owner) {
         if (a.order != b.order) return a.order < b.order;
         return QString::fromLatin1(a.type) < QString::fromLatin1(b.type);
     });
-    QStringList types;
-    for (const BannerEntry &b : sorted) types.append(QString::fromLatin1(b.type));
-    ctx.shell->setBanners(types);
+    QStringList types, blocking, notice;   // -- WP LAY3 --
+    for (const BannerEntry &b : sorted) {
+        types.append(QString::fromLatin1(b.type));
+        if (b.kind == Blocking) blocking.append(types.last());
+        else if (b.kind == Notice) notice.append(types.last());
+    }
+    ctx.shell->setBanners(types, blocking, notice);
 
     for (const WindowEntry &w : windows()) ctx.shell->addWindow(QString::fromLatin1(w.action), QString::fromLatin1(w.type));
 }

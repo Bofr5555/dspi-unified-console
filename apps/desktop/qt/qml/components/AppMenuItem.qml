@@ -9,7 +9,8 @@ MenuItem {
     implicitHeight: 24
     font: Theme.fontBody
 
-    readonly property string shortcutText: action && action.shortcut ? shortcutLabel(action.shortcut) : ""
+    // -- WP LAY3 -- a menu whose rows have no action of their own sets it
+    property string shortcutText: action && action.shortcut ? shortcutLabel(action.shortcut) : ""
     function shortcutLabel(sequence) {
         // Action.shortcut is a string or a StandardKey; strings are what the table uses
         return typeof sequence === "string" ? sequence : ""

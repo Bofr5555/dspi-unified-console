@@ -7,7 +7,7 @@
 #include <QJSEngine>
 
 static const Registrar::Controller<DemoController> demoController;
-static const Registrar::Banner demoBanner("DemoBanner", 35);
+static const Registrar::Banner demoBanner("DemoBanner", 35, Registrar::Blocking);
 
 DemoController::DemoController(const AppContext &ctx, QObject *parent) : QObject(parent), m_ctx(ctx) {
     connect(ctx.device, &DeviceModel::snapshotApplied, this, &DemoController::changed);

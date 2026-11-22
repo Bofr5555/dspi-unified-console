@@ -16,8 +16,8 @@
 
 static const Registrar::Controller<LinkController> linkController;
 // The banners of a Link session, under the firmware banners and above the demo's
-static const Registrar::Banner linkBanner("LinkBanner", 20);
-static const Registrar::Banner lockNotice("LockNotice", 25);
+static const Registrar::Banner linkBanner("LinkBanner", 20, Registrar::Blocking);
+static const Registrar::Banner lockNotice("LockNotice", 25, Registrar::Blocking);
 static const Registrar::Banner tokenNotice("TokenNotice", 40);
 // -- WP SECQT -- a new hub key, once, beside the token notice
 static const Registrar::Banner keyNoticeBanner("KeyNotice", 41);
