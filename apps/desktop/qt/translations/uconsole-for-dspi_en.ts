@@ -2119,7 +2119,6 @@ Switching an output is instant and never writes to flash. The pin, name and powe
     </message>
     <message>
         <source>Encrypted · hub key %1</source>
-        <extracomment>%1 is the hub key&apos;s fingerprint, SHA256:K7Q2-M9XD-…</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2398,7 +2397,6 @@ Switching an output is instant and never writes to flash. The pin, name and powe
     </message>
     <message>
         <source>by %1</source>
-        <extracomment>Who caused an event: a console, an API key or a schedule, by name</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -4614,7 +4612,6 @@ Groups are stored on the device alongside the controls and share their Save and 
     </message>
     <message>
         <source>%1 → %2</source>
-        <extracomment>A value on the device now, then after the import</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -5671,6 +5668,14 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
     <name>KeyNotice</name>
     <message>
         <source>OK</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>LayoutController</name>
+    <message>
+        <source>A measurement is running on %1. Switching the layout would stop it: stop it first.</source>
+        <extracomment>%1 is a device&apos;s name (or several)</extracomment>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -12387,7 +12392,6 @@ Save before continuing?</source>
     </message>
     <message>
         <source>%1 → %2</source>
-        <extracomment>A value in A, then in B</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -14199,7 +14203,6 @@ This wiring is a board-level setting: it is stored on the device, survives prese
     </message>
     <message>
         <source>%1, %2 in, %3 out · %4</source>
-        <extracomment>%1 the platform, %2 and %3 the input and output counts, %4 &quot;shipped&quot; or &quot;yours&quot;</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
