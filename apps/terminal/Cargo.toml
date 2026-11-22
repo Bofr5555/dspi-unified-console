@@ -49,6 +49,9 @@ crossterm = "0.28"
 # -- WP SECPAIR -- the pairing link as a QR code (PLAN-SEC 4.3). Nayuki's reference
 # encoder: MIT, no dependencies, no unsafe.
 qrcodegen = "1.8"
+# -- WP MCP3 -- `uconsole mcp`: the stdio relay to DSPi Console's MCP server.
+# A workspace crate; its `http` feature adds nothing new to the lock.
+dspi-mcp = { path = "../../crates/dspi-mcp", features = ["http"] }
 
 # -- WP TM11 -- `uconsole hub` keeps the machine awake on Windows.
 [target.'cfg(windows)'.dependencies]

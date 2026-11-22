@@ -118,6 +118,8 @@ mod core_route;
 mod api;
 // -- WP P5TM -- `uconsole measure`: measurement documents and the tune
 mod measure;
+// -- WP MCP3 -- `uconsole mcp`: the stdio relay for AI agents
+mod mcp;
 
 use dspi_cmd::COMMAND;
 use std::process::ExitCode;
@@ -168,6 +170,11 @@ fn main() -> ExitCode {
     };
     // -- WP TM26 -- `uconsole --dry-run set ...` is `uconsole set ... --dry-run`.
     let flags = command_first(flags);
+    // -- WP MCP3 -- Before a PIN is read, a hub looked for or standard input
+    // taken for a script: the relay's standard input is the agent's.
+    if flags.first() == Some(&"mcp") {
+        return ExitCode::from(mcp::run(&flags));
+    }
     // -- WP TM11 -- Before a PIN is read or a `--hub` looked for: a hub runs here.
     // -- WP WB7 -- `web` is a hub too.
     if matches!(flags.first(), Some(&"hub" | &"web"))
@@ -741,6 +748,8 @@ USAGE:
                              hub's code: {COMMAND} api --help)
     {COMMAND} web             the web console on this machine, at
                              http://localhost:11916/console/ ({COMMAND} hub --local)
+    {COMMAND} mcp             let an AI agent use DSPi Console (an MCP server
+                             over stdio; {COMMAND} mcp --help)
     {COMMAND} --version       show app and protocol versions, and credits
     {COMMAND} --license       show the licence notice and its additional terms
     {COMMAND} --third-party-licences
