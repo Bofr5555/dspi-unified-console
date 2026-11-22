@@ -182,9 +182,474 @@
     </message>
 </context>
 <context>
-    <name>AppMenuButton</name>
+    <name>AiActivityList</name>
     <message>
-        <source>Switch to the Classic Layout</source>
+        <source>Show reads</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Export…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Undo All</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Agent activity</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Undone</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Undo</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Undo: %1</source>
+        <extracomment>%1 is what an AI agent did</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No agent has done anything yet</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>AiAgentsPage</name>
+    <message>
+        <source>Agents on this computer connect through MCP. Nothing on your network can reach this. What an agent reads, it may pass on to its own service.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Allow AI agents to control %1</source>
+        <extracomment>%1 is the app&apos;s name</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Listening on %1</source>
+        <extracomment>%1 is a list of addresses</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Allow AI agents</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Try Again</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This device has no limits profile. One sets the most gain and volume anyone may set, agents included, and protects your speakers.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Set Up Limits…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Port</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Ask Before Changes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Agents&apos; changes are made at once, louder ones and test signals too. Your limits profile and the protection of outputs you set up as tweeters still apply.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Every change waits for your answer.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Changes that make something louder, unmute or switch on an output, load or save a preset, or lower a tweeter&apos;s protection wait for your answer. Others are made at once.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Ask me</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>About every change</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>About risky changes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Never</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Limits profile</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No device connected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>In force: agents are held to it</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>None</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Limits…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Connect an Agent</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The first time it connects, you are asked to allow it here.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add a client below to get a token.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Agent</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Claude Desktop</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Claude Code</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Other Agents</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add this to claude_desktop_config.json, then start Claude Desktop again:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Run this in a terminal:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>An agent that starts a program: this command. One that connects over HTTP: the address, with the header “Authorization: Bearer” and a client&apos;s token.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Configuration</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Address</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>An agent on another computer connects through SSH.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Use from Another Computer…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Clients</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Each agent has its own token. Removing a client stops its token at once. What it changed stays, and can be undone below.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No clients yet.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Added %1, last used %2</source>
+        <extracomment>%1 and %2 are dates</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Added %1, not used yet</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Remove this client</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The token of “%1”. It is shown only now:</source>
+        <extracomment>%1 is the name the user gave an AI agent</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Token</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>For Claude Code over HTTP:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Command</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Done</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Client name</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add Client…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Activity</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Allow AI agents?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>An agent on this computer that you allow may read your devices&apos; settings and change them: equaliser, crossovers, gains, routing, effects, presets and more.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>It cannot update firmware, change the limits or the installer&apos;s lock, set up speakers, pair hubs or delete presets.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>You can undo each change, pause the agents or stop them at any time.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This device has no limits profile. You can set one up first; it holds agents too.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Allow</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>AiAgentsPanel</name>
+    <message>
+        <source>Resume</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pause</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Stop</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Settings…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Stop turns AI agents off and puts their timed previews back. Changes already made stay, and you can undo them below.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>AiAnswerButtons</name>
+    <message>
+        <source>Deny</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Allow</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>AiController</name>
+    <message>
+        <source>Could not start on port %1.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Turn AI agents off to change the port.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The port must be between %1 and 65535.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Starting…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Stopping…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>AI agents are off.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>AI agents could not be turned on.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>An AI agent is waiting for your answer.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>AI agents are paused.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>An AI agent is active.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Waiting for AI agents.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The agent was not added: it had stopped waiting, or its token could not be kept.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The agent&apos;s change was not made: it was no longer waiting for your answer.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Done</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Read</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Asked you</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not done</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Held back</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The device is not open.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>It could not be undone.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Export AI Activity</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>JSON (*.json)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>AI activity exported</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The AI activity was not exported: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>AiCopyField</name>
+    <message>
+        <source>Copy</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>AiHost</name>
+    <message>
+        <source>Time left: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Allow this AI agent?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>“%1” wants to control your DSPi devices through %2.</source>
+        <extracomment>%1 is the AI agent&apos;s own name, %2 the app&apos;s name</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pairing code</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Allow it only if you have just connected an agent on this computer. Its log shows the same code.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Allow this change?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 asks: %2, on %3.</source>
+        <extracomment>%1 is the AI agent&apos;s name, %2 what it asks to do (&quot;Set a gain&quot;), %3 the device&apos;s name</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 asks: %2.</source>
+        <extracomment>%1 is the AI agent&apos;s name, %2 what it asks to do (&quot;Set a gain&quot;)</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>and %1 more</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Nothing has been changed yet. You can undo it afterwards in the agents&apos; activity.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 more waiting</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>AnalyseTools</name>
+    <message>
+        <source>Stop Generator</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>On the Equaliser&apos;s Graph</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The Equaliser&apos;s graph shows the spectrum. Click to hide it there.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show the spectrum on the Equaliser&apos;s graph</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -282,6 +747,42 @@
     </message>
     <message>
         <source>At the top of the rail</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Colour</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Grey</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Darker grey</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Inspector</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Beside the Equaliser</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hidden</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Band bar</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Off</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Under the graph</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -394,6 +895,10 @@ Choose an update method:</source>
     </message>
     <message>
         <source>Clear search</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>More</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -517,6 +1022,78 @@ An on/off output follows its switch. A dimmable output follows its switch and it
 A GPIO is a 3.3 V pin good for a few milliamps. Anything real needs a MOSFET, a transistor with a flyback diode, or an opto-isolated relay module in between, and a dimmed load should have its own supply so its switching noise stays out of the DAC.
 
 Switching an output is instant and never writes to flash. The pin, name and power-on behaviour are stored on the device alongside the controls and share their Save and Revert.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>BandInspector</name>
+    <message>
+        <source>No band selected. Click a dot or a row in the table, or double-click the graph to add one.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This band is off. Pick a shape to use it.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 bands are selected. This one is shown; on the graph they move together.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Slope</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Band %1: %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Frequency</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hz</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Gain</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>dB</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Q</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Bandwidth %1 oct</source>
+        <extracomment>%1 is a number of octaves</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Its values are under Linkwitz Transform below.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Band on</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Invert</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Invert Gain</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reset</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Switch this band off and clear its values</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -708,6 +1285,113 @@ Switching an output is instant and never writes to flash. The pin, name and powe
         <source>Disable PDM</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>Output polarity</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>ChannelInspector</name>
+    <message>
+        <source>Band %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Band</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Feeds</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>1 output</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 outputs</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This input is connected to no output.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>dB</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1, %2 dB</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Edit Routing…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Headphone Profile</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>A measured correction for your headphones, written to this input&apos;s bands.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Browse Profiles…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Crossover</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>HP %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>LP %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Off</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>High pass</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Low pass</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The speaker layout has a tweeter here. A tweeter without its high pass can be damaged.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Limiter</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 dBFS</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Linkwitz Transform</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Re-aligns a sealed woofer&apos;s rolloff. It takes one of this output&apos;s bands, and changes nothing until its values are applied.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Use Band %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>All bands are in use</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>ChannelListModel</name>
@@ -752,6 +1436,152 @@ Switching an output is instant and never writes to flash. The pin, name and powe
     </message>
     <message>
         <source>Alt+click or the context menu renames it</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>ChannelStrip</name>
+    <message>
+        <source>%1 enabled</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Enabled</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>MIX</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>USB %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Disconnect from %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Connect to %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 to %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 gain into %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>dB</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>GAIN</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Output gain</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>DELAY</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Output delay</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ms</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unmute</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Mute</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ø</source>
+        <extracomment>The sign for inverted polarity</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No input is connected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Invert polarity</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Polarity inverted</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Some inputs are inverted</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Output limiter on, ceiling %1 dBFS. Click to switch off; its settings are in the inspector (right-click).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Output limiter off. Click to switch on; its settings are in the inspector (right-click).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>PREAMP</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Preamp</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>ContextMenus</name>
+    <message>
+        <source>Clear All Bands?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Every band on both channels of the linked pair will be reset to its default (flat) state. Undo puts them back.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Every band of this channel will be reset to its default (flat) state. Undo puts them back.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Clear All</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reset %1 Bands</source>
+        <extracomment>%1 is how many bands are selected</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reset Band</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Copy &quot;%1&quot; Here</source>
+        <extracomment>%1 is the active slot&apos;s label, &quot;3: Living Room&quot;</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Clear &quot;%1&quot;…</source>
+        <extracomment>%1 is a slot&apos;s label, &quot;3: Living Room&quot;</extracomment>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -1581,6 +2411,11 @@ Switching an output is instant and never writes to flash. The pin, name and powe
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Open %1 in the Equaliser</source>
+        <extracomment>%1 is a channel&apos;s name</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Dashboard layout</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1953,6 +2788,15 @@ Switching an output is instant and never writes to flash. The pin, name and powe
         <extracomment>%1 is the device&apos;s serial number</extracomment>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>%1 is being measured with other units here (Measure, Several units), and a device has one session at a time. Take it out of that measurement first.</source>
+        <extracomment>%1 is the device&apos;s serial number</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The app is closing.</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>DeviceRow</name>
@@ -2059,10 +2903,6 @@ Switching an output is instant and never writes to flash. The pin, name and powe
     <message>
         <source>Close %1</source>
         <extracomment>%1 is a device&apos;s name</extracomment>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Close</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -2268,6 +3108,57 @@ Switching an output is instant and never writes to flash. The pin, name and powe
     </message>
 </context>
 <context>
+    <name>EffectsChain</name>
+    <message>
+        <source>Input preamp and EQ</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Matrix mixer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Crossover</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Output EQ</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Gain and volume</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Limiter</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Delay</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Signal Chain</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The order in the DSPi. No effect is on.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The order in the DSPi. 1 effect is on.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The order in the DSPi. %1 effects are on.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>EQ bypassed</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>EffectsController</name>
     <message>
         <source>Default</source>
@@ -2343,7 +3234,284 @@ Switching an output is instant and never writes to flash. The pin, name and powe
     </message>
 </context>
 <context>
+    <name>EffectsTools</name>
+    <message>
+        <source>Output Limiters…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Every output&apos;s limiter, on Equaliser › Delay &amp; Gain</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>EqualiserCrossover</name>
+    <message>
+        <source>This firmware has no crossovers.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Every output&apos;s response</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Crossovers</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>OUTPUT</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>HIGH PASS</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>LOW PASS</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>LR is Linkwitz-Riley, BW Butterworth, BS Bessel. The four crossover bands of %1:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Inputs have no crossover. Select an output to see its four bands.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>EqualiserCrossoverSide</name>
+    <message>
+        <source>%1 kHz</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 Hz</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Off</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 %2 dB/oct</source>
+        <extracomment>A crossover family and its slope (&quot;Linkwitz-Riley 24 dB/oct&quot;)</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 %2 dB</source>
+        <extracomment>The same, short (&quot;LR 24 dB&quot;)</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>High pass</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Low pass</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>High pass frequency</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Low pass frequency</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hz</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>+%1</source>
+        <extracomment>More bands of the same kind than the one shown</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 more high passes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 more low passes</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>EqualiserDelay</name>
+    <message>
+        <source>Delay and gain</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>OUTPUT</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ON</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>GAIN</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>DELAY</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>DISTANCE</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ARRIVAL</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>POLARITY</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>MUTE</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>LIMITER</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The distance is what the delay stands for at 343 m/s: typing one sets the delay. The latest output has the longest bar. Measure can find the delays by itself (Auto-tune).</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>EqualiserDelayRow</name>
+    <message>
+        <source>%1 enabled</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 gain</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>dB</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 delay</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ms</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 distance</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>cm</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 arrives %2 ms late</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>–</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Normal</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Inverted</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Mixed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No input is connected to %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Invert %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unmute %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Mute %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 dBFS</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Off</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 limiter; right-click for its settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>EqualiserGraphToggles</name>
+    <message>
+        <source>RTA</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show the spectrum on the graph</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Phase</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show the phase</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>All Curves</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show every channel&apos;s curve</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pop Out Graph</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>EqualiserPeq</name>
+    <message>
+        <source>Clear %1 PEQ</source>
+        <extracomment>%1 is an input pair (&quot;1/2&quot;)</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Clear PEQ</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>EqualiserSection</name>
+    <message>
+        <source>No Device Connected</source>
+        <translation type="unfinished"></translation>
+    </message>
     <message>
         <source>INPUTS</source>
         <translation type="unfinished"></translation>
@@ -2354,6 +3522,21 @@ Switching an output is instant and never writes to flash. The pin, name and powe
     </message>
     <message>
         <source>Channels</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>EqualiserTools</name>
+    <message>
+        <source>Headphone Profile…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Import…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Export…</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -2819,6 +4002,10 @@ Do you wish to proceed?</source>
     </message>
     <message>
         <source>Clear All Bands?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Every band on both channels of the linked pair will be reset to its default (flat) state. Edit &gt; Undo puts them back.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -4946,6 +6133,32 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
     </message>
 </context>
 <context>
+    <name>Inspector</name>
+    <message>
+        <source>Hide the Inspector</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Inspector</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>InspectorButton</name>
+    <message>
+        <source>Inspector</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hide the Inspector</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show the Inspector</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>InspectorSection</name>
     <message>
         <source>Expanded</source>
@@ -6365,6 +7578,11 @@ Macros are stored on the device alongside the controls and share their Save and 
 </context>
 <context>
     <name>MatrixPanel</name>
+    <message>
+        <source>Select %1</source>
+        <extracomment>%1 is a channel&apos;s name</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
     <message>
         <source>Name of %1</source>
         <translation type="unfinished"></translation>
@@ -7951,6 +9169,11 @@ Macros are stored on the device alongside the controls and share their Save and 
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Measured through its open tab, %1.</source>
+        <extracomment>%1 is the device&apos;s tab</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>%1 output %2</source>
         <translation type="unfinished"></translation>
     </message>
@@ -8166,6 +9389,10 @@ Macros are stored on the device alongside the controls and share their Save and 
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>AI Agents…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Firmware Update…</source>
         <translation type="unfinished"></translation>
     </message>
@@ -8243,6 +9470,150 @@ Macros are stored on the device alongside the controls and share their Save and 
     </message>
     <message>
         <source>Check for Updates…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Switch to the Classic Layout</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Recent Changes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Close</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Rename</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show Curve</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hide Curve</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Copy Parameters</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Paste Parameters</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unmute</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Edit Routing…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Load Headphone Profile…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Clear PEQ…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Shape</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Slope</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Bypass</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Enable</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Invert Gain</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Copy Band</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Paste Band</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reset Band</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add a Band Here</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Select All Bands</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Deselect All</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Delete Selected Bands</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show the Spectrum</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hide the Spectrum</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show the Phase</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hide the Phase</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Graph Settings…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Recall</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Save Current Settings Here</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Rename…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Set as Startup Preset</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Copy to…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Clear…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Clear All Slots…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -8886,6 +10257,11 @@ Macros are stored on the device alongside the controls and share their Save and 
 <context>
     <name>NoticeCenter</name>
     <message>
+        <source>On %1: %2</source>
+        <extracomment>A write refused on another open device: %1 the device, %2 the refusal</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>%1: %2</source>
         <extracomment>A notice from the core&apos;s table: %1 its title, %2 its reason</extracomment>
         <translation type="unfinished"></translation>
@@ -9348,6 +10724,108 @@ Macros are stored on the device alongside the controls and share their Save and 
         <source>No Device Connected</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>Choose a Device…</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>OverviewSummary</name>
+    <message>
+        <source>DEVICE</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Name</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Board</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Firmware</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Preset</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>EFFECTS</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1, on</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1, off</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Choose one to open its page.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>CONNECTION</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Through</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>File</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Demo</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>DSPi Link</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>USB</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hub</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Security</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Encrypted</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This computer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Alarms</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Manage Devices…</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>OverviewTools</name>
+    <message>
+        <source>Cards per row</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Auto</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>PageHost</name>
@@ -9372,7 +10850,65 @@ Macros are stored on the device alongside the controls and share their Save and 
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>%1, on</source>
+        <extracomment>%1 is an effect&apos;s tab</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1, off</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Open in Window</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>PairLink</name>
+    <message>
+        <source>different filters and input trims</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>different filters</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>different input trims</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Inputs %1 and %2 don&apos;t match</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>These inputs have %1. Linking mirrors future edits across both channels, but it cannot merge settings that already differ.
+
+Choose which channel&apos;s filters and trim to copy onto the other. This overwrites the other channel and cannot be undone.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keep IN%1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Linked %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Link %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unlink %1 (preamp &amp; PEQ stay independent)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Link %1 (preamp &amp; PEQ edits mirrored)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cancel</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -9506,6 +11042,10 @@ Macros are stored on the device alongside the controls and share their Save and 
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Spectrum</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Snapshots</source>
         <translation type="unfinished"></translation>
     </message>
@@ -9539,6 +11079,10 @@ Macros are stored on the device alongside the controls and share their Save and 
     </message>
     <message>
         <source>Settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>AI Agents</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -9668,6 +11212,17 @@ Macros are stored on the device alongside the controls and share their Save and 
     </message>
 </context>
 <context>
+    <name>PeqEditorController</name>
+    <message>
+        <source>Order</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Slope</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>PeqGraphOverlay</name>
     <message>
         <source>Band editor</source>
@@ -9675,6 +11230,14 @@ Macros are stored on the device alongside the controls and share their Save and 
     </message>
     <message>
         <source>Double-click to add a band; drag a dot to move it</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>bypassed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Double-click to add a band, then drag its dot; the wheel changes its Q</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -10292,6 +11855,17 @@ Save before continuing?</source>
     </message>
 </context>
 <context>
+    <name>RoutingInspector</name>
+    <message>
+        <source>Choose an output&apos;s column, or an input&apos;s row, in the matrix to see it here.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open in Equaliser</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>RtaController</name>
     <message>
         <source>Ch %1</source>
@@ -10445,6 +12019,18 @@ Save before continuing?</source>
     </message>
     <message>
         <source>Equaliser</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>PEQ</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Crossover</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Delay &amp; Gain</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -11131,7 +12717,43 @@ Save before continuing?</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>AI Agents</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Allow AI agents</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>MCP server</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Connect an agent</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Claude Desktop, Claude Code, Cursor</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Clients and tokens</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Ask before changes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Port</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Agent activity</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Use from another computer</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -11264,6 +12886,18 @@ Save before continuing?</source>
     </message>
     <message>
         <source>Light</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Darker grey</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Inspector</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Band bar</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -13993,6 +15627,22 @@ This wiring is a board-level setting: it is stored on the device, survives prese
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Show tab</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open in tab</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show %1&apos;s tab</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open %1 in a tab of its own</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>%1, pending</source>
         <translation type="unfinished"></translation>
     </message>
@@ -14436,19 +16086,6 @@ This wiring is a board-level setting: it is stored on the device, survives prese
     </message>
     <message>
         <source>Search settings…</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>AI agent control: off</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>AI agent control</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Controlling %1 with your own AI agent is not ready yet. Nothing is sent anywhere.</source>
-        <extracomment>%1 is the app&apos;s name</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -15193,11 +16830,19 @@ This wiring is a board-level setting: it is stored on the device, survives prese
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>%1: the hub does not list it.</source>
+        <source>%1: too many devices are open here; close a tab first.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>no connection could be made.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>%1: its state could not be read.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1: its tab was closed: choose it again.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
