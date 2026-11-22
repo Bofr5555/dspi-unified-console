@@ -2420,6 +2420,11 @@
 #define HUB_EVENT_TLS_KEY 6
 
 /**
+ * The smallest buffer `dspi_mcp_start` and `dspi_mcp_add_client` act on.
+ */
+#define MCP_REPLY_MIN 1024
+
+/**
  * Where a fetch callback puts its answer. Valid only during the callback.
  */
 typedef struct AutoEqFetchSink AutoEqFetchSink;
@@ -2445,6 +2450,11 @@ typedef struct FfiCoreSet FfiCoreSet;
  * by `dspi_hub_free`.
  */
 typedef struct FfiHub FfiHub;
+
+/**
+ * The handle behind `struct FfiMcp *`.
+ */
+typedef struct FfiMcp FfiMcp;
 
 /**
  * A device found by a scan.
@@ -8436,5 +8446,107 @@ void dspi_core_set_poll_hotplug(struct FfiCoreSet *set);
 void dspi_core_set_set_listener(struct FfiCoreSet *set,
                                 void (*callback)(const char *event_json, void *user_data),
                                 void *user_data);
+
+/**
+ * A handle for the MCP server over `set`'s devices. Null for a null set.
+ * Free it with `dspi_mcp_free`, before the set.
+ */
+struct FfiMcp *dspi_mcp_new(const struct FfiCoreSet *set);
+
+/**
+ * Stop the server if it runs and free the handle. Null is ignored, and so is
+ * a call from inside the listener.
+ */
+void dspi_mcp_free(struct FfiMcp *mcp);
+
+/**
+ * Start listening for AI agents. `config_json`: `{"port": 47860, "storeDir":
+ * "<the app's folder>", "appVersion": "0.15.0"}`, each optional (without a
+ * folder the clients last only for this run). Reply `{ok, port,
+ * addresses}`; code `running` when it runs already, `io` when the port is in
+ * use, `store` when the clients' file is damaged (it is left as it is).
+ *
+ * Returns the length needed; see the module's rule on short buffers.
+ */
+uint32_t dspi_mcp_start(struct FfiMcp *mcp, const char *config_json, char *buf, uint32_t len);
+
+/**
+ * Stop listening: the agents' next requests fail, a pairing request waiting
+ * ends. True if it was running.
+ */
+bool dspi_mcp_stop(struct FfiMcp *mcp);
+
+/**
+ * `{ok, running, port, addresses, paused, clients: [{id, name, created,
+ * lastUsed}], pairing: {id, name, code} | null}`; while stopped `{ok,
+ * running: false, paused}`.
+ */
+uint32_t dspi_mcp_status(struct FfiMcp *mcp, char *buf, uint32_t len);
+
+/**
+ * Set the listener for the server's events (the module's list); null unsets
+ * it. Once this returns, the old one is not running. Refused from inside the
+ * listener.
+ */
+void dspi_mcp_set_listener(struct FfiMcp *mcp, void (*callback)(const char *event_json,
+                                                                void *user_data), void *user_data);
+
+/**
+ * A client the user adds by hand under `name`: `{ok, id, token}`. Show the
+ * token once; it is not kept anywhere but in the agent's configuration.
+ * While stopped it goes into the last start's folder.
+ *
+ * Returns the length needed; see the module's rule on short buffers.
+ */
+uint32_t dspi_mcp_add_client(struct FfiMcp *mcp, const char *name, char *buf, uint32_t len);
+
+/**
+ * The clients, `{ok, value: [{id, name, created, lastUsed}]}`.
+ */
+uint32_t dspi_mcp_clients(struct FfiMcp *mcp, char *buf, uint32_t len);
+
+/**
+ * Remove client `id`: its token stops working at once. False if there was
+ * none.
+ */
+bool dspi_mcp_revoke(struct FfiMcp *mcp, uint64_t id);
+
+/**
+ * The user's answer to pairing request `request` (from `pairingRequested`).
+ * False when it no longer waits, or the token could not be stored.
+ */
+bool dspi_mcp_pairing_answer(struct FfiMcp *mcp, uint64_t request, bool allow);
+
+/**
+ * Pause the agents (their tool calls fail with "paused by the user" and
+ * change nothing) or resume them. Kept across stop and start.
+ */
+void dspi_mcp_pause(struct FfiMcp *mcp, bool paused);
+
+/**
+ * The newest `n` entries of the agents' activity, oldest first: `{ok, value:
+ * [entry]}` (`dspi_mcp::activity::ActivityEntry::to_json`). Empty while
+ * stopped.
+ */
+uint32_t dspi_mcp_activity(struct FfiMcp *mcp, uint32_t n, char *buf, uint32_t len);
+
+/**
+ * The device the app shows (a set id), which tools use when an agent names
+ * none; null for none. False for an id that is no id.
+ */
+bool dspi_mcp_set_active_device(struct FfiMcp *mcp, const char *id);
+
+/**
+ * The stdio relay, on this process's standard input and output, until
+ * standard input ends: the app's `--mcp` mode. `config_json`: `{"port":
+ * 47860, "token": "<the kept one>", "name": "<to pair under when the agent
+ * names nothing>"}`, each optional. `token_sink` (may be null) is called on
+ * this thread with a new token to keep, or null to forget the kept one.
+ * Returns 0 when standard input ended, 1 when standard output failed (the
+ * agent went), 2 for a bad configuration.
+ */
+int32_t dspi_mcp_relay_stdio(const char *config_json,
+                             void (*token_sink)(const char *token, void *user_data),
+                             void *user_data);
 
 #endif  /* DSPI_CORE_H */
