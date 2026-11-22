@@ -20,6 +20,7 @@ ColumnLayout {
     id: content
     property int output: 0
     property bool active: false
+    property bool showHeading: true // -- WP LAY4 -- an inspector section has its own
 
     readonly property var settings: ToolsController.revision < 0 ? ({}) : ToolsController.limiter(output)
     readonly property bool on: settings.enabled === true
@@ -38,6 +39,7 @@ ColumnLayout {
             Layout.fillWidth: true
             spacing: 2
             Text {
+                visible: content.showHeading
                 text: qsTr("Output Limiter")
                 font.family: Theme.fontBody.family
                 font.pixelSize: Theme.fontBody.pixelSize
@@ -212,6 +214,8 @@ ColumnLayout {
         Text {
             Layout.fillWidth: true
             text: ToolsController.unprotectedText
+            // -- WP INT4 -- it names the outputs, which are the user's text
+            textFormat: Text.PlainText
             font: Theme.fontCaption
             color: Theme.text
             wrapMode: Text.Wrap

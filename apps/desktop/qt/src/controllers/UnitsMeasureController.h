@@ -16,6 +16,14 @@
 // each call that takes checks (the preflight, the start, the summed check,
 // the verify: review AT-C F2). This console's own DSPi is judged by its core.
 //
+// -- WP XDEV1 -- (MPLAN 1.2 item 6) One session per serial: a unit open in a
+// tab is judged by that tab's core, not a second connection; a unit that is
+// not gets an extra core of the device set (DeviceRegistry::openExtra: no tab,
+// but its serial held, so it cannot be opened in a tab meanwhile), closed when
+// it is no longer chosen, the tab is left or the measurement moves to another
+// device. A tab closed while its unit is chosen leaves the unit without a
+// connection (choose it again).
+//
 // Rules this adds (the coordinator's): nothing plays before the person chose
 // where the microphone is, and across units only the listening position is
 // taken; Stop is always offered while anything plays (the Measure window's
@@ -55,6 +63,7 @@
 
 #include "Registrar.h"
 
+class DeviceSession;
 class LinkSession;
 class MeasureSession;
 class QJSEngine;
@@ -79,8 +88,9 @@ class UnitsMeasureController : public QObject {
     // "" until the person chose; "listeningPosition" is the only one taken
     Q_PROPERTY(QString placement READ placement WRITE setPlacement NOTIFY formChanged)
     Q_PROPERTY(QString placementProblem READ placementProblem NOTIFY formChanged)
-    // [{ serial, name, online, own, chosen, opening, error, outputs: [{ output,
-    // label, on, role }] }]
+    // [{ serial, name, online, own, chosen, opening, error, tab (-- WP XDEV1 --
+    // the title of the tab it is judged through, "" for an extra core),
+    // outputs: [{ output, label, on, role }] }]
     Q_PROPERTY(QVariantList units READ units NOTIFY formChanged)
     Q_PROPERTY(int sweepMs READ sweepMs WRITE setSweepMs NOTIFY formChanged)
     // 0: the plan's (5, or 3 for a group that needs several runs)
@@ -311,6 +321,9 @@ public:
     }
     // Whether unit `serial` has its own connection open now
     bool unitOpen(const QString &serial) const { return m_cores.contains(serial); }
+    // -- WP XDEV1 -- the core it is judged by, and whether that is its tab's
+    FfiCore *unitCore(const QString &serial) const;
+    bool unitInTab(const QString &serial) const;
 
 signals:
     void availabilityChanged();
@@ -338,8 +351,15 @@ private:
     LinkSession *hostLink() const;
     void rehost();
     QString ownSerial() const;
+    QJsonObject ownLayout() const;   // -- WP RCFIX --
     void refreshUnits();
     void openUnit(const QString &serial);
+    void readOutputs(const QString &serial, UnitPtr unit, const QString &error);   // -- WP XDEV1 --
+    void tabClosing(DeviceSession *session);                                      // -- WP XDEV1 --
+    // -- WP MCP5 -- an AI agent's run across units (AiController::measureRequested,
+    // `loop` "system"): on the device shown, said as "Requested by AI · name"
+    void agentRequest(const QJsonObject &ticket);
+    QString m_agentLabel;
     void closeUnit(const QString &serial);
     void closeAll();
     QVariantMap unitRow(const QString &serial) const;

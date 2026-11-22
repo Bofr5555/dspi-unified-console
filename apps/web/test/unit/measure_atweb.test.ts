@@ -215,7 +215,7 @@ function proposal(p: Partial<MeasureSystemProposalRecord>): MeasureSystemProposa
 const APPLIED: MeasureSystemAppliedRecord = { stage: "none", revisionBefore: 0, revisionAfter: 0, snapshots: [], writesOk: 0, writeFailures: [], verified: null, message: "" };
 
 /** A hub session's core and the units' own cores, all stand-ins; every call is recorded in order. */
-function deskRig(role: "admin" | "control", opts: { caps?: string[]; sim?: boolean; guardS?: number } = {}) {
+function deskRig(role: "admin" | "control", opts: { caps?: string[]; sim?: boolean; guardS?: number; heldBy?: SystemSession["heldBy"] } = {}) { // -- WP WEBM3 -- heldBy
   let guardEnded = ""; // -- review AT-D2 -- the hub ended its guard: its words
   let guardNotice = ""; // -- WP REVERTW -- and the core's revert notice when it did not put everything back
   const calls: Call[] = [];
@@ -321,6 +321,7 @@ function deskRig(role: "admin" | "control", opts: { caps?: string[]; sim?: boole
     deviceId: "A",
     linkContext: { loc: null, proxy: false },
     state: { snapshot: { device: {}, state: { numOutputChannels: 2, numInputChannels: 2, outputEnabled: [true, true], channelNames: ["L", "R", "Out 1", "Out 2"] }, outputLabels: [] } as never },
+    heldBy: opts.heldBy, // -- WP WEBM3 --
   };
   let now = 10_000;
   class TestDesk extends SystemDesk {
@@ -574,4 +575,68 @@ test("review AT-D2: the guard in words: none on an older hub, uncounted when thi
     "The revert was not fully successful. Reverted, but not wholly: UNIT-2 out.delay: refused (not written). Check the settings, or restore a backup (a snapshot).",
   );
   assert.match(endedWords({ stage: "revert_incomplete", message: "" }), /^The revert was not fully successful\. .*restore a backup \(a snapshot\)\.$/);
+});
+
+// -- WP WEBM3 -- a unit open in another tab is judged on that tab's core: no second session, and
+// the desk never closes it; the desk's own core goes before the unit is opened in a tab.
+
+/** Another tab's session of unit `serial`: its core records its calls as `tab:<serial>`. */
+function tabOf(serial: string, calls: Call[], status = "open") {
+  const snapshot = { device: {}, state: { numOutputChannels: 3, numInputChannels: 2, outputEnabled: [true, true, true], channelNames: ["L", "R", "Out 1", "Out 2", "Out 3"] }, outputLabels: [] } as never;
+  let disposed = false;
+  const core = {
+    async call(method: string) {
+      calls.push({ core: `tab:${serial}`, method, params: null });
+      if (method === "measureSystemUnitCheck") return { serial, preflight: { clear: true, blockers: [], warnings: [] }, context: "{}" };
+      return null;
+    },
+    subscribe: () => () => undefined,
+    dispose: async () => void (disposed = true),
+  };
+  return { held: { core: core as unknown as SystemSession["core"], state: { status, snapshot }, transport: "Hub" }, disposed: () => disposed };
+}
+
+test("WEBM3: a unit open in another tab is measured on that tab's core; none of its own is opened or closed", async () => {
+  const shared: Call[] = [];
+  const b = tabOf("B", shared);
+  const rig = deskRig("control", { heldBy: (s) => (s === "B" ? b.held : null) });
+  await rig.desk.enter();
+  rig.desk.setDraft({ ...withUnit(withUnit(rig.desk.draft, "A", true), "B", true), placement: "listeningPosition" });
+  await until(() => rig.desk.units[1]!.outputs.length === 3);
+  assert.equal(rig.desk.units[1]!.tab, "Hub");
+  assert.ok(!rig.calls.some((c) => c.method === "linkConnect" || c.method === "open"), "no second session for B");
+  assert.equal(await rig.desk.start(), true, rig.desk.error);
+  assert.ok(shared.some((c) => c.core === "tab:B" && c.method === "measureSystemUnitCheck"), "B judged on its tab's core");
+  rig.desk.setDraft(withUnit(rig.desk.draft, "B", false));
+  await rig.desk.leave();
+  assert.equal(b.disposed(), false, "the tab's core stays the tab's");
+  assert.deepEqual(rig.disposed, []);
+});
+
+test("WEBM3: a unit still opening in a tab is not opened a second time; it is named", async () => {
+  const b = tabOf("B", [], "opening");
+  const rig = deskRig("control", { heldBy: (s) => (s === "B" ? b.held : null) });
+  await rig.desk.enter();
+  rig.desk.setDraft(withUnit(withUnit(rig.desk.draft, "A", true), "B", true));
+  await until(() => rig.desk.units[1]!.error !== "");
+  assert.match(rig.desk.units[1]!.error, /^B: it is being opened in another tab/);
+  assert.ok(!rig.calls.some((c) => c.method === "open"));
+});
+
+test("WEBM3: Open in the console closes the desk's own core first; the tab's core is used after", async () => {
+  const shared: Call[] = [];
+  const b = tabOf("B", shared);
+  let inTab = false;
+  const rig = deskRig("control", { heldBy: (s) => (s === "B" && inTab ? b.held : null) });
+  await rig.desk.enter();
+  rig.desk.setDraft({ ...withUnit(withUnit(rig.desk.draft, "A", true), "B", true), placement: "listeningPosition" });
+  await until(() => rig.desk.units[1]!.outputs.length === 2);
+  assert.ok(rig.calls.some((c) => c.core === "B" && c.method === "open"), "not open anywhere: a core of the desk's");
+  assert.equal(await rig.desk.handOver("B"), true);
+  assert.deepEqual(rig.disposed, ["B"], "closed before the tab opens it");
+  inTab = true;
+  assert.equal(await rig.desk.start(), true, rig.desk.error);
+  assert.ok(shared.some((c) => c.core === "tab:B" && c.method === "measureSystemUnitCheck"));
+  assert.equal(rig.desk.units[1]!.tab, "Hub");
+  assert.equal(await rig.desk.handOver("B"), false, "not while it measures");
 });

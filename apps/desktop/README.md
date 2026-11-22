@@ -103,6 +103,15 @@ By hand, in the container:
   live view, solo) stops on `activeLeaving`; what plays on a device that is closed
   or replaced stops on `sessionStopping`, posted to its worker (`drainFirst`).
   `DeviceSession::setJob` makes its tab busy.
+  Views that span devices use the registry directly (WP XDEV1): Several units
+  judges a unit open in a tab by that tab's core (no second session) and any
+  other by an extra core of the set (`DeviceRegistry::openExtra`: no tab, its
+  serial held while it is chosen); the System view's "Open in tab" shows a
+  unit's tab or opens one through the hub (`LinkController::openInTab`). A write
+  refused on a device that is not the active one is a notice naming it
+  (`backgroundRefused`). Leaving Modern keeps the other devices open:
+  `DeviceRegistry::kOthersStayOpenInClassic` is that one policy point.
+  `sessionClosing` is never emitted for the main session.
 - **One thread calls a core:** its `CoreWorker`. Every blocking call (reads,
   writes, scans, files) is posted to it and its result comes back to the GUI
   thread as a queued call. The hot-plug poll (one for every core) and the opens
@@ -217,7 +226,17 @@ merges do not conflict, nothing generated or listed is edited by two of them:
   `qt/smoke/names/<wp>.md`; `NAMES.md` holds only the rule.
 - **The menu table** (`qml/main/MenuTable.qml`) has every row already; a
   package fills a row through `Shell` and edits the table only to add a row,
-  under its `// -- WP <ID> --` marker.
+  under its `// -- WP <ID> --` marker. A new row whose tool is no panel needs
+  its place in the Modern layout (`modern`, the table's `places`); what acts on
+  one thing (a channel, a band, a slot) is a row of `itemRows`, with its
+  handler where its menu is (`qml/modern/ContextMenus.qml`).
+- **`assets/actions.json`**, the actions for the web and the Terminal, is made
+  from that table by `qt/tools/actions.sh` and checked by `qt-offscreen`; like
+  the `.ts`, the coordinator runs it after a merge that changes the table.
+- **The command palette** (`qml/modern/CommandPalette.qml`, Modern's Ctrl+K)
+  lists what is in the menu table, `SectionTable`, the channels, the Settings
+  pages with their search terms and the open devices: a new row, tab or page is
+  in it without a line there. No row and no panel may take Ctrl+K.
 - **The parked files' table** below is updated by the coordinator when a
   package that adapts a parked file is merged.
 

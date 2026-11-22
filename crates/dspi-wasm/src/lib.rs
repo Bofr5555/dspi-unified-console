@@ -116,6 +116,8 @@ pub mod hub_server_measure;
 pub mod measure_sim;
 // -- WP P5TUNE -- the auto-tune
 pub mod measure_tune;
+// -- WP ROLL1 -- the roll-off search (a tweeter's low end)
+pub mod measure_rolloff;
 // -- WP P5CURV -- the passive microphone RTA and a measurement document's curves
 pub mod measure_curv;
 // -- WP ATCORE -- the system measurement across units

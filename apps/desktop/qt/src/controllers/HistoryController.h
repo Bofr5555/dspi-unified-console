@@ -32,7 +32,8 @@ class HistoryController : public QObject {
     QML_SINGLETON
     Q_PROPERTY(bool canUndo READ canUndo NOTIFY changed)
     Q_PROPERTY(bool canRedo READ canRedo NOTIFY changed)
-    // Newest first: [{ title, detail, source, time, undoable }]
+    // Newest first: [{ title, detail, source, time, undoable, agent }]; -- WP MCP4 --
+    // `agent` is who made it when it was an AI agent ("AI · Claude Code"), else ""
     Q_PROPERTY(QVariantList entries READ entries NOTIFY changed)
     // The last undo's or redo's note, "" when it had none
     Q_PROPERTY(QString lastNote READ lastNote NOTIFY moved)

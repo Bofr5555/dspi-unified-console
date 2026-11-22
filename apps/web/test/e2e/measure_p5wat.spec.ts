@@ -11,7 +11,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { openPage, rail } from "../nav";
+import { openPage, partsOf, rail } from "../nav"; // -- WP WEBM3 -- partsOf
 
 test.skip(({ browserName }) => browserName === "webkit", "Chromium and Firefox only");
 
@@ -46,7 +46,7 @@ async function tuneScreen(page: Page): Promise<{ screen: Locator; tune: (name: s
   await call(page, "write", { path: "vol.user", value: { float: -20 } });
   await openPage(session, "Measure");
   const screen = session.getByRole("region", { name: "Measure" });
-  await screen.getByRole("tablist", { name: "Measurement" }).getByRole("tab", { name: "Auto-tune" }).click();
+  await partsOf(screen, "Measurement").getByRole("tab", { name: "Auto-tune" }).click();
   return { screen, tune: (name: string) => screen.getByRole("region", { name }) };
 }
 
@@ -161,7 +161,7 @@ test("P5WAT: a tune reverted puts the settings back; a timing-unreliable measure
   await expect(g).toHaveAttribute("data-stage", "reverted");
   await expect.poll(() => chainOf(page)).toBe(before);
   // The measurement from the Documents tab, downloaded, marked unreliable, opened, tuned from.
-  await screen.getByRole("tablist", { name: "Measurement" }).getByRole("tab", { name: "Documents" }).click();
+  await partsOf(screen, "Measurement").getByRole("tab", { name: "Documents" }).click();
   const docs = screen.getByRole("region", { name: "Measurement documents" });
   const row = docs.getByRole("list", { name: "Measurements" }).getByRole("listitem").first();
   await expect(row).toHaveAttribute("data-where", "local");
@@ -232,7 +232,7 @@ test("P5WAT: through the hub as Control: a document filed and renamed on the hub
     await expect(session.locator(".device-meta")).toContainText(DEMO);
     await openPage(session, "Measure");
     const screen = session.getByRole("region", { name: "Measure" });
-    await screen.getByRole("tablist", { name: "Measurement" }).getByRole("tab", { name: "Documents" }).click();
+    await partsOf(screen, "Measurement").getByRole("tab", { name: "Documents" }).click();
     const docs = screen.getByRole("region", { name: "Measurement documents" });
     await expect(docs).toContainText("only the hub's Admin deletes them");
     // A microphone's calibration (REW text) imported, then filed on the hub.
@@ -269,7 +269,7 @@ test("P5WAT: 375 px: the auto-tune and the documents without sideways scroll", a
   await expect(tune("Tune layout").getByRole("list", { name: "Outputs" })).toBeVisible();
   const over = () => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(await over()).toBeLessThanOrEqual(0);
-  await screen.getByRole("tablist", { name: "Measurement" }).getByRole("tab", { name: "Documents" }).click();
+  await partsOf(screen, "Measurement").getByRole("tab", { name: "Documents" }).click();
   await expect(screen.getByRole("region", { name: "Measurement documents" })).toBeVisible();
   expect(await over()).toBeLessThanOrEqual(0);
   expect(errors).toEqual([]);

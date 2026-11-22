@@ -255,6 +255,10 @@ fn close(s: &FfiCoreSet, id: &DeviceId) -> Result<(), CoreSetError> {
 /// the app holds. JSON `{ok, id}`, or the failure (module docs). Blocks for the
 /// connect sequence: not on the UI thread.
 ///
+/// -- WP INT5 -- `"extra": true` beside the kind: a device the app uses itself
+/// without showing it (a unit measured with others). `dspi_core_set_list` says
+/// `"extra": true` of it, and AI agents are not offered it.
+///
 /// -- WP MDQT1 -- It acts once, whatever the buffer: a reply that does not fit
 /// (the returned length is over `len`) writes nothing, but the device is open.
 /// Do not call it again for the id (it would open a second demo, or be refused
@@ -272,10 +276,14 @@ pub extern "C" fn dspi_core_set_open(
             .and_then(|t| {
                 serde_json::from_str::<Value>(t).map_err(|e| format!("the target is not JSON: {e}"))
             })
-            .and_then(|v| target(&v));
+            .and_then(|v| Ok((target(&v)?, v.get("extra") == Some(&Value::Bool(true)))));
         match parsed {
             Err(msg) => invalid(msg),
-            Ok(t) => match s.set.open(t) {
+            Ok((t, extra)) => match if extra {
+                s.set.open_extra(t)
+            } else {
+                s.set.open(t)
+            } {
                 Ok(id) => json!({ "ok": true, "id": id.as_str() }).to_string(),
                 Err(e) => failure(e),
             },

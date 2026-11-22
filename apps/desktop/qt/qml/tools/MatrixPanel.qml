@@ -30,6 +30,9 @@ Panel {
     readonly property bool wide: MatrixController.wide
     // The output being renamed in its header, -1 for none
     property int renaming: -1
+    // -- WP LAY5a -- On a page, an output's header and an input's label select
+    // their channel, which the inspector beside the matrix shows
+    readonly property int selected: inPage ? SidebarController.selectedChannel : -1
     // The output whose header menu is open
     property int menuOutput: -1
 
@@ -71,6 +74,30 @@ Panel {
             font: Theme.fontHeading
             color: Theme.textMuted
         }
+    }
+    // -- WP LAY5a -- A header or a label to click, under what it has in it
+    component SelectButton: AbstractButton {
+        id: select
+        property int channel: -1
+        property string name
+        readonly property bool current: channel >= 0 && channel === panel.selected
+        anchors.fill: parent
+        anchors.margins: 2
+        hoverEnabled: true
+        focusPolicy: Qt.TabFocus
+        onClicked: SidebarController.select(channel)
+        background: Rectangle {
+            radius: Theme.radiusSmall
+            color: select.current ? Theme.selection : select.hovered ? Theme.controlHover : "transparent"
+            border.width: select.visualFocus ? 2 : 0
+            border.color: Theme.focusRing
+        }
+        Accessible.role: Accessible.Button
+        //: %1 is a channel's name
+        Accessible.name: qsTr("Select %1").arg(name)
+        Accessible.checkable: true
+        Accessible.checked: current
+        Accessible.onPressAction: select.clicked()
     }
     component Rule: Rectangle {
         property int indent: 0
@@ -137,6 +164,12 @@ Panel {
                             width: panel.columnWidth
                             height: panel.headerHeight
 
+                            SelectButton {
+                                objectName: "Matrix.header." + header.index + ".select"
+                                channel: header.col && header.col.channel !== undefined ? header.col.channel : -1
+                                name: header.shownName
+                                visible: panel.inPage && panel.renaming !== header.index
+                            }
                             Column {
                                 anchors.centerIn: parent
                                 width: parent.width - 4
@@ -149,7 +182,7 @@ Panel {
                                     text: header.shownName
                                     font.pixelSize: Theme.fontSmall.pixelSize
                                     font.weight: Font.Medium
-                                    color: Theme.textMuted
+                                    color: header.col && panel.selected >= 0 && panel.selected === header.col.channel ? Theme.text : Theme.textMuted // -- WP LAY5a --
                                     // The derived labels ("Out 1 · L · Low") take two lines
                                     wrapMode: Text.Wrap
                                     maximumLineCount: 2
@@ -193,6 +226,7 @@ Panel {
                                         anchors.verticalCenter: parent.verticalCenter
                                         text: header.col ? header.col.descriptor : ""
                                         tint: ChannelPalette.output(header.index, header.col && header.col.pdm)
+                                        onClicked: if (panel.inPage && header.col) SidebarController.select(header.col.channel) // -- WP LAY5a --
                                     }
                                     IconButton {
                                         id: menuButton
@@ -265,6 +299,12 @@ Panel {
                                 property string shownName: src ? src.name : ""
                                 width: panel.labelWidth
                                 height: panel.crosspointHeight
+                                SelectButton {
+                                    objectName: "Matrix.row." + srcRow.index + ".select"
+                                    channel: srcRow.src && srcRow.src.input >= 0 ? srcRow.src.input : -1
+                                    name: srcRow.shownName
+                                    visible: panel.inPage && channel >= 0
+                                }
                                 Column {
                                     anchors.centerIn: parent
                                     spacing: 4

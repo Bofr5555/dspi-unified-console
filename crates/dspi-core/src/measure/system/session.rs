@@ -1038,17 +1038,21 @@ impl SysSession {
                 }
                 match after {
                     After::Ramp => {
-                        self.listener =
-                            match self.plan.units.first().map(|u| {
-                                safety::ramp_listener(&u.plan, self.plan.rate_hz, &self.buf)
-                            }) {
-                                Some(Ok(l)) => Some(l),
-                                Some(Err(e)) => {
-                                    log::warn!("system measurement: the ramp hears nothing: {e}");
-                                    None
-                                }
-                                None => None,
-                            };
+                        self.listener = match self.plan.units.first().map(|u| {
+                            safety::ramp_listener(
+                                &u.plan,
+                                &u.plan.run_of(Vec::new()), // -- WP ROLL1 --
+                                self.plan.rate_hz,
+                                &self.buf,
+                            )
+                        }) {
+                            Some(Ok(l)) => Some(l),
+                            Some(Err(e)) => {
+                                log::warn!("system measurement: the ramp hears nothing: {e}");
+                                None
+                            }
+                            None => None,
+                        };
                         self.ramp_pos = 0;
                         self.next_ramp(hub, now);
                     }
@@ -1249,7 +1253,7 @@ impl SysSession {
         let Some(p) = self.plan.units.get(unit).map(|u| u.plan.clone()) else {
             return;
         };
-        let cfg = runs::ramp_config(&p, ramp.output, level);
+        let cfg = runs::ramp_config(&p, &p.run_of(vec![ramp.output]), ramp.output, level); // -- WP ROLL1 --
         let sweep = LogSweep::new(
             self.plan.rate_hz,
             &SweepConfig {
@@ -1587,11 +1591,7 @@ impl SysSession {
             } else {
                 self.unit_level(*u, outs)
             };
-            let spec = super::super::plan::RunSpec {
-                position: 0,
-                outputs: outs.clone(),
-                invert_mask: 0,
-            };
+            let spec = pu.plan.run_of(outs.clone()); // -- WP ROLL1 --
             let mut c = runs::run_config(&pu.plan, &spec, level);
             c.repeat = 1;
             configs.push((*u, c));

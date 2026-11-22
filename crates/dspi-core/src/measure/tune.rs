@@ -663,6 +663,11 @@ pub(crate) struct Tune {
     /// counts from [`TUNE_KEEP_CONFIRM_MIN_MS`] later, so a double click is
     /// one press.
     keep_refused_at: Option<dspi_transport::clock::Instant>,
+    // -- WP ROLL1 -- (review RA item 5)
+    /// Who last started the tune's runs or applied it: its runs started from
+    /// `measure_tune_tick` (any thread) are theirs, and its guard's revert on
+    /// timeout is attributed to them.
+    actor: crate::actor::JobActor,
 }
 
 impl MeasureSlot {
@@ -1471,6 +1476,9 @@ impl DspiCore {
         let _ = self.measure_clear();
         match self.measure_start_with(&item.setup, &options) {
             Ok(_) => {
+                // -- WP ROLL1 -- the run is the tune's starter's, whichever
+                // thread ticked it on
+                self.measure_set_actor(t.actor.actor());
                 if let Some(r) = t.runs.as_mut() {
                     r.current = Some(item);
                 }
@@ -1742,6 +1750,11 @@ impl DspiCore {
     /// verify run on): a Keep then would keep before the verdict, in one
     /// press. Keep before any verify has started keeps its rule (one press;
     /// the proposal said "Not verified").
+    ///
+    /// WP RCFIX (review RC, RC1): the second confirmation is **the user's
+    /// only**. Another actor's Keep of a tune whose verify failed is refused
+    /// however often it asks (the same key), and leaves the two-step Keep as
+    /// the user left it: it neither arms nor uses it.
     fn tune_keep_gate(&self, t: &mut Tune) -> Result<()> {
         if t.stage == MeasureTuneStage::Verifying {
             // The issue's words follow its notice's title ("The verify is
@@ -1755,6 +1768,13 @@ impl DspiCore {
         }
         if !t.verify_failed {
             return Ok(());
+        }
+        // -- WP RCFIX --
+        if crate::actor::JobActor::capture(self).actor() != crate::actor::EMBEDDER {
+            return Err(invalid(format!(
+                "{KEY_KEEP_UNVERIFIED}: the verify did not confirm the tune; only the user may \
+                 keep it, in the app"
+            )));
         }
         let now = crate::guarded::now();
         let confirmed = t.keep_armed
@@ -2274,7 +2294,9 @@ impl DspiCore {
     /// at hand, or `measure_start`'s refusals ([`DspiError::ReadOnly`],
     /// [`DspiError::Denied`], [`DspiError::Locked`]).
     pub fn measure_tune_sum_check(&self, proposal_id: u32) -> Result<MeasureTuneState> {
+        let actor = crate::actor::JobActor::capture(self); // -- WP ROLL1 --
         let mut t = self.measure.tune_lock();
+        t.actor = actor;
         if t.stage != MeasureTuneStage::Proposed
             || t.proposal.as_ref().map(|p| p.id) != Some(proposal_id)
         {
@@ -2356,6 +2378,8 @@ impl DspiCore {
             t.stage,
             MeasureTuneStage::Applied | MeasureTuneStage::Verifying | MeasureTuneStage::Verified
         ) {
+            // -- WP ROLL1 -- a revert on timeout is the applier's in the History
+            let _scope = t.actor.attribute(self);
             self.apply_poll();
             self.tune_guard_ended(&mut t);
         }
@@ -2422,7 +2446,9 @@ impl DspiCore {
     /// guard's refusals. After the guard began: the refused write's error
     /// (the guard has reverted).
     pub fn measure_tune_apply(&self, proposal_id: u32, guard_s: u32) -> Result<GuardedApply> {
+        let actor = crate::actor::JobActor::capture(self); // -- WP ROLL1 --
         let mut t = self.measure.tune_lock();
+        t.actor = actor;
         let p = t
             .proposal
             .clone()
@@ -2475,7 +2501,8 @@ impl DspiCore {
             count,
             ..MeasureSetup::default()
         };
-        let plan = Plan::new(&setup)?;
+        let mut plan = Plan::new(&setup)?;
+        self.measure_resolve_roles(&mut plan)?; // -- WP RCFIX --
         let pre = self.measure_preflight_plan(
             &plan,
             &PreflightOptions {
@@ -2582,7 +2609,9 @@ impl DspiCore {
     /// Errors: [`DspiError::InvalidArgument`] when no tune is applied, the
     /// measurement's microphone is not at hand, or `measure_start` refuses.
     pub fn measure_tune_verify(&self) -> Result<MeasureTuneState> {
+        let actor = crate::actor::JobActor::capture(self); // -- WP ROLL1 --
         let mut t = self.measure.tune_lock();
+        t.actor = actor;
         self.tune_guard_ended(&mut t);
         if !matches!(
             t.stage,
@@ -2638,7 +2667,9 @@ impl DspiCore {
     /// `measure.tune.keep_unverified` (nothing changes, the guard runs on;
     /// the state's `issue` says it): the client shows why and asks the user
     /// again, and only a second Keep, on the user's explicit confirmation,
-    /// keeps it. A new verify, Revert or another apply ask again.
+    /// keeps it. A new verify, Revert or another apply ask again. Another
+    /// actor than the embedder ([`crate::actor::ActorScope`]) is refused every
+    /// time (WP RCFIX).
     ///
     /// Errors: [`DspiError::InvalidArgument`] when no tune is applied, while
     /// a verify runs, or the first Keep after a failed verify;

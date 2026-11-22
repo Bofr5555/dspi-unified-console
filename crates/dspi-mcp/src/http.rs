@@ -40,13 +40,27 @@
 //!
 //! **Clients.** One paired token is one client of the [`Server`] (one actor
 //! in the History, one rate limit), whichever era and however many sessions
-//! it uses. While the app has paused the agents, `tools/call` answers with a
-//! tool error and changes nothing.
+//! it uses, under the name the user paired it as. While the app has paused
+//! the agents, `tools/call` answers with a tool error and changes nothing.
 //!
-//! **Threads.** One accepting thread per address and one per connection.
-//! Calls are serialised on the server's mutex; a tool call runs on its
-//! connection's thread. Events ([`Event`]) reach the app's listener on these
-//! threads, with no lock held.
+//! **Held calls** (-- WP MCP4 --). A call the policy holds for the user's
+//! word ([`Server::handle_held_value`]) leaves its connection's thread at
+//! once: the connection is parked, and counts for none of
+//! [`HttpLimits::max_connections`]. The ticking thread answers it when the
+//! confirmation has ended; after [`HttpLimits::hold`], shorter than the time
+//! agents wait for a reply, it answers `awaiting_confirmation` instead, and
+//! the agent asks `dspi_get_confirmation`. A parked connection the agent has
+//! closed ends its confirmation with nothing changed. The app answers with
+//! [`HttpServer::answer_confirmation`], which runs the call on its thread.
+//!
+//! **Threads.** One accepting thread per address, one per connection, and one
+//! that ticks: once a second, and when a confirmation is answered, it drives
+//! [`Server::tick`] and the parked connections. Calls are serialised on the
+//! server's mutex; a tool call runs on its connection's thread, and holds the
+//! mutex while it writes to the device: the app's calls that need the server
+//! ([`HttpServer::with_server`] and the ones that say so) may wait that long,
+//! so they never belong on a UI thread. Events ([`Event`]) reach the app's
+//! listener on these threads, with no lock held.
 
 use std::collections::BTreeMap;
 use std::io::{self, Read, Write};
@@ -63,6 +77,7 @@ use serde_json::{Map, Value, json};
 use crate::auth::{
     AuthError, Clients, Minted, PAIRING_TTL_MS, PairEnd, PairPoll, PairedClient, Pairing,
 };
+use crate::confirm::AnswerError; // -- WP MCP4 --
 use crate::protocol::{
     self, INVALID_PARAMS, INVALID_REQUEST, LEGACY_VERSIONS, META_CAPABILITIES, META_VERSION,
     METHOD_NOT_FOUND, MODERN_VERSIONS, PARSE_ERROR, RpcError, UNSUPPORTED_VERSION,
@@ -85,6 +100,10 @@ pub const HEADER_MISMATCH: i64 = -32020;
 /// The tool error a paused server answers `tools/call` with.
 pub const PAUSED_TEXT: &str = "DSPi Console: the user has paused AI agents. Nothing was changed.";
 
+// -- WP MCP4 --
+/// The 503 reply's words while the server stops.
+const STOPPED_TEXT: &str = "AI agents have been turned off in DSPi Console";
+
 /// The 401 reply's words.
 pub const UNAUTHORISED_TEXT: &str = "DSPi Console does not know this token. Pair this agent again, or add it \
 in DSPi Console under Settings, AI agents.";
@@ -104,7 +123,15 @@ pub struct HttpLimits {
     pub pair_wait: Duration,
     /// Legacy sessions kept per client; the oldest goes first.
     pub sessions_per_client: usize,
+    // -- WP MCP4 --
+    /// How long a held call's connection waits for the user before it is
+    /// answered `awaiting_confirmation`. Agent hosts give up on a reply after
+    /// 60 s or more.
+    pub hold: Duration,
 }
+
+/// How often the ticking thread runs (-- WP MCP4 --).
+const TICK: Duration = Duration::from_secs(1);
 
 impl Default for HttpLimits {
     fn default() -> Self {
@@ -115,6 +142,7 @@ impl Default for HttpLimits {
             io_timeout: Duration::from_secs(10),
             pair_wait: Duration::from_secs(25),
             sessions_per_client: 8,
+            hold: Duration::from_secs(45), // -- WP MCP4 --
         }
     }
 }
@@ -161,6 +189,16 @@ pub enum Event {
     },
     /// A client was added or removed.
     ClientsChanged,
+    // -- WP MCP4 --
+    /// A confirmation was asked or has ended: read
+    /// [`HttpServer::confirmations`] again.
+    ConfirmationsChanged,
+    /// An agent called a tool: read [`HttpServer::activity`] again.
+    Activity,
+    // -- WP MCP5 --
+    /// The agents' measurement requests changed: read
+    /// [`HttpServer::measure_requests`] again and take what waits.
+    MeasureRequests,
 }
 
 impl Event {
@@ -174,6 +212,9 @@ impl Event {
                 json!({"event": "pairingEnded", "id": id, "outcome": outcome.as_str()})
             }
             Self::ClientsChanged => json!({"event": "clientsChanged"}),
+            Self::ConfirmationsChanged => json!({"event": "confirmationsChanged"}),
+            Self::Activity => json!({"event": "activity"}),
+            Self::MeasureRequests => json!({"event": "measureRequests"}), // -- WP MCP5 --
         }
     }
 }
@@ -216,6 +257,10 @@ struct Mcp {
     sessions: BTreeMap<String, Session>,
     /// Counts session uses, to find the least recently used.
     uses: u64,
+    // -- WP MCP2c -- review RB: a request authorised just before a revoke
+    // must not make the revoked client a principal again
+    /// Paired clients revoked while serving (ids are never reused).
+    revoked: std::collections::BTreeSet<u64>,
 }
 
 struct Auth {
@@ -232,9 +277,25 @@ struct Shared {
     limits: HttpLimits,
     port: u16,
     started: Instant,
+    /// The Unix time of `started`, in ms (-- WP MCP4 --).
+    started_unix_ms: u64,
     stopping: AtomicBool,
     paused: AtomicBool,
     connections: AtomicUsize,
+    // -- WP MCP4 --
+    /// The held calls' connections. Locked after `mcp` when both are.
+    parked: Mutex<Vec<Parked>>,
+    /// Set to make the ticking thread run now.
+    kicked: Mutex<bool>,
+    kick: Condvar,
+}
+
+/// A held call's connection, waiting for the user's word (-- WP MCP4 --).
+struct Parked {
+    /// The confirmation.
+    id: u64,
+    stream: TcpStream,
+    since: Instant,
 }
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -260,6 +321,31 @@ impl Shared {
             }
         }
     }
+
+    // -- WP MCP4 --
+    /// Run `f` on the MCP side, then tell the app, unlocked, of the
+    /// confirmations it asked or ended, and wake the ticking thread for them.
+    fn with_mcp<R>(&self, f: impl FnOnce(&mut Mcp) -> R) -> R {
+        let (r, changed, measure) = {
+            let mut mcp = lock(&self.mcp);
+            let r = f(&mut mcp);
+            let measure = mcp.server.take_measure_events(); // -- WP MCP5 --
+            (r, !mcp.server.take_confirm_events().is_empty(), measure)
+        };
+        if changed {
+            self.wake();
+            self.emit(&[Event::ConfirmationsChanged]);
+        }
+        if measure {
+            self.emit(&[Event::MeasureRequests]); // -- WP MCP5 --
+        }
+        r
+    }
+
+    fn wake(&self) {
+        *lock(&self.kicked) = true;
+        self.kick.notify_all();
+    }
 }
 
 /// The running listener. Dropping it stops it.
@@ -267,6 +353,8 @@ pub struct HttpServer {
     shared: Arc<Shared>,
     addrs: Vec<SocketAddr>,
     accepting: Mutex<Vec<JoinHandle<()>>>,
+    /// The ticking thread (-- WP MCP4 --).
+    ticking: Mutex<Option<JoinHandle<()>>>,
 }
 
 impl std::fmt::Debug for HttpServer {
@@ -274,6 +362,36 @@ impl std::fmt::Debug for HttpServer {
         f.debug_struct("HttpServer")
             .field("addrs", &self.addrs)
             .finish_non_exhaustive()
+    }
+}
+
+// -- WP MCP4 --
+/// Listen on `127.0.0.1` and `::1`, both or not at all where both exist: with
+/// `::1` left to another program, an agent told `localhost` would hand that
+/// program its token (review RB). A computer without IPv6 gets `127.0.0.1`
+/// alone. Port 0 picks one that is free on both.
+fn bind_loopback(port: u16) -> io::Result<Vec<TcpListener>> {
+    let mut tries: u8 = if port == 0 { 16 } else { 1 };
+    loop {
+        tries = tries.saturating_sub(1);
+        let v4 = bind(IpAddr::V4(Ipv4Addr::LOCALHOST), port)?;
+        let got = v4.local_addr()?.port();
+        match bind(IpAddr::V6(Ipv6Addr::LOCALHOST), got) {
+            Ok(v6) => return Ok(vec![v4, v6]),
+            Err(e) if e.kind() == io::ErrorKind::AddrInUse => {
+                if tries > 0 {
+                    continue;
+                }
+                return Err(io::Error::new(
+                    e.kind(),
+                    format!("another program has port {got} on ::1 ({e})"),
+                ));
+            }
+            Err(e) => {
+                log::info!("mcp: no IPv6 loopback ({e}), listening on 127.0.0.1 only");
+                return Ok(vec![v4]);
+            }
+        }
     }
 }
 
@@ -294,19 +412,18 @@ impl HttpServer {
             Some(dir) => Clients::load(dir).map_err(StartError::Auth)?,
             None => Clients::in_memory(),
         };
-        let v4 = bind(IpAddr::V4(Ipv4Addr::LOCALHOST), config.port).map_err(StartError::Bind)?;
-        let port = v4.local_addr().map_err(StartError::Bind)?.port();
-        let mut listeners = vec![v4];
-        match bind(IpAddr::V6(Ipv6Addr::LOCALHOST), port) {
-            Ok(v6) => listeners.push(v6),
-            Err(e) => log::info!("mcp: no IPv6 loopback ({e}), listening on 127.0.0.1 only"),
-        }
+        let listeners = bind_loopback(config.port).map_err(StartError::Bind)?;
+        let port = listeners
+            .first()
+            .map_or(Ok(config.port), |l| l.local_addr().map(|a| a.port()))
+            .map_err(StartError::Bind)?;
         let shared = Arc::new(Shared {
             mcp: Mutex::new(Mcp {
                 server,
                 principals: BTreeMap::new(),
                 sessions: BTreeMap::new(),
                 uses: 0,
+                revoked: std::collections::BTreeSet::new(), // -- WP MCP2c --
             }),
             auth: Mutex::new(Auth {
                 clients,
@@ -317,10 +434,27 @@ impl HttpServer {
             limits: config.limits,
             port,
             started: Instant::now(),
+            started_unix_ms: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .ok()
+                .and_then(|d| u64::try_from(d.as_millis()).ok())
+                .unwrap_or(0),
             stopping: AtomicBool::new(false),
             paused: AtomicBool::new(false),
             connections: AtomicUsize::new(0),
+            parked: Mutex::new(Vec::new()),
+            kicked: Mutex::new(false),
+            kick: Condvar::new(),
         });
+        // -- WP MCP4 -- before anything is served: without it confirmations
+        // would never lapse and timed previews never be put back
+        let ticking = {
+            let shared = Arc::clone(&shared);
+            std::thread::Builder::new()
+                .name("mcp-tick".into())
+                .spawn(move || tick_loop(&shared))
+                .map_err(StartError::Bind)?
+        };
         let mut addrs = Vec::new();
         let mut accepting = Vec::new();
         for l in listeners {
@@ -340,6 +474,7 @@ impl HttpServer {
             shared,
             addrs,
             accepting: Mutex::new(accepting),
+            ticking: Mutex::new(Some(ticking)),
         })
     }
 
@@ -353,9 +488,95 @@ impl HttpServer {
         &self.addrs
     }
 
-    /// Run `f` on the MCP server (the active device, the activity log).
+    /// Run `f` on the MCP server (the active device, the activity log). It
+    /// waits for a tool call in progress (the module's Threads).
     pub fn with_server<R>(&self, f: impl FnOnce(&mut Server) -> R) -> R {
-        f(&mut lock(&self.shared.mcp).server)
+        self.shared.with_mcp(|m| f(&mut m.server))
+    }
+
+    // -- WP MCP4 --
+    /// The confirmations waiting for the user, oldest first:
+    /// `Confirmation::to_json` with `title` (the tool's) and `remaining_ms`.
+    /// Waits as [`HttpServer::with_server`].
+    pub fn confirmations(&self) -> Vec<Value> {
+        let now_ms = self.shared.now_ms();
+        self.shared.with_mcp(|m| {
+            let mut rows = m.server.waiting_confirmations();
+            for r in &mut rows {
+                let left = r
+                    .get("expires_ms")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0)
+                    .saturating_sub(now_ms);
+                let tool = r.get("tool").and_then(Value::as_str).unwrap_or("");
+                let title = m.server.tool_title(tool);
+                if let Some(o) = r.as_object_mut() {
+                    o.insert("remaining_ms".into(), json!(left));
+                    o.insert("title".into(), json!(title));
+                }
+            }
+            rows
+        })
+    }
+
+    /// The user's answer to confirmation `id`. Allow runs the call on this
+    /// thread, then its parked connection is answered. Waits as
+    /// [`HttpServer::with_server`].
+    pub fn answer_confirmation(&self, id: u64, allow: bool) -> Result<(), AnswerError> {
+        let now_ms = self.shared.now_ms();
+        let answered = self
+            .shared
+            .with_mcp(|m| m.server.answer_confirmation(id, allow, now_ms));
+        if answered.is_ok() {
+            self.shared.emit(&[Event::Activity]);
+        }
+        answered
+    }
+
+    // -- WP MCP5 --
+    /// The agents' measurement requests the app has to take, oldest first
+    /// (`Server::measure_requests`). Waits as [`HttpServer::with_server`].
+    pub fn measure_requests(&self) -> Vec<Value> {
+        self.shared.with_mcp(|m| m.server.measure_requests())
+    }
+
+    /// The app takes request `id`: its ticket (`tools::measure::begin`
+    /// starts it), `None` when it no longer waits. Waits as
+    /// [`HttpServer::with_server`].
+    pub fn measure_take(&self, id: u64) -> Option<Value> {
+        self.shared.with_mcp(|m| m.server.measure_take(id))
+    }
+
+    /// How request `id` went (`Server::measure_report`). Waits as
+    /// [`HttpServer::with_server`].
+    pub fn measure_report(&self, id: u64, ok: bool, note: &str) -> bool {
+        let done = self
+            .shared
+            .with_mcp(|m| m.server.measure_report(id, ok, note));
+        self.shared.emit(&[Event::Activity]);
+        done
+    }
+
+    /// The newest `n` activity entries, oldest first:
+    /// `ActivityEntry::to_json` with `title` (the tool's) and `at_unix_ms`.
+    /// Waits as [`HttpServer::with_server`].
+    pub fn activity(&self, n: usize) -> Vec<Value> {
+        let started = self.shared.started_unix_ms;
+        self.shared.with_mcp(|m| {
+            m.server
+                .activity(n)
+                .iter()
+                .map(|e| {
+                    let mut v = e.to_json();
+                    let title = m.server.tool_title(&e.tool);
+                    if let Some(o) = v.as_object_mut() {
+                        o.insert("title".into(), json!(title));
+                        o.insert("at_unix_ms".into(), json!(started.saturating_add(e.at_ms)));
+                    }
+                    v
+                })
+                .collect()
+        })
     }
 
     /// A client the user adds by hand: its token, shown once.
@@ -373,13 +594,13 @@ impl HttpServer {
     /// Remove client `id`: its token stops working at once, its sessions end.
     pub fn revoke(&self, id: u64) -> bool {
         let removed = lock(&self.shared.auth).clients.revoke(id);
-        {
-            let mut mcp = lock(&self.shared.mcp);
+        self.shared.with_mcp(|mcp| {
+            mcp.revoked.insert(id); // -- WP MCP2c --
             if let Some(cid) = mcp.principals.remove(&id) {
                 mcp.server.disconnect(cid);
             }
             mcp.sessions.retain(|_, s| s.owner != id);
-        }
+        });
         if removed {
             self.shared.emit(&[Event::ClientsChanged]);
         }
@@ -441,7 +662,9 @@ impl HttpServer {
 
     /// Stop listening. A request in progress finishes; later ones on open
     /// connections get 503. The clients' last use is written down. A second
-    /// call does nothing.
+    /// call does nothing. -- WP MCP4 -- The confirmations waiting end with
+    /// nothing changed, the held calls get that answer, and every agent's
+    /// timed preview is put back (which may write to a device).
     pub fn stop(&self) {
         if self.shared.stopping.swap(true, Ordering::SeqCst) {
             return;
@@ -454,6 +677,20 @@ impl HttpServer {
         let accepting = std::mem::take(&mut *lock(&self.accepting));
         for h in accepting {
             let _ = h.join();
+        }
+        // -- WP MCP4 --
+        self.shared.wake();
+        if let Some(h) = lock(&self.ticking).take()
+            // (an event's listener that stops the server, on that thread)
+            && h.thread().id() != std::thread::current().id()
+        {
+            let _ = h.join();
+        }
+        let now_ms = self.shared.now_ms();
+        self.shared.with_mcp(|m| m.server.stop_agents(now_ms));
+        for (mut stream, response) in sweep(&self.shared) {
+            let _ = stream.set_write_timeout(Some(TICK));
+            let _ = write_response(&mut stream, &response);
         }
         if let Err(e) = lock(&self.shared.auth).clients.save() {
             log::warn!("mcp: the clients' last use was not written: {e}");
@@ -505,8 +742,7 @@ fn accept_loop(shared: &Arc<Shared>, listener: &TcpListener) {
         let spawned = std::thread::Builder::new()
             .name("mcp-conn".into())
             .spawn(move || {
-                let mut stream = stream;
-                serve(&counted.0, &mut stream);
+                serve(&counted.0, stream);
                 drop(counted);
             });
         if let Err(e) = spawned {
@@ -777,15 +1013,124 @@ fn is_json(request: &Request) -> bool {
         })
 }
 
-fn serve(shared: &Arc<Shared>, stream: &mut TcpStream) {
-    let response = match read_request(stream, &shared.limits) {
+/// What a request got (-- WP MCP4 --).
+enum Answer {
+    Now(Response),
+    /// Held for the confirmation with this id.
+    Held(u64),
+}
+
+impl From<Response> for Answer {
+    fn from(r: Response) -> Self {
+        Self::Now(r)
+    }
+}
+
+fn serve(shared: &Arc<Shared>, mut stream: TcpStream) {
+    let answer = match read_request(&mut stream, &shared.limits) {
         Ok(request) => answer(shared, &request),
-        Err(refusal) => refusal,
+        Err(refusal) => refusal.into(),
     };
-    if let Err(e) = write_response(stream, &response) {
+    match answer {
+        Answer::Now(response) => deliver(stream, &response),
+        // -- WP MCP4 -- never waited for here
+        Answer::Held(id) => {
+            lock(&shared.parked).push(Parked {
+                id,
+                stream,
+                since: Instant::now(),
+            });
+            // Answered meanwhile, or the server is stopping
+            shared.wake();
+            if shared.stopping.load(Ordering::SeqCst) {
+                for (stream, response) in sweep(shared) {
+                    deliver(stream, &response);
+                }
+            }
+        }
+    }
+}
+
+fn deliver(mut stream: TcpStream, response: &Response) {
+    if let Err(e) = write_response(&mut stream, response) {
         log::debug!("mcp: a reply was not delivered: {e}");
     }
-    drain(stream);
+    drain(&mut stream);
+}
+
+// -- WP MCP4 --
+/// The ticking thread: the confirmations' and the timed previews' clocks, and
+/// the parked connections.
+fn tick_loop(shared: &Arc<Shared>) {
+    while !shared.stopping.load(Ordering::SeqCst) {
+        {
+            let mut kicked = lock(&shared.kicked);
+            if !*kicked {
+                kicked = shared
+                    .kick
+                    .wait_timeout(kicked, TICK)
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .0;
+            }
+            *kicked = false;
+        }
+        if shared.stopping.load(Ordering::SeqCst) {
+            break;
+        }
+        let now_ms = shared.now_ms();
+        shared.with_mcp(|m| m.server.tick(now_ms));
+        for (stream, response) in sweep(shared) {
+            // A slow reader must not hold the clocks up.
+            let spawned = std::thread::Builder::new()
+                .name("mcp-conn".into())
+                .spawn(move || deliver(stream, &response));
+            if let Err(e) = spawned {
+                log::error!("mcp: no thread for a held reply: {e}");
+            }
+        }
+    }
+}
+
+/// Take the parked connections that are due, with their replies: the
+/// confirmation has ended, or the hold is over. One the agent closed is
+/// dropped, and its confirmation ends.
+fn sweep(shared: &Shared) -> Vec<(TcpStream, Response)> {
+    shared.with_mcp(|m| {
+        let mut parked = lock(&shared.parked);
+        let mut due = Vec::new();
+        for p in std::mem::take(&mut *parked) {
+            if gone(&p.stream) {
+                m.server.abandon_held(p.id);
+                continue;
+            }
+            let reply = m.server.resume_value(p.id).or_else(|| {
+                (p.since.elapsed() >= shared.limits.hold)
+                    .then(|| m.server.release_held(p.id))
+                    .flatten()
+            });
+            match reply {
+                Some(r) => due.push((p.stream, Response::json(200, r))),
+                None => parked.push(p),
+            }
+        }
+        due
+    })
+}
+
+/// Whether the peer has closed `stream`.
+fn gone(stream: &TcpStream) -> bool {
+    if stream.set_nonblocking(true).is_err() {
+        return true;
+    }
+    let mut b = [0u8; 1];
+    let gone = match stream.peek(&mut b) {
+        Ok(n) => n == 0,
+        Err(e) => !matches!(
+            e.kind(),
+            io::ErrorKind::WouldBlock | io::ErrorKind::Interrupted
+        ),
+    };
+    gone || stream.set_nonblocking(false).is_err()
 }
 
 /// Read what the peer still sends, for at most a second, before closing: closing with
@@ -804,41 +1149,42 @@ fn drain(stream: &mut TcpStream) {
     }
 }
 
-fn answer(shared: &Arc<Shared>, request: &Request) -> Response {
+fn answer(shared: &Arc<Shared>, request: &Request) -> Answer {
     // Before anything else, so a page learns as little as it can.
     if request.has("Origin") {
-        return Response::error(403, "requests from web pages are refused");
+        return Response::error(403, "requests from web pages are refused").into();
     }
     if !host_ok(request) {
         return Response::error(
             403,
             "the Host header is not this computer's loopback address",
-        );
+        )
+        .into();
     }
     if shared.stopping.load(Ordering::SeqCst) {
-        return Response::error(503, "AI agents have been turned off in DSPi Console");
+        return Response::error(503, STOPPED_TEXT).into();
     }
     let path = request.path.split('?').next().unwrap_or("");
     match (request.method.as_str(), path) {
         ("POST", MCP_PATH | PAIR_PATH | PAIR_WAIT_PATH) if !is_json(request) => {
-            Response::error(415, "the body must be application/json")
+            Response::error(415, "the body must be application/json").into()
         }
         ("POST", MCP_PATH) => post_mcp(shared, request),
-        ("DELETE", MCP_PATH) => delete_session(shared, request),
-        (_, MCP_PATH) => {
-            Response::error(405, "POST a JSON-RPC message").with("Allow", "POST, DELETE")
-        }
-        ("POST", PAIR_PATH) => pair(shared, request),
-        ("POST", PAIR_WAIT_PATH) => pair_wait(shared, request),
-        (_, PAIR_PATH | PAIR_WAIT_PATH) => {
-            Response::error(405, "POST a JSON object").with("Allow", "POST")
-        }
-        _ => Response::error(404, "no such path: the MCP endpoint is /mcp"),
+        ("DELETE", MCP_PATH) => delete_session(shared, request).into(),
+        (_, MCP_PATH) => Response::error(405, "POST a JSON-RPC message")
+            .with("Allow", "POST, DELETE")
+            .into(),
+        ("POST", PAIR_PATH) => pair(shared, request).into(),
+        ("POST", PAIR_WAIT_PATH) => pair_wait(shared, request).into(),
+        (_, PAIR_PATH | PAIR_WAIT_PATH) => Response::error(405, "POST a JSON object")
+            .with("Allow", "POST")
+            .into(),
+        _ => Response::error(404, "no such path: the MCP endpoint is /mcp").into(),
     }
 }
 
 /// The paired client the request's token belongs to.
-fn authorise(shared: &Shared, request: &Request) -> Option<u64> {
+fn authorise(shared: &Shared, request: &Request) -> Option<Owner> {
     let presented = request
         .header("Authorization")
         .ok()
@@ -850,7 +1196,23 @@ fn authorise(shared: &Shared, request: &Request) -> Option<u64> {
         .map(str::trim)
         .unwrap_or("");
     // Verified even when empty, so no token costs what a wrong one does.
-    lock(&shared.auth).clients.verify(presented, unix_s())
+    let mut auth = lock(&shared.auth);
+    let id = auth.clients.verify(presented, unix_s())?;
+    // -- WP MCP4 -- the name the user paired it under
+    let name = auth
+        .clients
+        .list()
+        .iter()
+        .find(|c| c.id == id)
+        .map(|c| c.name.clone())
+        .unwrap_or_default();
+    Some(Owner { id, name })
+}
+
+/// A paired client (-- WP MCP4 --).
+struct Owner {
+    id: u64,
+    name: String,
 }
 
 fn unauthorised() -> Response {
@@ -868,14 +1230,40 @@ fn mismatch(id: &Value, what: &str) -> Response {
     )
 }
 
-/// The server's client for paired client `owner`, made on first use.
-fn client_for(mcp: &mut Mcp, owner: u64) -> ClientId {
-    if let Some(c) = mcp.principals.get(&owner) {
-        return *c;
+/// The server's client for paired client `owner`, made on first use;
+/// `None` once `owner` was revoked (-- WP MCP2c --: a request authorised
+/// before the revoke and served after it).
+fn client_for(mcp: &mut Mcp, owner: &Owner) -> Option<ClientId> {
+    if mcp.revoked.contains(&owner.id) {
+        return None;
     }
-    let c = mcp.server.connect();
-    mcp.principals.insert(owner, c);
-    c
+    if let Some(c) = mcp.principals.get(&owner.id) {
+        return Some(*c);
+    }
+    let c = mcp.server.connect_as(&owner.name);
+    mcp.principals.insert(owner.id, c);
+    Some(c)
+}
+
+// -- WP MCP2c --
+/// Whether a revoked paired client `owner` would become a principal again
+/// (tests: review RB's revoke race). False is right.
+#[cfg(test)]
+pub(crate) fn tests_wp_mcp2c_revoked_becomes_a_principal() -> bool {
+    let mut mcp = Mcp {
+        server: Server::new(dspi_core::CoreSet::new(), crate::ServerConfig::default()),
+        principals: BTreeMap::new(),
+        sessions: BTreeMap::new(),
+        uses: 0,
+        revoked: std::collections::BTreeSet::from([5]),
+    };
+    let owner = |id| Owner {
+        id,
+        name: String::new(),
+    };
+    let again = client_for(&mut mcp, &owner(5)).is_some() || mcp.principals.contains_key(&5);
+    // Another client still is one.
+    again || client_for(&mut mcp, &owner(6)).is_none()
 }
 
 fn new_session_id() -> Option<String> {
@@ -884,9 +1272,9 @@ fn new_session_id() -> Option<String> {
     Some(HEXLOWER.encode(&b))
 }
 
-fn post_mcp(shared: &Shared, request: &Request) -> Response {
+fn post_mcp(shared: &Shared, request: &Request) -> Answer {
     let Some(owner) = authorise(shared, request) else {
-        return unauthorised();
+        return unauthorised().into();
     };
     let msg: Value = match serde_json::from_slice(&request.body) {
         Ok(v) => v,
@@ -894,12 +1282,13 @@ fn post_mcp(shared: &Shared, request: &Request) -> Response {
             return Response::json(
                 400,
                 protocol::error_reply(&Value::Null, &RpcError::new(PARSE_ERROR, "not JSON")),
-            );
+            )
+            .into();
         }
     };
     let Some(obj) = msg.as_object() else {
         // The server says why (a batch, not an object).
-        return relay_reply(shared, owner, msg, 400);
+        return relay_reply(shared, &owner, msg, 400).into();
     };
     let id = obj.get("id").cloned().unwrap_or(Value::Null);
     let method = obj.get("method").and_then(Value::as_str);
@@ -912,23 +1301,37 @@ fn post_mcp(shared: &Shared, request: &Request) -> Response {
         .map(|v| v.as_str().unwrap_or(""));
     let Some(method) = method else {
         // A response to the server, which sends no requests.
-        return Response::empty(202);
+        return Response::empty(202).into();
     };
-    if method == "initialize" {
-        return initialize(shared, owner, msg);
+    // -- WP MCP6 -- only a legacy `initialize`: with the modern `_meta` it is a
+    // method 2026-07-28 removed, which the server answers (404 below)
+    if method == "initialize" && version.is_none() {
+        return initialize(shared, &owner, msg).into();
     }
     if let Some(version) = version {
+        let header = |n: &str| request.header(n).ok().flatten();
+        // -- WP MCP6 -- a header that names another version than the body is
+        // a mismatch, before the version is judged (the conformance suite's
+        // sep-2575-http-server-header-mismatch-400)
+        let said = header("MCP-Protocol-Version");
+        if said.is_some_and(|h| h != version) {
+            return mismatch(
+                &id,
+                "MCP-Protocol-Version must equal the _meta protocol version",
+            )
+            .into();
+        }
         // Modern: the headers must say what the body says.
         if MODERN_VERSIONS.contains(&version) {
-            let header = |n: &str| request.header(n).ok().flatten();
-            if header("MCP-Protocol-Version") != Some(version) {
+            if said != Some(version) {
                 return mismatch(
                     &id,
                     "MCP-Protocol-Version must equal the _meta protocol version",
-                );
+                )
+                .into();
             }
             if header("Mcp-Method") != Some(method) {
-                return mismatch(&id, "Mcp-Method must equal the method");
+                return mismatch(&id, "Mcp-Method must equal the method").into();
             }
             let named = match method {
                 "tools/call" | "prompts/get" => params.and_then(|p| p.get("name")),
@@ -938,19 +1341,32 @@ fn post_mcp(shared: &Shared, request: &Request) -> Response {
             if let Some(named) = named
                 && header("Mcp-Name") != named.as_str()
             {
-                return mismatch(&id, "Mcp-Name must equal the name or uri");
+                return mismatch(&id, "Mcp-Name must equal the name or uri").into();
             }
         }
         let caps_missing = !meta
             .and_then(|m| m.get(META_CAPABILITIES))
             .is_some_and(Value::is_object);
         let is_call = method == "tools/call";
-        return forward(shared, owner, msg, is_call, |code| match code {
+        return forward(shared, &owner, msg, is_call, |code| match code {
             UNSUPPORTED_VERSION => 400,
             INVALID_PARAMS if caps_missing => 400,
             METHOD_NOT_FOUND => 404,
             _ => 200,
         });
+    }
+    // -- WP MCP6 -- the header says 2026-07-28 but the body has no `_meta`
+    // version: the request is modern and lacks it, -32602 (the conformance
+    // suite's sep-2575-request-meta-invalid-*), not an unsupported version
+    if let Ok(Some(v)) = request.header("MCP-Protocol-Version")
+        && MODERN_VERSIONS.contains(&v)
+    {
+        let why = format!("a {v} request carries `_meta` with `{META_VERSION}`");
+        return Response::json(
+            400,
+            protocol::error_reply(&id, &RpcError::new(INVALID_PARAMS, why)),
+        )
+        .into();
     }
     // Legacy: a session from `initialize`.
     if let Ok(Some(v)) = request.header("MCP-Protocol-Version")
@@ -959,7 +1375,8 @@ fn post_mcp(shared: &Shared, request: &Request) -> Response {
         return Response::json(
             400,
             protocol::error_reply(&id, &RpcError::unsupported_version(v)),
-        );
+        )
+        .into();
     }
     let session = match request.header("Mcp-Session-Id") {
         Ok(Some(s)) => s,
@@ -974,7 +1391,8 @@ fn post_mcp(shared: &Shared, request: &Request) -> Response {
                         "send initialize first, then its Mcp-Session-Id with every request",
                     ),
                 ),
-            );
+            )
+            .into();
         }
     };
     if !session.is_empty() {
@@ -982,72 +1400,98 @@ fn post_mcp(shared: &Shared, request: &Request) -> Response {
         mcp.uses = mcp.uses.saturating_add(1);
         let used = mcp.uses;
         match mcp.sessions.get_mut(session) {
-            Some(s) if s.owner == owner => s.used = used,
-            _ => return Response::error(404, "no such session: send initialize again"),
+            Some(s) if s.owner == owner.id => s.used = used,
+            _ => return Response::error(404, "no such session: send initialize again").into(),
         }
     }
     let is_call = method == "tools/call";
-    forward(shared, owner, msg, is_call, |_| 200)
+    forward(shared, &owner, msg, is_call, |_| 200)
+}
+
+/// The reply to a `tools/call` that reached no tool: a tool error.
+fn refused_call(msg: &Value, text: &str) -> Response {
+    let id = msg.get("id").cloned().unwrap_or(Value::Null);
+    let modern = msg
+        .pointer("/params/_meta")
+        .and_then(|m| m.get(META_VERSION))
+        .is_some();
+    let mut result = Map::new();
+    result.insert("content".into(), json!([{"type": "text", "text": text}]));
+    result.insert("isError".into(), json!(true));
+    if modern {
+        result.insert("resultType".into(), json!("complete"));
+    }
+    Response::json(200, protocol::reply(&id, Value::Object(result)))
 }
 
 /// Hand `msg` to the server as `owner`'s client; the HTTP status of an error
-/// reply comes from `status_of(code)`. `is_call`: it is a `tools/call`.
+/// reply comes from `status_of(code)`. `is_call`: it is a `tools/call`, which
+/// the policy may hold (-- WP MCP4 --).
 fn forward(
     shared: &Shared,
-    owner: u64,
+    owner: &Owner,
     msg: Value,
     is_call: bool,
     status_of: impl Fn(i64) -> u16,
-) -> Response {
-    if is_call && shared.paused.load(Ordering::SeqCst) {
-        let id = msg.get("id").cloned().unwrap_or(Value::Null);
-        let modern = msg
-            .pointer("/params/_meta")
-            .and_then(|m| m.get(META_VERSION))
-            .is_some();
-        let mut result = Map::new();
-        result.insert(
-            "content".into(),
-            json!([{"type": "text", "text": PAUSED_TEXT}]),
-        );
-        result.insert("isError".into(), json!(true));
-        if modern {
-            result.insert("resultType".into(), json!("complete"));
-        }
-        return Response::json(200, protocol::reply(&id, Value::Object(result)));
-    }
+) -> Answer {
     let now_ms = shared.now_ms();
-    let reply = {
-        let mut mcp = lock(&shared.mcp);
-        let client = client_for(&mut mcp, owner);
-        mcp.server.handle_value(client, now_ms, msg)
+    // Judged with the server locked: a call that waited for another's end
+    // while the user pressed Pause or Stop does not run.
+    let outcome = shared.with_mcp(|mcp| {
+        if shared.stopping.load(Ordering::SeqCst) {
+            return Err(Response::error(503, STOPPED_TEXT));
+        }
+        if is_call && shared.paused.load(Ordering::SeqCst) {
+            return Err(refused_call(&msg, PAUSED_TEXT));
+        }
+        let Some(client) = client_for(mcp, owner) else {
+            return Err(unauthorised()); // -- WP MCP2c --
+        };
+        Ok(mcp.server.handle_held_value(client, now_ms, msg))
+    });
+    let (reply, held) = match outcome {
+        Ok(o) => o,
+        Err(refusal) => return refusal.into(),
     };
+    if is_call {
+        shared.emit(&[Event::Activity]);
+    }
+    if let Some(id) = held {
+        return Answer::Held(id);
+    }
     match reply {
-        None => Response::empty(202),
+        None => Response::empty(202).into(),
         Some(r) => {
             let status = r
                 .pointer("/error/code")
                 .and_then(Value::as_i64)
                 .map_or(200, status_of);
-            Response::json(status, r)
+            Response::json(status, r).into()
         }
     }
 }
 
-fn relay_reply(shared: &Shared, owner: u64, msg: Value, status: u16) -> Response {
+fn relay_reply(shared: &Shared, owner: &Owner, msg: Value, status: u16) -> Response {
     let now_ms = shared.now_ms();
-    let mut mcp = lock(&shared.mcp);
-    let client = client_for(&mut mcp, owner);
-    match mcp.server.handle_value(client, now_ms, msg) {
+    let reply = shared.with_mcp(|mcp| {
+        let client = client_for(mcp, owner)?; // -- WP MCP2c --
+        Some(mcp.server.handle_value(client, now_ms, msg))
+    });
+    let Some(reply) = reply else {
+        return unauthorised(); // -- WP MCP2c --
+    };
+    match reply {
         Some(r) => Response::json(status, r),
         None => Response::empty(202),
     }
 }
 
-fn initialize(shared: &Shared, owner: u64, msg: Value) -> Response {
+fn initialize(shared: &Shared, owner: &Owner, msg: Value) -> Response {
     let now_ms = shared.now_ms();
     let mut mcp = lock(&shared.mcp);
-    let client = client_for(&mut mcp, owner);
+    let Some(client) = client_for(&mut mcp, owner) else {
+        return unauthorised(); // -- WP MCP2c --
+    };
     let Some(reply) = mcp.server.handle_value(client, now_ms, msg) else {
         return Response::empty(202);
     };
@@ -1063,7 +1507,7 @@ fn initialize(shared: &Shared, owner: u64, msg: Value) -> Response {
         let mine: Vec<(&String, u64)> = mcp
             .sessions
             .iter()
-            .filter(|(_, s)| s.owner == owner)
+            .filter(|(_, s)| s.owner == owner.id)
             .map(|(k, s)| (k, s.used))
             .collect();
         if mine.len() < cap {
@@ -1080,8 +1524,13 @@ fn initialize(shared: &Shared, owner: u64, msg: Value) -> Response {
     }
     mcp.uses = mcp.uses.saturating_add(1);
     let used = mcp.uses;
-    mcp.sessions
-        .insert(session.clone(), Session { owner, used });
+    mcp.sessions.insert(
+        session.clone(),
+        Session {
+            owner: owner.id,
+            used,
+        },
+    );
     Response::json(200, reply).with("Mcp-Session-Id", session)
 }
 
@@ -1094,7 +1543,7 @@ fn delete_session(shared: &Shared, request: &Request) -> Response {
     };
     let mut mcp = lock(&shared.mcp);
     match mcp.sessions.get(session) {
-        Some(s) if s.owner == owner => {
+        Some(s) if s.owner == owner.id => {
             mcp.sessions.remove(session);
             Response::empty(204)
         }

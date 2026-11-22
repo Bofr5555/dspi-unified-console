@@ -406,7 +406,7 @@ void rebindSection(SmokeDriver &d) {
         return;
     }
     DeviceSession *u = r->active();
-    inst->setShown(true);
+    inst->panelShown(true);
     d.check("mdqt2b: System and Installation read the unit's hub", d.waitFor(20000, [&] {
         return sys->available() && inst->available() && !inst->unitIds().isEmpty();
     }));
@@ -416,7 +416,7 @@ void rebindSection(SmokeDriver &d) {
     d.check("mdqt2b: and none comes back late", !sys->available() && !inst->available());
     r->activate(u);
     d.check("mdqt2b: back on the unit, both again", d.waitFor(20000, [&] { return sys->available() && inst->available(); }));
-    inst->setShown(false);
+    inst->panelShown(false);
     QPointer<DeviceSession> goneU(u);
     r->close(u->id());
     d.waitFor(10000, [&] { return goneU.isNull(); });

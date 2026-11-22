@@ -166,12 +166,14 @@ static KEEP_CHANGES: Tool = Tool {
     output_schema: object_schema,
     handler: |call, args| {
         let guard = own_guard(call, args)?;
-        let kept = call.core()?.apply_confirm().map_err(|e| match &e {
-            DspiError::InvalidArgument { msg } if msg.contains("measure.tune.keep") => {
-                ToolError::new(
-                    "only the user may keep this, in the app (the tune's verify did not pass). \
-                     Do not retry.",
-                )
+        let core = call.core()?;
+        // -- WP RCFIX -- as dspi_tune_keep, before the core is asked
+        if super::measure::guard_is_failed_tunes(core, guard) {
+            return Err(ToolError::new(super::measure::KEEP_IS_THE_USERS));
+        }
+        let kept = core.apply_confirm().map_err(|e| match &e {
+            DspiError::InvalidArgument { msg } if msg.contains("measure.tune.keep_unverified") => {
+                ToolError::new(super::measure::KEEP_IS_THE_USERS)
             }
             _ => policy::core_error(&call.judging, e),
         })?;

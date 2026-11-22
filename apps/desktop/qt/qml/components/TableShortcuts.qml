@@ -20,4 +20,11 @@ Item {
             onActivated: MenuTable.trigger(shortcuts.window, modelData.id)
         }
     }
+    // -- WP LAY6 -- Modern's command palette, whichever window is active
+    Shortcut {
+        sequence: PaletteController.shortcut
+        context: Qt.WindowShortcut
+        enabled: LayoutController.modern
+        onActivated: PaletteController.open()
+    }
 }

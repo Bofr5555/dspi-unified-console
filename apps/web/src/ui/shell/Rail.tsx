@@ -1,7 +1,8 @@
 // -- WP WEBM1 -- The sections, in the rail (or, arranged so, as a row across the top; the same
 // buttons, placed by the stylesheet), and the tabs of one section's pages.
 
-import { useEffect, useRef } from "preact/hooks";
+import { useContext, useEffect, useRef } from "preact/hooks";
+import { RailTopContext } from "../arrangement/Appearance"; // -- WP WEBM4 --
 import { SectionIcon } from "./icons";
 import { tabKeys } from "./tab-keys";
 import type { Page, Section, SectionId } from "./sections";
@@ -16,8 +17,11 @@ export function Rail(props: { sections: Section[]; current: SectionId; onSection
     if (!row || !on || row.scrollWidth <= row.clientWidth) return;
     row.scrollLeft = on.offsetLeft - (row.clientWidth - on.offsetWidth) / 2;
   }, [props.current, props.sections.length]);
+  // -- WP WEBM4 -- the open devices' tabs at its top, when so arranged
+  const top = useContext(RailTopContext);
   return (
     <nav class="rail" aria-label="Sections" ref={nav}>
+      {top ? <div class="rail-devices">{top}</div> : null}
       <div class="rail-list">
         {props.sections.map((s) => (
           <button

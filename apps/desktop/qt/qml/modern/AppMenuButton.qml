@@ -4,9 +4,9 @@ import QtQuick.Layouts
 import UConsole
 
 // -- WP LAY3 -- The app button, "uConsole ▾" (MODLAY 3.1): Modern has no menu
-// bar. Until WP LAY3b places every action where it acts and keeps the rare ones
-// here, its menu holds all of MenuTable's menus, so nothing is out of reach.
-// The shortcuts are the shell's (TableShortcuts); the rows only show them.
+// bar. Its menu holds the few global actions (-- WP LAY3b -- MenuTable's place
+// appMenu); every other one is where it acts. The shortcuts are the shell's
+// (TableShortcuts); the rows only show them.
 AbstractButton {
     id: button
     objectName: "AppMenuButton"
@@ -17,7 +17,7 @@ AbstractButton {
     implicitWidth: row.implicitWidth + 16
     hoverEnabled: true
     focusPolicy: Qt.TabFocus
-    onClicked: menu.popup(button, 0, button.height + 2)
+    onClicked: menu.popupFor(({}), button, 0, button.height + 2)
 
     contentItem: Item {
         Row {
@@ -47,57 +47,10 @@ AbstractButton {
     Accessible.role: Accessible.ButtonMenu
     Accessible.name: text
 
-    AppMenu {
+    ActionMenu {
         id: menu
         objectName: "AppMenu"
-    }
-    Component { id: menuComponent; AppMenu {} }
-    Component { id: itemComponent; AppMenuItem {} }
-    Component {
-        id: separatorComponent
-        MenuSeparator {
-            contentItem: Rectangle {
-                implicitHeight: 1
-                color: Theme.separator
-            }
-        }
-    }
-
-    function addRows(into, rows) {
-        for (const r of rows) {
-            if (r.separator) {
-                into.addItem(separatorComponent.createObject(button))
-            } else if (r.rows) {
-                const sub = menuComponent.createObject(into, { title: r.submenu })
-                addRows(sub, r.rows)
-                into.addMenu(sub)
-            } else {
-                const id = r.id
-                const item = itemComponent.createObject(button, { objectName: "AppMenu." + id, shortcutText: r.shortcut || "" })
-                item.text = Qt.binding(() => MenuTable.textOf(id, false))
-                const rowEnabled = r.enabled
-                item.enabled = Qt.binding(() => MenuTable.available(id) && (!rowEnabled || rowEnabled()))
-                const hiddenOn = r.platformHidden
-                const shown = r.optional ? Shell.handles(id) : true
-                item.visible = Qt.binding(() => shown && (!hiddenOn || DeviceModel.platformName !== hiddenOn))
-                // A hidden row takes no room
-                item.height = Qt.binding(() => item.visible ? item.implicitHeight : 0)
-                item.triggered.connect(() => MenuTable.trigger(button.window, id))
-                into.addItem(item)
-            }
-        }
-    }
-    Component.onCompleted: {
-        MenuTable.menus.forEach((m, i) => {
-            const sub = menuComponent.createObject(menu)
-            sub.title = Qt.binding(() => MenuTable.menus[i].title.replace("&", ""))
-            addRows(sub, m.rows)
-            menu.addMenu(sub)
-        })
-        menu.addItem(separatorComponent.createObject(button))
-        const classic = itemComponent.createObject(button, { objectName: "AppMenu.classicLayout" })
-        classic.text = Qt.binding(() => qsTr("Switch to the Classic Layout"))
-        classic.triggered.connect(() => LayoutController.layout = "classic")
-        menu.addItem(classic)
+        place: "appMenu"
+        handlers: ({ "app.classicLayout": { run: () => LayoutController.layout = "classic" } })
     }
 }

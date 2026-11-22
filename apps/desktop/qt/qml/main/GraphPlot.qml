@@ -119,6 +119,13 @@ Rectangle {
     HoverHandler {
         id: hover
     }
+    // -- WP LAY3b -- Modern: the graph's menu also where nothing is edited (the
+    // editor takes the click itself while it edits)
+    TapHandler {
+        acceptedButtons: Qt.RightButton
+        enabled: LayoutController.modern && !(plot.peqEditor && plot.peqEditor.editing)
+        onTapped: point => ContextMenus.graph(plot, null, plot, point.position.x, point.position.y)
+    }
 
     GraphOptions {
         id: options

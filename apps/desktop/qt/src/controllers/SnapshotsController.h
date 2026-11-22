@@ -194,6 +194,10 @@ public:
     // applies to the hub's recall too)
     Q_INVOKABLE void recallFromHub(const QString &id);
 
+    // -- WP MCP4 -- The active device's guard may have begun or ended elsewhere (an
+    // AI agent's timed preview): read it again
+    void readGuard() { reloadGuard(); }
+
 signals:
     void snapshotsChanged();
     void busyChanged();

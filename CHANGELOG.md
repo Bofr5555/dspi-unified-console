@@ -41,7 +41,7 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
   placement chosen for another device. (WP MDQT2c)
 - A second layout, **Modern**: one window with a rail of sections (Overview, Equaliser, Routing, Effects, Measure, Analyse,
   Library, System, Devices, Settings), every tool on a page with tabs, the open device as a tab at the top, the volume,
-  meters, Mute and Bypass EQ in a dock along the bottom, and no menu bar (the uConsole button holds the menus, and every
+  meters, Mute and Bypass EQ in a dock along the bottom, and no menu bar (actions are where they act, and every
   keyboard shortcut works). States that limit what can be done show in a strip under the top bar; other notices are behind
   the bell. Any tool page can be opened in its own window. Settings › Appearance switches between Classic and Modern at any
   time, and arranges Modern; the device, the selected channel and open tool windows stay. **New installs start in Modern**;
@@ -56,6 +56,76 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
   beside the others, and each tab keeps its device's edits, pages, history, drafts and running measurement. Closing a
   tab asks about that device's unsaved changes; quitting asks about each open device. Classic still shows one device
   and replaces it. (WP MDQT2a, MDQT2b, MDQT2c, INT3)
+- **AI agents** (Settings › AI Agents, off until you turn it on): an AI agent on this computer (Claude Desktop, Claude
+  Code, Cursor and other MCP clients) can read your devices and change their settings. Each agent is paired once, with
+  a code; risky changes (louder, an unmute, a preset, a tweeter's protection) wait for your answer, and you can have
+  every change asked about or none. What agents did is listed with Undo for each change (Device › AI Agents…, also the
+  robot icon beside the device in Classic and the AI button in Modern), tagged in the History, and Pause and Stop are
+  there at any time. Nothing on your network can reach it; from another computer, go through SSH
+  (docs/mcp-ssh-forwarding.md). The agent starts this app with `--mcp`, or the Terminal's `uconsole mcp`. (WP MCP4)
+- **AI agents can measure.** An agent can check and start a measurement, find where an output's response drops off at
+  the low end, propose an auto-tune from a measurement, apply and verify it, and measure several units together. Each
+  start opens Measure, which runs it as its own (with your microphone) and says "Requested by AI · name"; the result
+  is filed with your measurements. The roles always come from your confirmed speaker layout (an agent cannot set or
+  change them, and is told to ask you to confirm it in Settings › Speakers); starting test signals is asked about
+  unless you chose "never ask"; the tweeter's 1 kHz floor, the level limits and your limits profile always apply. Only
+  you can keep a tune whose verify did not pass. (WP MCP5)
+- The speaker layout's banner says a layout was "set outside this app (a configuration file or another app)" instead
+  of claiming a configuration file brought it. (WP MCP5)
+- AI agents have a manual page, docs/manual/ai-agents.md: the configuration for Claude Desktop, Claude Code, Cursor and
+  VS Code (with the token kept out of your shell's history), what is asked, what agents can never do, and undo. The
+  agents' endpoint follows MCP 2026-07-28 more closely (its error codes for a missing `_meta` and a contradicting header;
+  `initialize` and `ping` are not modern methods; resources say how long they may be kept), checked against the
+  official MCP conformance suite in both protocol versions. (WP MCP6)
+- Modern's Equaliser: three pages. **PEQ** has the channel in one strip over the graph (name, Enabled, input mix, gain,
+  delay, mute, polarity, limiter; an input's link and preamp), a label on the graph with the selected band's values, the
+  RTA, Phase, All Curves and pop-out switches in the graph's corner, and a denser band table. **Crossover** has every
+  output's curve over one table of all high and low passes, and the selected output's four bands. **Delay & Gain** has
+  every output's gain, delay, distance (343 m/s; typing one sets the delay), arrival bar, polarity, mute and limiter. An
+  **inspector** at the right has the selected band with every shape laid out flat, and the channel: what an input feeds,
+  or an output's crossover, limiter and Linkwitz Transform. Under 1280 px it is folded away and opens over the page.
+  Settings › Appearance shows or hides it, and puts the band bar under the graph for those who want it. (WP LAY4)
+- Modern's Overview, Routing, Effects and Analyse. **Overview** has the device, its effects (choose one to open its page)
+  and its connection over the channel cards; a card opens its channel on the Equaliser. **Routing** has the inspector
+  beside the matrix: an output's header or an input's label selects it. **Effects** has a dot on each tab that says
+  whether the effect is on, and the signal chain beside the page, in the order the DSPi runs it, with a switch for each
+  effect. **Analyse** marks the Signal Generator's tab while it plays and stops it from any of its pages. (WP LAY5a)
+- Modern has neutral grey surfaces; Settings › Appearance offers Darker grey. Classic's colours are unchanged. (WP LAY4)
+- A value typed into a gain, delay or preamp field with Enter is kept when the field is left. Before, leaving the field
+  could put the earlier value back. (WP LAY4)
+- Modern layout: the actions are where they act. A right-click on a channel, a band (its row or its dot on the graph), the
+  graph or a preset slot opens its menu (on the first three the menu key too): rename, copy and paste, mute, identify, routing, headphone
+  profile and Clear PEQ on a channel; shape, slope, bypass, invert, copy and paste of one band, and reset on a band or
+  the selected bands; add a band here, the selection, spectrum, phase, pop-out and settings on the graph; recall, save,
+  rename, startup preset, copy and clear on a slot, also in the preset picker's list. Undo has a ▾ with the recent
+  changes and History. The app button's menu holds only the global actions (files, settings, help, quit). A device tab's
+  Close is greyed while a firmware update or a core voltage calibration runs there, with the reason. (WP LAY3b)
+- In Modern, Window > System… has **Open in tab** on each unit of the hub (**Show tab** when it is open). Measure ›
+  Several units measures a unit that is open in a tab through that tab's connection instead of opening a second one;
+  a unit that is not open gets a connection of its own while it is chosen, and cannot be opened in a tab meanwhile (it
+  says why). A change refused on a device that is not the one shown (a limit, the lock) is now a notice that names
+  that device. Leaving Modern keeps the other devices open: Classic shows the active one and lists the others under
+  Open devices, and back in Modern their tabs are there. (WP XDEV1)
+- In Modern, **Ctrl+K** (or the search in the top bar) opens the command palette: type to find any menu command, page,
+  channel, setting or other open device, and press Enter to run or open it. Each row shows where it is and its shortcut;
+  a setting is found by its own label ("line width"). The search no longer opens Settings itself. (WP LAY6)
+- The Interrupt Monitor clears with **Ctrl+L** instead of Ctrl+K, in both layouts. (WP LAY6)
+- Modern: Measure, System and Settings have their parts as tabs of the page (Settings: Application, Display, Device and
+  Control; its search still finds every page). Library has **Presets** (every slot, with Recall, Save and the slot's
+  menu) and **Files** (the filter and configuration files, files without a device, the templates). Devices is This
+  Computer, Hubs and Firmware; a hub's PIN, and pairing again after its key changed, are asked on the Hubs page, which
+  also shows the hub's key and your role. System › Installation offers "Open in tab" for each unit. A window opened from
+  a page starts on the same part; closing a Measure window in Modern stops the measurement of the device shown, and
+  "Show Here" stops none. (WP LAY5b)
+- Window > System… › Installation: after "changed elsewhere" and Reload, **Make Them Again** makes the changes that were not
+  saved again on the installation as it is now. (WP LAY5b)
+- Modern's **AI** button shows the state (off, waiting for an agent, an agent connected, paused, or something to answer) and
+  opens a popover: the switch, which agents are connected with **Disconnect**, their latest changes with Undo, Pause, and
+  the way to the activity and Settings › AI Agents. The confirmation sheet says what kind of change it asks about
+  ("Louder", "Saved on the device", "Every unit"). (WP LAY8)
+- A measurement holds every output to the strictest of the role asked for, your confirmed speaker layout's and what its
+  filters show, one unit or several. Auto-tune's table follows a Confirm without Reload, and Several units starts from each
+  unit's own layout. (WP RCFIX)
 
 ### Android
 - DSPi Link is reachable from the main page (owner report on 0.14.0: only through the settings
@@ -103,6 +173,26 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
   volume with Mute and Bypass, and the meters. On a narrow screen the rail is a row. (WP WEBM1)
 - A DSPi is open once: another entry for a DSPi that is already open (over USB and through a hub, or through two hubs)
   shows the open one and says so, rather than making a second session. (WP WEBM1)
+- Web console: the Equaliser has PEQ, Crossover and Delay & gain tabs. Crossover draws every output's curve and sets
+  each output's high and low pass in one table; Delay & gain sets every output's gain, delay or distance, with arrival
+  bars for time alignment, mute and the limiter. An inspector beside the page shows the chosen band (a shape grid and
+  its values) and the chosen channel: what an input feeds and its headphone profile, an output's crossover, limiter and
+  Linkwitz Transform. It can be hidden, and stacks under the page on a narrow screen, where the band bar stays under
+  the graph. The chosen band's values show on the graph by its dot. (WP WEBM2)
+- Web console: a page's parts are tabs beside its title. Effects has one tab per effect with a dot that shows
+  whether it is on, Measure's tabs moved up there, and each device tab comes back to the part it was left at.
+  Library has a History page with this connection's changes, newest first, and Undo and Redo. Settings lists its
+  pages by group beside the page. The Installation tab also shows in the Advanced mode, and edits an S/PDIF
+  source and the outputs it sends its time base on, groups of units, and the source a new zone plays. Measuring
+  several units uses a unit's open tab rather than a second connection to it. (WP WEBM3)
+- Web console: Ctrl+K (Cmd+K on a Mac), or Search in the top bar, opens the command palette. Type part of a name to find
+  a command, a section or page, a channel, a Settings page or another open device; each command shows its shortcut, and
+  one that cannot be used now is listed greyed with the reason. Right-click (or the menu key, or Shift+F10) on a channel,
+  a preset slot, a device tab, a band or the EQ graph opens its menu. The app menu, these menus and the palette use the
+  desktop app's words and groups. The bell in the top bar opens the notifications: what waits on each open device, and
+  what was said earlier. Settings › Appearance puts the sections in a rail or in tabs along the top, the device tabs in
+  the top bar or at the top of the rail, sets the theme (system, light or dark) and shows or hides the inspector; this
+  browser keeps the choice. (WP WEBM4)
 - The System screen has an Installation tab in the Installer mode on a hub. It lists the units the hub sees that
   are not in the installation, with Join (name, room, role and what feeds it), and edits each unit's room, role and
   upstream, the rooms and the zones. The hub's own check runs as you edit and shows a problem where it is; Save lists
@@ -114,6 +204,10 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
   and a way, speaker or group changed there is saved to it. A banner on both says when the
   layout is not confirmed, or came with an imported configuration and needs checking. The
   browser keeps it per DSPi. (WP ROLEW)
+- The speaker layout's banner says a layout was "set outside this app (a configuration file or another app)" instead
+  of claiming a configuration file brought it. (WP MCP5)
+- A measurement holds every output to the strictest of the role asked for, your confirmed speaker layout's and what its
+  filters show: a tweeter that has no crossover yet is never played below 1 kHz. (WP RCFIX)
 
 ## 0.14.0 (2026-11-20)
 

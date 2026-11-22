@@ -85,7 +85,7 @@ Popup {
                 wrapMode: TextEdit.NoWrap
                 font: Theme.fontMono
                 color: Theme.text
-                selectionColor: Theme.selection
+                selectionColor: Theme.textSelection
                 selectedTextColor: Theme.text
                 Keys.onEscapePressed: viewer.close()
                 Accessible.role: Accessible.EditableText

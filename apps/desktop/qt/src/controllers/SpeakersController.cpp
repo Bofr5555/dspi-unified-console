@@ -390,21 +390,25 @@ void SpeakersController::writeBack(int output, const QString &role, const QStrin
             if (generation != st->generation) return;
             if (!isOk(o)) {
                 say(st, tr("Not saved to your speaker layout: %1").arg(r.isEmpty() ? tr("the core did not answer.") : str(o, "error")),
-                    true);
+                    true, true);
                 return;
             }
             setStored(st, layoutOf(o), QStringLiteral("measure"));
-            say(st, tr("Saved to your speaker layout."), false);
+            say(st, tr("Saved to your speaker layout."), false, true);
         });
 }
 
 QString SpeakersController::bannerText(bool here) const {
     const QString s = status();
+    // -- WP MCP5 -- (review RB C4) "imported" is any unconfirmed layout this console
+    // did not write: a configuration file or another app (never an agent: no tool
+    // writes it), so the words do not claim a file
     if (s == QLatin1String("imported"))
-        return here ? tr("Imported speaker layout: these roles came with a configuration file. Check that they match this "
-                         "DSPi's speakers, then confirm them.")
-                    : tr("Imported speaker layout: these roles came with a configuration file. Check that they match this "
-                         "DSPi's speakers, then confirm them in Settings › Speakers.");
+        return here ? tr("Imported speaker layout: these roles were set outside this app (a configuration file or "
+                         "another app). Check that they match this DSPi's speakers, then confirm them.")
+                    : tr("Imported speaker layout: these roles were set outside this app (a configuration file or "
+                         "another app). Check that they match this DSPi's speakers, then confirm them in Settings › "
+                         "Speakers.");
     if (s == QLatin1String("unconfirmed"))
         return here ? tr("Not confirmed yet: check which output drives what, then confirm.")
                     : tr("Your speaker layout is not confirmed yet. Check which output drives what, then confirm it in "
@@ -420,8 +424,9 @@ void SpeakersController::openSettings() {
     if (auto *settings = Registrar::instance<SettingsController>()) settings->showPage(QStringLiteral("speakers"));
 }
 
-void SpeakersController::say(const StatePtr &st, const QString &text, bool error) {
+void SpeakersController::say(const StatePtr &st, const QString &text, bool error, bool measure) {
     st->said = text;
     st->saidError = error;
+    st->saidInMeasure = measure;
     if (shown(st)) emit saidChanged();
 }

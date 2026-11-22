@@ -22,14 +22,39 @@ Panel {
 
     // Closing the window stops what it started (the guard of an applied tune runs on)
     // (review P5-D: always, so a start still on its way is withdrawn too)
-    onClosing: MeasureController.stopAll()   // -- WP MDQT2c -- on every device
+    // -- WP MDQT2c -- on every device; -- WP LAY5b -- in Modern a window's close
+    // leaves the panel on its page: the shown device's, and "Show Here" stops nothing
+    onClosing: {
+        const pages = inPage ? null : Shell.pageHost
+        if (!pages || pages.moving !== actionId) MeasureController.panelClosing(pages !== null)
+    }
     // -- WP P5QUI2 -- the client read-only mode read again when it shows
-    onShownChanged: if (shown) MeasureController.refreshAccess()
+    // (-- WP LAY5b -- by panelShown, which counts the hosts)
+    onShownChanged: {
+        MeasureController.panelShown(shown)
+        leavePassive()
+    }
+    Component.onDestruction: if (shown) MeasureController.panelShown(false)
+
+    // -- WP LAY5b -- Modern's page has the tabs (SectionTable.parts): the part is
+    // its; a window has its own tabs, as Classic
+    readonly property var partIds: ["measure", "results", "live", "tune", "documents", "passive", "units"]
+    readonly property bool paged: part.length > 0
+    readonly property int index: paged ? Math.max(0, partIds.indexOf(part)) : tabs.currentIndex
+    function showPart(id) {
+        if (paged) partChosen(id)
+        else if (partIds.indexOf(id) >= 0) tabs.currentIndex = partIds.indexOf(id)
+    }
+    // Leaving the passive RTA's tab stops it (it gives the microphone back);
+    // not a panel that is not shown: the other host's may be on it
+    onIndexChanged: leavePassive()
+    function leavePassive() { if (shown && index !== 5 && MeasureController.passiveActive) MeasureController.passiveStop() }
+
     // The tabs that play go when the connection may no longer play; the
     // passive RTA goes (and stops) when it may again
     onBlockedChanged: {
-        if (blocked) tabs.currentIndex = 5
-        else if (!blocked && tabs.currentIndex === 5) tabs.currentIndex = 1
+        if (blocked) showPart("passive")
+        else if (index === 5) showPart("results")
         if (!blocked && MeasureController.passiveActive) MeasureController.passiveStop()
     }
 
@@ -141,6 +166,7 @@ Panel {
         AppTabBar {
             id: tabs
             objectName: "Measure.tabs"
+            visible: !panel.paged   // -- WP LAY5b --
             label: qsTr("Measurement")
             Layout.fillWidth: true
             AppTabButton { objectName: "Measure.tab.measure"; text: qsTr("Measure"); enabled: !panel.blocked }
@@ -153,18 +179,16 @@ Panel {
             // -- WP ATQT -- several units of the hub, on one time base (not for a connection that may not play)
             AppTabButton { objectName: "Measure.tab.units"; text: qsTr("Several units"); visible: !panel.blocked; width: visible ? implicitWidth : 0 }
             Component.onCompleted: if (panel.blocked) currentIndex = 5
-            // Leaving the passive RTA's tab stops it (it gives the microphone back)
-            onCurrentIndexChanged: if (currentIndex !== 5 && MeasureController.passiveActive) MeasureController.passiveStop()
         }
         StackLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            currentIndex: tabs.currentIndex
-            MeasureSetupTab { id: setupTab; onShowResults: tabs.currentIndex = 1 }
-            MeasureResultsTab { id: resultsTab; onShowTune: tabs.currentIndex = 3 }
+            currentIndex: panel.index   // -- WP LAY5b --
+            MeasureSetupTab { id: setupTab; onShowResults: panel.showPart("results") }
+            MeasureResultsTab { id: resultsTab; onShowTune: panel.showPart("tune") }
             MeasureLiveTab { id: liveTab }
             MeasureTuneTab { id: tuneTab }
-            MeasureDocsTab { onShowResults: tabs.currentIndex = 1 }
+            MeasureDocsTab { onShowResults: panel.showPart("results") }
             MeasurePassiveTab { id: passiveTab }
             MeasureUnitsTab {}   // -- WP ATQT --
         }

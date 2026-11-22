@@ -28,7 +28,7 @@ Item {
     // The alink sender has no DSP screens; what it keeps stays reachable
     readonly property bool senderPage: DeviceInfoController.sender && !wizard
         && !(pages.action.length ? DeviceInfoController.senderKeeps(pages.action) : pages.section === "devices")
-    readonly property bool devicesPage: pages.visible && pages.section === "devices" && pages.tab === "devices"
+    readonly property bool devicesPage: pages.visible && pages.section === "devices" && (pages.tab === "devices" || pages.tab === "hubs")   // -- WP LAY5b -- hubs
 
     // -- WP LAY3 -- KEEPOPEN: several devices at once (a chosen device opens in a
     // tab beside the others). -- WP INT3 -- on: every controller follows the
@@ -90,11 +90,7 @@ Item {
             showDevices: !shell.deviceRow && !shell.railDevices
             notifications: drawer.waiting
             onBellClicked: drawer.toggle()
-            onSearchRequested: {
-                Shell.trigger("edit.settings")
-                const page = pages.page("settings/settings")
-                if (page && page.content && page.content.focusSearch) page.content.focusSearch()
-            }
+            onSearchRequested: PaletteController.open()   // -- WP LAY6 --
         }
         NavRail {
             Layout.fillWidth: true
@@ -145,6 +141,7 @@ Item {
                     PageHost {
                         id: pages
                         anchors.fill: parent
+                        dialogs: presetDialogs   // -- WP LAY5b --
                         visible: !shell.senderPage
                     }
                     // -- WP PGQT -- the alink sender's page in place of the DSP screens
@@ -205,6 +202,11 @@ Item {
     }
     PresetDialogs {
         id: presetDialogs
+    }
+    // -- WP LAY6 -- Ctrl+K and the top bar's search (PaletteController.opening)
+    CommandPalette {
+        window: shell.mainWindow
+        pages: pages
     }
 
     // ---- The device switcher (Device > Devices…, the tabs' "+")

@@ -71,6 +71,11 @@ pub struct ServerConfig {
     pub autoeq: Option<Arc<AutoEqLibrary>>,
     /// The user's template folder ("" for the shipped templates only).
     pub template_dir: String,
+    // -- WP MCP5 --
+    /// The app has a Measure view that takes the agents' measurement
+    /// requests (`Server::measure_take`); without one the tools that start a
+    /// measurement say measuring is not available.
+    pub measuring: bool,
 }
 
 impl Default for ServerConfig {
@@ -83,6 +88,7 @@ impl Default for ServerConfig {
             policy: Arc::new(ReadOnlyPolicy),
             autoeq: None,                // -- WP MCP2b --
             template_dir: String::new(), // -- WP MCP2b --
+            measuring: false,            // -- WP MCP5 --
         }
     }
 }
@@ -114,6 +120,12 @@ pub struct Server {
     held: Option<u64>,
     guards: AgentGuards,
     drags: BTreeMap<String, DragWatch>,
+    // -- WP MCP2c --
+    /// The agents' Installation drafts, by client and hub.
+    installation: crate::tools::installation::Drafts,
+    // -- WP MCP5 --
+    /// The agents' requests to the app's Measure view.
+    measure: crate::tools::measure::Jobs,
 }
 
 impl Server {
@@ -124,6 +136,7 @@ impl Server {
 
     /// A server with these tools only.
     pub fn with_registry(set: Arc<CoreSet>, config: ServerConfig, registry: Registry) -> Self {
+        let measure = crate::tools::measure::Jobs::new(config.measuring); // -- WP MCP5 --
         Self {
             set,
             active: None,
@@ -136,6 +149,8 @@ impl Server {
             held: None,
             guards: AgentGuards::new(),
             drags: BTreeMap::new(),
+            installation: crate::tools::installation::Drafts::default(), // -- WP MCP2c --
+            measure,                                                     // -- WP MCP5 --
         }
     }
 
@@ -161,10 +176,25 @@ impl Server {
         id
     }
 
+    // -- WP MCP4 --
+    /// A new client the user paired as `name`: its label in the History, the
+    /// activity and the confirmation sheets is that name, whatever the agent
+    /// calls itself.
+    pub fn connect_as(&mut self, name: &str) -> ClientId {
+        let id = self.connect();
+        if let Some(c) = self.clients.get_mut(&id) {
+            c.label = untrusted::actor_label(name);
+            c.actor = Some(register_actor(&c.label));
+        }
+        id
+    }
+
     /// The client is gone. Its activity stays; its waiting confirmations end
     /// with nothing changed (-- WP MCP2a --).
     pub fn disconnect(&mut self, client: ClientId) {
         self.clients.remove(&client);
+        self.installation.forget(client); // -- WP MCP2c --
+        self.measure.forget(client); // -- WP MCP5 --
         for id in self.confirms.of_client(client) {
             self.confirms.end(
                 id,
@@ -230,7 +260,7 @@ impl Server {
             return None;
         };
         let Some(id) = id else {
-            self.notification(client, method);
+            self.notification(client, method, msg.get("params"));
             return None;
         };
         if !protocol::valid_id(id) {
@@ -253,11 +283,26 @@ impl Server {
         }
     }
 
-    fn notification(&mut self, client: ClientId, method: &str) {
-        // `notifications/initialized` confirms what `initialize` set up, and
-        // calls run to the end before the next message, so a cancel finds
-        // nothing to stop. Others are not for this server.
-        let _ = (client, method);
+    fn notification(&mut self, client: ClientId, method: &str, params: Option<&Value>) {
+        // `notifications/initialized` confirms what `initialize` set up.
+        // Others are not for this server.
+        // -- WP MCP4 -- A cancel finds nothing running (calls run to the end
+        // before the next message) but a held request: its sheet goes down.
+        // Two sessions of one client may use the same request id; then
+        // neither is taken for the other's.
+        if method != "notifications/cancelled" {
+            return;
+        }
+        let Some(rpc_id) = params.and_then(|p| p.get("requestId")) else {
+            return;
+        };
+        if let [id] = self.confirms.held_as(client, rpc_id).as_slice() {
+            self.confirms.end(
+                *id,
+                ConfirmState::Gone,
+                tool_error("cancelled by the agent; nothing was changed"),
+            );
+        }
     }
 
     fn request(
@@ -272,7 +317,10 @@ impl Server {
         }
         let meta = params.get("_meta").and_then(Value::as_object);
         let modern = meta.and_then(|m| m.get(META_VERSION));
-        let era = if method == "initialize" {
+        // -- WP MCP6 -- `initialize` with the modern `_meta` is a modern
+        // request for a method 2026-07-28 removed (the conformance suite's
+        // sep-2575-http-server-method-not-found-404-initialize)
+        let era = if method == "initialize" && modern.is_none() {
             Era::Legacy
         } else if let Some(version) = modern {
             let version = version.as_str().unwrap_or("");
@@ -309,7 +357,8 @@ impl Server {
         let mut result = match (era, method) {
             (Era::Legacy, "initialize") => self.initialize(client, params),
             (Era::Modern, "server/discover") => Ok(self.discover()),
-            (_, "ping") => Ok(json!({})),
+            // -- WP MCP6 -- 2026-07-28 removed `ping`
+            (Era::Legacy, "ping") => Ok(json!({})),
             (_, "tools/list") => {
                 no_cursor(params)?;
                 let tools: Vec<Value> = self.registry.tools().iter().map(|t| t.listing()).collect();
@@ -344,6 +393,15 @@ impl Server {
                 "tools/list" | "resources/list" | "resources/templates/list" | "prompts/list"
             ) {
                 r.insert("ttlMs".into(), json!(LIST_TTL_MS));
+                r.insert("cacheScope".into(), json!("private"));
+            }
+            // -- WP MCP6 -- 2026-07-28's ReadResourceResult is cacheable too:
+            // the guide and the filter types are fixed while the server runs,
+            // a device's state and the rest are read afresh each time.
+            if method == "resources/read" {
+                let uri = params.get("uri").and_then(Value::as_str).unwrap_or("");
+                let fixed = matches!(uri, resources::GUIDE_URI | resources::FILTER_TYPES_URI);
+                r.insert("ttlMs".into(), json!(if fixed { LIST_TTL_MS } else { 0 }));
                 r.insert("cacheScope".into(), json!("private"));
             }
         }
@@ -528,6 +586,7 @@ impl Server {
         }
         entry.device.clone_from(&out.device);
         entry.journal_ids = out.journal_ids;
+        self.measure.stamp(now_ms); // -- WP MCP5 -- a request's clock starts now
         let asked = !out.judging.asked.is_empty() && out.judging.refused.is_none();
         let result = match out.result {
             Err(_) if asked && regranted => {
@@ -559,7 +618,13 @@ impl Server {
                 entry.detail = format!("waiting for the user's confirmation {id}");
                 held_result(id)
             }
-            Ok(data) => tool_ok(data),
+            Ok(data) => {
+                // -- WP MCP4 -- the change in words, for the app's log
+                if entry.write {
+                    entry.detail = crate::activity::words(&data);
+                }
+                tool_ok(data)
+            }
             Err(e) => {
                 entry.outcome = Outcome::Error;
                 entry.detail = e.0.clone();
@@ -593,6 +658,8 @@ impl Server {
             guards: Some(&self.guards),
             autoeq: self.config.autoeq.as_ref(), // -- WP MCP2b --
             template_dir: &self.config.template_dir,
+            installation: Some(&self.installation), // -- WP MCP2c --
+            measure: Some(&self.measure),           // -- WP MCP5 --
         };
         registry::run(&ctx, tool, args)
     }
@@ -635,6 +702,21 @@ impl Server {
         let Ok(msg) = serde_json::from_str::<Value>(text) else {
             return Handled::Reply(self.handle(client, now_ms, text));
         };
+        match self.handle_held_value(client, now_ms, msg) {
+            (_, Some(id)) => Handled::Held(id),
+            (reply, None) => Handled::Reply(reply.map(|r| r.to_string())),
+        }
+    }
+
+    // -- WP MCP4 --
+    /// [`Server::handle_held`] on JSON values: the reply, or the confirmation
+    /// the request is held for (the reply is then for nobody).
+    pub fn handle_held_value(
+        &mut self,
+        client: ClientId,
+        now_ms: u64,
+        msg: Value,
+    ) -> (Option<Value>, Option<u64>) {
         let rpc_id = msg.get("id").cloned().unwrap_or(Value::Null);
         let modern = msg
             .pointer("/params/_meta")
@@ -642,15 +724,13 @@ impl Server {
             .is_some();
         self.held = None;
         let reply = self.handle_value(client, now_ms, msg);
-        match self.held.take() {
-            Some(id) => {
-                if let Some(c) = self.confirms.get_mut(id) {
-                    c.request = Some((rpc_id, modern));
-                }
-                Handled::Held(id)
-            }
-            None => Handled::Reply(reply.map(|r| r.to_string())),
+        let held = self.held.take();
+        if let Some(id) = held
+            && let Some(c) = self.confirms.get_mut(id)
+        {
+            c.request = Some((rpc_id, modern));
         }
+        (reply, held)
     }
 
     /// The reply to a request [`Server::handle_held`] held, once its
@@ -658,17 +738,125 @@ impl Server {
     /// held no request.
     pub fn resume(&mut self, id: u64, now_ms: u64) -> Option<String> {
         self.tick(now_ms);
+        self.resume_value(id).map(|r| r.to_string())
+    }
+
+    /// [`Server::resume`] as a JSON value, without the tick (-- WP MCP4 --).
+    pub fn resume_value(&mut self, id: u64) -> Option<Value> {
         let c = self.confirms.get(id)?;
         if c.state == ConfirmState::Waiting || c.request.is_none() {
             return None;
         }
         let c = self.confirms.remove(id)?;
-        let (rpc_id, modern) = c.request?;
-        let mut result = c.result.unwrap_or_else(|| tool_error("no outcome"));
-        if modern && let Some(r) = result.as_object_mut() {
-            r.insert("resultType".into(), json!("complete"));
+        Some(held_reply(
+            c.request?,
+            c.result.unwrap_or_else(|| tool_error("no outcome")),
+        ))
+    }
+
+    // -- WP MCP4 --
+    /// Stop holding the request of confirmation `id`, which still waits: the
+    /// reply is `awaiting_confirmation`, and the agent asks
+    /// `dspi_get_confirmation` from then on. For a transport that holds a
+    /// request for less than [`CONFIRM_HOLD_MS`]. `None` when it holds none.
+    pub fn release_held(&mut self, id: u64) -> Option<Value> {
+        let c = self.confirms.get_mut(id)?;
+        if c.state != ConfirmState::Waiting {
+            return None;
         }
-        Some(protocol::reply(&rpc_id, result).to_string())
+        let request = c.request.take()?;
+        Some(held_reply(request, held_result(id)))
+    }
+
+    /// The connection of the request held for confirmation `id` is gone, so
+    /// nobody is there for its answer: a waiting confirmation ends with
+    /// nothing changed, and it is forgotten.
+    pub fn abandon_held(&mut self, id: u64) {
+        let Some(c) = self.confirms.get(id) else {
+            return;
+        };
+        if c.request.is_none() {
+            return;
+        }
+        if c.state == ConfirmState::Waiting {
+            self.confirms.end(
+                id,
+                ConfirmState::Gone,
+                tool_error("the agent went away; nothing was changed"),
+            );
+        }
+        self.confirms.remove(id);
+    }
+
+    /// The user turned the agents off: every waiting confirmation ends with
+    /// nothing changed, and every agent's timed preview is put back now.
+    pub fn stop_agents(&mut self, now_ms: u64) {
+        crate::tools::measure::stop_all(&self.set, &self.measure); // -- WP MCP5 --
+        for id in self
+            .confirms
+            .waiting()
+            .iter()
+            .map(|c| c.id)
+            .collect::<Vec<_>>()
+        {
+            self.confirms.end(
+                id,
+                ConfirmState::Gone,
+                tool_error("the user turned AI agents off; nothing was changed"),
+            );
+        }
+        for (dev, (client, guard)) in std::mem::take(&mut self.guards) {
+            let Some(core) = self.device_core(&dev) else {
+                continue;
+            };
+            let label = self.label_of(client).unwrap_or_default();
+            let actor = self.clients.get(&client).and_then(|c| c.actor);
+            let status = core.apply_status();
+            if status.id != guard || !matches!(status.phase, GuardPhase::Waiting | GuardPhase::Lost)
+            {
+                continue;
+            }
+            // As the agent with no hook, as `tick`: a revert is never refused.
+            let done = {
+                let _scope = actor.map(|a| ActorScope::enter(&core, a, None));
+                core.apply_revert()
+            };
+            let (outcome, detail) = match done {
+                Ok(g) if g.phase == GuardPhase::Reverted => {
+                    (Outcome::Ok, "the timed preview was put back".to_owned())
+                }
+                Ok(g) => (
+                    Outcome::Error,
+                    format!("the timed preview was not put back: {}", g.message),
+                ),
+                Err(e) => (
+                    Outcome::Error,
+                    format!("the timed preview was not put back: {e}"),
+                ),
+            };
+            self.activity.push(ActivityEntry {
+                id: 0,
+                at_ms: now_ms,
+                client,
+                client_label: label,
+                tool: "dspi_revert_changes".to_owned(),
+                device: Some(dev),
+                write: true,
+                outcome,
+                journal_ids: Vec::new(),
+                detail,
+            });
+        }
+    }
+
+    /// The title of tool `name`, "" for one this server does not have.
+    pub fn tool_title(&self, name: &str) -> &'static str {
+        self.registry.get(name).map_or("", |t| t.title)
+    }
+
+    /// The devices an agent's timed preview waits on.
+    pub fn guarded_devices(&self) -> Vec<String> {
+        self.guards.keys().cloned().collect()
     }
 
     /// The user's answer to confirmation `id` (the app's sheet). Allow runs
@@ -739,6 +927,38 @@ impl Server {
         Ok(())
     }
 
+    // -- WP MCP5 --
+    /// The agents' measurement requests the app has to take, oldest first:
+    /// `{request_id, client, client_name, device, kind, loop, what, state,
+    /// note}`.
+    pub fn measure_requests(&self) -> Vec<Value> {
+        crate::tools::measure::waiting_json(&self.measure)
+    }
+
+    /// The app takes request `id` for its Measure view: the ticket to start
+    /// it with (`tools::measure::begin`), `None` when it no longer waits.
+    pub fn measure_take(&mut self, id: u64) -> Option<Value> {
+        self.measure.take(id)
+    }
+
+    /// The app says how request `id` went: started, or declined with `note`
+    /// (no microphone, the user stopped it, the core refused). False when it
+    /// was not open.
+    pub fn measure_report(&mut self, id: u64, ok: bool, note: &str) -> bool {
+        self.measure.report(id, ok, note)
+    }
+
+    /// Whether the measurement requests changed since the last call (the
+    /// app reads `measure_requests` again).
+    pub fn take_measure_events(&mut self) -> bool {
+        self.measure.take_changed()
+    }
+
+    /// Every measurement request kept (the newest 32), as the app sees them.
+    pub fn measure_log(&self) -> Vec<Value> {
+        crate::tools::measure::all_json(&self.measure)
+    }
+
     /// Confirmation `id`, waiting or ended (kept a while).
     pub fn confirmation(&self, id: u64) -> Option<&Confirmation> {
         self.confirms.get(id)
@@ -765,6 +985,7 @@ impl Server {
     /// hook (a revert is never refused), or as the app once the agent is
     /// gone.
     pub fn tick(&mut self, now_ms: u64) {
+        crate::tools::measure::tick(&self.set, &self.measure, now_ms); // -- WP MCP5 --
         for id in self.confirms.lapsed(now_ms) {
             if let Some(c) = self.confirms.get(id) {
                 self.activity.push(ActivityEntry {
@@ -827,7 +1048,14 @@ impl Server {
             client_label: &label,
             version: &self.config.version,
         };
-        let contents = resources::read(&ctx, uri)?;
+        // -- WP MCP6 -- "not found" names the URI in `data` (2026-07-28,
+        // SEP-2164: SHOULD); the client's own text, cut
+        let contents = resources::read(&ctx, uri).map_err(|mut e| {
+            if e.code == INVALID_PARAMS && e.data.is_none() {
+                e.data = Some(json!({"uri": untrusted::clean(uri, 512)}));
+            }
+            e
+        })?;
         Ok(json!({"contents": contents}))
     }
 }
@@ -853,6 +1081,15 @@ fn tool_ok(data: Value) -> Value {
 /// A tool's error, for the model to read and correct.
 fn tool_error(msg: &str) -> Value {
     json!({"content": [{"type": "text", "text": msg}], "isError": true})
+}
+
+// -- WP MCP4 --
+/// The JSON-RPC reply to a held request: its id, whether modern-era.
+fn held_reply((rpc_id, modern): (Value, bool), mut result: Value) -> Value {
+    if modern && let Some(r) = result.as_object_mut() {
+        r.insert("resultType".into(), json!("complete"));
+    }
+    protocol::reply(&rpc_id, result)
 }
 
 // -- WP MCP2a --

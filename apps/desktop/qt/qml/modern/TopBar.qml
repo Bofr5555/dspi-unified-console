@@ -66,10 +66,17 @@ Rectangle {
                 // The device says which slot is active, not the click
                 currentIndex = Qt.binding(() => bar.activeSlot)
             }
+            // -- WP LAY3b -- a right-click on a slot in the list: that slot's menu
+            rowMenus: true
+            onRowMenu: (index, row, x, y) => {
+                const at = row.mapToItem(bar, x, y)
+                popup.close()
+                ContextMenus.slot(index, bar.dialogs, bar, at.x, at.y)
+            }
             TapHandler {
                 acceptedButtons: Qt.RightButton
                 onTapped: point => {
-                    if (bar.writable && bar.dialogs) bar.dialogs.popupPresetMenu(presetBox, point.position.x, point.position.y)
+                    ContextMenus.slot(bar.activeSlot, bar.dialogs, presetBox, point.position.x, point.position.y)   // -- WP LAY3b --
                 }
             }
         }
@@ -81,7 +88,7 @@ Rectangle {
             iconSize: 14
             toolTip: qsTr("Preset Slot…")
             enabled: bar.writable && !SidebarController.presetBusy && bar.activeSlot >= 0
-            onClicked: if (bar.dialogs) bar.dialogs.popupPresetMenu(slotButton, 0, slotButton.height + 2)
+            onClicked: ContextMenus.slot(bar.activeSlot, bar.dialogs, slotButton, 0, slotButton.height + 2)   // -- WP LAY3b --
         }
         ToolSegments {
             objectName: "TopBar.ab"
@@ -99,7 +106,7 @@ Rectangle {
 
         Item { Layout.fillWidth: true; Layout.preferredWidth: 1 }
 
-        // ---- Search (the command palette is WP LAY6's; until then the settings' search)
+        // ---- Search: the command palette (-- WP LAY6 --)
         AbstractButton {
             id: search
             objectName: "TopBar.search"
@@ -107,7 +114,7 @@ Rectangle {
             Layout.maximumWidth: bar.compact ? 32 : 300
             Layout.preferredWidth: bar.compact ? 32 : 240
             implicitHeight: 28
-            text: qsTr("Search settings…")
+            text: qsTr("Search settings, channels, commands…")
             hoverEnabled: true
             focusPolicy: Qt.TabFocus
             onClicked: bar.searchRequested()
@@ -125,10 +132,25 @@ Rectangle {
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
                         visible: !bar.compact
+                        // -- WP LAY6 -- up to the shortcut
+                        width: Math.min(implicitWidth, search.width - 14 - keys.implicitWidth - 8 - 3 * parent.spacing - 8)
+                        elide: Text.ElideRight
                         text: search.text
                         font: Theme.fontBody
                         color: Theme.textMuted
                     }
+                }
+                // -- WP LAY6 --
+                Text {
+                    id: keys
+                    objectName: "TopBar.search.keys"
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.right: parent.right
+                    anchors.rightMargin: 8
+                    visible: !bar.compact
+                    text: PaletteController.shortcut
+                    font: Theme.fontSmall
+                    color: Theme.textMuted
                 }
             }
             background: Rectangle {
@@ -138,86 +160,15 @@ Rectangle {
                 border.color: Theme.focusRing
             }
             HelpTip {
-                text: search.text
+                text: search.text + " (" + PaletteController.shortcut + ")"   // -- WP LAY6 --
                 visible: bar.compact && search.hovered
             }
             Accessible.role: Accessible.Button
             Accessible.name: text
         }
 
-        // -- WP LAY3 -- the AI button: a placeholder until MCP4's controller;
-        // WP LAY8 puts AiButton here in this block's place
-        AbstractButton {
-            id: ai
-            objectName: "TopBar.ai"
-            text: "AI"
-            implicitHeight: 28
-            implicitWidth: aiFace.implicitWidth + 18
-            hoverEnabled: true
-            focusPolicy: Qt.TabFocus
-            onClicked: aiPopover.open()
-            contentItem: Item {
-                Row {
-                    id: aiFace
-                    anchors.centerIn: parent
-                    spacing: 6
-                    Rectangle {
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: 8
-                        height: 8
-                        radius: 4
-                        color: "transparent"
-                        border.width: 1.5
-                        border.color: Theme.textMuted
-                    }
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: ai.text
-                        font: Theme.fontBody
-                        color: Theme.text
-                    }
-                }
-            }
-            background: Rectangle {
-                radius: Theme.radiusSmall
-                color: ai.hovered ? Theme.controlHover : Theme.control
-                border.width: ai.visualFocus ? 2 : 0
-                border.color: Theme.focusRing
-            }
-            Accessible.role: Accessible.Button
-            Accessible.name: qsTr("AI agent control: off")
-            HelpTip {
-                text: qsTr("AI agent control: off")
-                visible: ai.hovered && !aiPopover.opened
-            }
-            PopoverPanel {
-                id: aiPopover
-                objectName: "TopBar.aiPopover"
-                title: qsTr("AI agent control")
-                x: ai.width - width
-                y: ai.height + 6
-                width: 320
-                contentItem: Column {
-                    spacing: Theme.spacingSmall
-                    Text {
-                        width: parent.width
-                        text: aiPopover.title
-                        font: Theme.fontTitle
-                        color: Theme.text
-                        Accessible.role: Accessible.Heading
-                        Accessible.name: text
-                    }
-                    Text {
-                        width: parent.width
-                        //: %1 is the app's name
-                        text: qsTr("Controlling %1 with your own AI agent is not ready yet. Nothing is sent anywhere.").arg(AppIdentity.displayName)
-                        font: Theme.fontBody
-                        color: Theme.textMuted
-                        wrapMode: Text.Wrap
-                    }
-                }
-            }
-        }
+        // -- WP LAY8 -- the AI button, with the agents' state and its popover
+        AiButton { objectName: "TopBar.ai" }
 
         // ---- The theme: the system's, light or dark
         IconButton {
@@ -236,12 +187,22 @@ Rectangle {
         }
 
         // ---- Undo, redo, save
-        IconButton {
+        // -- WP LAY3b -- Undo ▾: what was changed last, and History
+        SplitButton {
             objectName: "TopBar.undo"
+            window: bar.window
+            action: "edit.undo"
+            place: "history"
             iconName: "undo-2"
             toolTip: MenuTable.textOf("edit.undo", false)
-            enabled: HistoryController.canUndo && MenuTable.available("edit.undo")
-            onClicked: MenuTable.trigger(bar.window, "edit.undo")
+            handlers: ({
+                "history.recent": {
+                    rows: () => HistoryController.entries.slice(0, 8).map((e, i) => ({
+                        name: i, text: e.detail.length ? e.title + "  " + e.detail : e.title, detail: e.time, value: i
+                    })),
+                    run: () => Shell.trigger("edit.history")
+                }
+            })
         }
         IconButton {
             objectName: "TopBar.redo"
@@ -250,19 +211,12 @@ Rectangle {
             enabled: HistoryController.canRedo && MenuTable.available("edit.redo")
             onClicked: MenuTable.trigger(bar.window, "edit.redo")
         }
-        IconButton {
-            objectName: "TopBar.history"
-            iconName: "clock"
-            toolTip: MenuTable.textOf("edit.history", false)
-            enabled: MenuTable.available("edit.history")
-            onClicked: Shell.trigger("edit.history")
-        }
         SplitButton {
             objectName: "TopBar.save"
             visible: !DeviceInfoController.sender
             window: bar.window
             action: "device.commit"
-            actions: ["device.revert", "file.saveMasterVolume", "file.saveOutputConfiguration", "device.factoryReset"]
+            place: "save"   // -- WP LAY3b --
             iconName: "hard-drive"
             text: bar.tight ? "" : qsTr("Save to Device")
             toolTip: qsTr("Save to Device")

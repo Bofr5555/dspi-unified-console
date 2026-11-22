@@ -13,7 +13,10 @@ Item {
     property string tab: ""
     property bool pills: false
     readonly property var entry: SectionTable.tab(section, tab)
-    readonly property var entries: SectionTable.tabs(section).filter(t => !t.quiet || t.tab === tab)
+    // -- WP LAY5b -- those there now; made anew only when one comes or goes (a
+    // tab chosen keeps its focus)
+    readonly property string quietTab: entry && entry.quiet ? tab : ""
+    readonly property var entries: SectionTable.tabs(section).filter(t => t.quiet ? t.tab === quietTab : SectionTable.shows(section, t.tab))
     readonly property string action: entry && entry.row ? entry.row.action : ""
     signal chosen(string tab)
 
@@ -72,11 +75,29 @@ Item {
                         anchors.verticalCenter: parent ? parent.verticalCenter : undefined
                         onCheckedChanged: if (checked) flick.reveal(button)
                         onVisualFocusChanged: if (visualFocus) flick.reveal(button)
-                        contentItem: Text {
-                            text: button.text
-                            font: Theme.fontBody
-                            color: button.checked ? Theme.text : Theme.textMuted
-                            verticalAlignment: Text.AlignVCenter
+                        // -- WP LAY5a -- on or off (an effect's, the generator's)
+                        readonly property var dot: SectionTable.dot(bar.section, modelData.tab)
+                        contentItem: Row {
+                            spacing: 6
+                            Rectangle {
+                                objectName: button.objectName + ".dot"
+                                property bool on: button.dot === true
+                                visible: button.dot !== null
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 7
+                                height: 7
+                                radius: 3.5
+                                // A ring when off: not the colour alone
+                                color: on ? Theme.success : "transparent"
+                                border.width: on ? 0 : 1
+                                border.color: Theme.textMuted
+                            }
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: button.text
+                                font: Theme.fontBody
+                                color: button.checked ? Theme.text : Theme.textMuted
+                            }
                         }
                         background: Rectangle {
                             radius: Theme.radiusSmall
@@ -93,12 +114,21 @@ Item {
                         }
                         onClicked: bar.chosen(modelData.tab)
                         Accessible.role: Accessible.PageTab
-                        Accessible.name: text
+                        //: %1 is an effect's tab
+                        Accessible.name: dot === null ? text : dot ? qsTr("%1, on").arg(text) : qsTr("%1, off").arg(text) // -- WP LAY5a --
                         Accessible.selected: checked
                         Accessible.onPressAction: button.clicked()
                     }
                 }
             }
+        }
+        // -- WP LAY4 -- the page's own buttons
+        Loader {
+            objectName: "PageTabs.tools"
+            readonly property string type: bar.entry && bar.entry.tools ? bar.entry.tools : ""
+            visible: active
+            active: type.length > 0
+            sourceComponent: active ? Qt.createComponent("UConsole", type) : null
         }
         IconButton {
             objectName: "PageTabs.openWindow"
@@ -106,7 +136,12 @@ Item {
             enabled: Shell.allows(bar.action) && Shell.shownWindows.indexOf(bar.action) < 0
             iconName: "app-window"
             toolTip: qsTr("Open in Window")
-            onClicked: Shell.openWindow(bar.action)
+            // -- WP LAY5b -- on the part shown here
+            onClicked: {
+                const part = bar.entry.part
+                const window = Shell.openWindow(bar.action)
+                if (part.length && window && window.content) window.content.showPart(part)
+            }
         }
     }
 }

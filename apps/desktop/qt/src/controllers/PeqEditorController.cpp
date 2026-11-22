@@ -348,6 +348,12 @@ void PeqEditorController::forget() {
     bump();
 }
 
+// -- WP LAY4 --
+int PeqEditorController::shapeOfType(int type) const {
+    int shape = -1;
+    return Peq::shapeOf(type, &shape, nullptr) ? shape : -1;
+}
+
 void PeqEditorController::rowClicked(int band, int modifiers) {
     const std::shared_ptr<State> st = state();
     if (st->edited < 0 || band < 0 || band >= BANDS_PER_CHANNEL) return;
@@ -427,4 +433,132 @@ void PeqEditorController::writeBands(int channel, const QList<QPair<int, FilterP
 
 void PeqEditorController::setBandBypassed(int channel, int band, bool bypass) {
     if (channels()->bypassSupported()) channels()->setBandBypass(channel, band, false, bypass);
+}
+
+// ---- -- WP LAY3b -- The band menu ------------------------------------------------
+
+FilterParams Peq::reshaped(FilterParams p, int type) {
+    const FilterParams was = p;
+    int shape = -1;
+    Peq::shapeOf(type, &shape, nullptr);
+    p.filter_type = uint8_t(type);
+    // Leaving the Linkwitz Transform drops its fp back to 0 dB
+    if (was.filter_type == FILTER_LINKWITZ_TRANSFORM || !Peq::usesGain(type)) p.gain = 0;
+    if (Peq::usesQ(type) && !Peq::usesQ(was.filter_type)) p.q = shape == Peq::Bell || shape == Peq::Notch ? 1.0f : 0.707f;
+    return p;
+}
+
+QVariantList PeqEditorController::shapes() const {
+    const QList<int> available = availableTypes();
+    QVariantList out;
+    for (int s = 0; s < Peq::ShapeCount; ++s)
+        for (int o : { 2, 1 }) {
+            if (!available.contains(Peq::typeFor(s, o))) continue;
+            out << QVariantMap{ { QStringLiteral("shape"), s }, { QStringLiteral("title"), Peq::shapeTitle(s) } };
+            break;
+        }
+    return out;
+}
+
+QVariantMap PeqEditorController::shapeOrder(int type) const {
+    int shape = -1, order = 2;
+    if (!Peq::shapeOf(type, &shape, &order)) shape = -1, order = 2;
+    return { { QStringLiteral("shape"), shape }, { QStringLiteral("order"), order } };
+}
+
+QString PeqEditorController::slopeTitle(int type) const {
+    int shape = -1;
+    Peq::shapeOf(type, &shape, nullptr);
+    return shape == Peq::AllPass ? tr("Order") : tr("Slope");
+}
+
+QVariantList PeqEditorController::slopes(int type) const {
+    int shape = -1, order = 0;
+    if (!Peq::shapeOf(type, &shape, &order)) return {};
+    const QList<int> available = availableTypes();
+    if (!available.contains(Peq::typeFor(shape, 1)) || !available.contains(Peq::typeFor(shape, 2))) return {};
+    QVariantList out;
+    for (int o : { 1, 2 })
+        out << QVariantMap{ { QStringLiteral("name"), o },
+                            { QStringLiteral("text"), Peq::orderTitle(shape, o) },
+                            { QStringLiteral("value"), QVariantMap{ { QStringLiteral("shape"), shape }, { QStringLiteral("order"), o } } },
+                            { QStringLiteral("checked"), o == order } };
+    return out;
+}
+
+void PeqEditorController::setShape(int channel, const QList<int> &bands, int shape, int order) {
+    const QList<int> available = availableTypes();
+    int type = Peq::typeFor(shape, order);
+    if (type < 0 || !available.contains(type)) type = Peq::typeFor(shape, order == 2 ? 1 : 2);
+    if (type < 0 || !available.contains(type) || !writable()) return;
+    QList<QPair<int, FilterParams>> changes;
+    for (int b : bands) changes.append({ b, Peq::reshaped(band(channel, b, false), type) });
+    writeBands(channel, changes);
+}
+
+void PeqEditorController::bypassBands(int channel, const QList<int> &bands, bool crossover, bool bypass) {
+    if (!bypassSupported() || !writable()) return;
+    for (int b : bands)
+        if (band(channel, b, crossover).filter_type != FILTER_FLAT) channels()->setBandBypass(channel, b, crossover, bypass);
+}
+
+void PeqEditorController::invertGain(int channel, const QList<int> &bands) {
+    if (!writable()) return;
+    QList<QPair<int, FilterParams>> changes;
+    for (int b : bands) {
+        FilterParams p = band(channel, b, false);
+        if (!Peq::usesGain(p.filter_type)) continue;
+        p.gain = -p.gain;
+        changes.append({ b, p });
+    }
+    writeBands(channel, changes);
+}
+
+void PeqEditorController::resetBands(int channel, const QList<int> &bands, bool crossover) {
+    if (!writable()) return;
+    if (crossover) {
+        for (int b : bands) channels()->setCrossoverFamily(channel, b, 0);
+        return;
+    }
+    QList<QPair<int, FilterParams>> changes;
+    const std::shared_ptr<State> st = state();
+    QSet<int> rest = st->selected;
+    for (int b : bands) {
+        changes.append({ b, Peq::flatBand() });
+        rest.remove(b);
+    }
+    // An Off band has no dot to be selected
+    if (st->edited == channel && rest != st->selected) {
+        st->selected = rest;
+        emit selectionChanged();
+        bump();
+    }
+    writeBands(channel, changes);
+}
+
+void PeqEditorController::copyBand(int channel, int b) {
+    const FilterParams p = band(channel, b, false);
+    if (p.filter_type == FILTER_FLAT) return;
+    m_copied = p;
+    m_hasBand = true;
+    emit bandCopied();
+}
+
+void PeqEditorController::pasteBand(int channel, const QList<int> &bands) {
+    if (!m_hasBand || !writable()) return;
+    ChannelController *cc = channels();
+    const bool output = channel >= cc->numInputs();
+    // Another device may not have the type; the Linkwitz Transform is an output's
+    if (!cc->availableTypes(output).contains(int(m_copied.filter_type))) return;
+    if (m_copied.filter_type == FILTER_LINKWITZ_TRANSFORM) {
+        for (int b : bands) {
+            cc->setBandType(channel, b, false, FILTER_LINKWITZ_TRANSFORM);
+            cc->setLinkwitz(channel, b, m_copied.freq, m_copied.q, m_copied.gain, m_copied.qp);
+            if (cc->bypassSupported()) cc->setBandBypass(channel, b, false, m_copied.bypass);
+        }
+        return;
+    }
+    QList<QPair<int, FilterParams>> changes;
+    for (int b : bands) changes.append({ b, m_copied });
+    writeBands(channel, changes);
 }

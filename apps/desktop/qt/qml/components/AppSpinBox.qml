@@ -44,7 +44,7 @@ SpinBox {
         text: control.displayText
         font: control.font
         color: control.enabled ? Theme.text : Theme.textDisabled
-        selectionColor: Theme.selection
+        selectionColor: Theme.textSelection
         selectedTextColor: Theme.text
         horizontalAlignment: Qt.AlignHCenter
         verticalAlignment: Qt.AlignVCenter

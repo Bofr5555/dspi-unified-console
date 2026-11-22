@@ -20,6 +20,7 @@ import type { ScreenProps } from "../../ui/screens";
 import type { Session } from "../../ui/session";
 import { CoreVoltage } from "./CoreVoltage";
 import { SpeakersPage } from "./speakers/SpeakersPage"; // -- WP ROLEW --
+import { AppearanceSettings } from "../../ui/arrangement/Appearance"; // -- WP WEBM4 --
 import {
   AVERAGING,
   CEILINGS,
@@ -49,7 +50,7 @@ import {
   type SpectrumPrefs,
 } from "./model";
 
-type Page = "global" | "pins" | "speakers" /* -- WP ROLEW -- */ | "graphing" | "spectrum" | "advanced" | "help" | "vreg";
+type Page = "global" | "pins" | "speakers" /* -- WP ROLEW -- */ | "graphing" | "spectrum" | "advanced" | "help" | "vreg" | "appearance" /* -- WP WEBM4 -- */;
 
 const PAGE_TITLES: Record<Page, string> = {
   global: "Global",
@@ -60,7 +61,21 @@ const PAGE_TITLES: Record<Page, string> = {
   advanced: "Advanced",
   help: "Help",
   vreg: "Core Voltage",
+  appearance: "Appearance", // -- WP WEBM4 --
 };
+
+// -- WP WEBM3 -- (MODLAY 2) the pages in groups, a short list beside the page (above it on a narrow console)
+const GROUPS: { title: string; pages: Page[] }[] = [
+  { title: "Device", pages: ["global", "pins", "speakers", "advanced", "vreg"] },
+  { title: "Display", pages: ["graphing", "spectrum"] },
+  { title: "Application", pages: ["appearance" /* -- WP WEBM4 -- */, "help"] },
+];
+
+// -- WP WEBM4 --
+/** The pages every mode shows, by group: the command palette finds them (Pins and Core Voltage depend on the mode). */
+export const SETTINGS_PAGES: readonly { id: string; title: string; group: string }[] = GROUPS.flatMap((g) =>
+  g.pages.filter((p) => p !== "pins" && p !== "vreg").map((p) => ({ id: p, title: PAGE_TITLES[p], group: g.title })),
+);
 
 export function SettingsScreen(props: ScreenProps) {
   const { session } = props;
@@ -70,29 +85,44 @@ export function SettingsScreen(props: ScreenProps) {
   useEffect(() => {
     void session.core.call("modeManifest", undefined).then(setManifest, () => setManifest(null));
   }, [session]);
-  const [page, setPage] = useState<Page>("global");
+  // -- WP WEBM4 -- opened at a page (the command palette)
+  const [page, setPage] = useState<Page>(() => ((props.target as { page?: Page } | null | undefined)?.page ?? "global"));
   if (!st.snapshot) return null;
   const pinsShown = screenIn(manifest, "hardware", mode);
   const vregShown = operationIn(manifest, "core_voltage", mode);
-  const pages: Page[] = ["global", ...(pinsShown ? (["pins"] as Page[]) : []), "speakers" /* -- WP ROLEW -- */, "graphing", "spectrum", "advanced", ...(vregShown ? (["vreg"] as Page[]) : []), "help"];
+  const pages: Page[] = ["global", ...(pinsShown ? (["pins"] as Page[]) : []), "speakers" /* -- WP ROLEW -- */, "graphing", "spectrum", "advanced", ...(vregShown ? (["vreg"] as Page[]) : []), "appearance" /* -- WP WEBM4 -- */, "help"];
   const current = pages.includes(page) ? page : "global";
   return (
     <div class="settings-screen">
       <nav class="settings-nav" aria-label="Settings pages">
-        {pages.map((p) => (
-          <button type="button" key={p} aria-current={p === current ? "page" : undefined} onClick={() => setPage(p)}>
-            {PAGE_TITLES[p]}
-          </button>
-        ))}
+        {/* -- WP WEBM3 -- by group */}
+        {GROUPS.map((g) => {
+          const mine = g.pages.filter((p) => pages.includes(p));
+          return mine.length ? (
+            <div class="settings-group-list" role="group" aria-label={g.title} key={g.title}>
+              <span class="settings-group" aria-hidden="true">
+                {g.title}
+              </span>
+              {mine.map((p) => (
+                <button type="button" key={p} aria-current={p === current ? "page" : undefined} onClick={() => setPage(p)}>
+                  {PAGE_TITLES[p]}
+                </button>
+              ))}
+            </div>
+          ) : null;
+        })}
       </nav>
-      {current === "global" ? <GlobalPage session={session} /> : null}
-      {current === "pins" ? <PinsPage session={session} /> : null}
-      {current === "speakers" ? <SpeakersPage session={session} /> : null /* -- WP ROLEW -- */}
-      {current === "graphing" ? <GraphingPage /> : null}
-      {current === "spectrum" ? <SpectrumPage /> : null}
-      {current === "advanced" ? <AdvancedPage {...props} vregShown={vregShown} onVreg={() => setPage("vreg")} /> : null}
-      {current === "vreg" ? <CoreVoltage session={session} /> : null}
-      {current === "help" ? <HelpPage /> : null}
+      <div class="settings-page">
+        {current === "global" ? <GlobalPage session={session} /> : null}
+        {current === "pins" ? <PinsPage session={session} /> : null}
+        {current === "speakers" ? <SpeakersPage session={session} /> : null /* -- WP ROLEW -- */}
+        {current === "graphing" ? <GraphingPage /> : null}
+        {current === "spectrum" ? <SpectrumPage /> : null}
+        {current === "advanced" ? <AdvancedPage {...props} vregShown={vregShown} onVreg={() => setPage("vreg")} /> : null}
+        {current === "vreg" ? <CoreVoltage session={session} /> : null}
+        {current === "help" ? <HelpPage /> : null}
+        {current === "appearance" ? <AppearanceSettings /> : null /* -- WP WEBM4 -- */}
+      </div>
     </div>
   );
 }

@@ -31,7 +31,8 @@ export function SystemScreen(props: ScreenProps) {
   const [tab, setTab] = useState<"overview" | "installation">("overview"); // -- WP INSTW --
   if (!feed) return null;
   // -- WP INSTW -- on a hub, the Installer mode sets the installation up in its own tab
-  const tabs = props.mode === "installer" && feed.onHub;
+  // -- WP WEBM3 -- (review RB C-2) in Advanced too, as Qt's INSTQ panel: saving stays the hub's Admin's (`mayEdit`); the owner may narrow it
+  const tabs = (props.mode === "installer" || props.mode === "advanced") && feed.onHub;
   if (tabs && tab === "installation") return <SystemTabs tab={tab} show={setTab}><InstallationTab feed={feed} session={props.session} ask={props.ask} /></SystemTabs>;
   // -- WP WB6D -- the device's signal chain, whatever the system's state
   const overview = (

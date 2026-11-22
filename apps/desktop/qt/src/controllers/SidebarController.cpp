@@ -818,8 +818,12 @@ void SidebarController::renamePreset(int slot, const QString &name) {
 
 // Boots into this slot ("specified" startup mode, 0)
 void SidebarController::setDefaultPreset() {
-    const int slot = m_ctx.device->presets()->activeSlot();
-    if (slot < 0) return;
+    setStartupPreset(m_ctx.device->presets()->activeSlot());
+}
+
+// -- WP LAY3b --
+void SidebarController::setStartupPreset(int slot) {
+    if (slot < 0 || slot >= MAX_PRESETS) return;
     apply(QStringLiteral("preset startup"), [slot](FfiCore *c) { return dspi_set_preset_startup(c, 0, uint8_t(slot)); });
 }
 

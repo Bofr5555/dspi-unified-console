@@ -344,7 +344,7 @@ test.describe("the static build", () => {
     await expect(page.getByRole("link", { name: "Hub page" })).toHaveCount(0);
     // The build's source link (DSPI_WEB_SOURCE_URL), when the build was given one.
     if (process.env.DSPI_WEB_SOURCE_URL) {
-      await appMenu(page, "About");
+      await appMenu(page, "About uConsole"); // -- WP WEBM4 --
       await expect(page.getByRole("link", { name: "Source code" })).toHaveAttribute("href", process.env.DSPI_WEB_SOURCE_URL);
     }
     const notices = await (await request.get(`${PLAIN}/THIRD-PARTY-NOTICES.txt`)).text();

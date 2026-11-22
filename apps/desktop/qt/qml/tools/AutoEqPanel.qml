@@ -86,6 +86,21 @@ Panel {
                         search.forceActiveFocus()
                     }
                 }
+                // -- WP LAY3b -- what Classic's AutoEQ menu has besides
+                IconButton {
+                    id: more
+                    objectName: "AutoEqWindow.more"
+                    visible: panel.inPage
+                    iconName: "chevron-down"
+                    toolTip: qsTr("More")
+                    onClicked: moreMenu.dropFrom(more)
+                    ActionMenu {
+                        id: moreMenu
+                        objectName: "AutoEqWindow.menu"
+                        place: "autoeq"
+                        handlers: ({ "autoeq.clearFavorites": { enabled: () => AutoEqController.favouriteList.length > 0 } })
+                    }
+                }
             }
         }
         Rectangle {

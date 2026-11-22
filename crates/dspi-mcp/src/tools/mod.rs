@@ -13,4 +13,10 @@ pub mod files;
 pub mod library;
 pub mod names;
 // -- WP MCP2c --
+pub mod alink;
+pub mod analysis;
+pub mod hub;
+pub mod info;
+pub mod installation;
 // -- WP MCP5 --
+pub mod measure;

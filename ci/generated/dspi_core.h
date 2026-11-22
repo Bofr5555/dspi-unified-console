@@ -7489,6 +7489,37 @@ uint32_t dspi_measure_tune_ab(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_measure_tune_stop(struct FfiCore *core, char *buf, uint32_t len);
 
 /**
+ * Start the roll-off search of `setup_json`'s output: the state, or a
+ * failure (`invalid` naming the blockers or `measure.layout_unconfirmed:`,
+ * `read_only`, `denied`, `locked`).
+ */
+uint32_t dspi_measure_rolloff_start(struct FfiCore *core,
+                                    const char *setup_json,
+                                    char *buf,
+                                    uint32_t len);
+
+/**
+ * Drive the search (about every 50 ms, off the UI thread): its state (never
+ * a failure).
+ */
+uint32_t dspi_measure_rolloff_tick(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * The search's state, without I/O (safe from the measure callback).
+ */
+uint32_t dspi_measure_rolloff_state(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * The user's Stop: the state (never a failure).
+ */
+uint32_t dspi_measure_rolloff_stop(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Forget a finished search: `{ok}`, or `invalid` while one runs.
+ */
+uint32_t dspi_measure_rolloff_clear(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
  * Judge this core's own device as `unit_json` of `setup_json`: the check
  * to hand to the core on the hub session, or a failure.
  */
@@ -8341,6 +8372,10 @@ void dspi_core_set_free(struct FfiCoreSet *set);
  * the app holds. JSON `{ok, id}`, or the failure (module docs). Blocks for the
  * connect sequence: not on the UI thread.
  *
+ * -- WP INT5 -- `"extra": true` beside the kind: a device the app uses itself
+ * without showing it (a unit measured with others). `dspi_core_set_list` says
+ * `"extra": true` of it, and AI agents are not offered it.
+ *
  * -- WP MDQT1 -- It acts once, whatever the buffer: a reply that does not fit
  * (the returned length is over `len`) writes nothing, but the device is open.
  * Do not call it again for the id (it would open a second demo, or be refused
@@ -8461,10 +8496,12 @@ void dspi_mcp_free(struct FfiMcp *mcp);
 
 /**
  * Start listening for AI agents. `config_json`: `{"port": 47860, "storeDir":
- * "<the app's folder>", "appVersion": "0.15.0"}`, each optional (without a
- * folder the clients last only for this run). Reply `{ok, port,
+ * "<the app's folder>", "appVersion": "0.15.0", "templateDir": "<the user's
+ * templates>", "measuring": true}`, each optional (without a folder the
+ * clients last only for this run; -- WP MCP5 -- `measuring`: the app runs
+ * the agents' measurement requests, `dspi_mcp_measure_*`). Reply `{ok, port,
  * addresses}`; code `running` when it runs already, `io` when the port is in
- * use, `store` when the clients' file is damaged (it is left as it is).
+ * use on `127.0.0.1` or on `::1`, `store` when the clients' file is damaged (it is left as it is).
  *
  * Returns the length needed; see the module's rule on short buffers.
  */
@@ -8472,7 +8509,8 @@ uint32_t dspi_mcp_start(struct FfiMcp *mcp, const char *config_json, char *buf, 
 
 /**
  * Stop listening: the agents' next requests fail, a pairing request waiting
- * ends. True if it was running.
+ * ends, waiting confirmations end with nothing changed, and the agents'
+ * timed previews are put back. The activity is kept. True if it was running.
  */
 bool dspi_mcp_stop(struct FfiMcp *mcp);
 
@@ -8524,11 +8562,39 @@ bool dspi_mcp_pairing_answer(struct FfiMcp *mcp, uint64_t request, bool allow);
 void dspi_mcp_pause(struct FfiMcp *mcp, bool paused);
 
 /**
- * The newest `n` entries of the agents' activity, oldest first: `{ok, value:
- * [entry]}` (`dspi_mcp::activity::ActivityEntry::to_json`). Empty while
- * stopped.
+ * The newest `n` entries of the agents' activity since the handle was made,
+ * oldest first: `{ok, value: [entry]}` (`dspi_mcp::activity::ActivityEntry::
+ * to_json` with `title`, `at_unix_ms` and `run`, which tells the runs of the
+ * server apart: `id` starts again in each).
  */
 uint32_t dspi_mcp_activity(struct FfiMcp *mcp, uint32_t n, char *buf, uint32_t len);
+
+/**
+ * When agents ask the user: `ask_everything`, `ask_risky` (the default) or
+ * `never_ask`. It holds from the next call on, and across stop and start.
+ * False for another word.
+ */
+bool dspi_mcp_set_confirm(struct FfiMcp *mcp, const char *mode);
+
+/**
+ * The AutoEQ database the agents' AutoEQ tools search, from its file's
+ * bytes; null or 0 bytes for none. The next start uses it. False when the
+ * bytes are no database (the last one stays).
+ */
+bool dspi_mcp_set_autoeq(struct FfiMcp *mcp, const uint8_t *data, uint32_t len);
+
+/**
+ * The confirmations waiting for the user, oldest first: `{ok, value:
+ * [{confirmation_id, client, client_name, tool, title, device, risks:
+ * [{kind, what, output}], remaining_ms, ...}]}`. Empty while stopped.
+ */
+uint32_t dspi_mcp_confirmations(struct FfiMcp *mcp, char *buf, uint32_t len);
+
+/**
+ * The user's answer to confirmation `id`. Allow runs the agent's call now, on
+ * this thread (it writes to the device). False when it no longer waits.
+ */
+bool dspi_mcp_confirm_answer(struct FfiMcp *mcp, uint64_t id, bool allow);
 
 /**
  * The device the app shows (a set id), which tools use when an agent names
@@ -8548,5 +8614,45 @@ bool dspi_mcp_set_active_device(struct FfiMcp *mcp, const char *id);
 int32_t dspi_mcp_relay_stdio(const char *config_json,
                              void (*token_sink)(const char *token, void *user_data),
                              void *user_data);
+
+/**
+ * The measurement requests waiting for the app, oldest first: `{ok, value:
+ * [{request_id, client, client_name, device, kind, loop, what, state,
+ * note}]}`. Empty while stopped. Waits for an agent's call in progress.
+ */
+uint32_t dspi_mcp_measure_requests(struct FfiMcp *mcp, char *buf, uint32_t len);
+
+/**
+ * Take request `id` for the Measure view: `{ok, ticket: {request_id, device,
+ * kind, loop, actor, client_name, what, setup}}`, or code `gone` when it no
+ * longer waits (taken, withdrawn, lapsed) or the server is stopped. Waits for
+ * an agent's call in progress.
+ */
+uint32_t dspi_mcp_measure_take(struct FfiMcp *mcp, uint64_t id, char *buf, uint32_t len);
+
+/**
+ * How request `id` went: `started` true once `dspi_mcp_measure_begin`
+ * started it, false with `note` (the reason, in words; may be null) when it
+ * could not. False when the request was not open (withdrawn meanwhile: stop
+ * what was started).
+ */
+bool dspi_mcp_measure_report(struct FfiMcp *mcp, uint64_t id, bool started, const char *note);
+
+/**
+ * Start a taken request's job on `core` (the ticket's device) with the
+ * microphone's rate `rate_hz` (0 for a job that takes none): the job runs as
+ * the agent (History and `actor` in its state say so), and the core's own
+ * rules judge it again (the preflight, the tweeter's floor, the level caps,
+ * the limits). Reply: the job's state as its own start gives it (`{ok,
+ * ...}`: a measurement's, the low-end search's, the tune's or the system
+ * session's), or `{ok: false, code: "refused", error}` with nothing played (a
+ * blocker, or the request is not taken any more: withdrawn, reported).
+ * Needs no MCP handle.
+ */
+uint32_t dspi_mcp_measure_begin(struct FfiCore *core,
+                                const char *ticket_json,
+                                uint32_t rate_hz,
+                                char *buf,
+                                uint32_t len);
 
 #endif  /* DSPI_CORE_H */

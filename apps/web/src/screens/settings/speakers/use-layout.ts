@@ -12,6 +12,10 @@ export interface LayoutHandle {
   loaded: boolean;
   /** Keep `layout` (confirmed or not); the failure in words, or "". */
   keep: (layout: SpeakerLayoutRecord, confirmed: boolean) => Promise<string>;
+  // -- WP WEBM3 -- (RB C3) an edit built on the view as last kept when its turn comes, not as
+  // rendered: two quick edits are kept one after the other, the second on the first's result.
+  /** Keep what `edit` makes of the view as last kept; the failure in words, or "". */
+  update: (edit: (v: LayoutView) => { layout: SpeakerLayoutRecord; confirmed: boolean }) => Promise<string>;
 }
 
 function words(e: unknown): string {
@@ -56,5 +60,15 @@ export function useSpeakerLayout(session: Session): LayoutHandle {
       return words(e);
     }
   };
-  return { view, loaded, keep };
+  // -- WP WEBM3 -- one edit at a time, each reading `now` when it runs
+  const queue = useRef<Promise<unknown>>(Promise.resolve());
+  const update = (edit: (v: LayoutView) => { layout: SpeakerLayoutRecord; confirmed: boolean }) => {
+    const run = queue.current.then(() => {
+      const e = edit(now.current);
+      return keep(e.layout, e.confirmed);
+    });
+    queue.current = run.catch(() => undefined);
+    return run;
+  };
+  return { view, loaded, keep, update };
 }

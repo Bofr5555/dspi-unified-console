@@ -62,4 +62,6 @@ ApplicationWindow {
 
     // -- WP QP17 -- the Help menu's messages
     HelpHost {}
+    // -- WP MCP4 -- what AI agents ask the user
+    AiHost {}
 }

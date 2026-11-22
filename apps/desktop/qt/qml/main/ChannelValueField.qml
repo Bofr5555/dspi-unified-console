@@ -41,11 +41,20 @@ RowLayout {
     function commitText(t) {
         const v = Number(String(t).trim().replace(",", "."))
         if (String(t).trim().length === 0 || !isFinite(v)) {
-            field.text = shown()
+            settle()
             return
         }
         committed(v)
+        settle()
+    }
+    // -- WP LAY4 -- The shown value, as what editing began with: a value that
+    // arrives after Enter, with the focus still here, replaces it, and leaving
+    // the field then has nothing typed to send
+    function settle() {
+        const all = field.text.length > 0 && field.selectedText === field.text
         field.text = shown()
+        field._start = field.text
+        if (all && field.activeFocus) field.selectAll()
     }
     // A Ctrl+wheel notch from `v` in direction `dir` (+1 or -1)
     function stepped(v, dir) {
@@ -91,6 +100,9 @@ RowLayout {
         color: Theme.textMuted
     }
     // A new value from the device while not typing
-    onValueChanged: if (!field.activeFocus) field.text = shown()
+    onValueChanged: {
+        if (!field.activeFocus) field.text = shown()
+        else if (field.text === field._start) settle() // -- WP LAY4 --
+    }
     onLiveValueChanged: if (!field.activeFocus) field.text = shown()
 }

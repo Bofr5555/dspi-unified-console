@@ -568,6 +568,33 @@ pub(crate) fn preflight(
             ));
             continue;
         }
+        // -- WP ROLL1 -- one sweep plays every unit from the setup's start
+        // (20 Hz): a tweeter (its effective role on the unit's own chain) is
+        // never played below 1 kHz, so it cannot be in a system run.
+        // -- WP RCFIX -- or its role on its own core, from its confirmed layout.
+        for o in &plan.outputs {
+            let Some((_, chain)) = ctx.chains.iter().find(|(x, _)| *x == o.output) else {
+                continue;
+            };
+            let role = ctx
+                .roles
+                .iter()
+                .find(|(x, _)| *x == o.output)
+                .map_or(o.role, |(_, r)| super::super::stricter_role(o.role, *r));
+            if super::super::effective_role(role, chain) == super::super::MeasureRole::High {
+                blockers.push(MeasureSystemIssue::new(
+                    &u.serial,
+                    super::super::plan::KEY_TWEETER_STIMULUS,
+                    Some(o.output),
+                    format!(
+                        "{}: output {} is a tweeter, and a measurement across units sweeps \
+                         every output from 20 Hz: measure the tweeter on its own unit",
+                        u.serial,
+                        u16::from(o.output).saturating_add(1)
+                    ),
+                ));
+            }
+        }
         units.push(PlanUnit {
             serial: u.serial.clone(),
             plan,

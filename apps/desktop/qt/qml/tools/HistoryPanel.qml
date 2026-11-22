@@ -99,6 +99,13 @@ Panel {
                                 elide: Text.ElideRight
                             }
                         }
+                        // -- WP MCP4 -- an AI agent's change
+                        Pill {
+                            objectName: "HistoryWindow.agent." + row.index
+                            visible: row.modelData.agent.length > 0
+                            text: row.modelData.agent
+                            tint: Theme.accent
+                        }
                         Text {
                             visible: text.length > 0
                             text: row.modelData.source === "undo" ? qsTr("Undone")
@@ -109,7 +116,7 @@ Panel {
                         }
                     }
                     Accessible.role: Accessible.ListItem
-                    Accessible.name: [row.modelData.time, row.modelData.title, row.modelData.detail].filter(s => s && s.length).join(", ")
+                    Accessible.name: [row.modelData.time, row.modelData.agent, row.modelData.title, row.modelData.detail].filter(s => s && s.length).join(", ")
                 }
 
                 Text {

@@ -99,7 +99,7 @@ QtObject {
         },
         {
             action: "tools.spectrum", panel: "SpectrumPanel", windowId: "spectrum",
-            section: "analyse", tab: "spectrum", title: qsTr("Spectrum Analyser"), icon: "chart-column",
+            section: "analyse", tab: "spectrum", title: qsTr("Spectrum Analyser"), tabTitle: qsTr("Spectrum"), icon: "chart-column", // -- WP LAY5a -- tabTitle
             width: 860, height: 560, minWidth: 620, minHeight: 420
         },
         {
@@ -139,6 +139,12 @@ QtObject {
             action: "edit.settings", panel: "SettingsPanel", windowId: "settings",
             section: "settings", tab: "settings", title: qsTr("Settings"), icon: "settings",
             width: 860, height: 630, minWidth: 640, minHeight: 480
+        },
+        // -- WP MCP4 -- Modern shows the same in Settings; LAY8's popover opens this
+        {
+            action: "device.aiAgents", panel: "AiAgentsPanel", windowId: "aiAgents",
+            section: "settings", tab: "aiAgents", title: qsTr("AI Agents"), icon: "bot",
+            width: 620, height: 560, minWidth: 440, minHeight: 320
         }
     ]
 

@@ -10,6 +10,14 @@
 //! names (47860 unless the user changed it). Requests from web pages, other
 //! host names and unknown tokens are refused (`dspi_mcp::http`).
 //!
+//! **What agents may do** (-- WP MCP4 --). The server runs under the agent
+//! policy (`dspi_mcp::policy`) with the user's setting, `dspi_mcp_set_confirm`:
+//! `ask_everything`, `ask_risky` (the default) or `never_ask`. A call it holds
+//! for the user's word is a confirmation: the listener gets
+//! `confirmationsChanged`, `dspi_mcp_confirmations` gives the sheets, and
+//! `dspi_mcp_confirm_answer` answers one (Allow runs the call on the calling
+//! thread). The server keeps its own clocks: nothing here needs polling.
+//!
 //! **Clients.** Each agent has its own token. `dspi_mcp_add_client` makes one
 //! for an agent that takes it in its configuration (shown once: the app keeps
 //! only its hash). The stdio relay pairs instead: the listener gets a
@@ -31,8 +39,12 @@
 //! **Secrets.** A token crosses this ABI once, in `dspi_mcp_add_client`'s
 //! reply, and in the relay's token callback; nothing here logs one.
 //!
-//! **Threads.** Any thread. `dspi_mcp_start` binds and `dspi_mcp_stop` waits
-//! for the listening threads, briefly. The listener runs on the server's
+//! **Threads.** Any thread, but not the UI's: an agent's call in progress may
+//! be writing to a device, and `dspi_mcp_stop`, `dspi_mcp_revoke`,
+//! `dspi_mcp_confirmations`, `dspi_mcp_confirm_answer`, `dspi_mcp_activity`
+//! and `dspi_mcp_set_active_device` wait for its end (-- WP MCP4 --).
+//! `dspi_mcp_start` binds and `dspi_mcp_stop` waits for the listening threads,
+//! briefly, and puts the agents' timed previews back. The listener runs on the server's
 //! threads, or inside the call that caused the event (`dspi_mcp_add_client`,
 //! `dspi_mcp_revoke`, `dspi_mcp_pairing_answer`: `clientsChanged`), with none
 //! of this handle's state locked: it may call every function here but
@@ -48,14 +60,15 @@ use std::ffi::{CString, c_char, c_void};
 use std::io::{BufRead, Write};
 use std::path::PathBuf;
 use std::ptr;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError, RwLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use dspi_core::{CoreSet, DeviceId};
+use dspi_core::{AutoEqLibrary, CoreSet, DeviceId};
 use dspi_mcp::auth::{AuthError, Clients, PairedClient};
 use dspi_mcp::http::{DEFAULT_PORT, Event, HttpConfig, HttpServer, Listener, StartError};
 use dspi_mcp::relay::{self, RelayConfig, TokenKeeper};
-use dspi_mcp::{Server, ServerConfig};
+use dspi_mcp::{AgentPolicy, ConfirmMode, Server, ServerConfig};
 use serde_json::{Value, json};
 
 use crate::fns_core_set::{FfiCoreSet, set_arc};
@@ -67,7 +80,9 @@ pub const MCP_REPLY_MIN: u32 = 1024;
 
 /// The C listener: `event_json` is one of `{"event":"pairingRequested","id",
 /// "name","code"}`, `{"event":"pairingEnded","id","outcome"}` (`paired`,
-/// `denied`, `expired`) and `{"event":"clientsChanged"}`.
+/// `denied`, `expired`), `{"event":"clientsChanged"}`,
+/// `{"event":"confirmationsChanged"}` and `{"event":"activity"}` (an agent
+/// called a tool) (the last two -- WP MCP4 --).
 pub type DspiMcpListener = extern "C" fn(event_json: *const c_char, user_data: *mut c_void);
 
 /// The relay's token callback: a new token to keep, or null to forget the
@@ -102,7 +117,18 @@ pub struct FfiMcp {
     store_dir: Mutex<Option<PathBuf>>,
     paused: Mutex<bool>,
     active: Mutex<Option<DeviceId>>,
+    // -- WP MCP4 --
+    policy: Arc<AgentPolicy>,
+    /// The AutoEQ database and the template folder the next start uses.
+    autoeq: Mutex<Option<Arc<AutoEqLibrary>>>,
+    /// Which run of the server this is, from 1.
+    run: AtomicU64,
+    /// The earlier runs' activity, oldest first.
+    past: Mutex<Vec<Value>>,
 }
+
+/// The most activity entries kept of earlier runs.
+const PAST_CAP: usize = 1000;
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(PoisonError::into_inner)
@@ -173,6 +199,34 @@ impl FfiMcp {
         Ok(on_store(&mut clients))
     }
 
+    // -- WP MCP4 --
+    /// Stop the running server and keep its activity. Off the `running` lock:
+    /// its last events may call back in.
+    fn stop(&self) -> bool {
+        let Some(s) = lock(&self.running).take() else {
+            return false;
+        };
+        s.stop();
+        let rows = self.rows(&s, PAST_CAP);
+        let mut past = lock(&self.past);
+        past.extend(rows);
+        let over = past.len().saturating_sub(PAST_CAP);
+        past.drain(..over);
+        true
+    }
+
+    /// `server`'s newest `n` activity entries, with the `run` they are of.
+    fn rows(&self, server: &HttpServer, n: usize) -> Vec<Value> {
+        let run = self.run.load(Ordering::SeqCst);
+        let mut rows = server.activity(n);
+        for r in &mut rows {
+            if let Some(o) = r.as_object_mut() {
+                o.insert("run".into(), json!(run));
+            }
+        }
+        rows
+    }
+
     fn start(&self, config: &str) -> Value {
         let Ok(cfg) = serde_json::from_str::<Value>(config) else {
             return failure("invalid", "the configuration is not JSON");
@@ -195,6 +249,17 @@ impl FfiMcp {
         if let Some(v) = cfg.get("appVersion").and_then(Value::as_str) {
             server_config.version = v.to_owned();
         }
+        // -- WP MCP4 --
+        server_config.policy = Arc::clone(&self.policy) as Arc<dyn dspi_mcp::Policy>;
+        server_config.autoeq.clone_from(&lock(&self.autoeq));
+        if let Some(d) = cfg.get("templateDir").and_then(Value::as_str) {
+            server_config.template_dir = d.to_owned();
+        }
+        // -- WP MCP5 -- the app's Measure view takes the agents' requests
+        server_config.measuring = cfg
+            .get("measuring")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
         let mut server = Server::new(Arc::clone(&self.set), server_config);
         server.set_active_device(lock(&self.active).clone());
         let listener = Arc::clone(&self.listener);
@@ -220,6 +285,7 @@ impl FfiMcp {
                 let addresses: Vec<String> = s.addrs().iter().map(ToString::to_string).collect();
                 let reply = ok(json!({"port": s.port(), "addresses": addresses}));
                 *running = Some(Arc::new(s));
+                self.run.fetch_add(1, Ordering::SeqCst);
                 *lock(&self.store_dir) = store_dir;
                 reply
             }
@@ -244,6 +310,10 @@ pub extern "C" fn dspi_mcp_new(set: *const FfiCoreSet) -> *mut FfiMcp {
             store_dir: Mutex::new(None),
             paused: Mutex::new(false),
             active: Mutex::new(None),
+            policy: Arc::new(AgentPolicy::new(ConfirmMode::AskRisky)),
+            autoeq: Mutex::new(None),
+            run: AtomicU64::new(0),
+            past: Mutex::new(Vec::new()),
         }))
     })
 }
@@ -259,17 +329,17 @@ pub extern "C" fn dspi_mcp_free(mcp: *mut FfiMcp) {
         // SAFETY: a non-null handle comes from dspi_mcp_new and is not used
         // again after this call; the C caller's contract.
         let handle = unsafe { Box::from_raw(mcp) };
-        if let Some(s) = lock(&handle.running).take() {
-            s.stop();
-        }
+        handle.stop();
     });
 }
 
 /// Start listening for AI agents. `config_json`: `{"port": 47860, "storeDir":
-/// "<the app's folder>", "appVersion": "0.15.0"}`, each optional (without a
-/// folder the clients last only for this run). Reply `{ok, port,
+/// "<the app's folder>", "appVersion": "0.15.0", "templateDir": "<the user's
+/// templates>", "measuring": true}`, each optional (without a folder the
+/// clients last only for this run; -- WP MCP5 -- `measuring`: the app runs
+/// the agents' measurement requests, `dspi_mcp_measure_*`). Reply `{ok, port,
 /// addresses}`; code `running` when it runs already, `io` when the port is in
-/// use, `store` when the clients' file is damaged (it is left as it is).
+/// use on `127.0.0.1` or on `::1`, `store` when the clients' file is damaged (it is left as it is).
 ///
 /// Returns the length needed; see the module's rule on short buffers.
 #[unsafe(no_mangle)]
@@ -293,13 +363,11 @@ pub extern "C" fn dspi_mcp_start(
 }
 
 /// Stop listening: the agents' next requests fail, a pairing request waiting
-/// ends. True if it was running.
+/// ends, waiting confirmations end with nothing changed, and the agents'
+/// timed previews are put back. The activity is kept. True if it was running.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_mcp_stop(mcp: *mut FfiMcp) -> bool {
-    with_mcp(mcp, false, |m| {
-        let running = lock(&m.running).take();
-        running.map(|s| s.stop()).is_some()
-    })
+    with_mcp(mcp, false, FfiMcp::stop)
 }
 
 /// `{ok, running, port, addresses, paused, clients: [{id, name, created,
@@ -410,17 +478,81 @@ pub extern "C" fn dspi_mcp_pause(mcp: *mut FfiMcp, paused: bool) {
     });
 }
 
-/// The newest `n` entries of the agents' activity, oldest first: `{ok, value:
-/// [entry]}` (`dspi_mcp::activity::ActivityEntry::to_json`). Empty while
-/// stopped.
+/// The newest `n` entries of the agents' activity since the handle was made,
+/// oldest first: `{ok, value: [entry]}` (`dspi_mcp::activity::ActivityEntry::
+/// to_json` with `title`, `at_unix_ms` and `run`, which tells the runs of the
+/// server apart: `id` starts again in each).
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_mcp_activity(mcp: *mut FfiMcp, n: u32, buf: *mut c_char, len: u32) -> u32 {
     with_mcp(mcp, 0, |m| {
         let n = usize::try_from(n).unwrap_or(usize::MAX);
-        let rows: Vec<Value> = m.server().map_or_else(Vec::new, |s| {
-            s.with_server(|srv| srv.activity(n).iter().map(|e| e.to_json()).collect())
-        });
+        let now = m.server().map_or_else(Vec::new, |s| m.rows(&s, n));
+        let mut rows = lock(&m.past).clone();
+        rows.extend(now);
+        let over = rows.len().saturating_sub(n);
+        rows.drain(..over);
         copy_text(&json!({"ok": true, "value": rows}).to_string(), buf, len)
+    })
+}
+
+// -- WP MCP4 --
+/// When agents ask the user: `ask_everything`, `ask_risky` (the default) or
+/// `never_ask`. It holds from the next call on, and across stop and start.
+/// False for another word.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_mcp_set_confirm(mcp: *mut FfiMcp, mode: *const c_char) -> bool {
+    with_mcp(mcp, false, |m| {
+        match c_str(mode).and_then(ConfirmMode::parse) {
+            Some(mode) => {
+                m.policy.set_mode(mode);
+                true
+            }
+            None => false,
+        }
+    })
+}
+
+/// The AutoEQ database the agents' AutoEQ tools search, from its file's
+/// bytes; null or 0 bytes for none. The next start uses it. False when the
+/// bytes are no database (the last one stays).
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_mcp_set_autoeq(mcp: *mut FfiMcp, data: *const u8, len: u32) -> bool {
+    with_mcp(mcp, false, |m| {
+        let len = usize::try_from(len).unwrap_or(0);
+        if data.is_null() || len == 0 {
+            *lock(&m.autoeq) = None;
+            return true;
+        }
+        // SAFETY: the caller's buffer of `len` bytes, for this call.
+        let bytes = unsafe { std::slice::from_raw_parts(data, len) };
+        match AutoEqLibrary::import(bytes) {
+            Ok(l) => {
+                *lock(&m.autoeq) = Some(Arc::new(l));
+                true
+            }
+            Err(_) => false,
+        }
+    })
+}
+
+/// The confirmations waiting for the user, oldest first: `{ok, value:
+/// [{confirmation_id, client, client_name, tool, title, device, risks:
+/// [{kind, what, output}], remaining_ms, ...}]}`. Empty while stopped.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_mcp_confirmations(mcp: *mut FfiMcp, buf: *mut c_char, len: u32) -> u32 {
+    with_mcp(mcp, 0, |m| {
+        let rows = m.server().map_or_else(Vec::new, |s| s.confirmations());
+        copy_text(&json!({"ok": true, "value": rows}).to_string(), buf, len)
+    })
+}
+
+/// The user's answer to confirmation `id`. Allow runs the agent's call now, on
+/// this thread (it writes to the device). False when it no longer waits.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_mcp_confirm_answer(mcp: *mut FfiMcp, id: u64, allow: bool) -> bool {
+    with_mcp(mcp, false, |m| {
+        m.server()
+            .is_some_and(|s| s.answer_confirmation(id, allow).is_ok())
     })
 }
 
@@ -497,7 +629,15 @@ pub extern "C" fn dspi_mcp_relay_stdio(
             Some(Some(p)) if (1..=65535).contains(&p) => {
                 relay_cfg.port = u16::try_from(p).unwrap_or(DEFAULT_PORT)
             }
-            Some(_) => return 2,
+            Some(_) => {
+                // -- WP MCP4 --
+                let _ = writeln!(
+                    std::io::stderr(),
+                    "dspi-mcp relay: the port must be 1 to 65535; set it in DSPi Console under \
+                     Settings, AI agents"
+                );
+                return 2;
+            }
         }
         if let Some(n) = cfg
             .get("name")
@@ -532,3 +672,106 @@ pub extern "C" fn dspi_mcp_relay_stdio(
 #[cfg(test)]
 #[path = "fns_mcp/tests_wp_mcp3.rs"]
 mod tests_wp_mcp3;
+
+// -- WP MCP4 --
+#[cfg(test)]
+#[path = "fns_mcp/tests_wp_mcp4.rs"]
+mod tests_wp_mcp4;
+
+// -- WP MCP5 --
+#[cfg(test)]
+#[path = "fns_mcp/tests_wp_mcp5.rs"]
+mod tests_wp_mcp5;
+
+// -- WP MCP5 -- the agents' measurement requests to the app's Measure view
+//
+// An agent's measurement start (`dspi_measure_start`, the low-end search, the
+// auto-tune's runs, runs across units) is a request: the listener gets
+// `measureRequests`; `dspi_mcp_measure_requests` lists what waits;
+// `dspi_mcp_measure_take` takes one (its ticket); the app opens the
+// microphone and calls `dspi_mcp_measure_begin` on the device's core, on the
+// thread that drives its measurements, then drives the job as its own (the
+// ticket's `loop`: `session`, `rolloff`, `tune` or `system`) and says how it
+// went with `dspi_mcp_measure_report`. A request nobody takes lapses after
+// 30 s. Only while the start's configuration said `"measuring": true`.
+
+/// The measurement requests waiting for the app, oldest first: `{ok, value:
+/// [{request_id, client, client_name, device, kind, loop, what, state,
+/// note}]}`. Empty while stopped. Waits for an agent's call in progress.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_mcp_measure_requests(mcp: *mut FfiMcp, buf: *mut c_char, len: u32) -> u32 {
+    with_mcp(mcp, 0, |m| {
+        let rows = m.server().map_or_else(Vec::new, |s| s.measure_requests());
+        copy_text(&json!({"ok": true, "value": rows}).to_string(), buf, len)
+    })
+}
+
+/// Take request `id` for the Measure view: `{ok, ticket: {request_id, device,
+/// kind, loop, actor, client_name, what, setup}}`, or code `gone` when it no
+/// longer waits (taken, withdrawn, lapsed) or the server is stopped. Waits for
+/// an agent's call in progress.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_mcp_measure_take(
+    mcp: *mut FfiMcp,
+    id: u64,
+    buf: *mut c_char,
+    len: u32,
+) -> u32 {
+    with_mcp(mcp, 0, |m| {
+        let reply = match m.server().and_then(|s| s.measure_take(id)) {
+            Some(ticket) => ok(json!({"ticket": ticket})),
+            None => failure("gone", "the request no longer waits"),
+        };
+        copy_text(&reply.to_string(), buf, len)
+    })
+}
+
+/// How request `id` went: `started` true once `dspi_mcp_measure_begin`
+/// started it, false with `note` (the reason, in words; may be null) when it
+/// could not. False when the request was not open (withdrawn meanwhile: stop
+/// what was started).
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_mcp_measure_report(
+    mcp: *mut FfiMcp,
+    id: u64,
+    started: bool,
+    note: *const c_char,
+) -> bool {
+    with_mcp(mcp, false, |m| {
+        let note = c_str(note).unwrap_or("");
+        m.server()
+            .is_some_and(|s| s.measure_report(id, started, note))
+    })
+}
+
+/// Start a taken request's job on `core` (the ticket's device) with the
+/// microphone's rate `rate_hz` (0 for a job that takes none): the job runs as
+/// the agent (History and `actor` in its state say so), and the core's own
+/// rules judge it again (the preflight, the tweeter's floor, the level caps,
+/// the limits). Reply: the job's state as its own start gives it (`{ok,
+/// ...}`: a measurement's, the low-end search's, the tune's or the system
+/// session's), or `{ok: false, code: "refused", error}` with nothing played (a
+/// blocker, or the request is not taken any more: withdrawn, reported).
+/// Needs no MCP handle.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_mcp_measure_begin(
+    core: *mut crate::FfiCore,
+    ticket_json: *const c_char,
+    rate_hz: u32,
+    buf: *mut c_char,
+    len: u32,
+) -> u32 {
+    crate::fns_device::text(core, buf, len, |c| {
+        let ticket = c_str(ticket_json)
+            .and_then(|t| serde_json::from_str::<Value>(t).ok())
+            .map(|t| t.get("ticket").cloned().unwrap_or(t));
+        let reply = match ticket {
+            None => failure("invalid", "the ticket is not JSON"),
+            Some(t) => match dspi_mcp::tools::measure::begin(c, &t, rate_hz) {
+                Ok(state) => ok(state),
+                Err(e) => failure("refused", e),
+            },
+        };
+        reply.to_string()
+    })
+}

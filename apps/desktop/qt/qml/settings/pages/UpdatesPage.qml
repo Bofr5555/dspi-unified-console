@@ -128,7 +128,7 @@ SettingsPage {
             wrapMode: TextEdit.Wrap
             font: Theme.fontSmall
             color: Theme.text
-            selectionColor: Theme.selection
+            selectionColor: Theme.textSelection
             selectedTextColor: Theme.text
             Accessible.role: Accessible.StaticText
             Accessible.name: qsTr("Release notes")

@@ -54,6 +54,17 @@ ItemDelegate {
 
     onClicked: SidebarController.rowClicked(channel)
 
+    // -- WP LAY3b -- Modern's channel menu has more, and the menu key opens it
+    function openMenu(x, y) {
+        if (LayoutController.modern) ContextMenus.channel(row.channel, row, x, y, row.startRename)
+        else rowMenu.popup(row, x, y)
+    }
+    Keys.onPressed: event => {
+        event.accepted = LayoutController.modern
+            && (event.key === Qt.Key_Menu || (event.key === Qt.Key_F10 && event.modifiers === Qt.ShiftModifier))
+        if (event.accepted) row.openMenu(Theme.spacing, row.height)
+    }
+
     // Alt+click renames (the desktop gesture for the Mac's Option-click) and a
     // right-click opens the row's menu. A plain click passes through to the
     // row (selection) and to the pill under it.
@@ -65,7 +76,7 @@ ItemDelegate {
             mouse.accepted = mouse.button === Qt.RightButton || (mouse.modifiers & Qt.AltModifier) !== 0
         }
         onClicked: mouse => {
-            if (mouse.button === Qt.RightButton) rowMenu.popup(row, mouse.x, mouse.y)
+            if (mouse.button === Qt.RightButton) row.openMenu(mouse.x, mouse.y)
             else row.startRename()
         }
     }

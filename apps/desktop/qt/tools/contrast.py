@@ -4,7 +4,7 @@ Usage: contrast.py qml/Theme/Theme.qml qml/Theme/ChannelPalette.qml [-v]   (ci/c
 import re, sys
 src = open(sys.argv[1]).read()
 tok = {}
-for name, d, l in re.findall(r'property color (\w+): dark \? "(#\w+)" : "(#\w+)"', src): tok[name] = (d, l)
+for name, d, l in re.findall(r'property color (\w+): (?:toned\.\w+ \|\| \()?dark \? "(#\w+)" : "(#\w+)"', src): tok[name] = (d, l)
 for name, v in re.findall(r'property color (\w+): "(#\w+)"', src): tok[name] = (v, v)
 def lum(h):
     h = h.lstrip('#'); c = [int(h[i:i+2], 16) / 255 for i in (0, 2, 4)]
@@ -19,11 +19,17 @@ pairs += [(t, 'meterTrack') for t in ('meterLevel', 'meterLow', 'meterMid', 'met
 pairs += [(t, b) for t in ('alarmRaised', 'alarmAcknowledged') for b in ('window', 'panel', 'sidebar', 'control')]
 pairs += [('textOnAccent', 'accent'), ('textOnAccent', 'danger'), ('tooltipText', 'tooltip')]
 bad = 0
-for i, scheme in enumerate(('dark', 'light')):
-    for t, b in pairs:
-        r = ratio(tok[t][i], tok[b][i]); ok = r >= (3.0 if t == 'textDisabled' or b == 'meterTrack' else 4.5)
+# -- WP LAY4 -- Modern's grey tones: each names the colours it changes ("grey dark": { window: "#202020", ... })
+tones = {'': {}}
+for tone, scheme, body in re.findall(r'"(\w+) (dark|light)": \{(.*?)\}', src, re.S):
+    assert set(dict(re.findall(r'(\w+): "(#\w+)"', body))) <= set(tok), tone
+    tones.setdefault(tone, {})[scheme] = dict(re.findall(r'(\w+): "(#\w+)"', body))
+for tone, i, scheme in ((t, i, s) for t in tones for i, s in enumerate(('dark', 'light'))):
+    at = {name: v[i] for name, v in tok.items()} | tones[tone].get(scheme, {})
+    for t, b in pairs + [('text', 'textSelection')]:
+        r = ratio(at[t], at[b]); ok = r >= (3.0 if t == 'textDisabled' or b == 'meterTrack' else 4.5)
         bad += not ok
-        if not ok or '-v' in sys.argv: print(f'{scheme:5} {t:13} on {b:10} {r:5.2f} {"" if ok else "BELOW AA"}')
+        if not ok or '-v' in sys.argv: print(f'{tone:6} {scheme:5} {t:13} on {b:10} {r:5.2f} {"" if ok else "BELOW AA"}')
 pal = re.findall(r'Qt\.rgba\(([\d.]+), ([\d.]+), ([\d.]+), 1\)', open(sys.argv[2]).read()) if len(sys.argv) > 2 and sys.argv[2] != '-v' else []
 for r_, g, b in pal:
     h = '#%02x%02x%02x' % tuple(round(float(x) * 255) for x in (r_, g, b))

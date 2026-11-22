@@ -27,8 +27,22 @@ log = { workspace = true, optional = true }
 # The loopback HTTP listener, the per-client tokens and pairing, and the stdio
 # relay (http.rs, auth.rs, relay.rs). Off, the crate stays sans-IO.
 http = ["dep:httparse", "dep:sha2", "dep:getrandom", "dep:data-encoding", "dep:log"]
+# -- WP MCP2c --
+# The tools that go through the device's DSPi Link session: the audio link's
+# installation on the hub (tools/alink.rs `system.*`), Installation setup and
+# the hub's reads. Off, those tools are not listed.
+link = ["dspi-core/link"]
 
 [dev-dependencies]
 # A measurement document for the tests (a workspace crate, already a dependency
 # of dspi-core).
 dspi-measure.workspace = true
+# -- WP MCP2c -- the hub and installation tools against a real in-process hub
+# with fake alink units (as dspi-hub's tests/wp_inst0_installation.rs). Both
+# workspace crates, already in the lock.
+dspi-hub = { workspace = true, default-features = false }
+dspi-transport = { path = "../dspi-transport", default-features = false, features = ["link"] }
+# -- WP MCP5 -- the measuring tools against the demo's simulated microphone
+# (P5DEMO), as the Qt and Terminal builds have it: the same crate, one more
+# feature for the tests.
+dspi-core = { path = "../dspi-core", default-features = false, features = ["measure-sim"] }

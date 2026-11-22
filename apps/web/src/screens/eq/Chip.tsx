@@ -4,6 +4,9 @@
 // with nothing chosen too), so choosing a band never moves the page and a
 // finger can reach every value. Shape, slope and bypass apply to every
 // chosen band, values to the one shown, as on the Console.
+//
+// -- WP WEBM2 -- The same bar sits in the Equaliser's inspector when it is beside the page; there
+// each value has its name shown above it (`chip-field`'s label, only drawn there).
 
 import { memo } from "preact/compat";
 import type { FilterParams } from "../../core/protocol";
@@ -130,29 +133,35 @@ export const BandChip = memo(function BandChip(props: {
         </button>
       </div>
       <div class="chip-row chip-values">
-        <ValueField
-          label="Frequency"
-          text={p ? freqText(p.freq) : "–"}
-          parse={parseFreq}
-          disabled={off}
-          inputRef={props.freqRef}
-          onCommit={(v) => p && props.set({ ...p, freq: roundFreq(clamp(v, limits.freq)) })}
-        />
-        <ValueField
-          label="Gain"
-          text={p && usesGain(p.filterType) ? gainText(p.gain) : "–"}
-          parse={(t) => parseNumber(t, "db")}
-          disabled={off || !p || !usesGain(p.filterType)}
-          onCommit={(v) => p && props.set({ ...p, gain: round2(clamp(v, limits.gain)) })}
-        />
-        <ValueField
-          label="Q"
-          text={p && usesQ(p.filterType) ? qText(p.q) : "–"}
-          parse={(t) => parseNumber(t, "")}
-          disabled={off || !p || !usesQ(p.filterType)}
-          onCommit={(v) => p && props.set({ ...p, q: round3(clamp(v, limits.q)) })}
-          step={{ down: step("ArrowDown", true), up: step("ArrowUp", true) }}
-        />
+        <span class="chip-field" data-label="Frequency">
+          <ValueField
+            label="Frequency"
+            text={p ? freqText(p.freq) : "–"}
+            parse={parseFreq}
+            disabled={off}
+            inputRef={props.freqRef}
+            onCommit={(v) => p && props.set({ ...p, freq: roundFreq(clamp(v, limits.freq)) })}
+          />
+        </span>
+        <span class="chip-field" data-label="Gain">
+          <ValueField
+            label="Gain"
+            text={p && usesGain(p.filterType) ? gainText(p.gain) : "–"}
+            parse={(t) => parseNumber(t, "db")}
+            disabled={off || !p || !usesGain(p.filterType)}
+            onCommit={(v) => p && props.set({ ...p, gain: round2(clamp(v, limits.gain)) })}
+          />
+        </span>
+        <span class="chip-field" data-label="Q">
+          <ValueField
+            label="Q"
+            text={p && usesQ(p.filterType) ? qText(p.q) : "–"}
+            parse={(t) => parseNumber(t, "")}
+            disabled={off || !p || !usesQ(p.filterType)}
+            onCommit={(v) => p && props.set({ ...p, q: round3(clamp(v, limits.q)) })}
+            step={{ down: step("ArrowDown", true), up: step("ArrowUp", true) }}
+          />
+        </span>
       </div>
     </div>
   );

@@ -4,6 +4,10 @@
 import type { ComponentChildren, RefObject } from "preact";
 import { PageTabs, Rail } from "./Rail";
 import { pageToOpen, type Section, type SectionId } from "./sections";
+// -- WP WEBM2 -- the inspector beside the page
+import { InspectorArea } from "../inspector/Inspector";
+// -- WP WEBM3 -- a page's parts as tabs in the head
+import { PartsArea, PartsSlot } from "./Parts";
 
 export function Frame(props: {
   root?: RefObject<HTMLDivElement | null>;
@@ -32,14 +36,21 @@ export function Frame(props: {
         <Rail sections={props.sections} current={section.id} onSection={(s) => props.onPage(pageToOpen(s, props.last))} />
         <div class="shell-main">
           <div class="status-strip">{props.strip}</div>
-          <div class="page-head">
-            <h2 class="page-title">{section.title}</h2>
-            <PageTabs pages={section.pages} current={props.page} onPage={props.onPage} />
-            {props.tools}
-          </div>
-          <div class="page" data-page={props.page}>
-            {props.children}
-          </div>
+          {/* -- WP WEBM3 -- the page's parts (ui/shell/Parts.tsx) in its head */}
+          <PartsArea>
+            <div class="page-head">
+              <h2 class="page-title">{section.title}</h2>
+              <PageTabs pages={section.pages} current={props.page} onPage={props.onPage} />
+              <PartsSlot />
+              {props.tools}
+            </div>
+            {/* -- WP WEBM2 -- a page may fill the inspector beside it (ui/inspector) */}
+            <InspectorArea>
+              <div class="page" data-page={props.page}>
+                {props.children}
+              </div>
+            </InspectorArea>
+          </PartsArea>
           {props.foot}
         </div>
       </div>

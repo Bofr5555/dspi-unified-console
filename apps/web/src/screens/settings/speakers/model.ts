@@ -220,11 +220,13 @@ export function withoutRow(layout: SpeakerLayoutRecord, o: number): SpeakerLayou
 /** What the banner says, elsewhere (`text`) and on Settings › Speakers (`here`); null when the layout is confirmed. */
 export function bannerOf(v: LayoutView): { kind: "imported" | "unconfirmed" | "none"; text: string; here: string } | null {
   if (v.stored?.confirmedByUser) return null;
+  // -- WP MCP5 -- (review RB C4) "imported" is any unconfirmed layout this app did not
+  // write: a configuration file or another app (never an agent: no tool writes it)
   if (v.stored && v.imported)
     return {
       kind: "imported",
-      text: "Imported speaker layout: these roles came with a configuration file. Check that they match this DSPi's speakers, then confirm them in Settings › Speakers.",
-      here: "Imported speaker layout: these roles came with a configuration file. Check that they match this DSPi's speakers, then confirm them.",
+      text: "Imported speaker layout: these roles were set outside this app (a configuration file or another app). Check that they match this DSPi's speakers, then confirm them in Settings › Speakers.",
+      here: "Imported speaker layout: these roles were set outside this app (a configuration file or another app). Check that they match this DSPi's speakers, then confirm them.",
     };
   if (v.stored)
     return {

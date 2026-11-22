@@ -1853,6 +1853,14 @@ uint32_t dspi_measure_tune_keep(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_measure_tune_revert(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_measure_tune_ab(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_measure_tune_stop(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_measure_rolloff_start(struct FfiCore *core,
+const char *setup_json,
+char *buf,
+uint32_t len);
+uint32_t dspi_measure_rolloff_tick(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_measure_rolloff_state(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_measure_rolloff_stop(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_measure_rolloff_clear(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_measure_system_unit_check(struct FfiCore *core,
 const char *setup_json,
 const char *unit_json,
@@ -2107,8 +2115,20 @@ bool dspi_mcp_revoke(struct FfiMcp *mcp, uint64_t id);
 bool dspi_mcp_pairing_answer(struct FfiMcp *mcp, uint64_t request, bool allow);
 void dspi_mcp_pause(struct FfiMcp *mcp, bool paused);
 uint32_t dspi_mcp_activity(struct FfiMcp *mcp, uint32_t n, char *buf, uint32_t len);
+bool dspi_mcp_set_confirm(struct FfiMcp *mcp, const char *mode);
+bool dspi_mcp_set_autoeq(struct FfiMcp *mcp, const uint8_t *data, uint32_t len);
+uint32_t dspi_mcp_confirmations(struct FfiMcp *mcp, char *buf, uint32_t len);
+bool dspi_mcp_confirm_answer(struct FfiMcp *mcp, uint64_t id, bool allow);
 bool dspi_mcp_set_active_device(struct FfiMcp *mcp, const char *id);
 int32_t dspi_mcp_relay_stdio(const char *config_json,
 void (*token_sink)(const char *token, void *user_data),
 void *user_data);
+uint32_t dspi_mcp_measure_requests(struct FfiMcp *mcp, char *buf, uint32_t len);
+uint32_t dspi_mcp_measure_take(struct FfiMcp *mcp, uint64_t id, char *buf, uint32_t len);
+bool dspi_mcp_measure_report(struct FfiMcp *mcp, uint64_t id, bool started, const char *note);
+uint32_t dspi_mcp_measure_begin(struct FfiCore *core,
+const char *ticket_json,
+uint32_t rate_hz,
+char *buf,
+uint32_t len);
 #endif

@@ -114,9 +114,15 @@ Rectangle {
             CpuMeter { core: 1; load: Poller.cpu1 }
         }
 
-        DeviceStatus {
+        // -- WP MCP4 -- the AI agents' icon beside the device (while they are on)
+        RowLayout {
             Layout.fillWidth: true
             Layout.margins: Theme.spacingSmall
+            spacing: Theme.spacingSmall
+            DeviceStatus {
+                Layout.fillWidth: true
+            }
+            AiStatusIcon {}
         }
     }
 

@@ -6,6 +6,9 @@
 #include "DeviceSession.h"
 #include "NoticeCenter.h"
 #include "SpeakersController.h"
+#include "TuneSession.h"   // -- WP RCFIX --
+#include "AiController.h"   // -- WP MCP5 --
+#include "Shell.h"          // -- WP MCP5 --
 
 #include <QCoreApplication>
 #include <QThread>
@@ -31,8 +34,19 @@ MeasureController::MeasureController(const AppContext &ctx, QObject *parent) : Q
         [this] {
             if (auto *sc = Registrar::instance<SpeakersController>())
                 connect(sc, &SpeakersController::storedChanged, this, [this, sc](const QString &origin) {
-                    if (origin != QLatin1String("measure")) session()->takeLayout(sc->stored());
+                    if (origin == QLatin1String("measure")) return;
+                    session()->takeLayout(sc->stored());
+                    session()->tune()->takeLayout(sc->stored());   // -- WP RCFIX --
                 });
+        },
+        Qt::QueuedConnection);
+    // -- WP MCP5 -- an AI agent's measurement requests (the several units' run is
+    // UnitsMeasureController's)
+    QMetaObject::invokeMethod(
+        this,
+        [this] {
+            if (auto *ai = Registrar::instance<AiController>())
+                connect(ai, &AiController::measureRequested, this, &MeasureController::agentRequest);
         },
         Qt::QueuedConnection);
     // Before the cores go (main.cpp shuts them down after the event loop)
@@ -123,6 +137,7 @@ void MeasureController::onSwitched() {
     if (device == m_announced) return;
     m_announced = device;
     session()->entered();
+    if (m_panels > 0) session()->wake();   // -- WP LAY5b --
     emit deviceSwitched();
     emit deviceChanged();
     emit micChanged();
@@ -200,6 +215,19 @@ void MeasureController::stopAll() {
         if (s->isActive() || s->underWay()) s->stop();
 }
 
+// -- WP LAY5b --
+void MeasureController::panelShown(bool shown) {
+    m_panels = qMax(0, m_panels + (shown ? 1 : -1));
+    if (!shown || m_shutDown) return;
+    session()->wake();
+    refreshAccess();
+}
+
+void MeasureController::panelClosing(bool pageRemains) {
+    if (pageRemains) session()->stop();
+    else stopAll();
+}
+
 // -- WP RBFIX --
 QString MeasureController::runsOn() const {
     QStringList titles;
@@ -207,3 +235,36 @@ QString MeasureController::runsOn() const {
         if (const MeasureSession *s = m_sessions.value(d); s && s->underWay()) titles << d->title();
     return titles.join(QStringLiteral(", "));
 }
+
+// -- WP MCP5 -- An AI agent's request: the Measure view comes up and the device's
+// session runs it as its own start, said as "Requested by AI · name"; the
+// outcome goes back to the agent (AiController::reportMeasure).
+void MeasureController::agentRequest(const QJsonObject &ticket) {
+    if (ticket.value(QLatin1String("loop")).toString() == QLatin1String("system")) return;
+    auto *ai = Registrar::instance<AiController>();
+    if (!ai) return;
+    const quint64 id = quint64(ticket.value(QLatin1String("request_id")).toDouble());
+    const QString device = ticket.value(QLatin1String("device")).toString();
+    DeviceSession *on = m_ctx.registry->session(device);
+    if (m_shutDown || !on) {
+        ai->reportMeasure(id, false, tr("That device is no longer open in the app."));
+        return;
+    }
+    MeasureSession *s = m_sessions.value(on);
+    if (!s) s = make(on);
+    m_ctx.shell->showTool(QStringLiteral("tools.measure"));
+    QPointer<AiController> back(ai);
+    // -- WP INT5 -- A device not looked at yet sleeps (LAY5b): which microphone
+    // it has is known once the reads of its wake() are in
+    s->onLoop(
+        s, [](FfiCore *) { return QByteArray(); },
+        [s, ticket, back, id](const QByteArray &) {
+            QPointer<MeasureSession> run(s);
+            s->startForAgent(ticket, [back, id, run](bool started, const QString &note) {
+                if (back) back->reportMeasure(id, started, note, [run] {   // -- WP RCFIX --
+                    if (run) run->stop();
+                });
+            });
+        });
+}
+

@@ -100,7 +100,7 @@ void shellPart(Modern &m) {
     // -- WP INT3 -- KEEPOPEN is on: MDQT2a-c rebound every controller
     m.check("choosing a device opens it beside the others (keepOpen)", registry && registry->keepOpen());
     for (const char *name : { "AppMenuButton", "DeviceTabs", "TopBar.preset", "TopBar.ab", "TopBar.search", "TopBar.ai", "TopBar.theme",
-                              "TopBar.undo", "TopBar.redo", "TopBar.history", "TopBar.save", "TopBar.bell", "NavRail", "Dock.source",
+                              "TopBar.undo", "TopBar.redo", "TopBar.save", "TopBar.bell", "NavRail", "Dock.source",
                               "Dock.mode", "Dock.volume", "Dock.mute", "Dock.bypass", "Dock.meters" })
         m.d.check(QStringLiteral("lay3: %1 shows").arg(QLatin1String(name)), m.visible(QString::fromLatin1(name)));
     QQuickItem *channels = m.d.item(QStringLiteral("Dock.meters"));
@@ -125,7 +125,8 @@ void routesPart(Modern &m) {
             window = window || (w->isVisible() && w != m.main && w->property("actionId").toString() == action);
         m.d.check(QStringLiteral("lay3: %1 shows %2 on its page, in no window").arg(action, row.value(QStringLiteral("panel")).toString()),
                   shown && QString::fromLatin1(panel->metaObject()->className()).startsWith(row.value(QStringLiteral("panel")).toString()) && !window
-                      && m.section() + QLatin1Char('/') + m.tab() == key && m.shell->pageAction() == action
+                      && m.host()->property("pageKey").toString() == key   // -- WP LAY5b -- its tab may be a part's
+                      && m.shell->pageAction() == action
                       && panel->property("actionId").toString() == action && panel->property("inPage").toBool()
                       && panel->isVisible() && panel->width() > 100 && panel->height() > 100);
         if (!before.isEmpty() && before != key) {
@@ -139,7 +140,7 @@ void routesPart(Modern &m) {
     for (const char *s : { "overview", "equaliser", "routing", "effects", "measure", "analyse", "library", "system", "devices", "settings" }) {
         const bool clicked = m.click(QStringLiteral("NavRail.") + QLatin1String(s));
         m.d.check(QStringLiteral("lay3: the rail goes to %1").arg(QLatin1String(s)),
-                  clicked && m.section() == QLatin1String(s) && m.content(m.section() + QLatin1Char('/') + m.tab()) != nullptr);
+                  clicked && m.section() == QLatin1String(s) && m.content(m.host()->property("pageKey").toString()) != nullptr);
     }
     auto *devices = Registrar::instance<DevicesController>();
     m.go("devices", "devices");
@@ -173,13 +174,14 @@ void tabsPart(Modern &m) {
     QTest::keyClick(m.main, Qt::Key_T, Qt::ControlModifier | Qt::ShiftModifier);
     m.check("the menu table's shortcuts work, and go to the page",
             m.d.waitFor(1000, [&] { return m.shell->pageAction() == QLatin1String("tools.stats"); }));
-    QObject *overflow = m.d.object(QStringLiteral("AppMenu.tools.matrix"));
-    m.check("the app menu holds the menu table", overflow != nullptr && m.d.object(QStringLiteral("AppMenu.file.quit")) != nullptr);
-    if (overflow) QMetaObject::invokeMethod(overflow, "triggered");
-    m.check("and its rows go to their pages", m.d.waitFor(1000, [&] { return m.shell->pageAction() == QLatin1String("tools.matrix"); }));
+    // -- WP LAY3b -- the few global actions (lay3b-menus checks them all)
     m.click(QStringLiteral("AppMenuButton"));
     QObject *menu = m.d.object(QStringLiteral("AppMenu"));
     m.check("the app button opens its menu", menu && m.d.waitFor(1000, [&] { return menu->property("opened").toBool(); }));
+    QObject *overflow = m.d.object(QStringLiteral("AppMenu.edit.settings"));
+    m.check("the app menu holds its rows", overflow != nullptr && m.d.object(QStringLiteral("AppMenu.file.quit")) != nullptr);
+    if (overflow) QMetaObject::invokeMethod(overflow, "triggered");
+    m.check("and they go to their pages", m.d.waitFor(1000, [&] { return m.shell->pageAction() == QLatin1String("edit.settings"); }));
     m.d.grab(m.main, QStringLiteral("modern-app-menu.png"));
     if (menu) QMetaObject::invokeMethod(menu, "close");
     m.d.spin(200);
@@ -245,7 +247,7 @@ void selectionPart(Modern &m) {
     m.d.waitIdle();
     m.d.spin(150);
     m.check("the Equaliser has a channel selected, its page under the graph",
-            sidebar && sidebar->selectedChannel() >= 0 && m.visible(QStringLiteral("GraphHost")) && m.visible(QStringLiteral("EqualiserSection.channels")));
+            sidebar && sidebar->selectedChannel() >= 0 && m.visible(QStringLiteral("GraphHost")) && m.visible(QStringLiteral("EqualiserPeq.channels")));
     m.check("the window's selection follows", m.main->property("selectedChannel").toInt() == sidebar->selectedChannel());
     m.go("overview");
     m.d.spin(50);
@@ -298,19 +300,21 @@ void topBarPart(Modern &m) {
     if (themeMenu) QMetaObject::invokeMethod(themeMenu, "close");
     m.d.spin(200);
 
+    // -- WP MCP4 -- -- WP LAY8 -- its popover (its own section, lay8-ai) leads there
     m.click(QStringLiteral("TopBar.ai"));
-    QObject *ai = m.d.object(QStringLiteral("TopBar.aiPopover"));
-    m.check("the AI button opens its placeholder", ai && m.d.waitFor(1000, [&] { return ai->property("opened").toBool(); }));
+    QQuickItem *toAi = m.d.item(QStringLiteral("AiPopover.settings"), m.main->contentItem()->parentItem());
+    if (toAi) QMetaObject::invokeMethod(toAi, "clicked");
+    m.check("the AI button's popover opens Settings > AI Agents",
+            m.d.waitFor(2000, [&] { return m.shell->pageAction() == QLatin1String("edit.settings") && m.d.item(QStringLiteral("AiAgentsPage")); }));
     m.d.grab(m.main, QStringLiteral("modern-ai.png"));
-    if (ai) QMetaObject::invokeMethod(ai, "close");
     m.d.spin(200);
 
+    // -- WP LAY6 -- (its own section, lay6-palette)
     m.click(QStringLiteral("TopBar.search"));
+    QObject *palette = m.d.object(QStringLiteral("CommandPalette"));
+    m.check("the search opens the command palette", palette && m.d.waitFor(1000, [&] { return palette->property("opened").toBool(); }));
+    if (palette) QMetaObject::invokeMethod(palette, "close");
     m.d.spin(100);
-    QQuickItem *search = m.d.item(QStringLiteral("Settings.search"));
-    m.check("the search goes to the settings' search", m.shell->pageAction() == QLatin1String("edit.settings") && search
-            && m.main->activeFocusItem() && (m.main->activeFocusItem() == search || search->isAncestorOf(m.main->activeFocusItem())));
-    if (m.main->activeFocusItem()) m.main->activeFocusItem()->setFocus(false);
 
     // The dock
     sidebar->setVolumeMode(QStringLiteral("user"));

@@ -47,7 +47,8 @@ Rectangle {
     readonly property string what: crossover ? qsTr("Crossover band %1").arg(band + 1) : qsTr("Band %1").arg(band + 1)
 
     objectName: "BandRow." + (crossover ? "xo." : "") + band
-    implicitHeight: 36
+    property int rowHeight: 36 // -- WP LAY4 -- Modern's are denser
+    implicitHeight: rowHeight
     implicitWidth: line.implicitWidth + 2 * Theme.spacingLarge
     color: selected ? Theme.selection : "transparent"
     enabled: ChannelController.writable
@@ -62,6 +63,18 @@ Rectangle {
 
     HoverHandler {
         onHoveredChanged: if (row.active || !hovered) row.hoverChanged(row.band, hovered)
+    }
+
+    // -- WP LAY3b -- Modern: the band's right-click menu, also by the menu key
+    TapHandler {
+        acceptedButtons: Qt.RightButton
+        enabled: LayoutController.modern
+        onTapped: point => ContextMenus.band(row.channel, row.band, row.crossover, row, point.position.x, point.position.y)
+    }
+    Keys.onPressed: event => {
+        event.accepted = LayoutController.modern
+            && (event.key === Qt.Key_Menu || (event.key === Qt.Key_F10 && event.modifiers === Qt.ShiftModifier))
+        if (event.accepted) ContextMenus.band(row.channel, row.band, row.crossover, row, Theme.spacingLarge, row.height)
     }
 
     function chooseType(t) { ChannelController.setBandType(channel, band, crossover, t) }

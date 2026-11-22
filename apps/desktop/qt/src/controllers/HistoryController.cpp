@@ -184,6 +184,9 @@ void HistoryController::reload() {
                 const QJsonObject e = v.toObject();
                 QVariantMap row = describe(e);
                 row.insert(QStringLiteral("source"), e.value(QLatin1String("source")).toString());
+                // -- WP MCP4 --
+                row.insert(QStringLiteral("agent"), e.value(QLatin1String("actor")).toInteger() != 0
+                                                        ? e.value(QLatin1String("actorLabel")).toString(QStringLiteral("AI")) : QString());
                 row.insert(QStringLiteral("undoable"), e.value(QLatin1String("undoable")).toBool());
                 const qint64 at = e.value(QLatin1String("atMs")).toInteger();
                 row.insert(QStringLiteral("time"), QLocale().toString(QDateTime::fromMSecsSinceEpoch(at).time(), QLocale::ShortFormat));

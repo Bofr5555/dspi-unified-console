@@ -1,0 +1,43 @@
+# WP MCP6: what the 2025-11-25 requirement set asks of a server that dspi-mcp deliberately
+# does not do. Read by ci/mcp-conformance/run.sh (--expected-failures). A scenario that
+# fails outside this list fails the step; one that passes inside it fails it too (a stale
+# entry: remove it).
+server:
+  # Capabilities this server does not declare (protocol.rs: no logging, completions or
+  # subscriptions), so the methods are -32601.
+  - logging-set-level
+  - completion-complete
+  - resources-subscribe
+  - resources-unsubscribe
+  # The suite's reference-fixture tools (test_simple_text, test_image_content,
+  # test_sampling, …): this server has its dspi_* tools only, returns text and
+  # structuredContent, and never sends the client requests (sampling, elicitation).
+  # tools-list, server-initialize, ping and the SDK client (sdk-client.mjs) cover
+  # dspi-mcp's own tools.
+  - tools-call-simple-text
+  - tools-call-image
+  - tools-call-audio
+  - tools-call-embedded-resource
+  - tools-call-mixed-content
+  - tools-call-with-logging
+  - tools-call-error
+  - tools-call-with-progress
+  - tools-call-sampling
+  - tools-call-elicitation
+  - elicitation-sep1034-defaults
+  - elicitation-sep1330-enums
+  # The fixture's resources and prompts (test://static-text, test_simple_prompt, …).
+  # resources-list and prompts-list pass; sdk-client.mjs reads every dspi:// resource
+  # and gets every prompt.
+  - resources-read-text
+  - resources-read-binary
+  - resources-templates-read
+  - prompts-get-simple
+  - prompts-get-with-args
+  - prompts-get-embedded-resource
+  - prompts-get-with-image
+  # Deliberately stricter than the spec (MCP3, http.rs): every request with an Origin
+  # header is refused, a loopback Origin too. No browser page has a reason to call the
+  # agents' endpoint, and agents send no Origin. The scenario's other checks (a foreign
+  # Host or Origin is refused) pass.
+  - dns-rebinding-protection:localhost-host-valid-accepted

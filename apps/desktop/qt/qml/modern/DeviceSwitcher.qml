@@ -36,18 +36,16 @@ PopoverPanel {
         Flow {
             Layout.fillWidth: true
             spacing: Theme.spacingSmall
-            ActionButton {
-                actionId: "device.identify"
-                enabled: MenuTable.available(actionId) && IdentifyController.available
-            }
-            ActionButton {
-                actionId: "device.reconnect"
-                // Except during a hub session (behaviour.md §3)
-                enabled: !DeviceModel.remote
-            }
-            ActionButton {
-                actionId: "device.firmwareUpdate"
-                visible: DeviceModel.platformName !== "STM32H723"
+            // -- WP LAY3b -- MenuTable's place device, as in a tab's menu
+            Repeater {
+                model: MenuTable.placeRows("device")[0].map(r => r.id)
+                ActionButton {
+                    required property string modelData
+                    actionId: modelData
+                    visible: { const r = MenuTable.row(actionId); return !r.platformHidden || DeviceModel.platformName !== r.platformHidden }
+                    // Except during a hub session (behaviour.md §3)
+                    enabled: MenuTable.can(actionId) && (actionId !== "device.reconnect" || !DeviceModel.remote)
+                }
             }
             AppButton {
                 objectName: "DeviceSwitcher.manage"

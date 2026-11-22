@@ -783,13 +783,22 @@ void FilesController::saveTemplateTo(const QString &path) {
 }
 
 void FilesController::listTemplates() {
+    withTemplates([this](const QVariantList &rows) { emit templatesPicker(rows); });
+}
+
+// -- WP LAY5b --
+void FilesController::readTemplates() {
+    withTemplates([this](const QVariantList &rows) { emit templatesRead(rows); });
+}
+
+void FilesController::withTemplates(std::function<void(const QVariantList &)> done) {
     const QByteArray dir = QDir::toNativeSeparators(templatesDir()).toUtf8();
     m_ctx.core->worker()->call(
         this, [dir](FfiCore *) { return readSized([&](char *b, uint32_t n) { return dspi_template_list(dir.constData(), b, n); }); },
-        [this](QByteArray reply) {
+        [done = std::move(done)](QByteArray reply) {
             QVariantList rows;
             for (const QJsonValue &v : QJsonDocument::fromJson(reply).array()) rows.append(v.toObject().toVariantMap());
-            emit templatesPicker(rows);
+            done(rows);
         });
 }
 

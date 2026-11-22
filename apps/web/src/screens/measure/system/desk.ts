@@ -9,6 +9,10 @@
 // coordinator's placement rule (nothing plays before the person chose the listening position),
 // never offers Apply or Revert below Admin, never presses Keep by itself, and stops what it
 // started when the tab is left.
+//
+// -- WP WEBM3 -- One session per DSPi (MPLAN 1.2 item 6, as Qt's XDEV1): a unit already open in
+// another tab of the console is judged on that tab's core, never on a second one, and that core
+// is the tab's: the desk never closes it. Only a unit not open anywhere gets a Worker of its own.
 
 import { CoreClient } from "../../../core/client";
 import { browserCaptureEnv, startCapture, type Capture, type CaptureEnv } from "../../../core/capture";
@@ -54,6 +58,19 @@ export interface SystemSession {
   readonly linkContext: LinkContext | null;
   readonly state: { snapshot: DeviceSnapshot | null };
   readonly openDevice?: ((serial: string) => void) | null;
+  // -- WP WEBM3 --
+  /** The console's other session that has the unit `serial` (set by the page), null when none has. */
+  readonly heldBy?: ((serial: string) => HeldUnit | null) | null;
+}
+
+// -- WP WEBM3 --
+/** Another tab's session of a unit, as the desk reads it. */
+export interface HeldUnit {
+  readonly core: SystemCore;
+  /** "open" when its core may be asked. */
+  readonly state: { status: string; snapshot: DeviceSnapshot | null };
+  /** Its tab's name for it ("Hub", "USB"). */
+  readonly transport: string;
 }
 
 /** A unit of the hub as the step lists it. */
@@ -68,6 +85,9 @@ export interface UnitInfo {
   /** Its core could not be opened, in words. */
   error: string;
   opening: boolean;
+  // -- WP WEBM3 --
+  /** Judged on the core of the tab that has it open ("Hub", "USB"), "" on a core of the desk's. */
+  tab: string;
 }
 
 /** The second Keep's question after a failed verify. */
@@ -122,6 +142,8 @@ export class SystemDesk {
   /** Measure with it (the default where it is offered, as P5WMS's demo). */
   useSim = false;
   private readonly cores = new Map<string, UnitCore>();
+  // -- WP WEBM3 -- other tabs' cores in use, by serial: asked, never closed
+  private readonly borrowed = new Map<string, SystemCore>();
   private readonly listeners = new Set<() => void>();
   private unsubscribe: (() => void) | null = null;
   private alive = false;
@@ -228,6 +250,7 @@ export class SystemDesk {
       outputs: d.serial === own ? this.ownOutputs() : [],
       error: "",
       opening: false,
+      tab: "", // -- WP WEBM3 --
     }));
     // What the core still holds from earlier on this console: its session, its result.
     this.state = await this.core.call("measureSystemState", undefined).catch(() => null);
@@ -251,6 +274,7 @@ export class SystemDesk {
     }
     const cores = [...this.cores.values()];
     this.cores.clear();
+    this.borrowed.clear(); // -- WP WEBM3 --
     await Promise.all(cores.map((c) => c.dispose().catch(() => undefined)));
   }
 
@@ -290,10 +314,22 @@ export class SystemDesk {
   /** The unit's own core: this screen's for its own DSPi, else a Worker of its own on the hub. */
   private async openUnit(serial: string): Promise<void> {
     const u = this.unit(serial);
-    if (!u || u.own || this.cores.has(serial)) return;
+    if (!u || u.own || this.cores.has(serial) || this.borrowed.has(serial)) return;
     u.opening = true;
     u.error = "";
     this.changed();
+    // -- WP WEBM3 -- open in another tab: that tab's core, or wait for it; never a second session
+    const held = this.session.heldBy?.(serial) ?? null;
+    if (held) {
+      if (held.state.status === "open" && held.state.snapshot) {
+        this.borrowed.set(serial, held.core);
+        u.tab = held.transport;
+        u.outputs = outputRows(held.state.snapshot.state, held.state.snapshot.outputLabels).map((r) => ({ index: r.index, name: `${r.descriptor} ${r.name}` }));
+      } else u.error = `${serial}: it is being opened in another tab; choose it again once that tab has it`;
+      u.opening = false;
+      this.changed();
+      return;
+    }
     let core: UnitCore | null = null;
     try {
       const src = this.session.source;
@@ -305,8 +341,10 @@ export class SystemDesk {
       const hello = await core.call("linkConnect", { url, token: saved?.token ?? "", hubId: saved?.hubId ?? "" });
       if (hello.needsPairing) throw new Error("the hub asks this console to pair again: open the unit in the console once, then choose it here");
       const snap = await core.call("open", { kind: "hub", url, deviceId: serial });
-      if (!this.alive || !this.draft.units.some((x) => x.serial === serial)) {
+      // -- WP WEBM3 -- a tab that opened it meanwhile has it: its core, not this second one
+      if (!this.alive || !this.draft.units.some((x) => x.serial === serial) || this.session.heldBy?.(serial)) {
         await core.dispose().catch(() => undefined);
+        if (this.alive) this.borrow(serial);
         return;
       }
       this.cores.set(serial, core);
@@ -320,18 +358,48 @@ export class SystemDesk {
     }
   }
 
+  // -- WP WEBM3 --
+  /** The core of the tab that has `serial` open now (taken from then on), or null. */
+  private borrow(serial: string): SystemCore | null {
+    const held = this.session.heldBy?.(serial) ?? null;
+    if (!held || held.state.status !== "open") return null;
+    this.borrowed.set(serial, held.core);
+    const u = this.unit(serial);
+    if (u) u.tab = held.transport;
+    return held.core;
+  }
+
+  /**
+   * Before the unit `serial` is opened in a tab of its own: the desk's own core for it is closed
+   * first, so the unit never has two sessions; the tab's core is used from then on. False (and
+   * nothing closed) while a measurement runs.
+   */
+  async handOver(serial: string): Promise<boolean> {
+    if (this.running || this.busy) return false;
+    const c = this.cores.get(serial);
+    if (c) {
+      this.cores.delete(serial);
+      await c.dispose().catch(() => undefined);
+    }
+    return true;
+  }
+
   private async closeUnit(serial: string): Promise<void> {
     const c = this.cores.get(serial);
     this.cores.delete(serial);
+    this.borrowed.delete(serial); // -- WP WEBM3 -- the tab's core stays the tab's
     const u = this.unit(serial);
-    if (u && !u.own) u.outputs = [];
+    if (u && !u.own) {
+      u.outputs = [];
+      u.tab = ""; // -- WP WEBM3 --
+    }
     await c?.dispose().catch(() => undefined);
   }
 
   /** A unit's own core, or why there is none. */
   private coreOf(serial: string): SystemCore {
     if (serial === this.session.deviceId) return this.core;
-    const c = this.cores.get(serial);
+    const c = this.cores.get(serial) ?? this.borrowed.get(serial) ?? this.borrow(serial); // -- WP WEBM3 --
     if (!c) throw new Error(`${serial}: its own connection is not open yet (choose it again)`);
     return c;
   }

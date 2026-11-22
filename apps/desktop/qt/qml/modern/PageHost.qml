@@ -17,6 +17,25 @@ Item {
     property string section: "overview"
     property string tab: "overview"
     readonly property var entry: SectionTable.tab(section, tab)
+    // -- WP LAY5b -- The key of the page that is current (its tab's, or the one
+    // page of its panel's parts)
+    readonly property string pageKey: entry ? entry.page : ""
+    // The shell's PresetDialogs, for the pages (ContextMenus.slot)
+    property Item dialogs: null
+    // Devices > Hubs shows the hub's PIN and key itself: no dialog for them
+    readonly property bool pairsInline: onScreen && section === "devices" && tab === "hubs"
+    // The panel's action while "Show Here" takes it back from its window: it
+    // moves, it is not closed (Measure runs on)
+    property string moving: ""
+    // A tab that went (Measure's while a connection may not play): its section's first
+    readonly property bool entryShows: entry === null || entry.quiet || SectionTable.shows(section, tab)
+    onEntryShowsChanged: if (!entryShows) Qt.callLater(leaveHidden)
+    function leaveHidden() {
+        if (entryShows || released) return
+        const want = SectionTable.tab(section, "")
+        if (want) show(want)
+    }
+
     // The current page's panel action, "" for a page that is no panel
     readonly property string action: entry && entry.row ? entry.row.action : ""
     // Whether the person can see a page at all (not in the tray, not under the
@@ -31,7 +50,7 @@ Item {
 
     // Section `id`, on `tabId`, or on the tab it was last on ("")
     function go(id, tabId) {
-        const want = SectionTable.tab(id, tabId || lastTabs[id] || "")
+        const want = SectionTable.tab(id, tabId || SectionTable.now(id) || lastTabs[id] || "")   // -- WP LAY5b -- now
         if (!want) return false
         if (want.section === section && want.tab === tab) {
             visit(want)
@@ -62,13 +81,16 @@ Item {
     }
     function visit(want) {
         for (let i = 0; i < visited.count; ++i)
-            if (visited.get(i).key === want.key) return
-        visited.append({ key: want.key, sectionId: want.section, tabId: want.tab })
+            if (visited.get(i).key === want.page) return
+        visited.append({ key: want.page, sectionId: want.section, tabId: want.tab })   // -- WP LAY5b -- page
     }
     // Shell.trigger: PanelTable's `row`; false lets a window open
     function showPanel(row) {
         if (released || OnboardingController.wizardShown || Shell.shownWindows.indexOf(row.action) >= 0) return false
-        return go(row.section, row.tab)
+        // -- WP LAY5b -- of a panel's parts, the one it was on
+        const parts = SectionTable.tabs(row.section).filter(t => t.row && t.row.action === row.action)
+        const want = SectionTable.part(parts, lastTabs[row.section])
+        return want ? go(row.section, want.tab) : false
     }
     // The page of `key` ("effects/tube"), null before its first visit
     function page(key) {
@@ -122,7 +144,7 @@ Item {
             anchors.fill: parent
             pageHost: host
             entry: SectionTable.tab(sectionId, tabId)
-            current: sectionId === host.section && tabId === host.tab
+            current: key === host.pageKey   // -- WP LAY5b --
         }
     }
 
@@ -140,6 +162,10 @@ Item {
         readonly property bool shown: current && pageHost !== null && pageHost.onScreen && !inWindow
         readonly property bool locked: action.length > 0 && DeviceInfoController.sender && !DeviceInfoController.senderKeeps(action)
 
+        // -- WP LAY5b -- Which of its panel's parts; kept while the page is not current
+        readonly property string wanted: current && pageHost.entry ? pageHost.entry.part : ""
+        onWantedChanged: if (wanted.length && content) content.part = wanted
+
         function release() { if (row && content && !inWindow) content.closing() }
 
         visible: current
@@ -153,6 +179,7 @@ Item {
                 id: scroll
                 objectName: page.objectName + ".scroll"
                 anchors.fill: parent
+                anchors.rightMargin: aside.width   // -- WP LAY5a --
                 // A panel keeps its window's least size; a smaller page scrolls
                 contentWidth: Math.max(width, page.row ? page.row.minWidth || 0 : 0)
                 contentHeight: Math.max(height, page.row ? Math.max(page.row.minHeight || 0, page.content ? page.content.minimumHeight : 0) : 0)
@@ -186,6 +213,7 @@ Item {
                         }
                         item.actionId = page.action
                         item.inPage = true
+                        if (page.wanted.length) item.part = page.wanted   // -- WP LAY5b --
                         item.locked = Qt.binding(() => page.locked)
                         item.shown = Qt.binding(() => page.shown)
                     }
@@ -195,7 +223,29 @@ Item {
                     target: page.row ? body.item : null
                     // Done, Cancel, a close button: back to where the person was
                     function onCloseRequested() { if (page.current) page.pageHost.back() }
+                    // -- WP LAY5b -- Another part of the panel: its tab
+                    function onPartChosen(part) { if (page.current) page.pageHost.go(page.entry.section, part) }
                 }
+            }
+
+            // -- WP LAY5a -- The section's inspector, at the panel's right
+            // (or over it, in a narrow window: it takes no width then)
+            Loader {
+                id: aside
+                objectName: page.objectName + ".aside"
+                readonly property string type: page.entry && page.entry.aside ? page.entry.aside : ""
+                anchors.right: parent.right
+                width: item ? item.implicitWidth : 0
+                height: parent.height
+                enabled: !page.locked
+                active: type.length > 0
+                Component.onCompleted: if (type.length) sourceComponent = Qt.createComponent("UConsole", type)
+                onLoaded: {
+                    if (item.host !== undefined) item.host = page.pageHost
+                    if (item.tab !== undefined) item.tab = page.entry.tab
+                    item.shown = Qt.binding(() => page.shown)
+                }
+                onStatusChanged: if (status === Loader.Error) console.warn("PageHost: the aside of", page.key, "did not load")
             }
 
             // The panel is in its own window
@@ -207,7 +257,7 @@ Item {
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
                     //: %1 is a page's name
-                    text: page.entry ? qsTr("%1 is open in its own window").arg(page.entry.title) : ""
+                    text: page.row ? qsTr("%1 is open in its own window").arg(page.row.tabTitle || page.row.title) : ""   // -- WP LAY5b -- the panel's, not a part's
                     font: Theme.fontTitle
                     color: Theme.textMuted
                 }
@@ -223,7 +273,11 @@ Item {
                         objectName: page.objectName + ".bringBack"
                         text: qsTr("Show Here")
                         primary: true
-                        onClicked: Shell.closeWindow(page.action)
+                        onClicked: {
+                            page.pageHost.moving = page.action   // -- WP LAY5b --
+                            Shell.closeWindow(page.action)
+                            page.pageHost.moving = ""
+                        }
                     }
                 }
             }

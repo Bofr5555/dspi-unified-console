@@ -13,7 +13,7 @@ import { sourceKey, type FleetBackend, type FleetUser, type Installation, type S
 import { About, DevicePicker, SessionView, type ShellProps } from "./components";
 import { Session } from "./session";
 // -- WP WEBM1 -- the Modern shell
-import { alreadyOpenText, holderOf, serialOf } from "./shell/open-rule";
+import { alreadyOpenText, holderOf, serialOf, transportName } from "./shell/open-rule"; // -- WP WEBM3 -- transportName
 import { Rail } from "./shell/Rail";
 import { sectionsFor, type Navigation } from "./shell/sections";
 import { TopBar } from "./shell/TopBar";
@@ -21,6 +21,17 @@ import { TopBar } from "./shell/TopBar";
 import { UnsavedWatch } from "./unsaved";
 // -- WP P1WB1 -- offline files: Open File…, New from Template…
 import { OpenFiles } from "../screens/snapshots/OpenFile";
+// -- WP WEBM4 -- the command palette, the menus from actions.json, the notification drawer, the arrangement
+import { ActionBoard, type PaletteEntry } from "./menus/board";
+import { menuItems, ownRow, type Handler, type MenuItem } from "./menus/actions";
+import { Palette } from "./palette/Palette";
+import { paletteEntries } from "./palette/entries";
+import { deviceName, NoticeLog } from "./drawer/notices";
+import { BellButton, Drawer, useNotices } from "./drawer/Drawer";
+import { deviceTabsInRail, loadArrangement, saveArrangement, type Arrangement } from "./arrangement/arrangement";
+import { AppearanceDialog, ArrangementContext, RailTopContext } from "./arrangement/Appearance";
+import { DeviceTabs } from "./shell/DeviceTabs";
+import { appleKeys } from "./undo";
 
 export interface ConsoleOptions {
   backend: FleetBackend;
@@ -64,6 +75,26 @@ export function App(props: { options: ConsoleOptions }) {
   // -- WP WB4b -- tokens per hub: the fleet's, or this page's storage
   const tokens = useMemo(() => hubTokensFor(backend, safeLocalStorage()), [backend]);
   const hubSessions = useRef(0);
+  // -- WP WEBM4 -- how this viewer has the shell arranged (a host's or the address's `navigation` first)
+  const [arrangement, setArrangement] = useState<Arrangement>(() => {
+    const kept = loadArrangement(safeLocalStorage());
+    return { ...kept, navigation: props.options.navigation ?? kept.navigation };
+  });
+  const arrange = useCallback((a: Arrangement) => {
+    setArrangement((was) => {
+      // What was chosen is kept; a host's or the address's sections are not, unless chosen here
+      const store = safeLocalStorage();
+      saveArrangement(store, { ...a, navigation: a.navigation !== was.navigation ? a.navigation : loadArrangement(store).navigation });
+      return a;
+    });
+  }, []);
+  const [appearance, setAppearance] = useState(false);
+  const board = useMemo(() => new ActionBoard(), []);
+  const [palette, setPalette] = useState<{ entries: PaletteEntry[]; back: HTMLElement | null } | null>(null);
+  const log = useMemo(() => new NoticeLog(), []);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const bell = useRef<HTMLButtonElement>(null);
+  const root = useRef<HTMLDivElement>(null);
 
   const reload = useCallback(async () => {
     try {
@@ -85,6 +116,9 @@ export function App(props: { options: ConsoleOptions }) {
   const watch = useMemo(() => props.options.unsaved ?? new UnsavedWatch(true), [props.options.unsaved]);
   useEffect(() => watch.track(sessions), [watch, sessions]);
   useEffect(() => () => watch.track([]), [watch]);
+  // -- WP WEBM4 -- what the open devices say, for the drawer
+  useEffect(() => log.track(sessions), [log, sessions]);
+  useEffect(() => () => log.stop(), [log]);
 
   // -- WP WEBM1 --
   const show = (id: string) => {
@@ -133,6 +167,11 @@ export function App(props: { options: ConsoleOptions }) {
     session.refuseOpen = (serial) => {
       const holder = holderOf(live.current, serial, session);
       return holder ? alreadyOpenText(holder) : "";
+    };
+    // -- WP WEBM3 -- the several-units step measures a unit open in another tab on that tab's core
+    session.heldBy = (serial) => {
+      const holder = holderOf(live.current, serial, session);
+      return holder ? { core: holder.core, state: holder.state, transport: transportName(holder.source) } : null;
     };
     // -- WP P2WB1 -- the hub screen's Open: another DSPi of the same hub, in a session of its own
     if (source.kind === "hub") session.openDevice = (serial) => void open(inst, { kind: "hub", url: source.url, deviceId: serial });
@@ -226,11 +265,108 @@ export function App(props: { options: ConsoleOptions }) {
     setPicking(on);
     if (on) setSaid("");
   }, []);
-  const shell: ShellProps = { picking, onPicking, connect, shortcuts, onShortcuts: setShortcuts };
+  const shell: ShellProps = { picking, onPicking, connect, shortcuts, onShortcuts: setShortcuts, board /* -- WP WEBM4 -- */ };
   const status = useOpenStatus(current);
 
+  // -- WP WEBM4 -- what the page itself can do (the device on show adds its own: ui/menus/board.ts)
+  useEffect(() => {
+    if (said) log.say(said, "info");
+  }, [said, log]);
+  const short = props.options.title === "uConsole for DSPi" ? "uConsole" : props.options.title;
+  const onShortcutList = status === "open" && current?.state.protocol?.deviceKind !== "alinkSender" ? () => setShortcuts(true) : null;
+  const files: Record<string, Handler> = props.options.readOnly
+    ? {}
+    : { "file.openFile": { run: () => onPicking(true) }, "file.newFromTemplate": { run: () => onPicking(true) } };
+  board.app = {
+    ...files,
+    "device.devices": { run: () => onPicking(true) },
+    "edit.settings": { run: () => setAppearance(true) },
+    "help.about": { run: () => setAboutOpen(true), text: `About ${short}` },
+  };
+  const handlers = () => board.handlers(current?.id ?? null);
+  const mac = appleKeys(typeof navigator === "undefined" ? "" : (navigator.platform ?? ""));
+  const appMenu = (): MenuItem[] => [
+    ownRow("web.open", "Open a DSPi…", () => onPicking(true)),
+    ownRow("web.search", "Search…", () => openPalette(), { shortcut: "Ctrl+K" }),
+    // The bell's, where the top bar has no room for it
+    ownRow("web.notifications", notices.waiting.length ? `Notifications (${notices.waiting.length})` : "Notifications", () => setDrawerOpen(true)),
+    "separator",
+    ...menuItems("appMenu", handlers(), [{ with: "help.about", rows: onShortcutList ? [ownRow("web.shortcuts", "Keyboard Shortcuts", onShortcutList, { shortcut: "Shift+?" })] : [] }]),
+  ];
+  const tabMenu = (s: Session): MenuItem[] => {
+    const h: Record<string, Handler> = {
+      "device.close": {
+        run: () => {
+          show(s.id);
+          setClosing(s);
+        },
+      },
+    };
+    // A tab not on show has no view, so only the page's rows
+    const mine = board.session(s.id)?.handlers["device.firmwareUpdate"];
+    if (mine && s === current) h["device.firmwareUpdate"] = mine;
+    return menuItems("device", h);
+  };
+  const openPalette = () => {
+    // Not over a question, and once
+    if (palette || root.current?.querySelector("dialog[open]")) return;
+    const others = live.current
+      .filter((s) => s !== current)
+      .map((s) => ({ session: s, name: deviceName(s), where: `Device · ${transportName(s.source)}`, show: () => show(s.id) }));
+    const mine = board.session(current?.id ?? null);
+    const extra: PaletteEntry[] = [];
+    if (onShortcutList) extra.push({ id: "web.shortcuts", kind: "action", title: "Keyboard Shortcuts", where: "Help", keys: "Shift+?", enabled: true, run: onShortcutList });
+    if (!mine?.entries.some((e) => e.id === "settings:appearance"))
+      extra.push({ id: "settings:appearance", kind: "settings", title: "Appearance", where: "Settings", keywords: ["Settings"], keys: "", enabled: true, run: () => setAppearance(true) });
+    setDrawerOpen(false);
+    setPalette({
+      entries: paletteEntries({ current, session: mine, handlers: handlers(), others, extra }),
+      back: document.activeElement instanceof HTMLElement ? document.activeElement : null,
+    });
+  };
+  const paletteDone = (chosen: PaletteEntry | null) => {
+    const back = palette?.back;
+    setPalette(null);
+    if (back?.isConnected) back.focus({ preventScroll: true });
+    // Once it has gone: a row may ask a question of its own
+    if (chosen) setTimeout(() => chosen.run(), 0);
+  };
+  const openRef = useRef(openPalette);
+  openRef.current = openPalette;
+  // Ctrl+K (Cmd+K): the console the focus is in, the first one when it is nowhere in particular
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.altKey || e.shiftKey || e.repeat) return;
+      if (!(mac ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey)) return;
+      if (e.key.toLowerCase() !== "k" && e.code !== "KeyK") return;
+      const here = root.current;
+      if (!here) return;
+      const focus = document.activeElement;
+      const nowhere = !focus || focus === document.body || focus === document.documentElement;
+      if (nowhere ? document.querySelector(".dspi-web") !== here : !here.contains(focus)) return;
+      e.preventDefault();
+      openRef.current();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [mac]);
+  const notices = useNotices(log, sessions);
+  const tabsInRail = deviceTabsInRail(arrangement);
+  const deviceTabs = (
+    <DeviceTabs sessions={sessions} current={current} picking={picking} onChoose={(s) => show(s.id)} onClose={(s) => (show(s.id), setClosing(s))} onAdd={() => onPicking(true)} menu={tabMenu} />
+  );
+
   return (
-    <div class="dspi-web" data-nav={props.options.navigation ?? "rail"}>
+    // -- WP WEBM4 -- the arrangement as this viewer has it (its theme only when not the system's)
+    <ArrangementContext.Provider value={{ arrangement, arrange }}>
+    <RailTopContext.Provider value={tabsInRail ? deviceTabs : null}>
+    <div
+      ref={root}
+      class="dspi-web"
+      data-nav={arrangement.navigation}
+      data-theme={arrangement.theme === "system" ? undefined : arrangement.theme}
+      data-device-tabs={tabsInRail ? "rail" : undefined}
+    >
       <TopBar
         title={props.options.title}
         user={user?.name ?? ""}
@@ -243,9 +379,28 @@ export function App(props: { options: ConsoleOptions }) {
           setClosing(s);
         }}
         onAdd={() => onPicking(true)}
-        onShortcuts={status === "open" && current?.state.protocol?.deviceKind !== "alinkSender" ? () => setShortcuts(true) : null}
-        onAbout={() => setAboutOpen(true)}
+        // -- WP WEBM4 --
+        menu={appMenu}
+        tabMenu={tabMenu}
+        tabsInRail={tabsInRail}
+        onSearch={openPalette}
+        searchKey={mac ? "⌘K" : "Ctrl+K"}
+        bell={<BellButton count={notices.waiting.length} open={drawerOpen} onClick={() => setDrawerOpen((o) => !o)} buttonRef={bell} />}
       />
+      {/* -- WP WEBM4 -- the notification drawer, under the top bar */}
+      {drawerOpen ? (
+        <Drawer
+          log={log}
+          sessions={sessions}
+          bell={bell}
+          onShow={(s) => show(s.id)}
+          onEvents={handlers()["device.events"]?.run ?? null}
+          onClose={(refocus) => {
+            setDrawerOpen(false);
+            if (refocus) bell.current?.focus();
+          }}
+        />
+      ) : null}
       {said ? (
         <p class="shell-note" role="status">
           <span>{said}</span>
@@ -272,7 +427,12 @@ export function App(props: { options: ConsoleOptions }) {
         )}
       </main>
       {aboutOpen ? <About sourceUrl={props.options.sourceUrl} onClose={() => setAboutOpen(false)} /> : null}
+      {/* -- WP WEBM4 -- */}
+      {appearance ? <AppearanceDialog onClose={() => setAppearance(false)} /> : null}
+      {palette ? <Palette entries={palette.entries} onDone={paletteDone} /> : null}
     </div>
+    </RailTopContext.Provider>
+    </ArrangementContext.Provider>
   );
 }
 

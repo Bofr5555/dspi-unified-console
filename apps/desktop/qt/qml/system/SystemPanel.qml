@@ -19,8 +19,15 @@ Panel {
     // setup (Advanced). A host with tabs of its own (Modern's System section)
     // shows InstallationPanel itself and turns these off
     property bool installationTab: true
-    readonly property bool tabbed: installationTab && !simple && SystemController.available
-    readonly property bool onInstallation: tabbed && tabs.currentIndex === 1
+    readonly property bool tabbed: installationTab && !simple && SystemController.available && !paged
+    readonly property bool onInstallation: paged ? part === "installation" && !simple && SystemController.available
+                                                 : tabbed && tabs.currentIndex === 1
+    // -- WP LAY5b -- Modern's page shows one part at a time (SectionTable.parts):
+    // the units, or the clock and the links; a window has both, as Classic
+    readonly property bool paged: part.length > 0
+    readonly property bool units: !paged || part === "status"
+    readonly property bool clock: !simple && (!paged || part === "clock")
+    function showPart(id) { if (!paged) tabs.currentIndex = id === "installation" ? 1 : 0 }
 
     readonly property bool simple: ModeController.mode === "simple"
     readonly property bool editable: SystemController.mayEdit && !SystemController.busy
@@ -103,7 +110,13 @@ Panel {
     }
     InstallationPanel {
         id: installation
-        anchors { top: tabs.bottom; topMargin: Theme.spacingSmall; left: parent.left; right: parent.right; bottom: parent.bottom }
+        anchors {
+            top: panel.tabbed ? tabs.bottom : parent.top   // -- WP LAY5b --
+            topMargin: panel.tabbed ? Theme.spacingSmall : 0
+            left: parent.left
+            right: parent.right
+            bottom: parent.bottom
+        }
         visible: panel.onInstallation
         shown: panel.shown && panel.onInstallation
         locked: panel.locked
@@ -174,6 +187,7 @@ Panel {
                 delegate: Text {
                     required property var modelData
                     Layout.fillWidth: true
+                    visible: panel.units   // -- WP LAY5b --
                     textFormat: Text.PlainText
                     text: qsTr("%1: %2").arg(modelData.subject).arg(modelData.message)
                           + (modelData.state === "acknowledged" ? " " + qsTr("(acknowledged)") : "")
@@ -186,13 +200,13 @@ Panel {
             // ---- Scene bar (Advanced) --------------------------------------
             SectionHeading {
                 Layout.fillWidth: true
-                visible: !panel.simple && SystemController.scenes.length > 0
+                visible: panel.units && !panel.simple && SystemController.scenes.length > 0
                 text: qsTr("Scenes")
             }
             Flow {
                 objectName: "SystemWindow.scenes"
                 Layout.fillWidth: true
-                visible: !panel.simple && SystemController.scenes.length > 0
+                visible: panel.units && !panel.simple && SystemController.scenes.length > 0
                 spacing: Theme.spacingSmall
                 Repeater {
                     model: SystemController.scenes
@@ -215,7 +229,7 @@ Panel {
             Text {
                 objectName: "SystemWindow.recallNote"
                 Layout.fillWidth: true
-                visible: !panel.simple && !SystemController.mayRecall && SystemController.scenes.length > 0
+                visible: panel.units && !panel.simple && !SystemController.mayRecall && SystemController.scenes.length > 0
                 textFormat: Text.PlainText
                 text: SystemController.recallNote
                 font: Theme.fontSmall
@@ -223,7 +237,7 @@ Panel {
             }
             ColumnLayout {
                 Layout.fillWidth: true
-                visible: !panel.simple && SystemController.lastRecall.message !== undefined
+                visible: panel.units && !panel.simple && SystemController.lastRecall.message !== undefined
                 spacing: 2
                 Text {
                     objectName: "SystemWindow.recallResult"
@@ -251,10 +265,12 @@ Panel {
             // ---- Units -------------------------------------------------------
             SectionHeading {
                 Layout.fillWidth: true
+                visible: panel.units   // -- WP LAY5b --
                 text: qsTr("Units")
             }
             Rectangle {
                 Layout.fillWidth: true
+                visible: panel.units   // -- WP LAY5b --
                 implicitHeight: table.implicitHeight + 2
                 radius: Theme.radius
                 color: Theme.panel
@@ -359,6 +375,18 @@ Panel {
                                         font: Theme.fontCaption
                                     }
                                 }
+                                // -- WP XDEV1 -- "Open in tab" (Modern, on a hub): the unit on a tab of
+                                // its own, or its tab when it is open; matched by the serial the hub gives
+                                AppButton {
+                                    objectName: "SystemWindow.openInTab." + unitRow.modelData.id
+                                    readonly property string tab: SystemController.tabs[unitRow.modelData.serial] || ""
+                                    visible: SystemController.openInTabOffered && unitRow.modelData.kind === "unit"
+                                             && !!unitRow.modelData.serial && tab !== "active"
+                                    text: tab === "open" ? qsTr("Show tab") : qsTr("Open in tab")
+                                    toolTip: tab === "open" ? qsTr("Show %1's tab").arg(unitRow.modelData.name)
+                                                            : qsTr("Open %1 in a tab of its own").arg(unitRow.modelData.name)
+                                    onClicked: SystemController.openInTab(unitRow.modelData.serial)
+                                }
                                 Cell { text: unitRow.modelData.role; cellWidth: 70 }
                                 RowLayout {
                                     Layout.preferredWidth: 130
@@ -418,6 +446,7 @@ Panel {
                 delegate: Text {
                     required property string modelData
                     Layout.fillWidth: true
+                    visible: panel.units   // -- WP LAY5b --
                     textFormat: Text.PlainText
                     text: modelData
                     font: Theme.fontSmall
@@ -429,13 +458,13 @@ Panel {
             // ---- Clock and audio links (Advanced) --------------------------------
             SectionHeading {
                 Layout.fillWidth: true
-                visible: !panel.simple
+                visible: panel.clock
                 text: qsTr("Clock and audio links")
             }
             Text {
                 objectName: "SystemWindow.editNote"
                 Layout.fillWidth: true
-                visible: !panel.simple && !SystemController.mayEdit
+                visible: panel.clock && !SystemController.mayEdit
                 textFormat: Text.PlainText
                 text: qsTr("%1 This part is read only.").arg(SystemController.editNote)
                 font: Theme.fontSmall
@@ -445,7 +474,7 @@ Panel {
             GridLayout {
                 objectName: "SystemWindow.editor"
                 Layout.fillWidth: true
-                visible: !panel.simple
+                visible: panel.clock
                 columns: 3
                 columnSpacing: Theme.spacing
                 rowSpacing: Theme.spacingSmall
@@ -553,7 +582,7 @@ Panel {
             GridLayout {
                 objectName: "SystemWindow.usbEditor"
                 Layout.fillWidth: true
-                visible: !panel.simple && SystemController.usbUnits.length > 0
+                visible: panel.clock && SystemController.usbUnits.length > 0
                 columns: 3
                 columnSpacing: Theme.spacing
                 rowSpacing: Theme.spacingSmall
@@ -611,13 +640,13 @@ Panel {
             // -- WP ATQT -- the S/PDIF units: a follower's source, a source's slots and D
             SpdifUnitsCard {
                 Layout.fillWidth: true
-                visible: !panel.simple && (SystemController.spdifUnits.length > 0 || panel.editable)
+                visible: panel.clock && (SystemController.spdifUnits.length > 0 || panel.editable)
                 editable: panel.editable
             }
             Text {
                 objectName: "SystemWindow.stale"
                 Layout.fillWidth: true
-                visible: !panel.simple && SystemController.stale
+                visible: panel.clock && SystemController.stale
                 text: qsTr("The installation changed on the hub while you edited it. Save is withdrawn: reload it and make your changes again.")
                 font: Theme.fontBody
                 color: Theme.warning
@@ -625,7 +654,7 @@ Panel {
             }
             RowLayout {
                 Layout.fillWidth: true
-                visible: !panel.simple
+                visible: panel.clock
                 spacing: Theme.spacingSmall
                 AppButton {
                     objectName: "SystemWindow.save"

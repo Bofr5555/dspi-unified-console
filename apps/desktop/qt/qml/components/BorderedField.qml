@@ -47,7 +47,7 @@ TextField {
     implicitHeight: Theme.controlHeight
     font: Theme.fontBody
     color: enabled ? Theme.text : Theme.textDisabled
-    selectionColor: Theme.selection
+    selectionColor: Theme.textSelection
     selectedTextColor: Theme.text
     placeholderTextColor: Theme.textMuted
     leftPadding: 6

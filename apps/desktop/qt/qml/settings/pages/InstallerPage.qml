@@ -182,6 +182,8 @@ SettingsPage {
             Text {
                 Layout.fillWidth: true
                 text: ToolsController.unprotectedText
+                // -- WP INT4 -- it names the outputs, which are the user's text
+                textFormat: Text.PlainText
                 font: Theme.fontSmall
                 color: Theme.text
                 wrapMode: Text.Wrap
@@ -377,7 +379,7 @@ SettingsPage {
                     selectByMouse: true
                     font: Qt.font({ family: Theme.fontMono.family, pixelSize: Theme.fontTitle.pixelSize })
                     color: Theme.accentText
-                    selectionColor: Theme.selection
+                    selectionColor: Theme.textSelection
                     Accessible.role: Accessible.StaticText
                     Accessible.name: qsTr("Recovery code")
                 }

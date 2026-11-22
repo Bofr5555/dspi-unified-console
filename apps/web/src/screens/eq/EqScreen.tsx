@@ -37,8 +37,13 @@ import { OverlayToggle, RtaOverlay, SpectrumStrip, tapNames } from "../analysis/
 import { TAP_INPUT, TAP_OUTPUT } from "../analysis/analyser";
 import { identifyOutput } from "../analysis/siggen";
 // -- WP WBCLIP -- the channel clipboard (M45): the chosen channel's menu, and the keys act on it
-import { clipEntries, useClipboard } from "../clipboard/model";
-import { Menu } from "../main/Menu";
+import { useClipboard } from "../clipboard/model";
+// -- WP WEBM4 -- the channel's menu (the Channel button, a right click on a channel) is actions.json's
+import { menuItems, type Handler } from "../../ui/menus/actions";
+import { ActionMenuButton, isMenuKey, useContextMenu } from "../../ui/menus/ActionMenu";
+// -- WP WEBM2 -- the inspector: the chosen band and channel
+import { Inspect, InspectorSection, useInspector } from "../../ui/inspector/Inspector";
+import { EqInspector, ShapeGrid } from "./EqInspector";
 import {
   DEFAULT_LIMITS,
   OFF_BAND,
@@ -148,7 +153,7 @@ export function EqScreen(props: ScreenProps) {
 
   if (!s || !Array.isArray(s.filters) || !named) return <p class="empty">This DSPi's filters are not known yet.</p>;
   // -- WP WB6D -- opened from the System view: at its channel and tab
-  return <EqView session={session} ask={ask} s={s} ro={ro} usbActive={usbActive} limits={limits} outLimits={outLimits} labels={st.snapshot?.outputLabels} target={props.target} />;
+  return <EqView session={session} ask={ask} s={s} ro={ro} usbActive={usbActive} limits={limits} outLimits={outLimits} labels={st.snapshot?.outputLabels} target={props.target} open={props.open} />;
 }
 
 // -- WP WB6c --
@@ -167,9 +172,13 @@ const EqView = memo(
     outLimits: OutputLimits;
     /** -- WP WB6D -- where the System view opened this screen */
     target?: ScreenProps["target"];
+    /** -- WP WEBM2 -- another page of the session (the inspector's Edit routing) */
+    open?: ScreenProps["open"];
   }) {
     const { session, ask, s, ro, limits } = props;
     const idBase = useMemo(() => `eq-${Math.random().toString(36).slice(2, 9)}`, []);
+    // -- WP WEBM2 -- the band bar goes to the inspector when it is beside the page (and not on touch)
+    const insp = useInspector();
 
     // The channels, as the Console's sidebar lists them.
     const labels = props.labels;
@@ -285,18 +294,97 @@ const EqView = memo(
       [],
     );
 
+    const ctx = useContextMenu(); // -- WP WEBM4 -- a channel's menu
     if (!chosen) return <p class="empty">This DSPi has no channels to show.</p>;
+    // -- WP WEBM2 -- the band bar: under the graph, or in the inspector with the shape grid
+    const chip = (
+      <BandChip
+        band={chipBand}
+        count={sel.set.size}
+        available={available}
+        bypassOk={bypassOk}
+        limits={limits}
+        g={chipG}
+        disabled={ro}
+        set={(p) => anchor !== null && edits.commit(new Map([[anchor, p]]))}
+        retype={(t) => edits.commit(retypeAll(targets(), t))}
+        bypass={(on) => edits.commit(new Map([...targets()].map(([b, p]) => [b, { ...p, bypass: on }])))}
+        remove={() => {
+          edits.commit(new Map([...sel.set].map((b) => [b, { ...OFF_BAND }])));
+          setSel({ set: new Set(), anchor: null });
+        }}
+        freqRef={freqRef}
+      />
+    );
     const offset = offsetOf(s, chosen);
     // -- WP WB6c -- the crossover, where the firmware has one (outputs only)
     const xoBands = chosen.output ? (s.xover?.[cw] ?? []) : [];
     const showXo = tab === "xo" && xoBands.length > 0;
+
+    // -- WP WEBM4 -- one undo step: every band flat, as one group (the band list's Clear All, and the channel menu's Clear PEQ…)
+    const clearAll = () =>
+      session.group("Clear All Bands", async () => {
+        // The device's bands as they are now (another console may have changed them).
+        await session.refresh();
+        // -- WP WB6G -- a linked input pair: both sides, in the same step
+        const partner = chosen.output ? -1 : inputLinks(session).partner(cw);
+        for (const ch of partner >= 0 ? [cw, partner] : [cw]) {
+          const now = peq(session.state.snapshot?.state ?? s, ch);
+          for (let b = 0; b < now.length; b++) {
+            if (!sameFlat(now[b]!)) await session.core.call("filter", { channel: ch, band: b, ...OFF_BAND }).catch((e) => session.fail(e));
+          }
+        }
+        await session.refresh();
+      });
+    /** A channel's menu (LAY3b's `channel`): the rows this channel has here. */
+    const channelItems = (c: EqChannel) => {
+      const h: Record<string, Handler> = {
+        "channel.copy": { run: () => void board.copy(c.wire) },
+        // -- WP WBCLIP2 -- naming the source when it is another device's
+        "channel.paste": { run: () => void board.paste(c.wire), text: board.pasteLabel, enabled: !ro && board.hasClip },
+        "channel.headphone": {
+          run: () => {
+            setWire(c.wire);
+            setAutoeq(true);
+          },
+        },
+      };
+      if (c.output) {
+        h["channel.identify"] = { run: () => void identifyOutput(session, c.index), enabled: !ro, reason: "Play counted blips on this output alone" };
+        if (props.open) h["channel.routing"] = { run: () => props.open!({ screen: "matrix" }) };
+      }
+      // The band list's Clear All, on the channel on show
+      if (c.wire === cw && !ro)
+        h["channel.clear"] = {
+          danger: true,
+          run: () =>
+            void ask({
+              title: "Clear All Bands?",
+              body: <p>Every band of {c.name} will be reset to its default (flat) state. One Undo puts them all back.</p>,
+              buttons: [
+                { label: "Clear All", value: "clear", danger: true },
+                { label: "Cancel", value: "cancel" },
+              ],
+            }).then((a) => (a === "clear" ? clearAll() : undefined)),
+        };
+      return menuItems("channel", h);
+    };
 
     return (
       <div class="eq-screen">
         <div class="eq-channels" role="group" aria-label="Channels">
           {channels.map((c) => (
             <span class="eq-channel" key={c.wire}>
-              <button type="button" class="eq-pick" aria-pressed={c.wire === cw} onClick={() => setWire(c.wire)} title={c.detail ? `${c.name} (${c.detail})` : c.name}>
+              <button
+                type="button"
+                class="eq-pick"
+                aria-pressed={c.wire === cw}
+                onClick={() => setWire(c.wire)}
+                title={c.detail ? `${c.name} (${c.detail})` : c.name}
+                // -- WP WEBM4 -- its menu: right click, the menu key, Shift+F10
+                onContextMenu={(e) => ctx.open(e, `${c.descriptor} ${c.name}`, channelItems(c))}
+                onKeyDown={(e) => isMenuKey(e) && ctx.open(e, `${c.descriptor} ${c.name}`, channelItems(c))}
+              >
                 <span class="swatch" style={{ background: c.colour }} aria-hidden="true" />
                 <span class="eq-desc">{c.descriptor}</span> <span class="eq-name">{c.name}</span>
               </button>
@@ -320,6 +408,7 @@ const EqView = memo(
             </span>
           ))}
         </div>
+        {ctx.menu /* -- WP WEBM4 -- */}
         {/* -- WP P1WB2 -- */}
         <div class="eq-tools">
           <button type="button" aria-expanded={autoeq} onClick={() => setAutoeq((v) => !v)}>
@@ -327,7 +416,8 @@ const EqView = memo(
           </button>
           {/* -- WP WB6J -- the spectrum over the graph; on an output's page, Identify (M46) */}
           {/* -- WP WBCLIP -- Copy and Paste Parameters, as the Console's channel menu */}
-          <Menu label="Channel" entries={clipEntries(board, cw, ro)} />
+          {/* -- WP WEBM4 -- the channel menu's rows (actions.json) */}
+          <ActionMenuButton label="Channel" items={() => (chosen ? channelItems(chosen) : [])} />
           <OverlayToggle session={session} />
           {chosen.output ? (
             <button type="button" class="output-identify" disabled={ro} title="Play counted blips on this output alone" onClick={() => void identifyOutput(session, chosen.index)}>
@@ -374,23 +464,7 @@ const EqView = memo(
           />
           <RtaOverlay session={session} want={{ tap: chosen.output ? TAP_OUTPUT : TAP_INPUT, mask: 1 << chosen.index }} names={tapNames(s, props.labels)} />
           </div>
-          <BandChip
-            band={chipBand}
-            count={sel.set.size}
-            available={available}
-            bypassOk={bypassOk}
-            limits={limits}
-            g={chipG}
-            disabled={ro}
-            set={(p) => anchor !== null && edits.commit(new Map([[anchor, p]]))}
-            retype={(t) => edits.commit(retypeAll(targets(), t))}
-            bypass={(on) => edits.commit(new Map([...targets()].map(([b, p]) => [b, { ...p, bypass: on }])))}
-            remove={() => {
-              edits.commit(new Map([...sel.set].map((b) => [b, { ...OFF_BAND }])));
-              setSel({ set: new Set(), anchor: null });
-            }}
-            freqRef={freqRef}
-          />
+          {insp.band ? null : chip}
         </section>
         {xoBands.length ? (
           <div class="band-tabs" role="tablist" aria-label="Bands">
@@ -432,23 +506,34 @@ const EqView = memo(
           choose={choose}
           commit={edits.commit}
           // -- WP P1WB2 -- one undo step: every band flat, as one group
-          clearAll={() =>
-            session.group("Clear All Bands", async () => {
-              // The device's bands as they are now (another console may have changed them).
-              await session.refresh();
-              // -- WP WB6G -- a linked input pair: both sides, in the same step
-              const partner = chosen.output ? -1 : inputLinks(session).partner(cw);
-              for (const ch of partner >= 0 ? [cw, partner] : [cw]) {
-                const now = peq(session.state.snapshot?.state ?? s, ch);
-                for (let b = 0; b < now.length; b++) {
-                  if (!sameFlat(now[b]!)) await session.core.call("filter", { channel: ch, band: b, ...OFF_BAND }).catch((e) => session.fail(e));
-                }
-              }
-              await session.refresh();
-            })
-          }
+          clearAll={clearAll}
         />
         )}
+        {/* -- WP WEBM2 -- the inspector: the chosen band (beside the page) and the chosen channel */}
+        <Inspect>
+          <EqInspector
+            session={session}
+            s={s}
+            channel={chosen}
+            labels={props.labels}
+            bands={edits.shown}
+            freq={limits.freq}
+            disabled={ro}
+            choose={setWire}
+            openRouting={() => props.open?.({ screen: "matrix" })}
+            openCrossover={() => props.open?.({ screen: "xover" })}
+            headphones={() => setAutoeq(true)}
+            setBand={(b, p) => edits.commit(new Map([[b, p]]))}
+            band={
+              insp.band ? (
+                <InspectorSection title="Selected band" summary={chipBand ? `Band ${chipBand.b + 1}` : "None"}>
+                  <ShapeGrid p={chipBand?.p ?? null} available={available} disabled={ro} retype={(t) => edits.commit(retypeAll(targets(), t))} />
+                  {chip}
+                </InspectorSection>
+              ) : null
+            }
+          />
+        </Inspect>
         {/* -- WP WB6J -- this channel's bars, below its bands */}
         <SpectrumStrip session={session} names={tapNames(s, props.labels)} want={{ tap: chosen.output ? TAP_OUTPUT : TAP_INPUT, mask: 1 << chosen.index }} />
       </div>

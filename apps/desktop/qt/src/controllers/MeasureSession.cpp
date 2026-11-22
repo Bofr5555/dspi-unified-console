@@ -177,7 +177,7 @@ void MeasureLoop::push(const dspi_capture::Block &b) {
         if (!isOk(MeasureSession::object(st))) emit pushRefused(st);
         return;
     }
-    if (!session.load() && !live.load() && !tune.load()) {
+    if (!session.load() && !live.load() && !tune.load() && !rolloff.load()) {   // -- WP MCP5 -- the search too
         // -- WP P5QUI2 -- the passive RTA's blocks (never beside a run: the
         // core ends the passive RTA when one starts)
         if (!passive.load()) return;
@@ -255,6 +255,13 @@ void MeasureLoop::tick() {
         m_frameWanted = false;
         emit liveFrame(MeasureSession::reply([&](char *b, uint32_t l) { return dspi_measure_live_frame(m_core, b, l); }, 1 << 19));
     }
+    // -- WP MCP5 -- the low-end search: its tick drives its segments' sessions
+    if (rolloff.load()) {
+        const QByteArray st = once([&](char *b, uint32_t l) { return dspi_measure_rolloff_tick(m_core, b, l); }, kStateBytes);
+        const bool running = MeasureSession::object(st).value(QLatin1String("running")).toBool();
+        if (!running) rolloff.store(false);
+        if (due(&m_lastRolloff, &m_rolloffAt, st, "segment") || !running) emit rolloffState(st);
+    }
     if (session.load() && !live.load()) {
         // The tune's runs are the tune tick's; this reads the session's state
         const bool tuneRuns = tune.load();
@@ -272,6 +279,7 @@ void MeasureLoop::finish() {
     // The session's own stops: one STOP_NOW where the generator plays
     if (live.exchange(false)) MeasureSession::reply([&](char *b, uint32_t l) { return dspi_measure_live_stop(m_core, b, l); });
     if (tune.exchange(false)) MeasureSession::reply([&](char *b, uint32_t l) { return dspi_measure_tune_stop(m_core, b, l); });
+    if (rolloff.exchange(false)) MeasureSession::reply([&](char *b, uint32_t l) { return dspi_measure_rolloff_stop(m_core, b, l); });   // -- WP MCP5 --
     if (session.exchange(false)) MeasureSession::reply([&](char *b, uint32_t l) { return dspi_measure_stop(m_core, b, l); });
     if (passive.exchange(false)) MeasureSession::reply([&](char *b, uint32_t l) { return dspi_measure_rta_passive_stop(m_core, b, l); });
     // -- WP ATQT -- the several-units session: one system.measure.abort
@@ -440,9 +448,10 @@ MeasureSession::MeasureSession(DeviceSession *session, MeasureController *owner)
         connect(m_loop, &MeasureLoop::liveFrame, this, &MeasureSession::onLiveFrame);
         connect(m_loop, &MeasureLoop::pushRefused, this, [this](const QByteArray &json) { fail(failureText(object(json))); });
         connect(m_loop, &MeasureLoop::passiveFrame, this, &MeasureSession::onPassiveFrame);
+        connect(m_loop, &MeasureLoop::rolloffState, this, &MeasureSession::onRolloffState);   // -- WP MCP5 --
         // The blocks go from the capture straight to the loop, in order
         connect(m_capture, &AudioCapture::block, m_loop, &MeasureLoop::push);
-        m_thread->start();
+        // -- WP LAY5b -- it starts at wake()
     }
     connect(m_capture, &AudioCapture::started, this, [this](int rateHz, int, const QString &) {
         if (auto done = std::exchange(m_micOpening, nullptr)) done(true, rateHz);
@@ -499,7 +508,12 @@ MeasureSession::~MeasureSession() {
     if (m_capture->isRunning()) m_capture->stop();
     if (m_shutDown || !m_thread) return;
     m_shutDown = true;
-    for (std::atomic<bool> *f : { &m_loop->live, &m_loop->tune, &m_loop->session, &m_loop->passive, &m_loop->system }) f->store(false);
+    if (!m_awake) {   // -- WP LAY5b -- never started: nothing of it runs, or will
+        delete m_loop;
+        m_thread->deleteLater();
+        return;
+    }
+    for (std::atomic<bool> *f : { &m_loop->live, &m_loop->tune, &m_loop->session, &m_loop->passive, &m_loop->system, &m_loop->rolloff }) f->store(false);
     connect(m_thread, &QThread::finished, m_thread, &QObject::deleteLater);
     m_thread->quit();
 }
@@ -511,7 +525,9 @@ void MeasureSession::shutdown() {
     m_shutDown = true;
     m_micOpening = nullptr;
     if (m_capture && m_capture->isRunning()) m_capture->stop();
-    if (m_thread) {
+    if (m_thread && !m_awake) {   // -- WP LAY5b --
+        delete m_loop;
+    } else if (m_thread) {
         if (m_loop && m_session && m_session->handle())
             QMetaObject::invokeMethod(m_loop, &MeasureLoop::finish, Qt::BlockingQueuedConnection);
         m_thread->quit();
@@ -560,10 +576,12 @@ void MeasureSession::stopForClose() {
         if (m_systemStop) m_systemStop();
         if (m_loop) {
             const bool live = m_loop->live.exchange(false), passive = m_loop->passive.exchange(false), system = m_loop->system.exchange(false);
+            const bool rolloff = m_loop->rolloff.exchange(false);   // -- WP MCP5 --
             m_loop->session.store(false);
             const bool tuneRuns = m_tuneRunning;
             // On the worker, where the close (or the next device) is posted next
-            m_session->worker()->post([live, passive, system, tuneRuns](FfiCore *c) {
+            m_session->worker()->post([live, passive, system, tuneRuns, rolloff](FfiCore *c) {
+                if (rolloff) reply([&](char *b, uint32_t l) { return dspi_measure_rolloff_stop(c, b, l); });   // -- WP MCP5 --
                 if (system) reply([&](char *b, uint32_t l) { return dspi_measure_system_stop(c, b, l); });
                 if (passive) reply([&](char *b, uint32_t l) { return dspi_measure_rta_passive_stop(c, b, l); });
                 if (live) reply([&](char *b, uint32_t l) { return dspi_measure_live_stop(c, b, l); });
@@ -609,6 +627,7 @@ void MeasureSession::setCalibration(const QByteArray &document, const QString &s
 void MeasureSession::onLoop(QObject *ctx, std::function<QByteArray(FfiCore *)> job,
                                std::function<void(const QByteArray &)> done) {
     if (!m_loop || m_shutDown) return;
+    wake();   // -- WP LAY5b --
     track(1);
     QPointer<QObject> guard(ctx);
     QPointer<MeasureSession> self(this);
@@ -742,10 +761,25 @@ void MeasureSession::onSnapshot() {
     emit deviceChanged();
     refreshAccess();
     if (changedDevice) {
-        refreshSim();
-        if (connected()) fillFromLayout();   // -- WP ROLEQ --
+        if (m_awake) {   // -- WP LAY5b --
+            refreshSim();
+            if (connected()) fillFromLayout();   // -- WP ROLEQ --
+        }
         reloadDocuments();
     }
+}
+
+// -- WP LAY5b -- (review RB) A device that is only looked at needs no measurement
+// thread: it starts, and the loop's reads of the device are made, when Measure
+// shows on it or something is asked of the loop
+void MeasureSession::wake() {
+    if (m_awake || m_shutDown || !m_thread) return;
+    m_awake = true;
+    m_thread->start();
+    if (!connected()) return;   // onSnapshot's, with a device
+    refreshSim();
+    fillFromLayout();
+    m_tune->reloadLayout();
 }
 
 void MeasureSession::refreshSim() {
@@ -1153,6 +1187,8 @@ void MeasureSession::stop() {
     onLoop(this,
            [loop, tuneRuns, passiveOnly](FfiCore *c) {
                QByteArray live;
+               // -- WP MCP5 -- the low-end search (its segment's session with it)
+               if (loop->rolloff.exchange(false)) reply([&](char *b, uint32_t l) { return dspi_measure_rolloff_stop(c, b, l); });
                if (loop->passive.exchange(false)) reply([&](char *b, uint32_t l) { return dspi_measure_rta_passive_stop(c, b, l); });
                if (loop->live.exchange(false)) live = reply([&](char *b, uint32_t l) { return dspi_measure_live_stop(c, b, l); });
                // The tune's runs (a proposal and an applied tune stay: its guard runs on)
@@ -1273,10 +1309,20 @@ bool MeasureSession::running() const {
     // The simulated microphone may stay on: it hears nothing while no run plays
     return m_state.value(QLatin1String("active")).toBool() || liveActive() || m_tuneRunning || m_passiveOn ||
            m_systemRunning ||   // -- WP ATQT --
+           m_rolloffRunning ||  // -- WP MCP5 --
            (m_capture && m_capture->isRunning());
 }
 
 QString MeasureSession::runningText() const {
+    // -- WP MCP5 -- what an AI agent asked for says so
+    if (!m_agentLabel.isEmpty()) {
+        QString what;
+        if (m_rolloffRunning) what = tr("Finding an output's low end with the DSPi's generator.");
+        else if (m_tuneRunning) what = tr("The auto-tune's runs are playing the DSPi's generator.");
+        else if (m_state.value(QLatin1String("active")).toBool()) what = tr("Measuring with the DSPi's generator.");
+        //: %1 is "AI · " and the agent's name, %2 what plays
+        if (!what.isEmpty()) return tr("Requested by %1: %2").arg(m_agentLabel, what);
+    }
     if (m_systemRunning) return m_systemText;   // -- WP ATQT --
     if (m_passiveOn) return tr("The microphone is open for the passive RTA; nothing is played.");
     if (liveActive()) return tr("The live view is playing the DSPi's generator.");
@@ -1296,6 +1342,7 @@ void MeasureSession::setSystemRun(bool running, const QString &text, std::functi
 
 void MeasureSession::setRunning() {
     const bool now = running();
+    if (!now && !m_starting) m_agentLabel.clear();   // -- WP MCP5 -- an agent's request is over
     // -- WP MDQT2c -- the device's tab says it is busy
     if (m_session) m_session->setJob(QStringLiteral("MeasureController"), now ? runningText() : QString());
     if (now == m_wasRunning) {
@@ -2123,4 +2170,125 @@ void MeasureSession::deleteDocument(const QString &id, const QString &where) {
                   return once([&](char *b, uint32_t l) { return hub ? dspi_hub_measure_doc_delete(c, i.constData(), b, l) : dspi_measure_doc_delete(c, i.constData(), b, l); });
               },
               [this](const QByteArray &) { reloadDocuments(); });
+}
+
+// ---- An AI agent's request (-- WP MCP5 --) ------------------------------------------
+
+void MeasureSession::startForAgent(const QJsonObject &ticket, std::function<void(bool, const QString &)> done) {
+    const QString loopWord = ticket.value(QLatin1String("loop")).toString();
+    const QString label = ticket.value(QLatin1String("client_name")).toString();
+    if (gone()) {
+        done(false, tr("That device is closing."));
+        return;
+    }
+    if (!playBlocker().isEmpty()) {
+        done(false, playBlocker());
+        return;
+    }
+    if (running() || m_starting || m_liveStarting || m_passiveStarting) {
+        done(false, tr("Something already runs on this device in the app; nothing was played."));
+        return;
+    }
+    const QByteArray text = QJsonDocument(ticket).toJson(QJsonDocument::Compact);
+    const auto begin = [text](int rateHz) {
+        return std::function<QByteArray(FfiCore *)>([text, rateHz](FfiCore *c) {
+            return once([&](char *b, uint32_t l) { return dspi_mcp_measure_begin(c, text.constData(), uint32_t(rateHz), b, l); });
+        });
+    };
+    if (loopWord == QLatin1String("tune")) {
+        // The tune's runs are the tune's (TuneSession), as its own Check and Verify
+        m_agentLabel = label;
+        m_tune->agentRuns(begin(0), [this, done](bool ok, const QString &why) {
+            if (!ok) m_agentLabel.clear();
+            setRunning();
+            done(ok, why);
+        });
+        return;
+    }
+    if (loopWord != QLatin1String("session") && loopWord != QLatin1String("rolloff")) {
+        done(false, tr("The Measure view cannot run that."));
+        return;
+    }
+    clearError();
+    const quint64 epoch = m_stopEpoch;
+    m_starting = true;
+    m_agentLabel = label;
+    openMic([this, epoch, begin, loopWord, done](bool ok, int rateHz) {
+        if (!ok || epoch != m_stopEpoch) {
+            m_starting = false;
+            m_agentLabel.clear();
+            closeMic();
+            done(false, ok ? tr("Stopped in the app before it began.")
+                           : (m_error.isEmpty() ? tr("The microphone could not be opened.") : m_error));
+            return;
+        }
+        onLoop(this, begin(rateHz), [this, epoch, loopWord, done](const QByteArray &r) {
+            m_starting = false;
+            const QJsonObject o = object(r);
+            if (!isOk(o)) {
+                m_agentLabel.clear();
+                closeMic();
+                const QString why = str(o, "error");
+                fail(why);
+                done(false, why);
+                return;
+            }
+            if (loopWord == QLatin1String("rolloff")) {
+                m_rolloffRunning = true;
+                m_state = o.value(QLatin1String("session")).toObject();
+                m_loop->rolloff.store(true);
+            } else {
+                m_result.clear();
+                m_resultView.clear();
+                m_resultGraph.clear();
+                emit resultChanged();
+                m_tuneSession = false;
+                m_state = o;
+                m_wasActive = true;
+                m_loop->session.store(true);
+            }
+            emit stateChanged();
+            setRunning();
+            done(true, QString());
+            // A Stop while it started: stopped at once
+            if (epoch != m_stopEpoch) stop();
+        });
+    });
+}
+
+void MeasureSession::onRolloffState(const QByteArray &json) {
+    const QJsonObject o = object(json);
+    if (o.isEmpty()) return;
+    m_state = o.value(QLatin1String("session")).toObject();
+    emit stateChanged();
+    if (o.value(QLatin1String("running")).toBool()) {
+        setRunning();
+        return;
+    }
+    // The search ended: its outcome in words
+    m_rolloffRunning = false;
+    closeMic();
+    const QJsonObject res = o.value(QLatin1String("result")).toObject();
+    QString text;
+    if (!res.isEmpty()) {
+        const int out = o.value(QLatin1String("output")).toInt();
+        const QJsonValue hz = res.value(QLatin1String("rolloffHz"));
+        //: %1 an output's name, %2 a frequency in Hz, %3 the dB below its loudest point
+        text = hz.isDouble() ? tr("%1's low end: %3 dB down at %2 Hz.")
+                                   .arg(outputName(out))
+                                   .arg(qRound(hz.toDouble()))
+                                   .arg(qRound(res.value(QLatin1String("stopDb")).toDouble()))
+                             //: %1 an output's name, %2 a frequency in Hz
+                             : tr("%1 still plays well at %2 Hz, where the search stops.")
+                                   .arg(outputName(out))
+                                   .arg(qRound(res.value(QLatin1String("lowestHz")).toDouble()));
+        const QJsonObject note = res.value(QLatin1String("note")).toObject();
+        if (!note.isEmpty()) text += QLatin1Char(' ') + issueWords(note);
+        say(text);
+    } else {
+        text = issueWords(o.value(QLatin1String("issue")).toObject());
+        if (!text.isEmpty()) fail(text);
+    }
+    if (!isActive() && !text.isEmpty()) m_owner->report(this, text, res.isEmpty());
+    setRunning();
 }

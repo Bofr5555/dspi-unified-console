@@ -48,8 +48,8 @@ class InstallationController : public QObject {
     Q_OBJECT
     QML_ELEMENT
     QML_SINGLETON
-    // The panel is on show (it sets this): the view is read while it is
-    Q_PROPERTY(bool shown READ shown WRITE setShown NOTIFY shownChanged)
+    // A panel is on show (panelShown()): the view is read while one is
+    Q_PROPERTY(bool shown READ shown NOTIFY shownChanged)
     // A hub session answered with the installation
     Q_PROPERTY(bool available READ available NOTIFY viewChanged)
     Q_PROPERTY(QString role READ role NOTIFY viewChanged)
@@ -84,6 +84,10 @@ class InstallationController : public QObject {
     Q_PROPERTY(QString issue READ issue NOTIFY draftChanged)
     // Why the view could not be read ("" when it was)
     Q_PROPERTY(QString error READ error NOTIFY viewChanged)
+    // -- WP LAY5b -- The edits a Reload of a stale draft left out, in the
+    // core's sentences; empty for none. remake() makes them again on the
+    // installation as it is now, where the core judges each again.
+    Q_PROPERTY(QStringList lost READ lost NOTIFY draftChanged)
     // A save is on its way
     Q_PROPERTY(bool busy READ busy NOTIFY editableChanged)
     // The last save, in words; and whether it went wrong
@@ -94,8 +98,10 @@ public:
     ~InstallationController() override;
     static InstallationController *create(QQmlEngine *, QJSEngine *);
 
-    bool shown() const { return m_shown; }
-    void setShown(bool shown);
+    bool shown() const { return m_panels > 0; }
+    // -- WP LAY5b -- A panel shows, or no longer does: a page and a window may
+    // each have one, so this counts them
+    Q_INVOKABLE void panelShown(bool shown);
     bool available() const { return m_available; }
     QString role() const { return m_role; }
     bool mayEdit() const { return writable() && m_available && m_mayEdit; }
@@ -114,6 +120,7 @@ public:
     bool stale() const { return m_stale; }
     QStringList changes() const { return m_changes; }
     QString issue() const { return m_issue; }
+    QStringList lost() const { return m_lostChanges; }   // -- WP LAY5b --
     QString error() const { return m_error; }
     bool busy() const { return m_busy > 0; }
     QString message() const { return m_message; }
@@ -125,7 +132,8 @@ public:
     // is dropped by the QML compiler). They ignore it.
     //
     // An element of the draft: { id, kind, name (clean, its id without one),
-    // and as its kind has them: serial, room, role (receiver, repeater,
+    // and as its kind has them: serial, hubSerial (-- WP LAY5b -- as the hub
+    // gives it, to compare and never to show), room, role (receiver, repeater,
     // spdif_follower, spdif_source, usb_direct), upstream, spdifSource, txMask,
     // rooms, units, source }. Empty for none
     Q_INVOKABLE QVariantMap element(const QString &id, int generation = 0) const;
@@ -160,6 +168,10 @@ public:
     Q_INVOKABLE void save();
     // Drop the edits for the installation as last read, and read it again
     Q_INVOKABLE void reload();
+    // -- WP LAY5b -- The edits of `lost`, all or none (false, and `message`
+    // says why); or leave them
+    Q_INVOKABLE bool remake();
+    Q_INVOKABLE void dropLost();
     Q_INVOKABLE void refresh();
 
     // `text` as it is safe to show: no control or format characters (bidi
@@ -217,7 +229,7 @@ private:
     bool m_shutDown = false;
     bool m_readOnlyForTest = false;
     bool m_wasWritable = true;
-    bool m_shown = false;
+    int m_panels = 0;   // -- WP LAY5b --
     bool m_reading = false;
     int m_busy = 0;
 
@@ -238,6 +250,9 @@ private:
     bool m_stale = false;
     int m_generation = 0;
     QStringList m_changes;
+    // -- WP LAY5b -- the edits made on the draft, and those a Reload left out
+    QJsonArray m_edits, m_lost;
+    QStringList m_lostChanges;
     QString m_issue, m_issueSubject, m_issueField, m_issueShown;
     QString m_refusedId, m_refusedField, m_refusedWhy;
     QVariantList m_unseen;

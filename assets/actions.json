@@ -1,0 +1,1012 @@
+{
+  "version": 1,
+  "actions": [
+    {
+      "id": "file.importFilters",
+      "text": "Import Filters…",
+      "menu": "File",
+      "shortcut": "Ctrl+I",
+      "places": [
+        "toolbar.eq",
+        "appMenu.transfer"
+      ]
+    },
+    {
+      "id": "file.exportFilters",
+      "text": "Export Filters…",
+      "menu": "File",
+      "shortcut": "Ctrl+E",
+      "places": [
+        "toolbar.eq",
+        "appMenu.transfer"
+      ]
+    },
+    {
+      "id": "file.importConfiguration",
+      "text": "Import Device Configuration…",
+      "menu": "File",
+      "places": [
+        "appMenu.transfer"
+      ]
+    },
+    {
+      "id": "file.exportConfiguration",
+      "text": "Export Device Configuration…",
+      "menu": "File",
+      "places": [
+        "appMenu.transfer"
+      ]
+    },
+    {
+      "id": "file.openFile",
+      "text": "Open File…",
+      "menu": "File",
+      "shortcut": "Ctrl+O",
+      "places": [
+        "appMenu.file"
+      ]
+    },
+    {
+      "id": "file.newFromTemplate",
+      "text": "New from Template…",
+      "menu": "File",
+      "places": [
+        "appMenu.file"
+      ]
+    },
+    {
+      "id": "file.saveFile",
+      "text": "Save File",
+      "menu": "File",
+      "places": [
+        "appMenu.file"
+      ]
+    },
+    {
+      "id": "file.saveAsTemplate",
+      "text": "Save as Template…",
+      "menu": "File",
+      "places": [
+        "appMenu.file"
+      ]
+    },
+    {
+      "id": "file.saveMasterVolume",
+      "text": "Save Master Volume",
+      "menu": "File",
+      "places": [
+        "save.store"
+      ]
+    },
+    {
+      "id": "file.saveOutputConfiguration",
+      "text": "Save Output Configuration",
+      "menu": "File",
+      "places": [
+        "save.store"
+      ]
+    },
+    {
+      "id": "file.quit",
+      "text": "Quit",
+      "menu": "File",
+      "shortcut": "Ctrl+Q",
+      "places": [
+        "appMenu.quit"
+      ]
+    },
+    {
+      "id": "edit.undo",
+      "text": "Undo",
+      "menu": "Edit",
+      "shortcut": "Ctrl+Z",
+      "places": [
+        "topBar",
+        "history.step"
+      ]
+    },
+    {
+      "id": "edit.redo",
+      "text": "Redo",
+      "menu": "Edit",
+      "shortcut": "Ctrl+Shift+Z",
+      "places": [
+        "topBar",
+        "history.step"
+      ]
+    },
+    {
+      "id": "edit.history",
+      "text": "History…",
+      "menu": "Edit",
+      "shortcut": "Ctrl+Shift+H",
+      "places": [
+        "history.all",
+        "page.library/history"
+      ]
+    },
+    {
+      "id": "edit.cut",
+      "text": "Cut",
+      "menu": "Edit",
+      "shortcut": "Ctrl+X",
+      "places": [
+        "keyboard"
+      ]
+    },
+    {
+      "id": "edit.copy",
+      "text": "Copy",
+      "menu": "Edit",
+      "shortcut": "Ctrl+C",
+      "places": [
+        "keyboard",
+        "channel.copy"
+      ]
+    },
+    {
+      "id": "edit.paste",
+      "text": "Paste",
+      "menu": "Edit",
+      "shortcut": "Ctrl+V",
+      "places": [
+        "keyboard",
+        "channel.copy"
+      ]
+    },
+    {
+      "id": "edit.delete",
+      "text": "Delete",
+      "menu": "Edit",
+      "places": [
+        "keyboard",
+        "graph.select"
+      ]
+    },
+    {
+      "id": "edit.selectAll",
+      "text": "Select All",
+      "menu": "Edit",
+      "shortcut": "Ctrl+A",
+      "places": [
+        "keyboard",
+        "graph.select"
+      ]
+    },
+    {
+      "id": "edit.settings",
+      "text": "Settings…",
+      "menu": "Edit",
+      "shortcut": "Ctrl+,",
+      "places": [
+        "appMenu.settings",
+        "page.settings/settings"
+      ]
+    },
+    {
+      "id": "device.commit",
+      "text": "Commit Parameters…",
+      "menu": "Device",
+      "shortcut": "Ctrl+S",
+      "places": [
+        "topBar"
+      ]
+    },
+    {
+      "id": "device.revert",
+      "text": "Revert to Saved…",
+      "menu": "Device",
+      "shortcut": "Ctrl+Shift+R",
+      "places": [
+        "save.revert"
+      ]
+    },
+    {
+      "id": "device.factoryReset",
+      "text": "Factory Reset…",
+      "menu": "Device",
+      "places": [
+        "save.reset"
+      ]
+    },
+    {
+      "id": "device.preset1",
+      "text": "Preset 1",
+      "menu": "Device",
+      "submenu": "Recall Preset",
+      "shortcut": "Ctrl+1",
+      "places": [
+        "preset"
+      ]
+    },
+    {
+      "id": "device.preset2",
+      "text": "Preset 2",
+      "menu": "Device",
+      "submenu": "Recall Preset",
+      "shortcut": "Ctrl+2",
+      "places": [
+        "preset"
+      ]
+    },
+    {
+      "id": "device.preset3",
+      "text": "Preset 3",
+      "menu": "Device",
+      "submenu": "Recall Preset",
+      "shortcut": "Ctrl+3",
+      "places": [
+        "preset"
+      ]
+    },
+    {
+      "id": "device.preset4",
+      "text": "Preset 4",
+      "menu": "Device",
+      "submenu": "Recall Preset",
+      "shortcut": "Ctrl+4",
+      "places": [
+        "preset"
+      ]
+    },
+    {
+      "id": "device.preset5",
+      "text": "Preset 5",
+      "menu": "Device",
+      "submenu": "Recall Preset",
+      "shortcut": "Ctrl+5",
+      "places": [
+        "preset"
+      ]
+    },
+    {
+      "id": "device.preset6",
+      "text": "Preset 6",
+      "menu": "Device",
+      "submenu": "Recall Preset",
+      "shortcut": "Ctrl+6",
+      "places": [
+        "preset"
+      ]
+    },
+    {
+      "id": "device.preset7",
+      "text": "Preset 7",
+      "menu": "Device",
+      "submenu": "Recall Preset",
+      "shortcut": "Ctrl+7",
+      "places": [
+        "preset"
+      ]
+    },
+    {
+      "id": "device.preset8",
+      "text": "Preset 8",
+      "menu": "Device",
+      "submenu": "Recall Preset",
+      "shortcut": "Ctrl+8",
+      "places": [
+        "preset"
+      ]
+    },
+    {
+      "id": "device.preset9",
+      "text": "Preset 9",
+      "menu": "Device",
+      "submenu": "Recall Preset",
+      "shortcut": "Ctrl+9",
+      "places": [
+        "preset"
+      ]
+    },
+    {
+      "id": "device.mute",
+      "text": "Mute",
+      "menu": "Device",
+      "shortcut": "Ctrl+M",
+      "places": [
+        "dock"
+      ]
+    },
+    {
+      "id": "device.bypass",
+      "text": "Bypass Master EQ",
+      "menu": "Device",
+      "shortcut": "Ctrl+B",
+      "places": [
+        "dock"
+      ]
+    },
+    {
+      "id": "device.snapshots",
+      "text": "Snapshots…",
+      "menu": "Device",
+      "places": [
+        "page.library/snapshots"
+      ]
+    },
+    {
+      "id": "device.abToggle",
+      "text": "Toggle A/B",
+      "menu": "Device",
+      "shortcut": "B",
+      "places": [
+        "topBar"
+      ]
+    },
+    {
+      "id": "device.events",
+      "text": "Events…",
+      "menu": "Device",
+      "places": [
+        "page.system/events"
+      ]
+    },
+    {
+      "id": "device.identify",
+      "text": "Identify",
+      "menu": "Device",
+      "places": [
+        "device.act"
+      ]
+    },
+    {
+      "id": "device.aiAgents",
+      "text": "AI Agents…",
+      "menu": "Device",
+      "places": [
+        "page.settings/aiAgents"
+      ]
+    },
+    {
+      "id": "device.firmwareUpdate",
+      "text": "Firmware Update…",
+      "menu": "Device",
+      "hiddenOn": "STM32H723",
+      "places": [
+        "device.act",
+        "page.devices/firmware"
+      ]
+    },
+    {
+      "id": "device.reconnect",
+      "text": "Reconnect",
+      "menu": "Device",
+      "places": [
+        "device.act"
+      ]
+    },
+    {
+      "id": "device.devices",
+      "text": "Devices…",
+      "menu": "Device",
+      "places": [
+        "topBar"
+      ]
+    },
+    {
+      "id": "autoeq.browse",
+      "text": "Browse Profiles…",
+      "menu": "AutoEQ",
+      "shortcut": "Ctrl+Shift+B",
+      "places": [
+        "toolbar.eq",
+        "page.library/autoeq",
+        "channel.act"
+      ]
+    },
+    {
+      "id": "autoeq.clearFavorites",
+      "text": "Clear Favorites",
+      "menu": "AutoEQ",
+      "submenu": "Favorite Profiles",
+      "places": [
+        "autoeq.favorites"
+      ]
+    },
+    {
+      "id": "autoeq.updateDatabase",
+      "text": "Update Database…",
+      "menu": "AutoEQ",
+      "places": [
+        "autoeq.database"
+      ]
+    },
+    {
+      "id": "tools.matrix",
+      "text": "Matrix Mixer…",
+      "menu": "Tools",
+      "shortcut": "Ctrl+Shift+M",
+      "places": [
+        "page.routing/matrix",
+        "channel.act"
+      ]
+    },
+    {
+      "id": "tools.loudness",
+      "text": "Loudness Compensation…",
+      "menu": "Tools",
+      "shortcut": "Ctrl+Shift+L",
+      "places": [
+        "page.effects/loudness"
+      ]
+    },
+    {
+      "id": "tools.crossfeed",
+      "text": "Headphone Crossfeed…",
+      "menu": "Tools",
+      "shortcut": "Ctrl+Shift+X",
+      "places": [
+        "page.effects/crossfeed"
+      ]
+    },
+    {
+      "id": "tools.psybass",
+      "text": "Psychoacoustic Bass…",
+      "menu": "Tools",
+      "shortcut": "Ctrl+Shift+P",
+      "places": [
+        "page.effects/psybass"
+      ]
+    },
+    {
+      "id": "tools.subharmonic",
+      "text": "Subharmonic Synthesizer…",
+      "menu": "Tools",
+      "shortcut": "Ctrl+Shift+S",
+      "places": [
+        "page.effects/subharmonic"
+      ]
+    },
+    {
+      "id": "tools.tube",
+      "text": "Tube Modeller…",
+      "menu": "Tools",
+      "shortcut": "Ctrl+Shift+D",
+      "places": [
+        "page.effects/tube"
+      ]
+    },
+    {
+      "id": "tools.upmixer",
+      "text": "Stereo Upmixer…",
+      "menu": "Tools",
+      "shortcut": "Ctrl+Shift+U",
+      "places": [
+        "page.effects/upmixer"
+      ]
+    },
+    {
+      "id": "tools.leveller",
+      "text": "Volume Leveller…",
+      "menu": "Tools",
+      "shortcut": "Ctrl+Shift+V",
+      "places": [
+        "page.effects/leveller"
+      ]
+    },
+    {
+      "id": "tools.signalGenerator",
+      "text": "Signal Generator…",
+      "menu": "Tools",
+      "shortcut": "Ctrl+Shift+G",
+      "places": [
+        "page.analyse/signalGenerator"
+      ]
+    },
+    {
+      "id": "tools.spectrum",
+      "text": "Spectrum Analyser…",
+      "menu": "Tools",
+      "shortcut": "Ctrl+Shift+A",
+      "places": [
+        "page.analyse/spectrum"
+      ]
+    },
+    {
+      "id": "tools.stats",
+      "text": "Stats for nerbs",
+      "menu": "Tools",
+      "shortcut": "Ctrl+Shift+T",
+      "places": [
+        "page.analyse/stats"
+      ]
+    },
+    {
+      "id": "tools.measure",
+      "text": "Measure…",
+      "menu": "Tools",
+      "places": [
+        "page.measure/measure"
+      ]
+    },
+    {
+      "id": "tools.interruptMonitor",
+      "text": "Interrupt Monitor…",
+      "menu": "Tools",
+      "shortcut": "Ctrl+Shift+I",
+      "places": [
+        "page.analyse/interruptMonitor"
+      ]
+    },
+    {
+      "id": "window.minimiseToTray",
+      "text": "Minimise to Tray",
+      "menu": "Window",
+      "shortcut": "Ctrl+Alt+M",
+      "places": [
+        "appMenu.end"
+      ]
+    },
+    {
+      "id": "window.popOutGraph",
+      "text": "Pop Out Graph",
+      "menu": "Window",
+      "places": [
+        "graph.view"
+      ]
+    },
+    {
+      "id": "window.system",
+      "text": "System…",
+      "menu": "Window",
+      "optional": true,
+      "places": [
+        "page.system/status"
+      ]
+    },
+    {
+      "id": "help.gettingStarted",
+      "text": "Getting Started…",
+      "menu": "Help",
+      "places": [
+        "appMenu.help"
+      ]
+    },
+    {
+      "id": "help.whatsNew",
+      "text": "What's New in {app}",
+      "menu": "Help",
+      "places": [
+        "appMenu.help",
+        "page.settings/whatsNew"
+      ]
+    },
+    {
+      "id": "help.projectGithub",
+      "text": "{app} on GitHub",
+      "menu": "Help",
+      "places": [
+        "appMenu.help"
+      ]
+    },
+    {
+      "id": "help.firmwareGithub",
+      "text": "DSPi Firmware on GitHub",
+      "menu": "Help",
+      "places": [
+        "appMenu.help"
+      ]
+    },
+    {
+      "id": "help.saveDiagnostics",
+      "text": "Save Diagnostics…",
+      "menu": "Help",
+      "optional": true,
+      "places": [
+        "appMenu.help"
+      ]
+    },
+    {
+      "id": "help.checkForUpdates",
+      "text": "Check for Updates…",
+      "menu": "Help",
+      "optional": true,
+      "places": [
+        "appMenu.help"
+      ]
+    },
+    {
+      "id": "help.about",
+      "text": "About {app}",
+      "menu": "Help",
+      "places": [
+        "appMenu.help"
+      ]
+    }
+  ],
+  "itemActions": [
+    {
+      "id": "app.classicLayout",
+      "text": "Switch to the Classic Layout",
+      "places": [
+        "appMenu.settings"
+      ]
+    },
+    {
+      "id": "history.recent",
+      "text": "Recent Changes",
+      "rows": "dynamic",
+      "places": [
+        "history.recent"
+      ]
+    },
+    {
+      "id": "device.close",
+      "text": "Close",
+      "places": [
+        "device.tab"
+      ]
+    },
+    {
+      "id": "channel.rename",
+      "text": "Rename",
+      "places": [
+        "channel.name"
+      ]
+    },
+    {
+      "id": "channel.curve",
+      "text": "Show Curve",
+      "textOn": "Hide Curve",
+      "places": [
+        "channel.name"
+      ]
+    },
+    {
+      "id": "channel.copy",
+      "text": "Copy Parameters",
+      "of": "edit.copy",
+      "places": [
+        "channel.copy"
+      ]
+    },
+    {
+      "id": "channel.paste",
+      "text": "Paste Parameters",
+      "of": "edit.paste",
+      "places": [
+        "channel.copy"
+      ]
+    },
+    {
+      "id": "channel.identify",
+      "text": "Identify",
+      "places": [
+        "channel.act"
+      ]
+    },
+    {
+      "id": "channel.mute",
+      "text": "Mute",
+      "textOn": "Unmute",
+      "places": [
+        "channel.act"
+      ]
+    },
+    {
+      "id": "channel.routing",
+      "text": "Edit Routing…",
+      "of": "tools.matrix",
+      "places": [
+        "channel.act"
+      ]
+    },
+    {
+      "id": "channel.headphone",
+      "text": "Load Headphone Profile…",
+      "of": "autoeq.browse",
+      "places": [
+        "channel.act"
+      ]
+    },
+    {
+      "id": "channel.clear",
+      "text": "Clear PEQ…",
+      "places": [
+        "channel.clear"
+      ]
+    },
+    {
+      "id": "band.shape",
+      "text": "Shape",
+      "rows": "submenu",
+      "places": [
+        "band.shape"
+      ]
+    },
+    {
+      "id": "band.slope",
+      "text": "Slope",
+      "rows": "submenu",
+      "places": [
+        "band.shape"
+      ]
+    },
+    {
+      "id": "band.bypass",
+      "text": "Bypass",
+      "textOn": "Enable",
+      "places": [
+        "band.play"
+      ]
+    },
+    {
+      "id": "band.invert",
+      "text": "Invert Gain",
+      "places": [
+        "band.play"
+      ]
+    },
+    {
+      "id": "band.copy",
+      "text": "Copy Band",
+      "places": [
+        "band.copy"
+      ]
+    },
+    {
+      "id": "band.paste",
+      "text": "Paste Band",
+      "places": [
+        "band.copy"
+      ]
+    },
+    {
+      "id": "band.reset",
+      "text": "Reset Band",
+      "places": [
+        "band.reset"
+      ]
+    },
+    {
+      "id": "graph.addBand",
+      "text": "Add a Band Here",
+      "places": [
+        "graph.add"
+      ]
+    },
+    {
+      "id": "graph.selectAll",
+      "text": "Select All Bands",
+      "of": "edit.selectAll",
+      "places": [
+        "graph.select"
+      ]
+    },
+    {
+      "id": "graph.deselect",
+      "text": "Deselect All",
+      "places": [
+        "graph.select"
+      ]
+    },
+    {
+      "id": "graph.delete",
+      "text": "Delete Selected Bands",
+      "of": "edit.delete",
+      "places": [
+        "graph.select"
+      ]
+    },
+    {
+      "id": "graph.rta",
+      "text": "Show the Spectrum",
+      "textOn": "Hide the Spectrum",
+      "places": [
+        "graph.view"
+      ]
+    },
+    {
+      "id": "graph.phase",
+      "text": "Show the Phase",
+      "textOn": "Hide the Phase",
+      "places": [
+        "graph.view"
+      ]
+    },
+    {
+      "id": "graph.settings",
+      "text": "Graph Settings…",
+      "places": [
+        "graph.view"
+      ]
+    },
+    {
+      "id": "slot.recall",
+      "text": "Recall",
+      "places": [
+        "slot.use"
+      ]
+    },
+    {
+      "id": "slot.save",
+      "text": "Save Current Settings Here",
+      "places": [
+        "slot.use"
+      ]
+    },
+    {
+      "id": "slot.rename",
+      "text": "Rename…",
+      "places": [
+        "slot.name"
+      ]
+    },
+    {
+      "id": "slot.startup",
+      "text": "Set as Startup Preset",
+      "places": [
+        "slot.name"
+      ]
+    },
+    {
+      "id": "slot.copyTo",
+      "text": "Copy to…",
+      "rows": "submenu",
+      "places": [
+        "slot.copy"
+      ]
+    },
+    {
+      "id": "slot.clear",
+      "text": "Clear…",
+      "places": [
+        "slot.clear"
+      ]
+    },
+    {
+      "id": "slot.clearAll",
+      "text": "Clear All Slots…",
+      "places": [
+        "slot.clear"
+      ]
+    }
+  ],
+  "menus": {
+    "appMenu": [
+      [
+        "file.openFile",
+        "file.newFromTemplate",
+        "file.saveFile",
+        "file.saveAsTemplate"
+      ],
+      [
+        "file.importFilters",
+        "file.exportFilters",
+        "file.importConfiguration",
+        "file.exportConfiguration"
+      ],
+      [
+        "edit.settings",
+        "app.classicLayout"
+      ],
+      [
+        "help.gettingStarted",
+        "help.whatsNew",
+        "help.projectGithub",
+        "help.firmwareGithub",
+        "help.saveDiagnostics",
+        "help.checkForUpdates",
+        "help.about"
+      ],
+      [
+        "window.minimiseToTray"
+      ],
+      [
+        "file.quit"
+      ]
+    ],
+    "save": [
+      [
+        "device.revert"
+      ],
+      [
+        "file.saveMasterVolume",
+        "file.saveOutputConfiguration"
+      ],
+      [
+        "device.factoryReset"
+      ]
+    ],
+    "history": [
+      [
+        "edit.undo",
+        "edit.redo"
+      ],
+      [
+        "history.recent"
+      ],
+      [
+        "edit.history"
+      ]
+    ],
+    "device": [
+      [
+        "device.identify",
+        "device.firmwareUpdate",
+        "device.reconnect"
+      ],
+      [
+        "device.close"
+      ]
+    ],
+    "autoeq": [
+      [
+        "autoeq.clearFavorites"
+      ],
+      [
+        "autoeq.updateDatabase"
+      ]
+    ],
+    "channel": [
+      [
+        "channel.rename",
+        "channel.curve"
+      ],
+      [
+        "channel.copy",
+        "channel.paste"
+      ],
+      [
+        "channel.identify",
+        "channel.mute",
+        "channel.routing",
+        "channel.headphone"
+      ],
+      [
+        "channel.clear"
+      ]
+    ],
+    "band": [
+      [
+        "band.shape",
+        "band.slope"
+      ],
+      [
+        "band.bypass",
+        "band.invert"
+      ],
+      [
+        "band.copy",
+        "band.paste"
+      ],
+      [
+        "band.reset"
+      ]
+    ],
+    "graph": [
+      [
+        "graph.addBand"
+      ],
+      [
+        "graph.selectAll",
+        "graph.deselect",
+        "graph.delete"
+      ],
+      [
+        "window.popOutGraph",
+        "graph.rta",
+        "graph.phase",
+        "graph.settings"
+      ]
+    ],
+    "slot": [
+      [
+        "slot.recall",
+        "slot.save"
+      ],
+      [
+        "slot.rename",
+        "slot.startup"
+      ],
+      [
+        "slot.copyTo"
+      ],
+      [
+        "slot.clear",
+        "slot.clearAll"
+      ]
+    ]
+  }
+}

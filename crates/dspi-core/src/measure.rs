@@ -45,6 +45,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::callbacks::MeasureListener;
 use crate::records::{SiggenConfig, SiggenStatus, SystemStatus};
+use crate::speaker_layout::SpeakerLayout;
 use crate::{DspiCore, DspiError, Result};
 
 mod plan;
@@ -82,6 +83,12 @@ pub use live::{
     MeasureRtaAveraging,
 };
 pub use passive::{MeasureRtaPassiveFrame, MeasureRtaPassiveSetup, MeasureRtaPassiveState};
+// -- WP ROLL1 -- the roll-off search (a tweeter's low end, from the top down)
+mod rolloff;
+pub use rolloff::{
+    MeasureRolloffEnd, MeasureRolloffResult, MeasureRolloffSetup, MeasureRolloffStage,
+    MeasureRolloffState, ROLLOFF_START_HZ, ROLLOFF_START_MAX_HZ, ROLLOFF_STOP_DB,
+};
 pub use tune::{
     MeasureLayout, MeasureLayoutOutput, MeasureTuneCheck, MeasureTuneCurves, MeasureTuneKeep,
     MeasureTuneKind, MeasureTuneOptions, MeasureTuneParam, MeasureTuneProposal, MeasureTuneStage,
@@ -217,6 +224,9 @@ pub(crate) const NOTICE_KEYS: &[&str] = &[
     "measure.system.sim_refused",
     // -- WP ROLE0 -- roles from the speaker layout, which is not confirmed
     "measure.layout_unconfirmed",
+    // -- WP ROLL1 -- the tweeter's stimulus floor and the roll-off search
+    "measure.tweeter_stimulus",
+    "measure.rolloff.midrange",
 ];
 
 // ── Records ─────────────────────────────────────────────────────────────
@@ -326,6 +336,35 @@ pub(crate) fn effective_role(role: MeasureRole, chain: &ChannelChain) -> Measure
         role.driver(),
         &filters,
     ))
+}
+
+// -- WP RCFIX --
+/// The stricter of two roles for the safety rules: a high way over a middle
+/// one over the others, which the rules treat alike (`role` then).
+pub(crate) fn stricter_role(role: MeasureRole, other: MeasureRole) -> MeasureRole {
+    let rank = |r| match r {
+        MeasureRole::High => 2,
+        MeasureRole::Mid => 1,
+        MeasureRole::Full | MeasureRole::Sub | MeasureRole::Low => 0,
+    };
+    if rank(other) > rank(role) {
+        other
+    } else {
+        role
+    }
+}
+
+// -- WP RCFIX --
+/// `role` for `output`, or its role in the user's confirmed layout (`None`
+/// without one) where that is stricter.
+pub(crate) fn confirmed_role(
+    role: MeasureRole,
+    output: u8,
+    confirmed: Option<&SpeakerLayout>,
+) -> MeasureRole {
+    confirmed
+        .and_then(|l| l.output(output))
+        .map_or(role, |row| stricter_role(role, row.role))
 }
 
 /// A headphone coupler type.
@@ -577,6 +616,13 @@ pub struct MeasureState {
     /// Gaps and repeats seen in the capture's frame indices (any one aborts
     /// the session, S5).
     pub frame_faults: u32,
+    // -- WP ROLL1 -- (review RA item 5)
+    /// Who started the session: 0 the app itself, else an agent's actor
+    /// (`actor::actor_label` names it), so a screen can say "requested by
+    /// AI".
+    #[serde(default)]
+    #[cfg_attr(feature = "uniffi", uniffi(default = 0))]
+    pub actor: u32,
 }
 
 // ── The notification tap (under `inner`) ───────────────────────────────
@@ -760,6 +806,11 @@ pub(crate) struct MeasureSlot {
     system: Mutex<system::SystemSlot>,
     /// The hub's `system.measure.aborted` events (a leaf).
     system_aborted: system::AbortedQueue,
+    // -- WP ROLL1 --
+    /// The roll-off search: taken before the session's slot, never after.
+    rolloff: Mutex<rolloff::Rolloff>,
+    /// What the roll-off search shows (a leaf).
+    rolloff_view: Mutex<MeasureRolloffState>,
 }
 
 impl MeasureSlot {
@@ -797,11 +848,15 @@ struct CoreDevice<'a> {
 impl Device for CoreDevice<'_> {
     fn start(&mut self, cfg: &SiggenConfig) -> Result<()> {
         runs::check_config(cfg)?;
+        // -- WP ROLL1 -- the session's own writes, whoever ticks it
+        let _scope = crate::actor::JobActor::of(crate::actor::EMBEDDER).attribute(self.core);
         self.core.siggen_set_config(cfg.clone())?;
         self.core.siggen_control(crate::consts::SIGGEN_CTL_START)
     }
 
     fn stop_now(&mut self) -> Result<()> {
+        // -- WP ROLL1 -- a STOP never waits for the drag gate or a hook
+        let _scope = crate::actor::JobActor::of(crate::actor::EMBEDDER).attribute(self.core);
         self.core.siggen_control(crate::consts::SIGGEN_CTL_STOP_NOW)
     }
 
@@ -871,13 +926,18 @@ impl DspiCore {
     }
 
     /// A tune's `layout` with its roles from the stored speaker layout when
-    /// `from_layout` (as [`DspiCore::setup_roles`]).
+    /// `from_layout` (as [`DspiCore::setup_roles`]); -- WP RCFIX -- else the
+    /// caller's, each never looser than the user's confirmed layout's.
     pub(crate) fn layout_roles(
         &self,
         mut layout: MeasureLayout,
         from_layout: bool,
     ) -> Result<MeasureLayout> {
         if !from_layout {
+            let confirmed = self.confirmed_layout_now();
+            for lo in &mut layout.outputs {
+                lo.role = confirmed_role(lo.role, lo.output, confirmed.as_ref());
+            }
             return Ok(layout);
         }
         let outputs: Vec<MeasureOutput> = layout
@@ -935,7 +995,8 @@ impl DspiCore {
     /// range); a transfer failure of the reads.
     pub fn measure_preflight(&self, setup: MeasureSetup) -> Result<MeasurePreflight> {
         let setup = self.setup_roles(setup)?; // -- WP ROLE0 --
-        let plan = Plan::new(&setup)?;
+        let mut plan = Plan::new(&setup)?;
+        self.measure_resolve_roles(&mut plan)?; // -- WP ROLL1 --
         self.measure_preflight_plan(&plan, &PreflightOptions::default())
     }
 
@@ -1164,9 +1225,11 @@ impl DspiCore {
     /// Start a session of `plan` (see [`DspiCore::measure_start`]).
     pub(crate) fn measure_start_plan(
         &self,
-        plan: Plan,
+        mut plan: Plan,
         options: &PreflightOptions,
     ) -> Result<MeasureState> {
+        // -- WP ROLL1 -- who starts it (before the slot: it takes `inner`)
+        let actor = crate::actor::JobActor::capture(self).actor();
         // The slot is held from the busy check to the session's install, so
         // two starts on one core cannot both pass (the slot comes before
         // `inner`, which the steps below take).
@@ -1181,6 +1244,9 @@ impl DspiCore {
             // judges the mirror: a volume raised a moment ago (the host's own
             // USB volume) must be the one S2 sees (review P5-B).
             self.settle_notifications();
+            // -- WP ROLL1 -- every run code from here on sees the effective
+            // roles, and the runs laid out for them (the stimulus floor)
+            self.measure_resolve_roles(&mut plan)?;
             let pre = self.measure_preflight_plan(&plan, options)?;
             if let Some(e) = preflight::refusal(&pre) {
                 return Err(e);
@@ -1201,7 +1267,8 @@ impl DspiCore {
                 return Err(DspiError::Locked);
             }
             self.lock().measure_tap.set(true);
-            let session = Session::new(plan, ctx, Instant::now());
+            let mut session = Session::new(plan, ctx, Instant::now());
+            session.set_actor(actor); // -- WP ROLL1 --
             let state = session.state();
             // Review P5-D: the passive microphone RTA never runs beside the
             // generator (it would show the stimulus as programme audio).
@@ -1211,6 +1278,32 @@ impl DspiCore {
         };
         self.measure.listener.call(|l| l.on_measure());
         Ok(state)
+    }
+
+    // -- WP ROLL1 --
+    /// Resolve `plan`'s roles to the effective roles on the mirror's chains
+    /// ([`Plan::resolve_roles`]); -- WP RCFIX -- never looser than the user's
+    /// confirmed layout, whatever the caller passed (review RC, RC2).
+    pub(crate) fn measure_resolve_roles(&self, plan: &mut Plan) -> Result<()> {
+        let confirmed = self.confirmed_layout_now();
+        let chains: Chains = {
+            let inner = self.lock();
+            plan.outputs
+                .iter()
+                .filter(|o| o.output < inner.state.num_output_channels)
+                .map(|o| (o.output, preflight::chain_of(&inner.state, o.output)))
+                .collect()
+        };
+        plan.resolve_roles(&chains, confirmed.as_ref())
+    }
+
+    // -- WP ROLL1 --
+    /// A job's session started from a thread outside its starter's scope
+    /// (the next segment or run, from a tick) is still its starter's.
+    pub(crate) fn measure_set_actor(&self, actor: crate::actor::ActorId) {
+        if let Some(s) = self.measure.lock().as_mut() {
+            s.set_actor(actor);
+        }
     }
 
     /// End a session's hold on the device: the tap off, the lock given back.

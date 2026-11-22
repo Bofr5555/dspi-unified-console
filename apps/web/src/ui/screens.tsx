@@ -14,6 +14,8 @@
 import type { ComponentChildren, FunctionComponent } from "preact";
 import { useCallback, useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { EqScreen } from "../screens/eq/EqScreen";
+import { CrossoverScreen } from "../screens/eq/CrossoverScreen"; // -- WP WEBM2 --
+import { DelaysScreen } from "../screens/eq/DelaysScreen"; // -- WP WEBM2 --
 import { Dialog } from "../screens/main/Dialog";
 import { MainScreen } from "../screens/main/MainScreen";
 // -- WP WB6c --
@@ -76,6 +78,7 @@ import { HUB_SCREEN, HUB_SCREEN_ID, HubAlarmBanner, useHubView } from "../screen
 import { OverviewScreen } from "../screens/overview/OverviewScreen";
 import { MeasureScreen } from "../screens/measure/MeasureScreen"; // -- WP P5WMS --
 import { DeviceScreen } from "../screens/device/DeviceScreen"; // -- WP PGWEB --
+import { HistoryScreen } from "../screens/history/HistoryScreen"; // -- WP WEBM3 --
 
 // -- WP WEBM1 -- the Modern shell
 import { Frame } from "./shell/Frame";
@@ -83,6 +86,9 @@ import { Dock } from "./shell/Dock";
 import { SessionBar } from "./shell/SessionBar";
 import { CONNECT, sectionOf, sectionsFor } from "./shell/sections";
 import { placeOf } from "./shell/places";
+// -- WP WEBM4 -- what this device can do, for the app menu and the command palette
+import { sessionEntries, sessionHandlers, type SessionContext } from "./menus/session-actions";
+import { SETTINGS_PAGES } from "../screens/settings/SettingsScreen";
 
 /** A question in a modal dialog; the answer is the chosen button's value, or "cancel". */
 export interface Question {
@@ -128,7 +134,10 @@ export interface ScreenDef {
 export const SCREENS: ScreenDef[] = [
   { id: "main", label: "Dashboard", View: MainScreen },
   // -- WP WB6b --
-  { id: "eq", label: "EQ", View: EqScreen },
+  { id: "eq", label: "PEQ", View: EqScreen }, // -- WP WEBM2 -- the Equaliser's PEQ tab (MODLAY 2)
+  // -- WP WEBM2 -- the Equaliser's Crossover and Delay & gain tabs (setting up: not in Simple)
+  { id: "xover", label: "Crossover", View: CrossoverScreen },
+  { id: "delays", label: "Delay & gain", View: DelaysScreen },
   // -- WP WB6G -- (UI-MODES: "Channels and EQ", every mode)
   { id: "inputs", label: "Inputs", View: InputsScreen },
   // -- WP WB6c --
@@ -141,6 +150,7 @@ export const SCREENS: ScreenDef[] = [
   // -- WP P1WB1 -- (Advanced and Installer: setting up and handing over;
   // -- WP P1DCFIX -- Simple has Snapshots as recall and A/B only)
   { id: "snapshots", label: "Snapshots", View: SnapshotsScreen },
+  { id: "history", label: "History", View: HistoryScreen }, // -- WP WEBM3 -- Library › History (setting up: not in Simple)
   { id: "files", label: "Files", View: FilesScreen },
   // -- WP WB6L -- (setting up the hardware: Advanced and Installer, as files)
   { id: "surfaces", label: "Control Surfaces", View: SurfacesScreen },
@@ -160,7 +170,7 @@ export const SCREENS: ScreenDef[] = [
 
 // -- WP P1WB1 --
 /** The screens Simple leaves out besides the Pro layer's: files are for setting up (-- WP P1DCFIX -- Snapshots stay, recall and A/B only). */
-const SETUP = new Set(["files", "surfaces" /* -- WP WB6L -- */]);
+const SETUP = new Set(["files", "surfaces" /* -- WP WB6L -- */, "xover", "delays" /* -- WP WEBM2 -- */, "history" /* -- WP WEBM3 -- */]);
 
 // -- WP WB6J -- the tool screens, in Advanced and Installer
 const TOOLS = new Set(["generator", "analyser", "stats", "monitor", "measure" /* -- WP P5WMS -- */]);
@@ -403,6 +413,28 @@ export function Screens(props: {
     };
   }, [session, unsaved]);
 
+  // -- WP WEBM4 -- the device's rows and the palette's entries for it, current as it renders; a
+  // page opened at a place (a channel, a Settings page) is a fresh one, so it starts there
+  const [jump, setJump] = useState(0);
+  const actionsCtx: SessionContext = {
+    session,
+    desk,
+    ask,
+    unsaved,
+    shown: shownIds,
+    sections,
+    locked: lockedUser,
+    open: (id, at) => {
+      if (!at) return setCurrent(id);
+      setTarget({ screen: id, ...at } as unknown as ChainTarget);
+      setChosen(id);
+      setJump((n) => n + 1);
+    },
+  };
+  shell.board?.setSession(session.id, { handlers: sessionHandlers(actionsCtx), entries: sessionEntries(actionsCtx, SETTINGS_PAGES) });
+  const board = shell.board;
+  useEffect(() => () => board?.clearSession(session.id), [board, session]);
+
   // -- WP WEBM1 -- the scenes and the preset slots are the Overview's and their own pages' (the bar's picker recalls on every page)
   const section = sectionOf(page);
   const pro = mode !== "simple" && !lockedUser;
@@ -477,7 +509,7 @@ export function Screens(props: {
       {page === CONNECT ? (
         shell.connect
       ) : (
-        <screen.View session={session} ask={ask} unsaved={unsaved} system={system} mode={mode} desk={desk} open={openAt} target={target} hub={hub} /* -- WP P2WB1 -- */ />
+        <screen.View key={`${screen.id}:${jump}` /* -- WP WEBM4 -- */} session={session} ask={ask} unsaved={unsaved} system={system} mode={mode} desk={desk} open={openAt} target={target} hub={hub} /* -- WP P2WB1 -- */ />
       )}
       {shortcutsOpen ? <ShortcutsDialog screens={shownIds} onClose={() => setShortcutsOpen(false)} /> : null}
       {question ? (

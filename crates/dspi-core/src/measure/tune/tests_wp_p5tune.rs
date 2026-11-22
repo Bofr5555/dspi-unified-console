@@ -118,7 +118,8 @@ pub(super) fn offline_doc(
     let mut results = Vec::new();
     for run in &plan.runs {
         let schedule = plan.schedule(run, RATE).unwrap();
-        let sweep = LogSweep::new(RATE, &plan.sweep).unwrap();
+        // -- WP ROLL1 -- the run's own sweep (from 1 kHz with a tweeter)
+        let sweep = LogSweep::new(RATE, &plan.sweep_of(run)).unwrap();
         let amp = peak_linear(level);
         let first: Vec<f32> = sweep
             .render_cycle(true)
@@ -160,7 +161,11 @@ pub(super) fn offline_doc(
             &AnalysisOptions::default(),
         )
         .unwrap();
-        results.push(runs::walked_result(&a, 0, level, &plan).unwrap());
+        let mut r = runs::walked_result(&a, 0, level, &plan).unwrap();
+        // -- WP ROLL1 --
+        r.f1_hz = plan.sweep_of(run).f1_hz;
+        r.aligns = run.aligns;
+        results.push(r);
     }
     let chains_of: crate::measure::Chains = outputs
         .iter()

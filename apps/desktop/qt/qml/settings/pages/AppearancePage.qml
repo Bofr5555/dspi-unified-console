@@ -65,5 +65,33 @@ SettingsPage {
             value: LayoutController.arrangement.deviceTabs
             onChosen: v => LayoutController.arrangement.deviceTabs = v
         }
+        // -- WP LAY4 --
+        SettingsPickerRow {
+            objectName: "Appearance.tone"
+            inline: true
+            label: qsTr("Colour")
+            values: ["grey", "darker"]
+            texts: [qsTr("Grey"), qsTr("Darker grey")]
+            value: LayoutController.arrangement.tone
+            onChosen: v => LayoutController.arrangement.tone = v
+        }
+        SettingsPickerRow {
+            objectName: "Appearance.inspector"
+            inline: true
+            label: qsTr("Inspector")
+            values: ["shown", "hidden"]
+            texts: [qsTr("Beside the Equaliser"), qsTr("Hidden")]
+            value: LayoutController.arrangement.inspector
+            onChosen: v => LayoutController.arrangement.inspector = v
+        }
+        SettingsPickerRow {
+            objectName: "Appearance.bandBar"
+            inline: true
+            label: qsTr("Band bar")
+            values: ["hidden", "shown"]
+            texts: [qsTr("Off"), qsTr("Under the graph")]
+            value: LayoutController.arrangement.bandBar
+            onChosen: v => LayoutController.arrangement.bandBar = v
+        }
     }
 }

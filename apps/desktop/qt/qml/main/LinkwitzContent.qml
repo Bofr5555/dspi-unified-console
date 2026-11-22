@@ -18,6 +18,7 @@ ColumnLayout {
     property int channel: -1
     property int band: 0
     property bool active: false
+    property bool showHeading: true // -- WP LAY4 -- an inspector section has its own
 
     // The band as applied (fp is carried in the gain field)
     readonly property var applied: (ChannelController.revision < 0 ? undefined : ChannelController.band(channel, band, false))
@@ -50,6 +51,7 @@ ColumnLayout {
     ColumnLayout {
         spacing: 2
         Text {
+            visible: content.showHeading
             text: qsTr("Linkwitz Transform")
             font: Theme.fontTitle
             color: Theme.text

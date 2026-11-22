@@ -1,5 +1,8 @@
 # Using DSPi Console's AI agents from another computer (SSH)
 
+*Part of the AI agents manual: [docs/manual/ai-agents.md](manual/ai-agents.md), which covers turning agents on, each
+agent's configuration, the questions and undo.* <!-- WP MCP6 -->
+
 DSPi Console serves AI agents only on its own computer: it listens on `127.0.0.1` and
 `::1` (port 47860 unless you changed it in Settings › AI agents) and on no network
 address, and there is no setting to change that. To use an agent on another computer,
@@ -32,6 +35,11 @@ DSPi Console must be running on `dspi-pc` with Settings › AI agents turned on.
      --header "Authorization: Bearer <token>"
    ```
 
+   That command line, token included, stays in your shell's history. To keep the token out
+   of it, use the `.mcp.json` with `${DSPI_MCP_TOKEN}` from the manual
+   ([Claude Code](manual/ai-agents.md#22-claude-code)) and set the variable in the
+   environment Claude Code starts in.
+
 ## Agents that start a program (Claude Desktop)
 
 Run the relay on `dspi-pc` through SSH. This needs the DSPi Terminal (`uconsole`)
@@ -54,6 +62,11 @@ shows the same code as the agent's log, then click **Allow**. The relay keeps it
 - Everyone who can sign in to `dspi-pc` as you can reach the agents' endpoint, as on
   that computer itself. The token is what tells agents apart. Remove a token you no longer
   use in Settings › AI agents.
+- The endpoint cannot prove which program is listening on the port. If DSPi Console is not
+  running on `dspi-pc` and another account there takes port 47860, an agent that connects
+  through the tunnel hands that program its token. On a computer other people sign in to,
+  pick another port in Settings › AI agents (and in `-L` above), and if you suspect this
+  happened, remove the client there (its token stops at once) and add or pair it again.
 - Close the tunnel (Ctrl-C) when you are done.
 - Do not forward the port with `-g`, or with a router or firewall rule: anyone on that
   network could then try tokens against it.

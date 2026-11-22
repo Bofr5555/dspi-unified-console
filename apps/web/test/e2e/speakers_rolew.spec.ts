@@ -129,7 +129,7 @@ test("ROLEW: an imported layout is not confirmed: its banner on Measure and Sett
   }
 
   const sp = await speakersPage(session);
-  await expect(sp.getByRole("status", { name: "Speaker layout", exact: true })).toContainText("came with a configuration file");
+  await expect(sp.getByRole("status", { name: "Speaker layout", exact: true })).toContainText("set outside this app");
   await noSidewaysScroll(page);
   if (test.info().project.name === "narrow") {
     await sp.screenshot({ path: test.info().outputPath("speakers-imported-light.png") });

@@ -1,0 +1,2 @@
+# -- WP MCP4 -- AI agents (see ../manifest.txt for the format)
+bot                 settings and tool window: AI agents; Classic: the status icon

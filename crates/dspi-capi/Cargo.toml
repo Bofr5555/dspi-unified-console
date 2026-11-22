@@ -44,7 +44,7 @@ dspi-mcp = { path = "../dspi-mcp", features = ["http"], optional = true }
 # built with (its --mcp relay mode, Settings, AI agents), so every build script's
 # feature list gets it without naming it.
 default = ["mcp"]
-link = ["dspi-core/link"]
+link = ["dspi-core/link", "dspi-mcp?/link"]  # -- WP MCP2c -- dspi-mcp's hub tools
 midir = ["dspi-core/midir"]
 # -- WP CG2 --
 # Finding hubs on the network. Off, the dspi_link_browse_* functions refuse.

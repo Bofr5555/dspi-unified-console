@@ -30,6 +30,8 @@ import type { Curves } from "./curves";
 import { dotRadius, draw, type Scene, type SceneBand } from "./draw";
 import type { BandEdits } from "./edits";
 import { PopupMenu, type PopupItem } from "./Menu";
+// -- WP WEBM4 -- the band and graph menus' rows are actions.json's
+import { menuItems as actionMenu, ownRow, popupItems, type Handler, type MenuRow } from "../../ui/menus/actions";
 // -- WP WB6I -- the Graphing settings
 import { readoutText, usePrefs } from "../settings/model";
 import {
@@ -37,6 +39,7 @@ import {
   SHAPES,
   bandColour,
   bandLabel,
+  bandTag,
   clamp,
   curveAt,
   dragResult,
@@ -765,33 +768,37 @@ export const EqGraph = memo(function EqGraph(props: GraphProps) {
         { label: "Back to shapes", onSelect: () => setPopup({ ...pp, kind: "shapes" }) },
       ];
     }
+    // -- WP WEBM4 -- the graph's and a band's rows, groups and words from actions.json (LAY3b's
+    // `graph` and `band` menus); the rows the web has no handler for are left out
     if (pp.kind === "graph") {
-      const items: PopupItem[] = [
-        { label: "Select All Bands", disabled: !graphBands.length, onSelect: () => select(new Set(graphBands), frequencyOrder(bands, graphBands)[0] ?? null) },
-        { label: "Deselect All", disabled: !selection.size, onSelect: () => select(new Set(), null) },
-      ];
-      if (!disabled) items.push("separator", { label: "Add Band Here…", disabled: freeSlot() === null, onSelect: () => setPopup({ kind: "shapes", x: pp.x, y: pp.y }) });
+      const h: Record<string, Handler> = {
+        "graph.selectAll": { run: () => select(new Set(graphBands), frequencyOrder(bands, graphBands)[0] ?? null), enabled: graphBands.length > 0 },
+        "graph.deselect": { run: () => select(new Set(), null), enabled: selection.size > 0 },
+      };
+      if (!disabled) h["graph.addBand"] = { run: () => setPopup({ kind: "shapes", x: pp.x, y: pp.y }), enabled: freeSlot() !== null };
       if (selection.size && !disabled) {
         const n = selection.size;
-        items.push("separator", { label: n > 1 ? `Delete ${n} Selected Bands` : "Delete Selected Band", danger: true, onSelect: () => remove([...selection]) });
+        h["graph.delete"] = { run: () => remove([...selection]), danger: true, text: n > 1 ? `Delete ${n} Selected Bands` : "Delete Selected Band" };
       }
-      return items;
+      return popupItems(actionMenu("graph", h));
     }
     const b = pp.b!;
     const bs = targets(b);
     const p = edits.current(b);
-    const items: PopupItem[] = [{ heading: bs.length > 1 ? `${bs.length} Bands` : `Band ${b + 1}` }];
+    const h: Record<string, Handler> = {};
+    // The slope is the band menu's own rows (`band.slope`, rows: submenu), each a choice
+    const slopes: MenuRow[] = [];
     const s = shapeOf(p.filterType);
     const types = s?.shape.types as Partial<Record<1 | 2, number>> | undefined;
     if (s && types?.[1] !== undefined && types[2] !== undefined && available.includes(types[1]) && available.includes(types[2])) {
       for (const o of [1, 2] as const)
-        items.push({ label: `${s.shape.id === "allPass" ? "Order" : "Slope"}: ${orderTitle(s.shape, o)}`, checked: o === s.order, disabled, onSelect: () => setOrder(bs, o) });
+        slopes.push(ownRow(`band.slope.${o}`, `${s.shape.id === "allPass" ? "Order" : "Slope"}: ${orderTitle(s.shape, o)}`, () => setOrder(bs, o), { checked: o === s.order, disabled }));
     }
-    items.push("separator");
-    if (props.bypassOk) items.push({ label: p.bypass ? "Enable" : "Bypass", disabled, onSelect: () => toggleBypass(bs) });
-    if (usesGain(p.filterType)) items.push({ label: "Invert Gain", disabled, onSelect: () => invert(bs) });
-    items.push("separator", { label: bs.length > 1 ? `Delete ${bs.length} Bands` : "Delete Band", danger: true, disabled, onSelect: () => remove(bs) });
-    return items;
+    if (props.bypassOk) h["band.bypass"] = { run: () => toggleBypass(bs), on: p.bypass, enabled: !disabled };
+    if (usesGain(p.filterType)) h["band.invert"] = { run: () => invert(bs), enabled: !disabled };
+    // Removing is the web's own row (the desktop's is the Delete key)
+    const del = ownRow("band.delete", bs.length > 1 ? `Delete ${bs.length} Bands` : "Delete Band", () => remove(bs), { danger: true, disabled });
+    return [{ heading: bs.length > 1 ? `${bs.length} Bands` : `Band ${b + 1}` }, ...popupItems(actionMenu("band", h, [{ with: "band.slope", rows: slopes }, { rows: [del] }]))];
   };
 
   // ------------------------------------------------------------ what a screen reader hears
@@ -804,6 +811,13 @@ export const EqGraph = memo(function EqGraph(props: GraphProps) {
     if (idle && announced !== said) setSaid(announced);
   });
   const helpId = `${props.idBase}-graph-help`;
+  // -- WP WEBM2 -- the on-graph label: above the dot, below it near the top; kept inside the graph
+  const tagBand = anchor !== null && selection.has(anchor) && bands[anchor] && isGraphBand(bands[anchor]!) && g.width > 0 ? anchor : null;
+  const tag = (() => {
+    if (tagBand === null || popup) return null;
+    const d = dot(tagBand, bands[tagBand]!);
+    return { b: tagBand, x: clamp(d.x, [60, Math.max(60, g.width - 60)]), y: d.y, below: d.y < 40, text: bandTag(tagBand, bands[tagBand]!) };
+  })();
 
   return (
     <div
@@ -826,6 +840,12 @@ export const EqGraph = memo(function EqGraph(props: GraphProps) {
       <canvas ref={canvas} aria-hidden="true" />
       {/* -- WP WB6I -- the cursor readout (Graphing: Show Frequency / Gain Readout) */}
       <div ref={readout} class="eq-readout" aria-hidden="true" />
+      {/* -- WP WEBM2 -- the chosen band's values on the graph, by its dot (live while it is dragged) */}
+      {tag ? (
+        <div class={`eq-band-tag${tag.below ? " below" : ""}`} style={{ left: `${tag.x}px`, top: `${tag.y}px`, borderColor: bandColour(tag.b) }} aria-hidden="true">
+          {tag.text}
+        </div>
+      ) : null}
       <p id={helpId} class="visually-hidden">
         {disabled
           ? "Tab steps through the bands."

@@ -115,8 +115,15 @@ impl Registry {
         tools.extend(tools::files::TOOLS.iter().copied());
         tools.extend(tools::autoeq::TOOLS.iter().copied());
         tools.extend(tools::names::TOOLS.iter().copied());
-        // -- WP MCP2c --
-        // -- WP MCP5 --
+        // -- WP MCP2c -- the audio link, Installation setup, hubs, analysis,
+        // limits and firmware (the hub-side ones need the feature `link`)
+        tools.extend(tools::alink::TOOLS.iter().copied());
+        tools.extend(tools::installation::TOOLS.iter().copied());
+        tools.extend(tools::hub::TOOLS.iter().copied());
+        tools.extend(tools::analysis::TOOLS.iter().copied());
+        tools.extend(tools::info::TOOLS.iter().copied());
+        // -- WP MCP5 -- measuring, the auto-tune, measuring across units
+        tools.extend(tools::measure::TOOLS.iter().copied());
         Self { tools }
     }
 
@@ -242,6 +249,19 @@ pub struct DeviceRow {
     pub firmware: String,
     /// It is the device the app shows.
     pub active: bool,
+    // -- WP MCP2c --
+    /// For a device on a DSPi Link hub: this session's role and encryption.
+    pub hub: Option<HubRow>,
+}
+
+// -- WP MCP2c --
+/// What a device-less tool may know of a device's hub session.
+#[derive(Debug, Clone, Default)]
+pub struct HubRow {
+    /// The role the hub gave the session: `viewer`, `control`, `admin`.
+    pub role: String,
+    /// `verified`, `offered`, `off`, `local` or `unknown`.
+    pub encryption: String,
 }
 
 /// One tool call's context.
@@ -272,6 +292,17 @@ pub struct Call<'a> {
     pub autoeq: Option<&'a Arc<AutoEqLibrary>>,
     /// The user's template folder.
     pub template_dir: &'a str,
+    // -- WP MCP2c --
+    /// The agents' Installation drafts.
+    pub installation: Option<&'a tools::installation::Drafts>,
+    // -- WP MCP5 --
+    /// The agents' requests to the app's Measure view.
+    pub measure: Option<&'a tools::measure::Jobs>,
+    /// The client's label ("AI · Claude Code").
+    pub client_label: String,
+    /// The devices, for a tool over several units (measuring across units):
+    /// it reaches another unit's core only inside a scope of its own.
+    pub set: Option<&'a CoreSet>,
     core: Option<&'a DspiCore>,
 }
 
@@ -320,6 +351,12 @@ pub struct RunCtx<'a> {
     pub autoeq: Option<&'a Arc<AutoEqLibrary>>,
     /// The user's template folder.
     pub template_dir: &'a str,
+    // -- WP MCP2c --
+    /// The agents' Installation drafts.
+    pub installation: Option<&'a tools::installation::Drafts>,
+    // -- WP MCP5 --
+    /// The agents' requests to the app's Measure view.
+    pub measure: Option<&'a tools::measure::Jobs>,
 }
 
 /// What [`run`] did.
@@ -335,6 +372,13 @@ pub struct RunOutcome {
     pub judging: Judging,
 }
 
+// -- WP INT5 --
+/// The devices agents are told of and may name: those the user has open. A
+/// unit the app holds for a measurement across units is not one.
+pub(crate) fn devices(set: &CoreSet) -> Vec<OpenDevice> {
+    set.list().into_iter().filter(|d| !d.extra).collect()
+}
+
 /// The device `args` name, or the default: the app's device when it is
 /// open, else the only device open.
 fn resolve(
@@ -342,7 +386,7 @@ fn resolve(
     active: Option<&DeviceId>,
     args: &Map<String, Value>,
 ) -> Result<(DeviceId, String, Arc<DspiCore>), ToolError> {
-    let open = set.list();
+    let open = devices(set);
     let id = match args.get("device") {
         Some(Value::String(text)) => {
             let found = DeviceId::parse(text).filter(|id| open.iter().any(|d| d.id == *id));
@@ -393,21 +437,19 @@ fn newest_id(core: &DspiCore) -> u64 {
 /// place a tool call runs (module docs).
 pub fn run(ctx: &RunCtx<'_>, tool: &Tool, args: &Map<String, Value>) -> RunOutcome {
     if !tool.device {
-        let devices = ctx
-            .set
-            .list()
+        let devices = devices(ctx.set)
             .into_iter()
             .map(|open| {
-                let firmware = ctx
-                    .set
-                    .core(&open.id)
-                    .map(|c| firmware(&c))
-                    .unwrap_or_default();
+                let core = ctx.set.core(&open.id);
+                let firmware = core.as_deref().map(firmware).unwrap_or_default();
                 let active = ctx.active == Some(&open.id);
+                // -- WP MCP2c --
+                let hub = core.as_deref().and_then(|c| tools::hub::row(&open.id, c));
                 DeviceRow {
                     open,
                     firmware,
                     active,
+                    hub,
                 }
             })
             .collect();
@@ -424,6 +466,10 @@ pub fn run(ctx: &RunCtx<'_>, tool: &Tool, args: &Map<String, Value>) -> RunOutco
             agent_guard: None,
             autoeq: ctx.autoeq, // -- WP MCP2b --
             template_dir: ctx.template_dir,
+            installation: ctx.installation, // -- WP MCP2c --
+            measure: ctx.measure,           // -- WP MCP5 --
+            client_label: ctx.client_label.to_owned(),
+            set: None,
             core: None,
         };
         let result = (tool.handler)(&mut call, args);
@@ -479,6 +525,10 @@ pub fn run(ctx: &RunCtx<'_>, tool: &Tool, args: &Map<String, Value>) -> RunOutco
             agent_guard,
             autoeq: ctx.autoeq, // -- WP MCP2b --
             template_dir: ctx.template_dir,
+            installation: ctx.installation, // -- WP MCP2c --
+            measure: ctx.measure,           // -- WP MCP5 --
+            client_label: ctx.client_label.to_owned(),
+            set: Some(ctx.set),
             core: Some(&core),
         };
         (tool.handler)(&mut call, args)

@@ -24,8 +24,9 @@ Panel {
         enabled: panel.shown && !panel.locked   // -- WP QTSENDER -- -- WP LAY0 -- only while it shows
         onActivated: MonitorController.togglePause()
     }
+    // -- WP LAY6 -- as a terminal's; Ctrl+K is the command palette's
     Shortcut {
-        sequence: "Ctrl+K"
+        sequence: "Ctrl+L"
         enabled: panel.shown && !panel.locked   // -- WP QTSENDER -- -- WP LAY0 -- only while it shows
         onActivated: MonitorController.clear()
     }
@@ -57,7 +58,7 @@ Panel {
                 objectName: "MonitorWindow.clear"
                 text: qsTr("Clear")
                 iconName: "trash"
-                toolTip: qsTr("Ctrl+K")
+                toolTip: qsTr("Ctrl+L")
                 onClicked: MonitorController.clear()
             }
             AppButton {
@@ -120,7 +121,7 @@ Panel {
                 wrapMode: TextEdit.NoWrap
                 font: Qt.font({ family: Theme.fontMono.family, pixelSize: Theme.fontSmall.pixelSize })
                 color: Theme.text
-                selectionColor: Theme.selection
+                selectionColor: Theme.textSelection
                 selectedTextColor: Theme.text
             }
         }

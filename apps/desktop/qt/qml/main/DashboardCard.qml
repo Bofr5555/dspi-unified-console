@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import UConsole
 
@@ -15,7 +16,10 @@ Rectangle {
     id: card
     property var entry: ({ columns: [] })
     readonly property var columns: entry.columns || []
-    readonly property bool gearShown: hover.hovered || layoutPopup.opened
+    // -- WP LAY5a -- a column opens its channel (Modern's Overview), in place of the gear
+    property bool choosable: false
+    signal chosen(int channel)
+    readonly property bool gearShown: !choosable && (hover.hovered || layoutPopup.opened)
 
     readonly property int headerHeight: 32
     readonly property int rowHeight: 24
@@ -144,6 +148,36 @@ Rectangle {
             }
         }
 
+        // -- WP LAY5a -- Each column is a button (Modern's Overview). Over the
+        // columns' content, which has nothing to click.
+        Row {
+            objectName: "DashboardCard.buttons"
+            visible: card.choosable
+            anchors.fill: parent
+            Repeater {
+                model: card.choosable ? card.columns : []
+                AbstractButton {
+                    id: choose
+                    required property var modelData
+                    objectName: "Dashboard.open." + modelData.channel
+                    width: face.width / card.columns.length
+                    height: face.height
+                    hoverEnabled: true
+                    focusPolicy: Qt.TabFocus
+                    onClicked: card.chosen(modelData.channel)
+                    background: Rectangle {
+                        radius: card.radius - 1
+                        color: choose.hovered ? card.faint(Theme.text, 0.05) : "transparent"
+                        border.width: choose.visualFocus ? 2 : 0
+                        border.color: Theme.focusRing
+                    }
+                    Accessible.role: Accessible.Button
+                    //: %1 is a channel's name
+                    Accessible.name: qsTr("Open %1 in the Equaliser").arg(modelData.heading)
+                    Accessible.onPressAction: choose.clicked()
+                }
+            }
+        }
         // Dividers between the columns
         Repeater {
             model: Math.max(0, card.columns.length - 1)

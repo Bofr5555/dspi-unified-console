@@ -267,13 +267,16 @@ fn wp_role0_roles_from_the_layout_need_a_confirmed_layout() {
         .measure_preflight(from_layout(caller_says_full.clone()))
         .unwrap();
     assert!(keys(&p).contains(&NOTICE_TWEETER.to_owned()), "{p:#?}");
+    // -- WP RCFIX -- and with the caller's own roles too: the confirmed
+    // layout is the stricter one.
     let p = core
         .measure_preflight(MeasureSetup {
             outputs: caller_says_full,
             ..MeasureSetup::default()
         })
         .unwrap();
-    assert!(!keys(&p).contains(&NOTICE_TWEETER.to_owned()), "{p:#?}");
+    let b = p.blockers.iter().find(|b| b.key == NOTICE_TWEETER).unwrap();
+    assert!(b.message.contains("in the speaker layout"), "{}", b.message);
     // No outputs listed: every output of the layout; one it lacks: refused.
     let s = core.setup_roles(from_layout(vec![])).unwrap();
     let got: Vec<(u8, MeasureRole, String)> = s

@@ -1437,7 +1437,7 @@ interface DspiCoreApi : AutoCloseable {
      * (review P5TRUST) for the first Keep of an auto-tune whose verify did
      * not pass (`measure.tune.keep_unverified`, as
      * [`DspiCore::measure_tune_keep`]'s: the guard is the tune's whichever
-     * call keeps it), and (WP P5HOLD) while that tune's verify runs
+     * call keeps it; every Keep of it by another actor, WP RCFIX), and (WP P5HOLD) while that tune's verify runs
      * (`measure.tune.keep_during_verify`).
      */
     @Throws(DspiException::class)
@@ -3771,6 +3771,47 @@ interface DspiCoreApi : AutoCloseable {
     fun measureRtaPassiveStop(): MeasureRtaPassiveState
 
     /**
+     * Start the roll-off search of one output (module docs): the first
+     * segment's preflight and start, as `measure_start`. On an (effective)
+     * tweeter no segment plays below 1 kHz.
+     *
+     * Errors: as `measure_start` (a blocker, read-only, a Viewer, the device
+     * lock, `measure.layout_unconfirmed`); [`DspiError::InvalidArgument`]
+     * for a setup that is not one, or while a search, a session, a tune's
+     * run or the live view runs on this core.
+     */
+    @Throws(DspiException::class)
+    fun measureRolloffStart(setup: MeasureRolloffSetup): MeasureRolloffState
+
+    /**
+     * Drive the search: its segment's session (`measure_tick`), then the
+     * verdict and the next segment or the result. Call it about every 50 ms
+     * off the UI thread while `running`, instead of `measure_tick`. Never
+     * fails.
+     */
+    fun measureRolloffTick(): MeasureRolloffState
+
+    /**
+     * The search's state, without I/O (safe from the measurement listener).
+     */
+    fun measureRolloffState(): MeasureRolloffState
+
+    /**
+     * The user's Stop: the segment's session stopped (`SIGGEN_CTL_STOP_NOW`)
+     * and the search ended without a result. Idempotent; never fails.
+     */
+    fun measureRolloffStop(): MeasureRolloffState
+
+    /**
+     * Forget a finished search (its result included). Refused while one
+     * runs.
+     *
+     * Errors: [`DspiError::InvalidArgument`] while a search runs.
+     */
+    @Throws(DspiException::class)
+    fun measureRolloffClear()
+
+    /**
      * Judge this core's own device as one unit of a system measurement:
      * P5's preflight of `unit`'s outputs on this device's mirror (S2, S6,
      * S8, S11, S13, S7's bounds) and what the system session needs of it.
@@ -3927,7 +3968,8 @@ interface DspiCoreApi : AutoCloseable {
      * (nothing changes; the applied record's `message` says why): the
      * client shows it and asks the user again, and only a second Keep, at
      * least a second later, keeps it (as `measure_tune_keep`). A new
-     * verify asks again.
+     * verify asks again. Another actor than the embedder is refused every
+     * time (WP RCFIX).
      *
      * Errors: [`DspiError::InvalidArgument`] with nothing applied, or the
      * first Keep after a failed verify.
@@ -4070,7 +4112,9 @@ interface DspiCoreApi : AutoCloseable {
      * `measure.tune.keep_unverified` (nothing changes, the guard runs on;
      * the state's `issue` says it): the client shows why and asks the user
      * again, and only a second Keep, on the user's explicit confirmation,
-     * keeps it. A new verify, Revert or another apply ask again.
+     * keeps it. A new verify, Revert or another apply ask again. Another
+     * actor than the embedder ([`crate::actor::ActorScope`]) is refused every
+     * time (WP RCFIX).
      *
      * Errors: [`DspiError::InvalidArgument`] when no tune is applied, while
      * a verify runs, or the first Keep after a failed verify;
