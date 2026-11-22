@@ -436,14 +436,42 @@ fn wp_mcp5_a_keep_after_a_failed_verify_is_the_users() {
     assert_eq!(st["tune"]["verify_passed"], json!(false), "{st}");
     let e = err_at(&mut s, c, now, "dspi_tune_keep", json!({}));
     assert!(e.contains("only the user"), "{e}");
-    assert!(
-        !matches!(
+    let kept = || {
+        matches!(
             core.measure_tune_state().stage,
             dspi_core::measure::MeasureTuneStage::Kept
-        ),
-        "not kept"
-    );
-    ok_at(&mut s, c, now, "dspi_tune_revert", json!({}));
+        ) || core.apply_status().phase == dspi_core::GuardPhase::Kept
+    };
+    assert!(!kept(), "not kept");
+
+    // -- WP RCFIX -- (review RC, RC1) nor through the generic Keep, however
+    // often it asks: two of them, more than the two-step Keep's second apart.
+    let keep = |s: &mut Server| {
+        let e = err_at(s, c, now, "dspi_keep_changes", json!({}));
+        assert!(e.contains("only the user"), "{e}");
+        assert!(!kept(), "not kept");
+    };
+    let confirm = Duration::from_millis(1_100);
+    keep(&mut s);
+    std::thread::sleep(confirm);
+    keep(&mut s);
+    // The core itself refuses an agent, whatever tool asks it.
+    let agent = dspi_core::actor::register_actor("RCFIX agent");
+    for _ in 0..2 {
+        let _scope = dspi_core::actor::ActorScope::enter(&core, agent, None);
+        assert!(core.apply_confirm().is_err());
+        assert!(core.measure_tune_keep().is_err());
+        std::thread::sleep(confirm);
+    }
+    // The user's refused click does not arm the agent's Keep, and the agent's
+    // does not spend it: the user's second click keeps.
+    let e = core.apply_confirm().unwrap_err().to_string();
+    assert!(e.contains("measure.tune.keep_unverified"), "{e}");
+    std::thread::sleep(confirm);
+    keep(&mut s);
+    err_at(&mut s, c, now, "dspi_tune_keep", json!({}));
+    let k = core.measure_tune_keep().unwrap();
+    assert_eq!(k.guard.phase, dspi_core::GuardPhase::Kept);
 }
 
 // ------------------------------------------------------------ the low end

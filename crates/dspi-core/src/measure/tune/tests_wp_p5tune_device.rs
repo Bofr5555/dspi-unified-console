@@ -1321,6 +1321,24 @@ fn wp_p5trust_keep_after_a_failed_verify_needs_a_second_confirmation() {
     assert!(e.to_string().contains(KEY_KEEP_UNVERIFIED), "{e}");
     assert_eq!(r.core.apply_status().phase, GuardPhase::Waiting);
     assert_eq!(r.remote.image(), image);
+    // -- WP RCFIX -- (review RC, RC1) the second Keep is the user's only: an
+    // agent's is refused however late, and leaves the user's armed.
+    crate::guarded::skew::advance(std::time::Duration::from_millis(TUNE_KEEP_CONFIRM_MIN_MS));
+    {
+        let agent = crate::actor::register_actor("RCFIX agent");
+        let _scope = crate::actor::ActorScope::enter(&r.core, agent, None);
+        for _ in 0..2 {
+            let e = r.core.measure_tune_keep().unwrap_err();
+            assert!(e.to_string().contains(KEY_KEEP_UNVERIFIED), "{e}");
+            let e = r.core.apply_confirm().unwrap_err();
+            assert!(e.to_string().contains("only the user"), "{e}");
+            crate::guarded::skew::advance(std::time::Duration::from_millis(
+                TUNE_KEEP_CONFIRM_MIN_MS,
+            ));
+        }
+    }
+    assert_eq!(r.core.apply_status().phase, GuardPhase::Waiting);
+    assert_eq!(r.remote.image(), image);
     // The second, explicit Keep keeps it.
     crate::guarded::skew::advance(std::time::Duration::from_millis(TUNE_KEEP_CONFIRM_MIN_MS));
     let k = r.core.measure_tune_keep().unwrap();
@@ -1420,6 +1438,13 @@ fn wp_p5trust2_a_verify_without_transitions_fails_on_one_bad_output() {
         v.notes.iter().any(|n| n.contains("its prediction")),
         "{v:#?}"
     );
+    // -- WP RCFIX -- an agent's refused Keep arms nothing for the user either
+    {
+        let agent = crate::actor::register_actor("RCFIX agent");
+        let _scope = crate::actor::ActorScope::enter(&r.core, agent, None);
+        assert!(r.core.apply_confirm().is_err());
+    }
+    crate::guarded::skew::advance(std::time::Duration::from_millis(TUNE_KEEP_CONFIRM_MIN_MS));
     // The two-step Keep is armed.
     let e = r.core.measure_tune_keep().unwrap_err();
     assert!(e.to_string().contains(KEY_KEEP_UNVERIFIED), "{e}");

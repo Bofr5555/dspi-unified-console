@@ -37,7 +37,7 @@ use dspi_core::measure::{
     MeasureCoupler, MeasureDocCurvesOptions, MeasureIssue, MeasurePhase, MeasurePlacement,
     MeasurePreflight, MeasureRolloffSetup, MeasureRolloffStage, MeasureRunKind, MeasureSetup,
     MeasureSystemPhase, MeasureSystemSetup, MeasureSystemUnit, MeasureSystemUnitCheck,
-    MeasureTuneOptions, MeasureTuneStage, measure_doc_curves,
+    MeasureTuneOptions, MeasureTuneStage, MeasureTuneState, measure_doc_curves,
 };
 use dspi_core::{CoreSet, DeviceId, DspiCore, DspiError, SpeakerLayout};
 use serde_json::{Map, Value, json};
@@ -1585,6 +1585,30 @@ static TUNE_VERIFY: Tool = Tool {
     },
 };
 
+/// A Keep of a tune whose verify failed.
+pub(crate) const KEEP_IS_THE_USERS: &str = "the verify did not pass: only the user may keep this tune, in the app. Do not retry; \
+     dspi_tune_revert puts it back.";
+
+/// Whether the tune's verify did not pass (its Keep is the user's only).
+pub(crate) fn verify_failed(t: &MeasureTuneState) -> bool {
+    t.verify.as_ref().is_some_and(|v| !v.passed)
+        || t.issue
+            .as_ref()
+            .is_some_and(|i| i.key == "measure.tune.keep_unverified")
+}
+
+// -- WP RCFIX -- (review RC, RC1)
+/// Whether `guard` is the guard of an applied tune whose verify failed: the
+/// generic Keep is refused as the tune's own is.
+pub(crate) fn guard_is_failed_tunes(core: &DspiCore, guard: u64) -> bool {
+    let t = core.measure_tune_state();
+    matches!(
+        t.stage,
+        MeasureTuneStage::Applied | MeasureTuneStage::Verifying | MeasureTuneStage::Verified
+    ) && t.guard.id == guard
+        && verify_failed(&t)
+}
+
 static TUNE_KEEP: Tool = Tool {
     name: "dspi_tune_keep",
     title: "Keep a tune",
@@ -1597,16 +1621,8 @@ static TUNE_KEEP: Tool = Tool {
     output_schema: object_schema,
     handler: |call, _| {
         let core = call.core()?;
-        let t = core.measure_tune_state();
-        let unverified = t.verify.as_ref().is_some_and(|v| !v.passed)
-            || t.issue
-                .as_ref()
-                .is_some_and(|i| i.key == "measure.tune.keep_unverified");
-        if unverified {
-            return Err(ToolError::new(
-                "the verify did not pass: only the user may keep this tune, in the app. Do \
-                 not retry; dspi_tune_revert puts it back.",
-            ));
+        if verify_failed(&core.measure_tune_state()) {
+            return Err(ToolError::new(KEEP_IS_THE_USERS));
         }
         let k = core.measure_tune_keep().map_err(|e| refusal(call, e))?;
         policy::lock(&call.judging).guard_ended = Some(k.guard.id);

@@ -988,7 +988,8 @@ impl DspiCore {
     /// (nothing changes; the applied record's `message` says why): the
     /// client shows it and asks the user again, and only a second Keep, at
     /// least a second later, keeps it (as `measure_tune_keep`). A new
-    /// verify asks again.
+    /// verify asks again. Another actor than the embedder is refused every
+    /// time (WP RCFIX).
     ///
     /// Errors: [`DspiError::InvalidArgument`] with nothing applied, or the
     /// first Keep after a failed verify.
@@ -1001,7 +1002,15 @@ impl DspiCore {
         let Some(mut o) = slot.outcome.take() else {
             return Err(invalid("nothing is applied"));
         };
-        let r = self.with_hub(&mut slot, |hub| o.keep(hub));
+        // -- WP RCFIX -- (review RC, RC1) the second Keep is the user's only
+        let user = crate::actor::JobActor::capture(self).actor() == crate::actor::EMBEDDER;
+        let r = if user || o.applied.verified != Some(false) {
+            self.with_hub(&mut slot, |hub| o.keep(hub))
+        } else {
+            Err(invalid(
+                "the verify did not confirm the alignment; only the user may keep it, in the app",
+            ))
+        };
         slot.outcome = Some(o);
         r
     }

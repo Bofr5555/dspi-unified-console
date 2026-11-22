@@ -1750,6 +1750,11 @@ impl DspiCore {
     /// verify run on): a Keep then would keep before the verdict, in one
     /// press. Keep before any verify has started keeps its rule (one press;
     /// the proposal said "Not verified").
+    ///
+    /// WP RCFIX (review RC, RC1): the second confirmation is **the user's
+    /// only**. Another actor's Keep of a tune whose verify failed is refused
+    /// however often it asks (the same key), and leaves the two-step Keep as
+    /// the user left it: it neither arms nor uses it.
     fn tune_keep_gate(&self, t: &mut Tune) -> Result<()> {
         if t.stage == MeasureTuneStage::Verifying {
             // The issue's words follow its notice's title ("The verify is
@@ -1763,6 +1768,13 @@ impl DspiCore {
         }
         if !t.verify_failed {
             return Ok(());
+        }
+        // -- WP RCFIX --
+        if crate::actor::JobActor::capture(self).actor() != crate::actor::EMBEDDER {
+            return Err(invalid(format!(
+                "{KEY_KEEP_UNVERIFIED}: the verify did not confirm the tune; only the user may \
+                 keep it, in the app"
+            )));
         }
         let now = crate::guarded::now();
         let confirmed = t.keep_armed
@@ -2654,7 +2666,9 @@ impl DspiCore {
     /// `measure.tune.keep_unverified` (nothing changes, the guard runs on;
     /// the state's `issue` says it): the client shows why and asks the user
     /// again, and only a second Keep, on the user's explicit confirmation,
-    /// keeps it. A new verify, Revert or another apply ask again.
+    /// keeps it. A new verify, Revert or another apply ask again. Another
+    /// actor than the embedder ([`crate::actor::ActorScope`]) is refused every
+    /// time (WP RCFIX).
     ///
     /// Errors: [`DspiError::InvalidArgument`] when no tune is applied, while
     /// a verify runs, or the first Keep after a failed verify;

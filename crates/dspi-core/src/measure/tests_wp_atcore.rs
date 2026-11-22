@@ -2266,6 +2266,38 @@ fn wp_atguard_a_guard_the_hub_ended_is_shown_as_reverted() {
     );
 }
 
+// -- WP RCFIX -- (review RC, RC1)
+/// An agent never keeps an alignment whose verify failed, and does not spend
+/// the user's second Keep.
+#[test]
+fn wp_rcfix_an_agent_never_keeps_an_alignment_whose_verify_failed() {
+    let (mut hub, mut o, _) = atguard_checked(true);
+    let p = o.proposal_for("admin", true);
+    o.apply(&mut hub, p.id).unwrap();
+    o.applied.verified = Some(false);
+    let core = crate::DspiCore::new();
+    core.measure_system_set_hub(Box::new(hub.clone()));
+    core.system_slot().outcome = Some(o);
+    let agent = crate::actor::register_actor("RCFIX agent");
+    let agent_keeps = || {
+        let _scope = crate::actor::ActorScope::enter(&core, agent, None);
+        for _ in 0..2 {
+            let e = core.measure_system_keep().unwrap_err().to_string();
+            assert!(e.contains("only the user"), "{e}");
+            crate::guarded::skew::advance(Duration::from_millis(1_100));
+        }
+        assert_eq!(
+            core.measure_system_applied().stage,
+            MeasureSystemApplyStage::Applied
+        );
+    };
+    agent_keeps();
+    assert!(core.measure_system_keep().is_err(), "the user's first");
+    agent_keeps();
+    let kept = core.measure_system_keep().unwrap();
+    assert_eq!(kept.stage, MeasureSystemApplyStage::Kept);
+}
+
 /// An older hub without the cap: today's apply (no `system.guard.*` sent),
 /// and the proposal and the applied record say nothing reverts by itself.
 #[test]
