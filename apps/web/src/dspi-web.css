@@ -15,6 +15,10 @@
   --warn: #875200;
   --bad: #b42318;
   --meter: #2b7d43;
+  /* -- WP WEBM2 -- Save to device (RB: was a hard-coded blue in both themes) */
+  --save-bg: #2563eb;
+  --save-text: #ffffff;
+  --save-line: rgb(255 255 255 / 0.35);
   color: var(--text);
   background: var(--bg);
   font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -35,6 +39,9 @@
     --warn: #e0a030;
     --bad: #ff7468;
     --meter: #4cc27f;
+    --save-bg: #2f6fdb; /* -- WP WEBM2 -- */
+    --save-text: #ffffff;
+    --save-line: rgb(255 255 255 / 0.3);
   }
 }
 .dspi-web[data-theme="dark"] {
@@ -50,6 +57,9 @@
   --warn: #e0a030;
   --bad: #ff7468;
   --meter: #4cc27f;
+  --save-bg: #2f6fdb; /* -- WP WEBM2 -- */
+  --save-text: #ffffff;
+  --save-line: rgb(255 255 255 / 0.3);
 }
 .dspi-web *,
 .dspi-web *::before,
@@ -1339,10 +1349,10 @@
 .dspi-web .session-actions .undo-redo button { border-color: transparent; background: none; }
 .dspi-web .session-actions .undo-redo button:not(:disabled):hover { background: var(--selection); }
 .dspi-web .save-split { display: inline-flex; flex: none; }
-.dspi-web .bar-save { display: inline-flex; align-items: center; gap: 0.4rem; border-color: transparent; border-radius: 6px 0 0 6px; background: #2563eb; color: #fff; font-weight: 600; white-space: nowrap; }
+.dspi-web .bar-save { display: inline-flex; align-items: center; gap: 0.4rem; border-color: transparent; border-radius: 6px 0 0 6px; background: var(--save-bg); color: var(--save-text); font-weight: 600; white-space: nowrap; }
 .dspi-web .bar-count { min-width: 1.3rem; text-align: center; border-radius: 999px; font-size: 0.75rem; background: rgb(255 255 255 / 0.25); visibility: hidden; }
 .dspi-web .bar-count.on { visibility: visible; }
-.dspi-web .save-split .menu > button { border-color: transparent; border-left: 1px solid rgb(255 255 255 / 0.35); border-radius: 0 6px 6px 0; background: #2563eb; color: #fff; padding: 0 0.5rem; font-size: 0; }
+.dspi-web .save-split .menu > button { border-color: transparent; border-left: 1px solid var(--save-line); border-radius: 0 6px 6px 0; background: var(--save-bg); color: var(--save-text); padding: 0 0.5rem; font-size: 0; }
 .dspi-web .save-split .menu > button > span { font-size: 0.9rem; }
 .dspi-web .bar-lock { flex: none; display: inline-flex; align-items: center; padding: 0 0.5rem; border-color: transparent; background: none; }
 
@@ -1474,3 +1484,85 @@
 .dspi-web[data-nav="tabs"] .rail button[aria-current="page"]::before { left: 0.7rem; right: 0.7rem; width: auto; top: auto; bottom: 0; height: 2px; }
 .dspi-web[data-nav="tabs"] .rail-text { position: static; width: auto; height: auto; clip: auto; clip-path: none; }
 .dspi-web[data-nav="tabs"] .page-title { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+
+/* -- WP WEBM2 -- The inspector beside the page (ui/inspector), stacked under it on a narrow console */
+.dspi-web .page-row { display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; flex: 1; }
+.dspi-web .page-row.inspector-beside { flex-direction: row; align-items: flex-start; }
+.dspi-web .page-row.inspector-beside > .page { flex: 1 1 auto; }
+.dspi-web .inspector { display: flex; flex-direction: column; gap: 0.5rem; min-width: 0; background: var(--panel); border-radius: 8px; padding: 0.5rem 0.75rem 0.75rem; }
+.dspi-web .inspector[hidden] { display: none; }
+.dspi-web .inspector-beside > .inspector { flex: 0 0 19rem; width: 19rem; position: sticky; top: calc(var(--top-h, 0px) + var(--bar-h, 0px) + 0.5rem); max-height: calc(100vh - var(--top-h, 0px) - var(--bar-h, 0px) - var(--dock-h, 0px) - 1rem); overflow-y: auto; }
+.dspi-web .inspector-hidden > .inspector { align-self: flex-end; padding-bottom: 0.5rem; }
+.dspi-web .inspector-head { display: flex; align-items: center; gap: 0.5rem; }
+.dspi-web .inspector-head h3 { margin: 0; flex: 1; font-size: 0.8rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+.dspi-web .inspector-toggle { border-color: transparent; background: none; color: var(--muted); padding: 0.15rem 0.5rem; }
+.dspi-web .inspector-toggle:hover { background: var(--selection); color: var(--text); }
+.dspi-web .inspector-body { display: flex; flex-direction: column; gap: 0.5rem; min-width: 0; }
+.dspi-web .inspector-body[hidden] { display: none; }
+.dspi-web .insp-head { display: flex; align-items: center; gap: 0.4rem; font-weight: 600; min-width: 0; }
+.dspi-web .insp-head .insp-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dspi-web .insp-tag { color: var(--muted); font-weight: 500; }
+.dspi-web .insp-sec { border-top: 1px solid var(--line); padding-top: 0.4rem; min-width: 0; }
+.dspi-web .insp-sec > summary { display: flex; align-items: baseline; gap: 0.5rem; cursor: pointer; padding: 0.2rem 0; font-weight: 600; }
+.dspi-web .insp-summary { margin-left: auto; color: var(--muted); font-weight: 400; font-size: 0.85rem; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.dspi-web .insp-body { display: flex; flex-direction: column; gap: 0.4rem; padding: 0.3rem 0 0.2rem; min-width: 0; }
+.dspi-web .insp-body > button { align-self: flex-start; }
+.dspi-web .insp-row { display: flex; align-items: center; gap: 0.5rem; min-width: 0; }
+.dspi-web .insp-label { flex: 1; min-width: 0; color: var(--muted); }
+.dspi-web .insp-row select { max-width: 11rem; }
+.dspi-web .insp-feeds { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.25rem; }
+.dspi-web .insp-value { color: var(--muted); font-size: 0.85rem; }
+.dspi-web button.link { border: 0; background: none; padding: 0.1rem 0; color: var(--accent); display: inline-flex; align-items: center; gap: 0.35rem; text-align: left; }
+.dspi-web button.link:hover { text-decoration: underline; }
+.dspi-web .shape-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(6rem, 1fr)); gap: 0.25rem; }
+.dspi-web .shape-grid button { padding: 0.3rem 0.4rem; font-size: 0.85rem; }
+.dspi-web .shape-grid button[aria-checked="true"] { background: var(--selection); border-color: var(--accent); color: var(--text); }
+/* The band bar: its values' wrappers take no box under the graph (the bar is as it was) */
+.dspi-web .chip-field { display: contents; }
+.dspi-web .chip-values .chip-field:not(:last-child) .value-field { flex-grow: 1; }
+/* In the inspector: stacked, each value under its name */
+.dspi-web .inspector .band-chip { grid-template-rows: auto; padding: 0; background: none; border: 0; }
+.dspi-web .inspector .chip-row { height: auto; flex-wrap: wrap; }
+.dspi-web .inspector .chip-row select { flex: 1 1 7rem; }
+.dspi-web .inspector .chip-values { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0.35rem 0.5rem; }
+.dspi-web .inspector .chip-field { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
+.dspi-web .inspector .chip-field::before { content: attr(data-label); font-size: 0.75rem; color: var(--muted); }
+.dspi-web .inspector .chip-field:last-child { grid-column: 1 / -1; }
+.dspi-web .inspector .chip-field .value-field { display: flex; min-width: 0; }
+.dspi-web .inspector .chip-field input { flex: 1; min-width: 0; }
+.dspi-web .lt-inline { display: grid; gap: 0.35rem; }
+.dspi-web .lt-buttons { display: flex; gap: 0.4rem; }
+/* The chosen band's label on the graph */
+.dspi-web .eq-band-tag { position: absolute; transform: translate(-50%, calc(-100% - 12px)); padding: 0.1rem 0.45rem; border: 1px solid; border-radius: 6px; background: var(--panel); color: var(--text); font: 600 11px/1.4 system-ui, sans-serif; white-space: nowrap; pointer-events: none; }
+.dspi-web .eq-band-tag.below { transform: translate(-50%, 12px); }
+/* The Crossover and Delay & gain tabs */
+.dspi-web .eq-xover { display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; }
+.dspi-web .xo-plot-card { padding: 0.5rem; }
+.dspi-web .xo-plot { display: block; width: 100%; height: 13rem; border-radius: 6px; background: var(--eq-bg, #151518); }
+.dspi-web .xo-grid { stroke: var(--eq-grid, rgba(255,255,255,0.08)); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.dspi-web .xo-zero { stroke: var(--eq-zero, rgba(255,255,255,0.3)); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.dspi-web .xo-curve { stroke-width: 2; }
+.dspi-web .xo-label { fill: var(--eq-text, rgba(255,255,255,0.55)); font: 10px system-ui, sans-serif; }
+.dspi-web .xo-table th[scope="row"], .dspi-web .delays th[scope="row"] { text-align: left; font-weight: 500; white-space: nowrap; }
+.dspi-web .xo-table .c-pass select { max-width: 11rem; }
+.dspi-web .pass-bypassed { margin-left: 0.35rem; color: var(--muted); font-size: 0.8rem; }
+.dspi-web .delays .swatch { margin-right: 0.35rem; }
+.dspi-web .c-arrival { width: 28%; min-width: 5rem; }
+.dspi-web .arrival { display: block; height: 0.55rem; border-radius: 3px; background: var(--selection); overflow: hidden; }
+.dspi-web .arrival > span { display: block; height: 100%; border-radius: 3px; }
+.dspi-web .tbl-scroll { overflow-x: auto; min-width: 0; }
+.dspi-web .band-list.xo-table table, .dspi-web .band-list.delays table { table-layout: auto; }
+.dspi-web .xo-table th[scope="row"], .dspi-web .delays th[scope="row"] { padding-right: 0.5rem; font-size: 0.85rem; color: var(--text); }
+.dspi-web .delays td .value-field input { width: 6rem; }
+@container console (max-width: 720px) {
+  .dspi-web .inspector { padding-left: 0.5rem; padding-right: 0.5rem; }
+  .dspi-web .xo-plot { height: 10rem; }
+  .dspi-web .c-arrival { width: auto; min-width: 3rem; }
+  /* RB: 44 px tap targets at a phone's width (the dock's buttons and choices) */
+  .dspi-web .dock select, .dspi-web .dock button { height: auto; min-height: 44px; }
+  .dspi-web .inspector-toggle { min-height: 44px; }
+}
+/* RB: the device tab's close button, a 44 px target at a phone's width */
+@container top (max-width: 720px) {
+  .dspi-web .device-tab-close { min-width: 44px; height: 44px; }
+}

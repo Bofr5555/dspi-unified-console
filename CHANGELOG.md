@@ -103,6 +103,12 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
   volume with Mute and Bypass, and the meters. On a narrow screen the rail is a row. (WP WEBM1)
 - A DSPi is open once: another entry for a DSPi that is already open (over USB and through a hub, or through two hubs)
   shows the open one and says so, rather than making a second session. (WP WEBM1)
+- Web console: the Equaliser has PEQ, Crossover and Delay & gain tabs. Crossover draws every output's curve and sets
+  each output's high and low pass in one table; Delay & gain sets every output's gain, delay or distance, with arrival
+  bars for time alignment, mute and the limiter. An inspector beside the page shows the chosen band (a shape grid and
+  its values) and the chosen channel: what an input feeds and its headphone profile, an output's crossover, limiter and
+  Linkwitz Transform. It can be hidden, and stacks under the page on a narrow screen, where the band bar stays under
+  the graph. The chosen band's values show on the graph by its dot. (WP WEBM2)
 - The System screen has an Installation tab in the Installer mode on a hub. It lists the units the hub sees that
   are not in the installation, with Join (name, room, role and what feeds it), and edits each unit's room, role and
   upstream, the rooms and the zones. The hub's own check runs as you edit and shows a problem where it is; Save lists

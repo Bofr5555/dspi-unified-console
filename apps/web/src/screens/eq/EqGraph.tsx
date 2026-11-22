@@ -37,6 +37,7 @@ import {
   SHAPES,
   bandColour,
   bandLabel,
+  bandTag,
   clamp,
   curveAt,
   dragResult,
@@ -804,6 +805,13 @@ export const EqGraph = memo(function EqGraph(props: GraphProps) {
     if (idle && announced !== said) setSaid(announced);
   });
   const helpId = `${props.idBase}-graph-help`;
+  // -- WP WEBM2 -- the on-graph label: above the dot, below it near the top; kept inside the graph
+  const tagBand = anchor !== null && selection.has(anchor) && bands[anchor] && isGraphBand(bands[anchor]!) && g.width > 0 ? anchor : null;
+  const tag = (() => {
+    if (tagBand === null || popup) return null;
+    const d = dot(tagBand, bands[tagBand]!);
+    return { b: tagBand, x: clamp(d.x, [60, Math.max(60, g.width - 60)]), y: d.y, below: d.y < 40, text: bandTag(tagBand, bands[tagBand]!) };
+  })();
 
   return (
     <div
@@ -826,6 +834,12 @@ export const EqGraph = memo(function EqGraph(props: GraphProps) {
       <canvas ref={canvas} aria-hidden="true" />
       {/* -- WP WB6I -- the cursor readout (Graphing: Show Frequency / Gain Readout) */}
       <div ref={readout} class="eq-readout" aria-hidden="true" />
+      {/* -- WP WEBM2 -- the chosen band's values on the graph, by its dot (live while it is dragged) */}
+      {tag ? (
+        <div class={`eq-band-tag${tag.below ? " below" : ""}`} style={{ left: `${tag.x}px`, top: `${tag.y}px`, borderColor: bandColour(tag.b) }} aria-hidden="true">
+          {tag.text}
+        </div>
+      ) : null}
       <p id={helpId} class="visually-hidden">
         {disabled
           ? "Tab steps through the bands."

@@ -95,7 +95,8 @@ function DeviceTab(props: { session: Session; on: boolean; stop: boolean; onChoo
           •
         </span>
       </button>
-      <button type="button" class="device-tab-close" aria-label={`Close ${name}`} title={`Close ${name}`} tabIndex={-1} onClick={props.onClose}>
+      {/* -- WP WEBM2 -- (RB) reachable by Tab: after the tab on show, before the next control */}
+      <button type="button" class="device-tab-close" aria-label={`Close ${name}`} title={`Close ${name}`} tabIndex={props.stop ? 0 : -1} onClick={props.onClose}>
         <span aria-hidden="true">×</span>
       </button>
     </div>

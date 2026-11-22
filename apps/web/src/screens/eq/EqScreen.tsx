@@ -39,6 +39,9 @@ import { identifyOutput } from "../analysis/siggen";
 // -- WP WBCLIP -- the channel clipboard (M45): the chosen channel's menu, and the keys act on it
 import { clipEntries, useClipboard } from "../clipboard/model";
 import { Menu } from "../main/Menu";
+// -- WP WEBM2 -- the inspector: the chosen band and channel
+import { Inspect, InspectorSection, useInspector } from "../../ui/inspector/Inspector";
+import { EqInspector, ShapeGrid } from "./EqInspector";
 import {
   DEFAULT_LIMITS,
   OFF_BAND,
@@ -148,7 +151,7 @@ export function EqScreen(props: ScreenProps) {
 
   if (!s || !Array.isArray(s.filters) || !named) return <p class="empty">This DSPi's filters are not known yet.</p>;
   // -- WP WB6D -- opened from the System view: at its channel and tab
-  return <EqView session={session} ask={ask} s={s} ro={ro} usbActive={usbActive} limits={limits} outLimits={outLimits} labels={st.snapshot?.outputLabels} target={props.target} />;
+  return <EqView session={session} ask={ask} s={s} ro={ro} usbActive={usbActive} limits={limits} outLimits={outLimits} labels={st.snapshot?.outputLabels} target={props.target} open={props.open} />;
 }
 
 // -- WP WB6c --
@@ -167,9 +170,13 @@ const EqView = memo(
     outLimits: OutputLimits;
     /** -- WP WB6D -- where the System view opened this screen */
     target?: ScreenProps["target"];
+    /** -- WP WEBM2 -- another page of the session (the inspector's Edit routing) */
+    open?: ScreenProps["open"];
   }) {
     const { session, ask, s, ro, limits } = props;
     const idBase = useMemo(() => `eq-${Math.random().toString(36).slice(2, 9)}`, []);
+    // -- WP WEBM2 -- the band bar goes to the inspector when it is beside the page (and not on touch)
+    const insp = useInspector();
 
     // The channels, as the Console's sidebar lists them.
     const labels = props.labels;
@@ -286,6 +293,26 @@ const EqView = memo(
     );
 
     if (!chosen) return <p class="empty">This DSPi has no channels to show.</p>;
+    // -- WP WEBM2 -- the band bar: under the graph, or in the inspector with the shape grid
+    const chip = (
+      <BandChip
+        band={chipBand}
+        count={sel.set.size}
+        available={available}
+        bypassOk={bypassOk}
+        limits={limits}
+        g={chipG}
+        disabled={ro}
+        set={(p) => anchor !== null && edits.commit(new Map([[anchor, p]]))}
+        retype={(t) => edits.commit(retypeAll(targets(), t))}
+        bypass={(on) => edits.commit(new Map([...targets()].map(([b, p]) => [b, { ...p, bypass: on }])))}
+        remove={() => {
+          edits.commit(new Map([...sel.set].map((b) => [b, { ...OFF_BAND }])));
+          setSel({ set: new Set(), anchor: null });
+        }}
+        freqRef={freqRef}
+      />
+    );
     const offset = offsetOf(s, chosen);
     // -- WP WB6c -- the crossover, where the firmware has one (outputs only)
     const xoBands = chosen.output ? (s.xover?.[cw] ?? []) : [];
@@ -374,23 +401,7 @@ const EqView = memo(
           />
           <RtaOverlay session={session} want={{ tap: chosen.output ? TAP_OUTPUT : TAP_INPUT, mask: 1 << chosen.index }} names={tapNames(s, props.labels)} />
           </div>
-          <BandChip
-            band={chipBand}
-            count={sel.set.size}
-            available={available}
-            bypassOk={bypassOk}
-            limits={limits}
-            g={chipG}
-            disabled={ro}
-            set={(p) => anchor !== null && edits.commit(new Map([[anchor, p]]))}
-            retype={(t) => edits.commit(retypeAll(targets(), t))}
-            bypass={(on) => edits.commit(new Map([...targets()].map(([b, p]) => [b, { ...p, bypass: on }])))}
-            remove={() => {
-              edits.commit(new Map([...sel.set].map((b) => [b, { ...OFF_BAND }])));
-              setSel({ set: new Set(), anchor: null });
-            }}
-            freqRef={freqRef}
-          />
+          {insp.band ? null : chip}
         </section>
         {xoBands.length ? (
           <div class="band-tabs" role="tablist" aria-label="Bands">
@@ -449,6 +460,31 @@ const EqView = memo(
           }
         />
         )}
+        {/* -- WP WEBM2 -- the inspector: the chosen band (beside the page) and the chosen channel */}
+        <Inspect>
+          <EqInspector
+            session={session}
+            s={s}
+            channel={chosen}
+            labels={props.labels}
+            bands={edits.shown}
+            freq={limits.freq}
+            disabled={ro}
+            choose={setWire}
+            openRouting={() => props.open?.({ screen: "matrix" })}
+            openCrossover={() => props.open?.({ screen: "xover" })}
+            headphones={() => setAutoeq(true)}
+            setBand={(b, p) => edits.commit(new Map([[b, p]]))}
+            band={
+              insp.band ? (
+                <InspectorSection title="Selected band" summary={chipBand ? `Band ${chipBand.b + 1}` : "None"}>
+                  <ShapeGrid p={chipBand?.p ?? null} available={available} disabled={ro} retype={(t) => edits.commit(retypeAll(targets(), t))} />
+                  {chip}
+                </InspectorSection>
+              ) : null
+            }
+          />
+        </Inspect>
         {/* -- WP WB6J -- this channel's bars, below its bands */}
         <SpectrumStrip session={session} names={tapNames(s, props.labels)} want={{ tap: chosen.output ? TAP_OUTPUT : TAP_INPUT, mask: 1 << chosen.index }} />
       </div>
