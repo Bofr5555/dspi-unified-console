@@ -74,6 +74,19 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
   so no Material lavender or pink remains (slider tracks, the active preset row, Settings' selected page, menus,
   dialogs, snackbars). (WP ANBAR)
 
+### Web console
+- The System screen has an Installation tab in the Installer mode on a hub. It lists the units the hub sees that
+  are not in the installation, with Join (name, room, role and what feeds it), and edits each unit's room, role and
+  upstream, the rooms and the zones. The hub's own check runs as you edit and shows a problem where it is; Save lists
+  what changes and needs the hub's Admin role. If someone else saved meanwhile, nothing is overwritten: the tab reads
+  the installation again and offers to make your changes again on it. A hub with no installation can get its first
+  one here. (WP INSTW)
+- Settings › Speakers says which output drives what (full range, sub, woofer, mid,
+  tweeter), suggested from the filters and confirmed by you. The Measure setup starts from it,
+  and a way, speaker or group changed there is saved to it. A banner on both says when the
+  layout is not confirmed, or came with an imported configuration and needs checking. The
+  browser keeps it per DSPi. (WP ROLEW)
+
 ## 0.14.0 (2026-11-20)
 
 One version for every client but the Swift app: the Qt desktop app (Windows, Linux and
@@ -113,19 +126,8 @@ Mac's download is the Qt app's `.dmg`. Everything below was merged after the 0.1
 - The demo device has a simulated microphone in a simulated room, so the whole flow can be tried
   without hardware.
 - Android: measurement comes in a later release.
-- Web console: Settings › Speakers says which output drives what (full range, sub, woofer, mid,
-  tweeter), suggested from the filters and confirmed by you. The Measure setup starts from it,
-  and a way, speaker or group changed there is saved to it. A banner on both says when the
-  layout is not confirmed, or came with an imported configuration and needs checking. The
-  browser keeps it per DSPi. (WP ROLEW)
 
 ### Multi-unit system and the audio link (alink)
-- Web: the System screen has an Installation tab in the Installer mode on a hub. It lists the units the hub sees that
-  are not in the installation, with Join (name, room, role and what feeds it), and edits each unit's room, role and
-  upstream, the rooms and the zones. The hub's own check runs as you edit and shows a problem where it is; Save lists
-  what changes and needs the hub's Admin role. If someone else saved meanwhile, nothing is overwritten: the tab reads
-  the installation again and offers to make your changes again on it. A hub with no installation can get its first
-  one here. (WP INSTW)
 - The hub models an audio-link system: rooms, zones and units, the link topology, alignment,
   scenes recalled at a common frame, system alarms and a system mute. The web console has the
   System view, the scene bar and a status rail; Qt and Android show the system's status, and
