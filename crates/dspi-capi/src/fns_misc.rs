@@ -102,6 +102,8 @@ mod hub_server_measure;
 mod measure_sim;
 // -- WP P5TUNE -- the auto-tune
 mod measure_tune;
+// -- WP ROLL1 -- the roll-off search (a tweeter's low end)
+mod measure_rolloff;
 // -- WP ATCORE -- the system measurement across units
 mod measure_system;
 // -- WP PGCORE -- the protocol generation and raw paged requests
