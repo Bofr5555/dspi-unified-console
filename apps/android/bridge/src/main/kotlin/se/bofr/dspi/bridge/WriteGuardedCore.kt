@@ -31,6 +31,7 @@ import se.bofr.dspi.core.HubScheduleRun
 import se.bofr.dspi.core.HubSnapshotRecall
 import se.bofr.dspi.core.I2cConfig
 import se.bofr.dspi.core.IdentifyInfo
+import se.bofr.dspi.core.InstallationDraft
 import se.bofr.dspi.core.LimitsApply
 import se.bofr.dspi.core.LockState
 import se.bofr.dspi.core.MeasureLiveSetup
@@ -159,6 +160,13 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
         return inner.alinkSystemSaveReport(revision, edits)
     }
 
+    // -- WP INST0 -- the Installation setup's save: the hub's site model (system.set,
+    // an Admin write), as alinkSystemSave
+    override fun installationSave(draft: InstallationDraft): AlinkSystemSaved {
+        guard("installationSave")
+        return inner.installationSave(draft)
+    }
+
     override fun alinkSystemAlign(): AlinkSystemAlign {
         guard("alinkSystemAlign")
         return inner.alinkSystemAlign()
@@ -254,6 +262,12 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
     override fun redo(): HistoryMove {
         guard("redo")
         return inner.redo()
+    }
+
+    // -- WP MCP0 -- reverting one change by id replays it to the device, as undo does
+    override fun revertEntry(id: Long): HistoryMove {
+        guard("revertEntry")
+        return inner.revertEntry(id)
     }
 
     override fun setFilter(ch: Int, band: Int, params: FilterParams) {
@@ -1069,6 +1083,10 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "alinkSystemRecall",
             // -- WP P1DCFIX --
             "alinkSystemSaveReport",
+            // -- WP INST0 -- the Installation setup's save (system.set, Admin)
+            "installationSave",
+            // -- WP MCP0 -- one change reverted by id: replays to the device as undo
+            "revertEntry",
             // -- WP P1DF -- (configImportSelected retired by WP P1TZ)
             // -- WP P1PR --
             "setInputPairPreamp",
@@ -1652,7 +1670,19 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "firmwareUpdateCheck",
             // -- review PG-D2 -- the write gate's verdict: reads the core's
             // memory (the target it kept), sends nothing
-            "firmwareWriteCheck"
+            "firmwareWriteCheck",
+            // -- WP ROLE0 -- the speaker layout: the app's own files (as
+            // limitsSetDir) and reads; nothing is sent to the device
+            "speakerLayoutSetDir",
+            "speakerLayoutSet",
+            "speakerLayout",
+            "speakerLayoutPropose",
+            // -- WP INST0 -- the Installation setup: the view reads the hub
+            // (system.get, the inventory); the draft calls compute locally
+            "installationView",
+            "installationDraftEdit",
+            "installationValidate",
+            "installationDiff"
         )
 
         /** Control-surface operations that only read the device (`cs.rs`, `cs_op`). */
