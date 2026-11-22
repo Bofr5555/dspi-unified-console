@@ -162,6 +162,9 @@ pub(crate) struct Session {
     frame_faults: u32,
     /// The lock and the tap are still held: the core gives them back.
     release_pending: bool,
+    // -- WP ROLL1 --
+    /// Who started it ([`crate::actor::JobActor`]).
+    actor: crate::actor::ActorId,
 }
 
 fn frames_of(ms: u32, rate: u32) -> u64 {
@@ -170,6 +173,37 @@ fn frames_of(ms: u32, rate: u32) -> u64 {
 
 fn issue(key: &str, msg: impl Into<String>) -> MeasureIssue {
     MeasureIssue::new(key, None, msg)
+}
+
+// -- WP ROLL1 --
+/// Why `cfg` would play below the stimulus floor of an output it plays
+/// (pink noise on a high way, a sweep from below 1 kHz), or `None`.
+pub(crate) fn below_floor(plan: &Plan, cfg: &SiggenConfig) -> Option<String> {
+    let outs: Vec<u8> = (0u8..16)
+        .filter(|o| {
+            1u16.checked_shl(u32::from(*o))
+                .is_some_and(|b| cfg.channel_mask & b != 0)
+        })
+        .collect();
+    let floor = plan.floor_of(&outs);
+    if floor <= 0.0 {
+        return None;
+    }
+    let f1 = match cfg.signal_type {
+        super::preflight::SIG_LOG_SWEEP => cfg.p.first().copied().unwrap_or(0.0),
+        _ => 0.0,
+    };
+    let f2 = cfg.p.get(1).copied().unwrap_or(0.0);
+    if cfg.signal_type == super::preflight::SIG_LOG_SWEEP
+        && f1.is_finite()
+        && f2.is_finite()
+        && f1.min(f2) >= floor
+    {
+        return None;
+    }
+    Some(format!(
+        "refused a stimulus that plays a tweeter below {floor:.0} Hz"
+    ))
 }
 
 impl Session {
@@ -212,6 +246,7 @@ impl Session {
             timing: None,
             frame_faults: 0,
             release_pending: true,
+            actor: crate::actor::EMBEDDER,
         }
     }
 
@@ -310,7 +345,14 @@ impl Session {
             result_ready: self.document.is_some(),
             timing: self.timing.clone(),
             frame_faults: self.frame_faults,
+            actor: self.actor,
         }
+    }
+
+    // -- WP ROLL1 --
+    /// Who started the session (shown in its state).
+    pub(crate) fn set_actor(&mut self, actor: crate::actor::ActorId) {
+        self.actor = actor;
     }
 
     // ── Ending ─────────────────────────────────────────────────────────
@@ -731,6 +773,12 @@ impl Session {
             );
             return false;
         }
+        // -- WP ROLL1 -- the hard interlock (owner 2026-11-22): nothing below
+        // 1 kHz reaches a high way, whatever built `cfg`.
+        if let Some(why) = below_floor(&self.plan, cfg) {
+            self.abort(dev, issue("measure.abort.generator", why));
+            return false;
+        }
         if let Err(e) = dev.start(cfg) {
             let key = if matches!(e, DspiError::Disconnected) {
                 "measure.abort.disconnected"
@@ -767,7 +815,11 @@ impl Session {
 
     /// A ramp step of `ramp.output` at `level`.
     fn start_step(&mut self, dev: &mut dyn Device, ramp: Ramp, level: f32, now: Instant) {
-        let cfg = runs::ramp_config(&self.plan, ramp.output, level);
+        let Some(run) = self.current_run().cloned() else {
+            self.finish(dev);
+            return;
+        };
+        let cfg = runs::ramp_config(&self.plan, &run, ramp.output, level); // -- WP ROLL1 --
         let stim_ms = if self.plan.kind == MeasureRunKind::Pink {
             RAMP_PINK_MS
         } else {
@@ -858,11 +910,17 @@ impl Session {
                 }
                 match after {
                     After::Ramp => {
-                        self.listener = match safety::ramp_listener(
-                            &self.plan,
-                            self.ctx.device_rate_hz,
-                            &self.buf,
-                        ) {
+                        // -- WP ROLL1 -- the run's own band
+                        let heard = match self.plan.runs.get(self.run) {
+                            Some(run) => safety::ramp_listener(
+                                &self.plan,
+                                run,
+                                self.ctx.device_rate_hz,
+                                &self.buf,
+                            ),
+                            None => Err("no run".to_owned()),
+                        };
+                        self.listener = match heard {
                             Ok(l) => Some(l),
                             Err(e) => {
                                 log::warn!("measure: the ramp hears nothing: {e}");
@@ -1085,10 +1143,21 @@ impl Session {
             None => {}
             Some(Ok(mut r)) => {
                 r.ramp_steps.clone_from(&self.ramp_steps);
+                // -- WP ROLL1 --
+                if let Some(run) = self.plan.runs.get(self.run) {
+                    r.f1_hz = if self.plan.kind == MeasureRunKind::Pink {
+                        0.0
+                    } else {
+                        self.plan.sweep_of(run).f1_hz
+                    };
+                    r.aligns = run.aligns;
+                }
                 if self.run == 0 {
                     self.timing_reliable = Some(r.timing_reliable);
                 }
-                if r.timing.is_some() {
+                // -- WP ROLL1 -- a non-tweeters' full-band run beside its
+                // group's is not the group's timing
+                if r.timing.is_some() && r.aligns {
                     self.timing.clone_from(&r.timing);
                 }
                 self.results.push(r);

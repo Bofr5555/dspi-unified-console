@@ -63,6 +63,7 @@ pub(crate) fn db(power: f64) -> f64 {
 /// closed).
 pub(crate) fn ramp_listener(
     plan: &Plan,
+    run: &super::plan::RunSpec,
     device_rate_hz: u32,
     pre_roll: &[f32],
 ) -> std::result::Result<Listener, String> {
@@ -71,9 +72,10 @@ pub(crate) fn ramp_listener(
         let band = hearing_band(BAND_MIN_HZ, BAND_MAX_HZ, rate);
         return Listener::new(pre_roll, rate, band, Played::Pink).map_err(|e| e.to_string());
     }
+    // -- WP ROLL1 -- the run's own band (its ramp steps' sweeps)
     let cfg = SweepConfig {
         duration_ms: RAMP_SWEEP_MS,
-        ..plan.sweep
+        ..plan.sweep_of(run)
     };
     let sweep = LogSweep::new(device_rate_hz, &cfg).map_err(|e| e.to_string())?;
     let template = sweep

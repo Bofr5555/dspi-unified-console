@@ -36,6 +36,8 @@ import se.bofr.dspi.core.LimitsApply
 import se.bofr.dspi.core.LockState
 import se.bofr.dspi.core.MeasureLiveSetup
 import se.bofr.dspi.core.MeasureLiveState
+import se.bofr.dspi.core.MeasureRolloffSetup
+import se.bofr.dspi.core.MeasureRolloffState
 import se.bofr.dspi.core.MeasureSetup
 import se.bofr.dspi.core.MeasureState
 import se.bofr.dspi.core.MeasureSystemApplied
@@ -754,6 +756,13 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
         return inner.measureTuneAb()
     }
 
+    // -- WP ROLL1 -- the roll-off search plays the generator: its start is a
+    // write (its segments, its stop and its aborts follow from it)
+    override fun measureRolloffStart(setup: MeasureRolloffSetup): MeasureRolloffState {
+        guard("measureRolloffStart")
+        return inner.measureRolloffStart(setup)
+    }
+
     // -- WP ATCORE -- the system measurement's start, summed check and verify
     // play the units' generators through the hub; its apply writes the hub's
     // model and every unit's output delays
@@ -1157,7 +1166,9 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "measureSystemVerify",
             "measureSystemApply",
             // -- WP PGCORE -- a raw paged SET
-            "rawSetId"
+            "rawSetId",
+            // -- WP ROLL1 --
+            "measureRolloffStart"
         )
 
         /** Core methods that only read, compute locally, manage listeners or the connection, or reboot into the bootloader. */
@@ -1682,7 +1693,13 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "installationView",
             "installationDraftEdit",
             "installationValidate",
-            "installationDiff"
+            "installationDiff",
+            // -- WP ROLL1 -- the roll-off search's tick (its started segments, as
+            // measureTick), its state, its stop (as measureStop) and its clear
+            "measureRolloffTick",
+            "measureRolloffState",
+            "measureRolloffStop",
+            "measureRolloffClear"
         )
 
         /** Control-surface operations that only read the device (`cs.rs`, `cs_op`). */

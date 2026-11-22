@@ -208,6 +208,8 @@ mod tests {
             "src/fns_misc/measure_sim.rs",
             // -- WP P5TUNE --
             "src/fns_misc/measure_tune.rs",
+            // -- WP ROLL1 --
+            "src/fns_misc/measure_rolloff.rs",
             // -- WP ATCORE --
             "src/fns_misc/measure_system.rs",
             // -- WP PGCORE --

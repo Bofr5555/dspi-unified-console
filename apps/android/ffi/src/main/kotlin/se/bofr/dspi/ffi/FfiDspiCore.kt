@@ -689,6 +689,16 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun measureRtaPassiveStop(): MeasureRtaPassiveState = core.measureRtaPassiveStop().toDomain()
 
+    override fun measureRolloffStart(setup: MeasureRolloffSetup): MeasureRolloffState = call { core.measureRolloffStart(setup.toFfi()).toDomain() }
+
+    override fun measureRolloffTick(): MeasureRolloffState = core.measureRolloffTick().toDomain()
+
+    override fun measureRolloffState(): MeasureRolloffState = core.measureRolloffState().toDomain()
+
+    override fun measureRolloffStop(): MeasureRolloffState = core.measureRolloffStop().toDomain()
+
+    override fun measureRolloffClear() = call { core.measureRolloffClear() }
+
     override fun measureSystemUnitCheck(setup: MeasureSystemSetup, unit: MeasureSystemUnit): MeasureSystemUnitCheck = call { core.measureSystemUnitCheck(setup.toFfi(), unit.toFfi()).toDomain() }
 
     override fun measureSystemPreflight(setup: MeasureSystemSetup, checks: List<MeasureSystemUnitCheck>): MeasureSystemPreflight = call { core.measureSystemPreflight(setup.toFfi(), checks.map { it.toFfi() }).toDomain() }
@@ -5464,6 +5474,7 @@ internal fun se.bofr.dspi.ffi.uniffi.MeasureState.toDomain() =
         resultReady = resultReady,
         timing = timing?.let { it.toDomain() },
         frameFaults = frameFaults.toLong(),
+        actor = actor.toLong(),
     )
 
 internal fun MeasureState.toFfi() =
@@ -5490,6 +5501,7 @@ internal fun MeasureState.toFfi() =
         resultReady = resultReady,
         timing = timing?.let { it.toFfi() },
         frameFaults = frameFaults.toUInt(),
+        actor = actor.toUInt(),
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.MeasureDocCurvesOptions.toDomain() =
@@ -5792,6 +5804,108 @@ internal fun MeasureRtaPassiveFrame.toFfi() =
     se.bofr.dspi.ffi.uniffi.MeasureRtaPassiveFrame(
         state = state.toFfi(),
         rta = rta?.let { it.toFfi() },
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureRolloffSetup.toDomain() =
+    MeasureRolloffSetup(
+        output = output.toInt(),
+        role = role.toDomain(),
+        rolesFromLayout = rolesFromLayout,
+        speaker = speaker,
+        placement = placement.toDomain(),
+        micDocument = micDocument,
+        startHz = startHz,
+        sweepMs = sweepMs.toLong(),
+        ceilingDb = ceilingDb,
+        splCapDb = splCapDb,
+        captureRateHz = captureRateHz.toLong(),
+        name = name,
+        startLevelOnly = startLevelOnly,
+    )
+
+internal fun MeasureRolloffSetup.toFfi() =
+    se.bofr.dspi.ffi.uniffi.MeasureRolloffSetup(
+        output = output.toUByte(),
+        role = role.toFfi(),
+        rolesFromLayout = rolesFromLayout,
+        speaker = speaker,
+        placement = placement.toFfi(),
+        micDocument = micDocument,
+        startHz = startHz,
+        sweepMs = sweepMs.toUInt(),
+        ceilingDb = ceilingDb,
+        splCapDb = splCapDb,
+        captureRateHz = captureRateHz.toUInt(),
+        name = name,
+        startLevelOnly = startLevelOnly,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureRolloffResult.toDomain() =
+    MeasureRolloffResult(
+        output = output.toInt(),
+        role = role.toDomain(),
+        end = end.toDomain(),
+        stopDb = stopDb,
+        referenceDb = referenceDb,
+        referenceHz = referenceHz,
+        rolloffHz = rolloffHz,
+        lowestHz = lowestHz,
+        lowEndDb = lowEndDb,
+        note = note?.let { it.toDomain() },
+        freqsHz = freqsHz,
+        magDb = magDb,
+        spl = spl,
+        document = document,
+    )
+
+internal fun MeasureRolloffResult.toFfi() =
+    se.bofr.dspi.ffi.uniffi.MeasureRolloffResult(
+        output = output.toUByte(),
+        role = role.toFfi(),
+        end = end.toFfi(),
+        stopDb = stopDb,
+        referenceDb = referenceDb,
+        referenceHz = referenceHz,
+        rolloffHz = rolloffHz,
+        lowestHz = lowestHz,
+        lowEndDb = lowEndDb,
+        note = note?.let { it.toFfi() },
+        freqsHz = freqsHz,
+        magDb = magDb,
+        spl = spl,
+        document = document,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureRolloffState.toDomain() =
+    MeasureRolloffState(
+        stage = stage.toDomain(),
+        running = running,
+        output = output?.let { it.toInt() },
+        role = role.toDomain(),
+        floorHz = floorHz,
+        segment = segment.toInt(),
+        segments = segments.toInt(),
+        segmentStartHz = segmentStartHz,
+        session = session.toDomain(),
+        result = result?.let { it.toDomain() },
+        issue = issue?.let { it.toDomain() },
+        actor = actor.toLong(),
+    )
+
+internal fun MeasureRolloffState.toFfi() =
+    se.bofr.dspi.ffi.uniffi.MeasureRolloffState(
+        stage = stage.toFfi(),
+        running = running,
+        output = output?.let { it.toUByte() },
+        role = role.toFfi(),
+        floorHz = floorHz,
+        segment = segment.toUShort(),
+        segments = segments.toUShort(),
+        segmentStartHz = segmentStartHz,
+        session = session.toFfi(),
+        result = result?.let { it.toFfi() },
+        issue = issue?.let { it.toFfi() },
+        actor = actor.toUInt(),
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.MeasureSystemUnit.toDomain() =
@@ -7456,6 +7570,34 @@ internal fun MeasureLiveAdjust.toFfi(): se.bofr.dspi.ffi.uniffi.MeasureLiveAdjus
         MeasureLiveAdjust.CUT_PEAK -> se.bofr.dspi.ffi.uniffi.MeasureLiveAdjust.CUT_PEAK
         MeasureLiveAdjust.FIT_RANGE -> se.bofr.dspi.ffi.uniffi.MeasureLiveAdjust.FIT_RANGE
         MeasureLiveAdjust.EDIT -> se.bofr.dspi.ffi.uniffi.MeasureLiveAdjust.EDIT
+    }
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureRolloffStage.toDomain(): MeasureRolloffStage =
+    when (this) {
+        se.bofr.dspi.ffi.uniffi.MeasureRolloffStage.IDLE -> MeasureRolloffStage.IDLE
+        se.bofr.dspi.ffi.uniffi.MeasureRolloffStage.MEASURING -> MeasureRolloffStage.MEASURING
+        se.bofr.dspi.ffi.uniffi.MeasureRolloffStage.DONE -> MeasureRolloffStage.DONE
+        se.bofr.dspi.ffi.uniffi.MeasureRolloffStage.STOPPED -> MeasureRolloffStage.STOPPED
+    }
+
+internal fun MeasureRolloffStage.toFfi(): se.bofr.dspi.ffi.uniffi.MeasureRolloffStage =
+    when (this) {
+        MeasureRolloffStage.IDLE -> se.bofr.dspi.ffi.uniffi.MeasureRolloffStage.IDLE
+        MeasureRolloffStage.MEASURING -> se.bofr.dspi.ffi.uniffi.MeasureRolloffStage.MEASURING
+        MeasureRolloffStage.DONE -> se.bofr.dspi.ffi.uniffi.MeasureRolloffStage.DONE
+        MeasureRolloffStage.STOPPED -> se.bofr.dspi.ffi.uniffi.MeasureRolloffStage.STOPPED
+    }
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureRolloffEnd.toDomain(): MeasureRolloffEnd =
+    when (this) {
+        se.bofr.dspi.ffi.uniffi.MeasureRolloffEnd.ROLLED_OFF -> MeasureRolloffEnd.ROLLED_OFF
+        se.bofr.dspi.ffi.uniffi.MeasureRolloffEnd.FLOOR -> MeasureRolloffEnd.FLOOR
+    }
+
+internal fun MeasureRolloffEnd.toFfi(): se.bofr.dspi.ffi.uniffi.MeasureRolloffEnd =
+    when (this) {
+        MeasureRolloffEnd.ROLLED_OFF -> se.bofr.dspi.ffi.uniffi.MeasureRolloffEnd.ROLLED_OFF
+        MeasureRolloffEnd.FLOOR -> se.bofr.dspi.ffi.uniffi.MeasureRolloffEnd.FLOOR
     }
 
 internal fun se.bofr.dspi.ffi.uniffi.MeasureSystemPhase.toDomain(): MeasureSystemPhase =

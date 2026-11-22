@@ -6838,6 +6838,12 @@ data class MeasureState(
      * the session, S5).
      */
     val frameFaults: Long,
+    /**
+     * Who started the session: 0 the app itself, else an agent's actor
+     * (`actor::actor_label` names it), so a screen can say "requested by
+     * AI".
+     */
+    val actor: Long,
 )
 
 /**
@@ -7313,6 +7319,191 @@ data class MeasureRtaPassiveFrame(
      * RTA gives them; `None` when it does not run.
      */
     val rta: MeasureLiveRta?,
+)
+
+/**
+ * What to search (`measure_rolloff_start`). Every number 0 (or absent) is
+ * the default.
+ */
+data class MeasureRolloffSetup(
+    /**
+     * The output, 0-based.
+     */
+    val output: Int,
+    /**
+     * Its way as the caller has it; the effective role (a high-pass at
+     * 1 kHz or above makes it a tweeter) is what counts. Ignored with
+     * `roles_from_layout`.
+     */
+    val role: MeasureRole,
+    /**
+     * Take the role from the device's confirmed speaker layout (agents
+     * always do; refused with `measure.layout_unconfirmed` without one).
+     */
+    val rolesFromLayout: Boolean,
+    /**
+     * The speaker it belongs to, for the document.
+     */
+    val speaker: String,
+    /**
+     * Where the microphone is: the listening position or near field (close
+     * to the driver, which judges a driver best).
+     */
+    val placement: MeasurePlacement,
+    /**
+     * The microphone's `mic` document's text ("" uncalibrated).
+     */
+    val micDocument: String,
+    /**
+     * The first segment's start, Hz (0: 8 kHz; at most 10 kHz; never below
+     * the output's floor).
+     */
+    val startHz: Float,
+    /**
+     * One sweep, ms (1000 to 15000; 0: 2700).
+     */
+    val sweepMs: Long,
+    /**
+     * The generator's ceiling, peak dBFS (as `MeasureSetup::ceiling_db`).
+     */
+    val ceilingDb: Float?,
+    /**
+     * The SPL cap with a calibrated microphone (as `MeasureSetup`).
+     */
+    val splCapDb: Float?,
+    /**
+     * The capture's rate, Hz (0: 48000).
+     */
+    val captureRateHz: Long,
+    /**
+     * The documents' name ("" names them by the date).
+     */
+    val name: String,
+    /**
+     * Play at the start level only (as `MeasureSetup::start_level_only`).
+     */
+    val startLevelOnly: Boolean,
+)
+
+/**
+ * The search's result.
+ */
+data class MeasureRolloffResult(
+    /**
+     * The output.
+     */
+    val output: Int,
+    /**
+     * Its effective role.
+     */
+    val role: MeasureRole,
+    /**
+     * Why it ended.
+     */
+    val end: MeasureRolloffEnd,
+    /**
+     * The threshold it stopped at, dB below the loudest point.
+     */
+    val stopDb: Float,
+    /**
+     * The loudest point of the smoothed response, dB (re a 0 dBFS
+     * stimulus, or dB SPL with `spl`).
+     */
+    val referenceDb: Double,
+    /**
+     * Where that loudest point is, Hz.
+     */
+    val referenceHz: Double,
+    /**
+     * Where the response falls `stop_db` below the loudest point, Hz;
+     * `None` when it never did above the floor.
+     */
+    val rolloffHz: Double?,
+    /**
+     * The lowest frequency any stimulus played, Hz.
+     */
+    val lowestHz: Double,
+    /**
+     * The smoothed level at the lowest judged frequency, dB re the loudest
+     * point (at most 0).
+     */
+    val lowEndDb: Double,
+    /**
+     * The note for the user: `measure.rolloff.midrange` for a tweeter still
+     * good at its floor.
+     */
+    val note: MeasureIssue?,
+    /**
+     * The last segment's trusted points in its judged band, Hz.
+     */
+    val freqsHz: List<Double>,
+    /**
+     * The smoothed level at each of `freqs_hz`, dB (as `reference_db`).
+     */
+    val magDb: List<Double>,
+    /**
+     * The levels are dB SPL (a calibrated microphone).
+     */
+    val spl: Boolean,
+    /**
+     * The last segment's `measurement` document (file it with
+     * `measure_doc_put`).
+     */
+    val document: String,
+)
+
+/**
+ * The search's state.
+ */
+data class MeasureRolloffState(
+    /**
+     * Where it stands.
+     */
+    val stage: MeasureRolloffStage,
+    /**
+     * Tick it (`measure_rolloff_tick`): a segment runs or is next.
+     */
+    val running: Boolean,
+    /**
+     * The output searched.
+     */
+    val output: Int?,
+    /**
+     * Its effective role.
+     */
+    val role: MeasureRole,
+    /**
+     * The lowest any segment may start, Hz (1000 on a tweeter).
+     */
+    val floorHz: Float,
+    /**
+     * The segment now (or last) measured, 1-based.
+     */
+    val segment: Int,
+    /**
+     * The most segments there can be (the floor reached).
+     */
+    val segments: Int,
+    /**
+     * That segment's start, Hz.
+     */
+    val segmentStartHz: Float,
+    /**
+     * The segment's session (push capture while it wants it).
+     */
+    val session: MeasureState,
+    /**
+     * The result, once done.
+     */
+    val result: MeasureRolloffResult?,
+    /**
+     * Why it stopped, or what the last segment asked.
+     */
+    val issue: MeasureIssue?,
+    /**
+     * Who started it: 0 the app, else an agent's actor.
+     */
+    val actor: Long,
 )
 
 /**
@@ -9931,6 +10122,42 @@ enum class MeasureLiveAdjust {
      * An edit the client asked to preview.
      */
     EDIT,
+}
+
+/**
+ * Where the search stands.
+ */
+enum class MeasureRolloffStage {
+    /**
+     * No search on this core.
+     */
+    IDLE,
+    /**
+     * A segment is being measured (`session` says which phase).
+     */
+    MEASURING,
+    /**
+     * The search ended with a result.
+     */
+    DONE,
+    /**
+     * It stopped without a result (`issue` says why).
+     */
+    STOPPED,
+}
+
+/**
+ * Why the search ended.
+ */
+enum class MeasureRolloffEnd {
+    /**
+     * The response fell [`ROLLOFF_STOP_DB`] below its loudest point.
+     */
+    ROLLED_OFF,
+    /**
+     * The output's floor was reached first (1 kHz on a tweeter).
+     */
+    FLOOR,
 }
 
 /**

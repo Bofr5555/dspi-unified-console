@@ -4513,6 +4513,45 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func measureResult() throws  -> String
     
     /**
+     * Forget a finished search (its result included). Refused while one
+     * runs.
+     *
+     * Errors: [`DspiError::InvalidArgument`] while a search runs.
+     */
+    func measureRolloffClear() throws 
+    
+    /**
+     * Start the roll-off search of one output (module docs): the first
+     * segment's preflight and start, as `measure_start`. On an (effective)
+     * tweeter no segment plays below 1 kHz.
+     *
+     * Errors: as `measure_start` (a blocker, read-only, a Viewer, the device
+     * lock, `measure.layout_unconfirmed`); [`DspiError::InvalidArgument`]
+     * for a setup that is not one, or while a search, a session, a tune's
+     * run or the live view runs on this core.
+     */
+    func measureRolloffStart(setup: MeasureRolloffSetup) throws  -> MeasureRolloffState
+    
+    /**
+     * The search's state, without I/O (safe from the measurement listener).
+     */
+    func measureRolloffState()  -> MeasureRolloffState
+    
+    /**
+     * The user's Stop: the segment's session stopped (`SIGGEN_CTL_STOP_NOW`)
+     * and the search ended without a result. Idempotent; never fails.
+     */
+    func measureRolloffStop()  -> MeasureRolloffState
+    
+    /**
+     * Drive the search: its segment's session (`measure_tick`), then the
+     * verdict and the next segment or the result. Call it about every 50 ms
+     * off the UI thread while `running`, instead of `measure_tick`. Never
+     * fails.
+     */
+    func measureRolloffTick()  -> MeasureRolloffState
+    
+    /**
      * The averaging preset; the average starts again (the held copy is
      * kept).
      *
@@ -11949,6 +11988,70 @@ open func measurePreflight(setup: MeasureSetup)throws  -> MeasurePreflight  {
 open func measureResult()throws  -> String  {
     return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_measure_result(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Forget a finished search (its result included). Refused while one
+     * runs.
+     *
+     * Errors: [`DspiError::InvalidArgument`] while a search runs.
+     */
+open func measureRolloffClear()throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_measure_rolloff_clear(self.uniffiClonePointer(),$0
+    )
+}
+}
+    
+    /**
+     * Start the roll-off search of one output (module docs): the first
+     * segment's preflight and start, as `measure_start`. On an (effective)
+     * tweeter no segment plays below 1 kHz.
+     *
+     * Errors: as `measure_start` (a blocker, read-only, a Viewer, the device
+     * lock, `measure.layout_unconfirmed`); [`DspiError::InvalidArgument`]
+     * for a setup that is not one, or while a search, a session, a tune's
+     * run or the live view runs on this core.
+     */
+open func measureRolloffStart(setup: MeasureRolloffSetup)throws  -> MeasureRolloffState  {
+    return try  FfiConverterTypeMeasureRolloffState_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_measure_rolloff_start(self.uniffiClonePointer(),
+        FfiConverterTypeMeasureRolloffSetup_lower(setup),$0
+    )
+})
+}
+    
+    /**
+     * The search's state, without I/O (safe from the measurement listener).
+     */
+open func measureRolloffState() -> MeasureRolloffState  {
+    return try!  FfiConverterTypeMeasureRolloffState_lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_measure_rolloff_state(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * The user's Stop: the segment's session stopped (`SIGGEN_CTL_STOP_NOW`)
+     * and the search ended without a result. Idempotent; never fails.
+     */
+open func measureRolloffStop() -> MeasureRolloffState  {
+    return try!  FfiConverterTypeMeasureRolloffState_lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_measure_rolloff_stop(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Drive the search: its segment's session (`measure_tick`), then the
+     * verdict and the next segment or the result. Call it about every 50 ms
+     * off the UI thread while `running`, instead of `measure_tick`. Never
+     * fails.
+     */
+open func measureRolloffTick() -> MeasureRolloffState  {
+    return try!  FfiConverterTypeMeasureRolloffState_lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_measure_rolloff_tick(self.uniffiClonePointer(),$0
     )
 })
 }
@@ -45208,6 +45311,744 @@ public func FfiConverterTypeMeasurePreflight_lower(_ value: MeasurePreflight) ->
 
 
 /**
+ * The search's result.
+ */
+public struct MeasureRolloffResult {
+    /**
+     * The output.
+     */
+    public var output: UInt8
+    /**
+     * Its effective role.
+     */
+    public var role: MeasureRole
+    /**
+     * Why it ended.
+     */
+    public var end: MeasureRolloffEnd
+    /**
+     * The threshold it stopped at, dB below the loudest point.
+     */
+    public var stopDb: Float
+    /**
+     * The loudest point of the smoothed response, dB (re a 0 dBFS
+     * stimulus, or dB SPL with `spl`).
+     */
+    public var referenceDb: Double
+    /**
+     * Where that loudest point is, Hz.
+     */
+    public var referenceHz: Double
+    /**
+     * Where the response falls `stop_db` below the loudest point, Hz;
+     * `None` when it never did above the floor.
+     */
+    public var rolloffHz: Double?
+    /**
+     * The lowest frequency any stimulus played, Hz.
+     */
+    public var lowestHz: Double
+    /**
+     * The smoothed level at the lowest judged frequency, dB re the loudest
+     * point (at most 0).
+     */
+    public var lowEndDb: Double
+    /**
+     * The note for the user: `measure.rolloff.midrange` for a tweeter still
+     * good at its floor.
+     */
+    public var note: MeasureIssue?
+    /**
+     * The last segment's trusted points in its judged band, Hz.
+     */
+    public var freqsHz: [Double]
+    /**
+     * The smoothed level at each of `freqs_hz`, dB (as `reference_db`).
+     */
+    public var magDb: [Double]
+    /**
+     * The levels are dB SPL (a calibrated microphone).
+     */
+    public var spl: Bool
+    /**
+     * The last segment's `measurement` document (file it with
+     * `measure_doc_put`).
+     */
+    public var document: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The output.
+         */output: UInt8, 
+        /**
+         * Its effective role.
+         */role: MeasureRole, 
+        /**
+         * Why it ended.
+         */end: MeasureRolloffEnd, 
+        /**
+         * The threshold it stopped at, dB below the loudest point.
+         */stopDb: Float, 
+        /**
+         * The loudest point of the smoothed response, dB (re a 0 dBFS
+         * stimulus, or dB SPL with `spl`).
+         */referenceDb: Double, 
+        /**
+         * Where that loudest point is, Hz.
+         */referenceHz: Double, 
+        /**
+         * Where the response falls `stop_db` below the loudest point, Hz;
+         * `None` when it never did above the floor.
+         */rolloffHz: Double?, 
+        /**
+         * The lowest frequency any stimulus played, Hz.
+         */lowestHz: Double, 
+        /**
+         * The smoothed level at the lowest judged frequency, dB re the loudest
+         * point (at most 0).
+         */lowEndDb: Double, 
+        /**
+         * The note for the user: `measure.rolloff.midrange` for a tweeter still
+         * good at its floor.
+         */note: MeasureIssue?, 
+        /**
+         * The last segment's trusted points in its judged band, Hz.
+         */freqsHz: [Double], 
+        /**
+         * The smoothed level at each of `freqs_hz`, dB (as `reference_db`).
+         */magDb: [Double], 
+        /**
+         * The levels are dB SPL (a calibrated microphone).
+         */spl: Bool, 
+        /**
+         * The last segment's `measurement` document (file it with
+         * `measure_doc_put`).
+         */document: String) {
+        self.output = output
+        self.role = role
+        self.end = end
+        self.stopDb = stopDb
+        self.referenceDb = referenceDb
+        self.referenceHz = referenceHz
+        self.rolloffHz = rolloffHz
+        self.lowestHz = lowestHz
+        self.lowEndDb = lowEndDb
+        self.note = note
+        self.freqsHz = freqsHz
+        self.magDb = magDb
+        self.spl = spl
+        self.document = document
+    }
+}
+
+#if compiler(>=6)
+extension MeasureRolloffResult: Sendable {}
+#endif
+
+
+extension MeasureRolloffResult: Equatable, Hashable {
+    public static func ==(lhs: MeasureRolloffResult, rhs: MeasureRolloffResult) -> Bool {
+        if lhs.output != rhs.output {
+            return false
+        }
+        if lhs.role != rhs.role {
+            return false
+        }
+        if lhs.end != rhs.end {
+            return false
+        }
+        if lhs.stopDb != rhs.stopDb {
+            return false
+        }
+        if lhs.referenceDb != rhs.referenceDb {
+            return false
+        }
+        if lhs.referenceHz != rhs.referenceHz {
+            return false
+        }
+        if lhs.rolloffHz != rhs.rolloffHz {
+            return false
+        }
+        if lhs.lowestHz != rhs.lowestHz {
+            return false
+        }
+        if lhs.lowEndDb != rhs.lowEndDb {
+            return false
+        }
+        if lhs.note != rhs.note {
+            return false
+        }
+        if lhs.freqsHz != rhs.freqsHz {
+            return false
+        }
+        if lhs.magDb != rhs.magDb {
+            return false
+        }
+        if lhs.spl != rhs.spl {
+            return false
+        }
+        if lhs.document != rhs.document {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(output)
+        hasher.combine(role)
+        hasher.combine(end)
+        hasher.combine(stopDb)
+        hasher.combine(referenceDb)
+        hasher.combine(referenceHz)
+        hasher.combine(rolloffHz)
+        hasher.combine(lowestHz)
+        hasher.combine(lowEndDb)
+        hasher.combine(note)
+        hasher.combine(freqsHz)
+        hasher.combine(magDb)
+        hasher.combine(spl)
+        hasher.combine(document)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureRolloffResult: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureRolloffResult {
+        return
+            try MeasureRolloffResult(
+                output: FfiConverterUInt8.read(from: &buf), 
+                role: FfiConverterTypeMeasureRole.read(from: &buf), 
+                end: FfiConverterTypeMeasureRolloffEnd.read(from: &buf), 
+                stopDb: FfiConverterFloat.read(from: &buf), 
+                referenceDb: FfiConverterDouble.read(from: &buf), 
+                referenceHz: FfiConverterDouble.read(from: &buf), 
+                rolloffHz: FfiConverterOptionDouble.read(from: &buf), 
+                lowestHz: FfiConverterDouble.read(from: &buf), 
+                lowEndDb: FfiConverterDouble.read(from: &buf), 
+                note: FfiConverterOptionTypeMeasureIssue.read(from: &buf), 
+                freqsHz: FfiConverterSequenceDouble.read(from: &buf), 
+                magDb: FfiConverterSequenceDouble.read(from: &buf), 
+                spl: FfiConverterBool.read(from: &buf), 
+                document: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MeasureRolloffResult, into buf: inout [UInt8]) {
+        FfiConverterUInt8.write(value.output, into: &buf)
+        FfiConverterTypeMeasureRole.write(value.role, into: &buf)
+        FfiConverterTypeMeasureRolloffEnd.write(value.end, into: &buf)
+        FfiConverterFloat.write(value.stopDb, into: &buf)
+        FfiConverterDouble.write(value.referenceDb, into: &buf)
+        FfiConverterDouble.write(value.referenceHz, into: &buf)
+        FfiConverterOptionDouble.write(value.rolloffHz, into: &buf)
+        FfiConverterDouble.write(value.lowestHz, into: &buf)
+        FfiConverterDouble.write(value.lowEndDb, into: &buf)
+        FfiConverterOptionTypeMeasureIssue.write(value.note, into: &buf)
+        FfiConverterSequenceDouble.write(value.freqsHz, into: &buf)
+        FfiConverterSequenceDouble.write(value.magDb, into: &buf)
+        FfiConverterBool.write(value.spl, into: &buf)
+        FfiConverterString.write(value.document, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureRolloffResult_lift(_ buf: RustBuffer) throws -> MeasureRolloffResult {
+    return try FfiConverterTypeMeasureRolloffResult.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureRolloffResult_lower(_ value: MeasureRolloffResult) -> RustBuffer {
+    return FfiConverterTypeMeasureRolloffResult.lower(value)
+}
+
+
+/**
+ * What to search (`measure_rolloff_start`). Every number 0 (or absent) is
+ * the default.
+ */
+public struct MeasureRolloffSetup {
+    /**
+     * The output, 0-based.
+     */
+    public var output: UInt8
+    /**
+     * Its way as the caller has it; the effective role (a high-pass at
+     * 1 kHz or above makes it a tweeter) is what counts. Ignored with
+     * `roles_from_layout`.
+     */
+    public var role: MeasureRole
+    /**
+     * Take the role from the device's confirmed speaker layout (agents
+     * always do; refused with `measure.layout_unconfirmed` without one).
+     */
+    public var rolesFromLayout: Bool
+    /**
+     * The speaker it belongs to, for the document.
+     */
+    public var speaker: String
+    /**
+     * Where the microphone is: the listening position or near field (close
+     * to the driver, which judges a driver best).
+     */
+    public var placement: MeasurePlacement
+    /**
+     * The microphone's `mic` document's text ("" uncalibrated).
+     */
+    public var micDocument: String
+    /**
+     * The first segment's start, Hz (0: 8 kHz; at most 10 kHz; never below
+     * the output's floor).
+     */
+    public var startHz: Float
+    /**
+     * One sweep, ms (1000 to 15000; 0: 2700).
+     */
+    public var sweepMs: UInt32
+    /**
+     * The generator's ceiling, peak dBFS (as `MeasureSetup::ceiling_db`).
+     */
+    public var ceilingDb: Float?
+    /**
+     * The SPL cap with a calibrated microphone (as `MeasureSetup`).
+     */
+    public var splCapDb: Float?
+    /**
+     * The capture's rate, Hz (0: 48000).
+     */
+    public var captureRateHz: UInt32
+    /**
+     * The documents' name ("" names them by the date).
+     */
+    public var name: String
+    /**
+     * Play at the start level only (as `MeasureSetup::start_level_only`).
+     */
+    public var startLevelOnly: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The output, 0-based.
+         */output: UInt8, 
+        /**
+         * Its way as the caller has it; the effective role (a high-pass at
+         * 1 kHz or above makes it a tweeter) is what counts. Ignored with
+         * `roles_from_layout`.
+         */role: MeasureRole, 
+        /**
+         * Take the role from the device's confirmed speaker layout (agents
+         * always do; refused with `measure.layout_unconfirmed` without one).
+         */rolesFromLayout: Bool, 
+        /**
+         * The speaker it belongs to, for the document.
+         */speaker: String, 
+        /**
+         * Where the microphone is: the listening position or near field (close
+         * to the driver, which judges a driver best).
+         */placement: MeasurePlacement, 
+        /**
+         * The microphone's `mic` document's text ("" uncalibrated).
+         */micDocument: String, 
+        /**
+         * The first segment's start, Hz (0: 8 kHz; at most 10 kHz; never below
+         * the output's floor).
+         */startHz: Float, 
+        /**
+         * One sweep, ms (1000 to 15000; 0: 2700).
+         */sweepMs: UInt32, 
+        /**
+         * The generator's ceiling, peak dBFS (as `MeasureSetup::ceiling_db`).
+         */ceilingDb: Float?, 
+        /**
+         * The SPL cap with a calibrated microphone (as `MeasureSetup`).
+         */splCapDb: Float?, 
+        /**
+         * The capture's rate, Hz (0: 48000).
+         */captureRateHz: UInt32, 
+        /**
+         * The documents' name ("" names them by the date).
+         */name: String, 
+        /**
+         * Play at the start level only (as `MeasureSetup::start_level_only`).
+         */startLevelOnly: Bool) {
+        self.output = output
+        self.role = role
+        self.rolesFromLayout = rolesFromLayout
+        self.speaker = speaker
+        self.placement = placement
+        self.micDocument = micDocument
+        self.startHz = startHz
+        self.sweepMs = sweepMs
+        self.ceilingDb = ceilingDb
+        self.splCapDb = splCapDb
+        self.captureRateHz = captureRateHz
+        self.name = name
+        self.startLevelOnly = startLevelOnly
+    }
+}
+
+#if compiler(>=6)
+extension MeasureRolloffSetup: Sendable {}
+#endif
+
+
+extension MeasureRolloffSetup: Equatable, Hashable {
+    public static func ==(lhs: MeasureRolloffSetup, rhs: MeasureRolloffSetup) -> Bool {
+        if lhs.output != rhs.output {
+            return false
+        }
+        if lhs.role != rhs.role {
+            return false
+        }
+        if lhs.rolesFromLayout != rhs.rolesFromLayout {
+            return false
+        }
+        if lhs.speaker != rhs.speaker {
+            return false
+        }
+        if lhs.placement != rhs.placement {
+            return false
+        }
+        if lhs.micDocument != rhs.micDocument {
+            return false
+        }
+        if lhs.startHz != rhs.startHz {
+            return false
+        }
+        if lhs.sweepMs != rhs.sweepMs {
+            return false
+        }
+        if lhs.ceilingDb != rhs.ceilingDb {
+            return false
+        }
+        if lhs.splCapDb != rhs.splCapDb {
+            return false
+        }
+        if lhs.captureRateHz != rhs.captureRateHz {
+            return false
+        }
+        if lhs.name != rhs.name {
+            return false
+        }
+        if lhs.startLevelOnly != rhs.startLevelOnly {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(output)
+        hasher.combine(role)
+        hasher.combine(rolesFromLayout)
+        hasher.combine(speaker)
+        hasher.combine(placement)
+        hasher.combine(micDocument)
+        hasher.combine(startHz)
+        hasher.combine(sweepMs)
+        hasher.combine(ceilingDb)
+        hasher.combine(splCapDb)
+        hasher.combine(captureRateHz)
+        hasher.combine(name)
+        hasher.combine(startLevelOnly)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureRolloffSetup: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureRolloffSetup {
+        return
+            try MeasureRolloffSetup(
+                output: FfiConverterUInt8.read(from: &buf), 
+                role: FfiConverterTypeMeasureRole.read(from: &buf), 
+                rolesFromLayout: FfiConverterBool.read(from: &buf), 
+                speaker: FfiConverterString.read(from: &buf), 
+                placement: FfiConverterTypeMeasurePlacement.read(from: &buf), 
+                micDocument: FfiConverterString.read(from: &buf), 
+                startHz: FfiConverterFloat.read(from: &buf), 
+                sweepMs: FfiConverterUInt32.read(from: &buf), 
+                ceilingDb: FfiConverterOptionFloat.read(from: &buf), 
+                splCapDb: FfiConverterOptionFloat.read(from: &buf), 
+                captureRateHz: FfiConverterUInt32.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf), 
+                startLevelOnly: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MeasureRolloffSetup, into buf: inout [UInt8]) {
+        FfiConverterUInt8.write(value.output, into: &buf)
+        FfiConverterTypeMeasureRole.write(value.role, into: &buf)
+        FfiConverterBool.write(value.rolesFromLayout, into: &buf)
+        FfiConverterString.write(value.speaker, into: &buf)
+        FfiConverterTypeMeasurePlacement.write(value.placement, into: &buf)
+        FfiConverterString.write(value.micDocument, into: &buf)
+        FfiConverterFloat.write(value.startHz, into: &buf)
+        FfiConverterUInt32.write(value.sweepMs, into: &buf)
+        FfiConverterOptionFloat.write(value.ceilingDb, into: &buf)
+        FfiConverterOptionFloat.write(value.splCapDb, into: &buf)
+        FfiConverterUInt32.write(value.captureRateHz, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterBool.write(value.startLevelOnly, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureRolloffSetup_lift(_ buf: RustBuffer) throws -> MeasureRolloffSetup {
+    return try FfiConverterTypeMeasureRolloffSetup.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureRolloffSetup_lower(_ value: MeasureRolloffSetup) -> RustBuffer {
+    return FfiConverterTypeMeasureRolloffSetup.lower(value)
+}
+
+
+/**
+ * The search's state.
+ */
+public struct MeasureRolloffState {
+    /**
+     * Where it stands.
+     */
+    public var stage: MeasureRolloffStage
+    /**
+     * Tick it (`measure_rolloff_tick`): a segment runs or is next.
+     */
+    public var running: Bool
+    /**
+     * The output searched.
+     */
+    public var output: UInt8?
+    /**
+     * Its effective role.
+     */
+    public var role: MeasureRole
+    /**
+     * The lowest any segment may start, Hz (1000 on a tweeter).
+     */
+    public var floorHz: Float
+    /**
+     * The segment now (or last) measured, 1-based.
+     */
+    public var segment: UInt16
+    /**
+     * The most segments there can be (the floor reached).
+     */
+    public var segments: UInt16
+    /**
+     * That segment's start, Hz.
+     */
+    public var segmentStartHz: Float
+    /**
+     * The segment's session (push capture while it wants it).
+     */
+    public var session: MeasureState
+    /**
+     * The result, once done.
+     */
+    public var result: MeasureRolloffResult?
+    /**
+     * Why it stopped, or what the last segment asked.
+     */
+    public var issue: MeasureIssue?
+    /**
+     * Who started it: 0 the app, else an agent's actor.
+     */
+    public var actor: UInt32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Where it stands.
+         */stage: MeasureRolloffStage, 
+        /**
+         * Tick it (`measure_rolloff_tick`): a segment runs or is next.
+         */running: Bool, 
+        /**
+         * The output searched.
+         */output: UInt8?, 
+        /**
+         * Its effective role.
+         */role: MeasureRole, 
+        /**
+         * The lowest any segment may start, Hz (1000 on a tweeter).
+         */floorHz: Float, 
+        /**
+         * The segment now (or last) measured, 1-based.
+         */segment: UInt16, 
+        /**
+         * The most segments there can be (the floor reached).
+         */segments: UInt16, 
+        /**
+         * That segment's start, Hz.
+         */segmentStartHz: Float, 
+        /**
+         * The segment's session (push capture while it wants it).
+         */session: MeasureState, 
+        /**
+         * The result, once done.
+         */result: MeasureRolloffResult?, 
+        /**
+         * Why it stopped, or what the last segment asked.
+         */issue: MeasureIssue?, 
+        /**
+         * Who started it: 0 the app, else an agent's actor.
+         */actor: UInt32) {
+        self.stage = stage
+        self.running = running
+        self.output = output
+        self.role = role
+        self.floorHz = floorHz
+        self.segment = segment
+        self.segments = segments
+        self.segmentStartHz = segmentStartHz
+        self.session = session
+        self.result = result
+        self.issue = issue
+        self.actor = actor
+    }
+}
+
+#if compiler(>=6)
+extension MeasureRolloffState: Sendable {}
+#endif
+
+
+extension MeasureRolloffState: Equatable, Hashable {
+    public static func ==(lhs: MeasureRolloffState, rhs: MeasureRolloffState) -> Bool {
+        if lhs.stage != rhs.stage {
+            return false
+        }
+        if lhs.running != rhs.running {
+            return false
+        }
+        if lhs.output != rhs.output {
+            return false
+        }
+        if lhs.role != rhs.role {
+            return false
+        }
+        if lhs.floorHz != rhs.floorHz {
+            return false
+        }
+        if lhs.segment != rhs.segment {
+            return false
+        }
+        if lhs.segments != rhs.segments {
+            return false
+        }
+        if lhs.segmentStartHz != rhs.segmentStartHz {
+            return false
+        }
+        if lhs.session != rhs.session {
+            return false
+        }
+        if lhs.result != rhs.result {
+            return false
+        }
+        if lhs.issue != rhs.issue {
+            return false
+        }
+        if lhs.actor != rhs.actor {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(stage)
+        hasher.combine(running)
+        hasher.combine(output)
+        hasher.combine(role)
+        hasher.combine(floorHz)
+        hasher.combine(segment)
+        hasher.combine(segments)
+        hasher.combine(segmentStartHz)
+        hasher.combine(session)
+        hasher.combine(result)
+        hasher.combine(issue)
+        hasher.combine(actor)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureRolloffState: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureRolloffState {
+        return
+            try MeasureRolloffState(
+                stage: FfiConverterTypeMeasureRolloffStage.read(from: &buf), 
+                running: FfiConverterBool.read(from: &buf), 
+                output: FfiConverterOptionUInt8.read(from: &buf), 
+                role: FfiConverterTypeMeasureRole.read(from: &buf), 
+                floorHz: FfiConverterFloat.read(from: &buf), 
+                segment: FfiConverterUInt16.read(from: &buf), 
+                segments: FfiConverterUInt16.read(from: &buf), 
+                segmentStartHz: FfiConverterFloat.read(from: &buf), 
+                session: FfiConverterTypeMeasureState.read(from: &buf), 
+                result: FfiConverterOptionTypeMeasureRolloffResult.read(from: &buf), 
+                issue: FfiConverterOptionTypeMeasureIssue.read(from: &buf), 
+                actor: FfiConverterUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MeasureRolloffState, into buf: inout [UInt8]) {
+        FfiConverterTypeMeasureRolloffStage.write(value.stage, into: &buf)
+        FfiConverterBool.write(value.running, into: &buf)
+        FfiConverterOptionUInt8.write(value.output, into: &buf)
+        FfiConverterTypeMeasureRole.write(value.role, into: &buf)
+        FfiConverterFloat.write(value.floorHz, into: &buf)
+        FfiConverterUInt16.write(value.segment, into: &buf)
+        FfiConverterUInt16.write(value.segments, into: &buf)
+        FfiConverterFloat.write(value.segmentStartHz, into: &buf)
+        FfiConverterTypeMeasureState.write(value.session, into: &buf)
+        FfiConverterOptionTypeMeasureRolloffResult.write(value.result, into: &buf)
+        FfiConverterOptionTypeMeasureIssue.write(value.issue, into: &buf)
+        FfiConverterUInt32.write(value.actor, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureRolloffState_lift(_ buf: RustBuffer) throws -> MeasureRolloffState {
+    return try FfiConverterTypeMeasureRolloffState.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureRolloffState_lower(_ value: MeasureRolloffState) -> RustBuffer {
+    return FfiConverterTypeMeasureRolloffState.lower(value)
+}
+
+
+/**
  * What the passive RTA shows (`measure_rta_passive_frame`).
  */
 public struct MeasureRtaPassiveFrame {
@@ -46118,6 +46959,12 @@ public struct MeasureState {
      * the session, S5).
      */
     public var frameFaults: UInt32
+    /**
+     * Who started the session: 0 the app itself, else an agent's actor
+     * (`actor::actor_label` names it), so a screen can say "requested by
+     * AI".
+     */
+    public var actor: UInt32
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -46189,7 +47036,12 @@ public struct MeasureState {
         /**
          * Gaps and repeats seen in the capture's frame indices (any one aborts
          * the session, S5).
-         */frameFaults: UInt32) {
+         */frameFaults: UInt32, 
+        /**
+         * Who started the session: 0 the app itself, else an agent's actor
+         * (`actor::actor_label` names it), so a screen can say "requested by
+         * AI".
+         */actor: UInt32 = UInt32(0)) {
         self.phase = phase
         self.kind = kind
         self.active = active
@@ -46212,6 +47064,7 @@ public struct MeasureState {
         self.resultReady = resultReady
         self.timing = timing
         self.frameFaults = frameFaults
+        self.actor = actor
     }
 }
 
@@ -46288,6 +47141,9 @@ extension MeasureState: Equatable, Hashable {
         if lhs.frameFaults != rhs.frameFaults {
             return false
         }
+        if lhs.actor != rhs.actor {
+            return false
+        }
         return true
     }
 
@@ -46314,6 +47170,7 @@ extension MeasureState: Equatable, Hashable {
         hasher.combine(resultReady)
         hasher.combine(timing)
         hasher.combine(frameFaults)
+        hasher.combine(actor)
     }
 }
 
@@ -46347,7 +47204,8 @@ public struct FfiConverterTypeMeasureState: FfiConverterRustBuffer {
                 timingReliable: FfiConverterOptionBool.read(from: &buf), 
                 resultReady: FfiConverterBool.read(from: &buf), 
                 timing: FfiConverterOptionTypeMeasureTiming.read(from: &buf), 
-                frameFaults: FfiConverterUInt32.read(from: &buf)
+                frameFaults: FfiConverterUInt32.read(from: &buf), 
+                actor: FfiConverterUInt32.read(from: &buf)
         )
     }
 
@@ -46374,6 +47232,7 @@ public struct FfiConverterTypeMeasureState: FfiConverterRustBuffer {
         FfiConverterBool.write(value.resultReady, into: &buf)
         FfiConverterOptionTypeMeasureTiming.write(value.timing, into: &buf)
         FfiConverterUInt32.write(value.frameFaults, into: &buf)
+        FfiConverterUInt32.write(value.actor, into: &buf)
     }
 }
 
@@ -62493,6 +63352,184 @@ extension MeasureRole: Equatable, Hashable {}
 // Note that we don't yet support `indirect` for enums.
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
 /**
+ * Why the search ended.
+ */
+
+public enum MeasureRolloffEnd {
+    
+    /**
+     * The response fell [`ROLLOFF_STOP_DB`] below its loudest point.
+     */
+    case rolledOff
+    /**
+     * The output's floor was reached first (1 kHz on a tweeter).
+     */
+    case floor
+}
+
+
+#if compiler(>=6)
+extension MeasureRolloffEnd: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureRolloffEnd: FfiConverterRustBuffer {
+    typealias SwiftType = MeasureRolloffEnd
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureRolloffEnd {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .rolledOff
+        
+        case 2: return .floor
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: MeasureRolloffEnd, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .rolledOff:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .floor:
+            writeInt(&buf, Int32(2))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureRolloffEnd_lift(_ buf: RustBuffer) throws -> MeasureRolloffEnd {
+    return try FfiConverterTypeMeasureRolloffEnd.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureRolloffEnd_lower(_ value: MeasureRolloffEnd) -> RustBuffer {
+    return FfiConverterTypeMeasureRolloffEnd.lower(value)
+}
+
+
+extension MeasureRolloffEnd: Equatable, Hashable {}
+
+
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
+ * Where the search stands.
+ */
+
+public enum MeasureRolloffStage {
+    
+    /**
+     * No search on this core.
+     */
+    case idle
+    /**
+     * A segment is being measured (`session` says which phase).
+     */
+    case measuring
+    /**
+     * The search ended with a result.
+     */
+    case done
+    /**
+     * It stopped without a result (`issue` says why).
+     */
+    case stopped
+}
+
+
+#if compiler(>=6)
+extension MeasureRolloffStage: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureRolloffStage: FfiConverterRustBuffer {
+    typealias SwiftType = MeasureRolloffStage
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureRolloffStage {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .idle
+        
+        case 2: return .measuring
+        
+        case 3: return .done
+        
+        case 4: return .stopped
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: MeasureRolloffStage, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .idle:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .measuring:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .done:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .stopped:
+            writeInt(&buf, Int32(4))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureRolloffStage_lift(_ buf: RustBuffer) throws -> MeasureRolloffStage {
+    return try FfiConverterTypeMeasureRolloffStage.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureRolloffStage_lower(_ value: MeasureRolloffStage) -> RustBuffer {
+    return FfiConverterTypeMeasureRolloffStage.lower(value)
+}
+
+
+extension MeasureRolloffStage: Equatable, Hashable {}
+
+
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
  * The microphone RTA's averaging preset.
  */
 
@@ -65522,6 +66559,30 @@ fileprivate struct FfiConverterOptionTypeMeasureLiveRta: FfiConverterRustBuffer 
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypeMeasureLiveRta.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeMeasureRolloffResult: FfiConverterRustBuffer {
+    typealias SwiftType = MeasureRolloffResult?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeMeasureRolloffResult.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeMeasureRolloffResult.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -70802,6 +71863,21 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_measure_result() != 7126) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_rolloff_clear() != 27737) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_rolloff_start() != 20159) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_rolloff_state() != 8110) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_rolloff_stop() != 64982) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_rolloff_tick() != 12691) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_measure_rta_passive_averaging() != 35925) {

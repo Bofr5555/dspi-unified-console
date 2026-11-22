@@ -663,6 +663,11 @@ pub(crate) struct Tune {
     /// counts from [`TUNE_KEEP_CONFIRM_MIN_MS`] later, so a double click is
     /// one press.
     keep_refused_at: Option<dspi_transport::clock::Instant>,
+    // -- WP ROLL1 -- (review RA item 5)
+    /// Who last started the tune's runs or applied it: its runs started from
+    /// `measure_tune_tick` (any thread) are theirs, and its guard's revert on
+    /// timeout is attributed to them.
+    actor: crate::actor::JobActor,
 }
 
 impl MeasureSlot {
@@ -1471,6 +1476,9 @@ impl DspiCore {
         let _ = self.measure_clear();
         match self.measure_start_with(&item.setup, &options) {
             Ok(_) => {
+                // -- WP ROLL1 -- the run is the tune's starter's, whichever
+                // thread ticked it on
+                self.measure_set_actor(t.actor.actor());
                 if let Some(r) = t.runs.as_mut() {
                     r.current = Some(item);
                 }
@@ -2274,7 +2282,9 @@ impl DspiCore {
     /// at hand, or `measure_start`'s refusals ([`DspiError::ReadOnly`],
     /// [`DspiError::Denied`], [`DspiError::Locked`]).
     pub fn measure_tune_sum_check(&self, proposal_id: u32) -> Result<MeasureTuneState> {
+        let actor = crate::actor::JobActor::capture(self); // -- WP ROLL1 --
         let mut t = self.measure.tune_lock();
+        t.actor = actor;
         if t.stage != MeasureTuneStage::Proposed
             || t.proposal.as_ref().map(|p| p.id) != Some(proposal_id)
         {
@@ -2356,6 +2366,8 @@ impl DspiCore {
             t.stage,
             MeasureTuneStage::Applied | MeasureTuneStage::Verifying | MeasureTuneStage::Verified
         ) {
+            // -- WP ROLL1 -- a revert on timeout is the applier's in the History
+            let _scope = t.actor.attribute(self);
             self.apply_poll();
             self.tune_guard_ended(&mut t);
         }
@@ -2422,7 +2434,9 @@ impl DspiCore {
     /// guard's refusals. After the guard began: the refused write's error
     /// (the guard has reverted).
     pub fn measure_tune_apply(&self, proposal_id: u32, guard_s: u32) -> Result<GuardedApply> {
+        let actor = crate::actor::JobActor::capture(self); // -- WP ROLL1 --
         let mut t = self.measure.tune_lock();
+        t.actor = actor;
         let p = t
             .proposal
             .clone()
@@ -2582,7 +2596,9 @@ impl DspiCore {
     /// Errors: [`DspiError::InvalidArgument`] when no tune is applied, the
     /// measurement's microphone is not at hand, or `measure_start` refuses.
     pub fn measure_tune_verify(&self) -> Result<MeasureTuneState> {
+        let actor = crate::actor::JobActor::capture(self); // -- WP ROLL1 --
         let mut t = self.measure.tune_lock();
+        t.actor = actor;
         self.tune_guard_ended(&mut t);
         if !matches!(
             t.stage,

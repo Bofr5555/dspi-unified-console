@@ -7489,6 +7489,37 @@ uint32_t dspi_measure_tune_ab(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_measure_tune_stop(struct FfiCore *core, char *buf, uint32_t len);
 
 /**
+ * Start the roll-off search of `setup_json`'s output: the state, or a
+ * failure (`invalid` naming the blockers or `measure.layout_unconfirmed:`,
+ * `read_only`, `denied`, `locked`).
+ */
+uint32_t dspi_measure_rolloff_start(struct FfiCore *core,
+                                    const char *setup_json,
+                                    char *buf,
+                                    uint32_t len);
+
+/**
+ * Drive the search (about every 50 ms, off the UI thread): its state (never
+ * a failure).
+ */
+uint32_t dspi_measure_rolloff_tick(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * The search's state, without I/O (safe from the measure callback).
+ */
+uint32_t dspi_measure_rolloff_state(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * The user's Stop: the state (never a failure).
+ */
+uint32_t dspi_measure_rolloff_stop(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Forget a finished search: `{ok}`, or `invalid` while one runs.
+ */
+uint32_t dspi_measure_rolloff_clear(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
  * Judge this core's own device as `unit_json` of `setup_json`: the check
  * to hand to the core on the hub session, or a failure.
  */
