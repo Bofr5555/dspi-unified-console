@@ -8,17 +8,13 @@ import UConsole
 // to four times it) with the starting points, over the harmonics controls;
 // on the right the outputs and the shaping. Firmware before wire V23 has none
 // of it and gets a note instead.
-ToolWindow {
-    id: window
-    objectName: "PsybassWindow"
-    windowId: "psybass"
-    defaultWidth: 780
-    defaultHeight: 500
-    minimumWidth: 740
-    minimumHeight: 496
+// -- WP LAY1a -- A panel (Panel.qml): PanelTable's row for
+// tools.psybass gives its window's title and sizes.
+Panel {
+    id: panel
+    objectName: "PsybassPanel"
     // -- WP QTPOP --
     fitBodies: [body]
-    title: qsTr("Psychoacoustic Bass")
 
     readonly property bool writable: EffectsController.writable && EffectsController.psybassSupported
     readonly property bool unsupported: EffectsController.connected && !EffectsController.psybassSupported
@@ -66,14 +62,14 @@ ToolWindow {
             title: qsTr("Psychoacoustic Bass")
             subtitle: qsTr("Phantom fundamental bass enhancement")
             on: EffectsController.psybassOn
-            switchEnabled: window.writable
+            switchEnabled: panel.writable
             onToggled: on => EffectsController.setEnabled("psybass", on)
         }
         EffectRule {}
 
         ColumnLayout {
             objectName: "PsybassWindow.unsupported"
-            visible: window.unsupported
+            visible: panel.unsupported
             Layout.fillWidth: true
             Layout.fillHeight: true
             Layout.margins: 24
@@ -106,8 +102,9 @@ ToolWindow {
 
         EffectColumns {
             id: body
+            shown: panel.shown
             objectName: "PsybassWindow.body"
-            visible: !window.unsupported
+            visible: !panel.unsupported
             Layout.fillWidth: true
             Layout.fillHeight: true
 
@@ -120,7 +117,7 @@ ToolWindow {
                         EffectMenuButton {
                             id: startingPoints
                             objectName: "PsybassWindow.startingPoints"
-                            enabled: window.writable
+                            enabled: panel.writable
                             text: qsTr("Apply preset")
                             Instantiator {
                                 model: EffectsController.psybassStartingPoints
@@ -196,7 +193,7 @@ ToolWindow {
                         id: cutoffRow
                         objectName: "PsybassWindow.cutoff"
                         Layout.fillWidth: true
-                        enabled: window.writable
+                        enabled: panel.writable
                         title: qsTr("Cutoff Frequency")
                         unit: qsTr("Hz")
                         value: EffectsController.psybassCutoff
@@ -214,7 +211,7 @@ ToolWindow {
                         id: harmonicsRow
                         objectName: "PsybassWindow.harmonics"
                         Layout.fillWidth: true
-                        enabled: window.writable
+                        enabled: panel.writable
                         title: qsTr("Harmonics")
                         unit: qsTr("dB")
                         value: EffectsController.psybassHarmonics
@@ -237,7 +234,7 @@ ToolWindow {
                         text: qsTr("Outputs")
                         EffectMenuButton {
                             objectName: "PsybassWindow.outputs.presets"
-                            enabled: window.writable
+                            enabled: panel.writable
                             text: qsTr("Presets")
                             AppMenuItem {
                                 objectName: "PsybassWindow.outputs.all"
@@ -271,7 +268,7 @@ ToolWindow {
                             EffectChip {
                                 required property int index
                                 objectName: "PsybassWindow.output." + index
-                                enabled: window.writable
+                                enabled: panel.writable
                                 on: (EffectsController.psybassMask & (1 << index)) !== 0
                                 text: String(index + 1)
                                 toolTip: { EffectsController.revision; return EffectsController.outputName(index) }
@@ -288,7 +285,7 @@ ToolWindow {
                     EffectParameterRow {
                         objectName: "PsybassWindow.drive"
                         Layout.fillWidth: true
-                        enabled: window.writable
+                        enabled: panel.writable
                         title: qsTr("Drive")
                         unit: qsTr("dB")
                         value: EffectsController.psybassDrive
@@ -304,7 +301,7 @@ ToolWindow {
                     EffectParameterRow {
                         objectName: "PsybassWindow.character"
                         Layout.fillWidth: true
-                        enabled: window.writable
+                        enabled: panel.writable
                         title: qsTr("Character")
                         unit: qsTr("%")
                         value: EffectsController.psybassCharacter
@@ -322,7 +319,7 @@ ToolWindow {
                         id: originalRow
                         objectName: "PsybassWindow.original"
                         Layout.fillWidth: true
-                        enabled: window.writable
+                        enabled: panel.writable
                         title: qsTr("Original Bass")
                         unit: qsTr("dB")
                         value: EffectsController.psybassOriginal

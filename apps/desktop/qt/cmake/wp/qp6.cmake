@@ -4,6 +4,5 @@ list(APPEND DSPI_APP_SOURCES
     src/controllers/MatrixController.h src/controllers/MatrixController.cpp)
 list(APPEND DSPI_QML_FILES
     qml/tools/MatrixField.qml
-    qml/tools/MatrixCell.qml
-    qml/tools/MatrixWindow.qml)
+    qml/tools/MatrixCell.qml)   # -- WP LAY1a -- MatrixWindow is MatrixPanel (lay1a.cmake)
 list(APPEND DSPI_SMOKE_SOURCES smoke/SmokeMatrix.cpp)

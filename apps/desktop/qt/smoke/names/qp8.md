@@ -43,7 +43,7 @@ Tube modeller:
 
 | Name | What |
 |---|---|
-| `TubeWindow.mode.<0..1>` | Basic, Advanced (the window's `advanced`, remembered under `tools/tube`) |
+| `TubeWindow.mode.<0..1>` | Basic, Advanced (the panel's `advanced`, remembered under `tools/tube`) |
 | `TubeWindow.basic`, `.advanced` | the two bodies |
 | `TubeWindow.showcase`, `.showcase.name`, `.showcase.caption` | Basic's tube on show |
 | `TubeWindow.tube`, `.heater`, `.bloom` | the drawing's three layers (`TubeIllustration`, `family`); the heater's `opacity` follows the switch, the bloom's the outputs' level |

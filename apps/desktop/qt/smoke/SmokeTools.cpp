@@ -36,6 +36,11 @@ struct Qp8Window {
         if (QObject *o = w->findChild<QObject *>(name)) return o;
         return d.item(name, w->contentItem());
     }
+    // -- WP LAY1a -- what the window's own properties were on (the window until it has a panel)
+    QObject *panel() const {
+        QObject *p = w ? w->property("content").value<QQuickItem *>() : nullptr;
+        return p ? p : w;
+    }
     QQuickItem *item(const QString &name) const { return qobject_cast<QQuickItem *>(obj(name)); }
     bool shows(const QString &name) const {
         QQuickItem *it = item(name);
@@ -286,7 +291,7 @@ void qp8Tube(SmokeDriver &d) {
     d.check(QStringLiteral("qp8: the demo has the tube modeller"), t->tubeSupported());
     Qp8Window win = qp8Open(d, "tools.tube", "TubeWindow");
     if (!win.w) return;
-    win.w->setProperty("advanced", false);
+    win.panel()->setProperty("advanced", false);
     d.spin(60);
     d.check(QStringLiteral("qp8: the tube window is the Mac's size and opens in Basic"),
             win.w->minimumWidth() == 740 && win.shows(QStringLiteral("TubeWindow.basic")) && !win.shows(QStringLiteral("TubeWindow.advanced")));
@@ -312,7 +317,7 @@ void qp8Tube(SmokeDriver &d) {
     win.click(QStringLiteral("TubeWindow.mode.1"));
     d.check(QStringLiteral("qp8: Advanced shows every parameter"),
             win.shows(QStringLiteral("TubeWindow.advanced")) && !win.shows(QStringLiteral("TubeWindow.basic")) &&
-                win.w->property("advanced").toBool());
+                win.panel()->property("advanced").toBool());
     d.check(QStringLiteral("qp8: the character says where it comes from"),
             win.text(QStringLiteral("TubeWindow.characterFrom")) == QLatin1String("from 300B / 2A3"));
     win.commit(QStringLiteral("TubeWindow.bias"), 40);

@@ -160,13 +160,12 @@ void measureAll(SmokeDriver &d, const QString &phase, bool checkHeavy) {
         // their screenshots, and a size the person gives a window is kept
         // (QTPOP2, and ToolWindow's Settings keep it across showings), so it
         // may be past the cap. Shown again from its default size, as a first
-        // opening is: resized while it shows (a showing's hand size ends with
-        // it), so its layout has followed before it closes.
+        // opening is. -- WP LAY1a -- Resized while hidden: the showing after
+        // it must fit it all the same.
         const QSize first(quick->property("defaultWidth").toInt(), quick->property("defaultHeight").toInt());
-        if (!first.isEmpty()) window->resize(first);
-        d.spin(200);
         window->close();
         d.spin(100);
+        if (!first.isEmpty()) window->resize(first);
         const bool again = d.waitFor(3000, [&] {
             window = shell->openWindow(action);
             return window && window->isVisible();
