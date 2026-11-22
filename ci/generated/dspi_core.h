@@ -8493,8 +8493,9 @@ void dspi_mcp_free(struct FfiMcp *mcp);
 /**
  * Start listening for AI agents. `config_json`: `{"port": 47860, "storeDir":
  * "<the app's folder>", "appVersion": "0.15.0", "templateDir": "<the user's
- * templates>"}`, each optional (without a folder the clients last only for
- * this run). Reply `{ok, port,
+ * templates>", "measuring": true}`, each optional (without a folder the
+ * clients last only for this run; -- WP MCP5 -- `measuring`: the app runs
+ * the agents' measurement requests, `dspi_mcp_measure_*`). Reply `{ok, port,
  * addresses}`; code `running` when it runs already, `io` when the port is in
  * use on `127.0.0.1` or on `::1`, `store` when the clients' file is damaged (it is left as it is).
  *
@@ -8609,5 +8610,43 @@ bool dspi_mcp_set_active_device(struct FfiMcp *mcp, const char *id);
 int32_t dspi_mcp_relay_stdio(const char *config_json,
                              void (*token_sink)(const char *token, void *user_data),
                              void *user_data);
+
+/**
+ * The measurement requests waiting for the app, oldest first: `{ok, value:
+ * [{request_id, client, client_name, device, kind, loop, what, state,
+ * note}]}`. Empty while stopped. Waits for an agent's call in progress.
+ */
+uint32_t dspi_mcp_measure_requests(struct FfiMcp *mcp, char *buf, uint32_t len);
+
+/**
+ * Take request `id` for the Measure view: `{ok, ticket: {request_id, device,
+ * kind, loop, actor, client_name, what, setup}}`, or code `gone` when it no
+ * longer waits (taken, withdrawn, lapsed) or the server is stopped. Waits for
+ * an agent's call in progress.
+ */
+uint32_t dspi_mcp_measure_take(struct FfiMcp *mcp, uint64_t id, char *buf, uint32_t len);
+
+/**
+ * How request `id` went: `started` true once `dspi_mcp_measure_begin`
+ * started it, false with `note` (the reason, in words; may be null) when it
+ * could not. False when the request was not open.
+ */
+bool dspi_mcp_measure_report(struct FfiMcp *mcp, uint64_t id, bool started, const char *note);
+
+/**
+ * Start a taken request's job on `core` (the ticket's device) with the
+ * microphone's rate `rate_hz` (0 for a job that takes none): the job runs as
+ * the agent (History and `actor` in its state say so), and the core's own
+ * rules judge it again (the preflight, the tweeter's floor, the level caps,
+ * the limits). Reply: the job's state as its own start gives it (`{ok,
+ * ...}`: a measurement's, the low-end search's, the tune's or the system
+ * session's), or `{ok: false, code: "refused", error}` with nothing played.
+ * Needs no MCP handle.
+ */
+uint32_t dspi_mcp_measure_begin(struct FfiCore *core,
+                                const char *ticket_json,
+                                uint32_t rate_hz,
+                                char *buf,
+                                uint32_t len);
 
 #endif  /* DSPI_CORE_H */
