@@ -175,6 +175,21 @@ void LinkController::openBeside(const QString &serial) {
         false);
 }
 
+// -- WP XDEV1 --
+bool LinkController::openInTab(const QString &serial) {
+    if (!m_registry || !m_registry->keepOpen() || m_shutDown || m_inLobby || serial.isEmpty()) return false;
+    if (DeviceSession *open = m_registry->holder(serial)) {
+        m_registry->activate(open);
+        return true;
+    }
+    if (!m_subject || !m_subject->inSession()) return false;
+    bool listed = false;
+    for (const QVariant &d : m_subject->devices()) listed = listed || d.toMap().value(QStringLiteral("serial")).toString() == serial;
+    if (!listed) return false;
+    openBeside(serial);
+    return true;
+}
+
 // ---- Calls ---------------------------------------------------------------------
 
 void LinkController::connectToHub(const QString &url, const QString &expectedHubId, bool tlsAdvertised) {

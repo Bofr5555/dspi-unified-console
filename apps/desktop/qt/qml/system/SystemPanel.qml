@@ -359,6 +359,18 @@ Panel {
                                         font: Theme.fontCaption
                                     }
                                 }
+                                // -- WP XDEV1 -- "Open in tab" (Modern, on a hub): the unit on a tab of
+                                // its own, or its tab when it is open; matched by the serial the hub gives
+                                AppButton {
+                                    objectName: "SystemWindow.openInTab." + unitRow.modelData.id
+                                    readonly property string tab: SystemController.tabs[unitRow.modelData.serial] || ""
+                                    visible: SystemController.openInTabOffered && unitRow.modelData.kind === "unit"
+                                             && !!unitRow.modelData.serial && tab !== "active"
+                                    text: tab === "open" ? qsTr("Show tab") : qsTr("Open in tab")
+                                    toolTip: tab === "open" ? qsTr("Show %1's tab").arg(unitRow.modelData.name)
+                                                            : qsTr("Open %1 in a tab of its own").arg(unitRow.modelData.name)
+                                    onClicked: SystemController.openInTab(unitRow.modelData.serial)
+                                }
                                 Cell { text: unitRow.modelData.role; cellWidth: 70 }
                                 RowLayout {
                                     Layout.preferredWidth: 130

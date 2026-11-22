@@ -56,6 +56,12 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
   beside the others, and each tab keeps its device's edits, pages, history, drafts and running measurement. Closing a
   tab asks about that device's unsaved changes; quitting asks about each open device. Classic still shows one device
   and replaces it. (WP MDQT2a, MDQT2b, MDQT2c, INT3)
+- In Modern, Window > System… has **Open in tab** on each unit of the hub (**Show tab** when it is open). Measure ›
+  Several units measures a unit that is open in a tab through that tab's connection instead of opening a second one;
+  a unit that is not open gets a connection of its own while it is chosen, and cannot be opened in a tab meanwhile (it
+  says why). A change refused on a device that is not the one shown (a limit, the lock) is now a notice that names
+  that device. Leaving Modern keeps the other devices open: Classic shows the active one and lists the others under
+  Open devices, and back in Modern their tabs are there. (WP XDEV1)
 
 ### Android
 - DSPi Link is reachable from the main page (owner report on 0.14.0: only through the settings

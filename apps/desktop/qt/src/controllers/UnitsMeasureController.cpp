@@ -16,12 +16,10 @@
 #include "CoreApi.h"
 
 #include <QCoreApplication>
-#include <QDeadlineTimer>
 #include <QJsonDocument>
 #include <QPointer>
 #include <QRegularExpression>
 #include <QSysInfo>
-#include <QThread>
 #include <algorithm>
 #include <cmath>
 
@@ -76,16 +74,26 @@ QString usText(double v) {
 
 } // namespace
 
-// A unit's own connection to the hub: its core, closed and freed with the last owner
+// A unit's own connection to the hub. -- WP XDEV1 -- (MPLAN 1.2 item 6) There is
+// one session per serial: a unit open in a tab is judged by that tab's core
+// (`tab` set; nothing here closes it), any other by an extra core of the set
+// (`extra`: its id), closed with the last owner (on any thread: the close is
+// the registry's, on the GUI thread). Either core stays valid after its device
+// closed (the set retires it), so a loop job still holding one is safe.
 struct UnitsMeasureController::UnitCore {
     FfiCore *core = nullptr;
-    explicit UnitCore(FfiCore *c) : core(c) {}
+    QPointer<DeviceSession> tab;
+    QString extra;
+    UnitCore(FfiCore *c, DeviceSession *t, const QString &id) : core(c), tab(t), extra(id) {}
     UnitCore(const UnitCore &) = delete;
     UnitCore &operator=(const UnitCore &) = delete;
     ~UnitCore() {
-        if (!core) return;
-        dspi_link_close(core);
-        dspi_core_free(core);
+        if (extra.isEmpty()) return;
+        QCoreApplication *app = QCoreApplication::instance();
+        if (!app) return;
+        QMetaObject::invokeMethod(app, [id = extra] {
+            if (DeviceRegistry *r = DeviceRegistry::instance()) r->closeExtra(id);
+        }, Qt::QueuedConnection);
     }
 };
 
@@ -155,6 +163,8 @@ UnitsMeasureController::UnitsMeasureController(const AppContext &ctx, QObject *p
     }, Qt::QueuedConnection);
     // -- WP MDQT2c -- its device closed while it ran (after MeasureController let go)
     connect(ctx.registry, &DeviceRegistry::sessionClosing, this, &UnitsMeasureController::rehost, Qt::QueuedConnection);
+    // -- WP XDEV1 -- a unit measured on its tab's core: the tab closed
+    connect(ctx.registry, &DeviceRegistry::sessionClosing, this, &UnitsMeasureController::tabClosing);
     connect(ctx.device, &DeviceModel::snapshotApplied, this, [this] {
         rehost();   // -- WP MDQT2c --
         if (m_entered) refreshUnits();
@@ -620,50 +630,62 @@ void UnitsMeasureController::openUnit(const QString &serial) {
         return;
     }
     if (m_cores.contains(serial)) return;
+    DeviceRegistry *registry = m_ctx.registry;
+    if (!registry || registry->isShutDown()) {
+        setUnitField(serial, QStringLiteral("error"), tr("%1: no connection could be made.").arg(serial));
+        emit stepDone(QStringLiteral("unit"), false);
+        return;
+    }
     setUnitField(serial, QStringLiteral("opening"), true);
     setUnitField(serial, QStringLiteral("error"), QString());
-    const QByteArray url = link->sessionUrl().toUtf8(), credential = link->sessionCredential().toUtf8(),
-                     hub = link->hubId().toUtf8(), s = serial.toUtf8();
-    const bool tls = link->sessionTls();
-    const QByteArray name = (QSysInfo::machineHostName().isEmpty() ? AppIdentity::displayName() : QSysInfo::machineHostName()).toUtf8()
-                            + " (" + s + ")";
-    const QByteArray version = AppIdentity::version().toUtf8();
+    setUnitField(serial, QStringLiteral("tab"), QString());
     QPointer<UnitsMeasureController> self(this);
-    m_pool.start([self, url, credential, hub, s, tls, name, version, serial] {
-        QString error;
+    // -- WP XDEV1 -- open in a tab: that tab's core, no second session
+    if (DeviceSession *tab = registry->holder(serial)) {
+        readOutputs(serial, std::make_shared<UnitCore>(tab->handle(), tab, QString()), QString());
+        return;
+    }
+    // Not open: an extra core of the set, holding its serial while it is chosen
+    const QString name = (QSysInfo::machineHostName().isEmpty() ? AppIdentity::displayName() : QSysInfo::machineHostName())
+                         + QStringLiteral(" (") + serial + QLatin1Char(')');
+    const QJsonObject target{
+        { QStringLiteral("kind"), QStringLiteral("hub") },
+        { QStringLiteral("url"), link->sessionUrl() },
+        { QStringLiteral("hubId"), link->hubId() },
+        { QStringLiteral("serial"), serial },
+        { QStringLiteral("clientName"), name },
+        { QStringLiteral("appVersion"), AppIdentity::version() },
+        { QStringLiteral("credential"), link->sessionCredential() },
+        { QStringLiteral("tlsAdvertised"), link->sessionTls() },
+    };
+    registry->openExtra(target, [self, serial](FfiCore *core, const QString &id, const QString &code, const QString &error) {
+        // Closed with it, if nobody here wants it any more
+        auto unit = core ? std::make_shared<UnitCore>(core, nullptr, id) : UnitPtr();
+        if (!self) return;
+        QString why;
+        if (!unit) {
+            if (code == QLatin1String("needs_pairing"))
+                why = tr("%1: the hub asks this console to pair again: open the unit in the console once, then choose it here.").arg(serial);
+            else if (code == QLatin1String("full"))
+                why = tr("%1: too many devices are open here; close a tab first.").arg(serial);
+            else
+                why = tr("%1: %2").arg(serial, error.isEmpty() ? tr("no connection could be made.") : error);
+        }
+        self->readOutputs(serial, unit, why);
+    });
+}
+
+// The unit's outputs, read on its core off the GUI thread; then it is the
+// chosen unit's connection, if it is still chosen
+void UnitsMeasureController::readOutputs(const QString &serial, UnitPtr unit, const QString &error) {
+    QPointer<UnitsMeasureController> self(this);
+    m_pool.start([self, unit, serial, error]() mutable {
+        QString why = error;
         QVariantList outputs;
-        auto unit = std::make_shared<UnitCore>(dspi_core_new());
-        FfiCore *c = unit->core;
-        if (!c) error = tr("%1: no connection could be made.").arg(serial);
-        if (error.isEmpty()) {
-            const QJsonObject hello = object(once([&](char *b, uint32_t l) {
-                return dspi_link_connect_advertised(c, url.constData(), name.constData(), version.constData(), credential.constData(),
-                                                    hub.constData(), tls, b, l);
-            }));
-            if (!isOk(hello)) error = tr("%1: %2").arg(serial, MeasureController::failureText(hello));
-            else if (hello.value(QLatin1String("needsPairing")).toBool())
-                error = tr("%1: the hub asks this console to pair again: open the unit in the console once, then choose it here.")
-                            .arg(serial);
-        }
-        // The hub lists its devices once the session is authenticated
-        int handle = -1;
-        if (error.isEmpty()) {
-            QDeadlineTimer until(5000);
-            while (handle < 0 && !until.hasExpired()) {
-                const QJsonObject list = object(MeasureController::reply([&](char *b, uint32_t l) { return dspi_link_devices(c, b, l); }));
-                for (const QJsonValue &d : list.value(QLatin1String("value")).toArray())
-                    if (str(d.toObject(), "serial") == serial) handle = d.toObject().value(QLatin1String("handle")).toInt(-1);
-                if (handle < 0) QThread::msleep(100);
-            }
-            if (handle < 0) error = tr("%1: the hub does not list it.").arg(serial);
-        }
-        if (error.isEmpty()) {
-            const QJsonObject bound = object(once([&](char *b, uint32_t l) { return dspi_link_select_device(c, uint32_t(handle), s.constData(), b, l); }));
-            if (!isOk(bound)) error = tr("%1: %2").arg(serial, MeasureController::failureText(bound));
-            else if (!dspi_fetch_all(c)) error = tr("%1: its state could not be read.").arg(serial);
-        }
-        if (error.isEmpty()) {
+        if (unit && why.isEmpty()) {
+            FfiCore *c = unit->core;
             const QJsonObject labels = object(MeasureController::reply([&](char *b, uint32_t l) { return dspi_output_labels(c, b, l); }));
+            if (!isOk(labels)) why = tr("%1: its state could not be read.").arg(serial);
             for (const QJsonValue &v : labels.value(QLatin1String("value")).toArray()) {
                 const QJsonObject o = v.toObject();
                 const int n = o.value(QLatin1String("output")).toInt();
@@ -673,32 +695,56 @@ void UnitsMeasureController::openUnit(const QString &serial) {
                                             { QStringLiteral("role"), QStringLiteral("full") } });
             }
         }
-        if (!error.isEmpty()) unit.reset();   // closed here, off the GUI thread
-        QMetaObject::invokeMethod(qApp, [self, unit, serial, error, outputs]() mutable {
+        if (!why.isEmpty()) unit.reset();
+        QMetaObject::invokeMethod(qApp, [self, unit, serial, why, outputs]() mutable {
             if (!self) return;
             UnitsMeasureController *me = self;
             const QVariantMap row = me->unitRow(serial);
             const bool wanted = me->m_entered && !me->m_shutDown && row.value(QStringLiteral("chosen")).toBool();
             me->setUnitField(serial, QStringLiteral("opening"), false);
-            if (!wanted) {
-                if (unit) me->m_pool.start([u = std::move(unit)]() mutable { u.reset(); });
-                return;
-            }
-            if (!error.isEmpty()) {
-                me->setUnitField(serial, QStringLiteral("error"), error);
+            // A tab it was read on that closed meanwhile is no connection
+            const bool tabGone = unit && unit->extra.isEmpty() && !unit->tab;
+            if (!wanted) return;   // an extra core closes with `unit`
+            if (!why.isEmpty() || tabGone) {
+                me->setUnitField(serial, QStringLiteral("error"), why.isEmpty() ? tr("%1: its tab was closed: choose it again.").arg(serial) : why);
                 emit me->stepDone(QStringLiteral("unit"), false);
                 return;
             }
             me->m_cores.insert(serial, unit);
+            me->setUnitField(serial, QStringLiteral("tab"), unit->tab ? unit->tab->title() : QString());
             me->setUnitField(serial, QStringLiteral("outputs"), outputs);
             emit me->stepDone(QStringLiteral("unit"), true);
         }, Qt::QueuedConnection);
     });
 }
 
+// -- WP XDEV1 -- A tab whose core a chosen unit is judged by goes: the unit
+// has no connection now (choosing it again opens an extra one)
+void UnitsMeasureController::tabClosing(DeviceSession *session) {
+    QStringList gone;
+    for (auto it = m_cores.cbegin(); it != m_cores.cend(); ++it)
+        if (it.value()->tab == session) gone << it.key();
+    for (const QString &serial : std::as_const(gone)) {
+        m_cores.remove(serial);
+        setUnitField(serial, QStringLiteral("tab"), QString());
+        setUnitField(serial, QStringLiteral("error"), tr("%1: its tab was closed: choose it again.").arg(serial));
+    }
+}
+
+FfiCore *UnitsMeasureController::unitCore(const QString &serial) const {
+    const UnitPtr u = m_cores.value(serial);
+    return u ? u->core : nullptr;
+}
+
+bool UnitsMeasureController::unitInTab(const QString &serial) const {
+    const UnitPtr u = m_cores.value(serial);
+    return u && u->tab;
+}
+
 void UnitsMeasureController::closeUnit(const QString &serial) {
     UnitPtr u = m_cores.take(serial);
     setUnitField(serial, QStringLiteral("outputs"), QVariantList());
+    setUnitField(serial, QStringLiteral("tab"), QString());   // -- WP XDEV1 --
     // Closed off the GUI thread (a loop job may still hold it: then there)
     if (u) m_pool.start([u = std::move(u)]() mutable { u.reset(); });
 }

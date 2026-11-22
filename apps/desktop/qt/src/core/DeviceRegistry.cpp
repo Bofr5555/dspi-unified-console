@@ -91,6 +91,11 @@ void DeviceRegistry::track(DeviceSession *session) {
     // -- WP MDQT2c --
     connect(session, &DeviceSession::jobsChanged, this, &DeviceRegistry::devicesChanged);
     connect(session->model(), &SessionModel::replacing, this, [this, session] { emit sessionStopping(session); });
+    // -- WP XDEV1 -- (review RB B4) DeviceModel forwards only the active one's
+    connect(session->model(), &SessionModel::writeRefused, this,
+            [this, session](const QString &what, const QString &key, const QString &message) {
+                if (session != m_active) emit backgroundRefused(session->title(), what, key, message);
+            });
 }
 
 // ---- What is open --------------------------------------------------------------
@@ -136,6 +141,12 @@ QString DeviceRegistry::activeId() const { return m_active->id(); }
 void DeviceRegistry::setKeepOpen(bool keep) {
     if (keep == m_keepOpen) return;
     m_keepOpen = keep;
+    // -- WP XDEV1 -- the policy point (header): leaving Modern
+    if (!keep && !kOthersStayOpenInClassic) {
+        const QList<DeviceSession *> all = m_sessions;
+        for (DeviceSession *s : all)
+            if (s != m_active && !s->id().isEmpty()) close(s->id());
+    }
     emit keepOpenChanged();
 }
 
@@ -243,7 +254,66 @@ QString DeviceRegistry::alreadyOpen(const QString &serial) {
 }
 
 void DeviceRegistry::reportRefused(const QString &serial) {
-    emit openFailed(QStringLiteral("already_open"), alreadyOpen(serial));
+    emit openFailed(QStringLiteral("already_open"), refusalFor(serial));
+}
+
+// -- WP XDEV1 -- held by a session, or by a measurement across units
+QString DeviceRegistry::refusalFor(const QString &serial) const {
+    if (!holder(serial) && extraSerials().contains(serial))
+        //: %1 is the device's serial number
+        return tr("%1 is being measured with other units here (Measure, Several units), and a device has one session at a time. "
+                  "Take it out of that measurement first.")
+            .arg(serial);
+    return alreadyOpen(serial);
+}
+
+void DeviceRegistry::openExtra(const QJsonObject &target, ExtraDone done) {
+    const QString serial = target.value(QLatin1String("serial")).toString();
+    if (!m_set) {
+        if (done) done(nullptr, QString(), QStringLiteral("io"), tr("The app is closing."));
+        return;
+    }
+    m_extraOpening.append(serial);
+    FfiCoreSet *set = m_set;
+    const QByteArray json = QJsonDocument(target).toJson(QJsonDocument::Compact);
+    struct Opened {
+        QJsonObject reply;
+        FfiCore *core = nullptr;
+    };
+    run(
+        m_opener,
+        [set, json] {
+            Opened o;
+            o.reply = actOnce([&](char *b, uint32_t n) { return dspi_core_set_open(set, json.constData(), b, n); });
+            if (!isOk(o.reply)) return o;
+            const QByteArray id = o.reply.value(QLatin1String("id")).toString().toUtf8();
+            o.core = dspi_core_set_core(set, id.constData());
+            return o;
+        },
+        [this, serial, done](const Opened &o) {
+            m_extraOpening.removeOne(serial);
+            const QString id = o.reply.value(QLatin1String("id")).toString();
+            if (!o.core) {
+                QString code = o.reply.value(QLatin1String("code")).toString();
+                if (code.isEmpty()) code = QStringLiteral("io");
+                QString error = o.reply.value(QLatin1String("error")).toString();
+                if (code == QLatin1String("already_open")) error = alreadyOpen(serial);
+                if (done) done(nullptr, QString(), code, error);
+                return;
+            }
+            m_extras.insert(id, serial);
+            if (done) done(o.core, id, QString(), QString());
+        });
+}
+
+void DeviceRegistry::closeExtra(const QString &id) {
+    if (!m_set || !m_extras.contains(id)) return;
+    FfiCoreSet *set = m_set;
+    const QByteArray wire = id.toUtf8();
+    // Its serial is held until the set gave it back
+    run(
+        m_opener, [set, wire] { return isOk(actOnce([&](char *b, uint32_t n) { return dspi_core_set_close(set, wire.constData(), b, n); })); },
+        [this, id](bool) { m_extras.remove(id); });
 }
 
 void DeviceRegistry::open(const QJsonObject &target, Done done, bool activate) {
@@ -278,7 +348,7 @@ void DeviceRegistry::open(const QJsonObject &target, Done done, bool activate) {
                 QString error = o.reply.value(QLatin1String("error")).toString();
                 qInfo("DeviceRegistry: not opened (%s): %s", qPrintable(code), qPrintable(error));
                 if (code == QLatin1String("already_open"))
-                    error = alreadyOpen(target.value(QLatin1String("serial")).toString());
+                    error = refusalFor(target.value(QLatin1String("serial")).toString());   // -- WP XDEV1 --
                 emit openFailed(code, error);
                 if (done) done(nullptr, code, error);
                 return;
