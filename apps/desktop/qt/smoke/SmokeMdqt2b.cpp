@@ -251,6 +251,13 @@ void rebindSection(SmokeDriver &d) {
     d.waitIdle();
     d.check("mdqt2b: answered after a switch, nothing is written anywhere",
             quiet(d, b) && a->model()->settersRun() == writesA && b->model()->settersRun() == writesB);
+    // -- WP INT3 -- and says so in Files' notice, which is modal: closed here, or
+    // the next section's mouse lands on its dimmer (mdqt2a's held slider)
+    QObject *filesNotice = find(files->host(), "FilesHost.notice");
+    d.check("mdqt2b: the notice says another device is shown", d.waitFor(2000, [&] { return opened(filesNotice); }) &&
+                                                                  filesNotice->property("text").toString().contains(QStringLiteral("Another device")));
+    if (filesNotice) QMetaObject::invokeMethod(filesNotice, "close");
+    d.waitFor(2000, [&] { return !filesNotice || !filesNotice->property("visible").toBool(); });
 
     // ---- A firmware update pins its device
     firmware->pretendRunForTest(b);
