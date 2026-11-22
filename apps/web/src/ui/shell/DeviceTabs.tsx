@@ -6,6 +6,9 @@ import { TabLabel, useSessionState } from "../components";
 import type { Session, SessionState } from "../session";
 import { tabKeys } from "./tab-keys";
 import { transportName } from "./open-rule";
+// -- WP WEBM4 -- a tab's menu (right click, the menu key): actions.json's `device` menu
+import { isMenuKey, useContextMenu } from "../menus/ActionMenu";
+import type { MenuItem } from "../menus/actions";
 
 /** A tab's dot: the session's state, with a link that is away apart from one that is open. */
 export function tabState(st: Pick<SessionState, "status" | "link">): SessionState["status"] | "away" {
@@ -30,8 +33,11 @@ export function DeviceTabs(props: {
   onChoose: (s: Session) => void;
   onClose: (s: Session) => void;
   onAdd: () => void;
+  /** -- WP WEBM4 -- a tab's menu */
+  menu?: (s: Session) => MenuItem[];
 }) {
   const { sessions, current } = props;
+  const ctx = useContextMenu(); // -- WP WEBM4 --
   const at = current ? sessions.indexOf(current) : -1;
   const row = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -53,10 +59,12 @@ export function DeviceTabs(props: {
               stop={s === (current ?? sessions[0])}
               onChoose={() => props.onChoose(s)}
               onClose={() => props.onClose(s)}
+              onMenu={props.menu ? (e) => ctx.open(e, "Device", props.menu!(s)) : undefined}
             />
           ))}
         </div>
       ) : null}
+      {ctx.menu /* -- WP WEBM4 -- */}
       <button type="button" class="device-add" aria-label="Open another DSPi" title="Open another DSPi" aria-pressed={props.picking} onClick={props.onAdd}>
         <span aria-hidden="true">+</span>
       </button>
@@ -64,7 +72,7 @@ export function DeviceTabs(props: {
   );
 }
 
-function DeviceTab(props: { session: Session; on: boolean; stop: boolean; onChoose: () => void; onClose: () => void }) {
+function DeviceTab(props: { session: Session; on: boolean; stop: boolean; onChoose: () => void; onClose: () => void; onMenu?: (e: MouseEvent | KeyboardEvent) => void }) {
   const s = props.session;
   const st = useSessionState(s);
   const state = tabState(st);
@@ -84,7 +92,8 @@ function DeviceTab(props: { session: Session; on: boolean; stop: boolean; onChoo
         onClick={props.onChoose}
         // The middle button closes, as a browser's tabs; Delete too
         onAuxClick={(e) => e.button === 1 && (e.preventDefault(), props.onClose())}
-        onKeyDown={(e) => e.key === "Delete" && (e.preventDefault(), props.onClose())}
+        onKeyDown={(e) => (e.key === "Delete" ? (e.preventDefault(), props.onClose()) : isMenuKey(e) && props.onMenu?.(e))}
+        onContextMenu={props.onMenu /* -- WP WEBM4 -- */}
       >
         <span class={`dot dot-${state}`} aria-hidden="true" />
         <span class="device-tab-name">

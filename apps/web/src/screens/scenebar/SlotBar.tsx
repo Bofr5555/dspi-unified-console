@@ -11,12 +11,16 @@ import type { Session } from "../../ui/session";
 import { useSessionState } from "../../ui/components";
 import type { Ask, Unsaved } from "../../ui/screens";
 import { activeLine, recall, slotLabel, slotViews, store } from "./model";
+// -- WP WEBM4 -- a slot's menu (right click, the menu key) is actions.json's `slot` menu
+import { menuItems } from "../../ui/menus/actions";
+import { isMenuKey, useContextMenu } from "../../ui/menus/ActionMenu";
 
 export function SlotBar(props: { session: Session; ask: Ask; unsaved: () => Promise<Unsaved> }) {
   const { session } = props;
   const st = useSessionState(session);
   const [storing, setStoring] = useState(false);
   const [busy, setBusy] = useState(false);
+  const ctx = useContextMenu(); // -- WP WEBM4 --
   const s = st.snapshot?.state;
   if (!s || st.status !== "open") return null;
   const ro = session.readOnlyReason;
@@ -44,6 +48,12 @@ export function SlotBar(props: { session: Session; ask: Ask; unsaved: () => Prom
     });
 
   const off = !!ro || busy;
+  // -- WP WEBM4 --
+  const slotItems = (slot: number) =>
+    menuItems("slot", {
+      "slot.recall": { run: () => void run(() => recall(verbs, slot)), enabled: !off, reason: ro || undefined },
+      "slot.save": { run: () => void run(() => store(verbs, slot)), enabled: !off, reason: ro || undefined },
+    });
   return (
     <div
       class={`sys-scenes slot-bar${storing ? " storing" : ""}`}
@@ -97,6 +107,7 @@ export function SlotBar(props: { session: Session; ask: Ask; unsaved: () => Prom
           </button>
         </span>
       </div>
+      {ctx.menu /* -- WP WEBM4 -- */}
       <div class="slot-buttons">
         {views.map((v) => (
           <button
@@ -108,6 +119,9 @@ export function SlotBar(props: { session: Session; ask: Ask; unsaved: () => Prom
             title={ro || slotLabel(v, storing)}
             disabled={off}
             onClick={() => press(v.slot)}
+            // -- WP WEBM4 -- its menu: Recall and Save Current Settings Here, whatever the bar is set to
+            onContextMenu={(e) => ctx.open(e, `Preset ${v.number}`, slotItems(v.slot))}
+            onKeyDown={(e) => isMenuKey(e) && ctx.open(e, `Preset ${v.number}`, slotItems(v.slot))}
           >
             <span class="sys-scene-n">{v.number}</span>
             <span class="slot-name">{v.name}</span>

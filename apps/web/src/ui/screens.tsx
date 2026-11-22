@@ -86,6 +86,9 @@ import { Dock } from "./shell/Dock";
 import { SessionBar } from "./shell/SessionBar";
 import { CONNECT, sectionOf, sectionsFor } from "./shell/sections";
 import { placeOf } from "./shell/places";
+// -- WP WEBM4 -- what this device can do, for the app menu and the command palette
+import { sessionEntries, sessionHandlers, type SessionContext } from "./menus/session-actions";
+import { SETTINGS_PAGES } from "../screens/settings/SettingsScreen";
 
 /** A question in a modal dialog; the answer is the chosen button's value, or "cancel". */
 export interface Question {
@@ -410,6 +413,28 @@ export function Screens(props: {
     };
   }, [session, unsaved]);
 
+  // -- WP WEBM4 -- the device's rows and the palette's entries for it, current as it renders; a
+  // page opened at a place (a channel, a Settings page) is a fresh one, so it starts there
+  const [jump, setJump] = useState(0);
+  const actionsCtx: SessionContext = {
+    session,
+    desk,
+    ask,
+    unsaved,
+    shown: shownIds,
+    sections,
+    locked: lockedUser,
+    open: (id, at) => {
+      if (!at) return setCurrent(id);
+      setTarget({ screen: id, ...at } as unknown as ChainTarget);
+      setChosen(id);
+      setJump((n) => n + 1);
+    },
+  };
+  shell.board?.setSession(session.id, { handlers: sessionHandlers(actionsCtx), entries: sessionEntries(actionsCtx, SETTINGS_PAGES) });
+  const board = shell.board;
+  useEffect(() => () => board?.clearSession(session.id), [board, session]);
+
   // -- WP WEBM1 -- the scenes and the preset slots are the Overview's and their own pages' (the bar's picker recalls on every page)
   const section = sectionOf(page);
   const pro = mode !== "simple" && !lockedUser;
@@ -484,7 +509,7 @@ export function Screens(props: {
       {page === CONNECT ? (
         shell.connect
       ) : (
-        <screen.View session={session} ask={ask} unsaved={unsaved} system={system} mode={mode} desk={desk} open={openAt} target={target} hub={hub} /* -- WP P2WB1 -- */ />
+        <screen.View key={`${screen.id}:${jump}` /* -- WP WEBM4 -- */} session={session} ask={ask} unsaved={unsaved} system={system} mode={mode} desk={desk} open={openAt} target={target} hub={hub} /* -- WP P2WB1 -- */ />
       )}
       {shortcutsOpen ? <ShortcutsDialog screens={shownIds} onClose={() => setShortcutsOpen(false)} /> : null}
       {question ? (

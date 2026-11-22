@@ -5,7 +5,10 @@
 
 import { useState } from "preact/hooks";
 import type { SnapshotDesk } from "../../screens/snapshots/model";
-import { Menu } from "../../screens/main/Menu";
+// -- WP WEBM4 -- Save ▾'s rows are actions.json's `save` menu
+import { ActionMenuButton } from "../menus/ActionMenu";
+import { menuItems } from "../menus/actions";
+import { factoryReset as askFactoryReset } from "../menus/session-actions";
 import { PRESET_SLOTS, presetLabel } from "../../screens/main/model";
 import { recall } from "../../screens/scenebar/model";
 import { UndoButtons, appleKeys } from "../undo";
@@ -37,18 +40,7 @@ export function SessionBar(props: {
     }
   };
   const key = (action: "commit" | "revert") => void run(() => runKey({ action }, session, desk, ask, unsaved));
-  const factoryReset = () =>
-    void (async () => {
-      const a = await ask({
-        title: "Factory Reset",
-        body: <p>Do you wish to clear all active parameters? This will not overwrite your saved parameters unless you run 'Commit Parameters'.</p>,
-        buttons: [
-          { label: "Reset", value: "yes", danger: true },
-          { label: "Cancel", value: "cancel" },
-        ],
-      });
-      if (a === "yes") await run(async () => session.change("factoryReset", { token: await session.token("factory_reset") }));
-    })();
+  const factoryReset = () => void run(() => askFactoryReset(session, ask)); // -- WP WEBM4 -- the question is session-actions' now
   const n = state.unsaved.length;
   const mod = appleKeys(navigator.platform ?? "") ? "⌘" : "Ctrl+";
   return (
@@ -83,14 +75,15 @@ export function SessionBar(props: {
               {n || 0}
             </span>
           </button>
-          <Menu
+          <ActionMenuButton
             label="Save options"
             disabled={off}
-            entries={[
-              { label: "Revert to Saved…", onSelect: () => key("revert") },
-              "separator",
-              { label: "Factory Reset…", danger: true, onSelect: factoryReset },
-            ]}
+            items={() =>
+              menuItems("save", {
+                "device.revert": { run: () => key("revert") },
+                "device.factoryReset": { run: factoryReset, danger: true },
+              })
+            }
           />
         </span>
       )}
