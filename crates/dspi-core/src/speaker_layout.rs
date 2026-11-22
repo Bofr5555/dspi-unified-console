@@ -168,7 +168,10 @@ impl LayoutSlot {
         let store = self.store();
         #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
         if let Some(dir) = &store.dir {
-            return files::load(dir, serial);
+            // -- WP MDQT1 -- one that could not be written to it is in memory still
+            if let Some(l) = files::load(dir, serial) {
+                return Some(l);
+            }
         }
         store.memory.iter().find(|l| l.serial == serial).cloned()
     }
@@ -177,10 +180,12 @@ impl LayoutSlot {
     pub(crate) fn save(&self, layout: &SpeakerLayout) -> Result<()> {
         let mut store = self.store();
         #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-        if let Some(dir) = &store.dir {
-            return files::save(dir, layout).map_err(|e| DspiError::Io {
+        if let Some(dir) = store.dir.clone() {
+            files::save(&dir, layout).map_err(|e| DspiError::Io {
                 msg: format!("the speaker layout could not be written: {e}"),
-            });
+            })?;
+            store.memory.retain(|l| l.serial != layout.serial); // -- WP MDQT1 --
+            return Ok(());
         }
         store.memory.retain(|l| l.serial != layout.serial);
         store.memory.push(layout.clone());
@@ -252,20 +257,30 @@ impl DspiCore {
     /// where it holds none for that device.
     ///
     /// Errors: [`DspiError::Unsupported`] on the web (no files: the page keeps
-    /// the layout and sets it again with [`DspiCore::speaker_layout_set`]).
+    /// the layout and sets it again with [`DspiCore::speaker_layout_set`]);
+    /// -- WP MDQT1 -- [`DspiError::Io`] when a layout set before could not be
+    /// written there: the folder is named all the same, and that layout stays
+    /// in force in memory until a later call or a save writes it.
     pub fn speaker_layout_set_dir(&self, dir: String) -> Result<()> {
         #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
         {
             let mut store = self.speaker_layouts.store();
             store.dir = (!dir.trim().is_empty()).then(|| dir.into());
             if let Some(d) = store.dir.clone() {
+                let mut failed = Ok(());
                 for l in std::mem::take(&mut store.memory) {
                     if files::load(&d, &l.serial).is_none()
                         && let Err(e) = files::save(&d, &l)
                     {
                         log::warn!("a speaker layout could not be written to the new folder: {e}");
+                        // -- WP MDQT1 -- kept, and said (review RA)
+                        store.memory.push(l);
+                        failed = Err(DspiError::Io {
+                            msg: format!("the speaker layout could not be written: {e}"),
+                        });
                     }
                 }
+                return failed;
             }
             Ok(())
         }

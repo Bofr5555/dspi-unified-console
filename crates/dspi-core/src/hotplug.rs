@@ -115,9 +115,12 @@ pub(crate) type Reserved = Arc<std::sync::Mutex<std::collections::BTreeMap<Strin
 #[derive(Clone)]
 pub(crate) struct Membership {
     /// This core's token in `reserved`.
-    #[cfg_attr(any(not(feature = "usb"), target_os = "android"), allow(dead_code))]
     pub(crate) token: u64,
     pub(crate) reserved: Reserved,
+    // -- WP MDQT1 --
+    /// The set itself, for what is the whole set's (the USB broker).
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    pub(crate) set: std::sync::Weak<crate::CoreSet>,
 }
 
 impl Membership {
@@ -240,20 +243,61 @@ impl DspiCore {
         member.map_or_else(Vec::new, |m| m.reserved().keys().cloned().collect())
     }
 
+    // -- WP MDQT1 -- (was `refuse_held_by_another`; review RA, MD0 item 4)
+    /// Take `serial` for this core before it opens that unit, as `id`:
     /// [`crate::DspiError::InvalidArgument`] when another core of this core's
-    /// set holds `serial`: one unit, one session (two writers never). Only
-    /// USB opens by serial without the set.
-    #[cfg_attr(any(not(feature = "usb"), target_os = "android"), allow(dead_code))]
-    pub(crate) fn refuse_held_by_another(&self, serial: &str) -> Result<()> {
+    /// set holds it (one unit, one session: two writers never). What the core
+    /// held before stays its own until that device is shut; the set gives it
+    /// back then (`CoreSet::sync`). `Ok` outside a set.
+    pub(crate) fn claim(&self, id: &str, serial: &str) -> Result<()> {
         let Some(member) = self.lock().hotplug.member.clone() else {
             return Ok(());
         };
-        match member.reserved().get(serial) {
-            Some((token, id)) if *token != member.token => Err(crate::DspiError::InvalidArgument {
-                msg: format!("{serial} is already open as {id}"),
-            }),
-            _ => Ok(()),
+        let mut reserved = member.reserved();
+        match reserved.get(serial) {
+            Some((token, held)) if *token != member.token => {
+                Err(crate::DspiError::InvalidArgument {
+                    msg: format!("{serial} is already open as {held}"),
+                })
+            }
+            Some(_) => Ok(()),
+            None => {
+                reserved.insert(serial.to_owned(), (member.token, id.to_owned()));
+                Ok(())
+            }
         }
+    }
+
+    /// Give `serial` back after an open that failed and left nothing on it.
+    #[cfg_attr(not(feature = "link"), allow(dead_code))]
+    pub(crate) fn unclaim(&self, serial: &str) {
+        let (Some(member), held) = ({
+            let inner = self.lock();
+            let held = inner.conn.as_ref().is_some_and(|c| c.serial == serial)
+                || inner.selected.as_deref() == Some(serial);
+            (inner.hotplug.member.clone(), held)
+        }) else {
+            return;
+        };
+        if !held {
+            member
+                .reserved()
+                .retain(|s, (t, _)| *t != member.token || s != serial);
+        }
+    }
+
+    /// Arm the reopen of `serial` on the next polls, as an arrival does: the
+    /// device lost its connection to a change of who owns USB, not a replug.
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    pub(crate) fn arm_reopen(&self, serial: String) {
+        self.lock().hotplug.retry = Some((serial, RECONNECT_ATTEMPTS));
+    }
+
+    /// What the bus held at the set's last poll, so this core's first poll
+    /// announces none of it as arrived.
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    pub(crate) fn seed_bus(&self, last: Option<Vec<String>>) {
+        self.lock().hotplug.last = last;
     }
 }
 
@@ -266,7 +310,26 @@ impl DspiCore {
     /// owner has the device; the core does not do it itself, since only the caller
     /// knows when that is. Demo, MIDI and Link connections are not affected. Blocks
     /// while closing: off the UI thread.
+    ///
+    /// -- WP MDQT1 -- For a core in a [`crate::CoreSet`] this hands over the USB of
+    /// the whole set ([`crate::CoreSet::set_device_broker`]): its other devices on
+    /// USB close too and come back on the next polls through the new owner.
     pub fn set_device_broker(&self, broker: Option<Arc<dyn DeviceBroker>>) -> Option<String> {
+        #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+        {
+            let set = self.lock().hotplug.member.as_ref().map(|m| m.set.clone());
+            if let Some(set) = set.and_then(|s| s.upgrade()) {
+                return set.route_usb(broker, Some(self));
+            }
+        }
+        self.take_device_broker(broker)
+    }
+
+    /// [`DspiCore::set_device_broker`] for this core alone.
+    pub(crate) fn take_device_broker(
+        &self,
+        broker: Option<Arc<dyn DeviceBroker>>,
+    ) -> Option<String> {
         let closing = {
             let mut inner = self.lock();
             inner.hotplug.broker = broker;

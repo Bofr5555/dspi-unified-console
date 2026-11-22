@@ -216,7 +216,7 @@ fn wp_md0_the_same_serial_twice_is_refused() {
     // A core of the set cannot open it behind the set's back either.
     let demo = set.core(&set.open(DeviceTarget::Demo).unwrap()).unwrap();
     assert!(matches!(
-        demo.refuse_held_by_another("S1"),
+        demo.claim("usb:S1", "S1"),
         Err(DspiError::InvalidArgument { msg }) if msg.contains("already open as usb:S1")
     ));
     #[cfg(feature = "usb")]

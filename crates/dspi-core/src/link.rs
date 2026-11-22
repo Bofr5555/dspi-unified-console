@@ -510,6 +510,23 @@ fn board_present(state: &str) -> bool {
 }
 
 impl LinkSession {
+    // -- WP MDQT1 --
+    /// The hub this session is with: the id it named, else the one expected.
+    fn hub_id(&self) -> &str {
+        match &self.client {
+            Some(c) if !c.hello().hub.id.is_empty() => &c.hello().hub.id,
+            _ => &self.target.hub_id,
+        }
+    }
+
+    /// The unit bound through it (its serial), with the hub's id and address:
+    /// what a [`crate::CoreSet`] keeps the device under.
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    pub(crate) fn bound_unit(&self) -> Option<(&str, &str, &str)> {
+        let b = self.bound.as_ref().filter(|b| !b.opening)?;
+        Some((self.hub_id(), &self.target.url, &b.serial))
+    }
+
     /// Whether the bound device has a live connection `conn_gen`.
     fn attached(&self, conn_gen: Option<u64>) -> bool {
         self.bound
@@ -943,13 +960,27 @@ impl DspiCore {
         let handle = u8::try_from(handle).map_err(|_| DspiError::InvalidArgument {
             msg: format!("Link device handle {handle} is over 255"),
         })?;
+        // -- WP MDQT1 -- (review RA) one session per serial: not a unit another
+        // core of this core's set holds
+        let hub_id = self
+            .lock()
+            .link
+            .as_ref()
+            .map(|s| s.hub_id().to_owned())
+            .unwrap_or_default();
+        self.claim(&format!("hub:{hub_id}/{serial}"), &serial)?;
         // Dropped with the lock released: a side's drop writes to the socket.
         let _replaced = {
             let mut inner = self.lock();
-            let s = inner.link.as_mut().ok_or(DspiError::Disconnected)?;
-            if !s.client.as_ref().is_some_and(LinkClient::is_ready) {
+            let ready = inner
+                .link
+                .as_mut()
+                .filter(|s| s.client.as_ref().is_some_and(LinkClient::is_ready));
+            let Some(s) = ready else {
+                drop(inner);
+                self.unclaim(&serial);
                 return Err(DspiError::Disconnected);
-            }
+            };
             s.released = false;
             s.bound.replace(Bound {
                 handle,
@@ -967,6 +998,7 @@ impl DspiCore {
         // poll during it, and an old side of the same handle unsubscribes
         // its slot when dropped
         drop(_replaced);
+        let bound_serial = serial.clone(); // -- WP MDQT1 --
         let mut opened = self.open_bound(handle, serial.clone(), false);
         // -- WP LK4 -- the session was replaced meanwhile (the hub closed it on
         // a lossy link, or a probe dial found it dead): bind once more on the
@@ -987,6 +1019,7 @@ impl DspiCore {
             }
             // The failure may have come after the attach.
             self.close_link_device();
+            self.unclaim(&bound_serial); // -- WP MDQT1 --
         }
         opened
     }
