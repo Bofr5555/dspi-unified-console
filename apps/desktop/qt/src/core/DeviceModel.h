@@ -153,6 +153,7 @@ signals:
     void writeRefused(const QString &what, const QString &noticeKey, const QString &message);
 
 private:
+    void letGo();   // -- WP MDQT2a --
     void rebind();
     void onApplied(uint flags);
 

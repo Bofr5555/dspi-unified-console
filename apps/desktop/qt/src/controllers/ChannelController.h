@@ -7,6 +7,7 @@
 #include <QVariantList>
 #include <QVariantMap>
 #include <QtQml/qqmlregistration.h>
+#include <memory>
 
 #include "CoreApi.h"
 #include "Poller.h"
@@ -20,6 +21,10 @@
 // apply(), which calls DeviceModel::write() keyed by its target. A band edit is
 // staged (band() returns it at once) until its write's snapshot arrives, so
 // two quick edits of one band never lose the first.
+//
+// -- WP MDQT2a -- The staged edits and the limits are the device's: they are in
+// its session's State, so an edit still on its way stays with the device it was
+// made on while another one shows.
 //
 // Wire channels: inputs are 0..n-1, output o is channel n + o, where n is the
 // state's input count (as ChannelListModel numbers them).
@@ -68,8 +73,8 @@ public:
     int numInputs() const;
     int numOutputs() const;
     int pdmOutput() const { return numOutputs() - 1; }
-    double maxDelayMs() const { return m_maxDelayMs; }
-    double preampMaxDb() const { return m_preampMaxDb; }
+    double maxDelayMs() const { return state()->maxDelayMs; }
+    double preampMaxDb() const { return state()->preampMaxDb; }
     int linkedPairs() const { return m_linkedPairs; }
     static int linkwitzType() { return FILTER_LINKWITZ_TRANSFORM; }
     bool crossoverTabShown() const { return m_xoTab; }
@@ -148,6 +153,10 @@ public:
     Q_INVOKABLE bool requestOutputEnable(int output, bool enabled);
     Q_INVOKABLE bool enableWouldConflict(int output) const;
     Q_INVOKABLE void confirmOutputEnable(int output);
+    // -- WP MDQT2a -- The question is asked now (this page's, or the matrix's):
+    // an answer that comes when another device is open or active, or this
+    // one was reopened, does nothing
+    void enableAsked();
     Q_INVOKABLE void setLimiterEnabled(int output, bool enabled);
     // The limiter cell's right-click: emits limiterSettingsRequested for the
     // limiter's own window (not part of this page)
@@ -172,6 +181,14 @@ private:
         FilterParams params;
         quint64 seq = 0;
     };
+    // -- WP MDQT2a -- What is the device's own
+    struct State {
+        QHash<int, Staged> staged;
+        uint64_t generation = 0;
+        double maxDelayMs = 21;
+        double preampMaxDb = 10;
+    };
+    std::shared_ptr<State> state() const;
     static int stageKey(int channel, int band, bool crossover) { return channel * 64 + (crossover ? 32 : 0) + band; }
     bool validBand(int channel, int band, bool crossover) const;
     FilterParams current(int channel, int band, bool crossover) const;
@@ -194,14 +211,12 @@ private:
     int wireFormat() const;
 
     AppContext m_ctx;
-    QHash<int, Staged> m_staged;
+    std::shared_ptr<State> m_shown;   // -- WP MDQT2a -- the State last announced
+    uint64_t m_askedOf = 0;           // -- WP MDQT2a -- the connection an enable question is about, 0 for none
     quint64 m_seq = 0;
     int m_revision = 0;
     int m_linkedPairs = 1;
     QString m_linksSerial;
-    uint64_t m_generation = 0;
-    double m_maxDelayMs = 21;
-    double m_preampMaxDb = 10;
     bool m_xoTab = false;
     int m_limiterWatchers = 0;
     Poller::Id m_limiterPoll = 0;

@@ -249,6 +249,8 @@ private:
     void writing(const std::function<void()> &write);
     void readBands(QVector<FilterParams> &bands, QVector<FilterParams> &statics) const;
     void resetInteraction();
+    // -- WP MDQT2a -- what is edited is the device's that is left: written there
+    void leaveDevice();
     bool takesKey(const QKeyEvent *e) const;
     void updateOwnership();
 
@@ -356,6 +358,7 @@ private:
 
     // Configuration
     int m_channel = -1;
+    uint64_t m_generation = 0;   // -- WP MDQT2a -- the connection the bands are of
     QVector<FilterParams> m_statics;
     double m_offsetDb = 0;
     bool m_flat = false;

@@ -177,6 +177,7 @@ ColumnLayout {
     QuestionDialog {
         id: linkQuestion
         objectName: "InputDetail.linkQuestion"
+        ofDevice: true   // -- WP MDQT2a --
         parent: Overlay.overlay
         rejectText: qsTr("Cancel")
         onAnswered: answer => {

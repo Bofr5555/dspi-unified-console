@@ -3,12 +3,15 @@
 
 #include "Core.h"
 #include "DeviceModel.h"
+#include "SessionModel.h"
+#include "SessionState.h"
 #include "Snapshot.h"
 
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QTimer>
+#include <utility>
 
 static const Registrar::Controller<OutputLatencyController> outputLatencyController;
 
@@ -36,29 +39,44 @@ int number(const QJsonObject &o, const char *camel, const char *snake) {
 OutputLatencyController::OutputLatencyController(const AppContext &ctx, QObject *parent)
     : QObject(parent), m_ctx(ctx) {
     // HardwareController adds this to the save bar on first use
-    connect(m_ctx.device, &DeviceModel::snapshotApplied, this, [this]() {
-        const DspState *s = m_ctx.device->state();
-        if (!s) {
-            m_supported = false;
-            m_options.clear();
-            emit changed();
-            return;
-        }
-        // Another device: its own table, nothing held for it
-        if (m_ctx.device->serial() != m_serial) {
-            m_serial = m_ctx.device->serial();
-            m_edited = false;
-            setHeld(false);
-            m_lastSource = s->input_source;
-            refresh();
-            return;
-        }
-        // Which options run as themselves depends on the input source
-        if (s->input_source != m_lastSource) {
-            m_lastSource = s->input_source;
-            refresh();
-        }
-    });
+    connect(m_ctx.device, &DeviceModel::snapshotApplied, this, &OutputLatencyController::onSnapshot);
+}
+
+// -- WP MDQT2a --
+std::shared_ptr<OutputLatencyController::State> OutputLatencyController::state() const {
+    return sessionState<State>(m_ctx.activeSession(), QStringLiteral("OutputLatencyController"));
+}
+
+void OutputLatencyController::onSnapshot() {
+    const std::shared_ptr<State> st = state();
+    const bool moved = st != m_shown;   // -- WP MDQT2a -- another device is the active one
+    m_shown = st;
+    if (moved) {
+        setHeld(st, st->held);
+        emit changed();
+        if (auto *hw = Registrar::instance<HardwareController>()) hw->participantChanged();
+    }
+    const DspState *s = m_ctx.device->state();
+    if (!s) {
+        st->supported = false;
+        st->options.clear();
+        emit changed();
+        return;
+    }
+    // Another device: its own table, nothing held for it
+    if (m_ctx.device->serial() != st->serial) {
+        st->serial = m_ctx.device->serial();
+        st->edited = false;
+        setHeld(st, false);
+        st->lastSource = s->input_source;
+        refresh();
+        return;
+    }
+    // Which options run as themselves depends on the input source
+    if (moved || s->input_source != st->lastSource) {
+        st->lastSource = s->input_source;
+        refresh();
+    }
 }
 
 OutputLatencyController::Reading OutputLatencyController::read(FfiCore *c, bool withOptions) {
@@ -82,32 +100,36 @@ OutputLatencyController::Reading OutputLatencyController::read(FfiCore *c, bool 
     return r;
 }
 
-void OutputLatencyController::take(const Reading &r, bool withOptions) {
-    m_supported = r.ok;
+void OutputLatencyController::take(const std::shared_ptr<State> &st, const Reading &r, bool withOptions) {
+    st->supported = r.ok;
     if (r.ok) {
-        m_requested = r.requested;
-        m_devicePending = r.pending;
-        if (withOptions) m_options = r.options;
+        st->requested = r.requested;
+        st->devicePending = r.pending;
+        if (withOptions) st->options = r.options;
     } else {
-        m_options.clear();
+        st->options.clear();
     }
+    if (st != state()) return;   // -- WP MDQT2a -- of the device left
     emit changed();
     if (auto *hw = Registrar::instance<HardwareController>()) hw->participantChanged();
 }
 
 void OutputLatencyController::refresh() {
     if (!m_ctx.device->connected()) return;
+    const std::shared_ptr<State> st = state();
+    const QPointer<DeviceSession> session = m_ctx.activeSession();
     m_ctx.core->worker()->call(this, [](FfiCore *c) { return read(c, true); },
-                               [this](const Reading &r) {
-                                   take(r, true);
-                                   if (m_held) checkHeld();
+                               [this, session, st](const Reading &r) {
+                                   take(st, r, true);
+                                   if (st->held) checkHeld(session, st);
                                });
 }
 
 QVariantList OutputLatencyController::options() const {
+    const std::shared_ptr<State> st = state();
     QVariantList out;
     bool known = false;
-    for (const Option &o : m_options) {
+    for (const Option &o : std::as_const(st->options)) {
         QString text = HardwareController::latencyMs(o.latencyUs);
         if (o.id == kDefaultId) text = tr("%1 (default)").arg(text);
         known = known || o.id == selectedId();
@@ -115,7 +137,7 @@ QVariantList OutputLatencyController::options() const {
                                 { QStringLiteral("text"), text },
                                 { QStringLiteral("available"), o.available } });
     }
-    if (!known && !m_options.isEmpty())
+    if (!known && !st->options.isEmpty())
         out.append(QVariantMap{ { QStringLiteral("id"), selectedId() },
                                 { QStringLiteral("text"), QStringLiteral("-") },
                                 { QStringLiteral("available"), false } });
@@ -125,7 +147,8 @@ QVariantList OutputLatencyController::options() const {
 QString OutputLatencyController::caption() const {
     QString text = tr("Lower values reduce the delay from input to output. Higher values may benefit sources exhibiting "
                       "high jitter in the event of audio stutters.");
-    for (const Option &o : m_options) {
+    const std::shared_ptr<State> st = state();
+    for (const Option &o : std::as_const(st->options)) {
         if (o.id == selectedId() && o.available && o.effectiveUs != o.latencyUs) {
             text += QLatin1Char(' ')
                     + tr("At the current sample rate the output buffer is smaller than this, so it runs as %1.")
@@ -138,17 +161,20 @@ QString OutputLatencyController::caption() const {
 
 void OutputLatencyController::choose(int id) {
     if (!m_ctx.device->connected()) return;
-    m_choice = id;
-    m_edited = id != m_requested;
-    if (m_edited) setHeld(false);
+    const std::shared_ptr<State> st = state();
+    st->choice = id;
+    st->edited = id != st->requested;
+    if (st->edited) setHeld(st, false);
     emit changed();
     if (auto *hw = Registrar::instance<HardwareController>()) hw->participantChanged();
 }
 
-bool OutputLatencyController::hasPending() const { return supported() && m_edited && m_choice != m_requested; }
+bool OutputLatencyController::hasPending() const { return supported() && edited() && state()->choice != requestedId(); }
 
 void OutputLatencyController::save(std::function<void(const QStringList &)> done) {
-    const int id = m_choice;
+    const std::shared_ptr<State> st = state();
+    const QPointer<DeviceSession> session = m_ctx.activeSession();
+    const int id = st->choice;
     // Write it, then read back what the device took
     auto reading = std::make_shared<Reading>();
     m_ctx.device->write(
@@ -158,53 +184,55 @@ void OutputLatencyController::save(std::function<void(const QStringList &)> done
             if (ok) *reading = read(c, false);
             return ok;
         },
-        [this, id, reading, done](bool ok) {
+        [this, session, st, id, reading, done](bool ok) {
             if (!ok) {
                 done({ tr("the latency") });
                 return;
             }
-            take(*reading, false);
-            m_edited = false;
-            m_choice = id;
+            take(st, *reading, false);
+            st->edited = false;
+            st->choice = id;
             // The device holds the request until it has applied it
             const bool applied = reading->ok && reading->requested == id && !reading->pending;
-            setHeld(!applied);
+            setHeld(st, !applied);
             if (!applied) {
                 // Keep showing the choice while the device catches up
-                m_edited = true;
-                m_heldChecks = 0;
-                QTimer::singleShot(kHeldInterval, this, &OutputLatencyController::checkHeld);
+                st->edited = true;
+                st->heldChecks = 0;
+                QTimer::singleShot(kHeldInterval, this, [this, session, st] { checkHeld(session, st); });
             }
-            emit changed();
+            if (st == state()) emit changed();   // -- WP MDQT2a --
             done({});
         });
 }
 
-void OutputLatencyController::checkHeld() {
-    if (!m_held || !m_ctx.device->connected()) return;
-    m_ctx.core->worker()->call(this, [](FfiCore *c) { return read(c, false); },
-                               [this](const Reading &r) {
-                                   if (!m_held) return;
-                                   take(r, false);
-                                   if (r.ok && r.requested == m_choice && !r.pending) {
-                                       m_edited = false;
-                                       setHeld(false);
-                                       emit changed();
-                                       return;
-                                   }
-                                   if (++m_heldChecks < kHeldChecks)
-                                       QTimer::singleShot(kHeldInterval, this, &OutputLatencyController::checkHeld);
-                               });
+void OutputLatencyController::checkHeld(const QPointer<DeviceSession> &session, const std::shared_ptr<State> &st) {
+    if (!st->held || !session || !session->model()->connected()) return;
+    session->worker()->call(this, [](FfiCore *c) { return read(c, false); },
+                            [this, session, st](const Reading &r) {
+                                if (!st->held) return;
+                                take(st, r, false);
+                                if (r.ok && r.requested == st->choice && !r.pending) {
+                                    st->edited = false;
+                                    setHeld(st, false);
+                                    if (st == state()) emit changed();
+                                    return;
+                                }
+                                if (++st->heldChecks < kHeldChecks)
+                                    QTimer::singleShot(kHeldInterval, this, [this, session, st] { checkHeld(session, st); });
+                            });
 }
 
 void OutputLatencyController::revert() {
-    m_edited = false;
-    setHeld(false);
+    const std::shared_ptr<State> st = state();
+    st->edited = false;
+    setHeld(st, false);
     emit changed();
 }
 
-void OutputLatencyController::setHeld(bool held) {
-    m_held = held;
+void OutputLatencyController::setHeld(const std::shared_ptr<State> &st, bool held) {
+    st->held = held;
+    if (st != state()) return;   // -- WP MDQT2a -- the note is the active device's
     if (auto *hw = Registrar::instance<HardwareController>())
         hw->setHeldNote(held ? tr("The device has not applied the latency yet.") : QString());
 }

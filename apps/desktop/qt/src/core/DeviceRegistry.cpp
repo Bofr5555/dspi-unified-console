@@ -315,6 +315,8 @@ bool DeviceRegistry::activate(const QString &id) {
 
 void DeviceRegistry::activate(DeviceSession *session) {
     if (!session || session == m_active || !m_sessions.contains(session)) return;
+    emit activeLeaving();   // -- WP MDQT2a --
+    if (session == m_active || !m_sessions.contains(session)) return;
     m_active->setBackground(true);
     m_active = session;
     m_active->setBackground(false);

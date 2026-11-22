@@ -92,6 +92,11 @@ By hand, in the container:
   keep a handle or a worker, and read again on `activeChanged`. Classic replaces
   the active device on its own core; `DeviceRegistry.keepOpen` opens beside it.
   The main session's core is there with no device too.
+  A controller's per-device state is a `sessionState<State>()` (SessionState.h,
+  in the session's stash; WP MDQT2a): what a job brings back goes into the State
+  it was asked with. On `activeLeaving` what is half-edited is finished or let go
+  of, on the device it was made on; a `QuestionDialog` about the device is
+  `ofDevice`.
 - **One thread calls a core:** its `CoreWorker`. Every blocking call (reads,
   writes, scans, files) is posted to it and its result comes back to the GUI
   thread as a queued call. The hot-plug poll (one for every core) and the opens
