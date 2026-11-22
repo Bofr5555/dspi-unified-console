@@ -618,6 +618,16 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun measureRtaPassiveStop(): MeasureRtaPassiveState = throw NotImplementedError("measure_rta_passive_stop")
 
+    override fun measureRolloffStart(setup: MeasureRolloffSetup): MeasureRolloffState = throw NotImplementedError("measure_rolloff_start")
+
+    override fun measureRolloffTick(): MeasureRolloffState = throw NotImplementedError("measure_rolloff_tick")
+
+    override fun measureRolloffState(): MeasureRolloffState = throw NotImplementedError("measure_rolloff_state")
+
+    override fun measureRolloffStop(): MeasureRolloffState = throw NotImplementedError("measure_rolloff_stop")
+
+    override fun measureRolloffClear(): Unit = throw NotImplementedError("measure_rolloff_clear")
+
     override fun measureSystemUnitCheck(setup: MeasureSystemSetup, unit: MeasureSystemUnit): MeasureSystemUnitCheck = throw NotImplementedError("measure_system_unit_check")
 
     override fun measureSystemPreflight(setup: MeasureSystemSetup, checks: List<MeasureSystemUnitCheck>): MeasureSystemPreflight = throw NotImplementedError("measure_system_preflight")

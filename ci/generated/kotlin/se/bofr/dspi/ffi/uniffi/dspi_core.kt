@@ -2186,6 +2186,16 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
+
+
+
+
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -2916,6 +2926,16 @@ fun uniffi_dspi_core_checksum_method_dspicore_measure_next_position(
 fun uniffi_dspi_core_checksum_method_dspicore_measure_preflight(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_measure_result(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_rolloff_clear(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_rolloff_start(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_rolloff_state(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_rolloff_stop(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_rolloff_tick(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_measure_rta_passive_averaging(
 ): Short
@@ -4053,6 +4073,16 @@ fun uniffi_dspi_core_fn_method_dspicore_measure_next_position(`ptr`: Pointer,uni
 fun uniffi_dspi_core_fn_method_dspicore_measure_preflight(`ptr`: Pointer,`setup`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_measure_result(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_measure_rolloff_clear(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_dspicore_measure_rolloff_start(`ptr`: Pointer,`setup`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_measure_rolloff_state(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_measure_rolloff_stop(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_measure_rolloff_tick(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_measure_rta_passive_averaging(`ptr`: Pointer,`averaging`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
@@ -5930,6 +5960,21 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_result() != 7126.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_rolloff_clear() != 27737.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_rolloff_start() != 20159.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_rolloff_state() != 8110.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_rolloff_stop() != 64982.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_rolloff_tick() != 12691.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_rta_passive_averaging() != 35925.toShort()) {
@@ -11427,6 +11472,45 @@ public interface DspiCoreInterface {
      * Errors: [`DspiError::InvalidArgument`] while no result is ready.
      */
     fun `measureResult`(): kotlin.String
+    
+    /**
+     * Forget a finished search (its result included). Refused while one
+     * runs.
+     *
+     * Errors: [`DspiError::InvalidArgument`] while a search runs.
+     */
+    fun `measureRolloffClear`()
+    
+    /**
+     * Start the roll-off search of one output (module docs): the first
+     * segment's preflight and start, as `measure_start`. On an (effective)
+     * tweeter no segment plays below 1 kHz.
+     *
+     * Errors: as `measure_start` (a blocker, read-only, a Viewer, the device
+     * lock, `measure.layout_unconfirmed`); [`DspiError::InvalidArgument`]
+     * for a setup that is not one, or while a search, a session, a tune's
+     * run or the live view runs on this core.
+     */
+    fun `measureRolloffStart`(`setup`: MeasureRolloffSetup): MeasureRolloffState
+    
+    /**
+     * The search's state, without I/O (safe from the measurement listener).
+     */
+    fun `measureRolloffState`(): MeasureRolloffState
+    
+    /**
+     * The user's Stop: the segment's session stopped (`SIGGEN_CTL_STOP_NOW`)
+     * and the search ended without a result. Idempotent; never fails.
+     */
+    fun `measureRolloffStop`(): MeasureRolloffState
+    
+    /**
+     * Drive the search: its segment's session (`measure_tick`), then the
+     * verdict and the next segment or the result. Call it about every 50 ms
+     * off the UI thread while `running`, instead of `measure_tick`. Never
+     * fails.
+     */
+    fun `measureRolloffTick`(): MeasureRolloffState
     
     /**
      * The averaging preset; the average starts again (the held copy is
@@ -20232,6 +20316,96 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     callWithPointer {
     uniffiRustCallWithError(DspiException) { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_result(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Forget a finished search (its result included). Refused while one
+     * runs.
+     *
+     * Errors: [`DspiError::InvalidArgument`] while a search runs.
+     */
+    @Throws(DspiException::class)override fun `measureRolloffClear`()
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_rolloff_clear(
+        it, _status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Start the roll-off search of one output (module docs): the first
+     * segment's preflight and start, as `measure_start`. On an (effective)
+     * tweeter no segment plays below 1 kHz.
+     *
+     * Errors: as `measure_start` (a blocker, read-only, a Viewer, the device
+     * lock, `measure.layout_unconfirmed`); [`DspiError::InvalidArgument`]
+     * for a setup that is not one, or while a search, a session, a tune's
+     * run or the live view runs on this core.
+     */
+    @Throws(DspiException::class)override fun `measureRolloffStart`(`setup`: MeasureRolloffSetup): MeasureRolloffState {
+            return FfiConverterTypeMeasureRolloffState.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_rolloff_start(
+        it, FfiConverterTypeMeasureRolloffSetup.lower(`setup`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * The search's state, without I/O (safe from the measurement listener).
+     */override fun `measureRolloffState`(): MeasureRolloffState {
+            return FfiConverterTypeMeasureRolloffState.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_rolloff_state(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * The user's Stop: the segment's session stopped (`SIGGEN_CTL_STOP_NOW`)
+     * and the search ended without a result. Idempotent; never fails.
+     */override fun `measureRolloffStop`(): MeasureRolloffState {
+            return FfiConverterTypeMeasureRolloffState.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_rolloff_stop(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Drive the search: its segment's session (`measure_tick`), then the
+     * verdict and the next segment or the result. Call it about every 50 ms
+     * off the UI thread while `running`, instead of `measure_tick`. Never
+     * fails.
+     */override fun `measureRolloffTick`(): MeasureRolloffState {
+            return FfiConverterTypeMeasureRolloffState.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_rolloff_tick(
         it, _status)
 }
     }
@@ -41873,6 +42047,371 @@ public object FfiConverterTypeMeasurePreflight: FfiConverterRustBuffer<MeasurePr
 
 
 /**
+ * The search's result.
+ */
+data class MeasureRolloffResult (
+    /**
+     * The output.
+     */
+    var `output`: kotlin.UByte, 
+    /**
+     * Its effective role.
+     */
+    var `role`: MeasureRole, 
+    /**
+     * Why it ended.
+     */
+    var `end`: MeasureRolloffEnd, 
+    /**
+     * The threshold it stopped at, dB below the loudest point.
+     */
+    var `stopDb`: kotlin.Float, 
+    /**
+     * The loudest point of the smoothed response, dB (re a 0 dBFS
+     * stimulus, or dB SPL with `spl`).
+     */
+    var `referenceDb`: kotlin.Double, 
+    /**
+     * Where that loudest point is, Hz.
+     */
+    var `referenceHz`: kotlin.Double, 
+    /**
+     * Where the response falls `stop_db` below the loudest point, Hz;
+     * `None` when it never did above the floor.
+     */
+    var `rolloffHz`: kotlin.Double?, 
+    /**
+     * The lowest frequency any stimulus played, Hz.
+     */
+    var `lowestHz`: kotlin.Double, 
+    /**
+     * The smoothed level at the lowest judged frequency, dB re the loudest
+     * point (at most 0).
+     */
+    var `lowEndDb`: kotlin.Double, 
+    /**
+     * The note for the user: `measure.rolloff.midrange` for a tweeter still
+     * good at its floor.
+     */
+    var `note`: MeasureIssue?, 
+    /**
+     * The last segment's trusted points in its judged band, Hz.
+     */
+    var `freqsHz`: List<kotlin.Double>, 
+    /**
+     * The smoothed level at each of `freqs_hz`, dB (as `reference_db`).
+     */
+    var `magDb`: List<kotlin.Double>, 
+    /**
+     * The levels are dB SPL (a calibrated microphone).
+     */
+    var `spl`: kotlin.Boolean, 
+    /**
+     * The last segment's `measurement` document (file it with
+     * `measure_doc_put`).
+     */
+    var `document`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureRolloffResult: FfiConverterRustBuffer<MeasureRolloffResult> {
+    override fun read(buf: ByteBuffer): MeasureRolloffResult {
+        return MeasureRolloffResult(
+            FfiConverterUByte.read(buf),
+            FfiConverterTypeMeasureRole.read(buf),
+            FfiConverterTypeMeasureRolloffEnd.read(buf),
+            FfiConverterFloat.read(buf),
+            FfiConverterDouble.read(buf),
+            FfiConverterDouble.read(buf),
+            FfiConverterOptionalDouble.read(buf),
+            FfiConverterDouble.read(buf),
+            FfiConverterDouble.read(buf),
+            FfiConverterOptionalTypeMeasureIssue.read(buf),
+            FfiConverterSequenceDouble.read(buf),
+            FfiConverterSequenceDouble.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: MeasureRolloffResult) = (
+            FfiConverterUByte.allocationSize(value.`output`) +
+            FfiConverterTypeMeasureRole.allocationSize(value.`role`) +
+            FfiConverterTypeMeasureRolloffEnd.allocationSize(value.`end`) +
+            FfiConverterFloat.allocationSize(value.`stopDb`) +
+            FfiConverterDouble.allocationSize(value.`referenceDb`) +
+            FfiConverterDouble.allocationSize(value.`referenceHz`) +
+            FfiConverterOptionalDouble.allocationSize(value.`rolloffHz`) +
+            FfiConverterDouble.allocationSize(value.`lowestHz`) +
+            FfiConverterDouble.allocationSize(value.`lowEndDb`) +
+            FfiConverterOptionalTypeMeasureIssue.allocationSize(value.`note`) +
+            FfiConverterSequenceDouble.allocationSize(value.`freqsHz`) +
+            FfiConverterSequenceDouble.allocationSize(value.`magDb`) +
+            FfiConverterBoolean.allocationSize(value.`spl`) +
+            FfiConverterString.allocationSize(value.`document`)
+    )
+
+    override fun write(value: MeasureRolloffResult, buf: ByteBuffer) {
+            FfiConverterUByte.write(value.`output`, buf)
+            FfiConverterTypeMeasureRole.write(value.`role`, buf)
+            FfiConverterTypeMeasureRolloffEnd.write(value.`end`, buf)
+            FfiConverterFloat.write(value.`stopDb`, buf)
+            FfiConverterDouble.write(value.`referenceDb`, buf)
+            FfiConverterDouble.write(value.`referenceHz`, buf)
+            FfiConverterOptionalDouble.write(value.`rolloffHz`, buf)
+            FfiConverterDouble.write(value.`lowestHz`, buf)
+            FfiConverterDouble.write(value.`lowEndDb`, buf)
+            FfiConverterOptionalTypeMeasureIssue.write(value.`note`, buf)
+            FfiConverterSequenceDouble.write(value.`freqsHz`, buf)
+            FfiConverterSequenceDouble.write(value.`magDb`, buf)
+            FfiConverterBoolean.write(value.`spl`, buf)
+            FfiConverterString.write(value.`document`, buf)
+    }
+}
+
+
+
+/**
+ * What to search (`measure_rolloff_start`). Every number 0 (or absent) is
+ * the default.
+ */
+data class MeasureRolloffSetup (
+    /**
+     * The output, 0-based.
+     */
+    var `output`: kotlin.UByte, 
+    /**
+     * Its way as the caller has it; the effective role (a high-pass at
+     * 1 kHz or above makes it a tweeter) is what counts. Ignored with
+     * `roles_from_layout`.
+     */
+    var `role`: MeasureRole, 
+    /**
+     * Take the role from the device's confirmed speaker layout (agents
+     * always do; refused with `measure.layout_unconfirmed` without one).
+     */
+    var `rolesFromLayout`: kotlin.Boolean, 
+    /**
+     * The speaker it belongs to, for the document.
+     */
+    var `speaker`: kotlin.String, 
+    /**
+     * Where the microphone is: the listening position or near field (close
+     * to the driver, which judges a driver best).
+     */
+    var `placement`: MeasurePlacement, 
+    /**
+     * The microphone's `mic` document's text ("" uncalibrated).
+     */
+    var `micDocument`: kotlin.String, 
+    /**
+     * The first segment's start, Hz (0: 8 kHz; at most 10 kHz; never below
+     * the output's floor).
+     */
+    var `startHz`: kotlin.Float, 
+    /**
+     * One sweep, ms (1000 to 15000; 0: 2700).
+     */
+    var `sweepMs`: kotlin.UInt, 
+    /**
+     * The generator's ceiling, peak dBFS (as `MeasureSetup::ceiling_db`).
+     */
+    var `ceilingDb`: kotlin.Float?, 
+    /**
+     * The SPL cap with a calibrated microphone (as `MeasureSetup`).
+     */
+    var `splCapDb`: kotlin.Float?, 
+    /**
+     * The capture's rate, Hz (0: 48000).
+     */
+    var `captureRateHz`: kotlin.UInt, 
+    /**
+     * The documents' name ("" names them by the date).
+     */
+    var `name`: kotlin.String, 
+    /**
+     * Play at the start level only (as `MeasureSetup::start_level_only`).
+     */
+    var `startLevelOnly`: kotlin.Boolean
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureRolloffSetup: FfiConverterRustBuffer<MeasureRolloffSetup> {
+    override fun read(buf: ByteBuffer): MeasureRolloffSetup {
+        return MeasureRolloffSetup(
+            FfiConverterUByte.read(buf),
+            FfiConverterTypeMeasureRole.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterTypeMeasurePlacement.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterFloat.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterOptionalFloat.read(buf),
+            FfiConverterOptionalFloat.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: MeasureRolloffSetup) = (
+            FfiConverterUByte.allocationSize(value.`output`) +
+            FfiConverterTypeMeasureRole.allocationSize(value.`role`) +
+            FfiConverterBoolean.allocationSize(value.`rolesFromLayout`) +
+            FfiConverterString.allocationSize(value.`speaker`) +
+            FfiConverterTypeMeasurePlacement.allocationSize(value.`placement`) +
+            FfiConverterString.allocationSize(value.`micDocument`) +
+            FfiConverterFloat.allocationSize(value.`startHz`) +
+            FfiConverterUInt.allocationSize(value.`sweepMs`) +
+            FfiConverterOptionalFloat.allocationSize(value.`ceilingDb`) +
+            FfiConverterOptionalFloat.allocationSize(value.`splCapDb`) +
+            FfiConverterUInt.allocationSize(value.`captureRateHz`) +
+            FfiConverterString.allocationSize(value.`name`) +
+            FfiConverterBoolean.allocationSize(value.`startLevelOnly`)
+    )
+
+    override fun write(value: MeasureRolloffSetup, buf: ByteBuffer) {
+            FfiConverterUByte.write(value.`output`, buf)
+            FfiConverterTypeMeasureRole.write(value.`role`, buf)
+            FfiConverterBoolean.write(value.`rolesFromLayout`, buf)
+            FfiConverterString.write(value.`speaker`, buf)
+            FfiConverterTypeMeasurePlacement.write(value.`placement`, buf)
+            FfiConverterString.write(value.`micDocument`, buf)
+            FfiConverterFloat.write(value.`startHz`, buf)
+            FfiConverterUInt.write(value.`sweepMs`, buf)
+            FfiConverterOptionalFloat.write(value.`ceilingDb`, buf)
+            FfiConverterOptionalFloat.write(value.`splCapDb`, buf)
+            FfiConverterUInt.write(value.`captureRateHz`, buf)
+            FfiConverterString.write(value.`name`, buf)
+            FfiConverterBoolean.write(value.`startLevelOnly`, buf)
+    }
+}
+
+
+
+/**
+ * The search's state.
+ */
+data class MeasureRolloffState (
+    /**
+     * Where it stands.
+     */
+    var `stage`: MeasureRolloffStage, 
+    /**
+     * Tick it (`measure_rolloff_tick`): a segment runs or is next.
+     */
+    var `running`: kotlin.Boolean, 
+    /**
+     * The output searched.
+     */
+    var `output`: kotlin.UByte?, 
+    /**
+     * Its effective role.
+     */
+    var `role`: MeasureRole, 
+    /**
+     * The lowest any segment may start, Hz (1000 on a tweeter).
+     */
+    var `floorHz`: kotlin.Float, 
+    /**
+     * The segment now (or last) measured, 1-based.
+     */
+    var `segment`: kotlin.UShort, 
+    /**
+     * The most segments there can be (the floor reached).
+     */
+    var `segments`: kotlin.UShort, 
+    /**
+     * That segment's start, Hz.
+     */
+    var `segmentStartHz`: kotlin.Float, 
+    /**
+     * The segment's session (push capture while it wants it).
+     */
+    var `session`: MeasureState, 
+    /**
+     * The result, once done.
+     */
+    var `result`: MeasureRolloffResult?, 
+    /**
+     * Why it stopped, or what the last segment asked.
+     */
+    var `issue`: MeasureIssue?, 
+    /**
+     * Who started it: 0 the app, else an agent's actor.
+     */
+    var `actor`: kotlin.UInt
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureRolloffState: FfiConverterRustBuffer<MeasureRolloffState> {
+    override fun read(buf: ByteBuffer): MeasureRolloffState {
+        return MeasureRolloffState(
+            FfiConverterTypeMeasureRolloffStage.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterOptionalUByte.read(buf),
+            FfiConverterTypeMeasureRole.read(buf),
+            FfiConverterFloat.read(buf),
+            FfiConverterUShort.read(buf),
+            FfiConverterUShort.read(buf),
+            FfiConverterFloat.read(buf),
+            FfiConverterTypeMeasureState.read(buf),
+            FfiConverterOptionalTypeMeasureRolloffResult.read(buf),
+            FfiConverterOptionalTypeMeasureIssue.read(buf),
+            FfiConverterUInt.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: MeasureRolloffState) = (
+            FfiConverterTypeMeasureRolloffStage.allocationSize(value.`stage`) +
+            FfiConverterBoolean.allocationSize(value.`running`) +
+            FfiConverterOptionalUByte.allocationSize(value.`output`) +
+            FfiConverterTypeMeasureRole.allocationSize(value.`role`) +
+            FfiConverterFloat.allocationSize(value.`floorHz`) +
+            FfiConverterUShort.allocationSize(value.`segment`) +
+            FfiConverterUShort.allocationSize(value.`segments`) +
+            FfiConverterFloat.allocationSize(value.`segmentStartHz`) +
+            FfiConverterTypeMeasureState.allocationSize(value.`session`) +
+            FfiConverterOptionalTypeMeasureRolloffResult.allocationSize(value.`result`) +
+            FfiConverterOptionalTypeMeasureIssue.allocationSize(value.`issue`) +
+            FfiConverterUInt.allocationSize(value.`actor`)
+    )
+
+    override fun write(value: MeasureRolloffState, buf: ByteBuffer) {
+            FfiConverterTypeMeasureRolloffStage.write(value.`stage`, buf)
+            FfiConverterBoolean.write(value.`running`, buf)
+            FfiConverterOptionalUByte.write(value.`output`, buf)
+            FfiConverterTypeMeasureRole.write(value.`role`, buf)
+            FfiConverterFloat.write(value.`floorHz`, buf)
+            FfiConverterUShort.write(value.`segment`, buf)
+            FfiConverterUShort.write(value.`segments`, buf)
+            FfiConverterFloat.write(value.`segmentStartHz`, buf)
+            FfiConverterTypeMeasureState.write(value.`session`, buf)
+            FfiConverterOptionalTypeMeasureRolloffResult.write(value.`result`, buf)
+            FfiConverterOptionalTypeMeasureIssue.write(value.`issue`, buf)
+            FfiConverterUInt.write(value.`actor`, buf)
+    }
+}
+
+
+
+/**
  * What the passive RTA shows (`measure_rta_passive_frame`).
  */
 data class MeasureRtaPassiveFrame (
@@ -42367,7 +42906,13 @@ data class MeasureState (
      * Gaps and repeats seen in the capture's frame indices (any one aborts
      * the session, S5).
      */
-    var `frameFaults`: kotlin.UInt
+    var `frameFaults`: kotlin.UInt, 
+    /**
+     * Who started the session: 0 the app itself, else an agent's actor
+     * (`actor::actor_label` names it), so a screen can say "requested by
+     * AI".
+     */
+    var `actor`: kotlin.UInt = 0u
 ) {
     
     companion object
@@ -42401,6 +42946,7 @@ public object FfiConverterTypeMeasureState: FfiConverterRustBuffer<MeasureState>
             FfiConverterBoolean.read(buf),
             FfiConverterOptionalTypeMeasureTiming.read(buf),
             FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
         )
     }
 
@@ -42426,7 +42972,8 @@ public object FfiConverterTypeMeasureState: FfiConverterRustBuffer<MeasureState>
             FfiConverterOptionalBoolean.allocationSize(value.`timingReliable`) +
             FfiConverterBoolean.allocationSize(value.`resultReady`) +
             FfiConverterOptionalTypeMeasureTiming.allocationSize(value.`timing`) +
-            FfiConverterUInt.allocationSize(value.`frameFaults`)
+            FfiConverterUInt.allocationSize(value.`frameFaults`) +
+            FfiConverterUInt.allocationSize(value.`actor`)
     )
 
     override fun write(value: MeasureState, buf: ByteBuffer) {
@@ -42452,6 +42999,7 @@ public object FfiConverterTypeMeasureState: FfiConverterRustBuffer<MeasureState>
             FfiConverterBoolean.write(value.`resultReady`, buf)
             FfiConverterOptionalTypeMeasureTiming.write(value.`timing`, buf)
             FfiConverterUInt.write(value.`frameFaults`, buf)
+            FfiConverterUInt.write(value.`actor`, buf)
     }
 }
 
@@ -51228,6 +51776,92 @@ public object FfiConverterTypeMeasureRole: FfiConverterRustBuffer<MeasureRole> {
 
 
 /**
+ * Why the search ended.
+ */
+
+enum class MeasureRolloffEnd {
+    
+    /**
+     * The response fell [`ROLLOFF_STOP_DB`] below its loudest point.
+     */
+    ROLLED_OFF,
+    /**
+     * The output's floor was reached first (1 kHz on a tweeter).
+     */
+    FLOOR;
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureRolloffEnd: FfiConverterRustBuffer<MeasureRolloffEnd> {
+    override fun read(buf: ByteBuffer) = try {
+        MeasureRolloffEnd.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: MeasureRolloffEnd) = 4UL
+
+    override fun write(value: MeasureRolloffEnd, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+/**
+ * Where the search stands.
+ */
+
+enum class MeasureRolloffStage {
+    
+    /**
+     * No search on this core.
+     */
+    IDLE,
+    /**
+     * A segment is being measured (`session` says which phase).
+     */
+    MEASURING,
+    /**
+     * The search ended with a result.
+     */
+    DONE,
+    /**
+     * It stopped without a result (`issue` says why).
+     */
+    STOPPED;
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureRolloffStage: FfiConverterRustBuffer<MeasureRolloffStage> {
+    override fun read(buf: ByteBuffer) = try {
+        MeasureRolloffStage.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: MeasureRolloffStage) = 4UL
+
+    override fun write(value: MeasureRolloffStage, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+/**
  * The microphone RTA's averaging preset.
  */
 
@@ -53669,6 +54303,38 @@ public object FfiConverterOptionalTypeMeasureLiveRta: FfiConverterRustBuffer<Mea
         } else {
             buf.put(1)
             FfiConverterTypeMeasureLiveRta.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeMeasureRolloffResult: FfiConverterRustBuffer<MeasureRolloffResult?> {
+    override fun read(buf: ByteBuffer): MeasureRolloffResult? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeMeasureRolloffResult.read(buf)
+    }
+
+    override fun allocationSize(value: MeasureRolloffResult?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeMeasureRolloffResult.allocationSize(value)
+        }
+    }
+
+    override fun write(value: MeasureRolloffResult?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeMeasureRolloffResult.write(value, buf)
         }
     }
 }
