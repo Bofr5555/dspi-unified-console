@@ -64,10 +64,13 @@ class AiController : public QObject {
     Q_PROPERTY(QString confirmMode READ confirmMode WRITE setConfirmMode NOTIFY settingsChanged)
     // [{ id, name, created, lastUsed (seconds since the epoch, 0 never) }]
     Q_PROPERTY(QVariantList clients READ clients NOTIFY clientsChanged)
+    // -- WP LAY8 -- The clients that called within the last minute, in the list's
+    // order: [{ id, name, since (a time, "14:02") }]
+    Q_PROPERTY(QVariantList agents READ agents NOTIFY agentsChanged)
     // The relay that asks to pair: { id, name, code, secondsLeft }, {} for none
     Q_PROPERTY(QVariantMap pairing READ pairing NOTIFY pairingChanged)
     // The changes that wait for the user, oldest first: [{ id, client, title,
-    // device, risks: [text] }]
+    // device, risks: [text], riskLines: [text with its kind's label] }]
     Q_PROPERTY(QVariantList confirmations READ confirmations NOTIFY confirmationsChanged)
     // How long the oldest of them waits for the answer still
     Q_PROPERTY(int confirmationSecondsLeft READ confirmationSecondsLeft NOTIFY secondsChanged)
@@ -112,6 +115,7 @@ public:
     QString confirmMode() const { return m_confirmMode; }
     void setConfirmMode(const QString &mode);
     QVariantList clients() const { return m_clients; }
+    QVariantList agents() const;   // -- WP LAY8 --
     QVariantMap pairing() const;
     QVariantList confirmations() const;
     int confirmationSecondsLeft() const;
@@ -139,8 +143,14 @@ public:
     Q_INVOKABLE void addClient(const QString &name);
     Q_INVOKABLE void clearNewClient();
     Q_INVOKABLE void revoke(double id);
+    // -- WP LAY8 -- revoke(), and it is not shown as connected from now on. The
+    // server keeps listening; the agent has to ask to be allowed again.
+    Q_INVOKABLE void disconnectAgent(double id);
     // The answer to the pairing request on show
     Q_INVOKABLE void answerPairing(bool allow);
+    // -- WP LAY8 -- What kind of risk a question is about, in a word or two; "" for a
+    // kind this app does not know
+    static QString riskLabel(const QString &kind);
     // The answer to confirmation `id`. Allow runs the agent's call.
     Q_INVOKABLE void answer(double id, bool allow);
     // Undoes what the activity's row `key` changed, as the user; or every row's,
@@ -166,6 +176,7 @@ signals:
     void stateChanged();
     void settingsChanged();
     void clientsChanged();
+    void agentsChanged();   // -- WP LAY8 --
     void pairingChanged();
     void confirmationsChanged();
     void secondsChanged();
@@ -179,6 +190,8 @@ private:
     void startServer();
     void stopServer();
     void readClients();
+    void readAgents();   // -- WP LAY8 --
+    void setAgents(const QJsonArray &clients);   // -- WP LAY8 --
     void readConfirmations();
     void readActivity();
     void sendActive();
@@ -206,12 +219,20 @@ private:
     QStringList m_addresses;
     QString m_confirmMode;
     QVariantList m_clients;
+    // -- WP LAY8 --
+    struct Agent {
+        quint64 id;
+        QString name;
+        QDateTime since, last;
+    };
+    QList<Agent> m_agents;
     QJsonObject m_pairing;
     QDateTime m_pairingEnds;
     struct Waiting {
         quint64 id;
         QString client, title, device;
         QStringList risks;
+        QStringList riskLines;   // -- WP LAY8 --
         QDateTime ends;
         bool operator==(const Waiting &o) const { return id == o.id; }   // a question never changes
     };

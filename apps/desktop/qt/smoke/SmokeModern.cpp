@@ -299,9 +299,11 @@ void topBarPart(Modern &m) {
     if (themeMenu) QMetaObject::invokeMethod(themeMenu, "close");
     m.d.spin(200);
 
-    // -- WP MCP4 -- (LAY8 gives it its popover)
+    // -- WP MCP4 -- -- WP LAY8 -- its popover (its own section, lay8-ai) leads there
     m.click(QStringLiteral("TopBar.ai"));
-    m.check("the AI button opens Settings > AI Agents",
+    QQuickItem *toAi = m.d.item(QStringLiteral("AiPopover.settings"), m.main->contentItem()->parentItem());
+    if (toAi) QMetaObject::invokeMethod(toAi, "clicked");
+    m.check("the AI button's popover opens Settings > AI Agents",
             m.d.waitFor(2000, [&] { return m.shell->pageAction() == QLatin1String("edit.settings") && m.d.item(QStringLiteral("AiAgentsPage")); }));
     m.d.grab(m.main, QStringLiteral("modern-ai.png"));
     m.d.spin(200);

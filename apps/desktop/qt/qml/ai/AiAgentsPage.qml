@@ -382,22 +382,9 @@ SettingsPage {
         }
     }
 
-    QuestionDialog {
+    AiEnableQuestion {   // -- WP LAY8 -- the popover asks it too
         id: enableQuestion
         objectName: "AiAgents.enableQuestion"
         parent: page.Window.window ? page.Window.window.contentItem : null
-        title: qsTr("Allow AI agents?")
-        text: [qsTr("An agent on this computer that you allow may read your devices' settings and change them: equaliser, crossovers, gains, routing, effects, presets and more."),
-               qsTr("It cannot update firmware, change the limits or the installer's lock, set up speakers, pair hubs or delete presets."),
-               qsTr("You can undo each change, pause the agents or stop them at any time."),
-               LimitsController.connected && !LimitsController.active
-                   ? qsTr("This device has no limits profile. You can set one up first; it holds agents too.") : ""]
-              .filter(s => s.length).join("\n\n")
-        acceptText: qsTr("Allow")
-        alternativeText: LimitsController.connected && !LimitsController.active ? qsTr("Set Up Limits…") : ""
-        onAnswered: answer => {
-            if (answer === "accept") AiController.setEnabled(true)
-            else if (answer === "alternative") AiController.openLimits()
-        }
     }
 }

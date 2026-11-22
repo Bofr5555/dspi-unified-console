@@ -152,54 +152,8 @@ Rectangle {
             Accessible.name: text
         }
 
-        // -- WP LAY3 -- the AI button; -- WP MCP4 -- with the agents' state, opening
-        // Settings > AI Agents. WP LAY8 puts AiButton here in this block's place
-        AbstractButton {
-            id: ai
-            objectName: "TopBar.ai"
-            text: "AI"
-            readonly property bool attention: AiController.state === "asking" || AiController.state === "error"
-            implicitHeight: 28
-            implicitWidth: aiFace.implicitWidth + 18
-            hoverEnabled: true
-            focusPolicy: Qt.TabFocus
-            onClicked: AiController.openSettings()
-            contentItem: Item {
-                Row {
-                    id: aiFace
-                    anchors.centerIn: parent
-                    spacing: 6
-                    Rectangle {
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: 8
-                        height: 8
-                        radius: 4
-                        color: ai.attention ? Theme.warning : AiController.state === "active" ? Theme.connected
-                             : AiController.state === "on" || AiController.state === "paused" ? Theme.offline : "transparent"
-                        border.width: AiController.state === "off" ? 1.5 : 0
-                        border.color: Theme.textMuted
-                    }
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: ai.text
-                        font: Theme.fontBody
-                        color: Theme.text
-                    }
-                }
-            }
-            background: Rectangle {
-                radius: Theme.radiusSmall
-                color: ai.hovered ? Theme.controlHover : Theme.control
-                border.width: ai.visualFocus ? 2 : 0
-                border.color: Theme.focusRing
-            }
-            Accessible.role: Accessible.Button
-            Accessible.name: AiController.statusLine
-            HelpTip {
-                text: AiController.statusLine
-                visible: ai.hovered
-            }
-        }
+        // -- WP LAY8 -- the AI button, with the agents' state and its popover
+        AiButton { objectName: "TopBar.ai" }
 
         // ---- The theme: the system's, light or dark
         IconButton {

@@ -97,7 +97,7 @@ Panel {
                         Text {
                             Layout.fillWidth: true
                             textFormat: Text.PlainText
-                            text: ask.modelData.risks.join("\n")
+                            text: ask.modelData.riskLines.join("\n")   // -- WP LAY8 --
                             font: Theme.fontSmall
                             color: Theme.text
                             wrapMode: Text.Wrap

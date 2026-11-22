@@ -85,7 +85,7 @@ Item {
             width: parent.width
             spacing: 4
             Repeater {
-                model: host.front ? host.front.risks.slice(0, 8) : []
+                model: host.front ? host.front.riskLines.slice(0, 8) : []   // -- WP LAY8 -- with its kind
                 delegate: SheetText {
                     required property string modelData
                     required property int index

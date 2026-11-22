@@ -92,6 +92,10 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
   says why). A change refused on a device that is not the one shown (a limit, the lock) is now a notice that names
   that device. Leaving Modern keeps the other devices open: Classic shows the active one and lists the others under
   Open devices, and back in Modern their tabs are there. (WP XDEV1)
+- Modern's **AI** button shows the state (off, waiting for an agent, an agent connected, paused, or something to answer) and
+  opens a popover: the switch, which agents are connected with **Disconnect**, their latest changes with Undo, Pause, and
+  the way to the activity and Settings › AI Agents. The confirmation sheet says what kind of change it asks about
+  ("Louder", "Saved on the device", "Every unit"). (WP LAY8)
 
 ### Android
 - DSPi Link is reachable from the main page (owner report on 0.14.0: only through the settings
