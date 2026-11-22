@@ -125,6 +125,8 @@ pub use alink_installation::{
     InstallationDraft, InstallationEdit, InstallationIssue, InstallationRole, InstallationSpeaker,
     InstallationUnseen, InstallationView, installation_apply, installation_changes,
 };
+// -- WP FEAT1 --
+pub use alink_installation::{InstallationProgrammeKind, InstallationSceneAction};
 use dspi_session::ext_state::ExtState;
 
 /// The role asked for when pairing, as the macOS Console does.

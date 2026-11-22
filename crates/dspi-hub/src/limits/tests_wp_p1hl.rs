@@ -437,6 +437,7 @@ fn wp_p1hl_a_scene_past_a_units_limit_is_refused_before_anything_is_sent() {
             op: op.into(),
             arg,
             value,
+            source: None, // -- WP FEAT1 --
         }],
         system_mute: None,
     };
@@ -756,4 +757,38 @@ fn wp_p1dkfix_a_limiter_link_group_cannot_switch_off_a_kept_limiter() {
     // The release moves nothing a profile limits.
     let release = set(op::REQ_LIMITER, limiter::LIMITER_PARAM_RELEASE_MS, f(500.0));
     assert!(judge(&p, &release, Some(&img)).is_ok());
+}
+
+// -- WP FEAT1 --
+#[test]
+fn wp_feat1_a_source_switch_on_a_locked_unit_is_for_the_installer() {
+    let l = HubLimits::new(None);
+    let scene = crate::system::model::Scene {
+        id: "s".into(),
+        name: String::new(),
+        actions: vec![crate::system::model::SceneAction {
+            target: "zone:z".into(),
+            op: "source".into(),
+            arg: 0,
+            value: 0,
+            source: Some("radio".into()),
+        }],
+        system_mute: None,
+    };
+    let units = vec![vec!["K".to_owned()]];
+    // Unlocked, or no profile: anyone who may recall it.
+    assert!(judge_scene(&l, &scene, &units, Role::Control).is_ok());
+    l.set_profile("K", Some(profile())).unwrap();
+    assert!(judge_scene(&l, &scene, &units, Role::Control).is_ok());
+    // Locked: not volume, mute or a preset, so not for a control role.
+    let mut p = profile();
+    p.locked_pages = vec!["eq".into()];
+    l.set_profile("K", Some(p)).unwrap();
+    l.set_pin("K", Some("4711")).unwrap();
+    let e = judge_scene(&l, &scene, &units, Role::Control).unwrap_err();
+    assert!(
+        e.contains("op source on zone:z") && e.contains("locked"),
+        "{e}"
+    );
+    assert!(judge_scene(&l, &scene, &units, Role::Admin).is_ok());
 }

@@ -423,6 +423,7 @@ mod tests_wp_sw2 {
                     op: (*op).into(),
                     arg: *arg,
                     value: *value,
+                    source: None, // -- WP FEAT1 --
                 })
                 .collect(),
         }
