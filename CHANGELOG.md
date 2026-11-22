@@ -123,6 +123,9 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
   opens a popover: the switch, which agents are connected with **Disconnect**, their latest changes with Undo, Pause, and
   the way to the activity and Settings › AI Agents. The confirmation sheet says what kind of change it asks about
   ("Louder", "Saved on the device", "Every unit"). (WP LAY8)
+- A measurement holds every output to the strictest of the role asked for, your confirmed speaker layout's and what its
+  filters show, one unit or several. Auto-tune's table follows a Confirm without Reload, and Several units starts from each
+  unit's own layout. (WP RCFIX)
 
 ### Android
 - DSPi Link is reachable from the main page (owner report on 0.14.0: only through the settings
@@ -203,6 +206,8 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
   browser keeps it per DSPi. (WP ROLEW)
 - The speaker layout's banner says a layout was "set outside this app (a configuration file or another app)" instead
   of claiming a configuration file brought it. (WP MCP5)
+- A measurement holds every output to the strictest of the role asked for, your confirmed speaker layout's and what its
+  filters show: a tweeter that has no crossover yet is never played below 1 kHz. (WP RCFIX)
 
 ## 0.14.0 (2026-11-20)
 
