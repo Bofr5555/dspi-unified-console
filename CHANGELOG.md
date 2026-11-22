@@ -217,6 +217,12 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
   of claiming a configuration file brought it. (WP MCP5)
 - A measurement holds every output to the strictest of the role asked for, your confirmed speaker layout's and what its
   filters show: a tweeter that has no crossover yet is never played below 1 kHz. (WP RCFIX)
+- Web console, Modern layout: on a phone's width the top bar's buttons, menu rows, page tabs and the drawer's close are
+  44 px tap targets; a device tab shows its device's name with an ellipsis rather than a clipped start, and Search is in
+  the app menu there. Settings › Appearance › Inspector takes effect at once. Menus and the palette show only shortcuts
+  the web has (no Ctrl+Shift+H for History), and in Simple mode Open File… and New from Template… say they go to the
+  Devices page. Measuring several units no longer fails on a unit whose tab was closed: it opens its own connection.
+  (WP WEBM5)
 
 ## 0.14.0 (2026-11-20)
 

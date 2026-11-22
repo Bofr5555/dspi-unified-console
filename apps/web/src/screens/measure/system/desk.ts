@@ -399,9 +399,25 @@ export class SystemDesk {
   /** A unit's own core, or why there is none. */
   private coreOf(serial: string): SystemCore {
     if (serial === this.session.deviceId) return this.core;
-    const c = this.cores.get(serial) ?? this.borrowed.get(serial) ?? this.borrow(serial); // -- WP WEBM3 --
-    if (!c) throw new Error(`${serial}: its own connection is not open yet (choose it again)`);
-    return c;
+    const own = this.cores.get(serial);
+    if (own) return own;
+    // -- WP WEBM5 -- (review RC8) a borrowed core only while its tab still has the unit open; once
+    // that tab closed, the desk opens a core of its own for the unit, as for one open nowhere
+    const lent = this.borrowed.get(serial);
+    if (lent) {
+      const held = this.session.heldBy?.(serial) ?? null;
+      if (held && held.core === lent && held.state.status === "open") return lent;
+      this.borrowed.delete(serial);
+      const u = this.unit(serial);
+      if (u) u.tab = "";
+    }
+    const c = this.borrow(serial); // -- WP WEBM3 --
+    if (c) return c;
+    if (lent && this.alive) {
+      void this.openUnit(serial);
+      throw new Error(`${serial}: its tab was closed; its own connection is being opened (try again in a moment)`);
+    }
+    throw new Error(`${serial}: its own connection is not open yet (choose it again)`);
   }
 
   /**
