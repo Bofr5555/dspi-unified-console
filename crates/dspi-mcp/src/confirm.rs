@@ -233,6 +233,20 @@ impl Confirmations {
             .collect()
     }
 
+    // -- WP MCP4 --
+    /// `client`'s waiting ones that hold its JSON-RPC request `rpc_id`.
+    pub(crate) fn held_as(&self, client: ClientId, rpc_id: &Value) -> Vec<u64> {
+        self.list
+            .iter()
+            .filter(|c| {
+                c.client == client
+                    && c.state == ConfirmState::Waiting
+                    && c.request.as_ref().is_some_and(|(id, _)| id == rpc_id)
+            })
+            .map(|c| c.id)
+            .collect()
+    }
+
     /// End `id` as `state` with the agent's `result`.
     pub(crate) fn end(&mut self, id: u64, state: ConfirmState, result: Value) {
         if let Some(c) = self.get_mut(id) {

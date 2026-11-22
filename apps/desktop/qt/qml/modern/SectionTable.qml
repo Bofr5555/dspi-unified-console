@@ -45,7 +45,7 @@ QtObject {
         },
         {
             id: "settings", title: qsTr("Settings"), icon: "settings", foot: true, sender: true,
-            order: ["settings"], quiet: ["whatsNew"]
+            order: ["settings"], quiet: ["whatsNew", "aiAgents"]   // -- WP MCP4 -- aiAgents
         }
     ]
 

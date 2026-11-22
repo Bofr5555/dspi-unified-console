@@ -298,11 +298,11 @@ void topBarPart(Modern &m) {
     if (themeMenu) QMetaObject::invokeMethod(themeMenu, "close");
     m.d.spin(200);
 
+    // -- WP MCP4 -- (LAY8 gives it its popover)
     m.click(QStringLiteral("TopBar.ai"));
-    QObject *ai = m.d.object(QStringLiteral("TopBar.aiPopover"));
-    m.check("the AI button opens its placeholder", ai && m.d.waitFor(1000, [&] { return ai->property("opened").toBool(); }));
+    m.check("the AI button opens Settings > AI Agents",
+            m.d.waitFor(2000, [&] { return m.shell->pageAction() == QLatin1String("edit.settings") && m.d.item(QStringLiteral("AiAgentsPage")); }));
     m.d.grab(m.main, QStringLiteral("modern-ai.png"));
-    if (ai) QMetaObject::invokeMethod(ai, "close");
     m.d.spin(200);
 
     m.click(QStringLiteral("TopBar.search"));

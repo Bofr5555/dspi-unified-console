@@ -112,6 +112,12 @@ static int relayIfAsked(int argc, char *argv[]) {
     QCoreApplication core(argc, argv);
     const QSettings settings;
     const int port = settings.value(QStringLiteral("mcp/port"), 47860).toInt();
+    // -- WP MCP4 -- said, not only exited with: the agent's host shows it
+    if (port < 1 || port > 65535) {
+        std::fprintf(stderr, "%s: the port set in Settings, AI Agents (mcp/port) must be 1 to 65535.\n",
+                     qPrintable(AppIdentity::displayName()));
+        return 2;
+    }
     auto tokens = TokenStore::forThisUser(nullptr);
     const QJsonObject config{
         { QStringLiteral("port"), port },

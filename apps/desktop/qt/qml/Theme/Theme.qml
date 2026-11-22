@@ -97,7 +97,7 @@ QtObject {
     // more and clears 3:1 on the dark window, so one value serves both schemes.
     readonly property var settingsTints: ({
         "overview": "#627080", "about": "#646971", "updates": "#5d6a7a", "advanced": "#727880",
-        "graphing": "#587a89", "networking": "#4a7499", "spectrum": "#4c808a",
+        "graphing": "#587a89", "networking": "#4a7499", "ai": "#6a62a8", "spectrum": "#4c808a",
         "inputs": "#04856f", "outputs": "#0278c7", "i2s": "#ba3822", "global": "#807701",
         "surfaces": "#8354a0", "interfaces": "#8f60ad", "groups": "#6c64b7", "macros": "#9e528d", "aux": "#7a5aac"
     })
