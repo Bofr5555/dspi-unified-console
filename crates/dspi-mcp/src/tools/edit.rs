@@ -1182,6 +1182,21 @@ fn undo(call: &mut Call<'_>, args: &Map<String, Value>) -> ToolResult {
                 "that change is not this agent's; only the user can undo it. Do not retry.",
             ));
         }
+        // -- WP FUNC2b -- (FUNC2b S15) a change with no value before it to put back (one
+        // written to every output at once) read as "already undone", and the default walk
+        // went on to undo an older change instead, answering ok
+        if values.iter().any(|e| e.before.is_none()) {
+            let what = values
+                .iter()
+                .find_map(|e| e.label.clone())
+                .unwrap_or_else(|| values.first().map_or_else(String::new, |e| e.path.clone()));
+            return Err(ToolError::new(format!(
+                "this agent's change {id} ({what}) cannot be undone: the device's history has no \
+                 value from before it to put back (it was written to every output at once). \
+                 Nothing was undone. Set it back with the tool that made it, per output, or \
+                 ask the user to."
+            )));
+        }
         let writes: Vec<WriteKey> = values
             .iter()
             .filter_map(|e| {
