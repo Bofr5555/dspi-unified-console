@@ -5,6 +5,7 @@ library only; the app runs in a container with no USB, no sound device and no
 network. run.sh is the way in.
 
     functest.py run  --name r1 [--story F] [--confirm never_ask|ask_risky] [--steps 1,2,3] [--replay F] [--keep]
+                     (--confirm: the replay's `confirm`, else the story's, else never_ask)
     functest.py up   --name r1 ...         the app, set up, left running
     functest.py ask  --name r1 --steps 1   the story's prompt, or: ask --name r1 --label l "the words"
     functest.py save --name r1 label       the state now
@@ -15,6 +16,7 @@ import json
 import os
 import pathlib
 import shutil
+import signal
 import socket
 import subprocess
 import sys
@@ -149,7 +151,14 @@ class Run:
             raise SystemExit("the scenario was not loaded: see app.log")
         for dev, shown in zip(scenario["devices"], devices):
             self.layout(shown["id"], dev, dev["name"] not in unconfirmed)
-        ctl.call("DeviceRegistry", "activate", devices[0]["id"])
+        # -- WP FUNC2a -- P1: each demo is a DSPi of its own (its serial; its layout kept under it)
+        serials = [d.get("serial") for d in devices]
+        if len(set(serials)) != len(serials):
+            raise SystemExit(f"the demos share a serial: {serials}")
+        # -- WP FUNC2a -- P8, P9a: what the user had done before (user.py)
+        self.user = user.User(self)
+        self.user.do_all(user.seed_actions(self.story()), "seed")
+        self.user.show(self.story().get("show", scenario["devices"][0]["name"]))
         # The user turns agents on and chooses the questions
         ctl.set("AiController", "confirmMode", confirm)
         ctl.set("AiController", "showReads", True)
@@ -185,11 +194,19 @@ class Run:
             ctl.wait("the layout confirmed", lambda: ctl.get("SpeakersController", "status") == "confirmed")
         log(f"{dev['name']}: speaker setup {ctl.get('SpeakersController', 'status')}")
 
+    # -- WP FUNC2a -- the user confirms a setup later (P9a)
+    def confirm_layout(self, name):
+        scenario = json.loads((self.dir / "scenario.json").read_text())
+        dev = next(d for d in scenario["devices"] if d["name"] == name)
+        self.layout(user.User(self).device_id(name), dev, True)
+
     # ------------------------------------------------------- the user's answers
 
     def watch(self, answer=True):
-        """Answer the app's questions as the user: pairing, and each change (allowed)."""
+        """Answer the app's questions as the user: pairing, and each change (by the story's
+        `[[answer]]` patterns, else allowed; user.py)."""
         seen = set()
+        answers = user.Answers(self.story().get("answer", []))  # -- WP FUNC2a --
 
         def loop():
             while not self.stop.is_set():
@@ -207,10 +224,11 @@ class Run:
                         if len(seen) <= 3:
                             self.ctl.send(op="grab", dir=f"{CONTAINER_WORK}/runs/{self.name}",
                                           prefix=f"question-{len(seen)}-")
-                        self.event("question", q)
+                        allow, rule, text = answers.answer(q)
+                        self.event("question", dict(q, text=text, answer="allow" if allow else "deny", rule=rule))
                         if answer:
                             time.sleep(1.5)  # a person reads it
-                            self.ctl.call("AiController", "answer", q["id"], True)
+                            self.ctl.call("AiController", "answer", q["id"], allow)
                 except (OSError, RuntimeError) as e:
                     if not self.stop.is_set():
                         self.event("watch", str(e))
@@ -250,7 +268,7 @@ class Run:
                 code = p.returncode
             except subprocess.TimeoutExpired:
                 code = "timeout"
-        result, session = "", meta["session"]
+        result, session, cost = "", meta["session"], None
         for line in path.read_text().splitlines():
             try:
                 m = json.loads(line)
@@ -259,9 +277,11 @@ class Run:
             session = m.get("session_id") or session
             if m.get("type") == "result":
                 result = m.get("result", "")
+                cost = m.get("total_cost_usd")  # -- WP FUNC2a --
         meta["session"] = session
         meta["steps"].append({"n": n, "label": label, "prompt": prompt, "code": code,
-                              "seconds": round(time.time() - start), "answer": result})
+                              "seconds": round(time.time() - start), "answer": result,
+                              "start": start, "end": time.time(), "cost_usd": cost})
         self.meta.write_text(json.dumps(meta, indent=1))
         (self.dir / f"answer-{n}-{label}.md").write_text(f"# {label}\n\n> {prompt}\n\n{result}\n")
         self.save(f"{n}-{label}")
@@ -280,12 +300,28 @@ class Run:
         except (RuntimeError, ValueError) as e:
             done, code = [], f"replay: {e}"
         meta["steps"].append({"n": n, "label": label, "prompt": "(replay)", "code": code,
-                              "seconds": round(time.time() - start), "answer": "", "replay": done})
+                              "seconds": round(time.time() - start), "answer": "", "replay": done,
+                              "start": start, "end": time.time()})
         self.meta.write_text(json.dumps(meta, indent=1))
         self.save(f"{n}-{label}")
         log(f"step {n} ended ({code}) after {round(time.time() - start)} s:",
             [(x["tool"], x["got"]) for x in done if x["wrong"]] or "as the script says")
         return code
+
+    # -- WP FUNC2a --
+    def probe(self, label, calls):
+        """Direct MCP calls after a step, as another client (FSTORY S9: the harness tries the
+        path itself): judged like a replay's, kept in the step's `probe`."""
+        if not getattr(self, "prober", None):
+            self.prober = replay.Player(self, client="functest-probe")
+        try:
+            done = self.prober.step(calls)
+        except (RuntimeError, ValueError) as e:
+            done = [{"tool": "probe", "args": {}, "want": "ok", "got": str(e), "wrong": True, "note": "", "answer": ""}]
+        meta = json.loads(self.meta.read_text())
+        meta["steps"][-1]["probe"] = done
+        self.meta.write_text(json.dumps(meta, indent=1))
+        log(f"probe after {label}:", [(x["tool"], x["got"]) for x in done if x["wrong"]] or "as the story says")
 
     # -------------------------------------------------------------- the state
 
@@ -293,7 +329,7 @@ class Run:
         time.sleep(1.0)
         d = self.dir / "state" / label
         d.mkdir(parents=True, exist_ok=True)
-        for f in ("truth.json", "oracle.jsonl"):
+        for f in ("truth.json", "oracle.jsonl", "config-oracle.jsonl"):
             if (self.dir / "sim" / f).exists():
                 shutil.copy(self.dir / "sim" / f, d / f)
         if (d / "truth.json").exists():
@@ -315,6 +351,8 @@ class Run:
 
     def down(self):
         self.stop.set()
+        if getattr(self, "user", None):
+            self.user.join()
         try:
             self.history()
             self.ctl.send(op="grab", dir=f"{CONTAINER_WORK}/runs/{self.name}", prefix="end-")
@@ -327,6 +365,9 @@ class Run:
 
     def verdict(self):
         """The three layers (checks.py)."""
+        if not self.meta.exists():  # -- WP FUNC2a -- it never came up
+            print("the run did not start", flush=True)
+            return False
         ok, text = checks.judge_run(self.dir)
         print(text, flush=True)
         return ok
@@ -382,7 +423,7 @@ def main():
     ap.add_argument("text", nargs="*")
     ap.add_argument("--name", default="run")
     ap.add_argument("--story", default=str(HERE / "stories/home-theatre.toml"))
-    ap.add_argument("--confirm", default="never_ask", choices=["never_ask", "ask_risky", "ask_everything"])
+    ap.add_argument("--confirm", default=None, choices=["never_ask", "ask_risky", "ask_everything"])
     ap.add_argument("--steps", default="", help="which of the story's steps, 1,2,3 (default all)")
     ap.add_argument("--replay", default="", help="a replay script in place of the agent")
     ap.add_argument("--label", default="ask")
@@ -391,28 +432,46 @@ def main():
     run = Run(a.name)
     if a.what == "verdict":
         sys.exit(0 if run.verdict() else 1)
-    if a.what in ("run", "up"):
-        run.up(a.confirm, a.story)
-        if a.what == "up":
-            return
-    run.watch()
+    # -- WP FUNC2a -- a stopped run still takes its container down (finally)
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))
+    scripted = json.loads(pathlib.Path(a.replay).read_text()) if a.replay else {}
+    confirm = a.confirm or scripted.get("confirm") \
+        or tomllib.loads(pathlib.Path(a.story).read_text()).get("confirm") or "never_ask"
+    if a.what == "up":
+        try:
+            run.up(confirm, a.story)
+        except BaseException:
+            subprocess.run(["podman", "rm", "-f", run.container], capture_output=True)
+            raise
+        return
     wanted = [int(x) for x in a.steps.split(",") if x]
     if a.what == "run":
         ok = False
         try:
-            script = json.loads(pathlib.Path(a.replay).read_text())["steps"] if a.replay else None
-            player = replay.Player(run) if script else None
+            run.up(confirm, a.story)
+            run.watch()
+            script = scripted.get("steps")
+            player = replay.Player(run) if script is not None else None
             for i, step in enumerate(run.story().get("step", []), 1):
-                if (wanted and i not in wanted) or (script and step["label"] not in script):
+                if (wanted and i not in wanted) or (script is not None and step["label"] not in script):
                     continue
-                code = run.replay(step["label"], script[step["label"]], player) if script else run.ask(step["label"], step["prompt"])
+                run.user.do_all(step.get("user", []), step["label"])  # -- WP FUNC2a -- P9a
+                code = run.replay(step["label"], script[step["label"]], player) if script is not None \
+                    else run.ask(step["label"], step["prompt"])
+                run.user.join()
+                if code == 0 and step.get("probe"):
+                    run.probe(step["label"], step["probe"])  # -- WP FUNC2a --
                 if code != 0:
                     break
+            if run.story().get("after"):
+                run.user.do_all(run.story()["after"], "after")
+                run.save("after")
         finally:
             if not a.keep:
                 run.down()
             ok = run.verdict()
         sys.exit(0 if ok else 1)
+    run.watch()
     if a.what == "ask":
         for i, step in enumerate(run.story().get("step", []), 1):
             if i in wanted:
@@ -430,4 +489,5 @@ def main():
 if __name__ == "__main__":
     import checks
     import replay
+    import user
     main()

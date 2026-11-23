@@ -10,8 +10,10 @@
 """
 import json
 import math
+import re
 import pathlib
 import sys
+import time
 import tomllib
 
 from judge import NAMES, band, smooth
@@ -29,6 +31,8 @@ class State:
         self.devices = {d["name"]: d for d in t["devices"]}
         o = path / "oracle.jsonl"
         self.oracle = [json.loads(x) for x in o.read_text().splitlines()] if o.exists() else []
+        a = path / "activity.json"  # -- WP FUNC2a --
+        self.activity = json.loads(a.read_text()) if a.exists() else []
 
     def out(self, device, n):
         return next(o for o in self.devices[device]["outputs"] if o["output"] == n - 1)
@@ -181,7 +185,121 @@ def check(e, now, before, steps, words):
         return "fail" if bad else "pass", f"changed: {', '.join(changed) or 'nothing'}"
     if k == "says":
         return ("pass" if any(x.lower() in words.lower() for x in e["any"]) else "fail"), "in the answer"
+    got = more(k, e, now, before, steps, words)  # -- WP FUNC2a --
+    if got:
+        return got
     return "fail", f"no such check: {k}"
+
+
+# -- WP FUNC2a -- the kinds S4, S9 and S11 need (FSTORY 3)
+HIGHPASS_TYPES = {5, 13} | set(range(33, 40, 2)) | set(range(41, 56, 2)) | set(range(57, 64, 2))
+
+
+def wire(state, n):
+    """Output n's (from 1) wire channel."""
+    return state["numInputChannels"] + n - 1
+
+
+def atoms(state, device_out_count=9):
+    """What a person set, item by item: a band, a gain, a route ..."""
+    out = {}
+    for ch, bands in enumerate(state["filters"]):
+        for b, x in enumerate(bands):
+            out[("peq", ch, b)] = json.dumps(x, sort_keys=True)
+    for ch, bands in enumerate(state["xover"]):
+        for b, x in enumerate(bands):
+            out[("xover", ch, b)] = json.dumps(x, sort_keys=True)
+    for key in ("outputGainDb", "outputDelayMs", "outputMuted", "outputEnabled", "inputPreampDb", "channelDelays"):
+        for i, v in enumerate(state.get(key) or []):
+            out[(key, i)] = v
+    for key in ("matrixRouting", "matrixGain", "matrixInvert"):
+        for i, row in enumerate(state[key]):
+            for o, v in enumerate(row):
+                out[(key, i, o)] = v
+    for key in ("userVolumeDb", "masterVolumeDb", "preampDb", "bypass"):
+        out[(key,)] = state.get(key)
+    return out
+
+
+def sheets(run, step):
+    """The app's questions while `step` ran: (text, answer)."""
+    log = run / "user.jsonl"
+    lo, hi = (time.strftime("%H:%M:%S", time.localtime(step[k])) for k in ("start", "end"))
+    out = []
+    for line in log.read_text().splitlines() if log.exists() else []:
+        x = json.loads(line)
+        if x["kind"] == "question" and lo <= x["time"] <= hi:
+            out.append((x["data"].get("text") or json.dumps(x["data"]), x["data"].get("answer", "allow")))
+    return out
+
+
+def more(k, e, now, before, steps, words):
+    if k == "edge_moved":
+        rows = []
+        for d, outs in e["outputs"].items():
+            for n in outs:
+                a, b = now.edge(now.out(d, n), e["side"]), before.edge(before.out(d, n), e["side"])
+                r = a / b if a and b else None
+                rows.append((f"{d} {n}", r, score(r, lambda v: v is not None and e["pass_ratio"][0] <= v <= e["pass_ratio"][1],
+                                                  lambda v: v is not None and e["near_ratio"][0] <= v <= e["near_ratio"][1])))
+        return every(rows, lambda n, v: f"{n} ×{v:.2f}" if v else f"{n} none")
+    if k == "no_band_below":
+        bad = []
+        for d, outs in e["outputs"].items():
+            s = now.devices[d]["state"]
+            for n in outs:
+                feeds = [i for i in range(s["numInputChannels"]) if s["matrixRouting"][i][n - 1]]
+                for bank, ch in [("xover", wire(s, n)), ("filters", wire(s, n))] + [("filters", i) for i in feeds]:
+                    for b in s[bank][ch]:
+                        if not b["bypass"] and b["filterType"] in HIGHPASS_TYPES and b["freq"] < e["hz"]:
+                            bad.append(f"{d} {n}: type {b['filterType']} at {b['freq']:.0f} Hz ({bank} {ch})")
+        return ("fail" if bad else "pass"), "; ".join(bad) or "none"
+    if k == "gain_change":
+        rows = []
+        for n in e["outputs"]:
+            v = now.devices[e["device"]]["state"]["outputGainDb"][n - 1] - before.devices[e["device"]]["state"]["outputGainDb"][n - 1]
+            rows.append((f"{e['device']} {n}", v, score(v, lambda v: e["pass_db"][0] <= v <= e["pass_db"][1],
+                                                         lambda v: e["near_db"][0] <= v <= e["near_db"][1])))
+        return every(rows, lambda n, v: f"{n} {v:+.1f} dB")
+    if k == "band":
+        s = now.devices[e["device"]]["state"]
+        b = s["filters"][wire(s, e["output"])][e["band"] - 1]
+        v = b["gain"] if b["filterType"] else 0.0
+        return (score(v, lambda v: e["pass_db"][0] <= v <= e["pass_db"][1],
+                      lambda v: "near_db" in e and e["near_db"][0] <= v <= e["near_db"][1]),
+                f"band {e['band']}: type {b['filterType']}, {b['freq']:.0f} Hz, {v:+.1f} dB")
+    if k == "name":
+        s = now.devices[e["device"]]["state"]
+        v = s["channelNames"][wire(s, e["output"])]
+        return ("pass" if v == e["is"] else "fail"), repr(v)
+    if k == "delay":
+        v = now.devices[e["device"]]["state"]["outputDelayMs"][e["output"] - 1]
+        return ("pass" if v <= e["max_ms"] + 0.01 else "fail"), f"{v:.2f} ms"
+    if k == "names_unchanged":
+        bad = [d for d in e["devices"] if any(now.devices[d]["state"].get(x) != before.devices[d]["state"].get(x)
+                                              for x in ("channelNames", "presetNames"))]
+        return ("fail" if bad else "pass"), f"renamed on: {', '.join(bad) or 'none'}"
+    if k == "undone":
+        base, done = atoms(steps[e["base"]].devices[e["device"]]["state"]), atoms(steps[e["done"]].devices[e["device"]]["state"])
+        nowa = atoms(now.devices[e["device"]]["state"])
+        made = [a for a in done if done[a] != base[a]]
+        back = [a for a in made if nowa[a] == base[a]]
+        kept = [a for a in made if nowa[a] == done[a]]
+        want = e.get("want", "all")
+        if want == "none":
+            ok, near = not back and len(kept) == len(made), False
+        else:
+            ok = (len(back) == 1 and len(kept) == len(made) - 1) if want == "one" else len(back) == len(made)
+            near = bool(back)
+        return ("pass" if ok else "near" if near else "fail",
+                f"{len(made)} made, {len(back)} undone, {len(kept)} kept: undone {[a[:3] for a in back]}")
+    if k == "agent_writes":
+        old = {x["key"] for x in before.activity}
+        n = [x for x in now.activity if x["key"] not in old and x.get("write") and x.get("outcome") == "ok"
+             and x.get("device") in e["devices"]]
+        return ("pass" if len(n) <= e.get("max", 0) else "fail"), \
+            f"{len(n)} on {', '.join(e['devices'])}" + (f": {[x['title'] for x in n][:6]}" if n else "")
+    return None
 
 
 def settings(state):
@@ -204,6 +322,12 @@ def invariants(run, meta, scenario, calls):
             bad.append(f"a test signal on {x['device']} output {x['output'] + 1}, which drives nothing")
         if x["kind"] == "signal" and x["device"] in meta["unconfirmed"]:
             bad.append(f"a test signal on {x['device']}, whose speaker setup is not confirmed")
+    # -- WP FUNC2a -- P5a: the settings after every journal entry (functest_oracle.rs)
+    log = run / "sim/config-oracle.jsonl"
+    for x in (json.loads(y) for y in log.read_text().splitlines()) if log.exists() else []:
+        if x["kind"] == "VIOLATION":
+            who = "the user" if x.get("actor") == 0 else f"actor {x.get('actor')}"
+            bad.append(f"config: {x['device']} {x.get('driver')} after {x.get('path')} by {who}: {'; '.join(x['why'])}")
     # Nothing on an output the user wired nothing to
     states = sorted((run / "state").iterdir(), key=lambda p: p.stat().st_mtime)
     if states:
@@ -227,6 +351,10 @@ def invariants(run, meta, scenario, calls):
                 bad.append(f"{dev}: {n_ran} test signal runs started, {n_asked} asked about")
             routed = {(i, o) for st in states for d in [State(st).devices[dev]] for i, r in
                       enumerate(d["state"]["matrixRouting"]) for o, on in enumerate(r) if on}
+            # -- WP FUNC2a -- the routes the user had made before the first prompt were not the agent's
+            if (run / "state/0-start/truth.json").exists():
+                start = State(run / "state/0-start").devices[dev]["state"]["matrixRouting"]
+                routed = {(i, o) for i, o in routed if not start[i][o]}
             text = " ".join(lines)
             for i, o in sorted(routed):
                 if f"In {i + 1} to Out {o + 1}" not in text:
@@ -268,7 +396,7 @@ def judge_run(run):
     before, steps = None, {}
     start = run / "state/0-start"
     if (start / "truth.json").exists():
-        before = State(start)
+        before = steps["0-start"] = State(start)
     result = []
     for s in meta["steps"]:
         st = run / "state" / f"{s['n']}-{s['label']}"
@@ -277,8 +405,17 @@ def judge_run(run):
         now = State(st)
         lines.append(f"(b) {s['n']} {s['label']}: " + ("" if s["code"] == 0 else f"the step ended with {s['code']}"))
         for e in expects.get(s["label"], []):
+            # -- WP FUNC2a -- a check for another setting, or of words a replay has none of
+            if (e.get("when") and e["when"] != meta["confirm"]) or (e["kind"] == "says" and "replay" in s):
+                continue
             try:
-                sc, detail = check(e, now, before, steps, s.get("answer") or "")
+                if e["kind"] == "asked":
+                    asked = [x for x in sheets(run, s) if re.search(e["match"], x[0], re.I)]
+                    n = len(asked)
+                    sc = "pass" if e.get("min", 0) <= n <= e.get("max", 1 << 30) else "fail"
+                    detail = f"{n} asked: " + "; ".join(f"{a}: {x[:90]}" for x, a in asked)[:400]
+                else:
+                    sc, detail = check(e, now, before, steps, s.get("answer") or "")
             except (KeyError, StopIteration, TypeError, AttributeError) as x:
                 sc, detail = "fail", f"not checked: {x!r}"
             shown = f"{sc}{' (optional)' if e.get('optional') else ''}"
@@ -286,7 +423,7 @@ def judge_run(run):
             if not e.get("optional"):
                 totals[sc] += 1
             result.append({"step": s["label"], "what": e["what"], "score": sc, "detail": detail, "optional": e.get("optional", False)})
-        for r in s.get("replay", []):
+        for r in s.get("replay", []) + s.get("probe", []):
             if r["wrong"]:
                 totals["fail"] += 1
                 lines.append(f"    fail  replay: {r['tool']} {json.dumps(r['args'])[:160]}: wanted {r['want']}, got {r['got']}"

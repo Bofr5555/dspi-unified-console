@@ -7,6 +7,9 @@ A script is {"steps": {label: [[tool, args, "ok" | "error", note?, not?], ...]}}
 the answer must not have; ["wait", {"device": d}]
 waits until that device's measuring ends, in place of an agent's polling. A measurement's id in the
 arguments is "$M1", "$M2", ...: the ones this run filed, in the order they were filed.
+-- WP FUNC2a -- ["sleep", {"s": n}] waits n seconds (a user's drag lets go meanwhile); "$USER:<device>"
+is the id of that device's newest change the user made (dspi_get_history, `mine` false, no agent).
+A script may name its `story` (a file in stories/) and its `confirm` setting.
 """
 import json
 import pathlib
@@ -77,10 +80,19 @@ def step_calls(run, step):
 class Player:
     """Plays a script through the app's relay, as an agent."""
 
-    def __init__(self, run):
+    def __init__(self, run, client="probe"):
         from probe import Agent
-        self.agent = Agent(run.name)
+        self.agent = Agent(run.name, client)
         self.ids = []
+
+    # -- WP FUNC2a --
+    def user_entry(self, device):
+        """The id of `device`'s newest change by the user (not this client's, no agent's)."""
+        kind, text = self.agent.call("dspi_get_history", device=device, n=50)
+        for e in json.loads(text).get("entries", []) if kind == "ok" else []:
+            if e.get("actor") == 0:
+                return e["id"]
+        raise RuntimeError(f"{device}: no change of the user's in the history: {str(text)[:300]}")
 
     def status(self, device, wait_s=0):
         args = {"device": device}
@@ -111,7 +123,12 @@ class Player:
                 out.append({"tool": tool, "args": args, "want": "ended", "got": f"{state}: {note}",
                             "wrong": state != "ended", "note": "", "answer": note})
                 continue
+            if tool == "sleep":
+                time.sleep(float(args["s"]))
+                continue
             text = json.dumps(args)
+            for dev in re.findall(r'"\$USER:([^"]+)"', text):
+                text = text.replace(f'"$USER:{dev}"', str(self.user_entry(dev)))
             for n in range(len(self.ids), 0, -1):
                 text = text.replace(f'"$M{n}"', json.dumps(self.ids[n - 1]))
             kind, answer = self.agent.call(tool, **json.loads(text))
