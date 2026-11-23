@@ -86,7 +86,14 @@ QJsonObject FuncTest::handle(const QJsonObject &command) {
     if (!on) return failed(QStringLiteral("no such controller"));
     const QMetaObject *meta = on->metaObject();
     if (op == QLatin1String("get") || op == QLatin1String("set")) {
-        const QByteArray name = command.value(QLatin1String("prop")).toString().toUtf8();
+        QByteArray name = command.value(QLatin1String("prop")).toString().toUtf8();
+        // -- WP FUNC2b -- "presets.startupMode": a property of the object a property holds
+        for (int dot = name.indexOf('.'); dot > 0; dot = name.indexOf('.')) {
+            on = on->property(name.left(dot).constData()).value<QObject *>();
+            if (!on) return failed(QStringLiteral("no such object"));
+            meta = on->metaObject();
+            name = name.mid(dot + 1);
+        }
         if (meta->indexOfProperty(name.constData()) < 0) return failed(QStringLiteral("no such property"));
         if (op == QLatin1String("get")) return done(on->property(name.constData()));
         return on->setProperty(name.constData(), command.value(QLatin1String("value")).toVariant())

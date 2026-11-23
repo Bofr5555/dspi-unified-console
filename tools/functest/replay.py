@@ -7,6 +7,7 @@ A script is {"steps": {label: [[tool, args, "ok" | "error", note?, not?], ...]}}
 the answer must not have; ["wait", {"device": d}]
 waits until that device's measuring ends, in place of an agent's polling. A measurement's id in the
 arguments is "$M1", "$M2", ...: the ones this run filed, in the order they were filed.
+-- WP FUNC2b -- "$SNAP:<name>" is the id of the call's device's newest snapshot of that name.
 -- WP FUNC2a -- ["sleep", {"s": n}] waits n seconds (a user's drag lets go meanwhile); "$USER:<device>"
 is the id of that device's newest change the user made (dspi_get_history, `mine` false, no agent).
 A script may name its `story` (a file in stories/) and its `confirm` setting.
@@ -94,6 +95,15 @@ class Player:
                 return e["id"]
         raise RuntimeError(f"{device}: no change of the user's in the history: {str(text)[:300]}")
 
+    # -- WP FUNC2b --
+    def snapshot(self, device, name):
+        """The id of `device`'s newest snapshot called `name`."""
+        kind, text = self.agent.call("dspi_list_snapshots", device=device)
+        found = [x for x in json.loads(text).get("snapshots", []) if x.get("snapshot_name") == name] if kind == "ok" else []
+        if not found:
+            raise RuntimeError(f"{device}: no snapshot {name!r}: {str(text)[:300]}")
+        return max(found, key=lambda x: x.get("saved_ms", 0))["id"]
+
     def status(self, device, wait_s=0):
         args = {"device": device}
         if wait_s:
@@ -133,6 +143,8 @@ class Player:
             text = json.dumps(args)
             for dev in re.findall(r'"\$USER:([^"]+)"', text):
                 text = text.replace(f'"$USER:{dev}"', str(self.user_entry(dev)))
+            for name in re.findall(r'"\$SNAP:([^"]+)"', text):  # -- WP FUNC2b --
+                text = text.replace(f'"$SNAP:{name}"', json.dumps(self.snapshot(args["device"], name)))
             for n in range(len(self.ids), 0, -1):
                 text = text.replace(f'"$M{n}"', json.dumps(self.ids[n - 1]))
             kind, answer = self.agent.call(tool, **json.loads(text))

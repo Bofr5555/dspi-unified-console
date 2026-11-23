@@ -138,7 +138,10 @@ class Run:
         log("the app starts in", self.container)
         ctl = self.ctl
         ctl.wait("the app's socket", lambda: ctl.get("AiController", "port"), 60)
-        ctl.set("LayoutController", "layout", "modern")
+        # -- WP FUNC2b -- Modern unless the story or --layout says Classic (FSTORY S15)
+        layout = os.environ.get("FUNCTEST_LAYOUT") or self.story().get("layout") or "modern"
+        ctl.set("LayoutController", "layout", layout)
+        ctl.wait(f"the {layout} layout", lambda: ctl.get("LayoutController", "layout") == layout)
         scenario = json.loads((self.dir / "scenario.json").read_text())
         for i, dev in enumerate(scenario["devices"]):
             ctl.call("DeviceRegistry", "openDemo")
@@ -166,6 +169,7 @@ class Run:
         ctl.wait("AI agents on", lambda: ctl.get("AiController", "running"))
         log("AI agents on:", ctl.get("AiController", "addresses"), "questions:", confirm)
         self.meta.write_text(json.dumps({"name": self.name, "confirm": confirm, "unconfirmed": unconfirmed,
+                                         "layout": layout,  # -- WP FUNC2b --
                                          "devices": devices, "session": None, "steps": []}, indent=1))
         (self.dir / "agent/mcp.json").write_text(json.dumps({"mcpServers": {"dspi": {
             "command": "podman", "args": ["exec", "-i", self.container,
@@ -363,6 +367,10 @@ class Run:
                 (d / f"config-{dev['name']}.json").write_text(json.dumps(dev["state"], indent=1))
         activity = self.ctl.get("AiController", "activity")
         (d / "activity.json").write_text(json.dumps(activity, indent=1))
+        # -- WP FUNC2b -- the shown device's presets, snapshots and names as the app shows them
+        (d / "app.json").write_text(json.dumps(self.app_view(), indent=1))
+        for f in self.dir.glob("app-*.json") if label == "end" else []:
+            shutil.copy(f, d / f.name)
         subprocess.run([sys.executable, str(HERE / "judge.py"), str(d), str(self.dir / "scenario.json")],
                        stdout=open(d / "judge.txt", "w"))
 
@@ -373,6 +381,28 @@ class Run:
             name = d.get("title") or d.get("label") or d["id"]
             (self.dir / f"history-{name}.json").write_text(
                 json.dumps(self.ctl.get("HistoryController", "entries"), indent=1))
+            (self.dir / f"app-{name}.json").write_text(json.dumps(self.app_view(), indent=1))  # -- WP FUNC2b --
+
+    # -- WP FUNC2b --
+    def app_view(self):
+        """The shown device as the app shows it: preset slots (from 0; "Empty", "Preset n" or the
+        name, "*" on the active one while unsaved), start-up, snapshots, A/B, names."""
+        ctl, v = self.ctl, {}
+        try:
+            v["device"] = next((d.get("title") or d.get("label") for d in ctl.get("DeviceRegistry", "devices")
+                                if d.get("active")), None)
+            v["deviceName"] = ctl.get("NamesController", "deviceName")
+            v["presets"] = [ctl.call("SidebarController", "presetTitle", i) for i in range(10)]
+            v["occupied"] = [ctl.call("SidebarController", "presetOccupied", i) for i in range(10)]
+            for k in ("activeSlot", "startupMode", "defaultSlot"):
+                v[k] = ctl.get("DeviceModel", f"presets.{k}")
+            v["unsaved"] = ctl.get("SidebarController", "unsaved")
+            v["sources"] = ctl.get("NamesController", "sources")
+            v["snapshots"] = ctl.get("SnapshotsController", "snapshots")
+            v["ab"] = {k: ctl.get("SnapshotsController", k) for k in ("abActive", "abSide", "abAName", "abBName")}
+        except (OSError, RuntimeError) as e:
+            v["error"] = str(e)
+        return v
 
     def down(self):
         self.stop.set()
@@ -453,7 +483,10 @@ def main():
     ap.add_argument("--replay", default="", help="a replay script in place of the agent")
     ap.add_argument("--label", default="ask")
     ap.add_argument("--keep", action="store_true", help="leave the app running")
+    ap.add_argument("--layout", choices=["modern", "classic"], help="the app's layout (default: the story's, else modern)")
     a = ap.parse_args()
+    if a.layout:  # -- WP FUNC2b --
+        os.environ["FUNCTEST_LAYOUT"] = a.layout
     run = Run(a.name)
     if a.what == "verdict":
         sys.exit(0 if run.verdict() else 1)
