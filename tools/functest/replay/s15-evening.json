@@ -215,52 +215,16 @@
     "dspi_preset_save",
     {
      "device": "demo:1",
-     "slot": 1
-    },
-    "ok"
-   ],
-   [
-    "dspi_preset_rename",
-    {
-     "device": "demo:1",
      "slot": 1,
-     "name": "Film night"
+     "name": "Film night",
+     "devices": [
+      "demo:1",
+      "demo:2",
+      "demo:3"
+     ]
     },
-    "ok"
-   ],
-   [
-    "dspi_preset_save",
-    {
-     "device": "demo:1",
-     "slot": 2
-    },
-    "ok"
-   ],
-   [
-    "dspi_preset_rename",
-    {
-     "device": "demo:1",
-     "slot": 2,
-     "name": "Day"
-    },
-    "ok"
-   ],
-   [
-    "dspi_preset_save",
-    {
-     "device": "demo:2",
-     "slot": 1
-    },
-    "ok"
-   ],
-   [
-    "dspi_preset_rename",
-    {
-     "device": "demo:2",
-     "slot": 1,
-     "name": "Film night"
-    },
-    "ok"
+    "ok",
+    "one question for the three devices, the name in it (owner 2026-11-23, INTI)"
    ],
    [
     "dspi_apply_changes",
@@ -295,59 +259,23 @@
    [
     "dspi_preset_save",
     {
-     "device": "demo:2",
-     "slot": 2
-    },
-    "ok"
-   ],
-   [
-    "dspi_preset_rename",
-    {
-     "device": "demo:2",
+     "device": "demo:1",
      "slot": 2,
-     "name": "Day"
+     "name": "Day",
+     "devices": [
+      "demo:1",
+      "demo:2",
+      "demo:3"
+     ]
     },
-    "ok"
+    "ok",
+    "one question again"
    ],
    [
     "dspi_preset_load",
     {
      "device": "demo:2",
      "slot": 1
-    },
-    "ok"
-   ],
-   [
-    "dspi_preset_save",
-    {
-     "device": "demo:3",
-     "slot": 1
-    },
-    "ok"
-   ],
-   [
-    "dspi_preset_rename",
-    {
-     "device": "demo:3",
-     "slot": 1,
-     "name": "Film night"
-    },
-    "ok"
-   ],
-   [
-    "dspi_preset_save",
-    {
-     "device": "demo:3",
-     "slot": 2
-    },
-    "ok"
-   ],
-   [
-    "dspi_preset_rename",
-    {
-     "device": "demo:3",
-     "slot": 2,
-     "name": "Day"
     },
     "ok"
    ]

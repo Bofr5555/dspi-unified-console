@@ -8,18 +8,11 @@
     "dspi_preset_save",
     {
      "device": "demo:2",
-     "slot": 1
-    },
-    "ok"
-   ],
-   [
-    "dspi_preset_rename",
-    {
-     "device": "demo:2",
      "slot": 1,
      "name": "Movie night"
     },
-    "ok"
+    "ok",
+    "one question names it (owner 2026-11-23, INTI)"
    ],
    [
     "dspi_preset_set_startup",
@@ -73,18 +66,11 @@
     "dspi_preset_save",
     {
      "device": "demo:2",
-     "slot": 2
-    },
-    "ok"
-   ],
-   [
-    "dspi_preset_rename",
-    {
-     "device": "demo:2",
      "slot": 2,
      "name": "Late night"
     },
-    "ok"
+    "ok",
+    "one question names it (owner 2026-11-23, INTI)"
    ],
    [
     "dspi_snapshot_capture",

@@ -232,3 +232,79 @@ fn wp_inti_an_eq_boost_on_an_unprotected_tweeter_is_refused() {
         }
     }
 }
+
+/// Owner 2026-11-23 (FUNC2b/c question 3): an agent's save asks one question
+/// that names the preset (no rename question after it), and a save across
+/// several devices asks one question for all of them.
+#[test]
+fn wp_inti_a_named_save_on_several_devices_is_one_question() {
+    let (set, core) = demo("inti-save");
+    let other_id = set.open(dspi_core::DeviceTarget::Demo).unwrap();
+    let other = set.core(&other_id).unwrap();
+    other.fetch_all().unwrap();
+    let here = set
+        .list()
+        .into_iter()
+        .find(|d| d.id != other_id)
+        .unwrap()
+        .id;
+    let mut s = server_of(&set, ConfirmMode::AskEverything);
+    let c = s.connect();
+    let r = crate::tests_wp_ffix::call(
+        &mut s,
+        c,
+        "dspi_preset_save",
+        json!({"device": here.as_str(), "slot": 3, "name": "Film night",
+               "devices": [here.as_str(), other_id.as_str()]}),
+    );
+    let id = r["structuredContent"]["confirmation_id"].as_u64().unwrap();
+    let sheet = s.confirmation(id).unwrap();
+    assert_eq!(sheet.risks.len(), 1, "{:?}", sheet.risks);
+    let what = &sheet.risks[0].what;
+    assert!(
+        what.contains("preset 4")
+            && what.contains("\u{201c}Film night\u{201d}")
+            && what.contains("on 2 devices"),
+        "{what}"
+    );
+    s.answer_confirmation(id, true, 1_000).unwrap();
+    let w = ok(
+        &mut s,
+        c,
+        "dspi_get_confirmation",
+        json!({"confirmation_id": id}),
+    );
+    assert_eq!(w["result"]["isError"], json!(false), "{w}");
+    assert!(s.waiting_confirmations().is_empty(), "no second question");
+    for core in [&core, &other] {
+        let st = core.get_state();
+        assert!(st.preset_occupied >> 3 & 1 == 1, "slot 4 saved");
+        assert_eq!(st.preset_names[3], "Film night");
+        assert_eq!(st.active_preset_slot, 3);
+    }
+    // One device, named: one question too.
+    let r = crate::tests_wp_ffix::call(
+        &mut s,
+        c,
+        "dspi_preset_save",
+        json!({"device": here.as_str(), "slot": 4, "name": "Day"}),
+    );
+    let id = r["structuredContent"]["confirmation_id"].as_u64().unwrap();
+    assert_eq!(s.confirmation(id).unwrap().risks.len(), 1);
+    s.answer_confirmation(id, true, 1_000).unwrap();
+    ok(
+        &mut s,
+        c,
+        "dspi_get_confirmation",
+        json!({"confirmation_id": id}),
+    );
+    assert_eq!(core.get_state().preset_names[4], "Day");
+    // A device that is not open: refused before anything is asked.
+    let e = err(
+        &mut s,
+        c,
+        "dspi_preset_save",
+        json!({"device": here.as_str(), "slot": 5, "devices": ["demo:99"]}),
+    );
+    assert!(e.contains("no open device"), "{e}");
+}

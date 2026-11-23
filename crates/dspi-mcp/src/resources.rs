@@ -83,7 +83,9 @@ device the app shows is used. A device that is not open may be a known one
   replaces many settings at once and ends the undo history: it may be held for the user, a
   snapshot is filed first (`before_snapshot_id`, the way back), and one that would lower a
   tweeter's high-pass is refused. On a device that saves the master volume with each preset,
-  a preset load and revert to saved are refused: ask the user to load it in the app. Saving to the device's flash may be held too. Turning on an
+  a preset load and revert to saved are refused: ask the user to load it in the app. Saving to the device's flash may be held too. Name a preset
+  in the save itself (`dspi_preset_save` with `name`) and save several devices in one call
+  (`devices`): the user then answers one question, not one per device and one per rename. Turning on an
   effect that adds level (loudness, psychoacoustic bass, the subharmonic synth, a leveller with
   gain) is treated as louder.
 

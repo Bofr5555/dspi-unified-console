@@ -591,21 +591,176 @@ static PRESET_SAVE: Tool = Tool {
     name: "dspi_preset_save",
     title: "Save to a preset",
     description: "Save the device's settings to preset `slot` (written to the device's flash; \
-                  the slot becomes the active one). It may be held for the user's confirmation.",
+                  the slot becomes the active one). With `name`, the preset is named in the \
+                  same step; with `devices` (device ids, this one among them), each of those \
+                  devices saves its own settings to that slot under that name. One question \
+                  covers it all: name the preset here, not with dspi_preset_rename after, and \
+                  save several devices in one call. It may be held for the user's confirmation.",
     class: ToolClass::Write,
     device: true,
-    input_schema: || slot_schema(&["slot"]),
+    input_schema: || {
+        // -- WP INTI -- (owner 2026-11-23, FUNC2b/c answer 3) one question per save
+        let mut m = Map::new();
+        m.insert(
+            "slot".into(),
+            json!({"type": "integer", "minimum": 0, "maximum": MAX_PRESETS - 1,
+                   "description": "A preset slot, from 0 (dspi_list_presets)"}),
+        );
+        m.insert(
+            "name".into(),
+            json!({"type": "string", "description": "The preset's name (cut to 31 bytes)"}),
+        );
+        m.insert(
+            "devices".into(),
+            json!({"type": "array", "items": {"type": "string"}, "maxItems": 16,
+                   "description": "Every device to save on (ids from dspi_list_devices); \
+                                   default: this one"}),
+        );
+        schema(m, &["slot"])
+    },
     output_schema: object_schema,
     handler: |call, args| {
         let slot = slot_arg(args, "slot")?;
-        let what = format!("Save the settings to preset {} (flash)", slot_word(slot));
-        let token = flash(call, ConfirmOp::SavePreset, &what, &[slot])?;
-        call.core()?
-            .save_preset_confirmed(slot, Some(token))
-            .map_err(|e| policy::core_error(&call.judging, e))?;
-        Ok(json!({"ok": true, "device": call.device_text(), "slot": slot}))
+        let name = args
+            .get("name")
+            .and_then(Value::as_str)
+            .map(untrusted::name)
+            .filter(|n| !n.trim().is_empty());
+        let targets = save_targets(call, args)?;
+        let named = name
+            .as_ref()
+            .map(|n| format!(" as \u{201c}{n}\u{201d}"))
+            .unwrap_or_default();
+        let on = if targets.len() > 1 {
+            format!(
+                " on {} devices ({})",
+                targets.len(),
+                targets
+                    .iter()
+                    .map(|(_, label, _)| label.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        } else {
+            String::new()
+        };
+        let what = format!(
+            "Save the settings to preset {}{named}{on} (flash)",
+            slot_word(slot)
+        );
+        let ix = [slot, u8::try_from(targets.len()).unwrap_or(u8::MAX)];
+        let token = flash(call, ConfirmOp::SavePreset, &what, &ix)?;
+        let mut rows = Vec::with_capacity(targets.len());
+        let mut failed = Vec::new();
+        for (id, label, core) in &targets {
+            let done = match core {
+                // This call's device: under the call's own judgement
+                None => save_named(call.core()?, slot, name.as_deref(), Some(token.clone())),
+                // Another unit: as the agent, the question above covers it
+                Some(core) => {
+                    let _scope = ActorScope::enter(core, call.actor, None);
+                    let t = core.confirm_token(ConfirmOp::SavePreset);
+                    save_named(core, slot, name.as_deref(), Some(t))
+                }
+            };
+            match done {
+                Ok(()) => rows.push(json!({"device": id, "ok": true})),
+                Err(e) => {
+                    let e = policy::core_error(&call.judging, e);
+                    failed.push(format!("{label}: {}", e.0));
+                    rows.push(json!({"device": id, "ok": false, "error": e.0}));
+                }
+            }
+        }
+        if targets.len() == 1 {
+            if let Some(why) = failed.pop() {
+                return Err(ToolError::new(
+                    why.split_once(": ")
+                        .map_or(why.clone(), |(_, w)| w.to_owned()),
+                ));
+            }
+            let mut r = json!({"ok": true, "device": call.device_text(), "slot": slot});
+            if let Some(n) = &name {
+                merge(&mut r, json!({"preset_name": n}));
+            }
+            return Ok(r);
+        }
+        if rows.iter().all(|r| r["ok"] == json!(false)) {
+            return Err(ToolError::new(format!(
+                "nothing was saved: {}",
+                failed.join("; ")
+            )));
+        }
+        Ok(
+            json!({"ok": failed.is_empty(), "device": call.device_text(), "slot": slot,
+                  "preset_name": name, "devices": rows}),
+        )
     },
 };
+
+// -- WP INTI --
+/// Save to `slot` on `core` with `token`, then name it.
+fn save_named(
+    core: &DspiCore,
+    slot: u8,
+    name: Option<&str>,
+    token: Option<String>,
+) -> dspi_core::Result<()> {
+    core.save_preset_confirmed(slot, token)?;
+    if let Some(n) = name {
+        core.set_preset_name(slot, n.to_owned())?;
+    }
+    Ok(())
+}
+
+/// A device a save goes to: its id, its label, its core (`None`: this call's).
+type SaveTarget = (String, String, Option<std::sync::Arc<DspiCore>>);
+
+// -- WP INTI --
+/// The devices `dspi_preset_save` saves on: (id, label, the core when it is
+/// not this call's), this call's device first. Refused, before anything is
+/// asked, for an id that is no open device.
+fn save_targets(call: &Call<'_>, args: &Map<String, Value>) -> Result<Vec<SaveTarget>, ToolError> {
+    let here = call.device_text();
+    let label_of = |id: &str| {
+        call.devices
+            .iter()
+            .find(|d| d.open.id.as_str() == id)
+            .map(|d| untrusted::name(&d.open.label))
+            .unwrap_or_else(|| id.to_owned())
+    };
+    let mut out = vec![(here.clone(), label_of(&here), None)];
+    let Some(list) = args.get("devices") else {
+        return Ok(out);
+    };
+    let list = list
+        .as_array()
+        .ok_or_else(|| ToolError::new("`devices` must be a list of device ids"))?;
+    let set = call.set;
+    for v in list {
+        let id = v
+            .as_str()
+            .ok_or_else(|| ToolError::new("`devices` must be a list of device ids"))?;
+        if id == here || out.iter().any(|(i, _, _)| i == id) {
+            continue;
+        }
+        let core = set
+            .and_then(|set| {
+                set.list()
+                    .into_iter()
+                    .find(|d| d.id.as_str() == id)
+                    .and_then(|d| set.core(&d.id))
+            })
+            .ok_or_else(|| {
+                ToolError::new(format!(
+                    "{} is no open device (dspi_list_devices); nothing was saved",
+                    untrusted::clean(id, 64)
+                ))
+            })?;
+        out.push((id.to_owned(), label_of(id), Some(core)));
+    }
+    Ok(out)
+}
 
 static PRESET_COPY: Tool = Tool {
     name: "dspi_preset_copy",

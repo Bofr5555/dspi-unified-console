@@ -79,6 +79,20 @@ this as a preset called 'Movie night' (in a free slot) and make it the one it lo
   kind = "preset_shown"
   device = "Centre"
 
+  # -- WP INTI -- (owner 2026-11-23, FUNC2b/c answer 3) one question per save, the name in it
+  [[step.expect]]
+  what = "one question for the save, the name in it (no separate rename question)"
+  kind = "asked"
+  match = "Save the settings to preset"
+  min = 1
+  max = 1
+
+  [[step.expect]]
+  what = "no rename question after the save"
+  kind = "asked"
+  match = "Rename preset"
+  max = 0
+
 [[step]]
 label = "late-night"
 prompt = """
@@ -126,6 +140,20 @@ Make a 'Late night' version in the next slot: sub 6 dB down, centre 2 dB up, and
   what = "the app's preset box names the preset the device is on"
   kind = "preset_shown"
   device = "Centre"
+
+  # -- WP INTI -- (owner 2026-11-23, FUNC2b/c answer 3) one question per save, the name in it
+  [[step.expect]]
+  what = "one question for the save, the name in it (no separate rename question)"
+  kind = "asked"
+  match = "Save the settings to preset"
+  min = 1
+  max = 1
+
+  [[step.expect]]
+  what = "no rename question after the save"
+  kind = "asked"
+  match = "Rename preset"
+  max = 0
 
 [[step]]
 label = "compare"

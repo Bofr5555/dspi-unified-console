@@ -223,6 +223,13 @@ prompt = "Save tonight's settings as 'Film night' and make a 'Day' preset with e
   hz = [1600, 3200]
   near = 0.25
 
+  # -- WP INTI -- (owner 2026-11-23, FUNC2b/c answer 3) a save across the devices is one question
+  [[step.expect]]
+  what = "one question per preset for all three devices, the name in it (no rename questions)"
+  kind = "asked"
+  match = "Save the settings to preset|Rename preset"
+  max = 2
+
 [[step]]
 label = "summary"
 prompt = "What did you change today, in plain words? And what would you still recommend?"
