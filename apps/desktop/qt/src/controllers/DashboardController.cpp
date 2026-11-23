@@ -234,6 +234,15 @@ void DashboardController::onMeters() {
     }
 }
 
+// -- WP AIVIS -- an agent cleared the device's clip flags
+void DashboardController::clipsCleared() {
+    const std::shared_ptr<State> st = state();
+    if (!st->clipLatched) return;
+    st->clipLatched = 0;
+    st->lastClip.invalidate();
+    emit clipLatchedChanged();
+}
+
 void DashboardController::onRunning() {
     if (m_ctx.poller && m_ctx.poller->running()) {
         m_staleTimer.start(staleAfterMs());

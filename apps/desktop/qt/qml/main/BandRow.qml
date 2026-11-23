@@ -342,4 +342,7 @@ Rectangle {
 
     Accessible.role: Accessible.Row
     Accessible.name: what
+
+    // -- WP AIVIS -- an agent changed it just now
+    AiTouched { objectName: row.objectName + ".touched"; path: "eq."; indices: [row.channel, row.band + (row.crossover ? 20 : 0)] }
 }

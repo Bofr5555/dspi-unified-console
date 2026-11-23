@@ -6,6 +6,7 @@
 #include "CoreWorker.h"
 #include "DeviceModel.h"
 #include "DeviceSession.h"   // -- WP MDQT2b --
+#include "DeviceRegistry.h"   // -- WP AIVIS --
 #include "FilesController.h"
 #include "HubFeed.h"   // -- WP P2QT --
 #include "NoticeCenter.h"
@@ -814,4 +815,32 @@ void SnapshotsController::recallFromHub(const QString &id) {
                   if (notes.isEmpty()) notices->post(text);
                   else notices->post(text + QLatin1Char(' ') + notes.join(QLatin1Char(' ')), QStringLiteral("warning"));
               });
+}
+
+// ---- -- WP AIVIS -- Beside an AI agent ----------------------------------------------------------
+
+void SnapshotsController::agentCalled(const QString &device, const QString &tool, bool write) {
+    if (!write) return;
+    DeviceSession *on = m_ctx.registry->session(device);
+    if (!on) return;
+    if (on == m_ctx.activeSession()) {
+        static const QStringList filing{ QStringLiteral("snapshot_"), QStringLiteral("preset_"), QStringLiteral("_import"), QStringLiteral("autoeq_apply"),
+                                         QStringLiteral("tune_"), QStringLiteral("revert_to_saved"), QStringLiteral("ab_") };
+        const bool files = std::any_of(filing.cbegin(), filing.cend(), [&](const QString &f) { return tool.contains(f); });
+        if (files) {
+            reload();
+            reloadAb();
+        }
+        return;   // the guard is read with every write (AiController)
+    }
+    // A preview it began there is marked and its end is said, as the user's own is
+    static const QStringList guards{ QStringLiteral("dspi_apply_changes"), QStringLiteral("dspi_tune_apply"), QStringLiteral("dspi_autoeq_apply"),
+                                     QStringLiteral("dspi_config_import"), QStringLiteral("dspi_snapshot_recall"), QStringLiteral("dspi_filters_import") };
+    if (!guards.contains(tool)) return;
+    on->worker()->call(
+        this, [](FfiCore *c) { return object(readSized([c](char *b, uint32_t n) { return dspi_apply_status(c, b, n); })); },
+        [this, session = QPointer<DeviceSession>(on)](const QJsonObject &o) {
+            const QString phase = o.value(QLatin1String("phase")).toString();
+            if (session && isOk(o) && phase == QLatin1String("waiting")) drive(session);
+        });
 }

@@ -125,6 +125,7 @@ Panel {
 
         ToolHeader {
             objectName: "TubeWindow.header"
+            touchPath: "tube."   // -- WP AIVIS --
             Layout.fillWidth: true
             iconName: "tube"
             title: qsTr("Tube Modeller")

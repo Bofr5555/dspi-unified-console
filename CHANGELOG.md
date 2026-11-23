@@ -5,6 +5,14 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
 ## Unreleased
 
 ### Desktop (Qt)
+- The screen always shows what an AI agent does: a strip under the top bar (both layouts) names the agent, what it does now
+  and on which device, with Pause and Stop; the AI button, Classic's robot and the tray icon show that it works; what it
+  changed is marked for a moment, with a notice and Undo. The snapshot list, the A/B compare, the auto-tune, the units'
+  alignment, control surfaces and output latency follow an agent's change at once. (WP AIVIS)
+- An AI agent is told when you step in, with its next call: what you changed, undid, loaded, opened, stopped or paused. A
+  control you take back from it is refused to it until it asks; a setting you change while its measurement runs stops it.
+  Pause is told to it as a pause, not as an error. After turning agents off and on again, their measurement requests are
+  taken again. (WP AIVIS)
 - Clicking or tabbing into a number in the band list, the output's control strip, an input's preamp or the band bar
   under the graph selects all its text, so typing replaces the value; a second click places the cursor. (WP QTTWEAK)
 - The "Filter Response" heading above the graph is gone; the graph takes its space (screen readers still name it).

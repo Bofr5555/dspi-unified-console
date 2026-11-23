@@ -11,6 +11,7 @@
 #include <QTimer>
 #include <QVariantList>
 #include <QtQml/qqmlregistration.h>
+#include <functional>
 
 #include "Registrar.h"
 
@@ -54,6 +55,14 @@ public:
 
     // kind: "info", "warning" or "error"
     Q_INVOKABLE void post(const QString &text, const QString &kind = QStringLiteral("info"));
+
+    // -- WP AIVIS -- An "info" notice with a button (`action`, "" for none; `run` is
+    // called once, then the notice goes). One with the same tag on show is replaced
+    // in place and its time starts again.
+    void postTagged(const QString &tag, const QString &text, const QString &action, std::function<void()> run);
+    // The tag of the notice on show, "" for none
+    QString tag() const { return m_current.value(QStringLiteral("tag")).toString(); }
+    Q_INVOKABLE void act();
 
     // -- WP P1QT2 -- The core's notice table (P1NT, `dspi_notice_texts`, read
     // once: no handle, no I/O). A row by key: { key, kind, title, reason,
@@ -100,6 +109,7 @@ private:
     QVariantMap m_last;
     QVariantList m_queue;
     QTimer m_timer;
+    QHash<int, std::function<void()>> m_actions;   // -- WP AIVIS -- by serial
     int m_serial = 0;
     QHash<QString, QVariantMap> m_rows;   // -- WP P1QT2 -- the core's notice table
     // -- WP P2QT --

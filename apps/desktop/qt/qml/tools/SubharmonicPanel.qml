@@ -37,6 +37,7 @@ Panel {
 
         ToolHeader {
             objectName: "SubharmonicWindow.header"
+            touchPath: "sub."   // -- WP AIVIS --
             Layout.fillWidth: true
             iconName: "waves-arrow-down"
             title: qsTr("Subharmonic Synthesizer")

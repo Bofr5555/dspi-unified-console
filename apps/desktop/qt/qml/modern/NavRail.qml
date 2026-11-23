@@ -134,6 +134,8 @@ Rectangle {
             }
         }
         onClicked: rail.chosen(modelData.id)
+        // -- WP AIVIS -- an agent changed something in it, on show or not
+        AiTouched { objectName: button.objectName + ".touched"; section: button.modelData.id }
         HelpTip {
             text: button.enabled ? "" : qsTr("This is an audio link sender. It has no DSP.")
             visible: button.hovered && text.length > 0

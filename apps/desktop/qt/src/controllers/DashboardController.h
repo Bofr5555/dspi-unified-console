@@ -84,6 +84,8 @@ public:
     // The stale threshold for the current transport, ms
     int staleAfterMs() const;
 
+    void clipsCleared();   // -- WP AIVIS --
+
 signals:
     void cardsChanged();
     void cardsPerRowChanged();

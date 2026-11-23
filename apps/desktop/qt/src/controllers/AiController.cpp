@@ -1,16 +1,24 @@
 #include "AiController.h"
 
 #include "AutoEqController.h"
+// -- WP AIVIS --
+#include "CsController.h"
+#include "DashboardController.h"
+#include "MonitorController.h"
+#include "OutputLatencyController.h"
+#include "ToolsController.h"
 #include "Core.h"
 #include "DeviceModel.h"
 #include "DeviceRegistry.h"
 #include "DeviceSession.h"
 #include "FilesController.h"
+#include "MeasureController.h"   // -- WP AIVIS --
 #include "NoticeCenter.h"
 #include "SessionModel.h"
 #include "SettingsController.h"
 #include "Shell.h"
 #include "SnapshotsController.h"
+#include "UnitsMeasureController.h"   // -- WP AIVIS --
 #include "Snapshot.h"
 
 #include "AppIdentity.h"
@@ -24,6 +32,7 @@
 #include <QJsonDocument>
 #include <QLocale>
 #include <QMetaMethod>   // -- WP MCP5 --
+#include <QRegularExpression>   // -- WP AIVIS --
 #include <QSaveFile>
 #include <QSettings>
 #include <QStandardPaths>
@@ -34,6 +43,8 @@
 
 static const Registrar::Controller<AiController> aiController;
 static const Registrar::Window aiWindow("device.aiAgents", "AiAgentsWindow");
+// -- WP AIVIS -- what an agent does now: the first strip in both layouts
+static const Registrar::Banner aiWorkBanner("AiWorkBanner", 1, Registrar::Blocking);
 // Settings > AI Agents (Application, after Networking)
 static const SettingsRegistry::Page aiPage{
     "ai", SettingsRegistry::Application, 47, QT_TRANSLATE_NOOP("SettingsPages", "AI Agents"), "bot", "AiAgentsPage",
@@ -120,6 +131,12 @@ AiController::AiController(const AppContext &ctx, QObject *parent) : QObject(par
     connect(&m_readSoon, &QTimer::timeout, this, &AiController::readActivity);
     connect(&m_readSoon, &QTimer::timeout, this, &AiController::readAgents);   // -- WP LAY8 --
     connect(ctx.registry, &DeviceRegistry::devicesChanged, this, &AiController::onDevices);
+    // -- WP AIVIS --
+    m_workTimer.setInterval(500);
+    connect(&m_workTimer, &QTimer::timeout, this, &AiController::refreshWork);
+    connect(this, &AiController::stateChanged, this, &AiController::refreshWork);
+    connect(this, &AiController::confirmationsChanged, this, &AiController::refreshWork);
+    connect(ctx.registry, &DeviceRegistry::devicesChanged, this, &AiController::refreshWork);
     // It must stop before the set is freed, which main() does after the event loop
     connect(QCoreApplication::instance(), &QCoreApplication::aboutToQuit, this, &AiController::shutdown);
     if (m_enabled) QTimer::singleShot(0, this, &AiController::reconcile);
@@ -138,6 +155,7 @@ void AiController::shutdown() {
     m_shutDown = true;
     m_tick.stop();
     m_readSoon.stop();
+    m_workTimer.stop();   // -- WP AIVIS --
     m_thread.waitForDone();
     if (!m_mcp) return;
     // Waits for a call in progress; puts the agents' timed previews back
@@ -171,6 +189,8 @@ void AiController::eventThunk(const char *json, void *self) {
     auto *ai = static_cast<AiController *>(self);
     const QJsonObject event = parse(QByteArray(json));
     if (str(event, "event") == QLatin1String("activity") && ai->m_callQueued.exchange(true)) return;
+    // -- WP AIVIS --
+    if (str(event, "event") == QLatin1String("work") && ai->m_workQueued.exchange(true)) return;
     QMetaObject::invokeMethod(ai, [ai, event] { ai->onEvent(event); }, Qt::QueuedConnection);
 }
 
@@ -192,6 +212,10 @@ void AiController::onEvent(const QJsonObject &event) {
         if (event.value(QLatin1String("id")) == m_pairing.value(QLatin1String("id"))) setPairing({});
     } else if (what == QLatin1String("measureRequests")) {
         takeMeasureRequests();   // -- WP MCP5 --
+        readMeasureLog();        // -- WP AIVIS --
+    } else if (what == QLatin1String("work")) {   // -- WP AIVIS --
+        m_workQueued = false;
+        readWork();
     }
 }
 
@@ -311,6 +335,8 @@ void AiController::startServer() {
                 return;
             }
             m_running = true;
+            m_endedJobs.clear();   // -- WP AIVIS -- a run's requests count from 1
+            m_measureTaken.clear();
             m_lastError.clear();
             m_addresses.clear();
             for (const QJsonValue &a : reply.value(QLatin1String("addresses")).toArray()) m_addresses << a.toString();
@@ -332,6 +358,7 @@ void AiController::stopServer() {
                  m_waiting.clear();
                  m_answered.clear();
                  m_lastCall = QDateTime();
+                 m_work = QJsonObject();   // -- WP AIVIS --
                  setAgents({});   // -- WP LAY8 --
                  setPairing({});
                  emit confirmationsChanged();
@@ -672,6 +699,18 @@ void AiController::readActivity() {
                  if (!isOk(reply)) return;
                  m_activity = reply.value(QLatin1String("value")).toArray();
                  emit activityChanged();
+                 // -- WP AIVIS -- what is new in it
+                 QList<QJsonObject> fresh;
+                 for (const QJsonValue &v : std::as_const(m_activity)) {
+                     const QJsonObject e = v.toObject();
+                     const qint64 run = e.value(QLatin1String("run")).toInteger();
+                     const qint64 id = e.value(QLatin1String("id")).toInteger();
+                     if (run < m_activityRun || (run == m_activityRun && id <= m_activityId)) continue;
+                     m_activityRun = run;
+                     m_activityId = id;
+                     fresh.append(e);
+                 }
+                 if (!fresh.isEmpty()) tell(fresh);
                  // A write may have begun, kept or reverted a timed preview: the
                  // safe apply's banner reads it again
                  QString newest;
@@ -681,6 +720,7 @@ void AiController::readActivity() {
                  }
                  if (newest == m_lastWrite) return;
                  m_lastWrite = newest;
+                 // -- WP AIVIS -- (agentCalled reads more; this one covers what ended by itself)
                  if (auto *snapshots = Registrar::instance<SnapshotsController>()) snapshots->readGuard();
              });
 }
@@ -810,6 +850,320 @@ void AiController::exportActivityTo(const QString &path) {
                 notices->post(error.isEmpty() ? tr("AI activity exported") : tr("The AI activity was not exported: %1").arg(error),
                               error.isEmpty() ? QStringLiteral("info") : QStringLiteral("error"));
         });
+}
+
+// ---- -- WP AIVIS -- What an agent does now, and what it just did -----------------------
+
+// The server's own lock is a leaf, so this never waits for a call: on the GUI thread
+void AiController::readWork() {
+    if (m_shutDown || !m_mcp) return;
+    FfiMcp *mcp = m_mcp;
+    m_work = parse(readSized([mcp](char *b, uint32_t n) { return dspi_mcp_work(mcp, b, n); }, 8192));
+    refreshWork();
+}
+
+// What `row` (a call) does, in words
+QString AiController::doing(const QJsonObject &row) const {
+    static const QHash<QString, const char *> words{
+        { QStringLiteral("dspi_set_peq_band"), QT_TRANSLATE_NOOP("AiController", "Changing the EQ") },
+        { QStringLiteral("dspi_clear_peq_band"), QT_TRANSLATE_NOOP("AiController", "Clearing an EQ band") },
+        { QStringLiteral("dspi_set_peq_bypass"), QT_TRANSLATE_NOOP("AiController", "Changing the EQ") },
+        { QStringLiteral("dspi_set_eq_bypass"), QT_TRANSLATE_NOOP("AiController", "Switching the EQ") },
+        { QStringLiteral("dspi_set_crossover"), QT_TRANSLATE_NOOP("AiController", "Changing the crossover") },
+        { QStringLiteral("dspi_set_gain"), QT_TRANSLATE_NOOP("AiController", "Changing the gain") },
+        { QStringLiteral("dspi_set_delay"), QT_TRANSLATE_NOOP("AiController", "Changing the delay") },
+        { QStringLiteral("dspi_set_polarity"), QT_TRANSLATE_NOOP("AiController", "Changing the polarity") },
+        { QStringLiteral("dspi_set_mute"), QT_TRANSLATE_NOOP("AiController", "Changing a mute") },
+        { QStringLiteral("dspi_set_output_enabled"), QT_TRANSLATE_NOOP("AiController", "Switching an output") },
+        { QStringLiteral("dspi_set_route"), QT_TRANSLATE_NOOP("AiController", "Changing the routing") },
+        { QStringLiteral("dspi_set_volume"), QT_TRANSLATE_NOOP("AiController", "Changing the volume") },
+        { QStringLiteral("dspi_set_user_mute"), QT_TRANSLATE_NOOP("AiController", "Changing the mute") },
+        { QStringLiteral("dspi_apply_changes"), QT_TRANSLATE_NOOP("AiController", "Making several changes") },
+        { QStringLiteral("dspi_keep_changes"), QT_TRANSLATE_NOOP("AiController", "Keeping its changes") },
+        { QStringLiteral("dspi_revert_changes"), QT_TRANSLATE_NOOP("AiController", "Putting its changes back") },
+        { QStringLiteral("dspi_undo"), QT_TRANSLATE_NOOP("AiController", "Undoing its change") },
+        { QStringLiteral("dspi_preset_load"), QT_TRANSLATE_NOOP("AiController", "Loading a preset") },
+        { QStringLiteral("dspi_preset_save"), QT_TRANSLATE_NOOP("AiController", "Saving a preset") },
+        { QStringLiteral("dspi_snapshot_recall"), QT_TRANSLATE_NOOP("AiController", "Recalling a snapshot") },
+        { QStringLiteral("dspi_config_import"), QT_TRANSLATE_NOOP("AiController", "Importing a configuration") },
+        { QStringLiteral("dspi_filters_import"), QT_TRANSLATE_NOOP("AiController", "Importing filters") },
+        { QStringLiteral("dspi_autoeq_apply"), QT_TRANSLATE_NOOP("AiController", "Applying an AutoEQ profile") },
+        { QStringLiteral("dspi_set_source"), QT_TRANSLATE_NOOP("AiController", "Changing the input source") },
+        { QStringLiteral("dspi_measure_start"), QT_TRANSLATE_NOOP("AiController", "Starting a measurement") },
+        { QStringLiteral("dspi_measure_rolloff_start"), QT_TRANSLATE_NOOP("AiController", "Starting a low-end search") },
+        { QStringLiteral("dspi_measure_stop"), QT_TRANSLATE_NOOP("AiController", "Stopping a measurement") },
+        { QStringLiteral("dspi_tune_propose"), QT_TRANSLATE_NOOP("AiController", "Working out an auto-tune") },
+        { QStringLiteral("dspi_tune_apply"), QT_TRANSLATE_NOOP("AiController", "Applying an auto-tune") },
+        { QStringLiteral("dspi_tune_verify"), QT_TRANSLATE_NOOP("AiController", "Verifying an auto-tune") },
+        { QStringLiteral("dspi_installation_draft"), QT_TRANSLATE_NOOP("AiController", "Editing its installation draft") },
+        { QStringLiteral("dspi_installation_save"), QT_TRANSLATE_NOOP("AiController", "Saving the installation") },
+        { QStringLiteral("dspi_open_device"), QT_TRANSLATE_NOOP("AiController", "Opening a device") },
+        { QStringLiteral("dspi_close_device"), QT_TRANSLATE_NOOP("AiController", "Closing a device") },
+    };
+    if (const char *w = words.value(str(row, "tool"))) return tr(w);
+    // A tool without words of its own: its title, in the server's
+    const QString title = str(row, "title");
+    //: %1 is what an AI agent reads or does, in English ("Read a channel")
+    return (row.value(QLatin1String("write")).toBool() ? tr("Changing: %1") : tr("Reading: %1")).arg(title);
+}
+
+// Where: "OUT3 Centre, band 2", with the device's own labels
+QString AiController::targetOf(const QJsonObject &row, DeviceSession *session) const {
+    QStringList parts;
+    const DspState *st = session ? session->model()->state() : nullptr;
+    const auto channelName = [&](int wire) {
+        if (!st || wire < 0 || wire >= MAX_CHANNELS) return QString();
+        return fieldText(st->channel_names[wire], CHANNEL_NAME_LEN);
+    };
+    const int inputs = st ? st->num_input_channels : 0;
+    const auto named = [](const QString &what, const QString &name) { return name.isEmpty() ? what : what + QLatin1Char(' ') + name; };
+    int output = row.value(QLatin1String("output")).toInt(-1);
+    int input = row.value(QLatin1String("input")).toInt(-1);
+    const int channel = row.value(QLatin1String("channel")).toInt(-1);
+    if (channel >= 0 && st) (channel < inputs ? input : output) = channel < inputs ? channel : channel - inputs;
+    //: An input's or an output's short name: %1 is its number
+    if (input >= 0) parts << named(tr("IN%1").arg(input + 1), channelName(input));
+    if (output >= 0) {
+        QString label;
+        for (const QJsonValue &v : session ? session->model()->snapshot().outputLabels : QJsonArray()) {
+            const QJsonObject o = v.toObject();
+            if (o.value(QLatin1String("output")).toInt(-1) == output) label = str(o, "label");
+        }
+        if (label.isEmpty() && st) label = channelName(inputs + output);
+        // The core's label of an unnamed output says its number itself
+        const QString number = QStringLiteral("Out %1").arg(output + 1);
+        parts << (label == number || label.startsWith(number + QLatin1Char(' ')) ? label : named(tr("OUT%1").arg(output + 1), label));
+    }
+    const int band = row.value(QLatin1String("band")).toInt(-1);
+    if (band >= 0) parts << tr("band %1").arg(band + 1);
+    return parts.join(QStringLiteral(", "));
+}
+
+// "AI · Claude Code" is "Claude Code" beside the robot
+static QString agentName(const QString &label) {
+    const QString prefix = QStringLiteral("AI · ");
+    return label.startsWith(prefix) ? label.mid(prefix.size()) : label;
+}
+
+void AiController::refreshWork() {
+    if (m_shutDown) return;
+    const QJsonArray calls = m_work.value(QLatin1String("calls")).toArray();
+    const QJsonArray jobs = m_work.value(QLatin1String("jobs")).toArray();
+    const QJsonArray guards = m_work.value(QLatin1String("guards")).toArray();
+    const QJsonObject last = m_work.value(QLatin1String("last")).toObject();
+    const qint64 ago = last.isEmpty() ? kLingerMs
+                                      : qMax<qint64>(0, QDateTime::currentMSecsSinceEpoch() - last.value(QLatin1String("at_unix_ms")).toInteger());
+    QJsonObject call;   // the newest, a write before a read
+    for (const QJsonValue &v : calls) {
+        const QJsonObject c = v.toObject();
+        if (call.isEmpty() || c.value(QLatin1String("write")).toBool() || !call.value(QLatin1String("write")).toBool()) call = c;
+    }
+    const QJsonObject job = jobs.isEmpty() ? QJsonObject() : jobs.last().toObject();
+    const QVariantList asked = confirmations();
+    const bool writes = call.value(QLatin1String("write")).toBool();
+
+    QString agent, text, device;
+    bool plays = false;
+    const auto device_of = [this](const QString &id) { return m_ctx.registry->session(id.isEmpty() ? m_ctx.registry->activeId() : id); };
+    const auto fromCall = [&](const QJsonObject &row) {
+        agent = str(row, "client_name");
+        device = str(row, "device");
+        DeviceSession *s = device_of(device);
+        const QString target = targetOf(row, s);
+        text = doing(row);
+        //: What an AI agent does, and to what: "Changing the gain: OUT3 Centre"
+        if (!target.isEmpty()) text = tr("%1: %2").arg(text, target);
+    };
+    if (writes) {
+        fromCall(call);
+    } else if (!job.isEmpty()) {
+        agent = str(job, "client_name");
+        device = str(job, "device");
+        const bool running = str(job, "state") == QLatin1String("running");
+        plays = running;
+        // The Measure view's own words for where it is ("Measuring: position 1 of 3")
+        const DeviceSession *s = device_of(device);
+        text = running && s && s->hasJob(QStringLiteral("MeasureController")) ? s->job() : QString();
+        text.remove(QRegularExpression(QStringLiteral("^Requested by [^.]*\\. ?")));
+        if (text.isEmpty()) text = running ? tr("Measuring: %1").arg(str(job, "what")) : tr("Starting: %1").arg(str(job, "what"));
+    } else if (!asked.isEmpty()) {
+        const QVariantMap q = asked.first().toMap();
+        agent = q.value(QStringLiteral("client")).toString();
+        text = tr("Waiting for your answer: %1").arg(q.value(QStringLiteral("title")).toString());
+        for (const Waiting &w : m_waiting)
+            if (!m_answered.contains(w.id)) {
+                device = w.device;
+                break;
+            }
+    } else if (!call.isEmpty()) {
+        fromCall(call);
+    } else if (ago < kLingerMs) {
+        fromCall(last);
+        //: %1 is what an AI agent did a moment ago ("Changing the gain: OUT3")
+        if (ago >= kWorkingMs) text = tr("Last: %1").arg(text);
+    } else if (!guards.isEmpty()) {
+        agent = str(guards.last().toObject(), "client_name");
+        device = str(guards.last().toObject(), "device");
+        text = tr("Its timed preview waits: it is put back unless it is kept");
+    }
+    const bool busy = !calls.isEmpty() || !jobs.isEmpty() || !asked.isEmpty() || !guards.isEmpty();
+    const bool working = m_running && !m_paused && (busy || ago < kWorkingMs);
+    const bool paused = m_running && m_paused;
+    if (paused && !plays) text = tr("AI agents are paused. Nothing is changed until Resume.");
+    DeviceSession *on = device.isEmpty() ? nullptr : m_ctx.registry->session(device);
+    const QString title = on ? on->title() : QString();
+    const bool elsewhere = on && on != m_ctx.activeSession();
+    if (!(paused && !plays) && !title.isEmpty() && (elsewhere || m_ctx.registry->sessions().size() > 1))
+        text += QStringLiteral(" · ") + title;
+    const bool shown = m_running && (busy || paused || ago < kLingerMs);
+    if (shown && (ago < kLingerMs || busy)) {
+        if (!m_workTimer.isActive()) m_workTimer.start();
+    } else {
+        m_workTimer.stop();
+    }
+    setWork(working, shown ? QVariantMap{ { QStringLiteral("shown"), true },
+                                          { QStringLiteral("agent"), paused && !plays ? QString() : agentName(agent) },
+                                          { QStringLiteral("text"), text },
+                                          { QStringLiteral("device"), title },
+                                          { QStringLiteral("deviceId"), device },
+                                          { QStringLiteral("elsewhere"), elsewhere && !paused },
+                                          { QStringLiteral("job"), plays } }
+                           : QVariantMap());
+}
+
+void AiController::setWork(bool working, const QVariantMap &shown) {
+    if (working == m_working && shown == m_workShown) return;
+    m_working = working;
+    m_workShown = shown;
+    emit workChanged();
+}
+
+void AiController::showWork() { m_ctx.registry->activate(m_workShown.value(QStringLiteral("deviceId")).toString()); }
+
+void AiController::stopJob() {
+    const QString device = m_workShown.value(QStringLiteral("deviceId")).toString();
+    if (auto *units = Registrar::instance<UnitsMeasureController>(); units && units->running()) units->stop();
+    if (auto *measure = Registrar::instance<MeasureController>()) measure->stopOther(device);
+}
+
+QString AiController::sectionOf(const QString &path) {
+    const QString group = path.section(QLatin1Char('.'), 0, 0);
+    if (group == QLatin1String("eq") || group == QLatin1String("ch") || group == QLatin1String("pre") || path == QLatin1String("out.gain")
+        || path == QLatin1String("out.delay") || path == QLatin1String("out.mute") || group == QLatin1String("limit"))
+        return QStringLiteral("equaliser");
+    if (group == QLatin1String("mix") || group == QLatin1String("out")) return QStringLiteral("routing");
+    static const QStringList effects{ QStringLiteral("loud"), QStringLiteral("lev"), QStringLiteral("bass"), QStringLiteral("cf"),
+                                      QStringLiteral("tube"), QStringLiteral("up"),  QStringLiteral("sub"),  QStringLiteral("ext") };
+    if (effects.contains(group)) return QStringLiteral("effects");
+    if (group == QLatin1String("preset")) return QStringLiteral("library");
+    if (group == QLatin1String("bulk") || group == QLatin1String("dev")) return QStringLiteral("overview");
+    return {};
+}
+
+QVariantList AiController::recentTouches() const {
+    QVariantList out;
+    const QDateTime now = QDateTime::currentDateTimeUtc();
+    for (const Touch &t : m_touches)
+        if (t.at.msecsTo(now) < kTouchMs)
+            out.append(QVariantMap{ { QStringLiteral("device"), t.device }, { QStringLiteral("path"), t.path }, { QStringLiteral("indices"), t.indices } });
+    return out;
+}
+
+// The activity's new rows: the controls light up, the views read again what no
+// snapshot shows, and a notice says what was changed, with Undo
+void AiController::tell(const QList<QJsonObject> &rows) {
+    // The first read of a run of the app: nothing is news
+    const bool first = !m_activityRead;
+    m_activityRead = true;
+    if (first && rows.size() > 8) return;
+    const QDateTime now = QDateTime::currentDateTimeUtc();
+    m_touches.removeIf([&](const Touch &t) { return t.at.msecsTo(now) >= kTouchMs; });
+    for (const QJsonObject &e : rows) {
+        const QString device = str(e, "device");
+        const bool write = e.value(QLatin1String("write")).toBool();
+        if (str(e, "outcome") != QLatin1String("ok")) continue;
+        emit agentCalled(device, str(e, "tool"), write);
+        readBehind(device, str(e, "tool"), write);
+        if (!write) continue;
+        for (const QJsonValue &v : e.value(QLatin1String("touched")).toArray()) {
+            const QJsonObject t = v.toObject();
+            const QVariantList indices = t.value(QLatin1String("indices")).toArray().toVariantList();
+            m_touches.append({ device, str(t, "path"), indices, now });
+            emit touched(device, str(t, "path"), indices);
+        }
+        if (journalIds(e).isEmpty()) continue;
+        auto *notices = Registrar::instance<NoticeCenter>();
+        if (!notices) continue;
+        const QString agent = agentName(str(e, "client_name"));
+        // A run of changes by one agent is one notice, while it shows
+        if (notices->tag() != QLatin1String("ai") || agent != m_noticeAgent) m_noticeKeys.clear();
+        m_noticeAgent = agent;
+        m_noticeKeys << rowKey(e);
+        const QString detail = str(e, "detail").isEmpty() ? str(e, "title") : str(e, "detail");
+        const DeviceSession *on = m_ctx.registry->session(device);
+        const QString where = on && m_ctx.registry->sessions().size() > 1 ? QStringLiteral(" · ") + on->title() : QString();
+        //: An AI agent's change: %1 is its name, %2 the change ("Out 3 output gain -6 dB to -8 dB")
+        const QString text = m_noticeKeys.size() == 1 ? tr("%1 changed: %2").arg(agent, detail) + where
+                                                      //: %1 is an AI agent's name, %2 its newest change
+                                                      : tr("%1 made %n changes, the last: %2", "", int(m_noticeKeys.size())).arg(agent, detail) + where;
+        bool canUndo = false;
+        for (const QVariant &v : activity())
+            canUndo = canUndo || (m_noticeKeys.contains(v.toMap().value(QStringLiteral("key")).toString())
+                                  && v.toMap().value(QStringLiteral("undo")) == QLatin1String("can"));
+        notices->postTagged(QStringLiteral("ai"), text, canUndo ? tr("Undo") : QString(), [this] { undoNoticed(); });
+    }
+    emit recentTouchesChanged();
+}
+
+// What `tool` changed on `device` that its snapshot does not hold
+void AiController::readBehind(const QString &device, const QString &tool, bool write) {
+    if (auto *snapshots = Registrar::instance<SnapshotsController>()) snapshots->agentCalled(device, tool, write);
+    if (tool.startsWith(QLatin1String("dspi_tune_")))
+        if (auto *measure = Registrar::instance<MeasureController>()) measure->readTune(device);
+    if (tool.startsWith(QLatin1String("dspi_system_measure_")))
+        if (auto *units = Registrar::instance<UnitsMeasureController>()) units->readAgain();
+    if (device != m_ctx.registry->activeId()) return;   // read when it comes to the front
+    if (tool == QLatin1String("dspi_set_subharmonic")) {
+        if (auto *tools = Registrar::instance<ToolsController>()) tools->readHeadroom();
+    } else if (tool == QLatin1String("dspi_monitor_clear")) {
+        if (auto *monitor = Registrar::instance<MonitorController>()) monitor->cleared();
+    } else if (tool == QLatin1String("dspi_clear_clips")) {
+        if (auto *dashboard = Registrar::instance<DashboardController>()) dashboard->clipsCleared();
+    }
+    // A recall also writes what is kept outside the settings' image
+    static const QStringList recalls{ QStringLiteral("dspi_snapshot_recall"), QStringLiteral("dspi_ab_toggle"), QStringLiteral("dspi_ab_keep"),
+                                      QStringLiteral("dspi_revert_changes"), QStringLiteral("dspi_tune_revert"), QStringLiteral("dspi_config_import"),
+                                      QStringLiteral("dspi_preset_load"), QStringLiteral("dspi_revert_to_saved") };
+    if (!recalls.contains(tool)) return;
+    if (auto *cs = Registrar::instance<CsController>(); cs && !cs->dirty()) cs->fetch();
+    if (auto *latency = Registrar::instance<OutputLatencyController>(); latency && !latency->hasPending()) latency->refresh();
+}
+
+// What the notice is about, newest first
+void AiController::undoNoticed() {
+    const QStringList keys = m_noticeKeys;
+    m_noticeKeys.clear();
+    for (qsizetype i = keys.size(); i-- > 0;) undo(keys.at(i));
+}
+
+// How the agents' measurements ended: one the user disturbed is said
+void AiController::readMeasureLog() {
+    FfiMcp *mcp = m_mcp;
+    onThread([mcp] { return parse(readSized([mcp](char *b, uint32_t n) { return dspi_mcp_measure_log(mcp, b, n); }, 8192)); },
+             [this](const QJsonObject &reply) {
+                 for (const QJsonValue &v : reply.value(QLatin1String("value")).toArray()) {
+                     const QJsonObject r = v.toObject();
+                     const quint64 id = quint64(r.value(QLatin1String("request_id")).toInteger());
+                     if (!r.value(QLatin1String("disturbed")).toBool() || m_endedJobs.contains(id)) continue;
+                     m_endedJobs.insert(id);
+                     if (auto *notices = Registrar::instance<NoticeCenter>())
+                         //: %1 is an AI agent's name
+                         notices->post(tr("The measurement %1 asked for was stopped: a setting was changed while it ran, so its result would not be valid.")
+                                           .arg(agentName(str(r, "client_name"))),
+                                       QStringLiteral("warning"));
+                 }
+                 emit measureLogChanged();
+             });
 }
 
 // ---- What to put into an agent's configuration ----------------------------------------

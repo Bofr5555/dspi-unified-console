@@ -306,7 +306,8 @@ impl std::fmt::Debug for TakenBack {
 
 /// The agent's answer when the user took a control back.
 pub const USER_CHANGED_TEXT: &str = "the user changed this after you set it, so nothing was \
-     changed: ask the user before changing it again. dspi_get_user_activity says what they did.";
+     changed: ask the user before changing it again (if they have just asked you for it, call \
+     again in 5 s). dspi_get_user_activity says what they did.";
 
 /// A call's [`Judging`], shared by the tool and the hook.
 pub type JudgingCell = Arc<Mutex<Judging>>;

@@ -458,6 +458,20 @@ void TuneSession::readProposal() {
               });
 }
 
+// -- WP AIVIS --
+void TuneSession::readAgain() {
+    MeasureSession *m = measure();
+    if (!m || !m->awake() || running() || busy()) return;
+    m->onLoop(this, [](FfiCore *c) { return MeasureSession::reply([&](char *b, uint32_t l) { return dspi_measure_tune_state(c, b, l); }, 1 << 18); },
+              [this](const QByteArray &st) {
+                  const QString before = stage();
+                  onTuneState(st);
+                  // The guard's timer is the tune tick's
+                  if (MeasureSession *s = measure(); s && s->loop() && applied()) s->loop()->tune.store(true);
+                  if (stage() != QLatin1String("idle") && (stage() != before || !hasProposal())) readProposal();
+              });
+}
+
 void TuneSession::setProposal(const QJsonObject &p) {
     MeasureSession *m = measure();
     m_proposal = p;

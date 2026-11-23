@@ -88,6 +88,15 @@ class AiController : public QObject {
     Q_PROPERTY(QString relayCommand READ relayCommand CONSTANT)
     Q_PROPERTY(QString desktopConfig READ desktopConfig CONSTANT)
     Q_PROPERTY(QString codeCommand READ codeCommand CONSTANT)
+    // -- WP AIVIS -- An agent's call or job runs now, or one ran a moment ago, or one
+    // waits for the person; not while paused
+    Q_PROPERTY(bool working READ working NOTIFY workChanged)
+    // What to say of it: { shown, agent (its name), text ("Changing the gain, OUT3
+    // Centre · Demo"), device (the title), deviceId, elsewhere (that device is open
+    // but not the one shown), job (a measurement of an agent's plays) }
+    Q_PROPERTY(QVariantMap work READ work NOTIFY workChanged)
+    // What agents changed in the last moments: [{ device, path, indices }]
+    Q_PROPERTY(QVariantList recentTouches READ recentTouches NOTIFY recentTouchesChanged)
     Q_PROPERTY(QString url READ url NOTIFY settingsChanged)
     Q_PROPERTY(QString httpCommand READ httpCommand NOTIFY newClientChanged)
     Q_PROPERTY(QString otherComputerUrl READ otherComputerUrl CONSTANT)
@@ -97,6 +106,11 @@ public:
     static constexpr int kPairingSeconds = 120;    // dspi-mcp's PAIRING_TTL_MS
     static constexpr int kRecentSeconds = 60;
     static constexpr int kActivityShown = 200;
+    // -- WP AIVIS -- How long after its last call an agent counts as working, and how
+    // long the strip says what it did last
+    static constexpr int kWorkingMs = 8000;
+    static constexpr int kLingerMs = 20000;
+    static constexpr int kTouchMs = 3000;
     static constexpr const char *kPortKey = "mcp/port";
 
     AiController(const AppContext &ctx, QObject *parent);
@@ -168,6 +182,17 @@ public:
     Q_INVOKABLE void openLimits();
     Q_INVOKABLE void refresh();
 
+    // -- WP AIVIS --
+    bool working() const { return m_working; }
+    QVariantMap work() const { return m_workShown; }
+    QVariantList recentTouches() const;
+    // The device the strip is about becomes the one shown; its agent's measurement
+    // stops (as the Measure view's Stop does)
+    Q_INVOKABLE void showWork();
+    Q_INVOKABLE void stopJob();
+    // The section of Modern's rail that shows journal path `path`, "" for none
+    Q_INVOKABLE static QString sectionOf(const QString &path);
+
     // For the smoke driver: the clients' own folder; calls not answered yet
     void setStoreDir(const QString &dir) { m_storeDir = dir; }
     int pending() const { return m_pending; }
@@ -196,6 +221,16 @@ signals:
     // that takes it (MeasureController, UnitsMeasureController for `loop`
     // "system") reports with reportMeasure()
     void measureRequested(const QJsonObject &ticket);
+    // -- WP AIVIS --
+    void workChanged();
+    void recentTouchesChanged();
+    // An agent changed `path` at `indices` on `device` (a DeviceRegistry id)
+    void touched(const QString &device, const QString &path, const QVariantList &indices);
+    // An agent's `tool` has run on `device`: what it did that no snapshot of the
+    // device shows (a filed snapshot, the compare, a tune) is read again
+    void agentCalled(const QString &device, const QString &tool, bool write);
+    // An agent's measurement began or ended (its document may be filed)
+    void measureLogChanged();
 
 private:
     static void eventThunk(const char *json, void *self);
@@ -268,6 +303,33 @@ private:
     int m_pending = 0;
     void takeMeasureRequests();   // -- WP MCP5 --
     QSet<quint64> m_measureTaken;   // -- WP MCP5 -- asked to take, once each
+    // -- WP AIVIS --
+    void readWork();
+    void refreshWork();
+    void setWork(bool working, const QVariantMap &shown);
+    void readMeasureLog();
+    void tell(const QList<QJsonObject> &rows);
+    void undoNoticed();
+    void readBehind(const QString &device, const QString &tool, bool write);
+    QString doing(const QJsonObject &row) const;
+    QString targetOf(const QJsonObject &row, DeviceSession *session) const;
+    std::atomic<bool> m_workQueued{ false };
+    QJsonObject m_work;         // dspi_mcp_work's last
+    bool m_working = false;
+    QVariantMap m_workShown;
+    QTimer m_workTimer;         // lets `work` fade
+    qint64 m_activityRun = 0;   // the newest activity row seen: its run and id
+    qint64 m_activityId = 0;
+    bool m_activityRead = false;
+    struct Touch {
+        QString device, path;
+        QVariantList indices;
+        QDateTime at;
+    };
+    QList<Touch> m_touches;
+    QStringList m_noticeKeys;   // the rows the notice on show is about, oldest first
+    QString m_noticeAgent;
+    QSet<quint64> m_endedJobs;  // the ended measurement requests already said
     QThreadPool m_thread;       // one thread: the server's calls, in order
 };
 

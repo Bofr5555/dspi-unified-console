@@ -207,6 +207,11 @@ Item {
             border.color: tab.visualFocus ? Theme.focusRing : Theme.danger
         }
 
+        // -- WP AIVIS -- an agent changed something on it while another is shown
+        AiTouched {
+            objectName: tabs.objectName + ".touched." + tab.modelData.id
+            device: tab.none || tab.active ? "-" : tab.modelData.id
+        }
         // Right-click reconnects, as Classic's device button does, and Close
         TapHandler {
             acceptedButtons: Qt.RightButton

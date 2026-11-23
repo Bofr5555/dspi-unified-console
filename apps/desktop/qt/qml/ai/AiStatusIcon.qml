@@ -9,7 +9,8 @@ IconButton {
     objectName: "AiStatusIcon"
     visible: AiController.enabled
     iconName: "bot"
-    toolTip: AiController.statusLine
+    // -- WP AIVIS -- what it does now
+    toolTip: AiController.working && AiController.work.text ? AiController.work.agent + ": " + AiController.work.text : AiController.statusLine
     onClicked: AiController.openPanel()
 
     Rectangle {
@@ -24,5 +25,15 @@ IconButton {
         color: AiController.state === "asking" || AiController.state === "error" ? Theme.warning
              : AiController.state === "active" ? Theme.connected
              : Theme.offline
+    }
+
+    // -- WP AIVIS -- turns while an agent's call or job runs
+    AiWorkMark {
+        objectName: "AiStatusIcon.working"
+        anchors.centerIn: parent
+        width: parent.width - 2
+        height: parent.height - 2
+        visible: AiController.working
+        working: AiController.working
     }
 }

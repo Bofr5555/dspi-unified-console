@@ -25,4 +25,12 @@ Banner {
         toolTip: qsTr("Tell the hub and every console that you have seen this alarm")
         onClicked: NoticeCenter.acknowledge(notice.alarmId)
     }
+
+    // -- WP AIVIS -- a notice's own button (an agent's change: Undo)
+    AppButton {
+        objectName: "NoticeBanner.action"
+        visible: notice.action !== undefined && notice.action.length > 0
+        text: notice.action !== undefined ? notice.action : ""
+        onClicked: NoticeCenter.act()
+    }
 }

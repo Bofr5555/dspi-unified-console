@@ -80,6 +80,7 @@ Panel {
 
         ToolHeader {
             objectName: "UpmixerWindow.header"
+            touchPath: "up."   // -- WP AIVIS --
             Layout.fillWidth: true
             iconName: "layout-grid"
             title: qsTr("Stereo Upmixer")

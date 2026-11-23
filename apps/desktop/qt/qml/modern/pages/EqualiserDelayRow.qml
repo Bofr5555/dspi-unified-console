@@ -211,4 +211,7 @@ Rectangle {
 
     Accessible.role: Accessible.Row
     Accessible.name: info.label
+
+    // -- WP AIVIS -- an agent changed it just now
+    AiTouched { path: "out."; indices: [row.output] }
 }

@@ -11,6 +11,7 @@
 
 #include "Registrar.h"
 
+class AiController;   // -- WP AIVIS --
 class DeviceModel;
 class HubController;
 class QAction;
@@ -90,6 +91,9 @@ private:
     void stepVolume(double db);
     void hideWindows();
     HubController *hub();
+    // -- WP AIVIS --
+    AiController *ai();
+    void refreshAi();
     SidebarController *sidebar();
     // -- WP QTSENDER -- the volume rows grey on the alink sender
     bool senderOpen();
@@ -106,6 +110,8 @@ private:
     bool m_available = false;
     bool m_hidden = false;
     bool m_iconSharing = false;
+    QPointer<AiController> m_ai;   // -- WP AIVIS --
+    bool m_iconWorking = false;
     QWindow::Visibility m_mainVisibility = QWindow::Windowed;
     QList<QPointer<QWindow>> m_hiddenTools;
     QSystemTrayIcon *m_icon = nullptr;

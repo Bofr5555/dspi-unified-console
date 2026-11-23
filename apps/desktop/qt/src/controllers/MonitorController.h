@@ -87,6 +87,7 @@ public:
 
     Q_INVOKABLE void togglePause() { setPaused(!paused()); }
     Q_INVOKABLE void clear();
+    void cleared();   // -- WP AIVIS -- an agent cleared the core's log
     Q_INVOKABLE void copyAll() const;
     // The text Copy puts on the clipboard
     Q_INVOKABLE QString text() const;

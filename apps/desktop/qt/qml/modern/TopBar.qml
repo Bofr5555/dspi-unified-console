@@ -52,6 +52,8 @@ Rectangle {
         // ---- Presets and A/B
         AppComboBox {
             id: presetBox
+            AiTouched { path: "preset." }   // -- WP AIVIS --
+            AiTouched { path: "bulk" }
             objectName: "TopBar.preset"
             readonly property string shownName: displayText
             visible: !DeviceInfoController.sender
