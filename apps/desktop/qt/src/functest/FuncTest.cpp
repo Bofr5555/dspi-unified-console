@@ -13,7 +13,10 @@
 #include <QLocalSocket>
 #include <QMetaMethod>
 #include <QMetaProperty>
+#include <QQuickItem>
 #include <QQuickWindow>
+
+#include <functional>
 
 static const Registrar::Controller<FuncTest> funcTest;
 
@@ -45,6 +48,18 @@ QObject *FuncTest::find(const QString &name) const {
     if (name == QLatin1String("DeviceModel")) return m_ctx.device;
     for (const Registrar::ControllerEntry &c : Registrar::controllers())
         if (name == QLatin1String(c.meta->className())) return Registrar::instance(c.meta);
+    // -- WP FUNC2b -- a visible item by its objectName ("TopBar.preset"): what a screen shows
+    // (the visual tree, as the smoke driver walks it)
+    const std::function<QQuickItem *(QQuickItem *)> walk = [&](QQuickItem *at) -> QQuickItem * {
+        if (!at || !at->isVisible()) return nullptr;
+        if (at->objectName() == name) return at;
+        for (QQuickItem *child : at->childItems())
+            if (QQuickItem *found = walk(child)) return found;
+        return nullptr;
+    };
+    for (QWindow *w : QGuiApplication::topLevelWindows())
+        if (auto *quick = qobject_cast<QQuickWindow *>(w); quick && quick->isVisible())
+            if (QQuickItem *found = walk(quick->contentItem())) return found;
     return nullptr;
 }
 

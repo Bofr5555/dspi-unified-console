@@ -74,6 +74,11 @@ this as a preset called 'Movie night' (in a free slot) and make it the one it lo
   kind = "writes_asked"
   when = "ask_everything"
 
+  [[step.expect]]
+  what = "the app's preset box names the preset the device is on"
+  kind = "preset_shown"
+  device = "Centre"
+
 [[step]]
 label = "late-night"
 prompt = """
@@ -116,6 +121,11 @@ Make a 'Late night' version in the next slot: sub 6 dB down, centre 2 dB up, and
   what = "each write the agent made was a question the user allowed"
   kind = "writes_asked"
   when = "ask_everything"
+
+  [[step.expect]]
+  what = "the app's preset box names the preset the device is on"
+  kind = "preset_shown"
+  device = "Centre"
 
 [[step]]
 label = "compare"
@@ -191,6 +201,11 @@ prompt = "What's on the device's flash now, and what's unsaved?"
   device = "Centre"
   name = "movie night"
   startup = true
+
+  [[step.expect]]
+  what = "the app's preset box names the preset the device is on"
+  kind = "preset_shown"
+  device = "Centre"
 
 [[step]]
 label = "delete"

@@ -375,6 +375,12 @@ def more2(k, e, now, before, steps, words):
         detail = "; ".join(f"{d}: slot {x or 'none'}" for d, x, _ in rows)
         st0 = app_of(st, rows[0][0])
         return sc, detail + (f" (starts with {st0['defaultSlot'] + 1}, mode {st0['startupMode']})" if e.get("startup") else "")
+    if k == "preset_shown":
+        # The preset box on screen names the active slot (the "*" of unsaved changes aside)
+        v = app_of(now, e["device"])
+        want = v["presets"][v["activeSlot"]] if 0 <= v["activeSlot"] < len(v["presets"]) else "–"
+        got = (v.get("presetShown") or "").rstrip("*")
+        return ("pass" if got == want else "fail"), f"the box says {got!r}, the device is on {want!r}"
     if k == "presets_kept":
         # Slots (from 1) still holding what they held: {"9": "Test"}
         st = steps.get(e["at"]) if e.get("at") else now
@@ -437,7 +443,8 @@ def more2(k, e, now, before, steps, words):
                 elif n[a] != x[a]:
                     other.append(f"{d} {a[:3]}")
         ok = back >= 1 and not other and (back < made or e.get("all_ok"))
-        return ("pass" if ok else "near" if back else "fail"), \
+        # Nothing at all changed: it asked which change was meant (near)
+        return ("pass" if ok else "near" if back or not other else "fail"), \
             f"{made} made, {back} undone" + (f"; also changed: {other[:6]}" if other else "")
     if k in ("relative", "balance"):
         # Each [input, device, lo_hz, hi_hz]: its seat level's change in that band, its device's volume

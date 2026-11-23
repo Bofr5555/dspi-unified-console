@@ -400,6 +400,13 @@ class Run:
             v["sources"] = ctl.get("NamesController", "sources")
             v["snapshots"] = ctl.get("SnapshotsController", "snapshots")
             v["ab"] = {k: ctl.get("SnapshotsController", k) for k in ("abActive", "abSide", "abAName", "abBName")}
+            # What the preset box on screen says (Modern's top bar, Classic's sidebar)
+            for box in ("TopBar.preset", "GlobalControls.preset"):
+                try:
+                    v["presetShown"] = ctl.get(box, "shownName")
+                    break
+                except RuntimeError:
+                    pass
         except (OSError, RuntimeError) as e:
             v["error"] = str(e)
         return v
