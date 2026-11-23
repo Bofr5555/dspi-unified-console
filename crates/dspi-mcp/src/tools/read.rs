@@ -28,6 +28,7 @@ pub static TOOLS: &[&Tool] = &[
     &LIST_MEASUREMENTS,
     &GET_HISTORY,
     &GET_ACTIVITY,
+    &GET_USER_ACTIVITY, // -- WP AIVIS --
 ];
 
 // ------------------------------------------------------------------ helpers
@@ -1063,6 +1064,42 @@ static GET_ACTIVITY: Tool = Tool {
             .map(|e| e.to_json())
             .collect();
         Ok(json!({"entries": entries}))
+    },
+};
+
+// -- WP AIVIS --
+static GET_USER_ACTIVITY: Tool = Tool {
+    name: "dspi_get_user_activity",
+    title: "What the user did",
+    description: "What the user did in the app since a cursor, oldest first: settings they \
+                  changed (a control moved again is listed once), undo, preset loads, devices \
+                  switched, opened or closed, a measurement they stopped, a confirmed speaker \
+                  setup, Pause, their answers to your questions; and changes made elsewhere (on \
+                  the device, by another console). Every tool result already carries what is new \
+                  since your last call as user_activity; this lists it again, and what was cut.",
+    class: ToolClass::Read,
+    device: false,
+    input_schema: || {
+        json!({"type": "object", "additionalProperties": false, "properties": {
+            "since": {"type": "integer", "minimum": 0,
+                      "description": "A cursor from an earlier result; default 0, everything kept"}}})
+    },
+    output_schema: || {
+        json!({"type": "object", "required": ["events", "cursor", "truncated"],
+               "properties": {"events": {"type": "array"}, "cursor": {"type": "integer"},
+                              "truncated": {"type": "boolean"}}})
+    },
+    handler: |call, args| {
+        let since = args.get("since").and_then(Value::as_u64).unwrap_or(0);
+        let user = call
+            .user
+            .ok_or_else(|| ToolError::new("not available here"))?;
+        let events: Vec<Value> = user
+            .since(since, call.client)
+            .iter()
+            .map(|e| e.to_json())
+            .collect();
+        Ok(json!({"events": events, "cursor": user.cursor(), "truncated": user.truncated(since)}))
     },
 };
 

@@ -171,6 +171,9 @@ static KEEP_CHANGES: Tool = Tool {
         if super::measure::guard_is_failed_tunes(core, guard) {
             return Err(ToolError::new(super::measure::KEEP_IS_THE_USERS));
         }
+        // -- WP AIVIS -- the user changed part of it meanwhile
+        dspi_core::actor::user::check_keep(core, call.actor)
+            .map_err(|e| policy::core_error(&call.judging, e))?;
         let kept = core.apply_confirm().map_err(|e| match &e {
             DspiError::InvalidArgument { msg } if msg.contains("measure.tune.keep_unverified") => {
                 ToolError::new(super::measure::KEEP_IS_THE_USERS)

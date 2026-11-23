@@ -45,6 +45,7 @@ Panel {
 
         EffectHeader {
             objectName: "CrossfeedWindow.header"
+            touchPath: "cf."   // -- WP AIVIS --
             Layout.fillWidth: true
             iconName: "headphones"
             title: qsTr("Crossfeed")

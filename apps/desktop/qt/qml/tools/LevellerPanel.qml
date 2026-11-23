@@ -70,6 +70,7 @@ Panel {
 
         EffectHeader {
             objectName: "LevellerWindow.header"
+            touchPath: "lev."   // -- WP AIVIS --
             Layout.fillWidth: true
             iconName: "activity"
             title: qsTr("Volume Leveller")

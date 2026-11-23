@@ -319,6 +319,9 @@ pub struct Call<'a> {
     pub opens: Option<&'a tools::devices::Opens>,
     /// The client's label ("AI · Claude Code").
     pub client_label: String,
+    // -- WP AIVIS --
+    /// What the user did, for `dspi_get_user_activity`.
+    pub user: Option<&'a crate::user::UserActivity>,
     /// The devices, for a tool over several units (measuring across units,
     /// -- WP FEAT2 -- a room's volume, the known devices): it reaches another
     /// unit's core only inside a scope of its own.
@@ -402,6 +405,9 @@ pub struct RunCtx<'a> {
     // -- WP FEAT3 --
     /// Reads this computer's audio.
     pub host_audio: Option<&'a Arc<dyn HostAudioSource>>,
+    // -- WP AIVIS --
+    /// What the user did.
+    pub user: Option<&'a crate::user::UserActivity>,
 }
 
 /// What [`run`] did.
@@ -413,6 +419,9 @@ pub struct RunOutcome {
     pub result: ToolResult,
     /// The journal ids of the changes the call made on its device.
     pub journal_ids: Vec<u64>,
+    // -- WP AIVIS --
+    /// The controls it changed there: journal paths and indices.
+    pub touched: Vec<(String, Vec<u8>)>,
     /// What the policy found (-- WP MCP2a --).
     pub judging: Judging,
 }
@@ -522,6 +531,7 @@ pub fn run(ctx: &RunCtx<'_>, tool: &Tool, args: &Map<String, Value>) -> RunOutco
             measure: ctx.measure,           // -- WP MCP5 --
             opens: ctx.opens,               // -- WP FEAT2 --
             client_label: ctx.client_label.to_owned(),
+            user: ctx.user,             // -- WP AIVIS --
             set: Some(ctx.set),         // -- WP FEAT2 --
             host_audio: ctx.host_audio, // -- WP FEAT3 --
             core: None,
@@ -532,6 +542,7 @@ pub fn run(ctx: &RunCtx<'_>, tool: &Tool, args: &Map<String, Value>) -> RunOutco
             device: None,
             result,
             journal_ids: Vec::new(),
+            touched: Vec::new(), // -- WP AIVIS --
             judging,
         };
     }
@@ -542,6 +553,7 @@ pub fn run(ctx: &RunCtx<'_>, tool: &Tool, args: &Map<String, Value>) -> RunOutco
                 device: None,
                 result: Err(e),
                 journal_ids: Vec::new(),
+                touched: Vec::new(), // -- WP AIVIS --
                 judging: Judging::default(),
             };
         }
@@ -557,6 +569,7 @@ pub fn run(ctx: &RunCtx<'_>, tool: &Tool, args: &Map<String, Value>) -> RunOutco
     // -- WP MCP2a -- the call's judgement, shared by the hook and the tool
     let judging = JudgingCell::default();
     policy::lock(&judging).grant.clone_from(&ctx.grant);
+    policy::lock(&judging).taken_back = policy::TakenBack(Some((Arc::clone(&core), ctx.actor))); // -- WP AIVIS --
     let hook = ctx.policy.judging_hook(&info, &core, &judging);
     let agent_guard = ctx
         .guards
@@ -583,6 +596,7 @@ pub fn run(ctx: &RunCtx<'_>, tool: &Tool, args: &Map<String, Value>) -> RunOutco
             measure: ctx.measure,           // -- WP MCP5 --
             opens: ctx.opens,               // -- WP FEAT2 --
             client_label: ctx.client_label.to_owned(),
+            user: ctx.user, // -- WP AIVIS --
             set: Some(ctx.set),
             host_audio: ctx.host_audio, // -- WP FEAT3 --
             core: Some(&core),
@@ -591,21 +605,34 @@ pub fn run(ctx: &RunCtx<'_>, tool: &Tool, args: &Map<String, Value>) -> RunOutco
     };
     let judging = policy::lock(&judging).clone();
     // The changes this call made: this actor's entries newer than before.
-    let mut journal_ids: Vec<u64> = core
+    let mine: Vec<dspi_core::HistoryEntry> = core
         .history(HISTORY_SCAN)
         .into_iter()
         .filter(|e| e.id > before && e.actor == ctx.actor)
-        .map(|e| e.id)
         .collect();
+    let mut journal_ids: Vec<u64> = mine.iter().map(|e| e.id).collect();
+    // -- WP AIVIS --
+    let mut touched: Vec<(String, Vec<u8>)> = Vec::new();
+    for e in &mine {
+        let t = (e.path.clone(), e.indices.clone());
+        if touched.len() < TOUCHED_MAX && !touched.contains(&t) {
+            touched.push(t);
+        }
+    }
     journal_ids.sort_unstable();
     journal_ids.dedup();
     RunOutcome {
         device: Some(id.as_str().to_owned()),
         result,
         journal_ids,
+        touched, // -- WP AIVIS --
         judging,
     }
 }
+
+// -- WP AIVIS --
+/// The most controls a call's outcome names.
+const TOUCHED_MAX: usize = 64;
 
 /// How many history entries [`run`] looks through for a call's changes.
 const HISTORY_SCAN: u32 = 200;

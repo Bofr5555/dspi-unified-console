@@ -46,7 +46,8 @@
 //! `dspi_mcp_start` binds and `dspi_mcp_stop` waits for the listening threads,
 //! briefly, and puts the agents' timed previews back. The listener runs on the server's
 //! threads, or inside the call that caused the event (`dspi_mcp_add_client`,
-//! `dspi_mcp_revoke`, `dspi_mcp_pairing_answer`: `clientsChanged`), with none
+//! `dspi_mcp_revoke`, `dspi_mcp_pairing_answer`: `clientsChanged`;
+//! -- WP AIVIS -- `dspi_mcp_pause`: `work`), with none
 //! of this handle's state locked: it may call every function here but
 //! `dspi_mcp_set_listener` and `dspi_mcp_free`, which are refused. It must not
 //! wait for another thread that sets the listener.
@@ -82,7 +83,9 @@ pub const MCP_REPLY_MIN: u32 = 1024;
 /// "name","code"}`, `{"event":"pairingEnded","id","outcome"}` (`paired`,
 /// `denied`, `expired`), `{"event":"clientsChanged"}`,
 /// `{"event":"confirmationsChanged"}` and `{"event":"activity"}` (an agent
-/// called a tool) (the last two -- WP MCP4 --).
+/// called a tool) (the last two -- WP MCP4 --), `{"event":"measureRequests"}`
+/// and `{"event":"work"}` (what the agents have running changed:
+/// `dspi_mcp_work`, -- WP AIVIS --).
 pub type DspiMcpListener = extern "C" fn(event_json: *const c_char, user_data: *mut c_void);
 
 /// The relay's token callback: a new token to keep, or null to forget the
@@ -477,7 +480,7 @@ pub extern "C" fn dspi_mcp_pairing_answer(mcp: *mut FfiMcp, request: u64, allow:
     })
 }
 
-/// Pause the agents (their tool calls fail with "paused by the user" and
+/// Pause the agents (their tool calls answer `status: "paused"` and
 /// change nothing) or resume them. Kept across stop and start.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_mcp_pause(mcp: *mut FfiMcp, paused: bool) {
@@ -693,6 +696,47 @@ mod tests_wp_mcp4;
 #[cfg(test)]
 #[path = "fns_mcp/tests_wp_mcp5.rs"]
 mod tests_wp_mcp5;
+
+// -- WP AIVIS --
+/// What the agents have running now, for a working strip: `{ok, running,
+/// calls: [{id, client_name, tool, title, write, device, at_unix_ms, output?,
+/// input?, channel?, band?, slot?}], last (the newest call, done or not, or
+/// null), jobs: [{request_id, client_name, device, kind, loop, what, state,
+/// ...}] (the measurement requests that are open or run), guards: [{device,
+/// client_name}] (the agents' timed previews)}`. The listener gets `work` when
+/// it changes. Never waits for an agent's call: the UI's thread may call it.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_mcp_work(mcp: *mut FfiMcp, buf: *mut c_char, len: u32) -> u32 {
+    with_mcp(mcp, 0, |m| {
+        let mut v = m.server().map_or_else(
+            || json!({"running": false, "calls": [], "last": null, "jobs": [], "guards": []}),
+            |s| {
+                let mut w = s.work();
+                if let Some(o) = w.as_object_mut() {
+                    o.insert("running".into(), json!(true));
+                }
+                w
+            },
+        );
+        if let Some(o) = v.as_object_mut() {
+            o.insert("ok".into(), json!(true));
+        }
+        copy_text(&v.to_string(), buf, len)
+    })
+}
+
+/// The newest 32 measurement requests, ended ones included, with how they
+/// ended (`note`) and whether the user disturbed them (`disturbed`): `{ok,
+/// value: [...]}`. Empty while stopped. Waits for an agent's call in progress.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_mcp_measure_log(mcp: *mut FfiMcp, buf: *mut c_char, len: u32) -> u32 {
+    with_mcp(mcp, 0, |m| {
+        let rows = m
+            .server()
+            .map_or_else(Vec::new, |s| s.with_server(|s| s.measure_log()));
+        copy_text(&json!({"ok": true, "value": rows}).to_string(), buf, len)
+    })
+}
 
 // -- WP MCP5 -- the agents' measurement requests to the app's Measure view
 //

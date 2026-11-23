@@ -130,6 +130,9 @@ public:
     void revert();
     // Stops the runs (an unapplied tune is forgotten)
     void stop();
+    // -- WP AIVIS -- An agent's auto-tune step ran on this device, or the device came
+    // to the front: the core's stage and proposal are read again
+    void readAgain();
     // The A/B compare of "before" and "after"; toggle; end on a side
     void abStart();
     void abToggle();

@@ -1551,6 +1551,30 @@ void UnitsMeasureController::apply() {
 
 // ---- After the apply -------------------------------------------------------------------
 
+// -- WP AIVIS -- An agent's step across units: what is proposed and applied
+void UnitsMeasureController::readAgain() {
+    if (m_shutDown || !m_entered || running() || !m_busy.isEmpty()) return;
+    Calls calls = m_calls;
+    onLoop([calls](FfiCore *c) {
+        QJsonArray both{ object(calls(c, QStringLiteral("applied"), {}, {})), object(calls(c, QStringLiteral("proposal"), {}, {})) };
+        return compact(both);
+    },
+           [this](const QByteArray &r) {
+               const QJsonArray both = QJsonDocument::fromJson(r).array();
+               if (isOk(both.at(0).toObject())) setApplied(both.at(0).toObject());
+               if (isOk(both.at(1).toObject())) setProposal(both.at(1).toObject());
+               // Applied by the agent a moment ago: the guard's countdown runs here too
+               const QString s = stage();
+               const int guard = m_applied.value(QLatin1String("guardS")).toInt();
+               if (m_guardS == 0 && guard > 0 && (s == QLatin1String("applied") || s == QLatin1String("verified"))) {
+                   m_guardS = guard;
+                   m_guardSince.start();
+                   m_guardTimer.start();
+                   emit guardChanged();
+               }
+           });
+}
+
 void UnitsMeasureController::setApplied(const QJsonObject &a) {
     m_applied = a;
     const QString s = stage();

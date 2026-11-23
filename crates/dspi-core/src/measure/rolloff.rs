@@ -504,6 +504,7 @@ impl DspiCore {
     pub fn measure_rolloff_stop(&self) -> MeasureRolloffState {
         let mut r = self.measure.rolloff_lock();
         if r.stage == MeasureRolloffStage::Measuring {
+            crate::actor::user::did(self, "measure_stop"); // -- WP AIVIS --
             if r.running {
                 self.measure_stop_session();
                 let _ = self.measure_clear();

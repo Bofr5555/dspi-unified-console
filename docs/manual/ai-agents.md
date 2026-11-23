@@ -251,14 +251,50 @@ told the question is still open and can ask again with `dspi_get_confirmation`. 
 
 ## 5. Watching and undoing
 
+- **The strip under the top bar** (both layouts) says which agent works, what it does now and on which device ("Claude Code
+  Changing the gain: Out 3 Centre"), with **Pause** and **Stop**, and **Stop Measuring** while its measurement plays.
+  **Show** brings the device to the front when it is another one. The strip is there while a call or a job runs, while a
+  question waits for you or a timed preview waits for Keep, for 20 s after the last call, and as long as agents are paused.
+- **The AI button** (Modern) and the **robot icon** (Classic) turn while an agent works. In the tray, the icon has a blue dot,
+  and its tooltip and menu say what the agent does, with **Pause AI Agents**.
+- **What an agent changes** is marked for a moment: the control, its section in the rail, and the tab of a device that is
+  not the one shown. A notice names the agent and the change, with **Undo**; several changes in a row are one notice.
 - **The activity** (on the page and in the agents' panel) lists what each agent did, newest first: each change with
   **Undo**, and **Undo All**. **Show reads** adds what they only read. **Export…** saves the list.
 - **The History** shows agents' changes with an **AI** tag and the agent's name; you undo them there like your own.
 - **An agent can undo only its own changes.** It never undoes yours.
-- **Pause** refuses the agents' tool calls until **Resume**: nothing is changed meanwhile. **Stop** turns agents off,
+- **Pause** holds the agents' tool calls off until **Resume**: nothing is changed meanwhile, and the agents are told that
+  you paused them. **Stop** turns agents off,
   disconnects them and puts back any timed preview an agent started. Changes already made stay, and you can undo them.
 - While you drag a control, an agent's change to that device is refused and the agent is told to try again: you are not
   overruled mid-drag.
+
+### 5.1 When you step in
+
+You can change anything while an agent works. The agent is told with its next call: what you changed, on which device and
+channel (numbers and switches, never names), what you undid, a preset you loaded, a device you switched to, opened or closed,
+a measurement you stopped, a speaker setup you confirmed, Pause, and your answers to its questions. It is also told of
+changes made elsewhere: a control on the device, another console.
+
+- **A control you take back is yours.** When you change (or undo) something an agent set within the last 10 minutes, the
+  agent's next change to it is refused with "the user changed this": it has to ask you. A change that asks you in the
+  console anyway is asked there. A preset you load counts for everything the agent set. Its timed preview or auto-tune is
+  not kept without asking either; putting it back is always possible.
+- **A setting you change while an agent's measurement runs stops it.** Its result would not be valid: it is not filed, a
+  notice says so, and the agent is told why. Names and saved presets do not count.
+- Your own measurements are not affected by this.
+
+**For agents** (and those who write them):
+
+- Every tool result that has news carries one more text ("Since your last call, the user ...") and, in a structured result,
+  `user_activity`: `{note, events: [{id, at_ms, device, kind, what, path, output, input, band}], more, cursor}`, at most 8
+  events. `dspi_get_user_activity {since}` lists the events after a cursor. Kinds: `change`, `undo`, `replaced` (everything
+  at once), `elsewhere`, `speakers`, `measure_stop`, `device_opened`, `device_closed`, `device_shown`, `paused`, `resumed`,
+  `answer` (to your own question).
+- Read what you work on again before you change it; never put the user's change back unasked.
+- "the user changed this" is an error (`isError`): ask. A retry within 5 s of the refusal is refused too.
+- `status: "paused"` is not an error: wait, or ask the user to press Resume. `status: "awaiting_confirmation"` as in section 4.
+- `dspi_measure_status`: `request.valid` is false for a measurement the user disturbed; `request.note` says by what.
 
 ## 6. Measuring with an agent
 
@@ -361,7 +397,7 @@ the volume at 80 % or less. These steps change your own agent configuration; und
    **AI** tag. **Undo** in the activity puts it back.
 5. Ask for a louder change ("raise output 1 by 3 dB"): the question appears; **Deny**: nothing changes, the agent says so.
    Ask again; **Allow**: the change happens.
-6. **Pause**: a change is refused with the paused text; **Resume**. **Remove this client**: the next request gets 401.
+6. **Pause**: a change is not made, the agent says it is paused; **Resume**. **Remove this client**: the next request gets 401.
 
 **Linux or macOS, Claude Desktop over stdio**
 7. Add the config of section 2.1 and start Claude Desktop again. The console asks **Allow this AI agent?** with the code

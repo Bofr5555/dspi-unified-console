@@ -362,4 +362,7 @@ Rectangle {
 
     Accessible.role: Accessible.Grouping
     Accessible.name: qsTr("%1 settings").arg(info.label)
+
+    // -- WP AIVIS -- an agent changed it just now
+    AiTouched { objectName: "ChannelStrip.touched"; path: "out."; indices: [strip.output]; visible: lit && strip.isOutput }
 }

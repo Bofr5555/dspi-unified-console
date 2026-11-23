@@ -50,6 +50,12 @@ MeasureController::MeasureController(const AppContext &ctx, QObject *parent) : Q
         [this] {
             if (auto *ai = Registrar::instance<AiController>())
                 connect(ai, &AiController::measureRequested, this, &MeasureController::agentRequest);
+            // -- WP AIVIS -- an agent's measurement ended: the server filed its document
+            if (auto *ai = Registrar::instance<AiController>())
+                connect(ai, &AiController::measureLogChanged, this, [this] {
+                    for (MeasureSession *s : std::as_const(m_sessions))
+                        if (s->awake()) s->reloadDocuments();
+                });
         },
         Qt::QueuedConnection);
     // Before the cores go (main.cpp shuts them down after the event loop)
@@ -216,6 +222,11 @@ void MeasureController::showOther(const QString &id) { m_ctx.registry->activate(
 void MeasureController::stopAll() {
     for (MeasureSession *s : std::as_const(m_sessions))
         if (s->isActive() || s->underWay()) s->stop();
+}
+
+// -- WP AIVIS -- an agent's step of an auto-tune ran on `id`
+void MeasureController::readTune(const QString &id) {
+    if (MeasureSession *s = byId(id); s && s->awake()) s->tune()->readAgain();
 }
 
 // -- WP LAY5b --

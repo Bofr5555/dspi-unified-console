@@ -87,7 +87,7 @@ PopoverPanel {
                 objectName: "AiPopover.status"
                 Layout.fillWidth: true
                 textFormat: Text.PlainText
-                text: popover.ai.statusLine
+                text: popover.ai.working === true && popover.ai.work.text ? popover.ai.work.text : popover.ai.statusLine   // -- WP AIVIS --
                 font: Qt.font({ pixelSize: Theme.fontBody.pixelSize, weight: Font.DemiBold })
                 color: Theme.text
                 wrapMode: Text.Wrap
@@ -260,6 +260,15 @@ PopoverPanel {
                     text: popover.ai.paused ? qsTr("Resume") : qsTr("Pause")
                     iconName: popover.ai.paused ? "play" : "pause"
                     onClicked: popover.ai.setPaused(!popover.ai.paused)
+                }
+                // -- WP AIVIS --
+                AppButton {
+                    objectName: "AiPopover.stop"
+                    visible: popover.ai.running
+                    text: qsTr("Stop")
+                    iconName: "square"
+                    toolTip: qsTr("Turn AI agents off: what they run stops, their timed previews are put back")
+                    onClicked: popover.ai.setEnabled(false)
                 }
                 AppButton {
                     objectName: "AiPopover.activity"

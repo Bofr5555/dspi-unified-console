@@ -46,6 +46,7 @@ void TuneController::onSwitched() {
     TuneSession *now = session();
     if (now == m_announced) return;
     m_announced = now;
+    now->readAgain();   // -- WP AIVIS -- an agent may have tuned it meanwhile
     emit stateChanged();
     emit layoutChanged();
     emit optionsChanged();

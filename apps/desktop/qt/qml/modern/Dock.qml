@@ -28,6 +28,7 @@ Rectangle {
         AppComboBox {
             id: sourceBox
             objectName: "Dock.source"
+            AiTouched { path: "in." }   // -- WP AIVIS --
             readonly property string shownName: displayText
             visible: SidebarController.sourceSupported
             implicitWidth: 116
@@ -69,6 +70,7 @@ Rectangle {
         CustomSlider {
             id: volume
             objectName: "Dock.volume"
+            AiTouched { objectName: "Dock.volume.touched"; path: "vol." }   // -- WP AIVIS --
             readonly property bool master: SidebarController.volumeMode === "master"
             readonly property real deviceDb: master ? SidebarController.masterVolumeDb : SidebarController.userVolumeDb
             function toPosition(db) { return master ? SidebarController.masterDbToPosition(db) : SidebarController.userDbToPosition(db) }

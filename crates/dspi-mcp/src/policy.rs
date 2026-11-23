@@ -41,6 +41,7 @@
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
+use dspi_core::actor::user::{self as user_changes, USER_CHANGED}; // -- WP AIVIS --
 use dspi_core::actor::{NOT_OWN_ENTRY, USER_EDITING, USER_ONLY, WriteHook, WriteProposal};
 use dspi_core::measure::MeasureRole;
 use dspi_core::{DspState, DspiCore, DspiError, FilterParams, ParamValue};
@@ -285,7 +286,28 @@ pub struct Judging {
     /// more of it, but still refuses, and refuses a lowered tweeter
     /// protection too ([`umbrella`]).
     pub wholesale: bool,
+    // -- WP AIVIS --
+    /// The device and the actor, for the rule on what the user took back.
+    pub taken_back: TakenBack,
 }
+
+// -- WP AIVIS --
+/// What [`prejudge`] asks the core before a plan's first write: has the user
+/// taken one of its controls back from this agent (`dspi_core::actor::user`)?
+/// The core's own gate asks the same at each write.
+#[derive(Clone, Default)]
+pub struct TakenBack(pub Option<(Arc<DspiCore>, dspi_core::actor::ActorId)>);
+
+impl std::fmt::Debug for TakenBack {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "TakenBack({})", self.0.is_some())
+    }
+}
+
+/// The agent's answer when the user took a control back.
+pub const USER_CHANGED_TEXT: &str = "the user changed this after you set it, so nothing was \
+     changed: ask the user before changing it again (if they have just asked you for it, call \
+     again in 5 s). dspi_get_user_activity says what they did.";
 
 /// A call's [`Judging`], shared by the tool and the hook.
 pub type JudgingCell = Arc<Mutex<Judging>>;
@@ -317,8 +339,20 @@ pub fn prejudge(
     state: &DspState,
     writes: &[WriteKey],
 ) -> Result<(), ToolError> {
+    let verdict = judge(state, writes, &lock(cell));
+    // -- WP AIVIS -- a control the user took back, before anything of the plan
+    // is sent (what is held for the user's word is asked there)
+    let taken_back = lock(cell).taken_back.clone();
+    if verdict == Verdict::Pass
+        && let Some((core, actor)) = taken_back.0
+    {
+        let writes = writes
+            .iter()
+            .map(|w| (w.path.as_str(), w.indices.as_slice()));
+        user_changes::check_plan(&core, actor, writes).map_err(|e| core_error(cell, e))?;
+    }
     let mut j = lock(cell);
-    match judge(state, writes, &j) {
+    match verdict {
         Verdict::Pass => {
             j.plan
                 .extend(writes.iter().map(|w| (w.path.clone(), w.indices.clone())));
@@ -435,6 +469,10 @@ pub fn core_error(cell: &JudgingCell, e: DspiError) -> ToolError {
                 "the user is editing a control on this device; nothing was changed. \
                  Try again in a second or two.",
             )
+        }
+        // -- WP AIVIS --
+        DspiError::ConfirmationRequired { code, .. } if code == USER_CHANGED => {
+            ToolError::new(USER_CHANGED_TEXT)
         }
         DspiError::ConfirmationRequired { code, .. } if code == AGENT_CONFIRM => {
             ToolError::new(HELD_TEXT)
@@ -649,6 +687,11 @@ fn band_mut(st: &mut DspState, ch: u8, band: u8) -> Option<&mut FilterParams> {
 
 /// The journal's whole-band bytes (`eq.band`, in a history entry): type,
 /// bypass, then freq, Q, gain and qp as little-endian `f32`s.
+/// -- WP AIVIS -- also for the user's changes in words.
+pub(crate) fn band_of_bytes(b: &[u8]) -> Option<FilterParams> {
+    band_from_bytes(b)
+}
+
 fn band_from_bytes(b: &[u8]) -> Option<FilterParams> {
     let f = |k: usize| -> Option<f32> {
         let at = k.checked_mul(4)?.checked_add(2)?;
@@ -1391,7 +1434,7 @@ pub struct AgentPolicy {
 
 /// Tools whose writes are never judged: a revert is never refused
 /// (PLAN-CLIENTS 5.9). Each puts back only what this agent applied itself.
-// -- WP FEAT2 -- dspi_tune_revert, as its text says
+// -- WP FEAT2 -- dspi_tune_revert, as its text says (and AIVIS: it promises the same)
 const UNJUDGED_TOOLS: &[&str] = &["dspi_revert_changes", "dspi_tune_revert"];
 
 impl AgentPolicy {

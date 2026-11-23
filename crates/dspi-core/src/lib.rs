@@ -598,6 +598,9 @@ pub(crate) struct Inner {
     pub(crate) actor_key: u64,
     /// What other actors changed since the last `process_notifications`.
     pub(crate) foreign: actor::Foreign,
+    // -- WP AIVIS --
+    /// What the user changed, for the other actors (`actor::user`).
+    pub(crate) user_log: actor::user::UserLog,
 }
 
 /// An open device.
@@ -1013,6 +1016,7 @@ impl Inner {
             demo_generation: None,                                  // -- WP PGQT --
             actor_key: actor::next_core_key(),                      // -- WP MCP0 --
             foreign: actor::Foreign::default(),                     // -- WP MCP0 --
+            user_log: actor::user::UserLog::default(),              // -- WP AIVIS --
         }
     }
 

@@ -8582,7 +8582,7 @@ bool dspi_mcp_revoke(struct FfiMcp *mcp, uint64_t id);
 bool dspi_mcp_pairing_answer(struct FfiMcp *mcp, uint64_t request, bool allow);
 
 /**
- * Pause the agents (their tool calls fail with "paused by the user" and
+ * Pause the agents (their tool calls answer `status: "paused"` and
  * change nothing) or resume them. Kept across stop and start.
  */
 void dspi_mcp_pause(struct FfiMcp *mcp, bool paused);
@@ -8640,6 +8640,24 @@ bool dspi_mcp_set_active_device(struct FfiMcp *mcp, const char *id);
 int32_t dspi_mcp_relay_stdio(const char *config_json,
                              void (*token_sink)(const char *token, void *user_data),
                              void *user_data);
+
+/**
+ * What the agents have running now, for a working strip: `{ok, running,
+ * calls: [{id, client_name, tool, title, write, device, at_unix_ms, output?,
+ * input?, channel?, band?, slot?}], last (the newest call, done or not, or
+ * null), jobs: [{request_id, client_name, device, kind, loop, what, state,
+ * ...}] (the measurement requests that are open or run), guards: [{device,
+ * client_name}] (the agents' timed previews)}`. The listener gets `work` when
+ * it changes. Never waits for an agent's call: the UI's thread may call it.
+ */
+uint32_t dspi_mcp_work(struct FfiMcp *mcp, char *buf, uint32_t len);
+
+/**
+ * The newest 32 measurement requests, ended ones included, with how they
+ * ended (`note`) and whether the user disturbed them (`disturbed`): `{ok,
+ * value: [...]}`. Empty while stopped. Waits for an agent's call in progress.
+ */
+uint32_t dspi_mcp_measure_log(struct FfiMcp *mcp, char *buf, uint32_t len);
 
 /**
  * The measurement requests waiting for the app, oldest first: `{ok, value:

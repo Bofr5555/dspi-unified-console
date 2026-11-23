@@ -606,6 +606,9 @@ impl DspiCore {
             return self.on_lost(r);
         }
         if now() >= r.deadline {
+            // -- WP AIVIS -- the guard's own write: not the user's change
+            let _scope = (crate::actor::JobActor::capture(self).actor() == crate::actor::EMBEDDER)
+                .then(|| crate::actor::JobActor::of(crate::actor::EMBEDDER).attribute(self));
             return self.revert_now(r, "timeout");
         }
         self.apply_status()

@@ -39,6 +39,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
+use dspi_core::actor::user; // -- WP AIVIS --
 use dspi_core::actor::{ActorId, ActorScope, JobActor, WriteHook};
 use dspi_core::measure::{
     MEASURE_CEILING_MIN_DB, MEASURE_COUNT_MAX, MEASURE_PASSES, MEASURE_SPL_CAP_MIN_DB,
@@ -234,6 +235,11 @@ pub struct Request {
     /// The finished measurement's document, kept for `dspi_tune_propose`
     /// when the store could not file it.
     pub document: Option<String>,
+    // -- WP AIVIS --
+    /// What the user had changed when it started (`actor::user::latest`).
+    pub began: u64,
+    /// The user disturbed it: what it found does not count.
+    pub disturbed: bool,
     // -- WP RCFIX --
     /// Its ticket's number while it is taken ([`TICKETS`]), 0 else.
     ticket_no: u64,
@@ -269,6 +275,7 @@ impl Request {
             "what": self.what,
             "state": self.state.as_str(),
             "note": self.note,
+            "disturbed": self.disturbed, // -- WP AIVIS --
         })
     }
 
@@ -305,6 +312,7 @@ impl Request {
             "what": self.what,
             "note": self.note,
             "filed_measurement_id": self.filed_id,
+            "valid": !self.disturbed, // -- WP AIVIS --
         })
     }
 }
@@ -438,6 +446,7 @@ impl Jobs {
         }
         if ok {
             r.state = RequestState::Started;
+            r.began = user::latest(); // -- WP AIVIS --
         } else {
             r.state = RequestState::Declined;
             r.note = untrusted::note(note);
@@ -532,7 +541,22 @@ pub fn tick(set: &CoreSet, jobs: &Jobs, now_ms: u64) {
                     });
                     continue;
                 };
+                // -- WP AIVIS -- the user stepped in
+                if let Some(c) = disturbance(set, &core, &r) {
+                    stop_job(&core, &r);
+                    let (_, what, _) = crate::user::describe(&core, &c);
+                    jobs.update(r.id, |q| {
+                        q.state = RequestState::Ended;
+                        q.disturbed = true;
+                        q.note = format!(
+                            "stopped: the user {what} while it ran, so its result is not valid \
+                             and was not filed. Ask the user before you start it again."
+                        );
+                    });
+                    continue;
+                }
                 if let Some((note, document)) = ended(&core, &r) {
+                    let note = user_stopped(set, &core, &r, note); // -- WP AIVIS --
                     let filed = document
                         .as_ref()
                         .and_then(|d| core.measure_doc_put(d.clone()).ok())
@@ -549,6 +573,88 @@ pub fn tick(set: &CoreSet, jobs: &Jobs, now_ms: u64) {
             _ => {}
         }
     }
+}
+
+// -- WP AIVIS --
+/// The cores request `r` measures on: its device's, and for a measurement
+/// across units every open unit of it.
+fn cores_of(set: &CoreSet, core: &DspiCore, r: &Request, f: &mut dyn FnMut(&DspiCore) -> bool) {
+    if f(core) || r.kind.loop_word() != "system" {
+        return;
+    }
+    let serials: Vec<&str> = r
+        .setup
+        .pointer("/setup/units")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|u| u.get("serial").and_then(Value::as_str))
+        .collect();
+    for d in set.list() {
+        if serials.contains(&d.serial.as_str())
+            && d.id.as_str() != r.device
+            && let Some(c) = set.core(&d.id)
+            && f(&c)
+        {
+            return;
+        }
+    }
+}
+
+/// The user's change that disturbed `r`'s running job, if any.
+fn disturbance(set: &CoreSet, core: &DspiCore, r: &Request) -> Option<user::UserChange> {
+    let mut found = None;
+    cores_of(set, core, r, &mut |c| {
+        found = user::disturbed(c, r.began, crate::user::audible);
+        found.is_some()
+    });
+    found
+}
+
+/// `note` for a job that ended, said to be the user's doing when they
+/// pressed Stop.
+fn user_stopped(set: &CoreSet, core: &DspiCore, r: &Request, note: String) -> String {
+    let mut by_user = false;
+    cores_of(set, core, r, &mut |c| {
+        by_user = user::changes_since(c, r.began)
+            .iter()
+            .any(|c| c.path == "did.measure_stop");
+        by_user
+    });
+    if by_user && note.contains("ended") {
+        "the user stopped it in the app; ask before you start it again".to_owned()
+    } else {
+        note
+    }
+}
+
+/// Stop `r`'s job on `core`, as its agent (it is not the user's Stop).
+fn stop_job(core: &DspiCore, r: &Request) {
+    let _scope = JobActor::of(r.actor).attribute(core);
+    match r.kind {
+        JobKind::Measure if core.measure_state().actor == r.actor => {
+            core.measure_stop();
+        }
+        JobKind::Rolloff if core.measure_rolloff_state().actor == r.actor => {
+            core.measure_rolloff_stop();
+        }
+        JobKind::TuneSumCheck | JobKind::TuneVerify => {
+            core.measure_tune_stop();
+        }
+        JobKind::System | JobKind::SystemSumCheck | JobKind::SystemVerify => {
+            core.measure_system_stop();
+        }
+        _ => {}
+    }
+}
+
+/// The requests that are open or run, for the app's working strip.
+pub fn open_json(jobs: &Jobs) -> Vec<Value> {
+    jobs.all()
+        .iter()
+        .filter(|r| r.state.open() || r.state == RequestState::Started)
+        .map(Request::to_json)
+        .collect()
 }
 
 /// The issue's words, cleaned.
@@ -1173,6 +1279,8 @@ fn request(call: &Call<'_>, kind: JobKind, setup: Value, what: String) -> ToolRe
         at_ms: 0,
         filed_id: String::new(),
         document: None,
+        began: 0, // -- WP AIVIS --
+        disturbed: false,
         ticket_no: 0,
     });
     Ok(json!({
@@ -1910,6 +2018,8 @@ static TUNE_KEEP: Tool = Tool {
         if verify_failed(&core.measure_tune_state()) {
             return Err(ToolError::new(KEEP_IS_THE_USERS));
         }
+        // -- WP AIVIS -- the user changed part of it meanwhile
+        user::check_keep(core, call.actor).map_err(|e| policy::core_error(&call.judging, e))?;
         let k = core.measure_tune_keep().map_err(|e| refusal(call, e))?;
         policy::lock(&call.judging).guard_ended = Some(k.guard.id);
         Ok(
@@ -2397,21 +2507,7 @@ pub fn stop_all(set: &CoreSet, jobs: &Jobs) {
             continue;
         }
         if let Some(core) = DeviceId::parse(&r.device).and_then(|d| set.core(&d)) {
-            match r.kind {
-                JobKind::Measure if core.measure_state().actor == r.actor => {
-                    core.measure_stop();
-                }
-                JobKind::Rolloff if core.measure_rolloff_state().actor == r.actor => {
-                    core.measure_rolloff_stop();
-                }
-                JobKind::TuneSumCheck | JobKind::TuneVerify => {
-                    core.measure_tune_stop();
-                }
-                JobKind::System | JobKind::SystemSumCheck | JobKind::SystemVerify => {
-                    core.measure_system_stop();
-                }
-                _ => {}
-            }
+            stop_job(&core, &r); // -- WP AIVIS --
         }
         jobs.update(r.id, |q| {
             q.state = RequestState::Ended;

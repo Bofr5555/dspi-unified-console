@@ -123,4 +123,7 @@ Item {
             }
         }
     }
+
+    // -- WP AIVIS -- an agent changed it just now
+    AiTouched { objectName: cell.objectName + ".touched"; path: "mix"; indices: [cell.input, cell.output] }
 }

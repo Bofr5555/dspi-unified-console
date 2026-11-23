@@ -57,6 +57,7 @@ Panel {
 
         EffectHeader {
             objectName: "PsybassWindow.header"
+            touchPath: "bass."   // -- WP AIVIS --
             Layout.fillWidth: true
             iconName: "audio-lines"
             title: qsTr("Psychoacoustic Bass")

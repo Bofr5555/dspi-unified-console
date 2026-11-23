@@ -41,7 +41,8 @@
 //! **Clients.** One paired token is one client of the [`Server`] (one actor
 //! in the History, one rate limit), whichever era and however many sessions
 //! it uses, under the name the user paired it as. While the app has paused
-//! the agents, `tools/call` answers with a tool error and changes nothing.
+//! the agents, `tools/call` answers `status: "paused"` and changes nothing
+//! (-- WP AIVIS -- not an error: the agent waits).
 //!
 //! **Held calls** (-- WP MCP4 --). A call the policy holds for the user's
 //! word ([`Server::handle_held_value`]) leaves its connection's thread at
@@ -97,8 +98,10 @@ pub const PAIR_WAIT_PATH: &str = "/pair/wait";
 /// MCP 2026-07-28: a header disagrees with the body.
 pub const HEADER_MISMATCH: i64 = -32020;
 
-/// The tool error a paused server answers `tools/call` with.
-pub const PAUSED_TEXT: &str = "DSPi Console: the user has paused AI agents. Nothing was changed.";
+/// What a paused server answers `tools/call` with (-- WP AIVIS -- as `status:
+/// "paused"`, not as an error).
+pub const PAUSED_TEXT: &str = "DSPi Console: the user has paused AI agents. This call was not run \
+and nothing was changed. Wait, or ask the user to press Resume; then call again.";
 
 // -- WP MCP4 --
 /// The 503 reply's words while the server stops.
@@ -203,6 +206,10 @@ pub enum Event {
     /// The agents' requests to open or close a device changed: read
     /// [`HttpServer::device_requests`] again and take what waits.
     DeviceRequests,
+    // -- WP AIVIS --
+    /// What the agents have running changed ([`HttpServer::work`]): a call
+    /// began or ended, a measurement request or a timed preview did.
+    Work,
 }
 
 impl Event {
@@ -220,6 +227,7 @@ impl Event {
             Self::Activity => json!({"event": "activity"}),
             Self::MeasureRequests => json!({"event": "measureRequests"}), // -- WP MCP5 --
             Self::DeviceRequests => json!({"event": "deviceRequests"}),   // -- WP FEAT2 --
+            Self::Work => json!({"event": "work"}),                       // -- WP AIVIS --
         }
     }
 }
@@ -293,6 +301,27 @@ struct Shared {
     /// Set to make the ticking thread run now.
     kicked: Mutex<bool>,
     kick: Condvar,
+    // -- WP AIVIS --
+    /// What the agents have running. A leaf lock: the app reads it on its UI
+    /// thread while a call holds `mcp`.
+    work: Mutex<Work>,
+    /// The tools' titles and whether they write.
+    titles: BTreeMap<&'static str, (&'static str, bool)>,
+    /// The user's Pause and Resume, for the agents, until `mcp` is next held.
+    pending_user: Mutex<Vec<(&'static str, &'static str)>>,
+}
+
+// -- WP AIVIS --
+/// What the agents have running.
+#[derive(Default)]
+struct Work {
+    next: u64,
+    /// The calls being served, by number.
+    calls: BTreeMap<u64, Value>,
+    /// The newest call, served or done.
+    last: Value,
+    /// `Server::work`: the requests to the Measure view and the previews.
+    jobs: Value,
 }
 
 /// A held call's connection, waiting for the user's word (-- WP MCP4 --).
@@ -331,13 +360,30 @@ impl Shared {
     /// Run `f` on the MCP side, then tell the app, unlocked, of the
     /// confirmations it asked or ended, and wake the ticking thread for them.
     fn with_mcp<R>(&self, f: impl FnOnce(&mut Mcp) -> R) -> R {
-        let (r, changed, measure, devices) = {
+        let (r, changed, measure, devices, work) = {
             let mut mcp = lock(&self.mcp);
+            // -- WP AIVIS -- the user's Pause, told to the agents
+            for (kind, what) in std::mem::take(&mut *lock(&self.pending_user)) {
+                mcp.server.note_user(kind, what);
+            }
             let r = f(&mut mcp);
             let measure = mcp.server.take_measure_events(); // -- WP MCP5 --
             let devices = mcp.server.take_device_events(); // -- WP FEAT2 --
-            let changed = !mcp.server.take_confirm_events().is_empty();
-            (r, changed, measure, devices)
+            // -- WP AIVIS --
+            let jobs = mcp.server.work();
+            let work = {
+                let mut w = lock(&self.work);
+                let changed = w.jobs != jobs;
+                w.jobs = jobs;
+                changed
+            };
+            (
+                r,
+                !mcp.server.take_confirm_events().is_empty(),
+                measure,
+                devices,
+                work,
+            )
         };
         if changed {
             self.wake();
@@ -349,7 +395,68 @@ impl Shared {
         if devices {
             self.emit(&[Event::DeviceRequests]); // -- WP FEAT2 --
         }
+        // -- WP AIVIS --
+        if work {
+            self.emit(&[Event::Work]);
+        }
         r
+    }
+
+    // -- WP AIVIS --
+    /// `client` calls a tool: it runs until [`Shared::call_ended`]. The app
+    /// hears of it before the call waits for the server.
+    fn call_began(&self, client: &str, msg: &Value) -> u64 {
+        let tool = msg
+            .pointer("/params/name")
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        let Some((name, (title, write))) = self.titles.get_key_value(tool) else {
+            return 0;
+        };
+        let args = msg.pointer("/params/arguments");
+        let mut row = Map::new();
+        row.insert("tool".into(), json!(name));
+        row.insert("title".into(), json!(title));
+        row.insert("write".into(), json!(write));
+        row.insert(
+            "client_name".into(),
+            json!(crate::untrusted::actor_label(client)),
+        );
+        // Whose, and the numbers it names; the text an agent gives is not shown
+        let device = args
+            .and_then(|a| a.get("device"))
+            .and_then(Value::as_str)
+            .and_then(dspi_core::DeviceId::parse);
+        row.insert(
+            "device".into(),
+            json!(device.as_ref().map(dspi_core::DeviceId::as_str)),
+        );
+        for key in ["output", "input", "channel", "band", "slot"] {
+            if let Some(n) = args.and_then(|a| a.get(key)).and_then(Value::as_u64) {
+                row.insert(key.into(), json!(n));
+            }
+        }
+        row.insert(
+            "at_unix_ms".into(),
+            json!(self.started_unix_ms.saturating_add(self.now_ms())),
+        );
+        let no = {
+            let mut w = lock(&self.work);
+            w.next = w.next.saturating_add(1);
+            let no = w.next;
+            row.insert("id".into(), json!(no));
+            w.last = Value::Object(row.clone());
+            w.calls.insert(no, Value::Object(row));
+            no
+        };
+        self.emit(&[Event::Work]);
+        no
+    }
+
+    fn call_ended(&self, no: u64) {
+        if lock(&self.work).calls.remove(&no).is_some() {
+            self.emit(&[Event::Work]);
+        }
     }
 
     fn wake(&self) {
@@ -427,6 +534,12 @@ impl HttpServer {
             .first()
             .map_or(Ok(config.port), |l| l.local_addr().map(|a| a.port()))
             .map_err(StartError::Bind)?;
+        // -- WP AIVIS --
+        let titles = server
+            .tool_titles()
+            .into_iter()
+            .map(|(name, title, write)| (name, (title, write)))
+            .collect();
         let shared = Arc::new(Shared {
             mcp: Mutex::new(Mcp {
                 server,
@@ -455,6 +568,9 @@ impl HttpServer {
             parked: Mutex::new(Vec::new()),
             kicked: Mutex::new(false),
             kick: Condvar::new(),
+            work: Mutex::default(), // -- WP AIVIS --
+            titles,
+            pending_user: Mutex::default(),
         });
         // -- WP MCP4 -- before anything is served: without it confirmations
         // would never lapse and timed previews never be put back
@@ -673,7 +789,29 @@ impl HttpServer {
 
     /// Pause or resume the agents' tool calls.
     pub fn set_paused(&self, paused: bool) {
-        self.shared.paused.store(paused, Ordering::SeqCst);
+        // -- WP AIVIS -- the agents are told; never waits for a call
+        if self.shared.paused.swap(paused, Ordering::SeqCst) != paused {
+            lock(&self.shared.pending_user).push(if paused {
+                ("paused", "paused AI agents")
+            } else {
+                ("resumed", "let AI agents go on (Resume)")
+            });
+            self.shared.emit(&[Event::Work]);
+        }
+    }
+
+    // -- WP AIVIS --
+    /// What the agents have running, for the app's working strip: `{calls,
+    /// last, jobs, guards}` ([`Server::work`]). Never waits for a call.
+    pub fn work(&self) -> Value {
+        let w = lock(&self.shared.work);
+        let of = |key: &str| w.jobs.get(key).cloned().unwrap_or_else(|| json!([]));
+        json!({
+            "calls": w.calls.values().collect::<Vec<_>>(),
+            "last": w.last,
+            "jobs": of("jobs"),
+            "guards": of("guards"),
+        })
     }
 
     /// Whether the agents are paused.
@@ -1447,16 +1585,25 @@ fn post_mcp(shared: &Shared, request: &Request) -> Answer {
     forward(shared, &owner, msg, is_call, |_| 200)
 }
 
-/// The reply to a `tools/call` that reached no tool: a tool error.
-fn refused_call(msg: &Value, text: &str) -> Response {
+// -- WP AIVIS --
+/// The reply to a `tools/call` while the user has paused the agents: not an
+/// error, the call was not served and nothing was changed.
+fn paused_call(msg: &Value) -> Response {
     let id = msg.get("id").cloned().unwrap_or(Value::Null);
     let modern = msg
         .pointer("/params/_meta")
         .and_then(|m| m.get(META_VERSION))
         .is_some();
     let mut result = Map::new();
-    result.insert("content".into(), json!([{"type": "text", "text": text}]));
-    result.insert("isError".into(), json!(true));
+    result.insert(
+        "content".into(),
+        json!([{"type": "text", "text": PAUSED_TEXT}]),
+    );
+    result.insert(
+        "structuredContent".into(),
+        json!({"status": "paused", "note": PAUSED_TEXT}),
+    );
+    result.insert("isError".into(), json!(false));
     if modern {
         result.insert("resultType".into(), json!("complete"));
     }
@@ -1474,6 +1621,12 @@ fn forward(
     status_of: impl Fn(i64) -> u16,
 ) -> Answer {
     let now_ms = shared.now_ms();
+    // -- WP AIVIS -- the app shows the call before it waits for the server
+    let call = if is_call && !shared.paused.load(Ordering::SeqCst) {
+        shared.call_began(&owner.name, &msg)
+    } else {
+        0
+    };
     // Judged with the server locked: a call that waited for another's end
     // while the user pressed Pause or Stop does not run.
     let outcome = shared.with_mcp(|mcp| {
@@ -1481,13 +1634,14 @@ fn forward(
             return Err(Response::error(503, STOPPED_TEXT));
         }
         if is_call && shared.paused.load(Ordering::SeqCst) {
-            return Err(refused_call(&msg, PAUSED_TEXT));
+            return Err(paused_call(&msg)); // -- WP AIVIS --
         }
         let Some(client) = client_for(mcp, owner) else {
             return Err(unauthorised()); // -- WP MCP2c --
         };
         Ok(mcp.server.handle_held_value(client, now_ms, msg))
     });
+    shared.call_ended(call); // -- WP AIVIS --
     let (reply, held) = match outcome {
         Ok(o) => o,
         Err(refusal) => return refusal.into(),

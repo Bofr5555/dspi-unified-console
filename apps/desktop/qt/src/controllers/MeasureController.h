@@ -178,6 +178,7 @@ public:
     // What runs on the other open devices: [{ id, title, text }]
     QVariantList otherRuns() const { return m_others; }
     Q_INVOKABLE void stopOther(const QString &id);
+    void readTune(const QString &id);   // -- WP AIVIS --
     Q_INVOKABLE void showOther(const QString &id);
     // What was started stops, on every device
     Q_INVOKABLE void stopAll();

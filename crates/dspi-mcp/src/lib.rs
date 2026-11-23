@@ -19,6 +19,7 @@
 //! | [`untrusted`] | the sanitiser for text nobody vetted | MCP1 |
 //! | [`activity`] | what the agents did | MCP1 |
 //! | [`host_audio`] | this computer's audio, read only | FEAT3 |
+//! | [`user`] | what the user did meanwhile, for the agents | AIVIS |
 //! | [`rate`] | token buckets on the caller's clock | MCP1 |
 //! | `http` | the loopback listener (feature `http`) | MCP3 |
 //! | `auth` | per-client tokens and pairing (feature `http`) | MCP3 |
@@ -50,6 +51,7 @@ pub mod resources;
 pub mod server;
 pub mod tools;
 pub mod untrusted;
+pub mod user; // -- WP AIVIS --
 // -- WP MCP3 -- the transports
 #[cfg(feature = "http")]
 pub mod auth;
@@ -118,3 +120,7 @@ mod tests_wp_feat3;
 #[cfg(feature = "link")]
 #[allow(clippy::indexing_slicing)]
 mod tests_wp_intf;
+// -- WP AIVIS --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
+mod tests_wp_aivis;

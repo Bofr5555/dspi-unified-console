@@ -2852,6 +2852,7 @@ impl DspiCore {
     pub fn measure_tune_stop(&self) -> MeasureTuneState {
         let mut t = self.measure.tune_lock();
         if t.runs.take().is_some() && self.measure_state().active {
+            crate::actor::user::did(self, "measure_stop"); // -- WP AIVIS --
             self.measure_stop_session();
         }
         let _ = self.measure_clear();

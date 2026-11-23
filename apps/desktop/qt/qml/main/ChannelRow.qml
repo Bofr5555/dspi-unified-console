@@ -234,4 +234,9 @@ ItemDelegate {
     Accessible.name: label + ", " + descriptor
     Accessible.selected: selectedRow
     Accessible.description: qsTr("Alt+click or the context menu renames it")
+
+    // -- WP AIVIS -- an agent changed it just now
+    AiTouched { objectName: row.objectName + ".touched"; path: "eq."; indices: [row.channel] }
+    AiTouched { path: "ch."; indices: [row.channel] }
+    AiTouched { path: "out."; indices: [row.number]; visible: lit && row.isOutput }
 }
