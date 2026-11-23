@@ -288,7 +288,7 @@ fn wp_intf_the_user_activity_block_reaches_feat1_to_feat3s_tools() {
         },
     );
     let c = s.connect();
-    let mut call = |s: &mut Server, tool: &str, args: Value| {
+    let call = |s: &mut Server, tool: &str, args: Value| {
         s.handle_value(
             c,
             0,
