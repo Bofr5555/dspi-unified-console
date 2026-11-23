@@ -190,6 +190,18 @@ and Installation setup. It may also ask the console to measure your speakers or 
   analogue, or the audio link sender). It is a description for you and the agent; it routes nothing.
 - **Names and notes the agent reads** (channel, preset, snapshot, hub, room names, event text) are passed to it as data,
   cleaned of control characters, and marked as text it must not take as instructions.
+- **Where the music comes from.** A DSPi has no player: it plays what its input receives from another program or box
+  (a music app, a streaming app, a TV, a game). The agent is told so, and which input is in use (USB, S/PDIF, I2S,
+  ADAT or the audio link). To choose or start music it needs that program's own integration, if you have one; these
+  tools only reach the DSPi.
+- **This computer's sound settings, read only** (`dspi_get_host_audio`). The agent can see, on the computer the
+  console runs on, whether each open DSPi is one of its sound outputs, whether it is the default output, its channel
+  count and sample rate, which apps play to it (Linux and Windows; macOS from 14.2), and the system volume, with whether
+  that volume moves the DSPi's user volume. It reads PipeWire on Linux (falling back to the ALSA sound cards), the
+  Windows audio service, and Core Audio on macOS. It never changes the default output, moves an app or sets the system
+  volume: it tells you where to do that (the desktop's sound settings or `wpctl` on Linux; Settings › System › Sound on
+  Windows; System Settings › Sound on macOS, which has no per-app output without third-party software). If the system
+  cannot be read (no PipeWire, a sandbox, no permission), the agent is told "unknown" and why, and carries on.
 
 **What agents can never do, whatever the setting:** update or flash firmware, use the bootloader or factory reset;
 change the limits profile, the installer PIN or lock; change hardware, pin or core-voltage settings; play the signal
@@ -363,5 +375,11 @@ the volume at 80 % or less. These steps change your own agent configuration; und
 11. **Ask me: Never**: a louder change happens without a question. Removing a tweeter output's high-pass is refused.
 12. **Ask me: About every change**: a quiet change is asked about too.
 13. **Stop** turns agents off; the agents' next call fails; turning them on again works.
+
+**This computer's sound settings** (WP FEAT3)
+14. With a DSPi on USB that is not the default output and music playing to the laptop's speakers, ask "is my DSPi
+    getting the sound?". The agent says the DSPi is not the default output, names where the music plays, and tells
+    you how to switch; it does not switch anything. Make the DSPi the default and ask again: it says so, and names the
+    app playing to it. Repeat on Windows and on macOS (macOS before 14.2: no app list, only whether something plays).
 
 Write down the agent host versions and anything that differed.

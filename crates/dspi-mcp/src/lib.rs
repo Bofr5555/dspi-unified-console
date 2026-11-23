@@ -18,6 +18,7 @@
 //! | [`prompts`] | user-invoked recipes | MCP1 |
 //! | [`untrusted`] | the sanitiser for text nobody vetted | MCP1 |
 //! | [`activity`] | what the agents did | MCP1 |
+//! | [`host_audio`] | this computer's audio, read only | FEAT3 |
 //! | [`rate`] | token buckets on the caller's clock | MCP1 |
 //! | `http` | the loopback listener (feature `http`) | MCP3 |
 //! | `auth` | per-client tokens and pairing (feature `http`) | MCP3 |
@@ -39,6 +40,7 @@
 
 pub mod activity;
 pub mod confirm; // -- WP MCP2a --
+pub mod host_audio; // -- WP FEAT3 --
 pub mod policy; // -- WP MCP2a --
 pub mod prompts;
 pub mod protocol;
@@ -107,3 +109,7 @@ mod tests_wp_mcp5;
 #[cfg(feature = "link")]
 #[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
 mod tests_wp_feat1;
+// -- WP FEAT3 --
+#[cfg(test)]
+#[allow(clippy::indexing_slicing)]
+mod tests_wp_feat3;

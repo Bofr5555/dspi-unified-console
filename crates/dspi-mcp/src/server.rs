@@ -24,7 +24,8 @@ use crate::confirm::{
     AnswerError, CONFIRM_HOLD_MS, ConfirmEvent, ConfirmState, Confirmation, Confirmations,
     WAITING_PER_CLIENT,
 };
-use crate::policy::WriteKey;
+use crate::host_audio::HostAudioSource;
+use crate::policy::WriteKey; // -- WP FEAT3 --
 
 // -- WP MCP2a --
 /// A drag the user has marked for this long, with none of the user's
@@ -80,6 +81,10 @@ pub struct ServerConfig {
     /// The app takes the agents' requests to open and close devices
     /// (`Server::device_take`); without it those tools say so.
     pub opening: bool,
+    // -- WP FEAT3 --
+    /// Reads this computer's audio for `dspi_get_host_audio` (none: the tool
+    /// says it cannot tell). The app passes `host_audio::system()`.
+    pub host_audio: Option<Arc<dyn HostAudioSource>>,
 }
 
 impl Default for ServerConfig {
@@ -94,6 +99,7 @@ impl Default for ServerConfig {
             template_dir: String::new(), // -- WP MCP2b --
             measuring: false,            // -- WP MCP5 --
             opening: false,              // -- WP FEAT2 --
+            host_audio: None,            // -- WP FEAT3 --
         }
     }
 }
@@ -673,6 +679,7 @@ impl Server {
             installation: Some(&self.installation), // -- WP MCP2c --
             measure: Some(&self.measure),           // -- WP MCP5 --
             opens: Some(&self.opens),               // -- WP FEAT2 --
+            host_audio: self.config.host_audio.as_ref(), // -- WP FEAT3 --
         };
         registry::run(&ctx, tool, args)
     }

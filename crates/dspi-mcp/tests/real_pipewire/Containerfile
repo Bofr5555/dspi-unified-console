@@ -1,0 +1,6 @@
+# WP FEAT3: a real PipeWire for dspi_get_host_audio's Linux reader (run.sh).
+# The AUSB3 review's recipe (localhost/ausb3-pw:2) on Fedora 44, the build
+# container's release: the test binary needs its glibc. run.sh builds it:
+#   podman build -t localhost/dspi-feat3-pw:1 -f Containerfile .
+FROM registry.fedoraproject.org/fedora:44
+RUN dnf -y install pipewire pipewire-utils wireplumber dbus-daemon python3 && dnf clean all

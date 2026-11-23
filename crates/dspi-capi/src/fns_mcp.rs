@@ -265,6 +265,8 @@ impl FfiMcp {
             .unwrap_or(false);
         // -- WP FEAT2 -- the app takes the agents' requests to open devices
         server_config.opening = cfg.get("opening").and_then(Value::as_bool).unwrap_or(false);
+        // -- WP FEAT3 -- dspi_get_host_audio reads this computer's audio
+        server_config.host_audio = Some(dspi_mcp::host_audio::system());
         let mut server = Server::new(Arc::clone(&self.set), server_config);
         server.set_known_devices(&lock(&self.known));
         server.set_active_device(lock(&self.active).clone());

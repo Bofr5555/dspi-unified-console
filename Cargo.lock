@@ -873,6 +873,7 @@ dependencies = [
  "log",
  "serde_json",
  "sha2",
+ "windows",
 ]
 
 [[package]]

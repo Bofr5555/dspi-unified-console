@@ -21,6 +21,7 @@ use serde_json::{Map, Value, json};
 
 use crate::activity::Activity;
 use crate::confirm::Confirmations; // -- WP MCP2a --
+use crate::host_audio::HostAudioSource; // -- WP FEAT3 --
 use crate::policy::{self, Judging, JudgingCell, WriteKey}; // -- WP MCP2a --
 use crate::untrusted;
 use crate::{ClientId, tools};
@@ -130,6 +131,8 @@ impl Registry {
         // opening known devices
         tools.extend(tools::site::TOOLS.iter().copied());
         tools.extend(tools::devices::TOOLS.iter().copied());
+        // -- WP FEAT3 -- this computer's audio, read only
+        tools.extend(tools::host::TOOLS.iter().copied());
         Self { tools }
     }
 
@@ -320,6 +323,9 @@ pub struct Call<'a> {
     /// -- WP FEAT2 -- a room's volume, the known devices): it reaches another
     /// unit's core only inside a scope of its own.
     pub set: Option<&'a CoreSet>,
+    // -- WP FEAT3 --
+    /// Reads this computer's audio (`dspi_get_host_audio`).
+    pub host_audio: Option<&'a Arc<dyn HostAudioSource>>,
     core: Option<&'a DspiCore>,
 }
 
@@ -393,6 +399,9 @@ pub struct RunCtx<'a> {
     // -- WP FEAT2 --
     /// The agents' requests to open and close devices.
     pub opens: Option<&'a tools::devices::Opens>,
+    // -- WP FEAT3 --
+    /// Reads this computer's audio.
+    pub host_audio: Option<&'a Arc<dyn HostAudioSource>>,
 }
 
 /// What [`run`] did.
@@ -513,7 +522,8 @@ pub fn run(ctx: &RunCtx<'_>, tool: &Tool, args: &Map<String, Value>) -> RunOutco
             measure: ctx.measure,           // -- WP MCP5 --
             opens: ctx.opens,               // -- WP FEAT2 --
             client_label: ctx.client_label.to_owned(),
-            set: Some(ctx.set), // -- WP FEAT2 --
+            set: Some(ctx.set),         // -- WP FEAT2 --
+            host_audio: ctx.host_audio, // -- WP FEAT3 --
             core: None,
         };
         let result = (tool.handler)(&mut call, args);
@@ -574,6 +584,7 @@ pub fn run(ctx: &RunCtx<'_>, tool: &Tool, args: &Map<String, Value>) -> RunOutco
             opens: ctx.opens,               // -- WP FEAT2 --
             client_label: ctx.client_label.to_owned(),
             set: Some(ctx.set),
+            host_audio: ctx.host_audio, // -- WP FEAT3 --
             core: Some(&core),
         };
         (tool.handler)(&mut call, args)
