@@ -244,7 +244,9 @@ def sheets(run, step):
     out = []
     for line in log.read_text().splitlines() if log.exists() else []:
         x = json.loads(line)
-        if x["kind"] == "question" and lo <= x["time"] <= hi:
+        # -- WP INTK -- by the epoch where the line has it: the clock's words wrap at midnight
+        inside = step["start"] <= x["at"] <= step["end"] if "at" in x else lo <= x["time"] <= hi
+        if x["kind"] == "question" and inside:
             out.append((x["data"].get("text") or json.dumps(x["data"]), x["data"].get("answer", "allow")))
     return out
 
