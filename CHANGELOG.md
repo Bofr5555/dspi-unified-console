@@ -77,6 +77,14 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
   agents' endpoint follows MCP 2026-07-28 more closely (its error codes for a missing `_meta` and a contradicting header;
   `initialize` and `ping` are not modern methods; resources say how long they may be kept), checked against the
   official MCP conformance suite in both protocol versions. (WP MCP6)
+- **A zone's source routes, and agents can set it up.** Choosing a zone's source in the installation now gives every
+  unit of the zone on the audio link the source's channels as its slots (it was a label); a slot or channel clash is
+  refused. Saving stores it; the units play it once the audio link is aligned. A scene can switch a zone's source (a
+  `source` action): recalled, the hub stores it and writes the zone's units' slots at once. The installation can also
+  describe where its programme comes from (which computer, box or service feeds which unit input or sender channel).
+  AI agents make these in their installation draft (`dspi_installation_set_source`, `_set_zone_source`, `_set_slots`,
+  `_set_scene`, `_set_programme`); saving follows the confirmation setting, and the agent is told what is live and what
+  is stored only. The forms in Qt and the web follow. (WP FEAT1)
 - Modern's Equaliser: three pages. **PEQ** has the channel in one strip over the graph (name, Enabled, input mix, gain,
   delay, mute, polarity, limiter; an input's link and preamp), a label on the graph with the selected band's values, the
   RTA, Phase, All Curves and pop-out switches in the graph's corner, and a denser band table. **Crossover** has every

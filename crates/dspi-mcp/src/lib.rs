@@ -98,3 +98,8 @@ mod tests_wp_mcp4;
     clippy::cast_possible_truncation
 )]
 mod tests_wp_mcp5;
+// -- WP FEAT1 --
+#[cfg(test)]
+#[cfg(feature = "link")]
+#[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
+mod tests_wp_feat1;

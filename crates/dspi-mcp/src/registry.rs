@@ -124,6 +124,8 @@ impl Registry {
         tools.extend(tools::info::TOOLS.iter().copied());
         // -- WP MCP5 -- measuring, the auto-tune, measuring across units
         tools.extend(tools::measure::TOOLS.iter().copied());
+        // -- WP FEAT1 -- routing and sources in the installation draft
+        tools.extend(tools::installation::FEAT1_TOOLS.iter().copied());
         Self { tools }
     }
 

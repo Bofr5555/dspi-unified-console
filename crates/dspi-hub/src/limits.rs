@@ -1421,6 +1421,19 @@ pub(crate) fn judge_scene(
 ) -> Result<(), String> {
     use dspi_proto::ext::alink::ApplyOp;
     for (a, serials) in scene.actions.iter().zip(units) {
+        // -- WP FEAT1 -- a source switch is not volume, mute or a preset: a
+        // locked unit refuses it to a control role
+        if a.op == crate::system::model::SCENE_OP_SOURCE {
+            if role == Role::Control
+                && let Some(serial) = serials.iter().find(|s| limits.device(s).locked)
+            {
+                return Err(format!(
+                    "op {} on {}: unit {serial} is locked by its installer (volume, mute and presets only)",
+                    a.op, a.target
+                ));
+            }
+            continue;
+        }
         let Some(kind) = crate::system::model::scene_op(&a.op) else {
             continue;
         };

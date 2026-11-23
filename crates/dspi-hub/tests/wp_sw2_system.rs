@@ -283,6 +283,7 @@ fn model() -> SystemModel {
                     op: "master_volume".into(),
                     arg: 0,
                     value: -2000,
+                    source: None, // -- WP FEAT1 --
                 }],
             },
             Scene {
@@ -294,6 +295,7 @@ fn model() -> SystemModel {
                     op: "unmute".into(),
                     arg: 0,
                     value: 0,
+                    source: None, // -- WP FEAT1 --
                 }],
             },
             Scene {
@@ -306,12 +308,14 @@ fn model() -> SystemModel {
                         op: "preset_load".into(),
                         arg: 3,
                         value: 0,
+                        source: None, // -- WP FEAT1 --
                     },
                     SceneAction {
                         target: "zone:downstairs".into(),
                         op: "mute".into(),
                         arg: 0,
                         value: 0,
+                        source: None, // -- WP FEAT1 --
                     },
                 ],
             },
@@ -845,12 +849,14 @@ fn wp_sw2x_the_lead_covers_the_writes() {
                 op: "mute".into(),
                 arg: 0,
                 value: 0,
+                source: None, // -- WP FEAT1 --
             },
             SceneAction {
                 target: "all".into(),
                 op: "master_volume".into(),
                 arg: 0,
                 value: -1000,
+                source: None, // -- WP FEAT1 --
             },
         ],
     }];
@@ -903,12 +909,14 @@ fn wp_sw2x_late_applies_are_reported_late() {
                 op: "mute".into(),
                 arg: 0,
                 value: 0,
+                source: None, // -- WP FEAT1 --
             },
             SceneAction {
                 target: "all".into(),
                 op: "master_volume".into(),
                 arg: 0,
                 value: -1000,
+                source: None, // -- WP FEAT1 --
             },
         ],
     }];
@@ -946,12 +954,14 @@ fn wp_sw2x_a_scene_is_judged_op_by_op_against_the_role() {
                 op: "mute".into(),
                 arg: 0,
                 value: 0,
+                source: None, // -- WP FEAT1 --
             },
             SceneAction {
                 target: "unit:A".into(),
                 op: "click".into(),
                 arg: 0,
                 value: 0,
+                source: None, // -- WP FEAT1 --
             },
         ],
     });
@@ -1163,4 +1173,184 @@ fn wp_sw3x_a_stale_model_is_refused_and_the_role_is_current() {
     );
     let r = request(&mut c, json!({"t": "system.set", "id": 8, "model": m}));
     assert_eq!(r["code"], "denied", "{r}");
+}
+
+// -- WP FEAT1 --
+/// `model()` with a second source on the sender (channels 8 and 9), a unit X
+/// in the cinema that is not attached, and three scenes: the radio alone,
+/// the film with the volume down, and the radio through a zone of the bar.
+fn feat1_model() -> SystemModel {
+    let mut m = model();
+    m.sources.push(Source {
+        id: "radio".into(),
+        name: "Radio".into(),
+        sender: Some("tx".into()),
+        channels: vec![8, 9],
+    });
+    m.units.push(unit("X", "tx"));
+    let source = |zone: &str, source: &str| SceneAction {
+        target: format!("zone:{zone}"),
+        op: SCENE_OP_SOURCE.into(),
+        arg: 0,
+        value: 0,
+        source: Some(source.into()),
+    };
+    m.scenes.push(Scene {
+        id: "radio-on".into(),
+        name: "Radio".into(),
+        system_mute: None,
+        actions: vec![source("downstairs", "radio")],
+    });
+    m.scenes.push(Scene {
+        id: "film-quiet".into(),
+        name: "Film, quiet".into(),
+        system_mute: None,
+        actions: vec![
+            source("downstairs", "film"),
+            SceneAction {
+                target: "unit:A".into(),
+                op: "master_volume".into(),
+                arg: 0,
+                value: -2000,
+                source: None,
+            },
+        ],
+    });
+    m
+}
+
+/// A `source` op routes: the zone's source and its units' slots are stored
+/// (the revision moves once), every attached unit of the zone takes the
+/// slots at once, an offline one is said and takes them at the next
+/// alignment, which writes nothing back. Again: nothing moves.
+#[test]
+fn wp_feat1_a_source_scene_stores_the_zones_source_and_writes_the_slots_now() {
+    let hub = hub();
+    let rig = rig(&hub);
+    let rev0 = hub.system_set_model(feat1_model()).unwrap();
+    let radio = vec![8, 9, 255, 255, 255, 255, 255, 255];
+
+    // A control role may: it is choosing what a unit plays.
+    let r = hub.system_apply_scene("radio-on", Role::Control).unwrap();
+    assert_eq!(r.sources.len(), 1, "{r:?}");
+    let s = &r.sources[0];
+    assert_eq!(
+        (s.zone.as_str(), s.source.as_str()),
+        ("downstairs", "radio")
+    );
+    assert_eq!(s.units, ["A", "B", "R", "C", "X"]);
+    assert_eq!(s.revision, rev0 + 1);
+    let slots: Vec<(&str, &str)> = r
+        .writes
+        .iter()
+        .filter(|w| w.what == "slots")
+        .map(|w| (w.element.as_str(), w.result.as_str()))
+        .collect();
+    assert_eq!(
+        slots,
+        [
+            ("A", "ok"),
+            ("B", "ok"),
+            ("R", "ok"),
+            ("C", "ok"),
+            ("X", "no_device")
+        ]
+    );
+    let x = r.writes.iter().find(|w| w.element == "X").unwrap();
+    assert!(
+        x.reason.as_deref().unwrap().contains("next alignment"),
+        "{x:?}"
+    );
+    for f in [&rig.a, &rig.b, &rig.r, &rig.c] {
+        assert_eq!(writes_of(f, alink::EXT_ALINK_SLOTS), vec![radio.clone()]);
+    }
+    // Only slots: nothing at a frame.
+    assert_eq!(r.plan.path, "none", "{:?}", r.plan);
+    assert!(writes_of(&rig.a, alink::EXT_APPLY_AT_FRAME).is_empty());
+    let (m, rev) = hub.system_model();
+    assert_eq!(rev, rev0 + 1);
+    assert_eq!(m.zones[0].source.as_deref(), Some("radio"));
+    for u in ["A", "B", "R", "C", "X"] {
+        assert_eq!(m.unit(u).unwrap().slots.as_ref(), Some(&radio), "{u}");
+    }
+
+    // Again: the same, nothing stored or written.
+    let again = hub.system_apply_scene("radio-on", Role::Control).unwrap();
+    assert_eq!(again.sources[0].revision, rev0 + 1);
+    assert!(
+        again
+            .writes
+            .iter()
+            .filter(|w| w.what == "slots" && w.element != "X")
+            .all(|w| w.result == "unchanged"),
+        "{:?}",
+        again.writes
+    );
+    assert_eq!(hub.system_model().1, rev0 + 1);
+    // The alignment keeps the routing: it writes no slots back.
+    hub.system_align(true);
+    assert_eq!(
+        writes_of(&rig.b, alink::EXT_ALINK_SLOTS),
+        vec![radio.clone()]
+    );
+
+    // With an op at the frame: the slots at once, the volume at the frame.
+    let r = hub.system_apply_scene("film-quiet", Role::Admin).unwrap();
+    assert_eq!(r.sources[0].source, "film");
+    assert_eq!(r.sources[0].revision, rev0 + 2);
+    let film: Vec<u8> = (0..8).collect();
+    assert_eq!(
+        writes_of(&rig.a, alink::EXT_ALINK_SLOTS).last(),
+        Some(&film)
+    );
+    assert!(
+        r.writes
+            .iter()
+            .any(|w| w.element == "A" && w.what == "master_volume"),
+        "{:?}",
+        r.writes
+    );
+    assert_eq!(
+        r.plan.ops.len(),
+        1,
+        "the source op is not planned: {:?}",
+        r.plan
+    );
+    assert!(r.on_time, "the slots are not judged by the frame: {r:?}");
+    hub.stop();
+}
+
+/// Who may switch, and what the hub refuses: a viewer (nothing stored or
+/// written), a model whose scene cannot route (its validator), an op naming
+/// no source.
+#[test]
+fn wp_feat1_a_source_scene_is_refused_before_anything_is_stored() {
+    let hub = hub();
+    let rig = rig(&hub);
+    let rev0 = hub.system_set_model(feat1_model()).unwrap();
+    assert!(matches!(
+        hub.system_apply_scene("radio-on", Role::Viewer),
+        Err(SystemRefused::Denied(_))
+    ));
+    assert_eq!(hub.system_model().1, rev0);
+    assert!(writes_of(&rig.a, alink::EXT_ALINK_SLOTS).is_empty());
+
+    // A source of nine channels cannot be played by a unit: the model is
+    // refused while a scene would switch a zone to it.
+    let mut m = feat1_model();
+    m.sources[1].channels = (8..17).collect();
+    let e = hub.system_set_model(m).unwrap_err().to_string();
+    assert!(
+        e.contains("scene radio-on") && e.contains("a unit takes 8"),
+        "{e}"
+    );
+    // A source op that names no source, or a unit.
+    let mut m = feat1_model();
+    m.scenes.last_mut().unwrap().actions[0].source = None;
+    assert!(hub.system_set_model(m).is_err());
+    let mut m = feat1_model();
+    m.scenes.last_mut().unwrap().actions[0].target = "unit:A".into();
+    assert!(hub.system_set_model(m).is_err());
+    assert_eq!(hub.system_model().1, rev0);
+    hub.stop();
 }

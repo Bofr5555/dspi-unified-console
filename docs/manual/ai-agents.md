@@ -162,6 +162,19 @@ and Installation setup. It may also ask the console to measure your speakers or 
   never change it.
 - **Installation setup** works on a draft that belongs to the agent. Nothing reaches the hub until the agent saves it. If
   someone else saved the installation meanwhile, the save is refused, and the agent's edits are kept aside to apply again.
+- **Sources, zones, slots and scenes** <!-- WP FEAT1 --> are edits of that draft too
+  (`dspi_installation_set_source`, `_set_zone_source`, `_set_slots`, `_set_scene`), checked as the hub checks them. A
+  zone's source routes: every unit of the zone on the audio link takes the source's channels as its slots, and a unit
+  given other slots by hand or by a second zone is refused (a slot clash), as is a channel two sources of one sender
+  share. What is live and what is only stored:
+  - a draft edit changes nothing you hear;
+  - a saved installation is stored on the hub, but the units play their new slots only once the audio link is aligned
+    (`dspi_system_align`); the agent is told which units wait for that;
+  - a recalled scene with a source action switches the zone at once: the hub stores the zone's source and writes its
+    units' slots straight away (a unit that is offline takes them at the next alignment).
+- **Where the programme comes from** <!-- WP FEAT1 --> (`dspi_installation_set_programme`): the installation can
+  describe which computer, box or service feeds which unit input or sender channel (a computer over USB, S/PDIF,
+  analogue, or the audio link sender). It is a description for you and the agent; it routes nothing.
 - **Names and notes the agent reads** (channel, preset, snapshot, hub, room names, event text) are passed to it as data,
   cleaned of control characters, and marked as text it must not take as instructions.
 

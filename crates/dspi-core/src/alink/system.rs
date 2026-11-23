@@ -697,6 +697,48 @@ fn result_tone(result: &str) -> &'static str {
 }
 
 /// Results that mean a device took the op.
+// -- WP FEAT1 --
+/// The zones a recall switched, in words: what is stored and what is live.
+fn source_words(report: &Value, model: &Value) -> String {
+    let name_of = |key: &str, id: &str| {
+        list(model, key)
+            .iter()
+            .find(|x| str_at(x, &["id"]) == id)
+            .map(|x| str_at(x, &["name"]))
+            .filter(|n| !n.is_empty())
+            .unwrap_or(id)
+            .to_owned()
+    };
+    list(report, "sources")
+        .iter()
+        .map(|s| {
+            let zone = str_at(s, &["zone"]);
+            let units: Vec<&str> = list(s, "units").iter().filter_map(Value::as_str).collect();
+            let live = list(report, "writes")
+                .iter()
+                .filter(|w| {
+                    str_at(w, &["what"]) == "slots"
+                        && units.contains(&str_at(w, &["element"]))
+                        && matches!(str_at(w, &["result"]), "ok" | "unchanged")
+                })
+                .count();
+            let rest = units.len().saturating_sub(live);
+            let mut m = format!(
+                "Zone {} plays {} (stored in the installation); its slots are live on {live} of {} unit(s)",
+                name_of("zones", zone),
+                name_of("sources", str_at(s, &["source"])),
+                units.len()
+            );
+            if rest > 0 {
+                m.push_str(", the others take them at the next alignment");
+            }
+            m.push('.');
+            m
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 fn taken(result: &str) -> bool {
     matches!(
         result,
@@ -1477,7 +1519,9 @@ pub(crate) fn recall_outcome(
     }
     let was_taken = list(report, "writes")
         .iter()
-        .any(|w| taken(str_at(w, &["result"])));
+        .any(|w| taken(str_at(w, &["result"])))
+        // -- WP FEAT1 -- a source switch is stored even with no unit to write
+        || !list(report, "sources").is_empty();
     // The sender's answer, when nothing was taken through it
     let sender_result = list(report, "writes")
         .iter()
@@ -1567,6 +1611,15 @@ pub(crate) fn recall_outcome(
     // -- fixup lk1 -- a scene that sets the system mute and was not taken leaves it as it was
     if !was_taken && plan.get("systemMute").and_then(Value::as_bool).is_some() {
         message.push_str(" System mute unchanged.");
+    }
+    // -- WP FEAT1 -- the zones it switched: stored, and the slots written now
+    let switched = source_words(report, model);
+    if !switched.is_empty() {
+        if path == "none" && plan.get("systemMute").and_then(Value::as_bool).is_none() {
+            message = format!("{name} recalled.");
+        }
+        message.push(' ');
+        message.push_str(&switched);
     }
     AlinkSceneRecall {
         scene: scene.to_owned(),
