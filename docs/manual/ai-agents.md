@@ -343,9 +343,11 @@ row there has **Show** and **Stop**. A request the console cannot take up within
 result is filed with your measurements. An agent can stop only what it asked for itself.
 
 **How loud.** Settings › AI Agents › **Loudest measurement** (85 dB SPL by default, 60 to 95) caps what an agent's
-measurement may play, under every question setting, **Never** too: an agent may only ask for less. It holds with a
-microphone calibrated in dB SPL: the console's own calibration is used when the agent names none. Without one, the
-level ceiling (-12 dBFS at a speaker, -30 dBFS on headphones) holds.
+measurement may play, under every question setting, **Never** too: an agent may only ask for less. It needs a
+microphone calibrated in dB SPL: the console's own calibration is used when the agent names none. Without one, an agent's
+measurement is refused, and the agent is told to ask you to calibrate the microphone in **Measure** or to turn the cap
+off. With **Limit agents' measurements in dB SPL** off, only the level ceiling (-12 dBFS at a speaker, -30 dBFS on
+headphones) holds.
 
 **Opening devices.** An agent may ask to open a device the console knows: one on USB, one listed by an open hub, or one
 you opened before on USB. The console remembers the USB devices you open across restarts (Settings › AI Agents › **Devices agents

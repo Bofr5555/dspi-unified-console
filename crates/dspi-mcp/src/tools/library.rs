@@ -165,7 +165,13 @@ fn wholesale_with<T>(
         .flatten();
     let result = wholesale_run(call, core, &before, &snap, run);
     if let Some(level) = guard {
-        loud_again(core, call.actor, level);
+        // -- WP INTG -- (review RE2) a device left silent is never "ok"
+        if let Err(silent) = loud_again(core, call.actor, level) {
+            return Err(ToolError::new(match result {
+                Ok(_) => format!("{what}: done, but {silent}"),
+                Err(e) => format!("{} Also, {silent}", e.0),
+            }));
+        }
     }
     result.map(|out| (out, snap))
 }
@@ -182,13 +188,33 @@ fn quiet(core: &DspiCore, actor: u32, level: f32) -> Option<f32> {
 }
 
 /// Put the master volume back after [`quiet`], unless something else (the
-/// user, a recall) has set it meanwhile.
-fn loud_again(core: &DspiCore, actor: u32, level: f32) {
+/// user, a recall) has set it meanwhile. -- WP INTG -- (review RE2) Err: the
+/// device stays silent, in the agent's (and the activity's) words.
+fn loud_again(core: &DspiCore, actor: u32, level: f32) -> Result<(), String> {
     if core.get_state().master_volume_db > LOAD_GUARD_DB + 0.5 {
-        return;
+        return Ok(());
+    }
+    let silent = |why: &str| {
+        format!(
+            "the device is silent: its master volume was lowered to {LOAD_GUARD_DB:.0} dB for \
+             the load and could not be brought back to {level:.1} dB ({why}). Tell the user: \
+             they set the master volume again in the app, or Undo the agent's master volume \
+             change in the History. Do not load again until it is back."
+        )
+    };
+    #[cfg(test)]
+    if PUT_BACK_FAILS.with(std::cell::Cell::get) {
+        return Err(silent("the device did not answer"));
     }
     let _scope = ActorScope::enter(core, actor, None);
-    let _ = core.set_master_volume(level);
+    core.set_master_volume(level)
+        .map_err(|e| silent(&untrusted::note(&e.to_string())))
+}
+
+// -- WP INTG -- (review RE2) a test's injected failure of the put-back
+#[cfg(test)]
+thread_local! {
+    pub(crate) static PUT_BACK_FAILS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
 /// [`wholesale_with`]'s write, its judgement and the put-back.

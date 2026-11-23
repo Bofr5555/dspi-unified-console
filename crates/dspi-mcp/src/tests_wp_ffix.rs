@@ -503,6 +503,59 @@ fn wp_ffix_an_agents_preset_load_runs_silenced_and_comes_back() {
     assert!((core.get_state().master_volume_db - -10.0).abs() < 0.01);
 }
 
+// -- WP INTG -- (review RE2) A silenced load whose volume cannot come back
+// is an error, with the device silent and what to do, in the activity too.
+#[test]
+fn wp_intg_a_silenced_load_whose_volume_cannot_come_back_is_an_error() {
+    use crate::activity::Outcome;
+    use crate::tools::library::PUT_BACK_FAILS;
+    let (set, core) = demo("load-silent");
+    blank(&core, 1);
+    core.set_matrix_route(0, 1, true, 0.0, false).unwrap();
+    let token = core.confirm_token(dspi_core::ConfirmOp::SavePreset);
+    core.save_preset_confirmed(1, Some(token)).unwrap();
+    core.set_crossover(n_in(&core) + 1, 0, hp(LR4_HP, 2_000.0))
+        .unwrap();
+    let token = core.confirm_token(dspi_core::ConfirmOp::SavePreset);
+    core.save_preset_confirmed(2, Some(token)).unwrap();
+    core.set_master_volume(-10.0).unwrap();
+    confirm(&core);
+    let mut s = server_of(&set, ConfirmMode::NeverAsk);
+    let c = s.connect();
+    PUT_BACK_FAILS.with(|f| f.set(true));
+    // A load that went well: not ok, the device silent, what to do.
+    let e = err(&mut s, c, "dspi_preset_load", json!({"slot": 2}));
+    assert!(
+        e.contains("done, but the device is silent")
+            && e.contains("-127 dB")
+            && e.contains("-10.0 dB")
+            && e.contains("Undo"),
+        "{e}"
+    );
+    if core.get_state().master_volume_mode == 0 {
+        assert!(core.get_state().master_volume_db <= -126.5);
+    }
+    let entry = s
+        .activity(10)
+        .into_iter()
+        .rev()
+        .find(|e| e.tool == "dspi_preset_load")
+        .unwrap();
+    assert_eq!(entry.outcome, Outcome::Error);
+    assert!(entry.detail.contains("silent"), "{entry:?}");
+    assert!(!entry.journal_ids.is_empty(), "the user can Undo it: {entry:?}");
+    // A refused load is put back, its master volume with it: not left silent.
+    core.set_master_volume(-10.0).unwrap();
+    let e = err(&mut s, c, "dspi_preset_load", json!({"slot": 1}));
+    assert!(e.contains("put back") && !e.contains("silent"), "{e}");
+    assert!((core.get_state().master_volume_db - -10.0).abs() < 0.01);
+    // Without the failure it comes back, as before.
+    PUT_BACK_FAILS.with(|f| f.set(false));
+    core.set_master_volume(-10.0).unwrap();
+    ok(&mut s, c, "dspi_preset_load", json!({"slot": 2}));
+    assert!((core.get_state().master_volume_db - -10.0).abs() < 0.01);
+}
+
 // ------------------------------------------------------------ bug 5
 
 /// A tools/call over HTTP with `token`; (status, body, seconds it took).

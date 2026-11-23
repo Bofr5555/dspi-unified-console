@@ -817,10 +817,12 @@ pub fn begin(core: &DspiCore, ticket: &Value, rate_hz: u32) -> Result<Value, Str
     let done = match kind {
         JobKind::Measure => {
             let s: MeasureSetup = serde_json::from_value(setup).map_err(bad)?;
+            cap_holds(&s.mic_document, s.spl_cap_db)?; // -- WP INTG --
             core.measure_start(s).map(|v| to_value!(&v))
         }
         JobKind::Rolloff => {
             let s: MeasureRolloffSetup = serde_json::from_value(setup).map_err(bad)?;
+            cap_holds(&s.mic_document, s.spl_cap_db)?; // -- WP INTG --
             core.measure_rolloff_start(s).map(|v| to_value!(&v))
         }
         JobKind::TuneSumCheck => {
@@ -841,6 +843,7 @@ pub fn begin(core: &DspiCore, ticket: &Value, rate_hz: u32) -> Result<Value, Str
                 .map_err(bad)?
                 .unwrap_or_default();
             s.capture_rate_hz = rate_hz;
+            cap_holds(&s.mic_document, s.spl_cap_db)?; // -- WP INTG --
             let checks: Vec<MeasureSystemUnitCheck> = setup
                 .get("checks")
                 .cloned()
@@ -1177,12 +1180,19 @@ fn levels(
     };
     let ceiling_db = tighter("max_level_dbfs", caps.ceiling_db, "dBFS")?;
     let spl_cap_db = tighter("max_spl_db", caps.spl_cap_db, "dB SPL")?;
-    if spl_cap_db.is_some() && !mic_document_has_spl(&mic_document).unwrap_or(false) {
+    let reads_spl = mic_document_has_spl(&mic_document).unwrap_or(false); // -- WP INTG --
+    if spl_cap_db.is_some() && !reads_spl {
         return Err(ToolError::new(
             "`max_spl_db` holds only with a `microphone` whose calibration reads dB SPL \
              (dspi_get_measure_options says which do); use `max_level_dbfs` without one. Nothing \
              was played.",
         ));
+    }
+    // -- WP INTG -- (RE1) the app's cap holds only with a microphone that
+    // reads dB SPL: a named one that does not is refused here; none named is
+    // the app's own calibration, held to the same when the app begins it
+    if app_spl_cap.is_some() && !mic_document.is_empty() && !reads_spl {
+        return Err(ToolError::new(app_cap_unheld(caps.spl_cap_db)));
     }
     // -- WP FEATUI -- none named: the app's cap (it holds with a microphone
     // that reads dB SPL, the app's own calibration included)
@@ -1192,6 +1202,30 @@ fn levels(
         ceiling_db,
         spl_cap_db,
     })
+}
+
+// -- WP INTG -- (RE1)
+/// Why an SPL cap (the app's for agents) cannot hold, in the agent's words,
+/// with what the user can do about it.
+fn app_cap_unheld(cap: f32) -> String {
+    format!(
+        "the app keeps agents' measurements under {cap:.0} dB SPL, which holds only with a \
+         microphone calibration that reads dB SPL, and the microphone has none. Name a \
+         `microphone` that does (dspi_get_measure_options says which), or ask the user to \
+         calibrate the microphone in Measure, or to turn off the SPL cap in Settings › AI \
+         Agents › Loudest measurement (then the level ceiling holds). Nothing was played."
+    )
+}
+
+/// An SPL cap in a setup the app begins: its microphone must read dB SPL, or
+/// the cap the user and the agent were told would not hold.
+fn cap_holds(mic_document: &str, spl_cap_db: Option<f32>) -> Result<(), String> {
+    match spl_cap_db {
+        Some(cap) if !mic_document_has_spl(mic_document).unwrap_or(false) => {
+            Err(app_cap_unheld(cap))
+        }
+        _ => Ok(()),
+    }
 }
 
 /// The tightened caps in the question's words.

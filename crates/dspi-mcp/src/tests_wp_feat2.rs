@@ -1512,3 +1512,89 @@ fn wp_featui_the_apps_spl_cap_holds_for_agents_under_never_ask() {
     policy.set_agent_spl_cap_db(Some(f32::NAN));
     assert_eq!(crate::Policy::agent_spl_cap_db(policy.as_ref()), None);
 }
+
+// -- WP INTG -- (review RE1) The app's SPL cap is never promised when it
+// cannot hold: a named microphone that does not read dB SPL is refused at
+// once, and a setup the app begins with a microphone that does not (none, or
+// the app's own uncalibrated one) starts nothing; with one that does, it holds.
+#[test]
+fn wp_intg_the_apps_spl_cap_is_refused_when_no_microphone_reads_db_spl() {
+    let (set, _, core) = demo("intg-cap");
+    ready(&core);
+    let (spl, bare, _) = documents(&core);
+    let policy = Arc::new(AgentPolicy::new(ConfirmMode::NeverAsk));
+    policy.set_agent_spl_cap_db(Some(82.0));
+    let limit = RateLimit {
+        burst: 10_000,
+        per_s: 1.0,
+    };
+    let mut s = Server::new(
+        Arc::clone(&set),
+        ServerConfig {
+            policy: Arc::clone(&policy) as Arc<dyn crate::Policy>,
+            read_limit: limit,
+            write_limit: limit,
+            measuring: true,
+            ..ServerConfig::default()
+        },
+    );
+    let c = s.connect();
+    // A named microphone without dB SPL: refused, saying what the user can do.
+    for (tool, args) in [
+        ("dspi_measure_start", json!({"outputs": [0], "microphone": bare})),
+        ("dspi_measure_rolloff_start", json!({"output": 0, "microphone": bare})),
+    ] {
+        let e = err(&mut s, c, tool, args);
+        assert!(
+            e.contains("82 dB SPL")
+                && e.contains("calibrate the microphone")
+                && e.contains("Loudest measurement")
+                && e.contains("Nothing was played"),
+            "{tool}: {e}"
+        );
+    }
+    let doc = |id: &str| core.measure_doc_get(id.to_owned()).unwrap();
+    // None named: the request carries the cap; the app begins it with what
+    // microphone it has.
+    let begun = |s: &mut Server, mic: Option<String>| {
+        let r = ok(s, c, "dspi_measure_start", json!({"outputs": [0]}));
+        assert!(r["what"].as_str().unwrap().contains("at most 82 dB SPL"), "{r}");
+        let id = r["request_id"].as_u64().unwrap();
+        let mut ticket = s.measure_take(id).unwrap();
+        if let Some(m) = mic {
+            ticket["setup"]["micDocument"] = json!(m);
+        }
+        let out = crate::tools::measure::begin(&core, &ticket, 48_000);
+        let _ = core.measure_stop();
+        s.measure_report(id, out.is_ok(), "test");
+        out
+    };
+    for mic in [None, Some(doc(&bare))] {
+        let e = begun(&mut s, mic).unwrap_err();
+        assert!(
+            e.contains("82 dB SPL") && e.contains("Nothing was played"),
+            "{e}"
+        );
+        assert!(!core.measure_state().active, "nothing runs");
+    }
+    // With a microphone that reads dB SPL, the cap is no reason to refuse.
+    if let Err(e) = begun(&mut s, Some(doc(&spl))) {
+        assert!(!e.contains("dB SPL"), "{e}");
+    }
+    // The cap off: the level ceiling holds, nothing to refuse for.
+    policy.set_agent_spl_cap_db(None);
+    if let Err(e) = begun_off(&mut s, c, &core) {
+        assert!(!e.contains("dB SPL"), "{e}");
+    }
+}
+
+fn begun_off(s: &mut Server, c: ClientId, core: &DspiCore) -> Result<Value, String> {
+    let r = ok(s, c, "dspi_measure_start", json!({"outputs": [0]}));
+    assert!(!r["what"].as_str().unwrap().contains("dB SPL"), "{r}");
+    let id = r["request_id"].as_u64().unwrap();
+    let ticket = s.measure_take(id).unwrap();
+    let out = crate::tools::measure::begin(core, &ticket, 48_000);
+    let _ = core.measure_stop();
+    s.measure_report(id, out.is_ok(), "test");
+    out
+}
