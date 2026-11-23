@@ -2169,3 +2169,25 @@ was set back: the model changed meanwhile, or could not be saved). Every end is 
 **`system.guard.ended`** (the `Outcome` at the top level, `"v": 1`) and kept for `status`, so a console back after a lost
 connection reads what happened. Codes: `denied` (not admin, or another session's guard), `busy`, `conflict` (no such
 guard pending, it is being reverted, or another session's `system.set` while one is pending), `bad_request`.
+
+<!-- WP FEATUI -->
+## 24. Presence: who works on the devices beside the people
+
+*State: built (FEATUI, `crates/dspi-hub/src/presence.rs`). Cap `presence`, always on, in memory only. A console that runs
+an AI agent says so while the agent works, so every console of the hub (the web console included) shows it.*
+
+| Message | Role | Fields | Answer |
+|---|---|---|---|
+| `presence.set` | control | `kind` (`agent`), `label` (the agent's name), `serial` (the device, optional), `what` (optional), `ttl_s` (5 to 60; 0 clears) | `ok` |
+| `presence.list` | viewer | none | `ok` with `presence`: `[{kind, label, by, serial, what, ttl_s}]` |
+| `presence.changed` (event) | | `hub`, `presence` (the whole list) | |
+
+- One entry per session: a new `presence.set` replaces the session's entry and keeps it `ttl_s` seconds from then. It ends
+  at its time or when its session closes; either is a `presence.changed`.
+- `label` and `what` are text from elsewhere: control and format characters are dropped; `label` holds at most 64
+  characters, `what` 160. `by` is the hub's own label of the session (the paired client's name, else `Client <cid>` or
+  `Session <id>`), never the sender's word.
+- Refusals: `denied` (a Viewer's `presence.set`), `bad_request` (no `label`, a `ttl_s` out of range, another `kind`),
+  `busy` (64 entries).
+- The desktop app sends it while its agent works on a device reached through the hub, every 10 s with `ttl_s` 20, and clears
+  it when the agent stops (`AiController`); the core's calls are `hub_presence_set` and `hub_presence_list`.

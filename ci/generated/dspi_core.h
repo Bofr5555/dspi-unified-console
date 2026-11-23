@@ -6597,6 +6597,27 @@ uint32_t dspi_snapshot_list_merged(struct FfiCore *core,
                                    uint32_t len);
 
 /**
+ * Say on the hub that an AI agent works through this console: `label` (its
+ * name), `serial` (the device, "" for none), `what` (in words), kept `ttl_s`
+ * seconds (5 to 60) unless said again; `ttl_s` 0 clears it. Control or
+ * Admin. JSON `{ok}` or a failure (`unsupported` without the `presence` cap:
+ * nothing sent). A round trip: off the UI thread.
+ */
+uint32_t dspi_hub_presence_set(struct FfiCore *core,
+                               const char *label,
+                               const char *serial,
+                               const char *what,
+                               uint32_t ttl_s,
+                               char *buf,
+                               uint32_t len);
+
+/**
+ * Who works on the hub's devices now: JSON `{ok, value: [{kind, label, by,
+ * serial, what, ttlS}]}`. Every role. A round trip.
+ */
+uint32_t dspi_hub_presence_list(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
  * The hub's alarms of `serial` (null or "": every alarm) in `state` (null
  * or "": every one; `active`, `cleared`): JSON `{ok, value: [{id, source,
  * code, subject, serial, severity, message, state, raisedAt, clearedAt,
@@ -8603,6 +8624,23 @@ uint32_t dspi_mcp_activity(struct FfiMcp *mcp, uint32_t n, char *buf, uint32_t l
 bool dspi_mcp_set_confirm(struct FfiMcp *mcp, const char *mode);
 
 /**
+ * The app's SPL cap for agents' measurements, dB SPL; 0 or less for none
+ * (the placement's default, 95 dB at a speaker, 90 dB on headphones). A hard
+ * ceiling: an agent may only name a lower one, under every setting. Holds
+ * from the next call on, also while the server runs. False for a value
+ * that is no number.
+ */
+bool dspi_mcp_set_agent_spl_cap(struct FfiMcp *mcp, float spl_db);
+
+/**
+ * This computer's audio as `dspi_get_host_audio` reads it, for the devices
+ * open in the handle's set: the tool's JSON plus `ok` (never an error:
+ * what cannot be read says `status: "unknown"` and why). Blocks while the
+ * OS is read (at most a few seconds): call it off the UI's thread.
+ */
+uint32_t dspi_mcp_host_audio(struct FfiMcp *mcp, char *buf, uint32_t len);
+
+/**
  * The AutoEQ database the agents' AutoEQ tools search, from its file's
  * bytes; null or 0 bytes for none. The next start uses it. False when the
  * bytes are no database (the last one stays).
@@ -8634,6 +8672,10 @@ bool dspi_mcp_set_active_device(struct FfiMcp *mcp, const char *id);
  * 47860, "token": "<the kept one>", "name": "<to pair under when the agent
  * names nothing>"}`, each optional. `token_sink` (may be null) is called on
  * this thread with a new token to keep, or null to forget the kept one.
+ * -- WP FFIX -- the "token" kept is one text that holds a token per agent
+ * program (a JSON object); the sink gets that whole text again, null once
+ * it holds none. A single token kept before is no program's: each pairs once
+ * more as itself.
  * Returns 0 when standard input ended, 1 when standard output failed (the
  * agent went), 2 for a bad configuration.
  */

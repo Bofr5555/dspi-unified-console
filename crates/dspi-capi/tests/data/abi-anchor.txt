@@ -1555,6 +1555,14 @@ uint32_t dspi_snapshot_list_merged(struct FfiCore *core,
 const char *serial,
 char *buf,
 uint32_t len);
+uint32_t dspi_hub_presence_set(struct FfiCore *core,
+const char *label,
+const char *serial,
+const char *what,
+uint32_t ttl_s,
+char *buf,
+uint32_t len);
+uint32_t dspi_hub_presence_list(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_hub_alarms(struct FfiCore *core,
 const char *serial,
 const char *state,
@@ -2124,6 +2132,8 @@ bool dspi_mcp_pairing_answer(struct FfiMcp *mcp, uint64_t request, bool allow);
 void dspi_mcp_pause(struct FfiMcp *mcp, bool paused);
 uint32_t dspi_mcp_activity(struct FfiMcp *mcp, uint32_t n, char *buf, uint32_t len);
 bool dspi_mcp_set_confirm(struct FfiMcp *mcp, const char *mode);
+bool dspi_mcp_set_agent_spl_cap(struct FfiMcp *mcp, float spl_db);
+uint32_t dspi_mcp_host_audio(struct FfiMcp *mcp, char *buf, uint32_t len);
 bool dspi_mcp_set_autoeq(struct FfiMcp *mcp, const uint8_t *data, uint32_t len);
 uint32_t dspi_mcp_confirmations(struct FfiMcp *mcp, char *buf, uint32_t len);
 bool dspi_mcp_confirm_answer(struct FfiMcp *mcp, uint64_t id, bool allow);

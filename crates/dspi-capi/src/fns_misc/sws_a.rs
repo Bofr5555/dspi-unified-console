@@ -9,6 +9,7 @@
 
 use std::ffi::c_char;
 
+#[cfg(feature = "link")] // -- WP INTG -- only dspi_link_parse_txt reads it
 use serde_json::Value;
 
 use super::{c_bytes, c_str, copy_text, guard, json_reply};

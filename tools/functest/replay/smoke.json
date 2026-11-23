@@ -1,4 +1,9 @@
 {"steps": {
+ "tweeter-rule": [
+  ["dspi_set_route", {"device": "demo:1", "input": 0, "output": 1, "on": true, "gain_db": 0}, "error", "programme to a confirmed tweeter with no high-pass is accepted"],
+  ["dspi_set_crossover", {"device": "demo:1", "output": 3, "high_pass": {"family": "linkwitz_riley", "order": 4, "freq_hz": 500}}, "error", "a 500 Hz high-pass on a confirmed tweeter is accepted where there was none"],
+  ["dspi_set_crossover", {"device": "demo:3", "output": 1, "high_pass": {"family": "butterworth", "order": 1, "freq_hz": 2000}}, "error", "a 6 dB/octave high-pass on a confirmed tweeter is accepted where there was none"],
+  ["dspi_apply_changes", {"device": "demo:2", "changes": [{"op": "set_route", "input": 2, "output": 1, "on": true, "gain_db": 0}, {"op": "set_peq_band", "output": 1, "slot": 0, "type": "low_shelf", "freq_hz": 300, "gain_db": 12}]}, "error", "a batch that feeds a confirmed tweeter with no high-pass is accepted"]],
  "protect-and-measure": [
   ["dspi_set_crossover", {"device": "demo:1", "output": 1, "high_pass": {"family": "linkwitz_riley", "order": 4, "freq_hz": 2500}}, "ok"],
   ["dspi_set_crossover", {"device": "demo:1", "output": 3, "high_pass": {"family": "linkwitz_riley", "order": 4, "freq_hz": 2500}}, "ok"],
@@ -35,5 +40,10 @@
   ["dspi_measure_start", {"device": "demo:2", "outputs": [4], "sweep_ms": 2000, "passes": 3}, "ok"],
   ["wait", {"device": "demo:2"}],
   ["dspi_set_crossover", {"device": "demo:2", "output": 4, "low_pass": {"family": "linkwitz_riley", "order": 4, "freq_hz": 120}}, "ok"],
-  ["dspi_tune_propose", {"device": "demo:2"}, "ok", "a sub's EQ is levelled against 500 Hz to 2 kHz, where it plays nothing", "(peak -15\\.0 dB.*){4}"]]
+  ["dspi_tune_propose", {"device": "demo:2"}, "ok", "a sub's EQ is levelled against 500 Hz to 2 kHz, where it plays nothing", "(peak -15\\.0 dB.*){4}"]],
+ "align-speakers": [
+  ["dspi_measure_start", {"device": "demo:1", "outputs": [0, 2], "sweep_ms": 2000, "passes": 3, "one_run": true}, "ok"],
+  ["wait", {"device": "demo:1"}],
+  ["dspi_measure_status", {"device": "demo:1"}, "ok", "a one-run measurement gives no alignment across speakers", "\"alignment\":null"],
+  ["dspi_measure_status", {"device": "demo:1"}, "ok", "a measured output has no arrival", "\"arrival_ms\":null"]]
 }}

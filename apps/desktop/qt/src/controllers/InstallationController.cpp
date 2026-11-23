@@ -11,6 +11,9 @@
 #include <QJSEngine>
 #include <QJsonDocument>
 #include <QJsonValue>
+#include <QHash>                // -- WP FEATUI --
+#include <QSet>                 // -- WP INTG --
+#include <QRegularExpression>   // -- WP FEATUI --
 
 extern "C" {
 #include "dspi_core.h"
@@ -57,7 +60,8 @@ struct ListKind {
     const char *kind;
 };
 constexpr ListKind kLists[] = { { "rooms", "room" },     { "zones", "zone" },      { "groups", "group" }, { "sources", "source" },
-                                { "senders", "sender" }, { "fanOuts", "fan_out" }, { "units", "unit" },   { "scenes", "scene" } };
+                                { "senders", "sender" }, { "fanOuts", "fan_out" }, { "units", "unit" },   { "scenes", "scene" },
+                                { "programmeSources", "programme" } };   // -- WP FEATUI --
 
 // A new S/PDIF source's time-base slot until the person chooses (SystemController's: 7-8)
 constexpr int kNewSourceMask = 0b1000;
@@ -78,6 +82,36 @@ QJsonObject op(const char *name, std::initializer_list<QPair<QString, QJsonValue
 
 // "" as the core's none
 QJsonValue orNull(const QString &s) { return s.isEmpty() ? QJsonValue() : QJsonValue(s); }
+
+// -- WP FEATUI -- channels and inputs as the model and the core's sentences
+// number them, from 0; a unit's 8 slots, 255 for silent
+constexpr int kUnitInputs = 8;
+constexpr int kSilent = 255;
+
+// "8 9", "8-11", "0, 2" as numbers below `limit`; false for anything else
+bool parseNumbers(const QString &text, int limit, QJsonArray *out) {
+    const QStringList parts = text.split(QRegularExpression(QStringLiteral("[\\s,;]+")), Qt::SkipEmptyParts);
+    for (const QString &p : parts) {
+        const QStringList ends = p.split(QLatin1Char('-'));
+        bool ok1 = false, ok2 = true;
+        const int from = ends.value(0).toInt(&ok1);
+        const int to = ends.size() == 2 ? ends.value(1).toInt(&ok2) : from;
+        if (ends.size() > 2 || !ok1 || !ok2 || from < 0 || to < from || to >= limit) return false;
+        for (int n = from; n <= to; ++n) out->append(n);
+    }
+    return true;
+}
+
+QString shownNumbers(const QJsonValue &v) {
+    QStringList out;
+    for (const QJsonValue &n : v.toArray()) out << QString::number(n.toInt());
+    return out.join(QLatin1Char(' '));
+}
+
+bool isAlinkUnit(const QJsonObject &u) {
+    const QString transport = str(u, "transport");
+    return transport.isEmpty() || transport == QLatin1String("alink");
+}
 
 } // namespace
 
@@ -351,6 +385,39 @@ void InstallationController::draftMoved() {
     update(ids({ "units" }), m_unitIds, &InstallationController::unitIdsChanged);
     update(ids({ "zones" }), m_zoneIds, &InstallationController::zoneIdsChanged);
     update(ids({ "groups" }), m_groupIds, &InstallationController::groupIdsChanged);
+    // -- WP FEATUI --
+    update(ids({ "sources" }), m_sourceIds, &InstallationController::sourceIdsChanged);
+    update(ids({ "programmeSources" }), m_programmeIds, &InstallationController::programmeIdsChanged);
+    update(ids({ "scenes" }), m_sceneIds, &InstallationController::sceneIdsChanged);
+    // The units whose slots, as the hub keeps them, a zone's source replaces
+    m_rerouted.clear();
+    QHash<QString, QJsonValue> before;
+    const QJsonObject base = m_draft.value(QLatin1String("base")).toObject();
+    // -- WP INTG -- (review RE21) slots a zone's source set in the saved
+    // installation were never the unit's own
+    QSet<QString> sourced;
+    for (const QJsonValue &z : base.value(QLatin1String("zones")).toArray())
+        if (!str(z.toObject(), "source").isEmpty())
+            for (const QString &r : strings(z.toObject().value(QLatin1String("rooms")))) sourced.insert(r);
+    QSet<QString> zoneSet;
+    for (const QJsonValue &v : base.value(QLatin1String("units")).toArray()) {
+        const QJsonObject bu = v.toObject();
+        before.insert(str(bu, "id"), bu.value(QLatin1String("slots")));
+        if (isAlinkUnit(bu) && !str(bu, "room").isEmpty() && sourced.contains(str(bu, "room"))) zoneSet.insert(str(bu, "id"));
+    }
+    for (const QString &id : m_unitIds) {
+        const QJsonObject u = find(id);
+        const QJsonValue was = before.value(id);
+        if (!before.contains(id) || u.value(QLatin1String("slots")) == was) continue;
+        const QVariantMap e = element(id);
+        const QString zone = e.value(QStringLiteral("slotsZone")).toString();
+        if (zone.isEmpty()) continue;
+        m_rerouted.append(QVariantMap{ { QStringLiteral("id"), id },
+                                       { QStringLiteral("name"), e.value(QStringLiteral("name")) },
+                                       { QStringLiteral("zone"), zone },
+                                       { QStringLiteral("source"), e.value(QStringLiteral("slotsSource")) },
+                                       { QStringLiteral("handMade"), was.isArray() && !zoneSet.contains(id) } });
+    }
     updateUnseen();
     emit draftChanged();
     emit editableChanged();
@@ -432,6 +499,55 @@ QVariantMap InstallationController::element(const QString &id, int) const {
         out.insert(QStringLiteral("role"), roleOf(e));
         out.insert(QStringLiteral("spdifSource"), e.value(QLatin1String("spdifSource")).toBool());
         out.insert(QStringLiteral("txMask"), e.value(QLatin1String("spdifTxMask")).toInt());
+        // -- WP FEATUI -- its slots, and the zone source that owns them
+        QVariantList slotList;
+        for (const QJsonValue &n : e.value(QLatin1String("slots")).toArray()) slotList << n.toInt();
+        out.insert(QStringLiteral("slots"), slotList);
+        out.insert(QStringLiteral("alink"), isAlinkUnit(e));
+        QString zoneName, sourceName;
+        const QString room = str(e, "room");
+        if (isAlinkUnit(e) && !room.isEmpty())
+            for (const QJsonValue &z : model().value(QLatin1String("zones")).toArray()) {
+                const QJsonObject zo = z.toObject();
+                if (str(zo, "source").isEmpty() || !strings(zo.value(QLatin1String("rooms"))).contains(room)) continue;
+                zoneName = label(str(zo, "id"));
+                sourceName = label(str(zo, "source"));
+                break;
+            }
+        out.insert(QStringLiteral("slotsZone"), zoneName);
+        out.insert(QStringLiteral("slotsSource"), sourceName);
+    }
+    // -- WP FEATUI --
+    if (kind == QLatin1String("source")) {
+        out.insert(QStringLiteral("sender"), str(e, "sender"));
+        out.insert(QStringLiteral("channels"), shownNumbers(e.value(QLatin1String("channels"))));
+    } else if (kind == QLatin1String("programme")) {
+        out.insert(QStringLiteral("programmeKind"), str(e, "kind"));
+        out.insert(QStringLiteral("feeds"), str(e, "feeds"));
+        out.insert(QStringLiteral("inputs"), shownNumbers(e.value(QLatin1String("inputs"))));
+    } else if (kind == QLatin1String("scene")) {
+        QVariantList actions;
+        for (const QJsonValue &v : e.value(QLatin1String("actions")).toArray()) {
+            const QJsonObject a = v.toObject();
+            const QString target = str(a, "target");
+            const qsizetype colon = target.indexOf(QLatin1Char(':'));
+            const QString where = colon < 0 ? tr("Everywhere") : label(target.mid(colon + 1));
+            const QString op = str(a, "op");
+            QString text;
+            //: a scene's action; %1 where (a room, a zone, a unit, "Everywhere")
+            if (op == QLatin1String("mute")) text = tr("Mute %1").arg(where);
+            //: a scene's action; %1 where
+            else if (op == QLatin1String("unmute")) text = tr("Unmute %1").arg(where);
+            //: a scene's action; %1 where, %2 a level in dB
+            else if (op == QLatin1String("master_volume")) text = tr("%1: master volume %2 dB").arg(where).arg(a.value(QLatin1String("value")).toInt() / 100.0, 0, 'f', 1);
+            //: a scene's action; %1 a zone, %2 an audio link source
+            else if (op == QLatin1String("source")) text = tr("Switch %1 to source %2").arg(where, label(str(a, "source")));
+            //: a scene's action of another kind; %1 where, %2 its name in the hub's words
+            else text = tr("%1: %2").arg(where, clean(op));
+            actions.append(QVariantMap{ { QStringLiteral("text"), text }, { QStringLiteral("op"), op } });
+        }
+        out.insert(QStringLiteral("actions"), actions);
+        out.insert(QStringLiteral("systemMute"), e.value(QLatin1String("systemMute")).toBool());
     }
     return out;
 }
@@ -676,6 +792,8 @@ void InstallationController::save() {
                 }
                 const bool sameHub = hub == m_hub && hub == hubKey();
                 if (sameHub && (tooLong || isOk(saved))) {
+                    // -- WP FEATUI -- what the units take at the next alignment
+                    m_alignPending = int(m_rerouted.size());
                     // Until the view is read, there is no draft to edit
                     m_dirty = false;
                     m_current = false;
@@ -683,6 +801,10 @@ void InstallationController::save() {
                     QStringList said{ tr("Saved on the hub.") };
                     for (const QString &w : strings(saved.value(QLatin1String("warnings")))) said << clean(w);
                     if (said.size() > 1) said.first() = tr("Saved on the hub, with warnings:");
+                    // -- WP FEATUI --
+                    if (m_alignPending > 0)
+                        //: %n units of the audio link; Align is the System view's button
+                        said << tr("%n unit(s) play the new channels after Align.", nullptr, m_alignPending);
                     setMessage(said.join(QLatin1Char('\n')), false);
                     emit draftChanged();
                 } else if (sameHub) {
@@ -732,4 +854,169 @@ void InstallationController::dropLost() {
     m_lost = QJsonArray();
     m_lostChanges.clear();
     emit draftChanged();
+}
+
+// ---- -- WP FEATUI -- Sources, slots, programme sources, scenes ----------------------
+
+bool InstallationController::setZoneSource(const QString &zone, const QString &source) {
+    if (str(find(zone), "source") == source) return true;
+    return edit({ op("setZoneSource", { { QStringLiteral("id"), zone }, { QStringLiteral("source"), orNull(source) } }) }, zone, QStringLiteral("source"));
+}
+
+QStringList InstallationController::zoneUnits(const QString &zone, int) const {
+    const QStringList rooms = strings(find(zone).value(QLatin1String("rooms")));
+    QStringList out;
+    for (const QJsonValue &v : model().value(QLatin1String("units")).toArray()) {
+        const QJsonObject u = v.toObject();
+        if (isAlinkUnit(u) && rooms.contains(str(u, "room"))) out << label(str(u, "id"));
+    }
+    return out;
+}
+
+bool InstallationController::setSlots(const QString &unit, const QVariantList &inputs) {
+    QJsonValue list;
+    if (!inputs.isEmpty()) {
+        if (inputs.size() != kUnitInputs) return false;
+        QJsonArray a;
+        for (const QVariant &v : inputs) {
+            const int ch = v.toInt();
+            if ((ch < 0 || ch > 63) && ch != kSilent)
+                return refuse(unit, QStringLiteral("slots"), tr("A slot plays an audio link channel from 0 to 63, or nothing (-)."));
+            a.append(ch);
+        }
+        list = a;
+    }
+    if (find(unit).value(QLatin1String("slots")) == list) return true;
+    return edit({ op("setUnitSlots", { { QStringLiteral("id"), unit }, { QStringLiteral("slots"), list } }) }, unit, QStringLiteral("slots"));
+}
+
+QVariantList InstallationController::senderChoices(int) const {
+    QVariantList out{ QVariantMap{ { QStringLiteral("id"), QString() }, { QStringLiteral("name"), tr("Any sender") } } };
+    for (const QJsonValue &v : model().value(QLatin1String("senders")).toArray()) {
+        const QString id = str(v.toObject(), "id");
+        out.append(QVariantMap{ { QStringLiteral("id"), id }, { QStringLiteral("name"), label(id) } });
+    }
+    return out;
+}
+
+bool InstallationController::addSource(const QString &name, const QString &sender, const QString &channels) {
+    const QString at = QStringLiteral("new:source");
+    const QString to = name.trimmed();
+    if (to.isEmpty()) return refuse(at, QString(), tr("Give it a name."));
+    QJsonArray list;
+    if (!parseNumbers(channels, 64, &list) || list.isEmpty())
+        return refuse(at, QString(), tr("Give its channels on the audio link, 0 to 63: \"8 9\" or \"8-11\"."));
+    return edit({ op("addSource", { { QStringLiteral("name"), to }, { QStringLiteral("sender"), orNull(sender) }, { QStringLiteral("channels"), list } }) }, at,
+                QString());
+}
+
+bool InstallationController::setSource(const QString &id, const QString &sender, const QString &channels) {
+    QJsonArray list;
+    if (!parseNumbers(channels, 64, &list) || list.isEmpty())
+        return refuse(id, QStringLiteral("channels"), tr("Give its channels on the audio link, 0 to 63: \"8 9\" or \"8-11\"."));
+    const QJsonObject e = find(id);
+    if (e.value(QLatin1String("channels")).toArray() == list && str(e, "sender") == sender) return true;
+    return edit({ op("setSource", { { QStringLiteral("id"), id }, { QStringLiteral("sender"), orNull(sender) }, { QStringLiteral("channels"), list } }) }, id,
+                QStringLiteral("channels"));
+}
+
+QVariantList InstallationController::programmeKinds() const {
+    return { QVariantMap{ { QStringLiteral("id"), QStringLiteral("computer_usb") }, { QStringLiteral("name"), tr("Computer over USB") } },
+             QVariantMap{ { QStringLiteral("id"), QStringLiteral("spdif") }, { QStringLiteral("name"), tr("S/PDIF input") } },
+             QVariantMap{ { QStringLiteral("id"), QStringLiteral("analogue") }, { QStringLiteral("name"), tr("Analogue input") } },
+             QVariantMap{ { QStringLiteral("id"), QStringLiteral("alink_sender") }, { QStringLiteral("name"), tr("Into the audio link sender") } } };
+}
+
+QVariantList InstallationController::programmeFeedChoices(const QString &kind, const QString &value, int) const {
+    QVariantList out;
+    if (value.isEmpty()) out.append(QVariantMap{ { QStringLiteral("id"), QString() }, { QStringLiteral("name"), tr("Choose…") } });
+    const bool sender = kind == QLatin1String("alink_sender");
+    for (const QJsonValue &v : model().value(QLatin1String(sender ? "senders" : "units")).toArray()) {
+        const QString id = str(v.toObject(), "id");
+        out.append(QVariantMap{ { QStringLiteral("id"), id }, { QStringLiteral("name"), label(id) } });
+    }
+    return out;
+}
+
+bool InstallationController::addProgramme(const QString &name, const QString &kind, const QString &feeds, const QString &inputs) {
+    const QString at = QStringLiteral("new:programme");
+    const QString to = name.trimmed();
+    if (to.isEmpty()) return refuse(at, QString(), tr("Give it a name."));
+    if (feeds.isEmpty()) return refuse(at, QString(), tr("Choose what it feeds."));
+    QJsonArray list;
+    const int limit = kind == QLatin1String("alink_sender") ? 64 : kUnitInputs;
+    if (!parseNumbers(inputs, limit, &list) || list.isEmpty())
+        //: %1 the highest input or channel number
+        return refuse(at, QString(), tr("Give the inputs it plays on, 0 to %1: \"0 1\".").arg(limit - 1));
+    return edit({ op("addProgrammeSource",
+                     { { QStringLiteral("name"), to }, { QStringLiteral("kind"), kind }, { QStringLiteral("feeds"), feeds }, { QStringLiteral("inputs"), list } }) },
+                at, QString());
+}
+
+bool InstallationController::setProgramme(const QString &id, const QString &kind, const QString &feeds, const QString &inputs) {
+    if (feeds.isEmpty()) return refuse(id, QStringLiteral("feeds"), tr("Choose what it feeds."));
+    QJsonArray list;
+    const int limit = kind == QLatin1String("alink_sender") ? 64 : kUnitInputs;
+    if (!parseNumbers(inputs, limit, &list) || list.isEmpty())
+        //: %1 the highest input or channel number
+        return refuse(id, QStringLiteral("inputs"), tr("Give the inputs it plays on, 0 to %1: \"0 1\".").arg(limit - 1));
+    const QJsonObject e = find(id);
+    if (str(e, "kind") == kind && str(e, "feeds") == feeds && e.value(QLatin1String("inputs")).toArray() == list) return true;
+    return edit({ op("setProgrammeSource",
+                     { { QStringLiteral("id"), id }, { QStringLiteral("kind"), kind }, { QStringLiteral("feeds"), feeds }, { QStringLiteral("inputs"), list } }) },
+                id, QStringLiteral("inputs"));
+}
+
+bool InstallationController::addScene(const QString &name) {
+    const QString at = QStringLiteral("new:scene");
+    const QString to = name.trimmed();
+    if (to.isEmpty()) return refuse(at, QString(), tr("Give it a name."));
+    return edit({ op("addScene", { { QStringLiteral("name"), to }, { QStringLiteral("actions"), QJsonArray() } }) }, at, QString());
+}
+
+QVariantList InstallationController::sceneTargetChoices(int) const {
+    QVariantList out{ QVariantMap{ { QStringLiteral("id"), QStringLiteral("all") }, { QStringLiteral("name"), tr("Everywhere") } } };
+    const QJsonObject m = model();
+    for (const auto &[list, prefix] : { std::pair{ "zones", "zone:" }, std::pair{ "rooms", "room:" }, std::pair{ "groups", "group:" } })
+        for (const QJsonValue &v : m.value(QLatin1String(list)).toArray()) {
+            const QString id = str(v.toObject(), "id");
+            out.append(QVariantMap{ { QStringLiteral("id"), QLatin1String(prefix) + id }, { QStringLiteral("name"), label(id) } });
+        }
+    return out;
+}
+
+bool InstallationController::editScene(const QString &scene, const std::function<void(QJsonArray &)> &change) {
+    const QJsonObject e = find(scene);
+    if (e.isEmpty()) return false;
+    QJsonArray actions = e.value(QLatin1String("actions")).toArray();
+    change(actions);
+    QJsonObject o = op("setScene", { { QStringLiteral("id"), scene }, { QStringLiteral("actions"), actions } });
+    if (e.contains(QLatin1String("systemMute"))) o.insert(QStringLiteral("systemMute"), e.value(QLatin1String("systemMute")));
+    return edit({ o }, scene, QStringLiteral("actions"));
+}
+
+bool InstallationController::addSceneAction(const QString &scene, const QString &opName, const QString &target, double value, const QString &source) {
+    QJsonObject a{ { QStringLiteral("target"), target }, { QStringLiteral("op"), opName } };
+    if (opName == QLatin1String("source")) {
+        if (!target.startsWith(QLatin1String("zone:"))) return refuse(scene, QStringLiteral("actions"), tr("A source is switched for a zone."));
+        if (source.isEmpty()) return refuse(scene, QStringLiteral("actions"), tr("Choose the source it switches to."));
+        a.insert(QStringLiteral("source"), source);
+    } else if (opName == QLatin1String("master_volume")) {
+        if (!(value >= -128.0 && value <= 0.0)) return refuse(scene, QStringLiteral("actions"), tr("A master volume from -128 to 0 dB."));
+        a.insert(QStringLiteral("value"), qRound(value * 100.0));
+    } else if (opName != QLatin1String("mute") && opName != QLatin1String("unmute")) {
+        return false;
+    }
+    return editScene(scene, [&a](QJsonArray &actions) { actions.append(a); });
+}
+
+bool InstallationController::removeSceneAction(const QString &scene, int index) {
+    if (index < 0 || index >= find(scene).value(QLatin1String("actions")).toArray().size()) return false;
+    return editScene(scene, [index](QJsonArray &actions) { actions.removeAt(index); });
+}
+
+void InstallationController::alignAsked() {
+    if (m_alignPending == 0) return;
+    m_alignPending = 0;
+    emit messageChanged();
 }

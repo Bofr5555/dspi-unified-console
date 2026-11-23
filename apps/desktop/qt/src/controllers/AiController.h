@@ -4,6 +4,7 @@
 #include <QDateTime>
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QMutex>           // -- WP INTG --
 #include <QObject>
 #include <QSet>
 #include <QString>
@@ -12,6 +13,7 @@
 #include <QTimer>
 #include <QVariantList>
 #include <QVariantMap>
+#include <QWaitCondition>   // -- WP INTG --
 #include <QtQml/qqmlregistration.h>
 #include <atomic>
 #include <functional>
@@ -100,7 +102,22 @@ class AiController : public QObject {
     Q_PROPERTY(QString url READ url NOTIFY settingsChanged)
     Q_PROPERTY(QString httpCommand READ httpCommand NOTIFY newClientChanged)
     Q_PROPERTY(QString otherComputerUrl READ otherComputerUrl CONSTANT)
+    // -- WP FEATUI -- The app's SPL cap for agents' measurements, dB SPL (a hard
+    // ceiling an agent may only stay under, also under "never ask"); and the
+    // USB devices remembered as opened here, across restarts ([{ device, name }])
+    Q_PROPERTY(int agentSplCap READ agentSplCap WRITE setAgentSplCap NOTIFY settingsChanged)
+    // -- WP INTG -- (RE1) the cap on or off: on, an agent's measurement needs a
+    // microphone calibration that reads dB SPL (else it is refused); off, the
+    // level ceiling holds
+    Q_PROPERTY(bool agentSplCapOn READ agentSplCapOn WRITE setAgentSplCapOn NOTIFY settingsChanged)
+    Q_PROPERTY(QVariantList rememberedDevices READ rememberedDevices NOTIFY rememberedChanged)
 public:
+    // -- WP FEATUI -- The SPL cap's range and default (dB SPL): below the
+    // core's 95 dB default for a speaker
+    static constexpr int kSplCapMin = 60;
+    static constexpr int kSplCapMax = 95;
+    static constexpr int kSplCapDefault = 85;
+    static constexpr int kRememberedMax = 64;   // dspi-mcp's REMEMBERED_MAX
     static constexpr int kDefaultPort = 47860;
     static constexpr int kPortMin = 1024;
     static constexpr int kPairingSeconds = 120;    // dspi-mcp's PAIRING_TTL_MS
@@ -128,6 +145,28 @@ public:
     QString statusLine() const;
     QString confirmMode() const { return m_confirmMode; }
     void setConfirmMode(const QString &mode);
+    // -- WP FEATUI --
+    int agentSplCap() const { return m_agentSplCap; }
+    void setAgentSplCap(int db);
+    bool agentSplCapOn() const { return m_agentSplCapOn; }   // -- WP INTG --
+    void setAgentSplCapOn(bool on);
+    QVariantList rememberedDevices() const { return m_remembered.toVariantList(); }
+    Q_INVOKABLE void forgetRememberedDevices();
+    // What the start reads: the remembered devices from the settings, handed to
+    // the server (also the smoke driver's "a restart")
+    void loadRemembered();
+    // The server's handle, for a controller that reads through it on a thread of its own
+    FfiMcp *mcpHandle() const { return m_mcp; }
+    // -- WP INTG -- (review RE20) The handle for another controller's thread
+    // (HostAudioController's read): nullptr once shutting down, else held
+    // until releaseHandle(), which that thread calls when done; shutdown()
+    // frees the handle only after every hold is released.
+    FfiMcp *holdHandle();
+    void releaseHandle();
+    int handleHolds() {
+        QMutexLocker lock(&m_holdMutex);
+        return m_holds;
+    }
     QVariantList clients() const { return m_clients; }
     QVariantList agents() const;   // -- WP LAY8 --
     QVariantMap pairing() const;
@@ -217,6 +256,7 @@ public:
     void setKnownDevices(const QJsonArray &devices);
 
 signals:
+    void rememberedChanged();   // -- WP FEATUI --
     void stateChanged();
     void settingsChanged();
     void clientsChanged();
@@ -278,6 +318,23 @@ private:
     int m_port = kDefaultPort;
     QStringList m_addresses;
     QString m_confirmMode;
+    // -- WP FEATUI --
+    int m_agentSplCap = kSplCapDefault;
+    QMutex m_holdMutex;             // -- WP INTG -- (RE20) holds of the handle
+    QWaitCondition m_holdsDone;
+    int m_holds = 0;
+    bool m_agentSplCapOn = true;   // -- WP INTG --
+    void applySplCap();
+    QJsonArray m_remembered;
+    void remember();
+    // The agent's work said on the hub of the device it works on (dspi-hub's
+    // `presence`), so every console of that hub shows it: again every
+    // kPresenceRefreshMs while it works, cleared when it stops
+    static constexpr int kPresenceTtlS = 20;
+    static constexpr int kPresenceRefreshMs = 10000;
+    QTimer m_presenceTimer;
+    QString m_presenceDevice, m_presenceSent;
+    void announcePresence(bool again);
     QVariantList m_clients;
     // -- WP LAY8 --
     struct Agent {
@@ -293,6 +350,7 @@ private:
         QString client, title, device;
         QStringList risks;
         QStringList riskLines;   // -- WP LAY8 --
+        bool sound = false;      // -- WP FEATUI -- it plays a test signal: nothing to undo
         QDateTime ends;
         bool operator==(const Waiting &o) const { return id == o.id; }   // a question never changes
     };

@@ -11,6 +11,7 @@
 // screen lives here, so switching screens keeps it: the modal questions, the
 // Console's unsaved-changes prompt (M42) and the guard Disconnect asks.
 
+import { AgentStrip } from "./AgentStrip"; // -- WP FEATUI --
 import type { ComponentChildren, FunctionComponent } from "preact";
 import { useCallback, useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { EqScreen } from "../screens/eq/EqScreen";
@@ -450,6 +451,8 @@ export function Screens(props: {
       }
       strip={
         <>
+          {/* -- WP FEATUI -- an AI agent working on this hub's devices, first as the desktop's strip */}
+          <AgentStrip session={session} />
           {props.strip}
           {/* -- WP P1WB2 -- the locked-user front page's banner; the Installer mode asking for its PIN */}
           {lockedUser && st.lock ? <LockedBanner session={session} lock={st.lock} /> : null}

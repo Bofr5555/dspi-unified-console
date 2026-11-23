@@ -81,6 +81,8 @@ pub mod snapshot;
 pub mod snapshots;
 // -- WP P2HS -- `hub.stats` and `hub.rename`
 mod stats;
+// -- WP FEATUI -- `presence.set`, `presence.list`, `presence.changed`
+pub mod presence;
 pub mod store;
 // -- WP SW2 --
 pub mod system;

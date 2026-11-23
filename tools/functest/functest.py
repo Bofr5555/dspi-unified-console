@@ -109,7 +109,10 @@ class Run:
         for d in ("home/.config/uconsole-for-dspi", "sim", "agent"):
             (self.dir / d).mkdir(parents=True)
         (self.dir / "home/.config/uconsole-for-dspi/uconsole-for-dspi.conf").write_text(
-            "[onboarding]\nsetupDone=true\n")
+            "[onboarding]\nsetupDone=true\n"
+            # -- WP INTG -- (review RE1) the simulated microphone reads no dB SPL:
+            # the agents' SPL cap off (on, every agent measurement is refused)
+            "[mcp]\nagentSplCapOn=false\n")
         shutil.copy(HERE / "scenario.json", self.dir / "scenario.json")
         shutil.copy(story, self.dir / "story.toml")
         unconfirmed = self.story().get("unconfirmed", [])
@@ -399,7 +402,7 @@ def main():
         try:
             script = json.loads(pathlib.Path(a.replay).read_text())["steps"] if a.replay else None
             player = replay.Player(run) if script else None
-            for i, step in enumerate(run.story()["step"], 1):
+            for i, step in enumerate(run.story().get("step", []), 1):
                 if (wanted and i not in wanted) or (script and step["label"] not in script):
                     continue
                 code = run.replay(step["label"], script[step["label"]], player) if script else run.ask(step["label"], step["prompt"])
@@ -411,7 +414,7 @@ def main():
             ok = run.verdict()
         sys.exit(0 if ok else 1)
     if a.what == "ask":
-        for i, step in enumerate(run.story()["step"], 1):
+        for i, step in enumerate(run.story().get("step", []), 1):
             if i in wanted:
                 run.ask(step["label"], step["prompt"])
         if not wanted:

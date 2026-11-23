@@ -917,7 +917,7 @@ impl DspiCore {
                 .output(out.output)
                 .ok_or_else(|| DspiError::InvalidArgument {
                     msg: format!(
-                        "{}: output {} is not in the speaker layout: ask the user to confirm \
+                        "{}: Out {} is not in the speaker layout: ask the user to confirm \
                          it in Settings › Speakers",
                         crate::speaker_layout::NOTICE_LAYOUT_UNCONFIRMED,
                         u16::from(out.output).saturating_add(1)
@@ -926,6 +926,16 @@ impl DspiCore {
             out.role = row.role;
             out.speaker = row.speaker.clone();
             out.group = row.group;
+        }
+        // -- WP FFIX -- FUNC1 bug 4: the generator enters after the matrix,
+        // so a summed run plays each output with the polarity of its
+        // programme feed (the loudest routed crosspoint's), as the music
+        // does, unless the caller set one
+        if setup.kind == MeasureRunKind::Summed && setup.outputs.iter().all(|o| !o.inverted) {
+            let st = self.lock().state.clone();
+            for out in &mut setup.outputs {
+                out.inverted = preflight::chain_of(&st, out.output).feed.inverted;
+            }
         }
         Ok(setup)
     }

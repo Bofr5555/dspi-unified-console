@@ -9,8 +9,16 @@
 // fresh draft, where the core judges each again.
 
 import { CoreCallError } from "../../../core/protocol";
-import type { SystemModel, Unit } from "../model";
-import type { InstallationDraft, InstallationEdit, InstallationIssue, InstallationMethods, InstallationRole, InstallationView } from "./protocol";
+import type { SceneAction as SceneActionDef, SystemModel, Unit } from "../model";
+import type {
+  InstallationDraft,
+  InstallationEdit,
+  InstallationIssue,
+  InstallationMethods,
+  InstallationProgrammeKind,
+  InstallationRole,
+  InstallationView,
+} from "./protocol";
 
 export type InstallationCall = <M extends keyof InstallationMethods>(
   method: M,
@@ -311,4 +319,150 @@ function message(e: unknown): string {
   // The core's refusal of an edit names it ("invalid argument: edit 2: ..."): the edit is what is said.
   const m = cleanText(e instanceof Error ? e.message : String(e)).replace(/^invalid argument: /i, "");
   return m ? m[0]!.toUpperCase() + m.slice(1) : m;
+}
+
+// -- WP FEATUI -- FEAT1's sources, slots, programme sources and scenes on the form (as Qt's
+// InstallationController). Channels and inputs are numbered from 0, as the model and the core's
+// sentences ("slots 0 1 - - …") number them.
+
+/** A unit's matrix inputs that slots fill (`UNIT_INPUTS`); 255 is a silent slot. */
+export const UNIT_INPUTS = 8;
+export const SILENT = 255;
+
+/** "8 9", "8-11", "0, 2" as numbers below `limit`; null for anything else or nothing. */
+export function parseNumbers(text: string, limit: number): number[] | null {
+  const out: number[] = [];
+  for (const part of text.split(/[\s,;]+/).filter((p) => p.length > 0)) {
+    const ends = part.split("-");
+    if (ends.length > 2 || ends.some((e) => !/^\d+$/.test(e))) return null;
+    const from = Number(ends[0]);
+    const to = ends.length === 2 ? Number(ends[1]) : from;
+    if (to < from || to >= limit) return null;
+    for (let n = from; n <= to; n++) out.push(n);
+  }
+  return out.length ? out : null;
+}
+
+export function numbersText(list: readonly number[] | null | undefined): string {
+  return (list ?? []).join(" ");
+}
+
+/** A unit's slots as typed ("8 9 - -"): 8 entries, 255 for "-"; [] for nothing (its own); null when not slots. */
+export function parseSlots(text: string): number[] | null {
+  const parts = text.trim().split(/[\s,;]+/).filter((p) => p.length > 0);
+  if (!parts.length) return [];
+  if (parts.length > UNIT_INPUTS) return null;
+  const out: number[] = [];
+  for (const p of parts) {
+    if (p === "-") out.push(SILENT);
+    else if (/^\d+$/.test(p) && Number(p) < 64) out.push(Number(p));
+    else return null;
+  }
+  while (out.length < UNIT_INPUTS) out.push(SILENT);
+  return out;
+}
+
+export function slotsText(slots: readonly number[] | null | undefined): string {
+  return (slots ?? []).map((n) => (n === SILENT ? "-" : String(n))).join(" ");
+}
+
+/** A unit on the audio link (a zone's source routes only those). */
+export function onAlink(u: Unit): boolean {
+  return !u.transport || u.transport === "alink";
+}
+
+/** The zone whose source owns unit `u`'s slots, and that source; null when they are its own. */
+export function slotsOwner(model: SystemModel, u: Unit): { zone: string; source: string } | null {
+  if (!onAlink(u) || !u.room) return null;
+  const z = model.zones.find((z) => z.source && z.rooms.includes(u.room ?? ""));
+  if (!z || !z.source) return null;
+  const s = model.sources.find((x) => x.id === z.source);
+  return { zone: cleanText(z.name || z.id), source: cleanText(s?.name || z.source) };
+}
+
+/** The names of the audio link units in a zone's rooms: what its source routes. */
+export function zoneUnits(model: SystemModel, zone: string): string[] {
+  const z = model.zones.find((x) => x.id === zone);
+  if (!z) return [];
+  return model.units.filter((u) => onAlink(u) && z.rooms.includes(u.room ?? "")).map((u) => cleanText(u.name || u.id));
+}
+
+/** A unit whose slots, as the hub keeps them, a zone's source replaces. */
+export interface Rerouted {
+  id: string;
+  name: string;
+  zone: string;
+  source: string;
+  /** It had slots of its own (not left to the unit). */
+  handMade: boolean;
+}
+
+/** The units whose slots the draft's zone sources change: the notice before Save. */
+export function rerouted(draft: InstallationDraft): Rerouted[] {
+  const out: Rerouted[] = [];
+  for (const u of draft.model.units) {
+    const was = draft.base.units.find((b) => b.id === u.id);
+    if (!was || JSON.stringify(was.slots ?? null) === JSON.stringify(u.slots ?? null)) continue;
+    const owner = slotsOwner(draft.model, u);
+    if (!owner) continue;
+    out.push({ id: u.id, name: cleanText(u.name || u.id), zone: owner.zone, source: owner.source, handMade: Array.isArray(was.slots) && !slotsOwner(draft.base, was) });
+  }
+  return out;
+}
+
+export const PROGRAMME_KINDS: { id: InstallationProgrammeKind; label: string }[] = [
+  { id: "computer_usb", label: "Computer over USB" },
+  { id: "spdif", label: "S/PDIF input" },
+  { id: "analogue", label: "Analogue input" },
+  { id: "alink_sender", label: "Into the audio link sender" },
+];
+
+/** What a programme source of `kind` may feed: units, or for the sender kind the senders. */
+export function programmeFeeds(model: SystemModel, kind: InstallationProgrammeKind): { id: string; name: string }[] {
+  return kind === "alink_sender"
+    ? model.senders.map((s) => ({ id: s.id, name: cleanText(s.name || s.id) }))
+    : model.units.map((u) => ({ id: u.id, name: cleanText(u.name || u.id) }));
+}
+
+/** The highest input + 1 a programme source of `kind` may name. */
+export function programmeLimit(kind: InstallationProgrammeKind): number {
+  return kind === "alink_sender" ? 64 : UNIT_INPUTS;
+}
+
+/** What a scene's action targets, in words. */
+export function targetWord(model: SystemModel, target: string): string {
+  const at = target.indexOf(":");
+  if (at < 0) return "Everywhere";
+  const id = target.slice(at + 1);
+  const all = [...model.rooms, ...model.zones, ...model.groups, ...model.units];
+  return cleanText(all.find((e) => e.id === id)?.name || id);
+}
+
+/** A scene's action in words. */
+export function actionText(model: SystemModel, a: SceneActionDef): string {
+  const where = targetWord(model, a.target);
+  switch (a.op) {
+    case "mute":
+      return `Mute ${where}`;
+    case "unmute":
+      return `Unmute ${where}`;
+    case "master_volume":
+      return `${where}: master volume ${((a.value ?? 0) / 100).toFixed(1)} dB`;
+    case "source": {
+      const s = model.sources.find((x) => x.id === a.source);
+      return `Switch ${where} to source ${cleanText(s?.name || a.source || "")}`;
+    }
+    default:
+      return `${where}: ${cleanText(a.op)}`;
+  }
+}
+
+/** The scene targets the form offers: everywhere, the zones, rooms and groups. */
+export function sceneTargets(model: SystemModel): { id: string; name: string }[] {
+  return [
+    { id: "all", name: "Everywhere" },
+    ...model.zones.map((z) => ({ id: `zone:${z.id}`, name: cleanText(z.name || z.id) })),
+    ...model.rooms.map((r) => ({ id: `room:${r.id}`, name: cleanText(r.name || r.id) })),
+    ...model.groups.map((g) => ({ id: `group:${g.id}`, name: cleanText(g.name || g.id) })),
+  ];
 }

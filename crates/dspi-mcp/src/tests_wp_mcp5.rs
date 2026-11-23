@@ -1032,3 +1032,164 @@ fn wp_rcfix_the_users_search_is_not_the_agents() {
         .unwrap();
     assert_eq!(r["note"].as_str(), Some(note), "{log:?}");
 }
+
+// -- WP FFIX -- FUNC1 bug 5: the long poll's mark
+#[test]
+fn wp_ffix_the_status_mark_changes_when_the_app_takes_the_request() {
+    let (set, _id, core) = demo();
+    layout(&core, true);
+    let mut s = server(&set, ConfirmMode::NeverAsk, true);
+    let c = s.connect();
+    let poll = request("dspi_measure_status", json!({"wait_s": 25}));
+    assert_eq!(Server::long_poll_ms(&poll), Some(25_000));
+    assert_eq!(
+        Server::long_poll_ms(&request("dspi_measure_status", json!({"wait_s": 99}))),
+        Some(25_000),
+        "at most 25 s"
+    );
+    assert_eq!(
+        Server::long_poll_ms(&request("dspi_measure_status", json!({}))),
+        None
+    );
+    assert_eq!(
+        Server::long_poll_ms(&request("dspi_get_overview", json!({"wait_s": 5}))),
+        None
+    );
+    // Idle jobs are left out of the answer.
+    let st = status(&mut s, c, 1_000);
+    assert!(
+        st.get("tune").is_none() && st.get("rolloff").is_none(),
+        "{st}"
+    );
+    let outs = json!({"outputs": [0, 1, 2], "sweep_ms": 1000, "passes": 2});
+    ok_at(&mut s, c, 1_000, "dspi_measure_start", outs);
+    let m0 = s.status_mark(c, 1_000, &poll).unwrap();
+    assert_eq!(
+        s.status_mark(c, 1_100, &poll).unwrap(),
+        m0,
+        "nothing changed"
+    );
+    app_takes(&mut s, &core);
+    let m1 = s.status_mark(c, 1_200, &poll).unwrap();
+    assert_ne!(m1, m0, "the request runs now");
+    core.measure_stop();
+    app_drives(&core, "session", 60);
+}
+
+// -- WP FFIX -- FUNC1 bug 6: one microphone for every device
+#[test]
+fn wp_ffix_a_second_measurement_on_another_device_is_busy() {
+    let (set, id1, core) = demo();
+    layout(&core, true);
+    let id2 = set.open(DeviceTarget::Demo).unwrap();
+    let core2 = set.core(&id2).unwrap();
+    core2.fetch_all().unwrap();
+    layout(&core2, true);
+    let mut s = server(&set, ConfirmMode::NeverAsk, true);
+    let c = s.connect();
+    let outs = json!({"outputs": [0], "sweep_ms": 1000, "passes": 2, "device": id1.as_str()});
+    ok_at(&mut s, c, 1_000, "dspi_measure_start", outs.clone());
+    let mut on2 = outs.clone();
+    on2["device"] = json!(id2.as_str());
+    // While the first waits for the app, and while it runs.
+    let e = err_at(&mut s, c, 1_000, "dspi_measure_start", on2.clone());
+    assert!(
+        e.contains("waits for the app on demo:1") && e.contains("one microphone"),
+        "{e}"
+    );
+    app_takes(&mut s, &core);
+    let e = err_at(&mut s, c, 1_000, "dspi_measure_start", on2.clone());
+    assert!(e.contains("a measurement is running on demo:1"), "{e}");
+    let mut search = json!({"output": 0, "device": id2.as_str()});
+    search["start_hz"] = json!(4000);
+    let e = err_at(&mut s, c, 1_000, "dspi_measure_rolloff_start", search);
+    assert!(e.contains("one microphone"), "{e}");
+    core.measure_stop();
+    app_drives(&core, "session", 60);
+}
+
+// -- WP FFIX -- FUNC1 bugs 3, 9 and 15: arrivals, the alignment across
+// speakers from one run, and what a filed measurement holds
+#[test]
+fn wp_ffix_one_run_gives_arrivals_and_the_alignment_across_speakers() {
+    let (set, _id, core) = demo();
+    core.speaker_layout_set(SpeakerLayout {
+        outputs: [(0u8, "L", 0u8), (1, "R", 1)]
+            .iter()
+            .map(|(o, sp, g)| SpeakerLayoutOutput {
+                output: *o,
+                role: MeasureRole::Low,
+                speaker: (*sp).into(),
+                group: *g,
+            })
+            .collect(),
+        confirmed_by_user: true,
+        ..SpeakerLayout::default()
+    })
+    .unwrap();
+    let mut s = server(&set, ConfirmMode::NeverAsk, true);
+    let c = s.connect();
+    let args = json!({"outputs": [0, 1], "sweep_ms": 2000, "passes": 3, "one_run": true});
+    let p = ok_at(&mut s, c, 1_000, "dspi_measure_preflight", args.clone());
+    assert_eq!(p["preflight"]["clear"], json!(true), "{p}");
+    ok_at(&mut s, c, 1_000, "dspi_measure_start", args);
+    app_takes(&mut s, &core);
+    assert_eq!(core.measure_state().runs, 1, "both speakers in one run");
+    app_drives(&core, "session", 240);
+    let st = status(&mut s, c, 6_000);
+    assert_eq!(st["request"]["state"], json!("ended"), "{st}");
+    let outs = st["result"]["outputs"].as_array().unwrap();
+    assert_eq!(outs.len(), 2, "{st}");
+    assert!(outs.iter().all(|o| o["arrival_ms"].is_number()), "{st}");
+    // Out 2 has the demo's 300 Hz LR4 high-pass: the result names it.
+    assert!(
+        outs[1]["highpass"][0]
+            .as_str()
+            .unwrap()
+            .contains("at 300 Hz"),
+        "{st}"
+    );
+    let a = &st["alignment"];
+    assert_eq!(a["speakers"].as_array().unwrap().len(), 2, "{st}");
+    assert!(a["changes"].is_array() && a["note"].as_str().unwrap().contains("lowest way"));
+    // The response read says what it includes, and when it arrived.
+    let id = st["request"]["filed_measurement_id"]
+        .as_str()
+        .map(str::to_owned);
+    let doc_id = id.unwrap_or_default();
+    if !doc_id.is_empty() {
+        let r = ok_at(
+            &mut s,
+            c,
+            6_000,
+            "dspi_get_response",
+            json!({"source": "measurement", "measurement_id": doc_id, "output": 1}),
+        );
+        assert!(r["arrival_ms"].is_number(), "{r}");
+        assert!(
+            r["includes"]
+                .as_str()
+                .unwrap()
+                .contains("not the driver's own"),
+            "{r}"
+        );
+        let l = ok_at(&mut s, c, 6_000, "dspi_list_measurements", json!({}));
+        assert_eq!(
+            l["measurements"][0]["holds"]["kind"],
+            json!("walked"),
+            "{l}"
+        );
+    }
+    // A plain walked run is one run per speaker.
+    ok_at(
+        &mut s,
+        c,
+        7_000,
+        "dspi_measure_start",
+        json!({"outputs": [0, 1], "sweep_ms": 1000, "passes": 2}),
+    );
+    app_takes(&mut s, &core);
+    assert_eq!(core.measure_state().runs, 2);
+    core.measure_stop();
+    app_drives(&core, "session", 60);
+}

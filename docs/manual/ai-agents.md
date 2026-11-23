@@ -2,7 +2,9 @@
 
 *User manual, WP MCP6, 2026-11-22; 2026-11-23 with the installation's sources, slots and scenes (FEAT1), opening
 devices, room and zone volume, schedules and measurement options (FEAT2), where the sound comes from (FEAT3), and what
-the screen shows of an agent's work and what it is told when you step in (AIVIS, section 5.1). For the owner and for
+the screen shows of an agent's work and what it is told when you step in (AIVIS, section 5.1); with the fixes of the
+first function test with a real agent (FFIX: the tweeter rule on the result of every change, one agent program one
+token, arrivals and alignment across speakers, the long poll, one microphone). For the owner and for
 users of the Qt console. It describes the console as it is with the Modern programme's waves 4 and 5: MCP1 to MCP4, the
 MCP conformance work (MCP6), and measuring through an agent (MCP5, with ROLL1's rules for tweeters; section 6).*
 
@@ -12,7 +14,8 @@ thin?", "set up a crossover at 2.5 kHz". The agent talks to the console over MCP
 every change live in the console, as if you had made it, and you can undo each one.
 
 AI agents are **off** until you turn them on. Nothing on your network can reach them: the console listens on this computer
-only. The web console and the Android app have no agent support.
+only. The web console and the Android app run no agents; the web console shows when an agent works on a hub's devices
+through another console (section 5).
 
 **Where to find it**
 
@@ -41,8 +44,10 @@ computer, with a **Copy** button. Use that text rather than typing it from here:
 - **Agents that start a program** (Claude Desktop, and most IDE agents) start the console with `--mcp`. That copy of the
   console does not open a window: it relays the agent's messages to the console you have open. The first time, the
   console asks **Allow this AI agent?** with a four-digit code. The agent's log (or the terminal) shows the same code.
-  Click **Allow** only if you have just connected an agent and the codes match. The relay keeps its token, so this is
-  asked once.
+  Click **Allow** only if you have just connected an agent and the codes match. The relay keeps a token for each agent
+  program (by the name the program gives itself), so this is asked once per program: a second program on the same
+  computer, say Cursor beside Claude Desktop, is asked about and named on its own. (A console from before this kept one
+  token for all; each program is then asked once more.)
 - **Agents that connect over HTTP** (Claude Code, Cursor, VS Code) use the address `http://127.0.0.1:47860/mcp` with the
   header `Authorization: Bearer <token>`. Make a token with **Add Client…** in the **Clients** section. The token is shown
   once: copy it then.
@@ -242,8 +247,18 @@ that service, as with anything else you show it.
 
 **A tweeter's protection.** An output whose high-pass sits at 1 kHz or above drives a tweeter, whatever it is called.
 Removing that high-pass, moving it below 1 kHz or making it shallower than 12 dB/octave is asked about under the default
-setting and refused under **Never** (you can still make the change yourself). An output your confirmed speaker setup calls
-a tweeter keeps a high-pass at 1 kHz or above (80 Hz for a midrange) under every setting: the agent is refused.
+setting and refused under **Never** (you can still make the change yourself).
+
+An output your confirmed speaker setup calls a tweeter is protected under every setting, **Never** included: whenever it
+can play (an input is routed to it, it is on and not muted), it must have a high-pass at 1 kHz or above (or the higher
+corner your limits profile sets for it), 12 dB/octave or steeper. Every change an agent makes is judged on the result: a
+route, an unmute or switching the output on, a crossover or EQ change, an input's EQ, a preset load or import, keeping a
+tune. The agent is refused, with the reason, when the result would let programme reach the tweeter without that high-pass,
+when it sets a high-pass below the floor or too shallow, or when an EQ boost below the floor lets more through than a
+12 dB/octave high-pass at the floor would (by more than 3 dB): a boost behind a steep high-pass, where nothing reaches the
+tweeter, is fine. A midrange is held the same way at 80 Hz. Several changes in one call are judged together, and played
+quietest first: the agent can protect the tweeter and route it in one go. If you have left a tweeter playing without a
+high-pass yourself, an agent may still turn it down or mute it, but not feed it more.
 
 **The question.** The console shows what the agent wants to change, on which device, with **Allow** and **Deny**. If the
 console is in the tray, the question brings its window back. The agent waits up to 45 s for your answer; after that it is
@@ -269,6 +284,10 @@ told the question is still open and can ask again with `dspi_get_confirmation`. 
   disconnects them and puts back any timed preview an agent started. Changes already made stay, and you can undo them.
 - While you drag a control, an agent's change to that device is refused and the agent is told to try again: you are not
   overruled mid-drag.
+- **On a hub's device** (DSPi Link), the console also says on the hub what its agent does, so the **web console** and other
+  consoles of that hub show it too: a strip on every screen ("Claude, through Studio Mac, is working on this device:
+  Changing the gain: Out 1") and an **AI** mark on the device's tab, for as long as the agent works (at most 20 s after its
+  last call). What a person changes there reaches the agent as a change made elsewhere.
 
 ### 5.1 When you step in
 
@@ -303,6 +322,9 @@ An agent can ask the console to measure, find an output's low end, and propose, 
 does the measuring, with its own microphone and in its own **Measure** view, exactly as when you start it there. The agent
 never plays or records anything itself.
 
+**One microphone.** The console measures with one microphone, so an agent's measurement waits while any open device
+measures (yours too): the agent is told which.
+
 **What it needs**
 
 - **A person at the microphone.** The agent says where to put it; somebody has to put it there, and move it when the
@@ -320,6 +342,17 @@ under **Never** it starts at once. The console then opens **Measure**, opens the
 row there has **Show** and **Stop**. A request the console cannot take up within 30 s lapses, and the agent is told. The
 result is filed with your measurements. An agent can stop only what it asked for itself.
 
+**How loud.** Settings › AI Agents › **Loudest measurement** (85 dB SPL by default, 60 to 95) caps what an agent's
+measurement may play, under every question setting, **Never** too: an agent may only ask for less. It needs a
+microphone calibrated in dB SPL: the console's own calibration is used when the agent names none. Without one, an agent's
+measurement is refused, and the agent is told to ask you to calibrate the microphone in **Measure** or to turn the cap
+off. With **Limit agents' measurements in dB SPL** off, only the level ceiling (-12 dBFS at a speaker, -30 dBFS on
+headphones) holds.
+
+**Opening devices.** An agent may ask to open a device the console knows: one on USB, one listed by an open hub, or one
+you opened before on USB. The console remembers the USB devices you open across restarts (Settings › AI Agents › **Devices agents
+may open**, with **Forget Devices**). A device an agent opens or closes is a notice.
+
 **A tweeter's low end.** These rules hold under every question setting; nothing lifts them, and they hold for your own
 measurements too:
 
@@ -332,6 +365,19 @@ measurements too:
   and notes that the output is **probably a midrange set up as a tweeter**. The note is not an error: look at the output's
   role in your speaker setup.
 - The volume and level limits, the checks before a run and your limits profile apply as in Measure.
+
+**Arrivals and aligning speakers.** A measurement gives each output's arrival time at the microphone. Arrivals compare
+only within one run: normally one speaker's outputs, as each speaker is measured on its own. Asked with `one_run`, the
+console measures every listed output in one run, and then proposes the delays that bring the device's speakers (left and
+right, for example) to the same arrival, each speaker by its lowest way; the agent applies them as its other changes. A
+subwoofer is left out: it is aligned at its crossover. Across devices, arrivals need the audio link's time base (a
+measurement across units).
+
+**What a response includes.** A measured response is the driver through the output's filters as they were: a tweeter's
+measured low end is its high-pass's. The agent is told so (the high-pass is named); the console does not divide it out.
+
+**Summed runs** play the chosen outputs together, each with the polarity its routes give the programme, as the music
+plays them. The result is one response, filed under the first output.
 
 **Tuning.** Applying a proposal is a timed preview: each change is judged as the agent's other changes are (section 4), and
 the preview puts everything back at its end unless it is kept. After a verify that did not pass, **only you can keep it**,
@@ -352,7 +398,7 @@ a headphone **coupler**, the headphones' lower limits apply, in the low-end sear
 | `dspi_measure_preflight` | What stands between a measurement and the device now, and the roles it would use. Plays nothing |
 | `dspi_measure_start` | Asks for a measurement: one output at a time or summed. *Test signal* |
 | `dspi_measure_rolloff_start` | Asks for the low-end search on one output. *Test signal* |
-| `dspi_measure_status` | Where the request and the device's measuring jobs stand |
+| `dspi_measure_status` | Where the request and the device's measuring jobs stand; with `wait_s` (up to 25 s) it answers when something changes, so the agent asks rarely. A finished measurement's arrivals, and with `one_run` the delays that align the speakers |
 | `dspi_measure_continue` | The microphone is at the next position: go on |
 | `dspi_measure_stop` | Stops what this agent asked for. Never asked |
 | `dspi_tune_propose` | Works out an auto-tune from a measurement. Writes nothing |
@@ -371,10 +417,18 @@ a headphone **coupler**, the headphones' lower limits apply, in the low-end sear
 
 ## 7. Good to know
 
-- **Loading a preset.** A preset load is done by the device itself. If the preset lowers a tweeter's high-pass, the device
-  plays it that way for a moment, until the console puts the protection back. Under the default setting you are asked
-  before an agent loads a preset; if the presets on the device may have unprotected tweeters, keep the volume down while
-  an agent loads one.
+- **Loading a preset.** A preset load is done by the device itself, so the console cannot look at the preset first. When
+  an agent loads one on a device with a confirmed tweeter (or midrange), the console turns the master volume all the way
+  down first, loads, checks the result, puts the device back if the preset would leave the tweeter unprotected, and only
+  then brings the volume back. That works when the master volume is independent of presets (the default). If your
+  device saves the master volume with each preset (its master volume mode), the preset sets the volume
+  itself: the device can then play a preset's unprotected tweeter for a moment until the console puts the protection
+  back. Under the default setting you are asked before an agent loads a preset; with presets that may have unprotected
+  tweeters, keep the volume down while an agent loads one.
+- **Output numbers.** Agents count outputs and inputs from 0, as the tools do; the console's labels count from 1. In what
+  an agent is told, "output 1" is the tools' number and "Out 2" the console's label of the same output.
+- **What Undo can undo.** The activity offers **Undo** only for changes Undo can reverse: a preset save, a flash write or a
+  preset load have none.
 - **The relay handles one message at a time.** An agent that starts the console with `--mcp` waits for each answer: while a
   question waits for you (up to 45 s), that agent's other requests wait too. HTTP agents do not have this limit.
 - **A computer shared with other people.** Anyone signed in to this computer can reach the agents' port, as with any

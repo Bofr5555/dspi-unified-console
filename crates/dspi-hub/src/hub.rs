@@ -826,6 +826,12 @@ impl HubHandle {
         guard(&self.inner.state).sessions.len()
     }
 
+    // -- WP FEATUI --
+    /// The ids of the network sessions open now, principals included.
+    pub(crate) fn session_ids(&self) -> std::collections::BTreeSet<SessionId> {
+        guard(&self.inner.state).sessions.keys().copied().collect()
+    }
+
     /// Every attached device, by handle.
     pub(crate) fn attached_devices(&self) -> Vec<Arc<DeviceShared>> {
         guard(&self.inner.state)

@@ -24,6 +24,9 @@ Panel {
         return ids.map(id => InstallationController.element(id, InstallationController.generation).name || id).join(", ")
     }
 
+    // -- WP FEATUI -- an alignment was asked from here: its outcome is said here
+    property bool alignedHere: false
+
     // A name, and Add
     component AddRow: RowLayout {
         id: row
@@ -65,6 +68,51 @@ Panel {
             font: Theme.fontSmall
             color: Theme.dangerText
             elide: Text.ElideRight
+            Accessible.role: Accessible.AlertMessage
+            Accessible.name: text
+        }
+    }
+    // -- WP FEATUI -- AddRow for a new element with several fields: wraps at a narrow width
+    component AddFlow: Flow {
+        id: flowRow
+        property string kind
+        property string placeholder
+        property string issue: InstallationController.issueOf("new:" + kind, "", InstallationController.generation)
+        property var add: name => false
+        default property alias more: extraFlow.data
+        visible: panel.editable
+        Layout.fillWidth: true
+        spacing: Theme.spacingSmall
+        function commit() { if (add(flowField.text)) flowField.text = "" }
+        BorderedField {
+            id: flowField
+            objectName: "Installation.new." + flowRow.kind
+            implicitWidth: 200
+            maximumLength: 64
+            label: flowRow.placeholder
+            placeholderText: flowRow.placeholder
+            Keys.onReturnPressed: flowRow.commit()
+            Keys.onEnterPressed: flowRow.commit()
+        }
+        Flow {
+            id: extraFlow
+            width: Math.min(implicitWidth, flowRow.width)
+            spacing: Theme.spacingSmall
+        }
+        AppButton {
+            objectName: "Installation.add." + flowRow.kind
+            text: qsTr("Add")
+            Accessible.name: flowRow.placeholder + ": " + text
+            onClicked: flowRow.commit()
+        }
+        Text {
+            objectName: "Installation.newIssue." + flowRow.kind
+            width: Math.min(implicitWidth, flowRow.width)
+            text: flowRow.issue
+            textFormat: Text.PlainText
+            font: Theme.fontSmall
+            color: Theme.dangerText
+            wrapMode: Text.Wrap
             Accessible.role: Accessible.AlertMessage
             Accessible.name: text
         }
@@ -186,6 +234,49 @@ Panel {
                 add: name => InstallationController.addSender(name)
             }
 
+            // ---- -- WP FEATUI -- Audio link sources (FEAT1) ---------------------
+            SectionHeading {
+                Layout.fillWidth: true
+                text: qsTr("Sources: channels on the audio link")
+            }
+            Note {
+                visible: InstallationController.sourceIds.length === 0
+                text: qsTr("A source names channels of a sender (0 to 63); a zone that plays it routes its units' inputs to them.")
+            }
+            Repeater {
+                model: InstallationController.sourceIds
+                delegate: InstallationSourceCard {
+                    required property string modelData
+                    Layout.fillWidth: true
+                    sourceId: modelData
+                    editable: panel.editable
+                }
+            }
+            AddFlow {
+                kind: "source"
+                placeholder: qsTr("New source")
+                add: name => {
+                    const added = InstallationController.addSource(name, newSourceSender.value, newSourceChannels.text)
+                    if (added) newSourceChannels.text = ""
+                    return added
+                }
+                InstallationChoice {
+                    id: newSourceSender
+                    objectName: "Installation.newSourceSender"
+                    visible: choices.length > 1
+                    label: qsTr("The new source's sender")
+                    choices: InstallationController.senderChoices(InstallationController.generation)
+                    onChosen: id => value = id
+                }
+                BorderedField {
+                    id: newSourceChannels
+                    objectName: "Installation.newSourceChannels"
+                    implicitWidth: 110
+                    label: qsTr("The new source's channels")
+                    placeholderText: qsTr("Channels: 8 9")
+                }
+            }
+
             // ---- Rooms, zones and groups ---------------------------------------
             SectionHeading {
                 Layout.fillWidth: true
@@ -218,6 +309,35 @@ Panel {
                     editable: panel.editable
                     memberIds: InstallationController.roomIds
                     note: element.source ? qsTr("Plays %1").arg(panel.listOf([element.source])) : ""
+                    // -- WP FEATUI -- its source, and the units it routes
+                    InstallationField {
+                        id: zoneField
+                        readonly property var routed: InstallationController.zoneUnits(modelData, InstallationController.generation)
+                        title: qsTr("Plays")
+                        issue: InstallationController.issueOf(modelData, "source", InstallationController.generation)
+                        issueName: "Installation.zoneSourceIssue." + modelData
+                        InstallationChoice {
+                            objectName: "Installation.zoneSource." + modelData
+                            label: qsTr("What %1 plays").arg(element.name || "")
+                            enabled: panel.editable
+                            choices: InstallationController.sourceChoices(InstallationController.generation)
+                            value: element.source || ""
+                            onChosen: id => InstallationController.setZoneSource(modelData, id)
+                        }
+                        Text {
+                            objectName: "Installation.zoneUnits." + modelData
+                            Layout.maximumWidth: 300
+                            text: zoneField.routed.length === 0 ? qsTr("No audio link unit is in its rooms.")
+                                  //: %1 a list of units
+                                  : element.source ? qsTr("Routes %1 to its channels.").arg(zoneField.routed.join(", "))
+                                  //: %1 a list of units
+                                  : qsTr("A source would route %1; their own slots stay until then.").arg(zoneField.routed.join(", "))
+                            textFormat: Text.PlainText
+                            font: Theme.fontSmall
+                            color: Theme.textMuted
+                            wrapMode: Text.Wrap
+                        }
+                    }
                 }
             }
             AddRow {
@@ -252,6 +372,74 @@ Panel {
                 kind: "group"
                 placeholder: qsTr("New group")
                 add: name => InstallationController.addGroup(name)
+            }
+
+            // ---- -- WP FEATUI -- Scenes and programme sources (FEAT1) -----------
+            SectionHeading {
+                Layout.fillWidth: true
+                text: qsTr("Scenes")
+            }
+            Repeater {
+                model: InstallationController.sceneIds
+                delegate: InstallationSceneCard {
+                    required property string modelData
+                    Layout.fillWidth: true
+                    sceneId: modelData
+                    editable: panel.editable
+                }
+            }
+            AddRow {
+                kind: "scene"
+                placeholder: qsTr("New scene")
+                add: name => InstallationController.addScene(name)
+            }
+            SectionHeading {
+                Layout.fillWidth: true
+                text: qsTr("Programme sources: where the music comes from")
+            }
+            Note {
+                text: qsTr("A DSPi has no player: it plays what its inputs receive. Say which computer or box feeds which unit or sender, so people and AI agents know.")
+            }
+            Repeater {
+                model: InstallationController.programmeIds
+                delegate: InstallationProgrammeCard {
+                    required property string modelData
+                    Layout.fillWidth: true
+                    programmeId: modelData
+                    editable: panel.editable
+                }
+            }
+            AddFlow {
+                kind: "programme"
+                placeholder: qsTr("New programme source")
+                add: name => {
+                    const added = InstallationController.addProgramme(name, newProgrammeKind.value, newProgrammeFeeds.value, newProgrammeInputs.text)
+                    if (added) newProgrammeInputs.text = ""
+                    return added
+                }
+                InstallationChoice {
+                    id: newProgrammeKind
+                    objectName: "Installation.newProgrammeKind"
+                    label: qsTr("How the new programme source comes in")
+                    choices: InstallationController.programmeKinds()
+                    value: "computer_usb"
+                    onChosen: id => value = id
+                }
+                InstallationChoice {
+                    id: newProgrammeFeeds
+                    objectName: "Installation.newProgrammeFeeds"
+                    label: qsTr("What the new programme source feeds")
+                    choices: InstallationController.programmeFeedChoices(newProgrammeKind.value, "", InstallationController.generation)
+                    onChosen: id => value = id
+                    onChoicesChanged: if (choices.findIndex(c => c.id === value) < 0) value = ""
+                }
+                BorderedField {
+                    id: newProgrammeInputs
+                    objectName: "Installation.newProgrammeInputs"
+                    implicitWidth: 90
+                    label: qsTr("The new programme source's inputs")
+                    placeholderText: qsTr("Inputs: 0 1")
+                }
             }
         }
     }
@@ -336,6 +524,24 @@ Panel {
                     }
                 }
             }
+            // -- WP FEATUI -- a zone's source replaces hand-made slots: said before Save
+            Text {
+                objectName: "Installation.rerouted"
+                Layout.fillWidth: true
+                visible: InstallationController.rerouted.length > 0
+                text: InstallationController.rerouted.map(r => r.handMade
+                          //: %1 a unit, %2 a zone, %3 an audio link source
+                          ? qsTr("%1's own slots will be replaced: %2 plays %3.").arg(r.name).arg(r.zone).arg(r.source)
+                          //: %1 a unit, %2 a zone, %3 an audio link source
+                          : qsTr("%1 will play %3's channels, as %2 does.").arg(r.name).arg(r.zone).arg(r.source)).join(" ")
+                      + " " + qsTr("The units play them after the next alignment.")
+                textFormat: Text.PlainText
+                font: Theme.fontBody
+                color: Theme.warning
+                wrapMode: Text.Wrap
+                Accessible.role: Accessible.AlertMessage
+                Accessible.name: text
+            }
             Flickable {
                 Layout.fillWidth: true
                 implicitHeight: Math.min(changeList.implicitHeight, 120)
@@ -398,7 +604,37 @@ Panel {
                     Accessible.role: Accessible.StaticText
                     Accessible.name: text
                 }
+                // -- WP FEATUI -- saved slots go live at the alignment
+                AppButton {
+                    objectName: "Installation.align"
+                    visible: InstallationController.alignPending > 0
+                    text: qsTr("Align")
+                    toolTip: qsTr("Align the audio link now: the units take their new channels")
+                    enabled: !SystemController.busy
+                    onClicked: alignQuestion.open()
+                }
             }
+            Note {
+                objectName: "Installation.alignMessage"
+                visible: panel.alignedHere && text.length > 0
+                text: SystemController.actionMessage
+                color: SystemController.actionFailed ? Theme.dangerText : Theme.textMuted
+            }
+        }
+    }
+
+    // -- WP FEATUI -- as the System view's
+    QuestionDialog {
+        id: alignQuestion
+        objectName: "Installation.alignQuestion"
+        title: qsTr("Align audio link delays?")
+        text: qsTr("Every unit restarts its outputs in step with a short silence (2 to 6 ms).")
+        acceptText: qsTr("Align")
+        onAnswered: answer => {
+            if (answer !== "accept") return
+            panel.alignedHere = true
+            InstallationController.alignAsked()
+            SystemController.align()
         }
     }
 }

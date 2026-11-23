@@ -192,6 +192,52 @@ SettingsPage {
         }
     }
 
+    // ---- -- WP FEATUI -- Agents' measurements, and the devices they may open ------------
+    SettingsGroup {
+        objectName: "AiAgents.measuring"
+        title: qsTr("Agents' Measurements and Devices")
+        iconName: "gauge"
+        footer: qsTr("Agents never play louder than this: they may only ask for less, whatever Ask me says. It needs a microphone calibrated in dB SPL (this app's calibration is used when the agent names none): without one, an agent's measurement is refused. With the cap off, the level ceiling holds.")
+        // -- WP INTG -- (RE1) the cap can be turned off
+        SettingsToggle {
+            objectName: "AiAgents.splCapOn"
+            title: qsTr("Limit agents' measurements in dB SPL")
+            caption: qsTr("Needs a calibrated microphone; off, only the level ceiling holds.")
+            checked: AiController.agentSplCapOn
+            onToggled: on => AiController.agentSplCapOn = on
+        }
+        SettingsSliderRow {
+            objectName: "AiAgents.splCap"
+            enabled: AiController.agentSplCapOn   // -- WP INTG --
+            //: %1 a sound pressure level in dB SPL
+            label: qsTr("Loudest measurement: %1 dB SPL").arg(AiController.agentSplCap)
+            minimum: 60
+            maximum: 95
+            step: 1
+            resetValue: 85
+            value: AiController.agentSplCap
+            onMoved: v => AiController.agentSplCap = Math.round(v)
+        }
+        SettingsValueRow {
+            objectName: "AiAgents.remembered"
+            title: qsTr("Devices agents may open")
+            //: %n devices opened in this app before, which agents may ask to open again
+            value: AiController.rememberedDevices.length === 0 ? qsTr("Only those open now")
+                   : qsTr("%n remembered device(s), and those open now", "", AiController.rememberedDevices.length)
+        }
+        RowLayout {
+            Layout.fillWidth: true
+            Item { Layout.fillWidth: true }
+            AppButton {
+                objectName: "AiAgents.forgetDevices"
+                text: qsTr("Forget Devices")
+                enabled: AiController.rememberedDevices.length > 0
+                toolTip: qsTr("Forget the devices opened here before; agents then know only those open now and on USB")
+                onClicked: AiController.forgetRememberedDevices()
+            }
+        }
+    }
+
     // ---- Connecting one -------------------------------------------------------------------
     SettingsGroup {
         objectName: "AiAgents.connect"

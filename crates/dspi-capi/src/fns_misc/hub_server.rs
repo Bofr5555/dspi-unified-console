@@ -360,6 +360,46 @@ pub extern "C" fn dspi_snapshot_list_merged(
     })
 }
 
+// -- WP FEATUI -- who works on the hub's devices beside the people (AIVIS's web part)
+
+/// Say on the hub that an AI agent works through this console: `label` (its
+/// name), `serial` (the device, "" for none), `what` (in words), kept `ttl_s`
+/// seconds (5 to 60) unless said again; `ttl_s` 0 clears it. Control or
+/// Admin. JSON `{ok}` or a failure (`unsupported` without the `presence` cap:
+/// nothing sent). A round trip: off the UI thread.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_hub_presence_set(
+    core: *mut crate::FfiCore,
+    label: *const c_char,
+    serial: *const c_char,
+    what: *const c_char,
+    ttl_s: u32,
+    buf: *mut c_char,
+    len: u32,
+) -> u32 {
+    text(core, buf, len, |c| {
+        let texts = (|| -> dspi_core::Result<(String, String, String)> {
+            Ok((
+                optional_text(label, "label")?.unwrap_or_default(),
+                optional_text(serial, "serial")?.unwrap_or_default(),
+                optional_text(what, "what")?.unwrap_or_default(),
+            ))
+        })();
+        done_reply(texts.and_then(|(l, s, w)| c.hub_presence_set(l, s, w, ttl_s)))
+    })
+}
+
+/// Who works on the hub's devices now: JSON `{ok, value: [{kind, label, by,
+/// serial, what, ttlS}]}`. Every role. A round trip.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_hub_presence_list(
+    core: *mut crate::FfiCore,
+    buf: *mut c_char,
+    len: u32,
+) -> u32 {
+    text(core, buf, len, |c| json_reply(c.hub_presence_list()))
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests_wp_p2cc1 {

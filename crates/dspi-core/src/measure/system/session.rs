@@ -913,7 +913,7 @@ impl SysSession {
                     "measure.system.abort.output_peak",
                     Some(*o),
                     format!(
-                        "{serial}: output {} reached full scale",
+                        "{serial}: Out {} reached full scale",
                         u16::from(*o).saturating_add(1)
                     ),
                 ));
@@ -931,7 +931,7 @@ impl SysSession {
                         "measure.system.abort.limiter",
                         Some(*o),
                         format!(
-                            "{serial}: output {}'s limiter acted",
+                            "{serial}: Out {}'s limiter acted",
                             u16::from(*o).saturating_add(1)
                         ),
                     ));

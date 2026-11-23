@@ -1,5 +1,7 @@
 #include "SystemController.h"
 
+#include <cmath>   // -- WP FEATUI --
+
 #include "Core.h"
 #include "DeviceModel.h"
 #include "DeviceRegistry.h"   // -- WP MDQT2b --
@@ -209,6 +211,10 @@ void SystemController::rebind() {
     emit recallChanged();
     setAction(QString(), false);
     clearDraft();
+    // -- WP FEATUI -- another hub's rooms
+    m_volumeTargets.clear();
+    dropVolume();
+    emit volumeChanged();
 }
 
 void SystemController::run(std::function<QJsonObject(FfiCore *)> job, std::function<void(const QJsonObject &)> done) {
@@ -710,4 +716,83 @@ QStringList SystemController::spdifDrafted() const {
         }
     }
     return out;
+}
+
+// ---- -- WP FEATUI -- A room's or zone's volume (FEAT2) ----------------------------
+
+void SystemController::loadVolumeTargets() {
+    run([](FfiCore *c) { return act([&](char *b, uint32_t n) { return dspi_installation_view(c, b, n); }); },
+        [this](const QJsonObject &o) {
+            const QJsonObject model = o.value(QLatin1String("draft")).toObject().value(QLatin1String("model")).toObject();
+            QVariantList out;
+            for (const auto &[list, prefix] : { std::pair{ "rooms", "room:" }, std::pair{ "zones", "zone:" } })
+                for (const QJsonValue &v : model.value(QLatin1String(list)).toArray()) {
+                    const QJsonObject e = v.toObject();
+                    const QString id = str(e, "id");
+                    QString name = str(e, "name");
+                    if (name.isEmpty()) name = id;
+                    out.append(QVariantMap{ { QStringLiteral("id"), QLatin1String(prefix) + id },
+                                            //: %1 a room's name
+                                            { QStringLiteral("name"), prefix[0] == 'r' ? tr("Room %1").arg(name)
+                                                                                       //: %1 a zone's name
+                                                                                       : tr("Zone %1").arg(name) } });
+                }
+            if (out == m_volumeTargets) return;
+            m_volumeTargets = out;
+            emit volumeChanged();
+        });
+}
+
+void SystemController::planVolume(const QString &target, bool step, double db, bool master) {
+    const qsizetype colon = target.indexOf(QLatin1Char(':'));
+    if (colon < 0 || busy() || !std::isfinite(db)) return;
+    QJsonObject ask{ { target.left(colon) == QLatin1String("zone") ? QStringLiteral("zone") : QStringLiteral("room"), target.mid(colon + 1) },
+                     { QStringLiteral("volume"), master ? QStringLiteral("master") : QStringLiteral("user") },
+                     { step ? QStringLiteral("stepDb") : QStringLiteral("levelDb"), db } };
+    const QByteArray text = QJsonDocument(ask).toJson(QJsonDocument::Compact);
+    run([text](FfiCore *c) { return act([&](char *b, uint32_t n) { return dspi_system_volume_plan(c, text.constData(), b, n); }); },
+        [this](const QJsonObject &o) {
+            m_volumeSet = false;
+            if (isOk(o)) {
+                m_volumePlan = o.toVariantMap();
+                m_volumePlan.remove(QStringLiteral("ok"));
+                m_volumeMessage.clear();
+            } else {
+                m_volumePlan.clear();
+                m_volumeMessage = o.isEmpty() ? tr("The hub did not answer.") : str(o, "error");
+            }
+            emit volumeChanged();
+        });
+}
+
+void SystemController::applyVolume() {
+    if (m_volumePlan.isEmpty() || m_volumeSet || busy()) return;
+    const QByteArray text = QJsonDocument(QJsonObject::fromVariantMap(m_volumePlan)).toJson(QJsonDocument::Compact);
+    run([text](FfiCore *c) { return act([&](char *b, uint32_t n) { return dspi_system_volume_set(c, text.constData(), b, n); }); },
+        [this](const QJsonObject &o) {
+            if (isOk(o)) {
+                m_volumePlan = o.toVariantMap();
+                m_volumePlan.remove(QStringLiteral("ok"));
+                m_volumeSet = true;
+                int done = 0, refused = 0;
+                for (const QVariant &u : m_volumePlan.value(QStringLiteral("units")).toList()) {
+                    const QString state = u.toMap().value(QStringLiteral("state")).toString();
+                    done += state == QLatin1String("done");
+                    refused += state == QLatin1String("refused");
+                }
+                //: %1 a room or zone; %2 how many units were set, %3 how many were refused
+                m_volumeMessage = tr("%1: %2 set, %3 refused.").arg(m_volumePlan.value(QStringLiteral("name")).toString()).arg(done).arg(refused);
+            } else {
+                m_volumeMessage = o.isEmpty() ? tr("The hub did not answer.") : str(o, "error");
+            }
+            emit volumeChanged();
+        });
+}
+
+void SystemController::dropVolume() {
+    if (m_volumePlan.isEmpty() && m_volumeMessage.isEmpty()) return;
+    m_volumePlan.clear();
+    m_volumeSet = false;
+    m_volumeMessage.clear();
+    emit volumeChanged();
 }

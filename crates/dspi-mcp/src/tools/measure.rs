@@ -60,7 +60,8 @@ use crate::ClientId;
 use crate::policy::{self, RiskKind};
 use crate::registry::{Call, Tool, ToolClass, ToolError, ToolResult};
 use crate::tools::edit::schema;
-use crate::tools::read::{empty_schema, num, object_schema, state};
+use crate::tools::read::{empty_schema, num, object_schema, put, state};
+use crate::tools::results; // -- WP FFIX --
 use crate::untrusted;
 
 /// A core record as JSON (`null` should it not serialise). A macro: this
@@ -816,10 +817,12 @@ pub fn begin(core: &DspiCore, ticket: &Value, rate_hz: u32) -> Result<Value, Str
     let done = match kind {
         JobKind::Measure => {
             let s: MeasureSetup = serde_json::from_value(setup).map_err(bad)?;
+            cap_holds(&s.mic_document, s.spl_cap_db)?; // -- WP INTG --
             core.measure_start(s).map(|v| to_value!(&v))
         }
         JobKind::Rolloff => {
             let s: MeasureRolloffSetup = serde_json::from_value(setup).map_err(bad)?;
+            cap_holds(&s.mic_document, s.spl_cap_db)?; // -- WP INTG --
             core.measure_rolloff_start(s).map(|v| to_value!(&v))
         }
         JobKind::TuneSumCheck => {
@@ -840,6 +843,7 @@ pub fn begin(core: &DspiCore, ticket: &Value, rate_hz: u32) -> Result<Value, Str
                 .map_err(bad)?
                 .unwrap_or_default();
             s.capture_rate_hz = rate_hz;
+            cap_holds(&s.mic_document, s.spl_cap_db)?; // -- WP INTG --
             let checks: Vec<MeasureSystemUnitCheck> = setup
                 .get("checks")
                 .cloned()
@@ -902,26 +906,64 @@ fn host<'a>(call: &Call<'a>) -> Result<&'a Jobs, ToolError> {
     Ok(j)
 }
 
-/// Why a job cannot start on `core` now: something runs.
-fn busy(call: &Call<'_>, core: &DspiCore) -> Result<(), ToolError> {
-    let words = if core.measure_state().active {
-        "a measurement is running on this device"
+/// What of `core`'s measuring runs now, in words ("a measurement is
+/// running"), if anything.
+fn running_on(core: &DspiCore) -> Option<&'static str> {
+    if core.measure_state().active {
+        Some("a measurement is running")
     } else if core.measure_rolloff_state().running {
-        "a low-end search is running on this device"
+        Some("a low-end search is running")
     } else if core.measure_tune_state().running {
-        "the auto-tune's runs are playing on this device"
+        Some("the auto-tune's runs are playing")
     } else if core.measure_live_state().active {
-        "the live view is running on this device"
+        Some("the live view is running")
     } else if core.measure_system_state().active {
-        "a measurement across units is running"
-    } else if jobs(call)?.open_on(&call.device_text()).is_some() {
-        "a measurement request waits for the app on this device"
+        Some("a measurement across units is running")
+    } else {
+        None
+    }
+}
+
+/// Why a job cannot start on `core` now: something runs, here or (-- WP
+/// FFIX -- FUNC1 bug 6) on any other open device, as the app has one
+/// microphone: two jobs at once would each hear the other's test signal.
+fn busy(call: &Call<'_>, core: &DspiCore) -> Result<(), ToolError> {
+    let here = call.device_text();
+    let words = if let Some(w) = running_on(core) {
+        format!("{w} on this device")
+    } else if jobs(call)?.open_on(&here).is_some() {
+        "a measurement request waits for the app on this device".to_owned()
+    } else if let Some(w) = elsewhere(call, &here) {
+        format!(
+            "{w}, and the app has one microphone: two measurements at once would each hear \
+             the other's test signal"
+        )
     } else {
         return Ok(());
     };
     Err(ToolError::new(format!(
         "{words}: wait for it (dspi_measure_status) or stop it; nothing was started"
     )))
+}
+
+// -- WP FFIX --
+/// Measuring on another open device than `here` (a job, or a request that
+/// waits for the app), in words.
+fn elsewhere(call: &Call<'_>, here: &str) -> Option<String> {
+    let set = call.set?;
+    for d in set.list() {
+        let id = d.id.as_str().to_owned();
+        if id == here {
+            continue;
+        }
+        if let Some(w) = set.core(&d.id).as_deref().and_then(running_on) {
+            return Some(format!("{w} on {id} ({})", untrusted::name(&d.label)));
+        }
+        if jobs(call).ok()?.open_on(&id).is_some() {
+            return Some(format!("a measurement request waits for the app on {id}"));
+        }
+    }
+    None
 }
 
 /// The outputs argument: integers only (an object, as a role would need, is
@@ -992,13 +1034,25 @@ fn setup_props() -> Map<String, Value> {
         "kind".into(),
         json!({"type": "string", "enum": ["walked", "summed"],
                "description": "walked (default): each output on its own, in turn; summed: the \
-                               outputs together"}),
+                               outputs together, each with the polarity its routes give the \
+                               programme, as one response filed under the first output \
+                               (dspi_tune_propose needs a walked one)"}),
     );
     m.insert(
         "outputs".into(),
         json!({"type": "array", "items": {"type": "integer", "minimum": 0},
                "description": "The outputs to measure, from 0; default: every output of the \
                                user's speaker layout. Their roles come from that layout."}),
+    );
+    // -- WP FFIX -- FUNC1 bug 3
+    m.insert(
+        "one_run".into(),
+        json!({"type": "boolean",
+               "description": "Walked only: every listed output in one run per position, \
+                               whatever speaker it belongs to, so their arrivals share one \
+                               timing origin and the device's speakers can be aligned to each \
+                               other (dspi_measure_status then gives `alignment`). Default \
+                               false: a run per speaker, whose arrivals compare within it"}),
     );
     m.insert(
         "placement".into(),
@@ -1108,7 +1162,12 @@ fn levels(
             )
         })?,
     };
-    let caps = measure_level_caps(placement);
+    let mut caps = measure_level_caps(placement);
+    // -- WP FEATUI -- the app's own SPL cap for agents: a ceiling an agent stays under
+    let app_spl_cap = call.policy.agent_spl_cap_db();
+    if let Some(cap) = app_spl_cap {
+        caps.spl_cap_db = caps.spl_cap_db.min(cap);
+    }
     let tighter = |key: &str, cap: f32, unit: &str| -> Result<Option<f32>, ToolError> {
         match args.get(key).and_then(Value::as_f64) {
             None => Ok(None),
@@ -1121,18 +1180,53 @@ fn levels(
     };
     let ceiling_db = tighter("max_level_dbfs", caps.ceiling_db, "dBFS")?;
     let spl_cap_db = tighter("max_spl_db", caps.spl_cap_db, "dB SPL")?;
-    if spl_cap_db.is_some() && !mic_document_has_spl(&mic_document).unwrap_or(false) {
+    let reads_spl = mic_document_has_spl(&mic_document).unwrap_or(false); // -- WP INTG --
+    if spl_cap_db.is_some() && !reads_spl {
         return Err(ToolError::new(
             "`max_spl_db` holds only with a `microphone` whose calibration reads dB SPL \
              (dspi_get_measure_options says which do); use `max_level_dbfs` without one. Nothing \
              was played.",
         ));
     }
+    // -- WP INTG -- (RE1) the app's cap holds only with a microphone that
+    // reads dB SPL: a named one that does not is refused here; none named is
+    // the app's own calibration, held to the same when the app begins it
+    if app_spl_cap.is_some() && !mic_document.is_empty() && !reads_spl {
+        return Err(ToolError::new(format!(
+            "{} Or name a `microphone` that reads dB SPL (dspi_get_measure_options says which).",
+            app_cap_unheld(caps.spl_cap_db)
+        )));
+    }
+    // -- WP FEATUI -- none named: the app's cap (it holds with a microphone
+    // that reads dB SPL, the app's own calibration included)
+    let spl_cap_db = spl_cap_db.or(app_spl_cap.map(|_| caps.spl_cap_db));
     Ok(Levels {
         mic_document,
         ceiling_db,
         spl_cap_db,
     })
+}
+
+// -- WP INTG -- (RE1)
+/// Why an SPL cap (the app's for agents) cannot hold, with what the user can
+/// do about it: within a report's note (200 bytes), as the app relays it.
+fn app_cap_unheld(cap: f32) -> String {
+    format!(
+        "The microphone reads no dB SPL, so the app's {cap:.0} dB SPL cap for agents cannot \
+         hold: the user calibrates it in Measure, or turns the cap off in Settings › AI Agents. \
+         Nothing was played."
+    )
+}
+
+/// An SPL cap in a setup the app begins: its microphone must read dB SPL, or
+/// the cap the user and the agent were told would not hold.
+fn cap_holds(mic_document: &str, spl_cap_db: Option<f32>) -> Result<(), String> {
+    match spl_cap_db {
+        Some(cap) if !mic_document_has_spl(mic_document).unwrap_or(false) => {
+            Err(app_cap_unheld(cap))
+        }
+        _ => Ok(()),
+    }
 }
 
 /// The tightened caps in the question's words.
@@ -1156,18 +1250,66 @@ fn setup_of(
 ) -> Result<MeasureSetup, ToolError> {
     let placement = placement_arg(args, MeasurePlacement::ListeningPosition);
     let levels = levels(call, core, args, placement)?; // -- WP FEAT2 --
-    let outputs = outputs_arg(args, n_out)?
+    let outputs: Vec<dspi_core::measure::MeasureOutput> = outputs_arg(args, n_out)?
         .into_iter()
         .map(|output| dspi_core::measure::MeasureOutput {
             output,
             ..Default::default()
         })
         .collect();
+    let kind = match args.get("kind").and_then(Value::as_str) {
+        Some("summed") => MeasureRunKind::Summed,
+        _ => MeasureRunKind::Walked,
+    };
+    // -- WP FFIX -- one run: the roles still the confirmed layout's, copied
+    // here with one group for all (the core holds each to the layout again)
+    let one_run = kind == MeasureRunKind::Walked
+        && args.get("one_run").and_then(Value::as_bool) == Some(true);
+    let outputs = if one_run {
+        let layout = confirmed_layout(core)?;
+        let listed: Vec<u8> = if outputs.is_empty() {
+            layout.outputs.iter().map(|o| o.output).collect()
+        } else {
+            outputs.iter().map(|o| o.output).collect()
+        };
+        listed
+            .into_iter()
+            .map(|o| {
+                let row = layout.output(o).ok_or_else(|| {
+                    ToolError::new(format!(
+                        "output {o} is not in the user's speaker layout: ask the user to add it \
+                         in Settings › Speakers"
+                    ))
+                })?;
+                Ok(dspi_core::measure::MeasureOutput {
+                    output: o,
+                    role: row.role,
+                    speaker: row.speaker.clone(),
+                    group: 0,
+                    inverted: false,
+                })
+            })
+            .collect::<Result<Vec<_>, ToolError>>()?
+    } else {
+        outputs
+    };
+    // -- WP FFIX -- FUNC1 bug 15: which agent, what and which outputs
+    let name = {
+        let listed: Vec<u8> = outputs.iter().map(|o| o.output).collect();
+        let what = match (kind, one_run) {
+            (MeasureRunKind::Summed, _) => "summed",
+            (_, true) => "walked, one run",
+            _ => "walked",
+        };
+        let outs = if listed.is_empty() {
+            "every output of the speaker setup".to_owned()
+        } else {
+            outs_words(&listed)
+        };
+        format!("Requested by {}: {what}, {outs}", call.client_label)
+    };
     Ok(MeasureSetup {
-        kind: match args.get("kind").and_then(Value::as_str) {
-            Some("summed") => MeasureRunKind::Summed,
-            _ => MeasureRunKind::Walked,
-        },
+        kind,
         outputs,
         placement,
         mic_document: levels.mic_document,
@@ -1177,8 +1319,8 @@ fn setup_of(
         coupler: coupler_arg(args),
         sweep_ms: u32_arg(args, "sweep_ms"),
         passes: u8_arg(args, "passes"),
-        name: "Requested by AI".into(),
-        roles_from_layout: true,
+        name,
+        roles_from_layout: !one_run,
         ..MeasureSetup::default()
     })
 }
@@ -1291,8 +1433,8 @@ fn request(call: &Call<'_>, kind: JobKind, setup: Value, what: String) -> ToolRe
         "request_id": id,
         "what": what,
         "next": "The app's Measure view opens the microphone and starts it. Poll \
-                 dspi_measure_status every few seconds; tell the user where to put the \
-                 microphone. dspi_measure_stop stops it.",
+                 dspi_measure_status with wait_s 25 (it answers when something changes); tell \
+                 the user where to put the microphone. dspi_measure_stop stops it.",
     }))
 }
 
@@ -1520,6 +1662,25 @@ fn own_request(call: &Call<'_>, args: &Map<String, Value>) -> Result<Option<Requ
     }
 }
 
+// -- WP FFIX -- FUNC1 bug 5
+/// The longest long poll of `dspi_measure_status` (`wait_s`), s.
+pub const STATUS_WAIT_MAX_S: u64 = 25;
+
+/// The parts of a `dspi_measure_status` answer a long poll watches: all of
+/// it but what moves all the time (progress, level). A change of this ends
+/// the wait.
+pub fn status_mark(status: &Value) -> String {
+    let mut v = status.clone();
+    if let Some(m) = v.get_mut("measurement").and_then(Value::as_object_mut) {
+        m.remove("progress");
+        m.remove("level_db");
+    }
+    if let Some(o) = v.as_object_mut() {
+        o.remove("user_activity");
+    }
+    v.to_string()
+}
+
 static STATUS: Tool = Tool {
     name: "dspi_measure_status",
     title: "Measurement status",
@@ -1527,11 +1688,24 @@ static STATUS: Tool = Tool {
                   running, ended, declined), and the device's measuring jobs: the \
                   measurement (phase, progress, waiting for the next microphone position, \
                   the issue), the low-end search (segment, the -15 dB point, the note), the \
-                  auto-tune (stage, the verify's verdict) and a measurement across units. A \
-                  finished measurement is filed: its id is `filed_measurement_id`.",
+                  auto-tune (stage, the verify's verdict) and a measurement across units (a \
+                  job that is idle is left out). A finished measurement is filed: its id is \
+                  `filed_measurement_id`. Poll with `wait_s` (up to 25): the answer then \
+                  comes when something changes (the request's state, a phase or stage, a \
+                  microphone position to move to, an issue, a result) or after that many \
+                  seconds, so one call replaces many.",
     class: ToolClass::Read,
     device: true,
-    input_schema: || schema(request_id_props(), &[]),
+    input_schema: || {
+        let mut m = request_id_props();
+        m.insert(
+            "wait_s".into(),
+            json!({"type": "integer", "minimum": 0, "maximum": STATUS_WAIT_MAX_S,
+                   "description": "Wait up to this many seconds for a change before answering \
+                                   (default 0: at once)"}),
+        );
+        schema(m, &[])
+    },
     output_schema: object_schema,
     handler: |call, args| {
         let core = call.core()?;
@@ -1552,7 +1726,25 @@ static STATUS: Tool = Tool {
                 "note": res.note.as_ref().map(|n| json!({"key": n.key, "text": untrusted::note(&n.message)})),
             })
         });
-        Ok(json!({
+        // -- WP FFIX -- FUNC1 bug 9: the search hears the output through its
+        // filters; a high-pass among them is named
+        let through = (r.stage != MeasureRolloffStage::Idle || r.result.is_some())
+            .then(|| state(core).ok())
+            .flatten()
+            .zip(r.output)
+            .and_then(|(st, o)| {
+                let ch = usize::from(st.num_input_channels.saturating_add(o));
+                let bands: Vec<Value> = st
+                    .filters
+                    .get(ch)
+                    .into_iter()
+                    .flatten()
+                    .chain(st.xover.get(ch).into_iter().flatten())
+                    .map(|b| json!({"filterType": b.filter_type, "bypass": b.bypass, "freq": b.freq}))
+                    .collect();
+                results::highpass_note(&json!({"peq": bands}))
+            });
+        let mut out = json!({
             "device": call.device_text(),
             "request": req.as_ref().map(Request::agent_view),
             "measurement": {
@@ -1582,6 +1774,7 @@ static STATUS: Tool = Tool {
                 "segments": r.segments,
                 "segment_start_hz": r.segment_start_hz,
                 "result": rolloff,
+                "measured_through": through,
                 "issue": r.issue.as_ref().map(|i| untrusted::note(&i.message)),
             },
             "tune": {
@@ -1600,7 +1793,51 @@ static STATUS: Tool = Tool {
                 "run": s.run,
                 "runs": s.runs,
             },
-        }))
+        });
+        // -- WP FFIX -- FUNC1 bugs 3 and 9: what the filed measurement holds,
+        // and for a one-run measurement the delays that align the speakers
+        if let Some(r) = req.as_ref().filter(|r| r.state == RequestState::Ended) {
+            let doc = r.document.clone().or_else(|| {
+                (!r.filed_id.is_empty())
+                    .then(|| core.measure_doc_get(r.filed_id.clone()).ok())
+                    .flatten()
+            });
+            if let Some(doc) = doc {
+                put(&mut out, "result", json!(results::summary(&doc)));
+                let one_run = r.kind == JobKind::Measure
+                    && r.setup.get("rolesFromLayout").and_then(Value::as_bool) == Some(false);
+                if one_run {
+                    let st = state(core)?;
+                    put(
+                        &mut out,
+                        "alignment",
+                        json!(results::alignment(
+                            &doc,
+                            &st,
+                            core.max_delay_ms(),
+                            confirmed_layout(core).ok().as_ref(),
+                        )),
+                    );
+                }
+            }
+        }
+        // -- WP FFIX -- an idle job says nothing (FUNC1 bug 5: ~820 chars a poll)
+        if let Some(o) = out.as_object_mut() {
+            let idle = |v: &Value, word: &str| {
+                v.get(word).and_then(Value::as_str) == Some("idle")
+                    && v.get("result").is_none_or(Value::is_null)
+                    && v.get("issue").is_none_or(Value::is_null)
+            };
+            let drop: Vec<&str> = [("rolloff", "stage"), ("tune", "stage"), ("system", "phase")]
+                .into_iter()
+                .filter(|(k, w)| o.get(*k).is_some_and(|v| idle(v, w)))
+                .map(|(k, _)| k)
+                .collect();
+            for k in drop {
+                o.remove(k);
+            }
+        }
+        Ok(out)
     },
 };
 
@@ -1726,8 +1963,12 @@ fn tune_props() -> Map<String, Value> {
     m.insert(
         "target".into(),
         json!({"type": "string",
-               "description": "The target curve: a built-in's id or one of the user's own \
-                               (dspi_get_measure_options); default: the placement's"}),
+               "description": "The target curve: a built-in's id (\"flat\", \"tilt\" -0.5 \
+                               dB/octave, \"house\" the house curve; headphones: their \
+                               coupler's) or one of the user's own (dspi_get_measure_options); \
+                               default: \"house\" for speakers, the coupler's for headphones. \
+                               The ways' levels follow its mid band (500 Hz to 2 kHz), its \
+                               tilt only the EQ (20 to 300 Hz for speakers)"}),
     );
     for (k, d) in [
         ("keep_crossover", "Leave the crossovers as they are"),
@@ -1872,9 +2113,17 @@ static TUNE_PROPOSE: Tool = Tool {
                             "what": untrusted::note(&w.words)})
             })
             .collect();
+        // -- WP FFIX -- FUNC1 bug 11: the reply names the target it fitted to
+        let target = match args.get("target").and_then(Value::as_str) {
+            Some(id) => json!({"id": untrusted::name(id), "chosen": true}),
+            None => json!({"id": "default", "chosen": false,
+                           "what": "the placement's default: the house curve for speakers, the \
+                                    coupler's for headphones"}),
+        };
         Ok(json!({
             "device": call.device_text(),
             "proposal_id": p.id,
+            "target": target,
             "writes": writes,
             "timing_reliable": p.timing_reliable,
             "sum_check": p.sum_check,
@@ -2039,6 +2288,15 @@ static TUNE_KEEP: Tool = Tool {
         }
         // -- WP AIVIS -- the user changed part of it meanwhile
         user::check_keep(core, call.actor).map_err(|e| policy::core_error(&call.judging, e))?;
+        // -- WP FFIX -- bug 1: a kept tune leaves no confirmed tweeter
+        // playing unprotected
+        let unsafe_now = policy::unprotected_now(&state(core)?, &policy::lock(&call.judging));
+        if let Some(why) = unsafe_now {
+            return Err(ToolError::new(format!(
+                "{why}, so the tune was not kept. dspi_tune_revert puts it back; or protect the \
+                 output first (dspi_set_crossover) and keep it then."
+            )));
+        }
         let k = core.measure_tune_keep().map_err(|e| refusal(call, e))?;
         policy::lock(&call.judging).guard_ended = Some(k.guard.id);
         Ok(
@@ -2491,8 +2749,12 @@ static OPTIONS: Tool = Tool {
                        "note": untrusted::note(&d.note)})
             })
             .collect();
+        let app_spl_cap = call.policy.agent_spl_cap_db(); // -- WP FEATUI --
         let caps = |p: MeasurePlacement| {
-            let c = measure_level_caps(p);
+            let mut c = measure_level_caps(p);
+            if let Some(cap) = app_spl_cap {
+                c.spl_cap_db = c.spl_cap_db.min(cap); // -- WP FEATUI --
+            }
             json!({"max_level_dbfs": num(c.ceiling_db), "max_spl_db": num(c.spl_cap_db)})
         };
         let speakers = caps(MeasurePlacement::ListeningPosition);

@@ -176,8 +176,41 @@ void otherDevice(SmokeDriver &d, MeasureController *mc, const std::function<QJso
     go("measure", "documents");
     go("overview", "");
     r = call("dspi_measure_start", args);
-    d.check("mcp5: the other device's run beside it", !r.value(QLatin1String("isError")).toBool(true) && d.waitFor(15000, [&] { return on->measuring(); }));
-    d.check("mcp5: what runs stays shown, on the measuring tab", registry->active() == a && mc->measuring() && page->property("tab").toString() == QLatin1String("measure"));
+    // -- WP INTG -- (FFIX bug 6) the app has one microphone: an agent's start
+    // beside a run on another device is refused, naming it
+    d.check("mcp5: the agent's start on the other device waits for the one microphone",
+            r.value(QLatin1String("isError")).toBool() &&
+                r.value(QLatin1String("content")).toArray().first().toObject().value(QLatin1String("text")).toString().contains(
+                    QLatin1String("one microphone")) &&
+                !on->running() && registry->active() == a);
+    call("dspi_measure_stop", { { QStringLiteral("device"), a->id() } });
+    d.check("mcp5: the shown device's run stopped", d.waitFor(10000, [&] { return !mc->running(); }));
+
+    // -- WP INTG -- The agent's run on the other device, then the person's own
+    // on the device shown, beside it (the one-microphone rule is the agent's)
+    QJsonObject longer = args;
+    longer.insert(QStringLiteral("sweep_ms"), 4000);
+    longer.insert(QStringLiteral("passes"), 8);
+    r = call("dspi_measure_start", longer);
+    d.check("mcp5: the other device's run", !r.value(QLatin1String("isError")).toBool(true) && d.waitFor(15000, [&] { return on->measuring(); }));
+    registry->activate(a);
+    d.waitIdle();
+    go("measure", "measure");
+    mc->setMicChoice(QStringLiteral("sim"));
+    d.waitFor(5000, [&] { return mc->simAvailable() && mc->micChoice() == QLatin1String("sim") && !mc->setupOutputs().isEmpty(); });
+    bool one = false;
+    for (const QVariant &v : mc->setupOutputs()) {
+        const QVariantMap m = v.toMap();
+        mc->setOutputOn(m.value(QStringLiteral("output")).toInt(), !one);
+        one = true;
+    }
+    mc->setPlacement(QStringLiteral("listeningPosition"));
+    mc->setSweepMs(4000);
+    mc->setPasses(8);
+    mc->start();
+    d.check("mcp5: the person's run on the device shown, beside it, on the measuring tab",
+            d.waitFor(15000, [&] { return mc->measuring(); }) && on->measuring() && registry->active() == a &&
+                page->property("tab").toString() == QLatin1String("measure"));
     d.check("mcp5: the device shown says what runs on the other, and who asked", d.waitFor(3000, [&] {
         const QVariantList others = mc->otherRuns();
         return others.size() == 1 && others.first().toMap().value(QStringLiteral("text")).toString().startsWith(QString::fromUtf8("Requested by AI · Smoke agent"));
@@ -259,8 +292,21 @@ void measureSection(SmokeDriver &d) {
                 sc->bannerText(true).contains(QLatin1String("set outside this app")) &&
                 !sc->bannerText(true).contains(QLatin1String("came with a configuration file")));
 
-    // Confirmed: the request runs in the Measure view
+    // -- WP INTG -- (review RE1) the agents' SPL cap on, and the simulated
+    // microphone has no dB SPL calibration: nothing plays, and the agent is
+    // told what the user can do. Off for the rest: the level ceiling holds.
     setLayout(d, true);
+    const bool capOn = ai->agentSplCapOn();
+    ai->setAgentSplCapOn(true);
+    r = call("dspi_measure_start", outs);
+    d.check("intg: the SPL cap without a dB SPL calibration: nothing plays, the agent is told what to do",
+            !r.value(QLatin1String("isError")).toBool(true) && d.waitFor(10000, [&] {
+                const QByteArray st = QJsonDocument(call("dspi_measure_status", {})).toJson(QJsonDocument::Compact);
+                return st.contains("calibrates it in Measure") && st.contains("turns the cap off");
+            }) && !mc->running());
+    ai->setAgentSplCapOn(false);
+
+    // Confirmed: the request runs in the Measure view
     r = call("dspi_measure_start", outs);
     d.check("mcp5: the agent's start is a request to the app",
             !r.value(QLatin1String("isError")).toBool(true) &&
@@ -306,6 +352,7 @@ void measureSection(SmokeDriver &d) {
     // As it was
     ai->setEnabled(false);
     d.waitFor(10000, [&] { return !ai->running() && !ai->busy(); });
+    ai->setAgentSplCapOn(capOn);   // -- WP INTG --
     ai->setConfirmMode(mode);
     ai->setPort(AiController::kDefaultPort);
     for (const QVariant &c : ai->clients()) ai->revoke(c.toMap().value(QStringLiteral("id")).toDouble());

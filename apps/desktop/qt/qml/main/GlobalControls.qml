@@ -92,6 +92,12 @@ ColumnLayout {
                 SidebarController.setSource(valueAt(index))
                 currentIndex = Qt.binding(() => indexOfValue(SidebarController.source))
             }
+            // -- WP FEATUI -- (FEAT3) where the sound comes from, in the words agents get too
+            HoverHandler { id: sourceHover }
+            ToolTip.visible: sourceHover.hovered && !sourceBox.popup.visible
+            ToolTip.delay: 600
+            //: %1 the input chosen ("USB", "S/PDIF")
+            ToolTip.text: qsTr("A DSPi has no player: it plays what %1 receives.").arg(sourceBox.displayText)
             TapHandler {
                 acceptedButtons: Qt.RightButton
                 onTapped: point => {

@@ -57,6 +57,7 @@
 //! and the app that runs the server. It needs no handle.
 
 use std::cell::Cell;
+use std::collections::BTreeMap;
 use std::ffi::{CString, c_char, c_void};
 use std::io::{BufRead, Write};
 use std::path::PathBuf;
@@ -526,6 +527,41 @@ pub extern "C" fn dspi_mcp_set_confirm(mcp: *mut FfiMcp, mode: *const c_char) ->
     })
 }
 
+// -- WP FEATUI --
+/// The app's SPL cap for agents' measurements, dB SPL; 0 or less for none
+/// (the placement's default, 95 dB at a speaker, 90 dB on headphones). A hard
+/// ceiling: an agent may only name a lower one, under every setting. Holds
+/// from the next call on, also while the server runs. False for a value
+/// that is no number.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_mcp_set_agent_spl_cap(mcp: *mut FfiMcp, spl_db: f32) -> bool {
+    with_mcp(mcp, false, |m| {
+        if spl_db.is_nan() {
+            return false;
+        }
+        m.policy
+            .set_agent_spl_cap_db((spl_db > 0.0).then_some(spl_db));
+        true
+    })
+}
+
+// -- WP FEATUI --
+/// This computer's audio as `dspi_get_host_audio` reads it, for the devices
+/// open in the handle's set: the tool's JSON plus `ok` (never an error:
+/// what cannot be read says `status: "unknown"` and why). Blocks while the
+/// OS is read (at most a few seconds): call it off the UI's thread.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_mcp_host_audio(mcp: *mut FfiMcp, buf: *mut c_char, len: u32) -> u32 {
+    with_mcp(mcp, 0, |m| {
+        let source = dspi_mcp::host_audio::system();
+        let mut v = dspi_mcp::tools::host::report_for_set(&m.set, source.as_ref());
+        if let Some(o) = v.as_object_mut() {
+            o.insert("ok".into(), json!(true));
+        }
+        copy_text(&v.to_string(), buf, len)
+    })
+}
+
 /// The AutoEQ database the agents' AutoEQ tools search, from its file's
 /// bytes; null or 0 bytes for none. The next start uses it. False when the
 /// bytes are no database (the last one stays).
@@ -592,25 +628,37 @@ pub extern "C" fn dspi_mcp_set_active_device(mcp: *mut FfiMcp, id: *const c_char
 }
 
 struct CKeeper {
-    token: Option<String>,
+    // -- WP FFIX -- one token per agent program, kept as one text
+    // (`relay::tokens_text`) in the app's one secret
+    tokens: BTreeMap<String, String>,
     sink: Option<DspiMcpTokenSink>,
     user_data: *mut c_void,
 }
 
-impl TokenKeeper for CKeeper {
-    fn load(&mut self) -> Option<String> {
-        self.token.clone()
-    }
-    fn save(&mut self, token: &str) {
-        self.token = Some(token.to_owned());
-        if let (Some(sink), Ok(t)) = (self.sink, CString::new(token)) {
+impl CKeeper {
+    fn keep(&self) {
+        let Some(sink) = self.sink else {
+            return;
+        };
+        if self.tokens.is_empty() {
+            sink(ptr::null(), self.user_data);
+        } else if let Ok(t) = CString::new(relay::tokens_text(&self.tokens)) {
             sink(t.as_ptr(), self.user_data);
         }
     }
-    fn forget(&mut self) {
-        self.token = None;
-        if let Some(sink) = self.sink {
-            sink(ptr::null(), self.user_data);
+}
+
+impl TokenKeeper for CKeeper {
+    fn load(&mut self, who: &str) -> Option<String> {
+        self.tokens.get(who).cloned()
+    }
+    fn save(&mut self, who: &str, token: &str) {
+        self.tokens.insert(who.to_owned(), token.to_owned());
+        self.keep();
+    }
+    fn forget(&mut self, who: &str) {
+        if self.tokens.remove(who).is_some() {
+            self.keep();
         }
     }
 }
@@ -620,6 +668,10 @@ impl TokenKeeper for CKeeper {
 /// 47860, "token": "<the kept one>", "name": "<to pair under when the agent
 /// names nothing>"}`, each optional. `token_sink` (may be null) is called on
 /// this thread with a new token to keep, or null to forget the kept one.
+/// -- WP FFIX -- the "token" kept is one text that holds a token per agent
+/// program (a JSON object); the sink gets that whole text again, null once
+/// it holds none. A single token kept before is no program's: each pairs once
+/// more as itself.
 /// Returns 0 when standard input ended, 1 when standard output failed (the
 /// agent went), 2 for a bad configuration.
 #[unsafe(no_mangle)]
@@ -661,11 +713,11 @@ pub extern "C" fn dspi_mcp_relay_stdio(
             relay_cfg.fallback_name = n.to_owned();
         }
         let mut keeper = CKeeper {
-            token: cfg
+            tokens: cfg
                 .get("token")
                 .and_then(Value::as_str)
-                .filter(|t| !t.is_empty())
-                .map(str::to_owned),
+                .map(relay::tokens_of)
+                .unwrap_or_default(),
             sink: token_sink,
             user_data,
         };
@@ -835,6 +887,11 @@ pub extern "C" fn dspi_mcp_measure_begin(
 #[cfg(test)]
 #[path = "fns_mcp/tests_wp_feat2.rs"]
 mod tests_wp_feat2;
+// -- WP FEATUI --
+#[cfg(test)]
+#[allow(clippy::cast_possible_truncation)]
+#[path = "fns_mcp/tests_wp_featui.rs"]
+mod tests_wp_featui;
 
 // -- WP FEAT2 -- the agents' requests to open a known device or close one
 //

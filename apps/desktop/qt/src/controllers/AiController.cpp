@@ -52,12 +52,18 @@ static const SettingsRegistry::Page aiPage{
       QT_TRANSLATE_NOOP("SettingsPages", "Connect an agent"), QT_TRANSLATE_NOOP("SettingsPages", "Claude Desktop, Claude Code, Cursor"),
       QT_TRANSLATE_NOOP("SettingsPages", "Clients and tokens"), QT_TRANSLATE_NOOP("SettingsPages", "Ask before changes"),
       QT_TRANSLATE_NOOP("SettingsPages", "Agent activity"), QT_TRANSLATE_NOOP("SettingsPages", "Port"),
-      QT_TRANSLATE_NOOP("SettingsPages", "Use from another computer") } };
+      QT_TRANSLATE_NOOP("SettingsPages", "Use from another computer"),
+      // -- WP FEATUI --
+      QT_TRANSLATE_NOOP("SettingsPages", "Loudest measurement, SPL cap"), QT_TRANSLATE_NOOP("SettingsPages", "Remembered devices") } };
 
 namespace {
 
 const char *const kEnabledKey = "mcp/enabled";
 const char *const kConfirmKey = "mcp/confirm";
+// -- WP FEATUI --
+const char *const kSplCapKey = "mcp/agentSplCapDb";
+const char *const kSplCapOnKey = "mcp/agentSplCapOn";   // -- WP INTG --
+const char *const kRememberedKey = "devices/remembered";
 const QString kConfirmDefault = QStringLiteral("ask_risky");
 const QStringList kConfirmModes{ QStringLiteral("ask_everything"), kConfirmDefault, QStringLiteral("never_ask") };
 
@@ -124,6 +130,14 @@ AiController::AiController(const AppContext &ctx, QObject *parent) : QObject(par
         dspi_mcp_set_listener(m_mcp, &AiController::eventThunk, this);
         dspi_mcp_set_confirm(m_mcp, m_confirmMode.toUtf8().constData());
     }
+    // -- WP FEATUI -- the agent's work said on a hub device's hub
+    m_presenceTimer.setInterval(kPresenceRefreshMs);
+    connect(&m_presenceTimer, &QTimer::timeout, this, [this] { announcePresence(true); });
+    // -- WP FEATUI -- the agents' SPL cap, and the devices remembered from earlier runs
+    m_agentSplCap = qBound(kSplCapMin, s.value(QLatin1String(kSplCapKey), kSplCapDefault).toInt(), kSplCapMax);
+    m_agentSplCapOn = s.value(QLatin1String(kSplCapOnKey), true).toBool();   // -- WP INTG --
+    applySplCap();
+    loadRemembered();
     m_tick.setInterval(1000);
     connect(&m_tick, &QTimer::timeout, this, &AiController::tick);
     m_readSoon.setSingleShot(true);
@@ -156,13 +170,32 @@ void AiController::shutdown() {
     m_tick.stop();
     m_readSoon.stop();
     m_workTimer.stop();   // -- WP AIVIS --
+    m_presenceTimer.stop();   // -- WP FEATUI --
     m_thread.waitForDone();
+    {
+        // -- WP INTG -- (review RE20) other controllers' threads done with it
+        QMutexLocker lock(&m_holdMutex);
+        while (m_holds > 0) m_holdsDone.wait(&m_holdMutex);
+    }
     if (!m_mcp) return;
     // Waits for a call in progress; puts the agents' timed previews back
     dspi_mcp_stop(m_mcp);
     dspi_mcp_set_listener(m_mcp, nullptr, nullptr);
     dspi_mcp_free(m_mcp);
     m_mcp = nullptr;
+}
+
+// -- WP INTG -- (review RE20)
+FfiMcp *AiController::holdHandle() {
+    QMutexLocker lock(&m_holdMutex);
+    if (m_shutDown || !m_mcp) return nullptr;
+    ++m_holds;
+    return m_mcp;
+}
+
+void AiController::releaseHandle() {
+    QMutexLocker lock(&m_holdMutex);
+    if (m_holds > 0 && --m_holds == 0) m_holdsDone.wakeAll();
 }
 
 template <class Job, class Done>
@@ -484,6 +517,7 @@ QString AiController::statusLine() const {
 // The registry's rows change with every clip mark: only what matters here goes on
 void AiController::onDevices() {
     if (m_ctx.registry->activeId() != m_activeSent) sendActive();
+    remember();   // -- WP FEATUI --
     QStringList open;
     for (const DeviceSession *s : m_ctx.registry->sessions()) open << s->id() + QLatin1Char(' ') + s->title();
     if (open == m_open) return;
@@ -672,6 +706,7 @@ void AiController::readConfirmations() {
                      w.device = str(c, "device");
                      for (const QJsonValue &r : c.value(QLatin1String("risks")).toArray()) {
                          w.risks << str(r.toObject(), "what");
+                         w.sound = w.sound || str(r.toObject(), "kind") == QLatin1String("test_signal");   // -- WP FEATUI --
                          // -- WP LAY8 --
                          const QString label = riskLabel(str(r.toObject(), "kind"));
                          //: %1 is a kind of change ("Louder"), %2 the change ("Out 1 gain up from -12 dB to -3 dB")
@@ -703,6 +738,7 @@ QVariantList AiController::confirmations() const {
             { QStringLiteral("device"), deviceTitle(w.device) },
             { QStringLiteral("risks"), w.risks },
             { QStringLiteral("riskLines"), w.riskLines },   // -- WP LAY8 --
+            { QStringLiteral("sound"), w.sound },           // -- WP FEATUI --
         });
     }
     return out;
@@ -781,7 +817,8 @@ QVariantList AiController::activity() const {
         const auto done = m_undo.constFind(key);
         QString undo;
         if (done != m_undo.cend()) undo = done->first;
-        else if (write && outcome == QLatin1String("ok") && !journalIds(e).isEmpty())
+        // -- WP INTG -- (review RE2) a failed write that left changes may be undone too
+        else if (write && (outcome == QLatin1String("ok") || outcome == QLatin1String("error")) && !journalIds(e).isEmpty())
             undo = m_ctx.registry->session(device) ? QStringLiteral("can") : QStringLiteral("closed");
         const QString title = str(e, "title");
         rows.append(QVariantMap{
@@ -1080,6 +1117,7 @@ void AiController::setWork(bool working, const QVariantMap &shown) {
     m_working = working;
     m_workShown = shown;
     emit workChanged();
+    announcePresence(false);   // -- WP FEATUI --
 }
 
 void AiController::showWork() { m_ctx.registry->activate(m_workShown.value(QStringLiteral("deviceId")).toString()); }
@@ -1125,6 +1163,22 @@ void AiController::tell(const QList<QJsonObject> &rows) {
     for (const QJsonObject &e : rows) {
         const QString device = str(e, "device");
         const bool write = e.value(QLatin1String("write")).toBool();
+        // -- WP INTG -- (review RE2) a write that failed but left changes (a
+        // preset load that left the device silent): said, with Undo
+        if (write && str(e, "outcome") == QLatin1String("error") && !journalIds(e).isEmpty()) {
+            if (auto *notices = Registrar::instance<NoticeCenter>()) {
+                const QString agent = agentName(str(e, "client_name"));
+                m_noticeAgent = agent;
+                m_noticeKeys = { rowKey(e) };
+                bool canUndo = false;
+                for (const QVariant &v : activity())
+                    canUndo = canUndo || (v.toMap().value(QStringLiteral("key")).toString() == rowKey(e)
+                                          && v.toMap().value(QStringLiteral("undo")) == QLatin1String("can"));
+                //: An AI agent's change that failed but changed something: %1 is its name, %2 the app's words for what happened
+                notices->postTagged(QStringLiteral("ai"), tr("%1's change did not go through: %2").arg(agent, str(e, "detail")),
+                                    canUndo ? tr("Undo") : QString(), [this] { undoNoticed(); });
+            }
+        }
         if (str(e, "outcome") != QLatin1String("ok")) continue;
         emit agentCalled(device, str(e, "tool"), write);
         readBehind(device, str(e, "tool"), write);
@@ -1256,4 +1310,114 @@ void AiController::refresh() {
     readClients();
     readConfirmations();
     readActivity();
+}
+
+// ---- -- WP FEATUI -- The agents' SPL cap; remembered devices -------------------------
+
+void AiController::setAgentSplCap(int db) {
+    db = qBound(kSplCapMin, db, kSplCapMax);
+    if (db == m_agentSplCap || !m_mcp) return;
+    m_agentSplCap = db;
+    QSettings().setValue(QLatin1String(kSplCapKey), db);
+    applySplCap();
+    emit settingsChanged();
+}
+
+// -- WP INTG -- (RE1) Off: no SPL cap (0 for none), the level ceiling holds
+void AiController::setAgentSplCapOn(bool on) {
+    if (on == m_agentSplCapOn || !m_mcp) return;
+    m_agentSplCapOn = on;
+    QSettings().setValue(QLatin1String(kSplCapOnKey), on);
+    applySplCap();
+    emit settingsChanged();
+}
+
+void AiController::applySplCap() {
+    if (m_mcp) dspi_mcp_set_agent_spl_cap(m_mcp, m_agentSplCapOn ? float(m_agentSplCap) : 0.0f);
+}
+
+// The devices open now go first in the list kept across restarts: those on
+// USB. A hub's unit is known to agents while its hub is open (the server lists
+// it); remembered without its hub it could only be refused, since the app does
+// not dial a hub for an agent.
+void AiController::remember() {
+    QJsonArray list;
+    QStringList ids;
+    for (const DeviceSession *s : m_ctx.registry->sessions()) {
+        const QString id = s->id();
+        if (!id.startsWith(QLatin1String("usb:"))) continue;
+        if (ids.contains(id)) continue;
+        ids << id;
+        list.append(QJsonObject{ { QStringLiteral("device"), id }, { QStringLiteral("name"), s->title() } });
+    }
+    for (const QJsonValue &v : m_remembered) {
+        const QString id = v.toObject().value(QLatin1String("device")).toString();
+        if (!ids.contains(id) && list.size() < kRememberedMax) {
+            ids << id;
+            list.append(v);
+        }
+    }
+    if (list == m_remembered) return;
+    m_remembered = list;
+    QSettings().setValue(QLatin1String(kRememberedKey), QJsonDocument(list).toJson(QJsonDocument::Compact));
+    setKnownDevices(list);
+    emit rememberedChanged();
+}
+
+void AiController::loadRemembered() {
+    m_remembered = QJsonArray();
+    for (const QJsonValue &v : QJsonDocument::fromJson(QSettings().value(QLatin1String(kRememberedKey)).toByteArray()).array())
+        if (v.toObject().value(QLatin1String("device")).toString().startsWith(QLatin1String("usb:")) && m_remembered.size() < kRememberedMax)
+            m_remembered.append(v);
+    setKnownDevices(m_remembered);
+    emit rememberedChanged();
+    remember();
+}
+
+void AiController::forgetRememberedDevices() {
+    m_remembered = QJsonArray();
+    QSettings().remove(QLatin1String(kRememberedKey));
+    // The ones open now stay known by being open
+    setKnownDevices(m_remembered);
+    emit rememberedChanged();
+    remember();
+}
+
+// -- WP FEATUI -- What an agent does on a device reached through a hub is said
+// on that hub (`presence.set`), so the web console and other consoles of that
+// hub show it; refreshed while it works, cleared when it stops or moves on. A
+// hub without the cap, or a Viewer session, refuses: nothing else happens.
+void AiController::announcePresence(bool again) {
+    const QString id = m_working ? m_workShown.value(QStringLiteral("deviceId")).toString() : QString();
+    DeviceSession *on = id.isEmpty() ? nullptr : m_ctx.registry->session(id);
+    const QString transport = on ? on->row().value(QStringLiteral("transport")).toString() : QString();
+    const bool viaHub = transport == QLatin1String("hub") || transport == QLatin1String("link");
+    const QString agent = m_workShown.value(QStringLiteral("agent")).toString();
+    const QString what = m_workShown.value(QStringLiteral("text")).toString();
+    const QString key = viaHub ? id + QLatin1Char('\n') + agent + QLatin1Char('\n') + what : QString();
+    // Moved on, or stopped: the last one cleared
+    if (!m_presenceDevice.isEmpty() && m_presenceDevice != (viaHub ? id : QString())) {
+        if (DeviceSession *was = m_ctx.registry->session(m_presenceDevice))
+            was->worker()->post([](FfiCore *c) {
+                char buf[256];
+                dspi_hub_presence_set(c, "", "", "", 0, buf, sizeof buf);
+            });
+        m_presenceDevice.clear();
+        m_presenceSent.clear();
+    }
+    if (!viaHub) {
+        m_presenceTimer.stop();
+        return;
+    }
+    if (key == m_presenceSent && !again) return;
+    m_presenceDevice = id;
+    m_presenceSent = key;
+    if (!m_presenceTimer.isActive()) m_presenceTimer.start();
+    const QByteArray label = (agent.isEmpty() ? tr("AI agent") : agent).toUtf8();
+    const QByteArray serial = on->row().value(QStringLiteral("serial")).toString().toUtf8();
+    const QByteArray words = what.toUtf8();
+    on->worker()->post([label, serial, words](FfiCore *c) {
+        char buf[256];
+        dspi_hub_presence_set(c, label.constData(), serial.constData(), words.constData(), uint32_t(kPresenceTtlS), buf, sizeof buf);
+    });
 }

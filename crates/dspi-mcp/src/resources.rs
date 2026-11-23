@@ -58,7 +58,15 @@ device the app shows is used. A device that is not open may be a known one
 
 ## Roles and safety
 - An output's role (sub, low, mid, high, full) comes only from the user's speaker setup.
-  A tweeter (`high`) must keep a high-pass at or above 1 kHz.
+  A tweeter (`high`) must keep a high-pass at or above 1 kHz (or the limits profile's higher
+  corner), 12 dB/octave or steeper, whenever it can play (routed, on and unmuted); a midrange
+  one at 80 Hz. Every write is judged on the state it leaves: a route, an unmute or an output
+  switched on to a tweeter without that high-pass is refused, as is a high-pass below the floor
+  and a boost below the floor that lets more through than a 12 dB/octave high-pass there.
+  Give a tweeter its high-pass first, or in the same `dspi_apply_changes`.
+- Numbers: every field (`output`, `input`, `slot`, `channel`) counts from 0. In texts,
+  \"output N\" is that same number; \"Out N\" and \"In N\" are the app's labels, from 1
+  (output 0 is Out 1).
 - What an agent may change, and what the user must confirm in the app, is in
   `dspi_get_overview`'s `agent_may`. A change that is louder, a big boost, a long delay step
   or a lowered tweeter high-pass may be held for the user: the result then says
@@ -112,7 +120,17 @@ device the app shows is used. A device that is not open may be a known one
   Settings › Speakers. No tool sets a role.
 - `dspi_measure_start` (or `dspi_measure_rolloff_start` for an output's low end) asks the
   app to measure: it may be held for the user, then the app's Measure view runs it. Poll
-  `dspi_measure_status` every few seconds; `dspi_measure_stop` stops it.
+  `dspi_measure_status` with `wait_s: 25`: it answers as soon as something changes (or after
+  25 s), so you need few calls. `dspi_measure_stop` stops it.
+- The app has one microphone: one measurement at a time across every device.
+- A finished measurement's `result` gives each output's `arrival_ms`. Arrivals compare within
+  one run only: one speaker's outputs, or every output of a measurement started with
+  `one_run: true`; for such a run `alignment` gives the delays that align the device's
+  speakers to each other (a subwoofer is aligned at its crossover by the summed check).
+- A measured response includes the output's filters as they were, its high-pass among them:
+  a roll-off near that corner is the filter's, not the driver's.
+- A `summed` run plays the outputs together, each with its routes' polarity, and is one
+  response filed under the first output; `dspi_tune_propose` needs a walked one.
 - `dspi_get_measure_options` lists the user's microphone calibrations and the target curves you
   may name, and the level limits, which you may only lower (`max_level_dbfs`, `max_spl_db`).
 - A tweeter is never played below 1 kHz, and the level limits and the limits profile always

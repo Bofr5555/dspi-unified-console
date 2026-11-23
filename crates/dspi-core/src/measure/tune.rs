@@ -303,7 +303,7 @@ pub struct MeasureTuneWrite {
     /// A delay, polarity, crossover or level write: offered only from a
     /// timing-reliable run, applied only after the summed check passed.
     pub timing: bool,
-    /// The change in words ("Output 3 (L high): delay 0.0000 → 0.2100 ms").
+    /// The change in words ("Out 3 (L high): delay 0.0000 → 0.2100 ms").
     pub words: String,
     /// What is written, in order.
     pub params: Vec<MeasureTuneParam>,
@@ -774,7 +774,7 @@ fn verify_unjudged(v: &MeasureTuneVerify) -> Option<String> {
         .outputs
         .iter()
         .filter(|o| o.rms_db.is_none())
-        .map(|o| format!("output {}", u16::from(o.output).saturating_add(1)))
+        .map(|o| format!("Out {}", u16::from(o.output).saturating_add(1)))
         .collect();
     if v.outputs.is_empty() || missing.len() == v.outputs.len() {
         Some("the verify could compare nothing with its prediction".into())
@@ -918,7 +918,7 @@ impl DspiCore {
             }
             if lo.output >= s.num_output_channels {
                 return Err(invalid(format!(
-                    "the DSPi has no output {}",
+                    "the DSPi has no Out {}",
                     u16::from(lo.output).saturating_add(1)
                 )));
             }
@@ -929,7 +929,7 @@ impl DspiCore {
                 .find(|o| o.output == lo.output)
                 .ok_or_else(|| {
                     invalid(format!(
-                        "the measurement has no output {}",
+                        "the measurement has no Out {}",
                         u16::from(lo.output).saturating_add(1)
                     ))
                 })?;
@@ -1553,7 +1553,7 @@ impl DspiCore {
                         failed.push((
                             sp.name.clone(),
                             format!(
-                                "the summed run of outputs {} and {} differs from the prediction by \
+                                "the summed run of Out {} and Out {} differs from the prediction by \
                                  {rms:.2} dB RMS through {corner:.0} Hz (at most 1.5 dB): the walked \
                                  run's timing is not trusted; delay, polarity and crossover changes \
                                  are withdrawn",
@@ -2012,7 +2012,7 @@ pub(crate) fn layout_of(s: &crate::records::DspState) -> MeasureLayout {
         }
         let Some((input, _)) = feed else {
             notes.push(format!(
-                "output {} plays no input: left out",
+                "Out {} plays no input: left out",
                 u16::from(o).saturating_add(1)
             ));
             continue;

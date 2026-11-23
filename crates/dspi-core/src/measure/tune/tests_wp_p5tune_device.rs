@@ -840,7 +840,7 @@ fn wp_p5tune_device_a_limits_profile_is_never_exceeded_and_named() {
     assert!(
         p.held
             .iter()
-            .any(|h| h.contains("output 2: a high-pass at or above 300 Hz")),
+            .any(|h| h.contains("Out 2: a high-pass at or above 300 Hz")),
         "{:?}",
         p.held
     );

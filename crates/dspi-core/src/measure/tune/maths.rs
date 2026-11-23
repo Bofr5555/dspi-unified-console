@@ -66,6 +66,7 @@ pub(crate) const FIT_HEADPHONES_HZ: (f64, f64) = (20.0, 10_000.0);
 /// A way "plays" in the fit's range when its crossover passes this much of
 /// its level somewhere in it, dB: its bands are written there too.
 const PLAYS_DB: f64 = -30.0;
+
 /// The lowest Q of a speaker's fitted band where the fit's level is free
 /// (see the fit's note in `compute`).
 pub(crate) const SPEAKERS_Q_MIN: f64 = 2.0;
@@ -196,7 +197,7 @@ pub(crate) fn stored_snr(
     (c.grid == *grid && c.mag_db.len() == n).then_some(c.mag_db)
 }
 
-/// The output's name in words ("Output 3 (L high)").
+/// The output's name in words ("Out 3 (L high)", the app's label).
 pub(crate) fn who(w: &WayIn) -> String {
     let role = match w.role {
         MeasureRole::Full => "full range",
@@ -207,9 +208,9 @@ pub(crate) fn who(w: &WayIn) -> String {
     };
     let n = u16::from(w.output).saturating_add(1);
     if w.speaker.is_empty() {
-        format!("Output {n} ({role})")
+        format!("Out {n} ({role})")
     } else {
-        format!("Output {n} ({} {role})", w.speaker)
+        format!("Out {n} ({} {role})", w.speaker)
     }
 }
 
@@ -676,7 +677,7 @@ pub(crate) fn compute(
     held.push("levels cut only; no output gain raised".into());
     for h in &bounds.highpass {
         held.push(format!(
-            "output {}: a high-pass at or above {:.0} Hz, {} dB/octave (limits profile)",
+            "Out {}: a high-pass at or above {:.0} Hz, {} dB/octave (limits profile)",
             u16::from(h.output).saturating_add(1),
             h.rule.min_hz,
             h.rule.min_slope_db
@@ -757,7 +758,7 @@ pub(crate) fn compute(
                 });
                 if let Some((_, w)) = unfed {
                     let why = format!(
-                        "no input feeds output {}, whose polarity must change (it is set on \
+                        "no input feeds Out {}, whose polarity must change (it is set on \
                          its routes): route the speaker's outputs first, then propose again",
                         u16::from(w.output).saturating_add(1)
                     );
@@ -979,6 +980,18 @@ pub(crate) fn compute(
             Ok(r) => {
                 for b in &r.bands {
                     for i in &targets {
+                        // -- WP FFIX -- a band only on a way that plays at its
+                        // frequency (a midrange high-passed at 500 Hz gets no
+                        // 60 Hz band); a released one on every way it was on
+                        let plays_there = b.band.filter_type == 0
+                            || chains.get(*i).is_some_and(|c| {
+                                chain_db(&xover_only(c), model, &[f64::from(b.band.freq)])
+                                    .iter()
+                                    .all(|d| *d >= PLAYS_DB)
+                            });
+                        if !plays_there {
+                            continue;
+                        }
                         if let Some(slot) = chains
                             .get_mut(*i)
                             .and_then(|c| c.peq.get_mut(usize::from(b.index)))

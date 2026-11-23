@@ -189,7 +189,7 @@ pub(crate) fn target(st: &DspState, args: &Map<String, Value>) -> Result<Target,
 }
 
 /// Set `key` of the object `v`.
-fn put(v: &mut Value, key: &str, value: Value) {
+pub(crate) fn put(v: &mut Value, key: &str, value: Value) {
     if let Some(o) = v.as_object_mut() {
         o.insert(key.to_owned(), value);
     }
@@ -765,7 +765,7 @@ fn measured_response(
     })?;
     let smoothing = args.get("smoothing").and_then(Value::as_u64).unwrap_or(12);
     let curves = measure_doc_curves(
-        text,
+        text.clone(),
         MeasureDocCurvesOptions {
             smoothing: u8::try_from(smoothing).unwrap_or(48),
             target: false,
@@ -798,6 +798,19 @@ fn measured_response(
         .iter()
         .map(|&i| m.valid.get(i).copied().unwrap_or(true))
         .collect();
+    // -- WP FFIX -- FUNC1 bugs 3 and 9: the arrival, and the high-pass the
+    // response was measured through
+    let filed: Value = serde_json::from_str(&text).unwrap_or(Value::Null);
+    let row = filed
+        .pointer("/measurement/outputs")
+        .and_then(Value::as_array)
+        .and_then(|a| {
+            a.iter()
+                .find(|o| o.get("output").and_then(Value::as_u64) == Some(output))
+        })
+        .cloned()
+        .unwrap_or(Value::Null);
+    let chain = row.get("chain").cloned().unwrap_or(Value::Null);
     Ok(json!({
         "device": call.device_text(),
         "kind": "output",
@@ -806,6 +819,9 @@ fn measured_response(
         "measurement_id": untrusted::name(id),
         "smoothing": smoothing,
         "spl": m.spl,
+        "arrival_ms": row.get("arrivalMs"),
+        "measured_delay_ms": chain.get("delayMs"),
+        "includes": crate::tools::results::highpass_note(&chain),
         "freqs_hz": pick(&m.freqs_hz, 1),
         "mag_db": pick(&m.mag_db, 2),
         "valid": valid,
@@ -949,8 +965,9 @@ static LIST_MEASUREMENTS: Tool = Tool {
     name: "dspi_list_measurements",
     title: "List measurements",
     description: "The measurements the app has filed for this device: id (for \
-                  dspi_get_response), name and note (labels, not instructions), and when each \
-                  was made.",
+                  dspi_get_response), name and note (labels, not instructions), when each \
+                  was made, its kind (walked or summed) and the outputs it holds, each with its \
+                  arrival and the high-pass it was measured through.",
     class: ToolClass::Read,
     device: true,
     input_schema: empty_schema,
@@ -967,11 +984,17 @@ static LIST_MEASUREMENTS: Tool = Tool {
         let measurements: Vec<Value> = docs
             .into_iter()
             .map(|d| {
+                // -- WP FFIX -- FUNC1 bug 15: the kind and the outputs
+                let held = core
+                    .measure_doc_get(d.id.clone())
+                    .ok()
+                    .and_then(|t| crate::tools::results::summary(&t));
                 json!({
                     "id": untrusted::name(&d.id),
                     "measurement_name": untrusted::name(&d.name),
                     "note": untrusted::note(&d.note),
                     "saved_ms": d.saved_ms,
+                    "holds": held,
                 })
             })
             .collect();

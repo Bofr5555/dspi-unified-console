@@ -306,6 +306,51 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Agents&apos; Measurements and Devices</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Agents never play louder than this: they may only ask for less, whatever Ask me says. It needs a microphone calibrated in dB SPL (this app&apos;s calibration is used when the agent names none): without one, an agent&apos;s measurement is refused. With the cap off, the level ceiling holds.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Limit agents&apos; measurements in dB SPL</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Needs a calibrated microphone; off, only the level ceiling holds.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Loudest measurement: %1 dB SPL</source>
+        <extracomment>%1 a sound pressure level in dB SPL</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Devices agents may open</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Only those open now</source>
+        <extracomment>%n devices opened in this app before, which agents may ask to open again</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message numerus="yes">
+        <source>%n remembered device(s), and those open now</source>
+        <translation type="unfinished">
+            <numerusform></numerusform>
+            <numerusform></numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Forget Devices</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Forget the devices opened here before; agents then know only those open now and on USB</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Connect an Agent</source>
         <translation type="unfinished"></translation>
     </message>
@@ -810,6 +855,11 @@ What an AI agent does, and to what: &quot;Changing the gain: OUT3 Centre&quot;</
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>%1&apos;s change did not go through: %2</source>
+        <extracomment>An AI agent&apos;s change that failed but changed something: %1 is its name, %2 the app&apos;s words for what happened</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>%1 changed: %2</source>
         <extracomment>An AI agent&apos;s change: %1 is its name, %2 the change (&quot;Out 3 output gain -6 dB to -8 dB&quot;)</extracomment>
         <translation type="unfinished"></translation>
@@ -829,6 +879,10 @@ What an AI agent does, and to what: &quot;Changing the gain: OUT3 Centre&quot;</
     <message>
         <source>The measurement %1 asked for was stopped: a setting was changed while it ran, so its result would not be valid.</source>
         <extracomment>%1 is an AI agent&apos;s name</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>AI agent</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -909,6 +963,10 @@ What an AI agent does, and to what: &quot;Changing the gain: OUT3 Centre&quot;</
     </message>
     <message>
         <source>and %1 more</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Nothing has played yet. Sound cannot be taken back once it plays; Stop Measuring in the agent strip ends it.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -3470,6 +3528,20 @@ Switching an output is instant and never writes to flash. The pin, name and powe
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>%1 closed %2.</source>
+        <extracomment>%1 the AI agent&apos;s name, %2 a device</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>An AI agent</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 opened %2 in a tab.</source>
+        <extracomment>%1 the AI agent&apos;s name, %2 a device</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>The app is closing.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -5047,6 +5119,11 @@ Do you wish to proceed?</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>A DSPi has no player: it plays what %1 receives.</source>
+        <extracomment>%1 the input chosen (&quot;USB&quot;, &quot;S/PDIF&quot;)</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Master Volume</source>
         <translation type="unfinished"></translation>
     </message>
@@ -6252,6 +6329,148 @@ Groups are stored on the device alongside the controls and share their Save and 
     </message>
 </context>
 <context>
+    <name>HostAudioController</name>
+    <message>
+        <source>Open Settings &gt; System &gt; Sound and choose the DSPi under Output. One app alone: Settings &gt; System &gt; Sound &gt; Volume mixer, its Output device.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open System Settings &gt; Sound &gt; Output and choose the DSPi. macOS sends every app to the same output.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Choose the DSPi as the output in your desktop&apos;s sound settings (or run wpctl set-default with its number from wpctl status). One app alone: its Playback row in the sound settings or pavucontrol.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>HostAudioPage</name>
+    <message>
+        <source>Yes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cannot tell</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message numerus="yes">
+        <source>%n channel(s)</source>
+        <extracomment>%n audio channels</extracomment>
+        <translation type="unfinished">
+            <numerusform></numerusform>
+            <numerusform></numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>%1 kHz</source>
+        <extracomment>%1 a sample rate in kHz</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This system does not say which apps play where.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Nothing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sound on This Computer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>A DSPi has no player: it plays what reaches its input. Over USB that is this computer&apos;s sound, when the DSPi is its output.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sound system</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reading…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Known</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cannot be read: %1</source>
+        <extracomment>%1 why the computer&apos;s audio could not be read (in English, from the core)</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Default output</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>(a DSPi)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>None</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Read Again</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Output of this computer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Yes, as %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No: %1</source>
+        <extracomment>%1 why not (in English, from the core)</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cannot tell: %1</source>
+        <extracomment>%1 why it cannot tell (in English, from the core)</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The default output</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Format</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Playing to it</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>System volume</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 %</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>(muted)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>System volume moves the DSPi&apos;s volume</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No DSPi is open. Open one to see whether this computer plays to it.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>HubController</name>
     <message>
         <source>Could not start on port %1.</source>
@@ -6855,6 +7074,35 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Everywhere</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Mute %1</source>
+        <extracomment>a scene&apos;s action; %1 where (a room, a zone, a unit, &quot;Everywhere&quot;)</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unmute %1</source>
+        <extracomment>a scene&apos;s action; %1 where</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1: master volume %2 dB</source>
+        <extracomment>a scene&apos;s action; %1 where, %2 a level in dB</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Switch %1 to source %2</source>
+        <extracomment>a scene&apos;s action; %1 a zone, %2 an audio link source</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1: %2</source>
+        <extracomment>a scene&apos;s action of another kind; %1 where, %2 its name in the hub&apos;s words</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>No room</source>
         <translation type="unfinished"></translation>
     </message>
@@ -6894,9 +7142,66 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
         <source>Saved on the hub, with warnings:</source>
         <translation type="unfinished"></translation>
     </message>
+    <message numerus="yes">
+        <source>%n unit(s) play the new channels after Align.</source>
+        <extracomment>%n units of the audio link; Align is the System view&apos;s button</extracomment>
+        <translation type="unfinished">
+            <numerusform></numerusform>
+            <numerusform></numerusform>
+        </translation>
+    </message>
     <message>
         <source>They could not be made again: %1</source>
         <extracomment>%1 is the core&apos;s reason</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>A slot plays an audio link channel from 0 to 63, or nothing (-).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Any sender</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Give its channels on the audio link, 0 to 63: &quot;8 9&quot; or &quot;8-11&quot;.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Computer over USB</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>S/PDIF input</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Analogue input</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Into the audio link sender</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Choose what it feeds.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Give the inputs it plays on, 0 to %1: &quot;0 1&quot;.</source>
+        <extracomment>%1 the highest input or channel number</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>A source is switched for a zone.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Choose the source it switches to.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>A master volume from -128 to 0 dB.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -7061,6 +7366,30 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Sources: channels on the audio link</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>A source names channels of a sender (0 to 63); a zone that plays it routes its units&apos; inputs to them.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>New source</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The new source&apos;s sender</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The new source&apos;s channels</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Channels: 8 9</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Rooms</source>
         <translation type="unfinished"></translation>
     </message>
@@ -7074,6 +7403,28 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
     </message>
     <message>
         <source>Plays %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Plays</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>What %1 plays</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No audio link unit is in its rooms.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Routes %1 to its channels.</source>
+        <extracomment>%1 a list of units</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>A source would route %1; their own slots stay until then.</source>
+        <extracomment>%1 a list of units</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -7093,6 +7444,42 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Scenes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>New scene</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Programme sources: where the music comes from</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>A DSPi has no player: it plays what its inputs receive. Say which computer or box feeds which unit or sender, so people and AI agents know.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>New programme source</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>How the new programme source comes in</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>What the new programme source feeds</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The new programme source&apos;s inputs</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Inputs: 0 1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>The installation was changed elsewhere while you edited it. Reload it and make your changes again.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -7106,6 +7493,20 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
     </message>
     <message>
         <source>Leave Them</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1&apos;s own slots will be replaced: %2 plays %3.</source>
+        <extracomment>%1 a unit, %2 a zone, %3 an audio link source</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 will play %3&apos;s channels, as %2 does.</source>
+        <extracomment>%1 a unit, %2 a zone, %3 an audio link source</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The units play them after the next alignment.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -7126,6 +7527,191 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
     </message>
     <message>
         <source>Discard</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Align</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Align the audio link now: the units take their new channels</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Align audio link delays?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Every unit restarts its outputs in step with a short silence (2 to 6 ms).</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>InstallationProgrammeCard</name>
+    <message>
+        <source>Name of programme source %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Remove</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Take %1 out of the installation</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Comes in by</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>How %1 comes in</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Into sender</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Into unit</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>What %1 feeds</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sender channels</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Inputs</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Inputs %1 plays on</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>InstallationSceneCard</name>
+    <message>
+        <source>Switch zone source</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Mute</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unmute</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Master volume</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Name of scene %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Mutes the whole system</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Remove</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Take %1 out of the installation</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No actions yet.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Remove the action %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>What the new action of %1 does</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Where the new action of %1 acts</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The source the zone switches to</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Master volume of the new action</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add Action</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>InstallationSlotsField</name>
+    <message>
+        <source>Audio link channel on each input (- for none)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Channels on the inputs of %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Its own</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Its Own</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The unit plays its own slots again, as set on it</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Set by %1, which plays %2</source>
+        <extracomment>%1 a zone, %2 the audio link source it plays</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>InstallationSourceCard</name>
+    <message>
+        <source>Name of source %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Remove</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Take %1 out of the installation; zones that play it play nothing chosen</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>From</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sender of %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Channels on the audio link</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Channels of %1</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -13700,6 +14286,14 @@ Save before continuing?</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Loudest measurement, SPL cap</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Remembered devices</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Paired Clients</source>
         <translation type="unfinished"></translation>
     </message>
@@ -13869,6 +14463,30 @@ Save before continuing?</source>
     </message>
     <message>
         <source>Confirm</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This Computer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sound output</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Default output</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>System volume</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>What plays</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Host audio</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -16415,6 +17033,21 @@ This wiring is a board-level setting: it is stored on the device, survives prese
         <source>%1&apos;s D becomes the hub&apos;s.</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>Room %1</source>
+        <extracomment>%1 a room&apos;s name</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Zone %1</source>
+        <extracomment>%1 a zone&apos;s name</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1: %2 set, %3 refused.</source>
+        <extracomment>%1 a room or zone; %2 how many units were set, %3 how many were refused</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>SystemIntegration</name>
@@ -16778,6 +17411,94 @@ This wiring is a board-level setting: it is stored on the device, survives prese
     <message>
         <source>Open the System window</source>
         <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>SystemVolumeCard</name>
+    <message>
+        <source>%1 dB</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Room and zone volume</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Room or zone</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Level or step</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Set to</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Step by</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Volume</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Master volume</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Set the master volume instead of the user volume</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show Changes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Read each unit&apos;s volume and show what would change; nothing is written yet</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1: %2 → %3</source>
+        <extracomment>%1 a unit, %2 its volume now, %3 what it will be or is</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>(louder)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>(already there)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>(set)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>(not set: %1)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Set</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Make it louder?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message numerus="yes">
+        <source>%n unit(s) of %1 get louder.</source>
+        <extracomment>%n units that get louder; %1 the room or zone</extracomment>
+        <translation type="unfinished">
+            <numerusform></numerusform>
+            <numerusform></numerusform>
+        </translation>
     </message>
 </context>
 <context>

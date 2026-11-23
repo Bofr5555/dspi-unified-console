@@ -670,7 +670,7 @@ impl Session {
             Err(issue(
                 "measure.abort.cycle_identity",
                 format!(
-                    "the generator plays output {} after {} cycles where the capture expects \
+                    "the generator plays Out {} after {} cycles where the capture expects \
                      another: the capture does not line up with the run",
                     st.active_channel.saturating_add(1),
                     st.cycles_done
@@ -692,7 +692,7 @@ impl Session {
         {
             return Err(issue(
                 "measure.abort.programme",
-                format!("programme audio appeared on input {}", i.saturating_add(1)),
+                format!("programme audio appeared on In {}", i.saturating_add(1)),
             ));
         }
         // An input stream starting or stopping.
@@ -713,10 +713,7 @@ impl Session {
                 return Err(MeasureIssue::new(
                     "measure.abort.output_peak",
                     Some(spec.output),
-                    format!(
-                        "output {} reached full scale",
-                        spec.output.saturating_add(1)
-                    ),
+                    format!("Out {} reached full scale", spec.output.saturating_add(1)),
                 ));
             }
         }
@@ -733,7 +730,7 @@ impl Session {
                 return Err(MeasureIssue::new(
                     "measure.abort.limiter",
                     Some(*o),
-                    format!("output {}'s limiter acted", o.saturating_add(1)),
+                    format!("Out {}'s limiter acted", o.saturating_add(1)),
                 ));
             }
         }

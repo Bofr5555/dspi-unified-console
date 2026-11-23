@@ -113,6 +113,15 @@ class SystemController : public QObject {
     // shown now) or "open" (a tab of its own), for the units open here
     Q_PROPERTY(bool openInTabOffered READ openInTabOffered NOTIFY tabsChanged)
     Q_PROPERTY(QVariantMap tabs READ tabs NOTIFY tabsChanged)
+    // -- WP FEATUI -- A room's or zone's volume (FEAT2, dspi_system_volume_*):
+    // the rooms and zones ({ id: "room:<id>" | "zone:<id>", name }), the plan
+    // asked for (the core's SystemVolumePlan: { name, units: [{ unitId, name,
+    // beforeDb, targetDb, afterDb, louder, state, message }] }; empty for
+    // none), whether it has been set, and what came of it
+    Q_PROPERTY(QVariantList volumeTargets READ volumeTargets NOTIFY volumeChanged)
+    Q_PROPERTY(QVariantMap volumePlan READ volumePlan NOTIFY volumeChanged)
+    Q_PROPERTY(bool volumeSet READ volumeSet NOTIFY volumeChanged)
+    Q_PROPERTY(QString volumeMessage READ volumeMessage NOTIFY volumeChanged)
 public:
     SystemController(const AppContext &ctx, QObject *parent = nullptr);
     ~SystemController() override;
@@ -178,6 +187,19 @@ public:
     Q_INVOKABLE void recall(const QString &id);
     // Writes the audio link delays the system delay asks for (Admin)
     Q_INVOKABLE void align();
+    // -- WP FEATUI --
+    QVariantList volumeTargets() const { return m_volumeTargets; }
+    QVariantMap volumePlan() const { return m_volumePlan; }
+    bool volumeSet() const { return m_volumeSet; }
+    QString volumeMessage() const { return m_volumeMessage; }
+    // The rooms and zones, read from the hub's installation
+    Q_INVOKABLE void loadVolumeTargets();
+    // Plan `target` ("room:<id>", "zone:<id>") to `db` (a level, or a step
+    // when `step`) of the user volume, or the master volume: nothing written
+    Q_INVOKABLE void planVolume(const QString &target, bool step, double db, bool master);
+    // Write the plan's ready units
+    Q_INVOKABLE void applyVolume();
+    Q_INVOKABLE void dropVolume();
     // The draft: the system delay (automatic, or frames), a room's lip sync
     // and a unit's measured latency in µs ("" clears it: the model's own).
     // False for text that is not a whole number in range.
@@ -238,6 +260,7 @@ signals:
     void busyChanged();
     void recallChanged();
     void actionChanged();
+    void volumeChanged();   // -- WP FEATUI --
     void draftChanged();
     void spdifChanged();   // -- WP ATQT --
     void tabsChanged();    // -- WP XDEV1 --
@@ -275,6 +298,11 @@ private:
     QVariantList m_usbUnits;   // -- WP AUSB2 --
     QString m_error;
     QVariantMap m_lastRecall;
+    // -- WP FEATUI --
+    QVariantList m_volumeTargets;
+    QVariantMap m_volumePlan;
+    bool m_volumeSet = false;
+    QString m_volumeMessage;
     QString m_recalledScene;
     QString m_actionMessage;
     bool m_actionFailed = false;

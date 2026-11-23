@@ -82,21 +82,23 @@ class Player:
         self.agent = Agent(run.name)
         self.ids = []
 
-    def status(self, device):
-        return json.loads(self.agent.call("dspi_measure_status", device=device)[1])
+    def status(self, device, wait_s=0):
+        args = {"device": device}
+        if wait_s:
+            args["wait_s"] = wait_s
+        return json.loads(self.agent.call("dspi_measure_status", **args)[1])
 
     def wait(self, device, seconds=900):
+        """Long-polls (wait_s, FFIX) as the guide tells agents to."""
         end = time.time() + seconds
-        time.sleep(1)
         while time.time() < end:
-            s = self.status(device)
+            s = self.status(device, wait_s=25)
             req = s.get("request") or {}
             if req.get("state") not in ("waiting_for_app", "starting", "running"):
                 i = req.get("filed_measurement_id")
                 if i and i not in self.ids:
                     self.ids.append(i)
                 return req.get("state", ""), req.get("note", "")
-            time.sleep(1)
         raise RuntimeError(f"{device} still measures after {seconds} s")
 
     def step(self, calls):

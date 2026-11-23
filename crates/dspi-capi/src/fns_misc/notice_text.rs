@@ -96,6 +96,7 @@ mod tests_wp_p1nt {
     fn wp_p1nt_c_gives_the_cores_notice_for_a_failure_reply() {
         for e in errors() {
             let core = dspi_core::notice_for(e.clone());
+            #[cfg_attr(not(feature = "link"), allow(unused_mut))] // -- WP INTG --
             let mut replies = vec![json_reply::<()>(Err(e.clone()))];
             #[cfg(feature = "link")]
             replies.push(crate::fns_link::link::reply_for_tests(Err(e.clone())));

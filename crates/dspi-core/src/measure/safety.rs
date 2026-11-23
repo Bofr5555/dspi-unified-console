@@ -242,7 +242,7 @@ impl Ramp {
                 "measure.start_level_quiet",
                 Some(self.output),
                 format!(
-                    "the microphone does not hear output {n} at the start level of {} dBFS \
+                    "the microphone does not hear Out {n} at the start level of {} dBFS \
                      (in-band SNR {steps}; at least {HEARD_SNR_DB} dB needed): measure with \
                      the ramp, or check the microphone and the wiring",
                     self.start_db
@@ -253,7 +253,7 @@ impl Ramp {
                 "measure.mic_not_hearing",
                 Some(self.output),
                 format!(
-                    "the microphone does not hear output {n} (in-band SNR by step: {steps}; at \
+                    "the microphone does not hear Out {n} (in-band SNR by step: {steps}; at \
                      least {HEARD_SNR_DB} dB needed): check the microphone and the wiring"
                 ),
             )
@@ -311,7 +311,7 @@ impl Ramp {
                     "measure.mic_not_following",
                     Some(self.output),
                     format!(
-                        "the microphone does not follow output {n} (in-band SNR by step: {}): \
+                        "the microphone does not follow Out {n} (in-band SNR by step: {}): \
                          check the microphone and the wiring",
                         self.steps_text()
                     ),

@@ -39,7 +39,9 @@ pass rate. `checks.py RUN_DIR` judges a run again.
 
 `replay/*.json` is a script of MCP calls, played by a fixed "agent" against the same simulation; each call says whether it must
 be accepted or refused, and may name a pattern the answer must not have. `replay/smoke.json` is the cheap regression;
-`replay/known-bugs.json` (with `stories/known-bugs.toml`) holds product bugs that are still open and fails until they are fixed.
+`replay/known-bugs.json` (with `stories/known-bugs.toml`) holds product bugs that are still open and fails until they are fixed
+(none now: FUNC1's tweeter-rule cases moved to `smoke.json` with FFIX). The replay agent long-polls `dspi_measure_status`
+with `wait_s`, as the guide tells agents to.
 A recorded agent run becomes a script with `replay.py RUN_DIR > replay/NAME.json`, so a bug a real agent found can be kept as a
 free test.
 

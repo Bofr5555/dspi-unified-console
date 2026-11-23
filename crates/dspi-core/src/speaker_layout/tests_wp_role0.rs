@@ -564,3 +564,39 @@ fn wp_mdqt1_a_failed_migration_is_said_and_loses_nothing() {
     again.speaker_layout_set_dir(good).unwrap();
     assert_eq!(again.speaker_layout().unwrap(), Some(kept));
 }
+
+// -- WP FFIX -- FUNC1 bug 4
+#[test]
+fn wp_ffix_a_summed_run_plays_each_output_with_its_routes_polarity() {
+    use crate::measure::MeasureRunKind;
+    let core = core_as("FFIX-SUM");
+    core.speaker_layout_set_dir(scratch("sum").to_string_lossy().into_owned())
+        .unwrap();
+    core.speaker_layout_set(confirmed(&[(0, MeasureRole::Low), (1, MeasureRole::Sub)]))
+        .unwrap();
+    // The sub's programme comes inverted (on its crosspoint), the woofer's not.
+    for i in 0..core.get_state().num_input_channels {
+        core.set_matrix_route(i, 1, false, 0.0, false).unwrap();
+    }
+    core.set_matrix_route(0, 0, true, 0.0, false).unwrap();
+    core.set_matrix_route(0, 1, true, 0.0, true).unwrap();
+    let setup = |kind| MeasureSetup {
+        kind,
+        outputs: [0u8, 1]
+            .iter()
+            .map(|o| MeasureOutput {
+                output: *o,
+                ..MeasureOutput::default()
+            })
+            .collect(),
+        roles_from_layout: true,
+        ..MeasureSetup::default()
+    };
+    let inverted =
+        |s: MeasureSetup| -> Vec<bool> { s.outputs.iter().map(|o| o.inverted).collect() };
+    let s = core.setup_roles(setup(MeasureRunKind::Summed)).unwrap();
+    assert_eq!(inverted(s), [false, true]);
+    // A walked run plays each alone: no polarity to set.
+    let s = core.setup_roles(setup(MeasureRunKind::Walked)).unwrap();
+    assert_eq!(inverted(s), [false, false]);
+}

@@ -601,6 +601,43 @@ impl Server {
         Ok(result)
     }
 
+    // -- WP FFIX -- FUNC1 bug 5
+    /// The long poll `msg` asks for, ms: a `tools/call` of
+    /// `dspi_measure_status` with `wait_s` (at most
+    /// [`STATUS_WAIT_MAX_S`](crate::tools::measure::STATUS_WAIT_MAX_S)).
+    /// A transport that can wait answers such a call when
+    /// [`Server::status_mark`] changes, or after that long; one that cannot
+    /// answers at once, which is correct too.
+    pub fn long_poll_ms(msg: &Value) -> Option<u64> {
+        if msg.get("method").and_then(Value::as_str) != Some("tools/call")
+            || msg.pointer("/params/name").and_then(Value::as_str) != Some("dspi_measure_status")
+        {
+            return None;
+        }
+        let s = msg.pointer("/params/arguments/wait_s")?.as_u64()?;
+        let s = s.min(crate::tools::measure::STATUS_WAIT_MAX_S);
+        (s > 0).then(|| s.saturating_mul(1000))
+    }
+
+    /// What `client`'s `dspi_measure_status` call `msg` would answer now,
+    /// reduced to what a long poll watches (`tools::measure::status_mark`):
+    /// run without a rate limit, an activity entry or the user's news, so a
+    /// transport may ask often. `None` when it cannot be read.
+    pub fn status_mark(&mut self, client: ClientId, now_ms: u64, msg: &Value) -> Option<String> {
+        let tool = self.registry.get("dspi_measure_status")?;
+        let args = msg
+            .pointer("/params/arguments")
+            .and_then(Value::as_object)
+            .cloned()
+            .unwrap_or_default();
+        let (actor, label) = self.actor(client)?;
+        self.tick(now_ms);
+        let out = self.run_once(client, actor, &label, tool, &args, Vec::new());
+        out.result
+            .ok()
+            .map(|v| crate::tools::measure::status_mark(&v))
+    }
+
     // -- WP AIVIS --
     /// Put what the user did since `client`'s last result into `result`.
     fn tell(&mut self, client: ClientId, result: &mut Value) {
