@@ -162,7 +162,7 @@ mod tests_wp_fbus {
         assert_eq!(v["default_output"]["is_dspi"], true);
         // A real reading still says no for a demo unit
         let mut real = sim();
-        real.audio_system = "PipeWire 1.6".into();
+        real.sim = false; // -- WP ODEC -- the flag, not a text mark
         let v = crate::tools::host::report(&real, &rows);
         assert_eq!(v["devices"][0]["output_device"], "no");
     }

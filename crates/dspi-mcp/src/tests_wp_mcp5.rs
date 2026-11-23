@@ -361,9 +361,9 @@ fn wp_mcp5_the_demo_simulation_end_to_end() {
         "the tune's writes are the agent's in the History"
     );
 
-    // Verify: test signals again, asked; the app runs it.
-    let r = allowed(&mut s, c, now, "dspi_tune_verify", json!({}));
-    assert_eq!(r["asked"][0]["kind"], json!("test_signal"));
+    // Verify: test signals again; -- WP ODEC -- the start's Allow granted them
+    // on this device for ten minutes, so it is not asked again. The app runs it.
+    ok_at(&mut s, c, now, "dspi_tune_verify", json!({}));
     let started = app_takes(&mut s, &core);
     assert_eq!(
         started[0]["ticket"]["kind"],
