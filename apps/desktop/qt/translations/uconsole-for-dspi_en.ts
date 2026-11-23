@@ -461,6 +461,10 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>The app cannot open devices now.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Could not start on port %1.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -3200,6 +3204,14 @@ Switching an output is instant and never writes to flash. The pin, name and powe
     </message>
     <message>
         <source>%1 is already open through a hub. Close it there first.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The app is closing.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The app cannot open a hub&apos;s device now.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -7717,6 +7729,17 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
     <name>LinkBanner</name>
     <message>
         <source>Disconnect</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>LinkController</name>
+    <message>
+        <source>The device did not open.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The app has no connection to that device&apos;s hub now. Connect to the hub in the app first.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
