@@ -262,3 +262,8 @@ tool calls into `Bus` calls (`play`, `pause`, `move`, `volume`, `output_volume`,
 - `seed_may_break = true`: what the oracles logged while the story's seed ran (the user's own doing, S7's
   lowered-tweeter preset) is not counted.
 - Check kinds `muted` (an output's mute) and `gain_from` (a gain against an earlier state, default the start).
+
+<!-- -- WP INTI -- -->
+- The test-signal invariant counts a run as covered by a permission only inside that grant's window (600 s from the
+  Allow, ended by a Revoke). User action `revoke` (`device`) revokes every test-signal permission on that device, as
+  Revoke in the app does. Events in `user.jsonl` carry `at` (epoch seconds) for this.

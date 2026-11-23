@@ -302,7 +302,9 @@ class Run:
 
     def event(self, kind, data):
         with open(self.dir / "user.jsonl", "a") as f:
-            f.write(json.dumps({"time": time.strftime("%H:%M:%S"), "kind": kind, "data": data}) + "\n")
+            # -- WP INTI -- `at` (epoch s): a grant's window is judged against the agents' calls
+            f.write(json.dumps({"time": time.strftime("%H:%M:%S"), "at": round(time.time(), 3), "kind": kind,
+                                "data": data}) + "\n")
 
     # ------------------------------------------------------------- the agent
 

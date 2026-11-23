@@ -159,8 +159,9 @@ fn programme_peak(s: &DspState, o: usize) -> f64 {
                 .and_then(|r| r.get(o))
                 .copied()
                 .unwrap_or(0.0)
-                + s.input_preamp_db.get(i).copied().unwrap_or(0.0)
-                + s.preamp_db;
+                // -- WP INTI -- (review RF11) the global preamp is input 0's
+                // (params.rs's legacy alias, as FUNC2b's path_response): once
+                + s.input_preamp_db.get(i).copied().unwrap_or(s.preamp_db);
             sum += 10f64.powf((db(bands(&input_bands(s, i), f)) + f64::from(gain)) / 20.0);
         }
         peak = peak.max(own + 20.0 * sum.max(1e-15).log10());

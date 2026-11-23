@@ -102,6 +102,12 @@ class User:
             self.installer(a)
             self.run.event("user-done", {"step": label, "do": kind})
             return
+        if kind == "revoke":  # -- WP INTI -- Revoke every test-signal permission on `device` (RF10)
+            for g in ctl.get("AiController", "grants") or []:
+                if g.get("device") == a["device"]:
+                    ctl.call("AiController", "revokeGrant", g["id"])
+                    self.run.event("grant-revoked", {"device": a["device"], "id": g["id"]})
+            return
         if kind == "agents":  # -- WP ODEC -- Stop (off) and on again, as in Settings › AI Agents
             ctl.call("AiController", "setEnabled", bool(a["on"]))
             ctl.wait("AI agents " + ("on" if a["on"] else "off"),
