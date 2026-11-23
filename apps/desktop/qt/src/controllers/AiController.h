@@ -327,6 +327,7 @@ private:
         QString client, title, device;
         QStringList risks;
         QStringList riskLines;   // -- WP LAY8 --
+        bool sound = false;      // -- WP FEATUI -- it plays a test signal: nothing to undo
         QDateTime ends;
         bool operator==(const Waiting &o) const { return id == o.id; }   // a question never changes
     };

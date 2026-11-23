@@ -870,6 +870,11 @@ pub extern "C" fn dspi_mcp_measure_begin(
 #[cfg(test)]
 #[path = "fns_mcp/tests_wp_feat2.rs"]
 mod tests_wp_feat2;
+// -- WP FEATUI --
+#[cfg(test)]
+#[allow(clippy::cast_possible_truncation)]
+#[path = "fns_mcp/tests_wp_featui.rs"]
+mod tests_wp_featui;
 
 // -- WP FEAT2 -- the agents' requests to open a known device or close one
 //

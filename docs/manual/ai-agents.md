@@ -12,7 +12,8 @@ thin?", "set up a crossover at 2.5 kHz". The agent talks to the console over MCP
 every change live in the console, as if you had made it, and you can undo each one.
 
 AI agents are **off** until you turn them on. Nothing on your network can reach them: the console listens on this computer
-only. The web console and the Android app have no agent support.
+only. The web console and the Android app run no agents; the web console shows when an agent works on a hub's devices
+through another console (section 5).
 
 **Where to find it**
 
@@ -269,6 +270,10 @@ told the question is still open and can ask again with `dspi_get_confirmation`. 
   disconnects them and puts back any timed preview an agent started. Changes already made stay, and you can undo them.
 - While you drag a control, an agent's change to that device is refused and the agent is told to try again: you are not
   overruled mid-drag.
+- **On a hub's device** (DSPi Link), the console also says on the hub what its agent does, so the **web console** and other
+  consoles of that hub show it too: a strip on every screen ("Claude, through Studio Mac, is working on this device:
+  Changing the gain: Out 1") and an **AI** mark on the device's tab, for as long as the agent works (at most 20 s after its
+  last call). What a person changes there reaches the agent as a change made elsewhere.
 
 ### 5.1 When you step in
 
@@ -319,6 +324,15 @@ under **Never** it starts at once. The console then opens **Measure**, opens the
 **Requested by AI · name** until it ends, with **Stop** on every tab of Measure; on a device that is not the one shown, its
 row there has **Show** and **Stop**. A request the console cannot take up within 30 s lapses, and the agent is told. The
 result is filed with your measurements. An agent can stop only what it asked for itself.
+
+**How loud.** Settings › AI Agents › **Loudest measurement** (85 dB SPL by default, 60 to 95) caps what an agent's
+measurement may play, under every question setting, **Never** too: an agent may only ask for less. It holds with a
+microphone calibrated in dB SPL: the console's own calibration is used when the agent names none. Without one, the
+level ceiling (-12 dBFS at a speaker, -30 dBFS on headphones) holds.
+
+**Opening devices.** An agent may ask to open a device the console knows: one on USB, one listed by an open hub, or one
+you opened before. The console remembers the devices you open across restarts (Settings › AI Agents › **Devices agents
+may open**, with **Forget Devices**). A device an agent opens or closes is a notice.
 
 **A tweeter's low end.** These rules hold under every question setting; nothing lifts them, and they hold for your own
 measurements too:

@@ -5,6 +5,17 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
 ## Unreleased
 
 ### Desktop (Qt)
+- The Installation tab sets up the audio link's sources (a sender's channels), what each zone plays (the units it routes
+  are named), a unit's own slots (locked while its zone's source owns them), scenes with their actions (Switch zone source
+  among them) and programme sources (which computer or box feeds which input). Before Save a notice names the units whose
+  hand-made slots a zone's source replaces; after Save it says how many units play the new channels after Align, with
+  Align there. The System view sets a room's or zone's volume, unit by unit, asking first when one gets louder. (WP FEATUI)
+- Settings › This Computer shows whether each open DSPi is an output of this computer, the default one or not, its
+  format, what plays to it and whether the system volume moves it, with how to make it the default. (WP FEATUI)
+- Settings › AI Agents: the loudest an agent's measurement may play (85 dB SPL by default, a hard cap an agent cannot
+  raise), and the devices agents may open, remembered across restarts. A device an agent opens or closes is a notice; the
+  question before a test signal no longer promises an undo. An agent's work on a hub's device is said on the hub, so other
+  consoles show it. (WP FEATUI)
 - The screen always shows what an AI agent does: a strip under the top bar (both layouts) names the agent, what it does now
   and on which device, with Pause and Stop; the AI button, Classic's robot and the tray icon show that it works; what it
   changed is marked for a moment, with a notice and Undo. The snapshot list, the A/B compare, the auto-tune, the units'
@@ -201,6 +212,10 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
   dialogs, snackbars). (WP ANBAR)
 
 ### Web console
+- The Installation tab sets up sources, what each zone plays, a unit's slots, scenes and programme sources, with the
+  notice of replaced hand-made slots and Align after Save, as the desktop's; the System view sets a room's or zone's
+  volume. A strip on every screen and an AI mark on the device's tab show when an AI agent works on the hub's devices
+  through another console. (WP FEATUI)
 - The Modern layout. The sections (Overview, Equaliser, Routing, Effects, Measure, Analyse, Library, System, Devices,
   Settings) are in a rail on the left, and each section's pages are tabs beside its title. A row of device tabs along
   the top holds the open devices, with how each is reached, its state and an unsaved mark; + opens another, and

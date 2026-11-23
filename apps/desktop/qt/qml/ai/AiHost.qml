@@ -101,7 +101,11 @@ Item {
             }
         }
         SheetText {
-            text: qsTr("Nothing has been changed yet. You can undo it afterwards in the agents' activity.")
+            objectName: "AiConfirmSheet.after"
+            // -- WP FEATUI -- (FUNC1 section 4) sound cannot be undone: a test signal is not promised an undo
+            text: host.front && host.front.sound
+                  ? qsTr("Nothing has played yet. Sound cannot be taken back once it plays; Stop Measuring in the agent strip ends it.")
+                  : qsTr("Nothing has been changed yet. You can undo it afterwards in the agents' activity.")
         }
         SheetText {
             objectName: "AiConfirmSheet.left"
