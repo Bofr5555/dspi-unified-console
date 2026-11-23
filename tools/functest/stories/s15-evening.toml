@@ -45,36 +45,25 @@ We're watching a film tonight. Make it sound great.
 label = "dialogue"
 prompt = "Dialogue is hard to follow."
 
+  # Louder centre, or everything else quieter (the quiet way), or presence on the centre
   [[step.expect]]
-  what = "the centre channel is clearer: louder in the speech band, or more presence"
+  what = "the centre channel is clearer: louder against the rest, or more presence"
   kind = "any"
   of = [
-    { what = "presence (1-4 kHz against 100-400 Hz)", kind = "band_change", input = "C", volume_of = "Centre", band_hz = [1000, 4000], against_hz = [100, 400], pass_db = [1.0, 5.0], near_db = [0.5, 7.0] },
-    { what = "level (200 Hz-5 kHz)", kind = "band_change", input = "C", volume_of = "Centre", band_hz = [200, 5000], pass_db = [1.0, 4.0], near_db = [0.5, 6.0] },
-    { what = "the fronts lower instead", kind = "band_change", input = "L", volume_of = "Fronts", band_hz = [200, 5000], pass_db = [-4.0, -1.0], near_db = [-6.0, -0.5] },
+    { what = "level against the rest", kind = "relative", target = ["C", "Centre", 200, 5000], others = [["L", "Fronts", 200, 5000], ["R", "Fronts", 200, 5000], ["Ls", "Surrounds", 200, 5000], ["Rs", "Surrounds", 200, 5000], ["LFE", "Centre", 30, 100]], pass_db = [1.0, 6.0], near_db = [0.5, 8.0] },
+    { what = "presence (1-4 kHz against 100-400 Hz)", kind = "band_change", input = "C", band_hz = [1000, 4000], against_hz = [100, 400], pass_db = [1.0, 5.0], near_db = [0.5, 7.0] },
   ]
+
+  [[step.expect]]
+  what = "the other channels keep their balance (the sub with them)"
+  kind = "balance"
+  others = [["L", "Fronts", 200, 5000], ["R", "Fronts", 200, 5000], ["Ls", "Surrounds", 200, 5000], ["Rs", "Surrounds", 200, 5000], ["LFE", "Centre", 30, 100]]
+  pass_db = 1.0
+  near_db = 2.5
 
   [[step.expect]]
   what = "anything louder was asked first"
   kind = "louder_asked"
-
-  [[step.expect]]
-  what = "the sub (on the Centre too) is where it was"
-  kind = "band_change"
-  input = "LFE"
-  volume_of = "Centre"
-  band_hz = [30, 100]
-  pass_db = [-1.0, 1.0]
-  near_db = [-3.0, 3.0]
-
-  [[step.expect]]
-  what = "the surrounds sound as before"
-  kind = "band_change"
-  input = "Ls"
-  volume_of = "Surrounds"
-  band_hz = [200, 5000]
-  pass_db = [-0.3, 0.3]
-  near_db = [-1.0, 1.0]
 
 [[step]]
 label = "bass"

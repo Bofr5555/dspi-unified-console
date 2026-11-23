@@ -439,6 +439,21 @@ def more2(k, e, now, before, steps, words):
         ok = back >= 1 and not other and (back < made or e.get("all_ok"))
         return ("pass" if ok else "near" if back else "fail"), \
             f"{made} made, {back} undone" + (f"; also changed: {other[:6]}" if other else "")
+    if k in ("relative", "balance"):
+        # Each [input, device, lo_hz, hi_hz]: its seat level's change in that band, its device's volume
+        # with it; relative: `target` against the others' mean; balance: the others' spread
+        def delta(x):
+            i, d, lo, hi = x
+            lv = lambda st: band(st.f, st.seat(i), lo, hi) + sum(st.devices[d][v] for v in ("userVolumeDb", "masterVolumeDb"))
+            return lv(now) - lv(before)
+        ds = {x[0]: delta(x) for x in e["others"]}
+        if k == "relative":
+            v = delta(e["target"]) - sum(ds.values()) / len(ds)
+            return (score(v, lambda v: e["pass_db"][0] <= v <= e["pass_db"][1], lambda v: e["near_db"][0] <= v <= e["near_db"][1]),
+                    f"{e['target'][0]} {v:+.1f} dB against the others (" + ", ".join(f"{i} {x:+.1f}" for i, x in ds.items()) + ")")
+        v = max(ds.values()) - min(ds.values())
+        return (score(v, lambda v: v <= e["pass_db"], lambda v: v <= e["near_db"]),
+                f"spread {v:.1f} dB: " + ", ".join(f"{i} {x:+.1f}" for i, x in ds.items()))
     if k == "any":
         # The best of several ways to the same end
         got = [(check(x, now, before, steps, words), x.get("what", x["kind"])) for x in e["of"]]
