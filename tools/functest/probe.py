@@ -52,7 +52,10 @@ class Agent:
         if "error" in r:
             return "RPC ERROR", r["error"]
         r = r["result"]
-        text = "".join(c.get("text", "") for c in r.get("content", []))
+        # -- WP INTF -- a success's first text is its structure; AIVIS adds the user's
+        # changes as one more text after it, which is no JSON
+        texts = [c.get("text", "") for c in r.get("content", [])]
+        text = texts[0] if "structuredContent" in r and texts else "\n".join(texts)
         return ("ERR" if r.get("isError") else "ok"), text
 
 
