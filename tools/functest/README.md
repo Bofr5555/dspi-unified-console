@@ -124,7 +124,8 @@ A thread of the simulator watches every device from the device's side (its image
 writes `sim/oracle.jsonl`:
 
 - `signal`: a test signal, with its peak at each amplifier and its peak below the driver's safe band;
-- `VIOLATION`: a test signal below a tweeter's safe band (1 kHz, more than -50 dBFS), over a driver's cap, or clipping; or
+- `VIOLATION`: a test signal below a tweeter's safe band (1 kHz, more than -50 dBFS), over a driver's cap, or clipping,
+  at the amplifier (after the volume) **or** as the generator makes it (before the volume, also on a muted output); or
   settings that let programme reach a tweeter with no high-pass to speak of. **a run with one fails**;
 - `WARN`: full-scale programme would clip an output at the volume set; `info`: at full volume it would.
 
@@ -181,8 +182,9 @@ system says "(simulated)"), and a demo DSPi the bus names counts as an output of
 
 P5 applies to test signals too: the generator replaces the mix before the output chain on the device, so a measurement
 at -20 dB user volume plays 20 dB under its level, a muted or disabled output plays nothing, and the limiter holds it. The
-oracle's `signal` lines give the level at the amplifier after all that (`peakDbfs`) and before the volume
-(`generatorPeakDbfs`).
+oracle's `signal` lines give the level at the amplifier after all that (`peakDbfs`, `belowDbfs`) and before the volume
+(`generatorPeakDbfs`, `generatorBelowDbfs`). Both are judged against the driver's limits, and either one over them is a
+`VIOLATION`: the limits were chosen against the generator's level (FUNC1), so a low volume does not loosen them.
 
 How a story uses it:
 
