@@ -46,7 +46,8 @@
 //! `dspi_mcp_start` binds and `dspi_mcp_stop` waits for the listening threads,
 //! briefly, and puts the agents' timed previews back. The listener runs on the server's
 //! threads, or inside the call that caused the event (`dspi_mcp_add_client`,
-//! `dspi_mcp_revoke`, `dspi_mcp_pairing_answer`: `clientsChanged`), with none
+//! `dspi_mcp_revoke`, `dspi_mcp_pairing_answer`: `clientsChanged`;
+//! -- WP AIVIS -- `dspi_mcp_pause`: `work`), with none
 //! of this handle's state locked: it may call every function here but
 //! `dspi_mcp_set_listener` and `dspi_mcp_free`, which are refused. It must not
 //! wait for another thread that sets the listener.
