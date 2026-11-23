@@ -1075,3 +1075,35 @@ fn wp_ffix_the_status_mark_changes_when_the_app_takes_the_request() {
     core.measure_stop();
     app_drives(&core, "session", 60);
 }
+
+// -- WP FFIX -- FUNC1 bug 6: one microphone for every device
+#[test]
+fn wp_ffix_a_second_measurement_on_another_device_is_busy() {
+    let (set, id1, core) = demo();
+    layout(&core, true);
+    let id2 = set.open(DeviceTarget::Demo).unwrap();
+    let core2 = set.core(&id2).unwrap();
+    core2.fetch_all().unwrap();
+    layout(&core2, true);
+    let mut s = server(&set, ConfirmMode::NeverAsk, true);
+    let c = s.connect();
+    let outs = json!({"outputs": [0], "sweep_ms": 1000, "passes": 2, "device": id1.as_str()});
+    ok_at(&mut s, c, 1_000, "dspi_measure_start", outs.clone());
+    let mut on2 = outs.clone();
+    on2["device"] = json!(id2.as_str());
+    // While the first waits for the app, and while it runs.
+    let e = err_at(&mut s, c, 1_000, "dspi_measure_start", on2.clone());
+    assert!(
+        e.contains("waits for the app on demo:1") && e.contains("one microphone"),
+        "{e}"
+    );
+    app_takes(&mut s, &core);
+    let e = err_at(&mut s, c, 1_000, "dspi_measure_start", on2.clone());
+    assert!(e.contains("a measurement is running on demo:1"), "{e}");
+    let mut search = json!({"output": 0, "device": id2.as_str()});
+    search["start_hz"] = json!(4000);
+    let e = err_at(&mut s, c, 1_000, "dspi_measure_rolloff_start", search);
+    assert!(e.contains("one microphone"), "{e}");
+    core.measure_stop();
+    app_drives(&core, "session", 60);
+}

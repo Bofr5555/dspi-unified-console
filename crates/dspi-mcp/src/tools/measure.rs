@@ -902,26 +902,64 @@ fn host<'a>(call: &Call<'a>) -> Result<&'a Jobs, ToolError> {
     Ok(j)
 }
 
-/// Why a job cannot start on `core` now: something runs.
-fn busy(call: &Call<'_>, core: &DspiCore) -> Result<(), ToolError> {
-    let words = if core.measure_state().active {
-        "a measurement is running on this device"
+/// What of `core`'s measuring runs now, in words ("a measurement is
+/// running"), if anything.
+fn running_on(core: &DspiCore) -> Option<&'static str> {
+    if core.measure_state().active {
+        Some("a measurement is running")
     } else if core.measure_rolloff_state().running {
-        "a low-end search is running on this device"
+        Some("a low-end search is running")
     } else if core.measure_tune_state().running {
-        "the auto-tune's runs are playing on this device"
+        Some("the auto-tune's runs are playing")
     } else if core.measure_live_state().active {
-        "the live view is running on this device"
+        Some("the live view is running")
     } else if core.measure_system_state().active {
-        "a measurement across units is running"
-    } else if jobs(call)?.open_on(&call.device_text()).is_some() {
-        "a measurement request waits for the app on this device"
+        Some("a measurement across units is running")
+    } else {
+        None
+    }
+}
+
+/// Why a job cannot start on `core` now: something runs, here or (-- WP
+/// FFIX -- FUNC1 bug 6) on any other open device, as the app has one
+/// microphone: two jobs at once would each hear the other's test signal.
+fn busy(call: &Call<'_>, core: &DspiCore) -> Result<(), ToolError> {
+    let here = call.device_text();
+    let words = if let Some(w) = running_on(core) {
+        format!("{w} on this device")
+    } else if jobs(call)?.open_on(&here).is_some() {
+        "a measurement request waits for the app on this device".to_owned()
+    } else if let Some(w) = elsewhere(call, &here) {
+        format!(
+            "{w}, and the app has one microphone: two measurements at once would each hear \
+             the other's test signal"
+        )
     } else {
         return Ok(());
     };
     Err(ToolError::new(format!(
         "{words}: wait for it (dspi_measure_status) or stop it; nothing was started"
     )))
+}
+
+// -- WP FFIX --
+/// Measuring on another open device than `here` (a job, or a request that
+/// waits for the app), in words.
+fn elsewhere(call: &Call<'_>, here: &str) -> Option<String> {
+    let set = call.set?;
+    for d in set.list() {
+        let id = d.id.as_str().to_owned();
+        if id == here {
+            continue;
+        }
+        if let Some(w) = set.core(&d.id).as_deref().and_then(running_on) {
+            return Some(format!("{w} on {id} ({})", untrusted::name(&d.label)));
+        }
+        if jobs(call).ok()?.open_on(&id).is_some() {
+            return Some(format!("a measurement request waits for the app on {id}"));
+        }
+    }
+    None
 }
 
 /// The outputs argument: integers only (an object, as a role would need, is
