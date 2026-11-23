@@ -522,6 +522,31 @@ impl DspiCore {
 
 impl DspiCore {
     /// This session's hub connection, if it is up.
+    // -- WP INTI -- (review RF4)
+    /// The preset loads scene `scene` makes, from the model the last
+    /// [`DspiCore::alink_system_view`] read: each unit's serial and the slot,
+    /// in model order ("" for a unit the model has no serial for). Empty for
+    /// a scene with none, an unknown scene or no model. Rust-only (the MCP
+    /// server judges an agent's recall with it).
+    pub fn alink_system_scene_preset_loads(&self, scene: &str) -> Vec<(String, u8)> {
+        let model = self.system_cache(|c| c.model.as_ref().map(|(_, m)| m.clone()));
+        let Some(model) = model.and_then(|m| {
+            serde_json::from_value::<dspi_session::system_model::SystemModel>(m).ok()
+        }) else {
+            return Vec::new();
+        };
+        let Some(found) = model.scenes.iter().find(|s| s.id == scene) else {
+            return Vec::new();
+        };
+        let mut out = Vec::new();
+        for a in found.actions.iter().filter(|a| a.op == "preset_load") {
+            for u in model.resolve_target(&a.target).unwrap_or_default() {
+                out.push((u.serial.clone(), a.arg));
+            }
+        }
+        out
+    }
+
     fn hub_client(&self) -> Result<LinkClient> {
         self.lock()
             .link

@@ -230,6 +230,8 @@ fn loud_again(core: &DspiCore, actor: u32, level: f32) -> Result<(), String> {
 #[cfg(test)]
 thread_local! {
     pub(crate) static PUT_BACK_FAILS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    // -- WP INTI -- a scene's preset loads done as the hub would at its frame
+    pub(crate) static HUB_LOADS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
 /// [`wholesale_with`]'s write, its judgement and the put-back.
@@ -270,6 +272,148 @@ fn wholesale_run<T>(
         )));
     }
     Ok(out)
+}
+
+// -- WP INTI -- (review RF4) a hub scene's preset loads, judged as an agent's
+// own: the hub loads the presets on the units itself, at a frame
+/// One unit a scene loads a preset on, as it was before the recall.
+pub(crate) struct SceneLoad {
+    core: std::sync::Arc<DspiCore>,
+    name: String,
+    #[cfg_attr(not(test), allow(dead_code))]
+    slot: u8,
+    before: DspState,
+    snap: Before,
+    roles: Judging,
+    guard: Option<f32>,
+}
+
+/// The units scene `loads` (serial, slot) loads presets on, each open in
+/// this app, before anything is asked or changed. Refused (nothing changed)
+/// for a unit this app does not have open (its tweeters cannot be judged)
+/// and for one that saves the master volume with each preset (as
+/// `dspi_preset_load` is, -- WP ODEC --).
+pub(crate) fn scene_loads_check(
+    call: &Call<'_>,
+    loads: &[(String, u8)],
+) -> Result<Vec<(std::sync::Arc<DspiCore>, String, u8)>, ToolError> {
+    let mut out: Vec<(std::sync::Arc<DspiCore>, String, u8)> = Vec::new();
+    for (serial, slot) in loads {
+        let unit = untrusted::clean(serial, 64);
+        let core = call
+            .set
+            .filter(|_| !serial.is_empty())
+            .and_then(|set| set.find_serial(serial).and_then(|id| set.core(&id)))
+            .ok_or_else(|| {
+                ToolError::new(format!(
+                    "the scene loads preset {} on unit {unit}, which this app does not have \
+                     open, so the console cannot keep its tweeters safe while it loads: an \
+                     agent may not recall it. Nothing was changed. Ask the user to open that \
+                     unit, or to recall the scene in the app.",
+                    u16::from(*slot).saturating_add(1)
+                ))
+            })?;
+        if core.get_state().master_volume_mode != 0 {
+            return Err(ToolError::new(format!(
+                "the scene loads a preset on unit {unit}, and {}",
+                LOAD_REFUSED_VOLUME_WITH_PRESETS.replace(
+                    "an agent may not load a preset (or \
+                     revert to the saved one) on it",
+                    "an agent may not recall the scene"
+                )
+            )));
+        }
+        // A unit loaded twice ends on the last slot
+        out.retain(|(c, _, _)| !std::sync::Arc::ptr_eq(c, &core));
+        out.push((core, unit, *slot));
+    }
+    Ok(out)
+}
+
+/// Before the recall: each unit's state and a snapshot filed, and a unit
+/// with a confirmed tweeter or midrange silenced (as [`wholesale_with`]).
+pub(crate) fn scene_loads_guard(
+    call: &Call<'_>,
+    units: Vec<(std::sync::Arc<DspiCore>, String, u8)>,
+    what: &str,
+) -> Result<Vec<SceneLoad>, ToolError> {
+    let mut out = Vec::with_capacity(units.len());
+    for (core, name, slot) in units {
+        let before = state(&core)?;
+        let snap = capture_before(&core, what)?;
+        let roles = Judging {
+            roles: policy::confirmed_roles(&core),
+            floors: policy::profile_floors(&core),
+            ..Judging::default()
+        };
+        let hard = roles.roles.iter().any(|r| {
+            matches!(
+                r,
+                Some(dspi_core::measure::MeasureRole::High | dspi_core::measure::MeasureRole::Mid)
+            )
+        });
+        let guard = hard
+            .then(|| quiet(&core, call.actor, before.master_volume_db))
+            .flatten();
+        out.push(SceneLoad {
+            core,
+            name,
+            slot,
+            before,
+            snap,
+            roles,
+            guard,
+        });
+    }
+    Ok(out)
+}
+
+/// After the recall (the hub loads at a frame: `wait_ms` from now, then each
+/// unit is read again): a unit whose tweeter lost its protection goes back to
+/// its slot and its settings; every silenced unit gets its volume back. Err
+/// with the words when any unit was put back or stays silent.
+pub(crate) fn scene_loads_judge(
+    call: &Call<'_>,
+    units: Vec<SceneLoad>,
+    wait_ms: u64,
+) -> Result<(), ToolError> {
+    if units.is_empty() {
+        return Ok(());
+    }
+    std::thread::sleep(std::time::Duration::from_millis(wait_ms));
+    let mut words = Vec::new();
+    for u in units {
+        // The fake units queue a frame's ops but never run them: a test has
+        // the hub's load done here
+        #[cfg(test)]
+        if HUB_LOADS.with(std::cell::Cell::get) {
+            let _scope = ActorScope::enter(&u.core, call.actor, None);
+            let _ = u.core.load_preset(u.slot);
+        }
+        let _ = u.core.fetch_all();
+        let after = u.core.get_state();
+        if let Some(why) = tweeter_lost(&u.roles, &u.before, &after) {
+            let slot = reselect(&u.core, call.actor, &u.before, &after);
+            words.push(format!(
+                "unit {}: {}. A scene recalled by an agent may not lower a tweeter's \
+                 protection; the user can do it in the app. {}{slot}",
+                u.name,
+                why.trim_end_matches('.'),
+                put_back(&u.core, call.actor, &u.snap)
+            ));
+        }
+        if let Some(Err(silent)) = u.guard.map(|level| loud_again(&u.core, call.actor, level)) {
+            words.push(format!("unit {}: {silent}", u.name));
+        }
+    }
+    if words.is_empty() {
+        Ok(())
+    } else {
+        Err(ToolError::new(format!(
+            "the scene was recalled, but {}",
+            words.join(" ")
+        )))
+    }
 }
 
 /// A snapshot document without its `meta` (the time it was taken).
