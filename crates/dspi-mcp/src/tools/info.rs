@@ -19,7 +19,8 @@ static GET_LIMITS: Tool = Tool {
     name: "dspi_get_limits",
     title: "Read the limits",
     description: "What holds this agent back on the device: the installer's limits profile (in \
-                  force or not, and its ranges), whether the app has the device read-only, the \
+                  force or not, and its ranges), the installer lock (and what passes while it is \
+                  locked), whether the app has the device read-only, the \
                   confirmation setting the user chose for agents (ask_everything, ask_risky, \
                   never_ask) and what agents may do. The limits and the user's speaker setup \
                   are refused, not asked about, whatever the setting. Only the user edits them.",
@@ -41,6 +42,7 @@ static GET_LIMITS: Tool = Tool {
             "device": call.device_text(),
             "limits": record(serde_json::to_value(&status), &[("detail", "note"), ("last_held", "notes")]),
             "profile": profile,
+            "installer_lock": policy::lock_json(&core.installer_lock_state()), // -- WP FUNC2c --
             "app_read_only": core.client_read_only(),
             "confirmation_setting": mode,
             "agent_may": call.agent_may(), // -- WP FEAT2 --

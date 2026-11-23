@@ -1000,7 +1000,12 @@ impl DspiCore {
     /// After a preset slot load (OD-P1j): read back already, hold what is
     /// outside the profile and report it in [`DspiCore::limits_status`].
     pub(crate) fn limits_after_load(&self) {
-        let _ = self.limits_enforce();
+        let (held, _) = self.limits_enforce();
+        // -- WP FUNC2c -- a load that held nothing leaves no older rows in
+        // `limits_status().last_held`: what an agent is told the load held
+        if held.is_empty() {
+            self.lock().limits.last_held.clear();
+        }
     }
 
     // -- WP P1CFIX -- N1

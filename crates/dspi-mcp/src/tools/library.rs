@@ -360,7 +360,9 @@ static PRESET_LOAD: Tool = Tool {
     description: "Load preset `slot`: every setting is replaced and the undo history ends. It \
                   may be held for the user's confirmation. A snapshot is filed first \
                   (before_snapshot_id) as the way back. A preset that would lower a tweeter's \
-                  high-pass is put back and refused.",
+                  high-pass is put back and refused. With an installer's limits profile, what \
+                  the profile held of the preset is in limits_held: tell the user, the stored \
+                  preset is unchanged.",
     class: ToolClass::Write,
     device: true,
     input_schema: || slot_schema(&["slot"]),
@@ -371,6 +373,27 @@ static PRESET_LOAD: Tool = Tool {
         let ((), snap) = wholesale_with(call, &what, &[slot], true, |c| c.load_preset(slot))?;
         let mut r = json!({"ok": true, "device": call.device_text(), "slot": slot});
         merge(&mut r, before_json(&snap));
+        // -- WP FUNC2c -- (FSTORY S7) the profile's hold after the load: an
+        // agent said "Lunch is loaded" while the profile had moved its tweeters
+        let core = call.core()?;
+        let n_in = core.get_state().num_input_channels;
+        let held: Vec<String> = core
+            .limits_status()
+            .last_held
+            .iter()
+            .map(|row| held_words(row, n_in))
+            .collect();
+        if !held.is_empty() {
+            merge(
+                &mut r,
+                json!({
+                    "limits_held": held,
+                    "limits_note": "The installer's limits profile held part of this preset \
+                                    (limits_held); the preset stored on the device is unchanged. \
+                                    Tell the user.",
+                }),
+            );
+        }
         Ok(r)
     },
 };
@@ -907,6 +930,52 @@ static AB_KEEP: Tool = Tool {
         Ok(r)
     },
 };
+
+// -- WP FUNC2c --
+/// A row of the limits hold (`eq.freq[9,20] 600 → 1000 Hz`, `out.gain[4] …`,
+/// `output 2: …`) in the app's words: `Out 2 crossover 1 frequency: 600 →
+/// 1000 Hz`. A row of another shape is kept as it is.
+pub(crate) fn held_words(row: &str, n_in: u8) -> String {
+    if let Some(rest) = row.strip_prefix("output ") {
+        return format!("Out {rest}");
+    }
+    let Some((path, value)) = row.split_once(' ') else {
+        return row.to_owned();
+    };
+    let Some((name, ix)) = path.strip_suffix(']').and_then(|p| p.split_once('[')) else {
+        return row.to_owned();
+    };
+    let ix: Vec<u16> = ix
+        .split(',')
+        .filter_map(|x| x.trim().parse().ok())
+        .collect();
+    fn field(f: &str) -> &str {
+        match f {
+            "freq" => "frequency",
+            "threshold" => "limiter threshold",
+            "on" => "limiter",
+            other => other,
+        }
+    }
+    let words = match (name.split_once('.'), ix.as_slice()) {
+        (Some(("eq", f)), [ch, b]) => {
+            let place = if *b >= 20 {
+                format!("crossover {}", b.saturating_sub(19))
+            } else {
+                format!("band {}", b.saturating_add(1))
+            };
+            if *ch >= u16::from(n_in) {
+                let out = ch.saturating_sub(u16::from(n_in)).saturating_add(1);
+                format!("Out {out} {place} {}", field(f))
+            } else {
+                format!("In {} {place} {}", ch.saturating_add(1), field(f))
+            }
+        }
+        (Some(("out" | "limit", f)), [o]) => format!("Out {} {}", o.saturating_add(1), field(f)),
+        _ => return row.to_owned(),
+    };
+    format!("{words}: {value}")
+}
 
 /// Put `extra`'s fields into the object `r`.
 pub(crate) fn merge(r: &mut Value, extra: Value) {

@@ -136,3 +136,11 @@ mod tests_wp_func2a;
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
 mod tests_wp_func2b;
+// -- WP FUNC2c --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
+mod tests_wp_func2c;
+// -- WP INTI --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
+mod tests_wp_inti;

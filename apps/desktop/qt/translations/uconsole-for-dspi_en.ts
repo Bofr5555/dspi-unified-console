@@ -970,6 +970,10 @@ What an AI agent does, and to what: &quot;Changing the gain: OUT3 Centre&quot;</
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Nothing has been changed yet. This replaces the settings as a whole and ends the undo history; the settings as they are now are kept as a snapshot first, to go back to.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Nothing has been changed yet. You can undo it afterwards in the agents&apos; activity.</source>
         <translation type="unfinished"></translation>
     </message>

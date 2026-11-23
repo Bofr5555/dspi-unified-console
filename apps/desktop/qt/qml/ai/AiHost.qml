@@ -103,8 +103,11 @@ Item {
         SheetText {
             objectName: "AiConfirmSheet.after"
             // -- WP FEATUI -- (FUNC1 section 4) sound cannot be undone: a test signal is not promised an undo
+            // -- WP FUNC2c -- (FSTORY S7) nor a preset load: it ends the undo history; the snapshot is the way back
             text: host.front && host.front.sound
                   ? qsTr("Nothing has played yet. Sound cannot be taken back once it plays; Stop Measuring in the agent strip ends it.")
+                  : host.front && host.front.wholesale
+                  ? qsTr("Nothing has been changed yet. This replaces the settings as a whole and ends the undo history; the settings as they are now are kept as a snapshot first, to go back to.")
                   : qsTr("Nothing has been changed yet. You can undo it afterwards in the agents' activity.")
         }
         SheetText {

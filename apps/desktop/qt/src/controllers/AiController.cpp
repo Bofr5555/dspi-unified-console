@@ -707,6 +707,7 @@ void AiController::readConfirmations() {
                      for (const QJsonValue &r : c.value(QLatin1String("risks")).toArray()) {
                          w.risks << str(r.toObject(), "what");
                          w.sound = w.sound || str(r.toObject(), "kind") == QLatin1String("test_signal");   // -- WP FEATUI --
+                         w.wholesale = w.wholesale || str(r.toObject(), "kind") == QLatin1String("recall");   // -- WP FUNC2c --
                          // -- WP LAY8 --
                          const QString label = riskLabel(str(r.toObject(), "kind"));
                          //: %1 is a kind of change ("Louder"), %2 the change ("Out 1 gain up from -12 dB to -3 dB")
@@ -739,6 +740,7 @@ QVariantList AiController::confirmations() const {
             { QStringLiteral("risks"), w.risks },
             { QStringLiteral("riskLines"), w.riskLines },   // -- WP LAY8 --
             { QStringLiteral("sound"), w.sound },           // -- WP FEATUI --
+            { QStringLiteral("wholesale"), w.wholesale },   // -- WP FUNC2c --
         });
     }
     return out;
