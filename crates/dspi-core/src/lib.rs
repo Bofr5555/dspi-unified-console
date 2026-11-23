@@ -103,8 +103,8 @@ mod monitor;
 mod notify;
 mod params;
 mod params_fx;
-mod presets;
 mod preset_guard; // -- WP INTI --
+mod presets;
 // -- WP CG4 --
 mod raw;
 mod rta;

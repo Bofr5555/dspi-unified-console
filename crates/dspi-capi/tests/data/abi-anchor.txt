@@ -936,6 +936,7 @@ bool dspi_fetch_subharm_headroom(struct FfiCore *core, float *out_db);
 bool dspi_fetch_subharm_meter(struct FfiCore *core, float *out);
 bool dspi_set_tube_param(struct FfiCore *core, uint8_t idx, float value);
 uint8_t dspi_load_preset(struct FfiCore *core, uint8_t slot);
+bool dspi_preset_load_notice(struct FfiCore *core, char *out_buf, uint32_t buf_len);
 bool dspi_set_preset_name(struct FfiCore *core, uint8_t slot, const char *name);
 bool dspi_get_preset_name(struct FfiCore *core, uint8_t slot, char *out_buf, uint32_t buf_len);
 bool dspi_get_preset_directory(struct FfiCore *core, struct PresetDirectory *out_dir);

@@ -4234,6 +4234,13 @@ bool dspi_set_tube_param(struct FfiCore *core, uint8_t idx, float value);
 uint8_t dspi_load_preset(struct FfiCore *core, uint8_t slot);
 
 /**
+ * What the last preset load's guard held (a tweeter muted) or could not put
+ * back (the master volume), in words for a notice, into `out_buf` of
+ * `buf_len` bytes; "" for nothing. Read once: the core then forgets it.
+ */
+bool dspi_preset_load_notice(struct FfiCore *core, char *out_buf, uint32_t buf_len);
+
+/**
  * Name preset `slot`. False for a null or non-UTF-8 name.
  */
 bool dspi_set_preset_name(struct FfiCore *core, uint8_t slot, const char *name);

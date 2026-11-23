@@ -5893,7 +5893,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_load_params() != 46764.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_load_preset() != 13181.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_load_preset() != 48938.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_max_delay_ms() != 14810.toShort()) {
@@ -11230,6 +11230,11 @@ public interface DspiCoreInterface {
      * (an empty slot changes nothing) still re-reads and succeeds.
      *
      * Errors: as [`DspiCore::save_preset_confirmed`], and the re-read's.
+     *
+     * -- WP INTI -- With a confirmed tweeter or midrange and the master
+     * volume independent of presets, the load runs silenced and what plays
+     * without its high-pass after it is held (muted); the module
+     * `preset_guard`, and [`DspiCore::preset_load_notice`].
      */
     fun `loadPreset`(`slot`: kotlin.UByte)
     
@@ -19827,6 +19832,11 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
      * (an empty slot changes nothing) still re-reads and succeeds.
      *
      * Errors: as [`DspiCore::save_preset_confirmed`], and the re-read's.
+     *
+     * -- WP INTI -- With a confirmed tweeter or midrange and the master
+     * volume independent of presets, the load runs silenced and what plays
+     * without its high-pass after it is held (muted); the module
+     * `preset_guard`, and [`DspiCore::preset_load_notice`].
      */
     @Throws(DspiException::class)override fun `loadPreset`(`slot`: kotlin.UByte)
         = 

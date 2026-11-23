@@ -5161,6 +5161,11 @@ interface DspiCoreApi : AutoCloseable {
      * (an empty slot changes nothing) still re-reads and succeeds.
      *
      * Errors: as [`DspiCore::save_preset_confirmed`], and the re-read's.
+     *
+     * -- WP INTI -- With a confirmed tweeter or midrange and the master
+     * volume independent of presets, the load runs silenced and what plays
+     * without its high-pass after it is held (muted); the module
+     * `preset_guard`, and [`DspiCore::preset_load_notice`].
      */
     @Throws(DspiException::class)
     fun loadPreset(slot: Int)

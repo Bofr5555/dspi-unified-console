@@ -217,57 +217,11 @@ impl DspiCore {
         let _lock = crate::limits::LockScope::allow(); // -- WP P1LK -- allowed while locked
         slot_in_range(slot)?;
         let guard = self.load_guard_begin();
-        let done = self.load_preset_unguarded(slot);
+        let done = load_preset_unguarded(self, slot);
         if let Some(g) = guard {
             self.load_guard_end(g, slot, done.is_ok());
         }
         done
-    }
-
-    /// [`DspiCore::load_preset`] without its guard.
-    fn load_preset_unguarded(&self, slot: u8) -> Result<()> {
-        let _lock = crate::limits::LockScope::allow(); // -- WP P1LK -- allowed while locked
-        let began = Instant::now(); // -- WP ECHO1 --
-        let lines = self.with_device_lock(LOAD_REASON, |inner| {
-            let before = inner.state.clone(); // -- WP P0M --
-            let confirmed = {
-                let mut w = inner.writable_conn()?;
-                w.conn().fresh_image = false;
-                // -- WP ECHO1 -- a whole image: an own echo of a write sent
-                // before it is older than the preset
-                w.conn().echo.whole_image_sent(Instant::now());
-                let sent = status(w.set_as_read(op::REQ_PRESET_LOAD, u16::from(slot))?)
-                    .and_then(|()| wait_for(w.conn(), |c| names_active(c, slot)));
-                w.conn().echo.whole_image_done(Instant::now());
-                sent?
-            };
-            // -- WP P0W -- the history before a load is gone with the state
-            journal(inner, "preset.load", &[slot], Value::Trigger);
-            connect::refresh_params_locked(inner)?;
-            if !refresh_directory(inner) && confirmed {
-                inner.state.active_preset_slot = slot;
-            }
-            capture_baseline_locked(inner);
-            // -- WP P0M -- what changed, for the event log
-            let names = inner.conn.as_ref().map(|c| c.source_names.to_vec());
-            Ok(changes(
-                &before,
-                &inner.state,
-                names.as_deref().unwrap_or(&[]),
-            ))
-        })?;
-        // -- WP P0M -- written once `Inner` is released
-        self.events.applied(
-            dspi_session::events::EventKind::Recall,
-            Some(slot),
-            &format!("Recalled preset {}", u16::from(slot).saturating_add(1)),
-            lines,
-        );
-        // -- WP P1LM -- the slot's stored values, read back, held to the
-        // limits profile (OD-P1j); reported in `limits_status`
-        self.limits_after_load();
-        self.whole_image_ended(began); // -- WP ECHO1 --
-        Ok(())
     }
 
     // -- WP P1TK --
@@ -480,6 +434,53 @@ impl DspiCore {
         }
         changes(&saved, &inner.state, &conn.source_names)
     }
+}
+
+/// [`DspiCore::load_preset`] without its guard (-- WP INTI --: outside the
+/// exported `impl`, which UniFFI would export).
+fn load_preset_unguarded(core: &DspiCore, slot: u8) -> Result<()> {
+    let _lock = crate::limits::LockScope::allow(); // -- WP P1LK -- allowed while locked
+    let began = Instant::now(); // -- WP ECHO1 --
+    let lines = core.with_device_lock(LOAD_REASON, |inner| {
+        let before = inner.state.clone(); // -- WP P0M --
+        let confirmed = {
+            let mut w = inner.writable_conn()?;
+            w.conn().fresh_image = false;
+            // -- WP ECHO1 -- a whole image: an own echo of a write sent
+            // before it is older than the preset
+            w.conn().echo.whole_image_sent(Instant::now());
+            let sent = status(w.set_as_read(op::REQ_PRESET_LOAD, u16::from(slot))?)
+                .and_then(|()| wait_for(w.conn(), |c| names_active(c, slot)));
+            w.conn().echo.whole_image_done(Instant::now());
+            sent?
+        };
+        // -- WP P0W -- the history before a load is gone with the state
+        journal(inner, "preset.load", &[slot], Value::Trigger);
+        connect::refresh_params_locked(inner)?;
+        if !refresh_directory(inner) && confirmed {
+            inner.state.active_preset_slot = slot;
+        }
+        capture_baseline_locked(inner);
+        // -- WP P0M -- what changed, for the event log
+        let names = inner.conn.as_ref().map(|c| c.source_names.to_vec());
+        Ok(changes(
+            &before,
+            &inner.state,
+            names.as_deref().unwrap_or(&[]),
+        ))
+    })?;
+    // -- WP P0M -- written once `Inner` is released
+    core.events.applied(
+        dspi_session::events::EventKind::Recall,
+        Some(slot),
+        &format!("Recalled preset {}", u16::from(slot).saturating_add(1)),
+        lines,
+    );
+    // -- WP P1LM -- the slot's stored values, read back, held to the
+    // limits profile (OD-P1j); reported in `limits_status`
+    core.limits_after_load();
+    core.whole_image_ended(began); // -- WP ECHO1 --
+    Ok(())
 }
 
 // ── The caller's lock ─────────────────────────────────────────────────

@@ -154,12 +154,12 @@ impl DspiCore {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::indexing_slicing)]
+#[allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]
 mod tests {
     use crate::DspiCore;
+    use crate::FilterParams;
     use crate::measure::MeasureRole;
     use crate::speaker_layout::{SpeakerLayout, SpeakerLayoutOutput};
-    use crate::FilterParams;
 
     thread_local! {
         /// A test's injected failure of the volume's return.
@@ -197,7 +197,11 @@ mod tests {
         let outputs = (0..core.get_state().num_output_channels)
             .map(|n| SpeakerLayoutOutput {
                 output: n,
-                role: if n == 1 { MeasureRole::High } else { MeasureRole::Full },
+                role: if n == 1 {
+                    MeasureRole::High
+                } else {
+                    MeasureRole::Full
+                },
                 speaker: "L".into(),
                 group: 0,
             })
@@ -232,14 +236,21 @@ mod tests {
         let st = core.get_state();
         assert_eq!(st.active_preset_slot, 8);
         assert!(st.output_muted[1], "the tweeter plays unprotected");
-        assert!((st.master_volume_db - -12.0).abs() < 0.01, "{}", st.master_volume_db);
+        assert!(
+            (st.master_volume_db - -12.0).abs() < 0.01,
+            "{}",
+            st.master_volume_db
+        );
         assert!(
             master_writes(&core).contains(&super::LOAD_GUARD_DB),
             "not silenced first: {:?}",
             master_writes(&core)
         );
         let n = core.preset_load_notice();
-        assert!(n.contains("Out 2 is muted") && n.contains("preset 9"), "{n}");
+        assert!(
+            n.contains("Out 2 is muted") && n.contains("preset 9"),
+            "{n}"
+        );
         assert_eq!(core.preset_load_notice(), "", "read once");
         // A protected preset: silenced too, nothing held, nothing to say.
         core.set_output_mute(1, false).unwrap();
