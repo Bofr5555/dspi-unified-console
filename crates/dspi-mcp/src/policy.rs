@@ -347,6 +347,20 @@ pub fn prejudge(
     // -- WP AIVIS -- a control the user took back, before anything of the plan
     // is sent (what is held for the user's word is asked there)
     let taken_back = lock(cell).taken_back.clone();
+    // -- WP FUNC2a -- nothing is asked while the user holds a control of the
+    // device: their Allow would meet the core's drag gate and do nothing
+    if matches!(verdict, Verdict::Ask(_))
+        && let Some((core, _)) = taken_back.0.as_ref()
+        && core.user_editing()
+    {
+        return Err(core_error(
+            cell,
+            DspiError::ConfirmationRequired {
+                code: USER_EDITING.into(),
+                msg: String::new(),
+            },
+        ));
+    }
     if verdict == Verdict::Pass
         && let Some((core, actor)) = taken_back.0
     {

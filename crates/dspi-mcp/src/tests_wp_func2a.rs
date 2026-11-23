@@ -9,10 +9,27 @@
 use dspi_core::FilterParams;
 use dspi_core::measure::MeasureRole;
 use dspi_core::speaker_layout::{SpeakerLayout, SpeakerLayoutOutput};
-use serde_json::json;
+use serde_json::{Value, json};
 
 use crate::policy::ConfirmMode;
 use crate::tests_wp_ffix::{demo, err, ok, server_of};
+use crate::{ClientId, Server};
+
+fn call(s: &mut Server, c: ClientId, tool: &str, args: Value) -> Value {
+    let params = json!({"name": tool, "arguments": args, "_meta": {
+        "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+        "io.modelcontextprotocol/clientCapabilities": {},
+        "io.modelcontextprotocol/clientInfo": {"name": "func2a-agent", "version": "1"},
+    }});
+    let r = s
+        .handle_value(
+            c,
+            0,
+            json!({"jsonrpc": "2.0", "id": 7, "method": "tools/call", "params": params}),
+        )
+        .unwrap();
+    r["result"].clone()
+}
 
 const LR4_HP: u8 = 35;
 
@@ -118,4 +135,46 @@ fn wp_func2a_the_crossover_tool_says_a_confirmed_tweeter_may_go_lower() {
         .to_owned();
     assert!(text.contains("also lower"), "{text}");
     assert!(!text.contains("refused on an output the user's speaker setup calls a tweeter"));
+}
+
+// S9: an agent's undo of its own -1 dB (a louder change, asked under
+// "risky") while the user held a control was asked; the user allowed it, and
+// then the drag gate refused it: the Allow did nothing. The drag gate now
+// comes before the question.
+#[test]
+fn wp_func2a_nothing_is_asked_while_the_user_holds_a_control() {
+    let (set, core) = demo("func2a-drag");
+    let mut s = server_of(&set, ConfirmMode::AskRisky);
+    let c = s.connect();
+    ok(
+        &mut s,
+        c,
+        "dspi_set_gain",
+        json!({"output": 0, "gain_db": -1}),
+    );
+    core.set_dragging(true);
+    let e = err(&mut s, c, "dspi_undo", json!({}));
+    assert!(e.contains("the user is editing"), "{e}");
+    let e = err(
+        &mut s,
+        c,
+        "dspi_set_gain",
+        json!({"output": 0, "gain_db": 0}),
+    );
+    assert!(e.contains("the user is editing"), "{e}");
+    assert_eq!(core.get_state().output_gain_db[0], -1.0);
+    // Let go: the louder change is asked again, as ever
+    core.set_dragging(false);
+    let r = call(
+        &mut s,
+        c,
+        "dspi_set_gain",
+        json!({"output": 0, "gain_db": 0}),
+    );
+    assert_eq!(r["isError"], json!(false), "{r}");
+    assert_eq!(
+        r["structuredContent"]["status"],
+        json!("awaiting_confirmation"),
+        "{r}"
+    );
 }
