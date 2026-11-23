@@ -177,7 +177,8 @@ void MeasureLoop::push(const dspi_capture::Block &b) {
         if (!isOk(MeasureSession::object(st))) emit pushRefused(st);
         return;
     }
-    if (!session.load() && !live.load() && !tune.load() && !rolloff.load()) {   // -- WP MCP5 -- the search too
+    if (!session.load() && !live.load() && !tune.load() && !rolloff.load() &&
+        !detect.load()) {   // -- WP MCP5 -- the search too; -- WP ADETQ -- and the detection
         // -- WP P5QUI2 -- the passive RTA's blocks (never beside a run: the
         // core ends the passive RTA when one starts)
         if (!passive.load()) return;
@@ -262,6 +263,13 @@ void MeasureLoop::tick() {
         if (!running) rolloff.store(false);
         if (due(&m_lastRolloff, &m_rolloffAt, st, "segment") || !running) emit rolloffState(st);
     }
+    // -- WP ADETQ -- the speaker detection: its tick drives its stages' sessions
+    if (detect.load()) {
+        const QByteArray st = once([&](char *b, uint32_t l) { return dspi_detect_tick(m_core, b, l); }, kStateBytes);
+        const bool running = MeasureSession::object(st).value(QLatin1String("running")).toBool();
+        if (!running) detect.store(false);
+        if (due(&m_lastDetect, &m_detectAt, st, "segmentHz") || !running) emit detectState(st);
+    }
     if (session.load() && !live.load()) {
         // The tune's runs are the tune tick's; this reads the session's state
         const bool tuneRuns = tune.load();
@@ -280,6 +288,7 @@ void MeasureLoop::finish() {
     if (live.exchange(false)) MeasureSession::reply([&](char *b, uint32_t l) { return dspi_measure_live_stop(m_core, b, l); });
     if (tune.exchange(false)) MeasureSession::reply([&](char *b, uint32_t l) { return dspi_measure_tune_stop(m_core, b, l); });
     if (rolloff.exchange(false)) MeasureSession::reply([&](char *b, uint32_t l) { return dspi_measure_rolloff_stop(m_core, b, l); });   // -- WP MCP5 --
+    if (detect.exchange(false)) MeasureSession::reply([&](char *b, uint32_t l) { return dspi_detect_stop(m_core, b, l); });   // -- WP ADETQ --
     if (session.exchange(false)) MeasureSession::reply([&](char *b, uint32_t l) { return dspi_measure_stop(m_core, b, l); });
     if (passive.exchange(false)) MeasureSession::reply([&](char *b, uint32_t l) { return dspi_measure_rta_passive_stop(m_core, b, l); });
     // -- WP ATQT -- the several-units session: one system.measure.abort
@@ -449,6 +458,7 @@ MeasureSession::MeasureSession(DeviceSession *session, MeasureController *owner)
         connect(m_loop, &MeasureLoop::pushRefused, this, [this](const QByteArray &json) { fail(failureText(object(json))); });
         connect(m_loop, &MeasureLoop::passiveFrame, this, &MeasureSession::onPassiveFrame);
         connect(m_loop, &MeasureLoop::rolloffState, this, &MeasureSession::onRolloffState);   // -- WP MCP5 --
+        connect(m_loop, &MeasureLoop::detectState, this, &MeasureSession::onDetectState);     // -- WP ADETQ --
         // The blocks go from the capture straight to the loop, in order
         connect(m_capture, &AudioCapture::block, m_loop, &MeasureLoop::push);
         // -- WP LAY5b -- it starts at wake()
@@ -513,7 +523,9 @@ MeasureSession::~MeasureSession() {
         m_thread->deleteLater();
         return;
     }
-    for (std::atomic<bool> *f : { &m_loop->live, &m_loop->tune, &m_loop->session, &m_loop->passive, &m_loop->system, &m_loop->rolloff }) f->store(false);
+    for (std::atomic<bool> *f : { &m_loop->live, &m_loop->tune, &m_loop->session, &m_loop->passive, &m_loop->system, &m_loop->rolloff,
+                                  &m_loop->detect })   // -- WP ADETQ --
+        f->store(false);
     connect(m_thread, &QThread::finished, m_thread, &QObject::deleteLater);
     m_thread->quit();
 }
@@ -577,11 +589,13 @@ void MeasureSession::stopForClose() {
         if (m_loop) {
             const bool live = m_loop->live.exchange(false), passive = m_loop->passive.exchange(false), system = m_loop->system.exchange(false);
             const bool rolloff = m_loop->rolloff.exchange(false);   // -- WP MCP5 --
+            const bool detect = m_loop->detect.exchange(false) || m_detectRunning;   // -- WP ADETQ --
             m_loop->session.store(false);
             const bool tuneRuns = m_tuneRunning;
             // On the worker, where the close (or the next device) is posted next
-            m_session->worker()->post([live, passive, system, tuneRuns, rolloff](FfiCore *c) {
+            m_session->worker()->post([live, passive, system, tuneRuns, rolloff, detect](FfiCore *c) {
                 if (rolloff) reply([&](char *b, uint32_t l) { return dspi_measure_rolloff_stop(c, b, l); });   // -- WP MCP5 --
+                if (detect) reply([&](char *b, uint32_t l) { return dspi_detect_stop(c, b, l); });   // -- WP ADETQ --
                 if (system) reply([&](char *b, uint32_t l) { return dspi_measure_system_stop(c, b, l); });
                 if (passive) reply([&](char *b, uint32_t l) { return dspi_measure_rta_passive_stop(c, b, l); });
                 if (live) reply([&](char *b, uint32_t l) { return dspi_measure_live_stop(c, b, l); });
@@ -1187,11 +1201,18 @@ void MeasureSession::stop() {
     // sends nothing (as the web's), unless the core says a run is active
     const bool passiveOnly = !playBlocker().isEmpty() && !m_state.value(QLatin1String("active")).toBool() && !tuneRuns;
     const bool passive = m_passiveOn || m_passiveStarting;
+    const bool detecting = m_detectRunning;   // -- WP ADETQ --
     onLoop(this,
-           [loop, tuneRuns, passiveOnly](FfiCore *c) {
+           [loop, tuneRuns, passiveOnly, detecting](FfiCore *c) {
                QByteArray live;
                // -- WP MCP5 -- the low-end search (its segment's session with it)
                if (loop->rolloff.exchange(false)) reply([&](char *b, uint32_t l) { return dspi_measure_rolloff_stop(c, b, l); });
+               // -- WP ADETQ -- the speaker detection: the user's Stop (the core records it);
+               // its last state comes from the loop's next tick, or here
+               if (loop->detect.exchange(false) || detecting) {
+                   const QByteArray st = reply([&](char *b, uint32_t l) { return dspi_detect_stop(c, b, l); }, kStateBytes);
+                   emit loop->detectState(st);
+               }
                if (loop->passive.exchange(false)) reply([&](char *b, uint32_t l) { return dspi_measure_rta_passive_stop(c, b, l); });
                if (loop->live.exchange(false)) live = reply([&](char *b, uint32_t l) { return dspi_measure_live_stop(c, b, l); });
                // The tune's runs (a proposal and an applied tune stay: its guard runs on)
@@ -1313,6 +1334,7 @@ bool MeasureSession::running() const {
     return m_state.value(QLatin1String("active")).toBool() || liveActive() || m_tuneRunning || m_passiveOn ||
            m_systemRunning ||   // -- WP ATQT --
            m_rolloffRunning ||  // -- WP MCP5 --
+           m_detectRunning ||   // -- WP ADETQ --
            (m_capture && m_capture->isRunning());
 }
 
@@ -1320,13 +1342,15 @@ QString MeasureSession::runningText() const {
     // -- WP MCP5 -- what an AI agent asked for says so
     if (!m_agentLabel.isEmpty()) {
         QString what;
-        if (m_rolloffRunning) what = tr("Finding an output's low end with the DSPi's generator.");
+        if (m_detectRunning) what = detectText();   // -- WP ADETQ --
+        else if (m_rolloffRunning) what = tr("Finding an output's low end with the DSPi's generator.");
         else if (m_tuneRunning) what = tr("The auto-tune's runs are playing the DSPi's generator.");
         else if (m_state.value(QLatin1String("active")).toBool()) what = tr("Measuring with the DSPi's generator.");
         //: %1 is "AI · " and the agent's name, %2 what plays
         if (!what.isEmpty()) return tr("Requested by %1: %2").arg(m_agentLabel, what);
     }
     if (m_systemRunning) return m_systemText;   // -- WP ATQT --
+    if (m_detectRunning) return detectText();   // -- WP ADETQ --
     if (m_passiveOn) return tr("The microphone is open for the passive RTA; nothing is played.");
     if (liveActive()) return tr("The live view is playing the DSPi's generator.");
     if (m_tuneRunning) return tr("The auto-tune's runs are playing the DSPi's generator.");
@@ -2195,7 +2219,8 @@ void MeasureSession::startForAgent(const QJsonObject &ticket, std::function<void
     // -- WP FEATUI -- an agent that names no calibration measures with this
     // app's (the microphone opened is the app's): the agents' SPL cap holds
     QJsonObject withMic = ticket;
-    if (!m_micDocument.isEmpty() && (loopWord == QLatin1String("session") || loopWord == QLatin1String("rolloff"))) {
+    if (!m_micDocument.isEmpty() && (loopWord == QLatin1String("session") || loopWord == QLatin1String("rolloff") ||
+                                     loopWord == QLatin1String("detect"))) {   // -- WP ADETQ --
         const bool wrapped = withMic.contains(QLatin1String("ticket"));
         QJsonObject inner = wrapped ? withMic.value(QLatin1String("ticket")).toObject() : withMic;
         QJsonObject setup = inner.value(QLatin1String("setup")).toObject();
@@ -2222,7 +2247,8 @@ void MeasureSession::startForAgent(const QJsonObject &ticket, std::function<void
         });
         return;
     }
-    if (loopWord != QLatin1String("session") && loopWord != QLatin1String("rolloff")) {
+    if (loopWord != QLatin1String("session") && loopWord != QLatin1String("rolloff") &&
+        loopWord != QLatin1String("detect")) {   // -- WP ADETQ --
         done(false, tr("The Measure view cannot run that."));
         return;
     }
@@ -2254,6 +2280,11 @@ void MeasureSession::startForAgent(const QJsonObject &ticket, std::function<void
                 m_rolloffRunning = true;
                 m_state = o.value(QLatin1String("session")).toObject();
                 m_loop->rolloff.store(true);
+            } else if (loopWord == QLatin1String("detect")) {   // -- WP ADETQ --
+                m_detectRunning = true;
+                m_detect = o;
+                m_state = o.value(QLatin1String("session")).toObject();
+                m_loop->detect.store(true);
             } else {
                 m_result.clear();
                 m_resultView.clear();
@@ -2308,4 +2339,168 @@ void MeasureSession::onRolloffState(const QByteArray &json) {
     }
     if (!isActive() && !text.isEmpty()) m_owner->report(this, text, res.isEmpty());
     setRunning();
+}
+
+// ---- -- WP ADETQ -- The speaker detection (AUTODES 1, 5.1) ---------------------------
+
+namespace {
+
+// "500 Hz", "2.5 kHz"
+QString hzWords(double hz) {
+    if (!std::isfinite(hz) || hz <= 0) return QString();
+    if (hz < 1000) return MeasureSession::tr("%1 Hz").arg(qRound(hz));
+    return MeasureSession::tr("%1 kHz").arg(QLocale().toString(hz / 1000.0, 'g', 3));
+}
+
+// "−50 dBFS", with a true minus sign as the risk texts have it
+QString dbfsWords(double db) {
+    if (!std::isfinite(db)) return QString();
+    QString n = QString::number(qRound(db));
+    n.replace(QLatin1Char('-'), QChar(0x2212));
+    return MeasureSession::tr("%1 dBFS").arg(n);
+}
+
+} // namespace
+
+QString MeasureSession::detectBlocker() const {
+    if (gone()) return tr("That device is closing.");
+    if (!playBlocker().isEmpty()) return playBlocker();
+    if (underWay()) return tr("Something already runs on this device: stop it first.");
+    return {};
+}
+
+void MeasureSession::startDetect() {
+    if (const QString why = detectBlocker(); !why.isEmpty()) {
+        fail(why);
+        return;
+    }
+    clearError();
+    const quint64 epoch = m_stopEpoch;
+    m_starting = true;
+    setRunning();
+    // A device not looked at yet sleeps (LAY5b): which microphone it has is
+    // known once the reads of its wake() are in, as for an agent's request
+    onLoop(this, [](FfiCore *) { return QByteArray(); }, [this, epoch](const QByteArray &) { openDetectMic(epoch); });
+}
+
+void MeasureSession::openDetectMic(quint64 epoch) {
+    openMic([this, epoch](bool ok, int rateHz) {
+        if (!ok || epoch != m_stopEpoch) {
+            m_starting = false;
+            closeMic();
+            if (ok) say(tr("Stopped in the app before it began."));
+            setRunning();
+            return;
+        }
+        // The detection's own levels and floor: nothing of the Measure tab's
+        // but where the microphone is and its calibration
+        const QString placement = m_placement == QLatin1String("headphones") || m_placement == QLatin1String("nearField")
+                                      ? m_placement
+                                      : QStringLiteral("listeningPosition");
+        QJsonObject setup{ { QStringLiteral("placement"), placement },
+                           { QStringLiteral("micDocument"), QString::fromUtf8(m_micDocument) },
+                           { QStringLiteral("captureRateHz"), rateHz } };
+        if (placement == QLatin1String("headphones")) setup.insert(QStringLiteral("coupler"), m_coupler);
+        const QByteArray text = compact(setup);
+        onLoop(this,
+               [text](FfiCore *c) { return once([&](char *b, uint32_t l) { return dspi_detect_start(c, text.constData(), b, l); }, kStateBytes); },
+               [this, epoch](const QByteArray &r) {
+                   m_starting = false;
+                   const QJsonObject o = object(r);
+                   if (!isOk(o)) {
+                       closeMic();
+                       fail(failureText(o));
+                       setRunning();
+                       return;
+                   }
+                   m_detectRunning = true;
+                   m_detect = o;
+                   m_state = o.value(QLatin1String("session")).toObject();
+                   m_loop->detect.store(true);
+                   if (auto *notices = Registrar::instance<NoticeCenter>()) notices->postKey(QStringLiteral("detect.started"));
+                   emit stateChanged();
+                   setRunning();
+                   // A Stop while it started: stopped at once
+                   if (epoch != m_stopEpoch) stop();
+               });
+    });
+}
+
+void MeasureSession::onDetectState(const QByteArray &json) {
+    const QJsonObject o = object(json);
+    if (o.isEmpty() || !o.contains(QLatin1String("stage"))) return;
+    m_detect = o;
+    m_state = o.value(QLatin1String("session")).toObject();
+    emit stateChanged();
+    if (o.value(QLatin1String("running")).toBool()) {
+        setRunning();
+        return;
+    }
+    if (!m_detectRunning) return;   // its end was said already
+    m_detectRunning = false;
+    closeMic();
+    detectEnded(o);
+    setRunning();
+}
+
+void MeasureSession::detectEnded(const QJsonObject &o) {
+    const QJsonObject detection = o.value(QLatin1String("detection")).toObject();
+    QString summary = detection.value(QLatin1String("summary")).toString().trimmed();
+    if (!summary.isEmpty() && !summary.endsWith(QLatin1Char('.'))) summary += QLatin1Char('.');
+    const bool done = str(o, "stage") == QLatin1String("done");
+    const QString who = m_agentLabel;
+    QString text;
+    if (done)
+        text = who.isEmpty()
+                   //: %1 the detection's summary ("2 tweeters, 2 woofers; nothing heard on Out 4.")
+                   ? tr("Speakers detected: %1 Check each role in Settings › Speakers, then confirm.").arg(summary)
+                   //: %1 is "AI · " and the agent's name, %2 the detection's summary
+                   : tr("Speakers detected, requested by %1: %2 Check each role in Settings › Speakers, then confirm.").arg(who, summary);
+    else {
+        const QString why = issueWords(o.value(QLatin1String("issue")).toObject());
+        //: %1 why it stopped (may be empty), %2 the detection's summary so far
+        text = tr("The speaker detection stopped%1. The outputs it did not finish are treated as tweeters. %2")
+                   .arg(why.isEmpty() ? QString() : QStringLiteral(": ") + why.chopped(why.endsWith(QLatin1Char('.')) ? 1 : 0), summary)
+                   .trimmed();
+    }
+    if (done) say(text);
+    else fail(text);
+    // Said where the person is: the layout's page has the rest
+    if (auto *notices = Registrar::instance<NoticeCenter>()) {
+        const QString line = isActive() ? text : tr("%1: %2").arg(m_session ? m_session->title() : QString(), text);
+        notices->postTagged(QStringLiteral("detect"), line, tr("Settings › Speakers…"), [] {
+            if (auto *sc = Registrar::instance<SpeakersController>()) sc->openSettings();
+        });
+    }
+    if (auto *sc = Registrar::instance<SpeakersController>()) sc->reload();
+}
+
+QString MeasureSession::detectText() const {
+    if (!m_detectRunning) return {};
+    const QJsonObject &d = m_detect;
+    const QJsonValue outV = d.value(QLatin1String("output"));
+    const QString out = outV.isDouble() ? outputName(outV.toInt()) : QString();
+    const QString stage = str(d, "stage");
+    const double floorHz = d.value(QLatin1String("floorHz")).toDouble();
+    const QString level = dbfsWords(d.value(QLatin1String("levelDbfs")).toDouble(qQNaN()));
+    if (out.isEmpty()) return tr("Detecting the speakers.");
+    //: %1 an output's name, %2 a frequency ("1 kHz")
+    if (stage == QLatin1String("ramp")) return tr("Detecting the speakers: %1, finding its level above %2.").arg(out, hzWords(floorHz));
+    //: %1 an output's name, %2 a frequency ("1 kHz"), %3 a level ("−30 dBFS")
+    if (stage == QLatin1String("shape")) return tr("Detecting the speakers: %1, playing %2–20 kHz at %3.").arg(out, hzWords(floorHz), level);
+    //: %1 an output's name, %2 a frequency ("500 Hz"), %3 a level ("−50 dBFS")
+    if (stage == QLatin1String("descent"))
+        return tr("Detecting the speakers: %1, playing from %2 at %3.").arg(out, hzWords(d.value(QLatin1String("segmentHz")).toDouble()), level);
+    //: %1 an output's name
+    return tr("Detecting the speakers: %1.").arg(out);
+}
+
+QString MeasureSession::detectStripText() const {
+    if (!m_detectRunning) return {};
+    const QJsonValue outV = m_detect.value(QLatin1String("output"));
+    const int total = m_detect.value(QLatin1String("outputsTotal")).toInt();
+    const int done = m_detect.value(QLatin1String("outputsDone")).toInt();
+    if (!outV.isDouble() || total <= 0) return tr("Detecting speakers");
+    //: The agent strip: %1 the output probed now, %2 its turn, %3 how many are probed
+    return tr("Detecting speakers: %1 (%2 of %3)").arg(outputName(outV.toInt())).arg(qMin(done + 1, total)).arg(total);
 }

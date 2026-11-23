@@ -71,8 +71,11 @@ Rectangle {
             objectName: "AiWorkBanner.grant"
             visible: strip.grant !== null
             textFormat: Text.PlainText
-            //: The strip: an AI agent may play test signals without asking for %1 ("9:41") more
-            text: strip.grant ? qsTr("Test signals allowed, %1 left").arg(strip.grant.left) : ""
+            text: !strip.grant ? ""
+                  //: The strip: an AI agent may play test signals and detect the speakers without asking for %1 ("9:41") more
+                  : strip.grant.detect ? qsTr("Test signals and speaker detection allowed, %1 left").arg(strip.grant.left)   // -- WP ADETQ --
+                  //: The strip: an AI agent may play test signals without asking for %1 ("9:41") more
+                  : qsTr("Test signals allowed, %1 left").arg(strip.grant.left)
             font: Theme.fontSmall
             color: Theme.text
         }

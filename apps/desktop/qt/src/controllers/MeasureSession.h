@@ -80,6 +80,9 @@ public:
     // -- WP MCP5 -- the low-end search (dspi_measure_rolloff_tick; its segments'
     // blocks to dspi_measure_capture_push)
     std::atomic<bool> rolloff{ false };
+    // -- WP ADETQ -- the speaker detection (dspi_detect_tick; its sessions'
+    // blocks to dspi_measure_capture_push)
+    std::atomic<bool> detect{ false };
 
     explicit MeasureLoop(FfiCore *core) : m_core(core) {}
     FfiCore *core() const { return m_core; }
@@ -109,6 +112,8 @@ signals:
     void systemState(const QByteArray &json);
     // -- WP MCP5 -- the low-end search's state (MeasureRolloffState)
     void rolloffState(const QByteArray &json);
+    // -- WP ADETQ -- the speaker detection's state (DetectState)
+    void detectState(const QByteArray &json);
 
 private:
     void tick();
@@ -125,6 +130,8 @@ private:
     qint64 m_systemAt = 0;     // -- WP ATQT --
     QByteArray m_lastRolloff;  // -- WP MCP5 --
     qint64 m_rolloffAt = 0;    // -- WP MCP5 --
+    QByteArray m_lastDetect;   // -- WP ADETQ --
+    qint64 m_detectAt = 0;     // -- WP ADETQ --
 };
 
 class MeasureSession : public QObject {
@@ -286,6 +293,20 @@ public:
     void startForAgent(const QJsonObject &ticket, std::function<void(bool started, const QString &note)> done);
     // "AI · name" while an agent's request runs here, "" otherwise
     QString agentLabel() const { return m_agentLabel; }
+
+    // ---- -- WP ADETQ -- The speaker detection (AUTODES) ----
+    // The app's own: the microphone as for start(), then dspi_detect_start
+    // with the chosen microphone's calibration; false (with error()) when it
+    // cannot begin. An agent's comes through startForAgent (loop "detect").
+    void startDetect();
+    // Why the app's own detection cannot start now, "" when it can
+    QString detectBlocker() const;
+    bool detecting() const { return m_detectRunning; }
+    // Where it stands in words: the Stop bar's ("Detecting the speakers: Out 3,
+    // playing from 500 Hz at −50 dBFS."), and the agent strip's shorter one
+    // ("Detecting speakers: Out 3 (1 of 2)"); "" while none runs
+    QString detectText() const;
+    QString detectStripText() const;
 
     // ---- The result ----
     void setOutputShown(int output, bool shown);
@@ -484,6 +505,12 @@ private:
     bool m_rolloffRunning = false;
     QString m_agentLabel;
     void onRolloffState(const QByteArray &json);
+    // -- WP ADETQ -- the speaker detection runs (the app's or an agent's), its last state
+    bool m_detectRunning = false;
+    QJsonObject m_detect;
+    void onDetectState(const QByteArray &json);
+    void detectEnded(const QJsonObject &state);
+    void openDetectMic(quint64 epoch);
 
     QByteArray m_result;
     QString m_resultFrom;

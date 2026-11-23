@@ -111,6 +111,13 @@ class AiController : public QObject {
     // microphone calibration that reads dB SPL (else it is refused); off, the
     // level ceiling holds
     Q_PROPERTY(bool agentSplCapOn READ agentSplCapOn WRITE setAgentSplCapOn NOTIFY settingsChanged)
+    // -- WP ADETQ -- Under "never ask", agents may detect the speakers
+    // (dspi_mcp_set_agent_detect; off by default, kept in the settings): the
+    // page shows detectWarning once before it turns on (AUTODES 4.3)
+    Q_PROPERTY(bool agentDetect READ agentDetect WRITE setAgentDetect NOTIFY settingsChanged)
+    // -- WP ADETQ -- The speaker detection's warning on the mechanism, as the
+    // agent's question has it (dspi-mcp's DETECT_WARNING)
+    Q_PROPERTY(QString detectWarning READ detectWarning CONSTANT)
     Q_PROPERTY(QVariantList rememberedDevices READ rememberedDevices NOTIFY rememberedChanged)
     // -- WP ODEC -- What the user allowed for a while (one question for an agent's
     // test signals on a device, ten minutes): [{ id, agent, device (its title),
@@ -166,6 +173,9 @@ public:
     void setAgentSplCap(int db);
     bool agentSplCapOn() const { return m_agentSplCapOn; }   // -- WP INTG --
     void setAgentSplCapOn(bool on);
+    bool agentDetect() const { return m_agentDetect; }   // -- WP ADETQ --
+    void setAgentDetect(bool on);
+    static QString detectWarning();
     QVariantList rememberedDevices() const { return m_remembered.toVariantList(); }
     Q_INVOKABLE void forgetRememberedDevices();
     // What the start reads: the remembered devices from the settings, handed to
@@ -366,6 +376,7 @@ private:
     QWaitCondition m_holdsDone;
     int m_holds = 0;
     bool m_agentSplCapOn = true;   // -- WP INTG --
+    bool m_agentDetect = false;    // -- WP ADETQ --
     void applySplCap();
     QJsonArray m_remembered;
     void remember();
@@ -395,10 +406,13 @@ private:
         bool sound = false;      // -- WP FEATUI -- it plays a test signal: nothing to undo
         bool wholesale = false;  // -- WP FUNC2c -- a preset load, a recall, an import: ends the undo history
         QJsonObject grant;       // -- WP ODEC -- what Allow grants beyond this call ({} for nothing)
+        bool detect = false;     // -- WP ADETQ -- it asks to detect the speakers
+        QString warning;         // -- WP ADETQ -- the server's warning on the mechanism, "" for none
         QDateTime ends;
         bool operator==(const Waiting &o) const { return id == o.id; }   // a question never changes
     };
     QList<Waiting> m_waiting;
+    QString grantText(const Waiting &w) const;   // -- WP ODEC --, ADETQ
     QSet<quint64> m_answered;   // answered here, not read as ended yet
     QJsonArray m_activity;      // oldest first, as the server gives it
     QHash<QString, QPair<QString, QString>> m_undo;   // row key: its undo state and note
@@ -450,7 +464,8 @@ private:
         quint64 id;
         QString agent, deviceId;
         QDateTime until;
-        bool operator==(const Grant &o) const { return id == o.id && until == o.until; }
+        bool detect = false;   // -- WP ADETQ -- it covers detecting the speakers too
+        bool operator==(const Grant &o) const { return id == o.id && until == o.until && detect == o.detect; }
     };
     QList<Grant> m_grants;
     void readGrants();

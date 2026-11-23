@@ -76,6 +76,18 @@ QJsonObject keepUnconfirmed(SmokeDriver &d, QJsonObject layout) {
     });
 }
 
+// -- WP ADETQ -- a layout's rows without whose word they are (ADET0's `source`:
+// a proposal's rows are suggestions, the confirmed ones the user's)
+QJsonArray rowsOf(const QJsonObject &layout) {
+    QJsonArray out;
+    for (const QJsonValue &v : layout.value(QLatin1String("outputs")).toArray()) {
+        QJsonObject o = v.toObject();
+        o.remove(QStringLiteral("source"));
+        out.append(o);
+    }
+    return out;
+}
+
 QString roleIn(const QJsonObject &layout, int output) {
     for (const QJsonValue &v : layout.value(QLatin1String("outputs")).toArray())
         if (v.toObject().value(QLatin1String("output")).toInt() == output) return v.toObject().value(QLatin1String("role")).toString();
@@ -182,7 +194,7 @@ void roleqSection(SmokeDriver &d) {
                 d.waitFor(5000, [&] { return sc->status() == QLatin1String("confirmed"); }));
         const QJsonObject kept = storedLayout(d);
         d.check(QStringLiteral("roleq: the core has it, confirmed, with the proposal's outputs"),
-                kept.value(QLatin1String("confirmedByUser")).toBool() && kept.value(QLatin1String("outputs")).toArray() == proposedOuts);
+                kept.value(QLatin1String("confirmedByUser")).toBool() && rowsOf(kept) == rowsOf(QJsonObject{ { QStringLiteral("outputs"), proposedOuts } }));   // -- WP ADETQ --
         // -- WP INT2 -- in the folder main.cpp names (MDQT1)
         QDirIterator files(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + QStringLiteral("/speaker-layouts"),
                            { QStringLiteral("speaker_layout.json") }, QDir::Files, QDirIterator::Subdirectories);
@@ -326,7 +338,7 @@ void roleqSection(SmokeDriver &d) {
     press(page ? d.item(QStringLiteral("SpeakersPage.confirm"), page) : nullptr);
     d.check(QStringLiteral("roleq: Confirm on the page clears the imported flag"),
             d.waitFor(5000, [&] { return sc->status() == QLatin1String("confirmed"); })
-                && storedLayout(d).value(QLatin1String("outputs")).toArray() == proposedOuts);
+                && rowsOf(storedLayout(d)) == rowsOf(QJsonObject{ { QStringLiteral("outputs"), proposedOuts } }));   // -- WP ADETQ --
     d.spin(100);
     d.check(QStringLiteral("roleq: and the banners go"), setupBanner && !setupBanner->isVisible() && pageBanner && !pageBanner->isVisible());
     d.check(QStringLiteral("roleq: the Measure rows follow the confirmed layout"), d.waitFor(3000, [&] { return rowRole(mc, out) == was; }));
