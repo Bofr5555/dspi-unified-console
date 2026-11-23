@@ -6,8 +6,9 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
 
 ## 0.14.1
 
-A fix release of the Qt desktop app (Windows, Linux and macOS), from a user's report on 0.14.0. Nothing else changes;
-the other clients stay at 0.14.0.
+A fix release of the Qt desktop app (Windows, Linux and macOS), from a user's report on 0.14.0, made from the 0.14.0
+tag with only these fixes. The app and its packages are 0.14.1; the Rust crates, Android, the Terminal, the web console
+and the hub are unchanged and stay at 0.14.0.
 
 ### Desktop (Qt)
 - Fixed: a number typed into a gain, delay or filter field went back to the old value when you clicked another field

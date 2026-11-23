@@ -4,7 +4,7 @@
 # (pacman updates it). Update pkgver and the sum with each release
 # (updpkgsums), then regenerate .SRCINFO (makepkg --printsrcinfo > .SRCINFO).
 pkgname=uconsole-for-dspi
-pkgver=0.14.0
+pkgver=0.14.1
 pkgrel=1
 pkgdesc='uConsole for DSPi: set up and control a DSPi audio processor'
 arch=('x86_64')

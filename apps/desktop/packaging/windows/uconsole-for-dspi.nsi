@@ -1,7 +1,7 @@
 ; Per-user installer for uConsole for DSPi on Windows (no administrator rights):
 ; installs to %LOCALAPPDATA%\Programs\uConsole for DSPi, adds a Start menu
 ; shortcut and an entry in Settings > Apps. Build on Linux or Windows with
-;   makensis -DVERSION=0.14.0 -DBUNDLE=<deployed folder> -DOUTFILE=<setup.exe> uconsole-for-dspi.nsi
+;   makensis -DVERSION=0.14.1 -DBUNDLE=<deployed folder> -DOUTFILE=<setup.exe> uconsole-for-dspi.nsi
 ; (packaging/windows/build-windows.sh does this).
 ;
 ; -- WP QP20 -- Every name here is "uConsole for DSPi": the uninstall key, the
