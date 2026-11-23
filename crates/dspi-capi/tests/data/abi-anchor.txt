@@ -2123,6 +2123,8 @@ bool dspi_mcp_set_active_device(struct FfiMcp *mcp, const char *id);
 int32_t dspi_mcp_relay_stdio(const char *config_json,
 void (*token_sink)(const char *token, void *user_data),
 void *user_data);
+uint32_t dspi_mcp_work(struct FfiMcp *mcp, char *buf, uint32_t len);
+uint32_t dspi_mcp_measure_log(struct FfiMcp *mcp, char *buf, uint32_t len);
 uint32_t dspi_mcp_measure_requests(struct FfiMcp *mcp, char *buf, uint32_t len);
 uint32_t dspi_mcp_measure_take(struct FfiMcp *mcp, uint64_t id, char *buf, uint32_t len);
 bool dspi_mcp_measure_report(struct FfiMcp *mcp, uint64_t id, bool started, const char *note);

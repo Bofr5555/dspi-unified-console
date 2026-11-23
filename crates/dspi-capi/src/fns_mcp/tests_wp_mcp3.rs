@@ -222,10 +222,18 @@ fn wp_mcp3_the_server_through_c() {
         reply(|b, l| dspi_mcp_status(mcp, b, l))["paused"],
         json!(true)
     );
+    // -- WP AIVIS -- said as paused, not as an error; what runs is listed
+    let paused = modern(&token, "dspi_list_devices");
+    assert_eq!(paused["result"]["isError"], json!(false));
     assert_eq!(
-        modern(&token, "dspi_list_devices")["result"]["isError"],
-        json!(true)
+        paused["result"]["structuredContent"]["status"],
+        json!("paused")
     );
+    let work = reply(|b, l| dspi_mcp_work(mcp, b, l));
+    assert_eq!(work["running"], json!(true), "{work}");
+    assert_eq!(work["calls"], json!([]), "{work}");
+    let log = reply(|b, l| dspi_mcp_measure_log(mcp, b, l));
+    assert_eq!(log, json!({"ok": true, "value": []}));
     dspi_mcp_pause(mcp, false);
     let bad = CString::new("no/such/id").unwrap();
     assert!(!dspi_mcp_set_active_device(mcp, bad.as_ptr()));
