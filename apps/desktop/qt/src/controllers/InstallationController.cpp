@@ -12,6 +12,7 @@
 #include <QJsonDocument>
 #include <QJsonValue>
 #include <QHash>                // -- WP FEATUI --
+#include <QSet>                 // -- WP INTG --
 #include <QRegularExpression>   // -- WP FEATUI --
 
 extern "C" {
@@ -391,8 +392,19 @@ void InstallationController::draftMoved() {
     // The units whose slots, as the hub keeps them, a zone's source replaces
     m_rerouted.clear();
     QHash<QString, QJsonValue> before;
-    for (const QJsonValue &v : m_draft.value(QLatin1String("base")).toObject().value(QLatin1String("units")).toArray())
-        before.insert(str(v.toObject(), "id"), v.toObject().value(QLatin1String("slots")));
+    const QJsonObject base = m_draft.value(QLatin1String("base")).toObject();
+    // -- WP INTG -- (review RE21) slots a zone's source set in the saved
+    // installation were never the unit's own
+    QSet<QString> sourced;
+    for (const QJsonValue &z : base.value(QLatin1String("zones")).toArray())
+        if (!str(z.toObject(), "source").isEmpty())
+            for (const QString &r : strings(z.toObject().value(QLatin1String("rooms")))) sourced.insert(r);
+    QSet<QString> zoneSet;
+    for (const QJsonValue &v : base.value(QLatin1String("units")).toArray()) {
+        const QJsonObject bu = v.toObject();
+        before.insert(str(bu, "id"), bu.value(QLatin1String("slots")));
+        if (isAlinkUnit(bu) && !str(bu, "room").isEmpty() && sourced.contains(str(bu, "room"))) zoneSet.insert(str(bu, "id"));
+    }
     for (const QString &id : m_unitIds) {
         const QJsonObject u = find(id);
         const QJsonValue was = before.value(id);
@@ -404,7 +416,7 @@ void InstallationController::draftMoved() {
                                        { QStringLiteral("name"), e.value(QStringLiteral("name")) },
                                        { QStringLiteral("zone"), zone },
                                        { QStringLiteral("source"), e.value(QStringLiteral("slotsSource")) },
-                                       { QStringLiteral("handMade"), was.isArray() } });
+                                       { QStringLiteral("handMade"), was.isArray() && !zoneSet.contains(id) } });
     }
     updateUnseen();
     emit draftChanged();

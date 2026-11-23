@@ -234,9 +234,11 @@ void installationSection(SmokeDriver &d) {
     d.spin(200);
     const QString notice = text(in(QStringLiteral("Installation.rerouted")));
     std::printf("smoke: featui: notice: %s\n", qPrintable(notice));
-    d.check("featui: the notice says whose own slots are replaced", inst->rerouted().size() == 3
-                                                                        && notice.contains(QLatin1String("Main left's own slots will be replaced: Inside plays Booth."))
-                                                                        && notice.contains(QLatin1String("Bar's own slots will be replaced")));
+    // -- WP INTG -- (review RE21) slots Inside's Music set were never the units' own: they follow
+    d.check("featui: the notice says the zone's units follow its new source", inst->rerouted().size() == 3
+                                                                                  && notice.contains(QLatin1String("Main left will play Booth's channels, as Inside does."))
+                                                                                  && notice.contains(QLatin1String("Bar will play Booth's channels"))
+                                                                                  && !notice.contains(QLatin1String("own slots will be replaced")));
     d.check("featui: Bar's slots follow, locked", text(in(QStringLiteral("Installation.slots.D"))) == QLatin1String("8 9 - - - - - -")
                                                       && text(in(QStringLiteral("Installation.slotsOwner.D"))) == QLatin1String("Set by Inside, which plays Booth"));
     // The terrace joins the zone: Terrace's hand-made slots go too

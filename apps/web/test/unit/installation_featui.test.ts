@@ -79,8 +79,9 @@ test("wp_featui the notice: hand-made slots a zone's source replaces, names clea
   model.units[0]!.slots = s(8, 9);
   model.units[1]!.slots = s(8, 9);
   const rows = rerouted({ revision: 1, base, model });
+  // -- WP INTG -- (review RE3) Left's slots were Inside's (Music), not its own: said as following
   assert.deepEqual(rows, [
-    { id: "A", name: "Left", zone: "Inside", source: "Booth", handMade: true },
+    { id: "A", name: "Left", zone: "Inside", source: "Booth", handMade: false },
     { id: "D", name: "Bar", zone: "Inside", source: "Booth", handMade: true },
   ]);
   // A unit with no slots of its own before is said as following, not as replaced

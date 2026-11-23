@@ -405,7 +405,7 @@ export function rerouted(draft: InstallationDraft): Rerouted[] {
     if (!was || JSON.stringify(was.slots ?? null) === JSON.stringify(u.slots ?? null)) continue;
     const owner = slotsOwner(draft.model, u);
     if (!owner) continue;
-    out.push({ id: u.id, name: cleanText(u.name || u.id), zone: owner.zone, source: owner.source, handMade: Array.isArray(was.slots) });
+    out.push({ id: u.id, name: cleanText(u.name || u.id), zone: owner.zone, source: owner.source, handMade: Array.isArray(was.slots) && !slotsOwner(draft.base, was) });
   }
   return out;
 }

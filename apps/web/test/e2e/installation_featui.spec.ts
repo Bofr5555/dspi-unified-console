@@ -161,11 +161,13 @@ test.describe("FEATUI: sources, slots, programme sources and scenes; a zone's vo
     await expect(terraceSlots).toHaveValue("4 5 - - - - - -");
     await expect(inst.getByRole("alert", { name: "Slots replaced" })).toHaveCount(0);
 
-    // Inside plays Booth: the notice names the units whose own slots are replaced.
+    // Inside plays Booth: the units whose slots Inside's Music set follow it (-- WP INTG -- review RE3:
+    // they had no slots of their own to replace).
     await inst.getByLabel("Zone Inside").getByRole("combobox", { name: "Source of Inside" }).selectOption({ label: "Booth" });
     const notice = inst.getByRole("alert", { name: "Slots replaced" });
-    await expect(notice).toContainText("Main left's own slots will be replaced: Inside plays Booth.");
-    await expect(notice).toContainText("Bar's own slots will be replaced");
+    await expect(notice).toContainText("Main left will play Booth's channels, as Inside does.");
+    await expect(notice).toContainText("Bar will play Booth's channels");
+    await expect(notice).not.toContainText("own slots will be replaced");
     await expect(bar.getByLabel("Channels on the inputs of Bar")).toHaveValue("8 9 - - - - - -");
     // The terrace joins Inside: Terrace is routed too, and its slots are no longer its own.
     await inst.getByLabel("Zone Inside").getByRole("checkbox", { name: "Terrace" }).check();
