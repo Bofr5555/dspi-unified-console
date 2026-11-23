@@ -1977,6 +1977,14 @@ uint32_t dspi_installation_save(struct FfiCore *core,
 const char *draft_json,
 char *buf,
 uint32_t len);
+uint32_t dspi_system_volume_plan(struct FfiCore *core,
+const char *ask_json,
+char *buf,
+uint32_t len);
+uint32_t dspi_system_volume_set(struct FfiCore *core,
+const char *plan_json,
+char *buf,
+uint32_t len);
 bool dspi_link_browse_start(struct FfiCore *core,
 void (*callback)(void *user_data),
 void *user_data,
@@ -2131,4 +2139,8 @@ const char *ticket_json,
 uint32_t rate_hz,
 char *buf,
 uint32_t len);
+bool dspi_mcp_set_known_devices(struct FfiMcp *mcp, const char *devices_json);
+uint32_t dspi_mcp_device_requests(struct FfiMcp *mcp, char *buf, uint32_t len);
+uint32_t dspi_mcp_device_take(struct FfiMcp *mcp, uint64_t id, char *buf, uint32_t len);
+bool dspi_mcp_device_report(struct FfiMcp *mcp, uint64_t id, bool done, const char *note);
 #endif
