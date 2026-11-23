@@ -376,4 +376,7 @@ Rectangle {
 
     Accessible.role: Accessible.Grouping
     Accessible.name: qsTr("%1 settings").arg(outputName)
+
+    // -- WP AIVIS -- an agent changed it just now
+    AiTouched { objectName: "OutputCard." + card.output + ".touched"; path: "out."; indices: [card.output] }
 }

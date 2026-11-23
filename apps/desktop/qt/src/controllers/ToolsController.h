@@ -199,6 +199,9 @@ private:
     void limiterWrite(const QString &what, std::function<bool(FfiCore *)> setter);
     bool limiterOutput(int output) const;
     void fetchHeadroom();
+public:
+    void readHeadroom() { fetchHeadroom(); }   // -- WP AIVIS -- after an agent's change
+private:
     void fetchHeadroom(DeviceSession *session, const StatePtr &st);
     void updatePolls();
     void updateGlow();

@@ -122,6 +122,12 @@ pub struct SystemModel {
     /// it raises the issue `usb_start_offsets_changed` instead.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub keep_usb_aligned: bool,
+    // -- WP FEAT1 --
+    /// Where the programme comes from: which computer, box or service feeds
+    /// which unit input or sender channel. A description for people and
+    /// agents; the hub writes nothing from it.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub programme_sources: Vec<ProgrammeSource>,
 }
 
 impl Default for SystemModel {
@@ -141,6 +147,7 @@ impl Default for SystemModel {
             units: Vec::new(),
             scenes: Vec::new(),
             keep_usb_aligned: false,
+            programme_sources: Vec::new(), // -- WP FEAT1 --
         }
     }
 }
@@ -503,6 +510,72 @@ pub struct SceneAction {
     /// The op's `value`: dB x 100, samples.
     #[serde(default)]
     pub value: i16,
+    // -- WP FEAT1 --
+    /// The `source` op's source: the zone named by the target plays it from
+    /// then on (the hub stores it and writes the zone's units' slots at once,
+    /// not at the frame). None for every other op.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+}
+
+// -- WP FEAT1 --
+/// The scene op that switches a zone's source ([`SceneAction::source`]). Not
+/// an apply op: the firmware has no slots op, so the hub stores the zone's
+/// source and writes its units' slots itself.
+pub const SCENE_OP_SOURCE: &str = "source";
+
+// -- WP FEAT1 --
+/// The matrix inputs a unit's slots fill ([`Unit::slots`]), and the inputs a
+/// programme source may name on a unit.
+pub const UNIT_INPUTS: usize = 8;
+
+// -- WP FEAT1 --
+/// How a programme reaches the installation ([`ProgrammeSource::kind`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProgrammeKind {
+    /// A computer playing to a unit over USB (the unit is its sound card).
+    ComputerUsb,
+    /// A box into a unit's S/PDIF input (a streamer, a TV).
+    Spdif,
+    /// An analogue source into a unit's ADC (I2S) input.
+    Analogue,
+    /// Into the audio link sender's channels (the computer it is attached to).
+    AlinkSender,
+}
+
+impl ProgrammeKind {
+    /// In words.
+    pub fn words(self) -> &'static str {
+        match self {
+            Self::ComputerUsb => "computer over USB",
+            Self::Spdif => "S/PDIF",
+            Self::Analogue => "analogue",
+            Self::AlinkSender => "audio link sender",
+        }
+    }
+}
+
+// -- WP FEAT1 --
+/// A programme source: what plays into the installation, and where it goes
+/// in. Stored only: it routes nothing (the zones' sources and the units'
+/// slots do).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProgrammeSource {
+    /// Unique among every element.
+    pub id: String,
+    /// What people call it ("Plex on the HTPC", "Lounge streamer").
+    #[serde(default)]
+    pub name: String,
+    /// How it comes in.
+    pub kind: ProgrammeKind,
+    /// The unit it plays into, or (`alink_sender`) the sender.
+    pub feeds: String,
+    /// The unit's inputs it takes (below [`UNIT_INPUTS`]), or the sender's
+    /// audio link channels (below 64), from 0, in its channel order.
+    #[serde(default)]
+    pub inputs: Vec<u8>,
 }
 
 /// The apply op a scene action names; `None` for an unknown one, `cancel_all`
@@ -539,6 +612,9 @@ pub enum Kind {
     Unit,
     /// A [`Scene`].
     Scene,
+    // -- WP FEAT1 --
+    /// A [`ProgrammeSource`].
+    Programme,
 }
 
 /// Why a model was not taken.
@@ -557,7 +633,16 @@ impl Invalid {
     /// (`unit A: ...`, `id "A" is used twice`, `A: its feed ...`); `None`
     /// for the model as a whole (its version, rate, sizes, a serial).
     pub fn subject(&self) -> Option<String> {
-        const KINDS: [&str; 6] = ["unit ", "zone ", "group ", "source ", "fan-out ", "scene "];
+        // -- WP FEAT1 -- "programme source " before "source "
+        const KINDS: [&str; 7] = [
+            "unit ",
+            "zone ",
+            "group ",
+            "programme source ",
+            "source ",
+            "fan-out ",
+            "scene ",
+        ];
         let m = self.0.as_str();
         if let Some(rest) = m.strip_prefix("id \"") {
             return rest.split('"').next().map(str::to_owned);
@@ -625,6 +710,10 @@ impl SystemModel {
         }
         for x in &self.scenes {
             m.insert(x.id.as_str(), Kind::Scene);
+        }
+        // -- WP FEAT1 --
+        for x in &self.programme_sources {
+            m.insert(x.id.as_str(), Kind::Programme);
         }
         m
     }
@@ -727,6 +816,7 @@ impl SystemModel {
         count_ok("fanOuts", &self.fan_outs)?;
         count_ok("units", &self.units)?;
         count_ok("scenes", &self.scenes)?;
+        count_ok("programmeSources", &self.programme_sources)?; // -- WP FEAT1 --
 
         let mut ids = BTreeSet::new();
         let all_ids = self
@@ -739,7 +829,9 @@ impl SystemModel {
             .chain(self.senders.iter().map(|x| (&x.id, &x.name)))
             .chain(self.fan_outs.iter().map(|x| (&x.id, &x.name)))
             .chain(self.units.iter().map(|x| (&x.id, &x.name)))
-            .chain(self.scenes.iter().map(|x| (&x.id, &x.name)));
+            .chain(self.scenes.iter().map(|x| (&x.id, &x.name)))
+            // -- WP FEAT1 --
+            .chain(self.programme_sources.iter().map(|x| (&x.id, &x.name)));
         for (id, name) in all_ids {
             if id.is_empty() || id.contains(':') || id == "all" {
                 return bad(format!("id {id:?}: not empty, no ':', not \"all\""));
@@ -910,45 +1002,164 @@ impl SystemModel {
             }
         }
         for s in &self.scenes {
-            if s.actions.len() > MAX_SCENE_ACTIONS {
+            self.validate_scene(s)?; // -- WP FEAT1 -- (moved, for the draft's edits)
+        }
+        // -- WP FEAT1 --
+        for p in &self.programme_sources {
+            self.validate_programme(p)?;
+        }
+        Ok(())
+    }
+}
+
+// -- WP FEAT1 --
+impl SystemModel {
+    /// Check one scene: its size, each op and its arguments, the targets, no
+    /// unit given more than its queue, and each `source` op's routing
+    /// ([`Self::zone_slots`]). [`Self::validate`] runs it on every scene;
+    /// the clients' draft runs it on the scene an edit makes.
+    pub fn validate_scene(&self, s: &Scene) -> Result<(), Invalid> {
+        if s.actions.len() > MAX_SCENE_ACTIONS {
+            return bad(format!(
+                "scene {}: at most {MAX_SCENE_ACTIONS} actions",
+                s.id
+            ));
+        }
+        let mut per_unit: BTreeMap<&str, usize> = BTreeMap::new();
+        for a in &s.actions {
+            if a.op == SCENE_OP_SOURCE {
+                let Some(zone) = a.target.strip_prefix("zone:") else {
+                    return bad(format!(
+                        "scene {}: a source op targets a zone (zone:<id>), not {:?}",
+                        s.id, a.target
+                    ));
+                };
+                let Some(source) = a.source.as_deref() else {
+                    return bad(format!("scene {}: a source op names its source", s.id));
+                };
+                if a.arg != 0 || a.value != 0 {
+                    return bad(format!("scene {}: a source op takes no arg or value", s.id));
+                }
+                self.zone_slots(zone, source)
+                    .map_err(|e| Invalid(format!("scene {}: {}", s.id, e.0)))?;
+                continue;
+            }
+            if a.source.is_some() {
                 return bad(format!(
-                    "scene {}: at most {MAX_SCENE_ACTIONS} actions",
-                    s.id
+                    "scene {}: only a source op names a source ({} does not)",
+                    s.id, a.op
                 ));
             }
-            let mut per_unit: BTreeMap<&str, usize> = BTreeMap::new();
-            for a in &s.actions {
-                let Some(op) = scene_op(&a.op) else {
-                    return bad(format!("scene {}: op {:?}", s.id, a.op));
-                };
-                let req = ApplyRequest {
-                    frame: 0,
-                    op,
-                    arg: a.arg,
-                    value: a.value,
-                };
-                if !req.args_valid() {
+            let Some(op) = scene_op(&a.op) else {
+                return bad(format!("scene {}: op {:?}", s.id, a.op));
+            };
+            let req = ApplyRequest {
+                frame: 0,
+                op,
+                arg: a.arg,
+                value: a.value,
+            };
+            if !req.args_valid() {
+                return bad(format!(
+                    "scene {}: {} with arg {} and value {} (extension_channel_spec.md 2.8.7)",
+                    s.id, a.op, a.arg, a.value
+                ));
+            }
+            let Some(units) = self.resolve_target(&a.target) else {
+                return bad(format!("scene {}: target {:?}", s.id, a.target));
+            };
+            for u in units {
+                let n = per_unit.entry(&u.id).or_default();
+                *n = n.saturating_add(1);
+                if *n > MAX_OPS_PER_UNIT {
                     return bad(format!(
-                        "scene {}: {} with arg {} and value {} (extension_channel_spec.md 2.8.7)",
-                        s.id, a.op, a.arg, a.value
+                        "scene {}: unit {} gets more than {MAX_OPS_PER_UNIT} ops (its queue)",
+                        s.id, u.id
                     ));
-                }
-                let Some(units) = self.resolve_target(&a.target) else {
-                    return bad(format!("scene {}: target {:?}", s.id, a.target));
-                };
-                for u in units {
-                    let n = per_unit.entry(&u.id).or_default();
-                    *n = n.saturating_add(1);
-                    if *n > MAX_OPS_PER_UNIT {
-                        return bad(format!(
-                            "scene {}: unit {} gets more than {MAX_OPS_PER_UNIT} ops (its queue)",
-                            s.id, u.id
-                        ));
-                    }
                 }
             }
         }
         Ok(())
+    }
+
+    /// Check one programme source: what it feeds is a unit (a sender for
+    /// `alink_sender`), and its inputs are that element's, each once.
+    pub fn validate_programme(&self, p: &ProgrammeSource) -> Result<(), Invalid> {
+        let kinds = self.kinds();
+        let (want, what, max) = match p.kind {
+            ProgrammeKind::AlinkSender => (Kind::Sender, "a sender", ALINK_MAX_CHANNELS),
+            _ => (
+                Kind::Unit,
+                "a unit",
+                u8::try_from(UNIT_INPUTS).unwrap_or(u8::MAX),
+            ),
+        };
+        if kinds.get(p.feeds.as_str()) != Some(&want) {
+            return bad(format!(
+                "programme source {}: it feeds {:?}, which is not {what}",
+                p.id, p.feeds
+            ));
+        }
+        let mut seen = BTreeSet::new();
+        if p.inputs.len() > usize::from(max)
+            || p.inputs.iter().any(|i| *i >= max || !seen.insert(*i))
+        {
+            return bad(format!(
+                "programme source {}: inputs below {max}, each once",
+                p.id
+            ));
+        }
+        Ok(())
+    }
+
+    /// The slots a source gives a unit: its channels on the unit's matrix
+    /// inputs in order, the other inputs silent.
+    pub fn source_slots(source: &Source) -> Vec<u8> {
+        let mut slots = source.channels.clone();
+        slots.resize(UNIT_INPUTS, ALINK_SLOT_SILENT);
+        slots
+    }
+
+    /// What zone `zone` playing `source` routes: each of the zone's units on
+    /// the audio link with the slots [`Self::source_slots`] gives it, in
+    /// model order. USB-direct and S/PDIF units take no slots and are left
+    /// out. Refused for a zone or source the model lacks, a source with no
+    /// channels or more than a unit's [`UNIT_INPUTS`], and a unit that hears
+    /// another sender than the source's.
+    pub fn zone_slots(&self, zone: &str, source: &str) -> Result<Vec<(String, Vec<u8>)>, Invalid> {
+        let Some(z) = self.zones.iter().find(|z| z.id == zone) else {
+            return bad(format!("no zone {zone:?}"));
+        };
+        let Some(s) = self.sources.iter().find(|s| s.id == source) else {
+            return bad(format!("no source {source:?}"));
+        };
+        if s.channels.is_empty() {
+            return bad(format!("source {}: it has no channels to play", s.id));
+        }
+        if s.channels.len() > UNIT_INPUTS {
+            return bad(format!(
+                "source {}: {} channels, and a unit takes {UNIT_INPUTS}",
+                s.id,
+                s.channels.len()
+            ));
+        }
+        let slots = Self::source_slots(s);
+        let mut out = Vec::new();
+        for u in self
+            .alink_units()
+            .filter(|u| u.room.as_ref().is_some_and(|r| z.rooms.contains(r)))
+        {
+            if let (Some(want), Some((heard, _))) = (s.sender.as_deref(), self.path_to(&u.id))
+                && heard != want
+            {
+                return bad(format!(
+                    "unit {}: it hears sender {heard:?}, and source {} is on sender {want:?}",
+                    u.id, s.id
+                ));
+            }
+            out.push((u.id.clone(), slots.clone()));
+        }
+        Ok(out)
     }
 }
 

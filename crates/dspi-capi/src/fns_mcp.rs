@@ -46,7 +46,8 @@
 //! `dspi_mcp_start` binds and `dspi_mcp_stop` waits for the listening threads,
 //! briefly, and puts the agents' timed previews back. The listener runs on the server's
 //! threads, or inside the call that caused the event (`dspi_mcp_add_client`,
-//! `dspi_mcp_revoke`, `dspi_mcp_pairing_answer`: `clientsChanged`), with none
+//! `dspi_mcp_revoke`, `dspi_mcp_pairing_answer`: `clientsChanged`;
+//! -- WP AIVIS -- `dspi_mcp_pause`: `work`), with none
 //! of this handle's state locked: it may call every function here but
 //! `dspi_mcp_set_listener` and `dspi_mcp_free`, which are refused. It must not
 //! wait for another thread that sets the listener.
@@ -82,7 +83,9 @@ pub const MCP_REPLY_MIN: u32 = 1024;
 /// "name","code"}`, `{"event":"pairingEnded","id","outcome"}` (`paired`,
 /// `denied`, `expired`), `{"event":"clientsChanged"}`,
 /// `{"event":"confirmationsChanged"}` and `{"event":"activity"}` (an agent
-/// called a tool) (the last two -- WP MCP4 --).
+/// called a tool) (the last two -- WP MCP4 --), `{"event":"measureRequests"}`
+/// and `{"event":"work"}` (what the agents have running changed:
+/// `dspi_mcp_work`, -- WP AIVIS --).
 pub type DspiMcpListener = extern "C" fn(event_json: *const c_char, user_data: *mut c_void);
 
 /// The relay's token callback: a new token to keep, or null to forget the
@@ -125,6 +128,9 @@ pub struct FfiMcp {
     run: AtomicU64,
     /// The earlier runs' activity, oldest first.
     past: Mutex<Vec<Value>>,
+    // -- WP FEAT2 --
+    /// The devices the app remembers the user opened.
+    known: Mutex<Value>,
 }
 
 /// The most activity entries kept of earlier runs.
@@ -260,7 +266,12 @@ impl FfiMcp {
             .get("measuring")
             .and_then(Value::as_bool)
             .unwrap_or(false);
+        // -- WP FEAT2 -- the app takes the agents' requests to open devices
+        server_config.opening = cfg.get("opening").and_then(Value::as_bool).unwrap_or(false);
+        // -- WP FEAT3 -- dspi_get_host_audio reads this computer's audio
+        server_config.host_audio = Some(dspi_mcp::host_audio::system());
         let mut server = Server::new(Arc::clone(&self.set), server_config);
+        server.set_known_devices(&lock(&self.known));
         server.set_active_device(lock(&self.active).clone());
         let listener = Arc::clone(&self.listener);
         let on_event: Listener = Arc::new(move |e: &Event| {
@@ -314,6 +325,7 @@ pub extern "C" fn dspi_mcp_new(set: *const FfiCoreSet) -> *mut FfiMcp {
             autoeq: Mutex::new(None),
             run: AtomicU64::new(0),
             past: Mutex::new(Vec::new()),
+            known: Mutex::new(Value::Null),
         }))
     })
 }
@@ -337,7 +349,9 @@ pub extern "C" fn dspi_mcp_free(mcp: *mut FfiMcp) {
 /// "<the app's folder>", "appVersion": "0.15.0", "templateDir": "<the user's
 /// templates>", "measuring": true}`, each optional (without a folder the
 /// clients last only for this run; -- WP MCP5 -- `measuring`: the app runs
-/// the agents' measurement requests, `dspi_mcp_measure_*`). Reply `{ok, port,
+/// the agents' measurement requests, `dspi_mcp_measure_*`; -- WP FEAT2 --
+/// `opening`: it takes their requests to open and close devices,
+/// `dspi_mcp_device_*`). Reply `{ok, port,
 /// addresses}`; code `running` when it runs already, `io` when the port is in
 /// use on `127.0.0.1` or on `::1`, `store` when the clients' file is damaged (it is left as it is).
 ///
@@ -466,7 +480,7 @@ pub extern "C" fn dspi_mcp_pairing_answer(mcp: *mut FfiMcp, request: u64, allow:
     })
 }
 
-/// Pause the agents (their tool calls fail with "paused by the user" and
+/// Pause the agents (their tool calls answer `status: "paused"` and
 /// change nothing) or resume them. Kept across stop and start.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_mcp_pause(mcp: *mut FfiMcp, paused: bool) {
@@ -683,6 +697,47 @@ mod tests_wp_mcp4;
 #[path = "fns_mcp/tests_wp_mcp5.rs"]
 mod tests_wp_mcp5;
 
+// -- WP AIVIS --
+/// What the agents have running now, for a working strip: `{ok, running,
+/// calls: [{id, client_name, tool, title, write, device, at_unix_ms, output?,
+/// input?, channel?, band?, slot?}], last (the newest call, done or not, or
+/// null), jobs: [{request_id, client_name, device, kind, loop, what, state,
+/// ...}] (the measurement requests that are open or run), guards: [{device,
+/// client_name}] (the agents' timed previews)}`. The listener gets `work` when
+/// it changes. Never waits for an agent's call: the UI's thread may call it.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_mcp_work(mcp: *mut FfiMcp, buf: *mut c_char, len: u32) -> u32 {
+    with_mcp(mcp, 0, |m| {
+        let mut v = m.server().map_or_else(
+            || json!({"running": false, "calls": [], "last": null, "jobs": [], "guards": []}),
+            |s| {
+                let mut w = s.work();
+                if let Some(o) = w.as_object_mut() {
+                    o.insert("running".into(), json!(true));
+                }
+                w
+            },
+        );
+        if let Some(o) = v.as_object_mut() {
+            o.insert("ok".into(), json!(true));
+        }
+        copy_text(&v.to_string(), buf, len)
+    })
+}
+
+/// The newest 32 measurement requests, ended ones included, with how they
+/// ended (`note`) and whether the user disturbed them (`disturbed`): `{ok,
+/// value: [...]}`. Empty while stopped. Waits for an agent's call in progress.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_mcp_measure_log(mcp: *mut FfiMcp, buf: *mut c_char, len: u32) -> u32 {
+    with_mcp(mcp, 0, |m| {
+        let rows = m
+            .server()
+            .map_or_else(Vec::new, |s| s.with_server(|s| s.measure_log()));
+        copy_text(&json!({"ok": true, "value": rows}).to_string(), buf, len)
+    })
+}
+
 // -- WP MCP5 -- the agents' measurement requests to the app's Measure view
 //
 // An agent's measurement start (`dspi_measure_start`, the low-end search, the
@@ -773,5 +828,100 @@ pub extern "C" fn dspi_mcp_measure_begin(
             },
         };
         reply.to_string()
+    })
+}
+
+// -- WP FEAT2 --
+#[cfg(test)]
+#[path = "fns_mcp/tests_wp_feat2.rs"]
+mod tests_wp_feat2;
+
+// -- WP FEAT2 -- the agents' requests to open a known device or close one
+//
+// An agent asks for a device it found among the known ones (on USB, listed by
+// the hub of an open device, opened before): the listener gets
+// `deviceRequests`; `dspi_mcp_device_requests` lists what waits;
+// `dspi_mcp_device_take` takes one (its ticket); the app opens it as a tab as
+// the user would, with the credential it holds (never pairing, never asking
+// for an address), or closes it, and says how it went with
+// `dspi_mcp_device_report`. A request nobody takes lapses after 30 s. Only
+// while the start's configuration said `"opening": true`.
+
+/// The devices the app remembers the user opened: a JSON list `[{"device":
+/// "usb:<serial>" | "hub:<id>/<serial>" | "link:<host:port>/<serial>", "name":
+/// "..."}]`; null for none. Kept across stop and start; at most 64. False for
+/// text that is no list. Waits for an agent's call in progress.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_mcp_set_known_devices(
+    mcp: *mut FfiMcp,
+    devices_json: *const c_char,
+) -> bool {
+    with_mcp(mcp, false, |m| {
+        let rows = if devices_json.is_null() {
+            json!([])
+        } else {
+            match c_str(devices_json).and_then(|t| serde_json::from_str::<Value>(t).ok()) {
+                Some(v) if v.is_array() => v,
+                _ => return false,
+            }
+        };
+        (*lock(&m.known)).clone_from(&rows);
+        if let Some(s) = m.server() {
+            s.set_known_devices(&rows);
+        }
+        true
+    })
+}
+
+/// The requests waiting for the app, oldest first: `{ok, value: [{request_id,
+/// client, client_name, kind: "open" | "close", device, what, state, note}]}`.
+/// Empty while stopped. Waits for an agent's call in progress.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_mcp_device_requests(mcp: *mut FfiMcp, buf: *mut c_char, len: u32) -> u32 {
+    with_mcp(mcp, 0, |m| {
+        let rows = m.server().map_or_else(Vec::new, |s| s.device_requests());
+        copy_text(&json!({"ok": true, "value": rows}).to_string(), buf, len)
+    })
+}
+
+/// Take request `id`: `{ok, ticket: {request_id, kind, device, transport:
+/// "usb" | "hub" | "link", hub, serial, client_name, what}}` (`hub`: the hub's
+/// id, or its host:port for a `link`; "" for USB), or code `gone` when it no
+/// longer waits. Taking acts: give a buffer of at least `MCP_REPLY_MIN` bytes
+/// (a smaller one returns that and takes nothing). Waits for an agent's call
+/// in progress.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_mcp_device_take(
+    mcp: *mut FfiMcp,
+    id: u64,
+    buf: *mut c_char,
+    len: u32,
+) -> u32 {
+    with_mcp(mcp, 0, |m| {
+        if buf.is_null() || len < MCP_REPLY_MIN {
+            return MCP_REPLY_MIN;
+        }
+        let reply = match m.server().and_then(|s| s.device_take(id)) {
+            Some(ticket) => ok(json!({"ticket": ticket})),
+            None => failure("gone", "the request no longer waits"),
+        };
+        copy_text(&reply.to_string(), buf, len)
+    })
+}
+
+/// How request `id` went: `done` true once the device is open (or closed),
+/// false with `note` (the reason, in words; may be null) when not. False when
+/// the request was not taken or is over (a device opened for it stays the
+/// user's).
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_mcp_device_report(
+    mcp: *mut FfiMcp,
+    id: u64,
+    done: bool,
+    note: *const c_char,
+) -> bool {
+    with_mcp(mcp, false, |m| {
+        let note = c_str(note).unwrap_or("");
+        m.server().is_some_and(|s| s.device_report(id, done, note))
     })
 }

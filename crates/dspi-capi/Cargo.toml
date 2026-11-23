@@ -37,7 +37,8 @@ dspi-transport.workspace = true
 dspi-hub = { workspace = true, features = ["app"], optional = true }
 # -- WP MCP3 --
 # The MCP server for AI agents and its loopback transport (the dspi_mcp_* functions).
-dspi-mcp = { path = "../dspi-mcp", features = ["http"], optional = true }
+# -- WP FEAT3 -- `host-audio`: dspi_get_host_audio reads this computer's audio.
+dspi-mcp = { path = "../dspi-mcp", features = ["http", "host-audio"], optional = true }
 
 [features]
 # -- WP MCP3 -- on by default: the Qt app calls dspi_mcp_* whatever else it is
@@ -55,6 +56,8 @@ mdns = ["dspi-core/mdns", "dspi-hub?/mdns"]
 hub = ["dep:dspi-hub"]
 # -- WP MCP3 --
 mcp = ["dep:dspi-mcp"]
+# -- WP FUNC1 -- the function test's simulated home theatre (tools/functest); off
+sim-scenario = ["dspi-core/sim-scenario"]
 
 [dev-dependencies]
 # -- WP Q1 --

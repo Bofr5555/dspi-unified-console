@@ -1,8 +1,10 @@
 # AI agents
 
-*User manual, WP MCP6, 2026-11-22. For the owner and for users of the Qt console. It describes the console as it is with
-the Modern programme's waves 4 and 5: MCP1 to MCP4, the MCP conformance work (MCP6), and measuring through an agent
-(MCP5, with ROLL1's rules for tweeters; section 6).*
+*User manual, WP MCP6, 2026-11-22; 2026-11-23 with the installation's sources, slots and scenes (FEAT1), opening
+devices, room and zone volume, schedules and measurement options (FEAT2), where the sound comes from (FEAT3), and what
+the screen shows of an agent's work and what it is told when you step in (AIVIS, section 5.1). For the owner and for
+users of the Qt console. It describes the console as it is with the Modern programme's waves 4 and 5: MCP1 to MCP4, the
+MCP conformance work (MCP6), and measuring through an agent (MCP5, with ROLL1's rules for tweeters; section 6).*
 
 An AI agent on your computer, such as Claude Desktop, Claude Code, Cursor or VS Code, can read the settings of the DSPi
 devices that DSPi Console has open and change them for you: "make the left woofer 2 dB quieter", "why does output 3 sound
@@ -154,22 +156,62 @@ from Another Computer…** link).
 An agent you allow may read every device the console has open and change most of what you can change: the equaliser,
 crossovers, gain, delay, polarity, mute, routing, effects, volume and source, presets (load, save, rename, copy),
 snapshots, A/B, config and filter files (as text), AutoEQ, channel and device names, the audio link's delays and scenes,
-and Installation setup. It may also ask the console to measure your speakers or headphones and tune them (section 6).
+Installation setup and a room's or zone's volume. It may ask the console to open a device it knows, and to measure your
+speakers or headphones and tune them (section 6).
 
 - **Several devices.** Every tool takes a `device` (from `dspi_list_devices`). Without it, the agent works on the device
-  the console shows. An agent cannot open or close devices; you do that.
+  the console shows.
+- **Opening devices.** An agent can ask the console to open a device it **knows**: a DSPi on USB, a unit that the hub of an
+  open device lists, or a device you have opened before (`dspi_list_known_devices`, `dspi_open_device`). The console opens it
+  in a tab of its own, beside what you have open, and does not switch to it. It never pairs and never connects to an
+  address or a hub it has no connection to; that stays yours. An agent can close only a tab it opened
+  (`dspi_close_device`), and not while the device has unsaved changes, measures, has a timed preview waiting, or you hold
+  one of its controls. Everything else is yours to close.
+- **Where the music comes from.** A DSPi has no player: it plays what its input receives from another program or box
+  (a music app, a streaming app, a TV, a game). The agent is told so, and which input is in use (USB, S/PDIF, I2S,
+  ADAT or the audio link). To choose or start music it needs that program's own integration, if you have one; these
+  tools only reach the DSPi.
+- **This computer's sound settings, read only** (`dspi_get_host_audio`). The agent can see, on the computer the
+  console runs on, whether each open DSPi is one of its sound outputs, whether it is the default output, its channel
+  count and sample rate, which apps play to it (Linux and Windows; macOS from 14.2), and the system volume, with whether
+  that volume moves the DSPi's user volume. It reads PipeWire on Linux (falling back to the ALSA sound cards), the
+  Windows audio service, and Core Audio on macOS. It never changes the default output, moves an app or sets the system
+  volume: it tells you where to do that (the desktop's sound settings or `wpctl` on Linux; Settings › System › Sound on
+  Windows; System Settings › Sound on macOS, which has no per-app output without third-party software). If the system
+  cannot be read (no PipeWire, a sandbox, no permission), the agent is told "unknown" and why, and carries on.
 - **Speaker roles are yours.** An agent reads which outputs are woofers and tweeters from your speaker setup, and can
   never change it.
 - **Installation setup** works on a draft that belongs to the agent. Nothing reaches the hub until the agent saves it. If
   someone else saved the installation meanwhile, the save is refused, and the agent's edits are kept aside to apply again.
+- **Sources, zones, slots and scenes** <!-- WP FEAT1 --> are edits of that draft too
+  (`dspi_installation_set_source`, `_set_zone_source`, `_set_slots`, `_set_scene`), checked as the hub checks them. A
+  zone's source routes: every unit of the zone on the audio link takes the source's channels as its slots, and a unit
+  given other slots by hand or by a second zone is refused (a slot clash), as is a channel two sources of one sender
+  share. What is live and what is only stored:
+  - a draft edit changes nothing you hear;
+  - a saved installation is stored on the hub, but the units play their new slots only once the audio link is aligned
+    (`dspi_system_align`); the agent is told which units wait for that;
+  - a recalled scene with a source action switches the zone at once: the hub stores the zone's source and writes its
+    units' slots straight away (a unit that is offline takes them at the next alignment).
+- **Programme sources** <!-- WP FEAT1 --> (`dspi_installation_set_programme`): the installation can describe which
+  computer, box or service feeds which unit input or sender channel (a computer over USB, S/PDIF, analogue, or the audio
+  link sender). It is a description for you and the agent; it routes nothing. On a unit of that installation the agent
+  reads, beside the input in use, which of them plays into it and on which of its inputs.
+- **A room's or zone's volume.** On a hub with an installation, `dspi_system_set_volume` sets the volume of every unit of a
+  room or a zone: one level for all, or a step up or down from each unit's own. Each unit's limits still hold: a unit whose
+  limits profile refuses, that is offline, that the console has read-only, or whose control you are holding, is left as it
+  is, and the agent is told which. It is not in the History, because it goes through the hub: the agent gets each unit's
+  level before, and can set it back.
+- **Schedules** (`dspi_list_schedules`) an agent can read, not change.
 - **Names and notes the agent reads** (channel, preset, snapshot, hub, room names, event text) are passed to it as data,
   cleaned of control characters, and marked as text it must not take as instructions.
 
 **What agents can never do, whatever the setting:** update or flash firmware, use the bootloader or factory reset;
 change the limits profile, the installer PIN or lock; change hardware, pin or core-voltage settings; play the signal
 generator or Identify (a measurement's test sweeps are the one exception: section 6); pair hubs or change DSPi Link
-security and hub administration; delete presets, snapshots or measurements; update the AutoEQ database; set up speakers
-(the speaker layout); send raw device commands; read or write files by path.
+security and hub administration (its schedules among them); delete presets, snapshots or measurements; update the
+AutoEQ database; set up speakers (the speaker layout); change the computer's sound settings or play music; send raw
+device commands; read or write files by path.
 
 **What an agent reads, it may pass on to its own service.** An agent that runs on a cloud model sends what it reads to
 that service, as with anything else you show it.
@@ -179,9 +221,9 @@ that service, as with anything else you show it.
 **Ask me** in **Settings › AI Agents › Ask Before Changes** has three settings:
 
 - **About risky changes** (the default). The agent's change waits for your answer when it would:
-  - make something louder: raise a gain, trim or volume, unmute, switch on an output, add a route or raise a route's gain,
-    turn on an effect that can add level (loudness, a leveller with gain, psychoacoustic bass, subharmonic, the upmixer)
-    or feed one to more outputs;
+  - make something louder: raise a gain, trim or volume (a room's or zone's too, when any unit gets louder), unmute,
+    switch on an output, add a route or raise a route's gain, turn on an effect that can add level (loudness, a leveller
+    with gain, psychoacoustic bass, subharmonic, the upmixer) or feed one to more outputs;
   - boost a PEQ band by more than 6 dB, change a Linkwitz transform, or move a delay by more than 20 ms;
   - lower a tweeter's protection (see below);
   - change the input source;
@@ -191,7 +233,8 @@ that service, as with anything else you show it.
   - change every unit of an installation: align the audio link (also with a measurement across units), apply a scene,
     change USB-direct modes, or save the installation.
 
-  Other changes, such as lowering a gain, cutting a PEQ band or a small delay change, are made at once.
+  Other changes, such as lowering a gain, cutting a PEQ band, a small delay change or opening a known device, are made at
+  once.
 - **About every change.** Every change waits for your answer.
 - **Never.** Agents' changes are made at once, louder ones too, and **test signals play without a question** when an agent
   starts a measurement. Your limits profile and the protection of outputs you set up as tweeters still apply, and so do
@@ -209,14 +252,50 @@ told the question is still open and can ask again with `dspi_get_confirmation`. 
 
 ## 5. Watching and undoing
 
+- **The strip under the top bar** (both layouts) says which agent works, what it does now and on which device ("Claude Code
+  Changing the gain: Out 3 Centre"), with **Pause** and **Stop**, and **Stop Measuring** while its measurement plays.
+  **Show** brings the device to the front when it is another one. The strip is there while a call or a job runs, while a
+  question waits for you or a timed preview waits for Keep, for 20 s after the last call, and as long as agents are paused.
+- **The AI button** (Modern) and the **robot icon** (Classic) turn while an agent works. In the tray, the icon has a blue dot,
+  and its tooltip and menu say what the agent does, with **Pause AI Agents**.
+- **What an agent changes** is marked for a moment: the control, its section in the rail, and the tab of a device that is
+  not the one shown. A notice names the agent and the change, with **Undo**; several changes in a row are one notice.
 - **The activity** (on the page and in the agents' panel) lists what each agent did, newest first: each change with
   **Undo**, and **Undo All**. **Show reads** adds what they only read. **Export…** saves the list.
 - **The History** shows agents' changes with an **AI** tag and the agent's name; you undo them there like your own.
 - **An agent can undo only its own changes.** It never undoes yours.
-- **Pause** refuses the agents' tool calls until **Resume**: nothing is changed meanwhile. **Stop** turns agents off,
+- **Pause** holds the agents' tool calls off until **Resume**: nothing is changed meanwhile, and the agents are told that
+  you paused them. **Stop** turns agents off,
   disconnects them and puts back any timed preview an agent started. Changes already made stay, and you can undo them.
 - While you drag a control, an agent's change to that device is refused and the agent is told to try again: you are not
   overruled mid-drag.
+
+### 5.1 When you step in
+
+You can change anything while an agent works. The agent is told with its next call: what you changed, on which device and
+channel (numbers and switches, never names), what you undid, a preset you loaded, a device you switched to, opened or closed,
+a measurement you stopped, a speaker setup you confirmed, Pause, and your answers to its questions. It is also told of
+changes made elsewhere: a control on the device, another console.
+
+- **A control you take back is yours.** When you change (or undo) something an agent set within the last 10 minutes, the
+  agent's next change to it is refused with "the user changed this": it has to ask you. A change that asks you in the
+  console anyway is asked there. A preset you load counts for everything the agent set. Its timed preview or auto-tune is
+  not kept without asking either; putting it back is always possible.
+- **A setting you change while an agent's measurement runs stops it.** Its result would not be valid: it is not filed, a
+  notice says so, and the agent is told why. Names and saved presets do not count.
+- Your own measurements are not affected by this.
+
+**For agents** (and those who write them):
+
+- Every tool result that has news carries one more text ("Since your last call, the user ...") and, in a structured result,
+  `user_activity`: `{note, events: [{id, at_ms, device, kind, what, path, output, input, band}], more, cursor}`, at most 8
+  events. `dspi_get_user_activity {since}` lists the events after a cursor. Kinds: `change`, `undo`, `replaced` (everything
+  at once), `elsewhere`, `speakers`, `measure_stop`, `device_opened`, `device_closed`, `device_shown`, `paused`, `resumed`,
+  `answer` (to your own question).
+- Read what you work on again before you change it; never put the user's change back unasked.
+- "the user changed this" is an error (`isError`): ask. A retry within 5 s of the refusal is refused too.
+- `status: "paused"` is not an error: wait, or ask the user to press Resume. `status: "awaiting_confirmation"` as in section 4.
+- `dspi_measure_status`: `request.valid` is false for a measurement the user disturbed; `request.note` says by what.
 
 ## 6. Measuring with an agent
 
@@ -258,10 +337,18 @@ measurements too:
 the preview puts everything back at its end unless it is kept. After a verify that did not pass, **only you can keep it**,
 in the console. The same holds across units.
 
+**What an agent may choose.** `dspi_get_measure_options` lists it. The **microphone calibration** is one of those you have
+added in Measure, and the **target curve** is a built-in one or one of yours: the agent names it by its id, never a file.
+Without a choice the measurement is uncalibrated (relative levels), with the usual target. The **level ceiling** and the
+**SPL limit** an agent may only lower below the console's own (−12 dBFS and 95 dB SPL for speakers, −30 dBFS and 90 dB SPL
+for headphones), under every setting. The SPL limit works only with a calibration that reads dB SPL. With the microphone on
+a headphone **coupler**, the headphones' lower limits apply, in the low-end search too.
+
 **The tools**
 
 | Tool | What it does |
 |---|---|
+| `dspi_get_measure_options` | Your calibrations and target curves, the couplers, and the level limits |
 | `dspi_measure_preflight` | What stands between a measurement and the device now, and the roles it would use. Plays nothing |
 | `dspi_measure_start` | Asks for a measurement: one output at a time or summed. *Test signal* |
 | `dspi_measure_rolloff_start` | Asks for the low-end search on one output. *Test signal* |
@@ -273,7 +360,7 @@ in the console. The same holds across units.
 | `dspi_tune_apply` | Applies the proposal as a timed preview, as one undo step |
 | `dspi_tune_verify` | Measures the applied tune again. *Test signal* |
 | `dspi_tune_keep` | Keeps it (only you can, after a verify that did not pass) |
-| `dspi_tune_revert` | Puts it back now. Never asked |
+| `dspi_tune_revert` | Puts a tune this agent applied back now. Never asked |
 | `dspi_system_measure_preflight` | What stands between a measurement of several units and now. Plays nothing |
 | `dspi_system_measure_start` | Asks for a measurement of several units together, through the hub. *Test signal* |
 | `dspi_system_measure_proposal` | The alignment it proposes |
@@ -311,7 +398,7 @@ the volume at 80 % or less. These steps change your own agent configuration; und
    **AI** tag. **Undo** in the activity puts it back.
 5. Ask for a louder change ("raise output 1 by 3 dB"): the question appears; **Deny**: nothing changes, the agent says so.
    Ask again; **Allow**: the change happens.
-6. **Pause**: a change is refused with the paused text; **Resume**. **Remove this client**: the next request gets 401.
+6. **Pause**: a change is not made, the agent says it is paused; **Resume**. **Remove this client**: the next request gets 401.
 
 **Linux or macOS, Claude Desktop over stdio**
 7. Add the config of section 2.1 and start Claude Desktop again. The console asks **Allow this AI agent?** with the code
@@ -328,5 +415,11 @@ the volume at 80 % or less. These steps change your own agent configuration; und
 11. **Ask me: Never**: a louder change happens without a question. Removing a tweeter output's high-pass is refused.
 12. **Ask me: About every change**: a quiet change is asked about too.
 13. **Stop** turns agents off; the agents' next call fails; turning them on again works.
+
+**This computer's sound settings** (WP FEAT3)
+14. With a DSPi on USB that is not the default output and music playing to the laptop's speakers, ask "is my DSPi
+    getting the sound?". The agent says the DSPi is not the default output, names where the music plays, and tells
+    you how to switch; it does not switch anything. Make the DSPi the default and ask again: it says so, and names the
+    app playing to it. Repeat on Windows and on macOS (macOS before 14.2: no app list, only whether something plays).
 
 Write down the agent host versions and anything that differed.

@@ -21,6 +21,7 @@ use serde_json::{Map, Value, json};
 
 use crate::activity::Activity;
 use crate::confirm::Confirmations; // -- WP MCP2a --
+use crate::host_audio::HostAudioSource; // -- WP FEAT3 --
 use crate::policy::{self, Judging, JudgingCell, WriteKey}; // -- WP MCP2a --
 use crate::untrusted;
 use crate::{ClientId, tools};
@@ -124,6 +125,14 @@ impl Registry {
         tools.extend(tools::info::TOOLS.iter().copied());
         // -- WP MCP5 -- measuring, the auto-tune, measuring across units
         tools.extend(tools::measure::TOOLS.iter().copied());
+        // -- WP FEAT1 -- routing and sources in the installation draft
+        tools.extend(tools::installation::FEAT1_TOOLS.iter().copied());
+        // -- WP FEAT2 -- a room's volume, the hub's schedule (feature `link`),
+        // opening known devices
+        tools.extend(tools::site::TOOLS.iter().copied());
+        tools.extend(tools::devices::TOOLS.iter().copied());
+        // -- WP FEAT3 -- this computer's audio, read only
+        tools.extend(tools::host::TOOLS.iter().copied());
         Self { tools }
     }
 
@@ -185,6 +194,13 @@ pub trait Policy: Send + Sync {
     ) -> Option<WriteHook> {
         let _ = (core, judging);
         self.write_hook(call)
+    }
+
+    // -- WP FEAT2 --
+    /// The setting for a call that addresses no device (opening one), which
+    /// has no core to hook: `None` (the default) lets it change nothing.
+    fn setting(&self) -> Option<policy::ConfirmMode> {
+        None
     }
 }
 
@@ -298,11 +314,21 @@ pub struct Call<'a> {
     // -- WP MCP5 --
     /// The agents' requests to the app's Measure view.
     pub measure: Option<&'a tools::measure::Jobs>,
+    // -- WP FEAT2 --
+    /// The agents' requests to open and close devices.
+    pub opens: Option<&'a tools::devices::Opens>,
     /// The client's label ("AI · Claude Code").
     pub client_label: String,
-    /// The devices, for a tool over several units (measuring across units):
-    /// it reaches another unit's core only inside a scope of its own.
+    // -- WP AIVIS --
+    /// What the user did, for `dspi_get_user_activity`.
+    pub user: Option<&'a crate::user::UserActivity>,
+    /// The devices, for a tool over several units (measuring across units,
+    /// -- WP FEAT2 -- a room's volume, the known devices): it reaches another
+    /// unit's core only inside a scope of its own.
     pub set: Option<&'a CoreSet>,
+    // -- WP FEAT3 --
+    /// Reads this computer's audio (`dspi_get_host_audio`).
+    pub host_audio: Option<&'a Arc<dyn HostAudioSource>>,
     core: Option<&'a DspiCore>,
 }
 
@@ -312,6 +338,22 @@ impl Call<'_> {
     pub fn core(&self) -> Result<&DspiCore, ToolError> {
         self.core
             .ok_or_else(|| ToolError::new("this tool addresses no device"))
+    }
+
+    // -- WP FEAT2 --
+    /// What an agent may do here: the policy's flags, and whether this app
+    /// takes the agents' measurement and device requests.
+    pub fn agent_may(&self) -> Value {
+        let mut may = self.policy.agent_may();
+        if let Some(m) = may.as_object_mut() {
+            let write = m.get("write").and_then(Value::as_bool).unwrap_or(false);
+            let policy = m.get("measure").and_then(Value::as_bool).unwrap_or(false);
+            let host = self.measure.is_some_and(tools::measure::Jobs::host);
+            m.insert("measure".into(), json!(policy && host));
+            let opens = self.opens.is_some_and(tools::devices::Opens::host);
+            m.insert("open_devices".into(), json!(write && opens));
+        }
+        may
     }
 
     /// The device's id as text.
@@ -357,6 +399,15 @@ pub struct RunCtx<'a> {
     // -- WP MCP5 --
     /// The agents' requests to the app's Measure view.
     pub measure: Option<&'a tools::measure::Jobs>,
+    // -- WP FEAT2 --
+    /// The agents' requests to open and close devices.
+    pub opens: Option<&'a tools::devices::Opens>,
+    // -- WP FEAT3 --
+    /// Reads this computer's audio.
+    pub host_audio: Option<&'a Arc<dyn HostAudioSource>>,
+    // -- WP AIVIS --
+    /// What the user did.
+    pub user: Option<&'a crate::user::UserActivity>,
 }
 
 /// What [`run`] did.
@@ -368,6 +419,9 @@ pub struct RunOutcome {
     pub result: ToolResult,
     /// The journal ids of the changes the call made on its device.
     pub journal_ids: Vec<u64>,
+    // -- WP AIVIS --
+    /// The controls it changed there: journal paths and indices.
+    pub touched: Vec<(String, Vec<u8>)>,
     /// What the policy found (-- WP MCP2a --).
     pub judging: Judging,
 }
@@ -453,6 +507,13 @@ pub fn run(ctx: &RunCtx<'_>, tool: &Tool, args: &Map<String, Value>) -> RunOutco
                 }
             })
             .collect();
+        // -- WP FEAT2 -- judged by the tool itself (`policy::require_change`)
+        let judging = JudgingCell::default();
+        {
+            let mut j = policy::lock(&judging);
+            j.mode = ctx.policy.setting();
+            j.grant.clone_from(&ctx.grant);
+        }
         let mut call = Call {
             client: ctx.client,
             actor: ctx.actor,
@@ -461,15 +522,18 @@ pub fn run(ctx: &RunCtx<'_>, tool: &Tool, args: &Map<String, Value>) -> RunOutco
             devices,
             activity: ctx.activity,
             policy: ctx.policy,
-            judging: JudgingCell::default(),
+            judging,
             confirmations: ctx.confirmations,
             agent_guard: None,
             autoeq: ctx.autoeq, // -- WP MCP2b --
             template_dir: ctx.template_dir,
             installation: ctx.installation, // -- WP MCP2c --
             measure: ctx.measure,           // -- WP MCP5 --
+            opens: ctx.opens,               // -- WP FEAT2 --
             client_label: ctx.client_label.to_owned(),
-            set: None,
+            user: ctx.user,             // -- WP AIVIS --
+            set: Some(ctx.set),         // -- WP FEAT2 --
+            host_audio: ctx.host_audio, // -- WP FEAT3 --
             core: None,
         };
         let result = (tool.handler)(&mut call, args);
@@ -478,6 +542,7 @@ pub fn run(ctx: &RunCtx<'_>, tool: &Tool, args: &Map<String, Value>) -> RunOutco
             device: None,
             result,
             journal_ids: Vec::new(),
+            touched: Vec::new(), // -- WP AIVIS --
             judging,
         };
     }
@@ -488,6 +553,7 @@ pub fn run(ctx: &RunCtx<'_>, tool: &Tool, args: &Map<String, Value>) -> RunOutco
                 device: None,
                 result: Err(e),
                 journal_ids: Vec::new(),
+                touched: Vec::new(), // -- WP AIVIS --
                 judging: Judging::default(),
             };
         }
@@ -503,6 +569,7 @@ pub fn run(ctx: &RunCtx<'_>, tool: &Tool, args: &Map<String, Value>) -> RunOutco
     // -- WP MCP2a -- the call's judgement, shared by the hook and the tool
     let judging = JudgingCell::default();
     policy::lock(&judging).grant.clone_from(&ctx.grant);
+    policy::lock(&judging).taken_back = policy::TakenBack(Some((Arc::clone(&core), ctx.actor))); // -- WP AIVIS --
     let hook = ctx.policy.judging_hook(&info, &core, &judging);
     let agent_guard = ctx
         .guards
@@ -527,29 +594,45 @@ pub fn run(ctx: &RunCtx<'_>, tool: &Tool, args: &Map<String, Value>) -> RunOutco
             template_dir: ctx.template_dir,
             installation: ctx.installation, // -- WP MCP2c --
             measure: ctx.measure,           // -- WP MCP5 --
+            opens: ctx.opens,               // -- WP FEAT2 --
             client_label: ctx.client_label.to_owned(),
+            user: ctx.user, // -- WP AIVIS --
             set: Some(ctx.set),
+            host_audio: ctx.host_audio, // -- WP FEAT3 --
             core: Some(&core),
         };
         (tool.handler)(&mut call, args)
     };
     let judging = policy::lock(&judging).clone();
     // The changes this call made: this actor's entries newer than before.
-    let mut journal_ids: Vec<u64> = core
+    let mine: Vec<dspi_core::HistoryEntry> = core
         .history(HISTORY_SCAN)
         .into_iter()
         .filter(|e| e.id > before && e.actor == ctx.actor)
-        .map(|e| e.id)
         .collect();
+    let mut journal_ids: Vec<u64> = mine.iter().map(|e| e.id).collect();
+    // -- WP AIVIS --
+    let mut touched: Vec<(String, Vec<u8>)> = Vec::new();
+    for e in &mine {
+        let t = (e.path.clone(), e.indices.clone());
+        if touched.len() < TOUCHED_MAX && !touched.contains(&t) {
+            touched.push(t);
+        }
+    }
     journal_ids.sort_unstable();
     journal_ids.dedup();
     RunOutcome {
         device: Some(id.as_str().to_owned()),
         result,
         journal_ids,
+        touched, // -- WP AIVIS --
         judging,
     }
 }
+
+// -- WP AIVIS --
+/// The most controls a call's outcome names.
+const TOUCHED_MAX: usize = 64;
 
 /// How many history entries [`run`] looks through for a call's changes.
 const HISTORY_SCAN: u32 = 200;

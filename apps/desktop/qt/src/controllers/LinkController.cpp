@@ -143,8 +143,10 @@ void LinkController::leaveLobby() {
 }
 
 // The unit on its own core, through the hub shown here
-void LinkController::openBeside(const QString &serial) {
-    LinkSession *through = m_subject;
+void LinkController::openBeside(const QString &serial) { openBeside(m_subject, serial, true, {}); }
+
+// -- WP FEAT2 --
+void LinkController::openBeside(LinkSession *through, const QString &serial, bool activate, std::function<void(const QString &)> done) {
     const QJsonObject target{
         { QStringLiteral("kind"), QStringLiteral("hub") },
         { QStringLiteral("url"), through->sessionUrl() },
@@ -158,16 +160,41 @@ void LinkController::openBeside(const QString &serial) {
     QPointer<LinkSession> dialled(through);
     m_registry->open(
         target,
-        [this, dialled, serial](DeviceSession *session, const QString &code, const QString &error) {
+        [this, dialled, serial, activate, done](DeviceSession *session, const QString &code, const QString &error) {
             if (!session) {
-                if (dialled) dialled->setError(code, error);
+                if (dialled && activate) dialled->setError(code, error);
+                if (done) done(error.isEmpty() ? tr("The device did not open.") : error);
                 return;
             }
             addSession(session);
             if (dialled) m_links.value(session)->adoptBound(*dialled, serial);
-            m_registry->activate(session);   // leaves the lobby
+            if (activate) m_registry->activate(session);   // leaves the lobby
+            if (done) done(QString());
         },
         false);
+}
+
+// -- WP FEAT2 --
+void LinkController::openForAgent(const QString &hub, bool byAddress, const QString &serial, std::function<void(const QString &)> done) {
+    const auto authority = [](const QString &url) {
+        const qsizetype at = url.indexOf(QLatin1String("://"));
+        return url.mid(at < 0 ? 0 : at + 3).section(QLatin1Char('/'), 0, 0);
+    };
+    LinkSession *through = nullptr;
+    if (m_registry && !m_shutDown) {
+        for (DeviceSession *s : m_registry->sessions()) {
+            LinkSession *l = m_links.value(s);
+            if (l && l->inSession() && (byAddress ? authority(l->sessionUrl()) : l->hubId()) == hub) through = l;
+        }
+    }
+    bool listed = false;
+    if (through)
+        for (const QVariant &d : through->devices()) listed = listed || d.toMap().value(QStringLiteral("serial")).toString() == serial;
+    if (!listed) {
+        done(tr("The app has no connection to that device's hub now. Connect to the hub in the app first."));
+        return;
+    }
+    openBeside(through, serial, false, std::move(done));
 }
 
 // -- WP XDEV1 --

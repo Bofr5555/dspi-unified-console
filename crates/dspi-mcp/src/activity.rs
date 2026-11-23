@@ -64,6 +64,10 @@ pub struct ActivityEntry {
     pub outcome: Outcome,
     /// The journal ids of the changes it made, for `revert_entry`.
     pub journal_ids: Vec<u64>,
+    // -- WP AIVIS --
+    /// The controls they changed (journal paths and indices), for the app to
+    /// point at.
+    pub touched: Vec<(String, Vec<u8>)>,
     /// In the server's words: the error's text, the changes of a write that
     /// ran (-- WP MCP4 --), or "".
     pub detail: String,
@@ -82,6 +86,10 @@ impl ActivityEntry {
             "write": self.write,
             "outcome": self.outcome.as_str(),
             "journal_ids": self.journal_ids,
+            // -- WP AIVIS --
+            "touched": self.touched.iter()
+                .map(|(p, ix)| json!({"path": p, "indices": ix}))
+                .collect::<Vec<_>>(),
             "detail": self.detail,
         })
     }

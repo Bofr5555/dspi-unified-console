@@ -42,8 +42,8 @@ use serde::{Deserialize, Serialize};
 
 use super::plan::{Plan, stimulus_floor_hz};
 use super::{
-    MeasureIssue, MeasurePhase, MeasurePlacement, MeasureRole, MeasureRunKind, MeasureSetup,
-    MeasureState, PreflightOptions,
+    MeasureCoupler, MeasureIssue, MeasurePhase, MeasurePlacement, MeasureRole, MeasureRunKind,
+    MeasureSetup, MeasureState, PreflightOptions,
 };
 use crate::{DspiCore, DspiError, Result};
 
@@ -89,8 +89,9 @@ pub struct MeasureRolloffSetup {
     /// The speaker it belongs to, for the document.
     pub speaker: String,
     /// Where the microphone is: near field (close to the driver, which
-    /// judges a driver best); any other placement is taken as the listening
-    /// position.
+    /// judges a driver best) or (-- WP FEAT2 --) on a headphone coupler, with
+    /// the headphones' level caps; any other placement is taken as the
+    /// listening position.
     pub placement: MeasurePlacement,
     /// The microphone's `mic` document's text ("" uncalibrated).
     pub mic_document: String,
@@ -109,6 +110,10 @@ pub struct MeasureRolloffSetup {
     pub name: String,
     /// Play at the start level only (as `MeasureSetup::start_level_only`).
     pub start_level_only: bool,
+    // -- WP FEAT2 --
+    /// The coupler, for headphones (as `MeasureSetup::coupler`).
+    #[cfg_attr(feature = "uniffi", uniffi(default = None))]
+    pub coupler: Option<MeasureCoupler>,
 }
 
 /// Where the search stands.
@@ -409,8 +414,11 @@ impl DspiCore {
             }],
             placement: match setup.placement {
                 MeasurePlacement::NearField => MeasurePlacement::NearField,
+                // -- WP FEAT2 -- headphones play under the headphones' caps
+                MeasurePlacement::Headphones => MeasurePlacement::Headphones,
                 _ => MeasurePlacement::ListeningPosition,
             },
+            coupler: setup.coupler, // -- WP FEAT2 --
             mic_document: setup.mic_document.clone(),
             sweep_ms: setup.sweep_ms,
             ceiling_db: setup.ceiling_db,
@@ -496,6 +504,7 @@ impl DspiCore {
     pub fn measure_rolloff_stop(&self) -> MeasureRolloffState {
         let mut r = self.measure.rolloff_lock();
         if r.stage == MeasureRolloffStage::Measuring {
+            crate::actor::user::did(self, "measure_stop"); // -- WP AIVIS --
             if r.running {
                 self.measure_stop_session();
                 let _ = self.measure_clear();

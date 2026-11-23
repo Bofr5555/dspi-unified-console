@@ -124,6 +124,8 @@ pub mod measure_curv;
 pub mod measure_system;
 // -- WP INST0 -- Installation setup: drafts of the hub's site
 pub mod installation;
+// -- WP FEAT2 -- a room's or zone's volume
+pub mod system_volume;
 // -- WP WB6I -- the Settings page: names, latency, the core-voltage flow
 pub mod settings;
 // -- WP WB4a --

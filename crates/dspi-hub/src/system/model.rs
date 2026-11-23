@@ -25,6 +25,14 @@ pub fn op_authority(op: ApplyOp) -> (u8, dspi_link::Dir) {
     }
 }
 
+// -- WP FEAT1 --
+/// The direct command a `source` op stands for: choosing what a unit plays,
+/// `SET_INPUT_SOURCE` (a control role may).
+pub fn source_op_authority() -> (u8, dspi_link::Dir) {
+    use dspi_proto::generated::opcodes as opc;
+    (opc::REQ_SET_INPUT_SOURCE, dspi_link::Dir::Set)
+}
+
 /// The direct command the system mute stands for: muting every unit's outputs,
 /// `SET_OUTPUT_MUTE`.
 pub fn system_mute_authority() -> (u8, dspi_link::Dir) {

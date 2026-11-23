@@ -3021,6 +3021,16 @@ RustBuffer uniffi_dspi_core_fn_method_dspicore_speaker_layout_set(void*_Nonnull 
 void uniffi_dspi_core_fn_method_dspicore_speaker_layout_set_dir(void*_Nonnull ptr, RustBuffer dir, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_SYSTEM_VOLUME_PLAN
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_SYSTEM_VOLUME_PLAN
+RustBuffer uniffi_dspi_core_fn_method_dspicore_system_volume_plan(void*_Nonnull ptr, RustBuffer ask, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_SYSTEM_VOLUME_SET
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_SYSTEM_VOLUME_SET
+RustBuffer uniffi_dspi_core_fn_method_dspicore_system_volume_set(void*_Nonnull ptr, RustBuffer plan, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_TEST_DAC_MUTE
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_TEST_DAC_MUTE
 void uniffi_dspi_core_fn_method_dspicore_test_dac_mute(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
@@ -7394,6 +7404,18 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_speaker_layout_set(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_SPEAKER_LAYOUT_SET_DIR
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_SPEAKER_LAYOUT_SET_DIR
 uint16_t uniffi_dspi_core_checksum_method_dspicore_speaker_layout_set_dir(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_SYSTEM_VOLUME_PLAN
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_SYSTEM_VOLUME_PLAN
+uint16_t uniffi_dspi_core_checksum_method_dspicore_system_volume_plan(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_SYSTEM_VOLUME_SET
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_SYSTEM_VOLUME_SET
+uint16_t uniffi_dspi_core_checksum_method_dspicore_system_volume_set(void
     
 );
 #endif

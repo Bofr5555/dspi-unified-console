@@ -98,7 +98,9 @@ void traySection(SmokeDriver &d) {
     d.check(QStringLiteral("qp14: tray: the app outlives its windows"), !QGuiApplication::quitOnLastWindowClosed() && !tray->rechecking());
 
     QStringList order;
-    for (QAction *a : tray->contextMenu()->actions()) order << (a->isSeparator() ? QStringLiteral("-") : a->objectName());
+    // -- WP AIVIS -- the agents' rows are there only while agents are on
+    for (QAction *a : tray->contextMenu()->actions())
+        if (!a->objectName().startsWith(QLatin1String("Tray.ai")) || a->isVisible()) order << (a->isSeparator() ? QStringLiteral("-") : a->objectName());
     d.check(QStringLiteral("qp14: the menu in the Mac's order, the volume before Quit"),
             order == QStringList({ "Tray.status", "Tray.address", "Tray.pairingCode", "-", "Tray.open", "Tray.share", "Tray.pair", "-",
                                    "Tray.volume", "-", "Tray.quit" }));

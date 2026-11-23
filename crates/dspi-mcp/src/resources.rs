@@ -19,11 +19,30 @@ pub const FILTER_TYPES_URI: &str = "dspi://filter-types";
 // -- WP MCP2b -- the paragraph on wholesale writes, flash and effects
 // -- WP MCP2c -- the section on hubs, the audio link and Installation setup
 // -- WP MCP5 -- the section on measuring
+// -- WP FEAT2 -- opening known devices, a room's volume, the measuring options
+// -- WP FEAT3 -- the section on where the sound comes from
+// -- WP INTF -- FEAT1's routing (sources, zones, slots, programme sources)
 pub const GUIDE: &str = "# DSPi: how to read it well
 
 A DSPi is a digital signal processor for loudspeakers. The console app has one or more DSPis
 open; `dspi_list_devices` lists them. Every tool takes an optional `device`; without it the
-device the app shows is used.
+device the app shows is used. A device that is not open may be a known one
+(`dspi_list_known_devices`): `dspi_open_device` asks the app to open it, and
+`dspi_close_device` to close one you opened. Any other is the user's to open.
+
+## Where the sound comes from
+- A DSPi has no player and no music of its own: it plays what its input source receives.
+  Music is chosen, started, paused and turned up or down in another program or box (a
+  player, a streaming app, a TV, a game), never by these tools.
+- `dspi_get_overview`'s `programme` names the input source in use (USB, S/PDIF, I2S, ADAT,
+  the audio link) and what feeds that kind of input; `dspi_set_source` switches it. On a
+  hub, its `programme_sources` is what the installation says plays into this unit (which
+  computer or box, on which of its inputs); it routes nothing. Null: no installation to read.
+- With USB, the computer connected to the DSPi plays to it as an audio output.
+  `dspi_get_host_audio` (read only) says, for the computer running this app, whether each
+  DSPi is an output, whether it is the default, what plays to it and the OS volume. No
+  tool changes the default output or moves an app: tell the user how
+  (`how_to_set_default`). `dspi_get_meters` shows whether signal arrives.
 
 ## Channels
 - Inputs and outputs are numbered from 0. Name them `{\"input\": n}` or `{\"output\": n}`.
@@ -54,6 +73,17 @@ device the app shows is used.
   effect that adds level (loudness, psychoacoustic bass, the subharmonic synth, a leveller with
   gain) is treated as louder.
 
+## The person beside you
+- The user sees each of your calls in the app while it runs, and may change anything meanwhile.
+  Every result carries `user_activity` when they did something since your last call: what, on
+  which device and channel. `dspi_get_user_activity` lists it from a cursor. Read what you work
+  on again before you change it.
+- If the user changes a control you have set, your next write to it is refused: \"the user
+  changed this\". Ask them, in words, before you change it again. Do not retry at once, and do
+  not work around it through another control.
+- A setting the user changes while your measurement runs stops it: its result is not valid.
+  Ask before you start again. `status: paused` is the user's Pause: wait.
+
 ## Hubs, the audio link and the installation
 - A device on a DSPi Link hub (`dspi_list_hubs`) reaches the hub's installation: the audio
   link across units (`dspi_get_system`) and the site (`dspi_installation_view`). The hub
@@ -62,7 +92,17 @@ device the app shows is used.
   (`dspi_installation_validate`, `dspi_installation_diff`), then `dspi_installation_save`,
   which may be held for the user. If someone saved meanwhile, nothing is saved and your edits
   are kept aside: remake them on the fresh draft.
+- What each unit plays is in the draft too (the `dspi_installation_set_*` tools): a source
+  is channels of the audio link sender, a zone's source gives the zone's units those
+  channels as their slots, a scene may switch a zone's source, and a programme source
+  describes which computer or box feeds which input (it routes nothing).
+- A draft edit changes nothing you hear. A saved change of slots is stored on the hub and
+  plays after `dspi_system_align`, or at once when a scene with a source action is recalled
+  (`dspi_system_scene_apply`). `routing` and `live` in the results say which.
 - A scene recall, an alignment and USB-direct modes reach every unit and may be held.
+- `dspi_system_set_volume` sets the volume of every unit of a room or a zone; each unit's own
+  limits still hold, and the result has a row per unit. Louder may be held.
+- `dspi_list_schedules` reads the hub's schedule. Only the user changes it.
 
 ## Measuring
 - A measurement needs a person: the app's microphone, put where you say. Tell the user what
@@ -73,6 +113,8 @@ device the app shows is used.
 - `dspi_measure_start` (or `dspi_measure_rolloff_start` for an output's low end) asks the
   app to measure: it may be held for the user, then the app's Measure view runs it. Poll
   `dspi_measure_status` every few seconds; `dspi_measure_stop` stops it.
+- `dspi_get_measure_options` lists the user's microphone calibrations and the target curves you
+  may name, and the level limits, which you may only lower (`max_level_dbfs`, `max_spl_db`).
 - A tweeter is never played below 1 kHz, and the level limits and the limits profile always
   apply: these are not questions and nothing lifts them.
 - Then `dspi_tune_propose`, `dspi_tune_sum_check` if it says so, `dspi_tune_apply`,

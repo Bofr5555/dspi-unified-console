@@ -23,6 +23,8 @@ AbstractButton {
         return "waiting"   // on, starting
     }
     readonly property alias popover: popover
+    // -- WP AIVIS -- an agent's call or job runs: the ring turns and says so
+    readonly property bool working: ai.working === true
 
     text: "AI"
     implicitHeight: 28
@@ -41,6 +43,7 @@ AbstractButton {
                 objectName: "AiButton.mark"
                 readonly property bool ring: button.face === "off" || button.face === "waiting"
                 anchors.verticalCenter: parent.verticalCenter
+                visible: !button.working   // -- WP AIVIS --
                 width: 8
                 height: 8
                 radius: 4
@@ -57,11 +60,26 @@ AbstractButton {
                     onStopped: mark.opacity = 1
                 }
             }
+            // -- WP AIVIS --
+            AiWorkMark {
+                objectName: "AiButton.working"
+                anchors.verticalCenter: parent.verticalCenter
+                visible: button.working
+                working: button.working
+            }
             Text {
                 anchors.verticalCenter: parent.verticalCenter
                 text: button.text
                 font: Theme.fontBody
                 color: Theme.text
+            }
+            Text {
+                objectName: "AiButton.workingText"
+                anchors.verticalCenter: parent.verticalCenter
+                visible: button.working
+                text: qsTr("working")
+                font: Theme.fontSmall
+                color: Theme.accentText
             }
         }
     }
@@ -75,10 +93,11 @@ AbstractButton {
 
     Accessible.role: Accessible.Button
     Accessible.name: text
-    Accessible.description: ai.statusLine
+    readonly property string tip: working && ai.work.text ? ai.work.agent + ": " + ai.work.text : ai.statusLine   // -- WP AIVIS --
+    Accessible.description: tip
     Accessible.onPressAction: button.clicked()
     HelpTip {
-        text: button.ai.statusLine
+        text: button.tip
         visible: button.hovered && !popover.opened
     }
 

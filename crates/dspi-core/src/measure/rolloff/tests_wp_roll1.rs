@@ -996,3 +996,49 @@ fn wp_rcfix_a_units_own_check_takes_its_confirmed_layouts_role() {
         )
     );
 }
+
+// ── WP FEAT2 ────────────────────────────────────────────────────────────
+
+#[test]
+fn wp_feat2_a_search_on_headphones_has_the_headphones_caps() {
+    let core = demo(None, Some(3_000.0));
+    let start = |placement, coupler| {
+        let st = core
+            .measure_rolloff_start(MeasureRolloffSetup {
+                output: WOOFER,
+                sweep_ms: 1_000,
+                placement,
+                coupler,
+                ..MeasureRolloffSetup::default()
+            })
+            .unwrap();
+        assert!(st.running);
+        let base = core.measure.rolloff_lock().base.clone().unwrap();
+        let plan = Plan::new(&base).unwrap();
+        core.measure_rolloff_stop();
+        core.measure_rolloff_clear().unwrap();
+        (base, plan)
+    };
+    let caps = super::super::measure_level_caps;
+    let (base, plan) = start(
+        MeasurePlacement::Headphones,
+        Some(MeasureCoupler::FlatPlate),
+    );
+    assert_eq!(base.coupler, Some(MeasureCoupler::FlatPlate));
+    assert!(plan.headphones);
+    assert_eq!((plan.start_db, plan.ceiling_db), (-60.0, -30.0));
+    assert_eq!(
+        plan.ceiling_db,
+        caps(MeasurePlacement::Headphones).ceiling_db
+    );
+    for placement in [
+        MeasurePlacement::NearField,
+        MeasurePlacement::ListeningPosition,
+        MeasurePlacement::MultiPosition,
+    ] {
+        let (_, plan) = start(placement, None);
+        assert!(!plan.headphones);
+        assert_eq!((plan.start_db, plan.ceiling_db), (-50.0, -12.0));
+        assert_eq!(plan.ceiling_db, caps(placement).ceiling_db);
+    }
+}

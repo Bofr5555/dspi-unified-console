@@ -748,6 +748,23 @@ pub(crate) fn compute(
         };
         match crossover_corner(&drivers, &sp.transitions, target, &constraints, model) {
             Ok(p) => {
+                // -- WP FUNC1 -- Polarity is a property of the crosspoints that
+                // feed an output: with none it would be written nowhere, the
+                // summed checks (the generator's own polarity) would pass, and
+                // the speaker would play with the old one.
+                let unfed = p.outputs.iter().zip(&way_list).find(|(o, w)| {
+                    w.feeds.is_empty() && o.chain.feed.inverted != w.chain_now.feed.inverted
+                });
+                if let Some((_, w)) = unfed {
+                    let why = format!(
+                        "no input feeds output {}, whose polarity must change (it is set on \
+                         its routes): route the speaker's outputs first, then propose again",
+                        u16::from(w.output).saturating_add(1)
+                    );
+                    withdraw(KEY_NO_TIMING, why);
+                    sp.drivers = None;
+                    continue;
+                }
                 for (k, o) in p.outputs.iter().enumerate() {
                     if let Some(i) = sp.ways.get(k) {
                         if let Some(slot) = chains.get_mut(*i) {
@@ -854,7 +871,14 @@ pub(crate) fn compute(
         };
         // The whole speaker (or a single way) holds the reference band: the
         // fit's level is anchored there (WP P5TRUST, P5FIT's level option).
-        let whole = sp.ways.len() == 1 || (sp.drivers.is_some() && sp.timing);
+        // -- WP FUNC1 -- A subwoofer does not hold it, nor a single way whose
+        // low-pass lies below it: anchored there, all its bass is "too loud".
+        let single = sp.ways.len() == 1
+            && ways.get(first).is_some_and(|w| w.role != MeasureRole::Sub)
+            && chains.get(first).and_then(lowpass_corner).is_none_or(|c| {
+                f64::from(c) >= dspi_measure::target::DEFAULT_REFERENCE_BAND.high_hz
+            });
+        let whole = single || (sp.drivers.is_some() && sp.timing);
         let anchor = if whole && !bounds.headphones {
             let band = dspi_measure::target::DEFAULT_REFERENCE_BAND;
             reference_offset_db(&base, target, band.low_hz, band.high_hz)

@@ -7,6 +7,7 @@ import UConsole
 Rectangle {
     id: header
     property string iconName
+    property string touchPath   // -- WP AIVIS -- the effect's journal paths ("loud.")
     property string title
     property string subtitle
     property bool on: false
@@ -55,4 +56,7 @@ Rectangle {
             Accessible.name: header.title
         }
     }
+
+    // -- WP AIVIS -- an agent changed it just now
+    AiTouched { objectName: header.objectName + ".touched"; path: header.touchPath.length > 0 ? header.touchPath : "-" }
 }

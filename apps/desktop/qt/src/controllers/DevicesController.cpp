@@ -1,5 +1,6 @@
 #include "DevicesController.h"
 
+#include "AiController.h"   // -- WP FEAT2 --
 #include "Core.h"
 #include "CoreVoltageController.h"   // -- WP MDQT2b --
 #include "DeviceModel.h"
@@ -81,6 +82,14 @@ DevicesController::DevicesController(const AppContext &ctx, QObject *parent)
         });
     }
     connect(qApp, &QCoreApplication::aboutToQuit, this, &DevicesController::shutdown);
+    // -- WP FEAT2 -- once every controller exists
+    QMetaObject::invokeMethod(
+        this,
+        [this] {
+            if (auto *ai = Registrar::instance<AiController>())
+                connect(ai, &AiController::deviceRequested, this, &DevicesController::agentRequest);
+        },
+        Qt::QueuedConnection);
 }
 
 DevicesController::~DevicesController() { shutdown(); }
@@ -276,6 +285,60 @@ void DevicesController::closeOpen(const QString &id) {
         if (now.isEmpty()) m_registry->close(id);
         else refuse(now);
     });
+}
+
+// -- WP FEAT2 --
+void DevicesController::agentRequest(const QJsonObject &ticket) {
+    const quint64 id = quint64(ticket.value(QLatin1String("request_id")).toDouble());
+    const QString serial = ticket.value(QLatin1String("serial")).toString();
+    const QString transport = ticket.value(QLatin1String("transport")).toString();
+    QPointer<AiController> ai = Registrar::instance<AiController>();
+    // "" for done, else why not
+    const std::function<void(const QString &)> report = [ai, id](const QString &why) {
+        if (ai) ai->reportDevice(id, why.isEmpty(), why);
+    };
+    if (m_shutDown) {
+        report(tr("The app is closing."));
+        return;
+    }
+    if (ticket.value(QLatin1String("kind")).toString() == QLatin1String("close")) {
+        const QString device = ticket.value(QLatin1String("device")).toString();
+        DeviceSession *session = m_registry->session(device);
+        if (!session) {
+            report(QString());   // closed already
+            return;
+        }
+        const QString pinned = pinnedBy(session);
+        if (!pinned.isEmpty()) {
+            report(pinned);
+            return;
+        }
+        // Nothing is unsaved (the server judged it as the request was taken), so
+        // nothing is asked; a change made since is asked about as always
+        const QPointer<DeviceSession> asked = session;
+        UnsavedGuard::beforeClosing(session, this, [this, device, asked, report] {
+            const QString now = asked ? pinnedBy(asked) : QString();
+            if (asked && now.isEmpty()) m_registry->close(device);
+            report(now);
+        });
+        return;
+    }
+    if (m_registry->holder(serial)) {
+        report(QString());   // open already
+        return;
+    }
+    if (transport == QLatin1String("usb")) {
+        m_registry->open({ { QStringLiteral("kind"), QStringLiteral("usb") }, { QStringLiteral("serial"), serial } },
+                         [report](DeviceSession *session, const QString &, const QString &error) {
+                             report(session ? QString() : error.isEmpty() ? tr("The device did not open.") : error);
+                         },
+                         false);
+        return;
+    }
+    if (LinkController *l = link())
+        l->openForAgent(ticket.value(QLatin1String("hub")).toString(), transport == QLatin1String("link"), serial, report);
+    else
+        report(tr("The app cannot open a hub's device now."));
 }
 
 // -- WP MDQT2b --

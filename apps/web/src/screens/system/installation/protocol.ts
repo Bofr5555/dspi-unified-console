@@ -42,6 +42,20 @@ export interface InstallationIssue {
 
 export type InstallationRole = "receiver" | "repeater" | "spdif_follower" | "usb_direct";
 
+// -- WP FEAT1 --
+/** How a programme reaches the installation: what feeds a unit's inputs or a sender's channels. */
+export type InstallationProgrammeKind = "computer_usb" | "spdif" | "analogue" | "alink_sender";
+
+// -- WP FEAT1 --
+/** One op of a scene; a `source` op switches a zone (target `zone:<id>`) to `source`. */
+export interface InstallationSceneAction {
+  target: string;
+  op: string;
+  arg?: number;
+  value?: number;
+  source?: string | null;
+}
+
 /** `dspi_core::link::InstallationEdit` as JSON (the edits the Installation tab makes). */
 export type InstallationEdit =
   | { op: "addUnit"; serial: string; id?: string; name?: string; room?: string | null; role: InstallationRole; upstream?: string | null }
@@ -58,7 +72,16 @@ export type InstallationEdit =
   // -- WP WEBM3 -- an S/PDIF source's slots, groups
   | { op: "setSpdifSource"; id: string; txMask: number }
   | { op: "addGroup"; id?: string; name: string; units?: string[] }
-  | { op: "setGroupUnits"; id: string; units: string[] };
+  | { op: "setGroupUnits"; id: string; units: string[] }
+  // -- WP FEAT1 -- slots, sources and what a zone plays, scenes, programme sources
+  | { op: "setUnitSlots"; id: string; slots?: number[] | null }
+  | { op: "addSource"; id?: string; name: string; sender?: string | null; channels?: number[] }
+  | { op: "setSource"; id: string; sender?: string | null; channels: number[] }
+  | { op: "setZoneSource"; id: string; source?: string | null }
+  | { op: "addScene"; id?: string; name: string; actions?: InstallationSceneAction[]; systemMute?: boolean | null }
+  | { op: "setScene"; id: string; actions: InstallationSceneAction[]; systemMute?: boolean | null }
+  | { op: "addProgrammeSource"; id?: string; name: string; kind: InstallationProgrammeKind; feeds: string; inputs?: number[] }
+  | { op: "setProgrammeSource"; id: string; kind: InstallationProgrammeKind; feeds: string; inputs: number[] };
 
 export interface InstallationMethods {
   /**

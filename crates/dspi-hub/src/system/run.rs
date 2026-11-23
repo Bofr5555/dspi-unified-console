@@ -117,6 +117,32 @@ pub struct SceneReport {
     /// Whether every op is known to act at the plan's frame (all `queued` or
     /// `applied`, and the frame was still ahead after the writes).
     pub on_time: bool,
+    // -- WP FEAT1 --
+    /// The zones the scene's `source` ops switched: stored in the model (its
+    /// revision moved), their units' slots written at once (the `slots`
+    /// writes), not at the frame.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub sources: Vec<SourceSwitched>,
+}
+
+// -- WP FEAT1 --
+/// A zone switched to a source, with its units' slots: (zone, source,
+/// [(unit, slots)]).
+type Routed = (String, String, Vec<(String, Vec<u8>)>);
+
+// -- WP FEAT1 --
+/// One zone a scene's `source` op switched.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SourceSwitched {
+    /// The zone.
+    pub zone: String,
+    /// The source it plays now.
+    pub source: String,
+    /// The zone's units on the audio link that took the source's slots.
+    pub units: Vec<String>,
+    /// The model's revision with the switch stored.
+    pub revision: u64,
 }
 
 // -- fixup sw2x --
@@ -2140,10 +2166,15 @@ impl HubHandle {
     fn authorize(&self, role: Role, scene: &super::model::Scene) -> Result<(), SystemRefused> {
         let policy = &self.inner.policy;
         for a in &scene.actions {
-            let Some(op) = super::model::scene_op(&a.op) else {
-                return Err(SystemRefused::Denied(format!("op {} is unknown", a.op)));
+            // -- WP FEAT1 -- a source switch is judged as choosing a unit's input
+            let (code, dir) = if a.op == super::model::SCENE_OP_SOURCE {
+                super::model::source_op_authority()
+            } else {
+                let Some(op) = super::model::scene_op(&a.op) else {
+                    return Err(SystemRefused::Denied(format!("op {} is unknown", a.op)));
+                };
+                super::model::op_authority(op)
             };
-            let (code, dir) = super::model::op_authority(op);
             if !policy.allows(role, code, dir) {
                 return Err(SystemRefused::Denied(format!(
                     "op {} on {} needs a role that may send it directly; this one may not",
@@ -2280,6 +2311,19 @@ impl HubHandle {
             .collect();
         crate::limits::judge_scene(&self.inner.limits, &scene, &reached, role)
             .map_err(SystemRefused::Denied)?;
+        // -- WP FEAT1 -- the source switches first: stored, then the slots written;
+        // the rest of the scene is planned without them
+        let (switched, slot_writes) = self.switch_sources(&scene)?;
+        let (model, scene) = if switched.is_empty() {
+            (model, scene)
+        } else {
+            let (mut now, _) = self.system().model();
+            for s in now.scenes.iter_mut().filter(|s| s.id == id) {
+                s.actions.retain(|a| a.op != super::model::SCENE_OP_SOURCE);
+            }
+            let rest = now.scene(id).cloned().ok_or(SceneRefused::NoScene)?;
+            (now, rest)
+        };
         let mut frames = BTreeMap::new();
         let mut rtts: BTreeMap<String, Duration> = BTreeMap::new();
         // -- WP HWLK1F -- units whose firmware has no audio link: their ops go at once
@@ -2667,6 +2711,7 @@ impl HubHandle {
         // whose queue could not be read is on time only if the frame was still
         // ahead after every write. An op applied at once is not at the frame.
         let still_ahead = frame_after_writes.is_some_and(|f| f < plan.frame);
+        // -- WP FEAT1 -- the slots are written at once, not at the frame: apart
         let on_time = writes.iter().all(|w| match w.result.as_str() {
             // -- WP AUSB2 -- queued 1.92 s ahead, not at the audio link's frame
             _ if w.reason.as_deref() == Some(USB_LEAD_CAPPED) => false,
@@ -2674,12 +2719,120 @@ impl HubHandle {
             "queued_unverified" => still_ahead,
             _ => false,
         });
+        let mut all = slot_writes;
+        all.extend(writes);
         Ok(SceneReport {
             plan,
-            writes,
+            writes: all,
             frame_after_writes,
             on_time,
+            sources: switched,
         })
+    }
+
+    // -- WP FEAT1 --
+    /// The `source` ops of `scene`: each zone's source and its units' slots
+    /// stored in the model (one change, at the revision read, again on a
+    /// conflict), then each unit's slots written now (`EXT_ALINK_SLOTS`; a
+    /// unit offline takes them at the next alignment). Nothing is stored or
+    /// written when a zone cannot play its source.
+    fn switch_sources(
+        &self,
+        scene: &super::model::Scene,
+    ) -> Result<(Vec<SourceSwitched>, Vec<WriteResult>), SystemRefused> {
+        use super::model::SCENE_OP_SOURCE;
+        let ops: Vec<(String, String)> = scene
+            .actions
+            .iter()
+            .filter(|a| a.op == SCENE_OP_SOURCE)
+            .filter_map(|a| {
+                let zone = a.target.strip_prefix("zone:")?;
+                Some((zone.to_owned(), a.source.clone()?))
+            })
+            .collect();
+        if ops.is_empty() {
+            return Ok((Vec::new(), Vec::new()));
+        }
+        let mut tries = 0u8;
+        let (model, routed, revision) = loop {
+            let (mut model, at) = self.system().model();
+            let mut routed: Vec<Routed> = Vec::new();
+            for (zone, source) in &ops {
+                let slots = model.zone_slots(zone, source).map_err(|e| {
+                    SystemRefused::Denied(format!("op source on zone:{zone}: {}", e.0))
+                })?;
+                for z in model.zones.iter_mut().filter(|z| z.id == *zone) {
+                    z.source = Some(source.clone());
+                }
+                for (unit, want) in &slots {
+                    for u in model.units.iter_mut().filter(|u| u.id == *unit) {
+                        u.slots = Some(want.clone());
+                    }
+                }
+                routed.push((zone.clone(), source.clone(), slots));
+            }
+            if model == self.system().model().0 {
+                break (model, routed, at);
+            }
+            match self.system_set_model_at(model.clone(), Some(at)) {
+                Ok(rev) => break (model, routed, rev),
+                Err(super::ModelRefused::Stale { .. }) if tries < 3 => {
+                    tries = tries.saturating_add(1);
+                }
+                Err(e) => {
+                    return Err(SystemRefused::Denied(format!(
+                        "the source switch could not be stored: {e}"
+                    )));
+                }
+            }
+        };
+        let mut writes = Vec::new();
+        let mut switched = Vec::new();
+        for (zone, source, slots) in routed {
+            for (unit, want) in &slots {
+                let serial = model
+                    .unit(unit)
+                    .map(|u| u.serial.clone())
+                    .unwrap_or_default();
+                let result = match (
+                    self.device_by_serial(&serial),
+                    <[u8; 8]>::try_from(want.as_slice()),
+                ) {
+                    (Some(dev), Ok(table)) => {
+                        let now = get_ext(
+                            &dev,
+                            alink::EXT_ALINK_SLOTS,
+                            AlinkSlots::SIZE,
+                            AlinkSlots::decode,
+                        );
+                        if now == Some(AlinkSlots(table)) {
+                            "unchanged".into()
+                        } else {
+                            set_ext(&dev, alink::EXT_ALINK_SLOTS, table.to_vec())
+                                .map_or_else(status_name, |()| "ok".into())
+                        }
+                    }
+                    (None, _) => "no_device".into(),
+                    (_, Err(_)) => "skipped".into(),
+                };
+                let reason = (result == "no_device")
+                    .then(|| "not connected: it takes the slots at the next alignment".into());
+                writes.push(WriteResult {
+                    serial,
+                    element: unit.clone(),
+                    what: "slots".into(),
+                    result,
+                    reason,
+                });
+            }
+            switched.push(SourceSwitched {
+                zone,
+                source,
+                units: slots.into_iter().map(|(u, _)| u).collect(),
+                revision,
+            });
+        }
+        Ok((switched, writes))
     }
 }
 

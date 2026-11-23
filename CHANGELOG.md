@@ -5,6 +5,14 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
 ## Unreleased
 
 ### Desktop (Qt)
+- The screen always shows what an AI agent does: a strip under the top bar (both layouts) names the agent, what it does now
+  and on which device, with Pause and Stop; the AI button, Classic's robot and the tray icon show that it works; what it
+  changed is marked for a moment, with a notice and Undo. The snapshot list, the A/B compare, the auto-tune, the units'
+  alignment, control surfaces and output latency follow an agent's change at once. (WP AIVIS)
+- An AI agent is told when you step in, with its next call: what you changed, undid, loaded, opened, stopped or paused. A
+  control you take back from it is refused to it until it asks; a setting you change while its measurement runs stops it.
+  Pause is told to it as a pause, not as an error. After turning agents off and on again, their measurement requests are
+  taken again. (WP AIVIS)
 - Clicking or tabbing into a number in the band list, the output's control strip, an input's preamp or the band bar
   under the graph selects all its text, so typing replaces the value; a second click places the cursor. (WP QTTWEAK)
 - The "Filter Response" heading above the graph is gone; the graph takes its space (screen readers still name it).
@@ -72,11 +80,30 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
   you can keep a tune whose verify did not pass. (WP MCP5)
 - The speaker layout's banner says a layout was "set outside this app (a configuration file or another app)" instead
   of claiming a configuration file brought it. (WP MCP5)
+- AI agents can set the volume of a whole room or zone of an installation (each unit's limits still hold; louder asks),
+  open a DSPi the console already knows (on USB, listed by a connected hub, or opened before) and close a tab they
+  opened, read a hub's schedule, and for a measurement choose one of your microphone calibrations and target curves and
+  a lower level limit, never a higher one. Finding the low end on a headphone coupler uses the headphones' lower levels.
+  An agent reverts only a tune it applied itself. (WP FEAT2)
+- **AI agents know where the sound comes from.** They are told that a DSPi has no player and plays what its input
+  receives, and which input is in use. A new read-only tool, `dspi_get_host_audio`, tells them whether each open DSPi
+  is an output of the computer the console runs on, whether it is the default output, its format, which apps play to
+  it and the system volume (PipeWire or ALSA on Linux, Windows audio, Core Audio on macOS). It never changes the
+  default output; the agent tells you how. When the system cannot be read, the agent hears "unknown" and why.
+  (WP FEAT3)
 - AI agents have a manual page, docs/manual/ai-agents.md: the configuration for Claude Desktop, Claude Code, Cursor and
   VS Code (with the token kept out of your shell's history), what is asked, what agents can never do, and undo. The
   agents' endpoint follows MCP 2026-07-28 more closely (its error codes for a missing `_meta` and a contradicting header;
   `initialize` and `ping` are not modern methods; resources say how long they may be kept), checked against the
   official MCP conformance suite in both protocol versions. (WP MCP6)
+- **A zone's source routes, and agents can set it up.** Choosing a zone's source in the installation now gives every
+  unit of the zone on the audio link the source's channels as its slots (it was a label); a slot or channel clash is
+  refused. Saving stores it; the units play it once the audio link is aligned. A scene can switch a zone's source (a
+  `source` action): recalled, the hub stores it and writes the zone's units' slots at once. The installation can also
+  describe where its programme comes from (which computer, box or service feeds which unit input or sender channel).
+  AI agents make these in their installation draft (`dspi_installation_set_source`, `_set_zone_source`, `_set_slots`,
+  `_set_scene`, `_set_programme`); saving follows the confirmation setting, and the agent is told what is live and what
+  is stored only. The forms in Qt and the web follow. (WP FEAT1)
 - Modern's Equaliser: three pages. **PEQ** has the channel in one strip over the graph (name, Enabled, input mix, gain,
   delay, mute, polarity, limiter; an input's link and preamp), a label on the graph with the selected band's values, the
   RTA, Phase, All Curves and pop-out switches in the graph's corner, and a denser band table. **Crossover** has every

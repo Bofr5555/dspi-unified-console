@@ -48,6 +48,7 @@ import se.bofr.dspi.core.MeasureTuneState
 import se.bofr.dspi.core.ParamValue
 import se.bofr.dspi.core.SiggenConfig
 import se.bofr.dspi.core.SnapshotRecall
+import se.bofr.dspi.core.SystemVolumePlan
 import se.bofr.dspi.core.UartConfig
 import se.bofr.dspi.core.VregDemoEvent
 
@@ -167,6 +168,12 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
     override fun installationSave(draft: InstallationDraft): AlinkSystemSaved {
         guard("installationSave")
         return inner.installationSave(draft)
+    }
+
+    // -- WP FEAT2 -- a room's or zone's volume (group.param.set on its units)
+    override fun systemVolumeSet(plan: SystemVolumePlan): SystemVolumePlan {
+        guard("systemVolumeSet")
+        return inner.systemVolumeSet(plan)
     }
 
     override fun alinkSystemAlign(): AlinkSystemAlign {
@@ -1094,6 +1101,8 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "alinkSystemSaveReport",
             // -- WP INST0 -- the Installation setup's save (system.set, Admin)
             "installationSave",
+            // -- WP FEAT2 -- a room's or zone's volume (group.param.set on its units)
+            "systemVolumeSet",
             // -- WP MCP0 -- one change reverted by id: replays to the device as undo
             "revertEntry",
             // -- WP P1DF -- (configImportSelected retired by WP P1TZ)
@@ -1694,6 +1703,9 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "installationDraftEdit",
             "installationValidate",
             "installationDiff",
+            // -- WP FEAT2 -- what setting a room's or zone's volume would do: reads
+            // (system.get, group.param.get)
+            "systemVolumePlan",
             // -- WP ROLL1 -- the roll-off search's tick (its started segments, as
             // measureTick), its state, its stop (as measureStop) and its clear
             "measureRolloffTick",

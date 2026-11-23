@@ -2803,6 +2803,35 @@ data class InstallationSpeaker(
 )
 
 /**
+ * One op of a scene ([`InstallationEdit::AddScene`]): the hub's
+ * `SceneAction`.
+ */
+data class InstallationSceneAction(
+    /**
+     * `all`, or `room:<id>`, `zone:<id>`, `group:<id>`, `unit:<id>`; a
+     * `source` op takes `zone:<id>`.
+     */
+    val target: String,
+    /**
+     * `mute`, `unmute`, `preset_load`, `master_volume`, `out_delay`,
+     * `click`, `sync_pulse`, or `source` (the zone plays `source`).
+     */
+    val op: String,
+    /**
+     * The op's `arg`: a preset slot, an output.
+     */
+    val arg: Int,
+    /**
+     * The op's `value`: dB x 100, samples.
+     */
+    val value: Int,
+    /**
+     * The `source` op's source.
+     */
+    val source: String?,
+)
+
+/**
  * One reason the hub would refuse a draft.
  */
 data class InstallationIssue(
@@ -3408,6 +3437,107 @@ data class AlinkSystemSaved(
      * words. Empty when there are none.
      */
     val warnings: List<String>,
+)
+
+/**
+ * What to set: exactly one of `room` and `zone`, one of `level_db` and
+ * `step_db`.
+ */
+data class SystemVolumeAsk(
+    /**
+     * A room's id in the installation; "" for a zone.
+     */
+    val room: String,
+    /**
+     * A zone's id (every unit of its rooms); "" for a room.
+     */
+    val zone: String,
+    /**
+     * Which volume.
+     */
+    val volume: SystemVolumeKind,
+    /**
+     * The same level on every unit, dB.
+     */
+    val levelDb: Float?,
+    /**
+     * Each unit's own volume moved by this, dB (negative is quieter).
+     */
+    val stepDb: Float?,
+)
+
+/**
+ * One unit of the room or zone.
+ */
+data class SystemVolumeUnit(
+    /**
+     * The installation's id of the unit.
+     */
+    val unitId: String,
+    /**
+     * Its name, or the id when it has none.
+     */
+    val name: String,
+    /**
+     * Its serial.
+     */
+    val serial: String,
+    /**
+     * Its volume now, dB, when it could be read.
+     */
+    val beforeDb: Float?,
+    /**
+     * What it would be set to, dB.
+     */
+    val targetDb: Float?,
+    /**
+     * What it was set to, dB, once written.
+     */
+    val afterDb: Float?,
+    /**
+     * It gets louder.
+     */
+    val louder: Boolean,
+    /**
+     * Where it stands.
+     */
+    val state: SystemVolumeState,
+    /**
+     * Why it was refused: the hub's code (`offline`, `limit_exceeded`,
+     * `denied`, `locked`, ...), "" when not.
+     */
+    val code: String,
+    /**
+     * The same in words.
+     */
+    val message: String,
+)
+
+/**
+ * A room's or zone's volume, planned ([`DspiCore::system_volume_plan`]) or
+ * set ([`DspiCore::system_volume_set`]).
+ */
+data class SystemVolumePlan(
+    /**
+     * What was asked.
+     */
+    val ask: SystemVolumeAsk,
+    /**
+     * The room's or zone's name, or its id when it has none.
+     */
+    val name: String,
+    /**
+     * Its place in the installation's list, from 1.
+     */
+    val number: Long,
+    /**
+     * How many rooms (or zones) the installation has.
+     */
+    val of: Long,
+    /**
+     * Its units, in the installation's order.
+     */
+    val units: List<SystemVolumeUnit>,
 )
 
 /**
@@ -7347,8 +7477,9 @@ data class MeasureRolloffSetup(
     val speaker: String,
     /**
      * Where the microphone is: near field (close to the driver, which
-     * judges a driver best); any other placement is taken as the listening
-     * position.
+     * judges a driver best) or (-- WP FEAT2 --) on a headphone coupler, with
+     * the headphones' level caps; any other placement is taken as the
+     * listening position.
      */
     val placement: MeasurePlacement,
     /**
@@ -7384,6 +7515,10 @@ data class MeasureRolloffSetup(
      * Play at the start level only (as `MeasureSetup::start_level_only`).
      */
     val startLevelOnly: Boolean,
+    /**
+     * The coupler, for headphones (as `MeasureSetup::coupler`).
+     */
+    val coupler: MeasureCoupler?,
 )
 
 /**
@@ -9584,6 +9719,29 @@ enum class InstallationRole {
 }
 
 /**
+ * How a programme reaches the installation
+ * ([`InstallationEdit::AddProgrammeSource`]).
+ */
+enum class InstallationProgrammeKind {
+    /**
+     * A computer playing to a unit over USB.
+     */
+    COMPUTER_USB,
+    /**
+     * A box into a unit's S/PDIF input.
+     */
+    SPDIF,
+    /**
+     * An analogue source into a unit's ADC (I2S) input.
+     */
+    ANALOGUE,
+    /**
+     * Into the audio link sender's channels.
+     */
+    ALINK_SENDER,
+}
+
+/**
  * One edit of a draft. An `id` left out is made from the name (or the
  * serial); every id an edit names must exist, every serial is in the
  * installation once. JSON: `{"op": "addUnit", "serial": ..., ...}`.
@@ -9664,6 +9822,81 @@ sealed class InstallationEdit {
      * The installation's own settings; `None` leaves one as it is.
      */
     data class SetSystem(val rateHz: kotlin.Long?, val setD: kotlin.Boolean, val dFrames: kotlin.Int?, val keepUsbAligned: kotlin.Boolean?) : InstallationEdit()
+    /**
+     * A unit's slots: the audio link channel each of its 8 matrix inputs
+     * plays (255 silent); `None` leaves the unit's own table alone. A unit
+     * in a zone that plays a source takes the source's slots and no others
+     * (a slot clash). Stored: the hub writes them at the next alignment.
+     */
+    data class SetUnitSlots(val id: kotlin.String, val slots: kotlin.collections.List<kotlin.Int>?) : InstallationEdit()
+    /**
+     * Add a source: a programme on audio link channels of a sender.
+     */
+    data class AddSource(val id: kotlin.String?, val name: kotlin.String, val sender: kotlin.String?, val channels: kotlin.collections.List<kotlin.Int>) : InstallationEdit()
+    /**
+     * A source's sender and channels; the zones playing it are routed again.
+     */
+    data class SetSource(val id: kotlin.String, val sender: kotlin.String?, val channels: kotlin.collections.List<kotlin.Int>) : InstallationEdit()
+    /**
+     * What a zone plays. A source routes: every unit of the zone on the
+     * audio link takes the source's channels as its slots. `None` stops
+     * naming one and leaves the slots as they are.
+     */
+    data class SetZoneSource(val id: kotlin.String, val source: kotlin.String?) : InstallationEdit()
+    /**
+     * Add a scene: ops applied at one frame, a `source` op switching a
+     * zone's source.
+     */
+    data class AddScene(val id: kotlin.String?, val name: kotlin.String, val actions: kotlin.collections.List<se.bofr.dspi.core.InstallationSceneAction>, val systemMute: kotlin.Boolean?) : InstallationEdit()
+    /**
+     * A scene's ops and system mute, replaced.
+     */
+    data class SetScene(val id: kotlin.String, val actions: kotlin.collections.List<se.bofr.dspi.core.InstallationSceneAction>, val systemMute: kotlin.Boolean?) : InstallationEdit()
+    /**
+     * Add a programme source: what plays into the installation and where.
+     * A description; it routes nothing.
+     */
+    data class AddProgrammeSource(val id: kotlin.String?, val name: kotlin.String, val kind: se.bofr.dspi.core.InstallationProgrammeKind, val feeds: kotlin.String, val inputs: kotlin.collections.List<kotlin.Int>) : InstallationEdit()
+    /**
+     * A programme source's kind, what it feeds and its inputs, replaced.
+     */
+    data class SetProgrammeSource(val id: kotlin.String, val kind: se.bofr.dspi.core.InstallationProgrammeKind, val feeds: kotlin.String, val inputs: kotlin.collections.List<kotlin.Int>) : InstallationEdit()
+}
+
+/**
+ * Which volume of the units.
+ */
+enum class SystemVolumeKind {
+    /**
+     * The listening volume (`vol.user`, -60 to 0 dB).
+     */
+    USER,
+    /**
+     * The master volume (`vol.master`, -127 to 0 dB in 0.5 dB steps).
+     */
+    MASTER,
+}
+
+/**
+ * Where one unit stands.
+ */
+enum class SystemVolumeState {
+    /**
+     * It would be written.
+     */
+    READY,
+    /**
+     * It is at the level asked for: nothing to write.
+     */
+    UNCHANGED,
+    /**
+     * It may not be, or could not be, written (`code` and `message` say why).
+     */
+    REFUSED,
+    /**
+     * Written; `after_db` is what it has now.
+     */
+    DONE,
 }
 
 /**

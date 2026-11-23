@@ -71,6 +71,9 @@ struct Agent {
     SmokeDriver &d;
     int port;
     QByteArray token;
+    // -- WP AIVIS -- the output it sets: what the user took back from it is theirs, so
+    // each part of the section has one of its own
+    const int *out = nullptr;
 
     std::unique_ptr<Exchange> call(const char *tool, const QJsonObject &args) const {
         const QJsonObject meta{ { QStringLiteral("io.modelcontextprotocol/protocolVersion"), QStringLiteral("2026-07-28") },
@@ -89,7 +92,7 @@ struct Agent {
             body);
     }
     std::unique_ptr<Exchange> gain(double db) const {
-        return call("dspi_set_gain", { { QStringLiteral("output"), 0 }, { QStringLiteral("gain_db"), db } });
+        return call("dspi_set_gain", { { QStringLiteral("output"), out ? *out : 0 }, { QStringLiteral("gain_db"), db } });
     }
     // The result, once it has come
     QJsonObject result(Exchange &e) const {
@@ -119,9 +122,10 @@ void aiSection(SmokeDriver &d) {
     d.check("mcp4: the controllers exist", ai && settings && history && snapshots && limits && main);
     if (!ai || !settings || !history || !snapshots || !limits || !main) return;
 
-    const auto gainIs = [&](double db) { return device->state() && std::abs(double(device->state()->output_gain_db[0]) - db) < 0.01; };
+    int out = 0;   // -- WP AIVIS --
+    const auto gainIs = [&](double db) { return device->state() && std::abs(double(device->state()->output_gain_db[out]) - db) < 0.01; };
     const auto setGain = [&](float db) {
-        device->write(QStringLiteral("mcp4 gain"), [db](FfiCore *c) { return dspi_set_output_gain(c, 0, db); });
+        device->write(QStringLiteral("mcp4 gain"), [db, out](FfiCore *c) { return dspi_set_output_gain(c, uint8_t(out), db); });
         d.waitIdle();
     };
     const auto settled = [&] { return d.waitFor(5000, [&] { return ai->pending() == 0; }); };
@@ -207,7 +211,7 @@ void aiSection(SmokeDriver &d) {
         d.waitFor(5000, [&] { return e->done && opened(pairing); });
         return e;
     };
-    Agent agent{ d, port, {} };
+    Agent agent{ d, port, {}, &out };
     auto asked = pair("Denied agent");
     d.check("mcp4: an agent that asks to pair is shown with its name and code", opened(pairing)
             && ai->pairing().value(QStringLiteral("name")) == QLatin1String("Denied agent")
@@ -254,6 +258,8 @@ void aiSection(SmokeDriver &d) {
     d.check("mcp4: Undo of the row", click(item("AiAgents.log.row.0.undo")) && d.waitFor(3000, [&] { return gainIs(-10); })
             && d.waitFor(2000, [&] { return row(0).value(QStringLiteral("undo")) == QLatin1String("undone"); }));
     // Someone changed it since: theirs stays
+    out = 1;
+    setGain(-10);
     e = agent.gain(-16);
     agent.result(*e);
     d.waitFor(3000, [&] { return gainIs(-16); });
@@ -265,6 +271,7 @@ void aiSection(SmokeDriver &d) {
             d.waitFor(3000, [&] { return row(0).value(QStringLiteral("undo")) == QLatin1String("changed"); })
                 && !row(0).value(QStringLiteral("undoNote")).toString().isEmpty() && gainIs(-12));
     // Undo All, newest first
+    out = 2;
     setGain(-12);
     e = agent.gain(-20);
     agent.result(*e);
@@ -282,7 +289,7 @@ void aiSection(SmokeDriver &d) {
     const auto armed = [&] { return d.waitFor(3000, [&] { return sheet->property("armed").toBool(); }); };
     e = agent.gain(-3);
     d.check("mcp4: a louder change is held, with a sheet that says it in words", sheetOpen() && ai->confirmations().size() == 1
-            && ai->confirmations().first().toMap().value(QStringLiteral("risks")).toStringList().join(QString()).contains(QStringLiteral("Out 1")));
+            && ai->confirmations().first().toMap().value(QStringLiteral("risks")).toStringList().join(QString()).contains(QStringLiteral("Out %1").arg(out + 1)));
     const auto early = click(overlay("AiConfirmSheet.allow"));
     d.spin(100);
     d.check("mcp4: nothing is made meanwhile, nor by a click in the first moment", !early && gainIs(-12) && !e->done);
@@ -332,7 +339,9 @@ void aiSection(SmokeDriver &d) {
     d.grab(panelWindow, QStringLiteral("window-ai-agents.png"));
     click(inPanel("AiAgents.pause"));
     e = agent.gain(-30);
-    d.check("mcp4: paused, agents change nothing", failed(agent.result(*e)) && gainIs(-4) && ai->state() == QLatin1String("paused"));
+    // -- WP AIVIS -- said as paused, not as an error
+    d.check("mcp4: paused, agents change nothing", agent.result(*e).value(QLatin1String("structuredContent")).toObject().value(QLatin1String("status")).toString()
+                    == QLatin1String("paused") && gainIs(-4) && ai->state() == QLatin1String("paused"));
     click(inPanel("AiAgents.pause"));
     d.check("mcp4: and Resume lets them again", !ai->paused());
 
@@ -360,7 +369,7 @@ void aiSection(SmokeDriver &d) {
         d.grab(main, QStringLiteral("modern-ai-confirm.png"));
         // -- WP LAY8 -- each risk with its kind
         QQuickItem *risk = overlay("AiConfirmSheet.risk.0");
-        d.check("lay8: the sheet names the risk's kind", risk && risk->property("text").toString().contains(QStringLiteral("Louder: Out 1")));
+        d.check("lay8: the sheet names the risk's kind", risk && risk->property("text").toString().contains(QStringLiteral("Louder: Out %1").arg(out + 1)));
         click(overlay("AiConfirmSheet.deny"));
         agent.result(*e);
         // -- WP LAY8 -- The AI button and its popover, on the real server
@@ -375,6 +384,7 @@ void aiSection(SmokeDriver &d) {
             d.waitFor(3000, [&] { return !ai->newClient().isEmpty(); });
             Agent other{ d, port, ai->newClient().value(QStringLiteral("token")).toString().toUtf8() };
             ai->clearNewClient();
+            out = 3;
             setGain(-10);
             e = other.gain(-22);
             const bool made = !failed(other.result(*e));
@@ -424,10 +434,11 @@ void aiSection(SmokeDriver &d) {
     }());
 
     // ---- The timed preview, and Stop ----------------------------------------------------------------
+    out = 4;
     setGain(-10);
     e = agent.call("dspi_apply_changes", { { QStringLiteral("guard_s"), 300 },
                                            { QStringLiteral("changes"), QJsonArray{ QJsonObject{ { QStringLiteral("op"), QStringLiteral("set_gain") },
-                                                                                                { QStringLiteral("output"), 0 },
+                                                                                                { QStringLiteral("output"), out },
                                                                                                 { QStringLiteral("gain_db"), -18 } } } } });
     d.check("mcp4: a timed preview is made", !failed(agent.result(*e)) && d.waitFor(3000, [&] { return gainIs(-18); }));
     d.check("mcp4: the safe apply's banner shows it, with Keep and Revert", d.waitFor(4000, [&] { return snapshots->guardWaiting(); })

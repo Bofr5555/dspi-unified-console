@@ -24,13 +24,18 @@
 //! The Terminal's `usb-direct generate` builds its model with the same edits
 //! ([`installation_apply`]), so there is one path to a model.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
+use dspi_proto::ext::alink::{ALINK_MAX_CHANNELS, ALINK_SLOT_SILENT}; // -- WP FEAT1 --
 use serde_json::{Map, Value};
 
 use dspi_session::system_model::{
     FanOut, Group, Kind, MAX_TEXT, OnLockError, Room, Sender, Speaker, SystemModel, USB_MODES,
     Unit, UnitTransport, Zone,
+};
+// -- WP FEAT1 --
+use dspi_session::system_model::{
+    ProgrammeKind, ProgrammeSource, Scene, SceneAction, Source, UNIT_INPUTS,
 };
 
 use super::alink_system::AlinkSystemSaved;
@@ -114,6 +119,58 @@ pub struct InstallationSpeaker {
     pub output: u8,
     /// From the speaker to the listening position, metres.
     pub distance_m: f32,
+}
+
+// -- WP FEAT1 --
+/// How a programme reaches the installation
+/// ([`InstallationEdit::AddProgrammeSource`]).
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InstallationProgrammeKind {
+    /// A computer playing to a unit over USB.
+    ComputerUsb,
+    /// A box into a unit's S/PDIF input.
+    Spdif,
+    /// An analogue source into a unit's ADC (I2S) input.
+    Analogue,
+    /// Into the audio link sender's channels.
+    AlinkSender,
+}
+
+impl From<InstallationProgrammeKind> for ProgrammeKind {
+    fn from(k: InstallationProgrammeKind) -> Self {
+        match k {
+            InstallationProgrammeKind::ComputerUsb => Self::ComputerUsb,
+            InstallationProgrammeKind::Spdif => Self::Spdif,
+            InstallationProgrammeKind::Analogue => Self::Analogue,
+            InstallationProgrammeKind::AlinkSender => Self::AlinkSender,
+        }
+    }
+}
+
+// -- WP FEAT1 --
+/// One op of a scene ([`InstallationEdit::AddScene`]): the hub's
+/// `SceneAction`.
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct InstallationSceneAction {
+    /// `all`, or `room:<id>`, `zone:<id>`, `group:<id>`, `unit:<id>`; a
+    /// `source` op takes `zone:<id>`.
+    pub target: String,
+    /// `mute`, `unmute`, `preset_load`, `master_volume`, `out_delay`,
+    /// `click`, `sync_pulse`, or `source` (the zone plays `source`).
+    pub op: String,
+    /// The op's `arg`: a preset slot, an output.
+    #[serde(default)]
+    pub arg: u8,
+    /// The op's `value`: dB x 100, samples.
+    #[serde(default)]
+    pub value: i16,
+    /// The `source` op's source.
+    #[serde(default)]
+    pub source: Option<String>,
 }
 
 /// One edit of a draft. An `id` left out is made from the name (or the
@@ -310,6 +367,109 @@ pub enum InstallationEdit {
         /// Keep USB-direct units aligned.
         #[serde(default)]
         keep_usb_aligned: Option<bool>,
+    },
+    // -- WP FEAT1 --
+    /// A unit's slots: the audio link channel each of its 8 matrix inputs
+    /// plays (255 silent); `None` leaves the unit's own table alone. A unit
+    /// in a zone that plays a source takes the source's slots and no others
+    /// (a slot clash). Stored: the hub writes them at the next alignment.
+    SetUnitSlots {
+        /// The unit, on the audio link.
+        id: String,
+        /// 8 channels, each below 64 or 255.
+        #[serde(default)]
+        slots: Option<Vec<u8>>,
+    },
+    /// Add a source: a programme on audio link channels of a sender.
+    AddSource {
+        /// Its id; `None`: made from the name.
+        #[serde(default)]
+        id: Option<String>,
+        /// What people call it.
+        #[serde(default)]
+        name: String,
+        /// The sender whose stream carries it.
+        #[serde(default)]
+        sender: Option<String>,
+        /// The audio link channels it takes, each below 64 and on no other
+        /// source of the same sender.
+        #[serde(default)]
+        channels: Vec<u8>,
+    },
+    /// A source's sender and channels; the zones playing it are routed again.
+    SetSource {
+        /// The source.
+        id: String,
+        /// The sender whose stream carries it; `None`: none named.
+        #[serde(default)]
+        sender: Option<String>,
+        /// Its channels.
+        channels: Vec<u8>,
+    },
+    /// What a zone plays. A source routes: every unit of the zone on the
+    /// audio link takes the source's channels as its slots. `None` stops
+    /// naming one and leaves the slots as they are.
+    SetZoneSource {
+        /// The zone.
+        id: String,
+        /// The source; `None`: none.
+        #[serde(default)]
+        source: Option<String>,
+    },
+    /// Add a scene: ops applied at one frame, a `source` op switching a
+    /// zone's source.
+    AddScene {
+        /// Its id; `None`: made from the name.
+        #[serde(default)]
+        id: Option<String>,
+        /// What people call it.
+        #[serde(default)]
+        name: String,
+        /// What it does, in order.
+        #[serde(default)]
+        actions: Vec<InstallationSceneAction>,
+        /// Set or clear the system mute with it; `None`: leave it.
+        #[serde(default)]
+        system_mute: Option<bool>,
+    },
+    /// A scene's ops and system mute, replaced.
+    SetScene {
+        /// The scene.
+        id: String,
+        /// What it does, in order.
+        actions: Vec<InstallationSceneAction>,
+        /// Set or clear the system mute with it; `None`: leave it.
+        #[serde(default)]
+        system_mute: Option<bool>,
+    },
+    /// Add a programme source: what plays into the installation and where.
+    /// A description; it routes nothing.
+    AddProgrammeSource {
+        /// Its id; `None`: made from the name.
+        #[serde(default)]
+        id: Option<String>,
+        /// What people call it.
+        #[serde(default)]
+        name: String,
+        /// How it comes in.
+        kind: InstallationProgrammeKind,
+        /// The unit it plays into, or the sender (`alink_sender`).
+        feeds: String,
+        /// The unit's inputs (below 8) or the sender's channels (below 64).
+        #[serde(default)]
+        inputs: Vec<u8>,
+    },
+    /// A programme source's kind, what it feeds and its inputs, replaced.
+    SetProgrammeSource {
+        /// The programme source.
+        id: String,
+        /// How it comes in.
+        kind: InstallationProgrammeKind,
+        /// The unit it plays into, or the sender.
+        feeds: String,
+        /// Its inputs.
+        #[serde(default)]
+        inputs: Vec<u8>,
     },
 }
 
@@ -673,6 +833,14 @@ fn set_role(u: &mut Unit, role: InstallationRole) {
 ///
 /// Errors: [`DspiError::InvalidArgument`] for an edit that cannot be made.
 pub fn installation_apply(m: &mut SystemModel, edit: &InstallationEdit) -> Result<()> {
+    // -- WP FEAT1 -- the units whose routing the edit may change, routed after it
+    let touched = routed_by(m, edit, false);
+    apply_one(m, edit)?;
+    let after = routed_by(m, edit, true);
+    route(m, &touched.union(&after).cloned().collect())
+}
+
+fn apply_one(m: &mut SystemModel, edit: &InstallationEdit) -> Result<()> {
     use InstallationEdit as E;
     match edit {
         E::AddUnit {
@@ -737,6 +905,8 @@ pub fn installation_apply(m: &mut SystemModel, edit: &InstallationEdit) -> Resul
                 .chain(m.fan_outs.iter_mut().map(|x| (&x.id, &mut x.name)))
                 .chain(m.units.iter_mut().map(|x| (&x.id, &mut x.name)))
                 .chain(m.scenes.iter_mut().map(|x| (&x.id, &mut x.name)))
+                // -- WP FEAT1 --
+                .chain(m.programme_sources.iter_mut().map(|x| (&x.id, &mut x.name)))
                 .find(|(i, _)| *i == id);
             match slot {
                 Some((_, n)) => n.clone_from(name),
@@ -929,8 +1099,316 @@ pub fn installation_apply(m: &mut SystemModel, edit: &InstallationEdit) -> Resul
                 m.keep_usb_aligned = *k;
             }
         }
+        // -- WP FEAT1 --
+        E::SetUnitSlots { id, slots } => {
+            if let Some(v) = slots {
+                let ok = v.len() == UNIT_INPUTS
+                    && v.iter()
+                        .all(|c| *c < ALINK_MAX_CHANNELS || *c == ALINK_SLOT_SILENT);
+                if !ok {
+                    return invalid(format!(
+                        "slots: {UNIT_INPUTS}, each a channel below {ALINK_MAX_CHANNELS} or 255"
+                    ));
+                }
+            }
+            if let Some((zone, want)) = routes(m, &BTreeSet::from([id.clone()]))?.remove(id)
+                && slots.as_ref() != Some(&want)
+            {
+                return invalid(format!(
+                    "slot clash: unit {id:?} plays zone {zone:?}'s source, which gives it slots \
+                     {}; set the zone's source (setZoneSource) or move the unit out of the zone",
+                    slots_word(Some(&want))
+                ));
+            }
+            let u = unit_mut(m, id)?;
+            if !u.on_alink() {
+                return invalid(format!(
+                    "unit {id:?} is not on the audio link: it has no slots"
+                ));
+            }
+            u.slots.clone_from(slots);
+        }
+        E::AddSource {
+            id,
+            name,
+            sender,
+            channels,
+        } => {
+            text_ok("a name", name)?;
+            let id = new_id(m, id.as_deref(), name, "source")?;
+            source_ok(m, &id, sender.as_deref(), channels)?;
+            m.sources.push(Source {
+                id,
+                name: name.clone(),
+                sender: sender.clone(),
+                channels: channels.clone(),
+            });
+        }
+        E::SetSource {
+            id,
+            sender,
+            channels,
+        } => {
+            need(m, id, Kind::Source, "source")?;
+            source_ok(m, id, sender.as_deref(), channels)?;
+            if let Some(s) = m.sources.iter_mut().find(|s| s.id == *id) {
+                s.sender.clone_from(sender);
+                s.channels.clone_from(channels);
+            }
+        }
+        E::SetZoneSource { id, source } => {
+            if let Some(s) = source {
+                need(m, s, Kind::Source, "source")?;
+            }
+            match m.zones.iter_mut().find(|z| z.id == *id) {
+                Some(z) => z.source.clone_from(source),
+                None => return invalid(format!("no zone {id:?}")),
+            }
+        }
+        E::AddScene {
+            id,
+            name,
+            actions,
+            system_mute,
+        } => {
+            text_ok("a name", name)?;
+            let id = new_id(m, id.as_deref(), name, "scene")?;
+            let scene = scene_of(id, name.clone(), actions, *system_mute);
+            scene_ok(m, &scene)?;
+            m.scenes.push(scene);
+        }
+        E::SetScene {
+            id,
+            actions,
+            system_mute,
+        } => {
+            let Some(old) = m.scene(id) else {
+                return invalid(format!("no scene {id:?}"));
+            };
+            let scene = scene_of(id.clone(), old.name.clone(), actions, *system_mute);
+            scene_ok(m, &scene)?;
+            if let Some(s) = m.scenes.iter_mut().find(|s| s.id == *id) {
+                *s = scene;
+            }
+        }
+        E::AddProgrammeSource {
+            id,
+            name,
+            kind,
+            feeds,
+            inputs,
+        } => {
+            text_ok("a name", name)?;
+            let id = new_id(m, id.as_deref(), name, "programme")?;
+            let p = ProgrammeSource {
+                id,
+                name: name.clone(),
+                kind: (*kind).into(),
+                feeds: feeds.clone(),
+                inputs: inputs.clone(),
+            };
+            m.validate_programme(&p)
+                .map_err(|e| DspiError::InvalidArgument { msg: e.0 })?;
+            m.programme_sources.push(p);
+        }
+        E::SetProgrammeSource {
+            id,
+            kind,
+            feeds,
+            inputs,
+        } => {
+            let Some(old) = m.programme_sources.iter().find(|p| p.id == *id) else {
+                return invalid(format!("no programme source {id:?}"));
+            };
+            let p = ProgrammeSource {
+                kind: (*kind).into(),
+                feeds: feeds.clone(),
+                inputs: inputs.clone(),
+                ..old.clone()
+            };
+            m.validate_programme(&p)
+                .map_err(|e| DspiError::InvalidArgument { msg: e.0 })?;
+            if let Some(x) = m.programme_sources.iter_mut().find(|x| x.id == *id) {
+                *x = p;
+            }
+        }
     }
     Ok(())
+}
+
+// ---------------------------------------------------------------- routing
+// -- WP FEAT1 --
+
+/// A source's channels, checked: each below 64, once, and on no other
+/// source of the same sender (a channel clash); the sender one the model has.
+fn source_ok(m: &SystemModel, id: &str, sender: Option<&str>, channels: &[u8]) -> Result<()> {
+    if let Some(x) = sender {
+        need(m, x, Kind::Sender, "sender")?;
+    }
+    let mut seen = BTreeSet::new();
+    if channels.len() > usize::from(ALINK_MAX_CHANNELS)
+        || channels
+            .iter()
+            .any(|c| *c >= ALINK_MAX_CHANNELS || !seen.insert(*c))
+    {
+        return invalid(format!("channels: each below {ALINK_MAX_CHANNELS}, once"));
+    }
+    for other in m
+        .sources
+        .iter()
+        .filter(|s| s.id != id && s.sender.as_deref() == sender)
+    {
+        if let Some(c) = channels.iter().find(|c| other.channels.contains(c)) {
+            return invalid(format!(
+                "channel clash: channel {c} is source {:?}'s on the same sender",
+                other.id
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn scene_of(
+    id: String,
+    name: String,
+    actions: &[InstallationSceneAction],
+    system_mute: Option<bool>,
+) -> Scene {
+    Scene {
+        id,
+        name,
+        actions: actions
+            .iter()
+            .map(|a| SceneAction {
+                target: a.target.clone(),
+                op: a.op.clone(),
+                arg: a.arg,
+                value: a.value,
+                source: a.source.clone(),
+            })
+            .collect(),
+        system_mute,
+    }
+}
+
+fn scene_ok(m: &SystemModel, s: &Scene) -> Result<()> {
+    m.validate_scene(s)
+        .map_err(|e| DspiError::InvalidArgument { msg: e.0 })
+}
+
+/// The units whose slots `edit` may change through a zone's source, as the
+/// model is: before the edit, and (`after`) once it is made.
+fn routed_by(m: &SystemModel, edit: &InstallationEdit, after: bool) -> BTreeSet<String> {
+    use InstallationEdit as E;
+    let zone_units = |zone: &str| -> BTreeSet<String> {
+        m.zones
+            .iter()
+            .filter(|z| z.id == zone)
+            .flat_map(|z| {
+                m.units
+                    .iter()
+                    .filter(|u| u.room.as_ref().is_some_and(|r| z.rooms.contains(r)))
+                    .map(|u| u.id.clone())
+            })
+            .collect()
+    };
+    match edit {
+        E::SetZoneSource { id, .. } | E::SetZoneRooms { id, .. } => zone_units(id),
+        // The zone made is the last one.
+        E::AddZone { .. } if after => m
+            .zones
+            .last()
+            .map(|z| zone_units(&z.id))
+            .unwrap_or_default(),
+        E::SetSource { id, .. } => m
+            .zones
+            .iter()
+            .filter(|z| z.source.as_deref() == Some(id))
+            .flat_map(|z| zone_units(&z.id))
+            .collect(),
+        E::SetUnitRoom { id, .. } | E::SetUnitRole { id, .. } | E::SetUnitUpstream { id, .. } => {
+            BTreeSet::from([id.clone()])
+        }
+        E::AddUnit { serial, .. } => m
+            .units
+            .iter()
+            .filter(|u| u.serial == *serial)
+            .map(|u| u.id.clone())
+            .collect(),
+        _ => BTreeSet::new(),
+    }
+}
+
+/// The slots each of `units` takes from the zones playing a source, with
+/// the zone (a unit in none: absent). Refused when two zones give a unit
+/// different slots (a slot clash) or a zone cannot route its source.
+fn routes(
+    m: &SystemModel,
+    units: &BTreeSet<String>,
+) -> Result<BTreeMap<String, (String, Vec<u8>)>> {
+    let mut out: BTreeMap<String, (String, Vec<u8>)> = BTreeMap::new();
+    for z in &m.zones {
+        let Some(source) = z.source.as_deref() else {
+            continue;
+        };
+        let holds = m
+            .units
+            .iter()
+            .any(|u| units.contains(&u.id) && u.room.as_ref().is_some_and(|r| z.rooms.contains(r)));
+        if !holds {
+            continue;
+        }
+        let routed = m
+            .zone_slots(&z.id, source)
+            .map_err(|e| DspiError::InvalidArgument {
+                msg: format!("zone {:?} cannot play source {source:?}: {}", z.id, e.0),
+            })?;
+        for (u, slots) in routed.into_iter().filter(|(u, _)| units.contains(u)) {
+            if let Some((other, before)) = out.get(&u)
+                && *before != slots
+            {
+                return invalid(format!(
+                    "slot clash: unit {u:?} is in zone {other:?} and zone {:?}, which play \
+                     different sources",
+                    z.id
+                ));
+            }
+            out.insert(u, (z.id.clone(), slots));
+        }
+    }
+    Ok(out)
+}
+
+/// `units` take the slots their zones' sources give them.
+fn route(m: &mut SystemModel, units: &BTreeSet<String>) -> Result<()> {
+    if units.is_empty() {
+        return Ok(());
+    }
+    for (id, (_, slots)) in routes(m, units)? {
+        if let Some(u) = m.units.iter_mut().find(|u| u.id == id) {
+            u.slots = Some(slots);
+        }
+    }
+    Ok(())
+}
+
+/// Slots in words: the channel on each input, `-` for silence; "the unit's
+/// own" for none.
+fn slots_word(slots: Option<&Vec<u8>>) -> String {
+    match slots {
+        None => "the unit's own".into(),
+        Some(v) => v
+            .iter()
+            .map(|c| {
+                if *c == ALINK_SLOT_SILENT {
+                    "-".to_owned()
+                } else {
+                    c.to_string()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" "),
+    }
 }
 
 /// Remove element `id` and what names it as a member (see
@@ -986,6 +1464,14 @@ fn remove(m: &mut SystemModel, id: &str) -> Result<()> {
             }
         }
         Kind::Scene => m.scenes.retain(|x| x.id != id),
+        // -- WP FEAT1 --
+        Kind::Programme => m.programme_sources.retain(|x| x.id != id),
+    }
+    // -- WP FEAT1 -- a source's scene ops go with it
+    if kind == Kind::Source {
+        for s in &mut m.scenes {
+            s.actions.retain(|a| a.source.as_deref() != Some(id));
+        }
     }
     if let Some(t) = target {
         for s in &mut m.scenes {
@@ -1010,6 +1496,8 @@ fn label(m: &SystemModel, id: &str) -> String {
         .chain(m.fan_outs.iter().map(|x| (&x.id, &x.name)))
         .chain(m.units.iter().map(|x| (&x.id, &x.name)))
         .chain(m.scenes.iter().map(|x| (&x.id, &x.name)))
+        // -- WP FEAT1 --
+        .chain(m.programme_sources.iter().map(|x| (&x.id, &x.name)))
         .find(|(i, _)| *i == id)
         .map(|(_, n)| n.as_str());
     match named {
@@ -1208,9 +1696,22 @@ pub fn installation_changes(base: &SystemModel, draft: &SystemModel) -> Vec<Stri
         (base, &base.sources[..]),
         (draft, &draft.sources[..]),
         |x: &dspi_session::system_model::Source| x.id.as_str(),
-        &|_, o, _, d| {
+        &|bm, o, dm, d| {
             let mut c = Vec::new();
             name_change(&mut c, &o.name, &d.name);
+            // -- WP FEAT1 --
+            from_to(
+                &mut c,
+                "sender",
+                opt_label(bm, o.sender.as_deref()),
+                opt_label(dm, d.sender.as_deref()),
+            );
+            from_to(
+                &mut c,
+                "channels",
+                channels_word(&o.channels),
+                channels_word(&d.channels),
+            );
             c
         },
     );
@@ -1267,10 +1768,43 @@ pub fn installation_changes(base: &SystemModel, draft: &SystemModel) -> Vec<Stri
                 o.actions.len().to_string(),
                 d.actions.len().to_string(),
             );
+            // -- WP FEAT1 --
+            if o.actions.len() == d.actions.len() && o.actions != d.actions {
+                c.push("actions changed".into());
+            }
+            c
+        },
+    );
+    // -- WP FEAT1 --
+    list_diff(
+        &mut out,
+        "programme source",
+        (base, &base.programme_sources[..]),
+        (draft, &draft.programme_sources[..]),
+        |x: &ProgrammeSource| x.id.as_str(),
+        &|bm, o, dm, d| {
+            let mut c = Vec::new();
+            name_change(&mut c, &o.name, &d.name);
+            from_to(&mut c, "kind", o.kind.words().into(), d.kind.words().into());
+            from_to(&mut c, "feeds", label(bm, &o.feeds), label(dm, &d.feeds));
+            from_to(
+                &mut c,
+                "inputs",
+                channels_word(&o.inputs),
+                channels_word(&d.inputs),
+            );
             c
         },
     );
     out
+}
+
+// -- WP FEAT1 --
+fn channels_word(v: &[u8]) -> String {
+    if v.is_empty() {
+        return "none".into();
+    }
+    v.iter().map(u8::to_string).collect::<Vec<_>>().join(" ")
 }
 
 fn unit_changes(bm: &SystemModel, o: &Unit, dm: &SystemModel, d: &Unit) -> Vec<String> {
@@ -1313,9 +1847,13 @@ fn unit_changes(bm: &SystemModel, o: &Unit, dm: &SystemModel, d: &Unit) -> Vec<S
     } else if o.speakers != d.speakers {
         c.push("speakers changed".into());
     }
-    if o.slots != d.slots {
-        c.push("slots changed".into());
-    }
+    // -- WP FEAT1 -- the channels, not only that they changed
+    from_to(
+        &mut c,
+        "slots",
+        slots_word(o.slots.as_ref()),
+        slots_word(d.slots.as_ref()),
+    );
     c
 }
 
@@ -1323,3 +1861,9 @@ fn unit_changes(bm: &SystemModel, o: &Unit, dm: &SystemModel, d: &Unit) -> Vec<S
 #[allow(clippy::indexing_slicing, clippy::unwrap_used)]
 #[path = "tests_wp_inst0.rs"]
 mod tests_wp_inst0;
+
+// -- WP FEAT1 --
+#[cfg(test)]
+#[allow(clippy::indexing_slicing, clippy::unwrap_used)]
+#[path = "tests_wp_feat1.rs"]
+mod tests_wp_feat1;

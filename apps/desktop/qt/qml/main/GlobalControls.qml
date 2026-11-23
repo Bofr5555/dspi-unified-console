@@ -32,6 +32,8 @@ ColumnLayout {
         }
         AppComboBox {
             id: presetBox
+            AiTouched { path: "preset." }   // -- WP AIVIS --
+            AiTouched { path: "bulk" }
             objectName: "GlobalControls.preset"
             // What the popup shows, for the smoke driver
             readonly property string shownName: displayText
@@ -74,6 +76,7 @@ ColumnLayout {
         }
         AppComboBox {
             id: sourceBox
+            AiTouched { path: "in." }   // -- WP AIVIS --
             objectName: "GlobalControls.source"
             readonly property string shownName: displayText
             Layout.minimumWidth: 80
@@ -170,6 +173,7 @@ ColumnLayout {
         }
         CustomSlider {
             id: slider
+            AiTouched { objectName: "GlobalControls.volume.touched"; path: "vol." }   // -- WP AIVIS --
             objectName: "GlobalControls.volumeSlider"
             Layout.fillWidth: true
             from: 0

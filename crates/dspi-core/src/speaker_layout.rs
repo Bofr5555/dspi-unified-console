@@ -351,6 +351,13 @@ impl DspiCore {
         let mut layout = layout.normalised(&serial, outputs)?;
         layout.updated_ms = crate::events::now_ms();
         self.speaker_layouts.save(&layout)?;
+        // -- WP AIVIS -- an agent learns that its roles have moved
+        let act = if layout.confirmed_by_user {
+            "speakers_confirmed"
+        } else {
+            "speakers"
+        };
+        crate::actor::user::did(self, act);
         Ok(layout)
     }
 }

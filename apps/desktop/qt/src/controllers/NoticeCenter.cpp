@@ -76,14 +76,43 @@ void NoticeCenter::post(const QString &text, const QString &kind) {
     else emit changed();
 }
 
+// -- WP AIVIS --
+void NoticeCenter::postTagged(const QString &tag, const QString &text, const QString &action, std::function<void()> run) {
+    if (text.trimmed().isEmpty()) return;
+    const QVariantMap notice{ { QStringLiteral("text"), text },     { QStringLiteral("kind"), QStringLiteral("info") },
+                              { QStringLiteral("tag"), tag },       { QStringLiteral("action"), action },
+                              { QStringLiteral("serial"), ++m_serial } };
+    m_last = notice;
+    m_queue.removeIf([&](const QVariant &v) { return v.toMap().value(QStringLiteral("tag")).toString() == tag; });
+    if (tag == this->tag()) {
+        m_actions.remove(m_current.value(QStringLiteral("serial")).toInt());
+        m_current = notice;
+        m_timer.start(kInfoMs);
+    } else {
+        m_queue.append(notice);
+        while (m_queue.size() > kMaxWaiting) m_queue.removeFirst();
+    }
+    if (run) m_actions.insert(m_serial, std::move(run));
+    if (m_current.isEmpty()) showNext();
+    else emit changed();
+}
+
+void NoticeCenter::act() {
+    const auto run = m_actions.take(m_current.value(QStringLiteral("serial")).toInt());
+    dismiss();
+    if (run) run();
+}
+
 void NoticeCenter::dismiss() {
     m_timer.stop();
+    m_actions.remove(m_current.value(QStringLiteral("serial")).toInt());   // -- WP AIVIS --
     m_current.clear();
     showNext();
 }
 
 void NoticeCenter::clear() {
     m_timer.stop();
+    m_actions.clear();   // -- WP AIVIS --
     m_queue.clear();
     m_current.clear();
     emit changed();

@@ -199,6 +199,12 @@ void MonitorController::clear() {
     skipToEnd();
 }
 
+// -- WP AIVIS --
+void MonitorController::cleared() {
+    m_lines->clear();
+    skipToEnd();
+}
+
 QString MonitorController::text() const {
     return m_lines->lines().isEmpty() ? QString() : m_lines->lines().join(QLatin1Char('\n')) + QLatin1Char('\n');
 }

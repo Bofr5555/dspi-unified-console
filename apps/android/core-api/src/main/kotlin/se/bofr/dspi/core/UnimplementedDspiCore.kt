@@ -68,6 +68,10 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun alinkSystemSaveReport(revision: Long, edits: AlinkSystemEdits): AlinkSystemSaved = throw NotImplementedError("alink_system_save_report")
 
+    override fun systemVolumePlan(ask: SystemVolumeAsk): SystemVolumePlan = throw NotImplementedError("system_volume_plan")
+
+    override fun systemVolumeSet(plan: SystemVolumePlan): SystemVolumePlan = throw NotImplementedError("system_volume_set")
+
     override fun usbDirectSupported(): Boolean = throw NotImplementedError("usb_direct_supported")
 
     override fun fetchAlinkUsb(): AlinkUsbConfig = throw NotImplementedError("fetch_alink_usb")

@@ -540,6 +540,12 @@ fn apply_queued(
                 // -- WP P0W -- who, for undo's foreign-change rule
                 if !own {
                     crate::journal::note_foreign(conn, *source, note.origin);
+                    // -- WP AIVIS -- for the actors beside the user
+                    crate::actor::user::elsewhere(
+                        &mut inner.user_log,
+                        Some(usize::from(*offset)),
+                        conn.last_foreign.as_ref().map_or("", |f| f.writer.as_str()),
+                    );
                 }
                 // -- WP ECHO1 -- (review p1efix F2) the echo of a write of ours
                 // sent before our last whole image: older than the image the
@@ -564,6 +570,12 @@ fn apply_queued(
             Event::BulkInvalidated { source } => {
                 if !own {
                     crate::journal::note_foreign(conn, *source, note.origin); // -- WP P0W --
+                    // -- WP AIVIS --
+                    crate::actor::user::elsewhere(
+                        &mut inner.user_log,
+                        None,
+                        conn.last_foreign.as_ref().map_or("", |f| f.writer.as_str()),
+                    );
                     follow.refresh = true;
                     if matches!(source, Source::Preset | Source::Factory) {
                         follow.rebaseline = true;

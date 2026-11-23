@@ -378,8 +378,9 @@ void installationSection(SmokeDriver &d) {
     d.check("instq: the other's name, without its bidi override",
             inst->element(QStringLiteral("bar")).value(QStringLiteral("name")).toString() == QLatin1String("Bar"));
     d.check("instq: a name shown without it is no edit", inst->rename(QStringLiteral("bar"), QStringLiteral("Bar")) && !inst->dirty());
+    // -- WP INTF -- the Bar is in a zone that plays a source: its units take the source's slots (FEAT1)
     d.check("instq: nor in the changes", inst->setRoom(QStringLiteral("D"), QStringLiteral("bar")) && inst->changes().size() == 1
-                                             && inst->changes().first() == QStringLiteral("Unit Bar: room Kitchen → Bar"));
+                                             && inst->changes().first() == QStringLiteral("Unit Bar: room Kitchen → Bar; slots 4 5 - - - - - - → 0 1 2 3 4 5 6 7"));
     // Sent before the poll sees the change: the hub's conflict
     d.check("instq: the other installer saves again", !elsewhere(hub.url, R"([{"op":"renameElement","id":"main","name":"Foyer"}])").isEmpty());
     d.check("instq: a Save sent stale is the hub's conflict", (inst->save(), true) && d.waitFor(15000, [&] { return !inst->busy() && inst->stale(); })

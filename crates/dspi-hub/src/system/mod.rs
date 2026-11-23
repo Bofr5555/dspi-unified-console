@@ -22,8 +22,9 @@ pub mod model;
 mod run;
 pub mod scene;
 
+pub use run::SourceSwitched;
 pub(crate) use run::learn_events;
-pub use run::{AlignReport, SceneReport, SystemRefused, SystemStatus, WriteResult};
+pub use run::{AlignReport, SceneReport, SystemRefused, SystemStatus, WriteResult}; // -- WP FEAT1 --
 // -- WP AUSB1 --
 pub use run::USB_HELD_BACK;
 // -- WP AUSB2 --

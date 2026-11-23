@@ -605,6 +605,15 @@ pub(crate) fn journal(inner: &mut Inner, path: &'static str, indices: &[u8], aft
 fn record(inner: &mut Inner, change: Change) {
     // -- WP MCP0 -- another actor's change: the embedder is told
     crate::actor::noted(inner, change.actor, change.path, &change.indices);
+    // -- WP AIVIS -- the user's changes, for the other actors
+    crate::actor::user::journalled(
+        inner,
+        change.path,
+        &change.indices,
+        change.before.as_ref(),
+        &change.after,
+        change.source != ChangeSource::Local,
+    );
     // -- WP P1UG -- a change that ends the history ends the group too; inside
     // a group, a value written again after another writer's change starts a
     // new step (before a band's paths are joined, so the new step holds it)
@@ -1246,6 +1255,15 @@ impl DspiCore {
             .as_ref()
             .filter(|c| c.undo_group.is_open())
             .map(|c| c.undo_group.actor)
+    }
+
+    // -- WP FEAT2 --
+    /// Whether the user has a control of this device held
+    /// ([`DspiCore::set_dragging`]): a write by another actor would be
+    /// refused now. For a write that reaches the device another way (a hub's
+    /// fan-out) and for closing it. Rust-only, as above.
+    pub fn user_editing(&self) -> bool {
+        self.lock().dragging()
     }
 }
 

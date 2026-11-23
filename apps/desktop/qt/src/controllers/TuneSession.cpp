@@ -212,7 +212,14 @@ void TuneSession::endRuns() {
     m_runs = false;
     if (MeasureSession *m = measure()) {
         m->m_tuneRunning = false;
-        if (m->loop()) m->loop()->session.store(false);
+        if (m->loop()) {
+            m->loop()->session.store(false);
+            // -- WP FUNC1 -- The loop may not have said that the last run's session
+            // ended: cleared here between its tune's and its session's part of one
+            // tick, it would never, and the device stayed "measuring" for good
+            m->onLoop(m, [](FfiCore *c) { return MeasureSession::reply([&](char *b, uint32_t l) { return dspi_measure_state(c, b, l); }, 1 << 16); },
+                      [m](const QByteArray &r) { m->onSessionState(r); });
+        }
         m->closeMic();
     }
 }
@@ -455,6 +462,20 @@ void TuneSession::readProposal() {
                   if (!isOk(o)) return;
                   if (o.contains(QLatin1String("value")) && o.value(QLatin1String("value")).isNull()) return;
                   setProposal(o);
+              });
+}
+
+// -- WP AIVIS --
+void TuneSession::readAgain() {
+    MeasureSession *m = measure();
+    if (!m || !m->awake() || running() || busy()) return;
+    m->onLoop(this, [](FfiCore *c) { return MeasureSession::reply([&](char *b, uint32_t l) { return dspi_measure_tune_state(c, b, l); }, 1 << 18); },
+              [this](const QByteArray &st) {
+                  const QString before = stage();
+                  onTuneState(st);
+                  // The guard's timer is the tune tick's
+                  if (MeasureSession *s = measure(); s && s->loop() && applied()) s->loop()->tune.store(true);
+                  if (stage() != QLatin1String("idle") && (stage() != before || !hasProposal())) readProposal();
               });
 }
 

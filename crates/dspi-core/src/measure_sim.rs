@@ -187,11 +187,15 @@ impl Feed {
 #[cfg(any(test, feature = "measure-sim"))]
 pub(crate) use world::Feed;
 
+// -- WP FUNC1 -- the function test's home theatre
+#[cfg(feature = "sim-scenario")]
+pub(crate) mod scenario;
+
 #[cfg(any(test, feature = "measure-sim"))]
 mod world {
     use std::time::Duration;
 
-    use dspi_measure::sim::{Burst, Capture, Stimulus, World, render};
+    use dspi_measure::sim::{Burst, Capture, SimFilter, Stimulus, World, apply_filters, render};
     use dspi_measure::stimulus::{LogSweep, SweepConfig, WalkSchedule, peak_linear};
     use dspi_measure::types::{ChannelChain, SectionModel};
     use dspi_transport::clock::Instant;
@@ -212,6 +216,8 @@ mod world {
     const DEMO_NOISE_DBFS: f64 = -100.0;
     /// `SIGGEN_STOP_COMPLETED`: the run ended by itself.
     const STOP_COMPLETED: u8 = 2;
+    // -- WP FUNC1 -- how long an output's own filters ring on, device frames
+    const OWN_TAIL: usize = 24_000;
     /// The post-roll rendered after a run, device frames beyond its last gap.
     const TAIL_FRAMES: u64 = 4_800;
 
@@ -228,6 +234,8 @@ mod world {
         /// microphone from this capture frame on.
         cut: Option<u64>,
         issue: Option<String>,
+        // -- WP FUNC1 -- each output's own filters (none but a scenario's)
+        filters: Vec<Vec<SimFilter>>,
     }
 
     impl SimMic {
@@ -262,7 +270,30 @@ mod world {
                 seg: None,
                 cut: None,
                 issue: None,
+                filters: Vec::new(),
             }
+        }
+
+        // -- WP FUNC1 --
+        /// A microphone in a scenario's room, for one of its devices.
+        #[cfg(feature = "sim-scenario")]
+        fn in_scenario(serial: &str, outputs: usize, rate_hz: u32) -> Option<SimMic> {
+            let room = super::scenario::room()?;
+            let (world, filters) = room.world(room.device(serial)?, outputs, rate_hz);
+            let seed = world.seed;
+            Some(SimMic {
+                world,
+                seed,
+                filters,
+                ..SimMic::new(seed, outputs, rate_hz)
+            })
+        }
+
+        /// What the next start plays, for the other devices' microphones.
+        #[cfg(feature = "sim-scenario")]
+        fn heard(&self) -> Vec<f32> {
+            let seg = self.seg.as_ref();
+            seg.map(|(c, _)| c.samples.clone()).unwrap_or_default()
         }
 
         /// Why the last configuration was not rendered.
@@ -352,7 +383,11 @@ mod world {
                         .unwrap_or(0);
                     let n = usize::try_from(n.min(dspi_measure::sim::MAX_CAPTURE_FRAMES))
                         .map_err(|e| e.to_string())?;
-                    let pink = pink_noise(n, amp / 8.0, &mut self.noise);
+                    let mut pink = pink_noise(n, amp / 8.0, &mut self.noise);
+                    // -- WP FUNC1 --
+                    if let Some(f) = self.filters.get(first_out) {
+                        apply_filters(f, f64::from(rate), &mut pink);
+                    }
                     let stim = Stimulus {
                         bursts: vec![Burst {
                             output: first_out,
@@ -379,7 +414,23 @@ mod world {
                             .map(|v| *v as f32 * amp)
                             .collect()
                     };
-                    let (first, regular) = (scaled(true), scaled(false));
+                    // -- WP FUNC1 -- each output's own filters over its samples
+                    let own = |o: usize, first: bool| -> Vec<f32> {
+                        let mut v = scaled(first);
+                        if let Some(f) = self.filters.get(o).filter(|f| !f.is_empty()) {
+                            v.resize(v.len().saturating_add(OWN_TAIL), 0.0);
+                            apply_filters(f, f64::from(rate), &mut v);
+                        }
+                        v
+                    };
+                    let signals: Vec<(usize, Vec<f32>, Vec<f32>)> = outs
+                        .iter()
+                        .map(|o| (*o, own(*o, true), own(*o, false)))
+                        .collect();
+                    let signal = |o: usize, first: bool| -> &[f32] {
+                        let s = signals.iter().find(|s| s.0 == o);
+                        s.map_or(&[][..], |s| if first { &s.1 } else { &s.2 })
+                    };
                     let tail = u64::from(sweep.gap_samples).saturating_add(TAIL_FRAMES);
                     if cfg.flags & crate::consts::SIGGEN_FLAG_WALK != 0 {
                         let schedule =
@@ -390,7 +441,7 @@ mod world {
                             .map(|c| Burst {
                                 output: usize::from(c.output),
                                 start_frame: c.start,
-                                samples: if c.index == 0 { &first } else { &regular },
+                                samples: signal(usize::from(c.output), c.index == 0),
                                 gain: 1.0,
                             })
                             .collect();
@@ -400,11 +451,20 @@ mod world {
                         };
                         render(w, &stim, chains, &model, rate).map_err(err)
                     } else {
-                        let o: Vec<(usize, bool)> = outs
-                            .iter()
-                            .map(|o| (*o, bit(cfg.invert_mask, *o)))
-                            .collect();
-                        let stim = Stimulus::summed(&first, &o, 0, tail).map_err(err)?;
+                        // -- WP FUNC1 -- as `Stimulus::summed`, each output its own
+                        let len = signals.iter().map(|s| s.1.len()).max().unwrap_or(0);
+                        let stim = Stimulus {
+                            bursts: outs
+                                .iter()
+                                .map(|o| Burst {
+                                    output: *o,
+                                    start_frame: 0,
+                                    samples: signal(*o, true),
+                                    gain: if bit(cfg.invert_mask, *o) { -1.0 } else { 1.0 },
+                                })
+                                .collect(),
+                            frames: (len as u64).saturating_add(tail),
+                        };
                         render(w, &stim, chains, &model, rate).map_err(err)
                     }
                 }
@@ -581,6 +641,11 @@ mod world {
             if feed.mic.is_none() {
                 let outputs = usize::from(self.lock().state.num_output_channels);
                 feed.mic = Some(SimMic::new(feed.seed, outputs, rate));
+                // -- WP FUNC1 -- in the scenario's room when there is one
+                #[cfg(feature = "sim-scenario")]
+                if let Some(mic) = SimMic::in_scenario(&feed.serial, outputs, rate) {
+                    feed.mic = Some(mic);
+                }
             }
             if st.generator_starts > feed.seen {
                 feed.seen = st.generator_starts;
@@ -593,6 +658,10 @@ mod world {
                     .is_ok_and(|g| g.state == 0 && g.stop_reason != STOP_COMPLETED);
                 if stopped && let Some(mic) = feed.mic.as_mut() {
                     mic.stopped_at(feed.next);
+                    #[cfg(feature = "sim-scenario")] // -- WP FUNC1 --
+                    if let Some(room) = super::scenario::room() {
+                        room.stops(&feed.serial);
+                    }
                 }
             }
             // After the render (a whole run at once can take a while): the
@@ -616,7 +685,15 @@ mod world {
             let due = due.min(most);
             FEEDING.with(|f| f.set(true));
             while feed.next < due {
-                let (first, samples, clipped) = mic.block(feed.next);
+                #[cfg_attr(not(feature = "sim-scenario"), allow(unused_mut))]
+                let (first, mut samples, clipped) = mic.block(feed.next);
+                // -- WP FUNC1 -- one room: the other devices are heard too
+                #[cfg(feature = "sim-scenario")]
+                if let Some(room) = super::scenario::room()
+                    && let Some(at) = t0.checked_add(frames_time(first, rate))
+                {
+                    room.mix(&feed.serial, at, rate, &mut samples);
+                }
                 feed.next = first.saturating_add(samples.len() as u64);
                 if samples.is_empty() {
                     break;
@@ -651,8 +728,30 @@ mod world {
                 .ok()
                 .filter(|r| *r > 0)
                 .unwrap_or(48_000);
+            // -- WP FUNC1 --
+            #[cfg(feature = "sim-scenario")]
+            if let Some(room) = super::scenario::room() {
+                room.started(&feed.serial, &cfg);
+                mic.world.clock.latency_ms =
+                    room.latency_ms(&feed.serial, mic.renders.wrapping_add(1));
+            }
             mic.play(&cfg, &chains, rate, feed.next);
+            #[cfg(feature = "sim-scenario")]
+            if let Some(room) = super::scenario::room() {
+                let r = mic.world.clock.rate_hz;
+                let t0 = feed.t0.unwrap_or_else(Instant::now);
+                if let Some(from) = t0.checked_add(frames_time(feed.next, r)) {
+                    room.plays(&feed.serial, from, r, mic.heard());
+                }
+            }
         }
+    }
+
+    // -- WP FUNC1 --
+    /// How long `frames` at `rate` last.
+    #[cfg(feature = "sim-scenario")]
+    fn frames_time(frames: u64, rate: u32) -> Duration {
+        Duration::from_secs_f64(frames as f64 / f64::from(rate.max(1)))
     }
 
     /// Frames at `rate` in `d`, rounded down.

@@ -211,6 +211,11 @@ public:
     // offered: not in Modern, no hub session (or a dial for another), a serial
     // the hub does not list (compared as the hub gives it).
     bool openInTab(const QString &serial);
+    // -- WP FEAT2 -- An AI agent's request: the unit `serial` of a hub a session
+    // is up on now (`hub`: its id, or host:port with `byAddress`), opened beside
+    // the others without being made active. Never dials a hub there is no session
+    // on, never pairs: `done` then says to connect to it first.
+    void openForAgent(const QString &hub, bool byAddress, const QString &serial, std::function<void(const QString &)> done);
 
     // For the smoke driver: runs on the controller's thread when a dial ends
     // that was given up meanwhile, with its session up, just before it is closed
@@ -255,6 +260,9 @@ private:
     LinkSession *dialer();
     void leaveLobby();
     void openBeside(const QString &serial);
+    // -- WP FEAT2 -- through `through`'s hub; made active unless `activate` is
+    // false; `done` (may be empty) gets "" or why it did not open
+    void openBeside(LinkSession *through, const QString &serial, bool activate, std::function<void(const QString &)> done);
 
     DeviceRegistry *m_registry = nullptr;   // null in the smoke driver's own runs
     Poller *m_poller = nullptr;

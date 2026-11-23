@@ -294,6 +294,7 @@ public:
     Q_INVOKABLE void start();
     // Stop: system.measure.abort (every unit stopped), the microphone
     Q_INVOKABLE void stop();
+    void readAgain();   // -- WP AIVIS --
     // The summed check (RC5f) and the verify after an apply: fresh checks,
     // the microphone, the runs
     Q_INVOKABLE void sumCheck();

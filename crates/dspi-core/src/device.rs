@@ -540,6 +540,10 @@ impl DspiCore {
     /// a simulated RP2350 that answers reads and writes and notifies.
     /// Replaces any open device.
     pub fn open_demo(&self) -> Result<()> {
+        // -- WP FUNC1 -- the function test's next device
+        #[cfg(feature = "sim-scenario")]
+        let demo = crate::measure_sim::scenario::next_demo().unwrap_or_else(FakeDevice::demo);
+        #[cfg(not(feature = "sim-scenario"))]
         let demo = FakeDevice::demo();
         let serial = demo.descriptor().serial.clone();
         self.attach_probed(Box::new(demo), serial, 0)

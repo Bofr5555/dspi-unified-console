@@ -197,6 +197,10 @@ public:
     // -- WP MCP4 -- The active device's guard may have begun or ended elsewhere (an
     // AI agent's timed preview): read it again
     void readGuard() { reloadGuard(); }
+    // -- WP AIVIS -- An agent's write on `device` (AiController::agentCalled): what no
+    // snapshot of the device shows is read again (the store's list, the compare, the
+    // guard); a guard on a device that is not shown is driven from here as any other
+    void agentCalled(const QString &device, const QString &tool, bool write);
 
 signals:
     void snapshotsChanged();

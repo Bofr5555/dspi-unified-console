@@ -139,6 +139,10 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun alinkSystemSaveReport(revision: Long, edits: AlinkSystemEdits): AlinkSystemSaved = call { core.alinkSystemSaveReport(revision.toULong(), edits.toFfi()).toDomain() }
 
+    override fun systemVolumePlan(ask: SystemVolumeAsk): SystemVolumePlan = call { core.systemVolumePlan(ask.toFfi()).toDomain() }
+
+    override fun systemVolumeSet(plan: SystemVolumePlan): SystemVolumePlan = call { core.systemVolumeSet(plan.toFfi()).toDomain() }
+
     override fun usbDirectSupported(): Boolean = call { core.usbDirectSupported() }
 
     override fun fetchAlinkUsb(): AlinkUsbConfig = call { core.fetchAlinkUsb().toDomain() }
@@ -3020,6 +3024,24 @@ internal fun InstallationSpeaker.toFfi() =
         distanceM = distanceM,
     )
 
+internal fun se.bofr.dspi.ffi.uniffi.InstallationSceneAction.toDomain() =
+    InstallationSceneAction(
+        target = target,
+        op = op,
+        arg = arg.toInt(),
+        value = value.toInt(),
+        source = source,
+    )
+
+internal fun InstallationSceneAction.toFfi() =
+    se.bofr.dspi.ffi.uniffi.InstallationSceneAction(
+        target = target,
+        op = op,
+        arg = arg.toUByte(),
+        value = value.toShort(),
+        source = source,
+    )
+
 internal fun se.bofr.dspi.ffi.uniffi.InstallationIssue.toDomain() =
     InstallationIssue(
         subject = subject,
@@ -3374,6 +3396,70 @@ internal fun AlinkSystemSaved.toFfi() =
     se.bofr.dspi.ffi.uniffi.AlinkSystemSaved(
         revision = revision.toULong(),
         warnings = warnings,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.SystemVolumeAsk.toDomain() =
+    SystemVolumeAsk(
+        room = room,
+        zone = zone,
+        volume = volume.toDomain(),
+        levelDb = levelDb,
+        stepDb = stepDb,
+    )
+
+internal fun SystemVolumeAsk.toFfi() =
+    se.bofr.dspi.ffi.uniffi.SystemVolumeAsk(
+        room = room,
+        zone = zone,
+        volume = volume.toFfi(),
+        levelDb = levelDb,
+        stepDb = stepDb,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.SystemVolumeUnit.toDomain() =
+    SystemVolumeUnit(
+        unitId = unitId,
+        name = name,
+        serial = serial,
+        beforeDb = beforeDb,
+        targetDb = targetDb,
+        afterDb = afterDb,
+        louder = louder,
+        state = state.toDomain(),
+        code = code,
+        message = message,
+    )
+
+internal fun SystemVolumeUnit.toFfi() =
+    se.bofr.dspi.ffi.uniffi.SystemVolumeUnit(
+        unitId = unitId,
+        name = name,
+        serial = serial,
+        beforeDb = beforeDb,
+        targetDb = targetDb,
+        afterDb = afterDb,
+        louder = louder,
+        state = state.toFfi(),
+        code = code,
+        message = message,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.SystemVolumePlan.toDomain() =
+    SystemVolumePlan(
+        ask = ask.toDomain(),
+        name = name,
+        number = number.toLong(),
+        of = of.toLong(),
+        units = units.map { it.toDomain() },
+    )
+
+internal fun SystemVolumePlan.toFfi() =
+    se.bofr.dspi.ffi.uniffi.SystemVolumePlan(
+        ask = ask.toFfi(),
+        name = name,
+        number = number.toUInt(),
+        of = of.toUInt(),
+        units = units.map { it.toFfi() },
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.AlinkUsbConfig.toDomain() =
@@ -5821,6 +5907,7 @@ internal fun se.bofr.dspi.ffi.uniffi.MeasureRolloffSetup.toDomain() =
         captureRateHz = captureRateHz.toLong(),
         name = name,
         startLevelOnly = startLevelOnly,
+        coupler = coupler?.let { it.toDomain() },
     )
 
 internal fun MeasureRolloffSetup.toFfi() =
@@ -5838,6 +5925,7 @@ internal fun MeasureRolloffSetup.toFfi() =
         captureRateHz = captureRateHz.toUInt(),
         name = name,
         startLevelOnly = startLevelOnly,
+        coupler = coupler?.let { it.toFfi() },
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.MeasureRolloffResult.toDomain() =
@@ -7220,6 +7308,22 @@ internal fun InstallationRole.toFfi(): se.bofr.dspi.ffi.uniffi.InstallationRole 
         InstallationRole.USB_DIRECT -> se.bofr.dspi.ffi.uniffi.InstallationRole.USB_DIRECT
     }
 
+internal fun se.bofr.dspi.ffi.uniffi.InstallationProgrammeKind.toDomain(): InstallationProgrammeKind =
+    when (this) {
+        se.bofr.dspi.ffi.uniffi.InstallationProgrammeKind.COMPUTER_USB -> InstallationProgrammeKind.COMPUTER_USB
+        se.bofr.dspi.ffi.uniffi.InstallationProgrammeKind.SPDIF -> InstallationProgrammeKind.SPDIF
+        se.bofr.dspi.ffi.uniffi.InstallationProgrammeKind.ANALOGUE -> InstallationProgrammeKind.ANALOGUE
+        se.bofr.dspi.ffi.uniffi.InstallationProgrammeKind.ALINK_SENDER -> InstallationProgrammeKind.ALINK_SENDER
+    }
+
+internal fun InstallationProgrammeKind.toFfi(): se.bofr.dspi.ffi.uniffi.InstallationProgrammeKind =
+    when (this) {
+        InstallationProgrammeKind.COMPUTER_USB -> se.bofr.dspi.ffi.uniffi.InstallationProgrammeKind.COMPUTER_USB
+        InstallationProgrammeKind.SPDIF -> se.bofr.dspi.ffi.uniffi.InstallationProgrammeKind.SPDIF
+        InstallationProgrammeKind.ANALOGUE -> se.bofr.dspi.ffi.uniffi.InstallationProgrammeKind.ANALOGUE
+        InstallationProgrammeKind.ALINK_SENDER -> se.bofr.dspi.ffi.uniffi.InstallationProgrammeKind.ALINK_SENDER
+    }
+
 internal fun se.bofr.dspi.ffi.uniffi.InstallationEdit.toDomain(): InstallationEdit =
     when (this) {
         is se.bofr.dspi.ffi.uniffi.InstallationEdit.AddUnit -> InstallationEdit.AddUnit(serial, id, name, room, role.toDomain(), upstream)
@@ -7239,6 +7343,14 @@ internal fun se.bofr.dspi.ffi.uniffi.InstallationEdit.toDomain(): InstallationEd
         is se.bofr.dspi.ffi.uniffi.InstallationEdit.AddSender -> InstallationEdit.AddSender(id, name, serial)
         is se.bofr.dspi.ffi.uniffi.InstallationEdit.AddFanOut -> InstallationEdit.AddFanOut(id, name, serial, upstream, output?.let { it.toInt() })
         is se.bofr.dspi.ffi.uniffi.InstallationEdit.SetSystem -> InstallationEdit.SetSystem(rateHz?.let { it.toLong() }, setD, dFrames?.let { it.toInt() }, keepUsbAligned)
+        is se.bofr.dspi.ffi.uniffi.InstallationEdit.SetUnitSlots -> InstallationEdit.SetUnitSlots(id, slots?.let { it.map { it.toInt() and 0xFF } })
+        is se.bofr.dspi.ffi.uniffi.InstallationEdit.AddSource -> InstallationEdit.AddSource(id, name, sender, channels.map { it.toInt() and 0xFF })
+        is se.bofr.dspi.ffi.uniffi.InstallationEdit.SetSource -> InstallationEdit.SetSource(id, sender, channels.map { it.toInt() and 0xFF })
+        is se.bofr.dspi.ffi.uniffi.InstallationEdit.SetZoneSource -> InstallationEdit.SetZoneSource(id, source)
+        is se.bofr.dspi.ffi.uniffi.InstallationEdit.AddScene -> InstallationEdit.AddScene(id, name, actions.map { it.toDomain() }, systemMute)
+        is se.bofr.dspi.ffi.uniffi.InstallationEdit.SetScene -> InstallationEdit.SetScene(id, actions.map { it.toDomain() }, systemMute)
+        is se.bofr.dspi.ffi.uniffi.InstallationEdit.AddProgrammeSource -> InstallationEdit.AddProgrammeSource(id, name, kind.toDomain(), feeds, inputs.map { it.toInt() and 0xFF })
+        is se.bofr.dspi.ffi.uniffi.InstallationEdit.SetProgrammeSource -> InstallationEdit.SetProgrammeSource(id, kind.toDomain(), feeds, inputs.map { it.toInt() and 0xFF })
     }
 
 internal fun InstallationEdit.toFfi(): se.bofr.dspi.ffi.uniffi.InstallationEdit =
@@ -7260,6 +7372,42 @@ internal fun InstallationEdit.toFfi(): se.bofr.dspi.ffi.uniffi.InstallationEdit 
         is InstallationEdit.AddSender -> se.bofr.dspi.ffi.uniffi.InstallationEdit.AddSender(id, name, serial)
         is InstallationEdit.AddFanOut -> se.bofr.dspi.ffi.uniffi.InstallationEdit.AddFanOut(id, name, serial, upstream, output?.let { it.toUByte() })
         is InstallationEdit.SetSystem -> se.bofr.dspi.ffi.uniffi.InstallationEdit.SetSystem(rateHz?.let { it.toUInt() }, setD, dFrames?.let { it.toUShort() }, keepUsbAligned)
+        is InstallationEdit.SetUnitSlots -> se.bofr.dspi.ffi.uniffi.InstallationEdit.SetUnitSlots(id, slots?.let { ByteArray(it.size) { i -> it[i].toByte() } })
+        is InstallationEdit.AddSource -> se.bofr.dspi.ffi.uniffi.InstallationEdit.AddSource(id, name, sender, ByteArray(channels.size) { channels[it].toByte() })
+        is InstallationEdit.SetSource -> se.bofr.dspi.ffi.uniffi.InstallationEdit.SetSource(id, sender, ByteArray(channels.size) { channels[it].toByte() })
+        is InstallationEdit.SetZoneSource -> se.bofr.dspi.ffi.uniffi.InstallationEdit.SetZoneSource(id, source)
+        is InstallationEdit.AddScene -> se.bofr.dspi.ffi.uniffi.InstallationEdit.AddScene(id, name, actions.map { it.toFfi() }, systemMute)
+        is InstallationEdit.SetScene -> se.bofr.dspi.ffi.uniffi.InstallationEdit.SetScene(id, actions.map { it.toFfi() }, systemMute)
+        is InstallationEdit.AddProgrammeSource -> se.bofr.dspi.ffi.uniffi.InstallationEdit.AddProgrammeSource(id, name, kind.toFfi(), feeds, ByteArray(inputs.size) { inputs[it].toByte() })
+        is InstallationEdit.SetProgrammeSource -> se.bofr.dspi.ffi.uniffi.InstallationEdit.SetProgrammeSource(id, kind.toFfi(), feeds, ByteArray(inputs.size) { inputs[it].toByte() })
+    }
+
+internal fun se.bofr.dspi.ffi.uniffi.SystemVolumeKind.toDomain(): SystemVolumeKind =
+    when (this) {
+        se.bofr.dspi.ffi.uniffi.SystemVolumeKind.USER -> SystemVolumeKind.USER
+        se.bofr.dspi.ffi.uniffi.SystemVolumeKind.MASTER -> SystemVolumeKind.MASTER
+    }
+
+internal fun SystemVolumeKind.toFfi(): se.bofr.dspi.ffi.uniffi.SystemVolumeKind =
+    when (this) {
+        SystemVolumeKind.USER -> se.bofr.dspi.ffi.uniffi.SystemVolumeKind.USER
+        SystemVolumeKind.MASTER -> se.bofr.dspi.ffi.uniffi.SystemVolumeKind.MASTER
+    }
+
+internal fun se.bofr.dspi.ffi.uniffi.SystemVolumeState.toDomain(): SystemVolumeState =
+    when (this) {
+        se.bofr.dspi.ffi.uniffi.SystemVolumeState.READY -> SystemVolumeState.READY
+        se.bofr.dspi.ffi.uniffi.SystemVolumeState.UNCHANGED -> SystemVolumeState.UNCHANGED
+        se.bofr.dspi.ffi.uniffi.SystemVolumeState.REFUSED -> SystemVolumeState.REFUSED
+        se.bofr.dspi.ffi.uniffi.SystemVolumeState.DONE -> SystemVolumeState.DONE
+    }
+
+internal fun SystemVolumeState.toFfi(): se.bofr.dspi.ffi.uniffi.SystemVolumeState =
+    when (this) {
+        SystemVolumeState.READY -> se.bofr.dspi.ffi.uniffi.SystemVolumeState.READY
+        SystemVolumeState.UNCHANGED -> se.bofr.dspi.ffi.uniffi.SystemVolumeState.UNCHANGED
+        SystemVolumeState.REFUSED -> se.bofr.dspi.ffi.uniffi.SystemVolumeState.REFUSED
+        SystemVolumeState.DONE -> se.bofr.dspi.ffi.uniffi.SystemVolumeState.DONE
     }
 
 internal fun se.bofr.dspi.ffi.uniffi.ConfirmOp.toDomain(): ConfirmOp =

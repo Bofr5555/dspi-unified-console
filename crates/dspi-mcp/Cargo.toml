@@ -22,6 +22,22 @@ getrandom = { version = "0.4", optional = true }
 data-encoding = { version = "2", optional = true }
 log = { workspace = true, optional = true }
 
+# -- WP FEAT3 -- reading this computer's audio (feature `host-audio`) on
+# Windows: MMDevice, the endpoint volume and the audio sessions. The same
+# `windows` 0.56 midir brings into the lock; only features are added.
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.56", optional = true, features = [
+    "Win32_Foundation",
+    "Win32_Devices_DeviceAndDriverInstallation",
+    "Win32_Media_Audio",
+    "Win32_Media_Audio_Endpoints",
+    "Win32_System_Com",
+    "Win32_System_Com_StructuredStorage",
+    "Win32_System_Threading",
+    "Win32_System_Variant",
+    "Win32_UI_Shell_PropertiesSystem",
+] }
+
 # -- WP MCP3 --
 [features]
 # The loopback HTTP listener, the per-client tokens and pairing, and the stdio
@@ -32,6 +48,11 @@ http = ["dep:httparse", "dep:sha2", "dep:getrandom", "dep:data-encoding", "dep:l
 # installation on the hub (tools/alink.rs `system.*`), Installation setup and
 # the hub's reads. Off, those tools are not listed.
 link = ["dspi-core/link"]
+# -- WP FEAT3 --
+# `host_audio::system()`: this computer's audio for dspi_get_host_audio
+# (pw-dump and ALSA on Linux, MMDevice on Windows, Core Audio on macOS). Off,
+# the crate stays sans-IO and the embedder passes its own reader or none.
+host-audio = ["dep:windows"]
 
 [dev-dependencies]
 # A measurement document for the tests (a workspace crate, already a dependency
@@ -40,9 +61,15 @@ dspi-measure.workspace = true
 # -- WP MCP2c -- the hub and installation tools against a real in-process hub
 # with fake alink units (as dspi-hub's tests/wp_inst0_installation.rs). Both
 # workspace crates, already in the lock.
-dspi-hub = { workspace = true, default-features = false }
+# -- WP FEAT2 -- `api`: its group writes and its schedule (no new crate)
+dspi-hub = { workspace = true, default-features = false, features = ["api"] }
 dspi-transport = { path = "../dspi-transport", default-features = false, features = ["link"] }
 # -- WP MCP5 -- the measuring tools against the demo's simulated microphone
 # (P5DEMO), as the Qt and Terminal builds have it: the same crate, one more
 # feature for the tests.
 dspi-core = { path = "../dspi-core", default-features = false, features = ["measure-sim"] }
+
+# -- WP FEAT3 -- `--cfg dspi_check_macos` compiles the Core Audio reader for
+# an Apple target the build container has (aarch64-apple-ios): a check only.
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(dspi_check_macos)"] }

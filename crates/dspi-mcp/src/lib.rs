@@ -18,6 +18,8 @@
 //! | [`prompts`] | user-invoked recipes | MCP1 |
 //! | [`untrusted`] | the sanitiser for text nobody vetted | MCP1 |
 //! | [`activity`] | what the agents did | MCP1 |
+//! | [`host_audio`] | this computer's audio, read only | FEAT3 |
+//! | [`user`] | what the user did meanwhile, for the agents | AIVIS |
 //! | [`rate`] | token buckets on the caller's clock | MCP1 |
 //! | `http` | the loopback listener (feature `http`) | MCP3 |
 //! | `auth` | per-client tokens and pairing (feature `http`) | MCP3 |
@@ -39,6 +41,7 @@
 
 pub mod activity;
 pub mod confirm; // -- WP MCP2a --
+pub mod host_audio; // -- WP FEAT3 --
 pub mod policy; // -- WP MCP2a --
 pub mod prompts;
 pub mod protocol;
@@ -48,6 +51,7 @@ pub mod resources;
 pub mod server;
 pub mod tools;
 pub mod untrusted;
+pub mod user; // -- WP AIVIS --
 // -- WP MCP3 -- the transports
 #[cfg(feature = "http")]
 pub mod auth;
@@ -90,6 +94,10 @@ mod tests_wp_mcp2c;
 #[cfg(feature = "http")]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_mcp4;
+// -- WP FEAT2 --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
+mod tests_wp_feat2;
 // -- WP MCP5 --
 #[cfg(test)]
 #[allow(
@@ -98,3 +106,21 @@ mod tests_wp_mcp4;
     clippy::cast_possible_truncation
 )]
 mod tests_wp_mcp5;
+// -- WP FEAT1 --
+#[cfg(test)]
+#[cfg(feature = "link")]
+#[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
+mod tests_wp_feat1;
+// -- WP FEAT3 --
+#[cfg(test)]
+#[allow(clippy::indexing_slicing)]
+mod tests_wp_feat3;
+// -- WP INTF --
+#[cfg(test)]
+#[cfg(feature = "link")]
+#[allow(clippy::indexing_slicing)]
+mod tests_wp_intf;
+// -- WP AIVIS --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
+mod tests_wp_aivis;

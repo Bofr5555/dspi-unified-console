@@ -2196,6 +2196,10 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -3351,6 +3355,10 @@ fun uniffi_dspi_core_checksum_method_dspicore_speaker_layout_set(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_speaker_layout_set_dir(
 ): Short
+fun uniffi_dspi_core_checksum_method_dspicore_system_volume_plan(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_system_volume_set(
+): Short
 fun uniffi_dspi_core_checksum_method_dspicore_test_dac_mute(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_undo(
@@ -4498,6 +4506,10 @@ fun uniffi_dspi_core_fn_method_dspicore_speaker_layout_set(`ptr`: Pointer,`layou
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_speaker_layout_set_dir(`ptr`: Pointer,`dir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_dspi_core_fn_method_dspicore_system_volume_plan(`ptr`: Pointer,`ask`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_system_volume_set(`ptr`: Pointer,`plan`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_test_dac_mute(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_undo(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
@@ -6596,6 +6608,12 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_speaker_layout_set_dir() != 19602.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_system_volume_plan() != 7230.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_system_volume_set() != 4713.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_test_dac_mute() != 36228.toShort()) {
@@ -13902,6 +13920,37 @@ public interface DspiCoreInterface {
      * in force in memory until a later call or a save writes it.
      */
     fun `speakerLayoutSetDir`(`dir`: kotlin.String)
+    
+    /**
+     * What setting a room's or zone's volume would do (`system.get`, then
+     * `group.param.get` on its units): each unit's volume now, its new one,
+     * whether it gets louder, or why it is left alone. Writes nothing. Every
+     * role. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an ask that is not one, a
+     * room or zone the installation does not hold or one with no units
+     * (nothing is read from the units); [`DspiError::Unsupported`] without
+     * the hub's `group_params` cap; [`DspiError::Disconnected`]; the hub's
+     * refusal.
+     */
+    fun `systemVolumePlan`(`ask`: SystemVolumeAsk): SystemVolumePlan
+    
+    /**
+     * Write `plan` (from [`DspiCore::system_volume_plan`]): its units that
+     * are ready, through the hub's fan-out (`group.param.set`), each to its
+     * `target_db`. The answer is the plan with each unit's row settled: done
+     * with the level it has, or refused by the hub for that unit (its limits
+     * profile, its lock, offline, the role). Control or Admin on the hub.
+     * Not in the undo history: it goes to the hub, not to this device. Slow:
+     * off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a plan with a level out of
+     * range or a unit twice (nothing sent); [`DspiError::ReadOnly`] (nothing
+     * sent); [`DspiError::Denied`] for a Viewer; as
+     * [`DspiCore::system_volume_plan`]. When the session goes between two
+     * fan-outs, the units already written are done and the rest refused.
+     */
+    fun `systemVolumeSet`(`plan`: SystemVolumePlan): SystemVolumePlan
     
     /**
      * Pulse the mute output for about a second, so an installer can hear
@@ -24909,6 +24958,59 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 }
     }
     
+    
+
+    
+    /**
+     * What setting a room's or zone's volume would do (`system.get`, then
+     * `group.param.get` on its units): each unit's volume now, its new one,
+     * whether it gets louder, or why it is left alone. Writes nothing. Every
+     * role. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an ask that is not one, a
+     * room or zone the installation does not hold or one with no units
+     * (nothing is read from the units); [`DspiError::Unsupported`] without
+     * the hub's `group_params` cap; [`DspiError::Disconnected`]; the hub's
+     * refusal.
+     */
+    @Throws(DspiException::class)override fun `systemVolumePlan`(`ask`: SystemVolumeAsk): SystemVolumePlan {
+            return FfiConverterTypeSystemVolumePlan.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_system_volume_plan(
+        it, FfiConverterTypeSystemVolumeAsk.lower(`ask`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Write `plan` (from [`DspiCore::system_volume_plan`]): its units that
+     * are ready, through the hub's fan-out (`group.param.set`), each to its
+     * `target_db`. The answer is the plan with each unit's row settled: done
+     * with the level it has, or refused by the hub for that unit (its limits
+     * profile, its lock, offline, the role). Control or Admin on the hub.
+     * Not in the undo history: it goes to the hub, not to this device. Slow:
+     * off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a plan with a level out of
+     * range or a unit twice (nothing sent); [`DspiError::ReadOnly`] (nothing
+     * sent); [`DspiError::Denied`] for a Viewer; as
+     * [`DspiCore::system_volume_plan`]. When the session goes between two
+     * fan-outs, the units already written are done and the rest refused.
+     */
+    @Throws(DspiException::class)override fun `systemVolumeSet`(`plan`: SystemVolumePlan): SystemVolumePlan {
+            return FfiConverterTypeSystemVolumePlan.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_system_volume_set(
+        it, FfiConverterTypeSystemVolumePlan.lower(`plan`),_status)
+}
+    }
+    )
+    }
     
 
     
@@ -39127,6 +39229,71 @@ public object FfiConverterTypeInstallationIssue: FfiConverterRustBuffer<Installa
 
 
 /**
+ * One op of a scene ([`InstallationEdit::AddScene`]): the hub's
+ * `SceneAction`.
+ */
+data class InstallationSceneAction (
+    /**
+     * `all`, or `room:<id>`, `zone:<id>`, `group:<id>`, `unit:<id>`; a
+     * `source` op takes `zone:<id>`.
+     */
+    var `target`: kotlin.String, 
+    /**
+     * `mute`, `unmute`, `preset_load`, `master_volume`, `out_delay`,
+     * `click`, `sync_pulse`, or `source` (the zone plays `source`).
+     */
+    var `op`: kotlin.String, 
+    /**
+     * The op's `arg`: a preset slot, an output.
+     */
+    var `arg`: kotlin.UByte, 
+    /**
+     * The op's `value`: dB x 100, samples.
+     */
+    var `value`: kotlin.Short, 
+    /**
+     * The `source` op's source.
+     */
+    var `source`: kotlin.String?
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeInstallationSceneAction: FfiConverterRustBuffer<InstallationSceneAction> {
+    override fun read(buf: ByteBuffer): InstallationSceneAction {
+        return InstallationSceneAction(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterShort.read(buf),
+            FfiConverterOptionalString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: InstallationSceneAction) = (
+            FfiConverterString.allocationSize(value.`target`) +
+            FfiConverterString.allocationSize(value.`op`) +
+            FfiConverterUByte.allocationSize(value.`arg`) +
+            FfiConverterShort.allocationSize(value.`value`) +
+            FfiConverterOptionalString.allocationSize(value.`source`)
+    )
+
+    override fun write(value: InstallationSceneAction, buf: ByteBuffer) {
+            FfiConverterString.write(value.`target`, buf)
+            FfiConverterString.write(value.`op`, buf)
+            FfiConverterUByte.write(value.`arg`, buf)
+            FfiConverterShort.write(value.`value`, buf)
+            FfiConverterOptionalString.write(value.`source`, buf)
+    }
+}
+
+
+
+/**
  * A speaker on one of a unit's outputs.
  */
 data class InstallationSpeaker (
@@ -42208,8 +42375,9 @@ data class MeasureRolloffSetup (
     var `speaker`: kotlin.String, 
     /**
      * Where the microphone is: near field (close to the driver, which
-     * judges a driver best); any other placement is taken as the listening
-     * position.
+     * judges a driver best) or (-- WP FEAT2 --) on a headphone coupler, with
+     * the headphones' level caps; any other placement is taken as the
+     * listening position.
      */
     var `placement`: MeasurePlacement, 
     /**
@@ -42244,7 +42412,11 @@ data class MeasureRolloffSetup (
     /**
      * Play at the start level only (as `MeasureSetup::start_level_only`).
      */
-    var `startLevelOnly`: kotlin.Boolean
+    var `startLevelOnly`: kotlin.Boolean, 
+    /**
+     * The coupler, for headphones (as `MeasureSetup::coupler`).
+     */
+    var `coupler`: MeasureCoupler? = null
 ) {
     
     companion object
@@ -42269,6 +42441,7 @@ public object FfiConverterTypeMeasureRolloffSetup: FfiConverterRustBuffer<Measur
             FfiConverterUInt.read(buf),
             FfiConverterString.read(buf),
             FfiConverterBoolean.read(buf),
+            FfiConverterOptionalTypeMeasureCoupler.read(buf),
         )
     }
 
@@ -42285,7 +42458,8 @@ public object FfiConverterTypeMeasureRolloffSetup: FfiConverterRustBuffer<Measur
             FfiConverterOptionalFloat.allocationSize(value.`splCapDb`) +
             FfiConverterUInt.allocationSize(value.`captureRateHz`) +
             FfiConverterString.allocationSize(value.`name`) +
-            FfiConverterBoolean.allocationSize(value.`startLevelOnly`)
+            FfiConverterBoolean.allocationSize(value.`startLevelOnly`) +
+            FfiConverterOptionalTypeMeasureCoupler.allocationSize(value.`coupler`)
     )
 
     override fun write(value: MeasureRolloffSetup, buf: ByteBuffer) {
@@ -42302,6 +42476,7 @@ public object FfiConverterTypeMeasureRolloffSetup: FfiConverterRustBuffer<Measur
             FfiConverterUInt.write(value.`captureRateHz`, buf)
             FfiConverterString.write(value.`name`, buf)
             FfiConverterBoolean.write(value.`startLevelOnly`, buf)
+            FfiConverterOptionalTypeMeasureCoupler.write(value.`coupler`, buf)
     }
 }
 
@@ -48575,6 +48750,230 @@ public object FfiConverterTypeSystemStatus: FfiConverterRustBuffer<SystemStatus>
 
 
 /**
+ * What to set: exactly one of `room` and `zone`, one of `level_db` and
+ * `step_db`.
+ */
+data class SystemVolumeAsk (
+    /**
+     * A room's id in the installation; "" for a zone.
+     */
+    var `room`: kotlin.String, 
+    /**
+     * A zone's id (every unit of its rooms); "" for a room.
+     */
+    var `zone`: kotlin.String, 
+    /**
+     * Which volume.
+     */
+    var `volume`: SystemVolumeKind, 
+    /**
+     * The same level on every unit, dB.
+     */
+    var `levelDb`: kotlin.Float?, 
+    /**
+     * Each unit's own volume moved by this, dB (negative is quieter).
+     */
+    var `stepDb`: kotlin.Float?
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeSystemVolumeAsk: FfiConverterRustBuffer<SystemVolumeAsk> {
+    override fun read(buf: ByteBuffer): SystemVolumeAsk {
+        return SystemVolumeAsk(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterTypeSystemVolumeKind.read(buf),
+            FfiConverterOptionalFloat.read(buf),
+            FfiConverterOptionalFloat.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: SystemVolumeAsk) = (
+            FfiConverterString.allocationSize(value.`room`) +
+            FfiConverterString.allocationSize(value.`zone`) +
+            FfiConverterTypeSystemVolumeKind.allocationSize(value.`volume`) +
+            FfiConverterOptionalFloat.allocationSize(value.`levelDb`) +
+            FfiConverterOptionalFloat.allocationSize(value.`stepDb`)
+    )
+
+    override fun write(value: SystemVolumeAsk, buf: ByteBuffer) {
+            FfiConverterString.write(value.`room`, buf)
+            FfiConverterString.write(value.`zone`, buf)
+            FfiConverterTypeSystemVolumeKind.write(value.`volume`, buf)
+            FfiConverterOptionalFloat.write(value.`levelDb`, buf)
+            FfiConverterOptionalFloat.write(value.`stepDb`, buf)
+    }
+}
+
+
+
+/**
+ * A room's or zone's volume, planned ([`DspiCore::system_volume_plan`]) or
+ * set ([`DspiCore::system_volume_set`]).
+ */
+data class SystemVolumePlan (
+    /**
+     * What was asked.
+     */
+    var `ask`: SystemVolumeAsk, 
+    /**
+     * The room's or zone's name, or its id when it has none.
+     */
+    var `name`: kotlin.String, 
+    /**
+     * Its place in the installation's list, from 1.
+     */
+    var `number`: kotlin.UInt, 
+    /**
+     * How many rooms (or zones) the installation has.
+     */
+    var `of`: kotlin.UInt, 
+    /**
+     * Its units, in the installation's order.
+     */
+    var `units`: List<SystemVolumeUnit>
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeSystemVolumePlan: FfiConverterRustBuffer<SystemVolumePlan> {
+    override fun read(buf: ByteBuffer): SystemVolumePlan {
+        return SystemVolumePlan(
+            FfiConverterTypeSystemVolumeAsk.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterSequenceTypeSystemVolumeUnit.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: SystemVolumePlan) = (
+            FfiConverterTypeSystemVolumeAsk.allocationSize(value.`ask`) +
+            FfiConverterString.allocationSize(value.`name`) +
+            FfiConverterUInt.allocationSize(value.`number`) +
+            FfiConverterUInt.allocationSize(value.`of`) +
+            FfiConverterSequenceTypeSystemVolumeUnit.allocationSize(value.`units`)
+    )
+
+    override fun write(value: SystemVolumePlan, buf: ByteBuffer) {
+            FfiConverterTypeSystemVolumeAsk.write(value.`ask`, buf)
+            FfiConverterString.write(value.`name`, buf)
+            FfiConverterUInt.write(value.`number`, buf)
+            FfiConverterUInt.write(value.`of`, buf)
+            FfiConverterSequenceTypeSystemVolumeUnit.write(value.`units`, buf)
+    }
+}
+
+
+
+/**
+ * One unit of the room or zone.
+ */
+data class SystemVolumeUnit (
+    /**
+     * The installation's id of the unit.
+     */
+    var `unitId`: kotlin.String, 
+    /**
+     * Its name, or the id when it has none.
+     */
+    var `name`: kotlin.String, 
+    /**
+     * Its serial.
+     */
+    var `serial`: kotlin.String, 
+    /**
+     * Its volume now, dB, when it could be read.
+     */
+    var `beforeDb`: kotlin.Float?, 
+    /**
+     * What it would be set to, dB.
+     */
+    var `targetDb`: kotlin.Float?, 
+    /**
+     * What it was set to, dB, once written.
+     */
+    var `afterDb`: kotlin.Float?, 
+    /**
+     * It gets louder.
+     */
+    var `louder`: kotlin.Boolean, 
+    /**
+     * Where it stands.
+     */
+    var `state`: SystemVolumeState, 
+    /**
+     * Why it was refused: the hub's code (`offline`, `limit_exceeded`,
+     * `denied`, `locked`, ...), "" when not.
+     */
+    var `code`: kotlin.String, 
+    /**
+     * The same in words.
+     */
+    var `message`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeSystemVolumeUnit: FfiConverterRustBuffer<SystemVolumeUnit> {
+    override fun read(buf: ByteBuffer): SystemVolumeUnit {
+        return SystemVolumeUnit(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterOptionalFloat.read(buf),
+            FfiConverterOptionalFloat.read(buf),
+            FfiConverterOptionalFloat.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterTypeSystemVolumeState.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: SystemVolumeUnit) = (
+            FfiConverterString.allocationSize(value.`unitId`) +
+            FfiConverterString.allocationSize(value.`name`) +
+            FfiConverterString.allocationSize(value.`serial`) +
+            FfiConverterOptionalFloat.allocationSize(value.`beforeDb`) +
+            FfiConverterOptionalFloat.allocationSize(value.`targetDb`) +
+            FfiConverterOptionalFloat.allocationSize(value.`afterDb`) +
+            FfiConverterBoolean.allocationSize(value.`louder`) +
+            FfiConverterTypeSystemVolumeState.allocationSize(value.`state`) +
+            FfiConverterString.allocationSize(value.`code`) +
+            FfiConverterString.allocationSize(value.`message`)
+    )
+
+    override fun write(value: SystemVolumeUnit, buf: ByteBuffer) {
+            FfiConverterString.write(value.`unitId`, buf)
+            FfiConverterString.write(value.`name`, buf)
+            FfiConverterString.write(value.`serial`, buf)
+            FfiConverterOptionalFloat.write(value.`beforeDb`, buf)
+            FfiConverterOptionalFloat.write(value.`targetDb`, buf)
+            FfiConverterOptionalFloat.write(value.`afterDb`, buf)
+            FfiConverterBoolean.write(value.`louder`, buf)
+            FfiConverterTypeSystemVolumeState.write(value.`state`, buf)
+            FfiConverterString.write(value.`code`, buf)
+            FfiConverterString.write(value.`message`, buf)
+    }
+}
+
+
+
+/**
  * A built-in target ([`target_builtins`]): defined by parameters in our own
  * code, no third-party data (OD-P5p).
  */
@@ -50949,6 +51348,178 @@ sealed class InstallationEdit {
         companion object
     }
     
+    /**
+     * A unit's slots: the audio link channel each of its 8 matrix inputs
+     * plays (255 silent); `None` leaves the unit's own table alone. A unit
+     * in a zone that plays a source takes the source's slots and no others
+     * (a slot clash). Stored: the hub writes them at the next alignment.
+     */
+    data class SetUnitSlots(
+        /**
+         * The unit, on the audio link.
+         */
+        val `id`: kotlin.String, 
+        /**
+         * 8 channels, each below 64 or 255.
+         */
+        val `slots`: kotlin.ByteArray?) : InstallationEdit() {
+        companion object
+    }
+    
+    /**
+     * Add a source: a programme on audio link channels of a sender.
+     */
+    data class AddSource(
+        /**
+         * Its id; `None`: made from the name.
+         */
+        val `id`: kotlin.String?, 
+        /**
+         * What people call it.
+         */
+        val `name`: kotlin.String, 
+        /**
+         * The sender whose stream carries it.
+         */
+        val `sender`: kotlin.String?, 
+        /**
+         * The audio link channels it takes, each below 64 and on no other
+         * source of the same sender.
+         */
+        val `channels`: kotlin.ByteArray) : InstallationEdit() {
+        companion object
+    }
+    
+    /**
+     * A source's sender and channels; the zones playing it are routed again.
+     */
+    data class SetSource(
+        /**
+         * The source.
+         */
+        val `id`: kotlin.String, 
+        /**
+         * The sender whose stream carries it; `None`: none named.
+         */
+        val `sender`: kotlin.String?, 
+        /**
+         * Its channels.
+         */
+        val `channels`: kotlin.ByteArray) : InstallationEdit() {
+        companion object
+    }
+    
+    /**
+     * What a zone plays. A source routes: every unit of the zone on the
+     * audio link takes the source's channels as its slots. `None` stops
+     * naming one and leaves the slots as they are.
+     */
+    data class SetZoneSource(
+        /**
+         * The zone.
+         */
+        val `id`: kotlin.String, 
+        /**
+         * The source; `None`: none.
+         */
+        val `source`: kotlin.String?) : InstallationEdit() {
+        companion object
+    }
+    
+    /**
+     * Add a scene: ops applied at one frame, a `source` op switching a
+     * zone's source.
+     */
+    data class AddScene(
+        /**
+         * Its id; `None`: made from the name.
+         */
+        val `id`: kotlin.String?, 
+        /**
+         * What people call it.
+         */
+        val `name`: kotlin.String, 
+        /**
+         * What it does, in order.
+         */
+        val `actions`: List<InstallationSceneAction>, 
+        /**
+         * Set or clear the system mute with it; `None`: leave it.
+         */
+        val `systemMute`: kotlin.Boolean?) : InstallationEdit() {
+        companion object
+    }
+    
+    /**
+     * A scene's ops and system mute, replaced.
+     */
+    data class SetScene(
+        /**
+         * The scene.
+         */
+        val `id`: kotlin.String, 
+        /**
+         * What it does, in order.
+         */
+        val `actions`: List<InstallationSceneAction>, 
+        /**
+         * Set or clear the system mute with it; `None`: leave it.
+         */
+        val `systemMute`: kotlin.Boolean?) : InstallationEdit() {
+        companion object
+    }
+    
+    /**
+     * Add a programme source: what plays into the installation and where.
+     * A description; it routes nothing.
+     */
+    data class AddProgrammeSource(
+        /**
+         * Its id; `None`: made from the name.
+         */
+        val `id`: kotlin.String?, 
+        /**
+         * What people call it.
+         */
+        val `name`: kotlin.String, 
+        /**
+         * How it comes in.
+         */
+        val `kind`: InstallationProgrammeKind, 
+        /**
+         * The unit it plays into, or the sender (`alink_sender`).
+         */
+        val `feeds`: kotlin.String, 
+        /**
+         * The unit's inputs (below 8) or the sender's channels (below 64).
+         */
+        val `inputs`: kotlin.ByteArray) : InstallationEdit() {
+        companion object
+    }
+    
+    /**
+     * A programme source's kind, what it feeds and its inputs, replaced.
+     */
+    data class SetProgrammeSource(
+        /**
+         * The programme source.
+         */
+        val `id`: kotlin.String, 
+        /**
+         * How it comes in.
+         */
+        val `kind`: InstallationProgrammeKind, 
+        /**
+         * The unit it plays into, or the sender.
+         */
+        val `feeds`: kotlin.String, 
+        /**
+         * Its inputs.
+         */
+        val `inputs`: kotlin.ByteArray) : InstallationEdit() {
+        companion object
+    }
+    
 
     
     companion object
@@ -51041,6 +51612,49 @@ public object FfiConverterTypeInstallationEdit : FfiConverterRustBuffer<Installa
                 FfiConverterBoolean.read(buf),
                 FfiConverterOptionalUShort.read(buf),
                 FfiConverterOptionalBoolean.read(buf),
+                )
+            18 -> InstallationEdit.SetUnitSlots(
+                FfiConverterString.read(buf),
+                FfiConverterOptionalByteArray.read(buf),
+                )
+            19 -> InstallationEdit.AddSource(
+                FfiConverterOptionalString.read(buf),
+                FfiConverterString.read(buf),
+                FfiConverterOptionalString.read(buf),
+                FfiConverterByteArray.read(buf),
+                )
+            20 -> InstallationEdit.SetSource(
+                FfiConverterString.read(buf),
+                FfiConverterOptionalString.read(buf),
+                FfiConverterByteArray.read(buf),
+                )
+            21 -> InstallationEdit.SetZoneSource(
+                FfiConverterString.read(buf),
+                FfiConverterOptionalString.read(buf),
+                )
+            22 -> InstallationEdit.AddScene(
+                FfiConverterOptionalString.read(buf),
+                FfiConverterString.read(buf),
+                FfiConverterSequenceTypeInstallationSceneAction.read(buf),
+                FfiConverterOptionalBoolean.read(buf),
+                )
+            23 -> InstallationEdit.SetScene(
+                FfiConverterString.read(buf),
+                FfiConverterSequenceTypeInstallationSceneAction.read(buf),
+                FfiConverterOptionalBoolean.read(buf),
+                )
+            24 -> InstallationEdit.AddProgrammeSource(
+                FfiConverterOptionalString.read(buf),
+                FfiConverterString.read(buf),
+                FfiConverterTypeInstallationProgrammeKind.read(buf),
+                FfiConverterString.read(buf),
+                FfiConverterByteArray.read(buf),
+                )
+            25 -> InstallationEdit.SetProgrammeSource(
+                FfiConverterString.read(buf),
+                FfiConverterTypeInstallationProgrammeKind.read(buf),
+                FfiConverterString.read(buf),
+                FfiConverterByteArray.read(buf),
                 )
             else -> throw RuntimeException("invalid enum value, something is very wrong!!")
         }
@@ -51197,6 +51811,81 @@ public object FfiConverterTypeInstallationEdit : FfiConverterRustBuffer<Installa
                 + FfiConverterOptionalBoolean.allocationSize(value.`keepUsbAligned`)
             )
         }
+        is InstallationEdit.SetUnitSlots -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`id`)
+                + FfiConverterOptionalByteArray.allocationSize(value.`slots`)
+            )
+        }
+        is InstallationEdit.AddSource -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterOptionalString.allocationSize(value.`id`)
+                + FfiConverterString.allocationSize(value.`name`)
+                + FfiConverterOptionalString.allocationSize(value.`sender`)
+                + FfiConverterByteArray.allocationSize(value.`channels`)
+            )
+        }
+        is InstallationEdit.SetSource -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`id`)
+                + FfiConverterOptionalString.allocationSize(value.`sender`)
+                + FfiConverterByteArray.allocationSize(value.`channels`)
+            )
+        }
+        is InstallationEdit.SetZoneSource -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`id`)
+                + FfiConverterOptionalString.allocationSize(value.`source`)
+            )
+        }
+        is InstallationEdit.AddScene -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterOptionalString.allocationSize(value.`id`)
+                + FfiConverterString.allocationSize(value.`name`)
+                + FfiConverterSequenceTypeInstallationSceneAction.allocationSize(value.`actions`)
+                + FfiConverterOptionalBoolean.allocationSize(value.`systemMute`)
+            )
+        }
+        is InstallationEdit.SetScene -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`id`)
+                + FfiConverterSequenceTypeInstallationSceneAction.allocationSize(value.`actions`)
+                + FfiConverterOptionalBoolean.allocationSize(value.`systemMute`)
+            )
+        }
+        is InstallationEdit.AddProgrammeSource -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterOptionalString.allocationSize(value.`id`)
+                + FfiConverterString.allocationSize(value.`name`)
+                + FfiConverterTypeInstallationProgrammeKind.allocationSize(value.`kind`)
+                + FfiConverterString.allocationSize(value.`feeds`)
+                + FfiConverterByteArray.allocationSize(value.`inputs`)
+            )
+        }
+        is InstallationEdit.SetProgrammeSource -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`id`)
+                + FfiConverterTypeInstallationProgrammeKind.allocationSize(value.`kind`)
+                + FfiConverterString.allocationSize(value.`feeds`)
+                + FfiConverterByteArray.allocationSize(value.`inputs`)
+            )
+        }
     }
 
     override fun write(value: InstallationEdit, buf: ByteBuffer) {
@@ -51317,7 +52006,114 @@ public object FfiConverterTypeInstallationEdit : FfiConverterRustBuffer<Installa
                 FfiConverterOptionalBoolean.write(value.`keepUsbAligned`, buf)
                 Unit
             }
+            is InstallationEdit.SetUnitSlots -> {
+                buf.putInt(18)
+                FfiConverterString.write(value.`id`, buf)
+                FfiConverterOptionalByteArray.write(value.`slots`, buf)
+                Unit
+            }
+            is InstallationEdit.AddSource -> {
+                buf.putInt(19)
+                FfiConverterOptionalString.write(value.`id`, buf)
+                FfiConverterString.write(value.`name`, buf)
+                FfiConverterOptionalString.write(value.`sender`, buf)
+                FfiConverterByteArray.write(value.`channels`, buf)
+                Unit
+            }
+            is InstallationEdit.SetSource -> {
+                buf.putInt(20)
+                FfiConverterString.write(value.`id`, buf)
+                FfiConverterOptionalString.write(value.`sender`, buf)
+                FfiConverterByteArray.write(value.`channels`, buf)
+                Unit
+            }
+            is InstallationEdit.SetZoneSource -> {
+                buf.putInt(21)
+                FfiConverterString.write(value.`id`, buf)
+                FfiConverterOptionalString.write(value.`source`, buf)
+                Unit
+            }
+            is InstallationEdit.AddScene -> {
+                buf.putInt(22)
+                FfiConverterOptionalString.write(value.`id`, buf)
+                FfiConverterString.write(value.`name`, buf)
+                FfiConverterSequenceTypeInstallationSceneAction.write(value.`actions`, buf)
+                FfiConverterOptionalBoolean.write(value.`systemMute`, buf)
+                Unit
+            }
+            is InstallationEdit.SetScene -> {
+                buf.putInt(23)
+                FfiConverterString.write(value.`id`, buf)
+                FfiConverterSequenceTypeInstallationSceneAction.write(value.`actions`, buf)
+                FfiConverterOptionalBoolean.write(value.`systemMute`, buf)
+                Unit
+            }
+            is InstallationEdit.AddProgrammeSource -> {
+                buf.putInt(24)
+                FfiConverterOptionalString.write(value.`id`, buf)
+                FfiConverterString.write(value.`name`, buf)
+                FfiConverterTypeInstallationProgrammeKind.write(value.`kind`, buf)
+                FfiConverterString.write(value.`feeds`, buf)
+                FfiConverterByteArray.write(value.`inputs`, buf)
+                Unit
+            }
+            is InstallationEdit.SetProgrammeSource -> {
+                buf.putInt(25)
+                FfiConverterString.write(value.`id`, buf)
+                FfiConverterTypeInstallationProgrammeKind.write(value.`kind`, buf)
+                FfiConverterString.write(value.`feeds`, buf)
+                FfiConverterByteArray.write(value.`inputs`, buf)
+                Unit
+            }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
+    }
+}
+
+
+
+
+
+/**
+ * How a programme reaches the installation
+ * ([`InstallationEdit::AddProgrammeSource`]).
+ */
+
+enum class InstallationProgrammeKind {
+    
+    /**
+     * A computer playing to a unit over USB.
+     */
+    COMPUTER_USB,
+    /**
+     * A box into a unit's S/PDIF input.
+     */
+    SPDIF,
+    /**
+     * An analogue source into a unit's ADC (I2S) input.
+     */
+    ANALOGUE,
+    /**
+     * Into the audio link sender's channels.
+     */
+    ALINK_SENDER;
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeInstallationProgrammeKind: FfiConverterRustBuffer<InstallationProgrammeKind> {
+    override fun read(buf: ByteBuffer) = try {
+        InstallationProgrammeKind.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: InstallationProgrammeKind) = 4UL
+
+    override fun write(value: InstallationProgrammeKind, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
     }
 }
 
@@ -52803,6 +53599,92 @@ public object FfiConverterTypeProtocolGeneration: FfiConverterRustBuffer<Protoco
 
 
 /**
+ * Which volume of the units.
+ */
+
+enum class SystemVolumeKind {
+    
+    /**
+     * The listening volume (`vol.user`, -60 to 0 dB).
+     */
+    USER,
+    /**
+     * The master volume (`vol.master`, -127 to 0 dB in 0.5 dB steps).
+     */
+    MASTER;
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeSystemVolumeKind: FfiConverterRustBuffer<SystemVolumeKind> {
+    override fun read(buf: ByteBuffer) = try {
+        SystemVolumeKind.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: SystemVolumeKind) = 4UL
+
+    override fun write(value: SystemVolumeKind, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+/**
+ * Where one unit stands.
+ */
+
+enum class SystemVolumeState {
+    
+    /**
+     * It would be written.
+     */
+    READY,
+    /**
+     * It is at the level asked for: nothing to write.
+     */
+    UNCHANGED,
+    /**
+     * It may not be, or could not be, written (`code` and `message` say why).
+     */
+    REFUSED,
+    /**
+     * Written; `after_db` is what it has now.
+     */
+    DONE;
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeSystemVolumeState: FfiConverterRustBuffer<SystemVolumeState> {
+    override fun read(buf: ByteBuffer) = try {
+        SystemVolumeState.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: SystemVolumeState) = 4UL
+
+    override fun write(value: SystemVolumeState, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+/**
  * Where a run is: [`VregCalView::phase`]. The details are in the view.
  */
 
@@ -53254,6 +54136,38 @@ public object FfiConverterOptionalString: FfiConverterRustBuffer<kotlin.String?>
         } else {
             buf.put(1)
             FfiConverterString.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalByteArray: FfiConverterRustBuffer<kotlin.ByteArray?> {
+    override fun read(buf: ByteBuffer): kotlin.ByteArray? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterByteArray.read(buf)
+    }
+
+    override fun allocationSize(value: kotlin.ByteArray?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterByteArray.allocationSize(value)
+        }
+    }
+
+    override fun write(value: kotlin.ByteArray?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterByteArray.write(value, buf)
         }
     }
 }
@@ -56352,6 +57266,34 @@ public object FfiConverterSequenceTypeInstallationIssue: FfiConverterRustBuffer<
 /**
  * @suppress
  */
+public object FfiConverterSequenceTypeInstallationSceneAction: FfiConverterRustBuffer<List<InstallationSceneAction>> {
+    override fun read(buf: ByteBuffer): List<InstallationSceneAction> {
+        val len = buf.getInt()
+        return List<InstallationSceneAction>(len) {
+            FfiConverterTypeInstallationSceneAction.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<InstallationSceneAction>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeInstallationSceneAction.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<InstallationSceneAction>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeInstallationSceneAction.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterSequenceTypeInstallationSpeaker: FfiConverterRustBuffer<List<InstallationSpeaker>> {
     override fun read(buf: ByteBuffer): List<InstallationSpeaker> {
         val len = buf.getInt()
@@ -57826,6 +58768,34 @@ public object FfiConverterSequenceTypeSpeakerLayoutOutput: FfiConverterRustBuffe
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeSpeakerLayoutOutput.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeSystemVolumeUnit: FfiConverterRustBuffer<List<SystemVolumeUnit>> {
+    override fun read(buf: ByteBuffer): List<SystemVolumeUnit> {
+        val len = buf.getInt()
+        return List<SystemVolumeUnit>(len) {
+            FfiConverterTypeSystemVolumeUnit.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<SystemVolumeUnit>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeSystemVolumeUnit.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<SystemVolumeUnit>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeSystemVolumeUnit.write(it, buf)
         }
     }
 }

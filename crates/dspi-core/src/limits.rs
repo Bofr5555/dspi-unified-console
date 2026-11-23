@@ -224,6 +224,20 @@ fn output_of(s: &DspState, ch: u8) -> Option<u8> {
         .filter(|o| *o < s.num_output_channels)
 }
 
+// -- WP FEAT2 --
+/// This console's profile for the unit `serial`, open here or not (a write
+/// that reaches it through its hub's fan-out).
+#[cfg(feature = "link")]
+pub(crate) fn profile_of(inner: &mut Inner, serial: &str) -> Option<LimitsProfile> {
+    if suspended() || !inner.limits.has_any() {
+        return None;
+    }
+    match inner.limits.current.as_ref() {
+        Some(c) if c.serial == serial => c.profile.clone(),
+        _ => inner.limits.load(serial).profile,
+    }
+}
+
 /// Judge a write of `value` to `path` at `indices` (the setters' `send`).
 pub(crate) fn check_write(
     inner: &mut Inner,

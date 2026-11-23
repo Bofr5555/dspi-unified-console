@@ -186,8 +186,17 @@ pub use events::EVENT_READ_MAX;
 pub use vreg::{VregCalPhase, VregCalView, VregChoice, VregDemoEvent};
 // -- WP P5DOCK --
 pub use measure_doc::{
-    MEASURE_DOC_REFUSAL, MeasureDocInfo, TargetInfo, TargetParam, measure_doc_info, mic_import,
-    target_builtins, target_import,
+    MEASURE_DOC_REFUSAL,
+    MeasureDocInfo,
+    TargetInfo,
+    TargetParam,
+    measure_doc_info,
+    // -- WP FEAT2 --
+    mic_document_has_spl,
+    mic_import,
+    target_builtin_document,
+    target_builtins,
+    target_import,
 };
 // Work-package sections: add re-exports only inside your own section.
 // -- WP C0 --
@@ -589,6 +598,9 @@ pub(crate) struct Inner {
     pub(crate) actor_key: u64,
     /// What other actors changed since the last `process_notifications`.
     pub(crate) foreign: actor::Foreign,
+    // -- WP AIVIS --
+    /// What the user changed, for the other actors (`actor::user`).
+    pub(crate) user_log: actor::user::UserLog,
 }
 
 /// An open device.
@@ -1004,6 +1016,7 @@ impl Inner {
             demo_generation: None,                                  // -- WP PGQT --
             actor_key: actor::next_core_key(),                      // -- WP MCP0 --
             foreign: actor::Foreign::default(),                     // -- WP MCP0 --
+            user_log: actor::user::UserLog::default(),              // -- WP AIVIS --
         }
     }
 

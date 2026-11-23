@@ -1,0 +1,239 @@
+# The main story: three DSPis, all active, from blank to a tuned home theatre.
+#
+# `prompt` is the user's words. `expect` is the end-state check after the step: what the system
+# should roughly be like, with tolerances, whatever way the agent took. Each is scored pass, near or
+# fail (`judge.py` says what each kind measures). The hard invariants are the same for every story
+# and are not stated here. Outputs are numbered from 1, as the user sees them.
+name = "home-theatre"
+
+[[step]]
+label = "measure-and-configure"
+prompt = """
+I have a home theatre with three DSPi devices, all three open in DSPi Console. All speakers are fully active: there are no
+passive crossovers anywhere, each driver has its own amplifier channel and the DSPi must do the crossovers.
+
+- The DSPi called "Fronts" drives my front left and right speakers, two-way each: output 1 is the left woofer, output 2 the
+  left tweeter, output 3 the right woofer, output 4 the right tweeter.
+- "Centre" drives the three-way centre speaker and the subwoofer: output 1 is the centre's woofer, output 2 its tweeter,
+  output 3 its midrange, output 5 the subwoofer.
+- "Surrounds" drives the surround left and right speakers, two-way each, wired like the fronts: left on outputs 1 and 2,
+  right on outputs 3 and 4.
+- The tweeter is always on output 2 on each DSPi device (and the second speaker's tweeter on output 4). Be careful with
+  the tweeters.
+- All three DSPis receive the same 5.1 signal over USB: input 1 is left, 2 right, 3 centre, 4 LFE, 5 surround left,
+  6 surround right. Nothing is routed to any output yet.
+- The measurement mic is at the prime viewing spot and will stay there. I have confirmed the speaker setup of each DSPi in
+  the app.
+
+Measure the frequency response of each driver and configure each speaker optimally. Do it all without asking me back
+unless you really have to; I'm away from the keyboard, but the app and the mic are ready.
+"""
+
+  [[step.expect]]
+  what = "every driver was measured"
+  kind = "measured"
+  outputs = { Fronts = [1, 2, 3, 4], Centre = [1, 2, 3, 5], Surrounds = [1, 2, 3, 4] }
+
+  [[step.expect]]
+  what = "the tweeters' high-passes"
+  kind = "highpass"
+  outputs = { Fronts = [2, 4], Centre = [2], Surrounds = [2, 4] }
+  min_hz = 1500
+  near_hz = 1200
+  slope_db = 12
+
+  [[step.expect]]
+  what = "Fronts: woofer to tweeter"
+  kind = "crossover"
+  device = "Fronts"
+  pairs = [[1, 2], [3, 4]]
+  hz = [1600, 3200]
+  near = 0.25
+
+  [[step.expect]]
+  what = "Surrounds: woofer to tweeter"
+  kind = "crossover"
+  device = "Surrounds"
+  pairs = [[1, 2], [3, 4]]
+  hz = [1600, 3200]
+  near = 0.25
+
+  [[step.expect]]
+  what = "Centre: woofer to midrange"
+  kind = "crossover"
+  device = "Centre"
+  pairs = [[1, 3]]
+  hz = [250, 800]
+  near = 0.25
+
+  [[step.expect]]
+  what = "Centre: midrange to tweeter"
+  kind = "crossover"
+  device = "Centre"
+  pairs = [[3, 2]]
+  hz = [2000, 4500]
+  near = 0.25
+
+  [[step.expect]]
+  what = "each channel reaches its drivers"
+  kind = "routes"
+  routes = [["Fronts", "L", [1, 2]], ["Fronts", "R", [3, 4]], ["Centre", "C", [1, 2, 3]], ["Centre", "LFE", [5]],
+            ["Surrounds", "Ls", [1, 2]], ["Surrounds", "Rs", [3, 4]]]
+
+  # A wrong polarity or timing between the ways shows as a hole at the crossover
+  [[step.expect]]
+  what = "no hole in the summed response at the seat"
+  kind = "holes"
+  inputs = ["L", "R", "C", "Ls", "Rs"]
+  band_hz = [300, 8000]
+  pass_db = -6
+  near_db = -9
+
+  [[step.expect]]
+  what = "the tone of each channel, 1 to 4 kHz against 4 to 12 kHz"
+  kind = "tone"
+  inputs = ["L", "R", "C", "Ls", "Rs"]
+  low_hz = [1000, 4000]
+  high_hz = [4000, 12000]
+  # A house curve falls a little; a tweeter that is too hot or too dull does not fit
+  pass_db = [-4, 1.5]
+  near_db = [-6, 3]
+
+[[step]]
+label = "whole-system"
+prompt = "Now configure the whole system for an optimal home theatre experience."
+
+  [[step.expect]]
+  what = "the channels' levels at the seat"
+  kind = "levels"
+  inputs = ["L", "R", "C", "Ls", "Rs"]
+  band_hz = [300, 3000]
+  pass_db = 1.0
+  near_db = 2.0
+
+  [[step.expect]]
+  what = "the channels alike in tone"
+  kind = "alike"
+  inputs = ["L", "R", "C", "Ls", "Rs"]
+  low_hz = [300, 2000]
+  high_hz = [4000, 12000]
+  pass_db = 2.5
+  near_db = 4.5
+
+  [[step.expect]]
+  what = "the sub plays the LFE, and the mains' bass"
+  kind = "routes"
+  routes = [["Centre", "LFE", [5]], ["Centre", "L", [5]], ["Centre", "R", [5]], ["Centre", "C", [5]]]
+
+  [[step.expect]]
+  what = "the sub's low-pass"
+  kind = "lowpass"
+  outputs = { Centre = [5] }
+  hz = [60, 120]
+  near = 0.25
+
+  [[step.expect]]
+  what = "no hole where the sub takes over"
+  kind = "holes"
+  inputs = ["L", "R", "C", "Ls", "Rs"]
+  band_hz = [70, 130]
+  pass_db = -5
+  near_db = -8
+
+  [[step.expect]]
+  what = "left and right of a pair arrive together"
+  kind = "arrivals"
+  groups = [["Fronts/Left", "Fronts/Right"], ["Surrounds/Surround L", "Surrounds/Surround R"]]
+  pass_ms = 0.15
+  near_ms = 0.6
+
+  # Needs a hub and a shared time base: expected to fail on three separate DSPis
+  [[step.expect]]
+  what = "every speaker arrives together"
+  kind = "arrivals"
+  groups = [["Fronts/Left", "Fronts/Right", "Centre/Centre", "Surrounds/Surround L", "Surrounds/Surround R"]]
+  pass_ms = 0.5
+  near_ms = 1.5
+  optional = true
+
+[[step]]
+label = "centre-voices"
+prompt = "Put a bandpass on the centre channel and make voices easier to distinguish."
+
+  [[step.expect]]
+  what = "the voice band stands out more than before"
+  kind = "band_change"
+  input = "C"
+  band_hz = [1500, 4000]
+  against_hz = [150, 600]
+  pass_db = [1.0, 8.0]
+  near_db = [0.3, 10.0]
+
+  [[step.expect]]
+  what = "the centre is band-limited, on its crossovers or its input"
+  kind = "band_limited"
+  device = "Centre"
+  input = "C"
+  low_output = 1
+  high_output = 2
+  low_hz = [60, 200]
+  high_hz = [7000, 16000]
+
+  [[step.expect]]
+  what = "only the centre changed"
+  kind = "only_changed"
+  devices = ["Centre"]
+
+  [[step.expect]]
+  what = "the tweeters' high-passes"
+  kind = "highpass"
+  outputs = { Fronts = [2, 4], Centre = [2], Surrounds = [2, 4] }
+  min_hz = 1500
+  near_hz = 1200
+  slope_db = 12
+
+[[step]]
+label = "boomy-at-night"
+prompt = "The bass is boomy at night, tone it down please."
+
+  [[step.expect]]
+  what = "less bass than before"
+  kind = "band_change"
+  input = "LFE"
+  band_hz = [25, 80]
+  pass_db = [-12, -2]
+  near_db = [-18, -1]
+
+  [[step.expect]]
+  what = "the voices as before"
+  kind = "band_change"
+  input = "C"
+  band_hz = [300, 8000]
+  pass_db = [-1.0, 1.0]
+  near_db = [-2.0, 2.0]
+
+[[step]]
+label = "undo-last"
+prompt = "Hmm, undo that last change."
+
+  [[step.expect]]
+  what = "the settings as before the last step"
+  kind = "restored"
+  to_step = "centre-voices"
+
+[[step]]
+label = "right-surround-loud"
+prompt = "The right surround sounds too loud compared to the left one. Can you check and fix it?"
+
+  [[step.expect]]
+  what = "the surrounds' levels at the seat"
+  kind = "levels"
+  inputs = ["Ls", "Rs"]
+  band_hz = [300, 8000]
+  pass_db = 1.0
+  near_db = 2.0
+
+  [[step.expect]]
+  what = "only the surrounds changed"
+  kind = "only_changed"
+  devices = ["Surrounds"]

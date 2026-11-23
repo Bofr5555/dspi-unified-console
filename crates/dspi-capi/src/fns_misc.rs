@@ -117,6 +117,9 @@ mod speaker_layout;
 // -- WP INST0 -- Installation setup: drafts of the hub's site (DSPi Link only)
 #[cfg(feature = "link")]
 mod installation;
+// -- WP FEAT2 -- a room's or zone's volume (DSPi Link only)
+#[cfg(feature = "link")]
+mod system_volume;
 
 // ── Replies ──────────────────────────────────────────────────────────
 

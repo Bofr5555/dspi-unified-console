@@ -323,6 +323,39 @@ interface DspiCoreApi : AutoCloseable {
     fun alinkSystemSaveReport(revision: Long, edits: AlinkSystemEdits): AlinkSystemSaved
 
     /**
+     * What setting a room's or zone's volume would do (`system.get`, then
+     * `group.param.get` on its units): each unit's volume now, its new one,
+     * whether it gets louder, or why it is left alone. Writes nothing. Every
+     * role. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an ask that is not one, a
+     * room or zone the installation does not hold or one with no units
+     * (nothing is read from the units); [`DspiError::Unsupported`] without
+     * the hub's `group_params` cap; [`DspiError::Disconnected`]; the hub's
+     * refusal.
+     */
+    @Throws(DspiException::class)
+    fun systemVolumePlan(ask: SystemVolumeAsk): SystemVolumePlan
+
+    /**
+     * Write `plan` (from [`DspiCore::system_volume_plan`]): its units that
+     * are ready, through the hub's fan-out (`group.param.set`), each to its
+     * `target_db`. The answer is the plan with each unit's row settled: done
+     * with the level it has, or refused by the hub for that unit (its limits
+     * profile, its lock, offline, the role). Control or Admin on the hub.
+     * Not in the undo history: it goes to the hub, not to this device. Slow:
+     * off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a plan with a level out of
+     * range or a unit twice (nothing sent); [`DspiError::ReadOnly`] (nothing
+     * sent); [`DspiError::Denied`] for a Viewer; as
+     * [`DspiCore::system_volume_plan`]. When the session goes between two
+     * fan-outs, the units already written are done and the rest refused.
+     */
+    @Throws(DspiException::class)
+    fun systemVolumeSet(plan: SystemVolumePlan): SystemVolumePlan
+
+    /**
      * Whether the unit has the alink's USB-direct block, as the connect
      * probe found it, without traffic. `Disconnected` without a device.
      */

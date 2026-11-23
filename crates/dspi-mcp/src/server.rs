@@ -24,7 +24,9 @@ use crate::confirm::{
     AnswerError, CONFIRM_HOLD_MS, ConfirmEvent, ConfirmState, Confirmation, Confirmations,
     WAITING_PER_CLIENT,
 };
-use crate::policy::WriteKey;
+use crate::host_audio::HostAudioSource;
+use crate::policy::WriteKey; // -- WP FEAT3 --
+use crate::user::UserActivity; // -- WP AIVIS --
 
 // -- WP MCP2a --
 /// A drag the user has marked for this long, with none of the user's
@@ -76,6 +78,14 @@ pub struct ServerConfig {
     /// requests (`Server::measure_take`); without one the tools that start a
     /// measurement say measuring is not available.
     pub measuring: bool,
+    // -- WP FEAT2 --
+    /// The app takes the agents' requests to open and close devices
+    /// (`Server::device_take`); without it those tools say so.
+    pub opening: bool,
+    // -- WP FEAT3 --
+    /// Reads this computer's audio for `dspi_get_host_audio` (none: the tool
+    /// says it cannot tell). The app passes `host_audio::system()`.
+    pub host_audio: Option<Arc<dyn HostAudioSource>>,
 }
 
 impl Default for ServerConfig {
@@ -89,6 +99,8 @@ impl Default for ServerConfig {
             autoeq: None,                // -- WP MCP2b --
             template_dir: String::new(), // -- WP MCP2b --
             measuring: false,            // -- WP MCP5 --
+            opening: false,              // -- WP FEAT2 --
+            host_audio: None,            // -- WP FEAT3 --
         }
     }
 }
@@ -103,6 +115,9 @@ struct Client {
     legacy: Option<&'static str>,
     reads: Bucket,
     writes: Bucket,
+    // -- WP AIVIS --
+    /// The newest thing of the user's it has been told.
+    told: u64,
 }
 
 /// The MCP server over a [`CoreSet`]. Sans-IO: give it messages.
@@ -126,6 +141,17 @@ pub struct Server {
     // -- WP MCP5 --
     /// The agents' requests to the app's Measure view.
     measure: crate::tools::measure::Jobs,
+    // -- WP FEAT2 --
+    /// The agents' requests to open and close devices.
+    opens: crate::tools::devices::Opens,
+    // -- WP AIVIS --
+    /// What the user did meanwhile.
+    user: UserActivity,
+    /// The last clock reading given.
+    now_ms: u64,
+    /// The actors of agents that are gone while a preview of theirs waits: its
+    /// revert is still theirs, so the app hears of it on every open device.
+    gone: BTreeMap<ClientId, ActorId>,
 }
 
 impl Server {
@@ -137,6 +163,7 @@ impl Server {
     /// A server with these tools only.
     pub fn with_registry(set: Arc<CoreSet>, config: ServerConfig, registry: Registry) -> Self {
         let measure = crate::tools::measure::Jobs::new(config.measuring); // -- WP MCP5 --
+        let opens = crate::tools::devices::Opens::new(config.opening); // -- WP FEAT2 --
         Self {
             set,
             active: None,
@@ -151,16 +178,24 @@ impl Server {
             drags: BTreeMap::new(),
             installation: crate::tools::installation::Drafts::default(), // -- WP MCP2c --
             measure,                                                     // -- WP MCP5 --
+            opens,                                                       // -- WP FEAT2 --
+            user: UserActivity::default(),                               // -- WP AIVIS --
+            now_ms: 0,
+            gone: BTreeMap::new(),
         }
     }
 
     /// The device the app shows, which tools use when no `device` is passed.
     pub fn set_active_device(&mut self, id: Option<DeviceId>) {
+        self.user
+            .shown(id.as_ref().map(DeviceId::as_str), self.now_ms); // -- WP AIVIS --
         self.active = id;
     }
 
     /// A new client (a connection, or a paired token's first request).
     pub fn connect(&mut self) -> ClientId {
+        self.user.collect(&self.set, self.now_ms); // -- WP AIVIS -- from here on
+        let told = self.user.cursor();
         self.next_client = self.next_client.saturating_add(1);
         let id = ClientId(self.next_client);
         self.clients.insert(
@@ -171,6 +206,7 @@ impl Server {
                 legacy: None,
                 reads: Bucket::new(self.config.read_limit),
                 writes: Bucket::new(self.config.write_limit),
+                told, // -- WP AIVIS --
             },
         );
         id
@@ -192,9 +228,16 @@ impl Server {
     /// The client is gone. Its activity stays; its waiting confirmations end
     /// with nothing changed (-- WP MCP2a --).
     pub fn disconnect(&mut self, client: ClientId) {
+        // -- WP AIVIS --
+        if let Some(a) = self.actor_of(client)
+            && self.guards.values().any(|(c, _)| *c == client)
+        {
+            self.gone.insert(client, a);
+        }
         self.clients.remove(&client);
         self.installation.forget(client); // -- WP MCP2c --
         self.measure.forget(client); // -- WP MCP5 --
+        self.opens.forget(client); // -- WP FEAT2 --
         for id in self.confirms.of_client(client) {
             self.confirms.end(
                 id,
@@ -207,6 +250,13 @@ impl Server {
     /// The client's actor, once it has called or named itself.
     pub fn actor_of(&self, client: ClientId) -> Option<ActorId> {
         self.clients.get(&client).and_then(|c| c.actor)
+    }
+
+    // -- WP AIVIS --
+    /// The client's actor, gone or not.
+    fn actor_ever(&self, client: ClientId) -> Option<ActorId> {
+        self.actor_of(client)
+            .or_else(|| self.gone.get(&client).copied())
     }
 
     /// The client's history label.
@@ -521,6 +571,7 @@ impl Server {
             write: tool.class == ToolClass::Write,
             outcome: Outcome::Ok,
             journal_ids: Vec::new(),
+            touched: Vec::new(), // -- WP AIVIS --
             detail: String::new(),
         };
         let taken = self.clients.get_mut(&client).map(|c| match tool.class {
@@ -542,7 +593,61 @@ impl Server {
         }
         // -- WP MCP2a -- the policy's judgement, holds and the drag retry
         self.held = None;
-        Ok(self.run_tool(now_ms, tool, args, Vec::new(), entry))
+        let mut result = self.run_tool(now_ms, tool, args, Vec::new(), entry);
+        // -- WP AIVIS -- a held call's answer is for nobody yet
+        if self.held.is_none() {
+            self.tell(client, &mut result);
+        }
+        Ok(result)
+    }
+
+    // -- WP AIVIS --
+    /// Put what the user did since `client`'s last result into `result`.
+    fn tell(&mut self, client: ClientId, result: &mut Value) {
+        self.user.collect(&self.set, self.now_ms);
+        let cursor = self.user.cursor();
+        let Some(c) = self.clients.get_mut(&client) else {
+            return;
+        };
+        let told = std::mem::replace(&mut c.told, cursor);
+        if let Some((text, data)) = self.user.block(told, client) {
+            attach(result, &text, data);
+        }
+    }
+
+    /// The user did something in the app that no device shows: paused the
+    /// agents, resumed them.
+    pub fn note_user(&mut self, kind: &'static str, what: &str) {
+        self.user.note(self.now_ms, kind, what, None, None);
+    }
+
+    /// What the user did, for the app and the tests.
+    pub fn user_activity(&self) -> &UserActivity {
+        &self.user
+    }
+
+    /// What the agents have running, for the app's working strip: their
+    /// requests to the Measure view that are open or run, and the devices
+    /// their timed previews wait on.
+    pub fn work(&self) -> Value {
+        let guards: Vec<Value> = self
+            .guards
+            .iter()
+            .map(|(d, (c, _))| {
+                json!({"device": d, "client_name": self.label_of(*c).unwrap_or_default()})
+            })
+            .collect();
+        json!({"jobs": crate::tools::measure::open_json(&self.measure), "guards": guards})
+    }
+
+    /// The tools' names with their titles and whether they write, for an app
+    /// that names a call before it is served.
+    pub fn tool_titles(&self) -> Vec<(&'static str, &'static str, bool)> {
+        self.registry
+            .tools()
+            .iter()
+            .map(|t| (t.name, t.title, t.class == ToolClass::Write))
+            .collect()
     }
 
     // -- WP MCP2a --
@@ -586,7 +691,9 @@ impl Server {
         }
         entry.device.clone_from(&out.device);
         entry.journal_ids = out.journal_ids;
+        entry.touched = out.touched; // -- WP AIVIS --
         self.measure.stamp(now_ms); // -- WP MCP5 -- a request's clock starts now
+        self.opens.stamp(now_ms); // -- WP FEAT2 --
         let asked = !out.judging.asked.is_empty() && out.judging.refused.is_none();
         let result = match out.result {
             Err(_) if asked && regranted => {
@@ -660,6 +767,9 @@ impl Server {
             template_dir: &self.config.template_dir,
             installation: Some(&self.installation), // -- WP MCP2c --
             measure: Some(&self.measure),           // -- WP MCP5 --
+            opens: Some(&self.opens),               // -- WP FEAT2 --
+            host_audio: self.config.host_audio.as_ref(), // -- WP FEAT3 --
+            user: Some(&self.user),                 // -- WP AIVIS --
         };
         registry::run(&ctx, tool, args)
     }
@@ -748,10 +858,9 @@ impl Server {
             return None;
         }
         let c = self.confirms.remove(id)?;
-        Some(held_reply(
-            c.request?,
-            c.result.unwrap_or_else(|| tool_error("no outcome")),
-        ))
+        let mut result = c.result.unwrap_or_else(|| tool_error("no outcome"));
+        self.tell(c.client, &mut result); // -- WP AIVIS --
+        Some(held_reply(c.request?, result))
     }
 
     // -- WP MCP4 --
@@ -792,6 +901,7 @@ impl Server {
     /// nothing changed, and every agent's timed preview is put back now.
     pub fn stop_agents(&mut self, now_ms: u64) {
         crate::tools::measure::stop_all(&self.set, &self.measure); // -- WP MCP5 --
+        self.opens.stop_all(); // -- WP FEAT2 --
         for id in self
             .confirms
             .waiting()
@@ -810,7 +920,7 @@ impl Server {
                 continue;
             };
             let label = self.label_of(client).unwrap_or_default();
-            let actor = self.clients.get(&client).and_then(|c| c.actor);
+            let actor = self.actor_ever(client); // -- WP AIVIS --
             let status = core.apply_status();
             if status.id != guard || !matches!(status.phase, GuardPhase::Waiting | GuardPhase::Lost)
             {
@@ -844,6 +954,7 @@ impl Server {
                 write: true,
                 outcome,
                 journal_ids: Vec::new(),
+                touched: Vec::new(), // -- WP AIVIS --
                 detail,
             });
         }
@@ -883,6 +994,7 @@ impl Server {
             write: true,
             outcome: Outcome::Ok,
             journal_ids: Vec::new(),
+            touched: Vec::new(), // -- WP AIVIS --
             detail: String::new(),
         };
         let tool = self.registry.get(tool_name);
@@ -893,6 +1005,14 @@ impl Server {
             .is_some_and(|d| self.device_core(d).is_none());
         let (state, result) = match tool {
             _ if !allow => {
+                // -- WP AIVIS --
+                self.user.note(
+                    now_ms,
+                    "answer",
+                    &format!("declined your change (confirmation {id})"),
+                    entry.device.as_deref(),
+                    Some(client),
+                );
                 let msg = "the user declined this change in the app; nothing was changed. \
                            Do not try it again unless the user asks.";
                 self.activity.push(ActivityEntry {
@@ -918,6 +1038,21 @@ impl Server {
                 (ConfirmState::Gone, tool_error(msg))
             }
             Some(tool) => {
+                // -- WP AIVIS -- the user's yes: nothing this agent set is
+                // the user's alone any more
+                if let (Some(core), Some(actor)) = (
+                    entry.device.as_deref().and_then(|d| self.device_core(d)),
+                    self.actor_of(client),
+                ) {
+                    dspi_core::actor::user::allowed(&core, actor);
+                }
+                self.user.note(
+                    now_ms,
+                    "answer",
+                    &format!("allowed your change (confirmation {id})"),
+                    entry.device.as_deref(),
+                    Some(client),
+                );
                 // A re-run has a grant, so it never holds anew.
                 let result = self.run_tool(now_ms, tool, &args, grant, entry);
                 (ConfirmState::Allowed, result)
@@ -959,6 +1094,42 @@ impl Server {
         crate::tools::measure::all_json(&self.measure)
     }
 
+    // -- WP FEAT2 --
+    /// The devices the app remembers the user opened (`{device, name}` each, a
+    /// `usb:`, `hub:` or `link:` id): an agent may ask for these too, beside
+    /// those on USB and those the hubs of the open devices list.
+    pub fn set_known_devices(&mut self, rows: &Value) {
+        self.opens.set_remembered(rows);
+    }
+
+    /// The agents' requests to open or close a device that the app has to
+    /// take, oldest first: `{request_id, client, client_name, kind, device,
+    /// what, state, note}`.
+    pub fn device_requests(&self) -> Vec<Value> {
+        self.opens.waiting_json()
+    }
+
+    /// The app takes request `id`: its ticket `{request_id, kind, device,
+    /// transport, hub, serial, client_name, what}`, `None` when it no longer
+    /// waits (or a device to close may not be closed any more: the agent is
+    /// told why).
+    pub fn device_take(&mut self, id: u64) -> Option<Value> {
+        self.opens.take(&self.set, id)
+    }
+
+    /// The app says how request `id` went: done, or declined with `note`.
+    /// False when it was not taken (or no longer open): a device opened for
+    /// it stays the user's.
+    pub fn device_report(&mut self, id: u64, ok: bool, note: &str) -> bool {
+        self.opens.report(&self.set, id, ok, note)
+    }
+
+    /// Whether the device requests changed since the last call (the app
+    /// reads `device_requests` again).
+    pub fn take_device_events(&mut self) -> bool {
+        self.opens.take_changed()
+    }
+
     /// Confirmation `id`, waiting or ended (kept a while).
     pub fn confirmation(&self, id: u64) -> Option<&Confirmation> {
         self.confirms.get(id)
@@ -985,7 +1156,10 @@ impl Server {
     /// hook (a revert is never refused), or as the app once the agent is
     /// gone.
     pub fn tick(&mut self, now_ms: u64) {
+        self.now_ms = now_ms; // -- WP AIVIS --
+        self.user.collect(&self.set, now_ms);
         crate::tools::measure::tick(&self.set, &self.measure, now_ms); // -- WP MCP5 --
+        crate::tools::devices::tick(&self.set, &self.opens, now_ms); // -- WP FEAT2 --
         for id in self.confirms.lapsed(now_ms) {
             if let Some(c) = self.confirms.get(id) {
                 self.activity.push(ActivityEntry {
@@ -998,6 +1172,7 @@ impl Server {
                     write: true,
                     outcome: Outcome::Error,
                     journal_ids: Vec::new(),
+                    touched: Vec::new(), // -- WP AIVIS --
                     detail: format!("not answered in time (confirmation {id})"),
                 });
             }
@@ -1017,7 +1192,7 @@ impl Server {
                 self.guards.remove(&dev);
                 continue;
             };
-            let actor = self.clients.get(&client).and_then(|c| c.actor);
+            let actor = self.actor_ever(client); // -- WP AIVIS --
             let status = {
                 let _scope = actor.map(|a| ActorScope::enter(&core, a, None));
                 core.apply_poll()
@@ -1076,6 +1251,26 @@ fn tool_ok(data: Value) -> Value {
         "structuredContent": data,
         "isError": false,
     })
+}
+
+// -- WP AIVIS --
+/// Add what the user did to a tool result: one more text, and
+/// `user_activity` in its structure.
+fn attach(result: &mut Value, text: &str, data: Value) {
+    if let Some(s) = result
+        .get_mut("structuredContent")
+        .and_then(Value::as_object_mut)
+    {
+        s.insert("user_activity".into(), data);
+        // The first text stays the structure's
+        let same = Value::Object(s.clone()).to_string();
+        if let Some(t) = result.pointer_mut("/content/0/text") {
+            *t = json!(same);
+        }
+    }
+    if let Some(c) = result.get_mut("content").and_then(Value::as_array_mut) {
+        c.push(json!({"type": "text", "text": text}));
+    }
 }
 
 /// A tool's error, for the model to read and correct.

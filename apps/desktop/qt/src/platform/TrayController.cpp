@@ -1,5 +1,6 @@
 #include "TrayController.h"
 
+#include "AiController.h"   // -- WP AIVIS --
 #include "AppIdentity.h"
 #include "DeviceInfoController.h"
 #include "DeviceModel.h"
@@ -33,7 +34,8 @@ constexpr double kVolumeFloor = -60.0;  // where Volume Up starts from silence
 
 // The menu bar glyph of the Mac (waveform.circle, filled while sharing), from
 // the Lucide waveform in the system's text colour
-QIcon trayIcon(bool sharing) {
+// -- WP AIVIS -- `working`: an AI agent works, a dot in the accent's colour
+QIcon trayIcon(bool sharing, bool working = false) {
     QFile f(QStringLiteral(":/qt/qml/UConsole/icons/lucide/audio-waveform.svg"));
     const QByteArray svg = f.open(QIODevice::ReadOnly) ? f.readAll() : QByteArray();
     const QPalette palette = QGuiApplication::palette();
@@ -62,6 +64,13 @@ QIcon trayIcon(bool sharing) {
         QSvgRenderer renderer(glyph);
         const qreal inset = size * 0.24;
         renderer.render(&p, QRectF(inset, inset, size - 2 * inset, size - 2 * inset));
+        // -- WP AIVIS --
+        if (working) {
+            const qreal r = size * 0.22;
+            p.setPen(QPen(paper, qMax(1.0, size / 22.0)));
+            p.setBrush(QColor(0x25, 0x63, 0xeb));
+            p.drawEllipse(QPointF(size - r, size - r), r - 0.5, r - 0.5);
+        }
         p.end();
         icon.addPixmap(pixmap);
     }
@@ -121,6 +130,38 @@ HubController *TrayController::hub() {
         }
     }
     return m_hub;
+}
+
+// -- WP AIVIS --
+AiController *TrayController::ai() {
+    if (!m_ai) {
+        m_ai = Registrar::instance<AiController>();
+        if (m_ai) connect(m_ai, &AiController::workChanged, this, &TrayController::refreshAi);
+    }
+    return m_ai;
+}
+
+// The tooltip, the mark and the menu's rows; no more: it runs at an agent's pace
+void TrayController::refreshAi() {
+    AiController *a = ai();
+    if (!m_menu || !m_icon || !a) return;
+    const QVariantMap work = a->work();
+    const bool shown = work.value(QStringLiteral("shown")).toBool();
+    const QString agent = work.value(QStringLiteral("agent")).toString();
+    const QString text = work.value(QStringLiteral("text")).toString();
+    //: %1 is an AI agent's name, %2 what it does now
+    const QString line = !shown ? QString() : agent.isEmpty() ? text : tr("%1: %2").arg(agent, text);
+    if (QAction *row = child(m_menu, "Tray.ai")) {
+        row->setText(line);
+        row->setVisible(shown);
+    }
+    if (QAction *pause = child(m_menu, "Tray.aiPause")) {
+        pause->setText(a->paused() ? tr("Resume AI Agents") : tr("Pause AI Agents"));
+        pause->setVisible(a->running());
+    }
+    const QString tip = line.isEmpty() ? AppIdentity::displayName() : AppIdentity::displayName() + QLatin1Char('\n') + line;
+    if (m_icon->toolTip() != tip) m_icon->setToolTip(tip);
+    refreshIcon();
 }
 
 // -- WP QTSENDER --
@@ -188,6 +229,11 @@ void TrayController::buildMenu() {
     m_menu = new QMenu;
     // The Mac's menu bar menu (MenuBarMode.swift), in its order, and the volume
     addItem(m_menu, "Tray.status")->setEnabled(false);
+    // -- WP AIVIS -- what an agent does now, and Pause
+    addItem(m_menu, "Tray.ai")->setEnabled(false);
+    connect(addItem(m_menu, "Tray.aiPause"), &QAction::triggered, this, [this]() {
+        if (AiController *a = ai()) a->setPaused(!a->paused());
+    });
     addItem(m_menu, "Tray.address")->setEnabled(false);
     addItem(m_menu, "Tray.pairingCode")->setEnabled(false);
     m_menu->addSeparator();
@@ -222,6 +268,7 @@ void TrayController::buildMenu() {
         if (reason == QSystemTrayIcon::Trigger || reason == QSystemTrayIcon::DoubleClick) restore();
     });
     m_iconSharing = false;
+    m_iconWorking = false;   // -- WP AIVIS --
     m_icon->setIcon(trayIcon(false));
     refreshMenu();
     m_icon->show();
@@ -240,13 +287,17 @@ void TrayController::dropIcon() {
 void TrayController::refreshIcon() {
     if (!m_icon) return;
     const bool sharing = m_hub && m_hub->running();
-    if (sharing == m_iconSharing) return;
+    // -- WP AIVIS -- an agent that works
+    const bool working = m_ai && m_ai->working();
+    if (sharing == m_iconSharing && working == m_iconWorking) return;
     m_iconSharing = sharing;
-    m_icon->setIcon(trayIcon(sharing));
+    m_iconWorking = working;
+    m_icon->setIcon(trayIcon(sharing, working));
 }
 
 void TrayController::refreshMenu() {
     if (!m_menu) return;
+    refreshAi();   // -- WP AIVIS --
     HubController *h = hub();
     SidebarController *bar = sidebar();
     const QString name = AppIdentity::displayName();

@@ -23,6 +23,7 @@ Panel {
 
         EffectHeader {
             objectName: "LoudnessWindow.header"
+            touchPath: "loud."   // -- WP AIVIS --
             Layout.fillWidth: true
             iconName: "volume-2"
             title: qsTr("Loudness Compensation")

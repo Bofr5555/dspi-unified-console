@@ -89,6 +89,11 @@ pub use rolloff::{
     MeasureRolloffEnd, MeasureRolloffResult, MeasureRolloffSetup, MeasureRolloffStage,
     MeasureRolloffState, ROLLOFF_START_HZ, ROLLOFF_START_MAX_HZ, ROLLOFF_STOP_DB,
 };
+// -- WP FEAT2 -- what an AI agent may only tighten
+pub use plan::{
+    MEASURE_CEILING_MIN_DB, MEASURE_COUNT_MAX, MEASURE_PASSES, MEASURE_SPL_CAP_MIN_DB,
+    MEASURE_SWEEP_MS, MeasureLevelCaps, measure_level_caps,
+};
 pub use tune::{
     MeasureLayout, MeasureLayoutOutput, MeasureTuneCheck, MeasureTuneCurves, MeasureTuneKeep,
     MeasureTuneKind, MeasureTuneOptions, MeasureTuneParam, MeasureTuneProposal, MeasureTuneStage,
@@ -1136,6 +1141,10 @@ impl DspiCore {
     /// the run discarded, the lock given back. Idempotent; never fails.
     /// It ends the live view too (`measure_live_stop`).
     pub fn measure_stop(&self) -> MeasureState {
+        // -- WP AIVIS -- an agent learns who stopped what it asked for
+        if self.measure_state().active {
+            crate::actor::user::did(self, "measure_stop");
+        }
         // -- WP P5LIVE -- Stop ends the live view, between its sweeps too
         if self.measure.live_on() {
             return self.measure_live_stop().session;
@@ -1312,7 +1321,11 @@ impl DspiCore {
         if !s.release_pending() {
             return;
         }
-        self.lock().measure_tap.set(false);
+        {
+            let mut inner = self.lock();
+            inner.measure_tap.set(false);
+            crate::actor::user::measure_ended(&mut inner); // -- WP AIVIS --
+        }
         // -- WP P5LIVE -- the live view keeps the lock between its sweeps
         if !self
             .measure

@@ -167,6 +167,12 @@ void demosPart(SmokeDriver &d, DeviceRegistry *r, NoticeCenter *notices) {
     }
     QPointer<DeviceSession> b = r->sessions().at(1);
     d.waitIdle();
+    // -- WP INTF -- its row in the set may come after it (until then its title is the demo's own name)
+    d.check("xdev1: the second demo has its label", d.waitFor(5000, [&] { return b && b->title().startsWith(QLatin1String("Demo ")); }));
+    if (!b) {
+        r->setKeepOpen(false);
+        return;
+    }
 
     // B4: a refusal on the device left is a notice that names it; the active one's as before
     r->activate(a);

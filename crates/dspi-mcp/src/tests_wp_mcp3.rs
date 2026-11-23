@@ -857,7 +857,12 @@ fn wp_mcp3_paused_agents_change_nothing() {
         json!({"name": "dspi_list_devices", "arguments": {}}),
     );
     assert_eq!(r.status, 200);
-    assert_eq!(r.json()["result"]["isError"], json!(true));
+    // -- WP AIVIS -- said as paused, not as an error
+    assert_eq!(r.json()["result"]["isError"], json!(false));
+    assert_eq!(
+        r.json()["result"]["structuredContent"]["status"],
+        json!("paused")
+    );
     assert_eq!(r.json()["result"]["content"][0]["text"], PAUSED_TEXT);
     assert!(
         http.with_server(|s| s.activity(10)).is_empty(),

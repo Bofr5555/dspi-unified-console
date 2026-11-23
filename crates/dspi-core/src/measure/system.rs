@@ -874,6 +874,10 @@ impl DspiCore {
     /// START cancelled), the hub's session closed, the run discarded.
     /// Idempotent; never fails.
     pub fn measure_system_stop(&self) -> MeasureSystemState {
+        // -- WP AIVIS --
+        if self.measure_system_state().active {
+            crate::actor::user::did(self, "measure_stop");
+        }
         let state = {
             let mut slot = self.system_slot();
             let Some(mut s) = slot.session.take() else {

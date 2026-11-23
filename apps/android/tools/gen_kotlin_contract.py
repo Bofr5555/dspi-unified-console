@@ -550,6 +550,9 @@ def to_ffi(expr: str, t: str, name: str = "") -> str:
         return f"{expr}.toULong()"
     if t in PRIM:
         return expr
+    if t == "Vec<u8>" and name not in RAW_BYTES and expr == "it":
+        # -- WP INTF -- inside an Option's `let` (the setUnitSlots edit): its own index name
+        return "ByteArray(it.size) { i -> it[i].toByte() }"
     if t == "Vec<u8>":
         return f"{expr}.copyOf()" if name in RAW_BYTES else f"ByteArray({expr}.size) {{ {expr}[it].toByte() }}"
     if m := re.match(r"Vec<(.+)>$", t):
