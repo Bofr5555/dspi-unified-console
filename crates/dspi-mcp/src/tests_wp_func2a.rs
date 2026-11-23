@@ -178,3 +178,10 @@ fn wp_func2a_nothing_is_asked_while_the_user_holds_a_control() {
         "{r}"
     );
 }
+
+// S9: one agent in six set the user's band back itself and told them "I've
+// undone it". The guide says what that is.
+#[test]
+fn wp_func2a_the_guide_says_setting_the_users_change_back_is_no_undo() {
+    assert!(crate::resources::GUIDE.contains("do not call it an undo"));
+}

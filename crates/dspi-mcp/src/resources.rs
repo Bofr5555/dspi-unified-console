@@ -75,6 +75,8 @@ device the app shows is used. A device that is not open may be a known one
   do not retry a refusal that says so.
 - Several changes that belong together go in one `dspi_apply_changes`: judged together, one
   undo step, all or none. `dspi_undo` takes back this agent's own changes, never the user's.
+  Asked to undo the user's change, say that only they can (Edit › Undo or the History in the
+  app); setting it back yourself is a new change of yours: say so, do not call it an undo.
 - A preset load, revert to saved, a snapshot recall, an A/B switch or a configuration import
   replaces many settings at once and ends the undo history: it may be held for the user, a
   snapshot is filed first (`before_snapshot_id`, the way back), and one that would lower a
