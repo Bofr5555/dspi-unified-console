@@ -9,6 +9,7 @@ import { transportName } from "./open-rule";
 // -- WP WEBM4 -- a tab's menu (right click, the menu key): actions.json's `device` menu
 import { isMenuKey, useContextMenu } from "../menus/ActionMenu";
 import type { MenuItem } from "../menus/actions";
+import { usePresence } from "../presence"; // -- WP FEATUI --
 
 /** A tab's dot: the session's state, with a link that is away apart from one that is open. */
 export function tabState(st: Pick<SessionState, "status" | "link">): SessionState["status"] | "away" {
@@ -79,7 +80,9 @@ function DeviceTab(props: { session: Session; on: boolean; stop: boolean; onChoo
   const name = st.snapshot?.device.name ?? "Connecting";
   const unsaved = st.unsaved.length > 0;
   const transport = transportName(s.source);
-  const where = [transport, st.hubName, STATE_WORDS[state], unsaved ? "unsaved changes" : ""].filter(Boolean).join(" · ");
+  // -- WP FEATUI -- an AI agent works on this device (its hub's `presence`): marked, as the desktop's tabs
+  const agent = usePresence(s).some((p) => p.serial && p.serial === st.snapshot?.device.serial);
+  const where = [transport, st.hubName, STATE_WORDS[state], unsaved ? "unsaved changes" : "", agent ? "an AI agent is working on it" : ""].filter(Boolean).join(" · ");
   return (
     <div class="device-tab" role="presentation">
       <button
@@ -100,6 +103,11 @@ function DeviceTab(props: { session: Session; on: boolean; stop: boolean; onChoo
           <TabLabel session={s} />
         </span>
         <span class="device-tab-kind">{transport}</span>
+        {agent ? (
+          <span class="device-tab-agent" aria-label="AI agent working" title="An AI agent is working on this device">
+            AI
+          </span>
+        ) : null}
         <span class={`device-tab-unsaved${unsaved ? " on" : ""}`} aria-hidden="true">
           •
         </span>

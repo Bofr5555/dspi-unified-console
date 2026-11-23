@@ -38,7 +38,7 @@
 //! names those so no layer asks the user about them.
 #![allow(clippy::module_name_repetitions)]
 
-use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::atomic::{AtomicU8, AtomicU32, Ordering}; // -- WP FEATUI -- AtomicU32
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use dspi_core::actor::user::{self as user_changes, USER_CHANGED}; // -- WP AIVIS --
@@ -1719,6 +1719,8 @@ fn judge_masks(before: &DspState, after: &DspState, writes: &[WriteKey], risks: 
 #[derive(Debug, Default)]
 pub struct AgentPolicy {
     mode: AtomicU8,
+    // -- WP FEATUI -- the app's SPL cap for agents' measurements, f32 bits (0: none)
+    spl_cap_bits: AtomicU32,
 }
 
 /// Tools whose writes are never judged: a revert is never refused
@@ -1731,6 +1733,7 @@ impl AgentPolicy {
     pub fn new(mode: ConfirmMode) -> Self {
         Self {
             mode: AtomicU8::new(mode.to_u8()),
+            spl_cap_bits: AtomicU32::new(0), // -- WP FEATUI --
         }
     }
 
@@ -1742,6 +1745,18 @@ impl AgentPolicy {
     /// Change the setting; calls from then on are judged by it.
     pub fn set_mode(&self, mode: ConfirmMode) {
         self.mode.store(mode.to_u8(), Ordering::Relaxed);
+    }
+
+    // -- WP FEATUI --
+    /// The app's SPL cap for agents' measurements (dB SPL, `None`: the
+    /// placement's default). Not a question to the user: it holds under
+    /// every setting, "never ask" too. A value that is no finite number is
+    /// none.
+    pub fn set_agent_spl_cap_db(&self, cap: Option<f32>) {
+        let bits = cap
+            .filter(|c| c.is_finite() && *c > 0.0)
+            .map_or(0, f32::to_bits);
+        self.spl_cap_bits.store(bits, Ordering::Relaxed);
     }
 
     fn hook(cell: JudgingCell) -> WriteHook {
@@ -1862,6 +1877,14 @@ impl Policy for AgentPolicy {
     // -- WP FEAT2 --
     fn setting(&self) -> Option<ConfirmMode> {
         Some(self.mode())
+    }
+
+    // -- WP FEATUI --
+    fn agent_spl_cap_db(&self) -> Option<f32> {
+        match self.spl_cap_bits.load(Ordering::Relaxed) {
+            0 => None,
+            bits => Some(f32::from_bits(bits)),
+        }
     }
 
     fn agent_may(&self) -> Value {

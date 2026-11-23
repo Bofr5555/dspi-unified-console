@@ -202,6 +202,14 @@ pub trait Policy: Send + Sync {
     fn setting(&self) -> Option<policy::ConfirmMode> {
         None
     }
+
+    // -- WP FEATUI --
+    /// The app's own SPL cap for agents' measurements, dB SPL: a hard ceiling
+    /// an agent may only stay under, whatever the setting. `None` (the
+    /// default): the placement's default cap.
+    fn agent_spl_cap_db(&self) -> Option<f32> {
+        None
+    }
 }
 
 // -- WP MCP2a --

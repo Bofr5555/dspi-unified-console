@@ -17,6 +17,10 @@ const NOT_EXPORTED: &[&str] = &[
     "undo_group_owner",
     // -- WP FEAT2 -- Rust-only, for the same server
     "user_editing",
+    // -- WP FEATUI -- an agent's presence on the hub: the desktop (C) sends it, the web
+    // (wasm) shows it; Android and Swift run no agents and show no strip yet
+    "hub_presence_set",
+    "hub_presence_list",
     // -- WP ATDEMO -- The demo hub's simulated microphone for a measurement across
     // units: the web and Qt only (Android has no system measurement screen yet,
     // PLAN-AT Later); through the wasm and C bindings.

@@ -11,6 +11,8 @@ import type { ScreenProps } from "../../ui/screens";
 import { AlinkClock } from "./AlinkClock";
 import { SignalChain } from "./SignalChain"; // -- WP WB6D --
 import { InstallationTab } from "./installation/InstallationTab"; // -- WP INSTW --
+import { ZoneVolume } from "./ZoneVolume"; // -- WP FEATUI --
+import type { Session } from "../../ui/session";
 import type { ComponentChildren } from "preact";
 import type { FeedState, SystemFeed } from "./feed";
 import { NO_ALINK, NO_USB_DIRECT, alinkRoleWord, lockWord, roomsView, slotWord, topology, type TopoNode, type UnitView } from "./model";
@@ -37,7 +39,7 @@ export function SystemScreen(props: ScreenProps) {
   // -- WP WB6D -- the device's signal chain, whatever the system's state
   const overview = (
     <>
-      <SystemView feed={feed} installer={props.mode === "installer"} ask={props.ask} />
+      <SystemView feed={feed} installer={props.mode === "installer"} ask={props.ask} session={props.session} />
       <SignalChain session={props.session} open={props.open} />
     </>
   );
@@ -60,7 +62,7 @@ function SystemTabs(props: { tab: "overview" | "installation"; show: (t: "overvi
   );
 }
 
-function SystemView(props: { feed: SystemFeed; installer: boolean; ask: ScreenProps["ask"] }) {
+function SystemView(props: { feed: SystemFeed; installer: boolean; ask: ScreenProps["ask"]; session: Session /* -- WP FEATUI -- */ }) {
   const st = useFeed(props.feed);
   useEffect(() => props.feed.show(), [props.feed]);
   const { model, status } = st;
@@ -105,6 +107,10 @@ function SystemView(props: { feed: SystemFeed; installer: boolean; ask: ScreenPr
               </section>
             ))}
           </div>
+          {/* -- WP FEATUI -- a room's or zone's volume (FEAT2): Control or Admin on a hub */}
+          {props.feed.onHub && !props.feed.readOnly && (st.role === "admin" || st.role === "control") ? (
+            <ZoneVolume model={model} session={props.session} ask={props.ask} />
+          ) : null}
           <h3>Topology</h3>
           <ul class="sys-topo" aria-label="Topology">
             {topology(model, status).map((n) => (

@@ -260,6 +260,8 @@ fn registered(config: &ServiceConfig, setup: &ServiceSetup<'_>) -> Vec<Arc<dyn H
     list.extend(crate::identify::service(config, setup));
     // -- WP P2HS --
     list.extend(crate::stats::service(config, setup));
+    // -- WP FEATUI -- who works on the devices beside the people (AIVIS's web part)
+    list.extend(crate::presence::service(config, setup));
     // -- WP P2EV --
     list.extend(crate::history::service(config, setup));
     // -- WP P2PA -- the `snapshot` family (P2SS's store) and the parameter API beside it

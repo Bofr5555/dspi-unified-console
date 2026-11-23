@@ -294,8 +294,24 @@ void DevicesController::agentRequest(const QJsonObject &ticket) {
     const QString transport = ticket.value(QLatin1String("transport")).toString();
     QPointer<AiController> ai = Registrar::instance<AiController>();
     // "" for done, else why not
-    const std::function<void(const QString &)> report = [ai, id](const QString &why) {
+    // -- WP FEATUI -- what an agent opened or closed is a notice, by name
+    const bool closing = ticket.value(QLatin1String("kind")).toString() == QLatin1String("close");
+    const QString client = ticket.value(QLatin1String("client_name")).toString();
+    QString before;
+    if (closing)
+        if (DeviceSession *s = m_registry->session(ticket.value(QLatin1String("device")).toString())) before = s->title();
+    const QPointer<DevicesController> self(this);
+    const std::function<void(const QString &)> report = [ai, id, self, closing, client, before, serial](const QString &why) {
         if (ai) ai->reportDevice(id, why.isEmpty(), why);
+        if (!why.isEmpty() || !self) return;
+        DeviceSession *s = closing ? nullptr : self->m_registry->holder(serial);
+        const QString name = closing ? before : s ? s->title() : serial;
+        auto *notices = Registrar::instance<NoticeCenter>();
+        if (!notices || name.isEmpty()) return;
+        //: %1 the AI agent's name, %2 a device
+        notices->post(closing ? tr("%1 closed %2.").arg(client.isEmpty() ? tr("An AI agent") : client, name)
+                              //: %1 the AI agent's name, %2 a device
+                              : tr("%1 opened %2 in a tab.").arg(client.isEmpty() ? tr("An AI agent") : client, name));
     };
     if (m_shutDown) {
         report(tr("The app is closing."));
@@ -324,7 +340,7 @@ void DevicesController::agentRequest(const QJsonObject &ticket) {
         return;
     }
     if (m_registry->holder(serial)) {
-        report(QString());   // open already
+        if (ai) ai->reportDevice(id, true, QString());   // open already (-- WP FEATUI -- no notice)
         return;
     }
     if (transport == QLatin1String("usb")) {

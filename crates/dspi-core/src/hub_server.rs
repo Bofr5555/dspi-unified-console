@@ -77,6 +77,10 @@ pub use fleet::{
     NOTICE_ROLLOUT_UNKNOWN, ROLLOUT_STEPS, hub_rollout_step_notice,
 };
 
+// -- WP FEATUI -- who works on the hub's devices beside the people (AIVIS's web part)
+pub mod presence;
+pub use presence::{CAP_PRESENCE, HubPresence};
+
 // -- WP P5HUB -- the hub's measurement documents
 pub mod measure;
 pub use measure::{
@@ -600,7 +604,7 @@ pub(crate) struct Events {
 
 /// The kinds of [`HubServerEvent`].
 #[cfg_attr(not(feature = "link"), allow(dead_code))]
-const KINDS: [&str; 8] = [
+const KINDS: [&str; 9] = [
     "event.added",
     "inventory.changed",
     "snapshot.changed",
@@ -612,6 +616,8 @@ const KINDS: [&str; 8] = [
     "fw.rollout.changed",
     // -- WP P5HUB --
     "measure.doc.changed",
+    // -- WP FEATUI -- who works on the devices beside the people (`presence`)
+    "presence.changed",
 ];
 
 impl HubServerEvent {

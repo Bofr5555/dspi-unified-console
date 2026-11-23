@@ -33,6 +33,8 @@ import {
   type IssuePlace,
 } from "./model";
 import type { InstallationIssue, InstallationUnseen } from "./protocol";
+import { onAlink, rerouted } from "./model"; // -- WP FEATUI --
+import { Programmes, ReroutedNotice, Scenes, SlotsRow, Sources, ZoneSource } from "./Routing"; // -- WP FEATUI --
 
 function useForm(form: InstallationForm): FormState {
   const [, bump] = useState(0);
@@ -45,6 +47,10 @@ export function InstallationTab(props: { feed: SystemFeed; session: Session; ask
   const form = useMemo(() => new InstallationForm(call), [props.session]);
   useEffect(() => void form.load(), [form]);
   const st = useForm(form);
+  const [alignPending, setAlignPending] = useState(0); // -- WP FEATUI --
+  const [aligned, setAligned] = useState(false);
+  const [, bumpFeed] = useState(0);
+  useEffect(() => props.feed.watch(() => bumpFeed((n) => n + 1)), [props.feed]);
   const draft = st.draft;
   if (!draft || !st.view) {
     return (
@@ -61,6 +67,22 @@ export function InstallationTab(props: { feed: SystemFeed; session: Session; ask
   }
   const edit = form.editable(props.feed.readOnly);
   const model = draft.model;
+  const routed = rerouted(draft); // -- WP FEATUI --
+  const align = props.feed.state.align; // -- WP FEATUI --
+  const alignNow = async () => {
+    const go = await props.ask({
+      title: "Align audio link delays?",
+      body: <p>Every unit restarts its outputs in step with a short silence (2 to 6 ms).</p>,
+      buttons: [
+        { label: "Align", value: "align" },
+        { label: "Cancel", value: "cancel" },
+      ],
+    });
+    if (go !== "align") return;
+    setAlignPending(0);
+    setAligned(true);
+    await props.feed.align(true);
+  };
   const save = async () => {
     const go = await props.ask({
       title: "Save the installation?",
@@ -80,7 +102,12 @@ export function InstallationTab(props: { feed: SystemFeed; session: Session; ask
       ],
     });
     if (go !== "save") return;
-    if ((await form.save()) === "ok") await props.feed.reread();
+    const moving = routed.length; // -- WP FEATUI -- what the units take at the next alignment
+    if ((await form.save()) === "ok") {
+      setAlignPending(moving);
+      setAligned(false);
+      await props.feed.reread();
+    }
   };
   const general = generalIssues(st.issues, model);
   return (
@@ -124,6 +151,20 @@ export function InstallationTab(props: { feed: SystemFeed; session: Session; ask
           ) : null}
         </div>
       ) : null}
+      {/* -- WP FEATUI -- saved slots go live at the alignment */}
+      {alignPending > 0 ? (
+        <div class="sys-save" role="status" aria-label="Alignment needed">
+          <span>{alignPending === 1 ? "1 unit plays the new channels after Align." : `${alignPending} units play the new channels after Align.`}</span>
+          <button type="button" disabled={!!align?.running} onClick={() => void alignNow()}>
+            Align
+          </button>
+        </div>
+      ) : null}
+      {aligned && align && !align.running && (align.message || align.error) ? (
+        <p class={align.error ? "error" : "sys-note"} role="status" aria-label="Alignment">
+          {align.error || align.message}
+        </p>
+      ) : null}
       <Unseen form={form} st={st} edit={edit} />
       <h4>Units</h4>
       {model.units.length ? (
@@ -136,11 +177,15 @@ export function InstallationTab(props: { feed: SystemFeed; session: Session; ask
         <p class="sys-note">No units yet: join the units the hub sees.</p>
       )}
       <Feeds form={form} model={model} issues={st.issues} edit={edit} />
+      <Sources form={form} model={model} edit={edit} /* -- WP FEATUI -- */ />
       <Rooms form={form} model={model} issues={st.issues} edit={edit} />
       <Zones form={form} model={model} issues={st.issues} edit={edit} />
       <Groups form={form} model={model} issues={st.issues} edit={edit} /* -- WP WEBM3 -- */ />
+      <Scenes form={form} model={model} edit={edit} /* -- WP FEATUI -- */ />
+      <Programmes form={form} model={model} edit={edit} /* -- WP FEATUI -- */ />
       {form.dirty ? (
         <div class="sys-save" role="group" aria-label="Unsaved installation">
+          <ReroutedNotice rows={routed} /* -- WP FEATUI -- */ />
           <ul class="sys-results" aria-label="Changes">
             {st.changes.map((c) => (
               <li key={c}>{c}</li>
@@ -423,6 +468,7 @@ function UnitCard(props: { form: InstallationForm; model: SystemModel; u: Unit; 
           ))}
         </div>
       ) : null}
+      {onAlink(u) ? <SlotsRow form={form} model={model} u={u} edit={edit} /* -- WP FEATUI -- */ /> : null}
       <Issues issues={props.issues} id={u.id} field="room" />
       <Issues issues={props.issues} id={u.id} field="upstream" />
       <Issues issues={props.issues} id={u.id} field="" />
@@ -551,7 +597,6 @@ function Zones(props: { form: InstallationForm; model: SystemModel; issues: Inst
       setSource("");
     }
   };
-  const sourceName = (id: string) => cleanText(model.sources.find((x) => x.id === id)?.name || id);
   return (
     <section aria-label="Zones">
       <h4>Zones</h4>
@@ -569,7 +614,7 @@ function Zones(props: { form: InstallationForm; model: SystemModel; issues: Inst
                     </button>
                   ) : null}
                 </div>
-                {z.source ? <p class="sys-muted">Plays {sourceName(z.source)}</p> : null /* -- WP WEBM3 -- */}
+                <ZoneSource form={form} model={model} z={z} edit={edit} /* -- WP FEATUI -- what it plays, set here too */ />
                 <RoomChecks model={model} rooms={z.rooms} edit={edit} onRooms={(r) => void form.edit({ op: "setZoneRooms", id: z.id, rooms: r })} />
                 <Issues issues={props.issues} id={z.id} field="rooms" />
                 <Issues issues={props.issues} id={z.id} field="" />

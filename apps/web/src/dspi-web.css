@@ -1734,3 +1734,17 @@
   .dspi-web .rail-devices .device-tab > [role="tab"] { min-height: 44px; }
   .dspi-web .rail .rail-devices .device-tab-close { min-width: 44px; height: 44px; }
 }
+
+/* -- WP FEATUI -- (AIVIS's web part) an AI agent working on this hub's devices: the strip and the tab's mark */
+.dspi-web .banner-agent { border-color: var(--accent); flex-wrap: wrap; }
+.dspi-web .banner-agent .agent-row { display: block; overflow-wrap: anywhere; }
+.dspi-web .agent-mark,
+.dspi-web .device-tab-agent {
+  flex: none;
+  padding: 0 0.35rem;
+  border-radius: 999px;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  font-size: 0.7rem;
+  font-weight: 600;
+}

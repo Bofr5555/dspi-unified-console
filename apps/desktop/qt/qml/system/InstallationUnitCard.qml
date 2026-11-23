@@ -109,6 +109,12 @@ Card {
                 onChosen: id => InstallationController.setUpstream(card.unitId, id)
             }
         }
+        // -- WP FEATUI -- its audio link slots (FEAT1)
+        InstallationSlotsField {
+            visible: card.unit.alink === true
+            unitId: card.unitId
+            editable: card.editable
+        }
         InstallationField {
             visible: card.unit.spdifSource === true
             title: qsTr("Time base on outputs")

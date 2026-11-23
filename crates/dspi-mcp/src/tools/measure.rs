@@ -1159,7 +1159,12 @@ fn levels(
             )
         })?,
     };
-    let caps = measure_level_caps(placement);
+    let mut caps = measure_level_caps(placement);
+    // -- WP FEATUI -- the app's own SPL cap for agents: a ceiling an agent stays under
+    let app_spl_cap = call.policy.agent_spl_cap_db();
+    if let Some(cap) = app_spl_cap {
+        caps.spl_cap_db = caps.spl_cap_db.min(cap);
+    }
     let tighter = |key: &str, cap: f32, unit: &str| -> Result<Option<f32>, ToolError> {
         match args.get(key).and_then(Value::as_f64) {
             None => Ok(None),
@@ -1179,6 +1184,9 @@ fn levels(
              was played.",
         ));
     }
+    // -- WP FEATUI -- none named: the app's cap (it holds with a microphone
+    // that reads dB SPL, the app's own calibration included)
+    let spl_cap_db = spl_cap_db.or(app_spl_cap.map(|_| caps.spl_cap_db));
     Ok(Levels {
         mic_document,
         ceiling_db,
@@ -2706,8 +2714,12 @@ static OPTIONS: Tool = Tool {
                        "note": untrusted::note(&d.note)})
             })
             .collect();
+        let app_spl_cap = call.policy.agent_spl_cap_db(); // -- WP FEATUI --
         let caps = |p: MeasurePlacement| {
-            let c = measure_level_caps(p);
+            let mut c = measure_level_caps(p);
+            if let Some(cap) = app_spl_cap {
+                c.spl_cap_db = c.spl_cap_db.min(cap); // -- WP FEATUI --
+            }
             json!({"max_level_dbfs": num(c.ceiling_db), "max_spl_db": num(c.spl_cap_db)})
         };
         let speakers = caps(MeasurePlacement::ListeningPosition);
