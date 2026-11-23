@@ -230,7 +230,11 @@ fn loud_again(core: &DspiCore, actor: u32, level: f32) -> Result<(), String> {
 #[cfg(test)]
 thread_local! {
     pub(crate) static PUT_BACK_FAILS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
-    // -- WP INTI -- a scene's preset loads done as the hub would at its frame
+}
+
+// -- WP INTI -- a scene's preset loads done as the hub would at its frame
+#[cfg(all(test, feature = "link"))]
+thread_local! {
     pub(crate) static HUB_LOADS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
@@ -277,6 +281,7 @@ fn wholesale_run<T>(
 // -- WP INTI -- (review RF4) a hub scene's preset loads, judged as an agent's
 // own: the hub loads the presets on the units itself, at a frame
 /// One unit a scene loads a preset on, as it was before the recall.
+#[cfg(feature = "link")]
 pub(crate) struct SceneLoad {
     core: std::sync::Arc<DspiCore>,
     name: String,
@@ -293,6 +298,7 @@ pub(crate) struct SceneLoad {
 /// for a unit this app does not have open (its tweeters cannot be judged)
 /// and for one that saves the master volume with each preset (as
 /// `dspi_preset_load` is, -- WP ODEC --).
+#[cfg(feature = "link")]
 pub(crate) fn scene_loads_check(
     call: &Call<'_>,
     loads: &[(String, u8)],
@@ -332,6 +338,7 @@ pub(crate) fn scene_loads_check(
 
 /// Before the recall: each unit's state and a snapshot filed, and a unit
 /// with a confirmed tweeter or midrange silenced (as [`wholesale_with`]).
+#[cfg(feature = "link")]
 pub(crate) fn scene_loads_guard(
     call: &Call<'_>,
     units: Vec<(std::sync::Arc<DspiCore>, String, u8)>,
@@ -372,6 +379,7 @@ pub(crate) fn scene_loads_guard(
 /// unit is read again): a unit whose tweeter lost its protection goes back to
 /// its slot and its settings; every silenced unit gets its volume back. Err
 /// with the words when any unit was put back or stays silent.
+#[cfg(feature = "link")]
 pub(crate) fn scene_loads_judge(
     call: &Call<'_>,
     units: Vec<SceneLoad>,
