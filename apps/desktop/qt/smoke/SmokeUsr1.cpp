@@ -225,6 +225,7 @@ void fieldsSection(SmokeDriver &d) {
     auto *mw = qobject_cast<QQuickWindow *>(shell->openWindow(QStringLiteral("tools.matrix")));
     d.check(QStringLiteral("usr1: the matrix mixer opens"), mw && d.waitFor(3000, [&] { return mw->isVisible(); }));
     if (mw) {
+        const QSize matrixSize = mw->size();
         mw->resize(QSize(1400, 900));
         cc->setRoute(1, 0, true, 0, false);
         d.waitIdle();
@@ -242,9 +243,13 @@ void fieldsSection(SmokeDriver &d) {
         cc->setOutputGain(0, 0);
         cc->setOutputDelay(0, 0);
         d.waitIdle();
+        // No field keeps the focus for the window's next opening (its wheel steps only an unfocused field)
+        mw->contentItem()->forceActiveFocus();
+        mw->resize(matrixSize);   // qp6 aims its wheel by position in the same window
         mw->close();
     }
 
+    w->contentItem()->forceActiveFocus();
     w->resize(original);
     sc->select(-1);
     d.spin(100);
