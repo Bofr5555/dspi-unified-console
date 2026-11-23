@@ -7372,7 +7372,7 @@ internal fun InstallationEdit.toFfi(): se.bofr.dspi.ffi.uniffi.InstallationEdit 
         is InstallationEdit.AddSender -> se.bofr.dspi.ffi.uniffi.InstallationEdit.AddSender(id, name, serial)
         is InstallationEdit.AddFanOut -> se.bofr.dspi.ffi.uniffi.InstallationEdit.AddFanOut(id, name, serial, upstream, output?.let { it.toUByte() })
         is InstallationEdit.SetSystem -> se.bofr.dspi.ffi.uniffi.InstallationEdit.SetSystem(rateHz?.let { it.toUInt() }, setD, dFrames?.let { it.toUShort() }, keepUsbAligned)
-        is InstallationEdit.SetUnitSlots -> se.bofr.dspi.ffi.uniffi.InstallationEdit.SetUnitSlots(id, slots?.let { ByteArray(it.size) { it[it].toByte() } })
+        is InstallationEdit.SetUnitSlots -> se.bofr.dspi.ffi.uniffi.InstallationEdit.SetUnitSlots(id, slots?.let { ByteArray(it.size) { i -> it[i].toByte() } })
         is InstallationEdit.AddSource -> se.bofr.dspi.ffi.uniffi.InstallationEdit.AddSource(id, name, sender, ByteArray(channels.size) { channels[it].toByte() })
         is InstallationEdit.SetSource -> se.bofr.dspi.ffi.uniffi.InstallationEdit.SetSource(id, sender, ByteArray(channels.size) { channels[it].toByte() })
         is InstallationEdit.SetZoneSource -> se.bofr.dspi.ffi.uniffi.InstallationEdit.SetZoneSource(id, source)
