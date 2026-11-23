@@ -10,6 +10,8 @@ arguments is "$M1", "$M2", ...: the ones this run filed, in the order they were 
 -- WP FUNC2a -- ["sleep", {"s": n}] waits n seconds (a user's drag lets go meanwhile); "$USER:<device>"
 is the id of that device's newest change the user made (dspi_get_history, `mine` false, no agent).
 A script may name its `story` (a file in stories/) and its `confirm` setting.
+-- WP FUNC2c -- [tool, args, want, note, not, must]: `must` is a pattern the answer must have
+(`not` may be "" then).
 """
 import json
 import pathlib
@@ -137,9 +139,12 @@ class Player:
                 text = text.replace(f'"$M{n}"', json.dumps(self.ids[n - 1]))
             kind, answer = self.agent.call(tool, **json.loads(text))
             got = "ok" if kind == "ok" else "error"
-            banned = len(c) > 4 and re.search(c[4], str(answer))
+            banned = len(c) > 4 and c[4] and re.search(c[4], str(answer))
             if banned:
                 got = f"{got}, with {banned.group(0)[:60]!r}"
+            # -- WP FUNC2c -- a sixth element: a pattern the answer must have
+            if len(c) > 5 and not re.search(c[5], str(answer)):
+                got = f"{got}, without {c[5]!r}"
             out.append({"tool": tool, "args": args, "want": c[2], "got": got, "wrong": got != c[2],
                         "note": c[3] if len(c) > 3 else "", "answer": str(answer)[:400]})
         return out

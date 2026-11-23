@@ -98,6 +98,10 @@ class User:
         if kind == "layout":
             self.run.confirm_layout(a["device"])
             return
+        if kind in INSTALLER:  # -- WP FUNC2c --
+            self.installer(a)
+            self.run.event("user-done", {"step": label, "do": kind})
+            return
         self.show(a["device"])
         out = a.get("output", 0) - 1
         if kind == "crossover":
@@ -143,10 +147,83 @@ class User:
             ctl.call("SidebarController", "setUserVolume", float(a["db"]))
         elif kind == "undo":
             ctl.call("HistoryController", "undo")
+        # -- WP FUNC2c -- presets as the user keeps them (slots from 1), an output's mute
+        elif kind == "preset_save":
+            ctl.call("SidebarController", "savePreset")
+            self.preset_idle()
+        elif kind == "preset_copy":
+            ctl.call("SidebarController", "requestPresetCopy", a["slot"] - 1)
+            self.preset_idle()
+        elif kind == "preset_switch":
+            ctl.call("SidebarController", "requestPresetSwitch", a["slot"] - 1)
+            self.preset_idle()
+            if ctl.get("SidebarController", "unsaved") and a.get("unsaved"):
+                ctl.call("SidebarController", "resolveUnsaved", "switch", a["slot"] - 1, a["unsaved"])
+                self.preset_idle()
+        elif kind == "mute":
+            ctl.call("ChannelController", "setOutputMute", out, a.get("muted", True))
         else:
             raise RuntimeError(f"no such user action: {kind}")
         time.sleep(float(a.get("settle_s", 0.3)))
         self.run.event("user-done", {"step": label, "do": kind})
+
+
+    # -- WP FUNC2c -- FSTORY P4: the installer at this console (Settings › Installer, LimitsController)
+    def preset_idle(self):
+        time.sleep(0.3)
+        self.ctl.wait("the preset call", lambda: not self.ctl.get("SidebarController", "presetBusy"), 30)
+        time.sleep(0.5)
+
+    def limits_idle(self, what):
+        time.sleep(0.3)
+        self.ctl.wait(what, lambda: not self.ctl.get("LimitsController", "busy"), 30)
+        error = self.ctl.get("LimitsController", "pinError")
+        if error:
+            raise RuntimeError(f"{what}: {error}")
+
+    def installer(self, a):
+        """`limits` (a profile: `outputs` = {output from 1: {field: value}}, `profile` = {field: value},
+        `note`, `contact`), `pin` (set it; the recovery code goes to secrets.json, never to the agent),
+        `covers` (what the lock covers: on = every page), `lock` (lock now), `unlock` (with the PIN)."""
+        kind, ctl = a["do"], self.ctl
+        self.show(a["device"])
+        if kind == "limits":
+            for n, fields in a.get("outputs", {}).items():
+                for field, value in fields.items():
+                    ctl.call("LimitsController", "setOutputLimit", int(n) - 1, field, float(value))
+                    self.limits_idle(f"limit {n} {field}")
+            for field, value in a.get("profile", {}).items():
+                ctl.call("LimitsController", "setLimit", field, float(value))
+                self.limits_idle(f"limit {field}")
+            for field in ("note", "contact"):
+                if field in a:
+                    ctl.call("LimitsController", "setText", field, a[field])
+                    self.limits_idle(f"limit {field}")
+            ctl.wait("the profile in force", lambda: ctl.get("LimitsController", "active"))
+        elif kind == "pin":
+            ctl.call("LimitsController", "setPin", a["pin"], a["pin"])
+            self.limits_idle("the PIN")
+            ctl.wait("the PIN set", lambda: ctl.get("LimitsController", "pinSet"))
+            self.run.secret(a["pin"], ctl.get("LimitsController", "recoveryCode"))
+            ctl.call("LimitsController", "dismissRecovery")
+        elif kind == "covers":
+            ctl.call("LimitsController", "setCovers", a.get("on", True))
+            self.limits_idle("the lock's cover")
+            ctl.wait("the cover set", lambda: ctl.get("LimitsController", "covers") == a.get("on", True))
+        elif kind == "lock":
+            ctl.call("LimitsController", "lockNow")
+            self.limits_idle("the lock")
+            ctl.wait("locked", lambda: ctl.get("LimitsController", "locked") == ctl.get("LimitsController", "covers"))
+        elif kind == "unlock":
+            ctl.call("LimitsController", "unlock", a["pin"])
+            self.limits_idle("the unlock")
+            ctl.wait("unlocked", lambda: not ctl.get("LimitsController", "locked"))
+        self.run.event("installer", {"do": kind, "lock": {k: v for k, v in (ctl.get("LimitsController", "lock") or {}).items()
+                                                          if k in ("pinSet", "locked", "covers", "unlocked", "heldBy")}})
+        time.sleep(0.3)
+
+
+INSTALLER = ("limits", "pin", "covers", "lock", "unlock")
 
 
 def seed_actions(story):

@@ -1,0 +1,282 @@
+{
+ "name": "FUNC2c restaurant",
+ "seed": 20261122,
+ "noiseDbfs": -92.0,
+ "micPpm": 32.0,
+ "latencyMs": 50.0,
+ "latencyJitterMs": 3.0,
+ "modes": [
+  {
+   "freq": 37.0,
+   "gainDb": 7.0,
+   "t60S": 0.7
+  },
+  {
+   "freq": 61.0,
+   "gainDb": -6.0,
+   "t60S": 0.45
+  },
+  {
+   "freq": 88.0,
+   "gainDb": 5.0,
+   "t60S": 0.4
+  },
+  {
+   "freq": 128.0,
+   "gainDb": 3.0,
+   "t60S": 0.3
+  }
+ ],
+ "reflections": [
+  {
+   "delayMs": 2.4,
+   "gain": 0.28
+  },
+  {
+   "delayMs": 5.9,
+   "gain": 0.18
+  }
+ ],
+ "devices": [
+  {
+   "serial": "FUNC2C-RESTAURANT",
+   "name": "Restaurant",
+   "userVolumeDb": -20.0,
+   "inputNames": [
+    "L",
+    "R",
+    "In 3",
+    "In 4",
+    "In 5",
+    "In 6",
+    "In 7",
+    "In 8"
+   ],
+   "routes": [],
+   "outputs": [
+    {
+     "output": 0,
+     "name": "Left woofer",
+     "role": "low",
+     "speaker": "Left",
+     "group": 0,
+     "driver": {
+      "sensitivityDb": -13.0,
+      "highpassHz": 46.0,
+      "highpassQ": 0.75,
+      "rolloffHz": 3600.0,
+      "rolloffQ": 0.7,
+      "breakup": {
+       "kind": "peak",
+       "freq": 4300.0,
+       "q": 5.0,
+       "gain_db": 7.0
+      },
+      "offsetMs": 0.12,
+      "inverted": false
+     },
+     "filters": [
+      {
+       "kind": "peak",
+       "freq": 112.0,
+       "q": 4.0,
+       "gain_db": 2.5
+      },
+      {
+       "kind": "peak",
+       "freq": 780.0,
+       "q": 1.6,
+       "gain_db": 2.5
+      },
+      {
+       "kind": "peak",
+       "freq": 1900.0,
+       "q": 2.5,
+       "gain_db": -2.0
+      }
+     ],
+     "delayMs": 9.913,
+     "gainDb": 0.0,
+     "safe": {
+      "belowHz": 0.0,
+      "belowDbfs": 0.0,
+      "capDbfs": -6.0
+     }
+    },
+    {
+     "output": 1,
+     "name": "Left tweeter",
+     "role": "high",
+     "speaker": "Left",
+     "group": 0,
+     "driver": {
+      "sensitivityDb": -8.5,
+      "highpassHz": 1400.0,
+      "highpassQ": 0.9,
+      "rolloffHz": 0.0,
+      "rolloffQ": 0.7,
+      "breakup": {
+       "kind": "peak",
+       "freq": 23000.0,
+       "q": 3.0,
+       "gain_db": 4.0
+      },
+      "offsetMs": 0.0,
+      "inverted": false
+     },
+     "filters": [
+      {
+       "kind": "peak",
+       "freq": 3300.0,
+       "q": 2.0,
+       "gain_db": 2.5
+      },
+      {
+       "kind": "peak",
+       "freq": 9500.0,
+       "q": 3.0,
+       "gain_db": -2.5
+      }
+     ],
+     "delayMs": 9.913,
+     "gainDb": 0.0,
+     "safe": {
+      "belowHz": 1000.0,
+      "belowDbfs": -50.0,
+      "capDbfs": -12.0
+     }
+    },
+    {
+     "output": 2,
+     "name": "Right woofer",
+     "role": "low",
+     "speaker": "Right",
+     "group": 1,
+     "driver": {
+      "sensitivityDb": -13.5,
+      "highpassHz": 46.0,
+      "highpassQ": 0.75,
+      "rolloffHz": 3600.0,
+      "rolloffQ": 0.7,
+      "breakup": {
+       "kind": "peak",
+       "freq": 4300.0,
+       "q": 5.0,
+       "gain_db": 7.0
+      },
+      "offsetMs": 0.12,
+      "inverted": false
+     },
+     "filters": [
+      {
+       "kind": "peak",
+       "freq": 146.0,
+       "q": 4.0,
+       "gain_db": -3.0
+      },
+      {
+       "kind": "peak",
+       "freq": 780.0,
+       "q": 1.6,
+       "gain_db": 2.5
+      },
+      {
+       "kind": "peak",
+       "freq": 1900.0,
+       "q": 2.5,
+       "gain_db": -2.0
+      }
+     ],
+     "delayMs": 10.787,
+     "gainDb": 0.0,
+     "safe": {
+      "belowHz": 0.0,
+      "belowDbfs": 0.0,
+      "capDbfs": -6.0
+     }
+    },
+    {
+     "output": 3,
+     "name": "Right tweeter",
+     "role": "high",
+     "speaker": "Right",
+     "group": 1,
+     "driver": {
+      "sensitivityDb": -9.0,
+      "highpassHz": 1400.0,
+      "highpassQ": 0.9,
+      "rolloffHz": 0.0,
+      "rolloffQ": 0.7,
+      "breakup": {
+       "kind": "peak",
+       "freq": 23000.0,
+       "q": 3.0,
+       "gain_db": 4.0
+      },
+      "offsetMs": 0.0,
+      "inverted": false
+     },
+     "filters": [
+      {
+       "kind": "peak",
+       "freq": 3300.0,
+       "q": 2.0,
+       "gain_db": 2.5
+      },
+      {
+       "kind": "peak",
+       "freq": 9500.0,
+       "q": 3.0,
+       "gain_db": -2.5
+      }
+     ],
+     "delayMs": 10.787,
+     "gainDb": 0.0,
+     "safe": {
+      "belowHz": 1000.0,
+      "belowDbfs": -50.0,
+      "capDbfs": -12.0
+     }
+    },
+    {
+     "output": 4,
+     "name": "Subwoofer",
+     "role": "sub",
+     "speaker": "Sub",
+     "group": 2,
+     "driver": {
+      "sensitivityDb": -6.0,
+      "highpassHz": 25.0,
+      "highpassQ": 0.7,
+      "rolloffHz": 260.0,
+      "rolloffQ": 0.7,
+      "breakup": null,
+      "offsetMs": 0.5,
+      "inverted": false
+     },
+     "filters": [
+      {
+       "kind": "peak",
+       "freq": 45.0,
+       "q": 3.0,
+       "gain_db": 5.0
+      },
+      {
+       "kind": "peak",
+       "freq": 70.0,
+       "q": 4.0,
+       "gain_db": 4.0
+      }
+     ],
+     "delayMs": 12.245,
+     "gainDb": 0.0,
+     "safe": {
+      "belowHz": 0.0,
+      "belowDbfs": 0.0,
+      "capDbfs": -6.0
+     }
+    }
+   ]
+  }
+ ]
+}
