@@ -219,6 +219,40 @@ fn wp_roll1_a_three_way_group_plays_the_tweeter_with_the_way_that_plays_highest(
     assert_eq!(p.runs[1].f1_hz, 20.0);
 }
 
+// -- WP FUNC2c -- FSTORY S6: an agent's one run of a three-way centre and its
+// sub (one group), nothing low-passed yet: the tweeter's reference was the
+// last of the unbounded tops, the sub, swept from 1 kHz, never heard, and the
+// run aborted. The midrange is the reference; the sub plays in the full run.
+#[test]
+fn wp_func2c_a_sub_is_never_a_tweeters_reference_while_a_midrange_is_there() {
+    let p = Plan::new(&setup(
+        MeasureRunKind::Walked,
+        vec![
+            out(0, MeasureRole::Low, 0),
+            out(3, MeasureRole::Mid, 0),
+            out(4, MeasureRole::High, 0),
+            out(5, MeasureRole::Sub, 0),
+        ],
+    ))
+    .unwrap();
+    assert_eq!(p.runs.len(), 2);
+    assert_eq!(p.runs[0].outputs, vec![3, 4]);
+    assert_eq!(p.runs[0].f1_hz, 1_000.0);
+    assert_eq!(p.runs[1].outputs, vec![0, 3, 5]);
+    assert_eq!(p.runs[1].f1_hz, 20.0);
+    // A woofer and a sub: the woofer
+    let p = Plan::new(&setup(
+        MeasureRunKind::Walked,
+        vec![
+            out(0, MeasureRole::Low, 0),
+            out(1, MeasureRole::High, 0),
+            out(5, MeasureRole::Sub, 0),
+        ],
+    ))
+    .unwrap();
+    assert_eq!(p.runs[0].outputs, vec![0, 1]);
+}
+
 #[test]
 fn wp_roll1_pink_noise_never_plays_a_tweeter() {
     let e = Plan::new(&setup(

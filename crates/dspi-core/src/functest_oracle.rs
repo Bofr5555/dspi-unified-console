@@ -159,8 +159,9 @@ fn programme_peak(s: &DspState, o: usize) -> f64 {
                 .and_then(|r| r.get(o))
                 .copied()
                 .unwrap_or(0.0)
-                + s.input_preamp_db.get(i).copied().unwrap_or(0.0)
-                + s.preamp_db;
+                // -- WP INTI -- (review RF11) the global preamp is input 0's
+                // (params.rs's legacy alias, as FUNC2b's path_response): once
+                + s.input_preamp_db.get(i).copied().unwrap_or(s.preamp_db);
             sum += 10f64.powf((db(bands(&input_bands(s, i), f)) + f64::from(gain)) / 20.0);
         }
         peak = peak.max(own + 20.0 * sum.max(1e-15).log10());
@@ -212,7 +213,16 @@ fn routed(s: &DspState, o: usize) -> bool {
 fn off(s: &DspState, o: usize) -> bool {
     !s.output_enabled.get(o).copied().unwrap_or(false)
         || s.output_muted.get(o).copied().unwrap_or(false)
+        || s.master_volume_db <= SILENT_MASTER_DB // -- WP FUNC2c --
 }
+
+// -- WP FUNC2c -- The master volume at which the device plays nothing: the
+// MCP's guard around a preset load (dspi-mcp `LOAD_GUARD_DB`, FFIX), which
+// holds the device silent until the loaded preset is judged and its tweeter
+// protection put back (by the policy, or by the installer's profile). FSTORY
+// S7's lowered-tweeter preset: without this the guard's silent moment was a
+// VIOLATION.
+const SILENT_MASTER_DB: f32 = -127.0;
 
 #[cfg(test)]
 mod tests_wp_func2a {
@@ -255,5 +265,17 @@ mod tests_wp_func2a {
         s.xover[ch][0].filter_type = 35;
         s.xover[ch][0].freq = 2500.0;
         assert!(worst_rise(&s, 1, 1000.0).0 <= MARGIN_DB);
+    }
+
+    // -- WP FUNC2c --
+    #[test]
+    fn wp_func2c_a_silenced_master_plays_nothing() {
+        let mut s = state();
+        s.output_enabled[1] = true;
+        s.output_muted[1] = false;
+        s.master_volume_db = 0.0;
+        assert!(!off(&s, 1));
+        s.master_volume_db = SILENT_MASTER_DB;
+        assert!(off(&s, 1));
     }
 }

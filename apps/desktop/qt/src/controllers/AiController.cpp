@@ -26,6 +26,7 @@
 #include <QClipboard>
 #include <QCoreApplication>
 #include <QDir>
+#include <QEvent>   // -- WP INTI --
 #include <QFile>
 #include <QGuiApplication>
 #include <QJSEngine>
@@ -108,6 +109,8 @@ struct Undone {
 
 } // namespace
 
+static QString agentName(const QString &label);   // -- WP ODEC -- below
+
 AiController::AiController(const AppContext &ctx, QObject *parent) : QObject(parent), m_ctx(ctx) {
     m_thread.setMaxThreadCount(1);
     m_thread.setExpiryTimeout(-1);
@@ -151,6 +154,15 @@ AiController::AiController(const AppContext &ctx, QObject *parent) : QObject(par
     connect(this, &AiController::stateChanged, this, &AiController::refreshWork);
     connect(this, &AiController::confirmationsChanged, this, &AiController::refreshWork);
     connect(ctx.registry, &DeviceRegistry::devicesChanged, this, &AiController::refreshWork);
+    // -- WP ODEC -- a follow the rate limit held off, tried once it allows
+    m_followTimer.setSingleShot(true);
+    connect(&m_followTimer, &QTimer::timeout, this, [this] {
+        const QString device = std::exchange(m_followPendingDevice, QString());
+        const QString section = std::exchange(m_followPendingSection, QString());
+        if (!device.isEmpty()) followChange(device, section);
+    });
+    // -- WP INTI -- (review RF7) the user's input, for the follow gate
+    if (QCoreApplication::instance()) QCoreApplication::instance()->installEventFilter(this);
     // It must stop before the set is freed, which main() does after the event loop
     connect(QCoreApplication::instance(), &QCoreApplication::aboutToQuit, this, &AiController::shutdown);
     if (m_enabled) QTimer::singleShot(0, this, &AiController::reconcile);
@@ -353,12 +365,17 @@ void AiController::tick() {
         else emit pairingChanged();
     }
     if (!m_waiting.isEmpty()) emit secondsChanged();
+    // -- WP ODEC -- the grants' time left
+    if (!m_grants.isEmpty()) {
+        m_grants.removeIf([&](const Grant &g) { return g.until <= now; });
+        emit grantsChanged();
+    }
     const bool recent = m_lastCall.isValid() && m_lastCall.secsTo(now) < kRecentSeconds;
     if (!recent) m_lastCall = QDateTime();
     // -- WP LAY8 --
     if (m_agents.removeIf([&](const Agent &a) { return a.last.secsTo(now) >= kRecentSeconds; })) emit agentsChanged();
     emit stateChanged();
-    if (m_pairing.isEmpty() && m_waiting.isEmpty() && !recent) m_tick.stop();
+    if (m_pairing.isEmpty() && m_waiting.isEmpty() && !recent && m_grants.isEmpty()) m_tick.stop();
 }
 
 // ---- Starting and stopping ---------------------------------------------------------
@@ -707,11 +724,13 @@ void AiController::readConfirmations() {
                      for (const QJsonValue &r : c.value(QLatin1String("risks")).toArray()) {
                          w.risks << str(r.toObject(), "what");
                          w.sound = w.sound || str(r.toObject(), "kind") == QLatin1String("test_signal");   // -- WP FEATUI --
+                         w.wholesale = w.wholesale || str(r.toObject(), "kind") == QLatin1String("recall");   // -- WP FUNC2c --
                          // -- WP LAY8 --
                          const QString label = riskLabel(str(r.toObject(), "kind"));
                          //: %1 is a kind of change ("Louder"), %2 the change ("Out 1 gain up from -12 dB to -3 dB")
                          w.riskLines << (label.isEmpty() ? w.risks.constLast() : tr("%1: %2").arg(label, w.risks.constLast()));
                      }
+                     w.grant = c.value(QLatin1String("grant")).toObject();   // -- WP ODEC --
                      w.ends = QDateTime::currentDateTimeUtc().addMSecs(c.value(QLatin1String("remaining_ms")).toInteger());
                      there.insert(w.id);
                      list.append(w);
@@ -739,6 +758,16 @@ QVariantList AiController::confirmations() const {
             { QStringLiteral("risks"), w.risks },
             { QStringLiteral("riskLines"), w.riskLines },   // -- WP LAY8 --
             { QStringLiteral("sound"), w.sound },           // -- WP FEATUI --
+            { QStringLiteral("wholesale"), w.wholesale },   // -- WP FUNC2c --
+            // -- WP ODEC -- the grouped question: the server's grant and the sheet's sentence
+            { QStringLiteral("grant"), w.grant.isEmpty() ? QVariant() : QVariant(w.grant.toVariantMap()) },
+            { QStringLiteral("grantText"), w.grant.isEmpty() ? QString()
+                                           //: The question for an AI agent's test signals: %1 is the agent's name, %2 a device's name, %3 minutes
+                                           : tr("Allow also lets %1 play test signals on %2 for the next %3 minutes, for this task. "
+                                                "Louder changes and preset saves are still asked one at a time.")
+                                                 .arg(agentName(w.client), deviceTitle(w.grant.value(QLatin1String("device")).toString().isEmpty() ? w.device
+                                                                                                    : w.grant.value(QLatin1String("device")).toString()))
+                                                 .arg(w.grant.value(QLatin1String("minutes")).toInt(10)) },
         });
     }
     return out;
@@ -940,6 +969,7 @@ void AiController::readWork() {
     if (m_shutDown || !m_mcp) return;
     FfiMcp *mcp = m_mcp;
     m_work = parse(readSized([mcp](char *b, uint32_t n) { return dspi_mcp_work(mcp, b, n); }, 8192));
+    readGrants();   // -- WP ODEC --
     refreshWork();
 }
 
@@ -1120,6 +1150,175 @@ void AiController::setWork(bool working, const QVariantMap &shown) {
     announcePresence(false);   // -- WP FEATUI --
 }
 
+// ---- -- WP ODEC -- Grants, and the screens following an agent ---------------------------
+
+void AiController::readGrants() {
+    const QDateTime now = QDateTime::currentDateTimeUtc();
+    QList<Grant> list;
+    for (const QJsonValue &v : m_work.value(QLatin1String("grants")).toArray()) {
+        const QJsonObject g = v.toObject();
+        const qint64 left = g.value(QLatin1String("left_s")).toInteger();
+        if (left <= 0) continue;
+        Grant row{ quint64(g.value(QLatin1String("id")).toInteger()), agentName(str(g, "client_name")), str(g, "device"), now.addSecs(left) };
+        // The same grant read again keeps its countdown (the seconds round)
+        for (const Grant &was : std::as_const(m_grants))
+            if (was.id == row.id && qAbs(was.until.secsTo(row.until)) <= 2) row.until = was.until;
+        list.append(row);
+    }
+    if (list == m_grants) return;
+    m_grants = list;
+    if (!m_grants.isEmpty()) m_tick.start();
+    emit grantsChanged();
+    announcePresence(false);
+}
+
+QVariantList AiController::grants() const {
+    QVariantList out;
+    const QDateTime now = QDateTime::currentDateTimeUtc();
+    for (const Grant &g : m_grants) {
+        const qint64 left = qMax<qint64>(0, now.secsTo(g.until));
+        out.append(QVariantMap{
+            { QStringLiteral("id"), double(g.id) },
+            { QStringLiteral("agent"), g.agent },
+            { QStringLiteral("device"), deviceTitle(g.deviceId) },
+            { QStringLiteral("deviceId"), g.deviceId },
+            { QStringLiteral("secondsLeft"), int(left) },
+            { QStringLiteral("left"), QStringLiteral("%1:%2").arg(left / 60).arg(left % 60, 2, 10, QLatin1Char('0')) },
+        });
+    }
+    return out;
+}
+
+void AiController::revokeGrant(double id) {
+    const quint64 n = quint64(id);
+    if (m_grants.removeIf([n](const Grant &g) { return g.id == n; })) {
+        emit grantsChanged();
+        announcePresence(false);
+    }
+    FfiMcp *mcp = m_mcp;
+    onThread([mcp, n] { return dspi_mcp_grant_revoke(mcp, n); }, [this](bool) { readWork(); });
+}
+
+// " · test signals allowed, 9 min left" for a grant on `device`, "" for none
+QString AiController::grantSuffix(const QString &device) const {
+    const QDateTime now = QDateTime::currentDateTimeUtc();
+    for (const Grant &g : m_grants)
+        if (g.deviceId == device && !device.isEmpty()) {
+            const qint64 minutes = (qMax<qint64>(0, now.secsTo(g.until)) + 59) / 60;
+            //: Said on the hub beside what an AI agent does: %n minutes left of the user's allowing its test signals
+            return QStringLiteral(" · ") + tr("test signals allowed, %n min left", "", int(minutes));
+        }
+    return {};
+}
+
+void AiController::setFollowAgent(bool on) {
+    if (on == m_followAgent) return;
+    m_followAgent = on;
+    emit followAgentChanged();
+}
+
+// A drag, the keyboard in a text field, a dialog, a menu or a popup of a window
+// -- WP INTI -- (review RF7) every key, click, wheel and touch is stamped, wherever it goes;
+// the filter only reads the event's type and never takes it
+bool AiController::eventFilter(QObject *watched, QEvent *event) {
+    switch (event->type()) {
+    case QEvent::MouseButtonPress:
+    case QEvent::MouseButtonDblClick:
+    case QEvent::TouchBegin:
+        // Every press restarts the clock: a release another object took (a popup's
+        // grab) must not leave an old press counted, nor make a new one look stale
+        m_buttonsHeld = 1;
+        m_pressedAt.start();
+        m_lastInput.start();
+        break;
+    case QEvent::MouseButtonRelease:
+    case QEvent::TouchEnd:
+    case QEvent::TouchCancel:
+        m_buttonsHeld = 0;
+        m_lastInput.start();
+        break;
+    case QEvent::KeyPress:
+    case QEvent::KeyRelease:
+    case QEvent::Shortcut:
+    case QEvent::Wheel:
+        m_lastInput.start();
+        break;
+    default:
+        break;
+    }
+    return QObject::eventFilter(watched, event);
+}
+
+int AiController::inputIdleLeftMs() const {
+    // A press whose release never came (a popup took it) holds for 10 s at most
+    if (m_buttonsHeld > 0 && m_pressedAt.isValid() && m_pressedAt.elapsed() < 10000) return kInputIdleMs;
+    if (!m_lastInput.isValid()) return 0;
+    return int(qMax<qint64>(0, kInputIdleMs - m_lastInput.elapsed()));
+}
+
+bool AiController::inputBusy() const { return inputIdleLeftMs() > 0; }
+
+bool AiController::userInteracting() const {
+    if (inputBusy()) return true;   // -- WP INTI --
+    for (DeviceSession *s : m_ctx.registry->sessions())
+        if (s->model() && s->model()->dragging()) return true;
+    if (m_ctx.device && m_ctx.device->dragging()) return true;
+    QObject *focus = QGuiApplication::focusObject();
+    if (focus && (focus->inherits("QQuickTextInput") || focus->inherits("QQuickTextEdit"))) return true;
+    if (QGuiApplication::modalWindow()) return true;
+    for (QWindow *window : QGuiApplication::topLevelWindows()) {
+        if (!window->isVisible()) continue;
+        const QList<QObject *> all = window->findChildren<QObject *>();
+        for (const QObject *o : all)
+            if (o->inherits("QQuickPopup") && o->property("opened").toBool() && !o->property("aiPassive").toBool()) return true;
+    }
+    return false;
+}
+
+bool AiController::mayFollow(const QString &device, const QString &section, bool measure) {
+    if (userInteracting()) return false;
+    const QDateTime now = QDateTime::currentDateTimeUtc();
+    if (!measure) {
+        if (!m_followAgent) return false;
+        if (m_lastFollow.isValid() && m_lastFollow.msecsTo(now) < kFollowMs) return false;
+        const QString key = device + QLatin1Char('\n') + section;
+        if (key == m_lastFollowKey && m_lastFollowKeyAt.isValid() && m_lastFollowKeyAt.msecsTo(now) < kFollowSameMs) return false;
+        m_lastFollowKey = key;
+        m_lastFollowKeyAt = now;
+    } else {
+        m_lastFollowKey = device + QStringLiteral("\nmeasure");
+        m_lastFollowKeyAt = now;
+    }
+    m_lastFollow = now;
+    return true;
+}
+
+// The device an agent changed comes to the front (both layouts), and Modern shows
+// the section of the change; held off while the user is at something, and at most
+// one switch in kFollowMs (the newest change is followed after it)
+void AiController::followChange(const QString &device, const QString &section) {
+    if (!m_followAgent || device.isEmpty() || !m_ctx.registry->session(device)) return;
+    const QDateTime now = QDateTime::currentDateTimeUtc();
+    const QString key = device + QLatin1Char('\n') + section;
+    if (key == m_lastFollowKey && m_lastFollowKeyAt.isValid() && m_lastFollowKeyAt.msecsTo(now) < kFollowSameMs) return;
+    if (m_lastFollow.isValid() && m_lastFollow.msecsTo(now) < kFollowMs) {
+        m_followPendingDevice = device;
+        m_followPendingSection = section;
+        m_followTimer.start(int(kFollowMs - m_lastFollow.msecsTo(now)) + 50);
+        return;
+    }
+    // -- WP INTI -- (review RF7) an input in flight: tried again once it is over
+    if (inputBusy()) {
+        m_followPendingDevice = device;
+        m_followPendingSection = section;
+        m_followTimer.start(inputIdleLeftMs() + 50);
+        return;
+    }
+    if (!mayFollow(device, section)) return;
+    if (device != m_ctx.registry->activeId()) m_ctx.registry->activate(device);
+    if (!section.isEmpty()) emit followSection(section);
+}
+
 void AiController::showWork() { m_ctx.registry->activate(m_workShown.value(QStringLiteral("deviceId")).toString()); }
 
 void AiController::stopJob() {
@@ -1160,6 +1359,7 @@ void AiController::tell(const QList<QJsonObject> &rows) {
     if (first && rows.size() > 8) return;
     const QDateTime now = QDateTime::currentDateTimeUtc();
     m_touches.removeIf([&](const Touch &t) { return t.at.msecsTo(now) >= kTouchMs; });
+    QString followDevice, followSectionOf;   // -- WP ODEC --
     for (const QJsonObject &e : rows) {
         const QString device = str(e, "device");
         const bool write = e.value(QLatin1String("write")).toBool();
@@ -1183,6 +1383,17 @@ void AiController::tell(const QList<QJsonObject> &rows) {
         emit agentCalled(device, str(e, "tool"), write);
         readBehind(device, str(e, "tool"), write);
         if (!write) continue;
+        // -- WP ODEC -- the screens follow it (the newest change of this read)
+        if (!first) {
+            const QJsonArray touched = e.value(QLatin1String("touched")).toArray();
+            QString section;
+            for (const QJsonValue &v : touched)
+                if (section.isEmpty()) section = sectionOf(str(v.toObject(), "path"));
+            if (!touched.isEmpty() || !device.isEmpty()) {
+                followDevice = device;
+                followSectionOf = section;
+            }
+        }
         for (const QJsonValue &v : e.value(QLatin1String("touched")).toArray()) {
             const QJsonObject t = v.toObject();
             const QVariantList indices = t.value(QLatin1String("indices")).toArray().toVariantList();
@@ -1211,6 +1422,7 @@ void AiController::tell(const QList<QJsonObject> &rows) {
         notices->postTagged(QStringLiteral("ai"), text, canUndo ? tr("Undo") : QString(), [this] { undoNoticed(); });
     }
     emit recentTouchesChanged();
+    if (!followDevice.isEmpty()) followChange(followDevice, followSectionOf);   // -- WP ODEC --
 }
 
 // What `tool` changed on `device` that its snapshot does not hold
@@ -1393,7 +1605,8 @@ void AiController::announcePresence(bool again) {
     const QString transport = on ? on->row().value(QStringLiteral("transport")).toString() : QString();
     const bool viaHub = transport == QLatin1String("hub") || transport == QLatin1String("link");
     const QString agent = m_workShown.value(QStringLiteral("agent")).toString();
-    const QString what = m_workShown.value(QStringLiteral("text")).toString();
+    // -- WP ODEC -- what the user allowed there for a while, for the hub's other consoles
+    const QString what = m_workShown.value(QStringLiteral("text")).toString() + grantSuffix(id);
     const QString key = viaHub ? id + QLatin1Char('\n') + agent + QLatin1Char('\n') + what : QString();
     // Moved on, or stopped: the last one cleared
     if (!m_presenceDevice.isEmpty() && m_presenceDevice != (viaHub ? id : QString())) {

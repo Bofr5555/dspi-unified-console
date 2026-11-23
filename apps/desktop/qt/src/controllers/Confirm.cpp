@@ -36,6 +36,17 @@ void notice(const Reply &r) {
 
 } // namespace
 
+// -- WP INTI --
+uint8_t loadPreset(FfiCore *c, uint8_t slot) {
+    const uint8_t status = dspi_load_preset(c, slot);
+    const QString text = QString::fromUtf8(once([&](char *b, uint32_t n) { return dspi_preset_load_notice(c, b, n) ? uint32_t(qstrlen(b) + 1) : 0; }, 4096));
+    QPointer<NoticeCenter> notices = Registrar::instance<NoticeCenter>();
+    if (text.isEmpty() || !notices) return status;
+    QMetaObject::invokeMethod(
+        notices.data(), [notices, text] { if (notices) notices->post(text, QStringLiteral("warning")); }, Qt::QueuedConnection);
+    return status;
+}
+
 QByteArray token(FfiCore *c, const char *op) {
     const QJsonObject o = QJsonDocument::fromJson(once([&](char *b, uint32_t n) { return dspi_confirm_token(c, op, b, n); }, 512)).object();
     return o.value(QLatin1String("ok")).toBool() ? o.value(QLatin1String("value")).toString().toUtf8() : QByteArray();

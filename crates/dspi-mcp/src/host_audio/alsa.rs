@@ -92,6 +92,7 @@ pub fn read(root: &Path, why: &str) -> HostAudio {
         });
     }
     HostAudio {
+        sim: false, // -- WP ODEC --
         os: HostOs::Linux,
         audio_system: "ALSA".into(),
         unknown: None,

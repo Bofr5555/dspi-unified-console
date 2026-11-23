@@ -17,6 +17,12 @@ const NOT_EXPORTED: &[&str] = &[
     "undo_group_owner",
     // -- WP FEAT2 -- Rust-only, for the same server
     "user_editing",
+    // -- WP INTI -- Rust-only, for the same server (review RF4: a scene's preset loads)
+    "alink_system_scene_preset_loads",
+    // -- WP INTI -- the C ABI and the web binding: the desktop and the web show what a
+    // guarded preset load held; Android's load is guarded too (in the core) but shows no
+    // notice yet
+    "preset_load_notice",
     // -- WP FEATUI -- an agent's presence on the hub: the desktop (C) sends it, the web
     // (wasm) shows it; Android and Swift run no agents and show no strip yet
     "hub_presence_set",

@@ -87,6 +87,10 @@ pub struct Confirmation {
     pub(crate) result: Option<Value>,
     /// A held request: its JSON-RPC id and whether it was modern-era.
     pub(crate) request: Option<(Value, bool)>,
+    // -- WP ODEC --
+    /// It asks for test signals: Allow also grants them on its device for
+    /// the task (`crate::grant`).
+    pub grouped: bool,
 }
 
 impl Confirmation {
@@ -108,6 +112,13 @@ impl Confirmation {
             "asked_ms": self.asked_ms,
             "expires_ms": self.expires_ms,
             "state": self.state.as_str(),
+            // -- WP ODEC -- what Allow grants beyond this call
+            "grant": if self.grouped {
+                json!({"kind": crate::grant::TEST_SIGNALS, "device": self.device,
+                       "minutes": crate::grant::GRANT_MS / 60_000})
+            } else {
+                Value::Null
+            },
         })
     }
 }
@@ -171,6 +182,7 @@ impl Confirmations {
         }
         self.next = self.next.saturating_add(1);
         let id = self.next;
+        let grouped = device.is_some() && crate::grant::asks_grant(&risks); // -- WP ODEC --
         self.list.push_back(Confirmation {
             id,
             client,
@@ -184,6 +196,7 @@ impl Confirmations {
             args,
             result: None,
             request: None,
+            grouped, // -- WP ODEC --
         });
         self.events.push(ConfirmEvent::Asked(id));
         self.prune();

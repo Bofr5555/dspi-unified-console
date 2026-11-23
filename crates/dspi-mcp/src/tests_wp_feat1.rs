@@ -628,3 +628,103 @@ fn wp_feat1_a_recalled_source_scene_routes_at_once_and_says_so() {
     assert!(p.get("name").is_none(), "{d}");
     hub.stop();
 }
+
+// -- WP INTI -- (review RF4)
+/// A scene that loads a preset on unit A is an agent's preset load: refused
+/// while A saves the master volume with each preset and for a unit this app
+/// does not have open; otherwise A is silenced, the stored preset judged by
+/// the tweeter rule after the hub loaded it, put back (its own slot, its
+/// settings) when it lowered the tweeter, and its volume restored.
+#[test]
+fn wp_inti_a_scene_with_a_preset_load_is_judged_as_an_agents_load() {
+    use crate::tests_wp_ffix::{LR4_HP, blank, confirm, hp, n_in};
+    let hub = hub("scene-load");
+    let mut model = site();
+    model["scenes"] = json!([
+        {"id": "test", "name": "Test", "actions": [{"target": "unit:A", "op": "preset_load", "arg": 8}]},
+        {"id": "safe", "name": "Safe", "actions": [{"target": "unit:A", "op": "preset_load", "arg": 1}]},
+        {"id": "at-bar", "name": "At the bar", "actions": [{"target": "unit:B", "op": "preset_load", "arg": 1}]}
+    ]);
+    hub.handle()
+        .system_set_model(serde_json::from_value(model).unwrap())
+        .unwrap();
+    let (set, id) = open_a(&hub);
+    let core = set.core(&id).unwrap();
+    let tweeter = n_in(&core) + 1;
+    let save = |slot: u8| {
+        let token = core.confirm_token(dspi_core::ConfirmOp::SavePreset);
+        core.save_preset_confirmed(slot, Some(token)).unwrap();
+    };
+    blank(&core, 1);
+    core.set_matrix_route(0, 1, true, 0.0, false).unwrap();
+    // Slot 9 (8): the tweeter at 850 Hz. Slot 2 (1): protected, the active one.
+    core.set_crossover(tweeter, 0, hp(LR4_HP, 850.0)).unwrap();
+    save(8);
+    core.set_crossover(tweeter, 0, hp(LR4_HP, 3_000.0)).unwrap();
+    save(1);
+    core.set_master_volume(-12.0).unwrap();
+    confirm(&core);
+    let mut s = server(&set, ConfirmMode::NeverAsk);
+    let c = s.connect();
+    ok(&mut s, c, "dspi_get_system", json!({}));
+
+    // Unit B is not open here: refused, nothing changed.
+    let e = err(
+        &mut s,
+        c,
+        "dspi_system_scene_apply",
+        json!({"scene": "at-bar"}),
+    );
+    assert!(e.contains("does not have open"), "{e}");
+    // A saves the master volume with each preset: refused before anything.
+    core.set_master_volume_mode(1).unwrap();
+    let e = err(
+        &mut s,
+        c,
+        "dspi_system_scene_apply",
+        json!({"scene": "test"}),
+    );
+    assert!(e.contains("saves the master volume"), "{e}");
+    assert_eq!(core.get_state().active_preset_slot, 1);
+    core.set_master_volume_mode(0).unwrap();
+    core.set_master_volume(-12.0).unwrap();
+
+    // The hub loads slot 9 on A (the fake units queue a frame's ops without
+    // running them: the tool's seam loads it): the tweeter rule puts A back.
+    crate::tools::library::HUB_LOADS.with(|h| h.set(true));
+    let e = err(
+        &mut s,
+        c,
+        "dspi_system_scene_apply",
+        json!({"scene": "test"}),
+    );
+    assert!(e.contains("unit") && e.contains("put back"), "{e}");
+    let st = core.get_state();
+    assert_eq!(st.active_preset_slot, 1, "left on the scene's slot: {e}");
+    assert!(
+        (st.xover[usize::from(tweeter)][0].freq - 3_000.0).abs() < 1.0,
+        "{}",
+        st.xover[usize::from(tweeter)][0].freq
+    );
+    assert!(
+        (st.master_volume_db - -12.0).abs() < 0.5,
+        "{}",
+        st.master_volume_db
+    );
+    // A protected preset passes, and A plays again.
+    ok(
+        &mut s,
+        c,
+        "dspi_system_scene_apply",
+        json!({"scene": "safe"}),
+    );
+    let st = core.get_state();
+    assert_eq!(st.active_preset_slot, 1);
+    assert!(
+        (st.master_volume_db - -12.0).abs() < 0.5,
+        "{}",
+        st.master_volume_db
+    );
+    crate::tools::library::HUB_LOADS.with(|h| h.set(false));
+    hub.stop();
+}

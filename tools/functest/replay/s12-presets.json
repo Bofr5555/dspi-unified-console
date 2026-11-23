@@ -1,0 +1,160 @@
+{
+ "story": "s12-presets.toml",
+ "confirm": "ask_everything",
+ "about": "FSTORY S12 as a good agent does it, plus the traps: the user's 'Test' (slot 9, index 8) loaded is refused and put back, and the device stays on its own slot (FUNC2b fix); there is no delete.",
+ "steps": {
+  "movie-night": [
+   [
+    "dspi_preset_save",
+    {
+     "device": "demo:2",
+     "slot": 1,
+     "name": "Movie night"
+    },
+    "ok",
+    "one question names it (owner 2026-11-23, INTI)"
+   ],
+   [
+    "dspi_preset_set_startup",
+    {
+     "device": "demo:2",
+     "mode": "slot",
+     "slot": 1
+    },
+    "ok"
+   ],
+   [
+    "dspi_snapshot_capture",
+    {
+     "device": "demo:2",
+     "name": "Movie night"
+    },
+    "ok"
+   ]
+  ],
+  "late-night": [
+   [
+    "dspi_apply_changes",
+    {
+     "device": "demo:2",
+     "changes": [
+      {
+       "op": "set_gain",
+       "output": 4,
+       "gain_db": -6
+      },
+      {
+       "op": "set_gain",
+       "output": 0,
+       "gain_db": 2
+      },
+      {
+       "op": "set_gain",
+       "output": 1,
+       "gain_db": -3
+      },
+      {
+       "op": "set_gain",
+       "output": 2,
+       "gain_db": 2
+      }
+     ]
+    },
+    "ok"
+   ],
+   [
+    "dspi_preset_save",
+    {
+     "device": "demo:2",
+     "slot": 2,
+     "name": "Late night"
+    },
+    "ok",
+    "one question names it (owner 2026-11-23, INTI)"
+   ],
+   [
+    "dspi_snapshot_capture",
+    {
+     "device": "demo:2",
+     "name": "Late night"
+    },
+    "ok"
+   ],
+   [
+    "dspi_preset_load",
+    {
+     "device": "demo:2",
+     "slot": 8
+    },
+    "error",
+    "the user's Test lowers the tweeter's high-pass: refused and put back",
+    "still 9"
+   ],
+   [
+    "dspi_preset_load",
+    {
+     "device": "demo:2",
+     "slot": 1
+    },
+    "ok"
+   ]
+  ],
+  "compare": [
+   [
+    "dspi_ab_start",
+    {
+     "device": "demo:2",
+     "a_id": "$SNAP:Movie night",
+     "b_id": "$SNAP:Late night"
+    },
+    "ok"
+   ],
+   [
+    "dspi_ab_diff",
+    {
+     "device": "demo:2"
+    },
+    "ok"
+   ]
+  ],
+  "names": [
+   [
+    "dspi_set_device_name",
+    {
+     "device": "demo:2",
+     "name": "Living room"
+    },
+    "ok"
+   ],
+   [
+    "dspi_set_source_name",
+    {
+     "device": "demo:2",
+     "source": 0,
+     "name": "TV"
+    },
+    "ok"
+   ]
+  ],
+  "flash": [
+   [
+    "dspi_list_presets",
+    {
+     "device": "demo:2"
+    },
+    "ok"
+   ]
+  ],
+  "delete": [
+   [
+    "dspi_preset_delete",
+    {
+     "device": "demo:2",
+     "slot": 8
+    },
+    "error",
+    "there is no delete tool"
+   ]
+  ]
+ }
+}

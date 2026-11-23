@@ -615,7 +615,7 @@ void FilesController::answerDevice(const QString &op, const QString &answer) {
         m_ctx.device->write(
             QStringLiteral("preset load"),
             [slot, status](FfiCore *c) {
-                *status = dspi_load_preset(c, uint8_t(slot));
+                *status = Confirm::loadPreset(c, uint8_t(slot));
                 return *status == PRESET_OK;
             },
             [this, status](bool ok) {

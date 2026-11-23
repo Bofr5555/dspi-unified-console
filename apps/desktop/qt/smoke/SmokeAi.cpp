@@ -121,6 +121,13 @@ void aiSection(SmokeDriver &d) {
     QQuickWindow *main = d.mainWindow();
     d.check("mcp4: the controllers exist", ai && settings && history && snapshots && limits && main);
     if (!ai || !settings || !history || !snapshots || !limits || !main) return;
+    // -- WP ODEC -- these checks were made before the screens followed an agent
+    struct FollowOff {
+        AiController *ai;
+        bool was;
+        ~FollowOff() { ai->setFollowAgent(was); }
+    } followOff{ ai, ai->followAgent() };
+    ai->setFollowAgent(false);
 
     int out = 0;   // -- WP AIVIS --
     const auto gainIs = [&](double db) { return device->state() && std::abs(double(device->state()->output_gain_db[out]) - db) < 0.01; };

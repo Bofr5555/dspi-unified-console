@@ -193,6 +193,13 @@ void aivisSection(SmokeDriver &d) {
     Shell *shell = d.app().shell;
     d.check("aivis: the controllers exist", ai && notices && snapshots && mc && tray && layout && registry);
     if (!ai || !notices || !snapshots || !mc || !tray || !layout || !registry) return;
+    // -- WP ODEC -- these checks were made before the screens followed an agent
+    struct FollowOff {
+        AiController *ai;
+        bool was;
+        ~FollowOff() { ai->setFollowAgent(was); }
+    } followOff{ ai, ai->followAgent() };
+    ai->setFollowAgent(false);
 
     const auto user = [&](const char *what, std::function<bool(FfiCore *)> job) {
         device->write(QLatin1String(what), std::move(job));

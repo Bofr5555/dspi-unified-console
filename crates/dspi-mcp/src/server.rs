@@ -152,7 +152,20 @@ pub struct Server {
     /// The actors of agents that are gone while a preview of theirs waits: its
     /// revert is still theirs, so the app hears of it on every open device.
     gone: BTreeMap<ClientId, ActorId>,
+    // -- WP ODEC --
+    /// The agents (their labels) that worked when the user pressed Stop, in
+    /// the run before this one, not told of it yet.
+    stopped: Vec<String>,
+    /// The agents' grants for test signals.
+    grants: crate::grant::Grants,
 }
+
+// -- WP ODEC --
+/// What an agent the user stopped is told with its first result after the
+/// agents are turned on again (after "Since your last call, the user").
+pub const STOPPED_TEXT: &str = "pressed Stop in the app, which turned AI agents off and ended \
+     your connection; they have been turned on again since. Do not carry on with the stopped \
+     work unasked: ask the user first";
 
 impl Server {
     /// A server over `set` with every tool this build has.
@@ -182,6 +195,8 @@ impl Server {
             user: UserActivity::default(),                               // -- WP AIVIS --
             now_ms: 0,
             gone: BTreeMap::new(),
+            stopped: Vec::new(), // -- WP ODEC --
+            grants: crate::grant::Grants::default(),
         }
     }
 
@@ -238,6 +253,7 @@ impl Server {
         self.installation.forget(client); // -- WP MCP2c --
         self.measure.forget(client); // -- WP MCP5 --
         self.opens.forget(client); // -- WP FEAT2 --
+        self.grants.forget(client); // -- WP ODEC --
         for id in self.confirms.of_client(client) {
             self.confirms.end(
                 id,
@@ -642,6 +658,7 @@ impl Server {
     /// Put what the user did since `client`'s last result into `result`.
     fn tell(&mut self, client: ClientId, result: &mut Value) {
         self.user.collect(&self.set, self.now_ms);
+        self.tell_stopped(client); // -- WP ODEC --
         let cursor = self.user.cursor();
         let Some(c) = self.clients.get_mut(&client) else {
             return;
@@ -650,6 +667,42 @@ impl Server {
         if let Some((text, data)) = self.user.block(told, client) {
             attach(result, &text, data);
         }
+    }
+
+    // -- WP ODEC -- (owner 2026-11-23, answer 8)
+    /// The user pressed Stop in the run before this one while the agents
+    /// `labels` worked ([`Server::stopped_labels`] of that run): each is told
+    /// with its first result in this run (an event `stopped`, for it only).
+    pub fn note_stopped(&mut self, labels: Vec<String>) {
+        for l in labels {
+            if !self.stopped.contains(&l) {
+                self.stopped.push(l);
+            }
+        }
+    }
+
+    /// The agents to tell, when the user stops this run: those that worked in
+    /// it (from the activity), and those of the run before not told yet.
+    pub fn stopped_labels(&self) -> Vec<String> {
+        let mut out = self.stopped.clone();
+        for e in self.activity.recent(usize::MAX, None) {
+            if !out.contains(&e.client_label) {
+                out.push(e.client_label.clone());
+            }
+        }
+        out
+    }
+
+    fn tell_stopped(&mut self, client: ClientId) {
+        let Some(c) = self.clients.get(&client) else {
+            return;
+        };
+        let Some(at) = self.stopped.iter().position(|l| *l == c.label) else {
+            return;
+        };
+        self.stopped.remove(at);
+        self.user
+            .note(self.now_ms, "stopped", STOPPED_TEXT, None, Some(client));
     }
 
     /// The user did something in the app that no device shows: paused the
@@ -674,7 +727,38 @@ impl Server {
                 json!({"device": d, "client_name": self.label_of(*c).unwrap_or_default()})
             })
             .collect();
-        json!({"jobs": crate::tools::measure::open_json(&self.measure), "guards": guards})
+        // -- WP ODEC -- the grants, for the app's time left and Revoke
+        json!({"jobs": crate::tools::measure::open_json(&self.measure), "guards": guards,
+               "grants": self.grants()})
+    }
+
+    // -- WP ODEC --
+    /// The grants for test signals that last: `[{id, kind, client,
+    /// client_name, device, since_ms, until_ms}]` (`grant::Grant::to_json`).
+    pub fn grants(&self) -> Vec<Value> {
+        self.grants
+            .list()
+            .iter()
+            .map(crate::grant::Grant::to_json)
+            .collect()
+    }
+
+    /// The user revokes grant `id` (the app's Revoke): its agent is told with
+    /// its next result, and asked again for its next test signal there. False
+    /// when it no longer lasts.
+    pub fn revoke_grant(&mut self, id: u64) -> bool {
+        let Some(g) = self.grants.revoke(id) else {
+            return false;
+        };
+        self.user.note(
+            self.now_ms,
+            "answer",
+            "revoked your permission to play test signals on this device: the next one is \
+             asked again",
+            Some(&g.device),
+            Some(g.client),
+        );
+        true
     }
 
     /// The tools' names with their titles and whether they write, for an app
@@ -807,6 +891,7 @@ impl Server {
             opens: Some(&self.opens),               // -- WP FEAT2 --
             host_audio: self.config.host_audio.as_ref(), // -- WP FEAT3 --
             user: Some(&self.user),                 // -- WP AIVIS --
+            grants: Some(&self.grants),             // -- WP ODEC --
         };
         registry::run(&ctx, tool, args)
     }
@@ -1021,6 +1106,7 @@ impl Server {
             return Err(AnswerError::Ended(c.state));
         }
         let (client, tool_name, args, grant) = (c.client, c.tool, c.args.clone(), c.grant());
+        let grouped = c.grouped; // -- WP ODEC --
         let entry = ActivityEntry {
             id: 0,
             at_ms: now_ms,
@@ -1083,10 +1169,24 @@ impl Server {
                 ) {
                     dspi_core::actor::user::allowed(&core, actor);
                 }
+                // -- WP ODEC -- a grouped question: test signals on this
+                // device for the task, for ten minutes
+                let what = match (grouped, entry.device.as_deref()) {
+                    (true, Some(dev)) => {
+                        self.grants.give(client, &entry.client_label, dev, now_ms);
+                        format!(
+                            "allowed your change (confirmation {id}), and your test signals on \
+                             this device for the next {} minutes (louder changes and saves are \
+                             still asked)",
+                            crate::grant::GRANT_MS / 60_000
+                        )
+                    }
+                    _ => format!("allowed your change (confirmation {id})"),
+                };
                 self.user.note(
                     now_ms,
                     "answer",
-                    &format!("allowed your change (confirmation {id})"),
+                    &what,
                     entry.device.as_deref(),
                     Some(client),
                 );
@@ -1194,6 +1294,24 @@ impl Server {
     /// gone.
     pub fn tick(&mut self, now_ms: u64) {
         self.now_ms = now_ms; // -- WP AIVIS --
+        // -- WP ODEC -- grants end with their time, their agent or device
+        let ended = {
+            let (clients, set) = (&self.clients, &self.set);
+            self.grants.prune(now_ms, |g| {
+                clients.contains_key(&g.client)
+                    && DeviceId::parse(&g.device).is_some_and(|id| set.core(&id).is_some())
+            })
+        };
+        for g in ended.iter().filter(|g| g.until_ms <= now_ms) {
+            self.user.note(
+                now_ms,
+                "answer",
+                "your permission to play test signals on this device ended (ten minutes): the \
+                 next one is asked again",
+                Some(&g.device),
+                Some(g.client),
+            );
+        }
         self.user.collect(&self.set, now_ms);
         crate::tools::measure::tick(&self.set, &self.measure, now_ms); // -- WP MCP5 --
         crate::tools::devices::tick(&self.set, &self.opens, now_ms); // -- WP FEAT2 --

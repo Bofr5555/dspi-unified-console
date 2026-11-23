@@ -117,6 +117,7 @@ pub(crate) use plan::Plan;
 pub(crate) use preflight::PreflightOptions;
 #[cfg(test)]
 pub(crate) use preflight::tweeter_floor as preflight_tweeter_floor;
+pub(crate) use preflight::tweeter_rule; // -- WP INTI --
 pub(crate) use tune::layout_of as layout_proposal_of;
 // -- WP P5DEMO -- the simulated microphone renders through the chains the session reads
 #[cfg(any(test, feature = "measure-sim"))]

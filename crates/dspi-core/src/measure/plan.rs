@@ -650,18 +650,32 @@ fn runs_of(
                     let mixed = !others.is_empty() && others.len() < group.len();
                     let first = if mixed {
                         // The reference: the highest top, the last of equals.
-                        let top = |o: &u8| {
-                            outputs
-                                .iter()
-                                .find(|s| s.output == *o)
-                                .map_or(f32::INFINITY, |s| s.top_hz)
+                        // -- WP FUNC2c -- by role first: the way most likely
+                        // heard above 1 kHz (a midrange, then a full-range, a
+                        // woofer, a sub last). FSTORY S6: with no low-pass set
+                        // yet every top was unbounded, the last of them was the
+                        // sub, swept from 1 kHz it was not heard, and the run
+                        // aborted.
+                        let key = |o: &u8| {
+                            outputs.iter().find(|s| s.output == *o).map_or(
+                                (0u8, f32::INFINITY),
+                                |s| {
+                                    let rank = match s.role {
+                                        MeasureRole::Mid => 3,
+                                        MeasureRole::Full => 2,
+                                        MeasureRole::Low => 1,
+                                        MeasureRole::Sub | MeasureRole::High => 0,
+                                    };
+                                    (rank, s.top_hz)
+                                },
+                            )
                         };
                         let reference =
                             others
                                 .iter()
                                 .copied()
                                 .fold(None::<u8>, |best, o| match best {
-                                    Some(b) if top(&b) > top(&o) => Some(b),
+                                    Some(b) if key(&b) > key(&o) => Some(b),
                                     _ => Some(o),
                                 });
                         group

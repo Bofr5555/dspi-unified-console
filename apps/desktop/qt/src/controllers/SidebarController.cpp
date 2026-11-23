@@ -720,7 +720,7 @@ void SidebarController::loadSlot(DeviceSession *session, int slot) {
     session->model()->write(
         QStringLiteral("preset load"),
         [slot, status](FfiCore *c) {
-            *status = dspi_load_preset(c, uint8_t(slot));
+            *status = Confirm::loadPreset(c, uint8_t(slot));
             return *status == PRESET_OK;
         },
         [this, st, at, status](bool ok) {
@@ -758,7 +758,7 @@ void SidebarController::saveThenLoad(int previous, int slot) {
                 *stage = 1;
                 return false;
             }
-            *status = dspi_load_preset(c, uint8_t(slot));
+            *status = Confirm::loadPreset(c, uint8_t(slot));
             if (*status != PRESET_OK) *stage = 2;
             return *status == PRESET_OK;
         },
@@ -798,7 +798,7 @@ void SidebarController::copySlot(int sourceSlot, int destination, const QString 
                 nameIfEmpty(c, sourceSlot);
                 Confirm::savePreset(c, uint8_t(sourceSlot));   // -- WP P1QT2 -- token
             } else if (discard) {
-                dspi_load_preset(c, uint8_t(sourceSlot));
+                Confirm::loadPreset(c, uint8_t(sourceSlot));
             }
             // Another device came in meanwhile: stop
             if (dspi_connection_generation(c) != generation) return PRESET_OK;
@@ -850,7 +850,7 @@ void SidebarController::clearAllPresets() {
                 if (status != PRESET_OK) worst = status;
             }
             // The active slot again, now holding the factory defaults
-            if (active >= 0) dspi_load_preset(c, uint8_t(active));
+            if (active >= 0) Confirm::loadPreset(c, uint8_t(active));
             return worst;
         },
         tr("Clear Failed"), tr("Failed to clear preset (%1)."));

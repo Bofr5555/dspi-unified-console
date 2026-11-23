@@ -233,6 +233,14 @@ Item {
         if (devicesPage && switcher.opened) switcher.close()
         DevicesController.listShown = devicesPage
     }
+    // -- WP ODEC -- the page follows what an agent changes (AiController's gate:
+    // never while the user is at a control or a dialog, rate-limited)
+    Connections {
+        target: AiController
+        function onFollowSection(section) {
+            if (!shell.wizard && !shell.senderPage && section.length > 0 && pages.section !== section) pages.go(section, "")
+        }
+    }
     Connections {
         target: LayoutController
         function onLayoutChanging() {

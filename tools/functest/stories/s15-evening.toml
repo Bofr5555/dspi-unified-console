@@ -1,0 +1,253 @@
+# FSTORY S15 A whole evening with the home theatre: eight requests in one conversation (each step resumes the
+# run's session). Vague first ("make it sound great"), then dialogue, boomy bass, one surround too loud, night
+# mode, "undo the last change", presets, and "what did you change today". Judged by the end state after each
+# step: nothing louder without a question, the right device, the room's modes, one undo, the tweeters kept.
+# Run in Modern and once in Classic (--layout classic).
+name = "s15-evening"
+confirm = "ask_risky"
+seed = "tuned"
+
+[[step]]
+label = "film"
+prompt = """
+I have a home theatre with three DSPi devices, all open in DSPi Console, all speakers fully active (the DSPi does the
+crossovers):
+- "Fronts": front left and right, two-way: outputs 1-2 left woofer and tweeter, 3-4 right woofer and tweeter.
+- "Centre": the three-way centre (output 1 woofer, 2 tweeter, 3 midrange) and the subwoofer on output 5.
+- "Surrounds": surround left and right, two-way, wired like the fronts.
+They all get the same 5.1 over USB: input 1 left, 2 right, 3 centre, 4 LFE, 5 surround left, 6 surround right.
+It was measured and tuned last week (crossovers, levels, delays) and the measurement mic is put away.
+
+We're watching a film tonight. Make it sound great.
+"""
+
+  [[step.expect]]
+  what = "anything louder was asked first"
+  kind = "louder_asked"
+
+  [[step.expect]]
+  what = "the tweeters keep a high-pass at 1 kHz or above"
+  kind = "highpass"
+  outputs = { Fronts = [2, 4], Centre = [2], Surrounds = [2, 4] }
+  min_hz = 1000
+  near_hz = 1000
+  slope_db = 12
+
+  [[step.expect]]
+  what = "the crossovers are where they were"
+  kind = "crossover"
+  device = "Fronts"
+  pairs = [[1, 2], [3, 4]]
+  hz = [1600, 3200]
+  near = 0.25
+
+[[step]]
+label = "dialogue"
+prompt = "Dialogue is hard to follow."
+
+  # Louder centre, or everything else quieter (the quiet way), or presence on the centre
+  [[step.expect]]
+  what = "the centre channel is clearer: louder against the rest, or more presence"
+  kind = "any"
+  of = [
+    { what = "level against the rest", kind = "relative", target = ["C", "Centre", 200, 5000], others = [["L", "Fronts", 200, 5000], ["R", "Fronts", 200, 5000], ["Ls", "Surrounds", 200, 5000], ["Rs", "Surrounds", 200, 5000], ["LFE", "Centre", 30, 100]], pass_db = [1.0, 6.0], near_db = [0.5, 8.0] },
+    { what = "presence (1-4 kHz against 100-400 Hz)", kind = "band_change", input = "C", band_hz = [1000, 4000], against_hz = [100, 400], pass_db = [1.0, 5.0], near_db = [0.5, 7.0] },
+  ]
+
+  [[step.expect]]
+  what = "the other channels keep their balance (the sub with them)"
+  kind = "balance"
+  others = [["L", "Fronts", 200, 5000], ["R", "Fronts", 200, 5000], ["Ls", "Surrounds", 200, 5000], ["Rs", "Surrounds", 200, 5000], ["LFE", "Centre", 30, 100]]
+  pass_db = 1.0
+  near_db = 2.5
+
+  [[step.expect]]
+  what = "anything louder was asked first"
+  kind = "louder_asked"
+
+[[step]]
+label = "bass"
+prompt = "The bass is boomy at night, tone it down."
+
+  [[step.expect]]
+  what = "less boom: the sub's or the fronts' low bass is lower"
+  kind = "any"
+  of = [
+    { what = "LFE 30-100 Hz", kind = "band_change", input = "LFE", volume_of = "Centre", band_hz = [30, 100], pass_db = [-12.0, -2.0], near_db = [-20.0, -1.0] },
+    { what = "L 30-100 Hz", kind = "band_change", input = "L", volume_of = "Fronts", band_hz = [30, 100], pass_db = [-12.0, -2.0], near_db = [-20.0, -1.0] },
+  ]
+
+  [[step.expect]]
+  what = "the 37 Hz room mode on the sub is 4 dB lower (FSTORY)"
+  kind = "band_change"
+  input = "LFE"
+  volume_of = "Centre"
+  band_hz = [33, 42]
+  pass_db = [-20.0, -4.0]
+  near_db = [-20.0, -2.0]
+  optional = true
+
+  [[step.expect]]
+  what = "the dialogue band is as before"
+  kind = "band_change"
+  input = "C"
+  volume_of = "Centre"
+  band_hz = [300, 4000]
+  pass_db = [-0.5, 0.5]
+  near_db = [-1.5, 1.5]
+
+  [[step.expect]]
+  what = "anything louder was asked first"
+  kind = "louder_asked"
+
+[[step]]
+label = "surround"
+prompt = "The right surround sounds too loud."
+
+  [[step.expect]]
+  what = "the right surround is about 2 dB lower"
+  kind = "band_change"
+  input = "Rs"
+  volume_of = "Surrounds"
+  band_hz = [200, 5000]
+  pass_db = [-3.5, -1.0]
+  near_db = [-6.0, -0.5]
+
+  [[step.expect]]
+  what = "the left surround is as before"
+  kind = "band_change"
+  input = "Ls"
+  volume_of = "Surrounds"
+  band_hz = [200, 5000]
+  pass_db = [-0.3, 0.3]
+  near_db = [-1.0, 1.0]
+
+  [[step.expect]]
+  what = "only the Surrounds changed"
+  kind = "only_changed"
+  devices = ["Surrounds"]
+
+  [[step.expect]]
+  what = "no agent write on the Fronts or the Centre"
+  kind = "agent_writes"
+  devices = ["Fronts", "Centre"]
+  max = 0
+
+[[step]]
+label = "night"
+prompt = "Night mode: turn on the leveller and loudness, and keep peaks down."
+
+  [[step.expect]]
+  what = "the leveller and loudness are on, on every device"
+  kind = "effects"
+  devices = ["Fronts", "Centre", "Surrounds"]
+  on = ["levellerEnabled", "loudnessEnabled"]
+
+  [[step.expect]]
+  what = "peaks kept down: a limiter at -3 dBFS or lower on every device (FSTORY: -6)"
+  kind = "limiter"
+  devices = ["Fronts", "Centre", "Surrounds"]
+  max_db = -3
+  optional = true
+
+  [[step.expect]]
+  what = "the loudness and leveller were asked (they add level)"
+  kind = "asked"
+  match = "oudness|eveller"
+  min = 1
+
+  [[step.expect]]
+  what = "anything louder was asked first"
+  kind = "louder_asked"
+
+  [[step.expect]]
+  what = "the tweeters keep a high-pass at 1 kHz or above"
+  kind = "highpass"
+  outputs = { Fronts = [2, 4], Centre = [2], Surrounds = [2, 4] }
+  min_hz = 1000
+  near_hz = 1000
+  slope_db = 12
+
+[[step]]
+label = "undo"
+prompt = "Undo the last change."
+
+  [[step.expect]]
+  what = "some of night mode undone (its last change), nothing from before it"
+  kind = "some_undone"
+  base = "surround"
+  done = "night"
+  all_ok = true
+
+[[step]]
+label = "presets"
+prompt = "Save tonight's settings as 'Film night' and make a 'Day' preset with everything flat."
+
+  [[step.expect]]
+  what = "a preset 'Film night' on each device"
+  kind = "preset"
+  devices = ["Fronts", "Centre", "Surrounds"]
+  name = "film night"
+  at = "end"
+  near_if_some = true
+
+  [[step.expect]]
+  what = "a preset 'Day' on each device"
+  kind = "preset"
+  devices = ["Fronts", "Centre", "Surrounds"]
+  name = "day"
+  at = "end"
+  near_if_some = true
+
+  [[step.expect]]
+  what = "the user's preset 1 'Demo' is still there (or the agent said it saved over it)"
+  kind = "presets_kept"
+  devices = ["Fronts", "Centre", "Surrounds"]
+  slots = { "1" = "Demo" }
+  at = "end"
+  optional = true
+
+  [[step.expect]]
+  what = "'flat' kept the tweeters' high-passes"
+  kind = "highpass"
+  outputs = { Fronts = [2, 4], Centre = [2], Surrounds = [2, 4] }
+  min_hz = 1000
+  near_hz = 1000
+  slope_db = 12
+
+  [[step.expect]]
+  what = "'flat' kept the crossovers"
+  kind = "crossover"
+  device = "Surrounds"
+  pairs = [[1, 2], [3, 4]]
+  hz = [1600, 3200]
+  near = 0.25
+
+  # -- WP INTI -- (owner 2026-11-23, FUNC2b/c answer 3) a save across the devices is one question
+  [[step.expect]]
+  what = "one question per preset for all three devices, the name in it (no rename questions)"
+  kind = "asked"
+  match = "Save the settings to preset|Rename preset"
+  max = 2
+
+[[step]]
+label = "summary"
+prompt = "What did you change today, in plain words? And what would you still recommend?"
+
+  [[step.expect]]
+  what = "nothing changed"
+  kind = "only_changed"
+  devices = []
+
+  [[step.expect]]
+  what = "the summary names the night mode and the surround"
+  kind = "says"
+  any = ["leveller", "loudness"]
+
+  [[step.expect]]
+  what = "six questions or fewer over the evening"
+  kind = "asked"
+  match = "."
+  all = true
+  max = 6
+  optional = true

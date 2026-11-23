@@ -280,9 +280,13 @@ void MeasureController::agentRequest(const QJsonObject &ticket) {
     // switch may end (the live view, the generator, a drag), nor under a question.
     const auto *siggen = Registrar::instance<SiggenController>();
     const auto *unsaved = Registrar::instance<UnsavedGuard>();
-    if (on != m_ctx.activeSession() && !session()->underWay() && !m_ctx.device->dragging() && !(siggen && siggen->playing()) && !(unsaved && unsaved->asking()))
-        m_ctx.registry->activate(on);
-    showPart(ticket.value(QLatin1String("loop")).toString() == QLatin1String("tune") ? QStringLiteral("tune") : QStringLiteral("measure"));
+    // -- WP ODEC -- the screens follow an agent through one gate: not while the
+    // user is at a control, a text field or a dialog (then only the work strip)
+    if (ai->mayFollow(device, QStringLiteral("measure"), true)) {
+        if (on != m_ctx.activeSession() && !session()->underWay() && !m_ctx.device->dragging() && !(siggen && siggen->playing()) && !(unsaved && unsaved->asking()))
+            m_ctx.registry->activate(on);
+        showPart(ticket.value(QLatin1String("loop")).toString() == QLatin1String("tune") ? QStringLiteral("tune") : QStringLiteral("measure"));
+    }
     QPointer<AiController> back(ai);
     // -- WP INT5 -- A device not looked at yet sleeps (LAY5b): which microphone
     // it has is known once the reads of its wake() are in

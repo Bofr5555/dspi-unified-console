@@ -4234,6 +4234,13 @@ bool dspi_set_tube_param(struct FfiCore *core, uint8_t idx, float value);
 uint8_t dspi_load_preset(struct FfiCore *core, uint8_t slot);
 
 /**
+ * What the last preset load's guard held (a tweeter muted) or could not put
+ * back (the master volume), in words for a notice, into `out_buf` of
+ * `buf_len` bytes; "" for nothing. Read once: the core then forgets it.
+ */
+bool dspi_preset_load_notice(struct FfiCore *core, char *out_buf, uint32_t buf_len);
+
+/**
  * Name preset `slot`. False for a null or non-UTF-8 name.
  */
 bool dspi_set_preset_name(struct FfiCore *core, uint8_t slot, const char *name);
@@ -8558,6 +8565,8 @@ uint32_t dspi_mcp_start(struct FfiMcp *mcp, const char *config_json, char *buf, 
  * Stop listening: the agents' next requests fail, a pairing request waiting
  * ends, waiting confirmations end with nothing changed, and the agents'
  * timed previews are put back. The activity is kept. True if it was running.
+ * -- WP ODEC -- A stop is the user's: each agent that worked is told so with
+ * its first result after the next `dspi_mcp_start`.
  */
 bool dspi_mcp_stop(struct FfiMcp *mcp);
 
@@ -8661,6 +8670,13 @@ uint32_t dspi_mcp_confirmations(struct FfiMcp *mcp, char *buf, uint32_t len);
 bool dspi_mcp_confirm_answer(struct FfiMcp *mcp, uint64_t id, bool allow);
 
 /**
+ * The user revokes grant `id` (`dspi_mcp_work`'s `grants`): the agent is asked
+ * again for its next test signal on that device, and told so. False when it no
+ * longer lasts. Waits for an agent's call in progress.
+ */
+bool dspi_mcp_grant_revoke(struct FfiMcp *mcp, uint64_t id);
+
+/**
  * The device the app shows (a set id), which tools use when an agent names
  * none; null for none. False for an id that is no id.
  */
@@ -8689,8 +8705,11 @@ int32_t dspi_mcp_relay_stdio(const char *config_json,
  * input?, channel?, band?, slot?}], last (the newest call, done or not, or
  * null), jobs: [{request_id, client_name, device, kind, loop, what, state,
  * ...}] (the measurement requests that are open or run), guards: [{device,
- * client_name}] (the agents' timed previews)}`. The listener gets `work` when
- * it changes. Never waits for an agent's call: the UI's thread may call it.
+ * client_name}] (the agents' timed previews), -- WP ODEC -- grants: [{id,
+ * kind: "test_signals", client, client_name, device, since_ms, until_ms,
+ * left_s}] (what the user allowed for ten minutes; `dspi_mcp_grant_revoke`)}`.
+ * The listener gets `work` when it changes. Never waits for an agent's call:
+ * the UI's thread may call it.
  */
 uint32_t dspi_mcp_work(struct FfiMcp *mcp, char *buf, uint32_t len);
 

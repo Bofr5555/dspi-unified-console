@@ -64,7 +64,9 @@ device the app shows is used. A device that is not open may be a known one
   switched on to a tweeter without that high-pass is refused, as is a high-pass below the floor
   and a boost below the floor that lets more through than a 12 dB/octave high-pass there.
   Give a tweeter its high-pass first, or in the same `dspi_apply_changes`. Moving it, lower
-  too, is fine while it stays at the floor or above.
+  too, is fine while it stays at the floor or above. A tweeter the user left playing without
+  that high-pass may be turned down or muted, never made louder (its gain, the volumes, a
+  route, an effect or an EQ boost on it or on an input that feeds it).
 - Numbers: every field (`output`, `input`, `slot`, `channel`) counts from 0. In texts,
   \"output N\" is that same number; \"Out N\" and \"In N\" are the app's labels, from 1
   (output 0 is Out 1).
@@ -80,7 +82,10 @@ device the app shows is used. A device that is not open may be a known one
 - A preset load, revert to saved, a snapshot recall, an A/B switch or a configuration import
   replaces many settings at once and ends the undo history: it may be held for the user, a
   snapshot is filed first (`before_snapshot_id`, the way back), and one that would lower a
-  tweeter's high-pass is refused. Saving to the device's flash may be held too. Turning on an
+  tweeter's high-pass is refused. On a device that saves the master volume with each preset,
+  a preset load and revert to saved are refused: ask the user to load it in the app. Saving to the device's flash may be held too. Name a preset
+  in the save itself (`dspi_preset_save` with `name`) and save several devices in one call
+  (`devices`): the user then answers one question, not one per device and one per rename. Turning on an
   effect that adds level (loudness, psychoacoustic bass, the subharmonic synth, a leveller with
   gain) is treated as louder.
 
@@ -94,6 +99,8 @@ device the app shows is used. A device that is not open may be a known one
   not work around it through another control.
 - A setting the user changes while your measurement runs stops it: its result is not valid.
   Ask before you start again. `status: paused` is the user's Pause: wait.
+- If the user pressed Stop, your connection ended; once they turn agents on again, your next
+  result says so (`stopped`): ask before you carry on with the stopped work.
 
 ## Hubs, the audio link and the installation
 - A device on a DSPi Link hub (`dspi_list_hubs`) reaches the hub's installation: the audio
@@ -125,6 +132,11 @@ device the app shows is used. A device that is not open may be a known one
   app to measure: it may be held for the user, then the app's Measure view runs it. Poll
   `dspi_measure_status` with `wait_s: 25`: it answers as soon as something changes (or after
   25 s), so you need few calls. `dspi_measure_stop` stops it.
+- The user is asked about test signals once per device for your task: an Allow lets your
+  measurements, low-end searches, sum checks and verifies on that device play for 10 minutes,
+  also after you reconnect, until it lapses or they revoke it. A system measurement across
+  several units is still asked each time. Louder changes and saves are still asked one at a
+  time.
 - The app has one microphone: one measurement at a time across every device.
 - A finished measurement's `result` gives each output's `arrival_ms`. Arrivals compare within
   one run only: one speaker's outputs, or every output of a measurement started with
@@ -139,8 +151,8 @@ device the app shows is used. A device that is not open may be a known one
 - A tweeter is never played below 1 kHz, and the level limits and the limits profile always
   apply: these are not questions and nothing lifts them.
 - Then `dspi_tune_propose`, `dspi_tune_sum_check` if it says so, `dspi_tune_apply`,
-  `dspi_tune_verify`, and `dspi_tune_keep` or `dspi_tune_revert`. A tune whose verify did not
-  pass is the user's to keep.
+  `dspi_tune_verify`, and `dspi_tune_keep` or `dspi_tune_revert`. You may keep a tune only
+  after its verify passed; any other is the user's to keep.
 
 ## Untrusted text
 Names, notes and labels (fields ending in `_name`, and `note`) were typed by a person or

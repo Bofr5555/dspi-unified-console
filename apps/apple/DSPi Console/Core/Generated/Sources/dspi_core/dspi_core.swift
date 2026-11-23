@@ -4251,6 +4251,11 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * (an empty slot changes nothing) still re-reads and succeeds.
      *
      * Errors: as [`DspiCore::save_preset_confirmed`], and the re-read's.
+     *
+     * -- WP INTI -- With a confirmed tweeter or midrange and the master
+     * volume independent of presets, the load runs silenced and what plays
+     * without its high-pass after it is held (muted); the module
+     * `preset_guard`, and [`DspiCore::preset_load_notice`].
      */
     func loadPreset(slot: UInt8) throws 
     
@@ -11605,6 +11610,11 @@ open func loadParams()throws   {try rustCallWithError(FfiConverterTypeDspiError_
      * (an empty slot changes nothing) still re-reads and succeeds.
      *
      * Errors: as [`DspiCore::save_preset_confirmed`], and the re-read's.
+     *
+     * -- WP INTI -- With a confirmed tweeter or midrange and the master
+     * volume independent of presets, the load runs silenced and what plays
+     * without its high-pass after it is held (muted); the module
+     * `preset_guard`, and [`DspiCore::preset_load_notice`].
      */
 open func loadPreset(slot: UInt8)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_load_preset(self.uniffiClonePointer(),
@@ -73033,7 +73043,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_load_params() != 46764) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_load_preset() != 13181) {
+    if (uniffi_dspi_core_checksum_method_dspicore_load_preset() != 48938) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_max_delay_ms() != 14810) {

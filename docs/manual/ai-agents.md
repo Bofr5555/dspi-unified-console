@@ -4,7 +4,9 @@
 devices, room and zone volume, schedules and measurement options (FEAT2), where the sound comes from (FEAT3), and what
 the screen shows of an agent's work and what it is told when you step in (AIVIS, section 5.1); with the fixes of the
 first function test with a real agent (FFIX: the tweeter rule on the result of every change, one agent program one
-token, arrivals and alignment across speakers, the long poll, one microphone). For the owner and for
+token, arrivals and alignment across speakers, the long poll, one microphone); with the owner's answers of
+2026-11-23 (ODEC: one question for test signals, keeping a tune, presets with the master volume, Stop, the
+screen following the agent). For the owner and for
 users of the Qt console. It describes the console as it is with the Modern programme's waves 4 and 5: MCP1 to MCP4, the
 MCP conformance work (MCP6), and measuring through an agent (MCP5, with ROLL1's rules for tweeters; section 6).*
 
@@ -232,7 +234,9 @@ that service, as with anything else you show it.
   - boost a PEQ band by more than 6 dB, change a Linkwitz transform, or move a delay by more than 20 ms;
   - lower a tweeter's protection (see below);
   - change the input source;
-  - play test signals: start a measurement, a low-end search, or an auto-tune's check or verify (section 6);
+  - play test signals: start a measurement, a low-end search, or an auto-tune's check or verify (section 6). This is
+    asked **once per device for the agent's task**: **Allow** lets that agent play test signals on that device for
+    the next 10 minutes (see **Test signals for 10 minutes** below);
   - replace many settings at once: load a preset, recall a snapshot, import a config or filter file;
   - write the device's flash: save, rename or copy a preset, save to the device, rename a channel or the device;
   - change every unit of an installation: align the audio link (also with a measurement across units), apply a scene,
@@ -240,7 +244,8 @@ that service, as with anything else you show it.
 
   Other changes, such as lowering a gain, cutting a PEQ band, a small delay change or opening a known device, are made at
   once.
-- **About every change.** Every change waits for your answer.
+- **About every change.** Every change waits for your answer; test signals are asked once per device for 10
+  minutes, as above.
 - **Never.** Agents' changes are made at once, louder ones too, and **test signals play without a question** when an agent
   starts a measurement. Your limits profile and the protection of outputs you set up as tweeters still apply, and so do
   the rule below and the rules of section 6.
@@ -258,12 +263,24 @@ when it sets a high-pass below the floor or too shallow, or when an EQ boost bel
 12 dB/octave high-pass at the floor would (by more than 3 dB): a boost behind a steep high-pass, where nothing reaches the
 tweeter, is fine. A midrange is held the same way at 80 Hz. Several changes in one call are judged together, and played
 quietest first: the agent can protect the tweeter and route it in one go. If you have left a tweeter playing without a
-high-pass yourself, an agent may still turn it down or mute it, but not feed it more.
+high-pass yourself, an agent may still turn it down or mute it, but not feed it more: no higher gain, trim or volume, no
+new route, no effect that adds level and no EQ boost on it (or on an input that feeds it), also not through a preset.
 
 **The question.** The console shows what the agent wants to change, on which device, with **Allow** and **Deny**. If the
 console is in the tray, the question brings its window back. The agent waits up to 45 s for your answer; after that it is
 told the question is still open and can ask again with `dspi_get_confirmation`. A question nobody answers lapses after
 2 minutes, and nothing is changed. Several questions queue up ("2 more waiting").
+
+**Test signals for 10 minutes.** <!-- WP ODEC --> A question about test signals says that **Allow** also lets that agent
+play test signals on that device for the next 10 minutes, for the task it is doing: its next measurements, low-end
+searches, sum checks and verifies on that device are not asked again. Louder changes, preset saves and everything else are still
+asked one at a time, and the rules of section 6 (the loudest measurement, a tweeter's low end) still hold. The agents'
+panel and the AI page show each such permission with the device, the agent and the time left, and **Revoke** ends it at
+once (the agent is told, and asked again next time). The permission belongs to the agent's pairing (the token it was
+paired with), not to one connection: an agent that reconnects or restarts within the 10 minutes keeps it, and so does
+any program paired under the same name. It ends after 10 minutes, on **Revoke**, when that pairing is removed, when the
+device is closed, and with **Stop**. It covers that one device: a measurement, verify or sum check across several units
+of a hub is still asked each time. Under **Never** nothing is asked, so nothing is granted.
 
 ## 5. Watching and undoing
 
@@ -282,6 +299,12 @@ told the question is still open and can ask again with `dspi_get_confirmation`. 
 - **Pause** holds the agents' tool calls off until **Resume**: nothing is changed meanwhile, and the agents are told that
   you paused them. **Stop** turns agents off,
   disconnects them and puts back any timed preview an agent started. Changes already made stay, and you can undo them.
+  When you turn agents on again, each agent that was working is told with its next call that you stopped it.
+- **The screen follows the agent.** <!-- WP ODEC --> When an agent changes something, the Modern layout shows that
+  device's tab and the page it is changing (Classic shows the device), and an agent's measurement opens **Measure**, so
+  you see what it does. Never while you are working yourself: while you drag a control, type in a field or have a dialog
+  open, only the strip says what the agent does. It switches at most every few seconds, so the screen does not flicker.
+  The web console does the same for an agent of another console on the hub's devices.
 - While you drag a control, an agent's change to that device is refused and the agent is told to try again: you are not
   overruled mid-drag.
 - **On a hub's device** (DSPi Link), the console also says on the hub what its agent does, so the **web console** and other
@@ -310,7 +333,8 @@ changes made elsewhere: a control on the device, another console.
   `user_activity`: `{note, events: [{id, at_ms, device, kind, what, path, output, input, band}], more, cursor}`, at most 8
   events. `dspi_get_user_activity {since}` lists the events after a cursor. Kinds: `change`, `undo`, `replaced` (everything
   at once), `elsewhere`, `speakers`, `measure_stop`, `device_opened`, `device_closed`, `device_shown`, `paused`, `resumed`,
-  `answer` (to your own question).
+  `answer` (to your own question, and the test-signal permission: given, revoked, ended), `stopped` (the user pressed Stop
+  before agents were turned on again).
 - Read what you work on again before you change it; never put the user's change back unasked.
 - "the user changed this" is an error (`isError`): ask. A retry within 5 s of the refusal is refused too.
 - `status: "paused"` is not an error: wait, or ask the user to press Resume. `status: "awaiting_confirmation"` as in section 4.
@@ -336,8 +360,8 @@ measures (yours too): the agent is told which.
   a tab, each with its own confirmed speaker setup.
 
 **What happens.** The agent's start is a request. Under **About risky changes** and **About every change** you are asked
-first (the question says **Test signal**, which outputs play, and the **AI** button shows there is something to answer);
-under **Never** it starts at once. The console then opens **Measure**, opens the microphone and runs it. The Stop bar says
+first (the question says **Test signal**, which outputs play, and the **AI** button shows there is something to answer),
+once per device for 10 minutes (section 4); under **Never** it starts at once. The console then opens **Measure**, opens the microphone and runs it. The Stop bar says
 **Requested by AI · name** until it ends, with **Stop** on every tab of Measure; on a device that is not the one shown, its
 row there has **Show** and **Stop**. A request the console cannot take up within 30 s lapses, and the agent is told. The
 result is filed with your measurements. An agent can stop only what it asked for itself.
@@ -380,8 +404,8 @@ measured low end is its high-pass's. The agent is told so (the high-pass is name
 plays them. The result is one response, filed under the first output.
 
 **Tuning.** Applying a proposal is a timed preview: each change is judged as the agent's other changes are (section 4), and
-the preview puts everything back at its end unless it is kept. After a verify that did not pass, **only you can keep it**,
-in the console. The same holds across units.
+the preview puts everything back at its end unless it is kept. An agent may keep it only **after a verify that passed**;
+without one (none run yet, or one that did not pass) **only you can keep it**, in the console. The same holds across units.
 
 **What an agent may choose.** `dspi_get_measure_options` lists it. The **microphone calibration** is one of those you have
 added in Measure, and the **target curve** is a built-in one or one of yours: the agent names it by its id, never a file.
@@ -405,14 +429,14 @@ a headphone **coupler**, the headphones' lower limits apply, in the low-end sear
 | `dspi_tune_sum_check` | Plays the ways of a speaker together and compares, before timing changes. *Test signal* |
 | `dspi_tune_apply` | Applies the proposal as a timed preview, as one undo step |
 | `dspi_tune_verify` | Measures the applied tune again. *Test signal* |
-| `dspi_tune_keep` | Keeps it (only you can, after a verify that did not pass) |
+| `dspi_tune_keep` | Keeps it, only after a verify that passed (otherwise only you can) |
 | `dspi_tune_revert` | Puts a tune this agent applied back now. Never asked |
 | `dspi_system_measure_preflight` | What stands between a measurement of several units and now. Plays nothing |
 | `dspi_system_measure_start` | Asks for a measurement of several units together, through the hub. *Test signal* |
 | `dspi_system_measure_proposal` | The alignment it proposes |
 | `dspi_system_measure_apply` | Applies it on the hub: every unit re-anchors, and the hub puts it back unless it is kept |
 | `dspi_system_measure_verify` | The summed runs across units, before or after the apply. *Test signal* |
-| `dspi_system_measure_keep` | Keeps it (only you can, after a verify that did not pass) |
+| `dspi_system_measure_keep` | Keeps it, only after a verify that passed (otherwise only you can) |
 | `dspi_system_measure_revert` | Puts it back now. Never asked |
 
 ## 7. Good to know
@@ -421,10 +445,12 @@ a headphone **coupler**, the headphones' lower limits apply, in the low-end sear
   an agent loads one on a device with a confirmed tweeter (or midrange), the console turns the master volume all the way
   down first, loads, checks the result, puts the device back if the preset would leave the tweeter unprotected, and only
   then brings the volume back. That works when the master volume is independent of presets (the default). If your
-  device saves the master volume with each preset (its master volume mode), the preset sets the volume
-  itself: the device can then play a preset's unprotected tweeter for a moment until the console puts the protection
-  back. Under the default setting you are asked before an agent loads a preset; with presets that may have unprotected
-  tweeters, keep the volume down while an agent loads one.
+  device saves the master volume with each preset (its master volume mode), the preset sets the volume itself and the
+  console could not keep the device quiet while it checks: **an agent may not load a preset (or revert to the saved
+  one) on such a device**, under every setting. Load it yourself in the console. Your own load is guarded the same way where the master
+  volume is independent of presets: silent while it loads, and a tweeter or midrange the preset leaves without its high-pass
+  is muted, with a notice; give it its high-pass, then unmute it. A refused agent load leaves the device on the preset
+  it was on. A hub scene an agent recalls that loads presets is judged the same way, on each unit this app has open.
 - **Output numbers.** Agents count outputs and inputs from 0, as the tools do; the console's labels count from 1. In what
   an agent is told, "output 1" is the tools' number and "Out 2" the console's label of the same output.
 - **What Undo can undo.** The activity offers **Undo** only for changes Undo can reverse: a preset save, a flash write or a
@@ -467,8 +493,12 @@ the volume at 80 % or less. These steps change your own agent configuration; und
 
 **Questions and settings**
 11. **Ask me: Never**: a louder change happens without a question. Removing a tweeter output's high-pass is refused.
+11a. **Ask me: About risky changes** (WP ODEC): ask for two measurements on one device. The first question says Allow also
+    allows test signals there for 10 minutes; **Allow**: the second is not asked. The AI page shows the permission with the
+    time left; **Revoke**: the next measurement is asked again. A louder change is still asked.
 12. **Ask me: About every change**: a quiet change is asked about too.
-13. **Stop** turns agents off; the agents' next call fails; turning them on again works.
+13. **Stop** turns agents off; the agents' next call fails; turning them on again works, and the agent says you stopped
+    it (its next result tells it).
 
 **This computer's sound settings** (WP FEAT3)
 14. With a DSPi on USB that is not the default output and music playing to the laptop's speakers, ask "is my DSPi

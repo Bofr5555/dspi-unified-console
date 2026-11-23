@@ -41,6 +41,7 @@
 
 pub mod activity;
 pub mod confirm; // -- WP MCP2a --
+pub mod grant; // -- WP ODEC --
 pub mod host_audio; // -- WP FEAT3 --
 pub mod policy; // -- WP MCP2a --
 pub mod prompts;
@@ -132,3 +133,19 @@ mod tests_wp_ffix;
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
 mod tests_wp_func2a;
+// -- WP FUNC2b --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
+mod tests_wp_func2b;
+// -- WP FUNC2c --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
+mod tests_wp_func2c;
+// -- WP INTI --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
+mod tests_wp_inti;
+// -- WP ODEC --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
+mod tests_wp_odec;

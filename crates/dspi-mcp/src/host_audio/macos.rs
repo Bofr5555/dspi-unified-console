@@ -305,6 +305,7 @@ impl HostAudioSource for CoreAudio {
         }
         let known = apps.is_some();
         HostAudio {
+            sim: false, // -- WP ODEC --
             os: HostOs::MacOs,
             audio_system: SYSTEM.into(),
             unknown: None,

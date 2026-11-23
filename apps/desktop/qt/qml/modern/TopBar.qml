@@ -62,6 +62,10 @@ Rectangle {
             model: SidebarController.presetTitles
             displayText: count > 0 && currentIndex >= 0 ? currentText : "–"
             currentIndex: bar.activeSlot
+            // -- WP FUNC2b -- a new list of titles (a preset saved or renamed) resets a ComboBox's
+            // index to 0, and the binding above waits for the slot to change: the box said "Demo"
+            // while the device was on "Movie night", and Save next to it saves to the active slot
+            onModelChanged: Qt.callLater(() => presetBox.currentIndex = Qt.binding(() => bar.activeSlot))
             enabled: bar.writable && !SidebarController.presetBusy
             onActivated: index => {
                 SidebarController.requestPresetSwitch(index)

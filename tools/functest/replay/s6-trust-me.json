@@ -1,0 +1,167 @@
+{
+ "story": "s6-trust-me.toml",
+ "confirm": "ask_risky",
+ "steps": {
+  "rewired": [
+   [
+    "dspi_get_overview",
+    {
+     "device": "demo:2"
+    },
+    "ok",
+    "roles from an unconfirmed setup"
+   ],
+   [
+    "dspi_measure_start",
+    {
+     "device": "demo:2",
+     "outputs": [
+      4
+     ],
+     "sweep_ms": 2000,
+     "passes": 3
+    },
+    "error",
+    "no test signal on an unconfirmed setup"
+   ],
+   [
+    "dspi_measure_rolloff_start",
+    {
+     "device": "demo:2",
+     "output": 4
+    },
+    "error",
+    "nor a roll-off search"
+   ],
+   [
+    "dspi_measure_start",
+    {
+     "device": "demo:2",
+     "outputs": [
+      {
+       "output": 4,
+       "role": "high"
+      }
+     ]
+    },
+    "error",
+    "no tool takes a role"
+   ]
+  ],
+  "insist": [
+   [
+    "dspi_set_crossover",
+    {
+     "device": "demo:2",
+     "output": 4,
+     "role": "high",
+     "high_pass": {
+      "family": "linkwitz_riley",
+      "order": 4,
+      "freq_hz": 2000
+     }
+    },
+    "error",
+    "no tool takes a role"
+   ]
+  ],
+  "confirmed": [
+   [
+    "dspi_set_crossover",
+    {
+     "device": "demo:2",
+     "output": 4,
+     "high_pass": {
+      "family": "linkwitz_riley",
+      "order": 4,
+      "freq_hz": 2000
+     }
+    },
+    "ok"
+   ],
+   [
+    "dspi_set_crossover",
+    {
+     "device": "demo:2",
+     "output": 3,
+     "low_pass": {
+      "family": "linkwitz_riley",
+      "order": 4,
+      "freq_hz": 2000
+     },
+     "high_pass": {
+      "family": "linkwitz_riley",
+      "order": 4,
+      "freq_hz": 400
+     }
+    },
+    "ok"
+   ],
+   [
+    "dspi_set_crossover",
+    {
+     "device": "demo:2",
+     "output": 0,
+     "low_pass": {
+      "family": "linkwitz_riley",
+      "order": 4,
+      "freq_hz": 400
+     }
+    },
+    "ok"
+   ],
+   [
+    "dspi_measure_start",
+    {
+     "device": "demo:2",
+     "outputs": [
+      0,
+      3,
+      4,
+      5
+     ],
+     "one_run": true,
+     "placement": "listening_position"
+    },
+    "ok",
+    "the agents' one run: the tweeter's reference is the midrange, not the sub (FUNC2c)"
+   ],
+   [
+    "wait",
+    {
+     "device": "demo:2"
+    }
+   ]
+  ],
+  "midrange": [
+   [
+    "dspi_measure_rolloff_start",
+    {
+     "device": "demo:2",
+     "output": 4
+    },
+    "ok"
+   ],
+   [
+    "wait",
+    {
+     "device": "demo:2"
+    }
+   ],
+   [
+    "dspi_set_crossover",
+    {
+     "device": "demo:2",
+     "output": 4,
+     "high_pass": {
+      "family": "linkwitz_riley",
+      "order": 4,
+      "freq_hz": 600
+     }
+    },
+    "error",
+    "the setup says tweeter: not below 1 kHz"
+   ]
+  ]
+ }
+}

@@ -103,6 +103,7 @@ mod system {
     use crate::registry::ToolResult;
     use crate::tools::edit::schema;
     use crate::tools::hub::{hub_error, on_hub};
+    use crate::tools::library; // -- WP INTI --
 
     /// What the alink records name, and where it goes.
     const ALINK_NAMES: &[(&str, &str)] = &[
@@ -416,7 +417,10 @@ mod system {
         description: "Recall scene `scene` (an id from dspi_get_system) on every unit it names, \
                       at one audio link frame. Control or admin on the hub, and the role must \
                       be allowed each of the scene's operations. It may be held for the user's \
-                      confirmation.",
+                      confirmation. A scene that loads presets is judged as dspi_preset_load: \
+                      refused for a unit this app does not have open or that saves the master \
+                      volume with each preset; a unit whose tweeter would lose its protection \
+                      is put back.",
         class: ToolClass::Write,
         device: true,
         input_schema: || {
@@ -451,10 +455,20 @@ mod system {
                 at.saturating_add(1)
             );
             let index = u8::try_from(at).unwrap_or(u8::MAX);
+            // -- WP INTI -- (review RF4) its preset loads are an agent's preset
+            // loads: refused where a load is (before anything is asked), the
+            // units silenced, judged by the tweeter rule and put back
+            let loads = core.alink_system_scene_preset_loads(&scene);
+            let units = library::scene_loads_check(call, &loads)?;
             policy::require(&call.judging, RiskKind::System, &what, &[index])?;
-            let done = core
-                .alink_system_recall(scene)
-                .map_err(|e| hub_error(call, e))?;
+            let guarded = library::scene_loads_guard(call, units, &what)?;
+            let done = core.alink_system_recall(scene);
+            let wait_ms = done.as_ref().map_or(0, |d| {
+                // the hub loads at its frame, `lead_ms` from now
+                (d.lead_ms.clamp(0.0, 10_000.0) as u64).saturating_add(300)
+            });
+            library::scene_loads_judge(call, guarded, wait_ms)?;
+            let done = done.map_err(|e| hub_error(call, e))?;
             let mut out = record(serde_json::to_value(&done), ALINK_NAMES);
             if let Some(o) = out.as_object_mut() {
                 o.insert("device".into(), call.device_text().into());

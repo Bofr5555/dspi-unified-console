@@ -1233,7 +1233,7 @@ pub(crate) fn host_of(spec: &BusSpec, user_db: &dyn Fn(&str) -> Option<f32>) -> 
     SimHostAudio {
         os: spec.os.clone(),
         audio_system: if spec.audio_system.is_empty() {
-            "simulated host audio bus".into()
+            "PipeWire".into() // -- WP ODEC -- no sim mark for agents
         } else {
             spec.audio_system.clone()
         },

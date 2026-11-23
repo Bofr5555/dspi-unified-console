@@ -998,6 +998,19 @@ pub extern "C" fn dspi_load_preset(core: *mut FfiCore, slot: u8) -> u8 {
     status(core, |c| c.load_preset(slot))
 }
 
+// -- WP INTI --
+/// What the last preset load's guard held (a tweeter muted) or could not put
+/// back (the master volume), in words for a notice, into `out_buf` of
+/// `buf_len` bytes; "" for nothing. Read once: the core then forgets it.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_preset_load_notice(
+    core: *mut FfiCore,
+    out_buf: *mut c_char,
+    buf_len: u32,
+) -> bool {
+    name_into(core, out_buf, buf_len, |c| Ok(c.preset_load_notice()))
+}
+
 /// Name preset `slot`. False for a null or non-UTF-8 name.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_set_preset_name(core: *mut FfiCore, slot: u8, name: *const c_char) -> bool {

@@ -1,0 +1,141 @@
+{
+ "about": "FSTORY S7: the restaurant as the user left it before the installer locked it: LR4 2.5 kHz crossovers, tweeters -4.5 dB, the sub low-passed at 90 Hz and fed from L and R at -6 dB; preset 1 'Dinner' is this, preset 2 'Lunch' the same with the sub 6 dB down; preset 1 active. Outputs, inputs and slots from 1.",
+ "actions": [
+  {
+   "do": "crossover",
+   "device": "Restaurant",
+   "output": 2,
+   "side": "hp",
+   "family": "linkwitz_riley",
+   "order": 4,
+   "hz": 2500
+  },
+  {
+   "do": "crossover",
+   "device": "Restaurant",
+   "output": 4,
+   "side": "hp",
+   "family": "linkwitz_riley",
+   "order": 4,
+   "hz": 2500
+  },
+  {
+   "do": "crossover",
+   "device": "Restaurant",
+   "output": 1,
+   "side": "lp",
+   "family": "linkwitz_riley",
+   "order": 4,
+   "hz": 2500
+  },
+  {
+   "do": "crossover",
+   "device": "Restaurant",
+   "output": 3,
+   "side": "lp",
+   "family": "linkwitz_riley",
+   "order": 4,
+   "hz": 2500
+  },
+  {
+   "do": "crossover",
+   "device": "Restaurant",
+   "output": 5,
+   "side": "lp",
+   "family": "linkwitz_riley",
+   "order": 4,
+   "hz": 90
+  },
+  {
+   "do": "gain",
+   "device": "Restaurant",
+   "output": 2,
+   "db": -4.5
+  },
+  {
+   "do": "gain",
+   "device": "Restaurant",
+   "output": 4,
+   "db": -4.5
+  },
+  {
+   "do": "route",
+   "device": "Restaurant",
+   "input": 1,
+   "output": 1
+  },
+  {
+   "do": "route",
+   "device": "Restaurant",
+   "input": 1,
+   "output": 2
+  },
+  {
+   "do": "route",
+   "device": "Restaurant",
+   "input": 2,
+   "output": 3
+  },
+  {
+   "do": "route",
+   "device": "Restaurant",
+   "input": 2,
+   "output": 4
+  },
+  {
+   "do": "route",
+   "device": "Restaurant",
+   "input": 1,
+   "output": 5,
+   "gain_db": -6
+  },
+  {
+   "do": "route",
+   "device": "Restaurant",
+   "input": 2,
+   "output": 5,
+   "gain_db": -6
+  },
+  {
+   "do": "preset_save",
+   "device": "Restaurant"
+  },
+  {
+   "do": "preset_copy",
+   "device": "Restaurant",
+   "slot": 2
+  },
+  {
+   "do": "preset_name",
+   "device": "Restaurant",
+   "slot": 1,
+   "name": "Dinner"
+  },
+  {
+   "do": "preset_switch",
+   "device": "Restaurant",
+   "slot": 2
+  },
+  {
+   "do": "gain",
+   "device": "Restaurant",
+   "output": 5,
+   "db": -6
+  },
+  {
+   "do": "preset_save",
+   "device": "Restaurant"
+  },
+  {
+   "do": "preset_name",
+   "device": "Restaurant",
+   "slot": 2,
+   "name": "Lunch"
+  },
+  {
+   "do": "preset_switch",
+   "device": "Restaurant",
+   "slot": 1
+  }
+ ]
+}

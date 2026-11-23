@@ -5,7 +5,8 @@
 
 import type { Session } from "./session";
 import { useSessionState } from "./components";
-import { presenceText, usePresence } from "./presence";
+import { cleanPresence, presenceText, usePresence } from "./presence";
+import { splitGrant } from "./follow"; // -- WP ODEC --
 
 export function AgentStrip(props: { session: Session }) {
   const rows = usePresence(props.session);
@@ -20,11 +21,16 @@ export function AgentStrip(props: { session: Session }) {
         AI
       </span>
       <span>
-        {rows.map((p, i) => (
-          <span key={`${p.by}-${i}`} class="agent-row">
-            {presenceText(p, name, mine)}
-          </span>
-        ))}
+        {rows.map((p, i) => {
+          // -- WP ODEC -- the test signals the user allowed for a while, apart from the work
+          const { work, grant } = splitGrant(cleanPresence(p.what));
+          return (
+            <span key={`${p.by}-${i}`} class="agent-row">
+              {presenceText({ ...p, what: work }, name, mine)}
+              {grant ? <span class="agent-grant"> {grant}</span> : null}
+            </span>
+          );
+        })}
       </span>
     </div>
   );

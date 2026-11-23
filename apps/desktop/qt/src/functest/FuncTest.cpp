@@ -13,7 +13,10 @@
 #include <QLocalSocket>
 #include <QMetaMethod>
 #include <QMetaProperty>
+#include <QQuickItem>
 #include <QQuickWindow>
+
+#include <functional>
 
 static const Registrar::Controller<FuncTest> funcTest;
 
@@ -45,6 +48,18 @@ QObject *FuncTest::find(const QString &name) const {
     if (name == QLatin1String("DeviceModel")) return m_ctx.device;
     for (const Registrar::ControllerEntry &c : Registrar::controllers())
         if (name == QLatin1String(c.meta->className())) return Registrar::instance(c.meta);
+    // -- WP FUNC2b -- a visible item by its objectName ("TopBar.preset"): what a screen shows
+    // (the visual tree, as the smoke driver walks it)
+    const std::function<QQuickItem *(QQuickItem *)> walk = [&](QQuickItem *at) -> QQuickItem * {
+        if (!at || !at->isVisible()) return nullptr;
+        if (at->objectName() == name) return at;
+        for (QQuickItem *child : at->childItems())
+            if (QQuickItem *found = walk(child)) return found;
+        return nullptr;
+    };
+    for (QWindow *w : QGuiApplication::topLevelWindows())
+        if (auto *quick = qobject_cast<QQuickWindow *>(w); quick && quick->isVisible())
+            if (QQuickItem *found = walk(quick->contentItem())) return found;
     return nullptr;
 }
 
@@ -86,7 +101,14 @@ QJsonObject FuncTest::handle(const QJsonObject &command) {
     if (!on) return failed(QStringLiteral("no such controller"));
     const QMetaObject *meta = on->metaObject();
     if (op == QLatin1String("get") || op == QLatin1String("set")) {
-        const QByteArray name = command.value(QLatin1String("prop")).toString().toUtf8();
+        QByteArray name = command.value(QLatin1String("prop")).toString().toUtf8();
+        // -- WP FUNC2b -- "presets.startupMode": a property of the object a property holds
+        for (int dot = name.indexOf('.'); dot > 0; dot = name.indexOf('.')) {
+            on = on->property(name.left(dot).constData()).value<QObject *>();
+            if (!on) return failed(QStringLiteral("no such object"));
+            meta = on->metaObject();
+            name = name.mid(dot + 1);
+        }
         if (meta->indexOfProperty(name.constData()) < 0) return failed(QStringLiteral("no such property"));
         if (op == QLatin1String("get")) return done(on->property(name.constData()));
         return on->setProperty(name.constData(), command.value(QLatin1String("value")).toVariant())

@@ -250,6 +250,13 @@ void measureSection(SmokeDriver &d) {
     Shell *shell = d.app().shell;
     d.check("mcp5: the controllers exist", ai && mc && sc);
     if (!ai || !mc || !sc) return;
+    // -- WP ODEC -- these checks were made before the screens followed an agent
+    struct FollowOff {
+        AiController *ai;
+        bool was;
+        ~FollowOff() { ai->setFollowAgent(was); }
+    } followOff{ ai, ai->followAgent() };
+    ai->setFollowAgent(false);
     if (!device->connected() || !device->demo() || device->remote()) device->openDemo();
     d.check("mcp5: the demo DSPi", d.waitFor(10000, [&] { return device->connected() && device->demo(); }) && d.waitIdle());
     const QJsonObject before = onWorker(d, [](FfiCore *c) { return fill([c](char *b, uint32_t l) { return dspi_speaker_layout(c, b, l); }); });

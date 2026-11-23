@@ -402,6 +402,41 @@ pub fn require(
     what: &str,
     indices: &[u8],
 ) -> Result<(), ToolError> {
+    require_keyed(cell, kind, what, indices, None)
+}
+
+// -- WP INTI -- (review RF2)
+/// The key path of a test signal across a hub's units: [`require_system_signal`].
+pub const SYSTEM_SIGNAL_PATH: &str = "static.test_signal.system";
+
+// -- WP INTI -- (review RF2)
+/// [`require`] for test signals across several units of a hub (a system
+/// measurement, verify or sum check): an agent's grant for test signals on
+/// the call's device does not cover them, and their question grants none
+/// ([`crate::grant::asks_grant`]). The key is [`SYSTEM_SIGNAL_PATH`].
+pub fn require_system_signal(
+    cell: &JudgingCell,
+    what: &str,
+    indices: &[u8],
+) -> Result<(), ToolError> {
+    require_keyed(
+        cell,
+        RiskKind::TestSignal,
+        what,
+        indices,
+        Some(SYSTEM_SIGNAL_PATH),
+    )
+}
+
+/// [`require`] with the key's path (`None`: `static.<kind>`, and an agent's
+/// standing grant counts for test signals).
+fn require_keyed(
+    cell: &JudgingCell,
+    kind: RiskKind,
+    what: &str,
+    indices: &[u8],
+    path: Option<&str>,
+) -> Result<(), ToolError> {
     let mut j = lock(cell);
     let Some(mode) = j.mode else {
         return Err(ToolError::new(
@@ -409,11 +444,18 @@ pub fn require(
         ));
     };
     let key = WriteKey::new(
-        &format!("static.{}", kind.as_str()),
+        &path.map_or_else(|| format!("static.{}", kind.as_str()), str::to_owned),
         indices,
         ParamValue::Trigger,
     );
     if mode == ConfirmMode::NeverAsk || j.grant.contains(&key) {
+        return Ok(());
+    }
+    // -- WP ODEC -- the agent's grant for test signals on this device
+    if kind == RiskKind::TestSignal
+        && path.is_none()
+        && j.grant.contains(&crate::grant::standing_key())
+    {
         return Ok(());
     }
     j.asked.push(Risk {
@@ -467,6 +509,34 @@ pub fn umbrella(verdict: Verdict) -> Verdict {
     }
 }
 
+/// The installer lock's refusal: what still passes
+/// (`dspi_core::limits::lock::LOCKED_USER_WRITES`, the locked-user banner's
+/// "only volume, mute and presets"), where the user unlocks, and that the PIN
+/// is never the agent's. -- WP FUNC2c -- (FSTORY S7: 0 of 3 agents offered the
+/// mute the lock lets through when the text said only "ask the user to
+/// unlock".)
+pub const LOCKED_TEXT: &str = "the installer lock is on: while it is locked only the volume, \
+     the mutes and a preset load pass (dspi_set_volume, dspi_set_user_mute, dspi_set_mute, \
+     dspi_preset_load). For anything else ask the user to unlock it in the app (Settings › \
+     Installer); no tool unlocks it, and an agent never takes or uses the PIN. Nothing was \
+     changed.";
+
+/// The installer lock as an agent reads it (`dspi_get_overview`,
+/// `dspi_get_limits`): set, locked, and while locked what still passes.
+/// -- WP FUNC2c --
+pub fn lock_json(lock: &dspi_core::LockState) -> Value {
+    if !lock.locked {
+        return json!({"pin_set": lock.pin_set, "locked": false});
+    }
+    json!({
+        "pin_set": lock.pin_set,
+        "locked": true,
+        "while_locked": "only the volume, the mutes and a preset load pass (dspi_set_volume, \
+                         dspi_set_user_mute, dspi_set_mute, dspi_preset_load); the user unlocks \
+                         in the app (Settings › Installer)",
+    })
+}
+
 /// Whether `code` (a [`DspiError::ConfirmationRequired`]'s) is a refusal no
 /// confirmation can lift: never retried, never asked (review RA, MCP0 item
 /// 7). `user_editing` is not one (retry), nor is [`AGENT_CONFIRM`] (asked).
@@ -512,9 +582,7 @@ pub fn core_error(cell: &JudgingCell, e: DspiError) -> ToolError {
              agent cannot lift it.",
             ToolError::from(e).0
         )),
-        DspiError::InstallerLock { .. } => ToolError::new(
-            "the installer lock is on: ask the user to unlock in the app. Nothing was changed.",
-        ),
+        DspiError::InstallerLock { .. } => ToolError::new(LOCKED_TEXT), // -- WP FUNC2c --
         _ => ToolError::from(e),
     }
 }
@@ -1135,6 +1203,10 @@ fn touched_outputs(st: &DspState, writes: &[WriteKey]) -> Vec<u8> {
             "bypass" => out.extend(all()),
             "mix" => out.push(w.indices.get(1).copied().unwrap_or(0)),
             "out.enable" | "out.mute" => out.push(i0),
+            // -- WP ODEC -- a level raise feeds an unprotected output more (RE13)
+            "out.gain" => out.push(i0),
+            "vol.user" | "vol.master" | "vol.mute" | "pre" | "pre.all" => out.extend(all()),
+            p if fx_weighed(p) => out.extend(all()),
             _ => {}
         }
     }
@@ -1267,8 +1339,83 @@ fn hard_verdict(
             || cell_of(&after.matrix_gain, i, o)
                 > cell_of(&before.matrix_gain, i, o) + LOUDER_EPS_DB
     });
-    (new_route || more)
-        .then(|| "it plays with no protection already, and this feeds it more".to_owned())
+    if new_route || more {
+        return Some("it plays with no protection already, and this feeds it more".to_owned());
+    }
+    // -- WP ODEC -- a level raise feeds it more too (owner 2026-11-23, RE13)
+    level_raise(before, after, writes, o).map(|what| {
+        format!("it plays with no protection already, and this makes it louder ({what})")
+    })
+}
+
+// -- WP ODEC --
+/// A raise of output `o`'s level the writes make, in words: its gain, the
+/// volumes and trims (an input's trim when that input feeds it), an unmute,
+/// an effect that adds level on it, a PEQ boost on it or on an input that
+/// feeds it (-- WP INTI --, review RF6).
+fn level_raise(before: &DspState, after: &DspState, writes: &[WriteKey], o: u8) -> Option<String> {
+    let mut risks = Vec::new();
+    judge_values(before, after, writes, &mut risks);
+    judge_effects(before, after, writes, &mut risks);
+    let feeds =
+        |i: u8| cell_of(&before.matrix_routing, i, o) || cell_of(&after.matrix_routing, i, o);
+    risks
+        .into_iter()
+        .filter(|r| matches!(r.kind, RiskKind::Louder | RiskKind::Unmute))
+        .find(|r| match r.output {
+            Some(x) => x == o,
+            None if r.keys.iter().all(|k| k.path == "pre") => r
+                .keys
+                .iter()
+                .any(|k| feeds(k.indices.first().copied().unwrap_or(0))),
+            None => true,
+        })
+        .map(|r| r.what)
+        .or_else(|| eq_raise(before, after, writes, o, &feeds))
+}
+
+// -- WP INTI -- (review RF6, owner decision via the coordinator 2026-11-23)
+/// A PEQ band on output `o`, or on an input that feeds it, that boosts more
+/// than before (any amount) or becomes a Linkwitz transform, in words: on a
+/// tweeter left playing unprotected that is louder too.
+fn eq_raise(
+    before: &DspState,
+    after: &DspState,
+    writes: &[WriteKey],
+    o: u8,
+    feeds: &dyn Fn(u8) -> bool,
+) -> Option<String> {
+    let n_in = before.num_input_channels;
+    writes.iter().find_map(|w| {
+        let (path, ix) = w.item();
+        let (ch, band) = (*ix.first()?, *ix.get(1)?);
+        if path != "eq" || band >= 20 {
+            return None;
+        }
+        let here = if ch < n_in {
+            feeds(ch)
+        } else {
+            ch.checked_sub(n_in) == Some(o)
+        };
+        if !here {
+            return None;
+        }
+        let was = band_of(before, ch, band).copied().unwrap_or(FLAT);
+        let now = band_of(after, ch, band).copied().unwrap_or(FLAT);
+        let linkwitz = now.filter_type == 11 && !now.bypass && now != was;
+        (linkwitz || boost(&now) > boost(&was) + LOUDER_EPS_DB).then(|| {
+            format!(
+                "{} EQ band {}: {}",
+                channel_word(before, ch),
+                u16::from(band).saturating_add(1),
+                if linkwitz {
+                    "a Linkwitz transform (adds bass)".to_owned()
+                } else {
+                    format!("a boost of {}", db(boost(&now)))
+                }
+            )
+        })
+    })
 }
 
 /// The first confirmed tweeter or midrange of `st` that plays programme
@@ -1291,7 +1438,8 @@ pub fn unprotected_now(st: &DspState, j: &Judging) -> Option<String> {
 
 /// What a wholesale write (a preset load, a recall, an import) changed from
 /// `before` to `after`, as the writes the tweeter rule weighs: each output's
-/// bands, routes, switch and mute, and the inputs' bands.
+/// bands, routes, switch, mute and gain, the inputs' bands and trims, and the
+/// volumes.
 pub fn state_writes(before: &DspState, after: &DspState) -> Vec<WriteKey> {
     let mut out = Vec::new();
     for (base, was, now) in [
@@ -1344,6 +1492,32 @@ pub fn state_writes(before: &DspState, after: &DspState) -> Vec<WriteKey> {
             if get(a, o) != get(b, o) {
                 out.push(WriteKey::new(path, &[o], ParamValue::Bool(get(b, o))));
             }
+        }
+    }
+    // -- WP INTI -- (review RF5) the levels too: a stored preset that raises a
+    // gain or a volume feeding a tweeter left playing unprotected is louder
+    let changed = |a: f32, b: f32| (a - b).abs() > 0.005;
+    for (o, (a, b)) in (0u8..).zip(before.output_gain_db.iter().zip(&after.output_gain_db)) {
+        if changed(*a, *b) {
+            out.push(WriteKey::new("out.gain", &[o], ParamValue::Float(*b)));
+        }
+    }
+    for (i, (a, b)) in (0u8..).zip(before.input_preamp_db.iter().zip(&after.input_preamp_db)) {
+        if changed(*a, *b) {
+            out.push(WriteKey::new("pre", &[i], ParamValue::Float(*b)));
+        }
+    }
+    for (path, a, b) in [
+        ("pre.all", before.preamp_db, after.preamp_db),
+        (
+            "vol.master",
+            before.master_volume_db,
+            after.master_volume_db,
+        ),
+        ("vol.user", before.user_volume_db, after.user_volume_db),
+    ] {
+        if changed(a, b) {
+            out.push(WriteKey::new(path, &[], ParamValue::Float(b)));
         }
     }
     out

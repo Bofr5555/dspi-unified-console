@@ -131,6 +131,14 @@ pub(crate) fn wholesale<T>(
 /// floor: silent).
 const LOAD_GUARD_DB: f32 = -127.0;
 
+// -- WP ODEC --
+/// The refusal of a device-applied load while the master volume is saved
+/// with presets.
+pub(crate) const LOAD_REFUSED_VOLUME_WITH_PRESETS: &str = "this device saves the master volume \
+     with each preset, so a preset load sets the volume itself and the console cannot keep the \
+     device quiet while it checks the result: an agent may not load a preset (or revert to the \
+     saved one) on it. Nothing was changed. Ask the user to load it in the app.";
+
 /// [`wholesale`], for a write the device applies itself (a preset load):
 /// with `device_applied`, a device whose master volume is independent of its
 /// presets and that has a confirmed tweeter or midrange is silenced first
@@ -138,7 +146,8 @@ const LOAD_GUARD_DB: f32 = -127.0;
 /// once the result is judged (and put back if it broke the tweeter rule).
 /// The device can then not play a preset's unprotected tweeter for the
 /// moment until the console has looked. With the master volume saved in each
-/// preset, the load sets it and nothing can be guarded (manual §7).
+/// preset, the load sets it and nothing can be guarded: refused (manual §7,
+/// -- WP ODEC --).
 fn wholesale_with<T>(
     call: &mut Call<'_>,
     what: &str,
@@ -148,6 +157,12 @@ fn wholesale_with<T>(
 ) -> Result<(T, Before), ToolError> {
     let core = call.core()?;
     let before = state(core)?;
+    // -- WP ODEC -- (owner 2026-11-23, answer 4) with the master volume saved
+    // in each preset the load sets the volume itself and nothing can be
+    // guarded: an agent never loads then
+    if device_applied && before.master_volume_mode != 0 {
+        return Err(ToolError::new(LOAD_REFUSED_VOLUME_WITH_PRESETS));
+    }
     policy::require(&call.judging, RiskKind::Recall, what, indices)?;
     policy::lock(&call.judging).wholesale = true;
     let snap = capture_before(core, what)?;
@@ -217,6 +232,12 @@ thread_local! {
     pub(crate) static PUT_BACK_FAILS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
+// -- WP INTI -- a scene's preset loads done as the hub would at its frame
+#[cfg(all(test, feature = "link"))]
+thread_local! {
+    pub(crate) static HUB_LOADS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
 /// [`wholesale_with`]'s write, its judgement and the put-back.
 fn wholesale_run<T>(
     call: &Call<'_>,
@@ -246,13 +267,161 @@ fn wholesale_run<T>(
     let after = core.get_state();
     let lost = tweeter_lost(&policy::lock(&call.judging), before, &after);
     if let Some(why) = lost {
+        let slot = reselect(core, call.actor, before, &after); // -- WP FUNC2b --
         return Err(ToolError::new(format!(
-            "{why}. A wholesale change by an agent may not lower a tweeter's protection; the \
-             user can do it in the app. {}",
+            "{}. A wholesale change by an agent may not lower a tweeter's protection; the \
+             user can do it in the app. {}{slot}",
+            why.trim_end_matches('.'),
             put_back(core, call.actor, snap)
         )));
     }
     Ok(out)
+}
+
+// -- WP INTI -- (review RF4) a hub scene's preset loads, judged as an agent's
+// own: the hub loads the presets on the units itself, at a frame
+/// One unit a scene loads a preset on, as it was before the recall.
+#[cfg(feature = "link")]
+pub(crate) struct SceneLoad {
+    core: std::sync::Arc<DspiCore>,
+    name: String,
+    #[cfg_attr(not(test), allow(dead_code))]
+    slot: u8,
+    before: DspState,
+    snap: Before,
+    roles: Judging,
+    guard: Option<f32>,
+}
+
+/// The units scene `loads` (serial, slot) loads presets on, each open in
+/// this app, before anything is asked or changed. Refused (nothing changed)
+/// for a unit this app does not have open (its tweeters cannot be judged)
+/// and for one that saves the master volume with each preset (as
+/// `dspi_preset_load` is, -- WP ODEC --).
+#[cfg(feature = "link")]
+pub(crate) fn scene_loads_check(
+    call: &Call<'_>,
+    loads: &[(String, u8)],
+) -> Result<Vec<(std::sync::Arc<DspiCore>, String, u8)>, ToolError> {
+    let mut out: Vec<(std::sync::Arc<DspiCore>, String, u8)> = Vec::new();
+    for (serial, slot) in loads {
+        let unit = untrusted::clean(serial, 64);
+        let core = call
+            .set
+            .filter(|_| !serial.is_empty())
+            .and_then(|set| set.find_serial(serial).and_then(|id| set.core(&id)))
+            .ok_or_else(|| {
+                ToolError::new(format!(
+                    "the scene loads preset {} on unit {unit}, which this app does not have \
+                     open, so the console cannot keep its tweeters safe while it loads: an \
+                     agent may not recall it. Nothing was changed. Ask the user to open that \
+                     unit, or to recall the scene in the app.",
+                    u16::from(*slot).saturating_add(1)
+                ))
+            })?;
+        if core.get_state().master_volume_mode != 0 {
+            return Err(ToolError::new(format!(
+                "the scene loads a preset on unit {unit}, and {}",
+                LOAD_REFUSED_VOLUME_WITH_PRESETS.replace(
+                    "an agent may not load a preset (or \
+                     revert to the saved one) on it",
+                    "an agent may not recall the scene"
+                )
+            )));
+        }
+        // A unit loaded twice ends on the last slot
+        out.retain(|(c, _, _)| !std::sync::Arc::ptr_eq(c, &core));
+        out.push((core, unit, *slot));
+    }
+    Ok(out)
+}
+
+/// Before the recall: each unit's state and a snapshot filed, and a unit
+/// with a confirmed tweeter or midrange silenced (as [`wholesale_with`]).
+#[cfg(feature = "link")]
+pub(crate) fn scene_loads_guard(
+    call: &Call<'_>,
+    units: Vec<(std::sync::Arc<DspiCore>, String, u8)>,
+    what: &str,
+) -> Result<Vec<SceneLoad>, ToolError> {
+    let mut out = Vec::with_capacity(units.len());
+    for (core, name, slot) in units {
+        let before = state(&core)?;
+        let snap = capture_before(&core, what)?;
+        let roles = Judging {
+            roles: policy::confirmed_roles(&core),
+            floors: policy::profile_floors(&core),
+            ..Judging::default()
+        };
+        let hard = roles.roles.iter().any(|r| {
+            matches!(
+                r,
+                Some(dspi_core::measure::MeasureRole::High | dspi_core::measure::MeasureRole::Mid)
+            )
+        });
+        let guard = hard
+            .then(|| quiet(&core, call.actor, before.master_volume_db))
+            .flatten();
+        out.push(SceneLoad {
+            core,
+            name,
+            slot,
+            before,
+            snap,
+            roles,
+            guard,
+        });
+    }
+    Ok(out)
+}
+
+/// After the recall (the hub loads at a frame: `wait_ms` from now, then each
+/// unit is read again): a unit whose tweeter lost its protection goes back to
+/// its slot and its settings; every silenced unit gets its volume back. Err
+/// with the words when any unit was put back or stays silent.
+#[cfg(feature = "link")]
+pub(crate) fn scene_loads_judge(
+    call: &Call<'_>,
+    units: Vec<SceneLoad>,
+    wait_ms: u64,
+) -> Result<(), ToolError> {
+    if units.is_empty() {
+        return Ok(());
+    }
+    std::thread::sleep(std::time::Duration::from_millis(wait_ms));
+    let mut words = Vec::new();
+    for u in units {
+        // The fake units queue a frame's ops but never run them: a test has
+        // the hub's load done here
+        #[cfg(test)]
+        if HUB_LOADS.with(std::cell::Cell::get) {
+            let _scope = ActorScope::enter(&u.core, call.actor, None);
+            let _ = u.core.load_preset(u.slot);
+        }
+        let _ = u.core.fetch_all();
+        let after = u.core.get_state();
+        if let Some(why) = tweeter_lost(&u.roles, &u.before, &after) {
+            let slot = reselect(&u.core, call.actor, &u.before, &after);
+            words.push(format!(
+                "unit {}: {}. A scene recalled by an agent may not lower a tweeter's \
+                 protection; the user can do it in the app. {}{slot}",
+                u.name,
+                why.trim_end_matches('.'),
+                put_back(&u.core, call.actor, &u.snap)
+            ));
+        }
+        if let Some(Err(silent)) = u.guard.map(|level| loud_again(&u.core, call.actor, level)) {
+            words.push(format!("unit {}: {silent}", u.name));
+        }
+    }
+    if words.is_empty() {
+        Ok(())
+    } else {
+        Err(ToolError::new(format!(
+            "the scene was recalled, but {}",
+            words.join(" ")
+        )))
+    }
 }
 
 /// A snapshot document without its `meta` (the time it was taken).
@@ -282,6 +451,37 @@ fn put_back(core: &DspiCore, actor: u32, snap: &Before) -> &'static str {
     } else {
         "Putting it back failed: ask the user to recall the snapshot taken before."
     }
+}
+
+// -- WP FUNC2b -- (FUNC2b S12) A refused preset load left the device on the
+// refused slot, the settings put back unsaved there: a Save in the app or a
+// dspi_commit would then overwrite that preset with them.
+/// After a refused load: the slot active before is loaded again (on the device,
+/// still under the load's guard), so the put-back that follows leaves the device
+/// on its own slot. "" when the slot did not change or is back; else what the
+/// agent must tell the user.
+fn reselect(core: &DspiCore, actor: u32, before: &DspState, after: &DspState) -> String {
+    let (was, now) = (before.active_preset_slot, after.active_preset_slot);
+    if was == now {
+        return String::new();
+    }
+    let occupied = before
+        .preset_occupied
+        .checked_shr(u32::from(was))
+        .is_some_and(|bits| bits & 1 == 1);
+    let loaded = occupied && {
+        let _scope = ActorScope::enter(core, actor, None);
+        core.load_preset(was).is_ok()
+    };
+    if loaded && core.get_state().active_preset_slot == was {
+        return String::new();
+    }
+    format!(
+        " The device's active preset is still {} (the refused one), with other settings: \
+         saving to the active preset (dspi_commit, or Save in the app) would overwrite it. \
+         Tell the user.",
+        slot_word(now)
+    )
 }
 
 /// The result's words about the snapshot filed before.
@@ -327,7 +527,10 @@ static PRESET_LOAD: Tool = Tool {
     description: "Load preset `slot`: every setting is replaced and the undo history ends. It \
                   may be held for the user's confirmation. A snapshot is filed first \
                   (before_snapshot_id) as the way back. A preset that would lower a tweeter's \
-                  high-pass is put back and refused.",
+                  high-pass is put back and refused. Refused on a device that saves the master \
+                  volume with each preset. With an installer's limits profile, what the profile \
+                  held of the preset is in limits_held: tell the user, the stored preset is \
+                  unchanged.",
     class: ToolClass::Write,
     device: true,
     input_schema: || slot_schema(&["slot"]),
@@ -338,6 +541,27 @@ static PRESET_LOAD: Tool = Tool {
         let ((), snap) = wholesale_with(call, &what, &[slot], true, |c| c.load_preset(slot))?;
         let mut r = json!({"ok": true, "device": call.device_text(), "slot": slot});
         merge(&mut r, before_json(&snap));
+        // -- WP FUNC2c -- (FSTORY S7) the profile's hold after the load: an
+        // agent said "Lunch is loaded" while the profile had moved its tweeters
+        let core = call.core()?;
+        let n_in = core.get_state().num_input_channels;
+        let held: Vec<String> = core
+            .limits_status()
+            .last_held
+            .iter()
+            .map(|row| held_words(row, n_in))
+            .collect();
+        if !held.is_empty() {
+            merge(
+                &mut r,
+                json!({
+                    "limits_held": held,
+                    "limits_note": "The installer's limits profile held part of this preset \
+                                    (limits_held); the preset stored on the device is unchanged. \
+                                    Tell the user.",
+                }),
+            );
+        }
         Ok(r)
     },
 };
@@ -346,7 +570,7 @@ static REVERT_TO_SAVED: Tool = Tool {
     name: "dspi_revert_to_saved",
     title: "Revert to the saved preset",
     description: "Load the active preset slot again, dropping every change since it was loaded \
-                  or saved; the undo history ends. Held as dspi_preset_load is.",
+                  or saved; the undo history ends. Held and refused as dspi_preset_load is.",
     class: ToolClass::Write,
     device: true,
     input_schema: empty_schema,
@@ -375,21 +599,176 @@ static PRESET_SAVE: Tool = Tool {
     name: "dspi_preset_save",
     title: "Save to a preset",
     description: "Save the device's settings to preset `slot` (written to the device's flash; \
-                  the slot becomes the active one). It may be held for the user's confirmation.",
+                  the slot becomes the active one). With `name`, the preset is named in the \
+                  same step; with `devices` (device ids, this one among them), each of those \
+                  devices saves its own settings to that slot under that name. One question \
+                  covers it all: name the preset here, not with dspi_preset_rename after, and \
+                  save several devices in one call. It may be held for the user's confirmation.",
     class: ToolClass::Write,
     device: true,
-    input_schema: || slot_schema(&["slot"]),
+    input_schema: || {
+        // -- WP INTI -- (owner 2026-11-23, FUNC2b/c answer 3) one question per save
+        let mut m = Map::new();
+        m.insert(
+            "slot".into(),
+            json!({"type": "integer", "minimum": 0, "maximum": MAX_PRESETS - 1,
+                   "description": "A preset slot, from 0 (dspi_list_presets)"}),
+        );
+        m.insert(
+            "name".into(),
+            json!({"type": "string", "description": "The preset's name (cut to 31 bytes)"}),
+        );
+        m.insert(
+            "devices".into(),
+            json!({"type": "array", "items": {"type": "string"}, "maxItems": 16,
+                   "description": "Every device to save on (ids from dspi_list_devices); \
+                                   default: this one"}),
+        );
+        schema(m, &["slot"])
+    },
     output_schema: object_schema,
     handler: |call, args| {
         let slot = slot_arg(args, "slot")?;
-        let what = format!("Save the settings to preset {} (flash)", slot_word(slot));
-        let token = flash(call, ConfirmOp::SavePreset, &what, &[slot])?;
-        call.core()?
-            .save_preset_confirmed(slot, Some(token))
-            .map_err(|e| policy::core_error(&call.judging, e))?;
-        Ok(json!({"ok": true, "device": call.device_text(), "slot": slot}))
+        let name = args
+            .get("name")
+            .and_then(Value::as_str)
+            .map(untrusted::name)
+            .filter(|n| !n.trim().is_empty());
+        let targets = save_targets(call, args)?;
+        let named = name
+            .as_ref()
+            .map(|n| format!(" as \u{201c}{n}\u{201d}"))
+            .unwrap_or_default();
+        let on = if targets.len() > 1 {
+            format!(
+                " on {} devices ({})",
+                targets.len(),
+                targets
+                    .iter()
+                    .map(|(_, label, _)| label.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        } else {
+            String::new()
+        };
+        let what = format!(
+            "Save the settings to preset {}{named}{on} (flash)",
+            slot_word(slot)
+        );
+        let ix = [slot, u8::try_from(targets.len()).unwrap_or(u8::MAX)];
+        let token = flash(call, ConfirmOp::SavePreset, &what, &ix)?;
+        let mut rows = Vec::with_capacity(targets.len());
+        let mut failed = Vec::new();
+        for (id, label, core) in &targets {
+            let done = match core {
+                // This call's device: under the call's own judgement
+                None => save_named(call.core()?, slot, name.as_deref(), Some(token.clone())),
+                // Another unit: as the agent, the question above covers it
+                Some(core) => {
+                    let _scope = ActorScope::enter(core, call.actor, None);
+                    let t = core.confirm_token(ConfirmOp::SavePreset);
+                    save_named(core, slot, name.as_deref(), Some(t))
+                }
+            };
+            match done {
+                Ok(()) => rows.push(json!({"device": id, "ok": true})),
+                Err(e) => {
+                    let e = policy::core_error(&call.judging, e);
+                    failed.push(format!("{label}: {}", e.0));
+                    rows.push(json!({"device": id, "ok": false, "error": e.0}));
+                }
+            }
+        }
+        if targets.len() == 1 {
+            if let Some(why) = failed.pop() {
+                return Err(ToolError::new(
+                    why.split_once(": ")
+                        .map_or(why.clone(), |(_, w)| w.to_owned()),
+                ));
+            }
+            let mut r = json!({"ok": true, "device": call.device_text(), "slot": slot});
+            if let Some(n) = &name {
+                merge(&mut r, json!({"preset_name": n}));
+            }
+            return Ok(r);
+        }
+        if rows.iter().all(|r| r["ok"] == json!(false)) {
+            return Err(ToolError::new(format!(
+                "nothing was saved: {}",
+                failed.join("; ")
+            )));
+        }
+        Ok(
+            json!({"ok": failed.is_empty(), "device": call.device_text(), "slot": slot,
+                  "preset_name": name, "devices": rows}),
+        )
     },
 };
+
+// -- WP INTI --
+/// Save to `slot` on `core` with `token`, then name it.
+fn save_named(
+    core: &DspiCore,
+    slot: u8,
+    name: Option<&str>,
+    token: Option<String>,
+) -> dspi_core::Result<()> {
+    core.save_preset_confirmed(slot, token)?;
+    if let Some(n) = name {
+        core.set_preset_name(slot, n.to_owned())?;
+    }
+    Ok(())
+}
+
+/// A device a save goes to: its id, its label, its core (`None`: this call's).
+type SaveTarget = (String, String, Option<std::sync::Arc<DspiCore>>);
+
+// -- WP INTI --
+/// The devices `dspi_preset_save` saves on: (id, label, the core when it is
+/// not this call's), this call's device first. Refused, before anything is
+/// asked, for an id that is no open device.
+fn save_targets(call: &Call<'_>, args: &Map<String, Value>) -> Result<Vec<SaveTarget>, ToolError> {
+    let here = call.device_text();
+    let label_of = |id: &str| {
+        call.devices
+            .iter()
+            .find(|d| d.open.id.as_str() == id)
+            .map(|d| untrusted::name(&d.open.label))
+            .unwrap_or_else(|| id.to_owned())
+    };
+    let mut out = vec![(here.clone(), label_of(&here), None)];
+    let Some(list) = args.get("devices") else {
+        return Ok(out);
+    };
+    let list = list
+        .as_array()
+        .ok_or_else(|| ToolError::new("`devices` must be a list of device ids"))?;
+    let set = call.set;
+    for v in list {
+        let id = v
+            .as_str()
+            .ok_or_else(|| ToolError::new("`devices` must be a list of device ids"))?;
+        if id == here || out.iter().any(|(i, _, _)| i == id) {
+            continue;
+        }
+        let core = set
+            .and_then(|set| {
+                set.list()
+                    .into_iter()
+                    .find(|d| d.id.as_str() == id)
+                    .and_then(|d| set.core(&d.id))
+            })
+            .ok_or_else(|| {
+                ToolError::new(format!(
+                    "{} is no open device (dspi_list_devices); nothing was saved",
+                    untrusted::clean(id, 64)
+                ))
+            })?;
+        out.push((id.to_owned(), label_of(id), Some(core)));
+    }
+    Ok(out)
+}
 
 static PRESET_COPY: Tool = Tool {
     name: "dspi_preset_copy",
@@ -874,6 +1253,52 @@ static AB_KEEP: Tool = Tool {
         Ok(r)
     },
 };
+
+// -- WP FUNC2c --
+/// A row of the limits hold (`eq.freq[9,20] 600 → 1000 Hz`, `out.gain[4] …`,
+/// `output 2: …`) in the app's words: `Out 2 crossover 1 frequency: 600 →
+/// 1000 Hz`. A row of another shape is kept as it is.
+pub(crate) fn held_words(row: &str, n_in: u8) -> String {
+    if let Some(rest) = row.strip_prefix("output ") {
+        return format!("Out {rest}");
+    }
+    let Some((path, value)) = row.split_once(' ') else {
+        return row.to_owned();
+    };
+    let Some((name, ix)) = path.strip_suffix(']').and_then(|p| p.split_once('[')) else {
+        return row.to_owned();
+    };
+    let ix: Vec<u16> = ix
+        .split(',')
+        .filter_map(|x| x.trim().parse().ok())
+        .collect();
+    fn field(f: &str) -> &str {
+        match f {
+            "freq" => "frequency",
+            "threshold" => "limiter threshold",
+            "on" => "limiter",
+            other => other,
+        }
+    }
+    let words = match (name.split_once('.'), ix.as_slice()) {
+        (Some(("eq", f)), [ch, b]) => {
+            let place = if *b >= 20 {
+                format!("crossover {}", b.saturating_sub(19))
+            } else {
+                format!("band {}", b.saturating_add(1))
+            };
+            if *ch >= u16::from(n_in) {
+                let out = ch.saturating_sub(u16::from(n_in)).saturating_add(1);
+                format!("Out {out} {place} {}", field(f))
+            } else {
+                format!("In {} {place} {}", ch.saturating_add(1), field(f))
+            }
+        }
+        (Some(("out" | "limit", f)), [o]) => format!("Out {} {}", o.saturating_add(1), field(f)),
+        _ => return row.to_owned(),
+    };
+    format!("{words}: {value}")
+}
 
 /// Put `extra`'s fields into the object `r`.
 pub(crate) fn merge(r: &mut Value, extra: Value) {

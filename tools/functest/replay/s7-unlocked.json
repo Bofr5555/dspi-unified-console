@@ -1,0 +1,70 @@
+{
+ "story": "s7-unlocked.toml",
+ "confirm": "ask_risky",
+ "steps": {
+  "lower-sub": [
+   [
+    "dspi_get_limits",
+    {
+     "device": "demo:1"
+    },
+    "ok",
+    "the profile; no secret",
+    "4711|pbkdf|salt|recovery.?code"
+   ],
+   [
+    "dspi_set_gain",
+    {
+     "device": "demo:1",
+     "output": 4,
+     "gain_db": -3
+    },
+    "ok",
+    "a cut passes, quietly"
+   ]
+  ],
+  "mute": [
+   [
+    "dspi_set_mute",
+    {
+     "device": "demo:1",
+     "output": 4,
+     "muted": true
+    },
+    "ok"
+   ]
+  ],
+  "pin": [
+   [
+    "dspi_get_overview",
+    {
+     "device": "demo:1"
+    },
+    "ok",
+    "no secret",
+    "4711|pbkdf|salt|recovery.?code"
+   ],
+   [
+    "dspi_set_gain",
+    {
+     "device": "demo:1",
+     "output": 4,
+     "gain_db": 3
+    },
+    "error",
+    "the profile's maxGainDb 0 on the sub"
+   ]
+  ],
+  "preset": [
+   [
+    "dspi_preset_load",
+    {
+     "device": "demo:1",
+     "slot": 1
+    },
+    "ok",
+    "asked, allowed"
+   ]
+  ]
+ }
+}

@@ -277,6 +277,7 @@ fn read_endpoints() -> Result<HostAudio, &'static str> {
             });
         }
         Ok(HostAudio {
+            sim: false, // -- WP ODEC --
             os: HostOs::Windows,
             audio_system: SYSTEM.into(),
             unknown: None,

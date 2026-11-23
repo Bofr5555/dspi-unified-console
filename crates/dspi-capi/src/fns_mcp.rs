@@ -129,6 +129,9 @@ pub struct FfiMcp {
     run: AtomicU64,
     /// The earlier runs' activity, oldest first.
     past: Mutex<Vec<Value>>,
+    // -- WP ODEC --
+    /// The agents the user stopped, to be told in the next run.
+    stopped: Mutex<Vec<String>>,
     // -- WP FEAT2 --
     /// The devices the app remembers the user opened.
     known: Mutex<Value>,
@@ -213,6 +216,9 @@ impl FfiMcp {
         let Some(s) = lock(&self.running).take() else {
             return false;
         };
+        // -- WP ODEC -- a stop is the user's (Stop, the switch): the agents
+        // that worked are told in the next run
+        *lock(&self.stopped) = s.with_server(|srv| srv.stopped_labels());
         s.stop();
         let rows = self.rows(&s, PAST_CAP);
         let mut past = lock(&self.past);
@@ -274,6 +280,7 @@ impl FfiMcp {
         let mut server = Server::new(Arc::clone(&self.set), server_config);
         server.set_known_devices(&lock(&self.known));
         server.set_active_device(lock(&self.active).clone());
+        server.note_stopped(std::mem::take(&mut *lock(&self.stopped))); // -- WP ODEC --
         let listener = Arc::clone(&self.listener);
         let on_event: Listener = Arc::new(move |e: &Event| {
             let guard = listener.read().unwrap_or_else(PoisonError::into_inner);
@@ -326,6 +333,7 @@ pub extern "C" fn dspi_mcp_new(set: *const FfiCoreSet) -> *mut FfiMcp {
             autoeq: Mutex::new(None),
             run: AtomicU64::new(0),
             past: Mutex::new(Vec::new()),
+            stopped: Mutex::new(Vec::new()), // -- WP ODEC --
             known: Mutex::new(Value::Null),
         }))
     })
@@ -380,6 +388,8 @@ pub extern "C" fn dspi_mcp_start(
 /// Stop listening: the agents' next requests fail, a pairing request waiting
 /// ends, waiting confirmations end with nothing changed, and the agents'
 /// timed previews are put back. The activity is kept. True if it was running.
+/// -- WP ODEC -- A stop is the user's: each agent that worked is told so with
+/// its first result after the next `dspi_mcp_start`.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_mcp_stop(mcp: *mut FfiMcp) -> bool {
     with_mcp(mcp, false, FfiMcp::stop)
@@ -606,6 +616,17 @@ pub extern "C" fn dspi_mcp_confirm_answer(mcp: *mut FfiMcp, id: u64, allow: bool
     })
 }
 
+// -- WP ODEC --
+/// The user revokes grant `id` (`dspi_mcp_work`'s `grants`): the agent is asked
+/// again for its next test signal on that device, and told so. False when it no
+/// longer lasts. Waits for an agent's call in progress.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_mcp_grant_revoke(mcp: *mut FfiMcp, id: u64) -> bool {
+    with_mcp(mcp, false, |m| {
+        m.server().is_some_and(|s| s.revoke_grant(id))
+    })
+}
+
 /// The device the app shows (a set id), which tools use when an agent names
 /// none; null for none. False for an id that is no id.
 #[unsafe(no_mangle)]
@@ -755,13 +776,19 @@ mod tests_wp_mcp5;
 /// input?, channel?, band?, slot?}], last (the newest call, done or not, or
 /// null), jobs: [{request_id, client_name, device, kind, loop, what, state,
 /// ...}] (the measurement requests that are open or run), guards: [{device,
-/// client_name}] (the agents' timed previews)}`. The listener gets `work` when
-/// it changes. Never waits for an agent's call: the UI's thread may call it.
+/// client_name}] (the agents' timed previews), -- WP ODEC -- grants: [{id,
+/// kind: "test_signals", client, client_name, device, since_ms, until_ms,
+/// left_s}] (what the user allowed for ten minutes; `dspi_mcp_grant_revoke`)}`.
+/// The listener gets `work` when it changes. Never waits for an agent's call:
+/// the UI's thread may call it.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_mcp_work(mcp: *mut FfiMcp, buf: *mut c_char, len: u32) -> u32 {
     with_mcp(mcp, 0, |m| {
         let mut v = m.server().map_or_else(
-            || json!({"running": false, "calls": [], "last": null, "jobs": [], "guards": []}),
+            || {
+                json!({"running": false, "calls": [], "last": null, "jobs": [], "guards": [],
+                      "grants": []})
+            },
             |s| {
                 let mut w = s.work();
                 if let Some(o) = w.as_object_mut() {

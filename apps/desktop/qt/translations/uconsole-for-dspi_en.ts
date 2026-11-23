@@ -628,6 +628,11 @@ What an AI agent does, and to what: &quot;Changing the gain: OUT3 Centre&quot;</
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Allow also lets %1 play test signals on %2 for the next %3 minutes, for this task. Louder changes and preset saves are still asked one at a time.</source>
+        <extracomment>The question for an AI agent&apos;s test signals: %1 is the agent&apos;s name, %2 a device&apos;s name, %3 minutes</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>The agent&apos;s change was not made: it was no longer waiting for your answer.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -854,6 +859,14 @@ What an AI agent does, and to what: &quot;Changing the gain: OUT3 Centre&quot;</
         <source>AI agents are paused. Nothing is changed until Resume.</source>
         <translation type="unfinished"></translation>
     </message>
+    <message numerus="yes">
+        <source>test signals allowed, %n min left</source>
+        <extracomment>Said on the hub beside what an AI agent does: %n minutes left of the user&apos;s allowing its test signals</extracomment>
+        <translation type="unfinished">
+            <numerusform></numerusform>
+            <numerusform></numerusform>
+        </translation>
+    </message>
     <message>
         <source>%1&apos;s change did not go through: %2</source>
         <extracomment>An AI agent&apos;s change that failed but changed something: %1 is its name, %2 the app&apos;s words for what happened</extracomment>
@@ -925,6 +938,22 @@ What an AI agent does, and to what: &quot;Changing the gain: OUT3 Centre&quot;</
     </message>
 </context>
 <context>
+    <name>AiGrantRows</name>
+    <message>
+        <source>Test signals allowed: %1 on %2, %3 left</source>
+        <extracomment>An AI agent may play test signals without asking: %1 its name, %2 a device&apos;s name, %3 the time left (&quot;9:41&quot;)</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Revoke</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Ask again before this agent&apos;s next test signal</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>AiHost</name>
     <message>
         <source>Time left: %1</source>
@@ -967,6 +996,10 @@ What an AI agent does, and to what: &quot;Changing the gain: OUT3 Centre&quot;</
     </message>
     <message>
         <source>Nothing has played yet. Sound cannot be taken back once it plays; Stop Measuring in the agent strip ends it.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Nothing has been changed yet. This replaces the settings as a whole and ends the undo history; the settings as they are now are kept as a snapshot first, to go back to.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1084,6 +1117,19 @@ What an AI agent does, and to what: &quot;Changing the gain: OUT3 Centre&quot;</
 </context>
 <context>
     <name>AiWorkBanner</name>
+    <message>
+        <source>Test signals allowed, %1 left</source>
+        <extracomment>The strip: an AI agent may play test signals without asking for %1 (&quot;9:41&quot;) more</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Revoke</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Ask again before the agent&apos;s next test signal</source>
+        <translation type="unfinished"></translation>
+    </message>
     <message>
         <source>Show</source>
         <translation type="unfinished"></translation>
@@ -6401,6 +6447,14 @@ Groups are stored on the device alongside the controls and share their Save and 
     <message>
         <source>Cannot be read: %1</source>
         <extracomment>%1 why the computer&apos;s audio could not be read (in English, from the core)</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Test</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Simulated (test)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>

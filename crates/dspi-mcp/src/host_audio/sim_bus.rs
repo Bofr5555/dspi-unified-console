@@ -11,9 +11,10 @@ use std::sync::Arc;
 
 use super::{HostAudio, HostAudioSource, HostOs, HostOutput, HostStream};
 
-/// What the reading's `audio_system` ends with: the screens and the agent
-/// see that it is simulated, as the simulated microphone's label says.
-pub const SIM_MARK: &str = " (simulated)";
+// -- WP ODEC -- (owner 2026-11-23, answer 13) the agent is not told that the
+// computer's audio is simulated: the reading carries `HostAudio::sim`, which
+// no tool result shows; the testers see the mark in the window title and the
+// harness's logs.
 
 /// The bus while it has a file, else `real`.
 pub struct SimBus {
@@ -34,7 +35,7 @@ pub fn loaded() -> bool {
 
 /// `audio` came from the bus.
 pub fn is_sim(audio: &HostAudio) -> bool {
-    audio.audio_system.ends_with(SIM_MARK)
+    audio.sim
 }
 
 /// The bus's view in the reader's terms.
@@ -46,8 +47,9 @@ pub fn from_sim(v: dspi_core::SimHostAudio) -> HostAudio {
         _ => HostOs::Other,
     };
     HostAudio {
+        sim: true, // -- WP ODEC --
         os,
-        audio_system: format!("{}{SIM_MARK}", v.audio_system),
+        audio_system: v.audio_system,
         unknown: None,
         outputs: v
             .outputs
@@ -146,7 +148,7 @@ mod tests_wp_fbus {
     fn wp_fbus_the_bus_shows_a_demo_unit_as_this_computers_output() {
         let audio = sim();
         assert!(is_sim(&audio));
-        assert_eq!(audio.audio_system, "PipeWire 1.6 (simulated)");
+        assert_eq!(audio.audio_system, "PipeWire 1.6"); // -- WP ODEC -- no mark
         let rows = [row(1, "FBUS-FRONTS"), row(2, "FBUS-OTHER")];
         let v = crate::tools::host::report(&audio, &rows);
         let d = &v["devices"][0];
@@ -160,7 +162,7 @@ mod tests_wp_fbus {
         assert_eq!(v["default_output"]["is_dspi"], true);
         // A real reading still says no for a demo unit
         let mut real = sim();
-        real.audio_system = "PipeWire 1.6".into();
+        real.sim = false; // -- WP ODEC -- the flag, not a text mark
         let v = crate::tools::host::report(&real, &rows);
         assert_eq!(v["devices"][0]["output_device"], "no");
     }

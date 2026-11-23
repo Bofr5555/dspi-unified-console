@@ -3,13 +3,16 @@
 
     replay.py RUN_DIR > replay/NAME.json      a recorded agent run as a replay script
 
-A script is {"steps": {label: [[tool, args, "ok" | "error", note?, not?], ...]}}: `not` is a pattern
-the answer must not have; ["wait", {"device": d}]
+A script is {"steps": {label: [[tool, args, "ok" | "error", note?, not?, must?], ...]}}: `not` is a pattern
+the answer must not have ("" for none), `must` one it must have (-- WP FUNC2b --); ["wait", {"device": d}]
 waits until that device's measuring ends, in place of an agent's polling. A measurement's id in the
 arguments is "$M1", "$M2", ...: the ones this run filed, in the order they were filed.
+-- WP FUNC2b -- "$SNAP:<name>" is the id of the call's device's newest snapshot of that name.
 -- WP FUNC2a -- ["sleep", {"s": n}] waits n seconds (a user's drag lets go meanwhile); "$USER:<device>"
 is the id of that device's newest change the user made (dspi_get_history, `mine` false, no agent).
 A script may name its `story` (a file in stories/) and its `confirm` setting.
+-- WP FUNC2c -- [tool, args, want, note, not, must]: `must` is a pattern the answer must have
+(`not` may be "" then).
 """
 import json
 import pathlib
@@ -94,6 +97,15 @@ class Player:
                 return e["id"]
         raise RuntimeError(f"{device}: no change of the user's in the history: {str(text)[:300]}")
 
+    # -- WP FUNC2b --
+    def snapshot(self, device, name):
+        """The id of `device`'s newest snapshot called `name`."""
+        kind, text = self.agent.call("dspi_list_snapshots", device=device)
+        found = [x for x in json.loads(text).get("snapshots", []) if x.get("snapshot_name") == name] if kind == "ok" else []
+        if not found:
+            raise RuntimeError(f"{device}: no snapshot {name!r}: {str(text)[:300]}")
+        return max(found, key=lambda x: x.get("saved_ms", 0))["id"]
+
     def status(self, device, wait_s=0):
         args = {"device": device}
         if wait_s:
@@ -130,16 +142,26 @@ class Player:
             if tool == "sleep":
                 time.sleep(float(args["s"]))
                 continue
+            if tool == "mcp_read_all":  # -- WP ODEC -- tools, resources and prompts, logged
+                n = self.agent.read_all()
+                out.append({"tool": tool, "args": args, "want": "ok", "got": "ok" if n else "error",
+                            "wrong": not n, "note": "", "answer": f"{n} items"})
+                continue
             text = json.dumps(args)
             for dev in re.findall(r'"\$USER:([^"]+)"', text):
                 text = text.replace(f'"$USER:{dev}"', str(self.user_entry(dev)))
+            for name in re.findall(r'"\$SNAP:([^"]+)"', text):  # -- WP FUNC2b --
+                text = text.replace(f'"$SNAP:{name}"', json.dumps(self.snapshot(args["device"], name)))
             for n in range(len(self.ids), 0, -1):
                 text = text.replace(f'"$M{n}"', json.dumps(self.ids[n - 1]))
             kind, answer = self.agent.call(tool, **json.loads(text))
             got = "ok" if kind == "ok" else "error"
-            banned = len(c) > 4 and re.search(c[4], str(answer))
+            banned = len(c) > 4 and c[4] and re.search(c[4], f"{answer} {self.agent.last_news}")
             if banned:
                 got = f"{got}, with {banned.group(0)[:60]!r}"
+            # -- WP ODEC -- (FUNC2b, FUNC2c the same on the answer alone) a sixth element: a pattern the answer (with the user's news) must have
+            if len(c) > 5 and not re.search(c[5], str(answer) + " " + str(self.agent.last_news)):
+                got = f"{got}, without {c[5][:60]!r}"
             out.append({"tool": tool, "args": args, "want": c[2], "got": got, "wrong": got != c[2],
                         "note": c[3] if len(c) > 3 else "", "answer": str(answer)[:400]})
         return out

@@ -5,6 +5,16 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
 ## Unreleased
 
 ### Desktop (Qt)
+- AI agents, the owner's answers of 2026-11-23 (WP ODEC): a question about test signals is asked once per device for an
+  agent's task: **Allow** also lets that agent measure there for 10 minutes (the AI page shows it with the time left and
+  **Revoke**); louder changes and saves are still asked one at a time. An agent keeps a tune only after a verify that
+  passed; otherwise only you can. An agent may no longer load a preset (or revert to the saved one) on a device that
+  saves the master volume with each preset. A tweeter you left playing without its high-pass may be turned down by an
+  agent but never made louder (its gain, the volumes, a route, an effect), under every setting. After **Stop** and agents
+  on again, an agent is told you stopped it. The screen follows an agent's work: Modern shows the device tab and page it
+  changes (Classic the device), and Measure for its measurements, never while you drag, type or have a dialog open, and
+  at most every few seconds. In the function test's build, the window title says it is simulated; nothing an agent reads
+  does.
 - The Installation tab sets up the audio link's sources (a sender's channels), what each zone plays (the units it routes
   are named), a unit's own slots (locked while its zone's source owns them), scenes with their actions (Switch zone source
   among them) and programme sources (which computer or box feeds which input). Before Save a notice names the units whose
@@ -173,6 +183,24 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
   names for a screen reader; an agent's change keeps the keyboard on its Undo. (WP LAY7)
 - Several units: a unit can be chosen again right after it was unchosen. Measure chooses its outputs again when a DSPi
   that had none (an audio link sender) has outputs again. Classic names which of several open demos it shows. (WP LAY7)
+- AI agents: a preset load refused for a tweeter's protection leaves the device on the preset it was on, so a Save cannot
+  overwrite the refused one; "undo" takes back the agent's newest whole call and says what it could not undo. The preset
+  box follows the active preset after a save or a rename. (WP FUNC2b)
+- AI agents under an installer's limits profile: a preset load says what the profile held of the preset; the installer
+  lock's refusal says what still passes (mute, volume, preset load) and where to unlock, never the PIN. The question
+  before an agent's preset load no longer promises an undo. A sub is never a tweeter's measurement reference while a
+  midrange is there. (WP FUNC2c)
+- Loading a preset yourself is guarded as an agent's load is: with a confirmed tweeter or midrange (and the master volume
+  kept apart from presets) the device is silent while the preset loads, a tweeter or midrange the preset leaves without
+  its high-pass is muted, and the volume comes back; a notice says what was muted, or that the volume could not come back.
+  (WP INTI; the web console too)
+- AI agents: a permission to play test signals belongs to the agent's pairing (it survives a reconnect within the 10
+  minutes) and covers that one device: a measurement across several units of a hub is asked each time. A hub scene that
+  loads presets is judged as an agent's preset load (refused on a unit this app does not have open or that saves the
+  master volume with each preset; a unit whose tweeter would lose its protection is put back). A stored preset that
+  raises the level of a tweeter you left without its high-pass is refused, as is an EQ boost on it. An agent names a
+  preset in the save and saves several devices at once: one question. The screen does not follow an agent while a click
+  or a key is under way. (WP INTI)
 
 ### Android
 - DSPi Link is reachable from the main page (owner report on 0.14.0: only through the settings
@@ -216,6 +244,9 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
   notice of replaced hand-made slots and Align after Save, as the desktop's; the System view sets a room's or zone's
   volume. A strip on every screen and an AI mark on the device's tab show when an AI agent works on the hub's devices
   through another console. (WP FEATUI)
+- The screen follows an AI agent of another console: the device it works on and the page of what it changes, never while
+  you drag, type or have a dialog open, at most every few seconds; the strip shows its permission to play test signals
+  with the time left. (WP ODEC)
 - The Modern layout. The sections (Overview, Equaliser, Routing, Effects, Measure, Analyse, Library, System, Devices,
   Settings) are in a rail on the left, and each section's pages are tabs beside its title. A row of device tabs along
   the top holds the open devices, with how each is reached, its state and an unsaved mark; + opens another, and
