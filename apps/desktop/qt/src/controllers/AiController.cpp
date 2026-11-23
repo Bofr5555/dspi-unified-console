@@ -1286,14 +1286,16 @@ void AiController::setAgentSplCap(int db) {
     emit settingsChanged();
 }
 
-// The devices open now go first in the list kept across restarts: a set id
-// with a serial (USB, a hub's, a Link one; never the demo or a file)
+// The devices open now go first in the list kept across restarts: those on
+// USB. A hub's unit is known to agents while its hub is open (the server lists
+// it); remembered without its hub it could only be refused, since the app does
+// not dial a hub for an agent.
 void AiController::remember() {
     QJsonArray list;
     QStringList ids;
     for (const DeviceSession *s : m_ctx.registry->sessions()) {
         const QString id = s->id();
-        if (!(id.startsWith(QLatin1String("usb:")) || id.startsWith(QLatin1String("hub:")) || id.startsWith(QLatin1String("link:")))) continue;
+        if (!id.startsWith(QLatin1String("usb:"))) continue;
         if (ids.contains(id)) continue;
         ids << id;
         list.append(QJsonObject{ { QStringLiteral("device"), id }, { QStringLiteral("name"), s->title() } });
@@ -1313,8 +1315,10 @@ void AiController::remember() {
 }
 
 void AiController::loadRemembered() {
-    m_remembered = QJsonDocument::fromJson(QSettings().value(QLatin1String(kRememberedKey)).toByteArray()).array();
-    while (m_remembered.size() > kRememberedMax) m_remembered.removeLast();
+    m_remembered = QJsonArray();
+    for (const QJsonValue &v : QJsonDocument::fromJson(QSettings().value(QLatin1String(kRememberedKey)).toByteArray()).array())
+        if (v.toObject().value(QLatin1String("device")).toString().startsWith(QLatin1String("usb:")) && m_remembered.size() < kRememberedMax)
+            m_remembered.append(v);
     setKnownDevices(m_remembered);
     emit rememberedChanged();
     remember();

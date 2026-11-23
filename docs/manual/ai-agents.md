@@ -331,7 +331,7 @@ microphone calibrated in dB SPL: the console's own calibration is used when the 
 level ceiling (-12 dBFS at a speaker, -30 dBFS on headphones) holds.
 
 **Opening devices.** An agent may ask to open a device the console knows: one on USB, one listed by an open hub, or one
-you opened before. The console remembers the devices you open across restarts (Settings › AI Agents › **Devices agents
+you opened before on USB. The console remembers the USB devices you open across restarts (Settings › AI Agents › **Devices agents
 may open**, with **Forget Devices**). A device an agent opens or closes is a notice.
 
 **A tweeter's low end.** These rules hold under every question setting; nothing lifts them, and they hold for your own

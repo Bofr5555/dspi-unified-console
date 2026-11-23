@@ -13,7 +13,7 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
 - Settings › This Computer shows whether each open DSPi is an output of this computer, the default one or not, its
   format, what plays to it and whether the system volume moves it, with how to make it the default. (WP FEATUI)
 - Settings › AI Agents: the loudest an agent's measurement may play (85 dB SPL by default, a hard cap an agent cannot
-  raise), and the devices agents may open, remembered across restarts. A device an agent opens or closes is a notice; the
+  raise), and the USB devices agents may open, remembered across restarts. A device an agent opens or closes is a notice; the
   question before a test signal no longer promises an undo. An agent's work on a hub's device is said on the hub, so other
   consoles show it. (WP FEATUI)
 - The screen always shows what an AI agent does: a strip under the top bar (both layouts) names the agent, what it does now

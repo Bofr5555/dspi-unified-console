@@ -282,7 +282,15 @@ void installationSection(SmokeDriver &d) {
     window->resize(window->minimumWidth(), 900);
     d.spin(300);
     QQuickItem *body = in(QStringLiteral("Installation.body"));
-    d.check("featui: at the least width nothing is wider than the panel", body && body->property("contentWidth").toReal() <= body->width());
+    // Each new card's right end and the new rows' Add are inside the panel
+    const auto inside = [&](const QString &name) {
+        QQuickItem *it = in(name);
+        return it && body && it->mapToItem(body, QPointF(0, 0)).x() + it->width() <= body->width() + 0.5;
+    };
+    d.check("featui: at the least width nothing is cut off",
+            body && inside(QStringLiteral("Installation.remove.Booth")) && inside(QStringLiteral("Installation.remove.DJ"))
+                && inside(QStringLiteral("Installation.remove.") + programme) && inside(QStringLiteral("Installation.add.programme"))
+                && inside(QStringLiteral("Installation.add.source")) && inside(QStringLiteral("Installation.addAction.DJ")));
     d.check("featui: screenshot narrow", d.grab(window, QStringLiteral("featui/narrow.png")));
 
     // ---- Save, then Align ----------------------------------------------------------

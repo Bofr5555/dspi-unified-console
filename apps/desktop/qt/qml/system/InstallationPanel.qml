@@ -72,6 +72,51 @@ Panel {
             Accessible.name: text
         }
     }
+    // -- WP FEATUI -- AddRow for a new element with several fields: wraps at a narrow width
+    component AddFlow: Flow {
+        id: flowRow
+        property string kind
+        property string placeholder
+        property string issue: InstallationController.issueOf("new:" + kind, "", InstallationController.generation)
+        property var add: name => false
+        default property alias more: extraFlow.data
+        visible: panel.editable
+        Layout.fillWidth: true
+        spacing: Theme.spacingSmall
+        function commit() { if (add(flowField.text)) flowField.text = "" }
+        BorderedField {
+            id: flowField
+            objectName: "Installation.new." + flowRow.kind
+            implicitWidth: 200
+            maximumLength: 64
+            label: flowRow.placeholder
+            placeholderText: flowRow.placeholder
+            Keys.onReturnPressed: flowRow.commit()
+            Keys.onEnterPressed: flowRow.commit()
+        }
+        Flow {
+            id: extraFlow
+            width: Math.min(implicitWidth, flowRow.width)
+            spacing: Theme.spacingSmall
+        }
+        AppButton {
+            objectName: "Installation.add." + flowRow.kind
+            text: qsTr("Add")
+            Accessible.name: flowRow.placeholder + ": " + text
+            onClicked: flowRow.commit()
+        }
+        Text {
+            objectName: "Installation.newIssue." + flowRow.kind
+            width: Math.min(implicitWidth, flowRow.width)
+            text: flowRow.issue
+            textFormat: Text.PlainText
+            font: Theme.fontSmall
+            color: Theme.dangerText
+            wrapMode: Text.Wrap
+            Accessible.role: Accessible.AlertMessage
+            Accessible.name: text
+        }
+    }
     component Note: Text {
         Layout.fillWidth: true
         textFormat: Text.PlainText
@@ -207,7 +252,7 @@ Panel {
                     editable: panel.editable
                 }
             }
-            AddRow {
+            AddFlow {
                 kind: "source"
                 placeholder: qsTr("New source")
                 add: name => {
@@ -281,7 +326,7 @@ Panel {
                         }
                         Text {
                             objectName: "Installation.zoneUnits." + modelData
-                            Layout.maximumWidth: 420
+                            Layout.maximumWidth: 300
                             text: zoneField.routed.length === 0 ? qsTr("No audio link unit is in its rooms.")
                                   //: %1 a list of units
                                   : element.source ? qsTr("Routes %1 to its channels.").arg(zoneField.routed.join(", "))
@@ -364,7 +409,7 @@ Panel {
                     editable: panel.editable
                 }
             }
-            AddRow {
+            AddFlow {
                 kind: "programme"
                 placeholder: qsTr("New programme source")
                 add: name => {
@@ -384,7 +429,7 @@ Panel {
                     id: newProgrammeFeeds
                     objectName: "Installation.newProgrammeFeeds"
                     label: qsTr("What the new programme source feeds")
-                    choices: InstallationController.programmeFeedChoices(newProgrammeKind.value, value, InstallationController.generation)
+                    choices: InstallationController.programmeFeedChoices(newProgrammeKind.value, "", InstallationController.generation)
                     onChosen: id => value = id
                     onChoicesChanged: if (choices.findIndex(c => c.id === value) < 0) value = ""
                 }

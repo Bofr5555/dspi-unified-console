@@ -102,7 +102,7 @@ class AiController : public QObject {
     Q_PROPERTY(QString otherComputerUrl READ otherComputerUrl CONSTANT)
     // -- WP FEATUI -- The app's SPL cap for agents' measurements, dB SPL (a hard
     // ceiling an agent may only stay under, also under "never ask"); and the
-    // devices remembered as opened here, across restarts ([{ device, name }])
+    // USB devices remembered as opened here, across restarts ([{ device, name }])
     Q_PROPERTY(int agentSplCap READ agentSplCap WRITE setAgentSplCap NOTIFY settingsChanged)
     Q_PROPERTY(QVariantList rememberedDevices READ rememberedDevices NOTIFY rememberedChanged)
 public:

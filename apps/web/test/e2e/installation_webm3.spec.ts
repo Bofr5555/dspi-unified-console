@@ -158,13 +158,13 @@ test.describe("WEBM3: the Installation tab's S/PDIF source, groups and zone sour
     await expect(rears.getByRole("checkbox", { name: "Height" })).toBeChecked();
 
     // A zone of the terrace playing Music; Inside already plays it.
-    await expect(inst.getByLabel("Zone Inside")).toContainText("Plays Music");
+    await expect(inst.getByLabel("Zone Inside").getByRole("combobox", { name: "Source of Inside" })).toHaveValue("music"); // -- WP FEATUI -- a picker now
     const newZone = inst.getByRole("form", { name: "New zone" });
     await newZone.getByRole("textbox", { name: "New zone's name" }).fill("Outside");
     await newZone.getByRole("checkbox", { name: "Terrace" }).check();
     await newZone.getByRole("combobox", { name: "New zone's source" }).selectOption({ label: "Music" });
     await newZone.getByRole("button", { name: "Add zone" }).click();
-    await expect(inst.getByLabel("Zone Outside")).toContainText("Plays Music");
+    await expect(inst.getByLabel("Zone Outside").getByRole("combobox", { name: "Source of Outside" })).toHaveValue("music"); // -- WP FEATUI --
 
     const unsaved = inst.getByRole("group", { name: "Unsaved installation" });
     await expect(unsaved.getByRole("button", { name: "Save" })).toBeEnabled();
@@ -183,7 +183,7 @@ test.describe("WEBM3: the Installation tab's S/PDIF source, groups and zone sour
     await expect(s2("7-8")).not.toBeChecked();
     await expect(again.getByLabel("Group Front of house").getByRole("checkbox", { name: "Main right" })).not.toBeChecked();
     await expect(again.getByLabel("Group Rears").getByRole("checkbox", { name: "Height" })).toBeChecked();
-    await expect(again.getByLabel("Zone Outside")).toContainText("Plays Music");
+    await expect(again.getByLabel("Zone Outside").getByRole("combobox", { name: "Source of Outside" })).toHaveValue("music"); // -- WP FEATUI --
     await expect(again.getByLabel("Zone Outside").getByRole("checkbox", { name: "Terrace" })).toBeChecked();
     await fitsWidth(page);
   });
