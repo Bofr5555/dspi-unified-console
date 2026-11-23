@@ -132,3 +132,7 @@ mod tests_wp_ffix;
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
 mod tests_wp_func2a;
+// -- WP FUNC2c --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
+mod tests_wp_func2c;

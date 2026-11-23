@@ -458,7 +458,7 @@ static GET_OVERVIEW: Tool = Tool {
             "programme": programme(call, core, st.input_source), // -- WP FEAT3 --
             "preamp_db": num(st.preamp_db),
             "eq_bypass": st.bypass,
-            "installer_lock": {"pin_set": lock.pin_set, "locked": lock.locked},
+            "installer_lock": crate::policy::lock_json(&lock), // -- WP FUNC2c --
             "limits": {"active": limits.active, "state": limits.state},
             "preset": {"last_active": preset, "dirty": core.preset_dirty()},
             "app_read_only": core.client_read_only(),

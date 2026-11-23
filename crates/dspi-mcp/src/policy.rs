@@ -467,6 +467,34 @@ pub fn umbrella(verdict: Verdict) -> Verdict {
     }
 }
 
+/// The installer lock's refusal: what still passes
+/// (`dspi_core::limits::lock::LOCKED_USER_WRITES`, the locked-user banner's
+/// "only volume, mute and presets"), where the user unlocks, and that the PIN
+/// is never the agent's. -- WP FUNC2c -- (FSTORY S7: 0 of 3 agents offered the
+/// mute the lock lets through when the text said only "ask the user to
+/// unlock".)
+pub const LOCKED_TEXT: &str = "the installer lock is on: while it is locked only the volume, \
+     the mutes and a preset load pass (dspi_set_volume, dspi_set_user_mute, dspi_set_mute, \
+     dspi_preset_load). For anything else ask the user to unlock it in the app (Settings › \
+     Installer); no tool unlocks it, and an agent never takes or uses the PIN. Nothing was \
+     changed.";
+
+/// The installer lock as an agent reads it (`dspi_get_overview`,
+/// `dspi_get_limits`): set, locked, and while locked what still passes.
+/// -- WP FUNC2c --
+pub fn lock_json(lock: &dspi_core::LockState) -> Value {
+    if !lock.locked {
+        return json!({"pin_set": lock.pin_set, "locked": false});
+    }
+    json!({
+        "pin_set": lock.pin_set,
+        "locked": true,
+        "while_locked": "only the volume, the mutes and a preset load pass (dspi_set_volume, \
+                         dspi_set_user_mute, dspi_set_mute, dspi_preset_load); the user unlocks \
+                         in the app (Settings › Installer)",
+    })
+}
+
 /// Whether `code` (a [`DspiError::ConfirmationRequired`]'s) is a refusal no
 /// confirmation can lift: never retried, never asked (review RA, MCP0 item
 /// 7). `user_editing` is not one (retry), nor is [`AGENT_CONFIRM`] (asked).
@@ -512,9 +540,7 @@ pub fn core_error(cell: &JudgingCell, e: DspiError) -> ToolError {
              agent cannot lift it.",
             ToolError::from(e).0
         )),
-        DspiError::InstallerLock { .. } => ToolError::new(
-            "the installer lock is on: ask the user to unlock in the app. Nothing was changed.",
-        ),
+        DspiError::InstallerLock { .. } => ToolError::new(LOCKED_TEXT), // -- WP FUNC2c --
         _ => ToolError::from(e),
     }
 }
