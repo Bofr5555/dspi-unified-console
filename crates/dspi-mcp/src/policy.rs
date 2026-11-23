@@ -1351,7 +1351,8 @@ fn hard_verdict(
 // -- WP ODEC --
 /// A raise of output `o`'s level the writes make, in words: its gain, the
 /// volumes and trims (an input's trim when that input feeds it), an unmute,
-/// an effect that adds level on it.
+/// an effect that adds level on it, a PEQ boost on it or on an input that
+/// feeds it (-- WP INTI --, review RF6).
 fn level_raise(before: &DspState, after: &DspState, writes: &[WriteKey], o: u8) -> Option<String> {
     let mut risks = Vec::new();
     judge_values(before, after, writes, &mut risks);
@@ -1370,6 +1371,51 @@ fn level_raise(before: &DspState, after: &DspState, writes: &[WriteKey], o: u8) 
             None => true,
         })
         .map(|r| r.what)
+        .or_else(|| eq_raise(before, after, writes, o, &feeds))
+}
+
+// -- WP INTI -- (review RF6, owner decision via the coordinator 2026-11-23)
+/// A PEQ band on output `o`, or on an input that feeds it, that boosts more
+/// than before (any amount) or becomes a Linkwitz transform, in words: on a
+/// tweeter left playing unprotected that is louder too.
+fn eq_raise(
+    before: &DspState,
+    after: &DspState,
+    writes: &[WriteKey],
+    o: u8,
+    feeds: &dyn Fn(u8) -> bool,
+) -> Option<String> {
+    let n_in = before.num_input_channels;
+    writes.iter().find_map(|w| {
+        let (path, ix) = w.item();
+        let (ch, band) = (*ix.first()?, *ix.get(1)?);
+        if path != "eq" || band >= 20 {
+            return None;
+        }
+        let here = if ch < n_in {
+            feeds(ch)
+        } else {
+            ch.checked_sub(n_in) == Some(o)
+        };
+        if !here {
+            return None;
+        }
+        let was = band_of(before, ch, band).copied().unwrap_or(FLAT);
+        let now = band_of(after, ch, band).copied().unwrap_or(FLAT);
+        let linkwitz = now.filter_type == 11 && !now.bypass && now != was;
+        (linkwitz || boost(&now) > boost(&was) + LOUDER_EPS_DB).then(|| {
+            format!(
+                "{} EQ band {}: {}",
+                channel_word(before, ch),
+                u16::from(band).saturating_add(1),
+                if linkwitz {
+                    "a Linkwitz transform (adds bass)".to_owned()
+                } else {
+                    format!("a boost of {}", db(boost(&now)))
+                }
+            )
+        })
+    })
 }
 
 /// The first confirmed tweeter or midrange of `st` that plays programme
@@ -1392,7 +1438,8 @@ pub fn unprotected_now(st: &DspState, j: &Judging) -> Option<String> {
 
 /// What a wholesale write (a preset load, a recall, an import) changed from
 /// `before` to `after`, as the writes the tweeter rule weighs: each output's
-/// bands, routes, switch and mute, and the inputs' bands.
+/// bands, routes, switch, mute and gain, the inputs' bands and trims, and the
+/// volumes.
 pub fn state_writes(before: &DspState, after: &DspState) -> Vec<WriteKey> {
     let mut out = Vec::new();
     for (base, was, now) in [
@@ -1445,6 +1492,32 @@ pub fn state_writes(before: &DspState, after: &DspState) -> Vec<WriteKey> {
             if get(a, o) != get(b, o) {
                 out.push(WriteKey::new(path, &[o], ParamValue::Bool(get(b, o))));
             }
+        }
+    }
+    // -- WP INTI -- (review RF5) the levels too: a stored preset that raises a
+    // gain or a volume feeding a tweeter left playing unprotected is louder
+    let changed = |a: f32, b: f32| (a - b).abs() > 0.005;
+    for (o, (a, b)) in (0u8..).zip(before.output_gain_db.iter().zip(&after.output_gain_db)) {
+        if changed(*a, *b) {
+            out.push(WriteKey::new("out.gain", &[o], ParamValue::Float(*b)));
+        }
+    }
+    for (i, (a, b)) in (0u8..).zip(before.input_preamp_db.iter().zip(&after.input_preamp_db)) {
+        if changed(*a, *b) {
+            out.push(WriteKey::new("pre", &[i], ParamValue::Float(*b)));
+        }
+    }
+    for (path, a, b) in [
+        ("pre.all", before.preamp_db, after.preamp_db),
+        (
+            "vol.master",
+            before.master_volume_db,
+            after.master_volume_db,
+        ),
+        ("vol.user", before.user_volume_db, after.user_volume_db),
+    ] {
+        if changed(a, b) {
+            out.push(WriteKey::new(path, &[], ParamValue::Float(b)));
         }
     }
     out

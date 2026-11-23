@@ -263,7 +263,8 @@ when it sets a high-pass below the floor or too shallow, or when an EQ boost bel
 12 dB/octave high-pass at the floor would (by more than 3 dB): a boost behind a steep high-pass, where nothing reaches the
 tweeter, is fine. A midrange is held the same way at 80 Hz. Several changes in one call are judged together, and played
 quietest first: the agent can protect the tweeter and route it in one go. If you have left a tweeter playing without a
-high-pass yourself, an agent may still turn it down or mute it, but not feed it more.
+high-pass yourself, an agent may still turn it down or mute it, but not feed it more: no higher gain, trim or volume, no
+new route, no effect that adds level and no EQ boost on it (or on an input that feeds it), also not through a preset.
 
 **The question.** The console shows what the agent wants to change, on which device, with **Allow** and **Deny**. If the
 console is in the tray, the question brings its window back. The agent waits up to 45 s for your answer; after that it is

@@ -122,3 +122,113 @@ fn wp_inti_a_device_grant_does_not_cover_test_signals_across_units() {
         assert!(policy::require_system_signal(&cell, "4 units", &[7, 0, 1]).is_ok());
     }
 }
+
+/// Review RF5: a preset load is judged with the levels too. A stored preset
+/// that raises the gain of a tweeter the user left playing unprotected is
+/// louder there: refused and put back under every setting, as a gain the
+/// agent sets itself would be (ODEC, owner answer 1).
+#[test]
+fn wp_inti_a_preset_that_raises_an_unprotected_tweeters_gain_is_refused() {
+    for mode in [ConfirmMode::NeverAsk, ConfirmMode::AskRisky] {
+        let (set, core) = demo(&format!("inti-rf5-{}", mode.as_str()));
+        let save = |slot: u8| {
+            let token = core.confirm_token(dspi_core::ConfirmOp::SavePreset);
+            core.save_preset_confirmed(slot, Some(token)).unwrap();
+        };
+        blank(&core, 1);
+        core.set_matrix_route(0, 1, true, -6.0, false).unwrap();
+        // Slot 4 (3): the same, 6 dB louder on the tweeter.
+        core.set_output_gain(1, -4.0).unwrap();
+        save(3);
+        // Slot 2 (1): the active one, as the user left it.
+        core.set_output_gain(1, -10.0).unwrap();
+        save(1);
+        confirm(&core);
+        let mut s = server_of(&set, mode);
+        let c = s.connect();
+        let e = match mode {
+            ConfirmMode::NeverAsk => err(&mut s, c, "dspi_preset_load", json!({"slot": 3})),
+            _ => {
+                // Asked as a recall; the user's Allow does not lift the rule.
+                let r =
+                    crate::tests_wp_ffix::call(&mut s, c, "dspi_preset_load", json!({"slot": 3}));
+                let id = r["structuredContent"]["confirmation_id"].as_u64().unwrap();
+                s.answer_confirmation(id, true, 1_000).unwrap();
+                ok(
+                    &mut s,
+                    c,
+                    "dspi_get_confirmation",
+                    json!({"confirmation_id": id}),
+                )
+                .to_string()
+            }
+        };
+        assert!(
+            e.contains("drives a tweeter") && e.contains("put back"),
+            "{}: {e}",
+            mode.as_str()
+        );
+        let st = core.get_state();
+        assert!(
+            (st.output_gain_db[1] - -10.0).abs() < 0.01,
+            "{}",
+            st.output_gain_db[1]
+        );
+        assert_eq!(st.active_preset_slot, 1);
+    }
+}
+
+/// Review RF6: on a tweeter the user left playing unprotected, a PEQ boost
+/// (any amount, on the output or on an input that feeds it) is louder too:
+/// refused under every setting. A cut still passes.
+#[test]
+fn wp_inti_an_eq_boost_on_an_unprotected_tweeter_is_refused() {
+    use dspi_core::FilterParams;
+    let peak = |gain: f32| FilterParams {
+        filter_type: 3,
+        bypass: false,
+        freq: 5_000.0,
+        q: 1.0,
+        gain,
+        qp: 0.707,
+    };
+    for mode in [
+        ConfirmMode::NeverAsk,
+        ConfirmMode::AskRisky,
+        ConfirmMode::AskEverything,
+    ] {
+        let (set, core) = demo(&format!("inti-rf6-{}", mode.as_str()));
+        blank(&core, 1);
+        core.set_matrix_route(0, 1, true, -6.0, false).unwrap();
+        confirm(&core);
+        let mut s = server_of(&set, mode);
+        let c = s.connect();
+        let tweeter = n_in(&core) + 1;
+        for (on, gain) in [("output", 3.0), ("output", 6.0), ("input", 2.0)] {
+            let n = if on == "output" { 1 } else { 0 };
+            let e = err(
+                &mut s,
+                c,
+                "dspi_set_peq_band",
+                json!({on: n, "slot": 2, "type": "peaking", "freq_hz": 5000, "q": 1, "gain_db": gain}),
+            );
+            assert!(
+                e.contains("drives a tweeter")
+                    && e.contains("makes it louder")
+                    && e.contains("boost"),
+                "{}: {on} {gain} dB: {e}",
+                mode.as_str()
+            );
+        }
+        let st = core.get_state();
+        assert_ne!(st.filters[usize::from(tweeter)][2], peak(3.0));
+        if mode == ConfirmMode::NeverAsk {
+            ok(
+                &mut s,
+                c,
+                "dspi_set_peq_band",
+                json!({"output": 1, "slot": 2, "type": "peaking", "freq_hz": 5000, "q": 1, "gain_db": -3}),
+            );
+        }
+    }
+}

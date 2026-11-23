@@ -66,7 +66,7 @@ device the app shows is used. A device that is not open may be a known one
   Give a tweeter its high-pass first, or in the same `dspi_apply_changes`. Moving it, lower
   too, is fine while it stays at the floor or above. A tweeter the user left playing without
   that high-pass may be turned down or muted, never made louder (its gain, the volumes, a
-  route or an effect).
+  route, an effect or an EQ boost on it or on an input that feeds it).
 - Numbers: every field (`output`, `input`, `slot`, `channel`) counts from 0. In texts,
   \"output N\" is that same number; \"Out N\" and \"In N\" are the app's labels, from 1
   (output 0 is Out 1).
