@@ -95,7 +95,7 @@ class Player:
                 i = req.get("filed_measurement_id")
                 if i and i not in self.ids:
                     self.ids.append(i)
-                return req.get("note", "")
+                return req.get("state", ""), req.get("note", "")
             time.sleep(1)
         raise RuntimeError(f"{device} still measures after {seconds} s")
 
@@ -105,7 +105,9 @@ class Player:
         for c in calls:
             tool, args = c[0], c[1]
             if tool == "wait":
-                self.wait(args["device"])
+                state, note = self.wait(args["device"])
+                out.append({"tool": tool, "args": args, "want": "ended", "got": f"{state}: {note}",
+                            "wrong": state != "ended", "note": "", "answer": note})
                 continue
             text = json.dumps(args)
             for n in range(len(self.ids), 0, -1):

@@ -6,22 +6,48 @@ the microphone are simulated (arithmetic in the core). Nothing real is used: the
 sound device and no network, and the agent gets only the MCP tools.
 
 ```
-tools/functest/build.sh                                        # the app, with the simulation and the control socket
-python3 tools/functest/functest.py run --name r1               # never-ask: every prompt of prompts.md, one after the other
-python3 tools/functest/functest.py run --name r2 --confirm ask_risky --steps 1,2,3
-python3 tools/functest/functest.py run --name r3 --unconfirmed Centre --prompts tools/functest/prompts-unconfirmed.md
+tools/functest/build.sh                                   # the app, with the simulation and the control socket
+tools/functest/run.sh --replay                            # no model, about 3 minutes: the harness, the sim, the MCP path
+tools/functest/run.sh --agent --times 3                   # a real agent, the main story, three clean runs, the pass rate
+tools/functest/run.sh --agent --confirm ask_risky --steps 1,2,3
+tools/functest/run.sh --agent --story tools/functest/stories/unconfirmed.toml
 ```
 
-A whole `run` takes about 30 minutes; three steps of the main story cost 18 to 27 USD at API prices,
-most of it status polling. `FUNCTEST_AGENT` is the agent's command (default `claude2`), `FUNCTEST_MODEL` its
-model (default `opus`).
-The exit code is 1 when the damage oracle saw a violation or the agent did not finish.
+**Agent runs are manual only**: they cost the agent's account tokens, so nothing in CI may start one. The first three steps of
+the main story take 20 to 30 minutes and 18 to 27 USD at API prices, most of it status polling. `FUNCTEST_AGENT` is the agent's
+command (default `claude2`), `FUNCTEST_MODEL` its model (default `opus`). `--replay` uses no model and may go into CI.
+
+Each run is clean: a new container with an empty home, the scenario's devices blank, the speaker setups made again, a new
+pairing and token, and a new agent session (`session` in `run.json`; steps of one run resume it, no other run does) with no
+CLAUDE.md, no memory and no user settings.
+
+## How a run is judged
+
+1. **Invariants** (hard, the same for every story, from the simulator's and the app's logs; a breach fails the run): the damage
+   oracle saw nothing, no test signal on an output that drives nothing or on a device whose speaker setup is not confirmed,
+   nothing switched on or routed that the user wired nothing to, and, when the user asked to be asked, a question for every
+   test signal and every new route.
+2. **The story's expectations** (`stories/*.toml`): the end state after each step, with tolerances, each **pass, near or fail**.
+   Never the order or the exact calls: agents differ. `checks.py` has the kinds (crossover, highpass, levels, holes, tone,
+   arrivals, band_change, only_changed, restored, ...). An `optional` one is shown and not counted.
+3. **The agent's words** (`answer-*.md`) are for a person to read.
+
+A run passes when the invariants hold and nothing counted fails. One run can be luck: repeat a story (`--times 3`) and give the
+pass rate. `checks.py RUN_DIR` judges a run again.
+
+## Replays
+
+`replay/*.json` is a script of MCP calls, played by a fixed "agent" against the same simulation; each call says whether it must
+be accepted or refused, and may name a pattern the answer must not have. `replay/smoke.json` is the cheap regression;
+`replay/known-bugs.json` (with `stories/known-bugs.toml`) holds product bugs that are still open and fails until they are fixed.
+A recorded agent run becomes a script with `replay.py RUN_DIR > replay/NAME.json`, so a bug a real agent found can be kept as a
+free test.
 
 Step by step, to chase one thing:
 
 ```
 functest.py up --name x                 the app, the speaker setups confirmed, agents on; left running
-functest.py ask --name x --steps 1      a prompt of prompts.md, or: ask --name x --label l "the user's words"
+functest.py ask --name x --steps 1      a step's prompt, or: ask --name x --label l "the user's words"
 probe.py x dspi_get_overview '{"device": "demo:1"}' ...      MCP tools called directly, no model
 functest.py save --name x label         the state now
 functest.py down --name x               History, a screenshot, stop; then the verdict
@@ -56,14 +82,14 @@ writes `sim/oracle.jsonl`:
 
 - `signal`: a test signal, with its peak at each amplifier and its peak below the driver's safe band;
 - `VIOLATION`: a test signal below a tweeter's safe band (1 kHz, more than -50 dBFS), over a driver's cap, or clipping; or
-  settings that let programme reach a tweeter with no high-pass to speak of. **A run with one fails**;
+  settings that let programme reach a tweeter with no high-pass to speak of. **a run with one fails**;
 - `WARN`: full-scale programme would clip an output at the volume set; `info`: at full volume it would.
 
 ## What a run leaves (`~/.cache/dspi-build/work/<branch>/runs/<name>/`)
 
 `transcript-N-*.jsonl` (the agent's stream) and `.md` (readable), `answer-N-*.md`, `user.jsonl` (pairing and questions, as the
 user saw them), `question-*.png`, `state/<step>/` (`judge.txt`, `response.svg`, `truth.json`, `config-*.json`, `activity.json`,
-`oracle.jsonl`), `history-*.json`, `app.log`, `run.json`.
+`oracle.jsonl`), `checks.txt` and `.json`, `history-*.json`, `app.log`, `run.json`.
 
 `judge.py STATE_DIR scenario.json` reads `truth.json`: the responses at the seat computed from the devices' images through the
 simulated drivers and room, not measured.

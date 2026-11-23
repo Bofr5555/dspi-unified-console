@@ -120,6 +120,8 @@ class Run:
                "RUST_LOG": "warn", "TMPDIR": f"{CONTAINER_WORK}/tmp",
                "DSPI_SIM_SCENARIO": f"{c}/scenario.json", "DSPI_SIM_OUT": f"{c}/sim",
                "DSPI_FUNCTEST_SOCKET": f"{c}/ctl.sock"}
+        # More for the app's environment, as NAME=value words
+        env.update(x.split("=", 1) for x in os.environ.get("FUNCTEST_ENV", "").split())
         cmd = ["podman", "run", "-d", "--rm", "--name", self.container, "--network", "none", "--userns=keep-id",
                "--user", f"{os.getuid()}:{os.getgid()}", "-v", f"{WORK}:{CONTAINER_WORK}:z",
                "-v", f"{CACHE}/work/empty:/sys/bus/usb/devices:ro,z", "-w", c]
