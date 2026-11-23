@@ -7,6 +7,7 @@ use std::ptr::{null, null_mut};
 use super::super::dspi_open_demo;
 use super::*;
 use crate::fns_device::{dspi_core_free, dspi_core_new, dspi_curve_sections};
+use serde_json::Value; // -- WP INTG -- the module imports it with the link feature only
 
 fn reply(f: impl Fn(*mut c_char, u32) -> u32) -> Value {
     let needed = f(null_mut(), 0);

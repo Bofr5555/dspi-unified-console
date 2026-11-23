@@ -543,7 +543,10 @@ fn wp_intg_a_silenced_load_whose_volume_cannot_come_back_is_an_error() {
         .unwrap();
     assert_eq!(entry.outcome, Outcome::Error);
     assert!(entry.detail.contains("silent"), "{entry:?}");
-    assert!(!entry.journal_ids.is_empty(), "the user can Undo it: {entry:?}");
+    assert!(
+        !entry.journal_ids.is_empty(),
+        "the user can Undo it: {entry:?}"
+    );
     // A refused load is put back, its master volume with it: not left silent.
     core.set_master_volume(-10.0).unwrap();
     let e = err(&mut s, c, "dspi_preset_load", json!({"slot": 1}));

@@ -1541,14 +1541,21 @@ fn wp_intg_the_apps_spl_cap_is_refused_when_no_microphone_reads_db_spl() {
     let c = s.connect();
     // A named microphone without dB SPL: refused, saying what the user can do.
     for (tool, args) in [
-        ("dspi_measure_start", json!({"outputs": [0], "microphone": bare})),
-        ("dspi_measure_rolloff_start", json!({"output": 0, "microphone": bare})),
+        (
+            "dspi_measure_start",
+            json!({"outputs": [0], "microphone": bare}),
+        ),
+        (
+            "dspi_measure_rolloff_start",
+            json!({"output": 0, "microphone": bare}),
+        ),
     ] {
         let e = err(&mut s, c, tool, args);
         assert!(
             e.contains("82 dB SPL")
-                && e.contains("calibrate the microphone")
-                && e.contains("Loudest measurement")
+                && e.contains("calibrates it in Measure")
+                && e.contains("turns the cap off in Settings › AI Agents")
+                && e.contains("reads dB SPL (dspi_get_measure_options")
                 && e.contains("Nothing was played"),
             "{tool}: {e}"
         );
@@ -1558,7 +1565,10 @@ fn wp_intg_the_apps_spl_cap_is_refused_when_no_microphone_reads_db_spl() {
     // microphone it has.
     let begun = |s: &mut Server, mic: Option<String>| {
         let r = ok(s, c, "dspi_measure_start", json!({"outputs": [0]}));
-        assert!(r["what"].as_str().unwrap().contains("at most 82 dB SPL"), "{r}");
+        assert!(
+            r["what"].as_str().unwrap().contains("at most 82 dB SPL"),
+            "{r}"
+        );
         let id = r["request_id"].as_u64().unwrap();
         let mut ticket = s.measure_take(id).unwrap();
         if let Some(m) = mic {
@@ -1571,8 +1581,12 @@ fn wp_intg_the_apps_spl_cap_is_refused_when_no_microphone_reads_db_spl() {
     };
     for mic in [None, Some(doc(&bare))] {
         let e = begun(&mut s, mic).unwrap_err();
+        // Whole within a report's note, as the app relays it.
+        assert!(e.len() <= crate::untrusted::NOTE_MAX_BYTES, "{}", e.len());
         assert!(
-            e.contains("82 dB SPL") && e.contains("Nothing was played"),
+            e.contains("82 dB SPL")
+                && e.contains("turns the cap off")
+                && e.contains("Nothing was played"),
             "{e}"
         );
         assert!(!core.measure_state().active, "nothing runs");

@@ -209,6 +209,10 @@ void aivisSection(SmokeDriver &d) {
     Scene s{ d, ai, notices, freePort(), {} };
     ai->setPort(s.port);
     ai->setConfirmMode(QStringLiteral("never_ask"));
+    // -- WP INTG -- (review RE1) the simulated microphone reads no dB SPL: the
+    // agents' SPL cap off, the level ceiling holds (SmokeMcp5 has the cap on)
+    const bool capOn = ai->agentSplCapOn();
+    ai->setAgentSplCapOn(false);
     ai->setEnabled(true);
     d.check("aivis: the server runs", d.waitFor(5000, [&] { return ai->running() && !ai->busy(); }));
     ai->addClient(QStringLiteral("Smoke agent"));
@@ -424,6 +428,7 @@ void aivisSection(SmokeDriver &d) {
     tray->setShowInTray(trayWas);
     tray->setAvailabilityProbe({});
     ai->setConfirmMode(mode);
+    ai->setAgentSplCapOn(capOn);   // -- WP INTG --
     ai->setPort(AiController::kDefaultPort);
     ai->revoke(ai->clients().value(0).toMap().value(QStringLiteral("id")).toDouble());
     notices->clear();

@@ -292,8 +292,21 @@ void measureSection(SmokeDriver &d) {
                 sc->bannerText(true).contains(QLatin1String("set outside this app")) &&
                 !sc->bannerText(true).contains(QLatin1String("came with a configuration file")));
 
-    // Confirmed: the request runs in the Measure view
+    // -- WP INTG -- (review RE1) the agents' SPL cap on, and the simulated
+    // microphone has no dB SPL calibration: nothing plays, and the agent is
+    // told what the user can do. Off for the rest: the level ceiling holds.
     setLayout(d, true);
+    const bool capOn = ai->agentSplCapOn();
+    ai->setAgentSplCapOn(true);
+    r = call("dspi_measure_start", outs);
+    d.check("intg: the SPL cap without a dB SPL calibration: nothing plays, the agent is told what to do",
+            !r.value(QLatin1String("isError")).toBool(true) && d.waitFor(10000, [&] {
+                const QByteArray st = QJsonDocument(call("dspi_measure_status", {})).toJson(QJsonDocument::Compact);
+                return st.contains("calibrates it in Measure") && st.contains("turns the cap off");
+            }) && !mc->running());
+    ai->setAgentSplCapOn(false);
+
+    // Confirmed: the request runs in the Measure view
     r = call("dspi_measure_start", outs);
     d.check("mcp5: the agent's start is a request to the app",
             !r.value(QLatin1String("isError")).toBool(true) &&
@@ -339,6 +352,7 @@ void measureSection(SmokeDriver &d) {
     // As it was
     ai->setEnabled(false);
     d.waitFor(10000, [&] { return !ai->running() && !ai->busy(); });
+    ai->setAgentSplCapOn(capOn);   // -- WP INTG --
     ai->setConfirmMode(mode);
     ai->setPort(AiController::kDefaultPort);
     for (const QVariant &c : ai->clients()) ai->revoke(c.toMap().value(QStringLiteral("id")).toDouble());

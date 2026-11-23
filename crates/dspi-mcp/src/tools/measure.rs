@@ -1192,7 +1192,10 @@ fn levels(
     // reads dB SPL: a named one that does not is refused here; none named is
     // the app's own calibration, held to the same when the app begins it
     if app_spl_cap.is_some() && !mic_document.is_empty() && !reads_spl {
-        return Err(ToolError::new(app_cap_unheld(caps.spl_cap_db)));
+        return Err(ToolError::new(format!(
+            "{} Or name a `microphone` that reads dB SPL (dspi_get_measure_options says which).",
+            app_cap_unheld(caps.spl_cap_db)
+        )));
     }
     // -- WP FEATUI -- none named: the app's cap (it holds with a microphone
     // that reads dB SPL, the app's own calibration included)
@@ -1205,15 +1208,13 @@ fn levels(
 }
 
 // -- WP INTG -- (RE1)
-/// Why an SPL cap (the app's for agents) cannot hold, in the agent's words,
-/// with what the user can do about it.
+/// Why an SPL cap (the app's for agents) cannot hold, with what the user can
+/// do about it: within a report's note (200 bytes), as the app relays it.
 fn app_cap_unheld(cap: f32) -> String {
     format!(
-        "the app keeps agents' measurements under {cap:.0} dB SPL, which holds only with a \
-         microphone calibration that reads dB SPL, and the microphone has none. Name a \
-         `microphone` that does (dspi_get_measure_options says which), or ask the user to \
-         calibrate the microphone in Measure, or to turn off the SPL cap in Settings › AI \
-         Agents › Loudest measurement (then the level ceiling holds). Nothing was played."
+        "The microphone reads no dB SPL, so the app's {cap:.0} dB SPL cap for agents cannot \
+         hold: the user calibrates it in Measure, or turns the cap off in Settings › AI Agents. \
+         Nothing was played."
     )
 }
 
