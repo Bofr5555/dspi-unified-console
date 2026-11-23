@@ -237,7 +237,8 @@ tool calls into `Bus` calls (`play`, `pause`, `move`, `volume`, `output_volume`,
   tool was called in the step); `asked` with `all = true` counts the whole run; `band_change` takes `volume_of`
   (truth.json leaves user and master volume out).
 - Replays: `"$SNAP:<name>"` is the id of the call's device's newest snapshot of that name; a call's sixth element is a
-  pattern its answer must have.
+  pattern its answer, or the user's news that came with it, must have (ODEC's reading; the fifth, one it must not have,
+  is searched the same way).
 - A run's cost is its last step's `cost_usd`: the steps resume one session, and the number is the session's total.
 
 
@@ -260,5 +261,4 @@ tool calls into `Bus` calls (`play`, `pause`, `move`, `volume`, `output_volume`,
   later; `run.json`'s `confirmed_later` then counts the test signals before that moment, and any is a breach.
 - `seed_may_break = true`: what the oracles logged while the story's seed ran (the user's own doing, S7's
   lowered-tweeter preset) is not counted.
-- Check kinds `muted` (an output's mute) and `gain_from` (a gain against an earlier state, default the start). A
-  replay call's sixth element is a pattern its answer must have.
+- Check kinds `muted` (an output's mute) and `gain_from` (a gain against an earlier state, default the start).

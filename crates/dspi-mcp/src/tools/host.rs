@@ -106,7 +106,7 @@ fn device_json(
         }
         DeviceTransport::Demo => Err((
             "no",
-            "the demo device is simulated: the computer has no output for it",
+            "a demo device: the computer has no audio output for it", // -- WP ODEC --
         )),
         DeviceTransport::File => Err(("no", "a settings document, not a device")),
         DeviceTransport::Hub | DeviceTransport::Link => Err((
@@ -182,7 +182,16 @@ pub fn report_for_set(
             hub: None,
         })
         .collect();
-    report(&source.read(), &rows)
+    let audio = source.read();
+    let mut v = report(&audio, &rows);
+    // -- WP ODEC -- the testers see that the function test's bus answered;
+    // the agent's tool result never says so
+    if audio.sim
+        && let Some(o) = v.as_object_mut()
+    {
+        o.insert("simulated".into(), json!(true));
+    }
+    v
 }
 
 /// The tool's result for `audio` and the open devices `rows`.

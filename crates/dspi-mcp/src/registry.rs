@@ -416,6 +416,9 @@ pub struct RunCtx<'a> {
     // -- WP AIVIS --
     /// What the user did.
     pub user: Option<&'a crate::user::UserActivity>,
+    // -- WP ODEC --
+    /// The agents' grants for test signals.
+    pub grants: Option<&'a crate::grant::Grants>,
 }
 
 /// What [`run`] did.
@@ -577,6 +580,12 @@ pub fn run(ctx: &RunCtx<'_>, tool: &Tool, args: &Map<String, Value>) -> RunOutco
     // -- WP MCP2a -- the call's judgement, shared by the hook and the tool
     let judging = JudgingCell::default();
     policy::lock(&judging).grant.clone_from(&ctx.grant);
+    // -- WP ODEC -- the agent's grant for test signals on this device
+    if ctx.grants.is_some_and(|g| g.holds(ctx.client, id.as_str())) {
+        policy::lock(&judging)
+            .grant
+            .push(crate::grant::standing_key());
+    }
     policy::lock(&judging).taken_back = policy::TakenBack(Some((Arc::clone(&core), ctx.actor))); // -- WP AIVIS --
     let hook = ctx.policy.judging_hook(&info, &core, &judging);
     let agent_guard = ctx

@@ -416,6 +416,10 @@ pub fn require(
     if mode == ConfirmMode::NeverAsk || j.grant.contains(&key) {
         return Ok(());
     }
+    // -- WP ODEC -- the agent's grant for test signals on this device
+    if kind == RiskKind::TestSignal && j.grant.contains(&crate::grant::standing_key()) {
+        return Ok(());
+    }
     j.asked.push(Risk {
         kind,
         what: what.to_owned(),
@@ -1161,6 +1165,10 @@ fn touched_outputs(st: &DspState, writes: &[WriteKey]) -> Vec<u8> {
             "bypass" => out.extend(all()),
             "mix" => out.push(w.indices.get(1).copied().unwrap_or(0)),
             "out.enable" | "out.mute" => out.push(i0),
+            // -- WP ODEC -- a level raise feeds an unprotected output more (RE13)
+            "out.gain" => out.push(i0),
+            "vol.user" | "vol.master" | "vol.mute" | "pre" | "pre.all" => out.extend(all()),
+            p if fx_weighed(p) => out.extend(all()),
             _ => {}
         }
     }
@@ -1293,8 +1301,37 @@ fn hard_verdict(
             || cell_of(&after.matrix_gain, i, o)
                 > cell_of(&before.matrix_gain, i, o) + LOUDER_EPS_DB
     });
-    (new_route || more)
-        .then(|| "it plays with no protection already, and this feeds it more".to_owned())
+    if new_route || more {
+        return Some("it plays with no protection already, and this feeds it more".to_owned());
+    }
+    // -- WP ODEC -- a level raise feeds it more too (owner 2026-11-23, RE13)
+    level_raise(before, after, writes, o).map(|what| {
+        format!("it plays with no protection already, and this makes it louder ({what})")
+    })
+}
+
+// -- WP ODEC --
+/// A raise of output `o`'s level the writes make, in words: its gain, the
+/// volumes and trims (an input's trim when that input feeds it), an unmute,
+/// an effect that adds level on it.
+fn level_raise(before: &DspState, after: &DspState, writes: &[WriteKey], o: u8) -> Option<String> {
+    let mut risks = Vec::new();
+    judge_values(before, after, writes, &mut risks);
+    judge_effects(before, after, writes, &mut risks);
+    let feeds =
+        |i: u8| cell_of(&before.matrix_routing, i, o) || cell_of(&after.matrix_routing, i, o);
+    risks
+        .into_iter()
+        .filter(|r| matches!(r.kind, RiskKind::Louder | RiskKind::Unmute))
+        .find(|r| match r.output {
+            Some(x) => x == o,
+            None if r.keys.iter().all(|k| k.path == "pre") => r
+                .keys
+                .iter()
+                .any(|k| feeds(k.indices.first().copied().unwrap_or(0))),
+            None => true,
+        })
+        .map(|r| r.what)
 }
 
 /// The first confirmed tweeter or midrange of `st` that plays programme

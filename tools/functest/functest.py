@@ -137,7 +137,7 @@ class Run:
         cmd += [image(), "bash", "-c",
                 f"exec {CONTAINER_WORK}/build-functest/uconsole-for-dspi > {c}/app.log 2>&1"]
         subprocess.run(cmd, check=True, capture_output=True)
-        log("the app starts in", self.container)
+        log("the app starts in", self.container, "(simulated: DSPI_SIM_SCENARIO)")  # -- WP ODEC -- testers see it
         ctl = self.ctl
         ctl.wait("the app's socket", lambda: ctl.get("AiController", "port"), 60)
         # -- WP FUNC2b -- Modern unless the story or --layout says Classic (FSTORY S15)

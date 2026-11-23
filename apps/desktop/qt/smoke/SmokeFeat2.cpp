@@ -111,6 +111,13 @@ void feat2Section(SmokeDriver &d) {
     auto *notices = Registrar::instance<NoticeCenter>();
     d.check("feat2: the controllers", r && ai && link && notices);
     if (!r || !ai || !link || !notices) return;
+    // -- WP ODEC -- these checks were made before the screens followed an agent
+    struct FollowOff {
+        AiController *ai;
+        bool was;
+        ~FollowOff() { ai->setFollowAgent(was); }
+    } followOff{ ai, ai->followAgent() };
+    ai->setFollowAgent(false);
     if (qEnvironmentVariable("DSPI_SMOKE_UCONSOLE").isEmpty()) {
         d.notRun("feat2: an agent opens a hub's unit", QStringLiteral("no DSPI_SMOKE_UCONSOLE"));
         return;

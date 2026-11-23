@@ -87,6 +87,7 @@ import { Dock } from "./shell/Dock";
 import { SessionBar } from "./shell/SessionBar";
 import { CONNECT, sectionOf, sectionsFor } from "./shell/sections";
 import { placeOf } from "./shell/places";
+import { watchFollow } from "./follow-agent"; // -- WP ODEC --
 // -- WP WEBM4 -- what this device can do, for the app menu and the command palette
 import { sessionEntries, sessionHandlers, type SessionContext } from "./menus/session-actions";
 import { SETTINGS_PAGES } from "../screens/settings/SettingsScreen";
@@ -388,6 +389,14 @@ export function Screens(props: {
   const shownIds = new Set(shown.map((x) => x.id));
   const shownRef = useRef(shownIds);
   shownRef.current = shownIds;
+  // -- WP ODEC -- the page an AI agent is changing, when the shell follows it (ui/follow-agent.ts)
+  useEffect(
+    () =>
+      watchFollow(session, (id) => {
+        if (shownRef.current.has(id)) openScreen({ screen: id });
+      }),
+    [session, openScreen],
+  );
   const onShortcut = useCallback(
     (r: ShortcutRow): boolean | void => {
       // -- WP WBCLIP -- Copy and Paste Parameters on the EQ screen's chosen channel; nothing chosen, the browser's key

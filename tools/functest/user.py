@@ -102,6 +102,11 @@ class User:
             self.installer(a)
             self.run.event("user-done", {"step": label, "do": kind})
             return
+        if kind == "agents":  # -- WP ODEC -- Stop (off) and on again, as in Settings › AI Agents
+            ctl.call("AiController", "setEnabled", bool(a["on"]))
+            ctl.wait("AI agents " + ("on" if a["on"] else "off"),
+                     lambda: bool(ctl.get("AiController", "running")) == bool(a["on"]))
+            return
         self.show(a["device"])
         out = a.get("output", 0) - 1
         if kind == "crossover":
@@ -265,7 +270,8 @@ class Answers:
         self.lock = threading.Lock()
 
     def text(self, q):
-        parts = [str(q.get(k, "")) for k in ("title", "device", "client", "text", "summary")]
+        parts = [str(q.get(k, "")) for k in ("title", "device", "client", "text", "summary",
+                                             "grantText")]  # -- WP ODEC -- the grant's sentence
         parts += [str(x) for x in q.get("riskLines") or q.get("risks") or []]
         return " | ".join(p for p in parts if p)
 

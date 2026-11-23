@@ -40,7 +40,8 @@ pub struct UserEvent {
     pub device: Option<String>,
     /// What kind: `change`, `undo`, `replaced` (everything at once),
     /// `elsewhere`, `speakers`, `measure_stop`, `device_opened`,
-    /// `device_closed`, `device_shown`, `paused`, `resumed`, `answer`.
+    /// `device_closed`, `device_shown`, `paused`, `resumed`, `answer`,
+    /// `stopped` (-- WP ODEC --: the user pressed Stop before this run).
     pub kind: &'static str,
     /// In words, as a verb phrase ("changed Out 3 output gain -3 dB to -9 dB").
     pub what: String,

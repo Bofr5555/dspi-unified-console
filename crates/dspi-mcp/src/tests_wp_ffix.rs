@@ -3,6 +3,7 @@
 //! path; bug 2: an agent's preset load runs silenced on a device with a
 //! confirmed tweeter.
 
+// -- WP ODEC -- some helpers are pub(crate) for tests_wp_odec
 use std::path::PathBuf;
 use std::sync::Arc;
 

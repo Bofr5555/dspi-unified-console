@@ -99,3 +99,10 @@ export function usePresence(s: Session): HubPresenceRecord[] {
   useEffect(() => w.watch(() => bump((n) => n + 1)), [w]);
   return w.rows;
 }
+
+// -- WP ODEC --
+/** Who works on this session's hub's devices now, outside a component; `keep` holds the hub's list current until called again. */
+export function presenceNow(s: Session): { rows: HubPresenceRecord[]; keep: () => () => void } {
+  const w = watchOf(s);
+  return { rows: w.rows, keep: () => w.watch(() => {}) };
+}

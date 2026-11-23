@@ -729,8 +729,21 @@ export class Session {
     return () => this.listeners.delete(fn);
   }
 
+  // -- WP ODEC --
+  private readonly elsewhereListeners = new Set<(before: DeviceSnapshot | null, after: DeviceSnapshot) => void>();
+
+  /** Follow the device's changes that come from elsewhere (its notifications: another console, an agent, the device); returns the way to stop. */
+  watchElsewhere(fn: (before: DeviceSnapshot | null, after: DeviceSnapshot) => void): () => void {
+    this.elsewhereListeners.add(fn);
+    return () => this.elsewhereListeners.delete(fn);
+  }
+
   private onEvent(e: CoreEvent): void {
-    if (e.event === "state") this.set({ snapshot: e.snapshot });
+    if (e.event === "state") {
+      const before = this.state.snapshot;
+      this.set({ snapshot: e.snapshot });
+      for (const l of [...this.elsewhereListeners]) l(before, e.snapshot); // -- WP ODEC --
+    }
     else if (e.event === "link") {
       // -- WP MERGEP1D -- bound again after a reconnect: the hub's lock again
       if (e.phase === "bound" && this.state.link?.phase === "reconnecting") void this.refreshLock();

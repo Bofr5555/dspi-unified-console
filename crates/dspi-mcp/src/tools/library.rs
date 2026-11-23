@@ -131,6 +131,14 @@ pub(crate) fn wholesale<T>(
 /// floor: silent).
 const LOAD_GUARD_DB: f32 = -127.0;
 
+// -- WP ODEC --
+/// The refusal of a device-applied load while the master volume is saved
+/// with presets.
+pub(crate) const LOAD_REFUSED_VOLUME_WITH_PRESETS: &str = "this device saves the master volume \
+     with each preset, so a preset load sets the volume itself and the console cannot keep the \
+     device quiet while it checks the result: an agent may not load a preset (or revert to the \
+     saved one) on it. Nothing was changed. Ask the user to load it in the app.";
+
 /// [`wholesale`], for a write the device applies itself (a preset load):
 /// with `device_applied`, a device whose master volume is independent of its
 /// presets and that has a confirmed tweeter or midrange is silenced first
@@ -138,7 +146,8 @@ const LOAD_GUARD_DB: f32 = -127.0;
 /// once the result is judged (and put back if it broke the tweeter rule).
 /// The device can then not play a preset's unprotected tweeter for the
 /// moment until the console has looked. With the master volume saved in each
-/// preset, the load sets it and nothing can be guarded (manual §7).
+/// preset, the load sets it and nothing can be guarded: refused (manual §7,
+/// -- WP ODEC --).
 fn wholesale_with<T>(
     call: &mut Call<'_>,
     what: &str,
@@ -148,6 +157,12 @@ fn wholesale_with<T>(
 ) -> Result<(T, Before), ToolError> {
     let core = call.core()?;
     let before = state(core)?;
+    // -- WP ODEC -- (owner 2026-11-23, answer 4) with the master volume saved
+    // in each preset the load sets the volume itself and nothing can be
+    // guarded: an agent never loads then
+    if device_applied && before.master_volume_mode != 0 {
+        return Err(ToolError::new(LOAD_REFUSED_VOLUME_WITH_PRESETS));
+    }
     policy::require(&call.judging, RiskKind::Recall, what, indices)?;
     policy::lock(&call.judging).wholesale = true;
     let snap = capture_before(core, what)?;
@@ -360,9 +375,10 @@ static PRESET_LOAD: Tool = Tool {
     description: "Load preset `slot`: every setting is replaced and the undo history ends. It \
                   may be held for the user's confirmation. A snapshot is filed first \
                   (before_snapshot_id) as the way back. A preset that would lower a tweeter's \
-                  high-pass is put back and refused. With an installer's limits profile, what \
-                  the profile held of the preset is in limits_held: tell the user, the stored \
-                  preset is unchanged.",
+                  high-pass is put back and refused. Refused on a device that saves the master \
+                  volume with each preset. With an installer's limits profile, what the profile \
+                  held of the preset is in limits_held: tell the user, the stored preset is \
+                  unchanged.",
     class: ToolClass::Write,
     device: true,
     input_schema: || slot_schema(&["slot"]),
@@ -402,7 +418,7 @@ static REVERT_TO_SAVED: Tool = Tool {
     name: "dspi_revert_to_saved",
     title: "Revert to the saved preset",
     description: "Load the active preset slot again, dropping every change since it was loaded \
-                  or saved; the undo history ends. Held as dspi_preset_load is.",
+                  or saved; the undo history ends. Held and refused as dspi_preset_load is.",
     class: ToolClass::Write,
     device: true,
     input_schema: empty_schema,

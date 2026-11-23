@@ -12,7 +12,9 @@ Rectangle {
     objectName: "AiWorkBanner"
     readonly property var work: AiController.work
     readonly property string text: work.text !== undefined ? work.text : ""
-    visible: work.shown === true
+    // -- WP ODEC -- a grant lasts ten minutes: the strip says so while it does
+    readonly property var grant: AiController.grants.length ? AiController.grants[0] : null
+    visible: work.shown === true || grant !== null
     implicitHeight: row.implicitHeight + 8
     color: Theme.bannerFill("info")
     // In the accent's colour, so that it is none of the other strips
@@ -64,6 +66,23 @@ Rectangle {
             color: Theme.text
             elide: Text.ElideRight
             maximumLineCount: 1
+        }
+        Text {
+            objectName: "AiWorkBanner.grant"
+            visible: strip.grant !== null
+            textFormat: Text.PlainText
+            //: The strip: an AI agent may play test signals without asking for %1 ("9:41") more
+            text: strip.grant ? qsTr("Test signals allowed, %1 left").arg(strip.grant.left) : ""
+            font: Theme.fontSmall
+            color: Theme.text
+        }
+        AppButton {
+            objectName: "AiWorkBanner.revokeGrant"
+            visible: strip.grant !== null
+            implicitHeight: 24
+            text: qsTr("Revoke")
+            toolTip: qsTr("Ask again before the agent's next test signal")
+            onClicked: AiController.revokeGrant(strip.grant.id)
         }
         AppButton {
             objectName: "AiWorkBanner.show"
