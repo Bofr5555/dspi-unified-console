@@ -63,7 +63,8 @@ device the app shows is used. A device that is not open may be a known one
   one at 80 Hz. Every write is judged on the state it leaves: a route, an unmute or an output
   switched on to a tweeter without that high-pass is refused, as is a high-pass below the floor
   and a boost below the floor that lets more through than a 12 dB/octave high-pass there.
-  Give a tweeter its high-pass first, or in the same `dspi_apply_changes`.
+  Give a tweeter its high-pass first, or in the same `dspi_apply_changes`. Moving it, lower
+  too, is fine while it stays at the floor or above.
 - Numbers: every field (`output`, `input`, `slot`, `channel`) counts from 0. In texts,
   \"output N\" is that same number; \"Out N\" and \"In N\" are the app's labels, from 1
   (output 0 is Out 1).

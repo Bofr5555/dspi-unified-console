@@ -729,9 +729,12 @@ edit_tool!(
     "An output's crossover: its `high_pass` and `low_pass`, each {family, order, freq_hz} \
          (linkwitz_riley 2/4/6/8, butterworth 1..8, bessel 2/4/6/8), or null to remove it; \
          leave one out to keep it. Both together are a bandpass: this is the tool for \"add a \
-         bandpass\". An output with a high-pass at 1 kHz or above drives a tweeter: lowering, \
-         removing or flattening that high-pass is held for the user, and refused on an output \
-         the user's speaker setup calls a tweeter.",
+         bandpass\". On an output the user's speaker setup calls a tweeter the high-pass may \
+         move, also lower, but stays at 1 kHz or above (a higher floor from the limits profile) \
+         and 12 dB/octave or steeper: anything else is refused; a midrange's floor is 80 Hz. On \
+         an output with no confirmed role, a high-pass at 1 kHz or above is taken for a \
+         tweeter's: lowering, removing or flattening it is held for the user (refused under \
+         \"never ask\").",
     || {
         let mut m = Map::new();
         m.insert(
