@@ -170,9 +170,10 @@ prompt = "Put a bandpass on the centre channel and make voices easier to disting
   near_db = [0.3, 10.0]
 
   [[step.expect]]
-  what = "the centre is band-limited: a high-pass on the woofer or a low-pass on top"
+  what = "the centre is band-limited, on its crossovers or its input"
   kind = "band_limited"
   device = "Centre"
+  input = "C"
   low_output = 1
   high_output = 2
   low_hz = [60, 200]

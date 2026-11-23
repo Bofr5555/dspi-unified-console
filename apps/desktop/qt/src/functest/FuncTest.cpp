@@ -2,6 +2,7 @@
 
 #include "DeviceModel.h"
 #include "DeviceRegistry.h"
+#include "Shell.h"
 
 #include <QDir>
 #include <QGuiApplication>
@@ -58,6 +59,15 @@ QJsonObject FuncTest::handle(const QJsonObject &command) {
     if (op == QLatin1String("quit")) {
         QMetaObject::invokeMethod(qApp, &QCoreApplication::quit, Qt::QueuedConnection);
         return done();
+    }
+    if (op == QLatin1String("page")) {
+        // A page of Modern, as a click in its rail and on its tab
+        QVariant ok;
+        if (m_ctx.shell->pageHost())
+            QMetaObject::invokeMethod(m_ctx.shell->pageHost(), "go", Q_RETURN_ARG(QVariant, ok),
+                                      Q_ARG(QVariant, command.value(QLatin1String("section")).toString()),
+                                      Q_ARG(QVariant, command.value(QLatin1String("tab")).toString()));
+        return done(ok);
     }
     if (op == QLatin1String("grab")) {
         const QDir dir(command.value(QLatin1String("dir")).toString());

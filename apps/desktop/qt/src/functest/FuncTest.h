@@ -16,6 +16,7 @@ class QLocalServer;
 //   {"op":"get","on":"AiController","prop":"confirmations"}
 //   {"op":"set","on":"AiController","prop":"confirmMode","value":"ask_risky"}
 //   {"op":"call","on":"AiController","method":"answer","args":[12,true]}
+//   {"op":"page","section":"equaliser","tab":""}   a page of Modern
 //   {"op":"grab","dir":"/out"}      every visible window, as PNG files
 //   {"op":"quit"}
 //

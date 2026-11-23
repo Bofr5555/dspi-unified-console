@@ -164,6 +164,12 @@ def check(e, now, before, steps, words):
     if k == "band_limited":
         lo = now.edge(now.out(e["device"], e["low_output"]), "low")
         hi = now.edge(now.out(e["device"], e["high_output"]), "high")
+        # Or on the input, before the crossovers
+        for b in now.devices[e["device"]]["state"]["filters"][NAMES.index(e["input"])]:
+            if not b["bypass"] and b["filterType"] in (5, 13):
+                lo = max(lo or 0, b["freq"])
+            if not b["bypass"] and b["filterType"] in (4, 12):
+                hi = min(hi or 99999, b["freq"])
         a = score(lo, *within(*e["low_hz"], 0.25))
         b = score(hi, *within(*e["high_hz"], 0.25))
         s = "pass" if a == b == "pass" else "near" if "pass" in (a, b) or "near" in (a, b) else "fail"

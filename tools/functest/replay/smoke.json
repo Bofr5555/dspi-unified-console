@@ -23,5 +23,17 @@
   ["dspi_set_crossover", {"device": "demo:1", "output": 1, "high_pass": null}, "error"],
   ["dspi_set_crossover", {"device": "demo:1", "output": 1, "high_pass": {"family": "linkwitz_riley", "order": 4, "freq_hz": 800}}, "error"],
   ["dspi_set_delay", {"device": "demo:1", "output": 0, "delay_ms": 100}, "error"],
-  ["dspi_measure_start", {"device": "demo:1", "outputs": [{"output": 1, "role": "low"}]}, "error"]]
+  ["dspi_measure_start", {"device": "demo:1", "outputs": [{"output": 1, "role": "low"}]}, "error"]],
+ "unrouted-polarity": [
+  ["dspi_set_crossover", {"device": "demo:1", "output": 2, "low_pass": {"family": "linkwitz_riley", "order": 4, "freq_hz": 2500}}, "ok"],
+  ["dspi_set_gain", {"device": "demo:1", "output": 3, "gain_db": -5}, "ok"],
+  ["dspi_measure_start", {"device": "demo:1", "outputs": [2, 3], "sweep_ms": 2000, "passes": 3}, "ok"],
+  ["wait", {"device": "demo:1"}],
+  ["dspi_tune_propose", {"device": "demo:1", "keep_crossover": true, "keep_eq": true, "keep_levels": true}, "ok", "a polarity change nothing can hold was offered", "polarity normal"]],
+ "sub-tune": [
+  ["dspi_set_crossover", {"device": "demo:2", "output": 2, "high_pass": {"family": "linkwitz_riley", "order": 4, "freq_hz": 200}}, "ok"],
+  ["dspi_measure_start", {"device": "demo:2", "outputs": [4], "sweep_ms": 2000, "passes": 3}, "ok"],
+  ["wait", {"device": "demo:2"}],
+  ["dspi_set_crossover", {"device": "demo:2", "output": 4, "low_pass": {"family": "linkwitz_riley", "order": 4, "freq_hz": 120}}, "ok"],
+  ["dspi_tune_propose", {"device": "demo:2"}, "ok", "a sub's EQ is levelled against 500 Hz to 2 kHz, where it plays nothing", "(peak -15\\.0 dB.*){4}"]]
 }}

@@ -1,5 +1,5 @@
 # The deterministic part, no model: replay/smoke.json's calls against the same simulation, so the
-# harness, the simulator, the oracle and the main MCP path are tested for free (about 4 minutes).
+# harness, the simulator, the oracle and the main MCP path are tested for free (about 3 minutes).
 name = "replay-smoke"
 
 [[step]]
@@ -52,3 +52,11 @@ label = "refusals"
   what = "nothing changed"
   kind = "only_changed"
   devices = []
+
+# Found by FUNC1 and fixed: a polarity change for an output no input feeds (its write went nowhere),
+# and a sub's EQ levelled where it plays nothing
+[[step]]
+label = "unrouted-polarity"
+
+[[step]]
+label = "sub-tune"
