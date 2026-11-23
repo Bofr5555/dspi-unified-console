@@ -1250,6 +1250,21 @@ fn setup_of(
     } else {
         outputs
     };
+    // -- WP FFIX -- FUNC1 bug 15: which agent, what and which outputs
+    let name = {
+        let listed: Vec<u8> = outputs.iter().map(|o| o.output).collect();
+        let what = match (kind, one_run) {
+            (MeasureRunKind::Summed, _) => "summed",
+            (_, true) => "walked, one run",
+            _ => "walked",
+        };
+        let outs = if listed.is_empty() {
+            "every output of the speaker setup".to_owned()
+        } else {
+            outs_words(&listed)
+        };
+        format!("Requested by {}: {what}, {outs}", call.client_label)
+    };
     Ok(MeasureSetup {
         kind,
         outputs,
@@ -1261,11 +1276,7 @@ fn setup_of(
         coupler: coupler_arg(args),
         sweep_ms: u32_arg(args, "sweep_ms"),
         passes: u8_arg(args, "passes"),
-        name: if one_run {
-            "Requested by AI (one run)".into()
-        } else {
-            "Requested by AI".into()
-        },
+        name,
         roles_from_layout: !one_run,
         ..MeasureSetup::default()
     })

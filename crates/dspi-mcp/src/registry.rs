@@ -610,7 +610,9 @@ pub fn run(ctx: &RunCtx<'_>, tool: &Tool, args: &Map<String, Value>) -> RunOutco
         .into_iter()
         .filter(|e| e.id > before && e.actor == ctx.actor)
         .collect();
-    let mut journal_ids: Vec<u64> = mine.iter().map(|e| e.id).collect();
+    // -- WP FFIX -- FUNC1 bug 15: only what Undo can reverse (a preset save is
+    // a flash write: the activity offered Undo, which then said it could not)
+    let mut journal_ids: Vec<u64> = mine.iter().filter(|e| e.undoable).map(|e| e.id).collect();
     // -- WP AIVIS --
     let mut touched: Vec<(String, Vec<u8>)> = Vec::new();
     for e in &mine {

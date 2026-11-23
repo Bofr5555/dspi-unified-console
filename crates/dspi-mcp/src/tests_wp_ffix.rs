@@ -626,3 +626,41 @@ fn wp_ffix_a_filed_measurement_says_its_arrivals_and_the_highpass_it_includes() 
     );
     assert!(a["note"].as_str().unwrap().contains("Sub"), "{a}");
 }
+
+// ------------------------------------------------------------ bug 15
+
+#[test]
+fn wp_ffix_a_preset_save_offers_no_undo_and_apply_changes_points_to_the_limiter() {
+    let (set, _core) = demo("save");
+    let mut s = server_of(&set, ConfirmMode::NeverAsk);
+    let c = s.connect();
+    ok(&mut s, c, "dspi_preset_save", json!({"slot": 1}));
+    let e = s
+        .activity(10)
+        .into_iter()
+        .rev()
+        .find(|e| e.tool == "dspi_preset_save")
+        .unwrap();
+    assert!(e.journal_ids.is_empty(), "nothing Undo can reverse: {e:?}");
+    // An undoable change still lists its entry.
+    ok(
+        &mut s,
+        c,
+        "dspi_set_gain",
+        json!({"output": 0, "gain_db": -3}),
+    );
+    let e = s
+        .activity(10)
+        .into_iter()
+        .rev()
+        .find(|e| e.tool == "dspi_set_gain")
+        .unwrap();
+    assert_eq!(e.journal_ids.len(), 1, "{e:?}");
+    let err = err(
+        &mut s,
+        c,
+        "dspi_apply_changes",
+        json!({"changes": [{"op": "set_limiter", "output": 0}]}),
+    );
+    assert!(err.contains("dspi_set_limiter"), "{err}");
+}

@@ -77,7 +77,12 @@ fn apply_changes(call: &mut Call<'_>, args: &Map<String, Value>) -> ToolResult {
         let op = obj.get("op").and_then(Value::as_str).unwrap_or("");
         let Some((_, planner)) = PLANNERS.iter().find(|(name, _)| *name == op) else {
             let ops: Vec<&str> = PLANNERS.iter().map(|(name, _)| *name).collect();
-            return Err(at(format!("`op` is one of {}", ops.join(", "))));
+            // -- WP FFIX -- FUNC1 bug 15: agents looked for set_limiter here
+            return Err(at(format!(
+                "`op` is one of {}; a limiter or an effect is not one: dspi_set_limiter and the \
+                 effects' tools set them, each a call of its own",
+                ops.join(", ")
+            )));
         };
         let mut a = obj.clone();
         a.remove("op");
