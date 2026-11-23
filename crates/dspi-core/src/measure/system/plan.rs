@@ -157,7 +157,7 @@ impl SetupPlan {
             Some(o) if anchor_outputs.contains(&o) => o,
             Some(o) => {
                 return Err(invalid(format!(
-                    "the anchor output {} is not measured on its unit",
+                    "the anchor Out {} is not measured on its unit",
                     u16::from(o).saturating_add(1)
                 )));
             }
@@ -587,7 +587,7 @@ pub(crate) fn preflight(
                     super::super::plan::KEY_TWEETER_STIMULUS,
                     Some(o.output),
                     format!(
-                        "{}: output {} is a tweeter, and a measurement across units sweeps \
+                        "{}: Out {} is a tweeter, and a measurement across units sweeps \
                          every output from 20 Hz: measure the tweeter on its own unit",
                         u.serial,
                         u16::from(o.output).saturating_add(1)

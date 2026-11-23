@@ -196,7 +196,7 @@ pub(crate) fn stored_snr(
     (c.grid == *grid && c.mag_db.len() == n).then_some(c.mag_db)
 }
 
-/// The output's name in words ("Output 3 (L high)").
+/// The output's name in words ("Out 3 (L high)", the app's label).
 pub(crate) fn who(w: &WayIn) -> String {
     let role = match w.role {
         MeasureRole::Full => "full range",
@@ -207,9 +207,9 @@ pub(crate) fn who(w: &WayIn) -> String {
     };
     let n = u16::from(w.output).saturating_add(1);
     if w.speaker.is_empty() {
-        format!("Output {n} ({role})")
+        format!("Out {n} ({role})")
     } else {
-        format!("Output {n} ({} {role})", w.speaker)
+        format!("Out {n} ({} {role})", w.speaker)
     }
 }
 
@@ -676,7 +676,7 @@ pub(crate) fn compute(
     held.push("levels cut only; no output gain raised".into());
     for h in &bounds.highpass {
         held.push(format!(
-            "output {}: a high-pass at or above {:.0} Hz, {} dB/octave (limits profile)",
+            "Out {}: a high-pass at or above {:.0} Hz, {} dB/octave (limits profile)",
             u16::from(h.output).saturating_add(1),
             h.rule.min_hz,
             h.rule.min_slope_db
@@ -757,7 +757,7 @@ pub(crate) fn compute(
                 });
                 if let Some((_, w)) = unfed {
                     let why = format!(
-                        "no input feeds output {}, whose polarity must change (it is set on \
+                        "no input feeds Out {}, whose polarity must change (it is set on \
                          its routes): route the speaker's outputs first, then propose again",
                         u16::from(w.output).saturating_add(1)
                     );

@@ -257,7 +257,7 @@ pub(crate) fn judge(
             "measure.input_audio",
             None,
             format!(
-                "input {} plays at {:.0} dBFS: stop playback to measure",
+                "In {} plays at {:.0} dBFS: stop playback to measure",
                 i.saturating_add(1),
                 20.0 * peak.max(1e-9).log10()
             ),
@@ -284,7 +284,7 @@ pub(crate) fn judge(
             block(
                 "measure.no_output",
                 Some(o),
-                format!("the DSPi has no output {n}"),
+                format!("the DSPi has no Out {n}"),
             );
             continue;
         }
@@ -293,14 +293,14 @@ pub(crate) fn judge(
             block(
                 "measure.output_off",
                 Some(o),
-                format!("output {n} is switched off"),
+                format!("Out {n} is switched off"),
             );
         }
         if s.output_muted.get(idx).copied().unwrap_or(false) {
             block(
                 "measure.output_muted",
                 Some(o),
-                format!("output {n} is muted"),
+                format!("Out {n} is muted"),
             );
         }
         // S6: the tweeter rule, on the effective role (-- WP ROLE0 --): a
@@ -317,12 +317,12 @@ pub(crate) fn judge(
                 };
                 // -- WP ROLL1 -- the caller's role (the plan's is resolved)
                 let why = if role == spec.declared {
-                    format!("output {n} is a {way} way")
+                    format!("Out {n} is a {way} way")
                 } else if super::effective_role(spec.declared, &chain) != role {
                     // -- WP RCFIX -- raised by the user's confirmed layout
-                    format!("output {n} is a {way} way in the speaker layout")
+                    format!("Out {n} is a {way} way in the speaker layout")
                 } else {
-                    format!("output {n} has a high-pass at 1 kHz or above, so it is a {way} way,")
+                    format!("Out {n} has a high-pass at 1 kHz or above, so it is a {way} way,")
                 };
                 block(
                     "measure.tweeter_highpass",
@@ -348,7 +348,7 @@ pub(crate) fn judge(
                 block(
                     "measure.crossfeed",
                     Some(o),
-                    format!("crossfeed is on for output {n}: switch it off to measure"),
+                    format!("crossfeed is on for Out {n}: switch it off to measure"),
                 );
             }
         }
@@ -356,7 +356,7 @@ pub(crate) fn judge(
             block(
                 "measure.bass",
                 Some(o),
-                format!("psychoacoustic bass is on for output {n}: switch it off to measure"),
+                format!("psychoacoustic bass is on for Out {n}: switch it off to measure"),
             );
         }
         let tube_on = s
@@ -379,7 +379,7 @@ pub(crate) fn judge(
             block(
                 "measure.tube",
                 Some(o),
-                format!("the tube preamp is on for output {n}: switch it off to measure"),
+                format!("the tube preamp is on for Out {n}: switch it off to measure"),
             );
         }
         let sub_on = s
@@ -401,7 +401,7 @@ pub(crate) fn judge(
                 "measure.subharmonic",
                 Some(o),
                 format!(
-                    "the subharmonic synthesizer is on for output {n}: switch it off to measure"
+                    "the subharmonic synthesizer is on for Out {n}: switch it off to measure"
                 ),
             );
         }
@@ -409,7 +409,7 @@ pub(crate) fn judge(
             block(
                 "measure.loudness",
                 Some(o),
-                format!("loudness is on for output {n}: switch it off to measure"),
+                format!("loudness is on for Out {n}: switch it off to measure"),
             );
         }
         let limiter_on = s.limiter_enabled.get(idx).copied().unwrap_or(false);
@@ -419,7 +419,7 @@ pub(crate) fn judge(
                 "measure.limiter",
                 Some(o),
                 format!(
-                    "output {n}'s limiter acts at {threshold:.1} dBFS, at or below the run's \
+                    "Out {n}'s limiter acts at {threshold:.1} dBFS, at or below the run's \
                      ceiling of {:.1} dBFS: switch it off or raise its threshold",
                     plan.ceiling_db
                 ),
@@ -432,7 +432,7 @@ pub(crate) fn judge(
             block(
                 "measure.chain_changed",
                 Some(o),
-                format!("output {n}'s settings changed since it was measured"),
+                format!("Out {n}'s settings changed since it was measured"),
             );
         }
     }

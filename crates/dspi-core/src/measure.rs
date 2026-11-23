@@ -917,7 +917,7 @@ impl DspiCore {
                 .output(out.output)
                 .ok_or_else(|| DspiError::InvalidArgument {
                     msg: format!(
-                        "{}: output {} is not in the speaker layout: ask the user to confirm \
+                        "{}: Out {} is not in the speaker layout: ask the user to confirm \
                          it in Settings › Speakers",
                         crate::speaker_layout::NOTICE_LAYOUT_UNCONFIRMED,
                         u16::from(out.output).saturating_add(1)

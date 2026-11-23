@@ -623,7 +623,7 @@ impl DspiCore {
                 KEY_MIDRANGE,
                 Some(output),
                 format!(
-                    "output {} still plays within {ROLLOFF_STOP_DB:.0} dB of its loudest at \
+                    "Out {} still plays within {ROLLOFF_STOP_DB:.0} dB of its loudest at \
                      {:.0} Hz, where a tweeter's measurement stops: it is probably a midrange \
                      set up as a tweeter",
                     u16::from(output).saturating_add(1),
