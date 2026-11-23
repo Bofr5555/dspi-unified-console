@@ -297,11 +297,7 @@ pub(crate) fn judge(
             );
         }
         if s.output_muted.get(idx).copied().unwrap_or(false) {
-            block(
-                "measure.output_muted",
-                Some(o),
-                format!("Out {n} is muted"),
-            );
+            block("measure.output_muted", Some(o), format!("Out {n} is muted"));
         }
         // S6: the tweeter rule, on the effective role (-- WP ROLE0 --): a
         // high-pass at 1 kHz or above makes it a high way whatever its label.
@@ -400,9 +396,7 @@ pub(crate) fn judge(
             block(
                 "measure.subharmonic",
                 Some(o),
-                format!(
-                    "the subharmonic synthesizer is on for Out {n}: switch it off to measure"
-                ),
+                format!("the subharmonic synthesizer is on for Out {n}: switch it off to measure"),
             );
         }
         if s.loudness_enabled && s.loudness_output_mask & bit != 0 {

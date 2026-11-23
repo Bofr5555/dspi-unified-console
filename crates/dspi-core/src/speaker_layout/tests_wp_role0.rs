@@ -592,7 +592,8 @@ fn wp_ffix_a_summed_run_plays_each_output_with_its_routes_polarity() {
         roles_from_layout: true,
         ..MeasureSetup::default()
     };
-    let inverted = |s: MeasureSetup| -> Vec<bool> { s.outputs.iter().map(|o| o.inverted).collect() };
+    let inverted =
+        |s: MeasureSetup| -> Vec<bool> { s.outputs.iter().map(|o| o.inverted).collect() };
     let s = core.setup_roles(setup(MeasureRunKind::Summed)).unwrap();
     assert_eq!(inverted(s), [false, true]);
     // A walked run plays each alone: no polarity to set.

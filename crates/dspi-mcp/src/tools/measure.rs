@@ -1904,8 +1904,12 @@ fn tune_props() -> Map<String, Value> {
     m.insert(
         "target".into(),
         json!({"type": "string",
-               "description": "The target curve: a built-in's id or one of the user's own \
-                               (dspi_get_measure_options); default: the placement's"}),
+               "description": "The target curve: a built-in's id (\"flat\", \"tilt\" -0.5 \
+                               dB/octave, \"house\" the house curve; headphones: their \
+                               coupler's) or one of the user's own (dspi_get_measure_options); \
+                               default: \"house\" for speakers, the coupler's for headphones. \
+                               The ways' levels follow its mid band (500 Hz to 2 kHz), its \
+                               tilt only the EQ (20 to 300 Hz for speakers)"}),
     );
     for (k, d) in [
         ("keep_crossover", "Leave the crossovers as they are"),
@@ -2050,9 +2054,17 @@ static TUNE_PROPOSE: Tool = Tool {
                             "what": untrusted::note(&w.words)})
             })
             .collect();
+        // -- WP FFIX -- FUNC1 bug 11: the reply names the target it fitted to
+        let target = match args.get("target").and_then(Value::as_str) {
+            Some(id) => json!({"id": untrusted::name(id), "chosen": true}),
+            None => json!({"id": "default", "chosen": false,
+                           "what": "the placement's default: the house curve for speakers, the \
+                                    coupler's for headphones"}),
+        };
         Ok(json!({
             "device": call.device_text(),
             "proposal_id": p.id,
+            "target": target,
             "writes": writes,
             "timing_reliable": p.timing_reliable,
             "sum_check": p.sum_check,

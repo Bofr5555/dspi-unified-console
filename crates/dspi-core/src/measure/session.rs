@@ -713,10 +713,7 @@ impl Session {
                 return Err(MeasureIssue::new(
                     "measure.abort.output_peak",
                     Some(spec.output),
-                    format!(
-                        "Out {} reached full scale",
-                        spec.output.saturating_add(1)
-                    ),
+                    format!("Out {} reached full scale", spec.output.saturating_add(1)),
                 ));
             }
         }

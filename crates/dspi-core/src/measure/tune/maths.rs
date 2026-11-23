@@ -66,6 +66,7 @@ pub(crate) const FIT_HEADPHONES_HZ: (f64, f64) = (20.0, 10_000.0);
 /// A way "plays" in the fit's range when its crossover passes this much of
 /// its level somewhere in it, dB: its bands are written there too.
 const PLAYS_DB: f64 = -30.0;
+
 /// The lowest Q of a speaker's fitted band where the fit's level is free
 /// (see the fit's note in `compute`).
 pub(crate) const SPEAKERS_Q_MIN: f64 = 2.0;
@@ -979,6 +980,18 @@ pub(crate) fn compute(
             Ok(r) => {
                 for b in &r.bands {
                     for i in &targets {
+                        // -- WP FFIX -- a band only on a way that plays at its
+                        // frequency (a midrange high-passed at 500 Hz gets no
+                        // 60 Hz band); a released one on every way it was on
+                        let plays_there = b.band.filter_type == 0
+                            || chains.get(*i).is_some_and(|c| {
+                                chain_db(&xover_only(c), model, &[f64::from(b.band.freq)])
+                                    .iter()
+                                    .all(|d| *d >= PLAYS_DB)
+                            });
+                        if !plays_there {
+                            continue;
+                        }
                         if let Some(slot) = chains
                             .get_mut(*i)
                             .and_then(|c| c.peq.get_mut(usize::from(b.index)))
