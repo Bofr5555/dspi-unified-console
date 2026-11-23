@@ -1,0 +1,70 @@
+# WP ODEC (the owner's answers of 2026-11-23), no model: replay/odec.json plays it.
+#
+#   tools/functest/run.sh --replay tools/functest/replay/odec.json
+#
+# - Nothing an agent reads says that anything is simulated: the tool list, every resource and prompt,
+#   the host audio, the measurement options (and the invariant checks every answer of the run).
+# - One question grants test signals on a device for ten minutes: the first measurement is asked, the
+#   second, a sum check and the rest of the step are not.
+# - An agent keeps a tune only after a passed verify: without one its Keep is refused, and it reverts.
+# - After the user's Stop and agents on again, the agent's next result says the user stopped it.
+name = "odec"
+confirm = "ask_risky"
+seed = "tuned"
+show = "Fronts"
+
+[bus]
+os = "linux"
+audioSystem = "PipeWire 1.6"
+
+  [[bus.outputs]]
+  name = "DSPi Fronts (USB)"
+  usb = "Fronts"
+  default = true
+  hardwareVolume = true
+
+[[step]]
+label = "read-all"
+
+  [[step.expect]]
+  what = "nothing changed"
+  kind = "only_changed"
+  devices = []
+
+[[step]]
+label = "grant"
+
+  [[step.expect]]
+  what = "one question for the test signals on the Fronts"
+  kind = "asked"
+  match = "Test signal"
+  min = 1
+  max = 1
+
+  [[step.expect]]
+  what = "it allows test signals for ten minutes"
+  kind = "asked"
+  match = "10 minutes"
+  min = 1
+  max = 1
+
+[[step]]
+label = "keep-unverified"
+
+  [[step.expect]]
+  what = "the sum check is not asked again (the grant)"
+  kind = "asked"
+  match = "Test signal"
+  max = 0
+
+[[step]]
+label = "stopped"
+
+  # The user presses Stop, then turns agents on again
+  [[step.user]]
+  do = "agents"
+  on = false
+
+  [[step.user]]
+  do = "agents"
+  on = true

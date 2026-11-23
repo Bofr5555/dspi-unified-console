@@ -5,6 +5,16 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
 ## Unreleased
 
 ### Desktop (Qt)
+- AI agents, the owner's answers of 2026-11-23 (WP ODEC): a question about test signals is asked once per device for an
+  agent's task: **Allow** also lets that agent measure there for 10 minutes (the AI page shows it with the time left and
+  **Revoke**); louder changes and saves are still asked one at a time. An agent keeps a tune only after a verify that
+  passed; otherwise only you can. An agent may no longer load a preset (or revert to the saved one) on a device that
+  saves the master volume with each preset. A tweeter you left playing without its high-pass may be turned down by an
+  agent but never made louder (its gain, the volumes, a route, an effect), under every setting. After **Stop** and agents
+  on again, an agent is told you stopped it. The screen follows an agent's work: Modern shows the device tab and page it
+  changes (Classic the device), and Measure for its measurements, never while you drag, type or have a dialog open, and
+  at most every few seconds. In the function test's build, the window title says it is simulated; nothing an agent reads
+  does.
 - The Installation tab sets up the audio link's sources (a sender's channels), what each zone plays (the units it routes
   are named), a unit's own slots (locked while its zone's source owns them), scenes with their actions (Switch zone source
   among them) and programme sources (which computer or box feeds which input). Before Save a notice names the units whose
@@ -216,6 +226,9 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
   notice of replaced hand-made slots and Align after Save, as the desktop's; the System view sets a room's or zone's
   volume. A strip on every screen and an AI mark on the device's tab show when an AI agent works on the hub's devices
   through another console. (WP FEATUI)
+- The screen follows an AI agent of another console: the device it works on and the page of what it changes, never while
+  you drag, type or have a dialog open, at most every few seconds; the strip shows its permission to play test signals
+  with the time left. (WP ODEC)
 - The Modern layout. The sections (Overview, Equaliser, Routing, Effects, Measure, Analyse, Library, System, Devices,
   Settings) are in a rail on the left, and each section's pages are tabs beside its title. A row of device tabs along
   the top holds the open devices, with how each is reached, its state and an unsaved mark; + opens another, and

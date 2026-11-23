@@ -141,6 +141,10 @@ class User:
             ctl.call("SnapshotsController", "capture", a["name"], a.get("note", ""))
         elif kind == "volume":
             ctl.call("SidebarController", "setUserVolume", float(a["db"]))
+        elif kind == "agents":  # -- WP ODEC -- Stop (off) and on again, as in Settings › AI Agents
+            ctl.call("AiController", "setEnabled", bool(a["on"]))
+            self.run.ctl.wait("AI agents " + ("on" if a["on"] else "off"),
+                              lambda: bool(ctl.get("AiController", "running")) == bool(a["on"]))
         elif kind == "undo":
             ctl.call("HistoryController", "undo")
         else:
@@ -165,7 +169,8 @@ class Answers:
         self.lock = threading.Lock()
 
     def text(self, q):
-        parts = [str(q.get(k, "")) for k in ("title", "device", "client", "text", "summary")]
+        parts = [str(q.get(k, "")) for k in ("title", "device", "client", "text", "summary",
+                                             "grantText")]  # -- WP ODEC -- the grant's sentence
         parts += [str(x) for x in q.get("riskLines") or q.get("risks") or []]
         return " | ".join(p for p in parts if p)
 

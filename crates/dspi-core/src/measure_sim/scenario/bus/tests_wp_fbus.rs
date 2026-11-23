@@ -304,7 +304,7 @@ fn wp_fbus_coupling_events_and_the_host_view() {
         (serial == "FBUS-FRONTS").then_some(-18.0618)
     });
     assert_eq!(h.os, "linux");
-    assert_eq!(h.audio_system, "simulated host audio bus");
+    assert_eq!(h.audio_system, "PipeWire"); // -- WP ODEC --
     let d = &h.outputs[0];
     assert!(d.is_default && d.running && d.hardware_volume && d.channels == 8);
     assert!((d.volume_pct - 50.0).abs() < 0.1);

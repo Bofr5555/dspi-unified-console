@@ -130,6 +130,11 @@ class Player:
             if tool == "sleep":
                 time.sleep(float(args["s"]))
                 continue
+            if tool == "mcp_read_all":  # -- WP ODEC -- tools, resources and prompts, logged
+                n = self.agent.read_all()
+                out.append({"tool": tool, "args": args, "want": "ok", "got": "ok" if n else "error",
+                            "wrong": not n, "note": "", "answer": f"{n} items"})
+                continue
             text = json.dumps(args)
             for dev in re.findall(r'"\$USER:([^"]+)"', text):
                 text = text.replace(f'"$USER:{dev}"', str(self.user_entry(dev)))
@@ -137,9 +142,12 @@ class Player:
                 text = text.replace(f'"$M{n}"', json.dumps(self.ids[n - 1]))
             kind, answer = self.agent.call(tool, **json.loads(text))
             got = "ok" if kind == "ok" else "error"
-            banned = len(c) > 4 and re.search(c[4], str(answer))
+            banned = len(c) > 4 and c[4] and re.search(c[4], f"{answer} {self.agent.last_news}")
             if banned:
                 got = f"{got}, with {banned.group(0)[:60]!r}"
+            # -- WP ODEC -- a sixth element: a pattern the answer (with the user's news) must have
+            if len(c) > 5 and not re.search(c[5], str(answer) + " " + str(self.agent.last_news)):
+                got = f"{got}, without {c[5][:60]!r}"
             out.append({"tool": tool, "args": args, "want": c[2], "got": got, "wrong": got != c[2],
                         "note": c[3] if len(c) > 3 else "", "answer": str(answer)[:400]})
         return out

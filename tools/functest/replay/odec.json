@@ -1,0 +1,23 @@
+{"story": "odec.toml", "confirm": "ask_risky", "steps": {
+ "read-all": [
+  ["mcp_read_all", {}, "ok"],
+  ["dspi_get_host_audio", {}, "ok", "the host audio names the simulation", "(?i)simulat"],
+  ["dspi_get_measure_options", {"device": "demo:1"}, "ok", "the measurement options name the simulation", "(?i)simulat"],
+  ["dspi_measure_preflight", {"device": "demo:1", "outputs": [0, 1]}, "ok", "the preflight names the simulation", "(?i)simulat"]],
+ "grant": [
+  ["dspi_measure_start", {"device": "demo:1", "outputs": [0], "sweep_ms": 2000, "passes": 2}, "ok"],
+  ["wait", {"device": "demo:1"}],
+  ["dspi_measure_status", {"device": "demo:1"}, "ok", "a finished measurement names the simulation", "(?i)simulat"],
+  ["dspi_measure_start", {"device": "demo:1", "outputs": [0, 1], "sweep_ms": 2000, "passes": 3}, "ok"],
+  ["wait", {"device": "demo:1"}]],
+ "keep-unverified": [
+  ["dspi_tune_propose", {"device": "demo:1", "keep_crossover": true, "keep_eq": true, "keep_levels": true}, "ok"],
+  ["dspi_tune_sum_check", {"device": "demo:1", "proposal_id": 1}, "ok"],
+  ["wait", {"device": "demo:1"}],
+  ["dspi_tune_apply", {"device": "demo:1", "proposal_id": 2}, "ok"],
+  ["dspi_tune_keep", {"device": "demo:1"}, "error", "a tune with no passed verify was kept by an agent"],
+  ["dspi_tune_revert", {"device": "demo:1"}, "ok"]],
+ "stopped": [
+  ["dspi_list_devices", {}, "ok", "", "", "the user pressed Stop"],
+  ["dspi_list_devices", {}, "ok", "the Stop is told twice", "pressed Stop"]]
+}}

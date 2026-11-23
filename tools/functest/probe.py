@@ -23,6 +23,10 @@ class Agent:
             ["podman", "exec", "-i", self.run.container, f"{CONTAINER_WORK}/build-functest/uconsole-for-dspi", "--mcp"],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
         self.n = 0
+        self.last_news = ""
+        # -- WP ODEC -- every answer an agent got, for the invariant that it never reads
+        # that anything is simulated (checks.py)
+        self.log = open(self.run.dir / f"mcp-{client}.jsonl", "a")
         threading.Thread(target=self.allow, daemon=True).start()
         self.rpc("initialize", {"protocolVersion": "2025-11-25", "capabilities": {},
                                 "clientInfo": {"name": client, "version": "0"}})
@@ -43,7 +47,10 @@ class Agent:
         self.p.stdin.write(json.dumps({"jsonrpc": "2.0", "id": self.n, "method": method, "params": params}) + "\n")
         self.p.stdin.flush()
         while True:
-            m = json.loads(self.p.stdout.readline())
+            line = self.p.stdout.readline()
+            self.log.write(line)  # -- WP ODEC --
+            self.log.flush()
+            m = json.loads(line)
             if m.get("id") == self.n:
                 return m
 
@@ -56,7 +63,27 @@ class Agent:
         # changes as one more text after it, which is no JSON
         texts = [c.get("text", "") for c in r.get("content", [])]
         text = texts[0] if "structuredContent" in r and texts else "\n".join(texts)
+        self.last_news = "\n".join(texts[1:])  # -- WP ODEC -- the user's news after the result
         return ("ERR" if r.get("isError") else "ok"), text
+
+
+    # -- WP ODEC --
+    def read_all(self):
+        """What an agent can read besides tool results: the tool list, every resource, every
+        prompt (logged like any answer). The number of items read."""
+        n = 0
+        for method, key in (("tools/list", "tools"), ("resources/list", "resources"),
+                            ("resources/templates/list", "resourceTemplates"), ("prompts/list", "prompts")):
+            r = self.rpc(method, {})
+            items = (r.get("result") or {}).get(key) or []
+            n += len(items)
+            for it in items:
+                if method == "resources/list":
+                    self.rpc("resources/read", {"uri": it["uri"]})
+                elif method == "prompts/list":
+                    args = {a["name"]: "1" for a in it.get("arguments") or [] if a.get("required")}
+                    self.rpc("prompts/get", {"name": it["name"], "arguments": args})
+        return n
 
 
 def main():

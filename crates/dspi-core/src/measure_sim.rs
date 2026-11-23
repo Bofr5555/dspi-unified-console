@@ -469,7 +469,7 @@ mod world {
                     }
                 }
                 t => Err(format!(
-                    "the simulated microphone renders sweeps and pink noise, not signal type {t}"
+                    "the microphone measures with sweeps and pink noise, not signal type {t}"
                 )),
             }
         }
@@ -587,7 +587,7 @@ mod world {
                 .measure_sim
                 .try_lock()
                 .ok_or_else(|| DspiError::InvalidArgument {
-                    msg: "the simulated microphone is busy".into(),
+                    msg: "the microphone is busy".into(), // -- WP ODEC -- no sim mark for agents
                 })?;
             *g = Some(Feed {
                 serial,
