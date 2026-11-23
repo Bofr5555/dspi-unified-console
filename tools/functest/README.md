@@ -267,3 +267,14 @@ tool calls into `Bus` calls (`play`, `pause`, `move`, `volume`, `output_volume`,
 - The test-signal invariant counts a run as covered by a permission only inside that grant's window (600 s from the
   Allow, ended by a Revoke). User action `revoke` (`device`) revokes every test-signal permission on that device, as
   Revoke in the app does. Events in `user.jsonl` carry `at` (epoch seconds) for this.
+
+<!-- -- WP SHOW -- -->
+## Filming a run (`--record`)
+
+`functest.py run --record ...` (or `FUNCTEST_SCREEN=1600x1000` for a screen without a film) runs the app on an Xvfb
+screen in its container (the xcb platform, in place of offscreen; `FUNCTEST_ENV=DSPI_COLOR_SCHEME=dark` for the dark
+theme). The window fills the screen and the host's `ffmpeg` films it through the X socket in the run's `x11/` folder
+(the container shares the host's IPC namespace for MIT-SHM, else x11grab fails or hangs) into `screen.mp4` (H.264,
+`FUNCTEST_FPS`, default 20). `record.jsonl` stamps, with epoch times, the prompts, the agent's tool calls and words
+(stream-json has no times) and the app's questions, for a caption bar. `FUNCTEST_READ_S` (default 1.5) is how long the
+harness user reads a question before answering; 4 keeps a sheet readable in a film.
