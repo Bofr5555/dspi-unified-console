@@ -278,3 +278,13 @@ theme). The window fills the screen and the host's `ffmpeg` films it through the
 `FUNCTEST_FPS`, default 20). `record.jsonl` stamps, with epoch times, the prompts, the agent's tool calls and words
 (stream-json has no times) and the app's questions, for a caption bar. `FUNCTEST_READ_S` (default 1.5) is how long the
 harness user reads a question before answering; 4 keeps a sheet readable in a film.
+
+<!-- -- WP DESREV -- -->
+## A gallery of every Modern screen (DESREV)
+
+`FUNCTEST_SCREEN=1600x1000 functest.py up --name gal --story stories/s12-presets.toml --confirm ask_everything`, then
+`gallery.py gal` (or `gallery.py gal dark`, `light`, `extras`, with `only=popups,dialogs,...`) grabs every page, tab,
+Settings page, popup, dialog, tool window and AI state in dark and light, plus the Darker tone, a 1100×720 window,
+Classic for comparison and the no-device states, into `runs/gal/shots/<set>/` with a `manifest.json`; `functest.py
+down --name gal` ends it. The control socket reaches the shell as `Shell` (`trigger`, `openWindow`, `closeWindow`)
+for dialogs and windows.

@@ -46,6 +46,8 @@ FuncTest::FuncTest(const AppContext &ctx, QObject *parent) : QObject(parent), m_
 QObject *FuncTest::find(const QString &name) const {
     if (name == QLatin1String("DeviceRegistry")) return m_ctx.registry;
     if (name == QLatin1String("DeviceModel")) return m_ctx.device;
+    // -- WP DESREV -- the shell (trigger, openWindow, closeWindow), for screenshots of dialogs
+    if (name == QLatin1String("Shell")) return m_ctx.shell;
     for (const Registrar::ControllerEntry &c : Registrar::controllers())
         if (name == QLatin1String(c.meta->className())) return Registrar::instance(c.meta);
     // -- WP FUNC2b -- a visible item by its objectName ("TopBar.preset"): what a screen shows
