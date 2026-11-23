@@ -1768,7 +1768,12 @@ static STATUS: Tool = Tool {
                     put(
                         &mut out,
                         "alignment",
-                        json!(results::alignment(&doc, &st, core.max_delay_ms())),
+                        json!(results::alignment(
+                            &doc,
+                            &st,
+                            core.max_delay_ms(),
+                            confirmed_layout(core).ok().as_ref(),
+                        )),
                     );
                 }
             }

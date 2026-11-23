@@ -617,13 +617,42 @@ fn wp_ffix_a_filed_measurement_says_its_arrivals_and_the_highpass_it_includes() 
     for o in 0..5 {
         core.set_output_delay(o, 0.0).unwrap();
     }
-    let a = results::alignment(&doc, &core.get_state(), core.max_delay_ms()).unwrap();
+    let a = results::alignment(&doc, &core.get_state(), core.max_delay_ms(), None).unwrap();
     assert_eq!(
         a["changes"],
         json!([{"op": "set_delay", "output": 0, "delay_ms": 0.75},
                {"op": "set_delay", "output": 1, "delay_ms": 0.75}]),
         "{a}"
     );
+    // A speaker measured by its woofer alone: its tweeter, from the user's
+    // layout, moves with it.
+    let mut v: Value = serde_json::from_str(&doc).unwrap();
+    v["measurement"]["outputs"]
+        .as_array_mut()
+        .unwrap()
+        .retain(|o| o["output"] != json!(1));
+    let woofers_only = v.to_string();
+    let layout = SpeakerLayout {
+        outputs: [(0u8, "L"), (1, "L"), (2, "R"), (3, "R")]
+            .iter()
+            .map(|(o, sp)| SpeakerLayoutOutput {
+                output: *o,
+                role: MeasureRole::Low,
+                speaker: (*sp).into(),
+                group: 0,
+            })
+            .collect(),
+        confirmed_by_user: true,
+        ..SpeakerLayout::default()
+    };
+    let a = results::alignment(&woofers_only, &core.get_state(), 42.0, Some(&layout)).unwrap();
+    let moved: Vec<u64> = a["changes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["output"].as_u64().unwrap())
+        .collect();
+    assert!(moved.contains(&0) && moved.contains(&1), "{a}");
     assert!(a["note"].as_str().unwrap().contains("Sub"), "{a}");
 }
 

@@ -20,7 +20,7 @@
 //!   the earlier speakers get the difference as more delay on every one of
 //!   their outputs, so each speaker's own alignment stays.
 
-use dspi_core::DspState;
+use dspi_core::{DspState, SpeakerLayout};
 use serde_json::{Value, json};
 
 use crate::policy;
@@ -100,7 +100,16 @@ pub(crate) fn summary(doc_text: &str) -> Option<Value> {
 /// on the device as it is now (`st`, at most `max_delay_ms`): per speaker its
 /// arrival and the delay it is given, and the writes; `None` when the
 /// document has no timing to align by.
-pub(crate) fn alignment(doc_text: &str, st: &DspState, max_delay_ms: f32) -> Option<Value> {
+///
+/// `layout` (the user's confirmed speaker layout) adds each speaker's outputs
+/// the run left out, so a speaker measured by its woofer alone keeps its
+/// tweeter aligned to it.
+pub(crate) fn alignment(
+    doc_text: &str,
+    st: &DspState,
+    max_delay_ms: f32,
+    layout: Option<&SpeakerLayout>,
+) -> Option<Value> {
     let doc: Value = serde_json::from_str(doc_text).ok()?;
     let m = doc.get("measurement")?;
     if m.pointer("/capture/timingReliable")
@@ -137,10 +146,16 @@ pub(crate) fn alignment(doc_text: &str, st: &DspState, max_delay_ms: f32) -> Opt
             .iter()
             .filter(|o| o.get("speaker").and_then(Value::as_str) == Some(name.as_str()))
             .collect();
-        let outputs: Vec<u8> = ways
+        let mut outputs: Vec<u8> = ways
             .iter()
             .filter_map(|o| u8::try_from(o.get("output")?.as_u64()?).ok())
             .collect();
+        for o in layout.into_iter().flat_map(|l| &l.outputs) {
+            if o.speaker == name && !outputs.contains(&o.output) {
+                outputs.push(o.output);
+            }
+        }
+        outputs.sort_unstable();
         let reference = ways
             .iter()
             .filter(|o| o.get("arrivalMs").and_then(Value::as_f64).is_some())
