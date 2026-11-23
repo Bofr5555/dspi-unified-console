@@ -6,7 +6,7 @@ import { useEffect, useRef } from "preact/hooks";
 import type { Session } from "./session";
 import { presenceNow } from "./presence";
 import { placeOf } from "./shell/places";
-import { agentOn, changedScreen, followGate, interacting, type FollowTarget } from "./follow";
+import { agentOn, changedScreen, followGate, inputLeftMs, interacting, type FollowTarget } from "./follow";
 
 const pageListeners = new Map<Session, Set<(screen: string) => void>>();
 
@@ -27,20 +27,52 @@ export function useFollowAgent(sessions: Session[], current: Session | null, sho
   const now = useRef({ current, show });
   now.current = { current, show };
   const pointer = useRef(false);
+  // -- WP INTI -- (review RF7) the person's last key, pointer or wheel input
+  const lastInput = useRef(Number.NEGATIVE_INFINITY);
   useEffect(() => {
     if (typeof document === "undefined") return;
-    const down = () => (pointer.current = true);
-    const up = () => (pointer.current = false);
+    const stamp = () => (lastInput.current = Date.now());
+    const down = () => {
+      pointer.current = true;
+      stamp();
+    };
+    const up = () => {
+      pointer.current = false;
+      stamp();
+    };
+    const inputs = ["keydown", "keyup", "wheel"] as const;
     document.addEventListener("pointerdown", down, true);
     document.addEventListener("pointerup", up, true);
     document.addEventListener("pointercancel", up, true);
+    for (const k of inputs) document.addEventListener(k, stamp, true);
     return () => {
       document.removeEventListener("pointerdown", down, true);
       document.removeEventListener("pointerup", up, true);
       document.removeEventListener("pointercancel", up, true);
+      for (const k of inputs) document.removeEventListener(k, stamp, true);
     };
   }, []);
   useEffect(() => {
+    // -- WP INTI -- a follow held off by an input in flight is tried again once it rests
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    const attempt = (s: Session, serial: string, screen: string) => {
+      const { current: on, show: bring } = now.current;
+      const hereScreen = on ? (placeOf(on).screen ?? "") : "";
+      const left = inputLeftMs(lastInput.current, Date.now());
+      if (left > 0 || pointer.current) {
+        clearTimeout(retry);
+        retry = setTimeout(() => attempt(s, serial, screen), Math.max(left, 200) + 50);
+        return;
+      }
+      // Measure keeps its own rule: a page running a measurement is not left for a change
+      const busy = interacting(typeof document === "undefined" ? null : document, pointer.current) || hereScreen === "measure";
+      const here: FollowTarget | null = on ? { serial: serialOf(on), screen: hereScreen } : null;
+      if (!followGate.take({ serial, screen }, Date.now(), busy, here)) return;
+      if (s !== on) {
+        placeOf(s).screen = screen;
+        bring(s.id);
+      } else for (const l of [...(pageListeners.get(s) ?? [])]) l(screen);
+    };
     const stops = sessions.flatMap((s) => [
       presenceNow(s).keep(),
       s.watchElsewhere((before, after) => {
@@ -48,18 +80,12 @@ export function useFollowAgent(sessions: Session[], current: Session | null, sho
         if (!agentOn(presenceNow(s).rows, serial)) return;
         const screen = changedScreen(before?.state, after.state);
         if (!screen) return;
-        const { current: on, show: bring } = now.current;
-        const hereScreen = on ? (placeOf(on).screen ?? "") : "";
-        // Measure keeps its own rule: a page running a measurement is not left for a change
-        const busy = interacting(typeof document === "undefined" ? null : document, pointer.current) || hereScreen === "measure";
-        const here: FollowTarget | null = on ? { serial: serialOf(on), screen: hereScreen } : null;
-        if (!followGate.take({ serial, screen }, Date.now(), busy, here)) return;
-        if (s !== on) {
-          placeOf(s).screen = screen;
-          bring(s.id);
-        } else for (const l of [...(pageListeners.get(s) ?? [])]) l(screen);
+        attempt(s, serial, screen);
       }),
     ]);
-    return () => stops.forEach((f) => f());
+    return () => {
+      clearTimeout(retry);
+      stops.forEach((f) => f());
+    };
   }, [sessions]);
 }

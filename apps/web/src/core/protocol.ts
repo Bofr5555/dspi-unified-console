@@ -502,6 +502,9 @@ export interface CoreMethods extends HubFleetMethods /* -- WP P3CC -- */, AlinkM
   presetChanges: { params: undefined; result: { dirty: boolean; changes: string[] } };
   /** Copy to: the live state into `dest`, `source` stays active. Writes flash twice. */
   presetCopy: { params: { source: number; dest: number; token?: string }; result: null };
+  // -- WP INTI --
+  /** What the last preset load's guard held (a tweeter muted) or could not put back, read once; "" for nothing. */
+  presetLoadNotice: { params: undefined; result: string };
   /** Revert to Saved: reload the active preset. */
   presetRevert: { params: undefined; result: null };
   /** Factory Reset, once the user confirmed it: the defaults; stored presets are kept. */

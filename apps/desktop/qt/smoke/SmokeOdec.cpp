@@ -26,6 +26,8 @@ extern "C" {
 
 #include <QDir>
 #include <QJsonArray>
+#include <QKeyEvent>     // -- WP INTI --
+#include <QMouseEvent>   // -- WP INTI --
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QQmlApplicationEngine>
@@ -251,6 +253,35 @@ void odecSection(SmokeDriver &d) {
         if (open) QMetaObject::invokeMethod(open, "close");
         d.waitFor(2000, [&] { return !ai->userInteracting(); });
         delete open;
+
+        // -- WP INTI -- (review RF7) Nor while an input is in flight: a mouse button held
+        // (a click acts on release), a key just pressed. The events go to an object of
+        // their own: the application's filter sees them, no control does.
+        d.spin(AiController::kFollowMs + 300);
+        QObject sink;
+        QMouseEvent press(QEvent::MouseButtonPress, QPointF(1, 1), QPointF(1, 1), Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+        QCoreApplication::sendEvent(&sink, &press);
+        const bool loud = s.ok("dspi_set_loudness", { { QStringLiteral("device"), b->id() }, { QStringLiteral("enabled"), true } });
+        d.spin(AiController::kInputIdleMs + 500);
+        d.check("odec: not while a mouse button is held", loud && ai->inputBusy() && registry->active() == a
+                && section() == QLatin1String("overview"));
+        QMouseEvent release(QEvent::MouseButtonRelease, QPointF(1, 1), QPointF(1, 1), Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+        QCoreApplication::sendEvent(&sink, &release);
+        d.check("odec: right after the click, still not", ai->inputBusy() && registry->active() == a);
+        d.check("odec: once the click is over, followed", d.waitFor(AiController::kInputIdleMs + 2000, [&] { return registry->active() == b; })
+                && d.waitFor(1000, [&] { return section() == QLatin1String("effects"); }));
+        registry->activate(a);
+        go("overview");
+        d.spin(AiController::kFollowMs + 300);
+        QKeyEvent key(QEvent::KeyPress, Qt::Key_Right, Qt::NoModifier);
+        QCoreApplication::sendEvent(&sink, &key);
+        // (the overview: a place not followed to in the last minute)
+        s.ok("dspi_set_device_name", { { QStringLiteral("device"), b->id() }, { QStringLiteral("name"), QStringLiteral("Odec B") } });
+        d.spin(300);
+        d.check("odec: not right after a key", ai->inputBusy() && registry->active() == a);
+        d.check("odec: once the keyboard rests, followed", d.waitFor(AiController::kInputIdleMs + 2000, [&] { return registry->active() == b; }));
+        registry->activate(a);
+        go("overview");
 
         // At most one switch in a few seconds: the next change waits for the limit
         d.spin(AiController::kFollowMs + 300);

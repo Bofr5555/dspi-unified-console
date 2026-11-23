@@ -208,9 +208,25 @@ impl DspiCore {
     /// (an empty slot changes nothing) still re-reads and succeeds.
     ///
     /// Errors: as [`DspiCore::save_preset_confirmed`], and the re-read's.
+    ///
+    /// -- WP INTI -- With a confirmed tweeter or midrange and the master
+    /// volume independent of presets, the load runs silenced and what plays
+    /// without its high-pass after it is held (muted); the module
+    /// `preset_guard`, and [`DspiCore::preset_load_notice`].
     pub fn load_preset(&self, slot: u8) -> Result<()> {
         let _lock = crate::limits::LockScope::allow(); // -- WP P1LK -- allowed while locked
         slot_in_range(slot)?;
+        let guard = self.load_guard_begin();
+        let done = self.load_preset_unguarded(slot);
+        if let Some(g) = guard {
+            self.load_guard_end(g, slot, done.is_ok());
+        }
+        done
+    }
+
+    /// [`DspiCore::load_preset`] without its guard.
+    fn load_preset_unguarded(&self, slot: u8) -> Result<()> {
+        let _lock = crate::limits::LockScope::allow(); // -- WP P1LK -- allowed while locked
         let began = Instant::now(); // -- WP ECHO1 --
         let lines = self.with_device_lock(LOAD_REASON, |inner| {
             let before = inner.state.clone(); // -- WP P0M --

@@ -467,6 +467,8 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
         "presetChanges" => presets::changes(&core),
         "presetCopy" => presets::copy(&core, params(req.params)?),
         "presetRevert" => presets::revert(&core),
+        // -- WP INTI -- what the last load's guard held or could not put back
+        "presetLoadNotice" => Ok(Value::from(core.preset_load_notice())),
         // -- WP P1TK -- with an optional `{token}`
         "factoryReset" => presets::factory_reset(&core, token_params(req.params)?),
         // -- WP P1DF -- the document diff and the import preview

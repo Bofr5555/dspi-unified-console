@@ -2,6 +2,7 @@
 #define AICONTROLLER_H
 
 #include <QDateTime>
+#include <QElapsedTimer>   // -- WP INTI --
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QMutex>           // -- WP INTG --
@@ -141,6 +142,9 @@ public:
     // not again to the same device and section within kFollowSameMs
     static constexpr int kFollowMs = 3000;
     static constexpr int kFollowSameMs = 60000;
+    // -- WP INTI -- (review RF7) no follow within this long after the user's last key,
+    // click or wheel, nor while a mouse button is held (a click acts on release)
+    static constexpr int kInputIdleMs = 1000;
 
     AiController(const AppContext &ctx, QObject *parent);
     ~AiController() override;
@@ -251,8 +255,12 @@ public:
     bool followAgent() const { return m_followAgent; }
     void setFollowAgent(bool on);
     // The user is at something a switch of screens would take away: a drag on a
-    // device, the keyboard in a text field, a dialog, menu or popup open
+    // device, the keyboard in a text field, a dialog, menu or popup open, an input
+    // in flight (inputBusy)
     bool userInteracting() const;
+    // -- WP INTI -- (review RF7) a mouse button held, or a key, click or wheel within
+    // kInputIdleMs: a switch now could land the input on the device switched to
+    bool inputBusy() const;
     // Whether the screens may follow an agent to `device` (and Modern's `section`)
     // now; true counts as a switch for the rate limit. `measure`: the Measure view
     // for an agent's measurement request, which only the user's interaction holds off.
@@ -453,6 +461,14 @@ private:
     QDateTime m_lastFollowKeyAt;
     QString m_followPendingDevice, m_followPendingSection;
     QTimer m_followTimer;       // a follow held off by the rate limit, tried after it
+    // -- WP INTI -- (review RF7) the user's input, stamped by the application's event filter
+    QElapsedTimer m_lastInput;  // the last key, click, wheel or touch
+    QElapsedTimer m_pressedAt;  // the oldest button still held
+    int m_buttonsHeld = 0;
+    int inputIdleLeftMs() const;
+
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override;   // -- WP INTI --
 };
 
 #endif // AICONTROLLER_H

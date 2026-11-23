@@ -115,6 +115,7 @@ mod tests_wp_pgmeas;
 // -- WP ROLE0 -- the speaker layout's proposal is the tune's layout
 pub(crate) use plan::Plan;
 pub(crate) use preflight::PreflightOptions;
+pub(crate) use preflight::tweeter_rule; // -- WP INTI --
 #[cfg(test)]
 pub(crate) use preflight::tweeter_floor as preflight_tweeter_floor;
 pub(crate) use tune::layout_of as layout_proposal_of;

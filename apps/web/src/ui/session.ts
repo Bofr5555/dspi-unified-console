@@ -476,12 +476,24 @@ export class Session {
       // -- WP P1WB2 -- a gated path's confirmation token, when the caller minted one
       const t = token ? { token } : {};
       await this.core.call("write", indices ? { path, indices, value, ...t } : { path, value, ...t });
+      const held = path === "preset.load" ? await this.loadNotice() : null;
       const snapshot = await this.core.call("state", undefined);
-      this.set({ snapshot, error: "" });
+      this.set({ snapshot, error: "", ...(held ? { notice: held } : {}) });
       return true;
     } catch (e) {
       this.fail(e);
       return false;
+    }
+  }
+
+  // -- WP INTI -- (owner 2026-11-23) the person's preset load runs silenced and holds a tweeter
+  // left without its high-pass (the core's guard): what it held, or a volume it could not bring back
+  private async loadNotice(): Promise<SessionState["notice"]> {
+    try {
+      const text = await this.core.call("presetLoadNotice", undefined);
+      return text ? { text, tone: "warn" } : null;
+    } catch {
+      return null;
     }
   }
 
@@ -498,8 +510,9 @@ export class Session {
     }
     try {
       await this.core.call(method, params);
+      const held = method === "presetRevert" ? await this.loadNotice() : null;
       const snapshot = await this.core.call("state", undefined);
-      this.set({ snapshot, error: "" });
+      this.set({ snapshot, error: "", ...(held ? { notice: held } : {}) });
       return true;
     } catch (e) {
       this.fail(e); // -- WP P1WB2 --

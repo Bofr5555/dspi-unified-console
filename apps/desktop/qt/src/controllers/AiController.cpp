@@ -26,6 +26,7 @@
 #include <QClipboard>
 #include <QCoreApplication>
 #include <QDir>
+#include <QEvent>   // -- WP INTI --
 #include <QFile>
 #include <QGuiApplication>
 #include <QJSEngine>
@@ -160,6 +161,8 @@ AiController::AiController(const AppContext &ctx, QObject *parent) : QObject(par
         const QString section = std::exchange(m_followPendingSection, QString());
         if (!device.isEmpty()) followChange(device, section);
     });
+    // -- WP INTI -- (review RF7) the user's input, for the follow gate
+    if (QCoreApplication::instance()) QCoreApplication::instance()->installEventFilter(this);
     // It must stop before the set is freed, which main() does after the event loop
     connect(QCoreApplication::instance(), &QCoreApplication::aboutToQuit, this, &AiController::shutdown);
     if (m_enabled) QTimer::singleShot(0, this, &AiController::reconcile);
@@ -1215,7 +1218,45 @@ void AiController::setFollowAgent(bool on) {
 }
 
 // A drag, the keyboard in a text field, a dialog, a menu or a popup of a window
+// -- WP INTI -- (review RF7) every key, click, wheel and touch is stamped, wherever it goes;
+// the filter only reads the event's type and never takes it
+bool AiController::eventFilter(QObject *watched, QEvent *event) {
+    switch (event->type()) {
+    case QEvent::MouseButtonPress:
+    case QEvent::MouseButtonDblClick:
+    case QEvent::TouchBegin:
+        if (m_buttonsHeld++ == 0) m_pressedAt.start();
+        m_lastInput.start();
+        break;
+    case QEvent::MouseButtonRelease:
+    case QEvent::TouchEnd:
+    case QEvent::TouchCancel:
+        m_buttonsHeld = qMax(0, m_buttonsHeld - 1);
+        m_lastInput.start();
+        break;
+    case QEvent::KeyPress:
+    case QEvent::KeyRelease:
+    case QEvent::Shortcut:
+    case QEvent::Wheel:
+        m_lastInput.start();
+        break;
+    default:
+        break;
+    }
+    return QObject::eventFilter(watched, event);
+}
+
+int AiController::inputIdleLeftMs() const {
+    // A press whose release never came (a popup took it) holds for 10 s at most
+    if (m_buttonsHeld > 0 && m_pressedAt.isValid() && m_pressedAt.elapsed() < 10000) return kInputIdleMs;
+    if (!m_lastInput.isValid()) return 0;
+    return int(qMax<qint64>(0, kInputIdleMs - m_lastInput.elapsed()));
+}
+
+bool AiController::inputBusy() const { return inputIdleLeftMs() > 0; }
+
 bool AiController::userInteracting() const {
+    if (inputBusy()) return true;   // -- WP INTI --
     for (DeviceSession *s : m_ctx.registry->sessions())
         if (s->model() && s->model()->dragging()) return true;
     if (m_ctx.device && m_ctx.device->dragging()) return true;
@@ -1261,6 +1302,13 @@ void AiController::followChange(const QString &device, const QString &section) {
         m_followPendingDevice = device;
         m_followPendingSection = section;
         m_followTimer.start(int(kFollowMs - m_lastFollow.msecsTo(now)) + 50);
+        return;
+    }
+    // -- WP INTI -- (review RF7) an input in flight: tried again once it is over
+    if (inputBusy()) {
+        m_followPendingDevice = device;
+        m_followPendingSection = section;
+        m_followTimer.start(inputIdleLeftMs() + 50);
         return;
     }
     if (!mayFollow(device, section)) return;

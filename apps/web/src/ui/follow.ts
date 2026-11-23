@@ -11,6 +11,15 @@ import type { HubPresenceRecord } from "./presence-protocol";
 /** The least time between two switches, ms. */
 export const FOLLOW_MIN_MS = 3_000;
 
+// -- WP INTI -- (review RF7) an input in flight: a key or a click acts on the screen it lands on
+/** No switch within this long after the person's last key, pointer or wheel input, ms. */
+export const INPUT_IDLE_MS = 1_000;
+
+/** How long until the input last seen at `lastInputAt` (ms; -Infinity for none) is at rest. */
+export function inputLeftMs(lastInputAt: number, now: number): number {
+  return Math.max(0, INPUT_IDLE_MS - (now - lastInputAt));
+}
+
 /** What the agent changed: the device and the screen it is on. */
 export interface FollowTarget {
   serial: string;

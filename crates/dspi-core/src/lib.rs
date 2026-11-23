@@ -104,6 +104,7 @@ mod notify;
 mod params;
 mod params_fx;
 mod presets;
+mod preset_guard; // -- WP INTI --
 // -- WP CG4 --
 mod raw;
 mod rta;
@@ -611,6 +612,10 @@ pub(crate) struct Inner {
     // -- WP AIVIS --
     /// What the user changed, for the other actors (`actor::user`).
     pub(crate) user_log: actor::user::UserLog,
+    // -- WP INTI --
+    /// What the last guarded preset load did that the person must know
+    /// ([`DspiCore::preset_load_notice`]); "" for nothing.
+    pub(crate) preset_load_notice: String,
 }
 
 /// An open device.
@@ -1027,6 +1032,7 @@ impl Inner {
             actor_key: actor::next_core_key(),                      // -- WP MCP0 --
             foreign: actor::Foreign::default(),                     // -- WP MCP0 --
             user_log: actor::user::UserLog::default(),              // -- WP AIVIS --
+            preset_load_notice: String::new(),                      // -- WP INTI --
         }
     }
 

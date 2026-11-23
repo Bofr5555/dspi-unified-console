@@ -58,6 +58,10 @@ uint8_t savePreset(FfiCore *c, uint8_t slot);
 uint8_t copyPreset(FfiCore *c, uint8_t source, uint8_t dest);
 uint8_t deletePreset(FfiCore *c, uint8_t slot);
 uint8_t factoryReset(FfiCore *c);
+// -- WP INTI -- A preset load (dspi_load_preset), and what its guard held or could not
+// put back (the person's load runs silenced; a tweeter left without its high-pass is
+// muted) posted as a warning notice. Not a gated operation: no token.
+uint8_t loadPreset(FfiCore *c, uint8_t slot);
 uint8_t saveOutputConfig(FfiCore *c);
 bool enterBootloader(FfiCore *c);
 uint8_t vregCommit(FfiCore *c, const char *typed);

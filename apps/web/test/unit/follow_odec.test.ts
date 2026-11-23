@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { DspState } from "../../src/core/protocol";
-import { FOLLOW_MIN_MS, FollowGate, agentOn, changedScreen, interacting, splitGrant } from "../../src/ui/follow";
+import { FOLLOW_MIN_MS, FollowGate, INPUT_IDLE_MS, agentOn, changedScreen, inputLeftMs, interacting, splitGrant } from "../../src/ui/follow";
 
 const band = (gain = 0) => ({ filterType: 1, bypass: false, freq: 1000, q: 0.7, gain, qp: 0.7 });
 const base = (): DspState =>
@@ -87,4 +87,13 @@ test("wp_odec the strip shows the test-signal grant apart from the work", () => 
   assert.deepEqual(splitGrant("Measuring: Out 1 · test signals allowed, 9 min left"), { work: "Measuring: Out 1", grant: "test signals allowed, 9 min left" });
   assert.deepEqual(splitGrant("Changing the gain: OUT1"), { work: "Changing the gain: OUT1", grant: "" });
   assert.deepEqual(splitGrant(" · Test signals allowed, 1 min left"), { work: "", grant: "Test signals allowed, 1 min left" });
+});
+
+// -- WP INTI -- (review RF7)
+test("wp_inti no follow while a key, click or wheel input is in flight: it waits until the input rests", () => {
+  assert.equal(inputLeftMs(Number.NEGATIVE_INFINITY, 5_000), 0, "no input seen");
+  assert.equal(inputLeftMs(5_000, 5_000), INPUT_IDLE_MS, "a key just now");
+  assert.equal(inputLeftMs(5_000, 5_400), INPUT_IDLE_MS - 400);
+  assert.equal(inputLeftMs(5_000, 5_000 + INPUT_IDLE_MS), 0, "at rest");
+  assert.equal(inputLeftMs(5_000, 9_000), 0);
 });
