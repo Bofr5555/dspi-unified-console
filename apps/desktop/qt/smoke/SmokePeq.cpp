@@ -218,7 +218,10 @@ void hoverAndCreate(Peqs &p) {
     d.check(QStringLiteral("qp4: the field starts with the bare number"),
             input && input->property("text").toString() == Peq::shortFrequency(p.ed->band(p.ch, 0, false).freq));
     if (input) {
-        input->setProperty("text", QStringLiteral("2k"));
+        // -- WP USR1 -- typed as a person types: leaving a field sends only what was typed
+        QTest::keyClick(p.w, Qt::Key_A, Qt::ControlModifier);
+        QTest::keyClick(p.w, '2');
+        QTest::keyClick(p.w, 'k');
         QTest::keyClick(p.w, Qt::Key_Tab);
         p.settle();
     }
