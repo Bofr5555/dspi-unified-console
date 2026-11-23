@@ -39,8 +39,8 @@ RowLayout {
     }
     function shown() { return format(isNaN(liveValue) ? value : liveValue) }
     function commitText(t) {
-        const v = Number(String(t).trim().replace(",", "."))
-        if (String(t).trim().length === 0 || !isFinite(v)) {
+        const v = field.number(t, root.unit)   // -- WP USR1 -- "-3,5", "−3.5", "-3.5 dB"
+        if (!isFinite(v)) {
             settle()
             return
         }
@@ -102,7 +102,7 @@ RowLayout {
     // A new value from the device while not typing
     onValueChanged: {
         if (!field.activeFocus) field.text = shown()
-        else if (field.text === field._start) settle() // -- WP LAY4 --
+        else if (!field.edited) settle() // -- WP LAY4 -- -- WP USR1 -- nothing typed since Enter
     }
     onLiveValueChanged: if (!field.activeFocus) field.text = shown()
 }

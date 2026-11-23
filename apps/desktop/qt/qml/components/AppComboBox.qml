@@ -11,6 +11,26 @@ ComboBox {
     // -- WP LAY3b -- A right-click on a row of the list asks for its menu
     property bool rowMenus: false
     signal rowMenu(int index, Item row, real x, real y)
+    // -- WP USR1 -- The index the app says is current (the active preset, the
+    // source): set `follows` and bind `followIndex` instead of `currentIndex`.
+    // A ComboBox given a new list puts its index back to 0 and runs its
+    // currentIndex binding again only when what that reads changes, so the
+    // preset box showed the first preset while another was active (each new
+    // "*" on a title is a new list). The box takes followIndex again after
+    // each new list, and after a person's choice: the app then says what is
+    // current, not the click.
+    property bool follows: false
+    property int followIndex: -1
+    function _follow() {
+        if (follows) currentIndex = Qt.binding(() => followIndex)
+    }
+    onModelChanged: {
+        if (!follows) return
+        _follow()
+        Qt.callLater(_follow)   // the list's own reset may come after this signal
+    }
+    onActivated: _follow()
+    Component.onCompleted: _follow()
 
     implicitHeight: Theme.controlHeight
     implicitWidth: 160

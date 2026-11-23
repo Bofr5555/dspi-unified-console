@@ -11,7 +11,8 @@ import UConsole
 //   value cannot be negative (a gain's "-3" is the gain);
 // then clamps to from..to (the limit badge shows that it did) and rounds to
 // `decimals`. Up and Down nudge by `step`, with Shift by `coarseStep`; Enter
-// commits, Escape puts the value back, Ctrl+Backspace gives `resetValue`.
+// or leaving the field commits, Escape puts the value back, Ctrl+Backspace
+// gives `resetValue`.
 //
 //     NumericField { unit: "Hz"; from: 10; to: 24000; value: band.freq; onCommitted: v => set(v) }
 FocusScope {
@@ -46,6 +47,7 @@ FocusScope {
         if (t.startsWith("+=")) { relative = 1; t = t.slice(2) }
         else if (t.startsWith("-=")) { relative = -1; t = t.slice(2) }
         else if (from >= 0 && (t[0] === "+" || t[0] === "-")) { relative = t[0] === "+" ? 1 : -1; t = t.slice(1) }
+        t = t.replace(/[\u2212\u2012\u2013\ufe63\uff0d]/g, "-")   // -- WP USR1 -- the minus sign
         if (t.indexOf(",") >= 0 && t.indexOf(".") < 0) t = t.replace(",", ".")
         const m = /^([+-]?(?:\d+\.?\d*|\.\d+))(k)?(khz|hz|dbfs|db|ms|s|%)?$/.exec(t)
         if (!m) return { ok: false }
@@ -95,17 +97,30 @@ FocusScope {
         clip: true
         focus: true
         text: field.format(field.value)
+        // -- WP USR1 -- leaving the field commits what was typed, as Enter does
+        // (it went back to the old value); Escape still drops it
+        property bool edited: false
+        onTextEdited: edited = true
         onActiveFocusChanged: {
-            if (activeFocus) selectAll()
+            if (activeFocus) {
+                edited = false
+                selectAll()
+                return
+            }
+            const r = edited ? field.parse(text, field.value) : { ok: false }
+            edited = false
+            if (r.ok) field.commit(r.value, r.limited)
             else text = field.format(field.value)
         }
         onAccepted: {
+            edited = false   // -- WP USR1 --
             const r = field.parse(text, field.value)
             if (r.ok) field.commit(r.value, r.limited)
             else text = field.format(field.value)
             selectAll()
         }
         Keys.onEscapePressed: event => {
+            edited = false   // -- WP USR1 --
             text = field.format(field.value)
             field.limited = false
             focus = false
