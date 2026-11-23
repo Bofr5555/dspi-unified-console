@@ -160,7 +160,10 @@ fn device_json(
 /// The tool's reading for the app's own screen: `source`'s state and the
 /// devices open in `set`, in the tool's words (the app's "This computer"
 /// panel shows what an agent reads). Blocking (the reader's own limit).
-pub fn report_for_set(set: &dspi_core::CoreSet, source: &dyn crate::host_audio::HostAudioSource) -> Value {
+pub fn report_for_set(
+    set: &dspi_core::CoreSet,
+    source: &dyn crate::host_audio::HostAudioSource,
+) -> Value {
     let rows: Vec<DeviceRow> = crate::registry::devices(set)
         .into_iter()
         .map(|open| DeviceRow {

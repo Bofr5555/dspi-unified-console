@@ -304,6 +304,14 @@ private:
     int m_agentSplCap = kSplCapDefault;
     QJsonArray m_remembered;
     void remember();
+    // The agent's work said on the hub of the device it works on (dspi-hub's
+    // `presence`), so every console of that hub shows it: again every
+    // kPresenceRefreshMs while it works, cleared when it stops
+    static constexpr int kPresenceTtlS = 20;
+    static constexpr int kPresenceRefreshMs = 10000;
+    QTimer m_presenceTimer;
+    QString m_presenceDevice, m_presenceSent;
+    void announcePresence(bool again);
     QVariantList m_clients;
     // -- WP LAY8 --
     struct Agent {

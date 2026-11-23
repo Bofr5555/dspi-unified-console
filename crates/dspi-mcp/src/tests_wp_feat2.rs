@@ -1465,8 +1465,16 @@ fn wp_featui_the_apps_spl_cap_holds_for_agents_under_never_ask() {
     let c = s.connect();
     // The options say the app's cap, below the placement's default.
     let o = ok(&mut s, c, "dspi_get_measure_options", json!({}));
-    assert_eq!(o["level_limits"]["near_field"]["max_spl_db"], json!(82.0), "{o}");
-    assert_eq!(o["level_limits"]["headphones"]["max_spl_db"], json!(82.0), "{o}");
+    assert_eq!(
+        o["level_limits"]["near_field"]["max_spl_db"],
+        json!(82.0),
+        "{o}"
+    );
+    assert_eq!(
+        o["level_limits"]["headphones"]["max_spl_db"],
+        json!(82.0),
+        "{o}"
+    );
     // None named: the app's cap is in the setup.
     let (setup, _) = setup_made(&mut s, c, "dspi_measure_start", json!({"outputs": [0]}));
     assert_eq!(setup["splCapDb"], json!(82.0), "{setup}");
@@ -1487,7 +1495,12 @@ fn wp_featui_the_apps_spl_cap_holds_for_agents_under_never_ask() {
     );
     assert!(e.contains("never raises it") && e.contains("82"), "{e}");
     // The low-end search too.
-    let (setup, _) = setup_made(&mut s, c, "dspi_measure_rolloff_start", json!({"output": 0}));
+    let (setup, _) = setup_made(
+        &mut s,
+        c,
+        "dspi_measure_rolloff_start",
+        json!({"output": 0}),
+    );
     assert_eq!(setup["splCapDb"], json!(82.0), "{setup}");
     // Cleared: the placement's default again, nothing in the setup.
     policy.set_agent_spl_cap_db(None);

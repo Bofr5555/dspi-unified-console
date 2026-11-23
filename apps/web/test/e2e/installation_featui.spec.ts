@@ -236,4 +236,45 @@ test.describe("FEATUI: sources, slots, programme sources and scenes; a zone's vo
     await fitsWidth(page);
     await shots(page, "zone-volume-375");
   });
+
+  test("FEATUI: an AI agent working through another console is shown in a strip and on the device's tab", async ({ page }) => {
+    test.setTimeout(90_000);
+    await page.setViewportSize({ width: 1280, height: 900 });
+    hub = await startHub(["--alink", "--open", "--forget-clients"]);
+    const session = await openOn(page, hub, "DEMO-ALINK-A");
+    const strip = session.getByRole("status", { name: "AI agent working" });
+    await expect(strip).toHaveCount(0);
+    // The other console: a DSPi Link client that runs an agent and says so (as the desktop app does)
+    const ws = new WebSocket(`ws://127.0.0.1:${hub.port}/dspi/v1`, "dspi-link-1");
+    const answers: Record<string, unknown>[] = [];
+    ws.onmessage = (m) => answers.push(JSON.parse(String(m.data)) as Record<string, unknown>);
+    await new Promise<void>((ok, fail) => {
+      ws.onopen = () => ok();
+      ws.onerror = () => fail(new Error("no WebSocket"));
+    });
+    ws.send(JSON.stringify({ t: "hello", proto: { major: 1, minor: 3 }, client: { name: "Studio Mac", app: "uConsole", version: "test" } }));
+    await expect.poll(() => answers.some((a) => a.t === "hello")).toBe(true);
+    const say = async (id: number, body: Record<string, unknown>) => {
+      ws.send(JSON.stringify({ t: "presence.set", id, ...body }));
+      await expect.poll(() => answers.find((a) => a.id === id)?.t).toBe("ok");
+    };
+    await say(1, { kind: "agent", label: "Claude\u202e", serial: "DEMO-ALINK-A", what: "Changing the gain: OUT1", ttl_s: 30 });
+    await expect(strip).toContainText("Claude");
+    await expect(strip).toContainText("is working on this device: Changing the gain: OUT1");
+    await expect(strip).not.toContainText("\u202e");
+    const tab = page.getByRole("tablist", { name: "Open DSPi" }).getByRole("tab", { selected: true });
+    await expect(tab.getByLabel("AI agent working")).toBeVisible();
+    // On every screen
+    await openPage(session, "System");
+    await expect(strip).toBeVisible();
+    await shots(page, "agent-strip-1280");
+    await page.setViewportSize({ width: 375, height: 900 });
+    await fitsWidth(page);
+    await shots(page, "agent-strip-375");
+    // Its console says it stopped: gone from the strip and the tab
+    await say(2, { ttl_s: 0 });
+    await expect(strip).toHaveCount(0);
+    await expect(tab.getByLabel("AI agent working")).toHaveCount(0);
+    ws.close();
+  });
 });

@@ -129,6 +129,9 @@ AiController::AiController(const AppContext &ctx, QObject *parent) : QObject(par
         dspi_mcp_set_listener(m_mcp, &AiController::eventThunk, this);
         dspi_mcp_set_confirm(m_mcp, m_confirmMode.toUtf8().constData());
     }
+    // -- WP FEATUI -- the agent's work said on a hub device's hub
+    m_presenceTimer.setInterval(kPresenceRefreshMs);
+    connect(&m_presenceTimer, &QTimer::timeout, this, [this] { announcePresence(true); });
     // -- WP FEATUI -- the agents' SPL cap, and the devices remembered from earlier runs
     m_agentSplCap = qBound(kSplCapMin, s.value(QLatin1String(kSplCapKey), kSplCapDefault).toInt(), kSplCapMax);
     if (m_mcp) dspi_mcp_set_agent_spl_cap(m_mcp, float(m_agentSplCap));
@@ -165,6 +168,7 @@ void AiController::shutdown() {
     m_tick.stop();
     m_readSoon.stop();
     m_workTimer.stop();   // -- WP AIVIS --
+    m_presenceTimer.stop();   // -- WP FEATUI --
     m_thread.waitForDone();
     if (!m_mcp) return;
     // Waits for a call in progress; puts the agents' timed previews back
@@ -1090,6 +1094,7 @@ void AiController::setWork(bool working, const QVariantMap &shown) {
     m_working = working;
     m_workShown = shown;
     emit workChanged();
+    announcePresence(false);   // -- WP FEATUI --
 }
 
 void AiController::showWork() { m_ctx.registry->activate(m_workShown.value(QStringLiteral("deviceId")).toString()); }
@@ -1320,4 +1325,43 @@ void AiController::forgetRememberedDevices() {
     setKnownDevices(m_remembered);
     emit rememberedChanged();
     remember();
+}
+
+// -- WP FEATUI -- What an agent does on a device reached through a hub is said
+// on that hub (`presence.set`), so the web console and other consoles of that
+// hub show it; refreshed while it works, cleared when it stops or moves on. A
+// hub without the cap, or a Viewer session, refuses: nothing else happens.
+void AiController::announcePresence(bool again) {
+    const QString id = m_working ? m_workShown.value(QStringLiteral("deviceId")).toString() : QString();
+    DeviceSession *on = id.isEmpty() ? nullptr : m_ctx.registry->session(id);
+    const QString transport = on ? on->row().value(QStringLiteral("transport")).toString() : QString();
+    const bool viaHub = transport == QLatin1String("hub") || transport == QLatin1String("link");
+    const QString agent = m_workShown.value(QStringLiteral("agent")).toString();
+    const QString what = m_workShown.value(QStringLiteral("text")).toString();
+    const QString key = viaHub ? id + QLatin1Char('\n') + agent + QLatin1Char('\n') + what : QString();
+    // Moved on, or stopped: the last one cleared
+    if (!m_presenceDevice.isEmpty() && m_presenceDevice != (viaHub ? id : QString())) {
+        if (DeviceSession *was = m_ctx.registry->session(m_presenceDevice))
+            was->worker()->post([](FfiCore *c) {
+                char buf[256];
+                dspi_hub_presence_set(c, "", "", "", 0, buf, sizeof buf);
+            });
+        m_presenceDevice.clear();
+        m_presenceSent.clear();
+    }
+    if (!viaHub) {
+        m_presenceTimer.stop();
+        return;
+    }
+    if (key == m_presenceSent && !again) return;
+    m_presenceDevice = id;
+    m_presenceSent = key;
+    if (!m_presenceTimer.isActive()) m_presenceTimer.start();
+    const QByteArray label = (agent.isEmpty() ? tr("AI agent") : agent).toUtf8();
+    const QByteArray serial = on->row().value(QStringLiteral("serial")).toString().toUtf8();
+    const QByteArray words = what.toUtf8();
+    on->worker()->post([label, serial, words](FfiCore *c) {
+        char buf[256];
+        dspi_hub_presence_set(c, label.constData(), serial.constData(), words.constData(), uint32_t(kPresenceTtlS), buf, sizeof buf);
+    });
 }

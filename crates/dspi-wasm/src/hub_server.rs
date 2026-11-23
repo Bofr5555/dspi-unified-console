@@ -111,6 +111,8 @@ struct Recall {
 pub fn dispatch(core: &DspiCore, method: &str, p: Value) -> Option<CallResult> {
     Some(match method {
         "hubCaps" => Ok(tidy(&core.hub_caps())),
+        // -- WP FEATUI -- who works on the hub's devices (the `presence` family)
+        "hubPresenceList" => record(core.hub_presence_list()),
         "hubInventory" => record(core.hub_inventory()),
         "hubHealth" => record(core.hub_health()),
         "hubStats" => record(core.hub_stats()),

@@ -1464,7 +1464,9 @@ impl AgentPolicy {
     /// every setting, "never ask" too. A value that is no finite number is
     /// none.
     pub fn set_agent_spl_cap_db(&self, cap: Option<f32>) {
-        let bits = cap.filter(|c| c.is_finite() && *c > 0.0).map_or(0, f32::to_bits);
+        let bits = cap
+            .filter(|c| c.is_finite() && *c > 0.0)
+            .map_or(0, f32::to_bits);
         self.spl_cap_bits.store(bits, Ordering::Relaxed);
     }
 

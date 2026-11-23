@@ -324,6 +324,8 @@ pub use hub_server::{
     HubServerListener, HubSnapshotDocument, HubSnapshotPut, HubSnapshotRecall, HubStats,
     HubStatsDevice, MergedSnapshot, SnapshotMergedList,
 };
+// -- WP FEATUI --
+pub use hub_server::{CAP_PRESENCE, HubPresence};
 // -- WP P3HB --
 pub use hub_server::{HubLastChange, HubStreamCounters};
 // -- WP P2CC2 --
