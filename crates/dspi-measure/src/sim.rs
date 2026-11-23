@@ -42,11 +42,14 @@ mod render;
 mod worlds;
 // -- WP ATSIM -- the multi-unit world (PLAN-AT): units on a time base, one microphone
 pub mod system;
+// -- WP FUNC1 -- a scenario's own filters per output
+mod extra;
 
 #[cfg(test)]
 mod tests;
 
 pub use dsp::SimFilter;
+pub use extra::{apply_filters, filters_response, section_response};
 pub use render::render;
 pub use worlds::{flat_chain, flat_chains, three_way_chains, two_way_chains};
 

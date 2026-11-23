@@ -110,6 +110,18 @@ impl FakeRemote {
         SiggenConfig::decode(&bytes).ok()
     }
 
+    // -- WP FUNC1 --
+    /// Whether the generator plays now, and for how long (ms): what an
+    /// observer on the device's side sees (the function test's oracle).
+    pub fn measure_generator_running(&self) -> Option<u32> {
+        let mut s = self.shared.lock();
+        let bytes = s.get_analysis(op::REQ_SIGGEN_GET_STATUS, 0)??;
+        drop(s);
+        self.shared.wake.notify_all();
+        let st = dspi_proto::packets::SiggenStatus::decode(&bytes).ok()?;
+        (st.state != 0).then_some(st.elapsed_ms)
+    }
+
     // -- WP ATFAKE --
     /// Every generator start this unit made on its time base (op 9, and plain
     /// starts stamped with the T of their sample 0), oldest first, at most

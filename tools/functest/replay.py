@@ -1,0 +1,126 @@
+#!/usr/bin/env python3
+"""The replay agent: MCP tool calls from a file, no model (README.md).
+
+    replay.py RUN_DIR > replay/NAME.json      a recorded agent run as a replay script
+
+A script is {"steps": {label: [[tool, args, "ok" | "error", note?, not?], ...]}}: `not` is a pattern
+the answer must not have; ["wait", {"device": d}]
+waits until that device's measuring ends, in place of an agent's polling. A measurement's id in the
+arguments is "$M1", "$M2", ...: the ones this run filed, in the order they were filed.
+"""
+import json
+import pathlib
+import re
+import sys
+import time
+
+from checks import tool_calls
+
+# What an agent reads changes nothing: left out of a conversion
+READS = ("dspi_get_", "dspi_list_", "dspi_measure_status", "dspi_measure_preflight", "dspi_system_measure_preflight")
+
+
+def convert(run):
+    """A recorded run's calls as a script."""
+    run = pathlib.Path(run)
+    meta = json.loads((run / "run.json").read_text())
+    ids, steps = {}, {}
+    for s in meta["steps"]:
+        calls, last_start = [], None
+        path = run / f"transcript-{s['n']}-{s['label']}.jsonl"
+        text = path.read_text() if path.exists() else ""
+        for i in filed(text):
+            ids.setdefault(i, f"$M{len(ids) + 1}")
+        for tool, args, ok in step_calls(run, s):
+            if tool.startswith(READS):
+                if tool == "dspi_measure_status" and last_start:
+                    calls.append(["wait", {"device": last_start}])
+                    last_start = None
+                continue
+            args = json.loads(replace(json.dumps(args), ids))
+            calls.append([tool, args, "ok" if ok else "error"])
+            if tool in ("dspi_measure_start", "dspi_measure_rolloff_start", "dspi_tune_sum_check", "dspi_tune_verify") and ok:
+                last_start = args.get("device", "")
+        steps[s["label"]] = calls
+    return {"from": meta["name"], "confirm": meta["confirm"], "steps": steps}
+
+
+def replace(text, ids):
+    for k, v in sorted(ids.items(), key=lambda x: -len(x[0])):
+        text = text.replace(f'"{k}"', f'"{v}"')
+    return text
+
+
+def filed(text):
+    """The measurement ids a transcript saw filed, in order."""
+    out = []
+    for i in re.findall(r'filed_measurement_id\\*":\\*"([0-9-]+)', text):
+        if i not in out:
+            out.append(i)
+    return out
+
+
+def step_calls(run, step):
+    """tool_calls of one step's transcript."""
+    import shutil
+    import tempfile
+    d = pathlib.Path(tempfile.mkdtemp(dir=run))
+    try:
+        src = run / f"transcript-{step['n']}-{step['label']}.jsonl"
+        if src.exists():
+            shutil.copy(src, d / src.name)
+        return tool_calls(d)
+    finally:
+        shutil.rmtree(d)
+
+
+class Player:
+    """Plays a script through the app's relay, as an agent."""
+
+    def __init__(self, run):
+        from probe import Agent
+        self.agent = Agent(run.name)
+        self.ids = []
+
+    def status(self, device):
+        return json.loads(self.agent.call("dspi_measure_status", device=device)[1])
+
+    def wait(self, device, seconds=900):
+        end = time.time() + seconds
+        time.sleep(1)
+        while time.time() < end:
+            s = self.status(device)
+            req = s.get("request") or {}
+            if req.get("state") not in ("waiting_for_app", "starting", "running"):
+                i = req.get("filed_measurement_id")
+                if i and i not in self.ids:
+                    self.ids.append(i)
+                return req.get("state", ""), req.get("note", "")
+            time.sleep(1)
+        raise RuntimeError(f"{device} still measures after {seconds} s")
+
+    def step(self, calls):
+        """Plays one step: what did not go as the script says."""
+        out = []
+        for c in calls:
+            tool, args = c[0], c[1]
+            if tool == "wait":
+                state, note = self.wait(args["device"])
+                out.append({"tool": tool, "args": args, "want": "ended", "got": f"{state}: {note}",
+                            "wrong": state != "ended", "note": "", "answer": note})
+                continue
+            text = json.dumps(args)
+            for n in range(len(self.ids), 0, -1):
+                text = text.replace(f'"$M{n}"', json.dumps(self.ids[n - 1]))
+            kind, answer = self.agent.call(tool, **json.loads(text))
+            got = "ok" if kind == "ok" else "error"
+            banned = len(c) > 4 and re.search(c[4], str(answer))
+            if banned:
+                got = f"{got}, with {banned.group(0)[:60]!r}"
+            out.append({"tool": tool, "args": args, "want": c[2], "got": got, "wrong": got != c[2],
+                        "note": c[3] if len(c) > 3 else "", "answer": str(answer)[:400]})
+        return out
+
+
+if __name__ == "__main__":
+    print(json.dumps(convert(sys.argv[1]), indent=1))

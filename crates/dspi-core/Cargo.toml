@@ -76,6 +76,10 @@ uniffi = ["dep:uniffi"]
 # world answers the demo device's generator. Demo connections only; on in the
 # web, Qt and Terminal builds, off in the mobile libraries.
 measure-sim = ["dspi-measure/sim"]
+# -- WP FUNC1 -- the function test's scenario (measure_sim/scenario.rs): demo
+# devices, speakers and a room from a file named in DSPI_SIM_SCENARIO. Test
+# builds only (tools/functest); no binding turns it on by default.
+sim-scenario = ["measure-sim"]
 
 [dev-dependencies]
 proptest = "1"

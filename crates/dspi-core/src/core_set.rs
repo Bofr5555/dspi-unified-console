@@ -581,6 +581,13 @@ impl SetState {
             } => Some((hub_unit_id(hub_id, url, serial), named(serial))),
             #[cfg(not(feature = "link"))]
             Held::Hub { .. } => None,
+            // -- WP FUNC1 -- a scenario's device is called what the user calls it
+            #[cfg(feature = "sim-scenario")]
+            Held::Demo(s) if crate::measure_sim::scenario::name_of(s).is_some() => {
+                let n = self.next_number(false);
+                let name = crate::measure_sim::scenario::name_of(s).unwrap_or_default();
+                Some((DeviceId::demo(n), name))
+            }
             Held::Demo(_) => {
                 let n = self.next_number(false);
                 Some((DeviceId::demo(n), format!("Demo {n}")))
@@ -1309,6 +1316,13 @@ fn liveness(inner: &crate::Inner) -> DeviceLiveness {
 
 /// The name for a device opened without one.
 fn label_of(core: &DspiCore, id: &DeviceId, serial: &str) -> String {
+    // -- WP FUNC1 --
+    #[cfg(feature = "sim-scenario")]
+    if id.transport() == DeviceTransport::Demo
+        && let Some(name) = crate::measure_sim::scenario::name_of(serial)
+    {
+        return name;
+    }
     if id.transport() == DeviceTransport::Demo {
         let n = id.as_str().split_once(':').map_or("", |(_, n)| n);
         return format!("Demo {n}");

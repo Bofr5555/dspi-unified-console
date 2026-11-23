@@ -786,6 +786,39 @@ fn wp_mcp5_without_a_measure_view_measuring_is_not_available() {
     assert!(s.measure_requests().is_empty());
 }
 
+// A way of the user's layout measured alone, with no input routed to it yet:
+// the device's own suggestion leaves such an output out.
+#[test]
+fn wp_func1_a_proposal_takes_the_layouts_outputs_routed_or_not() {
+    let (set, _id, core) = demo();
+    layout(&core, true);
+    for i in 0..core.get_state().num_input_channels {
+        core.set_matrix_route(i, 0, false, 0.0, false).unwrap();
+    }
+    let mut s = server(&set, ConfirmMode::NeverAsk, true);
+    let c = s.connect();
+    let args = json!({"outputs": [0], "sweep_ms": 1000, "passes": 2});
+    ok_at(&mut s, c, 1_000, "dspi_measure_start", args);
+    app_takes(&mut s, &core);
+    app_drives(&core, "session", 240);
+    status(&mut s, c, 6_000);
+    ok_at(&mut s, c, 6_000, "dspi_tune_propose", json!({}));
+}
+
+// The first real agent stopped here: the overview said it may not measure.
+#[test]
+fn wp_func1_the_overview_says_an_agent_may_measure_where_it_may() {
+    let (set, _id, _core) = demo();
+    for measuring in [true, false] {
+        let mut s = server(&set, ConfirmMode::AskRisky, measuring);
+        let c = s.connect();
+        let o = ok_at(&mut s, c, 0, "dspi_get_overview", json!({}));
+        assert_eq!(o["agent_may"]["measure"], json!(measuring));
+        let l = ok_at(&mut s, c, 0, "dspi_get_limits", json!({}));
+        assert_eq!(l["agent_may"]["measure"], json!(measuring));
+    }
+}
+
 #[test]
 fn wp_mcp5_requests_lapse_are_declined_stopped_and_withdrawn() {
     let (set, _id, core) = demo();

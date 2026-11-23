@@ -1,0 +1,62 @@
+# The deterministic part, no model: replay/smoke.json's calls against the same simulation, so the
+# harness, the simulator, the oracle and the main MCP path are tested for free (about 3 minutes).
+name = "replay-smoke"
+
+[[step]]
+label = "protect-and-measure"
+
+  [[step.expect]]
+  what = "the left speaker was measured, with its tweeter protected"
+  kind = "measured"
+  outputs = { Fronts = [1, 2] }
+
+  [[step.expect]]
+  what = "the tweeters' high-passes"
+  kind = "highpass"
+  outputs = { Fronts = [2, 4], Centre = [2], Surrounds = [2, 4] }
+  min_hz = 1900
+  near_hz = 1500
+  slope_db = 12
+
+[[step]]
+label = "tune"
+
+  [[step.expect]]
+  what = "no hole in the left speaker's sum"
+  kind = "holes"
+  inputs = ["L"]
+  band_hz = [300, 8000]
+  pass_db = -6
+  near_db = -9
+
+  [[step.expect]]
+  what = "Fronts: woofer to tweeter"
+  kind = "crossover"
+  device = "Fronts"
+  pairs = [[1, 2]]
+  hz = [2200, 2800]
+  near = 0.1
+
+[[step]]
+label = "refusals"
+
+  [[step.expect]]
+  what = "the tweeters' high-passes"
+  kind = "highpass"
+  outputs = { Fronts = [2, 4] }
+  min_hz = 1900
+  near_hz = 1500
+  slope_db = 12
+
+  [[step.expect]]
+  what = "nothing changed"
+  kind = "only_changed"
+  devices = []
+
+# Found by FUNC1 and fixed: a polarity change for an output no input feeds (its write went nowhere),
+# and a sub's EQ levelled where it plays nothing
+[[step]]
+label = "unrouted-polarity"
+
+[[step]]
+label = "sub-tune"
