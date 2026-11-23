@@ -1,9 +1,10 @@
 # AI agents
 
-*User manual, WP MCP6, 2026-11-22; 2026-11-23 with the installation's sources, slots and scenes (FEAT1), opening devices,
-room and zone volume, schedules and measurement options (FEAT2) where the sound comes from (FEAT3), and what the screen shows
-of an agent's work and what it is told when you step in (AIVIS, section 5.1). For the owner and for users of the Qt console. It describes the console as it is with the Modern programme's waves 4 and 5: MCP1 to MCP4,
-the MCP conformance work (MCP6), and measuring through an agent (MCP5, with ROLL1's rules for tweeters; section 6).*
+*User manual, WP MCP6, 2026-11-22; 2026-11-23 with the installation's sources, slots and scenes (FEAT1), opening
+devices, room and zone volume, schedules and measurement options (FEAT2), where the sound comes from (FEAT3), and what
+the screen shows of an agent's work and what it is told when you step in (AIVIS, section 5.1). For the owner and for
+users of the Qt console. It describes the console as it is with the Modern programme's waves 4 and 5: MCP1 to MCP4, the
+MCP conformance work (MCP6), and measuring through an agent (MCP5, with ROLL1's rules for tweeters; section 6).*
 
 An AI agent on your computer, such as Claude Desktop, Claude Code, Cursor or VS Code, can read the settings of the DSPi
 devices that DSPi Console has open and change them for you: "make the left woofer 2 dB quieter", "why does output 3 sound
