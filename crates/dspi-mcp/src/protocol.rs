@@ -155,3 +155,4 @@ Status paused is the user's Pause: wait.";
 // -- WP MCP2a -- the last sentence: writes come with MCP2a's policy
 // -- WP FEAT2 -- "and changes", and measuring
 // -- WP FEAT3 -- the sentence on where the sound comes from
+// -- WP AIVIS -- the person beside you: user_activity, "the user changed this", paused

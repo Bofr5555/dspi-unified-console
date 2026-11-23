@@ -271,3 +271,63 @@ fn wp_intf_the_tool_order_and_the_texts_name_only_tools_that_exist() {
         );
     }
 }
+
+/// AIVIS's "since your last call" reaches FEAT1-3's tools too: a FEAT1
+/// draft tool (an error here: the demo is on no hub), FEAT2's known devices,
+/// FEAT3's host audio.
+#[test]
+fn wp_intf_the_user_activity_block_reaches_feat1_to_feat3s_tools() {
+    let set = CoreSet::new();
+    let id = set.open(DeviceTarget::Demo).unwrap();
+    let core = set.core(&id).unwrap();
+    let mut s = Server::new(
+        Arc::clone(&set),
+        ServerConfig {
+            policy: Arc::new(AgentPolicy::new(ConfirmMode::NeverAsk)),
+            ..ServerConfig::default()
+        },
+    );
+    let c = s.connect();
+    let mut call = |s: &mut Server, tool: &str, args: Value| {
+        s.handle_value(
+            c,
+            0,
+            request("tools/call", json!({"name": tool, "arguments": args})),
+        )
+        .unwrap()["result"]
+            .clone()
+    };
+    // What happened before the agent came is no news
+    call(&mut s, "dspi_list_devices", json!({}));
+    let told = |r: &Value| {
+        r["content"].as_array().unwrap().iter().any(|t| {
+            t["text"]
+                .as_str()
+                .unwrap_or("")
+                .starts_with("Since your last call, the user changed")
+        })
+    };
+    for (n, (tool, args)) in [
+        (
+            "dspi_installation_set_slots",
+            json!({"unit_id": "A", "slots": null}),
+        ),
+        ("dspi_list_known_devices", json!({})),
+        ("dspi_get_host_audio", json!({})),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        core.set_output_gain(0, -30.0 - n as f32).unwrap();
+        s.tick(1_000 * (n as u64 + 1));
+        let r = call(&mut s, tool, args);
+        assert!(told(&r), "{tool}: {r}");
+        if r["isError"] == json!(false) {
+            assert_eq!(
+                r["structuredContent"]["user_activity"]["events"][0]["output"],
+                json!(0),
+                "{tool}: {r}"
+            );
+        }
+    }
+}
