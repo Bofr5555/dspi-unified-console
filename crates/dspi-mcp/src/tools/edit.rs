@@ -1123,16 +1123,44 @@ fn plan_user_mute(plan: &mut Plan, args: &Map<String, Value>) -> Result<(), Tool
 
 // ------------------------------------------------------------------- undo
 
+// -- WP FUNC2b --
+/// The agent's call that made entry `id` (the activity keeps each call's
+/// undoable entries and the paths it touched): its other entries, newest
+/// first, and every path it touched.
+fn same_call(call: &Call<'_>, id: u64) -> (Vec<u64>, Vec<String>) {
+    let Some(entry) = call
+        .activity
+        .recent(crate::activity::ACTIVITY_CAP, Some(call.client))
+        .into_iter()
+        .filter(|a| a.tool != "dspi_undo")
+        .find(|a| a.journal_ids.contains(&id))
+    else {
+        return (Vec::new(), Vec::new());
+    };
+    let mut ids = entry.journal_ids;
+    ids.retain(|j| *j != id);
+    ids.sort_unstable_by(|a, b| b.cmp(a));
+    ids.dedup();
+    let mut paths: Vec<String> = Vec::new();
+    for (p, _) in entry.touched {
+        if !paths.contains(&p) {
+            paths.push(p);
+        }
+    }
+    (ids, paths)
+}
+
 /// The most of an agent's own changes `dspi_undo` looks back through.
 const UNDO_LOOKBACK: usize = 20;
 
 static UNDO: Tool = Tool {
     name: "dspi_undo",
     title: "Undo this agent's change",
-    description: "Undo one of this agent's own changes on a device: `undo_id` from a write's \
-                  result or dspi_get_activity, or by default this agent's newest change not yet \
-                  undone. The user's changes, and other agents', are never undone by an agent. \
-                  Undoing a cut is a boost: it is judged like any change.",
+    description: "Undo one of this agent's own changes on a device, every value the call that \
+                  made it set (undone_ids): `undo_id` from a write's result or dspi_get_activity, \
+                  or by default this agent's newest change not yet undone. The user's changes, \
+                  and other agents', are never undone by an agent. Undoing a cut is a boost: it \
+                  is judged like any change.",
     class: ToolClass::Write,
     device: true,
     input_schema: || {
@@ -1197,8 +1225,23 @@ fn undo(call: &mut Call<'_>, args: &Map<String, Value>) -> ToolResult {
                  ask the user to."
             )));
         }
-        let writes: Vec<WriteKey> = values
+        // -- WP FUNC2b -- (FUNC2b S15) the rest of the call that made it (a limiter's
+        // threshold and switch are two entries): undone with it, judged as one; one entry
+        // at a time left agents with half a change undone
+        let (siblings, touched) = same_call(call, id);
+        let restorable: Vec<u64> = siblings
             .iter()
+            .copied()
+            .filter(|j| {
+                history
+                    .iter()
+                    .filter(|e| e.id == *j)
+                    .all(|e| e.actor == call.actor && e.before.is_some())
+            })
+            .collect();
+        let writes: Vec<WriteKey> = history
+            .iter()
+            .filter(|e| e.id == id || restorable.contains(&e.id))
             .filter_map(|e| {
                 e.before
                     .clone()
@@ -1211,7 +1254,49 @@ fn undo(call: &mut Call<'_>, args: &Map<String, Value>) -> ToolResult {
             .revert_entry(id)
             .map_err(|e| policy::core_error(&call.judging, e))?;
         if moved.entry.is_some() {
-            return Ok(json!({"ok": true, "device": call.device_text(), "undone": id}));
+            let (mut undone, mut left) = (vec![id], Vec::new());
+            for j in siblings {
+                match restorable
+                    .contains(&j)
+                    .then(|| core.revert_entry(j).ok())
+                    .flatten()
+                {
+                    Some(m) if m.entry.is_some() => undone.push(j),
+                    Some(m) if m.skipped.is_empty() => {} // already back
+                    _ => left.push(j),
+                }
+            }
+            let mut r = json!({"ok": true, "device": call.device_text(), "undone": id,
+                               "undone_ids": undone});
+            // What the call set that undo never reverses (a limiter switched on, a flash
+            // write), or could not: said, so the agent does not take it for undone
+            let kept: Vec<String> = touched
+                .into_iter()
+                .filter(|p| {
+                    !history
+                        .iter()
+                        .any(|e| &e.path == p && undone.contains(&e.id))
+                })
+                .collect();
+            if !left.is_empty() || !kept.is_empty() {
+                let mut note = format!(
+                    "Not undone, from the same call: {}. Undo never reverses these (or they \
+                     changed since); set them back with the tool that made them if the user \
+                     wants that.",
+                    kept.join(", ")
+                );
+                if kept.iter().any(|p| p == "limit.on") {
+                    note.push_str(
+                        " A limiter switched on stays on: undo never switches a limiter off \
+                         (dspi_set_limiter with enabled false does; it may be held for the user).",
+                    );
+                }
+                if let Some(m) = r.as_object_mut() {
+                    m.insert("not_undone".into(), json!(kept));
+                    m.insert("note".into(), json!(note));
+                }
+            }
+            return Ok(r);
         }
         if !moved.skipped.is_empty() {
             return Err(ToolError::new(
