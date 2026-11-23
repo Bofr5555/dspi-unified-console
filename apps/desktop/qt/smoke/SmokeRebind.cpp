@@ -308,7 +308,10 @@ void held(Two &t, ChannelController *cc, SidebarController *sc, PeqEditorControl
     d.check("mdqt2a: the gain field", field && near(field->property("text").toString().toDouble(), -1));
     if (field) {
         field->forceActiveFocus();
-        field->setProperty("text", QStringLiteral("-7"));
+        // -- WP USR1 -- typed as a person types: leaving a field sends only what was typed
+        QTest::keyClick(field->window(), Qt::Key_A, Qt::ControlModifier);
+        QTest::keyClick(field->window(), '-');
+        QTest::keyClick(field->window(), '7');
         t.r->activate(t.b);
         t.bothIdle();
         d.check("mdqt2a: what was typed is committed on A", !field->hasActiveFocus() && near(stateOf(t.a)->output_gain_db[out], -7));

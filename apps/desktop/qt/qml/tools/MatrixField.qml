@@ -4,7 +4,8 @@ import UConsole
 // -- WP QP6 -- The matrix's compact number field (the Mac's CompactGainField
 // and CompactDelayField): shows "-3 dB" or "1.5 ms", the bare number while
 // typing (all of it selected), Enter or leaving commits, Escape restores, a
-// text that is not a number puts the shown value back. The wheel steps the
+// text that is not a number puts the shown value back. -- WP USR1 -- A typed
+// number is read as BorderedField.number reads it ("-3,5", "−3.5", "-3 dB"). The wheel steps the
 // value while the field is not being typed in: gains by `wheelStep` dB,
 // delays on whole milliseconds. A right-click resets to `resetValue`.
 //
@@ -34,11 +35,7 @@ BorderedField {
         return d.endsWith(".") ? d.slice(0, -1) : d
     }
     function shown() { return activeFocus ? format(value) : format(value) + " " + unit }
-    function parse(t) {
-        const cleaned = String(t).replace(unit, "").trim().replace(",", ".")
-        const v = Number(cleaned)
-        return cleaned.length && isFinite(v) ? v : NaN
-    }
+    function parse(t) { return number(t, unit) }   // -- WP USR1 -- BorderedField's reading
     // A delay step stays on the whole-millisecond grid from a fractional start
     function stepped(v, dir) {
         let n
@@ -68,7 +65,9 @@ BorderedField {
         if (!isNaN(v)) send(kind === "gain" ? Math.min(maxValue, Math.max(minValue, v)) : Math.max(minValue, v))
         text = shown()
     }
-    onValueChanged: if (!activeFocus) text = shown()
+    // -- WP USR1 -- and while focused with nothing typed since Enter: the
+    // device's answer to it, not the value from before
+    onValueChanged: if (!activeFocus || !edited) text = shown()
 
     WheelHandler {
         enabled: field.enabled && !field.activeFocus

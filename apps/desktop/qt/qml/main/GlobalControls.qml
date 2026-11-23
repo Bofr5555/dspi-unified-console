@@ -43,17 +43,14 @@ ColumnLayout {
             label: qsTr("Preset")
             model: SidebarController.presetTitles
             displayText: count > 0 && currentIndex >= 0 ? currentText : "–"
-            currentIndex: controls.activeSlot
-            // -- WP FUNC2b -- a new list of titles (a preset saved or renamed) resets a ComboBox's
-            // index to 0, and the binding above waits for the slot to change: the box said "Demo"
-            // while the device was on "Movie night", and Save next to it saves to the active slot
-            onModelChanged: Qt.callLater(() => presetBox.currentIndex = Qt.binding(() => controls.activeSlot))
+            // -- WP FUNC2b -- -- WP USR1 -- the active slot through every new list of titles (a
+            // preset saved, renamed or marked unsaved): AppComboBox.follows. Save beside it saves
+            // to the active slot, so the box must say which that is
+            follows: true
+            followIndex: controls.activeSlot
             enabled: controls.writable && !SidebarController.presetBusy
-            onActivated: index => {
-                SidebarController.requestPresetSwitch(index)
-                // The device says which slot is active, not the click
-                currentIndex = Qt.binding(() => controls.activeSlot)
-            }
+            // The device says which slot is active, not the click (AppComboBox.follows)
+            onActivated: index => SidebarController.requestPresetSwitch(index)
             TapHandler {
                 acceptedButtons: Qt.RightButton
                 onTapped: point => { if (controls.writable) dialogs.popupPresetMenu(presetBox, point.position.x, point.position.y) }
@@ -90,12 +87,11 @@ ColumnLayout {
             model: SidebarController.sources
             textRole: "title"
             valueRole: "value"
-            currentIndex: indexOfValue(SidebarController.source)
+            // -- WP USR1 -- through a new list too (a source renamed): AppComboBox.follows
+            follows: true
+            followIndex: SidebarController.sources.findIndex(s => s.value === SidebarController.source)
             enabled: controls.writable
-            onActivated: index => {
-                SidebarController.setSource(valueAt(index))
-                currentIndex = Qt.binding(() => indexOfValue(SidebarController.source))
-            }
+            onActivated: index => SidebarController.setSource(valueAt(index))
             // -- WP FEATUI -- (FEAT3) where the sound comes from, in the words agents get too
             HoverHandler { id: sourceHover }
             ToolTip.visible: sourceHover.hovered && !sourceBox.popup.visible
