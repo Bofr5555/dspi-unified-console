@@ -407,7 +407,8 @@ fn wp_mcp4_another_program_on_the_ipv6_loopback_is_a_start_failure() {
 fn wp_mcp4_the_relay_carries_a_held_call() {
     let r = rig();
     let mut keeper = MemoryTokenKeeper::default();
-    relay::TokenKeeper::save(&mut keeper, &r.token);
+    // -- WP FFIX -- a call with no clientInfo is the fallback name's program
+    relay::TokenKeeper::save(&mut keeper, &RelayConfig::default().fallback_name, &r.token);
     let mut params = json!({"name": "dspi_set_gain", "arguments": {"output": 1, "gain_db": -2.0}});
     params["_meta"] = json!({
         "io.modelcontextprotocol/protocolVersion": MODERN,

@@ -8634,6 +8634,10 @@ bool dspi_mcp_set_active_device(struct FfiMcp *mcp, const char *id);
  * 47860, "token": "<the kept one>", "name": "<to pair under when the agent
  * names nothing>"}`, each optional. `token_sink` (may be null) is called on
  * this thread with a new token to keep, or null to forget the kept one.
+ * -- WP FFIX -- the "token" kept is one text that holds a token per agent
+ * program (a JSON object); the sink gets that whole text again, null once
+ * it holds none. A single token kept before is no program's: each pairs once
+ * more as itself.
  * Returns 0 when standard input ended, 1 when standard output failed (the
  * agent went), 2 for a bad configuration.
  */

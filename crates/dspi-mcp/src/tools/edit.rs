@@ -145,6 +145,30 @@ fn band_writes(ch: u8, band: u8, p: &FilterParams) -> Vec<WriteKey> {
 }
 
 impl Op {
+    // -- WP FFIX --
+    /// 0 for an op that silences (a mute, an output off, a route off), 2 for
+    /// one that lets sound through (an unmute, an output on, a route on), 1
+    /// for the rest: the order [`execute`] runs a plan's ops in.
+    fn opens(&self) -> u8 {
+        match *self {
+            Op::OutMute { muted, .. } | Op::UserMute(muted) => {
+                if muted {
+                    0
+                } else {
+                    2
+                }
+            }
+            Op::OutEnable { on, .. } | Op::Route { on, .. } => {
+                if on {
+                    2
+                } else {
+                    0
+                }
+            }
+            _ => 1,
+        }
+    }
+
     /// What it writes, as the core's hook will show it.
     fn writes(&self) -> Vec<WriteKey> {
         use ParamValue::{Bool, Bytes, Float};
@@ -345,7 +369,12 @@ pub(crate) fn execute(
         core.begin_group(label.to_owned());
     }
     let mut failed = None;
-    for op in &plan.ops {
+    // -- WP FFIX -- FUNC1 bug 1: quiet first, open last, so a batch that
+    // protects a tweeter and routes it never plays it unprotected between
+    // two writes (each op writes its own value: the end state is the same)
+    let mut ops: Vec<&Op> = plan.ops.iter().collect();
+    ops.sort_by_key(|op| op.opens());
+    for op in ops {
         if let Err(e) = op.run(core) {
             failed = Some(e);
             break;

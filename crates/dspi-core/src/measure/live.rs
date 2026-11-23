@@ -1212,7 +1212,7 @@ impl DspiCore {
             .ok_or_else(|| invalid("the live view is not running"))?;
         if live.setup.output != output {
             return Err(invalid(format!(
-                "the live view measures output {}, not {}",
+                "the live view measures Out {}, not {}",
                 u16::from(live.setup.output).saturating_add(1),
                 u16::from(output).saturating_add(1)
             )));
@@ -1607,7 +1607,7 @@ impl DspiCore {
         for b in &bands {
             let Some(before) = chain_now.peq.get(usize::from(b.band)) else {
                 return Err(invalid(format!(
-                    "PEQ band {} (output {} has {})",
+                    "PEQ band {} (Out {} has {})",
                     b.band,
                     u16::from(output).saturating_add(1),
                     chain_now.peq.len()
@@ -1736,7 +1736,7 @@ impl DspiCore {
             live.pending = None;
             self.live_publish(live);
             return Err(invalid(format!(
-                "{NOTICE_CHAIN_CHANGED}: output {}'s EQ changed since the preview; preview again",
+                "{NOTICE_CHAIN_CHANGED}: Out {}'s EQ changed since the preview; preview again",
                 u16::from(output).saturating_add(1)
             )));
         }

@@ -116,8 +116,10 @@ fn wp_mcp3_uconsole_mcp_relays_an_agent_to_the_app() {
     assert_eq!(replies[2]["result"]["resultType"], "complete");
     assert!(err.contains("Claude Desktop"), "{err}");
     let token_file = config.join("uconsole").join("mcp-token");
-    let token = std::fs::read_to_string(&token_file).unwrap();
-    assert!(token.starts_with("dspi-mcp-"));
+    // -- WP FFIX -- one token per agent program, by its own name
+    let kept = dspi_mcp::relay::tokens_of(&std::fs::read_to_string(&token_file).unwrap());
+    let token = kept.get("claude-ai").cloned().unwrap_or_default();
+    assert!(token.starts_with("dspi-mcp-"), "{kept:?}");
     assert!(!err.contains(token.trim()), "the token is never printed");
     #[cfg(unix)]
     {

@@ -7,9 +7,11 @@
 //!
 //! - **The token.** Kept by a [`TokenKeeper`]: the Qt app's is the system's
 //!   secret store, the Terminal's a file only this user can read
-//!   ([`FileTokenKeeper`]). With none, or one the app refuses (401), the
-//!   relay pairs: the app shows the agent's name and a code, the relay prints
-//!   the same code, the user allows, and the new token is kept.
+//!   ([`FileTokenKeeper`]). One per agent program (-- WP FFIX --), by the
+//!   name it gives in its first message: a second program on the computer is
+//!   paired, named and undone as itself. With none, or one the app refuses
+//!   (401), the relay pairs: the app shows the agent's name and a code, the
+//!   relay prints the same code, the user allows, and the new token is kept.
 //! - **Headers.** It sets what each era needs from the message itself:
 //!   `MCP-Protocol-Version`, `Mcp-Method` and `Mcp-Name` for 2026-07-28; the
 //!   session id and the agreed version after a legacy `initialize`. When the
@@ -20,6 +22,7 @@
 //!   the next request may find the app.
 //! - It ends when standard input closes.
 
+use std::collections::BTreeMap;
 use std::io::{self, BufRead, Read, Write};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpStream};
 use std::path::PathBuf;
@@ -41,45 +44,64 @@ Start DSPi Console and turn on Settings, AI agents, then try again.";
 /// How long the relay waits after a refused pairing before it asks again.
 pub const PAIR_RETRY_AFTER: Duration = Duration::from_secs(60);
 
-/// Where the relay keeps its token.
+/// Where the relay keeps its tokens: one per agent program (-- WP FFIX --
+/// FUNC1 bug 7), by the name the program gives itself (`clientInfo.name`),
+/// so each program on the computer is paired, named and undone as itself.
 pub trait TokenKeeper {
-    /// The token kept, if any.
-    fn load(&mut self) -> Option<String>;
-    /// Keep `token` (it replaces any other).
-    fn save(&mut self, token: &str);
-    /// The app refused the kept token: drop it.
-    fn forget(&mut self);
+    /// The token kept for agent program `who`, if any.
+    fn load(&mut self, who: &str) -> Option<String>;
+    /// Keep `token` for `who` (it replaces that program's other one).
+    fn save(&mut self, who: &str, token: &str);
+    /// The app refused `who`'s token: drop it.
+    fn forget(&mut self, who: &str);
 }
 
-/// A token in a file only this user can read (the Terminal's way, as its
-/// DSPi Link tokens).
+// -- WP FFIX --
+/// The tokens a keeper's one stored text holds: a JSON object of program
+/// name to token. Anything else (a single token kept before FFIX, which every
+/// program shared) holds none: each program pairs once more as itself.
+pub fn tokens_of(text: &str) -> BTreeMap<String, String> {
+    serde_json::from_str::<BTreeMap<String, String>>(text.trim()).unwrap_or_default()
+}
+
+/// [`tokens_of`]'s text for `tokens`.
+pub fn tokens_text(tokens: &BTreeMap<String, String>) -> String {
+    serde_json::to_string(tokens).unwrap_or_default()
+}
+
+/// The tokens in a file only this user can read (the Terminal's way, as its
+/// DSPi Link tokens), as [`tokens_text`].
 #[derive(Debug, Clone)]
 pub struct FileTokenKeeper {
     path: PathBuf,
 }
 
 impl FileTokenKeeper {
-    /// Keep the token in `path`.
+    /// Keep the tokens in `path`.
     pub fn new(path: PathBuf) -> Self {
         Self { path }
     }
-}
 
-impl TokenKeeper for FileTokenKeeper {
-    fn load(&mut self) -> Option<String> {
-        let text = std::fs::read_to_string(&self.path).ok()?;
-        let t = text.trim();
-        (!t.is_empty()).then(|| t.to_owned())
+    fn all(&self) -> BTreeMap<String, String> {
+        std::fs::read_to_string(&self.path)
+            .map(|t| tokens_of(&t))
+            .unwrap_or_default()
     }
 
-    fn save(&mut self, token: &str) {
+    fn write(&self, tokens: &BTreeMap<String, String>) {
         let write = || -> io::Result<()> {
+            if tokens.is_empty() {
+                return match std::fs::remove_file(&self.path) {
+                    Err(e) if e.kind() != io::ErrorKind::NotFound => Err(e),
+                    _ => Ok(()),
+                };
+            }
             if let Some(dir) = self.path.parent() {
                 std::fs::create_dir_all(dir)?;
             }
             let tmp = self.path.with_extension("new");
             let mut f = private_file(&tmp)?;
-            f.write_all(token.as_bytes())?;
+            f.write_all(tokens_text(tokens).as_bytes())?;
             f.sync_all()?;
             drop(f);
             std::fs::rename(&tmp, &self.path)
@@ -90,9 +112,24 @@ impl TokenKeeper for FileTokenKeeper {
             );
         }
     }
+}
 
-    fn forget(&mut self) {
-        let _ = std::fs::remove_file(&self.path);
+impl TokenKeeper for FileTokenKeeper {
+    fn load(&mut self, who: &str) -> Option<String> {
+        self.all().remove(who).filter(|t| !t.is_empty())
+    }
+
+    fn save(&mut self, who: &str, token: &str) {
+        let mut all = self.all();
+        all.insert(who.to_owned(), token.to_owned());
+        self.write(&all);
+    }
+
+    fn forget(&mut self, who: &str) {
+        let mut all = self.all();
+        if all.remove(who).is_some() {
+            self.write(&all);
+        }
     }
 }
 
@@ -116,22 +153,27 @@ fn private_file(path: &std::path::Path) -> io::Result<std::fs::File> {
         .open(path)
 }
 
-/// A token kept only while the relay runs (tests; a keeper that cannot keep).
+/// Tokens kept only while the relay runs (tests; a keeper that cannot keep).
 #[derive(Debug, Default, Clone)]
 pub struct MemoryTokenKeeper {
-    /// The token.
+    /// The tokens, by program.
+    pub tokens: BTreeMap<String, String>,
+    /// The token saved last (`None` once that program's is forgotten).
     pub token: Option<String>,
 }
 
 impl TokenKeeper for MemoryTokenKeeper {
-    fn load(&mut self) -> Option<String> {
-        self.token.clone()
+    fn load(&mut self, who: &str) -> Option<String> {
+        self.tokens.get(who).cloned()
     }
-    fn save(&mut self, token: &str) {
+    fn save(&mut self, who: &str, token: &str) {
+        self.tokens.insert(who.to_owned(), token.to_owned());
         self.token = Some(token.to_owned());
     }
-    fn forget(&mut self) {
-        self.token = None;
+    fn forget(&mut self, who: &str) {
+        if self.tokens.remove(who).as_deref() == self.token.as_deref() {
+            self.token = None;
+        }
     }
 }
 
@@ -294,6 +336,8 @@ struct Relay<'a> {
     cfg: RelayConfig,
     keeper: &'a mut dyn TokenKeeper,
     log: &'a mut dyn Write,
+    /// -- WP FFIX -- the agent program, from its first message: its token's key
+    who: Option<String>,
     token: Option<String>,
     /// Legacy: the session and agreed version from `initialize`, and the
     /// agent's `initialize` itself, to repeat if the app forgot the session.
@@ -360,6 +404,12 @@ impl Relay<'_> {
     /// Send `msg`, pairing first when there is no token, again when the app
     /// refuses it, and starting a new session when the app forgot this one.
     fn send(&mut self, msg: &Value) -> Sent {
+        // -- WP FFIX -- the program's own token, once it has said who it is
+        if self.who.is_none() {
+            let who = self.who_in(msg);
+            self.token = self.keeper.load(&who);
+            self.who = Some(who);
+        }
         if self.token.is_none()
             && let Err(why) = self.pair(msg)
         {
@@ -371,7 +421,8 @@ impl Relay<'_> {
         };
         if reply.status == 401 {
             self.say("DSPi Console no longer knows this agent's token; pairing again");
-            self.keeper.forget();
+            let who = self.who.clone().unwrap_or_default();
+            self.keeper.forget(&who);
             self.token = None;
             if let Err(why) = self.pair(msg) {
                 return Sent::Failed(why);
@@ -442,6 +493,23 @@ impl Relay<'_> {
             .map_or_else(|| self.cfg.fallback_name.clone(), str::to_owned)
     }
 
+    // -- WP FFIX --
+    /// The agent program's key for its token: its `clientInfo.name` (the
+    /// program's id; the title is for people), else the title, else the
+    /// relay's fallback name. Cleaned and bounded, as the app keeps it.
+    fn who_in(&self, msg: &Value) -> String {
+        let info = msg.pointer("/params/clientInfo").or_else(|| {
+            msg.pointer("/params/_meta")
+                .and_then(|m| m.get(META_CLIENT_INFO))
+        });
+        let name = info
+            .and_then(|i| i.get("name").or_else(|| i.get("title")))
+            .and_then(Value::as_str)
+            .filter(|n| !n.trim().is_empty())
+            .unwrap_or(&self.cfg.fallback_name);
+        crate::untrusted::clean(name.trim(), crate::untrusted::CLIENT_MAX_BYTES)
+    }
+
     /// Ask the app for a token and wait for the user's answer.
     fn pair(&mut self, msg: &Value) -> Result<(), String> {
         if self.pair_after.is_some_and(|t| Instant::now() < t) {
@@ -491,7 +559,8 @@ impl Relay<'_> {
                     if token.is_empty() {
                         return Err("DSPi Console allowed the agent but sent no token".into());
                     }
-                    self.keeper.save(&token);
+                    let who = self.who.clone().unwrap_or_default();
+                    self.keeper.save(&who, &token);
                     self.token = Some(token);
                     self.say("paired with DSPi Console");
                     return Ok(());
@@ -521,12 +590,12 @@ pub fn run(
     output: &mut dyn Write,
     log: &mut dyn Write,
 ) -> io::Result<()> {
-    let token = keeper.load();
     let mut relay = Relay {
         cfg,
         keeper,
         log,
-        token,
+        who: None,
+        token: None,
         session: None,
         legacy_version: None,
         initialize: None,

@@ -266,6 +266,10 @@ pub struct Judging {
     pub mode: Option<ConfirmMode>,
     /// Each output's role from the user's **confirmed** speaker setup.
     pub roles: Vec<Option<MeasureRole>>,
+    // -- WP FFIX --
+    /// The limits profile's high-pass per output: (output, corner, slope);
+    /// it raises a confirmed tweeter's or midrange's floor, never lowers it.
+    pub floors: Vec<(u8, f32, u8)>,
     /// The writes the user allowed for this call (a re-run after Allow).
     pub grant: Vec<WriteKey>,
     /// The values the tool's judged plan writes: the hook lets these pass.
@@ -519,7 +523,15 @@ pub fn judge(state: &DspState, writes: &[WriteKey], j: &Judging) -> Verdict {
     let mut risks = Vec::new();
     let mut refusals = Vec::new();
     judge_values(state, &after, writes, &mut risks);
-    judge_highpass(state, &after, writes, &j.roles, &mut risks, &mut refusals);
+    judge_highpass(
+        state,
+        &after,
+        writes,
+        &j.roles,
+        &j.floors,
+        &mut risks,
+        &mut refusals,
+    );
     judge_effects(state, &after, writes, &mut risks); // -- WP MCP2b --
     if let Some(why) = refusals.into_iter().next() {
         return Verdict::Refuse(why);
@@ -995,92 +1007,369 @@ fn best_highpass(st: &DspState, o: u8) -> f32 {
         .fold(0.0, f32::max)
 }
 
-/// The tweeter rule on every output whose filters the writes touch.
+// -- WP FFIX -- bug 1: the rule judges the state a write leaves
+/// How far a hard output's filters may rise above a 12 dB/octave high-pass at
+/// its floor, below the floor, dB: a boost below the floor counts by what
+/// reaches the driver.
+pub const BELOW_FLOOR_MARGIN_DB: f32 = 3.0;
+/// The lowest frequency the below-floor response is judged at, Hz.
+const ENVELOPE_LOW_HZ: f32 = 20.0;
+
+/// The hard rule of output `o`: (corner, slope, word), from the user's
+/// confirmed role and the limits profile (which may only raise it).
+fn hard_rule(
+    j_roles: &[Option<MeasureRole>],
+    floors: &[(u8, f32, u8)],
+    o: u8,
+) -> Option<(f32, u8, &'static str)> {
+    let (hz, slope, word) = match j_roles.get(usize::from(o)).copied().flatten() {
+        Some(MeasureRole::High) => (TWEETER_FLOOR_HZ, MIN_SLOPE_DB, "a tweeter"),
+        Some(MeasureRole::Mid) => (MID_FLOOR_HZ, MIN_SLOPE_DB, "a midrange"),
+        _ => return None,
+    };
+    let (p_hz, p_slope) = floors
+        .iter()
+        .find(|(out, _, _)| *out == o)
+        .map_or((0.0, 0), |(_, hz, s)| (*hz, *s));
+    let hz = if p_hz.is_finite() { hz.max(p_hz) } else { hz };
+    Some((hz, slope.max(p_slope), word))
+}
+
+/// Whether output `o` would play programme: routed from an input, on and
+/// not muted (the volume is the listener's, not a protection).
+pub fn plays(st: &DspState, o: u8) -> bool {
+    get(&st.output_enabled, o)
+        && !get(&st.output_muted, o)
+        && (0..st.num_input_channels).any(|i| cell_of(&st.matrix_routing, i, o))
+}
+
+/// Whether output `o` has a high-pass at `floor` or above, `slope` steep.
+fn protected_by(st: &DspState, o: u8, floor: f32, slope: u8) -> bool {
+    highpasses(st, o)
+        .iter()
+        .any(|(hz, s)| *hz >= floor - HZ_SLACK && *s >= slope)
+}
+
+/// Output `o`'s filters (its routed inputs' PEQ, the worst of them, then its
+/// own PEQ and crossover) against a 12 dB/octave high-pass at `floor`, below
+/// the floor, at 1/12 octave from 20 Hz: dB above that line at each point
+/// (negative: under it).
+fn below_floor_curve(st: &DspState, o: u8, floor: f32) -> Vec<f32> {
+    let ch = usize::from(st.num_input_channels.saturating_add(o));
+    let mut own: Vec<FilterParams> = Vec::new();
+    own.extend(st.filters.get(ch).into_iter().flatten().copied());
+    own.extend(st.xover.get(ch).into_iter().flatten().copied());
+    let mut chains: Vec<Vec<FilterParams>> = (0..st.num_input_channels)
+        .filter(|i| cell_of(&st.matrix_routing, *i, o) && !st.bypass)
+        .map(|i| {
+            let mut c: Vec<FilterParams> = st
+                .filters
+                .get(usize::from(i))
+                .into_iter()
+                .flatten()
+                .copied()
+                .collect();
+            c.extend(own.iter().copied());
+            c
+        })
+        .collect();
+    if chains.is_empty() {
+        chains.push(own);
+    }
+    let mut out = Vec::new();
+    let mut f = ENVELOPE_LOW_HZ;
+    while f < floor * 0.97 {
+        let reference = -10.0 * (1.0 + (floor / f).powi(4)).log10();
+        let worst = chains
+            .iter()
+            .map(|c| dspi_core::compute_response(c.clone(), f))
+            .filter(|db| db.is_finite())
+            .fold(f32::NEG_INFINITY, f32::max);
+        out.push(worst - reference);
+        f *= 2f32.powf(1.0 / 12.0);
+    }
+    out
+}
+
+/// The most a [`below_floor_curve`] rises above its line, dB.
+fn excess(curve: &[f32]) -> f32 {
+    curve.iter().copied().fold(f32::NEG_INFINITY, f32::max)
+}
+
+/// Whether `after` lets more through than `before` below the floor where it
+/// is above the line (by more than the margin): a boost made worse.
+fn boosted(before: &[f32], after: &[f32]) -> bool {
+    after
+        .iter()
+        .zip(before)
+        .any(|(a, b)| *a > BELOW_FLOOR_MARGIN_DB && *a > b + 0.5)
+}
+
+/// The outputs `writes` can change the protection of: their filters (an
+/// input's PEQ feeds every output it is routed to), routes, switch and mute.
+fn touched_outputs(st: &DspState, writes: &[WriteKey]) -> Vec<u8> {
+    let n_in = st.num_input_channels;
+    let all = || (0..st.num_output_channels).collect::<Vec<u8>>();
+    let mut out: Vec<u8> = Vec::new();
+    for w in writes {
+        let i0 = w.indices.first().copied().unwrap_or(0);
+        match w.item().0 {
+            "eq" => match i0.checked_sub(n_in) {
+                Some(o) => out.push(o),
+                None => out.extend(all()),
+            },
+            "bypass" => out.extend(all()),
+            "mix" => out.push(w.indices.get(1).copied().unwrap_or(0)),
+            "out.enable" | "out.mute" => out.push(i0),
+            _ => {}
+        }
+    }
+    out.retain(|o| *o < st.num_output_channels);
+    out.sort_unstable();
+    out.dedup();
+    out
+}
+
+/// The tweeter rule on every output the writes touch. A confirmed tweeter
+/// (or midrange) is judged on the state the writes leave (owner rule, MCP6
+/// §4; FUNC1 bug 1): refused when it would play programme with no high-pass
+/// at its floor, steep enough, or with a boost below the floor that defeats
+/// the high-pass; when the writes give it a high-pass below the floor or too
+/// shallow; or when they lower its protection, playing or not. An output that
+/// already played unprotected (the user's doing) may be changed in ways that
+/// do not make it worse. A high-pass at 1 kHz or above shows a tweeter on any
+/// other output: lowering it is asked (refused under "never ask").
+#[allow(clippy::too_many_arguments)] // the judgement's facts, each once
 fn judge_highpass(
     before: &DspState,
     after: &DspState,
     writes: &[WriteKey],
     roles: &[Option<MeasureRole>],
+    floors: &[(u8, f32, u8)],
     risks: &mut Vec<Risk>,
     refusals: &mut Vec<String>,
 ) {
-    let mut outputs: Vec<u8> = writes
-        .iter()
-        .filter(|w| w.item().0 == "eq")
-        .filter_map(|w| w.indices.first()?.checked_sub(before.num_input_channels))
-        .filter(|o| *o < before.num_output_channels)
-        .collect();
-    outputs.sort_unstable();
-    outputs.dedup();
-    for o in outputs {
-        let role = roles.get(usize::from(o)).copied().flatten();
+    for o in touched_outputs(before, writes) {
+        let ch = before.num_input_channels.saturating_add(o);
+        let filters_touched = writes
+            .iter()
+            .any(|w| w.item().0 == "eq" && w.indices.first() == Some(&ch));
+        if let Some((floor, slope, word)) = hard_rule(roles, floors, o) {
+            if let Some(why) = hard_verdict(before, after, writes, o, (floor, slope)) {
+                refusals.push(format!(
+                    "{} drives {word} in the user's speaker setup (confirmed), so it must keep a \
+                     high-pass at {floor:.0} Hz or above, {slope} dB/octave or steeper, whenever it \
+                     can play: {why}. This is the device's safety rule, not a question: nothing \
+                     was changed. Give it such a high-pass first (dspi_set_crossover), or ask \
+                     the user to change the speaker setup in the app.",
+                    agent_out(o)
+                ));
+            }
+            continue;
+        }
         // The user's word holds hard; a high-pass at 1 kHz or above shows a
         // tweeter whatever the user called it (the effective role).
         let inferred = highpasses(before, o)
             .iter()
             .any(|(hz, _)| *hz >= TWEETER_FLOOR_HZ - HZ_SLACK);
-        let mut rules: Vec<(f32, bool)> = Vec::new();
-        match role {
-            Some(MeasureRole::High) => rules.push((TWEETER_FLOOR_HZ, true)),
-            Some(MeasureRole::Mid) => rules.push((MID_FLOOR_HZ, true)),
-            _ => {}
+        if !inferred || !filters_touched {
+            continue;
         }
-        if inferred && role != Some(MeasureRole::High) {
-            rules.push((TWEETER_FLOOR_HZ, false));
-        }
-        let ch = before.num_input_channels.saturating_add(o);
-        for (floor, hard) in rules {
-            let lowered = !protected(after, o, floor)
-                && (protected(before, o, floor)
-                    || best_highpass(after, o) < best_highpass(before, o) - HZ_SLACK);
-            if !lowered {
-                continue;
-            }
-            highpass_verdict(o, ch, floor, hard, writes, risks, refusals);
+        let lowered = !protected(after, o, TWEETER_FLOOR_HZ)
+            && (protected(before, o, TWEETER_FLOOR_HZ)
+                || best_highpass(after, o) < best_highpass(before, o) - HZ_SLACK);
+        if lowered {
+            highpass_verdict(o, ch, writes, risks);
         }
     }
 }
 
-/// A lowered high-pass protection on output `o` (wire channel `ch`): refused
-/// by the user's setup (`hard`), else asked.
-fn highpass_verdict(
-    o: u8,
-    ch: u8,
-    floor: f32,
-    hard: bool,
+/// Why the writes break hard output `o`'s rule `(floor, slope)`, if they do.
+fn hard_verdict(
+    before: &DspState,
+    after: &DspState,
     writes: &[WriteKey],
-    risks: &mut Vec<Risk>,
-    refusals: &mut Vec<String>,
-) {
-    if hard {
-        let kind = if floor >= TWEETER_FLOOR_HZ {
-            "a tweeter"
-        } else {
-            "a midrange"
-        };
-        refusals.push(format!(
-            "{} drives {kind} in the user's speaker setup: its high-pass must stay at \
-                 {floor} Hz or above, {MIN_SLOPE_DB} dB/octave or steeper. This is the device's \
-                 safety rule, not a question: only the user can change the setup, in the app. \
-                 Nothing was changed.",
-            out_word(o)
-        ));
-    } else {
-        risks.push(Risk {
-            kind: RiskKind::TweeterCrossing,
-            what: format!(
-                "{} has a high-pass at {TWEETER_FLOOR_HZ} Hz or above (a tweeter): this \
-                     removes it, moves it lower or makes it shallower than {MIN_SLOPE_DB} dB/oct",
-                out_word(o)
-            ),
-            output: Some(o),
-            keys: writes
-                .iter()
-                .filter(|w| w.item().0 == "eq" && w.indices.first() == Some(&ch))
-                .cloned()
-                .collect(),
+    o: u8,
+    (floor, slope): (f32, u8),
+) -> Option<String> {
+    let ch = before.num_input_channels.saturating_add(o);
+    let (prot_b, prot_a) = (
+        protected_by(before, o, floor, slope),
+        protected_by(after, o, floor, slope),
+    );
+    let (curve_b, curve_a) = (
+        below_floor_curve(before, o, floor),
+        below_floor_curve(after, o, floor),
+    );
+    let (ex_b, ex_a) = (excess(&curve_b), excess(&curve_a));
+    let more = boosted(&curve_b, &curve_a);
+    let safe_b = prot_b && ex_b <= BELOW_FLOOR_MARGIN_DB;
+    let safe_a = prot_a && ex_a <= BELOW_FLOOR_MARGIN_DB;
+    if safe_a {
+        return None;
+    }
+    let (plays_b, plays_a) = (plays(before, o), plays(after, o));
+    // A high-pass the writes put there that does not protect.
+    let weak = writes
+        .iter()
+        .filter(|w| w.item().0 == "eq" && w.indices.first() == Some(&ch))
+        .find_map(|w| {
+            let b = band_of(after, ch, w.indices.get(1).copied().unwrap_or(0))?;
+            let s = highpass_slope(b.filter_type)?;
+            (!b.bypass && (b.freq < floor - HZ_SLACK || s < slope))
+                .then(|| format!("this sets a {s} dB/octave high-pass at {:.0} Hz", b.freq))
+        });
+    if let (Some(w), false) = (weak, prot_a) {
+        return Some(w);
+    }
+    if prot_b && !prot_a {
+        return Some(match best_highpass(after, o) {
+            hz if hz > 0.0 => format!("this lowers its high-pass to {hz:.0} Hz"),
+            _ => "this removes or weakens its high-pass".to_owned(),
         });
     }
+    if prot_a && more {
+        return Some(format!(
+            "this boosts it below {floor:.0} Hz, {ex_a:.1} dB above what a {MIN_SLOPE_DB} dB/octave \
+             high-pass there lets through (at most {BELOW_FLOOR_MARGIN_DB:.0} dB): a boost below \
+             the floor defeats the high-pass"
+        ));
+    }
+    if !plays_a {
+        return None;
+    }
+    if !plays_b || safe_b {
+        let how = if !prot_a {
+            "it has no such high-pass"
+        } else {
+            "a boost below the floor defeats its high-pass"
+        };
+        return Some(format!("this would let it play programme and {how}"));
+    }
+    // It played unprotected already: a change that adds no route and raises
+    // nothing below the floor does not make it worse.
+    let new_route = (0..before.num_input_channels).any(|i| {
+        !cell_of(&before.matrix_routing, i, o) && cell_of(&after.matrix_routing, i, o)
+            || cell_of(&after.matrix_gain, i, o)
+                > cell_of(&before.matrix_gain, i, o) + LOUDER_EPS_DB
+    });
+    (new_route || more)
+        .then(|| "it plays with no protection already, and this feeds it more".to_owned())
+}
+
+/// The first confirmed tweeter or midrange of `st` that plays programme
+/// unprotected (no high-pass at its floor, steep enough, or one a boost below
+/// the floor defeats), in words; `None` when every one is safe or silent.
+pub fn unprotected_now(st: &DspState, j: &Judging) -> Option<String> {
+    (0..st.num_output_channels).find_map(|o| {
+        let (floor, slope, word) = hard_rule(&j.roles, &j.floors, o)?;
+        let safe = protected_by(st, o, floor, slope)
+            && excess(&below_floor_curve(st, o, floor)) <= BELOW_FLOOR_MARGIN_DB;
+        (plays(st, o) && !safe).then(|| {
+            format!(
+                "{} drives {word} in the user's speaker setup (confirmed) and plays programme \
+                 without a high-pass at {floor:.0} Hz or above, {slope} dB/octave or steeper",
+                agent_out(o)
+            )
+        })
+    })
+}
+
+/// What a wholesale write (a preset load, a recall, an import) changed from
+/// `before` to `after`, as the writes the tweeter rule weighs: each output's
+/// bands, routes, switch and mute, and the inputs' bands.
+pub fn state_writes(before: &DspState, after: &DspState) -> Vec<WriteKey> {
+    let mut out = Vec::new();
+    for (base, was, now) in [
+        (0u8, &before.filters, &after.filters),
+        (20u8, &before.xover, &after.xover),
+    ] {
+        for (ch, (a, b)) in (0u8..).zip(was.iter().zip(now)) {
+            for (i, (x, y)) in (0u8..).zip(a.iter().zip(b)) {
+                if x != y {
+                    out.push(WriteKey::new(
+                        "eq.band",
+                        &[ch, base.saturating_add(i)],
+                        ParamValue::Bytes(band_bytes(y)),
+                    ));
+                }
+            }
+        }
+    }
+    for i in 0..after.num_input_channels {
+        for o in 0..after.num_output_channels {
+            let at = |s: &DspState| {
+                (
+                    cell_of(&s.matrix_routing, i, o),
+                    cell_of(&s.matrix_gain, i, o),
+                    cell_of(&s.matrix_invert, i, o),
+                )
+            };
+            let (on, gain_db, invert) = at(after);
+            if at(before) != (on, gain_db, invert) {
+                let p = MatrixRoutePacket {
+                    input: i,
+                    output: o,
+                    enabled: on,
+                    phase_invert: invert,
+                    gain_db,
+                };
+                out.push(WriteKey::new(
+                    "mix",
+                    &[i, o],
+                    ParamValue::Bytes(p.encode().to_vec()),
+                ));
+            }
+        }
+    }
+    for o in 0..after.num_output_channels {
+        for (path, a, b) in [
+            ("out.enable", &before.output_enabled, &after.output_enabled),
+            ("out.mute", &before.output_muted, &after.output_muted),
+        ] {
+            if get(a, o) != get(b, o) {
+                out.push(WriteKey::new(path, &[o], ParamValue::Bool(get(b, o))));
+            }
+        }
+    }
+    out
+}
+
+/// A band as the journal's whole-band bytes ([`band_of_bytes`]).
+pub(crate) fn band_bytes(f: &FilterParams) -> Vec<u8> {
+    let mut b = vec![f.filter_type, u8::from(f.bypass)];
+    for x in [f.freq, f.q, f.gain, f.qp] {
+        b.extend_from_slice(&x.to_le_bytes());
+    }
+    b
+}
+
+/// Output `o` for the agent: the tools' number and the app's.
+pub fn agent_out(o: u8) -> String {
+    format!(
+        "output {o} (Out {} in the app)",
+        u16::from(o).saturating_add(1)
+    )
+}
+
+/// A lowered high-pass protection on output `o` (wire channel `ch`) that
+/// only its high-pass shows to be a tweeter: asked. (A confirmed role's is
+/// [`hard_verdict`]'s.)
+fn highpass_verdict(o: u8, ch: u8, writes: &[WriteKey], risks: &mut Vec<Risk>) {
+    risks.push(Risk {
+        kind: RiskKind::TweeterCrossing,
+        what: format!(
+            "{} has a high-pass at {TWEETER_FLOOR_HZ} Hz or above (a tweeter): this \
+                     removes it, moves it lower or makes it shallower than {MIN_SLOPE_DB} dB/oct",
+            out_word(o)
+        ),
+        output: Some(o),
+        keys: writes
+            .iter()
+            .filter(|w| w.item().0 == "eq" && w.indices.first() == Some(&ch))
+            .cloned()
+            .collect(),
+    });
 }
 
 // -- WP MCP2b --
@@ -1522,6 +1811,30 @@ pub fn confirmed_roles(core: &DspiCore) -> Vec<Option<MeasureRole>> {
     out
 }
 
+// -- WP FFIX --
+/// The open device's limits profile's high-pass per output: (output, corner,
+/// slope), for the outputs that name a corner.
+pub fn profile_floors(core: &DspiCore) -> Vec<(u8, f32, u8)> {
+    let doc: Value = serde_json::from_str(&core.limits_profile_document()).unwrap_or(Value::Null);
+    let outs = doc
+        .pointer("/limits/outputs")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    outs.iter()
+        .filter_map(|o| {
+            let out = u8::try_from(o.get("output")?.as_u64()?).ok()?;
+            let hz = o.get("highpassMinHz")?.as_f64()? as f32;
+            let slope = o
+                .get("highpassMinSlopeDb")
+                .and_then(Value::as_u64)
+                .and_then(|s| u8::try_from(s).ok())
+                .unwrap_or(0);
+            Some((out, hz, slope))
+        })
+        .collect()
+}
+
 impl Policy for AgentPolicy {
     fn write_hook(&self, call: &CallInfo<'_>) -> Option<WriteHook> {
         let cell = JudgingCell::default();
@@ -1536,10 +1849,12 @@ impl Policy for AgentPolicy {
         judging: &JudgingCell,
     ) -> Option<WriteHook> {
         let roles = confirmed_roles(core);
+        let floors = profile_floors(core); // -- WP FFIX --
         {
             let mut j = lock(judging);
             j.mode = Some(self.mode());
             j.roles = roles;
+            j.floors = floors;
         }
         (!UNJUDGED_TOOLS.contains(&call.tool)).then(|| Self::hook(Arc::clone(judging)))
     }

@@ -399,7 +399,7 @@ def main():
         try:
             script = json.loads(pathlib.Path(a.replay).read_text())["steps"] if a.replay else None
             player = replay.Player(run) if script else None
-            for i, step in enumerate(run.story()["step"], 1):
+            for i, step in enumerate(run.story().get("step", []), 1):
                 if (wanted and i not in wanted) or (script and step["label"] not in script):
                     continue
                 code = run.replay(step["label"], script[step["label"]], player) if script else run.ask(step["label"], step["prompt"])
@@ -411,7 +411,7 @@ def main():
             ok = run.verdict()
         sys.exit(0 if ok else 1)
     if a.what == "ask":
-        for i, step in enumerate(run.story()["step"], 1):
+        for i, step in enumerate(run.story().get("step", []), 1):
             if i in wanted:
                 run.ask(step["label"], step["prompt"])
         if not wanted:

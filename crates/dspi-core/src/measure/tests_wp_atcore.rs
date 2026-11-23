@@ -1022,7 +1022,7 @@ fn wp_roll1_a_tweeter_is_refused_in_a_measurement_across_units() {
         .find(|b| b.key == "measure.tweeter_stimulus")
         .unwrap();
     assert_eq!((b.serial.as_str(), b.output), ("A", Some(1)));
-    assert!(b.message.contains("output 2 is a tweeter"), "{}", b.message);
+    assert!(b.message.contains("Out 2 is a tweeter"), "{}", b.message);
     // -- WP RCFIX -- called Full, flat chain, but a tweeter on its own core
     // (its confirmed layout): refused.
     let mut b = check(&s, "B", Vec::new());

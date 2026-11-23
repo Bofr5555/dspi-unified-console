@@ -57,6 +57,7 @@
 //! and the app that runs the server. It needs no handle.
 
 use std::cell::Cell;
+use std::collections::BTreeMap;
 use std::ffi::{CString, c_char, c_void};
 use std::io::{BufRead, Write};
 use std::path::PathBuf;
@@ -592,25 +593,37 @@ pub extern "C" fn dspi_mcp_set_active_device(mcp: *mut FfiMcp, id: *const c_char
 }
 
 struct CKeeper {
-    token: Option<String>,
+    // -- WP FFIX -- one token per agent program, kept as one text
+    // (`relay::tokens_text`) in the app's one secret
+    tokens: BTreeMap<String, String>,
     sink: Option<DspiMcpTokenSink>,
     user_data: *mut c_void,
 }
 
-impl TokenKeeper for CKeeper {
-    fn load(&mut self) -> Option<String> {
-        self.token.clone()
-    }
-    fn save(&mut self, token: &str) {
-        self.token = Some(token.to_owned());
-        if let (Some(sink), Ok(t)) = (self.sink, CString::new(token)) {
+impl CKeeper {
+    fn keep(&self) {
+        let Some(sink) = self.sink else {
+            return;
+        };
+        if self.tokens.is_empty() {
+            sink(ptr::null(), self.user_data);
+        } else if let Ok(t) = CString::new(relay::tokens_text(&self.tokens)) {
             sink(t.as_ptr(), self.user_data);
         }
     }
-    fn forget(&mut self) {
-        self.token = None;
-        if let Some(sink) = self.sink {
-            sink(ptr::null(), self.user_data);
+}
+
+impl TokenKeeper for CKeeper {
+    fn load(&mut self, who: &str) -> Option<String> {
+        self.tokens.get(who).cloned()
+    }
+    fn save(&mut self, who: &str, token: &str) {
+        self.tokens.insert(who.to_owned(), token.to_owned());
+        self.keep();
+    }
+    fn forget(&mut self, who: &str) {
+        if self.tokens.remove(who).is_some() {
+            self.keep();
         }
     }
 }
@@ -620,6 +633,10 @@ impl TokenKeeper for CKeeper {
 /// 47860, "token": "<the kept one>", "name": "<to pair under when the agent
 /// names nothing>"}`, each optional. `token_sink` (may be null) is called on
 /// this thread with a new token to keep, or null to forget the kept one.
+/// -- WP FFIX -- the "token" kept is one text that holds a token per agent
+/// program (a JSON object); the sink gets that whole text again, null once
+/// it holds none. A single token kept before is no program's: each pairs once
+/// more as itself.
 /// Returns 0 when standard input ended, 1 when standard output failed (the
 /// agent went), 2 for a bad configuration.
 #[unsafe(no_mangle)]
@@ -661,11 +678,11 @@ pub extern "C" fn dspi_mcp_relay_stdio(
             relay_cfg.fallback_name = n.to_owned();
         }
         let mut keeper = CKeeper {
-            token: cfg
+            tokens: cfg
                 .get("token")
                 .and_then(Value::as_str)
-                .filter(|t| !t.is_empty())
-                .map(str::to_owned),
+                .map(relay::tokens_of)
+                .unwrap_or_default(),
             sink: token_sink,
             user_data,
         };

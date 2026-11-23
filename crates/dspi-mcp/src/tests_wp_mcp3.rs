@@ -1169,3 +1169,58 @@ impl Read for PipeReader {
         Ok(n)
     }
 }
+
+// -- WP FFIX -- FUNC1 bug 7: one token per agent program
+#[test]
+fn wp_ffix_each_agent_program_on_the_computer_pairs_as_itself() {
+    let (tx, rx) = mpsc::channel::<u64>();
+    let tx = Mutex::new(tx);
+    let listener: crate::http::Listener = Arc::new(move |e: &Event| {
+        if let Event::PairingRequested { id, .. } = e {
+            let _ = tx.lock().unwrap().send(*id);
+        }
+    });
+    let http = Arc::new(HttpServer::start(demo_server(), config(None), Some(listener)).unwrap());
+    let port = http.port();
+    let answerer = {
+        let http = Arc::downgrade(&http);
+        std::thread::spawn(move || {
+            while let Ok(id) = rx.recv_timeout(Duration::from_secs(10)) {
+                if let Some(http) = http.upgrade() {
+                    let _ = http.pairing_answer(id, true);
+                }
+            }
+        })
+    };
+    let init = |name: &str, title: &str| {
+        json!({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {
+            "protocolVersion": "2025-11-25", "capabilities": {},
+            "clientInfo": {"name": name, "title": title, "version": "1"}}})
+    };
+    // One keeper, as the app's one secret store: two programs, two clients.
+    let mut keeper = MemoryTokenKeeper::default();
+    let (r, err) = run_relay(port, &mut keeper, &[init("claude-ai", "Claude Desktop")]);
+    assert!(r[0].get("result").is_some(), "{r:?}");
+    assert!(err.contains("code "), "{err}");
+    let (r, err) = run_relay(port, &mut keeper, &[init("cursor-vscode", "Cursor")]);
+    assert!(r[0].get("result").is_some(), "{r:?}");
+    assert!(
+        err.contains("code "),
+        "a second program is asked about: {err}"
+    );
+    let mut names: Vec<String> = http.clients().into_iter().map(|c| c.name).collect();
+    names.sort();
+    assert_eq!(names, ["Claude Desktop", "Cursor"]);
+    assert_eq!(keeper.tokens.len(), 2);
+    assert_ne!(keeper.tokens["claude-ai"], keeper.tokens["cursor-vscode"]);
+    // Each comes back with its own token, unasked.
+    let (_, err) = run_relay(port, &mut keeper, &[init("claude-ai", "Claude Desktop")]);
+    assert!(!err.contains("code "), "{err}");
+    assert_eq!(http.clients().len(), 2);
+    // The kept text: a token per program, and an old single token is no one's.
+    let text = crate::relay::tokens_text(&keeper.tokens);
+    assert_eq!(crate::relay::tokens_of(&text), keeper.tokens);
+    assert!(crate::relay::tokens_of("abcdef0123").is_empty());
+    http.stop();
+    drop(answerer);
+}
