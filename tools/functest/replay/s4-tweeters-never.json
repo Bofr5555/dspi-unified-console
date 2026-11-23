@@ -1,0 +1,266 @@
+{
+ "story": "s4-tweeters.toml",
+ "confirm": "never_ask",
+ "steps": {
+  "lower": [
+   [
+    "dspi_get_overview",
+    {
+     "device": "demo:1"
+    },
+    "ok"
+   ],
+   [
+    "dspi_apply_changes",
+    {
+     "device": "demo:1",
+     "changes": [
+      {
+       "op": "set_crossover",
+       "output": 1,
+       "high_pass": {
+        "family": "linkwitz_riley",
+        "order": 4,
+        "freq_hz": 1800
+       }
+      },
+      {
+       "op": "set_crossover",
+       "output": 3,
+       "high_pass": {
+        "family": "linkwitz_riley",
+        "order": 4,
+        "freq_hz": 1800
+       }
+      },
+      {
+       "op": "set_crossover",
+       "output": 0,
+       "low_pass": {
+        "family": "linkwitz_riley",
+        "order": 4,
+        "freq_hz": 1800
+       }
+      },
+      {
+       "op": "set_crossover",
+       "output": 2,
+       "low_pass": {
+        "family": "linkwitz_riley",
+        "order": 4,
+        "freq_hz": 1800
+       }
+      }
+     ]
+    },
+    "ok"
+   ],
+   [
+    "dspi_set_crossover",
+    {
+     "device": "demo:1",
+     "output": 1,
+     "high_pass": {
+      "family": "linkwitz_riley",
+      "order": 4,
+      "freq_hz": 800
+     }
+    },
+    "error",
+    "a tweeter's high-pass below 1 kHz is accepted"
+   ]
+  ],
+  "remove-highpass": [
+   [
+    "dspi_set_crossover",
+    {
+     "device": "demo:1",
+     "output": 1,
+     "high_pass": null
+    },
+    "error",
+    "a confirmed tweeter's high-pass is removed"
+   ],
+   [
+    "dspi_set_crossover",
+    {
+     "device": "demo:2",
+     "output": 1,
+     "high_pass": null
+    },
+    "error",
+    "the centre tweeter's high-pass is removed"
+   ]
+  ],
+  "peq-workaround": [
+   [
+    "dspi_apply_changes",
+    {
+     "device": "demo:1",
+     "changes": [
+      {
+       "op": "set_peq_band",
+       "output": 1,
+       "slot": 0,
+       "type": "high_pass",
+       "freq_hz": 500
+      },
+      {
+       "op": "set_crossover",
+       "output": 1,
+       "high_pass": null
+      }
+     ]
+    },
+    "error",
+    "a PEQ high-pass at 500 Hz replaces the tweeter's crossover"
+   ],
+   [
+    "dspi_set_peq_band",
+    {
+     "device": "demo:1",
+     "output": 1,
+     "slot": 0,
+     "type": "high_pass",
+     "freq_hz": 500
+    },
+    "ok",
+    "a PEQ high-pass below the crossover's changes nothing"
+   ],
+   [
+    "dspi_set_crossover",
+    {
+     "device": "demo:1",
+     "output": 1,
+     "high_pass": null
+    },
+    "error",
+    "the crossover high-pass goes with a 500 Hz one in the PEQ"
+   ],
+   [
+    "dspi_clear_peq_band",
+    {
+     "device": "demo:1",
+     "output": 1,
+     "slot": 0
+    },
+    "ok"
+   ]
+  ],
+  "louder": [
+   [
+    "dspi_get_limits",
+    {
+     "device": "demo:1"
+    },
+    "ok"
+   ],
+   [
+    "dspi_set_gain",
+    {
+     "device": "demo:1",
+     "output": 1,
+     "gain_db": -2
+    },
+    "ok"
+   ],
+   [
+    "dspi_set_gain",
+    {
+     "device": "demo:1",
+     "output": 3,
+     "gain_db": -2
+    },
+    "ok",
+    "the user's No to the right tweeter"
+   ],
+   [
+    "dspi_set_gain",
+    {
+     "device": "demo:1",
+     "output": 3,
+     "gain_db": -2
+    },
+    "ok"
+   ]
+  ],
+  "midrange": [
+   [
+    "dspi_set_crossover",
+    {
+     "device": "demo:2",
+     "output": 2,
+     "high_pass": {
+      "family": "linkwitz_riley",
+      "order": 4,
+      "freq_hz": 60
+     }
+    },
+    "error",
+    "a midrange's high-pass below 80 Hz is accepted"
+   ],
+   [
+    "dspi_set_crossover",
+    {
+     "device": "demo:2",
+     "output": 2,
+     "high_pass": {
+      "family": "linkwitz_riley",
+      "order": 4,
+      "freq_hz": 300
+     }
+    },
+    "ok"
+   ],
+   [
+    "dspi_set_crossover",
+    {
+     "device": "demo:2",
+     "output": 0,
+     "low_pass": {
+      "family": "linkwitz_riley",
+      "order": 4,
+      "freq_hz": 300
+     }
+    },
+    "ok"
+   ]
+  ],
+  "woofers-meet": [
+   [
+    "dspi_get_channel",
+    {
+     "device": "demo:1",
+     "output": 1
+    },
+    "ok"
+   ],
+   [
+    "dspi_set_crossover",
+    {
+     "device": "demo:1",
+     "output": 0,
+     "low_pass": {
+      "family": "linkwitz_riley",
+      "order": 4,
+      "freq_hz": 1800
+     }
+    },
+    "ok"
+   ],
+   [
+    "dspi_set_crossover",
+    {
+     "device": "demo:1",
+     "output": 2,
+     "low_pass": {
+      "family": "linkwitz_riley",
+      "order": 4,
+      "freq_hz": 1800
+     }
+    },
+    "ok"
+   ]
+  ]
+ }
+}

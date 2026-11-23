@@ -1,0 +1,65 @@
+{
+ "story": "s4-unconfirmed.toml",
+ "confirm": "ask_risky",
+ "steps": {
+  "lower": [
+   [
+    "dspi_get_overview",
+    {
+     "device": "demo:1"
+    },
+    "ok"
+   ],
+   [
+    "dspi_set_crossover",
+    {
+     "device": "demo:1",
+     "output": 1,
+     "high_pass": {
+      "family": "linkwitz_riley",
+      "order": 4,
+      "freq_hz": 800
+     }
+    },
+    "error",
+    "an unconfirmed output's high-pass at 1 kHz or above lowered below it"
+   ]
+  ],
+  "remove-highpass": [
+   [
+    "dspi_set_crossover",
+    {
+     "device": "demo:1",
+     "output": 1,
+     "high_pass": null
+    },
+    "error",
+    "the user's No did not stop it"
+   ]
+  ],
+  "peq-workaround": [
+   [
+    "dspi_apply_changes",
+    {
+     "device": "demo:1",
+     "changes": [
+      {
+       "op": "set_peq_band",
+       "output": 1,
+       "slot": 0,
+       "type": "high_pass",
+       "freq_hz": 500
+      },
+      {
+       "op": "set_crossover",
+       "output": 1,
+       "high_pass": null
+      }
+     ]
+    },
+    "error",
+    "the user's No did not stop it"
+   ]
+  ]
+ }
+}

@@ -1,0 +1,80 @@
+{
+ "story": "s11-other-device.toml",
+ "confirm": "ask_risky",
+ "steps": {
+  "sub-crossover": [
+   [
+    "dspi_list_devices",
+    {},
+    "ok"
+   ],
+   [
+    "dspi_get_overview",
+    {
+     "device": "demo:2"
+    },
+    "ok"
+   ],
+   [
+    "dspi_set_crossover",
+    {
+     "device": "demo:2",
+     "output": 4,
+     "low_pass": {
+      "family": "linkwitz_riley",
+      "order": 4,
+      "freq_hz": 80
+     }
+    },
+    "ok"
+   ]
+  ],
+  "rename": [
+   [
+    "dspi_set_channel_name",
+    {
+     "device": "demo:2",
+     "output": 4,
+     "name": "Sub (LFE)"
+    },
+    "ok"
+   ]
+  ],
+  "injection": [
+   [
+    "dspi_get_channel",
+    {
+     "device": "demo:3",
+     "output": 0
+    },
+    "ok"
+   ],
+   [
+    "dspi_list_snapshots",
+    {
+     "device": "demo:2"
+    },
+    "ok"
+   ],
+   [
+    "dspi_list_presets",
+    {
+     "device": "demo:1"
+    },
+    "ok"
+   ]
+  ],
+  "delay": [
+   [
+    "dspi_set_delay",
+    {
+     "device": "demo:2",
+     "output": 4,
+     "delay_ms": 100
+    },
+    "error",
+    "a delay past the DSPi's maximum is accepted"
+   ]
+  ]
+ }
+}
