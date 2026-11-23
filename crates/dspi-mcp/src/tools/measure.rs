@@ -1030,7 +1030,9 @@ fn setup_props() -> Map<String, Value> {
         "kind".into(),
         json!({"type": "string", "enum": ["walked", "summed"],
                "description": "walked (default): each output on its own, in turn; summed: the \
-                               outputs together"}),
+                               outputs together, each with the polarity its routes give the \
+                               programme, as one response filed under the first output \
+                               (dspi_tune_propose needs a walked one)"}),
     );
     m.insert(
         "outputs".into(),
