@@ -234,11 +234,15 @@ struct Mic {
     next: u64,
     seg: Option<(Capture, usize)>,
     seen: (u32, Option<u64>),
+    phase: MeasurePhase,
     seed: u64,
     summed_extra: Option<(usize, f64)>,
     // -- WP P5TRUST2 -- an output louder in the walked runs, dB.
     walked_extra_db: Option<(usize, f64)>,
 }
+
+/// The room's noise between the runs.
+const ROOM_SEED: u64 = 0x2545_F491_4F6C_DD1D;
 
 impl Mic {
     fn new(r: &Rig, world: World) -> Mic {
@@ -251,7 +255,8 @@ impl Mic {
             t0: std::time::Instant::now(),
             seg: None,
             seen: (0, None),
-            seed: 0x2545_F491_4F6C_DD1D,
+            phase: MeasurePhase::Idle,
+            seed: ROOM_SEED,
             summed_extra: None,
             walked_extra_db: None,
         }
@@ -332,37 +337,71 @@ impl Mic {
         self.seg = Some((capture, 0));
     }
 
-    /// Push what is due, then `tick`.
+    /// The frame the capture is at now.
+    fn due(&self) -> u64 {
+        self.first + (self.t0.elapsed().as_secs_f64() * f64::from(RATE)) as u64
+    }
+
+    /// Push what is due, then `tick`. -- WP INTF -- in a pre-roll, a `tick`
+    /// after each block, and every pre-roll hears the same noise: the run
+    /// starts on the block that completes it, however late this thread is.
+    /// The noise floor is taken there, and with it which points are trusted
+    /// and which corners are candidates: with what the wall clock left in the
+    /// pre-roll, `wp_p5trust_the_rig_at_realistic_noise_gives_a_full_timing_proposal`
+    /// went either way.
     fn step<T>(&mut self, tick: &dyn Fn(&DspiCore) -> T) -> T {
-        let st = self.core.measure_state();
-        let key = (st.generator_starts, st.generator_start_frame);
-        if st.generator_starts > 0 && key != self.seen {
-            self.seen = key;
-            self.render(st.generator_start_frame.unwrap());
+        let mut due = self.due();
+        loop {
+            let st = self.core.measure_state();
+            if st.phase == MeasurePhase::PreRoll && self.phase != MeasurePhase::PreRoll {
+                self.seed = ROOM_SEED;
+                self.seg = None;
+            }
+            self.phase = st.phase;
+            let key = (st.generator_starts, st.generator_start_frame);
+            if st.generator_starts > 0 && key != self.seen {
+                self.seen = key;
+                self.render(st.generator_start_frame.unwrap());
+                due = self.due(); // rendering takes its time
+            }
+            if self.next < due {
+                let block = match self.seg.as_mut() {
+                    Some((cap, i)) if *i < cap.blocks.len() => {
+                        let b = cap.blocks[*i];
+                        *i += 1;
+                        Some((b.first_frame, cap.block_samples(&b).to_vec(), b.clipped))
+                    }
+                    _ => None,
+                };
+                let (first, samples, clipped) = match block {
+                    Some(b) => b,
+                    None => {
+                        self.seg = None;
+                        (self.next, self.noise_block(960), false)
+                    }
+                };
+                self.next = first + samples.len() as u64;
+                self.core
+                    .measure_capture_push(first, samples, RATE, clipped)
+                    .unwrap();
+            }
+            // The generator plays by the wall clock: the capture catches up
+            // with it before the session compares the two.
+            if self.phase != MeasurePhase::PreRoll && self.next < due {
+                continue;
+            }
+            let out = tick(&self.core);
+            let now = self.core.measure_state();
+            if now.generator_starts != st.generator_starts {
+                // It started now: the capture goes on from here.
+                let at = (self.next - self.first) as f64 / f64::from(RATE);
+                self.t0 = std::time::Instant::now() - Duration::from_secs_f64(at);
+                return out;
+            }
+            if self.next >= due || (st.active && !now.active) {
+                return out;
+            }
         }
-        let due = self.first + (self.t0.elapsed().as_secs_f64() * f64::from(RATE)) as u64;
-        while self.next < due {
-            let block = match self.seg.as_mut() {
-                Some((cap, i)) if *i < cap.blocks.len() => {
-                    let b = cap.blocks[*i];
-                    *i += 1;
-                    Some((b.first_frame, cap.block_samples(&b).to_vec(), b.clipped))
-                }
-                _ => None,
-            };
-            let (first, samples, clipped) = match block {
-                Some(b) => b,
-                None => {
-                    self.seg = None;
-                    (self.next, self.noise_block(960), false)
-                }
-            };
-            self.next = first + samples.len() as u64;
-            self.core
-                .measure_capture_push(first, samples, RATE, clipped)
-                .unwrap();
-        }
-        tick(&self.core)
     }
 
     /// A measurement of `setup`, to its end (at most `secs`).
