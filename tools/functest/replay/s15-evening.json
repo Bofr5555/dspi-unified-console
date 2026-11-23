@@ -146,9 +146,10 @@
     "dspi_set_limiter",
     {
      "device": "demo:2",
-     "output": "all",
+     "output": 4,
      "enabled": true,
-     "threshold_db": -6
+     "threshold_db": -6,
+     "release_ms": 200
     },
     "ok"
    ],
@@ -197,6 +198,16 @@
      "enabled": false
     },
     "ok"
+   ],
+   [
+    "dspi_undo",
+    {
+     "device": "demo:2"
+    },
+    "ok",
+    "the Centre's sub limiter: threshold and release back together, and it says the limiter stays on (FUNC2b fix)",
+    "",
+    "stays on"
    ]
   ],
   "presets": [

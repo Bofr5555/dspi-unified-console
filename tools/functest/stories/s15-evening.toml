@@ -49,9 +49,9 @@ prompt = "Dialogue is hard to follow."
   what = "the centre channel is clearer: louder in the speech band, or more presence"
   kind = "any"
   of = [
-    { what = "presence (1-4 kHz against 100-400 Hz)", kind = "band_change", input = "C", band_hz = [1000, 4000], against_hz = [100, 400], pass_db = [1.0, 5.0], near_db = [0.5, 7.0] },
-    { what = "level (200 Hz-5 kHz)", kind = "band_change", input = "C", band_hz = [200, 5000], pass_db = [1.0, 4.0], near_db = [0.5, 6.0] },
-    { what = "the fronts lower instead", kind = "band_change", input = "L", band_hz = [200, 5000], pass_db = [-4.0, -1.0], near_db = [-6.0, -0.5] },
+    { what = "presence (1-4 kHz against 100-400 Hz)", kind = "band_change", input = "C", volume_of = "Centre", band_hz = [1000, 4000], against_hz = [100, 400], pass_db = [1.0, 5.0], near_db = [0.5, 7.0] },
+    { what = "level (200 Hz-5 kHz)", kind = "band_change", input = "C", volume_of = "Centre", band_hz = [200, 5000], pass_db = [1.0, 4.0], near_db = [0.5, 6.0] },
+    { what = "the fronts lower instead", kind = "band_change", input = "L", volume_of = "Fronts", band_hz = [200, 5000], pass_db = [-4.0, -1.0], near_db = [-6.0, -0.5] },
   ]
 
   [[step.expect]]
@@ -59,9 +59,19 @@ prompt = "Dialogue is hard to follow."
   kind = "louder_asked"
 
   [[step.expect]]
+  what = "the sub (on the Centre too) is where it was"
+  kind = "band_change"
+  input = "LFE"
+  volume_of = "Centre"
+  band_hz = [30, 100]
+  pass_db = [-1.0, 1.0]
+  near_db = [-3.0, 3.0]
+
+  [[step.expect]]
   what = "the surrounds sound as before"
   kind = "band_change"
   input = "Ls"
+  volume_of = "Surrounds"
   band_hz = [200, 5000]
   pass_db = [-0.3, 0.3]
   near_db = [-1.0, 1.0]
@@ -74,14 +84,15 @@ prompt = "The bass is boomy at night, tone it down."
   what = "less boom: the sub's or the fronts' low bass is lower"
   kind = "any"
   of = [
-    { what = "LFE 30-100 Hz", kind = "band_change", input = "LFE", band_hz = [30, 100], pass_db = [-12.0, -2.0], near_db = [-20.0, -1.0] },
-    { what = "L 30-100 Hz", kind = "band_change", input = "L", band_hz = [30, 100], pass_db = [-12.0, -2.0], near_db = [-20.0, -1.0] },
+    { what = "LFE 30-100 Hz", kind = "band_change", input = "LFE", volume_of = "Centre", band_hz = [30, 100], pass_db = [-12.0, -2.0], near_db = [-20.0, -1.0] },
+    { what = "L 30-100 Hz", kind = "band_change", input = "L", volume_of = "Fronts", band_hz = [30, 100], pass_db = [-12.0, -2.0], near_db = [-20.0, -1.0] },
   ]
 
   [[step.expect]]
   what = "the 37 Hz room mode on the sub is 4 dB lower (FSTORY)"
   kind = "band_change"
   input = "LFE"
+  volume_of = "Centre"
   band_hz = [33, 42]
   pass_db = [-20.0, -4.0]
   near_db = [-20.0, -2.0]
@@ -91,6 +102,7 @@ prompt = "The bass is boomy at night, tone it down."
   what = "the dialogue band is as before"
   kind = "band_change"
   input = "C"
+  volume_of = "Centre"
   band_hz = [300, 4000]
   pass_db = [-0.5, 0.5]
   near_db = [-1.5, 1.5]
@@ -107,6 +119,7 @@ prompt = "The right surround sounds too loud."
   what = "the right surround is about 2 dB lower"
   kind = "band_change"
   input = "Rs"
+  volume_of = "Surrounds"
   band_hz = [200, 5000]
   pass_db = [-3.5, -1.0]
   near_db = [-6.0, -0.5]
@@ -115,6 +128,7 @@ prompt = "The right surround sounds too loud."
   what = "the left surround is as before"
   kind = "band_change"
   input = "Ls"
+  volume_of = "Surrounds"
   band_hz = [200, 5000]
   pass_db = [-0.3, 0.3]
   near_db = [-1.0, 1.0]

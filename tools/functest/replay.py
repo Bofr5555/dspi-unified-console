@@ -3,8 +3,8 @@
 
     replay.py RUN_DIR > replay/NAME.json      a recorded agent run as a replay script
 
-A script is {"steps": {label: [[tool, args, "ok" | "error", note?, not?], ...]}}: `not` is a pattern
-the answer must not have; ["wait", {"device": d}]
+A script is {"steps": {label: [[tool, args, "ok" | "error", note?, not?, must?], ...]}}: `not` is a pattern
+the answer must not have ("" for none), `must` one it must have (-- WP FUNC2b --); ["wait", {"device": d}]
 waits until that device's measuring ends, in place of an agent's polling. A measurement's id in the
 arguments is "$M1", "$M2", ...: the ones this run filed, in the order they were filed.
 -- WP FUNC2b -- "$SNAP:<name>" is the id of the call's device's newest snapshot of that name.
@@ -149,9 +149,11 @@ class Player:
                 text = text.replace(f'"$M{n}"', json.dumps(self.ids[n - 1]))
             kind, answer = self.agent.call(tool, **json.loads(text))
             got = "ok" if kind == "ok" else "error"
-            banned = len(c) > 4 and re.search(c[4], str(answer))
+            banned = len(c) > 4 and c[4] and re.search(c[4], str(answer))
             if banned:
                 got = f"{got}, with {banned.group(0)[:60]!r}"
+            if len(c) > 5 and not re.search(c[5], str(answer)):  # -- WP FUNC2b -- a pattern it must have
+                got = f"{got}, without {c[5]!r}"
             out.append({"tool": tool, "args": args, "want": c[2], "got": got, "wrong": got != c[2],
                         "note": c[3] if len(c) > 3 else "", "answer": str(answer)[:400]})
         return out

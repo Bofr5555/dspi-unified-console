@@ -166,8 +166,11 @@ def check(e, now, before, steps, words):
                          score(max(v) - min(v), lambda v: v <= e["pass_ms"], lambda v: v <= e["near_ms"])))
         return every(rows, lambda n, v: f"{n} {v:.2f} ms apart")
     if k == "band_change":
+        # -- WP FUNC2b -- `volume_of`: that device's user and master volume count too (truth.json leaves them out)
+        vol = lambda s: sum(s.devices[e["volume_of"]][x] for x in ("userVolumeDb", "masterVolumeDb")) \
+            if e.get("volume_of") and "against_hz" not in e else 0
         level = lambda s: band(s.f, s.seat(e["input"]), *e["band_hz"]) - (
-            band(s.f, s.seat(e["input"]), *e["against_hz"]) if "against_hz" in e else 0)
+            band(s.f, s.seat(e["input"]), *e["against_hz"]) if "against_hz" in e else 0) + vol(s)
         v = level(now) - level(before)
         return (score(v, lambda v: e["pass_db"][0] <= v <= e["pass_db"][1], lambda v: e["near_db"][0] <= v <= e["near_db"][1]),
                 f"{v:+.1f} dB")
@@ -391,8 +394,11 @@ def more2(k, e, now, before, steps, words):
         return ("pass" if re.fullmatch(e["is"], got.strip(), re.I) else "fail"), repr(got)
     if k == "ab":
         v = app_of(now, e["device"])
-        names = [x.get("name", "") for x in v.get("snapshots") or []]
+        names = [x.get("name", "") for x in v.get("snapshots") or []] + [v["ab"]["abAName"], v["ab"]["abBName"]]
         want = [n for n in e.get("snapshots", []) if not any(re.fullmatch(n, x, re.I) for x in names)]
+        # Side A may be the device as it is (dspi_ab_start without a_id: the app calls it "A")
+        if len(want) == 1 and v["ab"]["abAName"] in ("A", ""):
+            want = []
         ok = v["ab"]["abActive"] == e.get("active", True) and not want
         return ("pass" if ok else "near" if not want else "fail"), \
             f"A/B {'on' if v['ab']['abActive'] else 'off'} ({v['ab']['abAName']!r} / {v['ab']['abBName']!r}, " \
