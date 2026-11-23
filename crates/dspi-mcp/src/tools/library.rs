@@ -246,9 +246,11 @@ fn wholesale_run<T>(
     let after = core.get_state();
     let lost = tweeter_lost(&policy::lock(&call.judging), before, &after);
     if let Some(why) = lost {
+        let slot = reselect(core, call.actor, before, &after); // -- WP FUNC2b --
         return Err(ToolError::new(format!(
-            "{why}. A wholesale change by an agent may not lower a tweeter's protection; the \
-             user can do it in the app. {}",
+            "{}. A wholesale change by an agent may not lower a tweeter's protection; the \
+             user can do it in the app. {}{slot}",
+            why.trim_end_matches('.'),
             put_back(core, call.actor, snap)
         )));
     }
@@ -282,6 +284,37 @@ fn put_back(core: &DspiCore, actor: u32, snap: &Before) -> &'static str {
     } else {
         "Putting it back failed: ask the user to recall the snapshot taken before."
     }
+}
+
+// -- WP FUNC2b -- (FUNC2b S12) A refused preset load left the device on the
+// refused slot, the settings put back unsaved there: a Save in the app or a
+// dspi_commit would then overwrite that preset with them.
+/// After a refused load: the slot active before is loaded again (on the device,
+/// still under the load's guard), so the put-back that follows leaves the device
+/// on its own slot. "" when the slot did not change or is back; else what the
+/// agent must tell the user.
+fn reselect(core: &DspiCore, actor: u32, before: &DspState, after: &DspState) -> String {
+    let (was, now) = (before.active_preset_slot, after.active_preset_slot);
+    if was == now {
+        return String::new();
+    }
+    let occupied = before
+        .preset_occupied
+        .checked_shr(u32::from(was))
+        .is_some_and(|bits| bits & 1 == 1);
+    let loaded = occupied && {
+        let _scope = ActorScope::enter(core, actor, None);
+        core.load_preset(was).is_ok()
+    };
+    if loaded && core.get_state().active_preset_slot == was {
+        return String::new();
+    }
+    format!(
+        " The device's active preset is still {} (the refused one), with other settings: \
+         saving to the active preset (dspi_commit, or Save in the app) would overwrite it. \
+         Tell the user.",
+        slot_word(now)
+    )
 }
 
 /// The result's words about the snapshot filed before.
