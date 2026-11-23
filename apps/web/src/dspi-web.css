@@ -1738,6 +1738,11 @@
 /* -- WP FEATUI -- (AIVIS's web part) an AI agent working on this hub's devices: the strip and the tab's mark */
 .dspi-web .banner-agent { border-color: var(--accent); flex-wrap: wrap; }
 .dspi-web .banner-agent .agent-row { display: block; overflow-wrap: anywhere; }
+/* -- WP ODEC -- the test signals the user allowed for a while, after the work: its own line on a narrow strip */
+.dspi-web .banner-agent .agent-grant { white-space: nowrap; color: var(--accent); font-weight: 600; }
+@media (max-width: 600px) {
+  .dspi-web .banner-agent .agent-grant { display: block; white-space: normal; }
+}
 .dspi-web .agent-mark,
 .dspi-web .device-tab-agent {
   flex: none;

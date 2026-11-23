@@ -31,6 +31,7 @@ import { BellButton, Drawer, useNotices } from "./drawer/Drawer";
 import { deviceTabsInRail, inspectorShown, loadArrangement, saveArrangement, setInspectorShown, type Arrangement } from "./arrangement/arrangement";
 import { AppearanceDialog, ArrangementContext, RailTopContext } from "./arrangement/Appearance";
 import { DeviceTabs } from "./shell/DeviceTabs";
+import { useFollowAgent } from "./follow-agent"; // -- WP ODEC --
 import { appleKeys } from "./undo";
 
 export interface ConsoleOptions {
@@ -227,6 +228,8 @@ export function App(props: { options: ConsoleOptions }) {
     : null;
 
   const current = sessions.find((s) => s.id === active) ?? sessions[0] ?? null;
+  // -- WP ODEC -- the screens follow an AI agent working through another console (ui/follow.ts)
+  useFollowAgent(sessions, current, show);
 
   // -- WP WEBM1 -- a tab's close button: its session is shown first, so its view can ask about unsaved changes
   useEffect(() => {
