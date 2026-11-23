@@ -526,6 +526,41 @@ pub extern "C" fn dspi_mcp_set_confirm(mcp: *mut FfiMcp, mode: *const c_char) ->
     })
 }
 
+// -- WP FEATUI --
+/// The app's SPL cap for agents' measurements, dB SPL; 0 or less for none
+/// (the placement's default, 95 dB at a speaker, 90 dB on headphones). A hard
+/// ceiling: an agent may only name a lower one, under every setting. Holds
+/// from the next call on, also while the server runs. False for a value
+/// that is no number.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_mcp_set_agent_spl_cap(mcp: *mut FfiMcp, spl_db: f32) -> bool {
+    with_mcp(mcp, false, |m| {
+        if spl_db.is_nan() {
+            return false;
+        }
+        m.policy
+            .set_agent_spl_cap_db((spl_db > 0.0).then_some(spl_db));
+        true
+    })
+}
+
+// -- WP FEATUI --
+/// This computer's audio as `dspi_get_host_audio` reads it, for the devices
+/// open in the handle's set: the tool's JSON plus `ok` (never an error:
+/// what cannot be read says `status: "unknown"` and why). Blocks while the
+/// OS is read (at most a few seconds): call it off the UI's thread.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_mcp_host_audio(mcp: *mut FfiMcp, buf: *mut c_char, len: u32) -> u32 {
+    with_mcp(mcp, 0, |m| {
+        let source = dspi_mcp::host_audio::system();
+        let mut v = dspi_mcp::tools::host::report_for_set(&m.set, source.as_ref());
+        if let Some(o) = v.as_object_mut() {
+            o.insert("ok".into(), json!(true));
+        }
+        copy_text(&v.to_string(), buf, len)
+    })
+}
+
 /// The AutoEQ database the agents' AutoEQ tools search, from its file's
 /// bytes; null or 0 bytes for none. The next start uses it. False when the
 /// bytes are no database (the last one stays).

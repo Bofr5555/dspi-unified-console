@@ -1439,3 +1439,60 @@ mod on_a_hub {
         err(&mut s, c, "dspi_open_device", json!({"device": other}));
     }
 }
+
+// -- WP FEATUI -- the app's SPL cap for agents' measurements
+#[test]
+fn wp_featui_the_apps_spl_cap_holds_for_agents_under_never_ask() {
+    let (set, _, core) = demo("featui-cap");
+    ready(&core);
+    let (spl, _, _) = documents(&core);
+    let policy = Arc::new(AgentPolicy::new(ConfirmMode::NeverAsk));
+    policy.set_agent_spl_cap_db(Some(82.0));
+    let limit = RateLimit {
+        burst: 10_000,
+        per_s: 1.0,
+    };
+    let mut s = Server::new(
+        Arc::clone(&set),
+        ServerConfig {
+            policy: Arc::clone(&policy) as Arc<dyn crate::Policy>,
+            read_limit: limit,
+            write_limit: limit,
+            measuring: true,
+            ..ServerConfig::default()
+        },
+    );
+    let c = s.connect();
+    // The options say the app's cap, below the placement's default.
+    let o = ok(&mut s, c, "dspi_get_measure_options", json!({}));
+    assert_eq!(o["level_limits"]["near_field"]["max_spl_db"], json!(82.0), "{o}");
+    assert_eq!(o["level_limits"]["headphones"]["max_spl_db"], json!(82.0), "{o}");
+    // None named: the app's cap is in the setup.
+    let (setup, _) = setup_made(&mut s, c, "dspi_measure_start", json!({"outputs": [0]}));
+    assert_eq!(setup["splCapDb"], json!(82.0), "{setup}");
+    // Lower: the agent's.
+    let (setup, _) = setup_made(
+        &mut s,
+        c,
+        "dspi_measure_start",
+        json!({"outputs": [0], "microphone": spl, "max_spl_db": 70}),
+    );
+    assert_eq!(setup["splCapDb"], json!(70.0));
+    // Higher than the app's cap (but under the default 95): refused, never raised.
+    let e = err(
+        &mut s,
+        c,
+        "dspi_measure_start",
+        json!({"outputs": [0], "microphone": spl, "max_spl_db": 90}),
+    );
+    assert!(e.contains("never raises it") && e.contains("82"), "{e}");
+    // The low-end search too.
+    let (setup, _) = setup_made(&mut s, c, "dspi_measure_rolloff_start", json!({"output": 0}));
+    assert_eq!(setup["splCapDb"], json!(82.0), "{setup}");
+    // Cleared: the placement's default again, nothing in the setup.
+    policy.set_agent_spl_cap_db(None);
+    let (setup, _) = setup_made(&mut s, c, "dspi_measure_start", json!({"outputs": [0]}));
+    assert_eq!(setup["splCapDb"], Value::Null);
+    policy.set_agent_spl_cap_db(Some(f32::NAN));
+    assert_eq!(crate::Policy::agent_spl_cap_db(policy.as_ref()), None);
+}

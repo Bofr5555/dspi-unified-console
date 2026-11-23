@@ -93,6 +93,17 @@ class InstallationController : public QObject {
     // The last save, in words; and whether it went wrong
     Q_PROPERTY(QString message READ message NOTIFY messageChanged)
     Q_PROPERTY(bool messageFailed READ messageFailed NOTIFY messageChanged)
+    // -- WP FEATUI -- FEAT1's audio link sources, programme sources and scenes
+    // by id, as the lists above
+    Q_PROPERTY(QStringList sourceIds READ sourceIds NOTIFY sourceIdsChanged)
+    Q_PROPERTY(QStringList programmeIds READ programmeIds NOTIFY programmeIdsChanged)
+    Q_PROPERTY(QStringList sceneIds READ sceneIds NOTIFY sceneIdsChanged)
+    // The units whose own slots the draft's zone sources replace: { id, name,
+    // zone, source } (names); empty for none. The notice before Save
+    Q_PROPERTY(QVariantList rerouted READ rerouted NOTIFY draftChanged)
+    // After a save that re-routed units: how many play the new channels after
+    // an alignment (0: none, or aligned since)
+    Q_PROPERTY(int alignPending READ alignPending NOTIFY messageChanged)
 public:
     InstallationController(const AppContext &ctx, QObject *parent = nullptr);
     ~InstallationController() override;
@@ -126,6 +137,12 @@ public:
     QString message() const { return m_message; }
     bool messageFailed() const { return m_messageFailed; }
     int revision() const { return m_draft.value(QLatin1String("revision")).toInt(); }
+    // -- WP FEATUI --
+    QStringList sourceIds() const { return m_sourceIds; }
+    QStringList programmeIds() const { return m_programmeIds; }
+    QStringList sceneIds() const { return m_sceneIds; }
+    QVariantList rerouted() const { return m_rerouted; }
+    int alignPending() const { return m_alignPending; }
 
     // The reads below take `generation` for QML's sake alone: passed, a binding
     // runs again when it moves (an unused read of it, "(generation, element(id))",
@@ -165,6 +182,37 @@ public:
     Q_INVOKABLE bool addSender(const QString &name);
     Q_INVOKABLE bool remove(const QString &id);
 
+    // -- WP FEATUI -- FEAT1's edits (dspi-core alink/installation.rs). element()
+    // also gives a unit's `slots` (8 numbers, 255 silent; empty: its own),
+    // `slotsZone`/`slotsSource` (the zone and source that own them, names; ""
+    // when hand-made), a source's `sender` and `channels` ("8 9", from 0 as the
+    // core's sentences say them), a programme source's `programmeKind`,
+    // `feeds`, `inputs` ("0 1") and a
+    // scene's `actions` ([{ text, op }]) and `systemMute`.
+    // A zone's source: its audio link units play the source's channels
+    Q_INVOKABLE bool setZoneSource(const QString &zone, const QString &source);
+    // The names of the audio link units a zone's source would route
+    Q_INVOKABLE QStringList zoneUnits(const QString &zone, int generation = 0) const;
+    // A unit's slots: 8 entries, a channel 0..63 or 255 for silent; empty: its own again
+    Q_INVOKABLE bool setSlots(const QString &unit, const QVariantList &inputs);
+    Q_INVOKABLE QVariantList senderChoices(int generation = 0) const;
+    // Channels as typed: "8 9", "8-11", "0, 2"
+    Q_INVOKABLE bool addSource(const QString &name, const QString &sender, const QString &channels);
+    Q_INVOKABLE bool setSource(const QString &id, const QString &sender, const QString &channels);
+    // kind: computer_usb, spdif, analogue, alink_sender; inputs as channels above
+    Q_INVOKABLE QVariantList programmeKinds() const;
+    Q_INVOKABLE QVariantList programmeFeedChoices(const QString &kind, const QString &value, int generation = 0) const;
+    Q_INVOKABLE bool addProgramme(const QString &name, const QString &kind, const QString &feeds, const QString &inputs);
+    Q_INVOKABLE bool setProgramme(const QString &id, const QString &kind, const QString &feeds, const QString &inputs);
+    // A scene with no actions yet, and its actions: op mute, unmute,
+    // master_volume (value in dB) or source (target a zone, `source` its source)
+    Q_INVOKABLE bool addScene(const QString &name);
+    Q_INVOKABLE QVariantList sceneTargetChoices(int generation = 0) const;
+    Q_INVOKABLE bool addSceneAction(const QString &scene, const QString &op, const QString &target, double value, const QString &source);
+    Q_INVOKABLE bool removeSceneAction(const QString &scene, int index);
+    // The alignment that puts saved slots live was asked (SystemController)
+    Q_INVOKABLE void alignAsked();
+
     Q_INVOKABLE void save();
     // Drop the edits for the installation as last read, and read it again
     Q_INVOKABLE void reload();
@@ -194,6 +242,9 @@ signals:
     void groupIdsChanged();
     void draftChanged();
     void messageChanged();
+    void sourceIdsChanged();      // -- WP FEATUI --
+    void programmeIdsChanged();
+    void sceneIdsChanged();
 
 private:
     bool writable() const;
@@ -261,6 +312,11 @@ private:
 
     QString m_message;
     bool m_messageFailed = false;
+    // -- WP FEATUI --
+    bool editScene(const QString &scene, const std::function<void(QJsonArray &)> &change);
+    QStringList m_sourceIds, m_programmeIds, m_sceneIds;
+    QVariantList m_rerouted;
+    int m_alignPending = 0;
 };
 
 #endif // INSTALLATIONCONTROLLER_H

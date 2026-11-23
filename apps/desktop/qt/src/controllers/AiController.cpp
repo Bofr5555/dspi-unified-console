@@ -52,12 +52,17 @@ static const SettingsRegistry::Page aiPage{
       QT_TRANSLATE_NOOP("SettingsPages", "Connect an agent"), QT_TRANSLATE_NOOP("SettingsPages", "Claude Desktop, Claude Code, Cursor"),
       QT_TRANSLATE_NOOP("SettingsPages", "Clients and tokens"), QT_TRANSLATE_NOOP("SettingsPages", "Ask before changes"),
       QT_TRANSLATE_NOOP("SettingsPages", "Agent activity"), QT_TRANSLATE_NOOP("SettingsPages", "Port"),
-      QT_TRANSLATE_NOOP("SettingsPages", "Use from another computer") } };
+      QT_TRANSLATE_NOOP("SettingsPages", "Use from another computer"),
+      // -- WP FEATUI --
+      QT_TRANSLATE_NOOP("SettingsPages", "Loudest measurement, SPL cap"), QT_TRANSLATE_NOOP("SettingsPages", "Remembered devices") } };
 
 namespace {
 
 const char *const kEnabledKey = "mcp/enabled";
 const char *const kConfirmKey = "mcp/confirm";
+// -- WP FEATUI --
+const char *const kSplCapKey = "mcp/agentSplCapDb";
+const char *const kRememberedKey = "devices/remembered";
 const QString kConfirmDefault = QStringLiteral("ask_risky");
 const QStringList kConfirmModes{ QStringLiteral("ask_everything"), kConfirmDefault, QStringLiteral("never_ask") };
 
@@ -124,6 +129,10 @@ AiController::AiController(const AppContext &ctx, QObject *parent) : QObject(par
         dspi_mcp_set_listener(m_mcp, &AiController::eventThunk, this);
         dspi_mcp_set_confirm(m_mcp, m_confirmMode.toUtf8().constData());
     }
+    // -- WP FEATUI -- the agents' SPL cap, and the devices remembered from earlier runs
+    m_agentSplCap = qBound(kSplCapMin, s.value(QLatin1String(kSplCapKey), kSplCapDefault).toInt(), kSplCapMax);
+    if (m_mcp) dspi_mcp_set_agent_spl_cap(m_mcp, float(m_agentSplCap));
+    loadRemembered();
     m_tick.setInterval(1000);
     connect(&m_tick, &QTimer::timeout, this, &AiController::tick);
     m_readSoon.setSingleShot(true);
@@ -484,6 +493,7 @@ QString AiController::statusLine() const {
 // The registry's rows change with every clip mark: only what matters here goes on
 void AiController::onDevices() {
     if (m_ctx.registry->activeId() != m_activeSent) sendActive();
+    remember();   // -- WP FEATUI --
     QStringList open;
     for (const DeviceSession *s : m_ctx.registry->sessions()) open << s->id() + QLatin1Char(' ') + s->title();
     if (open == m_open) return;
@@ -1256,4 +1266,58 @@ void AiController::refresh() {
     readClients();
     readConfirmations();
     readActivity();
+}
+
+// ---- -- WP FEATUI -- The agents' SPL cap; remembered devices -------------------------
+
+void AiController::setAgentSplCap(int db) {
+    db = qBound(kSplCapMin, db, kSplCapMax);
+    if (db == m_agentSplCap || !m_mcp) return;
+    m_agentSplCap = db;
+    QSettings().setValue(QLatin1String(kSplCapKey), db);
+    dspi_mcp_set_agent_spl_cap(m_mcp, float(db));
+    emit settingsChanged();
+}
+
+// The devices open now go first in the list kept across restarts: a set id
+// with a serial (USB, a hub's, a Link one; never the demo or a file)
+void AiController::remember() {
+    QJsonArray list;
+    QStringList ids;
+    for (const DeviceSession *s : m_ctx.registry->sessions()) {
+        const QString id = s->id();
+        if (!(id.startsWith(QLatin1String("usb:")) || id.startsWith(QLatin1String("hub:")) || id.startsWith(QLatin1String("link:")))) continue;
+        if (ids.contains(id)) continue;
+        ids << id;
+        list.append(QJsonObject{ { QStringLiteral("device"), id }, { QStringLiteral("name"), s->title() } });
+    }
+    for (const QJsonValue &v : m_remembered) {
+        const QString id = v.toObject().value(QLatin1String("device")).toString();
+        if (!ids.contains(id) && list.size() < kRememberedMax) {
+            ids << id;
+            list.append(v);
+        }
+    }
+    if (list == m_remembered) return;
+    m_remembered = list;
+    QSettings().setValue(QLatin1String(kRememberedKey), QJsonDocument(list).toJson(QJsonDocument::Compact));
+    setKnownDevices(list);
+    emit rememberedChanged();
+}
+
+void AiController::loadRemembered() {
+    m_remembered = QJsonDocument::fromJson(QSettings().value(QLatin1String(kRememberedKey)).toByteArray()).array();
+    while (m_remembered.size() > kRememberedMax) m_remembered.removeLast();
+    setKnownDevices(m_remembered);
+    emit rememberedChanged();
+    remember();
+}
+
+void AiController::forgetRememberedDevices() {
+    m_remembered = QJsonArray();
+    QSettings().remove(QLatin1String(kRememberedKey));
+    // The ones open now stay known by being open
+    setKnownDevices(m_remembered);
+    emit rememberedChanged();
+    remember();
 }

@@ -156,6 +156,23 @@ fn device_json(
     out
 }
 
+// -- WP FEATUI --
+/// The tool's reading for the app's own screen: `source`'s state and the
+/// devices open in `set`, in the tool's words (the app's "This computer"
+/// panel shows what an agent reads). Blocking (the reader's own limit).
+pub fn report_for_set(set: &dspi_core::CoreSet, source: &dyn crate::host_audio::HostAudioSource) -> Value {
+    let rows: Vec<DeviceRow> = crate::registry::devices(set)
+        .into_iter()
+        .map(|open| DeviceRow {
+            open,
+            firmware: String::new(),
+            active: false,
+            hub: None,
+        })
+        .collect();
+    report(&source.read(), &rows)
+}
+
 /// The tool's result for `audio` and the open devices `rows`.
 pub(crate) fn report(audio: &HostAudio, rows: &[DeviceRow]) -> Value {
     let usb_open = rows

@@ -262,6 +262,12 @@ Panel {
                 }
             }
 
+            // -- WP FEATUI -- a room's or zone's volume (FEAT2)
+            SystemVolumeCard {
+                Layout.fillWidth: true
+                visible: panel.units && !panel.simple && SystemController.installed
+            }
+
             // ---- Units -------------------------------------------------------
             SectionHeading {
                 Layout.fillWidth: true

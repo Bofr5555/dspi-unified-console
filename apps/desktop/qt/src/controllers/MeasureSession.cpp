@@ -2192,7 +2192,21 @@ void MeasureSession::startForAgent(const QJsonObject &ticket, std::function<void
         done(false, tr("Something already runs on this device in the app; nothing was played."));
         return;
     }
-    const QByteArray text = QJsonDocument(ticket).toJson(QJsonDocument::Compact);
+    // -- WP FEATUI -- an agent that names no calibration measures with this
+    // app's (the microphone opened is the app's): the agents' SPL cap holds
+    QJsonObject withMic = ticket;
+    if (!m_micDocument.isEmpty() && (loopWord == QLatin1String("session") || loopWord == QLatin1String("rolloff"))) {
+        const bool wrapped = withMic.contains(QLatin1String("ticket"));
+        QJsonObject inner = wrapped ? withMic.value(QLatin1String("ticket")).toObject() : withMic;
+        QJsonObject setup = inner.value(QLatin1String("setup")).toObject();
+        if (setup.value(QLatin1String("micDocument")).toString().isEmpty()) {
+            setup.insert(QStringLiteral("micDocument"), QString::fromUtf8(m_micDocument));
+            inner.insert(QStringLiteral("setup"), setup);
+            if (wrapped) withMic.insert(QStringLiteral("ticket"), inner);
+            else withMic = inner;
+        }
+    }
+    const QByteArray text = QJsonDocument(withMic).toJson(QJsonDocument::Compact);
     const auto begin = [text](int rateHz) {
         return std::function<QByteArray(FfiCore *)>([text, rateHz](FfiCore *c) {
             return once([&](char *b, uint32_t l) { return dspi_mcp_measure_begin(c, text.constData(), uint32_t(rateHz), b, l); });

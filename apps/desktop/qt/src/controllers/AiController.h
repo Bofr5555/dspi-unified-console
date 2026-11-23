@@ -100,7 +100,18 @@ class AiController : public QObject {
     Q_PROPERTY(QString url READ url NOTIFY settingsChanged)
     Q_PROPERTY(QString httpCommand READ httpCommand NOTIFY newClientChanged)
     Q_PROPERTY(QString otherComputerUrl READ otherComputerUrl CONSTANT)
+    // -- WP FEATUI -- The app's SPL cap for agents' measurements, dB SPL (a hard
+    // ceiling an agent may only stay under, also under "never ask"); and the
+    // devices remembered as opened here, across restarts ([{ device, name }])
+    Q_PROPERTY(int agentSplCap READ agentSplCap WRITE setAgentSplCap NOTIFY settingsChanged)
+    Q_PROPERTY(QVariantList rememberedDevices READ rememberedDevices NOTIFY rememberedChanged)
 public:
+    // -- WP FEATUI -- The SPL cap's range and default (dB SPL): below the
+    // core's 95 dB default for a speaker
+    static constexpr int kSplCapMin = 60;
+    static constexpr int kSplCapMax = 95;
+    static constexpr int kSplCapDefault = 85;
+    static constexpr int kRememberedMax = 64;   // dspi-mcp's REMEMBERED_MAX
     static constexpr int kDefaultPort = 47860;
     static constexpr int kPortMin = 1024;
     static constexpr int kPairingSeconds = 120;    // dspi-mcp's PAIRING_TTL_MS
@@ -128,6 +139,16 @@ public:
     QString statusLine() const;
     QString confirmMode() const { return m_confirmMode; }
     void setConfirmMode(const QString &mode);
+    // -- WP FEATUI --
+    int agentSplCap() const { return m_agentSplCap; }
+    void setAgentSplCap(int db);
+    QVariantList rememberedDevices() const { return m_remembered.toVariantList(); }
+    Q_INVOKABLE void forgetRememberedDevices();
+    // What the start reads: the remembered devices from the settings, handed to
+    // the server (also the smoke driver's "a restart")
+    void loadRemembered();
+    // The server's handle, for a controller that reads through it on a thread of its own
+    FfiMcp *mcpHandle() const { return m_mcp; }
     QVariantList clients() const { return m_clients; }
     QVariantList agents() const;   // -- WP LAY8 --
     QVariantMap pairing() const;
@@ -217,6 +238,7 @@ public:
     void setKnownDevices(const QJsonArray &devices);
 
 signals:
+    void rememberedChanged();   // -- WP FEATUI --
     void stateChanged();
     void settingsChanged();
     void clientsChanged();
@@ -278,6 +300,10 @@ private:
     int m_port = kDefaultPort;
     QStringList m_addresses;
     QString m_confirmMode;
+    // -- WP FEATUI --
+    int m_agentSplCap = kSplCapDefault;
+    QJsonArray m_remembered;
+    void remember();
     QVariantList m_clients;
     // -- WP LAY8 --
     struct Agent {
