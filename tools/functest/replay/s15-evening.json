@@ -1,0 +1,354 @@
+{
+ "story": "s15-evening.toml",
+ "confirm": "ask_risky",
+ "about": "FSTORY S15 as a good agent does it: a snapshot first, presence on the centre, the sub's modes cut, the right surround -2 dB, night mode on every device, its last change undone, Film night and a flat Day (crossovers kept) on each device. Its 'undo' of the limiter set on every output is refused (no value before it) instead of undoing the leveller; it switches the limiter off itself.",
+ "steps": {
+  "film": [
+   [
+    "dspi_snapshot_capture",
+    {
+     "device": "demo:1",
+     "name": "Before film night"
+    },
+    "ok"
+   ],
+   [
+    "dspi_snapshot_capture",
+    {
+     "device": "demo:2",
+     "name": "Before film night"
+    },
+    "ok"
+   ],
+   [
+    "dspi_snapshot_capture",
+    {
+     "device": "demo:3",
+     "name": "Before film night"
+    },
+    "ok"
+   ]
+  ],
+  "dialogue": [
+   [
+    "dspi_set_peq_band",
+    {
+     "device": "demo:2",
+     "input": 2,
+     "slot": 0,
+     "type": "peaking",
+     "freq_hz": 2500,
+     "gain_db": 2.5,
+     "q": 1.0
+    },
+    "ok"
+   ]
+  ],
+  "bass": [
+   [
+    "dspi_apply_changes",
+    {
+     "device": "demo:2",
+     "changes": [
+      {
+       "op": "set_peq_band",
+       "output": 4,
+       "slot": 0,
+       "type": "peaking",
+       "freq_hz": 37,
+       "gain_db": -6,
+       "q": 4
+      },
+      {
+       "op": "set_peq_band",
+       "output": 4,
+       "slot": 1,
+       "type": "peaking",
+       "freq_hz": 88,
+       "gain_db": -4,
+       "q": 4
+      },
+      {
+       "op": "set_gain",
+       "output": 4,
+       "gain_db": -3
+      }
+     ]
+    },
+    "ok"
+   ]
+  ],
+  "surround": [
+   [
+    "dspi_apply_changes",
+    {
+     "device": "demo:3",
+     "changes": [
+      {
+       "op": "set_gain",
+       "output": 2,
+       "gain_db": -2
+      },
+      {
+       "op": "set_gain",
+       "output": 3,
+       "gain_db": -7
+      }
+     ]
+    },
+    "ok"
+   ]
+  ],
+  "night": [
+   [
+    "dspi_set_loudness",
+    {
+     "device": "demo:1",
+     "enabled": true
+    },
+    "ok"
+   ],
+   [
+    "dspi_set_leveller",
+    {
+     "device": "demo:1",
+     "enabled": true
+    },
+    "ok"
+   ],
+   [
+    "dspi_set_limiter",
+    {
+     "device": "demo:1",
+     "output": "all",
+     "enabled": true,
+     "threshold_db": -6
+    },
+    "ok"
+   ],
+   [
+    "dspi_set_loudness",
+    {
+     "device": "demo:2",
+     "enabled": true
+    },
+    "ok"
+   ],
+   [
+    "dspi_set_leveller",
+    {
+     "device": "demo:2",
+     "enabled": true
+    },
+    "ok"
+   ],
+   [
+    "dspi_set_limiter",
+    {
+     "device": "demo:2",
+     "output": "all",
+     "enabled": true,
+     "threshold_db": -6
+    },
+    "ok"
+   ],
+   [
+    "dspi_set_loudness",
+    {
+     "device": "demo:3",
+     "enabled": true
+    },
+    "ok"
+   ],
+   [
+    "dspi_set_leveller",
+    {
+     "device": "demo:3",
+     "enabled": true
+    },
+    "ok"
+   ],
+   [
+    "dspi_set_limiter",
+    {
+     "device": "demo:3",
+     "output": "all",
+     "enabled": true,
+     "threshold_db": -6
+    },
+    "ok"
+   ]
+  ],
+  "undo": [
+   [
+    "dspi_undo",
+    {
+     "device": "demo:3"
+    },
+    "error",
+    "the limiter set on every output at once cannot be undone: nothing older is undone in its place (FUNC2b fix)",
+    "\"undone\":"
+   ],
+   [
+    "dspi_set_limiter",
+    {
+     "device": "demo:3",
+     "output": "all",
+     "enabled": false
+    },
+    "ok"
+   ]
+  ],
+  "presets": [
+   [
+    "dspi_preset_save",
+    {
+     "device": "demo:1",
+     "slot": 1
+    },
+    "ok"
+   ],
+   [
+    "dspi_preset_rename",
+    {
+     "device": "demo:1",
+     "slot": 1,
+     "name": "Film night"
+    },
+    "ok"
+   ],
+   [
+    "dspi_preset_save",
+    {
+     "device": "demo:1",
+     "slot": 2
+    },
+    "ok"
+   ],
+   [
+    "dspi_preset_rename",
+    {
+     "device": "demo:1",
+     "slot": 2,
+     "name": "Day"
+    },
+    "ok"
+   ],
+   [
+    "dspi_preset_save",
+    {
+     "device": "demo:2",
+     "slot": 1
+    },
+    "ok"
+   ],
+   [
+    "dspi_preset_rename",
+    {
+     "device": "demo:2",
+     "slot": 1,
+     "name": "Film night"
+    },
+    "ok"
+   ],
+   [
+    "dspi_apply_changes",
+    {
+     "device": "demo:2",
+     "changes": [
+      {
+       "op": "set_peq_band",
+       "input": 2,
+       "slot": 0,
+       "type": "flat",
+       "freq_hz": 1000
+      },
+      {
+       "op": "set_peq_band",
+       "output": 4,
+       "slot": 0,
+       "type": "flat",
+       "freq_hz": 1000
+      },
+      {
+       "op": "set_peq_band",
+       "output": 4,
+       "slot": 1,
+       "type": "flat",
+       "freq_hz": 1000
+      }
+     ]
+    },
+    "ok"
+   ],
+   [
+    "dspi_preset_save",
+    {
+     "device": "demo:2",
+     "slot": 2
+    },
+    "ok"
+   ],
+   [
+    "dspi_preset_rename",
+    {
+     "device": "demo:2",
+     "slot": 2,
+     "name": "Day"
+    },
+    "ok"
+   ],
+   [
+    "dspi_preset_load",
+    {
+     "device": "demo:2",
+     "slot": 1
+    },
+    "ok"
+   ],
+   [
+    "dspi_preset_save",
+    {
+     "device": "demo:3",
+     "slot": 1
+    },
+    "ok"
+   ],
+   [
+    "dspi_preset_rename",
+    {
+     "device": "demo:3",
+     "slot": 1,
+     "name": "Film night"
+    },
+    "ok"
+   ],
+   [
+    "dspi_preset_save",
+    {
+     "device": "demo:3",
+     "slot": 2
+    },
+    "ok"
+   ],
+   [
+    "dspi_preset_rename",
+    {
+     "device": "demo:3",
+     "slot": 2,
+     "name": "Day"
+    },
+    "ok"
+   ]
+  ],
+  "summary": [
+   [
+    "dspi_get_activity",
+    {
+     "n": 50
+    },
+    "ok"
+   ]
+  ]
+ }
+}
