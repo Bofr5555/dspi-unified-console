@@ -190,6 +190,17 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
   lock's refusal says what still passes (mute, volume, preset load) and where to unlock, never the PIN. The question
   before an agent's preset load no longer promises an undo. A sub is never a tweeter's measurement reference while a
   midrange is there. (WP FUNC2c)
+- Loading a preset yourself is guarded as an agent's load is: with a confirmed tweeter or midrange (and the master volume
+  kept apart from presets) the device is silent while the preset loads, a tweeter or midrange the preset leaves without
+  its high-pass is muted, and the volume comes back; a notice says what was muted, or that the volume could not come back.
+  (WP INTI; the web console too)
+- AI agents: a permission to play test signals belongs to the agent's pairing (it survives a reconnect within the 10
+  minutes) and covers that one device: a measurement across several units of a hub is asked each time. A hub scene that
+  loads presets is judged as an agent's preset load (refused on a unit this app does not have open or that saves the
+  master volume with each preset; a unit whose tweeter would lose its protection is put back). A stored preset that
+  raises the level of a tweeter you left without its high-pass is refused, as is an EQ boost on it. An agent names a
+  preset in the save and saves several devices at once: one question. The screen does not follow an agent while a click
+  or a key is under way. (WP INTI)
 
 ### Android
 - DSPi Link is reachable from the main page (owner report on 0.14.0: only through the settings
