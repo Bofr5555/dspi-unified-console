@@ -75,3 +75,30 @@ fn wp_func2c_the_lock_says_what_passes_and_never_gives_the_pin() {
     );
 }
 
+#[test]
+fn wp_func2c_what_the_profile_held_reads_in_the_apps_words() {
+    use crate::tools::library::held_words;
+    assert_eq!(
+        held_words("eq.freq[9,20] 600 → 1000 Hz", 8),
+        "Out 2 crossover 1 frequency: 600 → 1000 Hz"
+    );
+    assert_eq!(
+        held_words("eq.gain[2,3] 9 → 6 dB", 8),
+        "In 3 band 4 gain: 9 → 6 dB"
+    );
+    assert_eq!(
+        held_words("out.gain[4] 2 → 0 dB", 8),
+        "Out 5 gain: 2 → 0 dB"
+    );
+    assert_eq!(
+        held_words(
+            "output 2: a 12 dB/oct high-pass at 1000 Hz in crossover 1",
+            8
+        ),
+        "Out 2: a 12 dB/oct high-pass at 1000 Hz in crossover 1"
+    );
+    assert_eq!(
+        held_words("vol.master -3 → -6 dB", 8),
+        "vol.master -3 → -6 dB"
+    );
+}
