@@ -690,6 +690,17 @@ impl HttpServer {
         self.shared.with_mcp(|m| m.server.set_known_devices(rows));
     }
 
+    // -- WP ODEC --
+    /// The user revokes grant `id` (`Server::revoke_grant`). Waits as
+    /// [`HttpServer::with_server`].
+    pub fn revoke_grant(&self, id: u64) -> bool {
+        let now_ms = self.shared.now_ms();
+        self.shared.with_mcp(|m| {
+            m.server.tick(now_ms);
+            m.server.revoke_grant(id)
+        })
+    }
+
     /// The agents' requests to open or close a device, oldest first
     /// (`Server::device_requests`). Waits as [`HttpServer::with_server`].
     pub fn device_requests(&self) -> Vec<Value> {
@@ -806,11 +817,26 @@ impl HttpServer {
     pub fn work(&self) -> Value {
         let w = lock(&self.shared.work);
         let of = |key: &str| w.jobs.get(key).cloned().unwrap_or_else(|| json!([]));
+        // -- WP ODEC -- the grants with the seconds they have left now
+        let now_ms = self.shared.now_ms();
+        let grants: Vec<Value> = of("grants")
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|g| {
+                let until = g.get("until_ms").and_then(Value::as_u64)?;
+                let left_s = until.checked_sub(now_ms).filter(|ms| *ms > 0)?.div_ceil(1000);
+                let mut g = g.clone();
+                g.as_object_mut()?.insert("left_s".into(), json!(left_s));
+                Some(g)
+            })
+            .collect();
         json!({
             "calls": w.calls.values().collect::<Vec<_>>(),
             "last": w.last,
             "jobs": of("jobs"),
             "guards": of("guards"),
+            "grants": grants,
         })
     }
 

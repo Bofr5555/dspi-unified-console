@@ -106,7 +106,7 @@ fn device_json(
         }
         DeviceTransport::Demo => Err((
             "no",
-            "the demo device is simulated: the computer has no output for it",
+            "a demo device: the computer has no audio output for it", // -- WP ODEC --
         )),
         DeviceTransport::File => Err(("no", "a settings document, not a device")),
         DeviceTransport::Hub | DeviceTransport::Link => Err((

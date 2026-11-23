@@ -7,6 +7,7 @@
 //! refused by the schema, the three settings for test signals, a host
 //! without a Measure view, and the requests' lifecycle.
 
+// -- WP ODEC -- the helpers are pub(crate) for tests_wp_odec
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -34,12 +35,12 @@ fn request(tool: &str, args: Value) -> Value {
     }}})
 }
 
-fn call_at(s: &mut Server, c: ClientId, now: u64, tool: &str, args: Value) -> Value {
+pub(crate) fn call_at(s: &mut Server, c: ClientId, now: u64, tool: &str, args: Value) -> Value {
     let r = s.handle_value(c, now, request(tool, args)).unwrap();
     r.get("result").cloned().unwrap_or_else(|| panic!("{r}"))
 }
 
-fn ok_at(s: &mut Server, c: ClientId, now: u64, tool: &str, args: Value) -> Value {
+pub(crate) fn ok_at(s: &mut Server, c: ClientId, now: u64, tool: &str, args: Value) -> Value {
     let r = call_at(s, c, now, tool, args);
     assert_eq!(r["isError"], json!(false), "{tool}: {r}");
     assert_ne!(
@@ -50,14 +51,14 @@ fn ok_at(s: &mut Server, c: ClientId, now: u64, tool: &str, args: Value) -> Valu
     r["structuredContent"].clone()
 }
 
-fn err_at(s: &mut Server, c: ClientId, now: u64, tool: &str, args: Value) -> String {
+pub(crate) fn err_at(s: &mut Server, c: ClientId, now: u64, tool: &str, args: Value) -> String {
     let r = call_at(s, c, now, tool, args);
     assert_eq!(r["isError"], json!(true), "{tool}: {r}");
     r["content"][0]["text"].as_str().unwrap().to_owned()
 }
 
 /// A held call's confirmation id.
-fn held_at(s: &mut Server, c: ClientId, now: u64, tool: &str, args: Value) -> u64 {
+pub(crate) fn held_at(s: &mut Server, c: ClientId, now: u64, tool: &str, args: Value) -> u64 {
     let r = call_at(s, c, now, tool, args);
     assert_eq!(r["isError"], json!(false), "{tool}: {r}");
     let d = &r["structuredContent"];
@@ -83,7 +84,7 @@ fn allowed(s: &mut Server, c: ClientId, now: u64, tool: &str, args: Value) -> Va
     out
 }
 
-fn server(set: &Arc<CoreSet>, mode: ConfirmMode, measuring: bool) -> Server {
+pub(crate) fn server(set: &Arc<CoreSet>, mode: ConfirmMode, measuring: bool) -> Server {
     let config = ServerConfig {
         policy: Arc::new(AgentPolicy::new(mode)),
         write_limit: RateLimit {
@@ -109,7 +110,7 @@ fn settle(core: &DspiCore) {
 
 /// The demo DSPi as the simulated room's left three-way (LR4 at 300 Hz and
 /// 3 kHz), ready to measure, its simulated microphone on.
-fn demo() -> (Arc<CoreSet>, DeviceId, Arc<DspiCore>) {
+pub(crate) fn demo() -> (Arc<CoreSet>, DeviceId, Arc<DspiCore>) {
     let set = CoreSet::new();
     let id = set.open(DeviceTarget::Demo).unwrap();
     let core = set.core(&id).unwrap();
@@ -172,7 +173,7 @@ fn demo() -> (Arc<CoreSet>, DeviceId, Arc<DspiCore>) {
 }
 
 /// The user's speaker layout: the left three-way, confirmed or not.
-fn layout(core: &DspiCore, confirmed: bool) {
+pub(crate) fn layout(core: &DspiCore, confirmed: bool) {
     let roles = [MeasureRole::Low, MeasureRole::Mid, MeasureRole::High];
     core.speaker_layout_set(SpeakerLayout {
         outputs: roles
@@ -193,7 +194,7 @@ fn layout(core: &DspiCore, confirmed: bool) {
 
 /// The app's Measure view: take every waiting request, start it as the app
 /// does (the simulated microphone's rate), report it.
-fn app_takes(s: &mut Server, core: &DspiCore) -> Vec<Value> {
+pub(crate) fn app_takes(s: &mut Server, core: &DspiCore) -> Vec<Value> {
     let mut started = Vec::new();
     for r in s.measure_requests() {
         let id = r["request_id"].as_u64().unwrap();
@@ -214,7 +215,7 @@ fn app_takes(s: &mut Server, core: &DspiCore) -> Vec<Value> {
 }
 
 /// The app's loop for a ticket's `loop` until the job ends.
-fn app_drives(core: &DspiCore, what: &str, secs: u64) {
+pub(crate) fn app_drives(core: &DspiCore, what: &str, secs: u64) {
     let end = Instant::now() + Duration::from_secs(secs);
     loop {
         let running = match what {
@@ -231,7 +232,7 @@ fn app_drives(core: &DspiCore, what: &str, secs: u64) {
     }
 }
 
-fn status(s: &mut Server, c: ClientId, now: u64) -> Value {
+pub(crate) fn status(s: &mut Server, c: ClientId, now: u64) -> Value {
     ok_at(s, c, now, "dspi_measure_status", json!({}))
 }
 

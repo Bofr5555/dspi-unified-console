@@ -3,6 +3,7 @@
 //! path; bug 2: an agent's preset load runs silenced on a device with a
 //! confirmed tweeter.
 
+// -- WP ODEC -- some helpers are pub(crate) for tests_wp_odec
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -95,7 +96,7 @@ pub(crate) fn demo(name: &str) -> (Arc<CoreSet>, Arc<DspiCore>) {
 }
 
 /// Output 1 the user's confirmed tweeter, output 2 a midrange, the rest full.
-fn confirm(core: &DspiCore) {
+pub(crate) fn confirm(core: &DspiCore) {
     let outputs = (0..core.get_state().num_output_channels)
         .map(|n| SpeakerLayoutOutput {
             output: n,
@@ -116,11 +117,11 @@ fn confirm(core: &DspiCore) {
     .unwrap();
 }
 
-fn n_in(core: &DspiCore) -> u8 {
+pub(crate) fn n_in(core: &DspiCore) -> u8 {
     core.get_state().num_input_channels
 }
 
-fn hp(filter_type: u8, hz: f32) -> FilterParams {
+pub(crate) fn hp(filter_type: u8, hz: f32) -> FilterParams {
     FilterParams {
         filter_type,
         bypass: false,
@@ -132,11 +133,11 @@ fn hp(filter_type: u8, hz: f32) -> FilterParams {
 }
 
 const FLAT: FilterParams = policy::FLAT;
-const LR4_HP: u8 = 35;
+pub(crate) const LR4_HP: u8 = 35; // -- WP ODEC -- pub(crate) for tests_wp_odec
 
 /// Output `o` of `core` as the user left it: no filters, no routes, on and
 /// unmuted (set by the user, unjudged).
-fn blank(core: &DspiCore, o: u8) {
+pub(crate) fn blank(core: &DspiCore, o: u8) {
     let ch = n_in(core) + o;
     for x in 0..4 {
         core.set_crossover(

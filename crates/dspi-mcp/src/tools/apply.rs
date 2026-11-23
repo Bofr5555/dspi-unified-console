@@ -163,8 +163,8 @@ static KEEP_CHANGES: Tool = Tool {
     name: "dspi_keep_changes",
     title: "Keep a timed preview",
     description: "Keep this agent's timed preview (dspi_apply_changes with guard_s) on a \
-                  device: the countdown stops and the changes stay. After an auto-tune whose \
-                  verify failed only the user may keep it, in the app.",
+                  device: the countdown stops and the changes stay. An auto-tune only after its \
+                  verify passed; otherwise only the user may keep it, in the app.",
     class: ToolClass::Write,
     device: true,
     input_schema: guard_schema,
@@ -175,6 +175,12 @@ static KEEP_CHANGES: Tool = Tool {
         // -- WP RCFIX -- as dspi_tune_keep, before the core is asked
         if super::measure::guard_is_failed_tunes(core, guard) {
             return Err(ToolError::new(super::measure::KEEP_IS_THE_USERS));
+        }
+        // -- WP ODEC -- nor one with no passed verify
+        if super::measure::guard_is_unverified_tunes(core, guard) {
+            return Err(ToolError::new(
+                super::measure::KEEP_NEEDS_A_PASSED_VERIFY,
+            ));
         }
         // -- WP AIVIS -- the user changed part of it meanwhile
         dspi_core::actor::user::check_keep(core, call.actor)

@@ -238,6 +238,7 @@ pub fn parse(dump: &str) -> Result<HostAudio, String> {
         });
     }
     Ok(HostAudio {
+        sim: false, // -- WP ODEC --
         os: HostOs::Linux,
         audio_system: version,
         unknown: None,

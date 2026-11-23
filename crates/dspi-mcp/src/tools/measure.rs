@@ -33,7 +33,8 @@
 //!   server sees it finish ([`tick`]): MCP1's `dspi_list_measurements` lists
 //!   it, `dspi_get_response` reads it and `dspi_tune_propose` takes it.
 //! - **A Keep after a verify that did not pass is the user's** (the core's
-//!   "second Keep"): the agent's Keep is refused then.
+//!   "second Keep"): the agent's Keep is refused then. -- WP ODEC -- So is
+//!   one with no passed verify at all (owner 2026-11-23).
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -2271,12 +2272,35 @@ pub(crate) fn guard_is_failed_tunes(core: &DspiCore, guard: u64) -> bool {
         && verify_failed(&t)
 }
 
+// -- WP ODEC -- (owner 2026-11-23, answer 2; FUNC1 bug 8)
+/// An agent's Keep of a tune that has no passed verify yet.
+pub(crate) const KEEP_NEEDS_A_PASSED_VERIFY: &str = "the applied tune has no passed verify, so it \
+     was not kept: an agent may keep a tune only after dspi_tune_verify has passed (wait for it \
+     with dspi_measure_status). Otherwise only the user may keep it, in the app; \
+     dspi_tune_revert puts it back.";
+
+/// Whether the tune's last verify (since its apply) passed.
+pub(crate) fn verify_passed(t: &MeasureTuneState) -> bool {
+    t.verify.as_ref().is_some_and(|v| v.passed) && !verify_failed(t)
+}
+
+/// Whether `guard` is the guard of an applied tune with no passed verify: the
+/// generic Keep is refused as the tune's own is.
+pub(crate) fn guard_is_unverified_tunes(core: &DspiCore, guard: u64) -> bool {
+    let t = core.measure_tune_state();
+    matches!(
+        t.stage,
+        MeasureTuneStage::Applied | MeasureTuneStage::Verifying | MeasureTuneStage::Verified
+    ) && t.guard.id == guard
+        && !verify_passed(&t)
+}
+
 static TUNE_KEEP: Tool = Tool {
     name: "dspi_tune_keep",
     title: "Keep a tune",
     description: "Keep the applied tune (ends its preview; the before and after states are \
-                  filed). After a verify that did not pass, only the user may keep it, in the \
-                  app.",
+                  filed). Only after dspi_tune_verify has passed; otherwise only the user may \
+                  keep it, in the app.",
     class: ToolClass::Write,
     device: true,
     input_schema: empty_schema,
@@ -2285,6 +2309,10 @@ static TUNE_KEEP: Tool = Tool {
         let core = call.core()?;
         if verify_failed(&core.measure_tune_state()) {
             return Err(ToolError::new(KEEP_IS_THE_USERS));
+        }
+        // -- WP ODEC -- a Keep needs a passed verify
+        if !verify_passed(&core.measure_tune_state()) {
+            return Err(ToolError::new(KEEP_NEEDS_A_PASSED_VERIFY));
         }
         // -- WP AIVIS -- the user changed part of it meanwhile
         user::check_keep(core, call.actor).map_err(|e| policy::core_error(&call.judging, e))?;
@@ -2666,8 +2694,9 @@ static SYSTEM_VERIFY: Tool = Tool {
 static SYSTEM_KEEP: Tool = Tool {
     name: "dspi_system_measure_keep",
     title: "Keep the alignment across units",
-    description: "Keep the applied alignment across units. After a verify that did not \
-                  pass, only the user may keep it, in the app.",
+    description: "Keep the applied alignment across units. Only after \
+                  dspi_system_measure_verify has passed; otherwise only the user may keep it, \
+                  in the app.",
     class: ToolClass::Write,
     device: true,
     input_schema: empty_schema,
@@ -2678,6 +2707,14 @@ static SYSTEM_KEEP: Tool = Tool {
             return Err(ToolError::new(
                 "the verify did not pass: only the user may keep this alignment, in the app. \
                  Do not retry; dspi_system_measure_revert puts it back.",
+            ));
+        }
+        // -- WP ODEC -- as a tune: an agent keeps only after a passed verify
+        if core.measure_system_applied().verified != Some(true) {
+            return Err(ToolError::new(
+                "the applied alignment has no passed verify, so it was not kept: an agent may \
+                 keep it only after dspi_system_measure_verify has passed. Otherwise only the \
+                 user may keep it, in the app; dspi_system_measure_revert puts it back.",
             ));
         }
         let a = core.measure_system_keep().map_err(|e| refusal(call, e))?;

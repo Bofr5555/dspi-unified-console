@@ -128,6 +128,10 @@ pub struct HostAudio {
     pub streams_known: bool,
     /// Why not, when it does not.
     pub streams_note: Option<String>,
+    // -- WP ODEC --
+    /// The function test's simulated bus answered (`sim_bus`): for the
+    /// harness only, never in what an agent reads.
+    pub sim: bool,
 }
 
 impl HostAudio {
@@ -140,6 +144,7 @@ impl HostAudio {
             outputs: Vec::new(),
             streams_known: false,
             streams_note: None,
+            sim: false, // -- WP ODEC --
         }
     }
 }
