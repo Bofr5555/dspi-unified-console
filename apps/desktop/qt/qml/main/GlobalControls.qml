@@ -44,6 +44,10 @@ ColumnLayout {
             model: SidebarController.presetTitles
             displayText: count > 0 && currentIndex >= 0 ? currentText : "–"
             currentIndex: controls.activeSlot
+            // -- WP FUNC2b -- a new list of titles (a preset saved or renamed) resets a ComboBox's
+            // index to 0, and the binding above waits for the slot to change: the box said "Demo"
+            // while the device was on "Movie night", and Save next to it saves to the active slot
+            onModelChanged: Qt.callLater(() => presetBox.currentIndex = Qt.binding(() => controls.activeSlot))
             enabled: controls.writable && !SidebarController.presetBusy
             onActivated: index => {
                 SidebarController.requestPresetSwitch(index)
