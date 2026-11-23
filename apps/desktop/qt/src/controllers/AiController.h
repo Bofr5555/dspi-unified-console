@@ -351,6 +351,7 @@ private:
         QStringList risks;
         QStringList riskLines;   // -- WP LAY8 --
         bool sound = false;      // -- WP FEATUI -- it plays a test signal: nothing to undo
+        bool wholesale = false;  // -- WP FUNC2c -- a preset load, a recall, an import: ends the undo history
         QDateTime ends;
         bool operator==(const Waiting &o) const { return id == o.id; }   // a question never changes
     };
