@@ -825,7 +825,10 @@ impl HttpServer {
             .flatten()
             .filter_map(|g| {
                 let until = g.get("until_ms").and_then(Value::as_u64)?;
-                let left_s = until.checked_sub(now_ms).filter(|ms| *ms > 0)?.div_ceil(1000);
+                let left_s = until
+                    .checked_sub(now_ms)
+                    .filter(|ms| *ms > 0)?
+                    .div_ceil(1000);
                 let mut g = g.clone();
                 g.as_object_mut()?.insert("left_s".into(), json!(left_s));
                 Some(g)

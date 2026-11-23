@@ -582,7 +582,9 @@ pub fn run(ctx: &RunCtx<'_>, tool: &Tool, args: &Map<String, Value>) -> RunOutco
     policy::lock(&judging).grant.clone_from(&ctx.grant);
     // -- WP ODEC -- the agent's grant for test signals on this device
     if ctx.grants.is_some_and(|g| g.holds(ctx.client, id.as_str())) {
-        policy::lock(&judging).grant.push(crate::grant::standing_key());
+        policy::lock(&judging)
+            .grant
+            .push(crate::grant::standing_key());
     }
     policy::lock(&judging).taken_back = policy::TakenBack(Some((Arc::clone(&core), ctx.actor))); // -- WP AIVIS --
     let hook = ctx.policy.judging_hook(&info, &core, &judging);

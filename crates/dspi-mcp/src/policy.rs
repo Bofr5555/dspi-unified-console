@@ -1292,7 +1292,8 @@ fn level_raise(before: &DspState, after: &DspState, writes: &[WriteKey], o: u8) 
     let mut risks = Vec::new();
     judge_values(before, after, writes, &mut risks);
     judge_effects(before, after, writes, &mut risks);
-    let feeds = |i: u8| cell_of(&before.matrix_routing, i, o) || cell_of(&after.matrix_routing, i, o);
+    let feeds =
+        |i: u8| cell_of(&before.matrix_routing, i, o) || cell_of(&after.matrix_routing, i, o);
     risks
         .into_iter()
         .filter(|r| matches!(r.kind, RiskKind::Louder | RiskKind::Unmute))

@@ -622,7 +622,9 @@ pub extern "C" fn dspi_mcp_confirm_answer(mcp: *mut FfiMcp, id: u64, allow: bool
 /// longer lasts. Waits for an agent's call in progress.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_mcp_grant_revoke(mcp: *mut FfiMcp, id: u64) -> bool {
-    with_mcp(mcp, false, |m| m.server().is_some_and(|s| s.revoke_grant(id)))
+    with_mcp(mcp, false, |m| {
+        m.server().is_some_and(|s| s.revoke_grant(id))
+    })
 }
 
 /// The device the app shows (a set id), which tools use when an agent names
@@ -783,8 +785,10 @@ mod tests_wp_mcp5;
 pub extern "C" fn dspi_mcp_work(mcp: *mut FfiMcp, buf: *mut c_char, len: u32) -> u32 {
     with_mcp(mcp, 0, |m| {
         let mut v = m.server().map_or_else(
-            || json!({"running": false, "calls": [], "last": null, "jobs": [], "guards": [],
-                      "grants": []}),
+            || {
+                json!({"running": false, "calls": [], "last": null, "jobs": [], "guards": [],
+                      "grants": []})
+            },
             |s| {
                 let mut w = s.work();
                 if let Some(o) = w.as_object_mut() {

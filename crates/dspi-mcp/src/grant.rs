@@ -26,11 +26,7 @@ pub const TEST_SIGNALS: &str = "test_signals";
 /// The key a call's judgement gets while its agent holds a grant on its
 /// device: `policy::require` lets test signals pass on it.
 pub fn standing_key() -> WriteKey {
-    WriteKey::new(
-        "standing.test_signal",
-        &[],
-        dspi_core::ParamValue::Trigger,
-    )
+    WriteKey::new("standing.test_signal", &[], dspi_core::ParamValue::Trigger)
 }
 
 /// Whether a held call's risks would open a grant when allowed.

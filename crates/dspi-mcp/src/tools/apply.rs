@@ -178,9 +178,7 @@ static KEEP_CHANGES: Tool = Tool {
         }
         // -- WP ODEC -- nor one with no passed verify
         if super::measure::guard_is_unverified_tunes(core, guard) {
-            return Err(ToolError::new(
-                super::measure::KEEP_NEEDS_A_PASSED_VERIFY,
-            ));
+            return Err(ToolError::new(super::measure::KEEP_NEEDS_A_PASSED_VERIFY));
         }
         // -- WP AIVIS -- the user changed part of it meanwhile
         dspi_core::actor::user::check_keep(core, call.actor)

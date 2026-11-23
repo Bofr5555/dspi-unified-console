@@ -59,7 +59,12 @@ fn wp_odec_no_level_raise_on_a_tweeter_left_playing_unprotected_under_any_settin
                 "dspi_set_gain",
                 json!({"output": 1, "gain_db": -16}),
             );
-            ok(&mut s, c, "dspi_set_mute", json!({"output": 1, "muted": true}));
+            ok(
+                &mut s,
+                c,
+                "dspi_set_mute",
+                json!({"output": 1, "muted": true}),
+            );
         }
     }
 }
@@ -112,7 +117,10 @@ fn wp_odec_an_agent_keeps_a_tune_only_after_a_passed_verify() {
     use crate::tools::measure::{verify_failed, verify_passed};
     let applied = tune(MeasureTuneStage::Applied, None);
     assert!(!verify_passed(&applied) && !verify_failed(&applied));
-    assert!(!verify_passed(&tune(MeasureTuneStage::Verified, Some(false))));
+    assert!(!verify_passed(&tune(
+        MeasureTuneStage::Verified,
+        Some(false)
+    )));
     assert!(verify_passed(&tune(MeasureTuneStage::Verified, Some(true))));
     // Over MCP: with no tune verified, the Keep is refused in words.
     let (set, _id, core) = demo();
@@ -284,7 +292,10 @@ fn wp_odec_after_stop_the_agent_is_told_the_user_stopped_it() {
     let r = call_at(&mut s, c, 1_000, "dspi_list_devices", json!({}));
     let block = &r["structuredContent"]["user_activity"];
     assert!(
-        block["note"].as_str().unwrap().contains("the user pressed Stop"),
+        block["note"]
+            .as_str()
+            .unwrap()
+            .contains("the user pressed Stop"),
         "{r}"
     );
     assert_eq!(block["events"][0]["kind"], json!("stopped"));

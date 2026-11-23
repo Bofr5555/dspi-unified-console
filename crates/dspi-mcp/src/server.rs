@@ -701,13 +701,8 @@ impl Server {
             return;
         };
         self.stopped.remove(at);
-        self.user.note(
-            self.now_ms,
-            "stopped",
-            STOPPED_TEXT,
-            None,
-            Some(client),
-        );
+        self.user
+            .note(self.now_ms, "stopped", STOPPED_TEXT, None, Some(client));
     }
 
     /// The user did something in the app that no device shows: paused the
@@ -741,7 +736,11 @@ impl Server {
     /// The grants for test signals that last: `[{id, kind, client,
     /// client_name, device, since_ms, until_ms}]` (`grant::Grant::to_json`).
     pub fn grants(&self) -> Vec<Value> {
-        self.grants.list().iter().map(crate::grant::Grant::to_json).collect()
+        self.grants
+            .list()
+            .iter()
+            .map(crate::grant::Grant::to_json)
+            .collect()
     }
 
     /// The user revokes grant `id` (the app's Revoke): its agent is told with
@@ -1184,8 +1183,13 @@ impl Server {
                     }
                     _ => format!("allowed your change (confirmation {id})"),
                 };
-                self.user
-                    .note(now_ms, "answer", &what, entry.device.as_deref(), Some(client));
+                self.user.note(
+                    now_ms,
+                    "answer",
+                    &what,
+                    entry.device.as_deref(),
+                    Some(client),
+                );
                 // A re-run has a grant, so it never holds anew.
                 let result = self.run_tool(now_ms, tool, &args, grant, entry);
                 (ConfirmState::Allowed, result)
