@@ -63,7 +63,8 @@ device the app shows is used. A device that is not open may be a known one
   one at 80 Hz. Every write is judged on the state it leaves: a route, an unmute or an output
   switched on to a tweeter without that high-pass is refused, as is a high-pass below the floor
   and a boost below the floor that lets more through than a 12 dB/octave high-pass there.
-  Give a tweeter its high-pass first, or in the same `dspi_apply_changes`.
+  Give a tweeter its high-pass first, or in the same `dspi_apply_changes`. Moving it, lower
+  too, is fine while it stays at the floor or above.
 - Numbers: every field (`output`, `input`, `slot`, `channel`) counts from 0. In texts,
   \"output N\" is that same number; \"Out N\" and \"In N\" are the app's labels, from 1
   (output 0 is Out 1).
@@ -74,6 +75,8 @@ device the app shows is used. A device that is not open may be a known one
   do not retry a refusal that says so.
 - Several changes that belong together go in one `dspi_apply_changes`: judged together, one
   undo step, all or none. `dspi_undo` takes back this agent's own changes, never the user's.
+  Asked to undo the user's change, say that only they can (Edit › Undo or the History in the
+  app); setting it back yourself is a new change of yours: say so, do not call it an undo.
 - A preset load, revert to saved, a snapshot recall, an A/B switch or a configuration import
   replaces many settings at once and ends the undo history: it may be held for the user, a
   snapshot is filed first (`before_snapshot_id`, the way back), and one that would lower a

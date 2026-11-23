@@ -17,7 +17,7 @@ from functest import CONTAINER_WORK, Run
 
 
 class Agent:
-    def __init__(self, name):
+    def __init__(self, name, client="probe"):
         self.run = Run(name)
         self.p = subprocess.Popen(
             ["podman", "exec", "-i", self.run.container, f"{CONTAINER_WORK}/build-functest/uconsole-for-dspi", "--mcp"],
@@ -25,7 +25,7 @@ class Agent:
         self.n = 0
         threading.Thread(target=self.allow, daemon=True).start()
         self.rpc("initialize", {"protocolVersion": "2025-11-25", "capabilities": {},
-                                "clientInfo": {"name": "probe", "version": "0"}})
+                                "clientInfo": {"name": client, "version": "0"}})
         self.p.stdin.write('{"jsonrpc":"2.0","method":"notifications/initialized"}\n')
         self.p.stdin.flush()
 
