@@ -44,13 +44,14 @@ ColumnLayout {
             label: qsTr("Preset")
             model: SidebarController.presetTitles
             displayText: count > 0 && currentIndex >= 0 ? currentText : "–"
-            currentIndex: controls.activeSlot
+            // -- WP USR1 -- the active slot through every new list of titles (a preset saved,
+            // renamed or marked unsaved): AppComboBox.follows. Save beside it saves to the
+            // active slot, so the box must say which that is
+            follows: true
+            followIndex: controls.activeSlot
             enabled: controls.writable && !SidebarController.presetBusy
-            onActivated: index => {
-                SidebarController.requestPresetSwitch(index)
-                // The device says which slot is active, not the click
-                currentIndex = Qt.binding(() => controls.activeSlot)
-            }
+            // The device says which slot is active, not the click (AppComboBox.follows)
+            onActivated: index => SidebarController.requestPresetSwitch(index)
             TapHandler {
                 acceptedButtons: Qt.RightButton
                 onTapped: point => { if (controls.writable) presetMenu.popup(presetBox, point.position.x, point.position.y) }
@@ -150,12 +151,11 @@ ColumnLayout {
             model: SidebarController.sources
             textRole: "title"
             valueRole: "value"
-            currentIndex: indexOfValue(SidebarController.source)
+            // -- WP USR1 -- through a new list too (a source renamed): AppComboBox.follows
+            follows: true
+            followIndex: SidebarController.sources.findIndex(s => s.value === SidebarController.source)
             enabled: controls.writable
-            onActivated: index => {
-                SidebarController.setSource(valueAt(index))
-                currentIndex = Qt.binding(() => indexOfValue(SidebarController.source))
-            }
+            onActivated: index => SidebarController.setSource(valueAt(index))
             TapHandler {
                 acceptedButtons: Qt.RightButton
                 onTapped: point => {
