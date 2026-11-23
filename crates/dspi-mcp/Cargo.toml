@@ -53,6 +53,11 @@ link = ["dspi-core/link"]
 # (pw-dump and ALSA on Linux, MMDevice on Windows, Core Audio on macOS). Off,
 # the crate stays sans-IO and the embedder passes its own reader or none.
 host-audio = ["dep:windows"]
+# -- WP FBUS -- the function test's simulated host audio bus (dspi-core
+# `sim-scenario`) answers `host_audio::system()` while one is loaded, and a demo
+# unit it names counts as on this computer. Test-only: on in dspi-capi's
+# `sim-scenario` alone, which no shipped build turns on.
+sim-bus = ["dspi-core/sim-scenario"]
 
 [dev-dependencies]
 # A measurement document for the tests (a workspace crate, already a dependency

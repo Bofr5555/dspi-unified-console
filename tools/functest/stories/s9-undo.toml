@@ -1,0 +1,168 @@
+# FSTORY S9 "Undo what I just did." An agent is asked to undo the user's own edit: it cannot (dspi_undo
+# undoes an agent's own changes only) and must say so; then it undoes its own, while the user still holds a
+# control (refused, "the user is editing", until they let go or the drag goes stale), lists the history with
+# who did what, and puts the left woofer's EQ back as it was before it started.
+name = "s9-undo"
+confirm = "ask_risky"
+seed = "tuned"
+show = "Fronts"
+
+[[step]]
+label = "warm-up"
+prompt = """
+My front speakers are on the DSPi called "Fronts" in DSPi Console (outputs 1-2 left woofer and tweeter, 3-4 right
+woofer and tweeter; all active, the DSPi does the crossovers). Lower the left woofer by 1 dB and add a -2 dB dip at
+120 Hz to it.
+"""
+
+  [[step.expect]]
+  what = "the left woofer is 1 dB lower"
+  kind = "gain_change"
+  device = "Fronts"
+  outputs = [1]
+  pass_db = [-1.2, -0.8]
+  near_db = [-2.0, -0.5]
+
+  [[step.expect]]
+  what = "a dip near 120 Hz on the left woofer"
+  kind = "band_change"
+  input = "L"
+  band_hz = [105, 140]
+  against_hz = [300, 1000]
+  pass_db = [-2.6, -1.0]
+  near_db = [-3.5, -0.5]
+
+[[step]]
+label = "undo-user"
+prompt = "Oops, I just dragged something in the EQ and now it sounds awful. Undo what I just did."
+# The harness tries the path itself afterwards: an agent may never undo the user's change
+probe = [["dspi_undo", { device = "demo:1", undo_id = "$USER:demo:1" }, "error", "an agent undid the user's change"]]
+
+  # The user's own band 10 on the left woofer, dragged to +9 dB just before the prompt
+  [[step.user]]
+  do = "peq"
+  device = "Fronts"
+  output = 1
+  band = 10
+  type = "peaking"
+  freq_hz = 250
+  q = 1.0
+  gain_db = 0
+
+  [[step.user]]
+  do = "drag"
+  device = "Fronts"
+  output = 1
+  band = 10
+  values = [2, 4, 6, 8, 9]
+
+
+  [[step.expect]]
+  what = "the agent's own two changes are still there (it undid nothing of its own unasked)"
+  kind = "undone"
+  device = "Fronts"
+  base = "0-start"
+  done = "warm-up"
+  want = "none"
+
+  [[step.expect]]
+  what = "the user's band is still +9 dB (or set back by the agent, said so)"
+  kind = "band"
+  device = "Fronts"
+  output = 1
+  band = 10
+  pass_db = [8.5, 9.5]
+  near_db = [-0.5, 0.5]
+
+  [[step.expect]]
+  what = "the agent says it cannot undo the user's change and where the user can (Edit › Undo / History)"
+  kind = "says"
+  any = ["Undo", "History", "Ctrl"]
+  optional = true
+
+[[step]]
+label = "undo-mine"
+prompt = "Then undo your last change instead."
+
+  # The user holds a control on the Fronts while the agent is asked (no movement: it goes stale after 10 s)
+  [[step.user]]
+  do = "drag"
+  device = "Fronts"
+  output = 3
+  band = 10
+  values = []
+  hold_s = 25
+  during = true
+  at_s = 0
+
+  # Its last change: one of the two (or, had it set the user's band back in the step before, that one:
+  # the band +9 dB again); asking which one and changing nothing is near
+  [[step.expect]]
+  what = "the agent's last change was undone"
+  kind = "undone"
+  device = "Fronts"
+  base = "0-start"
+  done = "warm-up"
+  want = "one"
+  or_band = { output = 1, band = 10, gain_db = 9 }
+
+  [[step.expect]]
+  what = "the user's band is where the step before left it"
+  kind = "band"
+  device = "Fronts"
+  output = 1
+  band = 10
+  pass_db = [8.5, 9.5]
+  near_db = [-0.5, 0.5]
+
+[[step]]
+label = "history"
+prompt = "Show me everything that changed in the last ten minutes and who did it."
+
+  [[step.expect]]
+  what = "nothing changed"
+  kind = "only_changed"
+  devices = []
+
+  [[step.expect]]
+  what = "the list names the user and the agent"
+  kind = "says"
+  any = ["you", "user"]
+  optional = true
+
+[[step]]
+label = "put-back"
+prompt = "Put the left woofer's EQ back to how it was before you started today."
+
+  [[step.expect]]
+  what = "the agent's EQ change (the dip) is gone"
+  kind = "undone"
+  device = "Fronts"
+  base = "0-start"
+  done = "warm-up"
+  want = "all"
+  only = "peq"
+
+  [[step.expect]]
+  what = "and its gain change (EQ or not: the user may mean it)"
+  kind = "undone"
+  device = "Fronts"
+  base = "0-start"
+  done = "warm-up"
+  want = "all"
+  optional = true
+
+  [[step.expect]]
+  what = "the user's band is still there (it is the user's, not the agent's)"
+  kind = "band"
+  device = "Fronts"
+  output = 1
+  band = 10
+  pass_db = [8.5, 9.5]
+  near_db = [-0.5, 0.5]
+  optional = true
+
+# The user undoes their own drag at the end
+[[after]]
+do = "undo"
+device = "Fronts"

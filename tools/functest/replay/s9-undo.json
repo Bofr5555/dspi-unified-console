@@ -1,0 +1,103 @@
+{
+ "story": "s9-undo.toml",
+ "confirm": "ask_risky",
+ "steps": {
+  "warm-up": [
+   [
+    "dspi_set_peq_band",
+    {
+     "device": "demo:1",
+     "output": 0,
+     "slot": "free",
+     "type": "peaking",
+     "freq_hz": 120,
+     "gain_db": -2,
+     "q": 2
+    },
+    "ok"
+   ],
+   [
+    "dspi_set_gain",
+    {
+     "device": "demo:1",
+     "output": 0,
+     "gain_db": -1
+    },
+    "ok"
+   ]
+  ],
+  "undo-user": [
+   [
+    "dspi_get_history",
+    {
+     "device": "demo:1",
+     "n": 10
+    },
+    "ok"
+   ],
+   [
+    "dspi_undo",
+    {
+     "device": "demo:1",
+     "undo_id": "$USER:demo:1"
+    },
+    "error",
+    "an agent undid the user's change"
+   ]
+  ],
+  "undo-mine": [
+   [
+    "sleep",
+    {
+     "s": 1
+    }
+   ],
+   [
+    "dspi_undo",
+    {
+     "device": "demo:1"
+    },
+    "error",
+    "an agent's write went through while the user held a control",
+    "allowed your change|confirmation"
+   ],
+   [
+    "sleep",
+    {
+     "s": 26
+    }
+   ],
+   [
+    "dspi_undo",
+    {
+     "device": "demo:1"
+    },
+    "ok"
+   ]
+  ],
+  "history": [
+   [
+    "dspi_get_history",
+    {
+     "device": "demo:1",
+     "n": 20
+    },
+    "ok"
+   ],
+   [
+    "dspi_get_activity",
+    {},
+    "ok"
+   ]
+  ],
+  "put-back": [
+   [
+    "dspi_undo",
+    {
+     "device": "demo:1"
+    },
+    "ok"
+   ]
+  ]
+ }
+}

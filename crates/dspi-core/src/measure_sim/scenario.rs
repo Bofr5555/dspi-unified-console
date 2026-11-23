@@ -39,6 +39,11 @@ use serde_json::{Value, json};
 use crate::measure_doc::CoreSectionModel;
 use crate::records::DspState;
 
+// -- WP FBUS -- P5 (the playback chain) and P11 (the host audio bus)
+pub(crate) mod bus;
+mod playback;
+pub(crate) use playback::signal_chains;
+
 /// The scenario file.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -172,6 +177,7 @@ pub(crate) fn room() -> Option<Arc<Room>> {
                     .spawn(move || {
                         while let Some(r) = watch.upgrade() {
                             r.watch();
+                            bus::tick(&r); // -- WP FBUS --
                             drop(r);
                             std::thread::sleep(Duration::from_millis(4));
                         }
@@ -451,6 +457,7 @@ impl Room {
                 cfg.p.first().copied().unwrap_or(20.0),
                 cfg.p.get(1).copied().unwrap_or(20_000.0),
                 cfg.duration_ms,
+                cfg.flags,
                 "start",
             );
         }
@@ -494,6 +501,7 @@ impl Room {
                             cfg.p1,
                             cfg.p2,
                             cfg.duration_ms,
+                            cfg.flags,
                             "seen",
                         );
                     }
@@ -513,7 +521,8 @@ impl Room {
     }
 
     /// A test signal against what it reaches: the peak each driver gets below
-    /// its safe band and anywhere, dBFS at the amplifier.
+    /// its safe band and anywhere, dBFS at the amplifier and (-- WP INTH --)
+    /// as the generator makes it; [`signal_why`] judges both.
     #[allow(clippy::too_many_arguments)]
     fn judge_signal(
         &self,
@@ -525,17 +534,11 @@ impl Room {
         f1: f32,
         f2: f32,
         duration_ms: u32,
+        flags: u8,
         how: &str,
     ) {
-        const PINK: u8 = 3;
-        const LOG_SWEEP: u8 = 4;
-        let (f1, f2) = match signal {
-            LOG_SWEEP => (f64::from(f1.min(f2)), f64::from(f1.max(f2))),
-            PINK => (20.0, 20_000.0),
-            // A tone at p1, anything else is taken as full band
-            1 => (f64::from(f1), f64::from(f1)),
-            _ => (20.0, 20_000.0),
-        };
+        // -- WP FBUS -- (P5) a tone at p1, a sweep, anything else full band
+        let (f1, f2) = playback::signal_band(signal, f1, f2);
         for o in 0..usize::from(s.num_output_channels) {
             if u32::try_from(o)
                 .ok()
@@ -552,49 +555,48 @@ impl Room {
                 continue;
             };
             let chain = crate::measure::chain_of(s, o as u8);
-            let mut below = f64::NEG_INFINITY;
-            let mut below_at = 0.0;
-            let mut peak = f64::NEG_INFINITY;
-            let mut peak_at = 0.0;
-            for f in grid(96.0) {
-                if f < f1 * 0.9999 || f > f2 * 1.0001 {
-                    continue;
-                }
-                let db = f64::from(level_db) + chain_db(&chain, f);
-                if db > peak {
-                    (peak, peak_at) = (db, f);
-                }
-                if f < x.safe.below_hz * 0.995 && db > below {
-                    (below, below_at) = (db, f);
-                }
-            }
-            let mut kind = "signal";
-            let mut why = Vec::new();
-            if below > x.safe.below_dbfs {
-                kind = "VIOLATION";
-                why.push(format!(
-                    "{below:.1} dBFS at {below_at:.0} Hz, below its {:.0} Hz (at most {:.0} dBFS there)",
-                    x.safe.below_hz, x.safe.below_dbfs
-                ));
-            }
-            if peak > x.safe.cap_dbfs + 0.05 {
-                kind = "VIOLATION";
-                why.push(format!(
-                    "{peak:.1} dBFS at {peak_at:.0} Hz, over its cap of {:.0} dBFS",
-                    x.safe.cap_dbfs
-                ));
-            }
-            if peak > 0.05 {
-                kind = "VIOLATION";
-                why.push(format!("{peak:.1} dBFS at {peak_at:.0} Hz: it clips"));
-            }
+            // -- WP FBUS -- (P5) what reaches the amplifier: the chain, then
+            // trim, volume, mutes, loudness and the limiter, as on the device
+            let generator =
+                playback::signal_peak(s, o, &chain, level_db, (f1, f2), x.safe.below_hz);
+            // (no limiter before the volume)
+            let generator = playback::SignalPeak {
+                peak_db: generator.peak_db + generator.limiter_db,
+                below_db: generator.below_db + generator.limiter_db,
+                limiter_db: 0.0,
+                ..generator
+            };
+            // -- WP INTH -- the generator's level is judged as well, always
+            let played = playback::signal_chain(s, o, flags).map(|played| {
+                playback::signal_peak(s, o, &played, level_db, (f1, f2), x.safe.below_hz)
+            });
+            let why = signal_why(&x.safe, played.as_ref(), &generator);
+            let kind = if why.is_empty() {
+                "signal"
+            } else {
+                "VIOLATION"
+            };
+            let Some(p) = played else {
+                let kind = if why.is_empty() { "info" } else { kind };
+                self.note(json!({"kind": kind, "how": how, "device": dev.name,
+                    "serial": dev.serial, "output": o, "driver": x.name,
+                    "what": "a test signal on an output that plays nothing (disabled, muted, or the volume at its bottom)",
+                    "generatorPeakDbfs": r1(generator.peak_db),
+                    "generatorBelowDbfs": generator.below_db.is_finite().then(|| r1(generator.below_db)),
+                    "why": why}));
+                continue;
+            };
             self.note(
                 json!({"kind": kind, "how": how, "device": dev.name, "serial": dev.serial,
                 "output": o, "driver": x.name, "signal": signal, "levelDb": level_db,
                 "f1": f1, "f2": f2, "durationMs": duration_ms,
-                "peakDbfs": r1(peak), "peakHz": peak_at.round(),
-                "belowDbfs": below.is_finite().then(|| r1(below)),
-                "highpass": highpass_text(&chain), "why": why}),
+                "peakDbfs": r1(p.peak_db), "peakHz": p.peak_hz.round(),
+                "belowDbfs": p.below_db.is_finite().then(|| r1(p.below_db)),
+                "highpass": highpass_text(&chain), "why": why,
+                // -- WP FBUS -- before the volume, and the limiter's share
+                "generatorPeakDbfs": r1(generator.peak_db), "limiterDb": r1(p.limiter_db),
+                // -- WP INTH --
+                "generatorBelowDbfs": generator.below_db.is_finite().then(|| r1(generator.below_db))}),
             );
         }
     }
@@ -854,6 +856,52 @@ fn off(s: &DspState, o: usize) -> bool {
         || s.output_muted.get(o).copied().unwrap_or(false)
 }
 
+/// -- WP INTH -- Why a test signal breaks a driver's limits, if it does: at
+/// the amplifier (`amp`, after the volume; `None` when the output plays
+/// nothing) and as the generator makes it (`generator`, before the volume:
+/// FUNC1's reading, which the limits were chosen against). Either breaks it.
+fn signal_why(
+    safe: &Safe,
+    amp: Option<&playback::SignalPeak>,
+    generator: &playback::SignalPeak,
+) -> Vec<String> {
+    let mut why = Vec::new();
+    if let Some(p) = amp {
+        if p.below_db > safe.below_dbfs {
+            why.push(format!(
+                "{:.1} dBFS at {:.0} Hz, below its {:.0} Hz (at most {:.0} dBFS there)",
+                p.below_db, p.below_hz, safe.below_hz, safe.below_dbfs
+            ));
+        }
+        if p.peak_db > safe.cap_dbfs + 0.05 {
+            why.push(format!(
+                "{:.1} dBFS at {:.0} Hz, over its cap of {:.0} dBFS",
+                p.peak_db, p.peak_hz, safe.cap_dbfs
+            ));
+        }
+        if p.peak_db > 0.05 {
+            why.push(format!(
+                "{:.1} dBFS at {:.0} Hz: it clips",
+                p.peak_db, p.peak_hz
+            ));
+        }
+    }
+    let g = generator;
+    if g.below_db > safe.below_dbfs {
+        why.push(format!(
+            "the generator makes {:.1} dBFS at {:.0} Hz before the volume, below its {:.0} Hz (at most {:.0} dBFS there)",
+            g.below_db, g.below_hz, safe.below_hz, safe.below_dbfs
+        ));
+    }
+    if g.peak_db > safe.cap_dbfs + 0.05 {
+        why.push(format!(
+            "the generator makes {:.1} dBFS at {:.0} Hz before the volume, over its cap of {:.0} dBFS",
+            g.peak_db, g.peak_hz, safe.cap_dbfs
+        ));
+    }
+    why
+}
+
 fn highpass_text(c: &ChannelChain) -> String {
     c.peq
         .iter()
@@ -862,4 +910,89 @@ fn highpass_text(c: &ChannelChain) -> String {
         .map(|b| format!("type {} at {:.0} Hz", b.filter_type, b.freq))
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+// -- WP INTH --
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::indexing_slicing)]
+mod tests_wp_inth {
+    use super::*;
+
+    const TWEETER: Safe = Safe {
+        below_hz: 1000.0,
+        below_dbfs: -50.0,
+        cap_dbfs: -12.0,
+    };
+
+    fn state() -> DspState {
+        let mut s = crate::state::default_state();
+        s.user_volume_db = -20.0;
+        s.master_volume_db = 0.0;
+        s.user_mute = false;
+        s.loudness_enabled = false;
+        s.psybass_enabled = false;
+        s.output_enabled.fill(true);
+        s.output_muted.fill(false);
+        s.output_gain_db.fill(0.0);
+        s.limiter_enabled.fill(false);
+        for b in s.filters.iter_mut().chain(s.xover.iter_mut()).flatten() {
+            b.filter_type = 0;
+        }
+        // An LR4 2 kHz high-pass on output 0, the tweeter
+        let n_in = usize::from(s.num_input_channels);
+        s.xover[n_in][0].filter_type = 35;
+        s.xover[n_in][0].freq = 2000.0;
+        s
+    }
+
+    /// As `judge_signal` does: at the amplifier, and the generator's level.
+    fn why(s: &DspState, level_db: f32, band: (f64, f64)) -> Vec<String> {
+        let chain = crate::measure::chain_of(s, 0);
+        let g = playback::signal_peak(s, 0, &chain, level_db, band, TWEETER.below_hz);
+        let g = playback::SignalPeak {
+            peak_db: g.peak_db + g.limiter_db,
+            below_db: g.below_db + g.limiter_db,
+            limiter_db: 0.0,
+            ..g
+        };
+        let amp = playback::signal_chain(s, 0, 0)
+            .map(|c| playback::signal_peak(s, 0, &c, level_db, band, TWEETER.below_hz));
+        signal_why(&TWEETER, amp.as_ref(), &g)
+    }
+
+    #[test]
+    fn wp_inth_a_test_signal_fails_at_the_amplifier_or_at_the_generator() {
+        let mut s = state();
+        // A 3 kHz tone at -20 dB, volume -20: -40 at the amplifier, both pass
+        assert!(why(&s, -20.0, (3000.0, 3000.0)).is_empty());
+        // At -6 dB: -26 at the amplifier passes, but the generator's -6 is
+        // over FUNC1's -12 cap
+        let w = why(&s, -6.0, (3000.0, 3000.0));
+        assert_eq!(w.len(), 1, "{w:?}");
+        assert!(w[0].contains("generator") && w[0].contains("cap"), "{w:?}");
+        // A sweep from 200 Hz at -20 dB through the LR4 2 kHz: about -64
+        // just below 1 kHz at the amplifier passes; the generator's -44 there
+        // is over FUNC1's -50
+        let w = why(&s, -20.0, (200.0, 20_000.0));
+        assert!(w.iter().all(|w| w.contains("generator")), "{w:?}");
+        assert!(w.iter().any(|w| w.contains("below its 1000 Hz")), "{w:?}");
+        // The other way round (the amplifier over, the generator not: only
+        // boosts after the chain do that, such as loudness), judged alone
+        let peak = |peak_db| playback::SignalPeak {
+            peak_db,
+            peak_hz: 3000.0,
+            below_db: f64::NEG_INFINITY,
+            below_hz: 0.0,
+            limiter_db: 0.0,
+        };
+        let w = signal_why(&TWEETER, Some(&peak(-8.0)), &peak(-15.0));
+        assert_eq!(w.len(), 1, "{w:?}");
+        assert!(!w[0].contains("generator") && w[0].contains("cap"), "{w:?}");
+        // A muted output: nothing at the amplifier, the generator still counts
+        s.output_muted[0] = true;
+        assert!(why(&s, -20.0, (3000.0, 3000.0)).is_empty());
+        let w = why(&s, -6.0, (3000.0, 3000.0));
+        assert_eq!(w.len(), 1, "{w:?}");
+        assert!(w[0].contains("generator"), "{w:?}");
+    }
 }

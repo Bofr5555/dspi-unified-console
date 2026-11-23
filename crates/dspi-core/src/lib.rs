@@ -170,6 +170,9 @@ mod measure_sim;
 pub mod actor;
 // -- WP ROLE0 -- the speaker layout: output roles from the user's setup (MPLAN 2.2)
 pub mod speaker_layout;
+// -- WP FUNC2a -- the function test's config-time oracle (test-only)
+#[cfg(feature = "sim-scenario")]
+mod functest_oracle;
 
 pub use callbacks::{DeviceEvents, LinkListener, MidiSender, NotifyListener, RtaListener};
 // -- WP P5SES --
@@ -381,6 +384,11 @@ pub use measure::{
 };
 // -- WP P5DEMO --
 pub use measure_sim::{MeasureSimInfo, SIM_MIC_LABEL, SIM_WORLD};
+// -- WP FBUS -- the function test's simulated host audio (dspi-mcp `sim-bus`)
+#[cfg(feature = "sim-scenario")]
+pub use measure_sim::scenario::bus::{
+    SimHostAudio, SimHostOutput, SimHostStream, host_view as sim_bus_host_view,
+};
 // -- WP P5TUNE --
 pub use measure::{
     MeasureLayout, MeasureLayoutOutput, MeasureTuneCheck, MeasureTuneCurves, MeasureTuneKeep,

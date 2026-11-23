@@ -95,6 +95,15 @@ fn device_json(
         "on_this_computer": open.transport == DeviceTransport::Usb,
     });
     let found = match open.transport {
+        // -- WP FBUS -- a demo unit the function test's bus names is on it
+        #[cfg(feature = "sim-bus")]
+        DeviceTransport::Demo if crate::host_audio::sim_bus::is_sim(audio) => {
+            match find(&audio.outputs, &open.serial, usb_open) {
+                Found::Serial(i) => Ok((i, "serial")),
+                Found::Name(i) => Ok((i, "name")),
+                _ => Err(("no", "the computer lists no audio output for this unit")),
+            }
+        }
         DeviceTransport::Demo => Err((
             "no",
             "the demo device is simulated: the computer has no output for it",
@@ -182,6 +191,17 @@ pub(crate) fn report(audio: &HostAudio, rows: &[DeviceRow]) -> Value {
         .iter()
         .filter(|d| d.open.transport == DeviceTransport::Usb)
         .count();
+    // -- WP FBUS -- the bus's demo units count as on USB
+    #[cfg(feature = "sim-bus")]
+    let usb_open = if crate::host_audio::sim_bus::is_sim(audio) {
+        usb_open.saturating_add(
+            rows.iter()
+                .filter(|d| d.open.transport == DeviceTransport::Demo)
+                .count(),
+        )
+    } else {
+        usb_open
+    };
     let mut matched = Vec::new();
     let devices: Vec<Value> = rows
         .iter()

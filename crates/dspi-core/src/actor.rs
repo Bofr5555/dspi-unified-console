@@ -360,6 +360,14 @@ pub(crate) fn gate(inner: &mut Inner) -> Result<()> {
     if current(inner.actor_key) == EMBEDDER {
         return Ok(());
     }
+    editing(inner)?;
+    inner.foreign.flags |= NOTIFY_STATE | NOTIFY_CURVES;
+    Ok(())
+}
+
+/// [`gate`]'s drag rule alone: another actor's write is refused while the
+/// embedder's user drags.
+fn editing(inner: &Inner) -> Result<()> {
     // -- WP ROLL1 -- a job's own write (a revert on timeout) is never refused
     if inner.dragging() && !attribute_only(inner.actor_key) {
         return Err(DspiError::ConfirmationRequired {
@@ -367,7 +375,6 @@ pub(crate) fn gate(inner: &mut Inner) -> Result<()> {
             msg: "The user is editing a control on this device; try again when they let go.".into(),
         });
     }
-    inner.foreign.flags |= NOTIFY_STATE | NOTIFY_CURVES;
     Ok(())
 }
 
@@ -404,6 +411,10 @@ pub(crate) fn judge(
     if writes.is_empty() {
         return Ok(());
     }
+    // -- WP FUNC2a -- the drag gate before the hook: a write the hook would hold
+    // for the user's word is not asked while they hold a control (the Allow
+    // would only meet the gate after it, and do nothing)
+    editing(inner)?;
     hook(&WriteProposal {
         actor,
         state: &inner.state,
