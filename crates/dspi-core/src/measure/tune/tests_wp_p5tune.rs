@@ -824,10 +824,7 @@ fn review_p5d_a_verify_without_sums_fails_on_an_output_it_could_not_compare() {
     assert!(verify_unjudged(&v(Vec::new())).is_some());
     // One of two could not be compared: it is named, the verify fails.
     let one = verify_unjudged(&v(vec![out(0, Some(0.2)), out(1, None)])).unwrap();
-    assert!(
-        one.contains("Out 2") && !one.contains("Out 1"),
-        "{one}"
-    );
+    assert!(one.contains("Out 2") && !one.contains("Out 1"), "{one}");
     // With a verified sum the sum judges the speaker's ways.
     let mut with_sum = v(vec![out(0, Some(0.2)), out(1, None)]);
     with_sum.sums.push(MeasureTuneVerifySum {
@@ -846,10 +843,12 @@ fn wp_ffix_the_bass_fit_writes_no_band_to_a_way_high_passed_above_it() {
         &Allow::default(),
     );
     let freq_of = |w: &MeasureTuneWrite| {
-        w.params.iter().find_map(|p| match (p.path.as_str(), &p.value) {
-            ("eq.freq", ParamValue::Float(f)) => Some(*f),
-            _ => None,
-        })
+        w.params
+            .iter()
+            .find_map(|p| match (p.path.as_str(), &p.value) {
+                ("eq.freq", ParamValue::Float(f)) => Some(*f),
+                _ => None,
+            })
     };
     let eq = |o: u8| -> Vec<f32> {
         c.writes

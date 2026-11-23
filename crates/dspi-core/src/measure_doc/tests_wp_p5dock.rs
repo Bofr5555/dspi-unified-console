@@ -433,7 +433,7 @@ fn wp_p5dock_the_store_through_the_api() {
         by_id.starts_with("* Measurement data exported by the DSPi console"),
         "{by_id}"
     );
-    assert!(by_id.contains("Out 3 (L high)"), "{by_id}");
+    assert!(by_id.contains("Output 3 (L high)"), "{by_id}");
     let line = by_id.lines().find(|l| !l.starts_with('*')).unwrap();
     assert_eq!(line.split_whitespace().count(), 3, "{line}");
     assert!(matches!(
