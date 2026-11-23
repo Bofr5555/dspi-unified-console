@@ -107,6 +107,7 @@ pub(crate) fn confirm(core: &DspiCore) {
             },
             speaker: "L".into(),
             group: 0,
+            source: Default::default(), // -- WP ADET0 --
         })
         .collect();
     core.speaker_layout_set(SpeakerLayout {
@@ -357,6 +358,7 @@ fn wp_ffix_a_boost_below_the_floor_counts_by_what_reaches_the_tweeter() {
             },
             speaker: "R".into(),
             group: 1,
+            source: Default::default(), // -- WP ADET0 --
         })
         .collect();
     core.speaker_layout_set(SpeakerLayout {
@@ -699,6 +701,7 @@ fn wp_ffix_a_filed_measurement_says_its_arrivals_and_the_highpass_it_includes() 
                 role: MeasureRole::Low,
                 speaker: (*sp).into(),
                 group: 0,
+                source: Default::default(), // -- WP ADET0 --
             })
             .collect(),
         confirmed_by_user: true,

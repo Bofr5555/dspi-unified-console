@@ -214,6 +214,7 @@ fn wp_feat2_the_tweeter_refusal_counts_outputs_as_the_user_does() {
             role: MeasureRole::High,
             speaker: "L".into(),
             group: 0,
+            source: Default::default(), // -- WP ADET0 --
         }],
         confirmed_by_user: true,
         ..SpeakerLayout::default()
@@ -353,6 +354,7 @@ fn ready(core: &DspiCore) {
             role: MeasureRole::Full,
             speaker: "L".into(),
             group: 0,
+            source: Default::default(), // -- WP ADET0 --
         }],
         confirmed_by_user: true,
         ..SpeakerLayout::default()

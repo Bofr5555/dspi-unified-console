@@ -70,11 +70,8 @@ impl DspiCore {
         if st.master_volume_mode != 0 || st.master_volume_db <= LOAD_GUARD_DB + 0.5 {
             return None;
         }
-        let layout = self
-            .speaker_layout()
-            .ok()
-            .flatten()
-            .filter(|l| l.confirmed_by_user)?;
+        // -- WP ADET0 -- a detected layout's roles guard the load too
+        let layout = self.trusted_layout_now()?;
         let profile = crate::limits::profile(&mut self.lock());
         let rules: Vec<(u8, f32, u8)> = layout
             .outputs
@@ -208,6 +205,7 @@ mod tests {
                 },
                 speaker: "L".into(),
                 group: 0,
+                source: Default::default(), // -- WP ADET0 --
             })
             .collect();
         core.speaker_layout_set(SpeakerLayout {

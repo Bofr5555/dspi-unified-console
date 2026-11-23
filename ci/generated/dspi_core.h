@@ -7548,6 +7548,49 @@ uint32_t dspi_measure_rolloff_stop(struct FfiCore *core, char *buf, uint32_t len
 uint32_t dspi_measure_rolloff_clear(struct FfiCore *core, char *buf, uint32_t len);
 
 /**
+ * Start the speaker detection: the state, or a failure (`invalid` naming
+ * the blockers or `detect.confirmed_layout:`, `read_only`, `denied`,
+ * `locked`).
+ */
+uint32_t dspi_detect_start(struct FfiCore *core, const char *setup_json, char *buf, uint32_t len);
+
+/**
+ * Drive the detection (about every 50 ms, off the UI thread): its state
+ * (never a failure).
+ */
+uint32_t dspi_detect_tick(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * The detection's state, without I/O (safe from the measure callback).
+ */
+uint32_t dspi_detect_state(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * The user's Stop: the state (never a failure).
+ */
+uint32_t dspi_detect_stop(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Forget a finished detection's state: `{ok}`, or `invalid` while one runs.
+ */
+uint32_t dspi_detect_clear(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Whether AI agents may detect the speakers under "never ask": `{ok,
+ * value}` (Settings › AI Agents; off by default).
+ */
+uint32_t dspi_detect_agents_allowed(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * The user's switch for [`dspi_detect_agents_allowed`]: `{ok}`, or
+ * `confirmation_required` inside an agent's scope.
+ */
+uint32_t dspi_detect_set_agents_allowed(struct FfiCore *core,
+                                        bool allowed,
+                                        char *buf,
+                                        uint32_t len);
+
+/**
  * Judge this core's own device as `unit_json` of `setup_json`: the check
  * to hand to the core on the hub session, or a failure.
  */

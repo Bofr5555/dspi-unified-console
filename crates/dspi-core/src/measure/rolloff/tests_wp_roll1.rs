@@ -877,6 +877,7 @@ fn confirm(core: &DspiCore, confirmed_by_user: bool) {
         role,
         speaker: "L".into(),
         group: 0,
+        source: Default::default(), // -- WP ADET0 --
     };
     core.speaker_layout_set(crate::speaker_layout::SpeakerLayout {
         outputs: vec![

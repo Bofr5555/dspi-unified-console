@@ -12,6 +12,8 @@ import se.bofr.dspi.core.AutoEqApply
 import se.bofr.dspi.core.AutoEqProfile
 import se.bofr.dspi.core.ChannelClip
 import se.bofr.dspi.core.ChannelPasteOptions
+import se.bofr.dspi.core.DetectSetup
+import se.bofr.dspi.core.DetectState
 import se.bofr.dspi.core.DspiCoreApi
 import se.bofr.dspi.core.DspiException
 import se.bofr.dspi.core.FilterParams
@@ -770,6 +772,13 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
         return inner.measureRolloffStart(setup)
     }
 
+    // -- WP ADET0 -- the speaker detection plays the generator: its start is a
+    // write (its sessions, its stop and its aborts follow from it)
+    override fun detectStart(setup: DetectSetup): DetectState {
+        guard("detectStart")
+        return inner.detectStart(setup)
+    }
+
     // -- WP ATCORE -- the system measurement's start, summed check and verify
     // play the units' generators through the hub; its apply writes the hub's
     // model and every unit's output delays
@@ -1177,7 +1186,9 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             // -- WP PGCORE -- a raw paged SET
             "rawSetId",
             // -- WP ROLL1 --
-            "measureRolloffStart"
+            "measureRolloffStart",
+            // -- WP ADET0 --
+            "detectStart"
         )
 
         /** Core methods that only read, compute locally, manage listeners or the connection, or reboot into the bootloader. */
@@ -1711,7 +1722,16 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "measureRolloffTick",
             "measureRolloffState",
             "measureRolloffStop",
-            "measureRolloffClear"
+            "measureRolloffClear",
+            // -- WP ADET0 -- the speaker detection's tick, state, stop and clear
+            // (as the roll-off search's); its never-ask switch is the core's
+            // memory only
+            "detectTick",
+            "detectState",
+            "detectStop",
+            "detectClear",
+            "detectAgentsAllowed",
+            "detectSetAgentsAllowed"
         )
 
         /** Control-surface operations that only read the device (`cs.rs`, `cs_op`). */

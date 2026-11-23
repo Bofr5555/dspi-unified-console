@@ -184,6 +184,7 @@ pub(crate) fn layout(core: &DspiCore, confirmed: bool) {
                 role: *role,
                 speaker: "L".into(),
                 group: 0,
+                source: Default::default(), // -- WP ADET0 --
             })
             .collect(),
         confirmed_by_user: confirmed,
@@ -1122,6 +1123,7 @@ fn wp_ffix_one_run_gives_arrivals_and_the_alignment_across_speakers() {
                 role: MeasureRole::Low,
                 speaker: (*sp).into(),
                 group: *g,
+                source: Default::default(), // -- WP ADET0 --
             })
             .collect(),
         confirmed_by_user: true,

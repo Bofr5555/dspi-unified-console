@@ -2200,6 +2200,20 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -2518,6 +2532,20 @@ fun uniffi_dspi_core_checksum_method_dspicore_demo_latency_timing(
 fun uniffi_dspi_core_checksum_method_dspicore_demo_output_save_status(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_demo_rename_elsewhere(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_detect_agents_allowed(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_detect_clear(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_detect_set_agents_allowed(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_detect_start(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_detect_state(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_detect_stop(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_detect_tick(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_device_lock_acquire(
 ): Short
@@ -3670,6 +3698,20 @@ fun uniffi_dspi_core_fn_method_dspicore_demo_output_save_status(`ptr`: Pointer,`
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_demo_rename_elsewhere(`ptr`: Pointer,`target`: Byte,`name`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_dspi_core_fn_method_dspicore_detect_agents_allowed(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Byte
+fun uniffi_dspi_core_fn_method_dspicore_detect_clear(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_dspicore_detect_set_agents_allowed(`ptr`: Pointer,`allowed`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_dspicore_detect_start(`ptr`: Pointer,`setup`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_detect_state(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_detect_stop(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_detect_tick(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_device_lock_acquire(`ptr`: Pointer,`reason`: RustBuffer.ByValue,`timeoutMs`: Int,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_device_lock_release(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
@@ -5354,6 +5396,27 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_demo_rename_elsewhere() != 20262.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_detect_agents_allowed() != 12488.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_detect_clear() != 6772.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_detect_set_agents_allowed() != 42374.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_detect_start() != 32252.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_detect_state() != 31649.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_detect_stop() != 62596.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_detect_tick() != 5425.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_device_lock_acquire() != 28409.toShort()) {
@@ -9139,6 +9202,64 @@ public interface DspiCoreInterface {
      * own. `Unsupported`, with no traffic, on anything but a simulated device.
      */
     fun `demoRenameElsewhere`(`target`: kotlin.UByte, `name`: kotlin.String)
+    
+    /**
+     * Whether AI agents may detect the speakers under the "never ask"
+     * setting (Settings › AI Agents › Agents may detect speakers; off by
+     * default). The app sets it from its settings at start; the agents'
+     * policy reads it. Never fails.
+     */
+    fun `detectAgentsAllowed`(): kotlin.Boolean
+    
+    /**
+     * Forget a finished detection's state (the layout keeps what it found).
+     * Refused while one runs.
+     *
+     * Errors: [`DspiError::InvalidArgument`] while a detection runs.
+     */
+    fun `detectClear`()
+    
+    /**
+     * Set [`DspiCore::detect_agents_allowed`] (the user's switch only).
+     *
+     * Errors: [`DspiError::ConfirmationRequired`] `user_only` inside
+     * another actor's scope.
+     */
+    fun `detectSetAgentsAllowed`(`allowed`: kotlin.Boolean)
+    
+    /**
+     * Start the speaker detection (module docs): each output probed in
+     * turn, quietly, from the top down; the speaker layout written as each
+     * output completes. Outputs that are off or muted are not probed.
+     *
+     * Errors: as `measure_start` (a blocker, read-only, a Viewer, the device
+     * lock); [`DspiError::InvalidArgument`] for a setup that is not one, a
+     * confirmed speaker layout (`detect.confirmed_layout`: v1 never detects
+     * over the user's word), or while a detection, a session, a roll-off
+     * search, a tune's run or the live view runs on this core.
+     */
+    fun `detectStart`(`setup`: DetectSetup): DetectState
+    
+    /**
+     * The detection's state, without I/O (safe from the measurement
+     * listener).
+     */
+    fun `detectState`(): DetectState
+    
+    /**
+     * The user's Stop: the session's generator stopped at once
+     * (`SIGGEN_CTL_STOP_NOW`), the output being probed left unknown (a
+     * tweeter), the rows already written kept. Idempotent; never fails.
+     */
+    fun `detectStop`(): DetectState
+    
+    /**
+     * Drive the detection: its session (`measure_tick`), then the verdict
+     * and the next session, output or the end. Call it about every 50 ms
+     * off the UI thread while `running`, instead of `measure_tick`. Never
+     * fails.
+     */
+    fun `detectTick`(): DetectState
     
     /**
      * Hold the device lock across a flow of several calls (a restore, a
@@ -15839,6 +15960,135 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 }
     }
     
+    
+
+    
+    /**
+     * Whether AI agents may detect the speakers under the "never ask"
+     * setting (Settings › AI Agents › Agents may detect speakers; off by
+     * default). The app sets it from its settings at start; the agents'
+     * policy reads it. Never fails.
+     */override fun `detectAgentsAllowed`(): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_detect_agents_allowed(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Forget a finished detection's state (the layout keeps what it found).
+     * Refused while one runs.
+     *
+     * Errors: [`DspiError::InvalidArgument`] while a detection runs.
+     */
+    @Throws(DspiException::class)override fun `detectClear`()
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_detect_clear(
+        it, _status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Set [`DspiCore::detect_agents_allowed`] (the user's switch only).
+     *
+     * Errors: [`DspiError::ConfirmationRequired`] `user_only` inside
+     * another actor's scope.
+     */
+    @Throws(DspiException::class)override fun `detectSetAgentsAllowed`(`allowed`: kotlin.Boolean)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_detect_set_agents_allowed(
+        it, FfiConverterBoolean.lower(`allowed`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Start the speaker detection (module docs): each output probed in
+     * turn, quietly, from the top down; the speaker layout written as each
+     * output completes. Outputs that are off or muted are not probed.
+     *
+     * Errors: as `measure_start` (a blocker, read-only, a Viewer, the device
+     * lock); [`DspiError::InvalidArgument`] for a setup that is not one, a
+     * confirmed speaker layout (`detect.confirmed_layout`: v1 never detects
+     * over the user's word), or while a detection, a session, a roll-off
+     * search, a tune's run or the live view runs on this core.
+     */
+    @Throws(DspiException::class)override fun `detectStart`(`setup`: DetectSetup): DetectState {
+            return FfiConverterTypeDetectState.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_detect_start(
+        it, FfiConverterTypeDetectSetup.lower(`setup`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * The detection's state, without I/O (safe from the measurement
+     * listener).
+     */override fun `detectState`(): DetectState {
+            return FfiConverterTypeDetectState.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_detect_state(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * The user's Stop: the session's generator stopped at once
+     * (`SIGGEN_CTL_STOP_NOW`), the output being probed left unknown (a
+     * tweeter), the rows already written kept. Idempotent; never fails.
+     */override fun `detectStop`(): DetectState {
+            return FfiConverterTypeDetectState.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_detect_stop(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Drive the detection: its session (`measure_tick`), then the verdict
+     * and the next session, output or the end. Call it about every 50 ms
+     * off the UI thread while `running`, instead of `measure_tick`. Never
+     * fails.
+     */override fun `detectTick`(): DetectState {
+            return FfiConverterTypeDetectState.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_detect_tick(
+        it, _status)
+}
+    }
+    )
+    }
     
 
     
@@ -32667,6 +32917,413 @@ public object FfiConverterTypeCtrlIfaceStatus: FfiConverterRustBuffer<CtrlIfaceS
 
 
 /**
+ * What to detect (`detect_start`). Every field may be left out.
+ */
+data class DetectSetup (
+    /**
+     * The outputs, 0-based; empty for every output of the device.
+     */
+    var `outputs`: kotlin.ByteArray, 
+    /**
+     * Where the microphone is: the listening position (default), near
+     * field, or a headphone coupler (the headphones' levels).
+     */
+    var `placement`: MeasurePlacement, 
+    /**
+     * The coupler, for headphones.
+     */
+    var `coupler`: MeasureCoupler? = null, 
+    /**
+     * The floor for every output, Hz: 0 for 1 kHz; may only raise it (1000
+     * to 8000). The limits profile's `highpass_min_hz` raises an output's
+     * own further.
+     */
+    var `floorHz`: kotlin.Float, 
+    /**
+     * The microphone's `mic` document's text ("" uncalibrated).
+     */
+    var `micDocument`: kotlin.String, 
+    /**
+     * The SPL cap with a calibrated microphone (as `MeasureSetup`).
+     */
+    var `splCapDb`: kotlin.Float? = null, 
+    /**
+     * The capture's rate, Hz (0: 48000).
+     */
+    var `captureRateHz`: kotlin.UInt
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeDetectSetup: FfiConverterRustBuffer<DetectSetup> {
+    override fun read(buf: ByteBuffer): DetectSetup {
+        return DetectSetup(
+            FfiConverterByteArray.read(buf),
+            FfiConverterTypeMeasurePlacement.read(buf),
+            FfiConverterOptionalTypeMeasureCoupler.read(buf),
+            FfiConverterFloat.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterOptionalFloat.read(buf),
+            FfiConverterUInt.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: DetectSetup) = (
+            FfiConverterByteArray.allocationSize(value.`outputs`) +
+            FfiConverterTypeMeasurePlacement.allocationSize(value.`placement`) +
+            FfiConverterOptionalTypeMeasureCoupler.allocationSize(value.`coupler`) +
+            FfiConverterFloat.allocationSize(value.`floorHz`) +
+            FfiConverterString.allocationSize(value.`micDocument`) +
+            FfiConverterOptionalFloat.allocationSize(value.`splCapDb`) +
+            FfiConverterUInt.allocationSize(value.`captureRateHz`)
+    )
+
+    override fun write(value: DetectSetup, buf: ByteBuffer) {
+            FfiConverterByteArray.write(value.`outputs`, buf)
+            FfiConverterTypeMeasurePlacement.write(value.`placement`, buf)
+            FfiConverterOptionalTypeMeasureCoupler.write(value.`coupler`, buf)
+            FfiConverterFloat.write(value.`floorHz`, buf)
+            FfiConverterString.write(value.`micDocument`, buf)
+            FfiConverterOptionalFloat.write(value.`splCapDb`, buf)
+            FfiConverterUInt.write(value.`captureRateHz`, buf)
+    }
+}
+
+
+
+/**
+ * The detection's state.
+ */
+data class DetectState (
+    /**
+     * Where it stands.
+     */
+    var `stage`: DetectStage, 
+    /**
+     * Tick it (`detect_tick`): a session runs or is next.
+     */
+    var `running`: kotlin.Boolean, 
+    /**
+     * The output probed now (or last).
+     */
+    var `output`: kotlin.UByte?, 
+    /**
+     * Outputs finished so far.
+     */
+    var `outputsDone`: kotlin.UShort, 
+    /**
+     * Outputs to probe (those off or muted are not).
+     */
+    var `outputsTotal`: kotlin.UShort, 
+    /**
+     * The output's floor, Hz.
+     */
+    var `floorHz`: kotlin.Float, 
+    /**
+     * The segment's start (or the band's bottom), Hz.
+     */
+    var `segmentHz`: kotlin.Float, 
+    /**
+     * The level it plays at (the ramp's ceiling while ramping), peak dBFS.
+     */
+    var `levelDbfs`: kotlin.Float, 
+    /**
+     * The session (push capture while it wants it).
+     */
+    var `session`: MeasureState, 
+    /**
+     * The detection so far: each output's class and evidence, the summary.
+     */
+    var `detection`: Detection?, 
+    /**
+     * Why it stopped, or what the last session asked.
+     */
+    var `issue`: MeasureIssue?, 
+    /**
+     * Who started it: 0 the app, else an agent's actor.
+     */
+    var `actor`: kotlin.UInt
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeDetectState: FfiConverterRustBuffer<DetectState> {
+    override fun read(buf: ByteBuffer): DetectState {
+        return DetectState(
+            FfiConverterTypeDetectStage.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterOptionalUByte.read(buf),
+            FfiConverterUShort.read(buf),
+            FfiConverterUShort.read(buf),
+            FfiConverterFloat.read(buf),
+            FfiConverterFloat.read(buf),
+            FfiConverterFloat.read(buf),
+            FfiConverterTypeMeasureState.read(buf),
+            FfiConverterOptionalTypeDetection.read(buf),
+            FfiConverterOptionalTypeMeasureIssue.read(buf),
+            FfiConverterUInt.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: DetectState) = (
+            FfiConverterTypeDetectStage.allocationSize(value.`stage`) +
+            FfiConverterBoolean.allocationSize(value.`running`) +
+            FfiConverterOptionalUByte.allocationSize(value.`output`) +
+            FfiConverterUShort.allocationSize(value.`outputsDone`) +
+            FfiConverterUShort.allocationSize(value.`outputsTotal`) +
+            FfiConverterFloat.allocationSize(value.`floorHz`) +
+            FfiConverterFloat.allocationSize(value.`segmentHz`) +
+            FfiConverterFloat.allocationSize(value.`levelDbfs`) +
+            FfiConverterTypeMeasureState.allocationSize(value.`session`) +
+            FfiConverterOptionalTypeDetection.allocationSize(value.`detection`) +
+            FfiConverterOptionalTypeMeasureIssue.allocationSize(value.`issue`) +
+            FfiConverterUInt.allocationSize(value.`actor`)
+    )
+
+    override fun write(value: DetectState, buf: ByteBuffer) {
+            FfiConverterTypeDetectStage.write(value.`stage`, buf)
+            FfiConverterBoolean.write(value.`running`, buf)
+            FfiConverterOptionalUByte.write(value.`output`, buf)
+            FfiConverterUShort.write(value.`outputsDone`, buf)
+            FfiConverterUShort.write(value.`outputsTotal`, buf)
+            FfiConverterFloat.write(value.`floorHz`, buf)
+            FfiConverterFloat.write(value.`segmentHz`, buf)
+            FfiConverterFloat.write(value.`levelDbfs`, buf)
+            FfiConverterTypeMeasureState.write(value.`session`, buf)
+            FfiConverterOptionalTypeDetection.write(value.`detection`, buf)
+            FfiConverterOptionalTypeMeasureIssue.write(value.`issue`, buf)
+            FfiConverterUInt.write(value.`actor`, buf)
+    }
+}
+
+
+
+/**
+ * One output's detection and its evidence.
+ */
+data class DetectedOutput (
+    /**
+     * The output, 0-based.
+     */
+    var `output`: kotlin.UByte, 
+    /**
+     * What it was found to be.
+     */
+    var `class`: DetectClass, 
+    /**
+     * How sure.
+     */
+    var `confidence`: DetectConfidence, 
+    /**
+     * The role it was given; `None` for `nothing` and `off`.
+     */
+    var `role`: MeasureRole?, 
+    /**
+     * Its floor, Hz: nothing below it but the shaped probe.
+     */
+    var `floorHz`: kotlin.Float, 
+    /**
+     * Where it was first heard.
+     */
+    var `heard`: DetectHeard, 
+    /**
+     * The level it was heard at in the presence ramp, peak dBFS.
+     */
+    var `levelDbfs`: kotlin.Float?, 
+    /**
+     * The mean level 1.5 to 3 kHz less the mean 10 to 16 kHz, dB.
+     */
+    var `topFallDb`: kotlin.Float?, 
+    /**
+     * How far the response has turned down in the half octave above the
+     * floor, dB below its loudest point.
+     */
+    var `lowTurnDb`: kotlin.Float?, 
+    /**
+     * Where the response is 6 dB under its loudest point, Hz; `None` when
+     * not reached (or not looked for).
+     */
+    var `fLowHz`: kotlin.Float?, 
+    /**
+     * The lowest frequency any stimulus played on it, Hz.
+     */
+    var `lowestHz`: kotlin.Float?, 
+    /**
+     * The descent's segment it stopped at, Hz.
+     */
+    var `stoppedAtHz`: kotlin.Float?, 
+    /**
+     * A notice key (`detect.nothing`, `detect.off`, `detect.unknown`, ...).
+     */
+    var `note`: kotlin.String?, 
+    /**
+     * When it was probed, ms since the Unix epoch.
+     */
+    var `probedMs`: kotlin.Long
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeDetectedOutput: FfiConverterRustBuffer<DetectedOutput> {
+    override fun read(buf: ByteBuffer): DetectedOutput {
+        return DetectedOutput(
+            FfiConverterUByte.read(buf),
+            FfiConverterTypeDetectClass.read(buf),
+            FfiConverterTypeDetectConfidence.read(buf),
+            FfiConverterOptionalTypeMeasureRole.read(buf),
+            FfiConverterFloat.read(buf),
+            FfiConverterTypeDetectHeard.read(buf),
+            FfiConverterOptionalFloat.read(buf),
+            FfiConverterOptionalFloat.read(buf),
+            FfiConverterOptionalFloat.read(buf),
+            FfiConverterOptionalFloat.read(buf),
+            FfiConverterOptionalFloat.read(buf),
+            FfiConverterOptionalFloat.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterLong.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: DetectedOutput) = (
+            FfiConverterUByte.allocationSize(value.`output`) +
+            FfiConverterTypeDetectClass.allocationSize(value.`class`) +
+            FfiConverterTypeDetectConfidence.allocationSize(value.`confidence`) +
+            FfiConverterOptionalTypeMeasureRole.allocationSize(value.`role`) +
+            FfiConverterFloat.allocationSize(value.`floorHz`) +
+            FfiConverterTypeDetectHeard.allocationSize(value.`heard`) +
+            FfiConverterOptionalFloat.allocationSize(value.`levelDbfs`) +
+            FfiConverterOptionalFloat.allocationSize(value.`topFallDb`) +
+            FfiConverterOptionalFloat.allocationSize(value.`lowTurnDb`) +
+            FfiConverterOptionalFloat.allocationSize(value.`fLowHz`) +
+            FfiConverterOptionalFloat.allocationSize(value.`lowestHz`) +
+            FfiConverterOptionalFloat.allocationSize(value.`stoppedAtHz`) +
+            FfiConverterOptionalString.allocationSize(value.`note`) +
+            FfiConverterLong.allocationSize(value.`probedMs`)
+    )
+
+    override fun write(value: DetectedOutput, buf: ByteBuffer) {
+            FfiConverterUByte.write(value.`output`, buf)
+            FfiConverterTypeDetectClass.write(value.`class`, buf)
+            FfiConverterTypeDetectConfidence.write(value.`confidence`, buf)
+            FfiConverterOptionalTypeMeasureRole.write(value.`role`, buf)
+            FfiConverterFloat.write(value.`floorHz`, buf)
+            FfiConverterTypeDetectHeard.write(value.`heard`, buf)
+            FfiConverterOptionalFloat.write(value.`levelDbfs`, buf)
+            FfiConverterOptionalFloat.write(value.`topFallDb`, buf)
+            FfiConverterOptionalFloat.write(value.`lowTurnDb`, buf)
+            FfiConverterOptionalFloat.write(value.`fLowHz`, buf)
+            FfiConverterOptionalFloat.write(value.`lowestHz`, buf)
+            FfiConverterOptionalFloat.write(value.`stoppedAtHz`, buf)
+            FfiConverterOptionalString.write(value.`note`, buf)
+            FfiConverterLong.write(value.`probedMs`, buf)
+    }
+}
+
+
+
+/**
+ * A speaker detection's record in the layout.
+ */
+data class Detection (
+    /**
+     * When it started, ms since the Unix epoch.
+     */
+    var `atMs`: kotlin.Long, 
+    /**
+     * Who ran it: an agent's label, "" for the app (the user).
+     */
+    var `by`: kotlin.String, 
+    /**
+     * Where the microphone was.
+     */
+    var `placement`: MeasurePlacement, 
+    /**
+     * The floor the caller asked for, Hz (each output's own may be higher).
+     */
+    var `floorHz`: kotlin.Float, 
+    /**
+     * The microphone's name ("" uncalibrated).
+     */
+    var `microphone`: kotlin.String, 
+    /**
+     * Each output it was asked about, probed or not.
+     */
+    var `outputs`: List<DetectedOutput>, 
+    /**
+     * It was stopped before every output was probed.
+     */
+    var `stopped`: kotlin.Boolean, 
+    /**
+     * The result in words.
+     */
+    var `summary`: kotlin.String, 
+    /**
+     * The device's output count when it ran: another count invalidates it.
+     */
+    var `deviceOutputs`: kotlin.UByte
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeDetection: FfiConverterRustBuffer<Detection> {
+    override fun read(buf: ByteBuffer): Detection {
+        return Detection(
+            FfiConverterLong.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterTypeMeasurePlacement.read(buf),
+            FfiConverterFloat.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterSequenceTypeDetectedOutput.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterUByte.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: Detection) = (
+            FfiConverterLong.allocationSize(value.`atMs`) +
+            FfiConverterString.allocationSize(value.`by`) +
+            FfiConverterTypeMeasurePlacement.allocationSize(value.`placement`) +
+            FfiConverterFloat.allocationSize(value.`floorHz`) +
+            FfiConverterString.allocationSize(value.`microphone`) +
+            FfiConverterSequenceTypeDetectedOutput.allocationSize(value.`outputs`) +
+            FfiConverterBoolean.allocationSize(value.`stopped`) +
+            FfiConverterString.allocationSize(value.`summary`) +
+            FfiConverterUByte.allocationSize(value.`deviceOutputs`)
+    )
+
+    override fun write(value: Detection, buf: ByteBuffer) {
+            FfiConverterLong.write(value.`atMs`, buf)
+            FfiConverterString.write(value.`by`, buf)
+            FfiConverterTypeMeasurePlacement.write(value.`placement`, buf)
+            FfiConverterFloat.write(value.`floorHz`, buf)
+            FfiConverterString.write(value.`microphone`, buf)
+            FfiConverterSequenceTypeDetectedOutput.write(value.`outputs`, buf)
+            FfiConverterBoolean.write(value.`stopped`, buf)
+            FfiConverterString.write(value.`summary`, buf)
+            FfiConverterUByte.write(value.`deviceOutputs`, buf)
+    }
+}
+
+
+
+/**
  * A DSPi found on USB.
  */
 data class DeviceInfo (
@@ -48512,7 +49169,13 @@ data class SpeakerLayout (
     /**
      * Remarks in words (a proposal's: outputs left out and why).
      */
-    var `notes`: List<kotlin.String>
+    var `notes`: List<kotlin.String>, 
+    /**
+     * The last speaker detection on this device, if one ran: its evidence
+     * per output. With every row `detected` or `user` it makes the layout
+     * [`LayoutState::AutoDetected`].
+     */
+    var `detected`: Detection? = null
 ) {
     
     companion object
@@ -48529,6 +49192,7 @@ public object FfiConverterTypeSpeakerLayout: FfiConverterRustBuffer<SpeakerLayou
             FfiConverterBoolean.read(buf),
             FfiConverterLong.read(buf),
             FfiConverterSequenceString.read(buf),
+            FfiConverterOptionalTypeDetection.read(buf),
         )
     }
 
@@ -48537,7 +49201,8 @@ public object FfiConverterTypeSpeakerLayout: FfiConverterRustBuffer<SpeakerLayou
             FfiConverterSequenceTypeSpeakerLayoutOutput.allocationSize(value.`outputs`) +
             FfiConverterBoolean.allocationSize(value.`confirmedByUser`) +
             FfiConverterLong.allocationSize(value.`updatedMs`) +
-            FfiConverterSequenceString.allocationSize(value.`notes`)
+            FfiConverterSequenceString.allocationSize(value.`notes`) +
+            FfiConverterOptionalTypeDetection.allocationSize(value.`detected`)
     )
 
     override fun write(value: SpeakerLayout, buf: ByteBuffer) {
@@ -48546,6 +49211,7 @@ public object FfiConverterTypeSpeakerLayout: FfiConverterRustBuffer<SpeakerLayou
             FfiConverterBoolean.write(value.`confirmedByUser`, buf)
             FfiConverterLong.write(value.`updatedMs`, buf)
             FfiConverterSequenceString.write(value.`notes`, buf)
+            FfiConverterOptionalTypeDetection.write(value.`detected`, buf)
     }
 }
 
@@ -48570,7 +49236,13 @@ data class SpeakerLayoutOutput (
     /**
      * Its alignment group: the outputs of one speaker share one.
      */
-    var `group`: kotlin.UByte
+    var `group`: kotlin.UByte, 
+    /**
+     * Where its role comes from: the user, the speaker detection, or a
+     * suggestion (a version 1 file's rows are the user's when the layout is
+     * confirmed, else suggestions).
+     */
+    var `source`: RoleSource
 ) {
     
     companion object
@@ -48586,6 +49258,7 @@ public object FfiConverterTypeSpeakerLayoutOutput: FfiConverterRustBuffer<Speake
             FfiConverterTypeMeasureRole.read(buf),
             FfiConverterString.read(buf),
             FfiConverterUByte.read(buf),
+            FfiConverterTypeRoleSource.read(buf),
         )
     }
 
@@ -48593,7 +49266,8 @@ public object FfiConverterTypeSpeakerLayoutOutput: FfiConverterRustBuffer<Speake
             FfiConverterUByte.allocationSize(value.`output`) +
             FfiConverterTypeMeasureRole.allocationSize(value.`role`) +
             FfiConverterString.allocationSize(value.`speaker`) +
-            FfiConverterUByte.allocationSize(value.`group`)
+            FfiConverterUByte.allocationSize(value.`group`) +
+            FfiConverterTypeRoleSource.allocationSize(value.`source`)
     )
 
     override fun write(value: SpeakerLayoutOutput, buf: ByteBuffer) {
@@ -48601,6 +49275,7 @@ public object FfiConverterTypeSpeakerLayoutOutput: FfiConverterRustBuffer<Speake
             FfiConverterTypeMeasureRole.write(value.`role`, buf)
             FfiConverterString.write(value.`speaker`, buf)
             FfiConverterUByte.write(value.`group`, buf)
+            FfiConverterTypeRoleSource.write(value.`source`, buf)
     }
 }
 
@@ -49810,6 +50485,216 @@ public object FfiConverterTypeConfirmOp: FfiConverterRustBuffer<ConfirmOp> {
     override fun allocationSize(value: ConfirmOp) = 4UL
 
     override fun write(value: ConfirmOp, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+/**
+ * What the speaker detection made of an output.
+ */
+
+enum class DetectClass {
+    
+    /**
+     * A tweeter, or anything that plays flat to 20 kHz and is not probed
+     * lower (a full-range driver, a dome midrange): role high.
+     */
+    TWEETER,
+    /**
+     * Rolls off between 70 and 200 Hz: role mid.
+     */
+    MIDRANGE,
+    /**
+     * Plays below 70 Hz and above 1 kHz: role low.
+     */
+    WOOFER,
+    /**
+     * Plays below 70 Hz, 20 dB or more quieter at 1 to 2 kHz: role sub.
+     */
+    SUB,
+    /**
+     * A full-range driver: the user's correction only, never detected.
+     */
+    FULL_RANGE,
+    /**
+     * Nothing reached the microphone: left out of the layout.
+     */
+    NOTHING,
+    /**
+     * The probe did not finish it (stopped, the microphone did not follow,
+     * the settings changed): role high.
+     */
+    UNKNOWN,
+    /**
+     * The output was off or muted: not probed.
+     */
+    OFF;
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeDetectClass: FfiConverterRustBuffer<DetectClass> {
+    override fun read(buf: ByteBuffer) = try {
+        DetectClass.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: DetectClass) = 4UL
+
+    override fun write(value: DetectClass, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+/**
+ * How sure the detection is of a class.
+ */
+
+enum class DetectConfidence {
+    
+    /**
+     * The evidence is plain.
+     */
+    HIGH,
+    /**
+     * Probably ("Tweeter?": flat to 20 kHz, could be a full-range driver).
+     */
+    MEDIUM,
+    /**
+     * Uncertain, treated as the most protective class.
+     */
+    LOW;
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeDetectConfidence: FfiConverterRustBuffer<DetectConfidence> {
+    override fun read(buf: ByteBuffer) = try {
+        DetectConfidence.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: DetectConfidence) = 4UL
+
+    override fun write(value: DetectConfidence, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+/**
+ * Where the detection first heard an output.
+ */
+
+enum class DetectHeard {
+    
+    /**
+     * In the presence band, 4 to 16 kHz (stage A).
+     */
+    TOP,
+    /**
+     * Between the floor and 4 kHz (stage A2).
+     */
+    ABOVE_FLOOR,
+    /**
+     * Only by the shaped probe below the floor (stage C1).
+     */
+    BELOW_FLOOR,
+    /**
+     * Nowhere.
+     */
+    NEVER;
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeDetectHeard: FfiConverterRustBuffer<DetectHeard> {
+    override fun read(buf: ByteBuffer) = try {
+        DetectHeard.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: DetectHeard) = 4UL
+
+    override fun write(value: DetectHeard, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+/**
+ * Where the detection stands.
+ */
+
+enum class DetectStage {
+    
+    /**
+     * No detection on this core.
+     */
+    IDLE,
+    /**
+     * An output's presence ramp (stage A or A2).
+     */
+    RAMP,
+    /**
+     * Its shape above the floor (stage B).
+     */
+    SHAPE,
+    /**
+     * Its descent below the floor (C1 or C2).
+     */
+    DESCENT,
+    /**
+     * Every output was probed.
+     */
+    DONE,
+    /**
+     * It stopped before the end (`issue` says why).
+     */
+    STOPPED;
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeDetectStage: FfiConverterRustBuffer<DetectStage> {
+    override fun read(buf: ByteBuffer) = try {
+        DetectStage.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: DetectStage) = 4UL
+
+    override fun write(value: DetectStage, buf: ByteBuffer) {
         buf.putInt(value.ordinal + 1)
     }
 }
@@ -52180,6 +53065,50 @@ public object FfiConverterTypeInstallationRole: FfiConverterRustBuffer<Installat
 
 
 /**
+ * How far the layout can be trusted ([`SpeakerLayout::state`]).
+ */
+
+enum class LayoutState {
+    
+    /**
+     * Nobody's word: no roles reach the safety rules.
+     */
+    UNCONFIRMED,
+    /**
+     * Found by the speaker detection, not yet confirmed: its roles guard the
+     * outputs as a confirmed layout's do.
+     */
+    AUTO_DETECTED,
+    /**
+     * The user confirmed it.
+     */
+    CONFIRMED;
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeLayoutState: FfiConverterRustBuffer<LayoutState> {
+    override fun read(buf: ByteBuffer) = try {
+        LayoutState.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: LayoutState) = 4UL
+
+    override fun write(value: LayoutState, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+/**
  * What a client says about a DSPi Link hub's encryption (owner rule
  * 2026-11-21: by the hub, never "all unencrypted"). Its words are the notice
  * rows [`LinkEncryption::notice_key`] names (`dlink.encryption.*`).
@@ -53609,6 +54538,49 @@ public object FfiConverterTypeProtocolGeneration: FfiConverterRustBuffer<Protoco
 
 
 /**
+ * Where a row's role comes from.
+ */
+
+enum class RoleSource {
+    
+    /**
+     * The user set or confirmed it.
+     */
+    USER,
+    /**
+     * The speaker detection found it.
+     */
+    DETECTED,
+    /**
+     * A suggestion (the filters' inference, an import), nobody's word.
+     */
+    SUGGESTED;
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeRoleSource: FfiConverterRustBuffer<RoleSource> {
+    override fun read(buf: ByteBuffer) = try {
+        RoleSource.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: RoleSource) = 4UL
+
+    override fun write(value: RoleSource, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+/**
  * Which volume of the units.
  */
 
@@ -54498,6 +55470,38 @@ public object FfiConverterOptionalTypeCoreVregInfo: FfiConverterRustBuffer<CoreV
         } else {
             buf.put(1)
             FfiConverterTypeCoreVregInfo.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeDetection: FfiConverterRustBuffer<Detection?> {
+    override fun read(buf: ByteBuffer): Detection? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeDetection.read(buf)
+    }
+
+    override fun allocationSize(value: Detection?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeDetection.allocationSize(value)
+        }
+    }
+
+    override fun write(value: Detection?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeDetection.write(value, buf)
         }
     }
 }
@@ -55692,6 +56696,38 @@ public object FfiConverterOptionalTypeMeasureCoupler: FfiConverterRustBuffer<Mea
 /**
  * @suppress
  */
+public object FfiConverterOptionalTypeMeasureRole: FfiConverterRustBuffer<MeasureRole?> {
+    override fun read(buf: ByteBuffer): MeasureRole? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeMeasureRole.read(buf)
+    }
+
+    override fun allocationSize(value: MeasureRole?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeMeasureRole.allocationSize(value)
+        }
+    }
+
+    override fun write(value: MeasureRole?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeMeasureRole.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterOptionalTypeParamValue: FfiConverterRustBuffer<ParamValue?> {
     override fun read(buf: ByteBuffer): ParamValue? {
         if (buf.get().toInt() == 0) {
@@ -56370,6 +57406,34 @@ public object FfiConverterSequenceTypeBootloaderDrive: FfiConverterRustBuffer<Li
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeBootloaderDrive.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeDetectedOutput: FfiConverterRustBuffer<List<DetectedOutput>> {
+    override fun read(buf: ByteBuffer): List<DetectedOutput> {
+        val len = buf.getInt()
+        return List<DetectedOutput>(len) {
+            FfiConverterTypeDetectedOutput.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<DetectedOutput>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeDetectedOutput.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<DetectedOutput>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeDetectedOutput.write(it, buf)
         }
     }
 }

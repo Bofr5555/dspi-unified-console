@@ -55,6 +55,7 @@ fn confirmed(outputs: &[(u8, MeasureRole)]) -> SpeakerLayout {
                 role: *r,
                 speaker: if *o % 2 == 0 { "L" } else { "R" }.into(),
                 group: *o % 2,
+                source: Default::default(), // -- WP ADET0 --
             })
             .collect(),
         confirmed_by_user: true,
@@ -409,11 +410,12 @@ fn wp_role0_the_layout_round_trips_through_config_export_and_import() {
     assert_eq!(r["speakerLayout"], true, "{r}");
     let got = other.speaker_layout().unwrap().unwrap();
     assert_eq!(got.serial, "ROLE0-CFG2");
+    // -- WP ADET0 -- an import's rows are suggestions (the default source)
     assert_eq!(got.outputs, layout.outputs);
     // Review RA F1: an import is never confirmed, whatever the file says,
     // so measuring refuses until the user confirms it on this device.
     assert!(!got.confirmed_by_user);
-    assert!(other.confirmed_speaker_layout().is_err());
+    assert!(other.trusted_speaker_layout().is_err());
     // The old option bits import every audio block, the layout with them.
     let third = core_as("ROLE0-CFG3");
     let r = import(&third, 0);
@@ -427,10 +429,17 @@ fn wp_role0_the_layout_round_trips_through_config_export_and_import() {
         serde_json::from_str(&core.config_import_confirmed(bare.to_string(), 0, u32::MAX, Some(t)))
             .unwrap();
     assert_eq!(r["speakerLayout"], false, "{r}");
-    assert_eq!(
-        core.speaker_layout().unwrap().unwrap().outputs,
-        layout.outputs
-    );
+    // -- WP ADET0 -- the confirmed layout's rows are the user's
+    let users: Vec<SpeakerLayoutOutput> = layout
+        .outputs
+        .iter()
+        .cloned()
+        .map(|mut o| {
+            o.source = crate::speaker_layout::RoleSource::User;
+            o
+        })
+        .collect();
+    assert_eq!(core.speaker_layout().unwrap().unwrap().outputs, users);
 }
 
 /// Owner 2026-11-22: a tweeter is never measured below 1 kHz. The floor is

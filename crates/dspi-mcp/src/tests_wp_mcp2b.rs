@@ -164,6 +164,7 @@ fn confirm_tweeter(core: &DspiCore, o: u8) {
             },
             speaker: "L".into(),
             group: 0,
+            source: Default::default(), // -- WP ADET0 --
         })
         .collect();
     core.speaker_layout_set(SpeakerLayout {

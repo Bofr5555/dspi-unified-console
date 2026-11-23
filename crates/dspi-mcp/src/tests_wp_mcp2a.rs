@@ -132,6 +132,7 @@ fn confirm_layout(core: &DspiCore, o: u8, role: MeasureRole) {
             role: if n == o { role } else { MeasureRole::Full },
             speaker: "L".into(),
             group: 0,
+            source: Default::default(), // -- WP ADET0 --
         })
         .collect();
     core.speaker_layout_set(SpeakerLayout {

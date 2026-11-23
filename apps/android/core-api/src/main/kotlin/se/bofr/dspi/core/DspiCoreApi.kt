@@ -3611,6 +3611,67 @@ interface DspiCoreApi : AutoCloseable {
     fun measureClear()
 
     /**
+     * Start the speaker detection (module docs): each output probed in
+     * turn, quietly, from the top down; the speaker layout written as each
+     * output completes. Outputs that are off or muted are not probed.
+     *
+     * Errors: as `measure_start` (a blocker, read-only, a Viewer, the device
+     * lock); [`DspiError::InvalidArgument`] for a setup that is not one, a
+     * confirmed speaker layout (`detect.confirmed_layout`: v1 never detects
+     * over the user's word), or while a detection, a session, a roll-off
+     * search, a tune's run or the live view runs on this core.
+     */
+    @Throws(DspiException::class)
+    fun detectStart(setup: DetectSetup): DetectState
+
+    /**
+     * Drive the detection: its session (`measure_tick`), then the verdict
+     * and the next session, output or the end. Call it about every 50 ms
+     * off the UI thread while `running`, instead of `measure_tick`. Never
+     * fails.
+     */
+    fun detectTick(): DetectState
+
+    /**
+     * The detection's state, without I/O (safe from the measurement
+     * listener).
+     */
+    fun detectState(): DetectState
+
+    /**
+     * The user's Stop: the session's generator stopped at once
+     * (`SIGGEN_CTL_STOP_NOW`), the output being probed left unknown (a
+     * tweeter), the rows already written kept. Idempotent; never fails.
+     */
+    fun detectStop(): DetectState
+
+    /**
+     * Forget a finished detection's state (the layout keeps what it found).
+     * Refused while one runs.
+     *
+     * Errors: [`DspiError::InvalidArgument`] while a detection runs.
+     */
+    @Throws(DspiException::class)
+    fun detectClear()
+
+    /**
+     * Whether AI agents may detect the speakers under the "never ask"
+     * setting (Settings › AI Agents › Agents may detect speakers; off by
+     * default). The app sets it from its settings at start; the agents'
+     * policy reads it. Never fails.
+     */
+    fun detectAgentsAllowed(): Boolean
+
+    /**
+     * Set [`DspiCore::detect_agents_allowed`] (the user's switch only).
+     *
+     * Errors: [`DspiError::ConfirmationRequired`] `user_only` inside
+     * another actor's scope.
+     */
+    @Throws(DspiException::class)
+    fun detectSetAgentsAllowed(allowed: Boolean)
+
+    /**
      * Start the live view of one output (PLAN-P5 T9, T5): short sweeps one
      * after the other, or finite pink noise with the microphone RTA, each
      * run under every rule of a measurement (the preflight, the ramp, the

@@ -118,9 +118,24 @@ pub(crate) fn ramp_config(
         return pink(output, level, RAMP_PINK_MS);
     }
     let mask = 1u16.checked_shl(u32::from(output)).unwrap_or(0);
-    let mut sc = plan.sweep_of(run);
-    sc.f1_hz = sc.f1_hz.max(plan.floor_of(&[output]));
+    let sc = ramp_sweep(plan, run, &[output]);
     sweep(&sc, mask, 0, false, level, RAMP_SWEEP_MS, 1)
+}
+
+/// The band a ramp step of `outputs` plays: the run's, or (-- WP ADET0 --)
+/// the plan's own ramp band; never below their floor.
+pub(crate) fn ramp_sweep(
+    plan: &Plan,
+    run: &super::plan::RunSpec,
+    outputs: &[u8],
+) -> dspi_measure::stimulus::SweepConfig {
+    let mut sc = plan.sweep_of(run);
+    if let Some((f1, f2)) = plan.ramp_band {
+        sc.f1_hz = f1;
+        sc.f2_hz = f2;
+    }
+    sc.f1_hz = sc.f1_hz.max(plan.floor_of(outputs));
+    sc
 }
 
 /// The run's configuration at `level`.

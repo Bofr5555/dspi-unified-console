@@ -185,6 +185,14 @@ pub(crate) fn below_floor(plan: &Plan, cfg: &SiggenConfig) -> Option<String> {
                 .is_some_and(|b| cfg.channel_mask & b != 0)
         })
         .collect();
+    // -- WP ADET0 -- an unknown output: the probe's envelope (AUTODES 1.8)
+    if let Some(p) = plan.probe
+        && outs
+            .iter()
+            .any(|o| plan.outputs.iter().any(|s| s.output == *o))
+    {
+        return p.refuses(cfg);
+    }
     let floor = plan.floor_of(&outs);
     if floor <= 0.0 {
         return None;
@@ -848,7 +856,8 @@ impl Session {
                     self.plan.ceiling_db,
                     self.plan.spl_cap_db,
                     self.plan.start_level_only,
-                );
+                )
+                .stopping_at(self.plan.ramp_snr_db); // -- WP ADET0 --
                 let first = ramp.first();
                 self.start_step(dev, ramp, first, now);
             }
@@ -927,6 +936,14 @@ impl Session {
                         self.ramp_idx = 0;
                         self.levels.clear();
                         self.ramp_steps.clear();
+                        // -- WP ADET0 -- a descent segment never ramps: its
+                        // run plays at the start level, straight after the
+                        // noise floor
+                        if self.plan.fixed_level {
+                            self.run_level = Some(self.plan.start_db.min(self.plan.ceiling_db));
+                            self.start_run(dev, now);
+                            return;
+                        }
                         self.next_ramp(dev, now);
                     }
                     After::Run => self.start_run(dev, now),

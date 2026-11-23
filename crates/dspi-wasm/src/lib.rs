@@ -118,6 +118,8 @@ pub mod measure_sim;
 pub mod measure_tune;
 // -- WP ROLL1 -- the roll-off search (a tweeter's low end)
 pub mod measure_rolloff;
+// -- WP ADET0 -- the speaker detection
+pub mod detect;
 // -- WP P5CURV -- the passive microphone RTA and a measurement document's curves
 pub mod measure_curv;
 // -- WP ATCORE -- the system measurement across units

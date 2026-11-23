@@ -339,6 +339,46 @@ pub fn did(core: &DspiCore, act: &str) {
     });
 }
 
+// -- WP ADET0 --
+/// [`did`] with what it changed in words (numbers and role words only, no
+/// names): `after` holds the text, "" for none.
+pub fn did_with(core: &DspiCore, act: &str, words: &str) {
+    let mut inner = core.lock();
+    if current(inner.actor_key) != EMBEDDER || attribute_only(inner.actor_key) {
+        return;
+    }
+    push_act(&mut inner, act, words);
+}
+
+// -- WP ADET0 --
+/// A job the embedder's user started did `act` (the speaker detection
+/// ended), whichever thread ticks it: noted only when `actor` is the
+/// embedder (an agent learns of its own job from the job).
+pub(crate) fn did_as(core: &DspiCore, actor: ActorId, act: &str, words: &str) {
+    if actor != EMBEDDER {
+        return;
+    }
+    push_act(&mut core.lock(), act, words);
+}
+
+fn push_act(inner: &mut Inner, act: &str, words: &str) {
+    inner.user_log.push(UserChange {
+        seq: next_seq(),
+        at_ms: now_ms(),
+        by: ChangedBy::User,
+        path: format!("did.{act}"),
+        indices: Vec::new(),
+        before: None,
+        after: if words.is_empty() {
+            ParamValue::Trigger
+        } else {
+            ParamValue::Text(words.to_owned())
+        },
+        undo: false,
+        drag: false,
+    });
+}
+
 /// The changes after `seq`, oldest first (at most the newest 256 are kept).
 pub fn changes_since(core: &DspiCore, seq: u64) -> Vec<UserChange> {
     core.lock()

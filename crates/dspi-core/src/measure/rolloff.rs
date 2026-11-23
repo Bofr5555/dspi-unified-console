@@ -391,6 +391,12 @@ impl DspiCore {
         if self.measure_tune_state().running {
             return Err(invalid("busy: a tune's run is going on this device"));
         }
+        // -- WP ADET0 --
+        if self.measure.detect_on() {
+            return Err(invalid(
+                "busy: a speaker detection is running on this device",
+            ));
+        }
         let start = if setup.start_hz == 0.0 {
             ROLLOFF_START_HZ
         } else if setup.start_hz.is_finite()

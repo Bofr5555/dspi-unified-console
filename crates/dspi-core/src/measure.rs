@@ -89,6 +89,13 @@ pub use rolloff::{
     MeasureRolloffEnd, MeasureRolloffResult, MeasureRolloffSetup, MeasureRolloffStage,
     MeasureRolloffState, ROLLOFF_START_HZ, ROLLOFF_START_MAX_HZ, ROLLOFF_STOP_DB,
 };
+// -- WP ADET0 -- the speaker detection (AUTODES)
+mod detect;
+pub use detect::{
+    DETECT_NOTICE_KEYS, DetectSetup, DetectStage, DetectState, PROBE_BELOW_FLOOR_DBFS,
+    PROBE_BELOW_FLOOR_HEADPHONES_DBFS, PROBE_CEILING_DBFS, PROBE_CEILING_HEADPHONES_DBFS,
+    trusted_roles,
+};
 // -- WP FEAT2 -- what an AI agent may only tighten
 pub use plan::{
     MEASURE_CEILING_MIN_DB, MEASURE_COUNT_MAX, MEASURE_PASSES, MEASURE_SPL_CAP_MIN_DB,
@@ -817,6 +824,14 @@ pub(crate) struct MeasureSlot {
     rolloff: Mutex<rolloff::Rolloff>,
     /// What the roll-off search shows (a leaf).
     rolloff_view: Mutex<MeasureRolloffState>,
+    // -- WP ADET0 --
+    /// The speaker detection: taken before the session's slot, never after.
+    detect: Mutex<detect::Detect>,
+    /// What the speaker detection shows (a leaf).
+    detect_view: Mutex<DetectState>,
+    /// Agents may detect the speakers under "never ask" (Settings › AI
+    /// Agents; off by default).
+    detect_agents: std::sync::atomic::AtomicBool,
 }
 
 impl MeasureSlot {
@@ -899,7 +914,8 @@ impl DspiCore {
         if !setup.roles_from_layout {
             return Ok(setup);
         }
-        let layout = self.confirmed_speaker_layout()?;
+        // -- WP ADET0 -- a detected layout's roles are trusted too
+        let layout = self.trusted_speaker_layout()?;
         if setup.outputs.is_empty() {
             setup.outputs = layout
                 .outputs
@@ -950,7 +966,7 @@ impl DspiCore {
         from_layout: bool,
     ) -> Result<MeasureLayout> {
         if !from_layout {
-            let confirmed = self.confirmed_layout_now();
+            let confirmed = self.trusted_layout_now(); // -- WP ADET0 --
             for lo in &mut layout.outputs {
                 lo.role = confirmed_role(lo.role, lo.output, confirmed.as_ref());
             }
@@ -1305,7 +1321,7 @@ impl DspiCore {
     /// ([`Plan::resolve_roles`]); -- WP RCFIX -- never looser than the user's
     /// confirmed layout, whatever the caller passed (review RC, RC2).
     pub(crate) fn measure_resolve_roles(&self, plan: &mut Plan) -> Result<()> {
-        let confirmed = self.confirmed_layout_now();
+        let confirmed = self.trusted_layout_now(); // -- WP ADET0 --
         let chains: Chains = {
             let inner = self.lock();
             plan.outputs
