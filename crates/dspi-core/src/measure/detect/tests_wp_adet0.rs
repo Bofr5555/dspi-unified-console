@@ -1001,3 +1001,77 @@ fn wp_adet0_sim_a_raised_floor_moves_every_band() {
         .to_string();
     assert!(e.contains("floor"), "{e}");
 }
+
+// -- WP ADETS -- the K340 world (scenario.py k340): a dynamic woofer with its
+// low-pass near 5 kHz and a breakup at 6 kHz, probed from the owner's 2.5 kHz
+// floor, is a woofer; the transformer-fed tweeter a tweeter.
+#[test]
+fn wp_adets_the_k340_drivers_classify_from_a_2500_hz_floor() {
+    let woofer = driver(20.0, 0.6, 5_000.0, 0.7, Some((6_000.0, 4.0, 5.0)));
+    let (next, w, played) = probe_model(&woofer, 2_500.0);
+    assert!(
+        matches!(next, Next::Done(DetectClass::Woofer, _)),
+        "{next:?} {w:?} {played:?}"
+    );
+    let tweeter = driver(2_000.0, 0.8, 0.0, 0.7, Some((14_000.0, 3.0, 3.0)));
+    let (next, w, _) = probe_model(&tweeter, 2_500.0);
+    assert!(
+        matches!(next, Next::Done(DetectClass::Tweeter, _)),
+        "{next:?} {w:?}"
+    );
+}
+
+// -- WP ADETS -- the same in the sim, on the headphones' levels (-60 / -36 dBFS):
+// the woofer's presence run plays louder than its shaped segments
+#[test]
+fn wp_adets_sim_the_k340_cup_on_the_headphones_levels() {
+    let mut woofer = driver(20.0, 0.6, 5_000.0, 0.7, Some((6_000.0, 4.0, 5.0)));
+    woofer.sensitivity_db = -4.5;
+    let mut tweeter = driver(2_000.0, 0.8, 0.0, 0.7, Some((14_000.0, 3.0, 3.0)));
+    tweeter.sensitivity_db = -16.5;
+    let core = demo(vec![woofer, tweeter]);
+    let mut starts = Starts::default();
+    core.detect_start(DetectSetup {
+        floor_hz: 2_500.0,
+        placement: MeasurePlacement::Headphones,
+        ..DetectSetup::default()
+    })
+    .unwrap();
+    let st = detect(&core, &mut starts, None);
+    assert_eq!(st.stage, DetectStage::Done, "{st:#?}");
+    assert_eq!(class_of(&st, 0).0, DetectClass::Woofer, "{st:#?}");
+    assert_eq!(class_of(&st, 1).0, DetectClass::Tweeter, "{st:#?}");
+}
+
+// -- WP ADETS -- found by the function test (S19, the Centre's sub): the A2
+// ramp heard the sub's tail near 1 kHz, but stage B's sweep had no trusted
+// point above the floor; the output ended `unknown`. Silent above the floor
+// it goes on (AUTODES 1.3 step 3): after the top band the A2 ramp, after A2
+// the shaped descent (where the sub is heard and classified).
+#[test]
+fn wp_adets_a_stage_b_with_nothing_trusted_goes_on_as_silent_above_the_floor() {
+    let mut w = Work::new(4, 1_000.0);
+    assert!(matches!(w.after_top(Vec::new()), Next::Session));
+    assert_eq!(w.step, Step::Band);
+    assert!(matches!(w.after_top(Vec::new()), Next::Session));
+    assert_eq!(w.step, Step::Descent(0));
+    assert_eq!(w.heard, DetectHeard::Never);
+    // The sub, heard from the shaped descent on: a sub
+    let sub = centre_sub();
+    let mut next = Next::Session;
+    for _ in 0..16 {
+        let Step::Descent(k) = w.step else {
+            unreachable!()
+        };
+        let (f1, f2) = segment_band(w.steps[k]);
+        next = w.after_segment(measured(&sub, f64::from(f1), f64::from(f2)));
+        if let Next::Done(..) = next {
+            break;
+        }
+    }
+    assert!(
+        matches!(next, Next::Done(DetectClass::Sub, _)),
+        "{next:?} {w:?}"
+    );
+    assert_eq!(w.heard, DetectHeard::BelowFloor);
+}

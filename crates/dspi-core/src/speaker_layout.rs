@@ -400,6 +400,9 @@ impl LayoutSlot {
 
     /// Keep `layout` for its serial.
     pub(crate) fn save(&self, layout: &SpeakerLayout) -> Result<()> {
+        // -- WP ADETS -- the function test's oracle judges each output by it
+        #[cfg(feature = "sim-scenario")]
+        crate::measure_sim::scenario::layout_saved(layout);
         let mut store = self.store();
         #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
         if let Some(dir) = store.dir.clone() {
@@ -593,6 +596,14 @@ impl DspiCore {
             }
         }
         let before = self.speaker_layouts.load(&serial);
+        // -- WP ADETS -- (AUTODES 3.1) a detected row the user gave another role is
+        // the user's word from now on; the detection stands for the other rows
+        for o in &mut layout.outputs {
+            let was = before.as_ref().and_then(|b| b.output(o.output));
+            if o.source == RoleSource::Detected && was.is_some_and(|w| w.role != o.role) {
+                o.source = RoleSource::User;
+            }
+        }
         self.speaker_layouts.save(&layout)?;
         // -- WP AIVIS -- an agent learns that its roles have moved
         let act = if layout.confirmed_by_user {
@@ -772,3 +783,6 @@ pub(crate) fn role_word(role: MeasureRole) -> &'static str {
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_role0;
+// -- WP ADETS --
+#[cfg(test)]
+mod tests_wp_adets;

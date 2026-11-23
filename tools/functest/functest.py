@@ -159,7 +159,9 @@ class Run:
         # -- WP FUNC2c -- `[layout.<device>]` seeds another setup than the scenario's (S6: the old wiring)
         stale = self.story().get("layout", {})
         stale = stale if isinstance(stale, dict) else {}  # `layout = "classic"` is the app's layout (FUNC2b; INTI)
-        for dev, shown in zip(scenario["devices"], devices):
+        # -- WP ADETS -- `speakers = "none"`: nobody set up the speakers, not even an unconfirmed
+        # setup (AUTODES S19: the agent detects them)
+        for dev, shown in zip(scenario["devices"], devices) if self.story().get("speakers") != "none" else []:
             seeded = dict(dev, outputs=stale[dev["name"]]["outputs"]) if dev["name"] in stale else dev
             self.layout(shown["id"], seeded, dev["name"] not in unconfirmed)
         # -- WP FUNC2a -- P1: each demo is a DSPi of its own (its serial; its layout kept under it)
@@ -173,6 +175,10 @@ class Run:
         # The user turns agents on and chooses the questions
         ctl.set("AiController", "confirmMode", confirm)
         ctl.set("AiController", "showReads", True)
+        # -- WP ADETS -- Settings › AI Agents › Agents may detect speakers (what never-ask needs)
+        if self.story().get("agent_detect"):
+            ctl.set("AiController", "agentDetect", True)
+            ctl.wait("agents may detect speakers", lambda: ctl.get("AiController", "agentDetect"))
         ctl.call("AiController", "setEnabled", True)
         ctl.wait("AI agents on", lambda: ctl.get("AiController", "running"))
         log("AI agents on:", ctl.get("AiController", "addresses"), "questions:", confirm)
@@ -209,6 +215,19 @@ class Run:
             ctl.wait("the layout confirmed", lambda: ctl.get("SpeakersController", "status") == "confirmed")
         log(f"{dev['name']}: speaker setup {ctl.get('SpeakersController', 'status')}")
 
+    # -- WP ADETS -- the user corrects rows of a (detected) setup on the Speakers page, as
+    # Settings › Speakers does: `roles` = {output from 1: role}; it stays unconfirmed
+    def correct_layout(self, name, roles):
+        ctl = self.ctl
+        ctl.call("DeviceRegistry", "activate", user.User(self).device_id(name))
+        time.sleep(0.5)
+        ctl.call("SpeakersController", "reload")
+        ctl.wait("the speaker setup", lambda: ctl.get("SpeakersController", "loaded"))
+        for n, role in roles.items():
+            ctl.call("SpeakersController", "writeBack", int(n) - 1, role)
+            ctl.wait(f"{name} Out {n} {role}", lambda: ctl.call("SpeakersController", "roleOf", int(n) - 1) == role)
+        log(f"{name}: the user set {roles}; speaker setup {ctl.get('SpeakersController', 'status')}")
+
     # -- WP FUNC2a -- the user confirms a setup later (P9a)
     def confirm_layout(self, name):
         scenario = json.loads((self.dir / "scenario.json").read_text())
@@ -224,7 +243,10 @@ class Run:
                 meta["unconfirmed"].remove(name)
                 meta.setdefault("confirmed_later", {})[name] = {
                     "after_step": getattr(self, "step_label", "setup"),
-                    "signals_before": sum(1 for x in lines if x["kind"] == "signal" and x["device"] == name)}
+                    # -- WP ADETS -- a signal the oracle judged by the core's knowledge (the
+                    # unknown output's envelope, AUTODES 7.2) is not one the user had to allow first
+                    "signals_before": sum(1 for x in lines if x["kind"] == "signal" and x["device"] == name
+                                          and "knowledge" not in x)}
                 self.meta.write_text(json.dumps(meta, indent=1))
 
     # ------------------------------------------------------- the user's answers

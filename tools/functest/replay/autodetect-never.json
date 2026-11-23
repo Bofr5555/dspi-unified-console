@@ -1,0 +1,84 @@
+{
+ "story": "autodetect-never.toml",
+ "confirm": "never_ask",
+ "steps": {
+  "refused": [
+   [
+    "dspi_get_overview",
+    {
+     "device": "demo:3"
+    },
+    "ok",
+    "the switch is off",
+    "",
+    "\"detect\":\\s*false"
+   ],
+   [
+    "dspi_detect_speakers",
+    {
+     "device": "demo:3"
+    },
+    "error",
+    "never ask: refused without the switch",
+    "",
+    "[Aa]gents may detect speakers"
+   ]
+  ],
+  "switched": [
+   [
+    "dspi_get_overview",
+    {
+     "device": "demo:3"
+    },
+    "ok",
+    "the switch is on",
+    "",
+    "\"detect\":\\s*true"
+   ],
+   [
+    "dspi_detect_speakers",
+    {
+     "device": "demo:3"
+    },
+    "ok",
+    "no question, it runs"
+   ],
+   [
+    "wait",
+    {
+     "device": "demo:3"
+    }
+   ],
+   [
+    "dspi_get_overview",
+    {
+     "device": "demo:3"
+    },
+    "ok",
+    "",
+    "",
+    "speaker_setup_auto_detected"
+   ],
+   [
+    "dspi_set_crossover",
+    {
+     "device": "demo:3",
+     "output": 3,
+     "high_pass": {
+      "family": "linkwitz_riley",
+      "order": 4,
+      "freq_hz": 600
+     }
+    },
+    "error",
+    "the 700 Hz tweeter is held at 1 kHz under never ask too"
+   ],
+   [
+    "sleep",
+    {
+     "s": 0.6
+    }
+   ]
+  ]
+ }
+}

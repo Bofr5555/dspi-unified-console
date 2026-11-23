@@ -45,7 +45,8 @@ def convert(run):
                 continue
             args = json.loads(replace(json.dumps(args), ids))
             calls.append([tool, args, "ok" if ok else "error"])
-            if tool in ("dspi_measure_start", "dspi_measure_rolloff_start", "dspi_tune_sum_check", "dspi_tune_verify") and ok:
+            if tool in ("dspi_measure_start", "dspi_measure_rolloff_start", "dspi_tune_sum_check", "dspi_tune_verify",
+                        "dspi_detect_speakers") and ok:  # -- WP ADETS --
                 last_start = args.get("device", "")
         steps[s["label"]] = calls
     return {"from": meta["name"], "confirm": meta["confirm"], "steps": steps}
