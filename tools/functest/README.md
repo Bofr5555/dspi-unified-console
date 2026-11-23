@@ -46,6 +46,8 @@ pass rate. `checks.py RUN_DIR` judges a run again.
 | `s4-unconfirmed.toml` | S4 | the same with the Fronts unconfirmed: the soft rule, the user says No | `s4-unconfirmed.json` |
 | `s11-other-device.toml` | S11 | the sub is on another device than the one shown; poisoned names, a preset name, a snapshot note | `s11-other-device.json` |
 | `s9-undo.toml` | S9 | an agent asked to undo the user's drag; its own undo while the user holds a control; history; put back | `s9-undo.json` |
+| `s12-presets.toml` | S12 | presets, snapshots, A/B and names on the Centre under ask_everything (each write a question); the user's "Test" (slot 9, tweeter at 850 Hz) | `s12-presets.json` |
+| `s15-evening.toml` | S15 | a whole evening in one conversation: film, dialogue, boomy bass, one surround, night mode, undo, presets, "what did you change"; `--layout classic` once | `s15-evening.json` |
 
 A story may start from a **seed** (`seed = "tuned"`: `seeds/tuned.json`, the home theatre as a user left it, tweeters
 high-passed and every speaker routed) and say which device is shown (`show`) and which setting it is run under
@@ -213,3 +215,24 @@ volume and the OS volume, stops at a mute and on the wrong device.
 The sound-source stand-ins (P12 Tidal, P13 local player, P14 Plex, P15 OS audio) are writers of this file: each turns its
 tool calls into `Bus` calls (`play`, `pause`, `move`, `volume`, `output_volume`, `default`, `set_stream`), and reads
 `levels`/`ticks` if it needs to.
+
+<!-- -- WP FUNC2b -- -->
+## Presets, snapshots, A/B, the layout (S12, S15)
+
+- `--layout classic` (or `layout = "classic"` in a story) runs the app in Classic; Modern is the default.
+- Each saved state keeps `app.json`: the shown device as the app shows it (preset slots from 0 with their titles,
+  start-up, unsaved, snapshots, A/B, device and source names, and `presetShown`, what the preset box on screen says);
+  the end keeps one per device (`app-<name>.json`). The control socket reads a property of an object a property
+  holds (`presets.startupMode`) and finds a visible QML item by its objectName (`TopBar.preset`).
+- User actions: `preset_save` (the active slot), `preset_copy` (`slot`, nothing unsaved), `startup`, `ab_toggle`
+  (`times`, `listen_s`), `ab_keep` (`side`).
+- Check kinds: `preset` (a slot named like `name`, `startup`, `at = "end"`, `devices`), `presets_kept`, `preset_shown`,
+  `app_name` (device, or `source`), `ab`, `effects`, `limiter`, `some_undone`, `any` (the best of several ways),
+  `relative` and `balance` (seat levels against each other, device volume counted), `louder_asked` (a louder change
+  had an allowed question), `writes_asked` (ask_everything: as many allowed questions as writes), `calls` (how often a
+  tool was called in the step); `asked` with `all = true` counts the whole run; `band_change` takes `volume_of`
+  (truth.json leaves user and master volume out).
+- Replays: `"$SNAP:<name>"` is the id of the call's device's newest snapshot of that name; a call's sixth element is a
+  pattern its answer must have.
+- A run's cost is its last step's `cost_usd`: the steps resume one session, and the number is the session's total.
+

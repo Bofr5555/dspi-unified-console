@@ -832,8 +832,9 @@ fn path_response(s: &DspState, i: usize, o: usize, f: f64) -> (f64, f64) {
         .and_then(|r| r.get(o))
         .copied()
         .unwrap_or(0.0)
-        + s.input_preamp_db.get(i).copied().unwrap_or(0.0)
-        + s.preamp_db;
+        // -- WP FUNC2b -- the global preamp is input 0's (the legacy name, params.rs
+        // set_input_preamp): counted once, not on top of every input's own
+        + s.input_preamp_db.get(i).copied().unwrap_or(s.preamp_db);
     let g = 10f64.powf(f64::from(gain) / 20.0) * if at(&s.matrix_invert) { -1.0 } else { 1.0 };
     let e = turn(
         f,
@@ -994,5 +995,46 @@ mod tests_wp_inth {
         let w = why(&s, -6.0, (3000.0, 3000.0));
         assert_eq!(w.len(), 1, "{w:?}");
         assert!(w[0].contains("generator"), "{w:?}");
+    }
+}
+
+// -- WP FUNC2b --
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::indexing_slicing)]
+mod tests_wp_func2b {
+    use super::*;
+
+    /// A preamp on input 0 (also the device's legacy global preamp) lowers input 0
+    /// once, and no other input: FUNC2b S15 saw the fronts' L and R 6 dB down for
+    /// -3 dB on each.
+    #[test]
+    fn wp_func2b_the_global_preamp_is_input_0s_and_counts_once() {
+        let mut s = crate::state::default_state();
+        s.matrix_gain[0][0] = 0.0;
+        s.matrix_gain[1][0] = 0.0;
+        s.matrix_routing[0][0] = true;
+        s.matrix_routing[1][0] = true;
+        let flat = |s: &DspState, i| {
+            20.0 * {
+                let (re, im) = path_response(s, i, 0, 1000.0);
+                (re * re + im * im).sqrt().log10()
+            }
+        };
+        let (l0, r0) = (flat(&s, 0), flat(&s, 1));
+        s.input_preamp_db[0] = -3.0;
+        s.input_preamp_db[1] = -3.0;
+        s.preamp_db = -3.0;
+        assert!(
+            (flat(&s, 0) - l0 - -3.0).abs() < 0.05,
+            "{} {}",
+            flat(&s, 0),
+            l0
+        );
+        assert!(
+            (flat(&s, 1) - r0 - -3.0).abs() < 0.05,
+            "{} {}",
+            flat(&s, 1),
+            r0
+        );
     }
 }

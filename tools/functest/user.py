@@ -143,10 +143,42 @@ class User:
             ctl.call("SidebarController", "setUserVolume", float(a["db"]))
         elif kind == "undo":
             ctl.call("HistoryController", "undo")
+        # -- WP FUNC2b -- presets as the sidebar's preset menu does them (slots from 1); A/B as its toggle
+        elif kind == "preset_save":
+            # The active slot: the device's settings saved there
+            self.preset(lambda: ctl.call("SidebarController", "savePreset"))
+        elif kind == "preset_copy":
+            # The settings copied to `slot`, the active one saved again (nothing unsaved first)
+            if ctl.get("SidebarController", "unsaved"):
+                raise RuntimeError("preset_copy: unsaved changes; save first")
+            self.preset(lambda: ctl.call("SidebarController", "requestPresetCopy", a["slot"] - 1))
+        elif kind == "startup":
+            ctl.call("SidebarController", "setStartupPreset", a["slot"] - 1)
+        elif kind == "ab_toggle":
+            if not ctl.get("SnapshotsController", "abActive"):
+                self.run.event("user-skipped", {"step": label, "do": kind, "why": "no A/B running"})
+                return
+            for _ in range(a.get("times", 1)):
+                ctl.call("SnapshotsController", "abToggle")
+                time.sleep(float(a.get("listen_s", 3)))
+        elif kind == "ab_keep":
+            if not ctl.get("SnapshotsController", "abActive"):
+                self.run.event("user-skipped", {"step": label, "do": kind, "why": "no A/B running"})
+                return
+            ctl.call("SnapshotsController", "abKeep", a["side"])
         else:
             raise RuntimeError(f"no such user action: {kind}")
         time.sleep(float(a.get("settle_s", 0.3)))
         self.run.event("user-done", {"step": label, "do": kind})
+
+
+    # -- WP FUNC2b --
+    def preset(self, start):
+        """A preset operation, and the wait until the device has done it."""
+        ctl = self.ctl
+        start()
+        time.sleep(0.3)
+        ctl.wait("the preset operation", lambda: not ctl.get("SidebarController", "presetBusy"), 30)
 
 
 def seed_actions(story):

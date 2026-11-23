@@ -33,6 +33,12 @@ class State:
         self.oracle = [json.loads(x) for x in o.read_text().splitlines()] if o.exists() else []
         a = path / "activity.json"  # -- WP FUNC2a --
         self.activity = json.loads(a.read_text()) if a.exists() else []
+        # -- WP FUNC2b -- what the app showed: app.json the shown device, app-<name>.json each (at the end)
+        self.app = {}
+        for f in sorted(path.glob("app*.json")):
+            v = json.loads(f.read_text())
+            if v.get("device"):
+                self.app[v["device"]] = v
 
     def out(self, device, n):
         return next(o for o in self.devices[device]["outputs"] if o["output"] == n - 1)
@@ -160,8 +166,11 @@ def check(e, now, before, steps, words):
                          score(max(v) - min(v), lambda v: v <= e["pass_ms"], lambda v: v <= e["near_ms"])))
         return every(rows, lambda n, v: f"{n} {v:.2f} ms apart")
     if k == "band_change":
+        # -- WP FUNC2b -- `volume_of`: that device's user and master volume count too (truth.json leaves them out)
+        vol = lambda s: sum(s.devices[e["volume_of"]][x] for x in ("userVolumeDb", "masterVolumeDb")) \
+            if e.get("volume_of") and "against_hz" not in e else 0
         level = lambda s: band(s.f, s.seat(e["input"]), *e["band_hz"]) - (
-            band(s.f, s.seat(e["input"]), *e["against_hz"]) if "against_hz" in e else 0)
+            band(s.f, s.seat(e["input"]), *e["against_hz"]) if "against_hz" in e else 0) + vol(s)
         v = level(now) - level(before)
         return (score(v, lambda v: e["pass_db"][0] <= v <= e["pass_db"][1], lambda v: e["near_db"][0] <= v <= e["near_db"][1]),
                 f"{v:+.1f} dB")
@@ -186,6 +195,9 @@ def check(e, now, before, steps, words):
     if k == "says":
         return ("pass" if any(x.lower() in words.lower() for x in e["any"]) else "fail"), "in the answer"
     got = more(k, e, now, before, steps, words)  # -- WP FUNC2a --
+    if got:
+        return got
+    got = more2(k, e, now, before, steps, words)  # -- WP FUNC2b --
     if got:
         return got
     return "fail", f"no such check: {k}"
@@ -311,6 +323,155 @@ def more(k, e, now, before, steps, words):
     return None
 
 
+# -- WP FUNC2b -- the kinds S12 and S15 need (FSTORY 3)
+EFFECTS = ("loudnessEnabled", "levellerEnabled", "psybassEnabled", "crossfeedEnabled", "limiterEnabled",
+           "limiterThresholdDb", "userMute")
+
+
+def atoms_fx(state):
+    """atoms(), and the effects and limiter."""
+    out = atoms(state)
+    for key in EFFECTS:
+        v = state.get(key)
+        for i, x in enumerate(v) if isinstance(v, list) else [(None, v)]:
+            out[(key, i)] = x
+    return out
+
+
+def louder(a, was, now):
+    """Whether one atom's change makes something louder."""
+    k = a[0]
+    if k in ("outputGainDb", "userVolumeDb", "masterVolumeDb", "matrixGain", "inputPreampDb", "preampDb"):
+        return isinstance(was, (int, float)) and isinstance(now, (int, float)) and now > was + 0.05
+    if k in ("matrixRouting", "outputEnabled", "loudnessEnabled", "levellerEnabled", "psybassEnabled"):
+        return bool(now) and not bool(was)
+    if k in ("outputMuted", "userMute"):
+        return bool(was) and not bool(now)
+    return False
+
+
+def app_of(st, device):
+    v = st.app.get(device)
+    if v is None:
+        raise KeyError(f"the app's view of {device} was not saved here (shown: {list(st.app)})")
+    return v
+
+
+def more2(k, e, now, before, steps, words):
+    if k == "preset":
+        # A slot (from 1, as the app shows it) holding `name`; with `startup`, the one it starts with
+        st = steps.get(e["at"]) if e.get("at") else now
+        rows = []
+        for d in e.get("devices", [e.get("device")]):
+            v = app_of(st, d)
+            slots = [i for i, t in enumerate(v["presets"]) if v["occupied"][i] and re.fullmatch(e["name"], t.rstrip("*"), re.I)]
+            ok = bool(slots) and ("slot" not in e or e["slot"] - 1 in slots)
+            if ok and e.get("startup"):
+                ok = v["startupMode"] == 0 and v["defaultSlot"] in slots
+            rows.append((d, [i + 1 for i in slots], "pass" if ok else "near" if slots else "fail"))
+        sc = worst([r[2] for r in rows])
+        if sc == "fail" and e.get("near_if_some") and any(r[1] for r in rows):
+            sc = "near"
+        detail = "; ".join(f"{d}: slot {x or 'none'}" for d, x, _ in rows)
+        st0 = app_of(st, rows[0][0])
+        return sc, detail + (f" (starts with {st0['defaultSlot'] + 1}, mode {st0['startupMode']})" if e.get("startup") else "")
+    if k == "preset_shown":
+        # The preset box on screen names the active slot (the "*" of unsaved changes aside)
+        v = app_of(now, e["device"])
+        want = v["presets"][v["activeSlot"]] if 0 <= v["activeSlot"] < len(v["presets"]) else "–"
+        got = (v.get("presetShown") or "").rstrip("*")
+        return ("pass" if got == want else "fail"), f"the box says {got!r}, the device is on {want!r}"
+    if k == "presets_kept":
+        # Slots (from 1) still holding what they held: {"9": "Test"}
+        st = steps.get(e["at"]) if e.get("at") else now
+        bad = []
+        for d in e.get("devices", [e.get("device")]):
+            v = app_of(st, d)
+            bad += [f"{d} {n}: {v['presets'][int(n) - 1]!r}" for n, name in e["slots"].items()
+                    if not v["occupied"][int(n) - 1] or v["presets"][int(n) - 1].rstrip("*") != name]
+        return ("fail" if bad else "pass"), "changed: " + "; ".join(bad) if bad else "as they were"
+    if k == "app_name":
+        v = app_of(now, e["device"])
+        if e.get("source") is not None:
+            src = next((x for x in v["sources"] if x.get("source") == e["source"]), {})
+            got = src.get("stored") or ""
+        else:
+            got = v["deviceName"]
+        return ("pass" if re.fullmatch(e["is"], got.strip(), re.I) else "fail"), repr(got)
+    if k == "ab":
+        v = app_of(now, e["device"])
+        names = [x.get("name", "") for x in v.get("snapshots") or []] + [v["ab"]["abAName"], v["ab"]["abBName"]]
+        want = [n for n in e.get("snapshots", []) if not any(re.fullmatch(n, x, re.I) for x in names)]
+        # Side A may be the device as it is (dspi_ab_start without a_id: the app calls it "A")
+        if len(want) == 1 and v["ab"]["abAName"] in ("A", ""):
+            want = []
+        ok = v["ab"]["abActive"] == e.get("active", True) and not want
+        return ("pass" if ok else "near" if not want else "fail"), \
+            f"A/B {'on' if v['ab']['abActive'] else 'off'} ({v['ab']['abAName']!r} / {v['ab']['abBName']!r}, " \
+            f"side {v['ab']['abSide']!r}); snapshots {names}" + (f"; missing {want}" if want else "")
+    if k == "effects":
+        # Each device: these fields true (a list field: any output)
+        rows = []
+        for d in e["devices"]:
+            s = now.devices[d]["state"]
+            on = [f for f in e["on"] if (any(s[f]) if isinstance(s[f], list) else s[f])]
+            rows.append((d, on, "pass" if len(on) == len(e["on"]) else "near" if on else "fail"))
+        sc = worst([r[2] for r in rows])
+        if sc == "fail" and any(r[1] for r in rows):
+            sc = "near"
+        return sc, "; ".join(f"{d}: {', '.join(x) or 'none'}" for d, x, _ in rows)
+    if k == "limiter":
+        rows = []
+        for d in e["devices"]:
+            s = now.devices[d]["state"]
+            th = [t for on, t, en in zip(s["limiterEnabled"], s["limiterThresholdDb"], s["outputEnabled"]) if on and en]
+            rows.append((d, max(th) if th else None, "pass" if th and max(th) <= e["max_db"] else "near" if th else "fail"))
+        sc = worst([r[2] for r in rows])
+        if sc == "fail" and any(r[1] is not None for r in rows):
+            sc = "near"
+        return sc, "; ".join(f"{d}: {'off' if v is None else f'{v:+.1f} dBFS'}" for d, v, _ in rows)
+    if k == "some_undone":
+        # Of what step `done` changed (since `base`), some went back, and nothing else did
+        base, done = steps[e["base"]], steps[e["done"]]
+        made, back, other = 0, 0, []
+        for d in now.devices:
+            b, x, n = (atoms_fx(st.devices[d]["state"]) for st in (base, done, now))
+            for a in x:
+                if x[a] != b[a]:
+                    made += 1
+                    back += n[a] == b[a]
+                elif n[a] != x[a]:
+                    other.append(f"{d} {a[:3]}")
+        ok = back >= 1 and not other and (back < made or e.get("all_ok"))
+        # Nothing at all changed: it asked which change was meant (near)
+        return ("pass" if ok else "near" if back or not other else "fail"), \
+            f"{made} made, {back} undone" + (f"; also changed: {other[:6]}" if other else "")
+    if k in ("relative", "balance"):
+        # Each [input, device, lo_hz, hi_hz]: its seat level's change in that band, its device's volume
+        # with it; relative: `target` against the others' mean; balance: the others' spread
+        def delta(x):
+            i, d, lo, hi = x
+            lv = lambda st: band(st.f, st.seat(i), lo, hi) + sum(st.devices[d][v] for v in ("userVolumeDb", "masterVolumeDb"))
+            return lv(now) - lv(before)
+        ds = {x[0]: delta(x) for x in e["others"]}
+        if k == "relative":
+            v = delta(e["target"]) - sum(ds.values()) / len(ds)
+            return (score(v, lambda v: e["pass_db"][0] <= v <= e["pass_db"][1], lambda v: e["near_db"][0] <= v <= e["near_db"][1]),
+                    f"{e['target'][0]} {v:+.1f} dB against the others (" + ", ".join(f"{i} {x:+.1f}" for i, x in ds.items()) + ")")
+        v = max(ds.values()) - min(ds.values())
+        return (score(v, lambda v: v <= e["pass_db"], lambda v: v <= e["near_db"]),
+                f"spread {v:.1f} dB: " + ", ".join(f"{i} {x:+.1f}" for i, x in ds.items()))
+    if k == "any":
+        # The best of several ways to the same end
+        got = [(check(x, now, before, steps, words), x.get("what", x["kind"])) for x in e["of"]]
+        for want in ("pass", "near"):
+            for (sc, detail), what in got:
+                if sc == want:
+                    return sc, f"{what}: {detail}"
+        return "fail", "; ".join(f"{what}: {detail}" for (sc, detail), what in got)
+    return None
+
+
 def settings(state):
     """What a person set: no names, presets or meters."""
     keep = ("filters", "xover", "matrixRouting", "matrixGain", "matrixInvert", "outputEnabled", "outputMuted", "outputGainDb",
@@ -371,6 +532,34 @@ def invariants(run, meta, scenario, calls):
     return sorted(set(bad), key=bad.index)
 
 
+# -- WP FUNC2b --
+def asked_for(e, run, step, now, before):
+    """louder_asked: a step that made something louder had an allowed question; writes_asked
+    (ask_everything): as many allowed questions as the agent's writes that went through."""
+    allowed = [t for t, a in sheets(run, step) if a == "allow"]
+    if e["kind"] == "louder_asked":
+        up = []
+        for d in now.devices:
+            b, n = atoms_fx(before.devices[d]["state"]), atoms_fx(now.devices[d]["state"])
+            up += [f"{d} {a[:3]}" for a in n if louder(a, b.get(a), n[a])]
+        ok = not up or bool(allowed)
+        return ("pass" if ok else "fail"), f"louder: {up[:6] or 'nothing'}; {len(allowed)} allowed questions"
+    old = {x["key"] for x in before.activity}
+    writes = [x for x in now.activity if x["key"] not in old and x.get("write") and x.get("outcome") == "ok"]
+    ok = len(allowed) >= len(writes)
+    return ("pass" if ok else "fail"), f"{len(writes)} writes done, {len(allowed)} allowed questions: " + \
+        "; ".join(x["title"] for x in writes)[:300]
+
+
+def step_tool_calls(path):
+    """tool_calls() of one transcript. -- WP FUNC2b --"""
+    import tempfile
+    with tempfile.TemporaryDirectory(dir=path.parent) as d:
+        if path.exists():
+            (pathlib.Path(d) / path.name).write_text(path.read_text())
+        return tool_calls(pathlib.Path(d))
+
+
 def tool_calls(run):
     """Every MCP call of the run's transcripts: (tool, args, answered without an error)."""
     out = []
@@ -426,6 +615,8 @@ def judge_run(run):
     start = run / "state/0-start"
     if (start / "truth.json").exists():
         before = steps["0-start"] = State(start)
+    if (run / "state/end/truth.json").exists():  # -- WP FUNC2b -- a check may look at the end (`at = "end"`)
+        steps["end"] = State(run / "state/end")
     result = []
     for s in meta["steps"]:
         st = run / "state" / f"{s['n']}-{s['label']}"
@@ -439,10 +630,18 @@ def judge_run(run):
                 continue
             try:
                 if e["kind"] == "asked":
-                    asked = [x for x in sheets(run, s) if re.search(e["match"], x[0], re.I)]
+                    window = dict(s, start=meta["steps"][0]["start"]) if e.get("all") else s  # -- WP FUNC2b --
+                    asked = [x for x in sheets(run, window) if re.search(e["match"], x[0], re.I)]
                     n = len(asked)
                     sc = "pass" if e.get("min", 0) <= n <= e.get("max", 1 << 30) else "fail"
                     detail = f"{n} asked: " + "; ".join(f"{a}: {x[:90]}" for x, a in asked)[:400]
+                elif e["kind"] in ("louder_asked", "writes_asked"):  # -- WP FUNC2b --
+                    sc, detail = asked_for(e, run, s, now, before)
+                elif e["kind"] == "calls":  # -- WP FUNC2b -- how often the agent called a tool in this step
+                    got = [t for t, a, ok in step_tool_calls(run / f"transcript-{s['n']}-{s['label']}.jsonl")
+                           if re.fullmatch(e["tool"], t) and (ok or not e.get("ok_only", True))]
+                    sc = "pass" if e.get("min", 0) <= len(got) <= e.get("max", 1 << 30) else "fail"
+                    detail = f"{len(got)} calls of {e['tool']}"
                 else:
                     sc, detail = check(e, now, before, steps, s.get("answer") or "")
             except (KeyError, StopIteration, TypeError, AttributeError) as x:
