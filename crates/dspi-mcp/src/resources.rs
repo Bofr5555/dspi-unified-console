@@ -21,6 +21,7 @@ pub const FILTER_TYPES_URI: &str = "dspi://filter-types";
 // -- WP MCP5 -- the section on measuring
 // -- WP FEAT2 -- opening known devices, a room's volume, the measuring options
 // -- WP FEAT3 -- the section on where the sound comes from
+// -- WP INTF -- FEAT1's routing (sources, zones, slots, programme sources)
 pub const GUIDE: &str = "# DSPi: how to read it well
 
 A DSPi is a digital signal processor for loudspeakers. The console app has one or more DSPis
@@ -34,7 +35,9 @@ device the app shows is used. A device that is not open may be a known one
   Music is chosen, started, paused and turned up or down in another program or box (a
   player, a streaming app, a TV, a game), never by these tools.
 - `dspi_get_overview`'s `programme` names the input source in use (USB, S/PDIF, I2S, ADAT,
-  the audio link) and what feeds that kind of input; `dspi_set_source` switches it.
+  the audio link) and what feeds that kind of input; `dspi_set_source` switches it. On a
+  hub, its `programme_sources` is what the installation says plays into this unit (which
+  computer or box, on which of its inputs); it routes nothing. Null: no installation to read.
 - With USB, the computer connected to the DSPi plays to it as an audio output.
   `dspi_get_host_audio` (read only) says, for the computer running this app, whether each
   DSPi is an output, whether it is the default, what plays to it and the OS volume. No
@@ -78,6 +81,13 @@ device the app shows is used. A device that is not open may be a known one
   (`dspi_installation_validate`, `dspi_installation_diff`), then `dspi_installation_save`,
   which may be held for the user. If someone saved meanwhile, nothing is saved and your edits
   are kept aside: remake them on the fresh draft.
+- What each unit plays is in the draft too (the `dspi_installation_set_*` tools): a source
+  is channels of the audio link sender, a zone's source gives the zone's units those
+  channels as their slots, a scene may switch a zone's source, and a programme source
+  describes which computer or box feeds which input (it routes nothing).
+- A draft edit changes nothing you hear. A saved change of slots is stored on the hub and
+  plays after `dspi_system_align`, or at once when a scene with a source action is recalled
+  (`dspi_system_scene_apply`). `routing` and `live` in the results say which.
 - A scene recall, an alignment and USB-direct modes reach every unit and may be held.
 - `dspi_system_set_volume` sets the volume of every unit of a room or a zone; each unit's own
   limits still hold, and the result has a row per unit. Louder may be held.

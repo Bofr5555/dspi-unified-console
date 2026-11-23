@@ -352,7 +352,8 @@ fn wp_feat3_overview_guide_and_instructions_say_the_dspi_plays_its_input() {
             .unwrap()
             .contains("dspi_get_host_audio")
     );
-    // The FEAT1 hook: no programme-source description yet.
+    // A demo is on no hub: no installation describes its programme sources
+    // (-- WP INTF -- one on a hub: tests_wp_intf).
     assert_eq!(p["programme_sources"], Value::Null);
     assert!(p.get("programme_sources").is_some());
     assert!(crate::resources::GUIDE.contains("has no player"));

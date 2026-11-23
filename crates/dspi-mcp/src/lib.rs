@@ -113,3 +113,8 @@ mod tests_wp_feat1;
 #[cfg(test)]
 #[allow(clippy::indexing_slicing)]
 mod tests_wp_feat3;
+// -- WP INTF --
+#[cfg(test)]
+#[cfg(feature = "link")]
+#[allow(clippy::indexing_slicing)]
+mod tests_wp_intf;

@@ -24,10 +24,11 @@
 use std::collections::BTreeMap;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
+use dspi_core::DspiCore;
 use serde_json::Value;
 
 use crate::ClientId;
-use crate::registry::Tool;
+use crate::registry::{Call, Tool};
 
 /// The tools, in `tools/list` order.
 #[cfg(feature = "link")]
@@ -115,6 +116,22 @@ fn fnv1a(bytes: &[u8]) -> u64 {
 /// The grant indices that bind a save to `draft`.
 pub fn binding(draft: &Value) -> Vec<u8> {
     fnv1a(draft.to_string().as_bytes()).to_le_bytes().to_vec()
+}
+
+// -- WP INTF --
+/// The programme sources the installation on the device's hub describes for
+/// this unit (the overview's `programme`): those that feed its inputs, or
+/// channels of its sender that its slots take. Null without an installation
+/// to read. Sends one read, on a hub only.
+#[cfg(feature = "link")]
+pub(crate) fn programme_sources(call: &Call<'_>, core: &DspiCore) -> Value {
+    tools::programme_sources(call, core).map_or(Value::Null, Value::Array)
+}
+
+/// Null without `link`.
+#[cfg(not(feature = "link"))]
+pub(crate) fn programme_sources(_: &Call<'_>, _: &DspiCore) -> Value {
+    Value::Null
 }
 
 #[cfg(feature = "link")]
@@ -243,6 +260,65 @@ mod tools {
             })
             .collect();
         Value::Array(routed)
+    }
+
+    // -- WP INTF --
+    /// See [`super::programme_sources`]. `unit_inputs`: the unit's own inputs
+    /// the programme plays on, null when the installation leaves the unit's
+    /// slots to the unit.
+    pub(super) fn programme_sources(call: &Call<'_>, core: &DspiCore) -> Option<Vec<Value>> {
+        on_hub(call).ok()?;
+        let got = core.link_hub_request("system.get", Map::new()).ok()?;
+        let model = got.get("model").filter(|m| !m.is_null())?.to_string();
+        let model = InstallationDraft {
+            revision: 0,
+            base: String::new(),
+            model,
+        }
+        .model_parsed()
+        .ok()?;
+        let unit = model.units.iter().find(|u| u.serial == call.serial);
+        let heard = unit
+            .filter(|u| u.on_alink())
+            .and_then(|u| model.path_to(&u.id))
+            .map(|(sender, _)| sender);
+        let sender = model
+            .senders
+            .iter()
+            .find(|s| s.serial.as_ref() == Some(&call.serial));
+        let out = model.programme_sources.iter().filter_map(|p| {
+            let kind = serde_json::to_value(p.kind).unwrap_or(Value::Null);
+            let alink = kind == "alink_sender";
+            let inputs = if sender.is_some_and(|s| alink && s.id == p.feeds) {
+                Value::Null
+            } else if unit.is_some_and(|u| !alink && u.id == p.feeds) {
+                json!(p.inputs)
+            } else if alink && heard.as_ref() == Some(&p.feeds) {
+                match unit.and_then(|u| u.slots.as_ref()) {
+                    None => Value::Null,
+                    Some(slots) => {
+                        let on: Vec<usize> = (0..slots.len())
+                            .filter(|i| slots.get(*i).is_some_and(|c| p.inputs.contains(c)))
+                            .collect();
+                        if on.is_empty() {
+                            return None;
+                        }
+                        json!(on)
+                    }
+                }
+            } else {
+                return None;
+            };
+            Some(json!({
+                "programme_id": untrusted::name(&p.id),
+                "programme_name": untrusted::name(&p.name),
+                "kind": kind,
+                "feeds_id": untrusted::name(&p.feeds),
+                "inputs": p.inputs,
+                "unit_inputs": inputs,
+            }))
+        });
+        Some(out.collect())
     }
 
     pub(super) static VIEW: Tool = Tool {

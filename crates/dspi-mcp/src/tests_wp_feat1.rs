@@ -222,7 +222,7 @@ fn wp_feat1_the_tools_are_listed_closed_read_only_and_bounded_as_the_core() {
     // After the measuring tools, so MCP2c's snapshot stays.
     let at = names.iter().position(|n| *n == FEAT1_TOOLS[0]).unwrap();
     assert_eq!(&names[at..at + FEAT1_TOOLS.len()], FEAT1_TOOLS);
-    assert_eq!(names[at - 1], "dspi_system_measure_revert");
+    assert_eq!(names[at - 1], "dspi_get_measure_options"); // -- WP INTF -- FEAT2's
     let tool = |n: &str| {
         tools
             .iter()
