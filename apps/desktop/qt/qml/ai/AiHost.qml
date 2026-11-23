@@ -69,7 +69,10 @@ Item {
         parent: host.parent
         wanted: host.front !== null && !pairingSheet.wanted
         question: host.front ? host.front.id : undefined
-        heading: qsTr("Allow this change?")
+        // -- WP ADETQ -- the speaker detection's question (AUTODES 4.1) says what it is
+        //: %1 a device's name
+        heading: host.front && host.front.detect ? qsTr("Detect the speakers on %1?").arg(host.front.device)
+                                                 : qsTr("Allow this change?")
         onAnswered: allow => { if (host.front) AiController.answer(host.front.id, allow) }
 
         SheetText {
@@ -99,6 +102,13 @@ Item {
                 leftPadding: Theme.spacing
                 text: host.front ? qsTr("and %1 more").arg(Math.max(0, host.front.risks.length - 8)) : ""
             }
+        }
+        // -- WP ADETQ -- the warning on the speaker detection's mechanism (the server's words)
+        SheetText {
+            objectName: "AiConfirmSheet.warning"
+            visible: text.length > 0
+            color: Theme.warning
+            text: host.front && host.front.warning ? "⚠ " + host.front.warning : ""
         }
         // -- WP ODEC -- one question for an agent's test signals on the device, for a while
         SheetText {

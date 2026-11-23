@@ -64,6 +64,7 @@ const char *const kConfirmKey = "mcp/confirm";
 // -- WP FEATUI --
 const char *const kSplCapKey = "mcp/agentSplCapDb";
 const char *const kSplCapOnKey = "mcp/agentSplCapOn";   // -- WP INTG --
+const char *const kAgentDetectKey = "mcp/agentDetect";   // -- WP ADETQ --
 const char *const kRememberedKey = "devices/remembered";
 const QString kConfirmDefault = QStringLiteral("ask_risky");
 const QStringList kConfirmModes{ QStringLiteral("ask_everything"), kConfirmDefault, QStringLiteral("never_ask") };
@@ -140,6 +141,9 @@ AiController::AiController(const AppContext &ctx, QObject *parent) : QObject(par
     m_agentSplCap = qBound(kSplCapMin, s.value(QLatin1String(kSplCapKey), kSplCapDefault).toInt(), kSplCapMax);
     m_agentSplCapOn = s.value(QLatin1String(kSplCapOnKey), true).toBool();   // -- WP INTG --
     applySplCap();
+    // -- WP ADETQ -- the never-ask switch for the speaker detection
+    m_agentDetect = s.value(QLatin1String(kAgentDetectKey), false).toBool();
+    if (m_mcp) dspi_mcp_set_agent_detect(m_mcp, m_agentDetect);
     loadRemembered();
     m_tick.setInterval(1000);
     connect(&m_tick, &QTimer::timeout, this, &AiController::tick);
@@ -697,6 +701,7 @@ QString AiController::riskLabel(const QString &kind) {
         { QStringLiteral("tweeter_crossing"), QT_TRANSLATE_NOOP("AiController", "Tweeter protection") },
         { QStringLiteral("change"), QT_TRANSLATE_NOOP("AiController", "Change") },
         { QStringLiteral("test_signal"), QT_TRANSLATE_NOOP("AiController", "Test signal") },
+        { QStringLiteral("detect"), QT_TRANSLATE_NOOP("AiController", "Speaker detection") },   // -- WP ADETQ --
         { QStringLiteral("recall"), QT_TRANSLATE_NOOP("AiController", "Replaces settings") },
         { QStringLiteral("flash_write"), QT_TRANSLATE_NOOP("AiController", "Saved on the device") },
         { QStringLiteral("installation_save"), QT_TRANSLATE_NOOP("AiController", "Installation") },
@@ -725,12 +730,16 @@ void AiController::readConfirmations() {
                          w.risks << str(r.toObject(), "what");
                          w.sound = w.sound || str(r.toObject(), "kind") == QLatin1String("test_signal");   // -- WP FEATUI --
                          w.wholesale = w.wholesale || str(r.toObject(), "kind") == QLatin1String("recall");   // -- WP FUNC2c --
+                         w.detect = w.detect || str(r.toObject(), "kind") == QLatin1String("detect");   // -- WP ADETQ --
                          // -- WP LAY8 --
                          const QString label = riskLabel(str(r.toObject(), "kind"));
+                         // -- WP ADETQ -- a risk whose words already start with its kind ("Speaker detection: ...") keeps them
+                         const bool named = !label.isEmpty() && w.risks.constLast().startsWith(label + QLatin1Char(':'));
                          //: %1 is a kind of change ("Louder"), %2 the change ("Out 1 gain up from -12 dB to -3 dB")
-                         w.riskLines << (label.isEmpty() ? w.risks.constLast() : tr("%1: %2").arg(label, w.risks.constLast()));
+                         w.riskLines << (label.isEmpty() || named ? w.risks.constLast() : tr("%1: %2").arg(label, w.risks.constLast()));
                      }
                      w.grant = c.value(QLatin1String("grant")).toObject();   // -- WP ODEC --
+                     w.warning = str(c, "warning");   // -- WP ADETQ --
                      w.ends = QDateTime::currentDateTimeUtc().addMSecs(c.value(QLatin1String("remaining_ms")).toInteger());
                      there.insert(w.id);
                      list.append(w);
@@ -761,16 +770,33 @@ QVariantList AiController::confirmations() const {
             { QStringLiteral("wholesale"), w.wholesale },   // -- WP FUNC2c --
             // -- WP ODEC -- the grouped question: the server's grant and the sheet's sentence
             { QStringLiteral("grant"), w.grant.isEmpty() ? QVariant() : QVariant(w.grant.toVariantMap()) },
-            { QStringLiteral("grantText"), w.grant.isEmpty() ? QString()
-                                           //: The question for an AI agent's test signals: %1 is the agent's name, %2 a device's name, %3 minutes
-                                           : tr("Allow also lets %1 play test signals on %2 for the next %3 minutes, for this task. "
-                                                "Louder changes and preset saves are still asked one at a time.")
-                                                 .arg(agentName(w.client), deviceTitle(w.grant.value(QLatin1String("device")).toString().isEmpty() ? w.device
-                                                                                                    : w.grant.value(QLatin1String("device")).toString()))
-                                                 .arg(w.grant.value(QLatin1String("minutes")).toInt(10)) },
+            { QStringLiteral("grantText"), grantText(w) },
+            // -- WP ADETQ -- the speaker detection's question (AUTODES 4.1): its heading and the warning
+            { QStringLiteral("detect"), w.detect },
+            { QStringLiteral("warning"), w.warning },
         });
     }
     return out;
+}
+
+// -- WP ODEC -- The grouped question's sentence: what Allow grants beyond this call
+QString AiController::grantText(const Waiting &w) const {
+    if (w.grant.isEmpty()) return {};
+    const QString device = deviceTitle(w.grant.value(QLatin1String("device")).toString().isEmpty() ? w.device
+                                                                                                 : w.grant.value(QLatin1String("device")).toString());
+    const int minutes = w.grant.value(QLatin1String("minutes")).toInt(10);
+    // -- WP ADETQ -- a detection's grant covers detecting again (Grant.detect)
+    if (w.grant.value(QLatin1String("detect")).toBool())
+        //: The question for an AI agent's speaker detection: %1 is the agent's name, %2 a device's name, %3 minutes
+        return tr("Allow also lets %1 play test signals and detect the speakers on %2 for the next %3 minutes, for this task. "
+                  "Louder changes and preset saves are still asked one at a time.")
+            .arg(agentName(w.client), device)
+            .arg(minutes);
+    //: The question for an AI agent's test signals: %1 is the agent's name, %2 a device's name, %3 minutes
+    return tr("Allow also lets %1 play test signals on %2 for the next %3 minutes, for this task. "
+              "Louder changes and preset saves are still asked one at a time.")
+        .arg(agentName(w.client), device)
+        .arg(minutes);
 }
 
 int AiController::confirmationSecondsLeft() const {
@@ -1002,6 +1028,7 @@ QString AiController::doing(const QJsonObject &row) const {
         { QStringLiteral("dspi_set_source"), QT_TRANSLATE_NOOP("AiController", "Changing the input source") },
         { QStringLiteral("dspi_measure_start"), QT_TRANSLATE_NOOP("AiController", "Starting a measurement") },
         { QStringLiteral("dspi_measure_rolloff_start"), QT_TRANSLATE_NOOP("AiController", "Starting a low-end search") },
+        { QStringLiteral("dspi_detect_speakers"), QT_TRANSLATE_NOOP("AiController", "Asking to detect the speakers") },   // -- WP ADETQ --
         { QStringLiteral("dspi_measure_stop"), QT_TRANSLATE_NOOP("AiController", "Stopping a measurement") },
         { QStringLiteral("dspi_tune_propose"), QT_TRANSLATE_NOOP("AiController", "Working out an auto-tune") },
         { QStringLiteral("dspi_tune_apply"), QT_TRANSLATE_NOOP("AiController", "Applying an auto-tune") },
@@ -1096,6 +1123,12 @@ void AiController::refreshWork() {
         const DeviceSession *s = device_of(device);
         text = running && s && s->hasJob(QStringLiteral("MeasureController")) ? s->job() : QString();
         text.remove(QRegularExpression(QStringLiteral("^Requested by [^.]*\\. ?")));
+        // -- WP ADETQ -- the speaker detection says which output, of how many (AUTODES 5.1)
+        if (running && str(job, "kind") == QLatin1String("detect")) {
+            const auto *measure = Registrar::instance<MeasureController>();
+            const MeasureSession *m = measure ? measure->sessionOf(const_cast<DeviceSession *>(s)) : nullptr;
+            text = m && m->detecting() ? m->detectStripText() : tr("Detecting speakers");
+        }
         if (text.isEmpty()) text = running ? tr("Measuring: %1").arg(str(job, "what")) : tr("Starting: %1").arg(str(job, "what"));
     } else if (!asked.isEmpty()) {
         const QVariantMap q = asked.first().toMap();
@@ -1159,7 +1192,8 @@ void AiController::readGrants() {
         const QJsonObject g = v.toObject();
         const qint64 left = g.value(QLatin1String("left_s")).toInteger();
         if (left <= 0) continue;
-        Grant row{ quint64(g.value(QLatin1String("id")).toInteger()), agentName(str(g, "client_name")), str(g, "device"), now.addSecs(left) };
+        Grant row{ quint64(g.value(QLatin1String("id")).toInteger()), agentName(str(g, "client_name")), str(g, "device"), now.addSecs(left),
+                   g.value(QLatin1String("detect")).toBool() };   // -- WP ADETQ --
         // The same grant read again keeps its countdown (the seconds round)
         for (const Grant &was : std::as_const(m_grants))
             if (was.id == row.id && qAbs(was.until.secsTo(row.until)) <= 2) row.until = was.until;
@@ -1184,6 +1218,7 @@ QVariantList AiController::grants() const {
             { QStringLiteral("deviceId"), g.deviceId },
             { QStringLiteral("secondsLeft"), int(left) },
             { QStringLiteral("left"), QStringLiteral("%1:%2").arg(left / 60).arg(left % 60, 2, 10, QLatin1Char('0')) },
+            { QStringLiteral("detect"), g.detect },   // -- WP ADETQ --
         });
     }
     return out;
@@ -1205,6 +1240,10 @@ QString AiController::grantSuffix(const QString &device) const {
     for (const Grant &g : m_grants)
         if (g.deviceId == device && !device.isEmpty()) {
             const qint64 minutes = (qMax<qint64>(0, now.secsTo(g.until)) + 59) / 60;
+            // -- WP ADETQ --
+            if (g.detect)
+                //: Said on the hub beside what an AI agent does: %n minutes left of the user's allowing its test signals and speaker detection
+                return QStringLiteral(" · ") + tr("test signals and speaker detection allowed, %n min left", "", int(minutes));
             //: Said on the hub beside what an AI agent does: %n minutes left of the user's allowing its test signals
             return QStringLiteral(" · ") + tr("test signals allowed, %n min left", "", int(minutes));
         }
@@ -1542,6 +1581,26 @@ void AiController::setAgentSplCapOn(bool on) {
     QSettings().setValue(QLatin1String(kSplCapOnKey), on);
     applySplCap();
     emit settingsChanged();
+}
+
+// -- WP ADETQ --
+void AiController::setAgentDetect(bool on) {
+    if (on == m_agentDetect || !m_mcp) return;
+    m_agentDetect = on;
+    QSettings().setValue(QLatin1String(kAgentDetectKey), on);
+    dspi_mcp_set_agent_detect(m_mcp, on);
+    emit settingsChanged();
+}
+
+// -- WP ADETQ -- dspi-mcp's DETECT_WARNING, word for word (AUTODES 4.1): the
+// agent's question carries the server's copy; the app's own Detect… and the
+// never-ask switch show this one
+QString AiController::detectWarning() {
+    return tr("Nothing is known about these outputs yet. A tweeter wired where the probe expects a woofer could receive "
+              "a few seconds of sweep below 1 kHz at −50 dBFS: less than a hundredth of what a 1 kHz crossover lets "
+              "through from music, but not nothing. Keep the volume where it is and stay by Stop. Afterwards check the "
+              "result in Settings › Speakers and confirm or correct it: until you do, the detected roles guard your "
+              "speakers in place of a confirmed setup.");
 }
 
 void AiController::applySplCap() {

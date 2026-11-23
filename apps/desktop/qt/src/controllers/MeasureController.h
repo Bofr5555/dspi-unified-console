@@ -168,6 +168,8 @@ public:
     // The active device's, made when it is first shown
     MeasureSession *session() const;
     QList<MeasureSession *> sessions() const { return m_sessions.values(); }
+    // -- WP ADETQ -- `device`'s, if one was made (none is made here)
+    MeasureSession *sessionOf(DeviceSession *device) const { return m_sessions.value(device); }
     // The one, but for `but`, whose input is open or being opened; null for none
     MeasureSession *capturing(const MeasureSession *but) const;
     // Something on a device that is not shown has an outcome: a notice names it

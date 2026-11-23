@@ -97,7 +97,8 @@ Panel {
                         Text {
                             Layout.fillWidth: true
                             textFormat: Text.PlainText
-                            text: ask.modelData.riskLines.concat(ask.modelData.grantText ? [ask.modelData.grantText] : []).join("\n")   // -- WP LAY8 --, ODEC
+                            text: ask.modelData.riskLines.concat(ask.modelData.warning ? ["⚠ " + ask.modelData.warning] : [])   // -- WP ADETQ --
+                                  .concat(ask.modelData.grantText ? [ask.modelData.grantText] : []).join("\n")   // -- WP LAY8 --, ODEC
                             font: Theme.fontSmall
                             color: Theme.text
                             wrapMode: Text.Wrap

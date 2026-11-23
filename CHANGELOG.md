@@ -14,6 +14,14 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
   confirmed setup does (a detected tweeter keeps its 1 kHz high-pass under every setting), so agents may measure and tune
   with them; an output where nothing was heard may not be routed, switched on or unmuted by an agent. Refused on a
   confirmed setup.
+- Speaker detection on screen (WP ADETQ): Settings › Speakers has **Detect…** (one question with the same warning as
+  the agent's; it plays on the open device with the Measure view's microphone, says where it is, and **Stop** keeps what
+  it found). A detected layout says so in its banner and stamp ("Detected by AI, not confirmed"), each row has a marker
+  (detected, detected?, uncertain, nothing heard, off, you, suggested; the reason on hover), and **Show Details** lists
+  the evidence. A speaker layout that is kept but not confirmed is now named on the main screen (Classic's banners,
+  Modern's status strip). The agent's question is headed "Detect the speakers on …"; the Stop bar and the agent strip
+  say which output is probed; Settings › AI Agents has **Agents may detect speakers** (for **Never**; off by default,
+  its warning asked once). The channel inspector says when nothing was heard from an output.
 - AI agents, the owner's answers of 2026-11-23 (WP ODEC): a question about test signals is asked once per device for an
   agent's task: **Allow** also lets that agent measure there for 10 minutes (the AI page shows it with the time left and
   **Revoke**); louder changes and saves are still asked one at a time. An agent keeps a tune only after a verify that

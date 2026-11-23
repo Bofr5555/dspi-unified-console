@@ -286,6 +286,18 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Agents may detect speakers</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Under Never, an agent may play the speaker detection&apos;s quiet test sweeps without asking. Off, it is refused.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Needed under Never only: with the other settings, each detection is asked, with its warning.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Limits profile</source>
         <translation type="unfinished"></translation>
     </message>
@@ -464,6 +476,18 @@
         <source>Activity</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>Let agents detect the speakers without asking?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>An agent may then find out what is wired to a DSPi&apos;s outputs by playing quiet test sweeps on each output in turn, without asking you first. Each output is first played only above 1 kHz, at most −24 dBFS. Only an output whose response says it is not a tweeter is played lower, and then at most −50 dBFS. Whatever cannot be told apart is treated as a tweeter.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>I Understand</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>AiAgentsPanel</name>
@@ -601,6 +625,10 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Speaker detection</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Replaces settings</source>
         <translation type="unfinished"></translation>
     </message>
@@ -625,6 +653,11 @@
         <extracomment>%1 is a kind of change (&quot;Louder&quot;), %2 the change (&quot;Out 1 gain up from -12 dB to -3 dB&quot;)
 ----------
 What an AI agent does, and to what: &quot;Changing the gain: OUT3 Centre&quot;</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Allow also lets %1 play test signals and detect the speakers on %2 for the next %3 minutes, for this task. Louder changes and preset saves are still asked one at a time.</source>
+        <extracomment>The question for an AI agent&apos;s speaker detection: %1 is the agent&apos;s name, %2 a device&apos;s name, %3 minutes</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -781,6 +814,10 @@ What an AI agent does, and to what: &quot;Changing the gain: OUT3 Centre&quot;</
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Asking to detect the speakers</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Stopping a measurement</source>
         <translation type="unfinished"></translation>
     </message>
@@ -835,6 +872,10 @@ What an AI agent does, and to what: &quot;Changing the gain: OUT3 Centre&quot;</
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Detecting speakers</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Measuring: %1</source>
         <translation type="unfinished"></translation>
     </message>
@@ -858,6 +899,14 @@ What an AI agent does, and to what: &quot;Changing the gain: OUT3 Centre&quot;</
     <message>
         <source>AI agents are paused. Nothing is changed until Resume.</source>
         <translation type="unfinished"></translation>
+    </message>
+    <message numerus="yes">
+        <source>test signals and speaker detection allowed, %n min left</source>
+        <extracomment>Said on the hub beside what an AI agent does: %n minutes left of the user&apos;s allowing its test signals and speaker detection</extracomment>
+        <translation type="unfinished">
+            <numerusform></numerusform>
+            <numerusform></numerusform>
+        </translation>
     </message>
     <message numerus="yes">
         <source>test signals allowed, %n min left</source>
@@ -892,6 +941,10 @@ What an AI agent does, and to what: &quot;Changing the gain: OUT3 Centre&quot;</
     <message>
         <source>The measurement %1 asked for was stopped: a setting was changed while it ran, so its result would not be valid.</source>
         <extracomment>%1 is an AI agent&apos;s name</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Nothing is known about these outputs yet. A tweeter wired where the probe expects a woofer could receive a few seconds of sweep below 1 kHz at −50 dBFS: less than a hundredth of what a 1 kHz crossover lets through from music, but not nothing. Keep the volume where it is and stay by Stop. Afterwards check the result in Settings › Speakers and confirm or correct it: until you do, the detected roles guard your speakers in place of a confirmed setup.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -940,12 +993,21 @@ What an AI agent does, and to what: &quot;Changing the gain: OUT3 Centre&quot;</
 <context>
     <name>AiGrantRows</name>
     <message>
+        <source>Test signals and speaker detection allowed: %1 on %2, %3 left</source>
+        <extracomment>An AI agent may play test signals and detect the speakers without asking: %1 its name, %2 a device&apos;s name, %3 the time left (&quot;9:41&quot;)</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Test signals allowed: %1 on %2, %3 left</source>
         <extracomment>An AI agent may play test signals without asking: %1 its name, %2 a device&apos;s name, %3 the time left (&quot;9:41&quot;)</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Revoke</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Ask again before this agent&apos;s next test signal or speaker detection; a detection under way stops</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -974,6 +1036,11 @@ What an AI agent does, and to what: &quot;Changing the gain: OUT3 Centre&quot;</
     </message>
     <message>
         <source>Allow it only if you have just connected an agent on this computer. Its log shows the same code.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Detect the speakers on %1?</source>
+        <extracomment>%1 a device&apos;s name</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1117,6 +1184,11 @@ What an AI agent does, and to what: &quot;Changing the gain: OUT3 Centre&quot;</
 </context>
 <context>
     <name>AiWorkBanner</name>
+    <message>
+        <source>Test signals and speaker detection allowed, %1 left</source>
+        <extracomment>The strip: an AI agent may play test signals and detect the speakers without asking for %1 (&quot;9:41&quot;) more</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
     <message>
         <source>Test signals allowed, %1 left</source>
         <extracomment>The strip: an AI agent may play test signals without asking for %1 (&quot;9:41&quot;) more</extracomment>
@@ -1905,6 +1977,10 @@ Switching an output is instant and never writes to flash. The pin, name and powe
     </message>
     <message>
         <source>The speaker layout has a tweeter here. A tweeter without its high pass can be damaged.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The speaker detection heard nothing from this output.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -10196,6 +10272,74 @@ Macros are stored on the device alongside the controls and share their Save and 
         <extracomment>%1 an output&apos;s name, %2 a frequency in Hz</extracomment>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>%1 Hz</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 kHz</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 dBFS</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Something already runs on this device: stop it first.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Speakers detected: %1 Check each role in Settings › Speakers, then confirm.</source>
+        <extracomment>%1 the detection&apos;s summary (&quot;2 tweeters, 2 woofers; nothing heard on Out 4.&quot;)</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Speakers detected, requested by %1: %2 Check each role in Settings › Speakers, then confirm.</source>
+        <extracomment>%1 is &quot;AI · &quot; and the agent&apos;s name, %2 the detection&apos;s summary</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The speaker detection stopped%1. The outputs it did not finish are treated as tweeters. %2</source>
+        <extracomment>%1 why it stopped (may be empty), %2 the detection&apos;s summary so far</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Settings › Speakers…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Detecting the speakers.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Detecting the speakers: %1, finding its level above %2.</source>
+        <extracomment>%1 an output&apos;s name, %2 a frequency (&quot;1 kHz&quot;)</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Detecting the speakers: %1, playing %2–20 kHz at %3.</source>
+        <extracomment>%1 an output&apos;s name, %2 a frequency (&quot;1 kHz&quot;), %3 a level (&quot;−30 dBFS&quot;)</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Detecting the speakers: %1, playing from %2 at %3.</source>
+        <extracomment>%1 an output&apos;s name, %2 a frequency (&quot;500 Hz&quot;), %3 a level (&quot;−50 dBFS&quot;)</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Detecting the speakers: %1.</source>
+        <extracomment>%1 an output&apos;s name</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Detecting speakers</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Detecting speakers: %1 (%2 of %3)</source>
+        <extracomment>The agent strip: %1 the output probed now, %2 its turn, %3 how many are probed</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>MeasureSetupTab</name>
@@ -15753,6 +15897,24 @@ Save before continuing?</source>
 <context>
     <name>SpeakersController</name>
     <message>
+        <source>today at %1</source>
+        <extracomment>When a speaker layout was kept: %1 a time of day</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>on %1</source>
+        <extracomment>When a speaker layout was kept: %1 a date</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 Hz</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 kHz</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Choose at least one output for the speaker layout.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -15777,6 +15939,36 @@ Save before continuing?</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Your speaker layout was detected and is not confirmed. Check it in Settings › Speakers.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Your speaker layout was detected by AI and is not confirmed. Check it in Settings › Speakers.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>microphone close to each driver</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>headphones on a coupler</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>microphone at the listening position</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Detected, not confirmed: the speaker detection probed this DSPi&apos;s outputs%1 (%2). Check each role, correct what is wrong, then confirm.</source>
+        <extracomment>%1 when (&quot;today at 14:02&quot;), with a space before it, or &quot;&quot;; %2 where the microphone was</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Detected by AI, not confirmed: %1 probed this DSPi&apos;s outputs%2 (%3). Check each role, correct what is wrong, then confirm.</source>
+        <extracomment>%1 the AI agent&apos;s name, %2 when (&quot;today at 14:02&quot;), with a space before it, or &quot;&quot;; %3 where the microphone was</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Imported speaker layout: these roles were set outside this app (a configuration file or another app). Check that they match this DSPi&apos;s speakers, then confirm them.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -15798,6 +15990,230 @@ Save before continuing?</source>
     </message>
     <message>
         <source>No speaker layout yet: the roles are suggested from the filters. Confirm which output drives what in Settings › Speakers.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>detected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>detected?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>uncertain</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>unknown</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>nothing heard</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>off, not probed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>you</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>suggested</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Found by the speaker detection.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Found by the speaker detection, not sure: correct it if it is wrong.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The detection was not sure; it is treated as a tweeter to be safe.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The probe did not finish this output; it is treated as a tweeter until you set its role.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Nothing reached the microphone from this output: nothing is wired here, or it does not reach the microphone. Left out of the layout.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The output was off or muted, so the detection did not probe it.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Set or confirmed by you.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Suggested from the filters and the routing: nobody&apos;s word yet.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Detected by AI, not confirmed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Detected, not confirmed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Detected by AI, not confirmed, %1.</source>
+        <extracomment>%1 when (&quot;today at 14:02&quot;, &quot;on 23/11/2026&quot;)</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Detected, not confirmed, %1.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Confirmed %1.</source>
+        <extracomment>%1 when (&quot;today at 14:02&quot;, &quot;on 23/11/2026&quot;)</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Kept, not confirmed, %1.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Tweeter</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Midrange</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Woofer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Subwoofer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Full range</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Nothing heard</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unknown, treated as a tweeter</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Off, not probed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>4–16 kHz</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>above the floor</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>below the floor</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>never</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Out %1</source>
+        <extracomment>Outputs by number: %1 &quot;1–2, 5&quot;</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>not probed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 dB</source>
+        <extracomment>A level difference in dB, one decimal</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No device connected.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This connection may not change the DSPi.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Your speaker layout is confirmed, so the speakers are not detected over it. Correct the roles yourself here.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The Measure view is not available.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Detect the speakers on %1?</source>
+        <extracomment>%1 a device&apos;s name</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>this DSPi</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>from the headphones on the coupler</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>from the microphone close to each driver</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>from the microphone at the listening position</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>its outputs</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This finds out what is wired to %1&apos;s outputs (%2) by playing quiet test sweeps on each output in turn, %3.</source>
+        <extracomment>%1 a device&apos;s name, %2 its outputs (&quot;Out 1–6&quot;), %3 where the microphone is (&quot;from the microphone at the listening position&quot;)</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source> (%1 is off and is not probed)</source>
+        <extracomment>%1 an output that is off (&quot;Out 3&quot;)</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source> (%1 are off and are not probed)</source>
+        <extracomment>%1 outputs that are off (&quot;Out 3–8&quot;)</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Speaker detection: %1%2. Each output is first played only above 1 kHz, at most %3. Only an output whose response says it is not a tweeter is played lower, and then at most %4. Whatever cannot be told apart is treated as a tweeter.</source>
+        <extracomment>%1 the outputs (&quot;Out 1–2&quot;), %2 those that are off, with a space before them, or &quot;&quot;; %3 and %4 levels (&quot;−24 dBFS&quot;, &quot;−50 dBFS&quot;)</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Nothing has played yet. Sound cannot be taken back once it plays; Stop ends it.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>SpeakersLayoutNote</name>
+    <message>
+        <source>Settings › Speakers…</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -15828,11 +16244,64 @@ Save before continuing?</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Detect…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Find out which outputs reach a driver and which drive a tweeter, with quiet test sweeps and the microphone</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Confirmed.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Changed: not kept until you confirm.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Stop</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Detection: %1</source>
+        <extracomment>%1 the speaker detection&apos;s summary (&quot;2 tweeters, 2 woofers; nothing heard on Out 4.&quot;)</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hide Details</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show Details</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Output</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Found</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Heard at</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Top falls</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>−6 dB at</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Lowest played</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Detect</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
