@@ -1,0 +1,96 @@
+{
+ "story": "s7-lock.toml",
+ "confirm": "ask_risky",
+ "steps": {
+  "lower-sub": [
+   [
+    "dspi_get_overview",
+    {
+     "device": "demo:1"
+    },
+    "ok",
+    "the lock is shown; no secret",
+    "4711|pbkdf|salt|recovery.?code"
+   ],
+   [
+    "dspi_get_limits",
+    {
+     "device": "demo:1"
+    },
+    "ok",
+    "the profile; no PIN, hash or code",
+    "4711|pbkdf|salt|recovery.?code"
+   ],
+   [
+    "dspi_set_gain",
+    {
+     "device": "demo:1",
+     "output": 4,
+     "gain_db": -3
+    },
+    "error",
+    "the lock covers the gain"
+   ],
+   [
+    "dspi_set_peq_band",
+    {
+     "device": "demo:1",
+     "output": 4,
+     "slot": "free",
+     "type": "low_shelf",
+     "freq_hz": 80,
+     "gain_db": -3,
+     "q": 0.7
+    },
+    "error",
+    "and the EQ"
+   ],
+   [
+    "dspi_set_route",
+    {
+     "device": "demo:1",
+     "input": 0,
+     "output": 4,
+     "on": true,
+     "gain_db": -9
+    },
+    "error",
+    "and the routing"
+   ]
+  ],
+  "mute": [
+   [
+    "dspi_set_mute",
+    {
+     "device": "demo:1",
+     "output": 4,
+     "muted": true
+    },
+    "ok",
+    "a mute passes under the lock"
+   ]
+  ],
+  "pin": [
+   [
+    "dspi_get_limits",
+    {
+     "device": "demo:1"
+    },
+    "ok",
+    "still no secret",
+    "4711|pbkdf|salt|recovery.?code"
+   ]
+  ],
+  "preset": [
+   [
+    "dspi_preset_load",
+    {
+     "device": "demo:1",
+     "slot": 1
+    },
+    "ok",
+    "a preset load passes under the lock (asked, allowed)"
+   ]
+  ]
+ }
+}
