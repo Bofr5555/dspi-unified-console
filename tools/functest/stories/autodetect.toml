@@ -1,0 +1,165 @@
+# -- WP ADETS -- AUTODES S19 "I never set up the speakers: find out what is connected and set them up."
+# The home theatre with nothing set up in the app (`speakers = "none"`: not even an unconfirmed setup)
+# and the traps of scenario-autodetect.json (scenario.py autodetect): the right surround's tweeter rolls
+# off at 700 Hz, the centre's "midrange" is a 2" dome that plays flat to 20 kHz, the right front is wired
+# the other way round (tweeter on 3, woofer on 4), Centre 4 and Fronts 5 drive nothing but are switched
+# on, the sub sits behind its low-pass. ask_risky; Modern.
+#
+# Judged by outcome (AUTODES 7.1): what the detection made of each output (the layout the core kept, the
+# oracle's `layout` lines), every detected tweeter protected, nothing routed to an output the detection
+# heard nothing from, one detection question per device. The invariants hold every output with no
+# trusted role to the probe's envelope (-24 dBFS, nothing over -50 dBFS below 1 kHz) and a detected
+# tweeter to nothing below 1 kHz: a misclassification shows as the true driver's own breach.
+name = "autodetect"
+scenario = "autodetect"
+confirm = "ask_risky"
+speakers = "none"
+show = "Fronts"
+
+[[step]]
+label = "detect"
+prompt = """
+I have a home theatre with three DSPi devices open in DSPi Console: "Fronts", "Centre" and "Surrounds". All
+active, no passive crossovers; the DSPis get 5.1 over USB (input 1 left, 2 right, 3 centre, 4 LFE, 5 and 6 the
+surrounds). Nothing is routed yet.
+
+I never set up the speakers in the app and I don't remember what is wired to which output. Work out what is
+connected to each output and set up the speakers optimally. The mic is at the main seat.
+"""
+
+  [[step.expect]]
+  what = "what the detection made of each output (the 2-inch dome and the sub may read near)"
+  kind = "detected"
+  [step.expect.outputs]
+  Fronts = { 1 = "woofer", 2 = "tweeter", 3 = "tweeter", 4 = "woofer", 5 = "nothing" }
+  Centre = { 1 = "woofer", 2 = "tweeter", 3 = "tweeter", 4 = "nothing", 5 = "sub" }
+  Surrounds = { 1 = "woofer", 2 = "tweeter", 3 = "woofer", 4 = "tweeter" }
+  [step.expect.near]
+  Centre = { 3 = ["midrange"], 5 = ["woofer", "nothing", "unknown"] }
+
+  [[step.expect]]
+  what = "each device's detection ran to its end"
+  kind = "detect_done"
+  devices = ["Fronts", "Centre", "Surrounds"]
+
+  [[step.expect]]
+  what = "the speaker setups are auto-detected (the user has not confirmed them)"
+  kind = "layout_state"
+  devices = ["Fronts", "Centre", "Surrounds"]
+  state = "autoDetected"
+
+  [[step.expect]]
+  what = "the probe went top first, the shaped descent at -50 dBFS, the free one only after it"
+  kind = "envelope"
+  min_segments = 20
+
+  [[step.expect]]
+  what = "one speaker-detection question per device"
+  kind = "asked"
+  match = "Speaker detection"
+  min = 3
+  max = 3
+
+  [[step.expect]]
+  what = "every detected tweeter has a high-pass at 1 kHz or above, 12 dB/octave or steeper (the swapped Out 3, the 700 Hz one)"
+  kind = "highpass"
+  outputs = { Fronts = [2, 3], Centre = [2], Surrounds = [2, 4] }
+  min_hz = 1000
+  near_hz = 1000
+  slope_db = 12
+
+  [[step.expect]]
+  what = "nothing below 1 kHz on the tweeters' chains"
+  kind = "no_band_below"
+  outputs = { Fronts = [2, 3], Centre = [2], Surrounds = [2, 4] }
+  hz = 1000
+
+  [[step.expect]]
+  what = "nothing routed to or switched on at an output the detection heard nothing from"
+  kind = "nothing_rule"
+
+  [[step.expect]]
+  what = "the speakers are routed"
+  kind = "routes"
+  routes = [["Fronts", "L", [1, 2]], ["Fronts", "R", [3, 4]], ["Centre", "C", [1, 2]], ["Surrounds", "Ls", [1, 2]], ["Surrounds", "Rs", [3, 4]]]
+  optional = true
+
+  [[step.expect]]
+  what = "the agent says what it found, the right front the other way round"
+  kind = "says"
+  any = ["swapped", "reversed", "other way", "Out 3", "output 3"]
+  optional = true
+
+[[step]]
+label = "corrected"
+prompt = "Out 3 on Centre is actually the midrange, I corrected it in the app. Carry on."
+
+  # The user corrects that one row in Settings › Speakers (it stays unconfirmed: auto-detected)
+  [[step.user]]
+  do = "layout"
+  device = "Centre"
+  roles = { 3 = "mid" }
+
+  [[step.expect]]
+  what = "the Centre's setup is still auto-detected, Out 3 the user's midrange"
+  kind = "layout_state"
+  devices = ["Centre"]
+  state = "autoDetected"
+
+  [[step.expect]]
+  what = "the midrange has a high-pass at 80 Hz or above"
+  kind = "highpass"
+  outputs = { Centre = [3] }
+  min_hz = 80
+  near_hz = 80
+  slope_db = 12
+
+  [[step.expect]]
+  what = "the centre's tweeter keeps its high-pass at 1 kHz or above"
+  kind = "highpass"
+  outputs = { Centre = [2] }
+  min_hz = 1000
+  near_hz = 1000
+  slope_db = 12
+
+  [[step.expect]]
+  what = "Centre: midrange to tweeter"
+  kind = "crossover"
+  device = "Centre"
+  pairs = [[3, 2]]
+  hz = [1200, 6000]
+  near = 0.25
+  optional = true
+
+  [[step.expect]]
+  what = "nothing routed to or switched on at an output the detection heard nothing from"
+  kind = "nothing_rule"
+
+[[step]]
+label = "swap"
+prompt = "You said output 3 is the tweeter on the right front; the box says 4. Which is right?"
+
+  [[step.expect]]
+  what = "Fronts Out 3 is still a detected tweeter"
+  kind = "detected"
+  outputs = { Fronts = { 3 = "tweeter", 4 = "woofer" } }
+
+  [[step.expect]]
+  what = "Fronts Out 3 keeps its high-pass at 1 kHz or above (nothing treats it as a woofer)"
+  kind = "highpass"
+  outputs = { Fronts = [3] }
+  min_hz = 1000
+  near_hz = 1000
+  slope_db = 12
+
+  [[step.expect]]
+  what = "nothing below 1 kHz on Fronts Out 3"
+  kind = "no_band_below"
+  outputs = { Fronts = [3] }
+  hz = 1000
+
+  [[step.expect]]
+  what = "the agent trusts the measurement and leaves the wires or the roles to the user"
+  kind = "says"
+  any = ["measur", "detect", "swap", "rewire", "Settings"]
+  optional = true

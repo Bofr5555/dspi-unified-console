@@ -5,6 +5,8 @@ simulator, the harness and the judge read). Change the system here.
     python3 tools/functest/scenario.py > tools/functest/scenario.json
     python3 tools/functest/scenario.py restaurant > tools/functest/scenario-restaurant.json   (-- WP FUNC2c --)
     python3 tools/functest/scenario.py centre-rewired > tools/functest/scenario-centre-rewired.json
+    python3 tools/functest/scenario.py autodetect > tools/functest/scenario-autodetect.json   (-- WP ADETS --)
+    python3 tools/functest/scenario.py k340 > tools/functest/scenario-k340.json
 
 A story names a variant with `scenario = "restaurant"` (scenario-restaurant.json).
 """
@@ -145,7 +147,72 @@ def centre_rewired():
     return {**scenario, "name": "FUNC2c home theatre, centre rewired", "devices": devices}
 
 
-VARIANTS = {"restaurant": lambda: restaurant, "centre-rewired": centre_rewired}
+# -- WP ADETS -- AUTODES S19: the home theatre as nobody set it up, with the traps a speaker
+# detection must not fall into (DESIGN 7.1): the right surround's tweeter rolls off at 700 Hz (top
+# holds: a tweeter), the centre's "midrange" is a 2" dome (HP 400, LP 14 kHz: plays flat to 20 kHz,
+# so a tweeter until the user corrects it), the right front is wired the other way round (tweeter
+# on 3, woofer on 4), two outputs drive nothing but are switched on (Centre 4, Fronts 5), the sub
+# sits behind its low-pass. The story seeds no speaker setup at all (`speakers = "none"`).
+def autodetect():
+    devices = [dict(d) for d in scenario["devices"]]
+    fronts = [dict(o) for o in two_way("Left", 0, 1, 3.00, -13.0, -8.5, [peak(112.0, 4.0, 2.5)])]
+    right = two_way("Right", 1, 3, 3.18, -14.2, -9.5, [peak(146.0, 4.0, -3.0)])
+    # Swapped: the right tweeter on 3, its woofer on 4
+    fronts += [dict(right[1], output=2), dict(right[0], output=3)]
+    devices[0] = {**devices[0], "outputs": fronts, "enabledUnwired": [4]}
+    centre = [dict(o) for o in devices[1]["outputs"]]
+    centre[2] = out(3, "Centre midrange", "mid", "Centre", 0,
+                    driver(-9.0, 400.0, 0.7, 14000.0, 0.7, peak(16000.0, 4.0, 3.0), 0.06, True),
+                    [peak(1100.0, 1.5, 2.0), peak(5200.0, 2.5, -2.0)], 2.75, MID)
+    devices[1] = {**devices[1], "outputs": centre, "enabledUnwired": [3]}
+    surrounds = two_way("Surround L", 0, 1, 1.90, -15.0, -11.0, [peak(98.0, 4.0, 3.0)], f_res=1300.0) \
+        + two_way("Surround R", 1, 3, 2.35, -11.5, -8.0, [peak(133.0, 4.0, 2.5)], f_res=700.0)
+    devices[2] = {**devices[2], "outputs": surrounds}
+    return {**scenario, "name": "ADETS home theatre, nothing set up", "devices": devices}
+
+
+# -- WP ADETS -- AUTODES P17: the Koss K340 on its DSPi, both cups at the coupler (the sim's one
+# microphone hears all four drivers; the real run moves the coupler from cup to cup). Each cup has
+# a dynamic woofer and a tweeter behind a transformer (memory k340-drivers: 2nd-order high-pass
+# near 2 kHz plus its own -6 dB below 3.2 kHz, 10-14 dB under the woofer). The owner's tweeter floor
+# is 2.5 kHz: the oracle holds the tweeters to nothing over -60 dBFS below it, and a test signal
+# to -30 dBFS (the headphones' measuring ceiling). Out 1, 2 right cup; Out 3, 4 left (as wired).
+K340_TWEETER = {"belowHz": 2500.0, "belowDbfs": -60.0, "capDbfs": -30.0}
+K340_WOOFER = {"belowHz": 0.0, "belowDbfs": 0.0, "capDbfs": -30.0}
+
+
+def k340_cup(side, group, first, w_sens, t_sens):
+    return [
+        out(first, f"{side} woofer", "low", side, group,
+            driver(w_sens, 20.0, 0.6, 5000.0, 0.7, peak(6000.0, 4.0, 5.0), 0.02),
+            [peak(120.0, 1.2, 2.0), peak(2200.0, 2.0, -1.5)], 0.02, K340_WOOFER),
+        out(first + 1, f"{side} tweeter", "high", side, group,
+            driver(t_sens, 2000.0, 0.8, 0.0, 0.7, peak(14000.0, 3.0, 3.0), 0.0),
+            [{"kind": "lowShelf", "freq": 3200.0, "q": 0.7, "gain_db": -6.0}, peak(8000.0, 3.0, -2.0)],
+            0.02, K340_TWEETER),
+    ]
+
+
+# A coupler is quiet and close: -100 dBFS of noise, drivers near full scale at the microphone, a
+# headphone listener's volume (-12 dB; the scenario's volume applies to test signals too, P5)
+k340 = {
+    **{k: v for k, v in scenario.items() if k not in ("devices", "modes", "reflections")},
+    "name": "ADETS Koss K340 at the coupler",
+    "headphones": True,
+    "noiseDbfs": -100.0,
+    "modes": [],
+    "reflections": [],
+    "devices": [
+        {
+            "serial": "ADETS-K340", "name": "K340", "userVolumeDb": -12.0,
+            "inputNames": ["L", "R", "In 3", "In 4", "In 5", "In 6", "In 7", "In 8"], "routes": [],
+            "outputs": k340_cup("Right", 1, 1, 0.0, -12.0) + k340_cup("Left", 0, 3, -0.5, -12.5),
+        },
+    ],
+}
+
+VARIANTS = {"restaurant": lambda: restaurant, "centre-rewired": centre_rewired,
+            "autodetect": autodetect, "k340": lambda: k340}  # -- WP ADETS --
 
 if __name__ == "__main__":
     import sys

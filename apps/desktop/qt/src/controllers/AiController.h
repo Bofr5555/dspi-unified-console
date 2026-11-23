@@ -111,6 +111,9 @@ class AiController : public QObject {
     // microphone calibration that reads dB SPL (else it is refused); off, the
     // level ceiling holds
     Q_PROPERTY(bool agentSplCapOn READ agentSplCapOn WRITE setAgentSplCapOn NOTIFY settingsChanged)
+    // -- WP ADETS -- minimal (ADETQ owns the switch and its warning): Settings ›
+    // AI Agents › Agents may detect speakers, off by default (dspi_mcp_set_agent_detect)
+    Q_PROPERTY(bool agentDetect READ agentDetect WRITE setAgentDetect NOTIFY settingsChanged)
     Q_PROPERTY(QVariantList rememberedDevices READ rememberedDevices NOTIFY rememberedChanged)
     // -- WP ODEC -- What the user allowed for a while (one question for an agent's
     // test signals on a device, ten minutes): [{ id, agent, device (its title),
@@ -166,6 +169,8 @@ public:
     void setAgentSplCap(int db);
     bool agentSplCapOn() const { return m_agentSplCapOn; }   // -- WP INTG --
     void setAgentSplCapOn(bool on);
+    bool agentDetect() const { return m_agentDetect; }   // -- WP ADETS --
+    void setAgentDetect(bool on);
     QVariantList rememberedDevices() const { return m_remembered.toVariantList(); }
     Q_INVOKABLE void forgetRememberedDevices();
     // What the start reads: the remembered devices from the settings, handed to
@@ -366,6 +371,7 @@ private:
     QWaitCondition m_holdsDone;
     int m_holds = 0;
     bool m_agentSplCapOn = true;   // -- WP INTG --
+    bool m_agentDetect = false;    // -- WP ADETS --
     void applySplCap();
     QJsonArray m_remembered;
     void remember();

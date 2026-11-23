@@ -119,6 +119,9 @@ mod tests_wp_p5ses_device;
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_pgmeas;
+// -- WP ADETS --
+#[cfg(test)]
+mod tests_wp_adets;
 
 // -- WP ROLE0 -- the speaker layout's proposal is the tune's layout
 pub(crate) use plan::Plan;
@@ -1324,7 +1327,18 @@ impl DspiCore {
     pub(crate) fn measure_resolve_roles(&self, plan: &mut Plan) -> Result<()> {
         let confirmed = self.trusted_layout_now(); // -- WP ADET0 --
         let chains: Chains = {
-            let inner = self.lock();
+            let mut inner = self.lock();
+            // -- WP ADETS -- the limits profile's high-pass minimum: a high way's
+            // stimulus floor (Plan::floor_of), as its rule's corner (preflight)
+            let profile = inner.limits_profile().cloned();
+            for o in &mut plan.outputs {
+                o.profile_floor_hz = profile
+                    .as_ref()
+                    .and_then(|p| p.output(o.output))
+                    .and_then(|l| l.highpass_min_hz)
+                    .filter(|f| f.is_finite() && *f > 0.0)
+                    .unwrap_or(0.0);
+            }
             plan.outputs
                 .iter()
                 .filter(|o| o.output < inner.state.num_output_channels)

@@ -64,6 +64,7 @@ const char *const kConfirmKey = "mcp/confirm";
 // -- WP FEATUI --
 const char *const kSplCapKey = "mcp/agentSplCapDb";
 const char *const kSplCapOnKey = "mcp/agentSplCapOn";   // -- WP INTG --
+const char *const kAgentDetectKey = "mcp/agentDetect";   // -- WP ADETS --
 const char *const kRememberedKey = "devices/remembered";
 const QString kConfirmDefault = QStringLiteral("ask_risky");
 const QStringList kConfirmModes{ QStringLiteral("ask_everything"), kConfirmDefault, QStringLiteral("never_ask") };
@@ -140,6 +141,9 @@ AiController::AiController(const AppContext &ctx, QObject *parent) : QObject(par
     m_agentSplCap = qBound(kSplCapMin, s.value(QLatin1String(kSplCapKey), kSplCapDefault).toInt(), kSplCapMax);
     m_agentSplCapOn = s.value(QLatin1String(kSplCapOnKey), true).toBool();   // -- WP INTG --
     applySplCap();
+    // -- WP ADETS -- the never-ask detection switch, off by default
+    m_agentDetect = s.value(QLatin1String(kAgentDetectKey), false).toBool();
+    if (m_mcp) dspi_mcp_set_agent_detect(m_mcp, m_agentDetect);
     loadRemembered();
     m_tick.setInterval(1000);
     connect(&m_tick, &QTimer::timeout, this, &AiController::tick);
@@ -702,6 +706,7 @@ QString AiController::riskLabel(const QString &kind) {
         { QStringLiteral("installation_save"), QT_TRANSLATE_NOOP("AiController", "Installation") },
         { QStringLiteral("source"), QT_TRANSLATE_NOOP("AiController", "Input source") },
         { QStringLiteral("system"), QT_TRANSLATE_NOOP("AiController", "Every unit") },
+        { QStringLiteral("detect"), QT_TRANSLATE_NOOP("AiController", "Speaker detection") },   // -- WP ADETS -- (ADETQ's)
     };
     const char *label = labels.value(kind);
     return label ? tr(label) : QString();
@@ -1541,6 +1546,15 @@ void AiController::setAgentSplCapOn(bool on) {
     m_agentSplCapOn = on;
     QSettings().setValue(QLatin1String(kSplCapOnKey), on);
     applySplCap();
+    emit settingsChanged();
+}
+
+// -- WP ADETS -- (minimal; ADETQ's switch shows the warning first)
+void AiController::setAgentDetect(bool on) {
+    if (on == m_agentDetect || !m_mcp) return;
+    m_agentDetect = on;
+    QSettings().setValue(QLatin1String(kAgentDetectKey), on);
+    dspi_mcp_set_agent_detect(m_mcp, on);
     emit settingsChanged();
 }
 

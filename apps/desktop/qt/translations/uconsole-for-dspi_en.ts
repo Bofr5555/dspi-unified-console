@@ -621,6 +621,10 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Speaker detection</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>%1: %2</source>
         <extracomment>%1 is a kind of change (&quot;Louder&quot;), %2 the change (&quot;Out 1 gain up from -12 dB to -3 dB&quot;)
 ----------
@@ -9953,6 +9957,10 @@ Macros are stored on the device alongside the controls and share their Save and 
     </message>
     <message>
         <source>Finding an output&apos;s low end with the DSPi&apos;s generator.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Detecting the speakers with quiet test sweeps.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>

@@ -80,6 +80,9 @@ public:
     // -- WP MCP5 -- the low-end search (dspi_measure_rolloff_tick; its segments'
     // blocks to dspi_measure_capture_push)
     std::atomic<bool> rolloff{ false };
+    // -- WP ADETS -- an agent's speaker detection (dspi_detect_tick; its
+    // sessions' blocks to dspi_measure_capture_push). Minimal: ADETQ owns the UI
+    std::atomic<bool> detect{ false };
 
     explicit MeasureLoop(FfiCore *core) : m_core(core) {}
     FfiCore *core() const { return m_core; }
@@ -109,6 +112,8 @@ signals:
     void systemState(const QByteArray &json);
     // -- WP MCP5 -- the low-end search's state (MeasureRolloffState)
     void rolloffState(const QByteArray &json);
+    // -- WP ADETS -- the speaker detection's state (DetectState)
+    void detectState(const QByteArray &json);
 
 private:
     void tick();
@@ -125,6 +130,8 @@ private:
     qint64 m_systemAt = 0;     // -- WP ATQT --
     QByteArray m_lastRolloff;  // -- WP MCP5 --
     qint64 m_rolloffAt = 0;    // -- WP MCP5 --
+    QByteArray m_lastDetect;   // -- WP ADETS --
+    qint64 m_detectAt = 0;     // -- WP ADETS --
 };
 
 class MeasureSession : public QObject {
@@ -484,6 +491,9 @@ private:
     bool m_rolloffRunning = false;
     QString m_agentLabel;
     void onRolloffState(const QByteArray &json);
+    // -- WP ADETS -- an agent's speaker detection runs (minimal; ADETQ's UI)
+    bool m_detectRunning = false;
+    void onDetectState(const QByteArray &json);
 
     QByteArray m_result;
     QString m_resultFrom;

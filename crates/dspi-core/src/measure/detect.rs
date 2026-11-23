@@ -742,6 +742,17 @@ impl Work {
         Some(Next::Session)
     }
 
+    // -- WP ADETS --
+    /// Stage B, or (no trusted point above the floor in its sweep: the
+    /// ramp heard only an edge, as a sub's tail at 1 kHz) silent above the
+    /// floor: AUTODES 1.3 step 3, the next ramp or the shaped descent.
+    fn after_top(&mut self, raw: Vec<(f64, f64)>) -> Next {
+        match self.after_shape(raw) {
+            Some(next) => next,
+            None => self.not_heard_above(),
+        }
+    }
+
     /// A descent segment judged from `seg` (smoothed over its band, empty
     /// when not heard): on down, or the class.
     fn after_segment(&mut self, seg: Vec<(f64, f64)>) -> Next {
@@ -1284,6 +1295,26 @@ impl DspiCore {
             Step::Top => plan.ramp_band.map_or(w.floor, |b| b.0),
             _ => plan.sweep.f1_hz,
         };
+        // -- WP ADETS -- the function test's oracle: the segment and its floor
+        #[cfg(feature = "sim-scenario")]
+        if let Some(serial) = self.lock().conn.as_ref().map(|c| c.serial.clone()) {
+            let free = matches!(w.step, Step::Descent(k) if k >= w.shaped);
+            let stage = match w.step {
+                Step::Top => "top",
+                Step::Band => "band",
+                Step::Descent(_) if free => "free",
+                Step::Descent(_) => "shaped",
+            };
+            crate::measure_sim::scenario::probe_segment(
+                &serial,
+                w.output,
+                stage,
+                plan.probe.as_ref().map_or(w.floor, |p| p.floor_hz),
+                f1,
+                plan.sweep.f2_hz,
+                ceiling,
+            );
+        }
         self.measure_start_plan(plan, &PreflightOptions::default())?;
         self.measure_set_actor(d.actor);
         d.running = true;
@@ -1336,11 +1367,11 @@ impl DspiCore {
                 ) {
                     Some(w.not_heard_above())
                 } else {
-                    response.and_then(|(freqs, mag, valid, played)| {
+                    response.map(|(freqs, mag, valid, played)| {
                         w.level = level.or(played.is_finite().then_some(played));
                         let raw =
                             trusted(&freqs, &mag, valid.as_deref(), f64::from(w.floor), 20_000.0);
-                        w.after_shape(raw)
+                        w.after_top(raw) // -- WP ADETS --
                     })
                 }
             }

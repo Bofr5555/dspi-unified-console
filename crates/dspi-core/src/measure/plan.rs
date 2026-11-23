@@ -126,6 +126,10 @@ pub(crate) struct OutSpec {
     /// The role the caller (or the layout) gave it; `role` is the effective
     /// one once resolved.
     pub(crate) declared: MeasureRole,
+    // -- WP ADETS --
+    /// The limits profile's high-pass minimum for it, Hz (0: none): a high
+    /// way's stimulus floor when above 1 kHz (the K340's 2.5 kHz).
+    pub(crate) profile_floor_hz: f32,
 }
 
 /// One run: the outputs it plays, at which position.
@@ -418,6 +422,7 @@ impl Plan {
                 inverted: o.inverted,
                 top_hz: f32::INFINITY, // -- WP ROLL1 --
                 declared: o.role,
+                profile_floor_hz: 0.0, // -- WP ADETS --
             })
             .collect();
         outputs.sort_by_key(|o| o.output);
@@ -579,9 +584,18 @@ impl Plan {
     // -- WP ROLL1 --
     /// The lowest frequency any stimulus may play on `outputs`, Hz.
     pub(crate) fn floor_of(&self, outputs: &[u8]) -> f32 {
+        // -- WP ADETS -- a high way's floor rises with its limits profile
         let floor = outputs
             .iter()
-            .map(|o| stimulus_floor_hz(self.role_of(*o)))
+            .map(|o| {
+                let role = self.role_of(*o);
+                let profile = self
+                    .outputs
+                    .iter()
+                    .find(|s| s.output == *o && role == MeasureRole::High)
+                    .map_or(0.0, |s| s.profile_floor_hz);
+                stimulus_floor_hz(role).max(profile)
+            })
             .fold(0.0, f32::max);
         // -- WP ADET0 -- an unknown output's floor
         match self.probe {

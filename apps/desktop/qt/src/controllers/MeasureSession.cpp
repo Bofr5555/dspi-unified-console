@@ -177,7 +177,7 @@ void MeasureLoop::push(const dspi_capture::Block &b) {
         if (!isOk(MeasureSession::object(st))) emit pushRefused(st);
         return;
     }
-    if (!session.load() && !live.load() && !tune.load() && !rolloff.load()) {   // -- WP MCP5 -- the search too
+    if (!session.load() && !live.load() && !tune.load() && !rolloff.load() && !detect.load()) {   // -- WP MCP5 -- the search too (-- WP ADETS -- the detection)
         // -- WP P5QUI2 -- the passive RTA's blocks (never beside a run: the
         // core ends the passive RTA when one starts)
         if (!passive.load()) return;
@@ -262,6 +262,13 @@ void MeasureLoop::tick() {
         if (!running) rolloff.store(false);
         if (due(&m_lastRolloff, &m_rolloffAt, st, "segment") || !running) emit rolloffState(st);
     }
+    // -- WP ADETS -- the speaker detection: its tick drives its sessions
+    if (detect.load()) {
+        const QByteArray st = once([&](char *b, uint32_t l) { return dspi_detect_tick(m_core, b, l); }, kStateBytes);
+        const bool running = MeasureSession::object(st).value(QLatin1String("running")).toBool();
+        if (!running) detect.store(false);
+        if (due(&m_lastDetect, &m_detectAt, st, "stage") || !running) emit detectState(st);
+    }
     if (session.load() && !live.load()) {
         // The tune's runs are the tune tick's; this reads the session's state
         const bool tuneRuns = tune.load();
@@ -280,6 +287,7 @@ void MeasureLoop::finish() {
     if (live.exchange(false)) MeasureSession::reply([&](char *b, uint32_t l) { return dspi_measure_live_stop(m_core, b, l); });
     if (tune.exchange(false)) MeasureSession::reply([&](char *b, uint32_t l) { return dspi_measure_tune_stop(m_core, b, l); });
     if (rolloff.exchange(false)) MeasureSession::reply([&](char *b, uint32_t l) { return dspi_measure_rolloff_stop(m_core, b, l); });   // -- WP MCP5 --
+    if (detect.exchange(false)) MeasureSession::reply([&](char *b, uint32_t l) { return dspi_detect_stop(m_core, b, l); });   // -- WP ADETS --
     if (session.exchange(false)) MeasureSession::reply([&](char *b, uint32_t l) { return dspi_measure_stop(m_core, b, l); });
     if (passive.exchange(false)) MeasureSession::reply([&](char *b, uint32_t l) { return dspi_measure_rta_passive_stop(m_core, b, l); });
     // -- WP ATQT -- the several-units session: one system.measure.abort
@@ -449,6 +457,7 @@ MeasureSession::MeasureSession(DeviceSession *session, MeasureController *owner)
         connect(m_loop, &MeasureLoop::pushRefused, this, [this](const QByteArray &json) { fail(failureText(object(json))); });
         connect(m_loop, &MeasureLoop::passiveFrame, this, &MeasureSession::onPassiveFrame);
         connect(m_loop, &MeasureLoop::rolloffState, this, &MeasureSession::onRolloffState);   // -- WP MCP5 --
+        connect(m_loop, &MeasureLoop::detectState, this, &MeasureSession::onDetectState);   // -- WP ADETS --
         // The blocks go from the capture straight to the loop, in order
         connect(m_capture, &AudioCapture::block, m_loop, &MeasureLoop::push);
         // -- WP LAY5b -- it starts at wake()
@@ -513,7 +522,7 @@ MeasureSession::~MeasureSession() {
         m_thread->deleteLater();
         return;
     }
-    for (std::atomic<bool> *f : { &m_loop->live, &m_loop->tune, &m_loop->session, &m_loop->passive, &m_loop->system, &m_loop->rolloff }) f->store(false);
+    for (std::atomic<bool> *f : { &m_loop->live, &m_loop->tune, &m_loop->session, &m_loop->passive, &m_loop->system, &m_loop->rolloff, &m_loop->detect }) f->store(false);
     connect(m_thread, &QThread::finished, m_thread, &QObject::deleteLater);
     m_thread->quit();
 }
@@ -577,11 +586,13 @@ void MeasureSession::stopForClose() {
         if (m_loop) {
             const bool live = m_loop->live.exchange(false), passive = m_loop->passive.exchange(false), system = m_loop->system.exchange(false);
             const bool rolloff = m_loop->rolloff.exchange(false);   // -- WP MCP5 --
+            const bool detect = m_loop->detect.exchange(false);     // -- WP ADETS --
             m_loop->session.store(false);
             const bool tuneRuns = m_tuneRunning;
             // On the worker, where the close (or the next device) is posted next
-            m_session->worker()->post([live, passive, system, tuneRuns, rolloff](FfiCore *c) {
+            m_session->worker()->post([live, passive, system, tuneRuns, rolloff, detect](FfiCore *c) {
                 if (rolloff) reply([&](char *b, uint32_t l) { return dspi_measure_rolloff_stop(c, b, l); });   // -- WP MCP5 --
+                if (detect) reply([&](char *b, uint32_t l) { return dspi_detect_stop(c, b, l); });   // -- WP ADETS --
                 if (system) reply([&](char *b, uint32_t l) { return dspi_measure_system_stop(c, b, l); });
                 if (passive) reply([&](char *b, uint32_t l) { return dspi_measure_rta_passive_stop(c, b, l); });
                 if (live) reply([&](char *b, uint32_t l) { return dspi_measure_live_stop(c, b, l); });
@@ -1192,6 +1203,7 @@ void MeasureSession::stop() {
                QByteArray live;
                // -- WP MCP5 -- the low-end search (its segment's session with it)
                if (loop->rolloff.exchange(false)) reply([&](char *b, uint32_t l) { return dspi_measure_rolloff_stop(c, b, l); });
+               if (loop->detect.exchange(false)) reply([&](char *b, uint32_t l) { return dspi_detect_stop(c, b, l); });   // -- WP ADETS --
                if (loop->passive.exchange(false)) reply([&](char *b, uint32_t l) { return dspi_measure_rta_passive_stop(c, b, l); });
                if (loop->live.exchange(false)) live = reply([&](char *b, uint32_t l) { return dspi_measure_live_stop(c, b, l); });
                // The tune's runs (a proposal and an applied tune stay: its guard runs on)
@@ -1313,6 +1325,7 @@ bool MeasureSession::running() const {
     return m_state.value(QLatin1String("active")).toBool() || liveActive() || m_tuneRunning || m_passiveOn ||
            m_systemRunning ||   // -- WP ATQT --
            m_rolloffRunning ||  // -- WP MCP5 --
+           m_detectRunning ||   // -- WP ADETS --
            (m_capture && m_capture->isRunning());
 }
 
@@ -1321,6 +1334,7 @@ QString MeasureSession::runningText() const {
     if (!m_agentLabel.isEmpty()) {
         QString what;
         if (m_rolloffRunning) what = tr("Finding an output's low end with the DSPi's generator.");
+        else if (m_detectRunning) what = tr("Detecting the speakers with quiet test sweeps.");   // -- WP ADETS --
         else if (m_tuneRunning) what = tr("The auto-tune's runs are playing the DSPi's generator.");
         else if (m_state.value(QLatin1String("active")).toBool()) what = tr("Measuring with the DSPi's generator.");
         //: %1 is "AI · " and the agent's name, %2 what plays
@@ -2195,7 +2209,8 @@ void MeasureSession::startForAgent(const QJsonObject &ticket, std::function<void
     // -- WP FEATUI -- an agent that names no calibration measures with this
     // app's (the microphone opened is the app's): the agents' SPL cap holds
     QJsonObject withMic = ticket;
-    if (!m_micDocument.isEmpty() && (loopWord == QLatin1String("session") || loopWord == QLatin1String("rolloff"))) {
+    if (!m_micDocument.isEmpty() && (loopWord == QLatin1String("session") || loopWord == QLatin1String("rolloff") ||
+                                     loopWord == QLatin1String("detect"))) {   // -- WP ADETS --
         const bool wrapped = withMic.contains(QLatin1String("ticket"));
         QJsonObject inner = wrapped ? withMic.value(QLatin1String("ticket")).toObject() : withMic;
         QJsonObject setup = inner.value(QLatin1String("setup")).toObject();
@@ -2222,7 +2237,8 @@ void MeasureSession::startForAgent(const QJsonObject &ticket, std::function<void
         });
         return;
     }
-    if (loopWord != QLatin1String("session") && loopWord != QLatin1String("rolloff")) {
+    if (loopWord != QLatin1String("session") && loopWord != QLatin1String("rolloff") &&
+        loopWord != QLatin1String("detect")) {   // -- WP ADETS --
         done(false, tr("The Measure view cannot run that."));
         return;
     }
@@ -2250,7 +2266,11 @@ void MeasureSession::startForAgent(const QJsonObject &ticket, std::function<void
                 done(false, why);
                 return;
             }
-            if (loopWord == QLatin1String("rolloff")) {
+            if (loopWord == QLatin1String("detect")) {   // -- WP ADETS --
+                m_detectRunning = true;
+                m_state = o.value(QLatin1String("session")).toObject();
+                m_loop->detect.store(true);
+            } else if (loopWord == QLatin1String("rolloff")) {
                 m_rolloffRunning = true;
                 m_state = o.value(QLatin1String("session")).toObject();
                 m_loop->rolloff.store(true);
@@ -2271,6 +2291,29 @@ void MeasureSession::startForAgent(const QJsonObject &ticket, std::function<void
             if (epoch != m_stopEpoch) stop();
         });
     });
+}
+
+// -- WP ADETS -- minimal (ADETQ owns the Speakers page and the stop bar's words):
+// the state while it runs, the summary when it ends
+void MeasureSession::onDetectState(const QByteArray &json) {
+    const QJsonObject o = object(json);
+    if (o.isEmpty()) return;
+    m_state = o.value(QLatin1String("session")).toObject();
+    emit stateChanged();
+    if (o.value(QLatin1String("running")).toBool()) {
+        setRunning();
+        return;
+    }
+    m_detectRunning = false;
+    closeMic();
+    const QString text = o.value(QLatin1String("detection")).toObject().value(QLatin1String("summary")).toString();
+    if (!text.isEmpty()) say(text);
+    else {
+        const QString why = issueWords(o.value(QLatin1String("issue")).toObject());
+        if (!why.isEmpty()) fail(why);
+    }
+    if (!isActive() && !text.isEmpty()) m_owner->report(this, text, false);
+    setRunning();
 }
 
 void MeasureSession::onRolloffState(const QByteArray &json) {

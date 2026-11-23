@@ -60,6 +60,11 @@ pub(crate) struct Scenario {
     pub(crate) modes: Vec<RoomMode>,
     pub(crate) reflections: Vec<Reflection>,
     pub(crate) devices: Vec<DeviceSpec>,
+    // -- WP ADETS --
+    /// The drivers are headphones on a coupler (the K340): an unknown
+    /// output's envelope is the headphones' (AUTODES 1.2).
+    #[serde(default)]
+    pub(crate) headphones: bool,
 }
 
 /// One device of the scenario.
@@ -77,6 +82,11 @@ pub(crate) struct DeviceSpec {
     pub(crate) input_names: Vec<String>,
     /// The user volume it starts at, dB.
     pub(crate) user_volume_db: f32,
+    // -- WP ADETS --
+    /// Outputs, 0-based, that drive nothing and are switched on all the
+    /// same (AUTODES 7.3: the detection must find them).
+    #[serde(default)]
+    pub(crate) enabled_unwired: Vec<u8>,
 }
 
 /// One driver and its amplifier.
@@ -141,6 +151,31 @@ pub(crate) struct Room {
     live: Mutex<Vec<Live>>,
     air: Mutex<Vec<Air>>,
     opened: Mutex<usize>,
+    // -- WP ADETS --
+    known: Mutex<std::collections::HashMap<String, Known>>,
+}
+
+// -- WP ADETS --
+/// What the core knows of a device's outputs (AUTODES 7.2): its speaker
+/// layout, its limits profile's floors, the detection's segment now.
+#[derive(Debug, Default)]
+struct Known {
+    layout: Option<crate::speaker_layout::SpeakerLayout>,
+    /// The limits profile's `highpass_min_hz`, by output (0-based).
+    floors: Vec<(u8, f32)>,
+    /// The detection's segment per output: (stage, the floor it plays to).
+    probe: Vec<(u8, String, f32)>,
+}
+
+// -- WP ADETS --
+/// The limits a test signal on one output is held to beyond its driver's
+/// `safe`, from what the core knows of it.
+#[derive(Debug, Clone)]
+struct Envelope {
+    /// `unknown` (no trusted role: the probe's envelope), `detected` (a
+    /// detected tweeter: nothing below its floor).
+    knowledge: &'static str,
+    safe: Safe,
 }
 
 static ROOM: OnceLock<Option<Arc<Room>>> = OnceLock::new();
@@ -170,6 +205,7 @@ pub(crate) fn room() -> Option<Arc<Room>> {
                     live: Mutex::default(),
                     air: Mutex::default(),
                     opened: Mutex::new(0),
+                    known: Mutex::default(),
                 });
                 let watch = Arc::downgrade(&room);
                 let _ = std::thread::Builder::new()
@@ -227,6 +263,113 @@ pub(crate) fn name_of(serial: &str) -> Option<String> {
     Some(d.name.clone())
 }
 
+// -- WP ADETS -- what the core knows, told to the oracle (AUTODES 7.2)
+
+/// The probe's envelope for an output with no trusted role, the owner's
+/// numbers (AUTODES 1.2, owner Q2): the oracle's own copy, not the core's.
+const UNKNOWN_CEILING_DBFS: f64 = -24.0;
+const UNKNOWN_CEILING_HEADPHONES_DBFS: f64 = -36.0;
+const UNKNOWN_BELOW_DBFS: f64 = -50.0;
+const UNKNOWN_BELOW_HEADPHONES_DBFS: f64 = -60.0;
+/// The tweeter floor every unknown output has at least, Hz.
+const UNKNOWN_FLOOR_HZ: f64 = 1000.0;
+
+/// A speaker layout was kept for its serial (any core of this process).
+pub(crate) fn layout_saved(layout: &crate::speaker_layout::SpeakerLayout) {
+    let Some(room) = room() else { return };
+    let Some(dev) = room.device(&layout.serial) else {
+        return;
+    };
+    let name = dev.name.clone();
+    {
+        let mut known = lock(&room.known);
+        let k = known.entry(layout.serial.clone()).or_default();
+        k.layout = Some(layout.clone());
+        // A segment's floor stands while its output is being probed: not once it is
+        // classified, nor after a stop
+        let probing = |o: u8| {
+            layout.detected.as_ref().is_some_and(|d| {
+                !d.stopped
+                    && d.outputs.iter().any(|x| {
+                        x.output == o && x.class == crate::speaker_layout::DetectClass::Unknown
+                    })
+            })
+        };
+        k.probe.retain(|(o, _, _)| probing(*o));
+    }
+    let outputs: Vec<Value> = layout
+        .outputs
+        .iter()
+        .map(|o| {
+            let d = layout.detected_output(o.output);
+            json!({"output": o.output, "role": o.role, "source": o.source,
+                "class": d.map(|d| d.class), "confidence": d.map(|d| d.confidence)})
+        })
+        .collect();
+    let detected: Vec<Value> = layout
+        .detected
+        .iter()
+        .flat_map(|d| &d.outputs)
+        .map(|d| {
+            json!({"output": d.output, "class": d.class, "confidence": d.confidence,
+            "role": d.role, "floorHz": d.floor_hz, "heard": d.heard, "fLowHz": d.f_low_hz,
+            "lowestHz": d.lowest_hz, "stoppedAtHz": d.stopped_at_hz, "topFallDb": d.top_fall_db})
+        })
+        .collect();
+    room.note(
+        json!({"kind": "layout", "device": name, "serial": layout.serial,
+        "state": layout.state(), "outputs": outputs, "detected": detected,
+        "summary": layout.detected.as_ref().map(|d| d.summary.clone())}),
+    );
+}
+
+/// The limits profile of `serial` was set (`Some`) or removed.
+pub(crate) fn profile_saved(serial: &str, profile: Option<&dspi_session::limits::LimitsProfile>) {
+    let Some(room) = room() else { return };
+    let floors = profile
+        .map(|p| {
+            p.outputs
+                .iter()
+                .filter_map(|o| Some((o.output, o.highpass_min_hz?)))
+                .collect()
+        })
+        .unwrap_or_default();
+    lock(&room.known)
+        .entry(serial.to_owned())
+        .or_default()
+        .floors = floors;
+}
+
+/// The detection starts a session on `output` of `serial`: its stage and the
+/// floor the core holds it to (the free descent's is 20 Hz). Logged as a
+/// `probe` line (AUTODES 7.2.6).
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn probe_segment(
+    serial: &str,
+    output: u8,
+    stage: &str,
+    floor_hz: f32,
+    f1: f32,
+    f2: f32,
+    level_dbfs: f32,
+) {
+    let Some(room) = room() else { return };
+    let name = room
+        .device(serial)
+        .map(|d| d.name.clone())
+        .unwrap_or_default();
+    {
+        let mut known = lock(&room.known);
+        let k = known.entry(serial.to_owned()).or_default();
+        k.probe.retain(|(o, _, _)| *o != output);
+        k.probe.push((output, stage.to_owned(), floor_hz));
+    }
+    room.note(
+        json!({"kind": "probe", "device": name, "serial": serial, "output": output,
+        "stage": stage, "floorHz": floor_hz, "f1": f1, "f2": f2, "levelDbfs": level_dbfs}),
+    );
+}
+
 /// A new DSPi: nothing filtered, crossed over, delayed or trimmed, no effect.
 fn blank(s: &mut DspState, spec: &DeviceSpec) {
     for b in s.filters.iter_mut().chain(s.xover.iter_mut()).flatten() {
@@ -269,7 +412,8 @@ fn blank(s: &mut DspState, spec: &DeviceSpec) {
     s.output_delay_ms.iter_mut().for_each(|v| *v = 0.0);
     s.output_muted.iter_mut().for_each(|v| *v = false);
     for (o, on) in s.output_enabled.iter_mut().enumerate() {
-        *on = spec.outputs.iter().any(|x| usize::from(x.output) == o);
+        *on = spec.outputs.iter().any(|x| usize::from(x.output) == o)
+            || spec.enabled_unwired.iter().any(|x| usize::from(*x) == o); // -- WP ADETS --
     }
     s.limiter_enabled.iter_mut().for_each(|v| *v = false);
     let n_in = usize::from(s.num_input_channels);
@@ -419,6 +563,75 @@ impl Room {
 
     // ---------------------------------------------------------- the oracle
 
+    // -- WP ADETS --
+    /// What output `o` of `serial` is held to beyond its driver's `safe`:
+    /// an output with no trusted role (no confirmed role, no finished
+    /// detection) the probe's envelope (AUTODES 7.2.1; the free descent's
+    /// floor is 20 Hz, the shaped one's showed it is no tweeter); a detected
+    /// tweeter nothing below its floor above the shaped probe's level
+    /// (7.2.3); anything else nothing more. `wired`: an output with a driver
+    /// (one with none is always held to the envelope, 7.2.2).
+    fn envelope(&self, serial: &str, o: u8, wired: bool) -> Option<Envelope> {
+        use crate::measure::MeasureRole;
+        use crate::speaker_layout::{DetectClass, LayoutState, RoleSource};
+        let known = lock(&self.known);
+        let k = known.get(serial);
+        let (below, ceiling) = if self.spec.headphones {
+            (
+                UNKNOWN_BELOW_HEADPHONES_DBFS,
+                UNKNOWN_CEILING_HEADPHONES_DBFS,
+            )
+        } else {
+            (UNKNOWN_BELOW_DBFS, UNKNOWN_CEILING_DBFS)
+        };
+        let floor = k
+            .and_then(|k| k.floors.iter().find(|(x, _)| *x == o))
+            .map_or(UNKNOWN_FLOOR_HZ, |(_, f)| {
+                UNKNOWN_FLOOR_HZ.max(f64::from(*f))
+            });
+        let layout = k.and_then(|k| k.layout.as_ref());
+        // The role the safeties trust, and whether the detection found it
+        let trusted = layout.and_then(|l| {
+            let row = l.output(o)?;
+            match l.state() {
+                LayoutState::Confirmed => Some((row.role, false)),
+                LayoutState::AutoDetected => match row.source {
+                    RoleSource::User => Some((row.role, false)),
+                    _ => match l.detected_output(o).map(|d| d.class) {
+                        Some(DetectClass::Unknown | DetectClass::Nothing | DetectClass::Off)
+                        | None => None,
+                        Some(_) => Some((row.role, true)),
+                    },
+                },
+                LayoutState::Unconfirmed => None,
+            }
+        });
+        match trusted.filter(|_| wired) {
+            None => {
+                let free = k
+                    .and_then(|k| k.probe.iter().find(|(x, _, _)| *x == o))
+                    .is_some_and(|(_, stage, f)| stage == "free" && *f < 1000.0);
+                Some(Envelope {
+                    knowledge: "unknown",
+                    safe: Safe {
+                        below_hz: if free && wired { 20.0 } else { floor },
+                        below_dbfs: below,
+                        cap_dbfs: ceiling,
+                    },
+                })
+            }
+            Some((MeasureRole::High, true)) => Some(Envelope {
+                knowledge: "detected",
+                safe: Safe {
+                    below_hz: floor,
+                    below_dbfs: below,
+                    cap_dbfs: 0.0,
+                },
+            }),
+            Some(_) => None,
+        }
+    }
+
     fn note(&self, line: Value) {
         let Some(dir) = &self.out else { return };
         let mut line = line;
@@ -547,11 +760,36 @@ impl Room {
             {
                 continue;
             }
+            // -- WP ADETS -- what the core knows of it
+            let envelope = self.envelope(&dev.serial, o as u8, dev.output(o).is_some());
             let Some(x) = dev.output(o) else {
-                self.note(
-                    json!({"kind": "info", "what": "a test signal on an output with no driver",
-                    "device": dev.name, "output": o, "how": how}),
-                );
+                // -- WP ADETS -- the detection's probe finds what is not wired
+                // (AUTODES 7.2.2): held to the unknown output's envelope
+                let chain = crate::measure::chain_of(s, o as u8);
+                let why = envelope.as_ref().map_or_else(Vec::new, |e| {
+                    let band = (f1, f2);
+                    let g = playback::signal_peak(s, o, &chain, level_db, band, e.safe.below_hz);
+                    let g = playback::SignalPeak {
+                        peak_db: g.peak_db + g.limiter_db,
+                        below_db: g.below_db + g.limiter_db,
+                        limiter_db: 0.0,
+                        ..g
+                    };
+                    let amp = playback::signal_chain(s, o, flags)
+                        .map(|c| playback::signal_peak(s, o, &c, level_db, band, e.safe.below_hz));
+                    envelope_why(e, amp.as_ref(), &g)
+                });
+                if why.is_empty() {
+                    self.note(json!({"kind": "info",
+                        "what": "a probe within the unknown output's envelope on an output that drives nothing",
+                        "device": dev.name, "output": o, "how": how, "signal": signal,
+                        "levelDb": level_db, "f1": f1, "f2": f2}));
+                } else {
+                    self.note(json!({"kind": "VIOLATION", "how": how, "device": dev.name,
+                        "serial": dev.serial, "output": o, "driver": "nothing wired",
+                        "what": "a test signal on an output with no driver", "signal": signal,
+                        "levelDb": level_db, "f1": f1, "f2": f2, "why": why}));
+                }
                 continue;
             };
             let chain = crate::measure::chain_of(s, o as u8);
@@ -570,7 +808,26 @@ impl Room {
             let played = playback::signal_chain(s, o, flags).map(|played| {
                 playback::signal_peak(s, o, &played, level_db, (f1, f2), x.safe.below_hz)
             });
-            let why = signal_why(&x.safe, played.as_ref(), &generator);
+            let mut why = signal_why(&x.safe, played.as_ref(), &generator);
+            // -- WP ADETS -- an unknown output's envelope, a detected tweeter's floor
+            if let Some(e) = &envelope {
+                let band = (f1, f2);
+                let g = playback::signal_peak(s, o, &chain, level_db, band, e.safe.below_hz);
+                let g = playback::SignalPeak {
+                    peak_db: g.peak_db + g.limiter_db,
+                    below_db: g.below_db + g.limiter_db,
+                    limiter_db: 0.0,
+                    ..g
+                };
+                let amp = playback::signal_chain(s, o, flags)
+                    .map(|c| playback::signal_peak(s, o, &c, level_db, band, e.safe.below_hz));
+                for w in envelope_why(e, amp.as_ref(), &g) {
+                    if !why.contains(&w) {
+                        why.push(w);
+                    }
+                }
+            }
+            let knowledge = envelope.as_ref().map_or("trusted", |e| e.knowledge);
             let kind = if why.is_empty() {
                 "signal"
             } else {
@@ -583,6 +840,7 @@ impl Room {
                     "what": "a test signal on an output that plays nothing (disabled, muted, or the volume at its bottom)",
                     "generatorPeakDbfs": r1(generator.peak_db),
                     "generatorBelowDbfs": generator.below_db.is_finite().then(|| r1(generator.below_db)),
+                    "knowledge": knowledge, // -- WP ADETS --
                     "why": why}));
                 continue;
             };
@@ -596,7 +854,11 @@ impl Room {
                 // -- WP FBUS -- before the volume, and the limiter's share
                 "generatorPeakDbfs": r1(generator.peak_db), "limiterDb": r1(p.limiter_db),
                 // -- WP INTH --
-                "generatorBelowDbfs": generator.below_db.is_finite().then(|| r1(generator.below_db))}),
+                "generatorBelowDbfs": generator.below_db.is_finite().then(|| r1(generator.below_db)),
+                // -- WP ADETS -- what the core knew of it, the envelope it was held to
+                "knowledge": knowledge,
+                "envelope": envelope.as_ref().map(|e| json!({"belowHz": e.safe.below_hz,
+                    "belowDbfs": e.safe.below_dbfs, "capDbfs": e.safe.cap_dbfs}))}),
             );
         }
     }
@@ -901,6 +1163,24 @@ fn signal_why(
         ));
     }
     why
+}
+
+// -- WP ADETS --
+/// Why a test signal breaks an output's envelope (its knowledge's words).
+fn envelope_why(
+    e: &Envelope,
+    amp: Option<&playback::SignalPeak>,
+    generator: &playback::SignalPeak,
+) -> Vec<String> {
+    let what = match e.knowledge {
+        "unknown" => "an output with no trusted role (the probe's envelope)",
+        _ => "a detected tweeter",
+    };
+    signal_why(&e.safe, amp, generator)
+        .into_iter()
+        .filter(|w| !w.ends_with("it clips"))
+        .map(|w| format!("{what}: {w}"))
+        .collect()
 }
 
 fn highpass_text(c: &ChannelChain) -> String {

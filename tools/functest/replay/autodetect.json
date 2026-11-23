@@ -1,0 +1,797 @@
+{
+ "story": "autodetect.toml",
+ "confirm": "ask_risky",
+ "steps": {
+  "detect": [
+   [
+    "dspi_get_overview",
+    {
+     "device": "demo:1"
+    },
+    "ok",
+    "nothing set up",
+    "",
+    "\"roles_from\":\\s*\"none\""
+   ],
+   [
+    "dspi_measure_start",
+    {
+     "device": "demo:1",
+     "outputs": [
+      0
+     ]
+    },
+    "error",
+    "no measuring before the detection"
+   ],
+   [
+    "sleep",
+    {
+     "s": 0.6
+    }
+   ],
+   [
+    "dspi_detect_speakers",
+    {
+     "device": "demo:1"
+    },
+    "ok",
+    "one question, the grant with it",
+    "",
+    "waiting_for_app"
+   ],
+   [
+    "wait",
+    {
+     "device": "demo:1"
+    }
+   ],
+   [
+    "dspi_detect_speakers",
+    {
+     "device": "demo:2"
+    },
+    "ok",
+    "",
+    "",
+    "waiting_for_app"
+   ],
+   [
+    "wait",
+    {
+     "device": "demo:2"
+    }
+   ],
+   [
+    "dspi_detect_speakers",
+    {
+     "device": "demo:3"
+    },
+    "ok",
+    "",
+    "",
+    "waiting_for_app"
+   ],
+   [
+    "wait",
+    {
+     "device": "demo:3"
+    }
+   ],
+   [
+    "dspi_get_overview",
+    {
+     "device": "demo:1"
+    },
+    "ok",
+    "the detected roles",
+    "",
+    "speaker_setup_auto_detected"
+   ],
+   [
+    "dspi_measure_status",
+    {
+     "device": "demo:1"
+    },
+    "ok",
+    "the result",
+    "",
+    "\"class\":\\s*\"nothing\""
+   ],
+   [
+    "dspi_set_crossover",
+    {
+     "device": "demo:1",
+     "output": 1,
+     "high_pass": {
+      "family": "linkwitz_riley",
+      "order": 4,
+      "freq_hz": 2000
+     }
+    },
+    "ok",
+    ""
+   ],
+   [
+    "sleep",
+    {
+     "s": 0.6
+    }
+   ],
+   [
+    "dspi_set_crossover",
+    {
+     "device": "demo:1",
+     "output": 2,
+     "high_pass": {
+      "family": "linkwitz_riley",
+      "order": 4,
+      "freq_hz": 2000
+     }
+    },
+    "ok",
+    "the swapped pair: Out 3 is the tweeter"
+   ],
+   [
+    "sleep",
+    {
+     "s": 0.6
+    }
+   ],
+   [
+    "dspi_set_crossover",
+    {
+     "device": "demo:1",
+     "output": 0,
+     "low_pass": {
+      "family": "linkwitz_riley",
+      "order": 4,
+      "freq_hz": 2000
+     }
+    },
+    "ok",
+    ""
+   ],
+   [
+    "sleep",
+    {
+     "s": 0.6
+    }
+   ],
+   [
+    "dspi_set_crossover",
+    {
+     "device": "demo:1",
+     "output": 3,
+     "low_pass": {
+      "family": "linkwitz_riley",
+      "order": 4,
+      "freq_hz": 2000
+     }
+    },
+    "ok",
+    "Out 4 is the woofer"
+   ],
+   [
+    "sleep",
+    {
+     "s": 0.6
+    }
+   ],
+   [
+    "dspi_set_crossover",
+    {
+     "device": "demo:2",
+     "output": 1,
+     "high_pass": {
+      "family": "linkwitz_riley",
+      "order": 4,
+      "freq_hz": 2000
+     }
+    },
+    "ok",
+    ""
+   ],
+   [
+    "sleep",
+    {
+     "s": 0.6
+    }
+   ],
+   [
+    "dspi_set_crossover",
+    {
+     "device": "demo:2",
+     "output": 2,
+     "high_pass": {
+      "family": "linkwitz_riley",
+      "order": 4,
+      "freq_hz": 2000
+     }
+    },
+    "ok",
+    "the dome reads as a tweeter"
+   ],
+   [
+    "sleep",
+    {
+     "s": 0.6
+    }
+   ],
+   [
+    "dspi_set_crossover",
+    {
+     "device": "demo:2",
+     "output": 0,
+     "low_pass": {
+      "family": "linkwitz_riley",
+      "order": 4,
+      "freq_hz": 2000
+     }
+    },
+    "ok",
+    ""
+   ],
+   [
+    "sleep",
+    {
+     "s": 0.6
+    }
+   ],
+   [
+    "dspi_set_crossover",
+    {
+     "device": "demo:2",
+     "output": 4,
+     "low_pass": {
+      "family": "linkwitz_riley",
+      "order": 4,
+      "freq_hz": 80
+     }
+    },
+    "ok",
+    ""
+   ],
+   [
+    "sleep",
+    {
+     "s": 0.6
+    }
+   ],
+   [
+    "dspi_set_crossover",
+    {
+     "device": "demo:3",
+     "output": 1,
+     "high_pass": {
+      "family": "linkwitz_riley",
+      "order": 4,
+      "freq_hz": 2000
+     }
+    },
+    "ok",
+    ""
+   ],
+   [
+    "sleep",
+    {
+     "s": 0.6
+    }
+   ],
+   [
+    "dspi_set_crossover",
+    {
+     "device": "demo:3",
+     "output": 3,
+     "high_pass": {
+      "family": "linkwitz_riley",
+      "order": 4,
+      "freq_hz": 2000
+     }
+    },
+    "ok",
+    "the 700 Hz tweeter is a tweeter"
+   ],
+   [
+    "sleep",
+    {
+     "s": 0.6
+    }
+   ],
+   [
+    "dspi_set_crossover",
+    {
+     "device": "demo:3",
+     "output": 0,
+     "low_pass": {
+      "family": "linkwitz_riley",
+      "order": 4,
+      "freq_hz": 2000
+     }
+    },
+    "ok",
+    ""
+   ],
+   [
+    "sleep",
+    {
+     "s": 0.6
+    }
+   ],
+   [
+    "dspi_set_crossover",
+    {
+     "device": "demo:3",
+     "output": 2,
+     "low_pass": {
+      "family": "linkwitz_riley",
+      "order": 4,
+      "freq_hz": 2000
+     }
+    },
+    "ok",
+    ""
+   ],
+   [
+    "sleep",
+    {
+     "s": 0.6
+    }
+   ],
+   [
+    "dspi_set_crossover",
+    {
+     "device": "demo:1",
+     "output": 2,
+     "high_pass": {
+      "family": "linkwitz_riley",
+      "order": 4,
+      "freq_hz": 600
+     }
+    },
+    "error",
+    "a detected tweeter's high-pass stays at 1 kHz or above"
+   ],
+   [
+    "sleep",
+    {
+     "s": 0.6
+    }
+   ],
+   [
+    "dspi_set_route",
+    {
+     "device": "demo:1",
+     "input": 0,
+     "output": 4,
+     "on": true,
+     "gain_db": 0
+    },
+    "error",
+    "Fronts Out 5: the detection heard nothing",
+    "",
+    "heard nothing"
+   ],
+   [
+    "sleep",
+    {
+     "s": 0.6
+    }
+   ],
+   [
+    "dspi_set_mute",
+    {
+     "device": "demo:2",
+     "output": 3,
+     "muted": true
+    },
+    "ok",
+    "muting where nothing was heard passes"
+   ],
+   [
+    "sleep",
+    {
+     "s": 0.6
+    }
+   ],
+   [
+    "dspi_set_mute",
+    {
+     "device": "demo:2",
+     "output": 3,
+     "muted": false
+    },
+    "error",
+    "unmuting it does not"
+   ],
+   [
+    "sleep",
+    {
+     "s": 0.6
+    }
+   ],
+   [
+    "dspi_set_route",
+    {
+     "device": "demo:1",
+     "input": 0,
+     "output": 0,
+     "on": true,
+     "gain_db": 0
+    },
+    "ok",
+    ""
+   ],
+   [
+    "sleep",
+    {
+     "s": 0.6
+    }
+   ],
+   [
+    "dspi_set_route",
+    {
+     "device": "demo:1",
+     "input": 0,
+     "output": 1,
+     "on": true,
+     "gain_db": 0
+    },
+    "ok",
+    ""
+   ],
+   [
+    "sleep",
+    {
+     "s": 0.6
+    }
+   ],
+   [
+    "dspi_set_route",
+    {
+     "device": "demo:1",
+     "input": 1,
+     "output": 2,
+     "on": true,
+     "gain_db": 0
+    },
+    "ok",
+    ""
+   ],
+   [
+    "sleep",
+    {
+     "s": 0.6
+    }
+   ],
+   [
+    "dspi_set_route",
+    {
+     "device": "demo:1",
+     "input": 1,
+     "output": 3,
+     "on": true,
+     "gain_db": 0
+    },
+    "ok",
+    ""
+   ],
+   [
+    "sleep",
+    {
+     "s": 0.6
+    }
+   ],
+   [
+    "dspi_set_route",
+    {
+     "device": "demo:2",
+     "input": 2,
+     "output": 0,
+     "on": true,
+     "gain_db": 0
+    },
+    "ok",
+    ""
+   ],
+   [
+    "sleep",
+    {
+     "s": 0.6
+    }
+   ],
+   [
+    "dspi_set_route",
+    {
+     "device": "demo:2",
+     "input": 2,
+     "output": 1,
+     "on": true,
+     "gain_db": 0
+    },
+    "ok",
+    ""
+   ],
+   [
+    "sleep",
+    {
+     "s": 0.6
+    }
+   ],
+   [
+    "dspi_set_route",
+    {
+     "device": "demo:2",
+     "input": 2,
+     "output": 2,
+     "on": true,
+     "gain_db": 0
+    },
+    "ok",
+    ""
+   ],
+   [
+    "sleep",
+    {
+     "s": 0.6
+    }
+   ],
+   [
+    "dspi_set_route",
+    {
+     "device": "demo:2",
+     "input": 3,
+     "output": 4,
+     "on": true,
+     "gain_db": 0
+    },
+    "ok",
+    ""
+   ],
+   [
+    "sleep",
+    {
+     "s": 0.6
+    }
+   ],
+   [
+    "dspi_set_route",
+    {
+     "device": "demo:3",
+     "input": 4,
+     "output": 0,
+     "on": true,
+     "gain_db": 0
+    },
+    "ok",
+    ""
+   ],
+   [
+    "sleep",
+    {
+     "s": 0.6
+    }
+   ],
+   [
+    "dspi_set_route",
+    {
+     "device": "demo:3",
+     "input": 4,
+     "output": 1,
+     "on": true,
+     "gain_db": 0
+    },
+    "ok",
+    ""
+   ],
+   [
+    "sleep",
+    {
+     "s": 0.6
+    }
+   ],
+   [
+    "dspi_set_route",
+    {
+     "device": "demo:3",
+     "input": 5,
+     "output": 2,
+     "on": true,
+     "gain_db": 0
+    },
+    "ok",
+    ""
+   ],
+   [
+    "sleep",
+    {
+     "s": 0.6
+    }
+   ],
+   [
+    "dspi_set_route",
+    {
+     "device": "demo:3",
+     "input": 5,
+     "output": 3,
+     "on": true,
+     "gain_db": 0
+    },
+    "ok",
+    ""
+   ],
+   [
+    "sleep",
+    {
+     "s": 0.6
+    }
+   ],
+   [
+    "dspi_measure_start",
+    {
+     "device": "demo:1",
+     "outputs": [
+      0,
+      1
+     ]
+    },
+    "ok",
+    "measuring on a detected setup"
+   ],
+   [
+    "sleep",
+    {
+     "s": 0.6
+    }
+   ],
+   [
+    "wait",
+    {
+     "device": "demo:1"
+    }
+   ]
+  ],
+  "corrected": [
+   [
+    "dspi_get_overview",
+    {
+     "device": "demo:2"
+    },
+    "ok",
+    "the user's row",
+    "",
+    "\"role_source\":\\s*\"user\""
+   ],
+   [
+    "dspi_set_crossover",
+    {
+     "device": "demo:2",
+     "output": 2,
+     "high_pass": {
+      "family": "linkwitz_riley",
+      "order": 4,
+      "freq_hz": 800
+     }
+    },
+    "ok",
+    "the user's midrange may go to 800 Hz"
+   ],
+   [
+    "sleep",
+    {
+     "s": 0.6
+    }
+   ],
+   [
+    "dspi_set_crossover",
+    {
+     "device": "demo:2",
+     "output": 2,
+     "low_pass": {
+      "family": "linkwitz_riley",
+      "order": 4,
+      "freq_hz": 2000
+     }
+    },
+    "ok",
+    "the midrange's low-pass at the tweeter's crossover"
+   ],
+   [
+    "sleep",
+    {
+     "s": 0.6
+    }
+   ],
+   [
+    "dspi_set_crossover",
+    {
+     "device": "demo:2",
+     "output": 1,
+     "high_pass": {
+      "family": "linkwitz_riley",
+      "order": 4,
+      "freq_hz": 600
+     }
+    },
+    "error",
+    "the centre's detected tweeter stays at 1 kHz or above"
+   ],
+   [
+    "sleep",
+    {
+     "s": 0.6
+    }
+   ],
+   [
+    "dspi_set_route",
+    {
+     "device": "demo:2",
+     "input": 0,
+     "output": 3,
+     "on": true,
+     "gain_db": 0
+    },
+    "error",
+    "Centre Out 4: nothing heard"
+   ],
+   [
+    "sleep",
+    {
+     "s": 0.6
+    }
+   ]
+  ],
+  "swap": [
+   [
+    "dspi_get_overview",
+    {
+     "device": "demo:1"
+    },
+    "ok",
+    "Out 3 detected a tweeter",
+    "",
+    "\"role_source\":\\s*\"detected\""
+   ],
+   [
+    "dspi_set_crossover",
+    {
+     "device": "demo:1",
+     "output": 2,
+     "high_pass": {
+      "family": "linkwitz_riley",
+      "order": 4,
+      "freq_hz": 300
+     }
+    },
+    "error",
+    "Out 3 is not treated as a woofer"
+   ],
+   [
+    "sleep",
+    {
+     "s": 0.6
+    }
+   ],
+   [
+    "dspi_set_crossover",
+    {
+     "device": "demo:1",
+     "output": 2,
+     "low_pass": {
+      "family": "linkwitz_riley",
+      "order": 4,
+      "freq_hz": 2000
+     }
+    },
+    "ok",
+    "a low-pass on top of the high-pass is fine"
+   ],
+   [
+    "sleep",
+    {
+     "s": 0.6
+    }
+   ]
+  ]
+ }
+}
