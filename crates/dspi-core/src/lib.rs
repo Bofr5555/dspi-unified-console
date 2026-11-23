@@ -381,6 +381,11 @@ pub use measure::{
 };
 // -- WP P5DEMO --
 pub use measure_sim::{MeasureSimInfo, SIM_MIC_LABEL, SIM_WORLD};
+// -- WP FBUS -- the function test's simulated host audio (dspi-mcp `sim-bus`)
+#[cfg(feature = "sim-scenario")]
+pub use measure_sim::scenario::bus::{
+    SimHostAudio, SimHostOutput, SimHostStream, host_view as sim_bus_host_view,
+};
 // -- WP P5TUNE --
 pub use measure::{
     MeasureLayout, MeasureLayoutOutput, MeasureTuneCheck, MeasureTuneCurves, MeasureTuneKeep,

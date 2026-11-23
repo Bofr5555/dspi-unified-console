@@ -14,6 +14,9 @@
 
 pub mod alsa;
 pub mod pipewire;
+// -- WP FBUS -- the function test's simulated host audio bus
+#[cfg(feature = "sim-bus")]
+pub mod sim_bus;
 
 #[cfg(all(feature = "host-audio", target_os = "windows"))]
 mod windows;
@@ -161,6 +164,17 @@ impl HostAudioSource for FixedHostAudio {
 /// This computer's reader.
 #[cfg(feature = "host-audio")]
 pub fn system() -> Arc<dyn HostAudioSource> {
+    // -- WP FBUS -- the function test's bus, while one is loaded
+    #[cfg(feature = "sim-bus")]
+    if sim_bus::loaded() {
+        return Arc::new(sim_bus::SimBus { real: real() });
+    }
+    real()
+}
+
+/// This computer's own reader.
+#[cfg(feature = "host-audio")]
+fn real() -> Arc<dyn HostAudioSource> {
     #[cfg(target_os = "linux")]
     {
         Arc::new(pipewire::PwDump::default())

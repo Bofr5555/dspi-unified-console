@@ -161,6 +161,9 @@ class Run:
         (self.dir / "agent/mcp.json").write_text(json.dumps({"mcpServers": {"dspi": {
             "command": "podman", "args": ["exec", "-i", self.container,
                                           f"{CONTAINER_WORK}/build-functest/uconsole-for-dspi", "--mcp"]}}}, indent=1))
+        # -- WP FBUS -- the story's host audio bus, if it has one (P11, bus.py)
+        import bus
+        bus.setup(self.dir, self.story().get("bus"))
         self.save("0-start")
 
     def layout(self, device_id, dev, confirmed):

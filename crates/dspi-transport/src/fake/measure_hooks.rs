@@ -122,6 +122,42 @@ impl FakeRemote {
         (st.state != 0).then_some(st.elapsed_ms)
     }
 
+    // -- WP FBUS --
+    /// Set the meter block from the function test's host audio bus: each
+    /// input's and each output's peak, dBFS (index = channel; missing ones
+    /// read silence), the clip flags (bit = channel, inputs first), and
+    /// `active_inputs`. As [`Self::measure_set_peaks`], per channel.
+    pub fn sim_set_meters(
+        &self,
+        inputs_dbfs: &[f32],
+        outputs_dbfs: &[f32],
+        clip_flags: u32,
+        active_inputs: u8,
+    ) {
+        let mut s = self.shared.lock();
+        let n_in = usize::from(s.num_inputs());
+        let n = usize::from(s.num_channels());
+        let level = |db: f32| -> u16 {
+            if !db.is_finite() || db <= -120.0 {
+                return 0;
+            }
+            let lin = 10f32.powf(db.min(0.0) / 20.0);
+            (lin * 32767.0).round().clamp(0.0, 32767.0) as u16
+        };
+        let mut block = Vec::with_capacity(s.status_len());
+        for ch in 0..n {
+            let db = match ch.checked_sub(n_in) {
+                None => inputs_dbfs.get(ch).copied(),
+                Some(o) => outputs_dbfs.get(o).copied(),
+            };
+            block.extend_from_slice(&level(db.unwrap_or(-200.0)).to_le_bytes());
+        }
+        block.extend_from_slice(&[10, 10]);
+        block.extend_from_slice(&clip_flags.to_le_bytes());
+        block.push(active_inputs);
+        s.status = block;
+    }
+
     // -- WP ATFAKE --
     /// Every generator start this unit made on its time base (op 9, and plain
     /// starts stamped with the T of their sample 0), oldest first, at most
@@ -158,6 +194,27 @@ mod tests_wp_p5ses {
         assert!((f32::from(at(0)) / 32767.0 - 0.01).abs() < 1e-3);
         assert_eq!(at(n_in + 2), 32767);
         assert_eq!(at(n_in + 1), 0);
+        assert_eq!(b[n * 2 + 6], 2);
+    }
+
+    // -- WP FBUS --
+    #[test]
+    fn wp_fbus_meters_per_channel_and_clip_flags() {
+        let mut d = FakeDevice::demo();
+        let r = d.remote();
+        r.sim_set_meters(&[-6.0206, 0.0], &[-200.0, -20.0], 0b10, 2);
+        let n = usize::from(d.remote().image()[2]);
+        let n_in = usize::from(d.remote().image()[4]);
+        let b = d
+            .control_in(op::REQ_GET_STATUS, 9, (n * 2 + 7) as u16)
+            .unwrap();
+        let at = |ch: usize| u16::from_le_bytes([b[ch * 2], b[ch * 2 + 1]]);
+        assert!((f32::from(at(0)) / 32767.0 - 0.5).abs() < 1e-3);
+        assert_eq!(at(1), 32767);
+        assert_eq!(at(2), 0);
+        assert_eq!(at(n_in), 0);
+        assert!((f32::from(at(n_in + 1)) / 32767.0 - 0.1).abs() < 1e-3);
+        assert_eq!(&b[n * 2 + 2..n * 2 + 6], 0b10u32.to_le_bytes());
         assert_eq!(b[n * 2 + 6], 2);
     }
 

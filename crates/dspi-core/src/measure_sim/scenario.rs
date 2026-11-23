@@ -39,6 +39,11 @@ use serde_json::{Value, json};
 use crate::measure_doc::CoreSectionModel;
 use crate::records::DspState;
 
+// -- WP FBUS -- P5 (the playback chain) and P11 (the host audio bus)
+pub(crate) mod bus;
+mod playback;
+pub(crate) use playback::signal_chains;
+
 /// The scenario file.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -172,6 +177,7 @@ pub(crate) fn room() -> Option<Arc<Room>> {
                     .spawn(move || {
                         while let Some(r) = watch.upgrade() {
                             r.watch();
+                            bus::tick(&r); // -- WP FBUS --
                             drop(r);
                             std::thread::sleep(Duration::from_millis(4));
                         }
@@ -451,6 +457,7 @@ impl Room {
                 cfg.p.first().copied().unwrap_or(20.0),
                 cfg.p.get(1).copied().unwrap_or(20_000.0),
                 cfg.duration_ms,
+                cfg.flags,
                 "start",
             );
         }
@@ -494,6 +501,7 @@ impl Room {
                             cfg.p1,
                             cfg.p2,
                             cfg.duration_ms,
+                            cfg.flags,
                             "seen",
                         );
                     }
@@ -525,17 +533,11 @@ impl Room {
         f1: f32,
         f2: f32,
         duration_ms: u32,
+        flags: u8,
         how: &str,
     ) {
-        const PINK: u8 = 3;
-        const LOG_SWEEP: u8 = 4;
-        let (f1, f2) = match signal {
-            LOG_SWEEP => (f64::from(f1.min(f2)), f64::from(f1.max(f2))),
-            PINK => (20.0, 20_000.0),
-            // A tone at p1, anything else is taken as full band
-            1 => (f64::from(f1), f64::from(f1)),
-            _ => (20.0, 20_000.0),
-        };
+        // -- WP FBUS -- (P5) a tone at p1, a sweep, anything else full band
+        let (f1, f2) = playback::signal_band(signal, f1, f2);
         for o in 0..usize::from(s.num_output_channels) {
             if u32::try_from(o)
                 .ok()
@@ -552,22 +554,21 @@ impl Room {
                 continue;
             };
             let chain = crate::measure::chain_of(s, o as u8);
-            let mut below = f64::NEG_INFINITY;
-            let mut below_at = 0.0;
-            let mut peak = f64::NEG_INFINITY;
-            let mut peak_at = 0.0;
-            for f in grid(96.0) {
-                if f < f1 * 0.9999 || f > f2 * 1.0001 {
-                    continue;
-                }
-                let db = f64::from(level_db) + chain_db(&chain, f);
-                if db > peak {
-                    (peak, peak_at) = (db, f);
-                }
-                if f < x.safe.below_hz * 0.995 && db > below {
-                    (below, below_at) = (db, f);
-                }
-            }
+            // -- WP FBUS -- (P5) what reaches the amplifier: the chain, then
+            // trim, volume, mutes, loudness and the limiter, as on the device
+            let generator =
+                playback::signal_peak(s, o, &chain, level_db, (f1, f2), x.safe.below_hz);
+            // (no limiter before the volume)
+            let generator_db = generator.peak_db + generator.limiter_db;
+            let Some(played) = playback::signal_chain(s, o, flags) else {
+                self.note(json!({"kind": "info", "how": how, "device": dev.name,
+                    "serial": dev.serial, "output": o, "driver": x.name,
+                    "what": "a test signal on an output that plays nothing (disabled, muted, or the volume at its bottom)",
+                    "generatorPeakDbfs": r1(generator_db)}));
+                continue;
+            };
+            let p = playback::signal_peak(s, o, &played, level_db, (f1, f2), x.safe.below_hz);
+            let (below, below_at, peak, peak_at) = (p.below_db, p.below_hz, p.peak_db, p.peak_hz);
             let mut kind = "signal";
             let mut why = Vec::new();
             if below > x.safe.below_dbfs {
@@ -594,7 +595,9 @@ impl Room {
                 "f1": f1, "f2": f2, "durationMs": duration_ms,
                 "peakDbfs": r1(peak), "peakHz": peak_at.round(),
                 "belowDbfs": below.is_finite().then(|| r1(below)),
-                "highpass": highpass_text(&chain), "why": why}),
+                "highpass": highpass_text(&chain), "why": why,
+                // -- WP FBUS -- before the volume, and the limiter's share
+                "generatorPeakDbfs": r1(generator_db), "limiterDb": r1(p.limiter_db)}),
             );
         }
     }

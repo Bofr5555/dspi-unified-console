@@ -112,3 +112,60 @@ those that find and read MCP tools and resources.
 
 The measurement across units needs a hub and a shared time base; the scenario's devices are three separate ones, as three
 DSPis on USB are. So nothing here can align one device's delays with another's.
+
+<!-- -- WP FBUS -- -->
+## Sound from the computer: the host audio bus and the playback chain (P11, P5)
+
+Music reaches a DSPi from another program through one of the computer's output devices. `bus.py` stands in for that
+path (FSTORY 3S.2): a run's `sim/bus.json` lists the computer's **output devices** (each channel to a DSPi input of the
+scenario, or to nowhere) and the **streams** playing to them (app, title, channels, LUFS, true peak, content, play/pause,
+app volume). The simulator reads it again whenever it changes and, every 100 ms while anything plays:
+
+- sums the streams per device (app volume, the OS volume unless it is the DSPi's own USB volume, mutes, up/down-mixing)
+  and hands each DSPi input an octave-band level and crest; the demo's **meters** show it (what the measurement's
+  preflight reads as programme audio);
+- runs it through the DSPi's matrix and **playback chain** (P5: PEQ, crossover, trim, user and master volume as the
+  firmware's 1 dB table, user mute, output mute and enable, loudness and psychoacoustic bass as gain, the limiter) to each
+  output, and through the drivers and the room to **dB SPL at the seat** (`micSplAt0Dbfs`, default 115);
+- **UAC coupling**: an output with `hardwareVolume` moves the DSPi's user volume when its OS volume changes, and shows the
+  DSPi's user volume as its OS volume;
+- writes `sim/bus.jsonl` (events, and a `tick` per 100 ms: what plays where, dBFS per input and output, the limiter,
+  dB SPL, clipping) and puts programme into the **damage oracle** (`oracle.jsonl`, `how: programme`): programme below a
+  tweeter's safe band beyond what a 12 dB/octave high-pass at its edge leaves, or an output clipping, is a `VIOLATION`;
+  a source clipping an input, or programme over a driver's test-signal cap, a `WARN`.
+
+`dspi_get_host_audio` reads the same file (status known, the outputs, the default, what plays, OS volumes; the audio
+system says "(simulated)"), and a demo DSPi the bus names counts as an output of this computer.
+
+P5 applies to test signals too: the generator replaces the mix before the output chain on the device, so a measurement
+at -20 dB user volume plays 20 dB under its level, a muted or disabled output plays nothing, and the limiter holds it. The
+oracle's `signal` lines give the level at the amplifier after all that (`peakDbfs`) and before the volume
+(`generatorPeakDbfs`).
+
+How a story uses it:
+
+```
+[bus]                                   # in the story: bus.setup() writes sim/bus.json when the app is up
+os = "linux"
+  [[bus.outputs]]
+  name = "DSPi Fronts (USB)"
+  usb = "Fronts"                        # that scenario device on USB: serial text, inputs one to one
+  hardwareVolume = true
+  [[bus.outputs]]
+  name = "Cinema 5.1"
+  channels = 6
+  to = [[1, "Fronts", 1], [2, "Fronts", 2], [3, "Centre", 3], [4, "Centre", 4], [5, "Surrounds", 5], [6, "Surrounds", 6]]
+  [[bus.outputs]]
+  name = "Laptop speakers"              # no map: plays nowhere
+  channels = 2
+```
+
+In a replay: `["bus", {"do": "play", "id": "t1", "app": "Tidal", "output": "DSPi Fronts (USB)", "lufs": -14}, "ok"]`
+(any `bus.Bus` method), `["bus_expect", {"device": "Fronts", "output": 1, "rms_dbfs": [-37, -35]}, "ok"]`. From a shell
+or a stand-in: `bus.py RUN_DIR play t1 --app Tidal --output "DSPi Fronts (USB)"`, `bus.py RUN_DIR levels`.
+`replay/bus.json` with `stories/bus.toml` is the example: a stream reaches the woofer at -36.3 dBFS, follows the user
+volume and the OS volume, stops at a mute and on the wrong device.
+
+The sound-source stand-ins (P12 Tidal, P13 local player, P14 Plex, P15 OS audio) are writers of this file: each turns its
+tool calls into `Bus` calls (`play`, `pause`, `move`, `volume`, `output_volume`, `default`, `set_stream`), and reads
+`levels`/`ticks` if it needs to.
