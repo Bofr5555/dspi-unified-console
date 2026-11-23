@@ -4,6 +4,7 @@
 #include <QDateTime>
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QMutex>           // -- WP INTG --
 #include <QObject>
 #include <QSet>
 #include <QString>
@@ -12,6 +13,7 @@
 #include <QTimer>
 #include <QVariantList>
 #include <QVariantMap>
+#include <QWaitCondition>   // -- WP INTG --
 #include <QtQml/qqmlregistration.h>
 #include <atomic>
 #include <functional>
@@ -104,6 +106,10 @@ class AiController : public QObject {
     // ceiling an agent may only stay under, also under "never ask"); and the
     // USB devices remembered as opened here, across restarts ([{ device, name }])
     Q_PROPERTY(int agentSplCap READ agentSplCap WRITE setAgentSplCap NOTIFY settingsChanged)
+    // -- WP INTG -- (RE1) the cap on or off: on, an agent's measurement needs a
+    // microphone calibration that reads dB SPL (else it is refused); off, the
+    // level ceiling holds
+    Q_PROPERTY(bool agentSplCapOn READ agentSplCapOn WRITE setAgentSplCapOn NOTIFY settingsChanged)
     Q_PROPERTY(QVariantList rememberedDevices READ rememberedDevices NOTIFY rememberedChanged)
 public:
     // -- WP FEATUI -- The SPL cap's range and default (dB SPL): below the
@@ -142,6 +148,8 @@ public:
     // -- WP FEATUI --
     int agentSplCap() const { return m_agentSplCap; }
     void setAgentSplCap(int db);
+    bool agentSplCapOn() const { return m_agentSplCapOn; }   // -- WP INTG --
+    void setAgentSplCapOn(bool on);
     QVariantList rememberedDevices() const { return m_remembered.toVariantList(); }
     Q_INVOKABLE void forgetRememberedDevices();
     // What the start reads: the remembered devices from the settings, handed to
@@ -149,6 +157,16 @@ public:
     void loadRemembered();
     // The server's handle, for a controller that reads through it on a thread of its own
     FfiMcp *mcpHandle() const { return m_mcp; }
+    // -- WP INTG -- (review RE20) The handle for another controller's thread
+    // (HostAudioController's read): nullptr once shutting down, else held
+    // until releaseHandle(), which that thread calls when done; shutdown()
+    // frees the handle only after every hold is released.
+    FfiMcp *holdHandle();
+    void releaseHandle();
+    int handleHolds() {
+        QMutexLocker lock(&m_holdMutex);
+        return m_holds;
+    }
     QVariantList clients() const { return m_clients; }
     QVariantList agents() const;   // -- WP LAY8 --
     QVariantMap pairing() const;
@@ -302,6 +320,11 @@ private:
     QString m_confirmMode;
     // -- WP FEATUI --
     int m_agentSplCap = kSplCapDefault;
+    QMutex m_holdMutex;             // -- WP INTG -- (RE20) holds of the handle
+    QWaitCondition m_holdsDone;
+    int m_holds = 0;
+    bool m_agentSplCapOn = true;   // -- WP INTG --
+    void applySplCap();
     QJsonArray m_remembered;
     void remember();
     // The agent's work said on the hub of the device it works on (dspi-hub's

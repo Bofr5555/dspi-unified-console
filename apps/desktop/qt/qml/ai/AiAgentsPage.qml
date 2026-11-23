@@ -197,9 +197,18 @@ SettingsPage {
         objectName: "AiAgents.measuring"
         title: qsTr("Agents' Measurements and Devices")
         iconName: "gauge"
-        footer: qsTr("Agents never play louder than this: they may only ask for less, whatever Ask me says. It holds with a microphone calibrated in dB SPL (this app's calibration is used when the agent names none); without one, the level ceiling holds.")
+        footer: qsTr("Agents never play louder than this: they may only ask for less, whatever Ask me says. It needs a microphone calibrated in dB SPL (this app's calibration is used when the agent names none): without one, an agent's measurement is refused. With the cap off, the level ceiling holds.")
+        // -- WP INTG -- (RE1) the cap can be turned off
+        SettingsToggle {
+            objectName: "AiAgents.splCapOn"
+            title: qsTr("Limit agents' measurements in dB SPL")
+            caption: qsTr("Needs a calibrated microphone; off, only the level ceiling holds.")
+            checked: AiController.agentSplCapOn
+            onToggled: on => AiController.agentSplCapOn = on
+        }
         SettingsSliderRow {
             objectName: "AiAgents.splCap"
+            enabled: AiController.agentSplCapOn   // -- WP INTG --
             //: %1 a sound pressure level in dB SPL
             label: qsTr("Loudest measurement: %1 dB SPL").arg(AiController.agentSplCap)
             minimum: 60

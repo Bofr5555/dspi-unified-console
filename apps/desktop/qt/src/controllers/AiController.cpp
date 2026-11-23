@@ -62,6 +62,7 @@ const char *const kEnabledKey = "mcp/enabled";
 const char *const kConfirmKey = "mcp/confirm";
 // -- WP FEATUI --
 const char *const kSplCapKey = "mcp/agentSplCapDb";
+const char *const kSplCapOnKey = "mcp/agentSplCapOn";   // -- WP INTG --
 const char *const kRememberedKey = "devices/remembered";
 const QString kConfirmDefault = QStringLiteral("ask_risky");
 const QStringList kConfirmModes{ QStringLiteral("ask_everything"), kConfirmDefault, QStringLiteral("never_ask") };
@@ -134,7 +135,8 @@ AiController::AiController(const AppContext &ctx, QObject *parent) : QObject(par
     connect(&m_presenceTimer, &QTimer::timeout, this, [this] { announcePresence(true); });
     // -- WP FEATUI -- the agents' SPL cap, and the devices remembered from earlier runs
     m_agentSplCap = qBound(kSplCapMin, s.value(QLatin1String(kSplCapKey), kSplCapDefault).toInt(), kSplCapMax);
-    if (m_mcp) dspi_mcp_set_agent_spl_cap(m_mcp, float(m_agentSplCap));
+    m_agentSplCapOn = s.value(QLatin1String(kSplCapOnKey), true).toBool();   // -- WP INTG --
+    applySplCap();
     loadRemembered();
     m_tick.setInterval(1000);
     connect(&m_tick, &QTimer::timeout, this, &AiController::tick);
@@ -170,12 +172,30 @@ void AiController::shutdown() {
     m_workTimer.stop();   // -- WP AIVIS --
     m_presenceTimer.stop();   // -- WP FEATUI --
     m_thread.waitForDone();
+    {
+        // -- WP INTG -- (review RE20) other controllers' threads done with it
+        QMutexLocker lock(&m_holdMutex);
+        while (m_holds > 0) m_holdsDone.wait(&m_holdMutex);
+    }
     if (!m_mcp) return;
     // Waits for a call in progress; puts the agents' timed previews back
     dspi_mcp_stop(m_mcp);
     dspi_mcp_set_listener(m_mcp, nullptr, nullptr);
     dspi_mcp_free(m_mcp);
     m_mcp = nullptr;
+}
+
+// -- WP INTG -- (review RE20)
+FfiMcp *AiController::holdHandle() {
+    QMutexLocker lock(&m_holdMutex);
+    if (m_shutDown || !m_mcp) return nullptr;
+    ++m_holds;
+    return m_mcp;
+}
+
+void AiController::releaseHandle() {
+    QMutexLocker lock(&m_holdMutex);
+    if (m_holds > 0 && --m_holds == 0) m_holdsDone.wakeAll();
 }
 
 template <class Job, class Done>
@@ -797,7 +817,8 @@ QVariantList AiController::activity() const {
         const auto done = m_undo.constFind(key);
         QString undo;
         if (done != m_undo.cend()) undo = done->first;
-        else if (write && outcome == QLatin1String("ok") && !journalIds(e).isEmpty())
+        // -- WP INTG -- (review RE2) a failed write that left changes may be undone too
+        else if (write && (outcome == QLatin1String("ok") || outcome == QLatin1String("error")) && !journalIds(e).isEmpty())
             undo = m_ctx.registry->session(device) ? QStringLiteral("can") : QStringLiteral("closed");
         const QString title = str(e, "title");
         rows.append(QVariantMap{
@@ -1142,6 +1163,22 @@ void AiController::tell(const QList<QJsonObject> &rows) {
     for (const QJsonObject &e : rows) {
         const QString device = str(e, "device");
         const bool write = e.value(QLatin1String("write")).toBool();
+        // -- WP INTG -- (review RE2) a write that failed but left changes (a
+        // preset load that left the device silent): said, with Undo
+        if (write && str(e, "outcome") == QLatin1String("error") && !journalIds(e).isEmpty()) {
+            if (auto *notices = Registrar::instance<NoticeCenter>()) {
+                const QString agent = agentName(str(e, "client_name"));
+                m_noticeAgent = agent;
+                m_noticeKeys = { rowKey(e) };
+                bool canUndo = false;
+                for (const QVariant &v : activity())
+                    canUndo = canUndo || (v.toMap().value(QStringLiteral("key")).toString() == rowKey(e)
+                                          && v.toMap().value(QStringLiteral("undo")) == QLatin1String("can"));
+                //: An AI agent's change that failed but changed something: %1 is its name, %2 the app's words for what happened
+                notices->postTagged(QStringLiteral("ai"), tr("%1's change did not go through: %2").arg(agent, str(e, "detail")),
+                                    canUndo ? tr("Undo") : QString(), [this] { undoNoticed(); });
+            }
+        }
         if (str(e, "outcome") != QLatin1String("ok")) continue;
         emit agentCalled(device, str(e, "tool"), write);
         readBehind(device, str(e, "tool"), write);
@@ -1282,8 +1319,21 @@ void AiController::setAgentSplCap(int db) {
     if (db == m_agentSplCap || !m_mcp) return;
     m_agentSplCap = db;
     QSettings().setValue(QLatin1String(kSplCapKey), db);
-    dspi_mcp_set_agent_spl_cap(m_mcp, float(db));
+    applySplCap();
     emit settingsChanged();
+}
+
+// -- WP INTG -- (RE1) Off: no SPL cap (0 for none), the level ceiling holds
+void AiController::setAgentSplCapOn(bool on) {
+    if (on == m_agentSplCapOn || !m_mcp) return;
+    m_agentSplCapOn = on;
+    QSettings().setValue(QLatin1String(kSplCapOnKey), on);
+    applySplCap();
+    emit settingsChanged();
+}
+
+void AiController::applySplCap() {
+    if (m_mcp) dspi_mcp_set_agent_spl_cap(m_mcp, m_agentSplCapOn ? float(m_agentSplCap) : 0.0f);
 }
 
 // The devices open now go first in the list kept across restarts: those on

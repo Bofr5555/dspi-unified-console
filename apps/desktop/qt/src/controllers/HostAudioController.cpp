@@ -51,18 +51,22 @@ QString HostAudioController::howToDefault() const {
 
 void HostAudioController::refresh() {
     AiController *ai = Registrar::instance<AiController>();
-    FfiMcp *mcp = ai ? ai->mcpHandle() : nullptr;
-    if (!mcp || m_busy || m_shutDown) return;
+    if (!ai || m_busy || m_shutDown) return;
+    // -- WP INTG -- (review RE20) held until the read is done: AiController
+    // frees the handle at quit only after
+    FfiMcp *mcp = ai->holdHandle();
+    if (!mcp) return;
     m_busy = true;
     emit busyChanged();
     QPointer<HostAudioController> self(this);
-    m_pool.start([self, mcp] {
+    m_pool.start([self, ai, mcp] {
         QByteArray buf(64 * 1024, '\0');
         uint32_t need = dspi_mcp_host_audio(mcp, buf.data(), uint32_t(buf.size()));
         if (need > uint32_t(buf.size())) {
             buf.resize(int(need));
             need = dspi_mcp_host_audio(mcp, buf.data(), need);
         }
+        ai->releaseHandle();
         QVariantMap reading;
         if (need > 0 && need <= uint32_t(buf.size())) {
             buf.truncate(int(need) - 1);

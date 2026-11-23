@@ -310,7 +310,15 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Agents never play louder than this: they may only ask for less, whatever Ask me says. It holds with a microphone calibrated in dB SPL (this app&apos;s calibration is used when the agent names none); without one, the level ceiling holds.</source>
+        <source>Agents never play louder than this: they may only ask for less, whatever Ask me says. It needs a microphone calibrated in dB SPL (this app&apos;s calibration is used when the agent names none): without one, an agent&apos;s measurement is refused. With the cap off, the level ceiling holds.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Limit agents&apos; measurements in dB SPL</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Needs a calibrated microphone; off, only the level ceiling holds.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -844,6 +852,11 @@ What an AI agent does, and to what: &quot;Changing the gain: OUT3 Centre&quot;</
     </message>
     <message>
         <source>AI agents are paused. Nothing is changed until Resume.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1&apos;s change did not go through: %2</source>
+        <extracomment>An AI agent&apos;s change that failed but changed something: %1 is its name, %2 the app&apos;s words for what happened</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>

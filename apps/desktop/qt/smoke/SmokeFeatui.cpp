@@ -394,6 +394,16 @@ void aiSection(SmokeDriver &d) {
     d.check("featui: Settings > AI Agents has the cap", w && d.waitFor(3000, [&] { return item("AiAgents.splCap") != nullptr; })
                                                             && item("AiAgents.splCap")->property("label").toString() == QLatin1String("Loudest measurement: 78 dB SPL"));
     d.check("featui: and the remembered devices", item("AiAgents.remembered") && item("AiAgents.forgetDevices"));
+    // -- WP INTG -- (RE1) the cap can be turned off: the slider then rests, kept
+    const bool capOnBefore = ai->agentSplCapOn();
+    d.check("intg: the cap is on by default", capOnBefore || QSettings().contains(QStringLiteral("mcp/agentSplCapOn")));
+    ai->setAgentSplCapOn(false);
+    d.check("intg: off, kept as mcp/agentSplCapOn, the slider disabled",
+            !ai->agentSplCapOn() && !QSettings().value(QStringLiteral("mcp/agentSplCapOn")).toBool() && item("AiAgents.splCapOn")
+                && d.waitFor(2000, [&] { return !item("AiAgents.splCap")->isEnabled(); }));
+    ai->setAgentSplCapOn(true);
+    d.check("intg: on again", ai->agentSplCapOn() && d.waitFor(2000, [&] { return item("AiAgents.splCap")->isEnabled(); }));
+    ai->setAgentSplCapOn(capOnBefore);
     bool found = false;
     for (const QVariant &row : settings->sidebarRows(QStringLiteral("default output")))
         found = found || row.toMap().value(QStringLiteral("id")) == QLatin1String("hostaudio");
@@ -411,8 +421,14 @@ void aiSection(SmokeDriver &d) {
     settings->open(QStringLiteral("hostaudio"));
     d.check("featui: This Computer opens", d.waitFor(3000, [&] { return item("HostAudioPage") != nullptr; }));
     host->refresh();
+    // -- WP INTG -- (review RE20) a thread's hold of the AI handle (a quit frees it only after), and
+    // the read lets its own go: a hold left behind would hang the quit
+    FfiMcp *held = ai->holdHandle();
+    const bool heldWhileReading = held && held == ai->mcpHandle() && ai->handleHolds() >= 1;
+    ai->releaseHandle();
     d.check("featui: it reads (never an error)", d.waitFor(10000, [&] { return !host->busy() && !host->reading().isEmpty(); })
                                                      && host->reading().value(QStringLiteral("ok")).toBool());
+    d.check("intg: a hold of the AI handle, and the read let its own go", heldWhileReading && d.waitFor(2000, [&] { return ai->handleHolds() == 0; }));
     std::printf("smoke: featui: host audio: %s, %d device(s)\n", qPrintable(host->reading().value(QStringLiteral("status")).toString()),
                 int(host->reading().value(QStringLiteral("devices")).toList().size()));
     const QVariantList devices = host->reading().value(QStringLiteral("devices")).toList();
