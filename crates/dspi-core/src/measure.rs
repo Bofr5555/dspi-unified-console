@@ -96,6 +96,7 @@ pub use detect::{
     PROBE_BELOW_FLOOR_HEADPHONES_DBFS, PROBE_CEILING_DBFS, PROBE_CEILING_HEADPHONES_DBFS,
     trusted_roles,
 };
+pub use detect::{PROBE_FLOOR_MAX_HZ, PROBE_FLOOR_MIN_HZ}; // -- WP ADET1 -- the MCP tool's bounds
 // -- WP FEAT2 -- what an AI agent may only tighten
 pub use plan::{
     MEASURE_CEILING_MIN_DB, MEASURE_COUNT_MAX, MEASURE_PASSES, MEASURE_SPL_CAP_MIN_DB,

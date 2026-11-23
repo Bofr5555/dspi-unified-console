@@ -750,6 +750,10 @@ impl Server {
         let Some(g) = self.grants.revoke(id) else {
             return false;
         };
+        // -- WP ADET1 -- (AUTODES 4.2) its speaker detection stops at once
+        if g.detect {
+            crate::tools::measure::stop_detect_of(&self.set, &self.measure, g.client, &g.device);
+        }
         self.user.note(
             self.now_ms,
             "answer",
@@ -1023,6 +1027,7 @@ impl Server {
     /// nothing changed, and every agent's timed preview is put back now.
     pub fn stop_agents(&mut self, now_ms: u64) {
         crate::tools::measure::stop_all(&self.set, &self.measure); // -- WP MCP5 --
+        self.grants.clear(); // -- WP ADET1 -- Stop ends every grant
         self.opens.stop_all(); // -- WP FEAT2 --
         for id in self
             .confirms
@@ -1107,6 +1112,7 @@ impl Server {
         }
         let (client, tool_name, args, grant) = (c.client, c.tool, c.args.clone(), c.grant());
         let grouped = c.grouped; // -- WP ODEC --
+        let detect = crate::grant::asks_detect(&c.risks); // -- WP ADET1 --
         let entry = ActivityEntry {
             id: 0,
             at_ms: now_ms,
@@ -1173,10 +1179,13 @@ impl Server {
                 // device for the task, for ten minutes
                 let what = match (grouped, entry.device.as_deref()) {
                     (true, Some(dev)) => {
-                        self.grants.give(client, &entry.client_label, dev, now_ms);
+                        self.grants
+                            .give(client, &entry.client_label, dev, now_ms, detect);
+                        // -- WP ADET1 -- a detection's grant covers detections too
+                        let also = if detect { ", speaker detections" } else { "" };
                         format!(
-                            "allowed your change (confirmation {id}), and your test signals on \
-                             this device for the next {} minutes (louder changes and saves are \
+                            "allowed your change (confirmation {id}), and your test signals{also} \
+                             on this device for the next {} minutes (louder changes and saves are \
                              still asked)",
                             crate::grant::GRANT_MS / 60_000
                         )

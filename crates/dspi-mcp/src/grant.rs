@@ -15,6 +15,13 @@
 //! device closing, or Stop. Under "never ask" nothing is asked, so nothing is
 //! granted. A grant covers the per-device jobs only: a system measurement,
 //! verify or sum check across a hub's units is asked each time (review RF2).
+//!
+//! -- WP ADET1 -- (AUTODES 4.2) A speaker detection is asked as one grouped
+//! question with its warning; its Allow gives the same grant with
+//! [`Grant::detect`]: a second detection by that agent on that device inside
+//! the grant (the microphone moved, say) is not asked again, one on another
+//! device is. A grant from any other question does not cover a detection.
+//! Revoke and Stop end it, and a revoke stops a running detection at once.
 
 use serde_json::{Value, json};
 
@@ -31,6 +38,21 @@ pub const TEST_SIGNALS: &str = "test_signals";
 /// device: `policy::require` lets test signals pass on it.
 pub fn standing_key() -> WriteKey {
     WriteKey::new("standing.test_signal", &[], dspi_core::ParamValue::Trigger)
+}
+
+// -- WP ADET1 --
+/// The key a call's judgement gets while its agent holds a grant with
+/// [`Grant::detect`] on its device: `policy::require_detect` lets a
+/// detection pass on it.
+pub fn standing_detect_key() -> WriteKey {
+    WriteKey::new("standing.detect", &[], dspi_core::ParamValue::Trigger)
+}
+
+// -- WP ADET1 --
+/// Whether a held call's risks are a speaker detection's (its Allow gives a
+/// grant with [`Grant::detect`]).
+pub fn asks_detect(risks: &[Risk]) -> bool {
+    risks.iter().any(|r| r.kind == RiskKind::Detect)
 }
 
 /// Whether a held call's risks would open a grant when allowed.
@@ -60,6 +82,9 @@ pub struct Grant {
     pub since_ms: u64,
     /// When it ends.
     pub until_ms: u64,
+    // -- WP ADET1 --
+    /// It also covers this agent's speaker detections on the device.
+    pub detect: bool,
 }
 
 impl Grant {
@@ -74,6 +99,7 @@ impl Grant {
             "device": self.device,
             "since_ms": self.since_ms,
             "until_ms": self.until_ms,
+            "detect": self.detect, // -- WP ADET1 --
         })
     }
 }
@@ -86,9 +112,18 @@ pub struct Grants {
 }
 
 impl Grants {
-    /// Give `client` test signals on `device` from `now_ms`: a grant it held
-    /// there already starts again. Its id.
-    pub fn give(&mut self, client: ClientId, label: &str, device: &str, now_ms: u64) -> u64 {
+    /// Give `client` test signals on `device` from `now_ms`, -- WP ADET1 --
+    /// and its speaker detections there when `detect`: a grant it held there
+    /// already starts again (keeping its detections). Its id.
+    pub fn give(
+        &mut self,
+        client: ClientId,
+        label: &str,
+        device: &str,
+        now_ms: u64,
+        detect: bool,
+    ) -> u64 {
+        let detect = detect || self.holds_detect(client, device);
         self.list
             .retain(|g| !(g.client == client && g.device == device));
         self.next = self.next.saturating_add(1);
@@ -99,6 +134,7 @@ impl Grants {
             device: device.to_owned(),
             since_ms: now_ms,
             until_ms: now_ms.saturating_add(GRANT_MS),
+            detect,
         });
         self.next
     }
@@ -108,6 +144,21 @@ impl Grants {
         self.list
             .iter()
             .any(|g| g.client == client && g.device == device)
+    }
+
+    // -- WP ADET1 --
+    /// Whether `client` holds a grant on `device` that covers its speaker
+    /// detections.
+    pub fn holds_detect(&self, client: ClientId, device: &str) -> bool {
+        self.list
+            .iter()
+            .any(|g| g.client == client && g.device == device && g.detect)
+    }
+
+    // -- WP ADET1 --
+    /// End every grant (the user's Stop).
+    pub fn clear(&mut self) {
+        self.list.clear();
     }
 
     /// End grant `id` (the user's Revoke): the grant, `None` for none.
@@ -146,14 +197,14 @@ mod tests_wp_odec {
     fn wp_odec_a_grant_lasts_ten_minutes_and_is_per_agent_and_device() {
         let mut g = Grants::default();
         let a = ClientId(1);
-        let id = g.give(a, "AI · A", "demo:1", 1_000);
+        let id = g.give(a, "AI · A", "demo:1", 1_000, false);
         assert!(g.holds(a, "demo:1"));
         assert!(!g.holds(a, "demo:2"));
         assert!(!g.holds(ClientId(2), "demo:1"));
         assert!(g.prune(1_000 + GRANT_MS - 1, |_| true).is_empty());
         assert_eq!(g.prune(1_000 + GRANT_MS, |_| true)[0].id, id);
         assert!(!g.holds(a, "demo:1"));
-        let id = g.give(a, "AI · A", "demo:1", 5_000);
+        let id = g.give(a, "AI · A", "demo:1", 5_000, false);
         assert_eq!(g.revoke(id).unwrap().device, "demo:1");
         assert!(g.revoke(id).is_none());
     }

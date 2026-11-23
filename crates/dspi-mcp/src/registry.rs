@@ -358,6 +358,9 @@ impl Call<'_> {
             let policy = m.get("measure").and_then(Value::as_bool).unwrap_or(false);
             let host = self.measure.is_some_and(tools::measure::Jobs::host);
             m.insert("measure".into(), json!(policy && host));
+            // -- WP ADET1 -- the speaker detection runs in the app's Measure view too
+            let detect = m.get("detect").and_then(Value::as_bool).unwrap_or(false);
+            m.insert("detect".into(), json!(policy && detect && host));
             let opens = self.opens.is_some_and(tools::devices::Opens::host);
             m.insert("open_devices".into(), json!(write && opens));
         }
@@ -585,6 +588,15 @@ pub fn run(ctx: &RunCtx<'_>, tool: &Tool, args: &Map<String, Value>) -> RunOutco
         policy::lock(&judging)
             .grant
             .push(crate::grant::standing_key());
+    }
+    // -- WP ADET1 -- and for its speaker detections there
+    if ctx
+        .grants
+        .is_some_and(|g| g.holds_detect(ctx.client, id.as_str()))
+    {
+        policy::lock(&judging)
+            .grant
+            .push(crate::grant::standing_detect_key());
     }
     policy::lock(&judging).taken_back = policy::TakenBack(Some((Arc::clone(&core), ctx.actor))); // -- WP AIVIS --
     let hook = ctx.policy.judging_hook(&info, &core, &judging);

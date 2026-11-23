@@ -32,13 +32,15 @@
 //!
 //! **Refused whatever the setting** (the device's safety configuration, not
 //! a question to the user): an output the user's confirmed speaker setup
-//! calls a tweeter (or a midrange) keeps a high-pass at 1 kHz (80 Hz) or
-//! above, 12 dB/oct or steeper. The core adds its own: the limits profile,
+//! (-- WP ADET1 -- or, until the user confirms it, a detected one) calls a
+//! tweeter (or a midrange) keeps a high-pass at 1 kHz (80 Hz) or above,
+//! 12 dB/oct or steeper; and an output the speaker detection heard nothing
+//! from is not routed to, enabled or unmuted. The core adds its own: the limits profile,
 //! the installer lock, read-only modes, and `user_only` calls; [`hard_code`]
 //! names those so no layer asks the user about them.
 #![allow(clippy::module_name_repetitions)]
 
-use std::sync::atomic::{AtomicU8, AtomicU32, Ordering}; // -- WP FEATUI -- AtomicU32
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, Ordering}; // -- WP FEATUI -- AtomicU32, ADET1 AtomicBool
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use dspi_core::actor::user::{self as user_changes, USER_CHANGED}; // -- WP AIVIS --
@@ -167,6 +169,11 @@ pub enum RiskKind {
     /// A change on the hub that every unit of the installation hears: an
     /// alignment (each unit re-anchors), a scene recall, USB-direct modes.
     System,
+    // -- WP ADET1 --
+    /// The speaker detection: test signals on outputs nothing is known of,
+    /// whose result the safety rules then rest on. Always asked with
+    /// [`RiskKind::TestSignal`], as one grouped question ([`require_detect`]).
+    Detect,
 }
 
 impl RiskKind {
@@ -187,6 +194,7 @@ impl RiskKind {
             Self::InstallationSave => "installation_save",
             Self::Source => "source", // -- WP MCP2b --
             Self::System => "system", // -- WP MCP2c --
+            Self::Detect => "detect", // -- WP ADET1 --
         }
     }
 }
@@ -264,8 +272,19 @@ pub struct Judging {
     /// The setting, when the policy is [`AgentPolicy`]; `None` under another
     /// policy, which then judges in its own hook alone.
     pub mode: Option<ConfirmMode>,
-    /// Each output's role from the user's **confirmed** speaker setup.
+    /// Each output's role from the **trusted** speaker setup: the user's
+    /// confirmed one, or (-- WP ADET1 --) one the speaker detection found.
     pub roles: Vec<Option<MeasureRole>>,
+    // -- WP ADET1 --
+    /// The roles were found by the speaker detection, not yet confirmed (the
+    /// refusals say so).
+    pub detected: bool,
+    /// The outputs the speaker detection heard nothing from: an agent may
+    /// not route to them, enable or unmute them ([`nothing_outputs`]).
+    pub nothing: Vec<u8>,
+    /// Agents may detect the speakers under "never ask" (Settings › AI
+    /// Agents › Agents may detect speakers; off by default).
+    pub detect_allowed: bool,
     // -- WP FFIX --
     /// The limits profile's high-pass per output: (output, corner, slope);
     /// it raises a confirmed tweeter's or midrange's floor, never lowers it.
@@ -467,6 +486,67 @@ fn require_keyed(
     Err(ToolError::new(HELD_TEXT))
 }
 
+// -- WP ADET1 --
+/// The refusal of a speaker detection under "never ask" without the
+/// setting.
+pub const DETECT_NEVER_ASK_TEXT: &str = "under \"never ask\" agents may detect the speakers only \
+     when the user has switched on Settings › AI Agents › Agents may detect speakers (it is off): \
+     nothing was played. Ask the user to switch it on, or to set up the speakers in Settings › \
+     Speakers.";
+
+// -- WP ADET1 --
+/// The speaker detection (AUTODES 4): test signals and the detection, asked
+/// as one grouped question (`signal`: what plays, `detect`: the detection
+/// and its warning, in the user's words) under "ask on everything" and "ask
+/// for risky changes"; not asked again while the agent holds a grant for
+/// detections on the device (`crate::grant`). Under "never ask" nothing is
+/// asked: refused unless [`Judging::detect_allowed`]. The grant keys are
+/// `static.test_signal` and `static.detect` with `indices`.
+pub fn require_detect(
+    cell: &JudgingCell,
+    signal: &str,
+    detect: &str,
+    indices: &[u8],
+) -> Result<(), ToolError> {
+    let mut j = lock(cell);
+    let Some(mode) = j.mode else {
+        return Err(ToolError::new(
+            "the server's policy does not let agents do this",
+        ));
+    };
+    if mode == ConfirmMode::NeverAsk {
+        return if j.detect_allowed {
+            Ok(())
+        } else {
+            Err(ToolError::new(DETECT_NEVER_ASK_TEXT))
+        };
+    }
+    let key = |kind: RiskKind| {
+        WriteKey::new(
+            &format!("static.{}", kind.as_str()),
+            indices,
+            ParamValue::Trigger,
+        )
+    };
+    let (signal_key, detect_key) = (key(RiskKind::TestSignal), key(RiskKind::Detect));
+    if j.grant.contains(&detect_key) || j.grant.contains(&crate::grant::standing_detect_key()) {
+        return Ok(());
+    }
+    j.asked.push(Risk {
+        kind: RiskKind::TestSignal,
+        what: signal.to_owned(),
+        output: None,
+        keys: vec![signal_key],
+    });
+    j.asked.push(Risk {
+        kind: RiskKind::Detect,
+        what: detect.to_owned(),
+        output: None,
+        keys: vec![detect_key],
+    });
+    Err(ToolError::new(HELD_TEXT))
+}
+
 // -- WP MCP2b --
 /// A static class for a quiet write the hook cannot see (a crossfeed pair
 /// map, a snapshot's name): asked under "ask on everything" only, refused
@@ -604,6 +684,7 @@ pub fn judge(state: &DspState, writes: &[WriteKey], j: &Judging) -> Verdict {
     }
     let mut risks = Vec::new();
     let mut refusals = Vec::new();
+    judge_nothing(state, &after, &j.nothing, &mut refusals); // -- WP ADET1 --
     judge_values(state, &after, writes, &mut risks);
     judge_highpass(
         state,
@@ -611,6 +692,7 @@ pub fn judge(state: &DspState, writes: &[WriteKey], j: &Judging) -> Verdict {
         writes,
         &j.roles,
         &j.floors,
+        setup_word(j.detected), // -- WP ADET1 --
         &mut risks,
         &mut refusals,
     );
@@ -1216,6 +1298,43 @@ fn touched_outputs(st: &DspState, writes: &[WriteKey]) -> Vec<u8> {
     out
 }
 
+// -- WP ADET1 --
+/// The speaker setup's state in a refusal: `confirmed`, or detected by AI.
+fn setup_word(detected: bool) -> &'static str {
+    if detected {
+        "detected by AI, not yet confirmed"
+    } else {
+        "confirmed"
+    }
+}
+
+// -- WP ADET1 --
+/// The `nothing` rule (AUTODES 3.2): an output the speaker detection heard
+/// nothing from may not be routed to, enabled or unmuted by an agent, under
+/// every setting (the user can, in the app). Judged on what the writes
+/// change, so what already plays may be quietened.
+fn judge_nothing(before: &DspState, after: &DspState, nothing: &[u8], refusals: &mut Vec<String>) {
+    for &o in nothing {
+        let what = if !get(&before.output_enabled, o) && get(&after.output_enabled, o) {
+            "switch it on"
+        } else if get(&before.output_muted, o) && !get(&after.output_muted, o) {
+            "unmute it"
+        } else if (0..before.num_input_channels)
+            .any(|i| !cell_of(&before.matrix_routing, i, o) && cell_of(&after.matrix_routing, i, o))
+        {
+            "route an input to it"
+        } else {
+            continue;
+        };
+        refusals.push(format!(
+            "{}: the speaker detection heard nothing from it, so an agent may not {what}. Ask \
+             the user whether anything is wired there (Settings › Speakers); only the user can \
+             include it. Nothing was changed.",
+            agent_out(o)
+        ));
+    }
+}
+
 /// The tweeter rule on every output the writes touch. A confirmed tweeter
 /// (or midrange) is judged on the state the writes leave (owner rule, MCP6
 /// §4; FUNC1 bug 1): refused when it would play programme with no high-pass
@@ -1232,6 +1351,7 @@ fn judge_highpass(
     writes: &[WriteKey],
     roles: &[Option<MeasureRole>],
     floors: &[(u8, f32, u8)],
+    setup: &str,
     risks: &mut Vec<Risk>,
     refusals: &mut Vec<String>,
 ) {
@@ -1243,7 +1363,7 @@ fn judge_highpass(
         if let Some((floor, slope, word)) = hard_rule(roles, floors, o) {
             if let Some(why) = hard_verdict(before, after, writes, o, (floor, slope)) {
                 refusals.push(format!(
-                    "{} drives {word} in the user's speaker setup (confirmed), so it must keep a \
+                    "{} drives {word} in the user's speaker setup ({setup}), so it must keep a \
                      high-pass at {floor:.0} Hz or above, {slope} dB/octave or steeper, whenever it \
                      can play: {why}. This is the device's safety rule, not a question: nothing \
                      was changed. Give it such a high-pass first (dspi_set_crossover), or ask \
@@ -1428,9 +1548,10 @@ pub fn unprotected_now(st: &DspState, j: &Judging) -> Option<String> {
             && excess(&below_floor_curve(st, o, floor)) <= BELOW_FLOOR_MARGIN_DB;
         (plays(st, o) && !safe).then(|| {
             format!(
-                "{} drives {word} in the user's speaker setup (confirmed) and plays programme \
+                "{} drives {word} in the user's speaker setup ({}) and plays programme \
                  without a high-pass at {floor:.0} Hz or above, {slope} dB/octave or steeper",
-                agent_out(o)
+                agent_out(o),
+                setup_word(j.detected) // -- WP ADET1 --
             )
         })
     })
@@ -1910,6 +2031,8 @@ pub struct AgentPolicy {
     mode: AtomicU8,
     // -- WP FEATUI -- the app's SPL cap for agents' measurements, f32 bits (0: none)
     spl_cap_bits: AtomicU32,
+    // -- WP ADET1 -- Settings › AI Agents › Agents may detect speakers
+    detect: AtomicBool,
 }
 
 /// Tools whose writes are never judged: a revert is never refused
@@ -1923,6 +2046,7 @@ impl AgentPolicy {
         Self {
             mode: AtomicU8::new(mode.to_u8()),
             spl_cap_bits: AtomicU32::new(0), // -- WP FEATUI --
+            detect: AtomicBool::new(false),  // -- WP ADET1 --
         }
     }
 
@@ -1946,6 +2070,20 @@ impl AgentPolicy {
             .filter(|c| c.is_finite() && *c > 0.0)
             .map_or(0, f32::to_bits);
         self.spl_cap_bits.store(bits, Ordering::Relaxed);
+    }
+
+    // -- WP ADET1 --
+    /// Settings › AI Agents › Agents may detect speakers (off by default):
+    /// under "never ask" an agent's speaker detection is refused unless it is
+    /// on; the other settings ask the user instead. Holds from the next call.
+    pub fn set_agent_detect(&self, allowed: bool) {
+        self.detect.store(allowed, Ordering::Relaxed);
+    }
+
+    // -- WP ADET1 --
+    /// [`AgentPolicy::set_agent_detect`]'s switch.
+    pub fn agent_detect(&self) -> bool {
+        self.detect.load(Ordering::Relaxed)
     }
 
     fn hook(cell: JudgingCell) -> WriteHook {
@@ -1992,27 +2130,42 @@ impl AgentPolicy {
     }
 }
 
-/// Each output's role from `core`'s speaker setup, when the user confirmed
-/// it; none otherwise (an unconfirmed or imported setup is not the user's
-/// word, review RA F1).
-pub fn confirmed_roles(core: &DspiCore) -> Vec<Option<MeasureRole>> {
+/// Each output's role from `core`'s speaker setup when it can be trusted:
+/// confirmed by the user, or (-- WP ADET1 --, AUTODES 3.2) found by the
+/// speaker detection and not yet confirmed; none otherwise (an unconfirmed or
+/// imported setup is not the user's word, review RA F1).
+pub fn trusted_roles(core: &DspiCore) -> Vec<Option<MeasureRole>> {
+    trusted_setup(core).0
+}
+
+// -- WP ADET1 --
+/// [`trusted_roles`], whether they were detected (not confirmed), and the
+/// outputs the detection heard nothing from ([`nothing_outputs`]).
+pub fn trusted_setup(core: &DspiCore) -> (Vec<Option<MeasureRole>>, bool, Vec<u8>) {
     let Ok(Some(layout)) = core.speaker_layout() else {
-        return Vec::new();
+        return (Vec::new(), false, Vec::new());
     };
-    if !layout.confirmed_by_user {
-        return Vec::new();
-    }
-    let mut out = Vec::new();
-    for o in &layout.outputs {
-        let at = usize::from(o.output);
-        if out.len() <= at {
-            out.resize(at.saturating_add(1), None);
-        }
-        if let Some(slot) = out.get_mut(at) {
-            *slot = Some(o.role);
-        }
-    }
-    out
+    let roles = dspi_core::trusted_roles(&layout).unwrap_or_default();
+    let detected = layout.state() == dspi_core::LayoutState::AutoDetected;
+    (roles, detected, nothing_outputs(&layout))
+}
+
+// -- WP ADET1 --
+/// The outputs `layout`'s speaker detection heard nothing from (class
+/// `nothing`, heard nowhere) and the layout leaves out: no agent routes to,
+/// enables or unmutes them. A row the user added for one includes it.
+pub fn nothing_outputs(layout: &dspi_core::SpeakerLayout) -> Vec<u8> {
+    layout
+        .detected
+        .iter()
+        .flat_map(|d| d.outputs.iter())
+        .filter(|o| {
+            o.class == dspi_core::DetectClass::Nothing
+                && o.heard == dspi_core::DetectHeard::Never
+                && layout.output(o.output).is_none()
+        })
+        .map(|o| o.output)
+        .collect()
 }
 
 // -- WP FFIX --
@@ -2052,13 +2205,17 @@ impl Policy for AgentPolicy {
         core: &DspiCore,
         judging: &JudgingCell,
     ) -> Option<WriteHook> {
-        let roles = confirmed_roles(core);
+        let (roles, detected, nothing) = trusted_setup(core); // -- WP ADET1 --
         let floors = profile_floors(core); // -- WP FFIX --
         {
             let mut j = lock(judging);
             j.mode = Some(self.mode());
             j.roles = roles;
             j.floors = floors;
+            // -- WP ADET1 --
+            j.detected = detected;
+            j.nothing = nothing;
+            j.detect_allowed = self.agent_detect();
         }
         (!UNJUDGED_TOOLS.contains(&call.tool)).then(|| Self::hook(Arc::clone(judging)))
     }
@@ -2081,6 +2238,8 @@ impl Policy for AgentPolicy {
             "read": true,
             "write": true,
             "measure": true, // -- WP FEAT2 -- where the app measures (`Call::agent_may`)
+            // -- WP ADET1 -- under "never ask" only with the user's switch
+            "detect": self.mode() != ConfirmMode::NeverAsk || self.agent_detect(),
             "confirm": self.mode().as_str(),
             "peq_boost_step_db": PEQ_BOOST_STEP_DB,
             "delay_step_ms": DELAY_STEP_MS,

@@ -223,6 +223,7 @@ pub(crate) fn app_drives(core: &DspiCore, what: &str, secs: u64) {
             "session" => core.measure_tick().active,
             "rolloff" => core.measure_rolloff_tick().running,
             "tune" => core.measure_tune_tick().running,
+            "detect" => core.detect_tick().running, // -- WP ADET1 --
             other => panic!("{other}"),
         };
         if !running {
@@ -696,10 +697,14 @@ fn wp_mcp5_a_role_argument_is_rejected_by_the_schema() {
             t.name
         );
     }
-    // There is still no tool that writes the speaker layout.
+    // There is still no tool that writes the speaker layout. -- WP ADET1 --
+    // The speaker detection is a job of the app's (AUTODES 6.1): it writes a
+    // detected layout, never the user's word, and its name holds no
+    // `speaker_layout` (AGENT_PROOF).
     assert!(
         !names
             .iter()
+            .filter(|n| **n != "dspi_detect_speakers")
             .any(|n| n.contains("layout") || n.contains("speaker"))
     );
 }

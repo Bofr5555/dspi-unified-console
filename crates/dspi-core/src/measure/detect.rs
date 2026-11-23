@@ -116,6 +116,7 @@ pub const PROBE_SHAPED_STEPS: u32 = 5;
 pub const PROBE_FREE_STEPS: [f32; 4] = [125.0, 63.0, 32.0, 20.0];
 /// The lowest floor, and the highest a caller may name, Hz.
 pub const PROBE_FLOOR_MIN_HZ: f32 = 1_000.0;
+/// The highest floor a caller may name, Hz. -- WP ADET1 -- (now exported)
 pub const PROBE_FLOOR_MAX_HZ: f32 = 8_000.0;
 /// The top of the A2 ramp's band, Hz.
 const A2_TOP_HZ: f32 = 4_000.0;

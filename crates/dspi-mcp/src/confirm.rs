@@ -115,10 +115,14 @@ impl Confirmation {
             // -- WP ODEC -- what Allow grants beyond this call
             "grant": if self.grouped {
                 json!({"kind": crate::grant::TEST_SIGNALS, "device": self.device,
-                       "minutes": crate::grant::GRANT_MS / 60_000})
+                       "minutes": crate::grant::GRANT_MS / 60_000,
+                       "detect": crate::grant::asks_detect(&self.risks)}) // -- WP ADET1 --
             } else {
                 Value::Null
             },
+            // -- WP ADET1 -- the speaker detection's warning on the mechanism
+            "warning": crate::grant::asks_detect(&self.risks)
+                .then_some(crate::tools::measure::DETECT_WARNING),
         })
     }
 }

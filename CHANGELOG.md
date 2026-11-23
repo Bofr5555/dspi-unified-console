@@ -5,6 +5,15 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
 ## Unreleased
 
 ### Desktop (Qt)
+- AI agents can detect the speakers (WP ADET1, the agents' side; the console's own Detect… and its screens follow): on a
+  device whose speaker setup nobody has confirmed, `dspi_detect_speakers` asks the console to play quiet test sweeps on
+  each output (above 1 kHz at most −24 dBFS; lower only on an output that is no tweeter, at most −50 dBFS) and writes what
+  it finds as a detected speaker setup. One question with a warning; **Allow** also covers the agent's test signals and
+  further detections on that device for 10 minutes, and **Revoke** stops a running detection. Under **Never** it needs
+  Settings › AI Agents › **Agents may detect speakers** (off by default). The detected roles guard the speakers as a
+  confirmed setup does (a detected tweeter keeps its 1 kHz high-pass under every setting), so agents may measure and tune
+  with them; an output where nothing was heard may not be routed, switched on or unmuted by an agent. Refused on a
+  confirmed setup.
 - AI agents, the owner's answers of 2026-11-23 (WP ODEC): a question about test signals is asked once per device for an
   agent's task: **Allow** also lets that agent measure there for 10 minutes (the AI page shows it with the time left and
   **Revoke**); louder changes and saves are still asked one at a time. An agent keeps a tune only after a verify that

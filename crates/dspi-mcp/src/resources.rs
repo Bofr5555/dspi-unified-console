@@ -67,6 +67,14 @@ device the app shows is used. A device that is not open may be a known one
   too, is fine while it stays at the floor or above. A tweeter the user left playing without
   that high-pass may be turned down or muted, never made louder (its gain, the volumes, a
   route, an effect or an EQ boost on it or on an input that feeds it).
+- If the user has not set up the speakers (`roles_from` is `none` or
+  `speaker_setup_unconfirmed`), do not guess: run `dspi_detect_speakers`. It plays quiet sweeps
+  on each output, finds which outputs reach a driver and which drive a tweeter, and gives every
+  output a detected role that the safety rules then use as if the user had confirmed it
+  (`roles_from: speaker_setup_auto_detected`). Anything it cannot tell apart is a tweeter. Tell
+  the user what it found; only the user can confirm or correct it, in Settings › Speakers, and
+  the detection cannot be overruled by what you believe. An output on which nothing was heard
+  (`reaches: nothing`) may not be routed, switched on or unmuted.
 - Numbers: every field (`output`, `input`, `slot`, `channel`) counts from 0. In texts,
   \"output N\" is that same number; \"Out N\" and \"In N\" are the app's labels, from 1
   (output 0 is Out 1).
@@ -126,8 +134,14 @@ device the app shows is used. A device that is not open may be a known one
 - A measurement needs a person: the app's microphone, put where you say. Tell the user what
   to do before you start, and wait for them.
 - `dspi_measure_preflight` says what blocks a measurement. The roles come from the user's
-  confirmed speaker layout only; if it is not confirmed, ask the user to confirm it in
-  Settings › Speakers. No tool sets a role.
+  confirmed speaker layout, or one `dspi_detect_speakers` found; if there is neither, detect it
+  or ask the user to confirm it in Settings › Speakers. No tool sets a role.
+- `dspi_detect_speakers` is one question to the user with a warning (under \"never ask\" it
+  needs the user's switch: `agent_may.detect`). Poll `dspi_measure_status`; its `detect` block
+  gives each output's class, confidence, role and evidence, the summary and what to do next.
+  Ask the user about anything `medium` or `low` (a full-range driver or a dome midrange reads
+  as a tweeter); the user corrects it, then re-read `dspi_get_overview`. It is refused on a
+  confirmed setup.
 - `dspi_measure_start` (or `dspi_measure_rolloff_start` for an output's low end) asks the
   app to measure: it may be held for the user, then the app's Measure view runs it. Poll
   `dspi_measure_status` with `wait_s: 25`: it answers as soon as something changes (or after

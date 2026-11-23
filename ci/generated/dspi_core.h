@@ -8685,6 +8685,16 @@ bool dspi_mcp_set_confirm(struct FfiMcp *mcp, const char *mode);
 bool dspi_mcp_set_agent_spl_cap(struct FfiMcp *mcp, float spl_db);
 
 /**
+ * Settings › AI Agents › Agents may detect speakers (off by default):
+ * under "never ask" an agent's speaker detection (`dspi_detect_speakers`)
+ * is refused unless it is on; under the other settings the user is asked
+ * instead. The app shows its warning once when the user switches it on.
+ * Holds from the next call on, also while the server runs. False for a null
+ * handle.
+ */
+bool dspi_mcp_set_agent_detect(struct FfiMcp *mcp, bool allowed);
+
+/**
  * This computer's audio as `dspi_get_host_audio` reads it, for the devices
  * open in the handle's set: the tool's JSON plus `ok` (never an error:
  * what cannot be read says `status: "unknown"` and why). Blocks while the

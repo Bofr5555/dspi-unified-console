@@ -187,7 +187,10 @@ speakers or headphones and tune them (section 6).
   Windows; System Settings › Sound on macOS, which has no per-app output without third-party software). If the system
   cannot be read (no PipeWire, a sandbox, no permission), the agent is told "unknown" and why, and carries on.
 - **Speaker roles are yours.** An agent reads which outputs are woofers and tweeters from your speaker setup, and can
-  never change it.
+  never change it. <!-- WP ADET1 --> If you have not confirmed a speaker setup, an agent may ask to **detect** it: the
+  console plays quiet sweeps on each output and works out which outputs reach a driver and which drive a tweeter
+  (section 6, *Detecting the speakers*). The detected roles guard your speakers until you confirm or correct them in
+  Settings › Speakers; the agent can never set them.
 - **Installation setup** works on a draft that belongs to the agent. Nothing reaches the hub until the agent saves it. If
   someone else saved the installation meanwhile, the save is refused, and the agent's edits are kept aside to apply again.
 - **Sources, zones, slots and scenes** <!-- WP FEAT1 --> are edits of that draft too
@@ -237,6 +240,7 @@ that service, as with anything else you show it.
   - play test signals: start a measurement, a low-end search, or an auto-tune's check or verify (section 6). This is
     asked **once per device for the agent's task**: **Allow** lets that agent play test signals on that device for
     the next 10 minutes (see **Test signals for 10 minutes** below);
+  - detect the speakers: a test signal with a warning, one question (section 6, *Detecting the speakers*);
   - replace many settings at once: load a preset, recall a snapshot, import a config or filter file;
   - write the device's flash: save, rename or copy a preset, save to the device, rename a channel or the device;
   - change every unit of an installation: align the audio link (also with a measurement across units), apply a scene,
@@ -248,13 +252,15 @@ that service, as with anything else you show it.
   minutes, as above.
 - **Never.** Agents' changes are made at once, louder ones too, and **test signals play without a question** when an agent
   starts a measurement. Your limits profile and the protection of outputs you set up as tweeters still apply, and so do
-  the rule below and the rules of section 6.
+  the rule below and the rules of section 6. A speaker detection is not asked under **Never** either: it is refused
+  unless you switch on Settings › AI Agents › **Agents may detect speakers** (off by default; switching it on shows its
+  warning once).
 
 **A tweeter's protection.** An output whose high-pass sits at 1 kHz or above drives a tweeter, whatever it is called.
 Removing that high-pass, moving it below 1 kHz or making it shallower than 12 dB/octave is asked about under the default
 setting and refused under **Never** (you can still make the change yourself).
 
-An output your confirmed speaker setup calls a tweeter is protected under every setting, **Never** included: whenever it
+An output your confirmed speaker setup calls a tweeter (or, until you confirm it, a detected one) is protected under every setting, **Never** included: whenever it
 can play (an input is routed to it, it is on and not muted), it must have a high-pass at 1 kHz or above (or the higher
 corner your limits profile sets for it), 12 dB/octave or steeper. Every change an agent makes is judged on the result: a
 route, an unmute or switching the output on, a crossover or EQ change, an input's EQ, a preset load or import, keeping a
@@ -353,9 +359,9 @@ measures (yours too): the agent is told which.
 
 - **A person at the microphone.** The agent says where to put it; somebody has to put it there, and move it when the
   measurement asks for the next position.
-- **A confirmed speaker setup** (Settings › Speakers, **Confirm**). The roles (woofer, midrange, tweeter…) always come from
-  it: no tool takes a role or changes the setup. Without it, or with one that is not confirmed, the agent is refused and
-  told to ask you to confirm it.
+- **A confirmed speaker setup** (Settings › Speakers, **Confirm**), or one the speaker detection found. The roles
+  (woofer, midrange, tweeter…) always come from it: no tool takes a role or changes the setup. Without either, the agent
+  is refused and told to detect the speakers or ask you to confirm the setup.
 - **The device open in the console**, and nothing else measuring on it. A measurement across units needs each unit open in
   a tab, each with its own confirmed speaker setup.
 
@@ -376,6 +382,23 @@ headphones) holds.
 **Opening devices.** An agent may ask to open a device the console knows: one on USB, one listed by an open hub, or one
 you opened before on USB. The console remembers the USB devices you open across restarts (Settings › AI Agents › **Devices agents
 may open**, with **Forget Devices**). A device an agent opens or closes is a notice.
+
+**Detecting the speakers.** <!-- WP ADET1 --> When nobody has set up the speakers, an agent can ask the console to find
+out what is wired to each output (`dspi_detect_speakers`). The console plays quiet test sweeps on each output in turn,
+from the microphone at the listening position (or close to each driver, moved when you are asked). Each output is first
+played only above 1 kHz (or a higher floor: your limits profile's for that output, or one the agent names), at most −24
+dBFS (−36 dBFS on headphones). Only an output whose response says it is not a tweeter is played lower, and then at most
+−50 dBFS (−60 dBFS on headphones); whatever cannot be told apart is treated as a tweeter. Outputs that are off or muted
+are not probed. The question says so, with a warning: nothing is known about these outputs yet, and a tweeter wired where
+the probe expects a woofer could receive a few seconds of sweep below 1 kHz at −50 dBFS, less than a hundredth of what a
+1 kHz crossover lets through from music, but not nothing. Keep the volume where it is and stay by **Stop**. **Allow** also
+lets that agent play test signals and detect again on that device for 10 minutes (section 4); **Revoke** stops a running
+detection at once. Under **Never** it needs Settings › AI Agents › **Agents may detect speakers**. The result is in
+Settings › Speakers: each output's role, marked as detected, and a summary such as "2 tweeters, 2 woofers, 1 midrange?;
+nothing heard on Out 4". Until you confirm or correct it, the detected roles guard your speakers as a confirmed setup
+would, and an agent may measure and tune with them. An output where nothing was heard is left out: an agent may not route
+to it, switch it on or unmute it (you can). An agent may not detect over a setup you have confirmed: correct it in
+Settings › Speakers.
 
 **A tweeter's low end.** These rules hold under every question setting; nothing lifts them, and they hold for your own
 measurements too:
@@ -420,6 +443,7 @@ a headphone **coupler**, the headphones' lower limits apply, in the low-end sear
 |---|---|
 | `dspi_get_measure_options` | Your calibrations and target curves, the couplers, and the level limits |
 | `dspi_measure_preflight` | What stands between a measurement and the device now, and the roles it would use. Plays nothing |
+| `dspi_detect_speakers` | Asks to detect what is wired to each output, when the speakers are not set up. *Test signal* with a warning |
 | `dspi_measure_start` | Asks for a measurement: one output at a time or summed. *Test signal* |
 | `dspi_measure_rolloff_start` | Asks for the low-end search on one output. *Test signal* |
 | `dspi_measure_status` | Where the request and the device's measuring jobs stand; with `wait_s` (up to 25 s) it answers when something changes, so the agent asks rarely. A finished measurement's arrivals, and with `one_run` the delays that align the speakers |
@@ -451,6 +475,8 @@ a headphone **coupler**, the headphones' lower limits apply, in the low-end sear
   volume is independent of presets: silent while it loads, and a tweeter or midrange the preset leaves without its high-pass
   is muted, with a notice; give it its high-pass, then unmute it. A refused agent load leaves the device on the preset
   it was on. A hub scene an agent recalls that loads presets is judged the same way, on each unit this app has open.
+- **A full-range driver or a small dome midrange is detected as a tweeter.** <!-- WP ADET1 --> The detection does not
+  look below 1 kHz on a driver that plays flat to 20 kHz. Correct it in Settings › Speakers.
 - **Output numbers.** Agents count outputs and inputs from 0, as the tools do; the console's labels count from 1. In what
   an agent is told, "output 1" is the tools' number and "Out 2" the console's label of the same output.
 - **What Undo can undo.** The activity offers **Undo** only for changes Undo can reverse: a preset save, a flash write or a
