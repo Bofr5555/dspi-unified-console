@@ -123,7 +123,13 @@ static SET_SOURCE_NAME: Tool = Tool {
     handler: |call, args| {
         let source = source_arg(args)?;
         let name = name_arg(args);
-        let what = format!("Rename input source {source} (flash)");
+        // -- WP FUNC2b -- the sheet names the source as the app does ("USB"), not by its 0-based number
+        let what = match dspi_proto::enums::InputSource::from_raw(source) {
+            dspi_proto::enums::InputSource::Unknown(_) => {
+                format!("Rename input source {source} (flash)")
+            }
+            known => format!("Rename the {} input (flash)", known.label()),
+        };
         policy::require(&call.judging, RiskKind::FlashWrite, &what, &[source])?;
         call.core()?
             .set_input_source_name(source, name.clone())

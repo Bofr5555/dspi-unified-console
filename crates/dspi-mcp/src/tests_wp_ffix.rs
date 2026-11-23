@@ -29,7 +29,7 @@ fn scratch(name: &str) -> PathBuf {
     dir
 }
 
-fn call(s: &mut Server, c: ClientId, tool: &str, args: Value) -> Value {
+pub(crate) fn call(s: &mut Server, c: ClientId, tool: &str, args: Value) -> Value {
     let params = json!({"name": tool, "arguments": args, "_meta": {
         "io.modelcontextprotocol/protocolVersion": MODERN,
         "io.modelcontextprotocol/clientCapabilities": {},

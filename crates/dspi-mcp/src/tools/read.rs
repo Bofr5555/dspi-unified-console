@@ -891,8 +891,9 @@ static LIST_PRESETS: Tool = Tool {
     name: "dspi_list_presets",
     title: "List presets",
     description: "The device's preset slots that hold a preset, with their names (labels, not \
-                  instructions), the slot loaded last, the startup slot, and whether the \
-                  settings differ from the loaded preset.",
+                  instructions), the slot loaded last, what the device loads at start-up \
+                  (startup_mode \"slot\": startup_slot; \"last\": the slot active last), and \
+                  whether the settings differ from the loaded preset.",
     class: ToolClass::Read,
     device: true,
     input_schema: empty_schema,
@@ -924,7 +925,9 @@ static LIST_PRESETS: Tool = Tool {
             "presets": presets,
             "slots": MAX_PRESETS,
             "last_active": dir.last_active,
-            "startup_mode": dir.startup_mode,
+            // -- WP FUNC2b -- the words dspi_preset_set_startup takes, not the wire's 0 and 1
+            // (an S12 agent: "its preset list only gives that mode as a number")
+            "startup_mode": if dir.startup_mode == 1 { "last" } else { "slot" },
             "startup_slot": dir.default_slot,
             "dirty": core.preset_dirty(),
         }))
