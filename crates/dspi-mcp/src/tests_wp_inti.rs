@@ -47,19 +47,27 @@ fn wp_inti_a_refused_load_and_a_held_load_under_a_limits_profile() {
 
     // Refused: back on Dinner, its settings, the master as it was, no hold told.
     let e = err(&mut s, c, "dspi_preset_load", json!({"slot": 8}));
-    assert!(e.contains("drives a tweeter") && e.contains("put back"), "{e}");
+    assert!(
+        e.contains("drives a tweeter") && e.contains("put back"),
+        "{e}"
+    );
     assert!(!e.contains("limits_held") && !e.contains("still 9"), "{e}");
     let st = core.get_state();
     assert_eq!(st.active_preset_slot, 1, "left on the refused slot");
     assert!((st.xover[usize::from(tweeter)][0].freq - 3_000.0).abs() < 1.0);
-    assert!(st.output_gain_db[0].abs() < 0.01, "{}", st.output_gain_db[0]);
+    assert!(
+        st.output_gain_db[0].abs() < 0.01,
+        "{}",
+        st.output_gain_db[0]
+    );
     assert!((level(&core) - -12.0).abs() < 0.01, "{}", level(&core));
 
     // Held: Lunch is loaded, its +6 dB held to 0 dB, and the agent is told.
     let r = ok(&mut s, c, "dspi_preset_load", json!({"slot": 2}));
     let held = r["limits_held"].as_array().cloned().unwrap_or_default();
     assert!(
-        held.iter().any(|x| x.as_str().is_some_and(|x| x.starts_with("Out 1 gain"))),
+        held.iter()
+            .any(|x| x.as_str().is_some_and(|x| x.starts_with("Out 1 gain"))),
         "{r}"
     );
     let st = core.get_state();
