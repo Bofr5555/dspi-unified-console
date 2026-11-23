@@ -98,6 +98,11 @@ class User:
         if kind == "layout":
             self.run.confirm_layout(a["device"])
             return
+        if kind == "agents":  # -- WP ODEC -- Stop (off) and on again, as in Settings › AI Agents
+            ctl.call("AiController", "setEnabled", bool(a["on"]))
+            ctl.wait("AI agents " + ("on" if a["on"] else "off"),
+                     lambda: bool(ctl.get("AiController", "running")) == bool(a["on"]))
+            return
         self.show(a["device"])
         out = a.get("output", 0) - 1
         if kind == "crossover":
@@ -141,10 +146,6 @@ class User:
             ctl.call("SnapshotsController", "capture", a["name"], a.get("note", ""))
         elif kind == "volume":
             ctl.call("SidebarController", "setUserVolume", float(a["db"]))
-        elif kind == "agents":  # -- WP ODEC -- Stop (off) and on again, as in Settings › AI Agents
-            ctl.call("AiController", "setEnabled", bool(a["on"]))
-            self.run.ctl.wait("AI agents " + ("on" if a["on"] else "off"),
-                              lambda: bool(ctl.get("AiController", "running")) == bool(a["on"]))
         elif kind == "undo":
             ctl.call("HistoryController", "undo")
         else:

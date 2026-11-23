@@ -377,7 +377,8 @@ def invariants(run, meta, scenario, calls):
 
 
 # -- WP ODEC -- (owner 2026-11-23, answer 13)
-SIMULATED = re.compile(r"simulat", re.I)
+# "ear simulator" is a coupler standard's name (IEC 60318-4), not a mark
+SIMULATED = re.compile(r"(?<!ear )simulat", re.I)
 
 
 def simulated_seen(run):
