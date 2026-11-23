@@ -455,6 +455,13 @@
     </message>
 </context>
 <context>
+    <name>AiButton</name>
+    <message>
+        <source>working</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>AiController</name>
     <message>
         <source>The app&apos;s Measure view is not available.</source>
@@ -570,7 +577,9 @@
     </message>
     <message>
         <source>%1: %2</source>
-        <extracomment>%1 is a kind of change (&quot;Louder&quot;), %2 the change (&quot;Out 1 gain up from -12 dB to -3 dB&quot;)</extracomment>
+        <extracomment>%1 is a kind of change (&quot;Louder&quot;), %2 the change (&quot;Out 1 gain up from -12 dB to -3 dB&quot;)
+----------
+What an AI agent does, and to what: &quot;Changing the gain: OUT3 Centre&quot;</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -619,6 +628,207 @@
     </message>
     <message>
         <source>The AI activity was not exported: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Changing the EQ</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Clearing an EQ band</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Switching the EQ</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Changing the crossover</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Changing the gain</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Changing the delay</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Changing the polarity</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Changing a mute</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Switching an output</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Changing the routing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Changing the volume</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Changing the mute</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Making several changes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keeping its changes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Putting its changes back</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Undoing its change</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Loading a preset</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Saving a preset</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Recalling a snapshot</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Importing a configuration</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Importing filters</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Applying an AutoEQ profile</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Changing the input source</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Starting a measurement</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Starting a low-end search</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Stopping a measurement</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Working out an auto-tune</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Applying an auto-tune</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Verifying an auto-tune</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Editing its installation draft</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Saving the installation</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Opening a device</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Closing a device</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Changing: %1</source>
+        <extracomment>%1 is what an AI agent reads or does, in English (&quot;Read a channel&quot;)</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reading: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>IN%1</source>
+        <extracomment>An input&apos;s or an output&apos;s short name: %1 is its number</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>OUT%1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>band %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Measuring: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Starting: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Waiting for your answer: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Last: %1</source>
+        <extracomment>%1 is what an AI agent did a moment ago (&quot;Changing the gain: OUT3&quot;)</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Its timed preview waits: it is put back unless it is kept</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>AI agents are paused. Nothing is changed until Resume.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 changed: %2</source>
+        <extracomment>An AI agent&apos;s change: %1 is its name, %2 the change (&quot;Out 3 output gain -6 dB to -8 dB&quot;)</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message numerus="yes">
+        <source>%1 made %n changes, the last: %2</source>
+        <extracomment>%1 is an AI agent&apos;s name, %2 its newest change</extracomment>
+        <translation type="unfinished">
+            <numerusform></numerusform>
+            <numerusform></numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Undo</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The measurement %1 asked for was stopped: a setting was changed while it ran, so its result would not be valid.</source>
+        <extracomment>%1 is an AI agent&apos;s name</extracomment>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -798,11 +1008,64 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Stop</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Turn AI agents off: what they run stops, their timed previews are put back</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Activity…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>AI Agents Settings…</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>AiWorkBanner</name>
+    <message>
+        <source>Show</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show %1</source>
+        <extracomment>%1 is a device&apos;s name</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Stop Measuring</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Resume</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pause</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Let AI agents go on</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>AI agents wait until Resume; nothing is changed meanwhile</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Stop</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Turn AI agents off: what they run stops, their timed previews are put back</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1: %2</source>
+        <extracomment>%1 is an AI agent&apos;s name, %2 what it does</extracomment>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -16810,6 +17073,19 @@ This wiring is a board-level setting: it is stored on the device, survives prese
 </context>
 <context>
     <name>TrayController</name>
+    <message>
+        <source>%1: %2</source>
+        <extracomment>%1 is an AI agent&apos;s name, %2 what it does now</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Resume AI Agents</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pause AI Agents</source>
+        <translation type="unfinished"></translation>
+    </message>
     <message>
         <source>DSPi connected</source>
         <translation type="unfinished"></translation>
