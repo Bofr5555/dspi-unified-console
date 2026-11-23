@@ -14,7 +14,7 @@
 // active high-pass at 1 kHz or above is a tweeter for safety, whatever its role).
 
 import type { KeyValueStore } from "../../../fleet/local";
-import type { MeasureRole } from "../../../core/measure-protocol";
+import type { MeasurePlacement, MeasureRole } from "../../../core/measure-protocol";
 import { LAYOUT_UNCONFIRMED_PREFIX } from "../../../ui/texts";
 
 /** One output of the layout (`dspi_core::SpeakerLayoutOutput`). */
@@ -24,6 +24,58 @@ export interface SpeakerLayoutOutputRecord {
   role: MeasureRole;
   speaker: string;
   group: number;
+  // -- WP ADETW -- (AUTODES 3.1) absent in a copy kept before the speaker detection: the core reads
+  // it as the person's in a confirmed layout, else as a suggestion
+  /** Where its role comes from. */
+  source?: RoleSource;
+}
+
+// -- WP ADETW -- the speaker detection's part of the layout (dspi_core speaker_layout.rs, WP ADET0)
+
+/** `dspi_core::RoleSource`. */
+export type RoleSource = "user" | "detected" | "suggested";
+/** `dspi_core::LayoutState`. */
+export type LayoutState = "unconfirmed" | "autoDetected" | "confirmed";
+/** `dspi_core::DetectClass`. */
+export type DetectClass = "tweeter" | "midrange" | "woofer" | "sub" | "fullRange" | "nothing" | "unknown" | "off";
+/** `dspi_core::DetectConfidence`. */
+export type DetectConfidence = "high" | "medium" | "low";
+/** `dspi_core::DetectHeard`. */
+export type DetectHeard = "top" | "aboveFloor" | "belowFloor" | "never";
+
+/** `dspi_core::DetectedOutput`: one output's detection and its evidence. */
+export interface DetectedOutputRecord {
+  /** 0-based. */
+  output: number;
+  class: DetectClass;
+  confidence: DetectConfidence;
+  /** null for `nothing` and `off`. */
+  role: MeasureRole | null;
+  floorHz: number;
+  heard: DetectHeard;
+  levelDbfs: number | null;
+  topFallDb: number | null;
+  lowTurnDb: number | null;
+  fLowHz: number | null;
+  lowestHz: number | null;
+  stoppedAtHz: number | null;
+  /** A notice key (`detect.nothing`, ...). */
+  note: string | null;
+  probedMs: number;
+}
+
+/** `dspi_core::Detection`: the last speaker detection on the device. */
+export interface DetectionRecord {
+  atMs: number;
+  /** Who ran it: an agent's label, "" for the app. */
+  by: string;
+  placement: MeasurePlacement;
+  floorHz: number;
+  microphone: string;
+  outputs: DetectedOutputRecord[];
+  stopped: boolean;
+  summary: string;
+  deviceOutputs: number;
 }
 
 /** `dspi_core::SpeakerLayout`. */
@@ -35,6 +87,9 @@ export interface SpeakerLayoutRecord {
   /** When it was set, ms since the epoch; 0 for a proposal. */
   updatedMs: number;
   notes: string[];
+  // -- WP ADETW --
+  /** The last speaker detection, if one ran. */
+  detected?: DetectionRecord | null;
 }
 
 declare module "../../../core/protocol" {
@@ -102,7 +157,66 @@ function tidyOutput(o: unknown): SpeakerLayoutOutputRecord | null {
   if (!Number.isInteger(x.output) || x.output! < 0 || x.output! > 15) return null;
   if (typeof x.role !== "string" || !(x.role in ROLE_WORDS)) return null;
   const group = Number.isInteger(x.group) && x.group! >= 0 && x.group! <= 255 ? x.group! : 0;
-  return { output: x.output!, role: x.role, speaker: typeof x.speaker === "string" ? x.speaker : "", group };
+  const row: SpeakerLayoutOutputRecord = { output: x.output!, role: x.role, speaker: typeof x.speaker === "string" ? x.speaker : "", group };
+  // -- WP ADETW -- the row's source kept (a copy from before has none)
+  if (x.source === "user" || x.source === "detected" || x.source === "suggested") row.source = x.source;
+  return row;
+}
+
+// -- WP ADETW -- a kept detection, checked field by field (the core refuses a malformed one, and
+// the whole layout with it): what does not read is dropped, a detection without outputs too
+const CLASSES: readonly DetectClass[] = ["tweeter", "midrange", "woofer", "sub", "fullRange", "nothing", "unknown", "off"];
+const CONFIDENCES: readonly DetectConfidence[] = ["high", "medium", "low"];
+const HEARD: readonly DetectHeard[] = ["top", "aboveFloor", "belowFloor", "never"];
+const PLACEMENTS: readonly MeasurePlacement[] = ["listeningPosition", "multiPosition", "nearField", "headphones"];
+
+function num(v: unknown): number | null {
+  return typeof v === "number" && Number.isFinite(v) ? v : null;
+}
+
+function oneOf<T extends string>(v: unknown, all: readonly T[], or: T): T {
+  return all.includes(v as T) ? (v as T) : or;
+}
+
+function tidyDetected(o: unknown): DetectedOutputRecord | null {
+  const x = (o ?? {}) as Partial<Record<keyof DetectedOutputRecord, unknown>>;
+  if (!Number.isInteger(x.output) || (x.output as number) < 0 || (x.output as number) > 15) return null;
+  return {
+    output: x.output as number,
+    class: oneOf(x.class, CLASSES, "unknown"),
+    confidence: oneOf(x.confidence, CONFIDENCES, "low"),
+    role: typeof x.role === "string" && x.role in ROLE_WORDS ? (x.role as MeasureRole) : null,
+    floorHz: num(x.floorHz) ?? 0,
+    heard: oneOf(x.heard, HEARD, "never"),
+    levelDbfs: num(x.levelDbfs),
+    topFallDb: num(x.topFallDb),
+    lowTurnDb: num(x.lowTurnDb),
+    fLowHz: num(x.fLowHz),
+    lowestHz: num(x.lowestHz),
+    stoppedAtHz: num(x.stoppedAtHz),
+    note: typeof x.note === "string" ? x.note : null,
+    probedMs: num(x.probedMs) ?? 0,
+  };
+}
+
+/** A kept detection as the core takes it; null when there is none or it does not read. */
+export function tidyDetection(d: unknown): DetectionRecord | null {
+  const x = (d ?? {}) as Partial<Record<keyof DetectionRecord, unknown>>;
+  if (!d || typeof d !== "object" || !Array.isArray(x.outputs)) return null;
+  const outputs = x.outputs.map(tidyDetected).filter((o): o is DetectedOutputRecord => !!o);
+  if (!outputs.length) return null;
+  const n = num(x.deviceOutputs);
+  return {
+    atMs: num(x.atMs) ?? 0,
+    by: typeof x.by === "string" ? x.by : "",
+    placement: oneOf(x.placement, PLACEMENTS, "listeningPosition"),
+    floorHz: num(x.floorHz) ?? 0,
+    microphone: typeof x.microphone === "string" ? x.microphone : "",
+    outputs,
+    stopped: x.stopped === true,
+    summary: typeof x.summary === "string" ? x.summary : "",
+    deviceOutputs: n !== null && Number.isInteger(n) && n >= 0 && n <= 255 ? n : 0,
+  };
 }
 
 /** `serial`'s copy, checked; null when there is none or it does not read. */
@@ -120,6 +234,7 @@ export function loadKept(storage: KeyValueStore | null, serial: string): KeptLay
       confirmedByUser: l.confirmedByUser === true,
       updatedMs: typeof l.updatedMs === "number" ? l.updatedMs : 0,
       notes: [],
+      detected: tidyDetection(l.detected), // -- WP ADETW --
     },
     imported: k!.imported === true,
   };
@@ -191,6 +306,20 @@ export async function loadLayout(core: LayoutCaller, serial: string, storage: Ke
   return { stored, proposal, imported, problem };
 }
 
+// -- WP ADETW --
+/**
+ * The open device's layout as it stands, read only (the main screen's line): the core's, else this
+ * page's copy (the session's open sets it again; this never writes, so it cannot race that). The
+ * copy is read after the core answers, so a copy just set again is the one compared.
+ */
+export async function peekLayout(core: Pick<LayoutCaller, "call">, serial: string, storage: KeyValueStore | null): Promise<LayoutView> {
+  const stored = await core.call("speakerLayout", undefined);
+  const kept = loadKept(storage, serial);
+  if (!stored) return { ...NO_VIEW, stored: kept?.layout ?? null, imported: !!kept && kept.imported && !kept.layout.confirmedByUser };
+  const imported = !stored.confirmedByUser && (kept && kept.layout.updatedMs === stored.updatedMs ? kept.imported : true);
+  return { ...NO_VIEW, stored, imported };
+}
+
 /** Keep `layout` as the device's, confirmed or not, and this page's copy of it. */
 export async function keepLayout(core: LayoutCaller, serial: string, storage: KeyValueStore | null, layout: SpeakerLayoutRecord, confirmed: boolean, was: LayoutView): Promise<LayoutView> {
   const stored = await core.call("speakerLayoutSet", { layout: { ...layout, serial, confirmedByUser: confirmed, notes: [] } });
@@ -203,11 +332,16 @@ export function baseOf(v: LayoutView): SpeakerLayoutRecord | null {
   return v.stored ?? v.proposal;
 }
 
-/** `layout` with output `o`'s row changed (added when it has none), in output order. */
+/**
+ * `layout` with output `o`'s row changed (added when it has none), in output order. A row the
+ * person adds or gives another role is theirs (WP ADETW, AUTODES 3.1: the detection still stands
+ * for the other rows).
+ */
 export function withRow(layout: SpeakerLayoutRecord | null, o: number, patch: Partial<Omit<SpeakerLayoutOutputRecord, "output">>): SpeakerLayoutRecord {
   const base: SpeakerLayoutRecord = layout ?? { serial: "", outputs: [], confirmedByUser: false, updatedMs: 0, notes: [] };
   const had = base.outputs.find((x) => x.output === o);
   const row = { ...(had ?? { output: o, role: "full" as MeasureRole, speaker: "", group: 0 }), ...patch };
+  if (!patch.source && (!had || (patch.role !== undefined && patch.role !== had.role))) row.source = "user"; // -- WP ADETW --
   const outputs = [...base.outputs.filter((x) => x.output !== o), row].sort((a, b) => a.output - b.output);
   return { ...base, outputs };
 }
@@ -217,9 +351,148 @@ export function withoutRow(layout: SpeakerLayoutRecord, o: number): SpeakerLayou
   return { ...layout, outputs: layout.outputs.filter((x) => x.output !== o) };
 }
 
+// -- WP ADETW -- the three states and the detection in words (AUTODES 2, 5.1, 5.2)
+
+/**
+ * How far `l` can be trusted (`SpeakerLayout::state`): confirmed by the person; else
+ * auto-detected when a detection is recorded and no row is a mere suggestion; else unconfirmed.
+ */
+export function layoutState(l: SpeakerLayoutRecord | null): LayoutState {
+  if (!l) return "unconfirmed";
+  if (l.confirmedByUser) return "confirmed";
+  // A row kept before the detection has no source: the core reads it as a suggestion
+  if (l.detected && l.outputs.length && l.outputs.every((o) => o.source === "user" || o.source === "detected")) return "autoDetected";
+  return "unconfirmed";
+}
+
+/** The detection's record of output `o`, if one. */
+export function detectedOf(l: SpeakerLayoutRecord | null, o: number): DetectedOutputRecord | null {
+  return l?.detected?.outputs.find((x) => x.output === o) ?? null;
+}
+
+const PLACED: Record<MeasurePlacement, string> = {
+  listeningPosition: "microphone at the listening position",
+  multiPosition: "microphone at several positions",
+  nearField: "microphone close to each driver",
+  headphones: "headphones on a coupler",
+};
+
+/** Who ran the detection, as the page shows it: an agent's label, "" for the app's own. */
+function whoDetected(d: DetectionRecord): string {
+  return d.by.replace(/[\p{Cc}\p{Cf}]/gu, "").trim();
+}
+
+/** "23 Nov at 14:02", or "today at 14:02". */
+function when(ms: number, now: number): string {
+  const d = new Date(ms);
+  const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  if (new Date(now).toDateString() === d.toDateString()) return `today at ${time}`;
+  return `${d.toLocaleDateString([], { day: "numeric", month: "short" })} at ${time}`;
+}
+
+/** A row's marker after its role (AUTODES 5.1): whose word it is, and how sure a detection was. */
+export type PillKind = "detected" | "detectedUnsure" | "uncertain" | "unknown" | "nothing" | "off" | "you" | "suggested";
+
+export const PILL_WORDS: Record<PillKind, string> = {
+  detected: "detected",
+  detectedUnsure: "detected?",
+  uncertain: "uncertain",
+  unknown: "unknown, treated as a tweeter",
+  nothing: "nothing heard",
+  off: "off, not probed",
+  you: "you",
+  suggested: "suggested",
+};
+
+/** Hover text when the notices are not read yet (the notice's reason is shown when they are). */
+const PILL_REASONS: Record<PillKind, string> = {
+  detected: "Found by the speaker detection.",
+  detectedUnsure: "Found by the speaker detection, not sure: correct it if it is wrong.",
+  uncertain: "The detection was not sure; it is treated as a tweeter to be safe.",
+  unknown: "The probe did not finish this output; it is treated as a tweeter.",
+  nothing: "Nothing reached the microphone from this output: nothing is wired here, or it does not reach the microphone. Left out of the layout.",
+  off: "The output was off or muted, so the detection did not probe it.",
+  you: "Set or confirmed by you.",
+  suggested: "Suggested from the filters and the routing: nobody's word yet.",
+};
+
+export interface Pill {
+  kind: PillKind;
+  word: string;
+  /** The notice whose reason says why (`detect.*`), null for none. */
+  note: string | null;
+  /** The reason when the notice is not at hand. */
+  reason: string;
+}
+
+function pill(kind: PillKind, note: string | null = null): Pill {
+  return { kind, word: PILL_WORDS[kind], note, reason: PILL_REASONS[kind] };
+}
+
+/**
+ * Output `o`'s marker in `draft` (the rows as shown) against the layout `stored`: a row the
+ * detection left out says why (nothing heard, off); a row says whose word it is. None on a
+ * confirmed layout's rows as kept (they are all the person's) or with no detection and no layout.
+ */
+export function pillOf(draft: SpeakerLayoutRecord | null, stored: SpeakerLayoutRecord | null, o: number): Pill | null {
+  const row = draft?.outputs.find((x) => x.output === o);
+  const det = detectedOf(draft, o) ?? detectedOf(stored, o);
+  if (!row) {
+    if (det?.class === "nothing") return pill("nothing", det.note ?? "detect.nothing");
+    if (det?.class === "off") return pill("off", det.note ?? "detect.off");
+    return null;
+  }
+  const kept = stored?.outputs.find((x) => x.output === o);
+  const unchanged = !!kept && kept.role === row.role && kept.source === row.source;
+  if (stored?.confirmedByUser && unchanged) return null;
+  if (row.source === "user") return pill("you");
+  if (row.source === "detected" && det) {
+    if (det.class === "unknown") return pill("unknown", det.note ?? "detect.unknown");
+    if (det.confidence === "high") return pill("detected", det.note);
+    return pill(det.confidence === "medium" ? "detectedUnsure" : "uncertain", det.note);
+  }
+  if (!stored && !draft?.detected) return null;
+  return pill("suggested");
+}
+
+/** The detection's evidence of one output, in words, for the details table. */
+export function evidenceWords(d: DetectedOutputRecord): { heard: string; topFall: string; fLow: string; lowest: string } {
+  const heard: Record<DetectHeard, string> = { top: "4–16 kHz", aboveFloor: "above the floor", belowFloor: "below the floor", never: "never" };
+  const hz = (v: number | null) => (v === null ? "—" : v >= 1000 ? `${+(v / 1000).toFixed(2)} kHz` : `${Math.round(v)} Hz`);
+  return {
+    heard: d.class === "off" ? "not probed" : heard[d.heard],
+    topFall: d.topFallDb === null ? "—" : `${d.topFallDb.toFixed(1)} dB`,
+    fLow: hz(d.fLowHz),
+    lowest: hz(d.lowestHz),
+  };
+}
+
+export const CLASS_WORDS: Record<DetectClass, string> = {
+  tweeter: "Tweeter",
+  midrange: "Midrange",
+  woofer: "Woofer",
+  sub: "Subwoofer",
+  fullRange: "Full range",
+  nothing: "Nothing heard",
+  unknown: "Unknown, treated as a tweeter",
+  off: "Off, not probed",
+};
+
 /** What the banner says, elsewhere (`text`) and on Settings › Speakers (`here`); null when the layout is confirmed. */
-export function bannerOf(v: LayoutView): { kind: "imported" | "unconfirmed" | "none"; text: string; here: string } | null {
+export function bannerOf(v: LayoutView, now = Date.now()): { kind: "autoDetected" | "imported" | "unconfirmed" | "none"; text: string; here: string } | null {
   if (v.stored?.confirmedByUser) return null;
+  // -- WP ADETW -- detected, not confirmed (AUTODES 5.1): its roles guard the outputs meanwhile
+  const d = v.stored?.detected;
+  if (d && layoutState(v.stored) === "autoDetected") {
+    const who = whoDetected(d);
+    const at = d.atMs > 0 ? ` ${when(d.atMs, now)}` : "";
+    const lead = who ? `Detected by AI, not confirmed: ${who} probed` : "Detected, not confirmed: the speaker detection probed";
+    return {
+      kind: "autoDetected",
+      text: who ? "Your speaker layout was detected by AI and is not confirmed. Check it in Settings › Speakers." : "Your speaker layout was detected and is not confirmed. Check it in Settings › Speakers.",
+      here: `${lead} this DSPi's outputs${at} (${PLACED[d.placement] ?? PLACED.listeningPosition}). Check each role, correct what is wrong, then confirm.`,
+    };
+  }
   // -- WP MCP5 -- (review RB C4) "imported" is any unconfirmed layout this app did not
   // write: a configuration file or another app (never an agent: no tool writes it)
   if (v.stored && v.imported)
@@ -241,11 +514,19 @@ export function bannerOf(v: LayoutView): { kind: "imported" | "unconfirmed" | "n
   };
 }
 
-/** When the layout was confirmed or set, in words; "" for a proposal. */
+/** When the layout was confirmed, detected or set, in words; "" for a proposal. */
 export function stampWords(l: SpeakerLayoutRecord | null, now = Date.now()): string {
+  // -- WP ADETW -- an auto-detected layout says when it was detected, and by whom
+  if (l?.detected && layoutState(l) === "autoDetected") {
+    const what = whoDetected(l.detected) ? "Detected by AI, not confirmed" : "Detected, not confirmed";
+    return l.detected.atMs > 0 ? `${what}, ${stampAt(l.detected.atMs, now)}.` : `${what}.`;
+  }
   if (!l || !(l.updatedMs > 0)) return "";
-  const d = new Date(l.updatedMs);
-  const today = new Date(now).toDateString() === d.toDateString();
-  const at = today ? d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : d.toLocaleDateString();
-  return `${l.confirmedByUser ? "Confirmed" : "Kept, not confirmed,"} ${today ? "today at " : "on "}${at}.`;
+  return `${l.confirmedByUser ? "Confirmed" : "Kept, not confirmed,"} ${stampAt(l.updatedMs, now)}.`;
+}
+
+function stampAt(ms: number, now: number): string {
+  const d = new Date(ms);
+  if (new Date(now).toDateString() === d.toDateString()) return `today at ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+  return `on ${d.toLocaleDateString()}`;
 }
