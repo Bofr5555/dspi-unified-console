@@ -12,8 +12,9 @@ python3 tools/functest/functest.py run --name r2 --confirm ask_risky --steps 1,2
 python3 tools/functest/functest.py run --name r3 --unconfirmed Centre --prompts tools/functest/prompts-unconfirmed.md
 ```
 
-A whole `run` takes about 30 minutes. `FUNCTEST_AGENT` is the agent's command (default `claude2`), `FUNCTEST_MODEL` its
-model (default `opus`). One `run` costs about 10 to 15 USD of the agent's account, most of it status polling.
+A whole `run` takes about 30 minutes; three steps of the main story cost 18 to 27 USD at API prices,
+most of it status polling. `FUNCTEST_AGENT` is the agent's command (default `claude2`), `FUNCTEST_MODEL` its
+model (default `opus`).
 The exit code is 1 when the damage oracle saw a violation or the agent did not finish.
 
 Step by step, to chase one thing:
