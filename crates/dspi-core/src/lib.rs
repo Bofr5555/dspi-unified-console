@@ -170,6 +170,9 @@ mod measure_sim;
 pub mod actor;
 // -- WP ROLE0 -- the speaker layout: output roles from the user's setup (MPLAN 2.2)
 pub mod speaker_layout;
+// -- WP FUNC2a -- the function test's config-time oracle (test-only)
+#[cfg(feature = "sim-scenario")]
+mod functest_oracle;
 
 pub use callbacks::{DeviceEvents, LinkListener, MidiSender, NotifyListener, RtaListener};
 // -- WP P5SES --

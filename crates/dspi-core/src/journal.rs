@@ -603,6 +603,17 @@ pub(crate) fn journal(inner: &mut Inner, path: &'static str, indices: &[u8], aft
 
 /// Put `change` in the open session's journal; nowhere without one.
 fn record(inner: &mut Inner, change: Change) {
+    // -- WP FUNC2a -- the function test's config-time oracle, after every entry
+    #[cfg(feature = "sim-scenario")]
+    if let Some(serial) = inner.conn.as_ref().map(|c| c.serial.clone()) {
+        crate::functest_oracle::journalled(
+            &serial,
+            &inner.state,
+            change.path,
+            &change.indices,
+            change.actor,
+        );
+    }
     // -- WP MCP0 -- another actor's change: the embedder is told
     crate::actor::noted(inner, change.actor, change.path, &change.indices);
     // -- WP AIVIS -- the user's changes, for the other actors
