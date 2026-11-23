@@ -148,6 +148,8 @@ export interface SceneAction {
   op: string;
   arg?: number;
   value?: number;
+  /** -- WP FEATUI -- (FEAT1) a `source` op's source: the zone it targets plays it. */
+  source?: string | null;
 }
 export interface Scene {
   id: string;
@@ -172,6 +174,18 @@ export interface SystemModel {
   // -- WP FIXM1 --
   /** "Keep USB-direct units aligned" (Installer, off by default): the hub writes the USB-direct units' output delays again when their start offsets move. */
   keepUsbAligned?: boolean;
+  // -- WP FEATUI -- (FEAT1) where the music comes from: a description, the hub writes nothing from it
+  programmeSources?: ProgrammeSource[];
+}
+
+// -- WP FEATUI --
+/** What feeds a unit's inputs or a sender's channels (FEAT1's `programmeSources`). */
+export interface ProgrammeSource {
+  id: string;
+  name: string;
+  kind: "computer_usb" | "spdif" | "analogue" | "alink_sender";
+  feeds: string;
+  inputs: number[];
 }
 
 /** What the hub read from one device (`Observed`), by serial. */
