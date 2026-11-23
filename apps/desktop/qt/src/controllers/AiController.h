@@ -463,8 +463,8 @@ private:
     QTimer m_followTimer;       // a follow held off by the rate limit, tried after it
     // -- WP INTI -- (review RF7) the user's input, stamped by the application's event filter
     QElapsedTimer m_lastInput;  // the last key, click, wheel or touch
-    QElapsedTimer m_pressedAt;  // the oldest button still held
-    int m_buttonsHeld = 0;
+    QElapsedTimer m_pressedAt;  // the newest press
+    int m_buttonsHeld = 0;      // 1 from a press to the next release
     int inputIdleLeftMs() const;
 
 protected:

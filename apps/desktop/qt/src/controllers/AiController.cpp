@@ -1225,13 +1225,16 @@ bool AiController::eventFilter(QObject *watched, QEvent *event) {
     case QEvent::MouseButtonPress:
     case QEvent::MouseButtonDblClick:
     case QEvent::TouchBegin:
-        if (m_buttonsHeld++ == 0) m_pressedAt.start();
+        // Every press restarts the clock: a release another object took (a popup's
+        // grab) must not leave an old press counted, nor make a new one look stale
+        m_buttonsHeld = 1;
+        m_pressedAt.start();
         m_lastInput.start();
         break;
     case QEvent::MouseButtonRelease:
     case QEvent::TouchEnd:
     case QEvent::TouchCancel:
-        m_buttonsHeld = qMax(0, m_buttonsHeld - 1);
+        m_buttonsHeld = 0;
         m_lastInput.start();
         break;
     case QEvent::KeyPress:

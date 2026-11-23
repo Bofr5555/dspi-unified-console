@@ -257,8 +257,12 @@ void odecSection(SmokeDriver &d) {
         // -- WP INTI -- (review RF7) Nor while an input is in flight: a mouse button held
         // (a click acts on release), a key just pressed. The events go to an object of
         // their own: the application's filter sees them, no control does.
-        d.spin(AiController::kFollowMs + 300);
+        // A press whose release another object took, more than 10 s ago (a popup's grab in
+        // an earlier section did it once): it must not change what follows
         QObject sink;
+        QMouseEvent stray(QEvent::MouseButtonPress, QPointF(1, 1), QPointF(1, 1), Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+        QCoreApplication::sendEvent(&sink, &stray);
+        d.spin(10500);
         QMouseEvent press(QEvent::MouseButtonPress, QPointF(1, 1), QPointF(1, 1), Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
         QCoreApplication::sendEvent(&sink, &press);
         const bool loud = s.ok("dspi_set_loudness", { { QStringLiteral("device"), b->id() }, { QStringLiteral("enabled"), true } });
