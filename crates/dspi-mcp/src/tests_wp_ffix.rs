@@ -506,6 +506,7 @@ fn wp_ffix_an_agents_preset_load_runs_silenced_and_comes_back() {
 // ------------------------------------------------------------ bug 5
 
 /// A tools/call over HTTP with `token`; (status, body, seconds it took).
+#[cfg(feature = "http")] // -- WP INTG --
 fn http_call(port: u16, token: &str, tool: &str, args: Value) -> (u16, Value, f64) {
     use std::io::{Read, Write};
     let body = json!({"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {
@@ -541,6 +542,7 @@ fn http_call(port: u16, token: &str, tool: &str, args: Value) -> (u16, Value, f6
     )
 }
 
+#[cfg(feature = "http")] // -- WP INTG --
 #[test]
 fn wp_ffix_a_status_call_with_wait_s_waits_over_http_without_holding_the_server() {
     use crate::http::{HttpConfig, HttpLimits, HttpServer};
