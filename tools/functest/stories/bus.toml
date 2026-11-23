@@ -1,0 +1,39 @@
+# WP FBUS (FSTORY 3S.2, pieces P5 and P11), no model: a stream from the computer's player reaches a
+# DSPi's input and its woofer at the level the arithmetic says, through the user volume, the OS
+# volume coupled to it (UAC), an output mute, and a wrong output device. replay/bus.json plays it:
+#
+#   tools/functest/run.sh --replay tools/functest/replay/bus.json --story tools/functest/stories/bus.toml
+#
+# The levels: a stereo stream at -14 LUFS is -16.3 dBFS RMS per channel (BS.1770, no K-weighting),
+# -1 dBTP peak; through a flat route and the Fronts' -20 dB user volume, -36.3 dBFS at the woofer.
+name = "bus"
+
+# The computer's output devices (bus.py setup): the Fronts DSPi on USB, its OS volume being the
+# DSPi's own USB volume, and the laptop's speakers (the wrong answer)
+[bus]
+os = "linux"
+audioSystem = "PipeWire 1.6"
+
+  [[bus.outputs]]
+  name = "DSPi Fronts (USB)"
+  usb = "Fronts"
+  default = true
+  hardwareVolume = true
+
+  [[bus.outputs]]
+  name = "Laptop speakers"
+  channels = 2
+
+[[step]]
+label = "stream-to-woofer"
+
+  [[step.expect]]
+  what = "only the Fronts changed (the route)"
+  kind = "only_changed"
+  devices = ["Fronts"]
+
+[[step]]
+label = "volume-and-mute"
+
+[[step]]
+label = "wrong-output"

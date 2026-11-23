@@ -723,6 +723,23 @@ mod world {
             let chains: Vec<ChannelChain> = (0..s.num_output_channels)
                 .map(|o| crate::measure::chain_of(&s, o))
                 .collect();
+            // -- WP FBUS -- (P5) in a scenario, what the device does after
+            // the chain too: volume, mutes, loudness, the limiter
+            #[cfg(feature = "sim-scenario")]
+            let chains = if super::scenario::room().is_some() {
+                super::scenario::signal_chains(
+                    &s,
+                    cfg.signal_type,
+                    cfg.channel_mask,
+                    cfg.flags,
+                    cfg.level_db,
+                    cfg.p.first().copied().unwrap_or(20.0),
+                    cfg.p.get(1).copied().unwrap_or(20_000.0),
+                    chains,
+                )
+            } else {
+                chains
+            };
             let rate = self
                 .fetch_stat(crate::consts::STAT_SAMPLE_RATE)
                 .ok()

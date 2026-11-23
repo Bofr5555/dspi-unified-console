@@ -118,6 +118,10 @@ class Player:
         out = []
         for c in calls:
             tool, args = c[0], c[1]
+            if tool.startswith("bus"):  # -- WP FBUS -- the host audio bus (bus.py)
+                import bus
+                out.append(bus.replay_call(self.agent.run.dir, c))
+                continue
             if tool == "wait":
                 state, note = self.wait(args["device"])
                 out.append({"tool": tool, "args": args, "want": "ended", "got": f"{state}: {note}",
