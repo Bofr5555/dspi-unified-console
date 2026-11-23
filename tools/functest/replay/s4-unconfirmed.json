@@ -18,6 +18,20 @@
      "high_pass": {
       "family": "linkwitz_riley",
       "order": 4,
+      "freq_hz": 2000
+     }
+    },
+    "ok",
+    "a high-pass taken for a tweeter's could not move within 1 kHz and up"
+   ],
+   [
+    "dspi_set_crossover",
+    {
+     "device": "demo:1",
+     "output": 1,
+     "high_pass": {
+      "family": "linkwitz_riley",
+      "order": 4,
       "freq_hz": 800
      }
     },

@@ -185,3 +185,44 @@ fn wp_func2a_nothing_is_asked_while_the_user_holds_a_control() {
 fn wp_func2a_the_guide_says_setting_the_users_change_back_is_no_undo() {
     assert!(crate::resources::GUIDE.contains("do not call it an undo"));
 }
+
+// S4 (the Fronts unconfirmed): a high-pass at 1 kHz or above taken for a
+// tweeter's may move within it unasked; the question, when one goes below,
+// says "below 1000 Hz", not "lower".
+#[test]
+fn wp_func2a_an_inferred_tweeter_moves_within_the_floor_unasked() {
+    let (set, core) = demo("func2a-inferred");
+    let ch = core.get_state().num_input_channels + 1;
+    let hp = |hz: f32| FilterParams {
+        filter_type: LR4_HP,
+        bypass: false,
+        freq: hz,
+        q: 0.707,
+        gain: 0.0,
+        qp: 0.707,
+    };
+    core.set_crossover(ch, 0, hp(2500.0)).unwrap();
+    let mut s = server_of(&set, ConfirmMode::AskRisky);
+    let c = s.connect();
+    let lr4 = |hz: u32| json!({"family": "linkwitz_riley", "order": 4, "freq_hz": hz});
+    ok(
+        &mut s,
+        c,
+        "dspi_set_crossover",
+        json!({"output": 1, "high_pass": lr4(2000)}),
+    );
+    let r = call(
+        &mut s,
+        c,
+        "dspi_set_crossover",
+        json!({"output": 1, "high_pass": lr4(800)}),
+    );
+    assert_eq!(
+        r["structuredContent"]["status"],
+        json!("awaiting_confirmation"),
+        "{r}"
+    );
+    let asked = s.waiting_confirmations();
+    let text = format!("{asked:?}");
+    assert!(text.contains("moves it below 1000 Hz"), "{text}");
+}

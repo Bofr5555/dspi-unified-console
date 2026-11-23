@@ -1374,7 +1374,8 @@ fn highpass_verdict(o: u8, ch: u8, writes: &[WriteKey], risks: &mut Vec<Risk>) {
         kind: RiskKind::TweeterCrossing,
         what: format!(
             "{} has a high-pass at {TWEETER_FLOOR_HZ} Hz or above (a tweeter): this \
-                     removes it, moves it lower or makes it shallower than {MIN_SLOPE_DB} dB/oct",
+                     removes it, moves it below {TWEETER_FLOOR_HZ} Hz or makes it shallower than \
+                     {MIN_SLOPE_DB} dB/oct",
             out_word(o)
         ),
         output: Some(o),
