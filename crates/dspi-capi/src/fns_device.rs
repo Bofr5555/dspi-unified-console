@@ -1003,7 +1003,11 @@ pub extern "C" fn dspi_load_preset(core: *mut FfiCore, slot: u8) -> u8 {
 /// back (the master volume), in words for a notice, into `out_buf` of
 /// `buf_len` bytes; "" for nothing. Read once: the core then forgets it.
 #[unsafe(no_mangle)]
-pub extern "C" fn dspi_preset_load_notice(core: *mut FfiCore, out_buf: *mut c_char, buf_len: u32) -> bool {
+pub extern "C" fn dspi_preset_load_notice(
+    core: *mut FfiCore,
+    out_buf: *mut c_char,
+    buf_len: u32,
+) -> bool {
     name_into(core, out_buf, buf_len, |c| Ok(c.preset_load_notice()))
 }
 
