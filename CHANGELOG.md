@@ -173,6 +173,13 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
   names for a screen reader; an agent's change keeps the keyboard on its Undo. (WP LAY7)
 - Several units: a unit can be chosen again right after it was unchosen. Measure chooses its outputs again when a DSPi
   that had none (an audio link sender) has outputs again. Classic names which of several open demos it shows. (WP LAY7)
+- AI agents: a preset load refused for a tweeter's protection leaves the device on the preset it was on, so a Save cannot
+  overwrite the refused one; "undo" takes back the agent's newest whole call and says what it could not undo. The preset
+  box follows the active preset after a save or a rename. (WP FUNC2b)
+- AI agents under an installer's limits profile: a preset load says what the profile held of the preset; the installer
+  lock's refusal says what still passes (mute, volume, preset load) and where to unlock, never the PIN. The question
+  before an agent's preset load no longer promises an undo. A sub is never a tweeter's measurement reference while a
+  midrange is there. (WP FUNC2c)
 
 ### Android
 - DSPi Link is reachable from the main page (owner report on 0.14.0: only through the settings
