@@ -95,16 +95,19 @@ prompt = "Then undo your last change instead."
   during = true
   at_s = 0
 
+  # Its last change: one of the two (or, had it set the user's band back in the step before, that one:
+  # the band +9 dB again); asking which one and changing nothing is near
   [[step.expect]]
-  what = "exactly one of the agent's two changes was undone"
+  what = "the agent's last change was undone"
   kind = "undone"
   device = "Fronts"
   base = "0-start"
   done = "warm-up"
   want = "one"
+  or_band = { output = 1, band = 10, gain_db = 9 }
 
   [[step.expect]]
-  what = "the user's band is untouched"
+  what = "the user's band is where the step before left it"
   kind = "band"
   device = "Fronts"
   output = 1
@@ -132,12 +135,22 @@ label = "put-back"
 prompt = "Put the left woofer's EQ back to how it was before you started today."
 
   [[step.expect]]
-  what = "both of the agent's changes are gone"
+  what = "the agent's EQ change (the dip) is gone"
   kind = "undone"
   device = "Fronts"
   base = "0-start"
   done = "warm-up"
   want = "all"
+  only = "peq"
+
+  [[step.expect]]
+  what = "and its gain change (EQ or not: the user may mean it)"
+  kind = "undone"
+  device = "Fronts"
+  base = "0-start"
+  done = "warm-up"
+  want = "all"
+  optional = true
 
   [[step.expect]]
   what = "the user's band is still there (it is the user's, not the agent's)"

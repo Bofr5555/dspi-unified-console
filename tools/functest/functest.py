@@ -207,6 +207,7 @@ class Run:
         `[[answer]]` patterns, else allowed; user.py)."""
         seen = set()
         answers = user.Answers(self.story().get("answer", []))  # -- WP FUNC2a --
+        screen = {"last": None, "shots": {}}
 
         def loop():
             while not self.stop.is_set():
@@ -229,6 +230,7 @@ class Run:
                         if answer:
                             time.sleep(1.5)  # a person reads it
                             self.ctl.call("AiController", "answer", q["id"], allow)
+                    self.screen(screen)  # -- WP FUNC2a --
                 except (OSError, RuntimeError) as e:
                     if not self.stop.is_set():
                         self.event("watch", str(e))
@@ -237,6 +239,24 @@ class Run:
 
         self.watcher = threading.Thread(target=loop, daemon=True)
         self.watcher.start()
+
+    # -- WP FUNC2a --
+    def screen(self, seen):
+        """What the app shows of the agent's work (AIVIS: the "agent working" strip, the device it
+        names, whether that one is shown): each change to screen.jsonl, a few screenshots a step."""
+        ai = self.ctl.get("AiController", "work") or {}
+        now = {"working": self.ctl.get("AiController", "working"), "text": ai.get("text", ""),
+               "device": ai.get("device", ""), "elsewhere": ai.get("elsewhere", False), "job": ai.get("job", "")}
+        if now == seen["last"]:
+            return
+        seen["last"] = now
+        step = getattr(self, "step_label", "setup")
+        with open(self.dir / "screen.jsonl", "a") as f:
+            f.write(json.dumps({"t": time.time(), "time": time.strftime("%H:%M:%S"), "step": step, **now}) + "\n")
+        n = seen["shots"].get(step, 0)
+        if now["working"] and now["text"] and n < 3:
+            seen["shots"][step] = n + 1
+            self.ctl.send(op="grab", dir=f"{CONTAINER_WORK}/runs/{self.name}", prefix=f"screen-{step}-{n + 1}-")
 
     def event(self, kind, data):
         with open(self.dir / "user.jsonl", "a") as f:
@@ -257,6 +277,7 @@ class Run:
             meta["session"] = str(uuid.uuid4())
             cmd += ["--session-id", meta["session"]]
         path = self.dir / f"transcript-{n}-{label}.jsonl"
+        self.step_label = label  # -- WP FUNC2a --
         log(f"step {n} ({label}): the agent works ...")
         start = time.time()
         env = dict(os.environ, MCP_TOOL_TIMEOUT="120000", MCP_TIMEOUT="60000",
@@ -293,6 +314,7 @@ class Run:
         """A step of a replay script, in place of the agent."""
         meta = json.loads(self.meta.read_text())
         n = len(meta["steps"]) + 1
+        self.step_label = label  # -- WP FUNC2a --
         log(f"step {n} ({label}): the replay plays {len(calls)} calls ...")
         start = time.time()
         try:

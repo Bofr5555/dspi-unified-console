@@ -282,12 +282,21 @@ def more(k, e, now, before, steps, words):
     if k == "undone":
         base, done = atoms(steps[e["base"]].devices[e["device"]]["state"]), atoms(steps[e["done"]].devices[e["device"]]["state"])
         nowa = atoms(now.devices[e["device"]]["state"])
-        made = [a for a in done if done[a] != base[a]]
+        made = [a for a in done if done[a] != base[a] and a[0].startswith(e.get("only", ""))]
         back = [a for a in made if nowa[a] == base[a]]
         kept = [a for a in made if nowa[a] == done[a]]
         want = e.get("want", "all")
         if want == "none":
             ok, near = not back and len(kept) == len(made), False
+        elif want == "one" and "or_band" in e and not back:
+            # Its last change was another: a band it had set back, now as it was
+            b = e["or_band"]
+            s, was = now.devices[e["device"]]["state"], before.devices[e["device"]]["state"]
+            gain = lambda st: st["filters"][wire(st, b["output"])][b["band"] - 1]["gain"]
+            ok = abs(gain(s) - b["gain_db"]) < 0.5 and abs(gain(was) - b["gain_db"]) >= 0.5
+            near = settings(s) == settings(was)
+            return ("pass" if ok else "near" if near else "fail",
+                    f"none of its first changes undone; band {b['band']} {gain(was):+.1f} -> {gain(s):+.1f} dB")
         else:
             ok = (len(back) == 1 and len(kept) == len(made) - 1) if want == "one" else len(back) == len(made)
             near = bool(back)
@@ -383,6 +392,26 @@ def tool_calls(run):
     return out
 
 
+# -- WP FUNC2a --
+def screen_lines(run):
+    """(c) What the app showed of the agent's work (functest.py screen()), not judged."""
+    log = run / "screen.jsonl"
+    if not log.exists():
+        return []
+    shown = [json.loads(x) for x in log.read_text().splitlines()]
+    texts = [x for x in shown if x["working"] and x["text"]]
+    writes = [x for x in texts if not x["text"].startswith(("Reading", "Read "))]
+    away = [x for x in texts if x["elsewhere"]]
+    acts = sorted((run / "state").glob("*/activity.json"), key=lambda p: p.stat().st_mtime)
+    activity = json.loads(acts[-1].read_text()) if acts else []
+    done = [x for x in activity if x.get("write") and x.get("outcome") == "ok"]
+    out = [f"(c) screen: the strip changed {len(texts)} times ({len(writes)} not a read; {len(away)} named a device "
+           f"not shown); {len(done)} agent writes in the activity"]
+    out += [f"    {x['time']} {x['step']}: {x['text']}{' [elsewhere: ' + x['device'] + ']' if x['elsewhere'] else ''}"
+            for x in writes[:12]]
+    return out
+
+
 def judge_run(run):
     run = pathlib.Path(run)
     meta = json.loads((run / "run.json").read_text())
@@ -431,6 +460,7 @@ def judge_run(run):
                 result.append({"step": s["label"], "what": f"replay {r['tool']}", "score": "fail", "detail": r["got"]})
         before = steps[s["label"]] = now
     lines.append(f"score: {totals['pass']} pass, {totals['near']} near, {totals['fail']} fail")
+    lines += screen_lines(run)  # -- WP FUNC2a --
     ok = not bad and not totals["fail"] and all(s["code"] == 0 for s in meta["steps"])
     (run / "checks.txt").write_text("\n".join(lines) + "\n")
     (run / "checks.json").write_text(json.dumps({"ok": ok, "invariants": bad, "totals": totals, "checks": result}, indent=1))

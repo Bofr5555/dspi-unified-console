@@ -4,15 +4,6 @@
  "steps": {
   "warm-up": [
    [
-    "dspi_set_gain",
-    {
-     "device": "demo:1",
-     "output": 0,
-     "gain_db": -1
-    },
-    "ok"
-   ],
-   [
     "dspi_set_peq_band",
     {
      "device": "demo:1",
@@ -22,6 +13,15 @@
      "freq_hz": 120,
      "gain_db": -2,
      "q": 2
+    },
+    "ok"
+   ],
+   [
+    "dspi_set_gain",
+    {
+     "device": "demo:1",
+     "output": 0,
+     "gain_db": -1
     },
     "ok"
    ]
@@ -58,7 +58,8 @@
      "device": "demo:1"
     },
     "error",
-    "an agent's write went through while the user held a control"
+    "an agent's write went through while the user held a control",
+    "allowed your change|confirmation"
    ],
    [
     "sleep",
