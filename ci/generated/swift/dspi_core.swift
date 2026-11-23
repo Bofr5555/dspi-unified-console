@@ -51707,7 +51707,7 @@ public struct MeasureTuneWrite {
      */
     public var timing: Bool
     /**
-     * The change in words ("Output 3 (L high): delay 0.0000 → 0.2100 ms").
+     * The change in words ("Out 3 (L high): delay 0.0000 → 0.2100 ms").
      */
     public var words: String
     /**
@@ -51729,7 +51729,7 @@ public struct MeasureTuneWrite {
          * timing-reliable run, applied only after the summed check passed.
          */timing: Bool, 
         /**
-         * The change in words ("Output 3 (L high): delay 0.0000 → 0.2100 ms").
+         * The change in words ("Out 3 (L high): delay 0.0000 → 0.2100 ms").
          */words: String, 
         /**
          * What is written, in order.

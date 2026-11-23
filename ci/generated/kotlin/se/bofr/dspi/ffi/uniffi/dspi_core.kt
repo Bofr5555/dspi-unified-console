@@ -45271,7 +45271,7 @@ data class MeasureTuneWrite (
      */
     var `timing`: kotlin.Boolean, 
     /**
-     * The change in words ("Output 3 (L high): delay 0.0000 → 0.2100 ms").
+     * The change in words ("Out 3 (L high): delay 0.0000 → 0.2100 ms").
      */
     var `words`: kotlin.String, 
     /**
