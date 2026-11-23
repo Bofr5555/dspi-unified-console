@@ -5,6 +5,14 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
 ## Unreleased
 
 ### Desktop (Qt)
+- Fixed (a user's report on 0.14.0, WP USR1): a number typed into a gain, delay or filter field went back to the old
+  value when you clicked another field after pressing Enter, in the main window and the matrix mixer: the field showed
+  the old value again while the device took the new one, and leaving it wrote the old one back. Leaving a field now
+  sends only what you typed, Enter and leaving both commit, and Escape drops the entry. A typed number may have a
+  decimal comma or point, the minus sign "−" and its unit ("-3,5 dB").
+- Fixed (the same report, WP USR1): the preset box showed the first preset while another was active, after any change
+  that marks the preset unsaved, after Save, Copy to and Rename (both layouts); the source box likewise after a source
+  is renamed.
 - AI agents, the owner's answers of 2026-11-23 (WP ODEC): a question about test signals is asked once per device for an
   agent's task: **Allow** also lets that agent measure there for 10 minutes (the AI page shows it with the time left and
   **Revoke**); louder changes and saves are still asked one at a time. An agent keeps a tune only after a verify that
