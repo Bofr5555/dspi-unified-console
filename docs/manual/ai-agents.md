@@ -1,9 +1,9 @@
 # AI agents
 
-*User manual, WP MCP6, 2026-11-22; WP FEAT2, 2026-11-23 (opening devices, room and zone volume, schedules, measurement
-options). For the owner and for users of the Qt console. It describes the console as it is with
-the Modern programme's waves 4 and 5: MCP1 to MCP4, the MCP conformance work (MCP6), and measuring through an agent
-(MCP5, with ROLL1's rules for tweeters; section 6).*
+*User manual, WP MCP6, 2026-11-22; 2026-11-23 with the installation's sources, slots and scenes (FEAT1), opening devices,
+room and zone volume, schedules and measurement options (FEAT2) and where the sound comes from (FEAT3). For the owner and
+for users of the Qt console. It describes the console as it is with the Modern programme's waves 4 and 5: MCP1 to MCP4,
+the MCP conformance work (MCP6), and measuring through an agent (MCP5, with ROLL1's rules for tweeters; section 6).*
 
 An AI agent on your computer, such as Claude Desktop, Claude Code, Cursor or VS Code, can read the settings of the DSPi
 devices that DSPi Console has open and change them for you: "make the left woofer 2 dB quieter", "why does output 3 sound
@@ -155,7 +155,8 @@ from Another Computer…** link).
 An agent you allow may read every device the console has open and change most of what you can change: the equaliser,
 crossovers, gain, delay, polarity, mute, routing, effects, volume and source, presets (load, save, rename, copy),
 snapshots, A/B, config and filter files (as text), AutoEQ, channel and device names, the audio link's delays and scenes,
-and Installation setup. It may also ask the console to measure your speakers or headphones and tune them (section 6).
+Installation setup and a room's or zone's volume. It may ask the console to open a device it knows, and to measure your
+speakers or headphones and tune them (section 6).
 
 - **Several devices.** Every tool takes a `device` (from `dspi_list_devices`). Without it, the agent works on the device
   the console shows.
@@ -165,12 +166,18 @@ and Installation setup. It may also ask the console to measure your speakers or 
   address or a hub it has no connection to; that stays yours. An agent can close only a tab it opened
   (`dspi_close_device`), and not while the device has unsaved changes, measures, has a timed preview waiting, or you hold
   one of its controls. Everything else is yours to close.
-- **A room's or zone's volume.** On a hub with an installation, `dspi_system_set_volume` sets the volume of every unit of a
-  room or a zone: one level for all, or a step up or down from each unit's own. Each unit's limits still hold: a unit whose
-  limits profile refuses, that is offline, that the console has read-only, or whose control you are holding, is left as it
-  is, and the agent is told which. It is not in the History, because it goes through the hub: the agent gets each unit's
-  level before, and can set it back.
-- **Schedules** (`dspi_list_schedules`) an agent can read, not change.
+- **Where the music comes from.** A DSPi has no player: it plays what its input receives from another program or box
+  (a music app, a streaming app, a TV, a game). The agent is told so, and which input is in use (USB, S/PDIF, I2S,
+  ADAT or the audio link). To choose or start music it needs that program's own integration, if you have one; these
+  tools only reach the DSPi.
+- **This computer's sound settings, read only** (`dspi_get_host_audio`). The agent can see, on the computer the
+  console runs on, whether each open DSPi is one of its sound outputs, whether it is the default output, its channel
+  count and sample rate, which apps play to it (Linux and Windows; macOS from 14.2), and the system volume, with whether
+  that volume moves the DSPi's user volume. It reads PipeWire on Linux (falling back to the ALSA sound cards), the
+  Windows audio service, and Core Audio on macOS. It never changes the default output, moves an app or sets the system
+  volume: it tells you where to do that (the desktop's sound settings or `wpctl` on Linux; Settings › System › Sound on
+  Windows; System Settings › Sound on macOS, which has no per-app output without third-party software). If the system
+  cannot be read (no PipeWire, a sandbox, no permission), the agent is told "unknown" and why, and carries on.
 - **Speaker roles are yours.** An agent reads which outputs are woofers and tweeters from your speaker setup, and can
   never change it.
 - **Installation setup** works on a draft that belongs to the agent. Nothing reaches the hub until the agent saves it. If
@@ -185,29 +192,25 @@ and Installation setup. It may also ask the console to measure your speakers or 
     (`dspi_system_align`); the agent is told which units wait for that;
   - a recalled scene with a source action switches the zone at once: the hub stores the zone's source and writes its
     units' slots straight away (a unit that is offline takes them at the next alignment).
-- **Where the programme comes from** <!-- WP FEAT1 --> (`dspi_installation_set_programme`): the installation can
-  describe which computer, box or service feeds which unit input or sender channel (a computer over USB, S/PDIF,
-  analogue, or the audio link sender). It is a description for you and the agent; it routes nothing.
+- **Programme sources** <!-- WP FEAT1 --> (`dspi_installation_set_programme`): the installation can describe which
+  computer, box or service feeds which unit input or sender channel (a computer over USB, S/PDIF, analogue, or the audio
+  link sender). It is a description for you and the agent; it routes nothing. On a unit of that installation the agent
+  reads, beside the input in use, which of them plays into it and on which of its inputs.
+- **A room's or zone's volume.** On a hub with an installation, `dspi_system_set_volume` sets the volume of every unit of a
+  room or a zone: one level for all, or a step up or down from each unit's own. Each unit's limits still hold: a unit whose
+  limits profile refuses, that is offline, that the console has read-only, or whose control you are holding, is left as it
+  is, and the agent is told which. It is not in the History, because it goes through the hub: the agent gets each unit's
+  level before, and can set it back.
+- **Schedules** (`dspi_list_schedules`) an agent can read, not change.
 - **Names and notes the agent reads** (channel, preset, snapshot, hub, room names, event text) are passed to it as data,
   cleaned of control characters, and marked as text it must not take as instructions.
-- **Where the music comes from.** A DSPi has no player: it plays what its input receives from another program or box
-  (a music app, a streaming app, a TV, a game). The agent is told so, and which input is in use (USB, S/PDIF, I2S,
-  ADAT or the audio link). To choose or start music it needs that program's own integration, if you have one; these
-  tools only reach the DSPi.
-- **This computer's sound settings, read only** (`dspi_get_host_audio`). The agent can see, on the computer the
-  console runs on, whether each open DSPi is one of its sound outputs, whether it is the default output, its channel
-  count and sample rate, which apps play to it (Linux and Windows; macOS from 14.2), and the system volume, with whether
-  that volume moves the DSPi's user volume. It reads PipeWire on Linux (falling back to the ALSA sound cards), the
-  Windows audio service, and Core Audio on macOS. It never changes the default output, moves an app or sets the system
-  volume: it tells you where to do that (the desktop's sound settings or `wpctl` on Linux; Settings › System › Sound on
-  Windows; System Settings › Sound on macOS, which has no per-app output without third-party software). If the system
-  cannot be read (no PipeWire, a sandbox, no permission), the agent is told "unknown" and why, and carries on.
 
 **What agents can never do, whatever the setting:** update or flash firmware, use the bootloader or factory reset;
 change the limits profile, the installer PIN or lock; change hardware, pin or core-voltage settings; play the signal
 generator or Identify (a measurement's test sweeps are the one exception: section 6); pair hubs or change DSPi Link
-security and hub administration (its schedules among them); delete presets, snapshots or measurements; update the AutoEQ database; set up speakers
-(the speaker layout); send raw device commands; read or write files by path.
+security and hub administration (its schedules among them); delete presets, snapshots or measurements; update the
+AutoEQ database; set up speakers (the speaker layout); change the computer's sound settings or play music; send raw
+device commands; read or write files by path.
 
 **What an agent reads, it may pass on to its own service.** An agent that runs on a cloud model sends what it reads to
 that service, as with anything else you show it.
@@ -217,9 +220,9 @@ that service, as with anything else you show it.
 **Ask me** in **Settings › AI Agents › Ask Before Changes** has three settings:
 
 - **About risky changes** (the default). The agent's change waits for your answer when it would:
-  - make something louder: raise a gain, trim or volume (a room's or zone's too, when any unit gets louder), unmute, switch on an output, add a route or raise a route's gain,
-    turn on an effect that can add level (loudness, a leveller with gain, psychoacoustic bass, subharmonic, the upmixer)
-    or feed one to more outputs;
+  - make something louder: raise a gain, trim or volume (a room's or zone's too, when any unit gets louder), unmute,
+    switch on an output, add a route or raise a route's gain, turn on an effect that can add level (loudness, a leveller
+    with gain, psychoacoustic bass, subharmonic, the upmixer) or feed one to more outputs;
   - boost a PEQ band by more than 6 dB, change a Linkwitz transform, or move a delay by more than 20 ms;
   - lower a tweeter's protection (see below);
   - change the input source;
