@@ -393,7 +393,12 @@ are not probed. The question says so, with a warning: nothing is known about the
 the probe expects a woofer could receive a few seconds of sweep below 1 kHz at −50 dBFS, less than a hundredth of what a
 1 kHz crossover lets through from music, but not nothing. Keep the volume where it is and stay by **Stop**. **Allow** also
 lets that agent play test signals and detect again on that device for 10 minutes (section 4); **Revoke** stops a running
-detection at once. Under **Never** it needs Settings › AI Agents › **Agents may detect speakers**. The result is in
+detection at once. <!-- WP INTK --> A higher floor in the limits profile belongs on tweeter outputs only: an output's
+high-pass minimum also holds its music's high-pass there, so on a woofer's output it would take away the bass (on the
+Koss K340, 2.5 kHz on the two tweeter outputs, not on the woofers'). If you do not know yet which output is which, tell
+the agent the floor instead ("nothing below 2.5 kHz may reach the tweeters"): it passes it with the detection
+(`floor_hz`), for every output and for that detection only, and no filter changes. Under **Never** it needs Settings ›
+AI Agents › **Agents may detect speakers**. The result is in
 Settings › Speakers: each output's role, marked as detected, and a summary such as "2 tweeters, 2 woofers, 1 midrange?;
 nothing heard on Out 4". Until you confirm or correct it, the detected roles guard your speakers as a confirmed setup
 would, and an agent may measure and tune with them. An output where nothing was heard is left out: an agent may not route

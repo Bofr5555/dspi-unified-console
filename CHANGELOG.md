@@ -22,6 +22,12 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
   Modern's status strip). The agent's question is headed "Detect the speakers on …"; the Stop bar and the agent strip
   say which output is probed; Settings › AI Agents has **Agents may detect speakers** (for **Never**; off by default,
   its warning asked once). The channel inspector says when nothing was heard from an output.
+- Speaker detection, fixes from the function test (WP ADETS, merged in INTK): a measurement of a tweeter now starts no
+  lower than the limits profile's high-pass minimum for that output (it started at 1 kHz); a sub whose top the first
+  sweep could not hear is probed further down and found, instead of ending "unknown"; a detected role you correct is
+  yours, and the layout stays "detected, not confirmed" (that row marked "you") until you confirm it. The manual now says
+  that a profile's high-pass minimum belongs on tweeter outputs only (it also holds the music's high-pass there): for the
+  Koss K340, 2.5 kHz on the two tweeter outputs, or tell the agent the floor for the detection.
 - Fixed (a user's report on 0.14.0, WP USR1): a number typed into a gain, delay or filter field went back to the old
   value when you clicked another field after pressing Enter, in the main window and the matrix mixer: the field showed
   the old value again while the device took the new one, and leaving it wrote the old one back. Leaving a field now

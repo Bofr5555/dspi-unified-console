@@ -285,6 +285,20 @@ void speakersSection(SmokeDriver &d) {
     d.check(QStringLiteral("adet: a notice says it stopped"), notices->current().value(QStringLiteral("text")).toString().contains(QLatin1String("stopped"))
             || notices->waiting() > 0);
 
+    // -- WP INTK -- a row corrected through the write-back (the Measure tables, the
+    // function test's user) keeps the layout auto-detected until Confirm, never "imported"
+    const QString corrected = rowFor(sc, 1).value(QStringLiteral("role")).toString() == QLatin1String("sub")
+                                  ? QStringLiteral("mid") : QStringLiteral("sub");
+    sc->writeBack(1, corrected);
+    d.check(QStringLiteral("intk: a corrected row keeps the layout auto-detected"), d.waitFor(3000, [&] {
+        return rowFor(sc, 1).value(QStringLiteral("role")).toString() == corrected && sc->status() == QLatin1String("autoDetected");
+    }));
+    d.check(QStringLiteral("intk: the corrected row is \"you\""), pill(1) == QLatin1String("you")
+            && storedLayout(d).value(QLatin1String("outputs")).toArray().at(1).toObject().value(QLatin1String("source")).toString() == QLatin1String("user"));
+    sc->reload();
+    d.check(QStringLiteral("intk: still auto-detected when read again"), d.waitFor(3000, [&] { return sc->status() == QLatin1String("autoDetected"); })
+            && sc->bannerText(false).contains(QLatin1String("detected and is not confirmed")));
+
     // ---- The person's word: an edited role is theirs; Confirm ends it -----------------
     sc->setRole(0, QStringLiteral("mid"));
     d.check(QStringLiteral("adet: an edited role is \"you\""), pill(0) == QLatin1String("you")
