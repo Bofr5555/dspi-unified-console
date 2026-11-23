@@ -402,6 +402,41 @@ pub fn require(
     what: &str,
     indices: &[u8],
 ) -> Result<(), ToolError> {
+    require_keyed(cell, kind, what, indices, None)
+}
+
+// -- WP INTI -- (review RF2)
+/// The key path of a test signal across a hub's units: [`require_system_signal`].
+pub const SYSTEM_SIGNAL_PATH: &str = "static.test_signal.system";
+
+// -- WP INTI -- (review RF2)
+/// [`require`] for test signals across several units of a hub (a system
+/// measurement, verify or sum check): an agent's grant for test signals on
+/// the call's device does not cover them, and their question grants none
+/// ([`crate::grant::asks_grant`]). The key is [`SYSTEM_SIGNAL_PATH`].
+pub fn require_system_signal(
+    cell: &JudgingCell,
+    what: &str,
+    indices: &[u8],
+) -> Result<(), ToolError> {
+    require_keyed(
+        cell,
+        RiskKind::TestSignal,
+        what,
+        indices,
+        Some(SYSTEM_SIGNAL_PATH),
+    )
+}
+
+/// [`require`] with the key's path (`None`: `static.<kind>`, and an agent's
+/// standing grant counts for test signals).
+fn require_keyed(
+    cell: &JudgingCell,
+    kind: RiskKind,
+    what: &str,
+    indices: &[u8],
+    path: Option<&str>,
+) -> Result<(), ToolError> {
     let mut j = lock(cell);
     let Some(mode) = j.mode else {
         return Err(ToolError::new(
@@ -409,7 +444,7 @@ pub fn require(
         ));
     };
     let key = WriteKey::new(
-        &format!("static.{}", kind.as_str()),
+        &path.map_or_else(|| format!("static.{}", kind.as_str()), str::to_owned),
         indices,
         ParamValue::Trigger,
     );
@@ -417,7 +452,10 @@ pub fn require(
         return Ok(());
     }
     // -- WP ODEC -- the agent's grant for test signals on this device
-    if kind == RiskKind::TestSignal && j.grant.contains(&crate::grant::standing_key()) {
+    if kind == RiskKind::TestSignal
+        && path.is_none()
+        && j.grant.contains(&crate::grant::standing_key())
+    {
         return Ok(());
     }
     j.asked.push(Risk {

@@ -2578,12 +2578,8 @@ static SYSTEM_START: Tool = Tool {
             outs.len(),
             caps_words(setup.ceiling_db, setup.spl_cap_db)
         );
-        policy::require(
-            &call.judging,
-            RiskKind::TestSignal,
-            &what,
-            &binding(JobKind::System, &outs),
-        )?;
+        // -- WP INTI -- (review RF2) never under a one-device grant
+        policy::require_system_signal(&call.judging, &what, &binding(JobKind::System, &outs))?;
         request(
             call,
             JobKind::System,
@@ -2681,12 +2677,8 @@ static SYSTEM_VERIFY: Tool = Tool {
             "Play summed test sweeps across units to check the proposed alignment"
         }
         .to_owned();
-        policy::require(
-            &call.judging,
-            RiskKind::TestSignal,
-            &what,
-            &binding(kind, &[]),
-        )?;
+        // -- WP INTI -- (review RF2) never under a one-device grant
+        policy::require_system_signal(&call.judging, &what, &binding(kind, &[]))?;
         request(call, kind, ticket, what)
     },
 };

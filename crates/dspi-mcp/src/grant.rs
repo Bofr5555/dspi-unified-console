@@ -9,8 +9,12 @@
 //! device. While it lasts, that agent's test signals on that device are not
 //! asked again. Louder changes, preset saves and every other risk are still
 //! asked one at a time. The app shows each grant with the time left and a
-//! Revoke ([`Grants::revoke`]); it ends with its time, a Revoke, the agent
-//! going, or Stop. Under "never ask" nothing is asked, so nothing is granted.
+//! Revoke ([`Grants::revoke`]); it ends with its time, a Revoke, the agent's
+//! client going (for a relayed or HTTP agent that is its paired token being
+//! revoked: a reconnect with the same token keeps the grant, review RF1), the
+//! device closing, or Stop. Under "never ask" nothing is asked, so nothing is
+//! granted. A grant covers the per-device jobs only: a system measurement,
+//! verify or sum check across a hub's units is asked each time (review RF2).
 
 use serde_json::{Value, json};
 
@@ -31,7 +35,14 @@ pub fn standing_key() -> WriteKey {
 
 /// Whether a held call's risks would open a grant when allowed.
 pub fn asks_grant(risks: &[Risk]) -> bool {
-    risks.iter().any(|r| r.kind == RiskKind::TestSignal)
+    // -- WP INTI -- (review RF2) test signals across units grant nothing
+    risks.iter().any(|r| {
+        r.kind == RiskKind::TestSignal
+            && !r
+                .keys
+                .iter()
+                .any(|k| k.path == crate::policy::SYSTEM_SIGNAL_PATH)
+    })
 }
 
 /// One grant.

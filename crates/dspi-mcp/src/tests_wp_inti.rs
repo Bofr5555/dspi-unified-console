@@ -88,3 +88,37 @@ fn wp_inti_a_refused_load_and_a_held_load_under_a_limits_profile() {
     assert_eq!(core.get_state().active_preset_slot, 1);
     assert!((level(&core) - -12.0).abs() < 0.5, "{}", level(&core));
 }
+
+/// Review RF2: an agent's grant for test signals on a device covers that
+/// device's own jobs only. A system measurement, verify or sum check across a
+/// hub's units (required on the same `hub/<serial>` device) is still asked,
+/// its question grants nothing, and its own Allow lets the re-run pass.
+#[test]
+fn wp_inti_a_device_grant_does_not_cover_test_signals_across_units() {
+    use crate::policy::{self, JudgingCell, RiskKind};
+    for mode in [ConfirmMode::AskRisky, ConfirmMode::AskEverything] {
+        let cell = JudgingCell::default();
+        policy::lock(&cell).mode = Some(mode);
+        // Without a grant, a one-device signal is asked, and that question grants.
+        assert!(policy::require(&cell, RiskKind::TestSignal, "one device", &[1, 0]).is_err());
+        assert!(crate::grant::asks_grant(&policy::lock(&cell).asked));
+        policy::lock(&cell).asked.clear();
+        // With the agent's grant on this device: the device's own jobs pass.
+        policy::lock(&cell).grant.push(crate::grant::standing_key());
+        assert!(policy::require(&cell, RiskKind::TestSignal, "one device", &[1, 0]).is_ok());
+        assert!(policy::lock(&cell).asked.is_empty());
+        // Across units: held, and its question opens no grant.
+        assert!(policy::require_system_signal(&cell, "4 units", &[7, 0, 1]).is_err());
+        let asked = policy::lock(&cell).asked.clone();
+        assert_eq!(asked.len(), 1, "{asked:?}");
+        assert_eq!(asked[0].kind, RiskKind::TestSignal);
+        assert!(!crate::grant::asks_grant(&asked));
+        // The user's Allow of that question: the re-run passes.
+        let key = asked[0].keys[0].clone();
+        let mut j = policy::lock(&cell);
+        j.asked.clear();
+        j.grant.push(key);
+        drop(j);
+        assert!(policy::require_system_signal(&cell, "4 units", &[7, 0, 1]).is_ok());
+    }
+}

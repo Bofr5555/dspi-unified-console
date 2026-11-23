@@ -272,11 +272,14 @@ told the question is still open and can ask again with `dspi_get_confirmation`. 
 
 **Test signals for 10 minutes.** <!-- WP ODEC --> A question about test signals says that **Allow** also lets that agent
 play test signals on that device for the next 10 minutes, for the task it is doing: its next measurements, low-end
-searches, sum checks and verifies there are not asked again. Louder changes, preset saves and everything else are still
+searches, sum checks and verifies on that device are not asked again. Louder changes, preset saves and everything else are still
 asked one at a time, and the rules of section 6 (the loudest measurement, a tweeter's low end) still hold. The agents'
 panel and the AI page show each such permission with the device, the agent and the time left, and **Revoke** ends it at
-once (the agent is told, and asked again next time). It ends by itself after 10 minutes, when the agent disconnects or the
-device is closed, and with **Stop**. Under **Never** nothing is asked, so nothing is granted.
+once (the agent is told, and asked again next time). The permission belongs to the agent's pairing (the token it was
+paired with), not to one connection: an agent that reconnects or restarts within the 10 minutes keeps it, and so does
+any program paired under the same name. It ends after 10 minutes, on **Revoke**, when that pairing is removed, when the
+device is closed, and with **Stop**. It covers that one device: a measurement, verify or sum check across several units
+of a hub is still asked each time. Under **Never** nothing is asked, so nothing is granted.
 
 ## 5. Watching and undoing
 

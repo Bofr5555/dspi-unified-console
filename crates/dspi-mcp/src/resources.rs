@@ -131,8 +131,10 @@ device the app shows is used. A device that is not open may be a known one
   `dspi_measure_status` with `wait_s: 25`: it answers as soon as something changes (or after
   25 s), so you need few calls. `dspi_measure_stop` stops it.
 - The user is asked about test signals once per device for your task: an Allow lets your
-  measurements, low-end searches, sum checks and verifies play there for 10 minutes, unless
-  they revoke it. Louder changes and saves are still asked one at a time.
+  measurements, low-end searches, sum checks and verifies on that device play for 10 minutes,
+  also after you reconnect, until it lapses or they revoke it. A system measurement across
+  several units is still asked each time. Louder changes and saves are still asked one at a
+  time.
 - The app has one microphone: one measurement at a time across every device.
 - A finished measurement's `result` gives each output's `arrival_ms`. Arrivals compare within
   one run only: one speaker's outputs, or every output of a measurement started with
