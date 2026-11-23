@@ -447,7 +447,10 @@ a headphone **coupler**, the headphones' lower limits apply, in the low-end sear
   then brings the volume back. That works when the master volume is independent of presets (the default). If your
   device saves the master volume with each preset (its master volume mode), the preset sets the volume itself and the
   console could not keep the device quiet while it checks: **an agent may not load a preset (or revert to the saved
-  one) on such a device**, under every setting. Load it yourself in the console.
+  one) on such a device**, under every setting. Load it yourself in the console. Your own load is guarded the same way where the master
+  volume is independent of presets: silent while it loads, and a tweeter or midrange the preset leaves without its high-pass
+  is muted, with a notice; give it its high-pass, then unmute it. A refused agent load leaves the device on the preset
+  it was on. A hub scene an agent recalls that loads presets is judged the same way, on each unit this app has open.
 - **Output numbers.** Agents count outputs and inputs from 0, as the tools do; the console's labels count from 1. In what
   an agent is told, "output 1" is the tools' number and "Out 2" the console's label of the same output.
 - **What Undo can undo.** The activity offers **Undo** only for changes Undo can reverse: a preset save, a flash write or a
