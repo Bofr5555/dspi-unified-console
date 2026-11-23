@@ -17,6 +17,7 @@ import { PresetsCard, type PresetView } from "./Presets";
 // -- WP WB6J -- the analyser's bar strip (M22) and cards per row (M59)
 import { SpectrumStrip, tapNames } from "../analysis/SpectrumStrip";
 import { MAX_CARDS_PER_ROW, columnsFor, perRowLabel, perRowSummary, usePerRow } from "../analysis/dashboard";
+import { LayoutNote } from "../settings/speakers/LayoutNote"; // -- WP ADETW --
 
 // -- WP WB6b -- the questions and the unsaved-changes prompt are the session
 // view's now (src/ui/screens.tsx), so every screen shares them.
@@ -109,6 +110,8 @@ export function MainScreen(props: ScreenProps) {
       <div class="main-spectrum">
         <SpectrumStrip session={session} names={tapNames(s, snap?.outputLabels)} />
       </div>
+      {/* -- WP ADETW -- a kept speaker layout that is not confirmed, auto-detected or not */}
+      <LayoutNote session={session} />
       {/* -- WP WEBM1 -- the volume card is in the dock, on every page (ui/shell/Dock.tsx) */}
       <PresetsCard session={session} view={presetView} dirty={dirty} disabled={ro} ask={ask} unsaved={unsaved} />
       <ChannelList

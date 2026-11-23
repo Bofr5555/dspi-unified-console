@@ -6,7 +6,8 @@ import { useEffect, useState } from "preact/hooks";
 import { useSessionState } from "../../../ui/components";
 import type { Session } from "../../../ui/session";
 import { outputLabel } from "../../main/model";
-import { ROLE_WORDS, TWEETER_RULE, bannerOf, baseOf, stampWords, withRow, withoutRow, type SpeakerLayoutOutputRecord, type SpeakerLayoutRecord } from "./model";
+import { noticeRow } from "../../../ui/texts";
+import { CLASS_WORDS, ROLE_WORDS, TWEETER_RULE, bannerOf, baseOf, evidenceWords, pillOf, stampWords, withRow, withoutRow, type SpeakerLayoutOutputRecord, type SpeakerLayoutRecord } from "./model";
 import { useSpeakerLayout } from "./use-layout";
 
 const ROLE_IDS = Object.keys(ROLE_WORDS) as SpeakerLayoutOutputRecord["role"][];
@@ -34,6 +35,8 @@ export function SpeakersPage(props: { session: Session }) {
   const banner = loaded ? bannerOf(view) : null;
   const edited = !same(draft, view.stored);
   const confirmed = !!view.stored?.confirmedByUser && !edited;
+  // -- WP ADETW -- the last detection's summary and evidence, under the rows
+  const detection = view.stored?.detected ?? null;
   const change = (o: number, patch: Partial<Omit<SpeakerLayoutOutputRecord, "output">>) => {
     setDraft(withRow(draft, o, patch));
     setStatus(null);
@@ -76,12 +79,18 @@ export function SpeakersPage(props: { session: Session }) {
           const name = `OUT${o + 1} ${outputLabel(s, snap.outputLabels, o)}`;
           const r = draft?.outputs.find((x) => x.output === o);
           const off = s.outputEnabled?.[o] === false;
+          const pill = pillOf(draft, view.stored, o); // -- WP ADETW --
           return (
             <li key={o} aria-label={name} style={{ display: "flex", flexWrap: "wrap", gap: "4px 8px", alignItems: "center" }}>
               <label style={{ flex: "1 1 12em", minWidth: 0 }}>
                 <input type="checkbox" aria-label={`${name} is in the layout`} disabled={!!ro} checked={!!r} onChange={(e) => use(o, (e.currentTarget as HTMLInputElement).checked)} /> {name}
                 {off ? <span class="note"> (off)</span> : null}
               </label>
+              {pill ? (
+                <span class="speaker-pill" data-kind={pill.kind} aria-label={`${name}: ${pill.word}`} title={(pill.note && noticeRow(pill.note)?.reason) || pill.reason}>
+                  {pill.word}
+                </span>
+              ) : null}
               <select aria-label={`Role of ${name}`} disabled={!!ro || !r} value={r?.role ?? "full"} onChange={(e) => change(o, { role: (e.currentTarget as HTMLSelectElement).value as SpeakerLayoutOutputRecord["role"] })}>
                 {ROLE_IDS.map((id) => (
                   <option key={id} value={id}>
@@ -113,6 +122,41 @@ export function SpeakersPage(props: { session: Session }) {
           ))}
         </ul>
       ) : null}
+      {detection ? (
+        <details class="note speakers-detection">
+          <summary aria-label="Speaker detection">{detection.summary || "The speaker detection's result."}</summary>
+          <table aria-label="Speaker detection details">
+            <thead>
+              <tr>
+                <th>Output</th>
+                <th>Found</th>
+                <th>Heard</th>
+                <th>Top fall</th>
+                <th>−6 dB at</th>
+                <th>Lowest played</th>
+              </tr>
+            </thead>
+            <tbody>
+              {detection.outputs.map((d) => {
+                const e = evidenceWords(d);
+                return (
+                  <tr key={d.output}>
+                    <td>OUT{d.output + 1}</td>
+                    <td>
+                      {CLASS_WORDS[d.class]}
+                      {d.confidence !== "high" && !["nothing", "unknown", "off"].includes(d.class) ? "?" : ""}
+                    </td>
+                    <td>{e.heard}</td>
+                    <td>{e.topFall}</td>
+                    <td>{e.fLow}</td>
+                    <td>{e.lowest}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </details>
+      ) : null}
       <p class="note">{TWEETER_RULE}</p>
       <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "center" }}>
         <button type="button" class="primary" disabled={!!ro || !loaded || !draft || !draft.outputs.length || confirmed} onClick={() => void confirm()}>
@@ -122,7 +166,8 @@ export function SpeakersPage(props: { session: Session }) {
           Use the suggestion
         </button>
         <span class="note" role="status" aria-label="Speaker layout state">
-          {confirmed ? stampWords(view.stored) : edited && view.stored ? "Changed: not kept until you confirm." : ""}
+          {/* -- WP ADETW -- every kept layout says how far it is trusted: confirmed, detected, or kept */}
+          {edited && view.stored ? "Changed: not kept until you confirm." : !edited ? stampWords(view.stored) : ""}
         </span>
       </div>
       {status ? (

@@ -21,6 +21,15 @@ export function presenceText(p: HubPresenceRecord, deviceName: (serial: string) 
   return `${who}${via} is working${on}${what ? `: ${what}` : "."}`;
 }
 
+// -- WP ADETW -- (AUTODES 5.2) an agent detecting the speakers: "Detecting speakers: Out 3"
+/** Whether an entry's work is a speaker detection (its console says "Detecting speakers…"). */
+export function detectingSpeakers(what: string): boolean {
+  return /^detecting (?:the )?speakers\b/i.test(cleanPresence(what).trim());
+}
+
+/** What the strip adds for a speaker detection on this device: the sweeps, and where the result lands. */
+export const DETECTING_HERE = "Quiet test sweeps play on its outputs in turn: keep the volume where it is. Check the result in Settings › Speakers afterwards.";
+
 class PresenceWatch {
   rows: HubPresenceRecord[] = [];
   private readonly listeners = new Set<() => void>();

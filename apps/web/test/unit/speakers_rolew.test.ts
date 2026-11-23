@@ -90,7 +90,8 @@ test("ROLEW the rows: a role changed or added in output order, an output left ou
   assert.deepEqual(a.outputs.map((o) => [o.output, o.role]), [[0, "low"], [1, "mid"], [2, "high"]]);
   assert.equal(withRow(a, 2, { speaker: "R" }).outputs[2]!.role, "high", "the rest of the row kept");
   assert.deepEqual(withoutRow(a, 0).outputs.map((o) => o.output), [1, 2]);
-  assert.deepEqual(withRow(null, 3, { role: "sub" }).outputs, [{ output: 3, role: "sub", speaker: "", group: 0 }]);
+  // -- WP ADETW -- a row the person adds is theirs
+  assert.deepEqual(withRow(null, 3, { role: "sub" }).outputs, [{ output: 3, role: "sub", speaker: "", group: 0, source: "user" }]);
   assert.equal(l.outputs.length, 2, "never changed in place");
 });
 

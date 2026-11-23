@@ -23,7 +23,7 @@ function words(e: unknown): string {
   return m ? m[0]!.toUpperCase() + m.slice(1) : m;
 }
 
-function serialOf(session: Session): string {
+export function serialOf(session: Session): string {
   return session.state.snapshot?.device.serial || session.deviceId;
 }
 
