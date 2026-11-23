@@ -16,7 +16,7 @@ ApplicationWindow {
     minimumWidth: 1000
     minimumHeight: 660
     visible: true
-    title: AppIdentity.displayName
+    title: AppIdentity.windowTitle   // -- WP ODEC -- "(simulated)" in the function test
     color: Theme.window
 
     palette.window: Theme.window

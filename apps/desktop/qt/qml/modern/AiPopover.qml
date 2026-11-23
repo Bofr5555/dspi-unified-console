@@ -111,6 +111,11 @@ PopoverPanel {
                     : popover.ai.confirmMode === "ask_everything" ? qsTr("Agents read settings, and ask you before every change.")
                     : qsTr("Agents read and change settings, and ask you before risky changes.")
             }
+            AiGrantRows {   // -- WP ODEC --
+                prefix: "AiPopover.grants"
+                compact: true
+                Layout.fillWidth: true
+            }
             RowLayout {
                 visible: popover.ai.lastError.length > 0
                 Layout.fillWidth: true

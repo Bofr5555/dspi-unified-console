@@ -111,6 +111,14 @@ class AiController : public QObject {
     // level ceiling holds
     Q_PROPERTY(bool agentSplCapOn READ agentSplCapOn WRITE setAgentSplCapOn NOTIFY settingsChanged)
     Q_PROPERTY(QVariantList rememberedDevices READ rememberedDevices NOTIFY rememberedChanged)
+    // -- WP ODEC -- What the user allowed for a while (one question for an agent's
+    // test signals on a device, ten minutes): [{ id, agent, device (its title),
+    // deviceId, secondsLeft, left ("9:41") }], counted down here between reads
+    Q_PROPERTY(QVariantList grants READ grants NOTIFY grantsChanged)
+    // -- WP ODEC -- The screens follow what an agent changes (the device, and
+    // Modern's section), never while the user is at a control or a dialog. On by
+    // default; not stored (the smoke driver's older sections turn it off).
+    Q_PROPERTY(bool followAgent READ followAgent WRITE setFollowAgent NOTIFY followAgentChanged)
 public:
     // -- WP FEATUI -- The SPL cap's range and default (dB SPL): below the
     // core's 95 dB default for a speaker
@@ -129,6 +137,10 @@ public:
     static constexpr int kLingerMs = 20000;
     static constexpr int kTouchMs = 3000;
     static constexpr const char *kPortKey = "mcp/port";
+    // -- WP ODEC -- At most one switch to follow an agent in this many ms, and
+    // not again to the same device and section within kFollowSameMs
+    static constexpr int kFollowMs = 3000;
+    static constexpr int kFollowSameMs = 60000;
 
     AiController(const AppContext &ctx, QObject *parent);
     ~AiController() override;
@@ -232,6 +244,23 @@ public:
     // The section of Modern's rail that shows journal path `path`, "" for none
     Q_INVOKABLE static QString sectionOf(const QString &path);
 
+    // -- WP ODEC --
+    QVariantList grants() const;
+    // The user's Revoke of grant `id`: the agent is asked again for its next test signal
+    Q_INVOKABLE void revokeGrant(double id);
+    bool followAgent() const { return m_followAgent; }
+    void setFollowAgent(bool on);
+    // The user is at something a switch of screens would take away: a drag on a
+    // device, the keyboard in a text field, a dialog, menu or popup open
+    bool userInteracting() const;
+    // Whether the screens may follow an agent to `device` (and Modern's `section`)
+    // now; true counts as a switch for the rate limit. `measure`: the Measure view
+    // for an agent's measurement request, which only the user's interaction holds off.
+    bool mayFollow(const QString &device, const QString &section, bool measure = false);
+    // For the smoke driver: the follow-up of `device`/`section` as an agent's change
+    // would ask for it
+    void followChange(const QString &device, const QString &section);
+
     // For the smoke driver: the clients' own folder; calls not answered yet
     void setStoreDir(const QString &dir) { m_storeDir = dir; }
     int pending() const { return m_pending; }
@@ -282,6 +311,11 @@ signals:
     void agentCalled(const QString &device, const QString &tool, bool write);
     // An agent's measurement began or ended (its document may be filed)
     void measureLogChanged();
+    // -- WP ODEC --
+    void grantsChanged();
+    void followAgentChanged();
+    // Modern shows `section` of the device shown, following an agent's change
+    void followSection(const QString &section);
 
 private:
     static void eventThunk(const char *json, void *self);
@@ -351,6 +385,7 @@ private:
         QStringList risks;
         QStringList riskLines;   // -- WP LAY8 --
         bool sound = false;      // -- WP FEATUI -- it plays a test signal: nothing to undo
+        QJsonObject grant;       // -- WP ODEC -- what Allow grants beyond this call ({} for nothing)
         QDateTime ends;
         bool operator==(const Waiting &o) const { return id == o.id; }   // a question never changes
     };
@@ -401,6 +436,22 @@ private:
     QString m_noticeAgent;
     QSet<quint64> m_endedJobs;  // the ended measurement requests already said
     QThreadPool m_thread;       // one thread: the server's calls, in order
+    // -- WP ODEC --
+    struct Grant {
+        quint64 id;
+        QString agent, deviceId;
+        QDateTime until;
+        bool operator==(const Grant &o) const { return id == o.id && until == o.until; }
+    };
+    QList<Grant> m_grants;
+    void readGrants();
+    QString grantSuffix(const QString &device) const;
+    bool m_followAgent = true;
+    QDateTime m_lastFollow;
+    QString m_lastFollowKey;
+    QDateTime m_lastFollowKeyAt;
+    QString m_followPendingDevice, m_followPendingSection;
+    QTimer m_followTimer;       // a follow held off by the rate limit, tried after it
 };
 
 #endif // AICONTROLLER_H

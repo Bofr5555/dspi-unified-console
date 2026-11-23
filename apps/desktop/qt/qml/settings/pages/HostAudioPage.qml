@@ -43,6 +43,13 @@ SettingsPage {
                    //: %1 why the computer's audio could not be read (in English, from the core)
                    : qsTr("Cannot be read: %1").arg(page.r.why_unknown || "")
         }
+        // -- WP ODEC -- the function test's simulated bus answered: for the testers only
+        SettingsValueRow {
+            objectName: "HostAudio.simulated"
+            visible: page.r.simulated === true
+            title: qsTr("Test")
+            value: qsTr("Simulated (test)")
+        }
         SettingsValueRow {
             objectName: "HostAudio.default"
             visible: page.known

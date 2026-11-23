@@ -31,12 +31,18 @@ class AppIdentity : public QObject {
     Q_PROPERTY(QString version READ version CONSTANT)
     Q_PROPERTY(QString projectUrl READ projectUrl CONSTANT)
     Q_PROPERTY(QString firmwareUrl READ firmwareUrl CONSTANT)
+    // -- WP ODEC -- The function test runs the app on a simulated home theatre
+    // (DSPI_SIM_SCENARIO): said to the testers in the window title, never to an agent
+    Q_PROPERTY(bool simulated READ simulated CONSTANT)
+    Q_PROPERTY(QString windowTitle READ windowTitle CONSTANT)
 public:
     explicit AppIdentity(QObject *parent = nullptr) : QObject(parent) {}
     static QString displayName() { return QString::fromUtf8(AppIdentityNames::displayName); }
     static QString version() { return QStringLiteral(DSPI_APP_VERSION); }
     static QString projectUrl() { return QString::fromUtf8(AppIdentityNames::projectUrl); }
     static QString firmwareUrl() { return QString::fromUtf8(AppIdentityNames::firmwareUrl); }
+    static bool simulated() { return !qEnvironmentVariableIsEmpty("DSPI_SIM_SCENARIO"); }
+    static QString windowTitle() { return displayName() + (simulated() ? QStringLiteral(" (simulated)") : QString()); }
 };
 
 #endif // APPIDENTITY_H

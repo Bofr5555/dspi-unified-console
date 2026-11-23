@@ -421,6 +421,10 @@ SettingsPage {
         objectName: "AiAgents.activity"
         title: qsTr("Activity")
         iconName: "list-ordered"
+        AiGrantRows {   // -- WP ODEC --
+            prefix: "AiAgents.grants"
+            Layout.fillWidth: true
+        }
         AiActivityList {
             prefix: "AiAgents.log"
             Layout.fillWidth: true
