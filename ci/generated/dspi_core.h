@@ -7861,6 +7861,30 @@ uint32_t dspi_installation_save(struct FfiCore *core,
                                 uint32_t len);
 
 /**
+ * What `ask_json` would do to each unit's volume: the plan, nothing written.
+ * Every role. Blocks on the network: off the UI thread. Failures: `invalid`
+ * (an ask that is not one, a room or zone the installation lacks),
+ * `unsupported` (the hub has no fan-out), `disconnected`, `link`.
+ */
+uint32_t dspi_system_volume_plan(struct FfiCore *core,
+                                 const char *ask_json,
+                                 char *buf,
+                                 uint32_t len);
+
+/**
+ * Write `plan_json` (`dspi_system_volume_plan`'s answer): its ready units,
+ * each to its `targetDb`, through the hub. The plan again with each unit's
+ * row settled; a refused unit stops no other. Control or Admin. A call whose
+ * reply did not fit **has written**: plan again to see the levels rather than
+ * writing again. Blocks: off the UI thread. Failures: `invalid` and
+ * `read_only` (nothing sent), `denied`, `disconnected`, `link`.
+ */
+uint32_t dspi_system_volume_set(struct FfiCore *core,
+                                const char *plan_json,
+                                char *buf,
+                                uint32_t len);
+
+/**
  * Start looking for hubs on the local network, replacing any browse running.
  * Returns at once; false only with a null handle, in a build without the
  * feature, or when a thread cannot start. A network failure shows in
@@ -8499,7 +8523,9 @@ void dspi_mcp_free(struct FfiMcp *mcp);
  * "<the app's folder>", "appVersion": "0.15.0", "templateDir": "<the user's
  * templates>", "measuring": true}`, each optional (without a folder the
  * clients last only for this run; -- WP MCP5 -- `measuring`: the app runs
- * the agents' measurement requests, `dspi_mcp_measure_*`). Reply `{ok, port,
+ * the agents' measurement requests, `dspi_mcp_measure_*`; -- WP FEAT2 --
+ * `opening`: it takes their requests to open and close devices,
+ * `dspi_mcp_device_*`). Reply `{ok, port,
  * addresses}`; code `running` when it runs already, `io` when the port is in
  * use on `127.0.0.1` or on `::1`, `store` when the clients' file is damaged (it is left as it is).
  *
@@ -8654,5 +8680,38 @@ uint32_t dspi_mcp_measure_begin(struct FfiCore *core,
                                 uint32_t rate_hz,
                                 char *buf,
                                 uint32_t len);
+
+/**
+ * The devices the app remembers the user opened: a JSON list `[{"device":
+ * "usb:<serial>" | "hub:<id>/<serial>" | "link:<host:port>/<serial>", "name":
+ * "..."}]`; null for none. Kept across stop and start; at most 64. False for
+ * text that is no list. Waits for an agent's call in progress.
+ */
+bool dspi_mcp_set_known_devices(struct FfiMcp *mcp, const char *devices_json);
+
+/**
+ * The requests waiting for the app, oldest first: `{ok, value: [{request_id,
+ * client, client_name, kind: "open" | "close", device, what, state, note}]}`.
+ * Empty while stopped. Waits for an agent's call in progress.
+ */
+uint32_t dspi_mcp_device_requests(struct FfiMcp *mcp, char *buf, uint32_t len);
+
+/**
+ * Take request `id`: `{ok, ticket: {request_id, kind, device, transport:
+ * "usb" | "hub" | "link", hub, serial, client_name, what}}` (`hub`: the hub's
+ * id, or its host:port for a `link`; "" for USB), or code `gone` when it no
+ * longer waits. Taking acts: give a buffer of at least `MCP_REPLY_MIN` bytes
+ * (a smaller one returns that and takes nothing). Waits for an agent's call
+ * in progress.
+ */
+uint32_t dspi_mcp_device_take(struct FfiMcp *mcp, uint64_t id, char *buf, uint32_t len);
+
+/**
+ * How request `id` went: `done` true once the device is open (or closed),
+ * false with `note` (the reason, in words; may be null) when not. False when
+ * the request was not taken or is over (a device opened for it stays the
+ * user's).
+ */
+bool dspi_mcp_device_report(struct FfiMcp *mcp, uint64_t id, bool done, const char *note);
 
 #endif  /* DSPI_CORE_H */

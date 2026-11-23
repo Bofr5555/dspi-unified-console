@@ -6943,6 +6943,37 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func speakerLayoutSetDir(dir: String) throws 
     
     /**
+     * What setting a room's or zone's volume would do (`system.get`, then
+     * `group.param.get` on its units): each unit's volume now, its new one,
+     * whether it gets louder, or why it is left alone. Writes nothing. Every
+     * role. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an ask that is not one, a
+     * room or zone the installation does not hold or one with no units
+     * (nothing is read from the units); [`DspiError::Unsupported`] without
+     * the hub's `group_params` cap; [`DspiError::Disconnected`]; the hub's
+     * refusal.
+     */
+    func systemVolumePlan(ask: SystemVolumeAsk) throws  -> SystemVolumePlan
+    
+    /**
+     * Write `plan` (from [`DspiCore::system_volume_plan`]): its units that
+     * are ready, through the hub's fan-out (`group.param.set`), each to its
+     * `target_db`. The answer is the plan with each unit's row settled: done
+     * with the level it has, or refused by the hub for that unit (its limits
+     * profile, its lock, offline, the role). Control or Admin on the hub.
+     * Not in the undo history: it goes to the hub, not to this device. Slow:
+     * off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a plan with a level out of
+     * range or a unit twice (nothing sent); [`DspiError::ReadOnly`] (nothing
+     * sent); [`DspiError::Denied`] for a Viewer; as
+     * [`DspiCore::system_volume_plan`]. When the session goes between two
+     * fan-outs, the units already written are done and the rest refused.
+     */
+    func systemVolumeSet(plan: SystemVolumePlan) throws  -> SystemVolumePlan
+    
+    /**
      * Pulse the mute output for about a second, so an installer can hear
      * that the pin and polarity are right.
      *
@@ -15601,6 +15632,49 @@ open func speakerLayoutSetDir(dir: String)throws   {try rustCallWithError(FfiCon
         FfiConverterString.lower(dir),$0
     )
 }
+}
+    
+    /**
+     * What setting a room's or zone's volume would do (`system.get`, then
+     * `group.param.get` on its units): each unit's volume now, its new one,
+     * whether it gets louder, or why it is left alone. Writes nothing. Every
+     * role. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an ask that is not one, a
+     * room or zone the installation does not hold or one with no units
+     * (nothing is read from the units); [`DspiError::Unsupported`] without
+     * the hub's `group_params` cap; [`DspiError::Disconnected`]; the hub's
+     * refusal.
+     */
+open func systemVolumePlan(ask: SystemVolumeAsk)throws  -> SystemVolumePlan  {
+    return try  FfiConverterTypeSystemVolumePlan_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_system_volume_plan(self.uniffiClonePointer(),
+        FfiConverterTypeSystemVolumeAsk_lower(ask),$0
+    )
+})
+}
+    
+    /**
+     * Write `plan` (from [`DspiCore::system_volume_plan`]): its units that
+     * are ready, through the hub's fan-out (`group.param.set`), each to its
+     * `target_db`. The answer is the plan with each unit's row settled: done
+     * with the level it has, or refused by the hub for that unit (its limits
+     * profile, its lock, offline, the role). Control or Admin on the hub.
+     * Not in the undo history: it goes to the hub, not to this device. Slow:
+     * off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a plan with a level out of
+     * range or a unit twice (nothing sent); [`DspiError::ReadOnly`] (nothing
+     * sent); [`DspiError::Denied`] for a Viewer; as
+     * [`DspiCore::system_volume_plan`]. When the session goes between two
+     * fan-outs, the units already written are done and the rest refused.
+     */
+open func systemVolumeSet(plan: SystemVolumePlan)throws  -> SystemVolumePlan  {
+    return try  FfiConverterTypeSystemVolumePlan_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_system_volume_set(self.uniffiClonePointer(),
+        FfiConverterTypeSystemVolumePlan_lower(plan),$0
+    )
+})
 }
     
     /**
@@ -39351,6 +39425,138 @@ public func FfiConverterTypeInstallationIssue_lower(_ value: InstallationIssue) 
 
 
 /**
+ * One op of a scene ([`InstallationEdit::AddScene`]): the hub's
+ * `SceneAction`.
+ */
+public struct InstallationSceneAction {
+    /**
+     * `all`, or `room:<id>`, `zone:<id>`, `group:<id>`, `unit:<id>`; a
+     * `source` op takes `zone:<id>`.
+     */
+    public var target: String
+    /**
+     * `mute`, `unmute`, `preset_load`, `master_volume`, `out_delay`,
+     * `click`, `sync_pulse`, or `source` (the zone plays `source`).
+     */
+    public var op: String
+    /**
+     * The op's `arg`: a preset slot, an output.
+     */
+    public var arg: UInt8
+    /**
+     * The op's `value`: dB x 100, samples.
+     */
+    public var value: Int16
+    /**
+     * The `source` op's source.
+     */
+    public var source: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * `all`, or `room:<id>`, `zone:<id>`, `group:<id>`, `unit:<id>`; a
+         * `source` op takes `zone:<id>`.
+         */target: String, 
+        /**
+         * `mute`, `unmute`, `preset_load`, `master_volume`, `out_delay`,
+         * `click`, `sync_pulse`, or `source` (the zone plays `source`).
+         */op: String, 
+        /**
+         * The op's `arg`: a preset slot, an output.
+         */arg: UInt8, 
+        /**
+         * The op's `value`: dB x 100, samples.
+         */value: Int16, 
+        /**
+         * The `source` op's source.
+         */source: String?) {
+        self.target = target
+        self.op = op
+        self.arg = arg
+        self.value = value
+        self.source = source
+    }
+}
+
+#if compiler(>=6)
+extension InstallationSceneAction: Sendable {}
+#endif
+
+
+extension InstallationSceneAction: Equatable, Hashable {
+    public static func ==(lhs: InstallationSceneAction, rhs: InstallationSceneAction) -> Bool {
+        if lhs.target != rhs.target {
+            return false
+        }
+        if lhs.op != rhs.op {
+            return false
+        }
+        if lhs.arg != rhs.arg {
+            return false
+        }
+        if lhs.value != rhs.value {
+            return false
+        }
+        if lhs.source != rhs.source {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(target)
+        hasher.combine(op)
+        hasher.combine(arg)
+        hasher.combine(value)
+        hasher.combine(source)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeInstallationSceneAction: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> InstallationSceneAction {
+        return
+            try InstallationSceneAction(
+                target: FfiConverterString.read(from: &buf), 
+                op: FfiConverterString.read(from: &buf), 
+                arg: FfiConverterUInt8.read(from: &buf), 
+                value: FfiConverterInt16.read(from: &buf), 
+                source: FfiConverterOptionString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: InstallationSceneAction, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.target, into: &buf)
+        FfiConverterString.write(value.op, into: &buf)
+        FfiConverterUInt8.write(value.arg, into: &buf)
+        FfiConverterInt16.write(value.value, into: &buf)
+        FfiConverterOptionString.write(value.source, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeInstallationSceneAction_lift(_ buf: RustBuffer) throws -> InstallationSceneAction {
+    return try FfiConverterTypeInstallationSceneAction.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeInstallationSceneAction_lower(_ value: InstallationSceneAction) -> RustBuffer {
+    return FfiConverterTypeInstallationSceneAction.lower(value)
+}
+
+
+/**
  * A speaker on one of a unit's outputs.
  */
 public struct InstallationSpeaker {
@@ -45605,8 +45811,9 @@ public struct MeasureRolloffSetup {
     public var speaker: String
     /**
      * Where the microphone is: near field (close to the driver, which
-     * judges a driver best); any other placement is taken as the listening
-     * position.
+     * judges a driver best) or (-- WP FEAT2 --) on a headphone coupler, with
+     * the headphones' level caps; any other placement is taken as the
+     * listening position.
      */
     public var placement: MeasurePlacement
     /**
@@ -45642,6 +45849,10 @@ public struct MeasureRolloffSetup {
      * Play at the start level only (as `MeasureSetup::start_level_only`).
      */
     public var startLevelOnly: Bool
+    /**
+     * The coupler, for headphones (as `MeasureSetup::coupler`).
+     */
+    public var coupler: MeasureCoupler?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -45663,8 +45874,9 @@ public struct MeasureRolloffSetup {
          */speaker: String, 
         /**
          * Where the microphone is: near field (close to the driver, which
-         * judges a driver best); any other placement is taken as the listening
-         * position.
+         * judges a driver best) or (-- WP FEAT2 --) on a headphone coupler, with
+         * the headphones' level caps; any other placement is taken as the
+         * listening position.
          */placement: MeasurePlacement, 
         /**
          * The microphone's `mic` document's text ("" uncalibrated).
@@ -45690,7 +45902,10 @@ public struct MeasureRolloffSetup {
          */name: String, 
         /**
          * Play at the start level only (as `MeasureSetup::start_level_only`).
-         */startLevelOnly: Bool) {
+         */startLevelOnly: Bool, 
+        /**
+         * The coupler, for headphones (as `MeasureSetup::coupler`).
+         */coupler: MeasureCoupler? = nil) {
         self.output = output
         self.role = role
         self.rolesFromLayout = rolesFromLayout
@@ -45704,6 +45919,7 @@ public struct MeasureRolloffSetup {
         self.captureRateHz = captureRateHz
         self.name = name
         self.startLevelOnly = startLevelOnly
+        self.coupler = coupler
     }
 }
 
@@ -45753,6 +45969,9 @@ extension MeasureRolloffSetup: Equatable, Hashable {
         if lhs.startLevelOnly != rhs.startLevelOnly {
             return false
         }
+        if lhs.coupler != rhs.coupler {
+            return false
+        }
         return true
     }
 
@@ -45770,6 +45989,7 @@ extension MeasureRolloffSetup: Equatable, Hashable {
         hasher.combine(captureRateHz)
         hasher.combine(name)
         hasher.combine(startLevelOnly)
+        hasher.combine(coupler)
     }
 }
 
@@ -45794,7 +46014,8 @@ public struct FfiConverterTypeMeasureRolloffSetup: FfiConverterRustBuffer {
                 splCapDb: FfiConverterOptionFloat.read(from: &buf), 
                 captureRateHz: FfiConverterUInt32.read(from: &buf), 
                 name: FfiConverterString.read(from: &buf), 
-                startLevelOnly: FfiConverterBool.read(from: &buf)
+                startLevelOnly: FfiConverterBool.read(from: &buf), 
+                coupler: FfiConverterOptionTypeMeasureCoupler.read(from: &buf)
         )
     }
 
@@ -45812,6 +46033,7 @@ public struct FfiConverterTypeMeasureRolloffSetup: FfiConverterRustBuffer {
         FfiConverterUInt32.write(value.captureRateHz, into: &buf)
         FfiConverterString.write(value.name, into: &buf)
         FfiConverterBool.write(value.startLevelOnly, into: &buf)
+        FfiConverterOptionTypeMeasureCoupler.write(value.coupler, into: &buf)
     }
 }
 
@@ -58610,6 +58832,461 @@ public func FfiConverterTypeSystemStatus_lower(_ value: SystemStatus) -> RustBuf
 
 
 /**
+ * What to set: exactly one of `room` and `zone`, one of `level_db` and
+ * `step_db`.
+ */
+public struct SystemVolumeAsk {
+    /**
+     * A room's id in the installation; "" for a zone.
+     */
+    public var room: String
+    /**
+     * A zone's id (every unit of its rooms); "" for a room.
+     */
+    public var zone: String
+    /**
+     * Which volume.
+     */
+    public var volume: SystemVolumeKind
+    /**
+     * The same level on every unit, dB.
+     */
+    public var levelDb: Float?
+    /**
+     * Each unit's own volume moved by this, dB (negative is quieter).
+     */
+    public var stepDb: Float?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * A room's id in the installation; "" for a zone.
+         */room: String, 
+        /**
+         * A zone's id (every unit of its rooms); "" for a room.
+         */zone: String, 
+        /**
+         * Which volume.
+         */volume: SystemVolumeKind, 
+        /**
+         * The same level on every unit, dB.
+         */levelDb: Float?, 
+        /**
+         * Each unit's own volume moved by this, dB (negative is quieter).
+         */stepDb: Float?) {
+        self.room = room
+        self.zone = zone
+        self.volume = volume
+        self.levelDb = levelDb
+        self.stepDb = stepDb
+    }
+}
+
+#if compiler(>=6)
+extension SystemVolumeAsk: Sendable {}
+#endif
+
+
+extension SystemVolumeAsk: Equatable, Hashable {
+    public static func ==(lhs: SystemVolumeAsk, rhs: SystemVolumeAsk) -> Bool {
+        if lhs.room != rhs.room {
+            return false
+        }
+        if lhs.zone != rhs.zone {
+            return false
+        }
+        if lhs.volume != rhs.volume {
+            return false
+        }
+        if lhs.levelDb != rhs.levelDb {
+            return false
+        }
+        if lhs.stepDb != rhs.stepDb {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(room)
+        hasher.combine(zone)
+        hasher.combine(volume)
+        hasher.combine(levelDb)
+        hasher.combine(stepDb)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSystemVolumeAsk: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SystemVolumeAsk {
+        return
+            try SystemVolumeAsk(
+                room: FfiConverterString.read(from: &buf), 
+                zone: FfiConverterString.read(from: &buf), 
+                volume: FfiConverterTypeSystemVolumeKind.read(from: &buf), 
+                levelDb: FfiConverterOptionFloat.read(from: &buf), 
+                stepDb: FfiConverterOptionFloat.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: SystemVolumeAsk, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.room, into: &buf)
+        FfiConverterString.write(value.zone, into: &buf)
+        FfiConverterTypeSystemVolumeKind.write(value.volume, into: &buf)
+        FfiConverterOptionFloat.write(value.levelDb, into: &buf)
+        FfiConverterOptionFloat.write(value.stepDb, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSystemVolumeAsk_lift(_ buf: RustBuffer) throws -> SystemVolumeAsk {
+    return try FfiConverterTypeSystemVolumeAsk.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSystemVolumeAsk_lower(_ value: SystemVolumeAsk) -> RustBuffer {
+    return FfiConverterTypeSystemVolumeAsk.lower(value)
+}
+
+
+/**
+ * A room's or zone's volume, planned ([`DspiCore::system_volume_plan`]) or
+ * set ([`DspiCore::system_volume_set`]).
+ */
+public struct SystemVolumePlan {
+    /**
+     * What was asked.
+     */
+    public var ask: SystemVolumeAsk
+    /**
+     * The room's or zone's name, or its id when it has none.
+     */
+    public var name: String
+    /**
+     * Its place in the installation's list, from 1.
+     */
+    public var number: UInt32
+    /**
+     * How many rooms (or zones) the installation has.
+     */
+    public var of: UInt32
+    /**
+     * Its units, in the installation's order.
+     */
+    public var units: [SystemVolumeUnit]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * What was asked.
+         */ask: SystemVolumeAsk, 
+        /**
+         * The room's or zone's name, or its id when it has none.
+         */name: String, 
+        /**
+         * Its place in the installation's list, from 1.
+         */number: UInt32, 
+        /**
+         * How many rooms (or zones) the installation has.
+         */of: UInt32, 
+        /**
+         * Its units, in the installation's order.
+         */units: [SystemVolumeUnit]) {
+        self.ask = ask
+        self.name = name
+        self.number = number
+        self.of = of
+        self.units = units
+    }
+}
+
+#if compiler(>=6)
+extension SystemVolumePlan: Sendable {}
+#endif
+
+
+extension SystemVolumePlan: Equatable, Hashable {
+    public static func ==(lhs: SystemVolumePlan, rhs: SystemVolumePlan) -> Bool {
+        if lhs.ask != rhs.ask {
+            return false
+        }
+        if lhs.name != rhs.name {
+            return false
+        }
+        if lhs.number != rhs.number {
+            return false
+        }
+        if lhs.of != rhs.of {
+            return false
+        }
+        if lhs.units != rhs.units {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(ask)
+        hasher.combine(name)
+        hasher.combine(number)
+        hasher.combine(of)
+        hasher.combine(units)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSystemVolumePlan: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SystemVolumePlan {
+        return
+            try SystemVolumePlan(
+                ask: FfiConverterTypeSystemVolumeAsk.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf), 
+                number: FfiConverterUInt32.read(from: &buf), 
+                of: FfiConverterUInt32.read(from: &buf), 
+                units: FfiConverterSequenceTypeSystemVolumeUnit.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: SystemVolumePlan, into buf: inout [UInt8]) {
+        FfiConverterTypeSystemVolumeAsk.write(value.ask, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterUInt32.write(value.number, into: &buf)
+        FfiConverterUInt32.write(value.of, into: &buf)
+        FfiConverterSequenceTypeSystemVolumeUnit.write(value.units, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSystemVolumePlan_lift(_ buf: RustBuffer) throws -> SystemVolumePlan {
+    return try FfiConverterTypeSystemVolumePlan.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSystemVolumePlan_lower(_ value: SystemVolumePlan) -> RustBuffer {
+    return FfiConverterTypeSystemVolumePlan.lower(value)
+}
+
+
+/**
+ * One unit of the room or zone.
+ */
+public struct SystemVolumeUnit {
+    /**
+     * The installation's id of the unit.
+     */
+    public var unitId: String
+    /**
+     * Its name, or the id when it has none.
+     */
+    public var name: String
+    /**
+     * Its serial.
+     */
+    public var serial: String
+    /**
+     * Its volume now, dB, when it could be read.
+     */
+    public var beforeDb: Float?
+    /**
+     * What it would be set to, dB.
+     */
+    public var targetDb: Float?
+    /**
+     * What it was set to, dB, once written.
+     */
+    public var afterDb: Float?
+    /**
+     * It gets louder.
+     */
+    public var louder: Bool
+    /**
+     * Where it stands.
+     */
+    public var state: SystemVolumeState
+    /**
+     * Why it was refused: the hub's code (`offline`, `limit_exceeded`,
+     * `denied`, `locked`, ...), "" when not.
+     */
+    public var code: String
+    /**
+     * The same in words.
+     */
+    public var message: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The installation's id of the unit.
+         */unitId: String, 
+        /**
+         * Its name, or the id when it has none.
+         */name: String, 
+        /**
+         * Its serial.
+         */serial: String, 
+        /**
+         * Its volume now, dB, when it could be read.
+         */beforeDb: Float?, 
+        /**
+         * What it would be set to, dB.
+         */targetDb: Float?, 
+        /**
+         * What it was set to, dB, once written.
+         */afterDb: Float?, 
+        /**
+         * It gets louder.
+         */louder: Bool, 
+        /**
+         * Where it stands.
+         */state: SystemVolumeState, 
+        /**
+         * Why it was refused: the hub's code (`offline`, `limit_exceeded`,
+         * `denied`, `locked`, ...), "" when not.
+         */code: String, 
+        /**
+         * The same in words.
+         */message: String) {
+        self.unitId = unitId
+        self.name = name
+        self.serial = serial
+        self.beforeDb = beforeDb
+        self.targetDb = targetDb
+        self.afterDb = afterDb
+        self.louder = louder
+        self.state = state
+        self.code = code
+        self.message = message
+    }
+}
+
+#if compiler(>=6)
+extension SystemVolumeUnit: Sendable {}
+#endif
+
+
+extension SystemVolumeUnit: Equatable, Hashable {
+    public static func ==(lhs: SystemVolumeUnit, rhs: SystemVolumeUnit) -> Bool {
+        if lhs.unitId != rhs.unitId {
+            return false
+        }
+        if lhs.name != rhs.name {
+            return false
+        }
+        if lhs.serial != rhs.serial {
+            return false
+        }
+        if lhs.beforeDb != rhs.beforeDb {
+            return false
+        }
+        if lhs.targetDb != rhs.targetDb {
+            return false
+        }
+        if lhs.afterDb != rhs.afterDb {
+            return false
+        }
+        if lhs.louder != rhs.louder {
+            return false
+        }
+        if lhs.state != rhs.state {
+            return false
+        }
+        if lhs.code != rhs.code {
+            return false
+        }
+        if lhs.message != rhs.message {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(unitId)
+        hasher.combine(name)
+        hasher.combine(serial)
+        hasher.combine(beforeDb)
+        hasher.combine(targetDb)
+        hasher.combine(afterDb)
+        hasher.combine(louder)
+        hasher.combine(state)
+        hasher.combine(code)
+        hasher.combine(message)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSystemVolumeUnit: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SystemVolumeUnit {
+        return
+            try SystemVolumeUnit(
+                unitId: FfiConverterString.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf), 
+                serial: FfiConverterString.read(from: &buf), 
+                beforeDb: FfiConverterOptionFloat.read(from: &buf), 
+                targetDb: FfiConverterOptionFloat.read(from: &buf), 
+                afterDb: FfiConverterOptionFloat.read(from: &buf), 
+                louder: FfiConverterBool.read(from: &buf), 
+                state: FfiConverterTypeSystemVolumeState.read(from: &buf), 
+                code: FfiConverterString.read(from: &buf), 
+                message: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: SystemVolumeUnit, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.unitId, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterString.write(value.serial, into: &buf)
+        FfiConverterOptionFloat.write(value.beforeDb, into: &buf)
+        FfiConverterOptionFloat.write(value.targetDb, into: &buf)
+        FfiConverterOptionFloat.write(value.afterDb, into: &buf)
+        FfiConverterBool.write(value.louder, into: &buf)
+        FfiConverterTypeSystemVolumeState.write(value.state, into: &buf)
+        FfiConverterString.write(value.code, into: &buf)
+        FfiConverterString.write(value.message, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSystemVolumeUnit_lift(_ buf: RustBuffer) throws -> SystemVolumeUnit {
+    return try FfiConverterTypeSystemVolumeUnit.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSystemVolumeUnit_lower(_ value: SystemVolumeUnit) -> RustBuffer {
+    return FfiConverterTypeSystemVolumeUnit.lower(value)
+}
+
+
+/**
  * A built-in target ([`target_builtins`]): defined by parameters in our own
  * code, no third-party data (OD-P5p).
  */
@@ -62172,6 +62849,135 @@ public enum InstallationEdit {
          * Keep USB-direct units aligned.
          */keepUsbAligned: Bool?
     )
+    /**
+     * A unit's slots: the audio link channel each of its 8 matrix inputs
+     * plays (255 silent); `None` leaves the unit's own table alone. A unit
+     * in a zone that plays a source takes the source's slots and no others
+     * (a slot clash). Stored: the hub writes them at the next alignment.
+     */
+    case setUnitSlots(
+        /**
+         * The unit, on the audio link.
+         */id: String, 
+        /**
+         * 8 channels, each below 64 or 255.
+         */slots: Data?
+    )
+    /**
+     * Add a source: a programme on audio link channels of a sender.
+     */
+    case addSource(
+        /**
+         * Its id; `None`: made from the name.
+         */id: String?, 
+        /**
+         * What people call it.
+         */name: String, 
+        /**
+         * The sender whose stream carries it.
+         */sender: String?, 
+        /**
+         * The audio link channels it takes, each below 64 and on no other
+         * source of the same sender.
+         */channels: Data
+    )
+    /**
+     * A source's sender and channels; the zones playing it are routed again.
+     */
+    case setSource(
+        /**
+         * The source.
+         */id: String, 
+        /**
+         * The sender whose stream carries it; `None`: none named.
+         */sender: String?, 
+        /**
+         * Its channels.
+         */channels: Data
+    )
+    /**
+     * What a zone plays. A source routes: every unit of the zone on the
+     * audio link takes the source's channels as its slots. `None` stops
+     * naming one and leaves the slots as they are.
+     */
+    case setZoneSource(
+        /**
+         * The zone.
+         */id: String, 
+        /**
+         * The source; `None`: none.
+         */source: String?
+    )
+    /**
+     * Add a scene: ops applied at one frame, a `source` op switching a
+     * zone's source.
+     */
+    case addScene(
+        /**
+         * Its id; `None`: made from the name.
+         */id: String?, 
+        /**
+         * What people call it.
+         */name: String, 
+        /**
+         * What it does, in order.
+         */actions: [InstallationSceneAction], 
+        /**
+         * Set or clear the system mute with it; `None`: leave it.
+         */systemMute: Bool?
+    )
+    /**
+     * A scene's ops and system mute, replaced.
+     */
+    case setScene(
+        /**
+         * The scene.
+         */id: String, 
+        /**
+         * What it does, in order.
+         */actions: [InstallationSceneAction], 
+        /**
+         * Set or clear the system mute with it; `None`: leave it.
+         */systemMute: Bool?
+    )
+    /**
+     * Add a programme source: what plays into the installation and where.
+     * A description; it routes nothing.
+     */
+    case addProgrammeSource(
+        /**
+         * Its id; `None`: made from the name.
+         */id: String?, 
+        /**
+         * What people call it.
+         */name: String, 
+        /**
+         * How it comes in.
+         */kind: InstallationProgrammeKind, 
+        /**
+         * The unit it plays into, or the sender (`alink_sender`).
+         */feeds: String, 
+        /**
+         * The unit's inputs (below 8) or the sender's channels (below 64).
+         */inputs: Data
+    )
+    /**
+     * A programme source's kind, what it feeds and its inputs, replaced.
+     */
+    case setProgrammeSource(
+        /**
+         * The programme source.
+         */id: String, 
+        /**
+         * How it comes in.
+         */kind: InstallationProgrammeKind, 
+        /**
+         * The unit it plays into, or the sender.
+         */feeds: String, 
+        /**
+         * Its inputs.
+         */inputs: Data
+    )
 }
 
 
@@ -62238,6 +63044,30 @@ public struct FfiConverterTypeInstallationEdit: FfiConverterRustBuffer {
         )
         
         case 17: return .setSystem(rateHz: try FfiConverterOptionUInt32.read(from: &buf), setD: try FfiConverterBool.read(from: &buf), dFrames: try FfiConverterOptionUInt16.read(from: &buf), keepUsbAligned: try FfiConverterOptionBool.read(from: &buf)
+        )
+        
+        case 18: return .setUnitSlots(id: try FfiConverterString.read(from: &buf), slots: try FfiConverterOptionData.read(from: &buf)
+        )
+        
+        case 19: return .addSource(id: try FfiConverterOptionString.read(from: &buf), name: try FfiConverterString.read(from: &buf), sender: try FfiConverterOptionString.read(from: &buf), channels: try FfiConverterData.read(from: &buf)
+        )
+        
+        case 20: return .setSource(id: try FfiConverterString.read(from: &buf), sender: try FfiConverterOptionString.read(from: &buf), channels: try FfiConverterData.read(from: &buf)
+        )
+        
+        case 21: return .setZoneSource(id: try FfiConverterString.read(from: &buf), source: try FfiConverterOptionString.read(from: &buf)
+        )
+        
+        case 22: return .addScene(id: try FfiConverterOptionString.read(from: &buf), name: try FfiConverterString.read(from: &buf), actions: try FfiConverterSequenceTypeInstallationSceneAction.read(from: &buf), systemMute: try FfiConverterOptionBool.read(from: &buf)
+        )
+        
+        case 23: return .setScene(id: try FfiConverterString.read(from: &buf), actions: try FfiConverterSequenceTypeInstallationSceneAction.read(from: &buf), systemMute: try FfiConverterOptionBool.read(from: &buf)
+        )
+        
+        case 24: return .addProgrammeSource(id: try FfiConverterOptionString.read(from: &buf), name: try FfiConverterString.read(from: &buf), kind: try FfiConverterTypeInstallationProgrammeKind.read(from: &buf), feeds: try FfiConverterString.read(from: &buf), inputs: try FfiConverterData.read(from: &buf)
+        )
+        
+        case 25: return .setProgrammeSource(id: try FfiConverterString.read(from: &buf), kind: try FfiConverterTypeInstallationProgrammeKind.read(from: &buf), feeds: try FfiConverterString.read(from: &buf), inputs: try FfiConverterData.read(from: &buf)
         )
         
         default: throw UniffiInternalError.unexpectedEnumCase
@@ -62363,6 +63193,65 @@ public struct FfiConverterTypeInstallationEdit: FfiConverterRustBuffer {
             FfiConverterOptionUInt16.write(dFrames, into: &buf)
             FfiConverterOptionBool.write(keepUsbAligned, into: &buf)
             
+        
+        case let .setUnitSlots(id,slots):
+            writeInt(&buf, Int32(18))
+            FfiConverterString.write(id, into: &buf)
+            FfiConverterOptionData.write(slots, into: &buf)
+            
+        
+        case let .addSource(id,name,sender,channels):
+            writeInt(&buf, Int32(19))
+            FfiConverterOptionString.write(id, into: &buf)
+            FfiConverterString.write(name, into: &buf)
+            FfiConverterOptionString.write(sender, into: &buf)
+            FfiConverterData.write(channels, into: &buf)
+            
+        
+        case let .setSource(id,sender,channels):
+            writeInt(&buf, Int32(20))
+            FfiConverterString.write(id, into: &buf)
+            FfiConverterOptionString.write(sender, into: &buf)
+            FfiConverterData.write(channels, into: &buf)
+            
+        
+        case let .setZoneSource(id,source):
+            writeInt(&buf, Int32(21))
+            FfiConverterString.write(id, into: &buf)
+            FfiConverterOptionString.write(source, into: &buf)
+            
+        
+        case let .addScene(id,name,actions,systemMute):
+            writeInt(&buf, Int32(22))
+            FfiConverterOptionString.write(id, into: &buf)
+            FfiConverterString.write(name, into: &buf)
+            FfiConverterSequenceTypeInstallationSceneAction.write(actions, into: &buf)
+            FfiConverterOptionBool.write(systemMute, into: &buf)
+            
+        
+        case let .setScene(id,actions,systemMute):
+            writeInt(&buf, Int32(23))
+            FfiConverterString.write(id, into: &buf)
+            FfiConverterSequenceTypeInstallationSceneAction.write(actions, into: &buf)
+            FfiConverterOptionBool.write(systemMute, into: &buf)
+            
+        
+        case let .addProgrammeSource(id,name,kind,feeds,inputs):
+            writeInt(&buf, Int32(24))
+            FfiConverterOptionString.write(id, into: &buf)
+            FfiConverterString.write(name, into: &buf)
+            FfiConverterTypeInstallationProgrammeKind.write(kind, into: &buf)
+            FfiConverterString.write(feeds, into: &buf)
+            FfiConverterData.write(inputs, into: &buf)
+            
+        
+        case let .setProgrammeSource(id,kind,feeds,inputs):
+            writeInt(&buf, Int32(25))
+            FfiConverterString.write(id, into: &buf)
+            FfiConverterTypeInstallationProgrammeKind.write(kind, into: &buf)
+            FfiConverterString.write(feeds, into: &buf)
+            FfiConverterData.write(inputs, into: &buf)
+            
         }
     }
 }
@@ -62384,6 +63273,106 @@ public func FfiConverterTypeInstallationEdit_lower(_ value: InstallationEdit) ->
 
 
 extension InstallationEdit: Equatable, Hashable {}
+
+
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
+ * How a programme reaches the installation
+ * ([`InstallationEdit::AddProgrammeSource`]).
+ */
+
+public enum InstallationProgrammeKind {
+    
+    /**
+     * A computer playing to a unit over USB.
+     */
+    case computerUsb
+    /**
+     * A box into a unit's S/PDIF input.
+     */
+    case spdif
+    /**
+     * An analogue source into a unit's ADC (I2S) input.
+     */
+    case analogue
+    /**
+     * Into the audio link sender's channels.
+     */
+    case alinkSender
+}
+
+
+#if compiler(>=6)
+extension InstallationProgrammeKind: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeInstallationProgrammeKind: FfiConverterRustBuffer {
+    typealias SwiftType = InstallationProgrammeKind
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> InstallationProgrammeKind {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .computerUsb
+        
+        case 2: return .spdif
+        
+        case 3: return .analogue
+        
+        case 4: return .alinkSender
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: InstallationProgrammeKind, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .computerUsb:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .spdif:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .analogue:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .alinkSender:
+            writeInt(&buf, Int32(4))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeInstallationProgrammeKind_lift(_ buf: RustBuffer) throws -> InstallationProgrammeKind {
+    return try FfiConverterTypeInstallationProgrammeKind.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeInstallationProgrammeKind_lower(_ value: InstallationProgrammeKind) -> RustBuffer {
+    return FfiConverterTypeInstallationProgrammeKind.lower(value)
+}
+
+
+extension InstallationProgrammeKind: Equatable, Hashable {}
 
 
 
@@ -65235,6 +66224,184 @@ extension ProtocolGeneration: Equatable, Hashable {}
 // Note that we don't yet support `indirect` for enums.
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
 /**
+ * Which volume of the units.
+ */
+
+public enum SystemVolumeKind {
+    
+    /**
+     * The listening volume (`vol.user`, -60 to 0 dB).
+     */
+    case user
+    /**
+     * The master volume (`vol.master`, -127 to 0 dB in 0.5 dB steps).
+     */
+    case master
+}
+
+
+#if compiler(>=6)
+extension SystemVolumeKind: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSystemVolumeKind: FfiConverterRustBuffer {
+    typealias SwiftType = SystemVolumeKind
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SystemVolumeKind {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .user
+        
+        case 2: return .master
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: SystemVolumeKind, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .user:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .master:
+            writeInt(&buf, Int32(2))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSystemVolumeKind_lift(_ buf: RustBuffer) throws -> SystemVolumeKind {
+    return try FfiConverterTypeSystemVolumeKind.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSystemVolumeKind_lower(_ value: SystemVolumeKind) -> RustBuffer {
+    return FfiConverterTypeSystemVolumeKind.lower(value)
+}
+
+
+extension SystemVolumeKind: Equatable, Hashable {}
+
+
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
+ * Where one unit stands.
+ */
+
+public enum SystemVolumeState {
+    
+    /**
+     * It would be written.
+     */
+    case ready
+    /**
+     * It is at the level asked for: nothing to write.
+     */
+    case unchanged
+    /**
+     * It may not be, or could not be, written (`code` and `message` say why).
+     */
+    case refused
+    /**
+     * Written; `after_db` is what it has now.
+     */
+    case done
+}
+
+
+#if compiler(>=6)
+extension SystemVolumeState: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSystemVolumeState: FfiConverterRustBuffer {
+    typealias SwiftType = SystemVolumeState
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SystemVolumeState {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .ready
+        
+        case 2: return .unchanged
+        
+        case 3: return .refused
+        
+        case 4: return .done
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: SystemVolumeState, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .ready:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .unchanged:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .refused:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .done:
+            writeInt(&buf, Int32(4))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSystemVolumeState_lift(_ buf: RustBuffer) throws -> SystemVolumeState {
+    return try FfiConverterTypeSystemVolumeState.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSystemVolumeState_lower(_ value: SystemVolumeState) -> RustBuffer {
+    return FfiConverterTypeSystemVolumeState.lower(value)
+}
+
+
+extension SystemVolumeState: Equatable, Hashable {}
+
+
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
  * Where a run is: [`VregCalView::phase`]. The details are in the view.
  */
 
@@ -65775,6 +66942,30 @@ fileprivate struct FfiConverterOptionString: FfiConverterRustBuffer {
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterString.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionData: FfiConverterRustBuffer {
+    typealias SwiftType = Data?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterData.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterData.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -68307,6 +69498,31 @@ fileprivate struct FfiConverterSequenceTypeInstallationIssue: FfiConverterRustBu
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeInstallationSceneAction: FfiConverterRustBuffer {
+    typealias SwiftType = [InstallationSceneAction]
+
+    public static func write(_ value: [InstallationSceneAction], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeInstallationSceneAction.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [InstallationSceneAction] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [InstallationSceneAction]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeInstallationSceneAction.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeInstallationSpeaker: FfiConverterRustBuffer {
     typealias SwiftType = [InstallationSpeaker]
 
@@ -69624,6 +70840,31 @@ fileprivate struct FfiConverterSequenceTypeSpeakerLayoutOutput: FfiConverterRust
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeSpeakerLayoutOutput.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeSystemVolumeUnit: FfiConverterRustBuffer {
+    typealias SwiftType = [SystemVolumeUnit]
+
+    public static func write(_ value: [SystemVolumeUnit], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeSystemVolumeUnit.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [SystemVolumeUnit] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [SystemVolumeUnit]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeSystemVolumeUnit.read(from: &buf))
         }
         return seq
     }
@@ -72507,6 +73748,12 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_speaker_layout_set_dir() != 19602) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_system_volume_plan() != 7230) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_system_volume_set() != 4713) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_test_dac_mute() != 36228) {
