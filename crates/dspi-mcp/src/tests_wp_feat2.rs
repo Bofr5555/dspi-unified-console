@@ -224,8 +224,11 @@ fn wp_feat2_the_tweeter_refusal_counts_outputs_as_the_user_does() {
     let hp = |hz: u32| json!({"output": 2, "high_pass": {"family": "linkwitz_riley", "order": 4, "freq_hz": hz}});
     ok(&mut s, c, "dspi_set_crossover", hp(2_500));
     let e = err(&mut s, c, "dspi_set_crossover", hp(500));
-    assert!(e.contains("Out 3 drives a tweeter"), "{e}");
-    assert!(!e.contains("output 2"), "{e}");
+    // -- WP FFIX -- bug 12: the tools' number, with the app's beside it
+    assert!(
+        e.contains("output 2 (Out 3 in the app) drives a tweeter"),
+        "{e}"
+    );
 }
 
 #[test]

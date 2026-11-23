@@ -1621,6 +1621,13 @@ fn forward(
     status_of: impl Fn(i64) -> u16,
 ) -> Answer {
     let now_ms = shared.now_ms();
+    // -- WP FFIX --
+    let wait = Server::long_poll_ms(&msg);
+    let again = if wait.is_some() {
+        msg.clone()
+    } else {
+        Value::Null
+    };
     // -- WP AIVIS -- the app shows the call before it waits for the server
     let call = if is_call && !shared.paused.load(Ordering::SeqCst) {
         shared.call_began(&owner.name, &msg)
@@ -1639,12 +1646,27 @@ fn forward(
         let Some(client) = client_for(mcp, owner) else {
             return Err(unauthorised()); // -- WP MCP2c --
         };
-        Ok(mcp.server.handle_held_value(client, now_ms, msg))
+        // -- WP FFIX -- the long poll's mark, taken with the answer
+        let mark = wait
+            .is_some()
+            .then(|| mcp.server.status_mark(client, now_ms, &again))
+            .flatten();
+        let (reply, held) = mcp.server.handle_held_value(client, now_ms, msg);
+        Ok((reply, held, mark))
     });
     shared.call_ended(call); // -- WP AIVIS --
-    let (reply, held) = match outcome {
+    let (reply, held, mark) = match outcome {
         Ok(o) => o,
         Err(refusal) => return refusal.into(),
+    };
+    // -- WP FFIX -- FUNC1 bug 5: a status call with `wait_s` is answered
+    // when its mark changes, or at the end of the wait; waited for on this
+    // connection's thread with the server unlocked
+    let reply = match (wait, mark) {
+        (Some(ms), Some(mark)) if reply.as_ref().is_some_and(|r| r.get("result").is_some()) => {
+            long_poll(shared, owner, &again, ms, &mark).or(reply)
+        }
+        _ => reply,
     };
     if is_call {
         shared.emit(&[Event::Activity]);
@@ -1660,6 +1682,47 @@ fn forward(
                 .and_then(Value::as_i64)
                 .map_or(200, status_of);
             Response::json(status, r).into()
+        }
+    }
+}
+
+// -- WP FFIX -- FUNC1 bug 5
+/// How often a long poll looks again.
+const LONG_POLL_STEP: Duration = Duration::from_millis(250);
+
+/// Wait up to `ms` for `owner`'s status call `msg` to answer other than
+/// `mark`; then its fresh answer (`msg` run again, without the wait). `None`
+/// when nothing changed (the first answer stands), or the server stops, the
+/// user pauses, or the client is gone.
+fn long_poll(shared: &Shared, owner: &Owner, msg: &Value, ms: u64, mark: &str) -> Option<Value> {
+    let end = Instant::now().checked_add(Duration::from_millis(ms))?;
+    loop {
+        let left = end.saturating_duration_since(Instant::now());
+        if left.is_zero() {
+            return None;
+        }
+        std::thread::sleep(left.min(LONG_POLL_STEP));
+        if shared.stopping.load(Ordering::SeqCst) || shared.paused.load(Ordering::SeqCst) {
+            return None;
+        }
+        let now_ms = shared.now_ms();
+        let changed = shared.with_mcp(|mcp| {
+            let client = client_for(mcp, owner)?;
+            let now = mcp.server.status_mark(client, now_ms, msg)?;
+            if now == mark {
+                return Some((false, None));
+            }
+            let mut fresh = msg.clone();
+            if let Some(a) = fresh
+                .pointer_mut("/params/arguments")
+                .and_then(Value::as_object_mut)
+            {
+                a.remove("wait_s");
+            }
+            Some((true, mcp.server.handle_held_value(client, now_ms, fresh).0))
+        })?;
+        if let (true, reply) = changed {
+            return reply;
         }
     }
 }

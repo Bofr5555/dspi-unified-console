@@ -1032,3 +1032,46 @@ fn wp_rcfix_the_users_search_is_not_the_agents() {
         .unwrap();
     assert_eq!(r["note"].as_str(), Some(note), "{log:?}");
 }
+
+// -- WP FFIX -- FUNC1 bug 5: the long poll's mark
+#[test]
+fn wp_ffix_the_status_mark_changes_when_the_app_takes_the_request() {
+    let (set, _id, core) = demo();
+    layout(&core, true);
+    let mut s = server(&set, ConfirmMode::NeverAsk, true);
+    let c = s.connect();
+    let poll = request("dspi_measure_status", json!({"wait_s": 25}));
+    assert_eq!(Server::long_poll_ms(&poll), Some(25_000));
+    assert_eq!(
+        Server::long_poll_ms(&request("dspi_measure_status", json!({"wait_s": 99}))),
+        Some(25_000),
+        "at most 25 s"
+    );
+    assert_eq!(
+        Server::long_poll_ms(&request("dspi_measure_status", json!({}))),
+        None
+    );
+    assert_eq!(
+        Server::long_poll_ms(&request("dspi_get_overview", json!({"wait_s": 5}))),
+        None
+    );
+    // Idle jobs are left out of the answer.
+    let st = status(&mut s, c, 1_000);
+    assert!(
+        st.get("tune").is_none() && st.get("rolloff").is_none(),
+        "{st}"
+    );
+    let outs = json!({"outputs": [0, 1, 2], "sweep_ms": 1000, "passes": 2});
+    ok_at(&mut s, c, 1_000, "dspi_measure_start", outs);
+    let m0 = s.status_mark(c, 1_000, &poll).unwrap();
+    assert_eq!(
+        s.status_mark(c, 1_100, &poll).unwrap(),
+        m0,
+        "nothing changed"
+    );
+    app_takes(&mut s, &core);
+    let m1 = s.status_mark(c, 1_200, &poll).unwrap();
+    assert_ne!(m1, m0, "the request runs now");
+    core.measure_stop();
+    app_drives(&core, "session", 60);
+}

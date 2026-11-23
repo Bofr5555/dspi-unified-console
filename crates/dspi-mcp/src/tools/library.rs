@@ -25,10 +25,10 @@
 
 use dspi_core::actor::ActorScope;
 use dspi_core::consts::MAX_PRESETS;
-use dspi_core::{AbCompare, AbSide, ConfirmOp, DspState, DspiCore, ParamValue, SnapshotInfo};
+use dspi_core::{AbCompare, AbSide, ConfirmOp, DspState, DspiCore, SnapshotInfo};
 use serde_json::{Map, Value, json};
 
-use crate::policy::{self, ConfirmMode, Judging, RiskKind, Verdict, WriteKey};
+use crate::policy::{self, ConfirmMode, Judging, RiskKind, Verdict};
 use crate::registry::{Call, Tool, ToolClass, ToolError};
 use crate::tools::edit::{schema, u8_arg};
 use crate::tools::read::{empty_schema, object_schema, state};
@@ -88,53 +88,19 @@ fn capture_before(core: &DspiCore, what: &str) -> Result<Before, ToolError> {
     Ok(Before { id: None, document })
 }
 
-/// The journal's whole-band bytes, as `policy` reads them back.
-fn band_bytes(f: &dspi_core::FilterParams) -> Vec<u8> {
-    let mut b = vec![f.filter_type, u8::from(f.bypass)];
-    for x in [f.freq, f.q, f.gain, f.qp] {
-        b.extend_from_slice(&x.to_le_bytes());
-    }
-    b
-}
-
-/// Every output band that differs from `before` to `after`, as writes.
-fn band_writes(before: &DspState, after: &DspState) -> Vec<WriteKey> {
-    let mut out = Vec::new();
-    for o in 0..before.num_output_channels {
-        let ch = before.num_input_channels.saturating_add(o);
-        let c = usize::from(ch);
-        let banks = [
-            (0u8, before.filters.get(c), after.filters.get(c)),
-            (20u8, before.xover.get(c), after.xover.get(c)),
-        ];
-        for (base, was, now) in banks {
-            let (Some(was), Some(now)) = (was, now) else {
-                continue;
-            };
-            for (i, (a, b)) in (0u8..).zip(was.iter().zip(now)) {
-                if a != b {
-                    out.push(WriteKey::new(
-                        "eq.band",
-                        &[ch, base.saturating_add(i)],
-                        ParamValue::Bytes(band_bytes(b)),
-                    ));
-                }
-            }
-        }
-    }
-    out
-}
-
-/// Why going from `before` to `after` lowered a tweeter's protection (the
-/// user's speaker setup, or a high-pass at 1 kHz or above), if it did.
+/// Why going from `before` to `after` broke a tweeter's protection (the
+/// user's speaker setup judged on the state it leaves, or a lowered
+/// high-pass at 1 kHz or above), if it did. -- WP FFIX -- every route,
+/// switch and band, not the output bands alone
 fn tweeter_lost(roles: &Judging, before: &DspState, after: &DspState) -> Option<String> {
-    let writes = band_writes(before, after);
+    let writes = policy::state_writes(before, after);
     if writes.is_empty() {
         return None;
     }
     let j = Judging {
         mode: Some(ConfirmMode::AskRisky),
         roles: roles.roles.clone(),
+        floors: roles.floors.clone(),
         ..Judging::default()
     };
     match policy::judge(before, &writes, &j) {
@@ -156,11 +122,83 @@ pub(crate) fn wholesale<T>(
     indices: &[u8],
     run: impl FnOnce(&DspiCore) -> dspi_core::Result<T>,
 ) -> Result<(T, Before), ToolError> {
+    wholesale_with(call, what, indices, false, run)
+}
+
+// -- WP FFIX -- FUNC1 bug 2
+/// The master volume a device-applied load runs at while a confirmed tweeter
+/// or midrange could get the preset's unprotected settings, dB (the core's
+/// floor: silent).
+const LOAD_GUARD_DB: f32 = -127.0;
+
+/// [`wholesale`], for a write the device applies itself (a preset load):
+/// with `device_applied`, a device whose master volume is independent of its
+/// presets and that has a confirmed tweeter or midrange is silenced first
+/// (the master volume at [`LOAD_GUARD_DB`]), and its volume comes back only
+/// once the result is judged (and put back if it broke the tweeter rule).
+/// The device can then not play a preset's unprotected tweeter for the
+/// moment until the console has looked. With the master volume saved in each
+/// preset, the load sets it and nothing can be guarded (manual §7).
+fn wholesale_with<T>(
+    call: &mut Call<'_>,
+    what: &str,
+    indices: &[u8],
+    device_applied: bool,
+    run: impl FnOnce(&DspiCore) -> dspi_core::Result<T>,
+) -> Result<(T, Before), ToolError> {
     let core = call.core()?;
     let before = state(core)?;
     policy::require(&call.judging, RiskKind::Recall, what, indices)?;
     policy::lock(&call.judging).wholesale = true;
     let snap = capture_before(core, what)?;
+    let hard = {
+        let j = policy::lock(&call.judging);
+        j.roles.iter().any(|r| {
+            matches!(
+                r,
+                Some(dspi_core::measure::MeasureRole::High | dspi_core::measure::MeasureRole::Mid)
+            )
+        })
+    };
+    let guard = (device_applied && hard && before.master_volume_mode == 0)
+        .then(|| quiet(core, call.actor, before.master_volume_db))
+        .flatten();
+    let result = wholesale_run(call, core, &before, &snap, run);
+    if let Some(level) = guard {
+        loud_again(core, call.actor, level);
+    }
+    result.map(|out| (out, snap))
+}
+
+/// Silence `core` for a load (the master volume at [`LOAD_GUARD_DB`], as the
+/// agent but unjudged: it only lowers): the level to put back, or `None` when
+/// it could not be lowered (the load then goes as it did before FFIX).
+fn quiet(core: &DspiCore, actor: u32, level: f32) -> Option<f32> {
+    if level <= LOAD_GUARD_DB {
+        return None;
+    }
+    let _scope = ActorScope::enter(core, actor, None);
+    core.set_master_volume(LOAD_GUARD_DB).ok().map(|()| level)
+}
+
+/// Put the master volume back after [`quiet`], unless something else (the
+/// user, a recall) has set it meanwhile.
+fn loud_again(core: &DspiCore, actor: u32, level: f32) {
+    if core.get_state().master_volume_db > LOAD_GUARD_DB + 0.5 {
+        return;
+    }
+    let _scope = ActorScope::enter(core, actor, None);
+    let _ = core.set_master_volume(level);
+}
+
+/// [`wholesale_with`]'s write, its judgement and the put-back.
+fn wholesale_run<T>(
+    call: &Call<'_>,
+    core: &DspiCore,
+    before: &DspState,
+    snap: &Before,
+    run: impl FnOnce(&DspiCore) -> dspi_core::Result<T>,
+) -> Result<T, ToolError> {
     let out = match run(core) {
         Ok(out) => out,
         Err(e) => {
@@ -173,22 +211,22 @@ pub(crate) fn wholesale<T>(
                 return Err(ToolError::new(format!(
                     "{} {}",
                     err.0,
-                    put_back(core, call.actor, &snap)
+                    put_back(core, call.actor, snap)
                 )));
             }
             return Err(err);
         }
     };
     let after = core.get_state();
-    let lost = tweeter_lost(&policy::lock(&call.judging), &before, &after);
+    let lost = tweeter_lost(&policy::lock(&call.judging), before, &after);
     if let Some(why) = lost {
         return Err(ToolError::new(format!(
             "{why}. A wholesale change by an agent may not lower a tweeter's protection; the \
              user can do it in the app. {}",
-            put_back(core, call.actor, &snap)
+            put_back(core, call.actor, snap)
         )));
     }
-    Ok((out, snap))
+    Ok(out)
 }
 
 /// A snapshot document without its `meta` (the time it was taken).
@@ -271,7 +309,7 @@ static PRESET_LOAD: Tool = Tool {
     handler: |call, args| {
         let slot = slot_arg(args, "slot")?;
         let what = format!("Load preset {} (every setting replaced)", slot_word(slot));
-        let ((), snap) = wholesale(call, &what, &[slot], |c| c.load_preset(slot))?;
+        let ((), snap) = wholesale_with(call, &what, &[slot], true, |c| c.load_preset(slot))?;
         let mut r = json!({"ok": true, "device": call.device_text(), "slot": slot});
         merge(&mut r, before_json(&snap));
         Ok(r)
@@ -288,10 +326,11 @@ static REVERT_TO_SAVED: Tool = Tool {
     input_schema: empty_schema,
     output_schema: object_schema,
     handler: |call, _| {
-        let ((), snap) = wholesale(
+        let ((), snap) = wholesale_with(
             call,
             "Revert to the saved preset (every change since dropped)",
             &[],
+            true,
             DspiCore::load_params,
         )?;
         let mut r = json!({"ok": true, "device": call.device_text()});

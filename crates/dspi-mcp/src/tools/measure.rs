@@ -1520,6 +1520,25 @@ fn own_request(call: &Call<'_>, args: &Map<String, Value>) -> Result<Option<Requ
     }
 }
 
+// -- WP FFIX -- FUNC1 bug 5
+/// The longest long poll of `dspi_measure_status` (`wait_s`), s.
+pub const STATUS_WAIT_MAX_S: u64 = 25;
+
+/// The parts of a `dspi_measure_status` answer a long poll watches: all of
+/// it but what moves all the time (progress, level). A change of this ends
+/// the wait.
+pub fn status_mark(status: &Value) -> String {
+    let mut v = status.clone();
+    if let Some(m) = v.get_mut("measurement").and_then(Value::as_object_mut) {
+        m.remove("progress");
+        m.remove("level_db");
+    }
+    if let Some(o) = v.as_object_mut() {
+        o.remove("user_activity");
+    }
+    v.to_string()
+}
+
 static STATUS: Tool = Tool {
     name: "dspi_measure_status",
     title: "Measurement status",
@@ -1527,11 +1546,24 @@ static STATUS: Tool = Tool {
                   running, ended, declined), and the device's measuring jobs: the \
                   measurement (phase, progress, waiting for the next microphone position, \
                   the issue), the low-end search (segment, the -15 dB point, the note), the \
-                  auto-tune (stage, the verify's verdict) and a measurement across units. A \
-                  finished measurement is filed: its id is `filed_measurement_id`.",
+                  auto-tune (stage, the verify's verdict) and a measurement across units (a \
+                  job that is idle is left out). A finished measurement is filed: its id is \
+                  `filed_measurement_id`. Poll with `wait_s` (up to 25): the answer then \
+                  comes when something changes (the request's state, a phase or stage, a \
+                  microphone position to move to, an issue, a result) or after that many \
+                  seconds, so one call replaces many.",
     class: ToolClass::Read,
     device: true,
-    input_schema: || schema(request_id_props(), &[]),
+    input_schema: || {
+        let mut m = request_id_props();
+        m.insert(
+            "wait_s".into(),
+            json!({"type": "integer", "minimum": 0, "maximum": STATUS_WAIT_MAX_S,
+                   "description": "Wait up to this many seconds for a change before answering \
+                                   (default 0: at once)"}),
+        );
+        schema(m, &[])
+    },
     output_schema: object_schema,
     handler: |call, args| {
         let core = call.core()?;
@@ -1552,7 +1584,7 @@ static STATUS: Tool = Tool {
                 "note": res.note.as_ref().map(|n| json!({"key": n.key, "text": untrusted::note(&n.message)})),
             })
         });
-        Ok(json!({
+        let mut out = json!({
             "device": call.device_text(),
             "request": req.as_ref().map(Request::agent_view),
             "measurement": {
@@ -1600,7 +1632,24 @@ static STATUS: Tool = Tool {
                 "run": s.run,
                 "runs": s.runs,
             },
-        }))
+        });
+        // -- WP FFIX -- an idle job says nothing (FUNC1 bug 5: ~820 chars a poll)
+        if let Some(o) = out.as_object_mut() {
+            let idle = |v: &Value, word: &str| {
+                v.get(word).and_then(Value::as_str) == Some("idle")
+                    && v.get("result").is_none_or(Value::is_null)
+                    && v.get("issue").is_none_or(Value::is_null)
+            };
+            let drop: Vec<&str> = [("rolloff", "stage"), ("tune", "stage"), ("system", "phase")]
+                .into_iter()
+                .filter(|(k, w)| o.get(*k).is_some_and(|v| idle(v, w)))
+                .map(|(k, _)| k)
+                .collect();
+            for k in drop {
+                o.remove(k);
+            }
+        }
+        Ok(out)
     },
 };
 
@@ -2039,6 +2088,15 @@ static TUNE_KEEP: Tool = Tool {
         }
         // -- WP AIVIS -- the user changed part of it meanwhile
         user::check_keep(core, call.actor).map_err(|e| policy::core_error(&call.judging, e))?;
+        // -- WP FFIX -- bug 1: a kept tune leaves no confirmed tweeter
+        // playing unprotected
+        let unsafe_now = policy::unprotected_now(&state(core)?, &policy::lock(&call.judging));
+        if let Some(why) = unsafe_now {
+            return Err(ToolError::new(format!(
+                "{why}, so the tune was not kept. dspi_tune_revert puts it back; or protect the \
+                 output first (dspi_set_crossover) and keep it then."
+            )));
+        }
         let k = core.measure_tune_keep().map_err(|e| refusal(call, e))?;
         policy::lock(&call.judging).guard_ended = Some(k.guard.id);
         Ok(

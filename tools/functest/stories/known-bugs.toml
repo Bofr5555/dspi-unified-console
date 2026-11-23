@@ -1,10 +1,5 @@
-# Product bugs the function test found (FUNC1), as a replay that fails until they are fixed:
+# Product bugs the function test found, as a replay that fails until they are fixed:
 #   run.sh --replay replay/known-bugs.json --story stories/known-bugs.toml
-# Move a step to replay/smoke.json once its bug is closed.
+# Move a step to replay/smoke.json once its bug is closed. FUNC1's (bug 1, the tweeter rule) moved there
+# with FFIX; none is open now.
 name = "known-bugs"
-
-[[step]]
-label = "tweeter-without-highpass"
-
-[[step]]
-label = "low-highpass"

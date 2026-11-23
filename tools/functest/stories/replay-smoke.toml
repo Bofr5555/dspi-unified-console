@@ -2,6 +2,16 @@
 # harness, the simulator, the oracle and the main MCP path are tested for free (about 3 minutes).
 name = "replay-smoke"
 
+# FUNC1 bug 1, fixed in FFIX (was replay/known-bugs.json): the tweeter rule judges the state a write
+# leaves, so programme never reaches a confirmed tweeter without its high-pass, under never-ask too
+[[step]]
+label = "tweeter-rule"
+
+  [[step.expect]]
+  what = "nothing changed"
+  kind = "only_changed"
+  devices = []
+
 [[step]]
 label = "protect-and-measure"
 
