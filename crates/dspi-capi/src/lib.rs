@@ -220,6 +220,8 @@ mod tests {
             "src/fns_misc/firmware_update.rs",
             // -- WP INST0 --
             "src/fns_misc/installation.rs",
+            // -- WP FEAT2 --
+            "src/fns_misc/system_volume.rs",
             // -- WP INT1 -- (MD0's and ROLE0's, in the header since INT1 regenerated it)
             "src/fns_core_set.rs",
             "src/fns_misc/speaker_layout.rs",

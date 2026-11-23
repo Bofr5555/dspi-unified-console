@@ -815,18 +815,26 @@ fn wp_mcp2a_a_batch_is_one_undo_step_all_or_none_and_may_be_guarded() {
     s.answer_confirmation(id, true, 0).unwrap();
     assert_eq!((gain(&core, 0), gain(&core, 1)), (-8.0, 3.0));
 
-    // A device refusal halfway puts back what came before (never ask, so the
-    // long delay is the device's to refuse).
+    // A refusal halfway puts back what came before (never ask, so the gain
+    // is the limits profile's to refuse).
+    // -- WP FEAT2 -- the schema stops at the longest delay line now
+    core.limits_apply_profile(
+        json!({"schemaVersion": 1, "meta": {"kind": "limits", "name": "Limits profile"},
+               "limits": {"outputs": [{"output": 1, "maxGainDb": 3.0}]}})
+        .to_string(),
+    )
+    .unwrap();
     policy.set_mode(ConfirmMode::NeverAsk);
     let e = err(
         &mut s,
         c,
         "dspi_apply_changes",
         json!({"changes": [{"op": "set_gain", "output": 0, "gain_db": -9},
-                           {"op": "set_delay", "output": 0, "delay_ms": 999}]}),
+                           {"op": "set_gain", "output": 1, "gain_db": 5}]}),
     );
     assert!(e.contains("put back"), "{e}");
     assert_eq!(gain(&core, 0), -8.0);
+    core.limits_clear().unwrap();
     policy.set_mode(ConfirmMode::AskRisky);
     // Bad changes are named by position, and a change cannot pick a device.
     let e = err(
@@ -1182,8 +1190,11 @@ fn wp_mcp2a_the_tool_list_has_the_edit_tools_and_none_of_the_agent_proof_ones() 
         "delete",
         "close_device",
     ] {
+        // -- WP FEAT2 -- the owner's one exception by name (2026-11-23)
         assert!(
-            !names.iter().any(|n| n.contains(proof)),
+            !names
+                .iter()
+                .any(|n| n.contains(proof) && *n != "dspi_close_device"),
             "{proof} in {names:?}"
         );
     }

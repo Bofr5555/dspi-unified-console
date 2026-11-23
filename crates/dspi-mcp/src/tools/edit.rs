@@ -850,7 +850,10 @@ edit_tool!(
      20 ms may be held for the user's confirmation.",
     || out_or_in_schema(
         "delay_ms",
-        json!({"type": "number", "minimum": 0, "maximum": 1000})
+        // -- WP FEAT2 -- the longest delay line there is; a device with a
+        // shorter one refuses past its own (`DspiCore::max_delay_ms`)
+        json!({"type": "number", "minimum": 0,
+               "maximum": dspi_proto::Platform::Rp2350.max_delay_ms()})
     ),
     plan_delay,
     "AI: delay"

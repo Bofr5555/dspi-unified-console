@@ -457,7 +457,7 @@ static GET_OVERVIEW: Tool = Tool {
             "limits": {"active": limits.active, "state": limits.state},
             "preset": {"last_active": preset, "dirty": core.preset_dirty()},
             "app_read_only": core.client_read_only(),
-            "agent_may": call.policy.agent_may(),
+            "agent_may": call.agent_may(), // -- WP FEAT2 --
         }))
     },
 };

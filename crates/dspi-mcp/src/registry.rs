@@ -126,6 +126,10 @@ impl Registry {
         tools.extend(tools::measure::TOOLS.iter().copied());
         // -- WP FEAT1 -- routing and sources in the installation draft
         tools.extend(tools::installation::FEAT1_TOOLS.iter().copied());
+        // -- WP FEAT2 -- a room's volume, the hub's schedule (feature `link`),
+        // opening known devices
+        tools.extend(tools::site::TOOLS.iter().copied());
+        tools.extend(tools::devices::TOOLS.iter().copied());
         Self { tools }
     }
 
@@ -187,6 +191,13 @@ pub trait Policy: Send + Sync {
     ) -> Option<WriteHook> {
         let _ = (core, judging);
         self.write_hook(call)
+    }
+
+    // -- WP FEAT2 --
+    /// The setting for a call that addresses no device (opening one), which
+    /// has no core to hook: `None` (the default) lets it change nothing.
+    fn setting(&self) -> Option<policy::ConfirmMode> {
+        None
     }
 }
 
@@ -300,10 +311,14 @@ pub struct Call<'a> {
     // -- WP MCP5 --
     /// The agents' requests to the app's Measure view.
     pub measure: Option<&'a tools::measure::Jobs>,
+    // -- WP FEAT2 --
+    /// The agents' requests to open and close devices.
+    pub opens: Option<&'a tools::devices::Opens>,
     /// The client's label ("AI · Claude Code").
     pub client_label: String,
-    /// The devices, for a tool over several units (measuring across units):
-    /// it reaches another unit's core only inside a scope of its own.
+    /// The devices, for a tool over several units (measuring across units,
+    /// -- WP FEAT2 -- a room's volume, the known devices): it reaches another
+    /// unit's core only inside a scope of its own.
     pub set: Option<&'a CoreSet>,
     core: Option<&'a DspiCore>,
 }
@@ -314,6 +329,22 @@ impl Call<'_> {
     pub fn core(&self) -> Result<&DspiCore, ToolError> {
         self.core
             .ok_or_else(|| ToolError::new("this tool addresses no device"))
+    }
+
+    // -- WP FEAT2 --
+    /// What an agent may do here: the policy's flags, and whether this app
+    /// takes the agents' measurement and device requests.
+    pub fn agent_may(&self) -> Value {
+        let mut may = self.policy.agent_may();
+        if let Some(m) = may.as_object_mut() {
+            let write = m.get("write").and_then(Value::as_bool).unwrap_or(false);
+            let policy = m.get("measure").and_then(Value::as_bool).unwrap_or(false);
+            let host = self.measure.is_some_and(tools::measure::Jobs::host);
+            m.insert("measure".into(), json!(policy && host));
+            let opens = self.opens.is_some_and(tools::devices::Opens::host);
+            m.insert("open_devices".into(), json!(write && opens));
+        }
+        may
     }
 
     /// The device's id as text.
@@ -359,6 +390,9 @@ pub struct RunCtx<'a> {
     // -- WP MCP5 --
     /// The agents' requests to the app's Measure view.
     pub measure: Option<&'a tools::measure::Jobs>,
+    // -- WP FEAT2 --
+    /// The agents' requests to open and close devices.
+    pub opens: Option<&'a tools::devices::Opens>,
 }
 
 /// What [`run`] did.
@@ -455,6 +489,13 @@ pub fn run(ctx: &RunCtx<'_>, tool: &Tool, args: &Map<String, Value>) -> RunOutco
                 }
             })
             .collect();
+        // -- WP FEAT2 -- judged by the tool itself (`policy::require_change`)
+        let judging = JudgingCell::default();
+        {
+            let mut j = policy::lock(&judging);
+            j.mode = ctx.policy.setting();
+            j.grant.clone_from(&ctx.grant);
+        }
         let mut call = Call {
             client: ctx.client,
             actor: ctx.actor,
@@ -463,15 +504,16 @@ pub fn run(ctx: &RunCtx<'_>, tool: &Tool, args: &Map<String, Value>) -> RunOutco
             devices,
             activity: ctx.activity,
             policy: ctx.policy,
-            judging: JudgingCell::default(),
+            judging,
             confirmations: ctx.confirmations,
             agent_guard: None,
             autoeq: ctx.autoeq, // -- WP MCP2b --
             template_dir: ctx.template_dir,
             installation: ctx.installation, // -- WP MCP2c --
             measure: ctx.measure,           // -- WP MCP5 --
+            opens: ctx.opens,               // -- WP FEAT2 --
             client_label: ctx.client_label.to_owned(),
-            set: None,
+            set: Some(ctx.set), // -- WP FEAT2 --
             core: None,
         };
         let result = (tool.handler)(&mut call, args);
@@ -529,6 +571,7 @@ pub fn run(ctx: &RunCtx<'_>, tool: &Tool, args: &Map<String, Value>) -> RunOutco
             template_dir: ctx.template_dir,
             installation: ctx.installation, // -- WP MCP2c --
             measure: ctx.measure,           // -- WP MCP5 --
+            opens: ctx.opens,               // -- WP FEAT2 --
             client_label: ctx.client_label.to_owned(),
             set: Some(ctx.set),
             core: Some(&core),

@@ -89,6 +89,11 @@ pub use rolloff::{
     MeasureRolloffEnd, MeasureRolloffResult, MeasureRolloffSetup, MeasureRolloffStage,
     MeasureRolloffState, ROLLOFF_START_HZ, ROLLOFF_START_MAX_HZ, ROLLOFF_STOP_DB,
 };
+// -- WP FEAT2 -- what an AI agent may only tighten
+pub use plan::{
+    MEASURE_CEILING_MIN_DB, MEASURE_COUNT_MAX, MEASURE_PASSES, MEASURE_SPL_CAP_MIN_DB,
+    MEASURE_SWEEP_MS, MeasureLevelCaps, measure_level_caps,
+};
 pub use tune::{
     MeasureLayout, MeasureLayoutOutput, MeasureTuneCheck, MeasureTuneCurves, MeasureTuneKeep,
     MeasureTuneKind, MeasureTuneOptions, MeasureTuneParam, MeasureTuneProposal, MeasureTuneStage,

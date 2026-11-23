@@ -25,8 +25,9 @@ const PROMPTS: &[Prompt] = &[
                dspi_get_response for output {output}. If a measurement of it exists \
                (dspi_list_measurements), read its response too. Describe how the response \
                differs from flat and propose PEQ bands (type, frequency, gain, Q) that would \
-               bring it closer, cuts before boosts. This server cannot apply them yet: list \
-               them for the user.",
+               bring it closer, cuts before boosts. List them for the user; when the user agrees \
+               and dspi_get_overview's agent_may says you may write, apply them in one \
+               dspi_apply_changes.",
     },
     Prompt {
         name: "tune_speaker_system",

@@ -221,6 +221,17 @@ const AGENT_PROOF: &[&str] = &[
     "path",
 ];
 
+// -- WP FEAT2 --
+/// The tools the owner asked for by name on 2026-11-23 although they hold
+/// such a word: opening and closing known devices (requests to the app) and
+/// the schedule, read only. Exactly these.
+#[cfg(feature = "link")]
+const OWNER_NAMED: &[&str] = &[
+    "dspi_open_device",
+    "dspi_close_device",
+    "dspi_list_schedules",
+];
+
 #[test]
 #[cfg(feature = "link")]
 fn wp_mcp2c_the_list_has_the_new_tools_read_only_hub_reads_and_no_agent_proof_tool() {
@@ -237,7 +248,7 @@ fn wp_mcp2c_the_list_has_the_new_tools_read_only_hub_reads_and_no_agent_proof_to
     sorted.dedup();
     assert_eq!(sorted.len(), all.len());
     // No agent-proof tool anywhere in the list.
-    for n in &all {
+    for n in all.iter().filter(|n| !OWNER_NAMED.contains(&n.as_str())) {
         for bad in AGENT_PROOF {
             assert!(!n.contains(bad), "{n} looks agent-proof ({bad})");
         }

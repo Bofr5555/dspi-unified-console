@@ -186,8 +186,17 @@ pub use events::EVENT_READ_MAX;
 pub use vreg::{VregCalPhase, VregCalView, VregChoice, VregDemoEvent};
 // -- WP P5DOCK --
 pub use measure_doc::{
-    MEASURE_DOC_REFUSAL, MeasureDocInfo, TargetInfo, TargetParam, measure_doc_info, mic_import,
-    target_builtins, target_import,
+    MEASURE_DOC_REFUSAL,
+    MeasureDocInfo,
+    TargetInfo,
+    TargetParam,
+    measure_doc_info,
+    // -- WP FEAT2 --
+    mic_document_has_spl,
+    mic_import,
+    target_builtin_document,
+    target_builtins,
+    target_import,
 };
 // Work-package sections: add re-exports only inside your own section.
 // -- WP C0 --

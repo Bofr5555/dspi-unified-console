@@ -1247,6 +1247,15 @@ impl DspiCore {
             .filter(|c| c.undo_group.is_open())
             .map(|c| c.undo_group.actor)
     }
+
+    // -- WP FEAT2 --
+    /// Whether the user has a control of this device held
+    /// ([`DspiCore::set_dragging`]): a write by another actor would be
+    /// refused now. For a write that reaches the device another way (a hub's
+    /// fan-out) and for closing it. Rust-only, as above.
+    pub fn user_editing(&self) -> bool {
+        self.lock().dragging()
+    }
 }
 
 impl DspiCore {

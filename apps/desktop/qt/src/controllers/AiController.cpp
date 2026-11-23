@@ -192,6 +192,8 @@ void AiController::onEvent(const QJsonObject &event) {
         if (event.value(QLatin1String("id")) == m_pairing.value(QLatin1String("id"))) setPairing({});
     } else if (what == QLatin1String("measureRequests")) {
         takeMeasureRequests();   // -- WP MCP5 --
+    } else if (what == QLatin1String("deviceRequests")) {
+        takeDeviceRequests();   // -- WP FEAT2 --
     }
 }
 
@@ -233,6 +235,47 @@ void AiController::reportMeasure(quint64 request, bool started, const QString &n
              [started, withdrawn = std::move(withdrawn)](bool taken) {
                  if (started && !taken && withdrawn) withdrawn();   // -- WP RCFIX --
              });
+}
+
+// -- WP FEAT2 -- An agent's requests to open or close a device, as above.
+void AiController::takeDeviceRequests() {
+    FfiMcp *mcp = m_mcp;
+    onThread([mcp] { return parse(readSized([mcp](char *b, uint32_t n) { return dspi_mcp_device_requests(mcp, b, n); }, 4096)); },
+             [this, mcp](const QJsonObject &reply) {
+                 for (const QJsonValue &v : reply.value(QLatin1String("value")).toArray()) {
+                     const quint64 id = quint64(v.toObject().value(QLatin1String("request_id")).toDouble());
+                     if (id == 0) continue;
+                     // The server gives each out once
+                     onThread(
+                         [mcp, id] {
+                             QByteArray buf(1 << 16, '\0');
+                             const uint32_t needed = dspi_mcp_device_take(mcp, id, buf.data(), uint32_t(buf.size()));
+                             if (needed == 0 || needed > uint32_t(buf.size())) return QJsonObject();
+                             return parse(QByteArray(buf.constData(), int(needed) - 1));
+                         },
+                         [this, id](const QJsonObject &taken) {
+                             if (!isOk(taken)) return;   // withdrawn, lapsed or taken already
+                             const QJsonObject ticket = taken.value(QLatin1String("ticket")).toObject();
+                             if (isSignalConnected(QMetaMethod::fromSignal(&AiController::deviceRequested)))
+                                 emit deviceRequested(ticket);
+                             else
+                                 reportDevice(id, false, tr("The app cannot open devices now."));
+                         });
+                 }
+             });
+}
+
+void AiController::reportDevice(quint64 request, bool done, const QString &note) {
+    FfiMcp *mcp = m_mcp;
+    const QByteArray text = note.toUtf8();
+    onThread([mcp, request, done, text] { return dspi_mcp_device_report(mcp, request, done, text.constData()); },
+             [](bool) {});
+}
+
+void AiController::setKnownDevices(const QJsonArray &devices) {
+    FfiMcp *mcp = m_mcp;
+    const QByteArray json = QJsonDocument(devices).toJson(QJsonDocument::Compact);
+    onThread([mcp, json] { return dspi_mcp_set_known_devices(mcp, json.constData()); }, [](bool) {});
 }
 
 void AiController::setPairing(const QJsonObject &pairing) {
@@ -288,6 +331,7 @@ void AiController::startServer() {
         { QStringLiteral("appVersion"), AppIdentity::version() },
         { QStringLiteral("templateDir"), QDir::toNativeSeparators(FilesController::templatesDir()) },
         { QStringLiteral("measuring"), true },   // -- WP MCP5 -- the Measure views take agents' requests
+        { QStringLiteral("opening"), true },     // -- WP FEAT2 -- DevicesController opens and closes devices for them
     };
     const QByteArray json = QJsonDocument(config).toJson(QJsonDocument::Compact);
     onThread(

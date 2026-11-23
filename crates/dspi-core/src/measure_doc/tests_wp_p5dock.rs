@@ -766,3 +766,26 @@ fn wp_p5daytn_mic_import_reads_a_dayton_file() {
         Err(DspiError::InvalidArgument { .. })
     ));
 }
+
+// ── WP FEAT2 ────────────────────────────────────────────────────────────
+
+#[test]
+fn wp_feat2_a_built_in_target_as_a_document_and_a_microphones_spl() {
+    for t in target_builtins() {
+        let text = crate::target_builtin_document(&t.id).unwrap();
+        let info = measure_doc_info(text.clone()).unwrap();
+        assert_eq!((info.kind.as_str(), info.name), ("target", t.name));
+        let d = dspi_measure::doc::TargetDoc::from_text(&text).unwrap();
+        let back = d.target.to_target().unwrap();
+        assert!(back.evaluate(&LogGrid::STANDARD).is_ok(), "{}", t.id);
+    }
+    assert!(crate::target_builtin_document("../flat").is_err());
+    let mic = mic_import(
+        "m".into(),
+        "umik1_7000001.txt".into(),
+        cal_fixture!("umik1_7000001.txt").into(),
+    )
+    .unwrap();
+    assert!(crate::mic_document_has_spl(&mic).unwrap());
+    assert!(crate::mic_document_has_spl(&crate::target_builtin_document("flat").unwrap()).is_err());
+}

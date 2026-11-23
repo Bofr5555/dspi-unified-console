@@ -1016,10 +1016,11 @@ fn highpass_verdict(
             "a midrange"
         };
         refusals.push(format!(
-            "output {o} drives {kind} in the user's speaker setup: its high-pass must stay at \
+            "{} drives {kind} in the user's speaker setup: its high-pass must stay at \
                  {floor} Hz or above, {MIN_SLOPE_DB} dB/octave or steeper. This is the device's \
                  safety rule, not a question: only the user can change the setup, in the app. \
-                 Nothing was changed."
+                 Nothing was changed.",
+            out_word(o)
         ));
     } else {
         risks.push(Risk {
@@ -1389,8 +1390,9 @@ pub struct AgentPolicy {
 }
 
 /// Tools whose writes are never judged: a revert is never refused
-/// (PLAN-CLIENTS 5.9).
-const UNJUDGED_TOOLS: &[&str] = &["dspi_revert_changes"];
+/// (PLAN-CLIENTS 5.9). Each puts back only what this agent applied itself.
+// -- WP FEAT2 -- dspi_tune_revert, as its text says
+const UNJUDGED_TOOLS: &[&str] = &["dspi_revert_changes", "dspi_tune_revert"];
 
 impl AgentPolicy {
     /// A policy with `mode`.
@@ -1499,11 +1501,16 @@ impl Policy for AgentPolicy {
         (!UNJUDGED_TOOLS.contains(&call.tool)).then(|| Self::hook(Arc::clone(judging)))
     }
 
+    // -- WP FEAT2 --
+    fn setting(&self) -> Option<ConfirmMode> {
+        Some(self.mode())
+    }
+
     fn agent_may(&self) -> Value {
         json!({
             "read": true,
             "write": true,
-            "measure": false,
+            "measure": true, // -- WP FEAT2 -- where the app measures (`Call::agent_may`)
             "confirm": self.mode().as_str(),
             "peq_boost_step_db": PEQ_BOOST_STEP_DB,
             "delay_step_ms": DELAY_STEP_MS,

@@ -1,6 +1,7 @@
 # AI agents
 
-*User manual, WP MCP6, 2026-11-22. For the owner and for users of the Qt console. It describes the console as it is with
+*User manual, WP MCP6, 2026-11-22; WP FEAT2, 2026-11-23 (opening devices, room and zone volume, schedules, measurement
+options). For the owner and for users of the Qt console. It describes the console as it is with
 the Modern programme's waves 4 and 5: MCP1 to MCP4, the MCP conformance work (MCP6), and measuring through an agent
 (MCP5, with ROLL1's rules for tweeters; section 6).*
 
@@ -157,7 +158,19 @@ snapshots, A/B, config and filter files (as text), AutoEQ, channel and device na
 and Installation setup. It may also ask the console to measure your speakers or headphones and tune them (section 6).
 
 - **Several devices.** Every tool takes a `device` (from `dspi_list_devices`). Without it, the agent works on the device
-  the console shows. An agent cannot open or close devices; you do that.
+  the console shows.
+- **Opening devices.** An agent can ask the console to open a device it **knows**: a DSPi on USB, a unit that the hub of an
+  open device lists, or a device you have opened before (`dspi_list_known_devices`, `dspi_open_device`). The console opens it
+  in a tab of its own, beside what you have open, and does not switch to it. It never pairs and never connects to an
+  address or a hub it has no connection to; that stays yours. An agent can close only a tab it opened
+  (`dspi_close_device`), and not while the device has unsaved changes, measures, has a timed preview waiting, or you hold
+  one of its controls. Everything else is yours to close.
+- **A room's or zone's volume.** On a hub with an installation, `dspi_system_set_volume` sets the volume of every unit of a
+  room or a zone: one level for all, or a step up or down from each unit's own. Each unit's limits still hold: a unit whose
+  limits profile refuses, that is offline, that the console has read-only, or whose control you are holding, is left as it
+  is, and the agent is told which. It is not in the History, because it goes through the hub: the agent gets each unit's
+  level before, and can set it back.
+- **Schedules** (`dspi_list_schedules`) an agent can read, not change.
 - **Speaker roles are yours.** An agent reads which outputs are woofers and tweeters from your speaker setup, and can
   never change it.
 - **Installation setup** works on a draft that belongs to the agent. Nothing reaches the hub until the agent saves it. If
@@ -181,7 +194,7 @@ and Installation setup. It may also ask the console to measure your speakers or 
 **What agents can never do, whatever the setting:** update or flash firmware, use the bootloader or factory reset;
 change the limits profile, the installer PIN or lock; change hardware, pin or core-voltage settings; play the signal
 generator or Identify (a measurement's test sweeps are the one exception: section 6); pair hubs or change DSPi Link
-security and hub administration; delete presets, snapshots or measurements; update the AutoEQ database; set up speakers
+security and hub administration (its schedules among them); delete presets, snapshots or measurements; update the AutoEQ database; set up speakers
 (the speaker layout); send raw device commands; read or write files by path.
 
 **What an agent reads, it may pass on to its own service.** An agent that runs on a cloud model sends what it reads to
@@ -192,7 +205,7 @@ that service, as with anything else you show it.
 **Ask me** in **Settings › AI Agents › Ask Before Changes** has three settings:
 
 - **About risky changes** (the default). The agent's change waits for your answer when it would:
-  - make something louder: raise a gain, trim or volume, unmute, switch on an output, add a route or raise a route's gain,
+  - make something louder: raise a gain, trim or volume (a room's or zone's too, when any unit gets louder), unmute, switch on an output, add a route or raise a route's gain,
     turn on an effect that can add level (loudness, a leveller with gain, psychoacoustic bass, subharmonic, the upmixer)
     or feed one to more outputs;
   - boost a PEQ band by more than 6 dB, change a Linkwitz transform, or move a delay by more than 20 ms;
@@ -204,7 +217,8 @@ that service, as with anything else you show it.
   - change every unit of an installation: align the audio link (also with a measurement across units), apply a scene,
     change USB-direct modes, or save the installation.
 
-  Other changes, such as lowering a gain, cutting a PEQ band or a small delay change, are made at once.
+  Other changes, such as lowering a gain, cutting a PEQ band, a small delay change or opening a known device, are made at
+  once.
 - **About every change.** Every change waits for your answer.
 - **Never.** Agents' changes are made at once, louder ones too, and **test signals play without a question** when an agent
   starts a measurement. Your limits profile and the protection of outputs you set up as tweeters still apply, and so do
@@ -271,10 +285,18 @@ measurements too:
 the preview puts everything back at its end unless it is kept. After a verify that did not pass, **only you can keep it**,
 in the console. The same holds across units.
 
+**What an agent may choose.** `dspi_get_measure_options` lists it. The **microphone calibration** is one of those you have
+added in Measure, and the **target curve** is a built-in one or one of yours: the agent names it by its id, never a file.
+Without a choice the measurement is uncalibrated (relative levels), with the usual target. The **level ceiling** and the
+**SPL limit** an agent may only lower below the console's own (−12 dBFS and 95 dB SPL for speakers, −30 dBFS and 90 dB SPL
+for headphones), under every setting. The SPL limit works only with a calibration that reads dB SPL. With the microphone on
+a headphone **coupler**, the headphones' lower limits apply, in the low-end search too.
+
 **The tools**
 
 | Tool | What it does |
 |---|---|
+| `dspi_get_measure_options` | Your calibrations and target curves, the couplers, and the level limits |
 | `dspi_measure_preflight` | What stands between a measurement and the device now, and the roles it would use. Plays nothing |
 | `dspi_measure_start` | Asks for a measurement: one output at a time or summed. *Test signal* |
 | `dspi_measure_rolloff_start` | Asks for the low-end search on one output. *Test signal* |
@@ -286,7 +308,7 @@ in the console. The same holds across units.
 | `dspi_tune_apply` | Applies the proposal as a timed preview, as one undo step |
 | `dspi_tune_verify` | Measures the applied tune again. *Test signal* |
 | `dspi_tune_keep` | Keeps it (only you can, after a verify that did not pass) |
-| `dspi_tune_revert` | Puts it back now. Never asked |
+| `dspi_tune_revert` | Puts a tune this agent applied back now. Never asked |
 | `dspi_system_measure_preflight` | What stands between a measurement of several units and now. Plays nothing |
 | `dspi_system_measure_start` | Asks for a measurement of several units together, through the hub. *Test signal* |
 | `dspi_system_measure_proposal` | The alignment it proposes |

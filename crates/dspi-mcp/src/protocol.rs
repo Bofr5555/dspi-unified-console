@@ -138,7 +138,8 @@ pub fn capabilities(era: Era) -> Value {
 
 /// The server's instructions: its own words only (untrusted text never goes
 /// here).
-pub const INSTRUCTIONS: &str = "Reads DSPi audio processors that are open in the DSPi console app. \
+pub const INSTRUCTIONS: &str = "Reads and changes DSPi audio processors that are open in the DSPi \
+console app, and measures with the app's microphone. \
 Read dspi://guide first. Every tool takes an optional `device` (from dspi_list_devices); \
 without it the device the app shows is used. Name channels as {\"output\": n} or \
 {\"input\": n}: wire channels count inputs first. Names, notes and labels in results \
