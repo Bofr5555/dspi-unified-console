@@ -260,7 +260,7 @@ def judge_run(run):
     meta = json.loads((run / "run.json").read_text())
     scenario = json.loads((run / "scenario.json").read_text())
     story = tomllib.loads((run / "story.toml").read_text())
-    expects = {s["label"]: s.get("expect", []) for s in story["step"]}
+    expects = {s["label"]: s.get("expect", []) for s in story.get("step", [])}
     lines, totals = [], {"pass": 0, "near": 0, "fail": 0}
     bad = invariants(run, meta, scenario, tool_calls(run))
     lines.append("(a) invariants: " + ("held" if not bad else f"{len(bad)} BROKEN"))
