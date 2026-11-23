@@ -70,3 +70,13 @@ label = "unrouted-polarity"
 
 [[step]]
 label = "sub-tune"
+
+# FUNC1 bug 3, fixed in FFIX: both front woofers in one run share a timing origin, so the status
+# gives each output's arrival and the delays that align the speakers
+[[step]]
+label = "align-speakers"
+
+  [[step.expect]]
+  what = "nothing changed"
+  kind = "only_changed"
+  devices = []

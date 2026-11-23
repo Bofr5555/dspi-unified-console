@@ -40,5 +40,10 @@
   ["dspi_measure_start", {"device": "demo:2", "outputs": [4], "sweep_ms": 2000, "passes": 3}, "ok"],
   ["wait", {"device": "demo:2"}],
   ["dspi_set_crossover", {"device": "demo:2", "output": 4, "low_pass": {"family": "linkwitz_riley", "order": 4, "freq_hz": 120}}, "ok"],
-  ["dspi_tune_propose", {"device": "demo:2"}, "ok", "a sub's EQ is levelled against 500 Hz to 2 kHz, where it plays nothing", "(peak -15\\.0 dB.*){4}"]]
+  ["dspi_tune_propose", {"device": "demo:2"}, "ok", "a sub's EQ is levelled against 500 Hz to 2 kHz, where it plays nothing", "(peak -15\\.0 dB.*){4}"]],
+ "align-speakers": [
+  ["dspi_measure_start", {"device": "demo:1", "outputs": [0, 2], "sweep_ms": 2000, "passes": 3, "one_run": true}, "ok"],
+  ["wait", {"device": "demo:1"}],
+  ["dspi_measure_status", {"device": "demo:1"}, "ok", "a one-run measurement gives no alignment across speakers", "\"alignment\":null"],
+  ["dspi_measure_status", {"device": "demo:1"}, "ok", "a measured output has no arrival", "\"arrival_ms\":null"]]
 }}

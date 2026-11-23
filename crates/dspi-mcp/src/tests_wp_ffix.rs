@@ -579,3 +579,50 @@ fn wp_ffix_a_status_call_with_wait_s_waits_over_http_without_holding_the_server(
     assert!((1.9..4.0).contains(&secs), "{secs}");
     http.stop();
 }
+
+// ------------------------------------------------------- bugs 3, 9, 15
+
+#[test]
+fn wp_ffix_a_filed_measurement_says_its_arrivals_and_the_highpass_it_includes() {
+    use crate::tools::results;
+    let doc = json!({"measurement": {
+        "stimulus": {"kind": "walked"},
+        "capture": {"timingReliable": true},
+        "outputs": [
+            {"output": 0, "role": "low", "speaker": "L", "arrivalMs": 5.0,
+             "chain": {"peq": [], "crossover": [], "delayMs": 0.0}},
+            {"output": 1, "role": "high", "speaker": "L", "arrivalMs": 5.1,
+             "chain": {"peq": [], "crossover": [{"filterType": 35, "bypass": false, "freq": 2000.0}], "delayMs": 0.0}},
+            {"output": 2, "role": "low", "speaker": "R", "arrivalMs": 6.25,
+             "chain": {"peq": [], "crossover": [], "delayMs": 0.5}},
+            {"output": 4, "role": "sub", "speaker": "Sub", "arrivalMs": 9.0,
+             "chain": {"peq": [], "crossover": [], "delayMs": 0.0}}]}})
+    .to_string();
+    let s = results::summary(&doc).unwrap();
+    assert_eq!(s["outputs"][1]["arrival_ms"], json!(5.1));
+    assert!(
+        s["outputs"][1]["highpass"][0]
+            .as_str()
+            .unwrap()
+            .starts_with("24 dB/octave high-pass at 2000 Hz")
+    );
+    let note = results::highpass_note(
+        &json!({"crossover": [{"filterType": 35, "bypass": false, "freq": 2000.0}]}),
+    );
+    assert!(note.unwrap().contains("the filter's, not the driver's own"));
+    assert!(results::highpass_note(&json!({"crossover": []})).is_none());
+    // R arrives 0.75 ms after L (6.25 - 0.5 measured delay + 0 now): L and its
+    // tweeter get 0.75 ms more; the sub is left to its crossover.
+    let (_set, core) = demo("align");
+    for o in 0..5 {
+        core.set_output_delay(o, 0.0).unwrap();
+    }
+    let a = results::alignment(&doc, &core.get_state(), core.max_delay_ms()).unwrap();
+    assert_eq!(
+        a["changes"],
+        json!([{"op": "set_delay", "output": 0, "delay_ms": 0.75},
+               {"op": "set_delay", "output": 1, "delay_ms": 0.75}]),
+        "{a}"
+    );
+    assert!(a["note"].as_str().unwrap().contains("Sub"), "{a}");
+}

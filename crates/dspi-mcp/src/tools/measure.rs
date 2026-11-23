@@ -60,7 +60,8 @@ use crate::ClientId;
 use crate::policy::{self, RiskKind};
 use crate::registry::{Call, Tool, ToolClass, ToolError, ToolResult};
 use crate::tools::edit::schema;
-use crate::tools::read::{empty_schema, num, object_schema, state};
+use crate::tools::read::{empty_schema, num, object_schema, put, state};
+use crate::tools::results; // -- WP FFIX --
 use crate::untrusted;
 
 /// A core record as JSON (`null` should it not serialise). A macro: this
@@ -1040,6 +1041,16 @@ fn setup_props() -> Map<String, Value> {
                "description": "The outputs to measure, from 0; default: every output of the \
                                user's speaker layout. Their roles come from that layout."}),
     );
+    // -- WP FFIX -- FUNC1 bug 3
+    m.insert(
+        "one_run".into(),
+        json!({"type": "boolean",
+               "description": "Walked only: every listed output in one run per position, \
+                               whatever speaker it belongs to, so their arrivals share one \
+                               timing origin and the device's speakers can be aligned to each \
+                               other (dspi_measure_status then gives `alignment`). Default \
+                               false: a run per speaker, whose arrivals compare within it"}),
+    );
     m.insert(
         "placement".into(),
         json!({"type": "string",
@@ -1196,18 +1207,51 @@ fn setup_of(
 ) -> Result<MeasureSetup, ToolError> {
     let placement = placement_arg(args, MeasurePlacement::ListeningPosition);
     let levels = levels(call, core, args, placement)?; // -- WP FEAT2 --
-    let outputs = outputs_arg(args, n_out)?
+    let outputs: Vec<dspi_core::measure::MeasureOutput> = outputs_arg(args, n_out)?
         .into_iter()
         .map(|output| dspi_core::measure::MeasureOutput {
             output,
             ..Default::default()
         })
         .collect();
+    let kind = match args.get("kind").and_then(Value::as_str) {
+        Some("summed") => MeasureRunKind::Summed,
+        _ => MeasureRunKind::Walked,
+    };
+    // -- WP FFIX -- one run: the roles still the confirmed layout's, copied
+    // here with one group for all (the core holds each to the layout again)
+    let one_run = kind == MeasureRunKind::Walked
+        && args.get("one_run").and_then(Value::as_bool) == Some(true);
+    let outputs = if one_run {
+        let layout = confirmed_layout(core)?;
+        let listed: Vec<u8> = if outputs.is_empty() {
+            layout.outputs.iter().map(|o| o.output).collect()
+        } else {
+            outputs.iter().map(|o| o.output).collect()
+        };
+        listed
+            .into_iter()
+            .map(|o| {
+                let row = layout.output(o).ok_or_else(|| {
+                    ToolError::new(format!(
+                        "output {o} is not in the user's speaker layout: ask the user to add it \
+                         in Settings › Speakers"
+                    ))
+                })?;
+                Ok(dspi_core::measure::MeasureOutput {
+                    output: o,
+                    role: row.role,
+                    speaker: row.speaker.clone(),
+                    group: 0,
+                    inverted: false,
+                })
+            })
+            .collect::<Result<Vec<_>, ToolError>>()?
+    } else {
+        outputs
+    };
     Ok(MeasureSetup {
-        kind: match args.get("kind").and_then(Value::as_str) {
-            Some("summed") => MeasureRunKind::Summed,
-            _ => MeasureRunKind::Walked,
-        },
+        kind,
         outputs,
         placement,
         mic_document: levels.mic_document,
@@ -1217,8 +1261,12 @@ fn setup_of(
         coupler: coupler_arg(args),
         sweep_ms: u32_arg(args, "sweep_ms"),
         passes: u8_arg(args, "passes"),
-        name: "Requested by AI".into(),
-        roles_from_layout: true,
+        name: if one_run {
+            "Requested by AI (one run)".into()
+        } else {
+            "Requested by AI".into()
+        },
+        roles_from_layout: !one_run,
         ..MeasureSetup::default()
     })
 }
@@ -1331,8 +1379,8 @@ fn request(call: &Call<'_>, kind: JobKind, setup: Value, what: String) -> ToolRe
         "request_id": id,
         "what": what,
         "next": "The app's Measure view opens the microphone and starts it. Poll \
-                 dspi_measure_status every few seconds; tell the user where to put the \
-                 microphone. dspi_measure_stop stops it.",
+                 dspi_measure_status with wait_s 25 (it answers when something changes); tell \
+                 the user where to put the microphone. dspi_measure_stop stops it.",
     }))
 }
 
@@ -1624,6 +1672,24 @@ static STATUS: Tool = Tool {
                 "note": res.note.as_ref().map(|n| json!({"key": n.key, "text": untrusted::note(&n.message)})),
             })
         });
+        // -- WP FFIX -- FUNC1 bug 9: the search hears the output through its
+        // filters; a high-pass among them is named
+        let through = (r.stage != MeasureRolloffStage::Idle || r.result.is_some())
+            .then(|| state(core).ok())
+            .flatten()
+            .zip(r.output)
+            .and_then(|(st, o)| {
+                let ch = usize::from(st.num_input_channels.saturating_add(o));
+                let bands: Vec<Value> = st
+                    .filters
+                    .get(ch)
+                    .into_iter()
+                    .flatten()
+                    .chain(st.xover.get(ch).into_iter().flatten())
+                    .map(|b| json!({"filterType": b.filter_type, "bypass": b.bypass, "freq": b.freq}))
+                    .collect();
+                results::highpass_note(&json!({"peq": bands}))
+            });
         let mut out = json!({
             "device": call.device_text(),
             "request": req.as_ref().map(Request::agent_view),
@@ -1654,6 +1720,7 @@ static STATUS: Tool = Tool {
                 "segments": r.segments,
                 "segment_start_hz": r.segment_start_hz,
                 "result": rolloff,
+                "measured_through": through,
                 "issue": r.issue.as_ref().map(|i| untrusted::note(&i.message)),
             },
             "tune": {
@@ -1673,6 +1740,28 @@ static STATUS: Tool = Tool {
                 "runs": s.runs,
             },
         });
+        // -- WP FFIX -- FUNC1 bugs 3 and 9: what the filed measurement holds,
+        // and for a one-run measurement the delays that align the speakers
+        if let Some(r) = req.as_ref().filter(|r| r.state == RequestState::Ended) {
+            let doc = r.document.clone().or_else(|| {
+                (!r.filed_id.is_empty())
+                    .then(|| core.measure_doc_get(r.filed_id.clone()).ok())
+                    .flatten()
+            });
+            if let Some(doc) = doc {
+                put(&mut out, "result", json!(results::summary(&doc)));
+                let one_run = r.kind == JobKind::Measure
+                    && r.setup.get("rolesFromLayout").and_then(Value::as_bool) == Some(false);
+                if one_run {
+                    let st = state(core)?;
+                    put(
+                        &mut out,
+                        "alignment",
+                        json!(results::alignment(&doc, &st, core.max_delay_ms())),
+                    );
+                }
+            }
+        }
         // -- WP FFIX -- an idle job says nothing (FUNC1 bug 5: ~820 chars a poll)
         if let Some(o) = out.as_object_mut() {
             let idle = |v: &Value, word: &str| {

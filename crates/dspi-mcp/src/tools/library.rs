@@ -207,7 +207,7 @@ fn wholesale_run<T>(
             // control surfaces) before the hook judges the image: put those
             // back when the refusal came after them.
             let refused = policy::lock(&call.judging).refused.is_some();
-            if refused && changed_since(core, &snap) {
+            if refused && changed_since(core, snap) {
                 return Err(ToolError::new(format!(
                     "{} {}",
                     err.0,

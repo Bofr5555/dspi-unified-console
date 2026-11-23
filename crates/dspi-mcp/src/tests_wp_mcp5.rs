@@ -1107,3 +1107,89 @@ fn wp_ffix_a_second_measurement_on_another_device_is_busy() {
     core.measure_stop();
     app_drives(&core, "session", 60);
 }
+
+// -- WP FFIX -- FUNC1 bugs 3, 9 and 15: arrivals, the alignment across
+// speakers from one run, and what a filed measurement holds
+#[test]
+fn wp_ffix_one_run_gives_arrivals_and_the_alignment_across_speakers() {
+    let (set, _id, core) = demo();
+    core.speaker_layout_set(SpeakerLayout {
+        outputs: [(0u8, "L", 0u8), (1, "R", 1)]
+            .iter()
+            .map(|(o, sp, g)| SpeakerLayoutOutput {
+                output: *o,
+                role: MeasureRole::Low,
+                speaker: (*sp).into(),
+                group: *g,
+            })
+            .collect(),
+        confirmed_by_user: true,
+        ..SpeakerLayout::default()
+    })
+    .unwrap();
+    let mut s = server(&set, ConfirmMode::NeverAsk, true);
+    let c = s.connect();
+    let args = json!({"outputs": [0, 1], "sweep_ms": 2000, "passes": 3, "one_run": true});
+    let p = ok_at(&mut s, c, 1_000, "dspi_measure_preflight", args.clone());
+    assert_eq!(p["preflight"]["clear"], json!(true), "{p}");
+    ok_at(&mut s, c, 1_000, "dspi_measure_start", args);
+    app_takes(&mut s, &core);
+    assert_eq!(core.measure_state().runs, 1, "both speakers in one run");
+    app_drives(&core, "session", 240);
+    let st = status(&mut s, c, 6_000);
+    assert_eq!(st["request"]["state"], json!("ended"), "{st}");
+    let outs = st["result"]["outputs"].as_array().unwrap();
+    assert_eq!(outs.len(), 2, "{st}");
+    assert!(outs.iter().all(|o| o["arrival_ms"].is_number()), "{st}");
+    // Out 2 has the demo's 300 Hz LR4 high-pass: the result names it.
+    assert!(
+        outs[1]["highpass"][0]
+            .as_str()
+            .unwrap()
+            .contains("at 300 Hz"),
+        "{st}"
+    );
+    let a = &st["alignment"];
+    assert_eq!(a["speakers"].as_array().unwrap().len(), 2, "{st}");
+    assert!(a["changes"].is_array() && a["note"].as_str().unwrap().contains("lowest way"));
+    // The response read says what it includes, and when it arrived.
+    let id = st["request"]["filed_measurement_id"]
+        .as_str()
+        .map(str::to_owned);
+    let doc_id = id.unwrap_or_default();
+    if !doc_id.is_empty() {
+        let r = ok_at(
+            &mut s,
+            c,
+            6_000,
+            "dspi_get_response",
+            json!({"source": "measurement", "measurement_id": doc_id, "output": 1}),
+        );
+        assert!(r["arrival_ms"].is_number(), "{r}");
+        assert!(
+            r["includes"]
+                .as_str()
+                .unwrap()
+                .contains("not the driver's own"),
+            "{r}"
+        );
+        let l = ok_at(&mut s, c, 6_000, "dspi_list_measurements", json!({}));
+        assert_eq!(
+            l["measurements"][0]["holds"]["kind"],
+            json!("walked"),
+            "{l}"
+        );
+    }
+    // A plain walked run is one run per speaker.
+    ok_at(
+        &mut s,
+        c,
+        7_000,
+        "dspi_measure_start",
+        json!({"outputs": [0, 1], "sweep_ms": 1000, "passes": 2}),
+    );
+    app_takes(&mut s, &core);
+    assert_eq!(core.measure_state().runs, 2);
+    core.measure_stop();
+    app_drives(&core, "session", 60);
+}
