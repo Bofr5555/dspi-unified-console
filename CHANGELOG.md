@@ -4,6 +4,21 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
 
 ## Unreleased
 
+## 0.14.1
+
+A fix release of the Qt desktop app (Windows, Linux and macOS), from a user's report on 0.14.0. Nothing else changes;
+the other clients stay at 0.14.0.
+
+### Desktop (Qt)
+- Fixed: a number typed into a gain, delay or filter field went back to the old value when you clicked another field
+  after pressing Enter, in the main window and the matrix mixer: the field showed the old value again while the device
+  took the new one, and leaving it wrote the old one back. Leaving a field now sends only what you typed, Enter and
+  leaving both commit, and Escape drops the entry. A typed number may have a decimal comma or point, the minus sign
+  "−" and its unit ("-3,5 dB").
+- Fixed: the preset box showed the first preset while another was active, after any change that marks the preset
+  unsaved, after Save, Copy to and Rename; the source box likewise after a source is renamed. Save always saved to the
+  active preset.
+
 ## 0.14.0 (2026-11-20)
 
 One version for every client but the Swift app: the Qt desktop app (Windows, Linux and

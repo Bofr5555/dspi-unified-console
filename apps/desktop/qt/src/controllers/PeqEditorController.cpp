@@ -222,10 +222,20 @@ bool parseNote(const QString &text, double *hz) {
     return true;
 }
 
+// -- WP USR1 -- A typed number as BorderedField.number reads it: no spaces
+// (no-break and thin ones too), the minus sign U+2212 as "-", one comma as the
+// decimal point. A comma beside a point stays, so toDouble refuses it.
+static QString plainNumber(QString s) {
+    s.remove(QRegularExpression(QStringLiteral("[\\s\\x{00a0}\\x{202f}\\x{2009}]")));
+    s.replace(QRegularExpression(QStringLiteral("[\\x{2212}\\x{2012}\\x{2013}\\x{fe63}\\x{ff0d}]")), QStringLiteral("-"));
+    if (s.count(QLatin1Char(',')) == 1 && !s.contains(QLatin1Char('.'))) s.replace(QLatin1Char(','), QLatin1Char('.'));
+    return s;
+}
+
 bool parseFrequency(const QString &text, double *hz) {
     QString s = text.trimmed().toLower();
     if (parseNote(s, hz)) return true;
-    s.remove(QLatin1Char(' '));
+    s = plainNumber(s);   // -- WP USR1 --
     double scale = 1;
     if (s.endsWith(QLatin1String("khz"))) {
         scale = 1000;
@@ -245,7 +255,7 @@ bool parseFrequency(const QString &text, double *hz) {
 }
 
 bool parseNumber(const QString &text, const QString &unit, double *v) {
-    QString s = text.trimmed().toLower().remove(QLatin1Char(' '));
+    QString s = plainNumber(text.trimmed().toLower());   // -- WP USR1 --
     if (!unit.isEmpty() && s.endsWith(unit)) s.chop(unit.size());
     if (s.startsWith(QLatin1Char('q'))) s.remove(0, 1);
     if (s.startsWith(QLatin1Char('+'))) s.remove(0, 1);
