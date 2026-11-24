@@ -11,8 +11,9 @@ import UConsole
 // - yTicks: at the left, at 0 the top edge;
 // - rightTicks: at the right (a second scale: phase), at 0 the top edge.
 // The left and right labels stay above the bottom row when it has labels.
-// A label that would then overlap its neighbour is left out; the labels at
-// the two ends are kept (on a short graph "+25" stays and "+20" goes).
+// Along the bottom a label that would then overlap its neighbour is left out;
+// the labels at the two ends are kept. The side axes thin evenly instead
+// (placeEven: on a short graph +20, +10, 0, -10, -20).
 //
 //     AxisLabels {
 //         anchors.fill: parent
@@ -50,9 +51,22 @@ Item {
         })
         return kept
     }
+    // -- WP SHOWFIX -- A side axis keeps an even set when not every label
+    // fits: every 2nd (3rd, …) tick counted from 0, so +25 … -25 by 5 becomes
+    // +20 … -20 by 10 instead of losing one label next to the end.
+    function placeEven(ticks, length, lo, hi, size) {
+        const all = ticks || []
+        const zero = Math.max(0, all.findIndex(t => parseFloat(t.text) === 0))
+        for (let n = 1; n < all.length; ++n) {
+            const kept = all.filter((t, i) => (i - zero) % n === 0)
+            const placed = place(kept, length, lo, hi, size)
+            if (placed.length === kept.length) return placed
+        }
+        return place(all, length, lo, hi, size)
+    }
     readonly property var placedX: place(xTicks, width, inset, width - inset, t => metrics.advanceWidth(t))
-    readonly property var placedY: place(yTicks, height, sideTop, sideBottom, t => rowHeight)
-    readonly property var placedRight: place(rightTicks, height, sideTop, sideBottom, t => rowHeight)
+    readonly property var placedY: placeEven(yTicks, height, sideTop, sideBottom, t => rowHeight)
+    readonly property var placedRight: placeEven(rightTicks, height, sideTop, sideBottom, t => rowHeight)
     // The room the labels take from each edge (0 without labels there): a grid
     // drawn under them stops short of it
     readonly property real bottomExtent: placedX.length ? inset + rowHeight + 2 : 0
