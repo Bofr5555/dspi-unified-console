@@ -167,3 +167,35 @@ test("wp_roles on the demo: a stated layout kept and set again, its roles truste
   assert.equal(bannerOf(v4), null);
   assert.match(stampWords(v4.stored), /^Confirmed today at /);
 });
+
+// -- WP INTD -- (REVDFIX B1, the ratchet) the rows a statement replaced are the person's own; a
+// tweeter among them stays one for agents. The page's copy keeps them, so a fresh core (a reload)
+// gets them back with the statement; without them the reload would drop the ratchet.
+const REPLACED = [{ output: 2, role: "high" as const, speaker: "L", group: 0, source: "user" as const }];
+
+test("wp_intd the page's copy keeps the rows a statement replaced and a check's hidden top", () => {
+  const store = memory();
+  const l = statedLayout({
+    stated: statement({ replaced: REPLACED, checks: [{ output: 1, role: "mid", verdict: "unfinished", topFallDb: null, floorHz: 1000, atMs: AT, filtersHideTop: true }] }),
+  });
+  assert.equal(saveKept(store, "S", { layout: l, imported: false }), "");
+  const back = loadKept(store, "S")!.layout;
+  assert.deepEqual(back.stated!.replaced, REPLACED);
+  assert.equal(back.stated!.checks[0]!.filtersHideTop, true);
+  // A row that does not read is dropped; none left, none kept
+  assert.equal(tidyStatement({ words: "w", replaced: [{ output: 40, role: "high" }] })!.replaced, undefined);
+});
+
+test("wp_intd on the demo: a statement's replaced rows come back on a fresh core", { skip, timeout: 60_000 }, async () => {
+  const store = memory();
+  const a = await demo();
+  const v0 = await loadLayout(caller(a.core), a.serial, store);
+  const l = statedLayout({ serial: a.serial, outputs: statedLayout().outputs.slice(0, 3), stated: statement({ deviceOutputs: a.outputs, replaced: REPLACED }) });
+  const v1 = await keepLayout(caller(a.core), a.serial, store, l, false, v0);
+  assert.deepEqual(v1.stored!.stated!.replaced?.map((o) => [o.output, o.role]), [[2, "high"]]);
+  // The page reopened: the core has no statement on record and takes the copy's, the ratchet with it.
+  const b = await demo();
+  const v2 = await loadLayout(caller(b.core), b.serial, store);
+  assert.equal(layoutState(v2.stored), "stated");
+  assert.deepEqual(v2.stored!.stated!.replaced?.map((o) => [o.output, o.role]), [[2, "high"]]);
+});

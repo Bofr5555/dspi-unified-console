@@ -92,6 +92,8 @@ export interface RoleCheckRecord {
   topFallDb: number | null;
   floorHz: number;
   atMs: number;
+  /** -- WP INTD -- unfinished because the output's own filters hide its top end (kept when true). */
+  filtersHideTop?: boolean;
 }
 
 /** `dspi_core::Statement`: the person's words an agent set the roles from. */
@@ -103,6 +105,12 @@ export interface StatementRecord {
   whatChanged: string;
   deviceOutputs: number;
   checks: RoleCheckRecord[];
+  /**
+   * -- WP INTD -- (REVDFIX B1, the ratchet) the person's own rows the statement replaced: a tweeter
+   * among them stays a tweeter for agents until the person changes its row. Kept in the page's copy
+   * so a fresh core gets it back with the statement (absent when there are none).
+   */
+  replaced?: SpeakerLayoutOutputRecord[];
 }
 
 /** `dspi_core::SpeakerLayout`. */
@@ -269,15 +277,19 @@ export function tidyStatement(s: unknown): StatementRecord | null {
         topFallDb: num(y.topFallDb),
         floorHz: num(y.floorHz) ?? 0,
         atMs: num(y.atMs) ?? 0,
+        ...(y.filtersHideTop === true ? { filtersHideTop: true } : {}), // -- WP INTD --
       };
     })
     .filter((c): c is RoleCheckRecord => !!c);
+  // -- WP INTD -- (REVDFIX B1) the rows it replaced, each checked as a layout's row; one that does not read is dropped
+  const replaced = (Array.isArray(x.replaced) ? x.replaced : []).map(tidyOutput).filter((o): o is SpeakerLayoutOutputRecord => !!o);
   return {
     atMs: num(x.atMs) ?? 0,
     by: typeof x.by === "string" ? x.by : "",
     words: x.words,
     whatChanged: typeof x.whatChanged === "string" ? x.whatChanged : "",
     deviceOutputs: n !== null && Number.isInteger(n) && n >= 0 && n <= 255 ? n : 0,
+    ...(replaced.length ? { replaced } : {}),
     checks,
   };
 }
