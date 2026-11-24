@@ -9498,7 +9498,7 @@ data class DetectedOutput(
     /**
      * What it was found to be.
      */
-    val class: DetectClass,
+    val `class`: DetectClass,
     /**
      * How sure.
      */
@@ -9566,7 +9566,7 @@ data class Detection(
     /**
      * Where the microphone was.
      */
-    val placement: measure::MeasurePlacement,
+    val placement: MeasurePlacement,
     /**
      * The floor the caller asked for, Hz (each output's own may be higher).
      */

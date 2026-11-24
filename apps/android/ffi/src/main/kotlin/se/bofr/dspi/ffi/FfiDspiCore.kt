@@ -7179,7 +7179,7 @@ internal fun SpeakerLayout.toFfi() =
 internal fun se.bofr.dspi.ffi.uniffi.DetectedOutput.toDomain() =
     DetectedOutput(
         output = output.toInt(),
-        class = class.toDomain(),
+        `class` = `class`.toDomain(),
         confidence = confidence.toDomain(),
         role = role?.let { it.toDomain() },
         floorHz = floorHz,
@@ -7197,7 +7197,7 @@ internal fun se.bofr.dspi.ffi.uniffi.DetectedOutput.toDomain() =
 internal fun DetectedOutput.toFfi() =
     se.bofr.dspi.ffi.uniffi.DetectedOutput(
         output = output.toUByte(),
-        class = class.toFfi(),
+        `class` = `class`.toFfi(),
         confidence = confidence.toFfi(),
         role = role?.let { it.toFfi() },
         floorHz = floorHz,
