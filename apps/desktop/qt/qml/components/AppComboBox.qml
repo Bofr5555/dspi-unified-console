@@ -104,11 +104,10 @@ ComboBox {
             currentIndex: control.highlightedIndex
             ScrollBar.vertical: AppScrollBar {}
         }
-        background: Rectangle {
-            radius: Theme.radiusSmall
+        // -- WP REVDFIX -- (REVD D5) the floating surface, as AppMenu's
+        background: FloatingBackground {
             color: Theme.menu
-            border.width: 1
-            border.color: Theme.border
+            radius: LayoutController.modern ? Theme.radius : Theme.radiusSmall
         }
     }
 
