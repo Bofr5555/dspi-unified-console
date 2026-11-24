@@ -403,7 +403,8 @@ fn detected_fields(layout: Option<&dspi_core::SpeakerLayout>, o: u8) -> Value {
         "detected_at_ms": found.map(|d| d.probed_ms).filter(|ms| *ms > 0),
         // -- WP ROLES -- a stated role's top-fall check, and an output the
         // safety rules take for a tweeter whatever the row says (one a
-        // statement leaves out, a stated row whose check found a tweeter's top)
+        // statement leaves out, a stated row whose check found a tweeter's
+        // top, the user's own tweeter a statement replaced)
         "role_check": layout
             .filter(|_| row.is_some_and(|r| r.source == RoleSource::Stated))
             .and_then(|l| l.check_of(o))
@@ -412,7 +413,9 @@ fn detected_fields(layout: Option<&dspi_core::SpeakerLayout>, o: u8) -> Value {
             l.state() == dspi_core::LayoutState::Stated
                 && (row.is_none()
                     || l.check_of(o)
-                        .is_some_and(|c| c.verdict == dspi_core::RoleCheckVerdict::TopHolds))
+                        .is_some_and(|c| c.verdict == dspi_core::RoleCheckVerdict::TopHolds)
+                    // -- WP REVDFIX -- B1: and the user's own tweeter it replaced
+                    || l.user_tweeter_held(o))
         }),
     })
 }

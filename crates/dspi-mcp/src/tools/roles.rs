@@ -15,6 +15,12 @@
 //!   set speaker roles from my words (off by default).
 //! - **Over a confirmed setup** only with the user's words on what changed
 //!   (`what_changed`), and still the one question.
+//! - -- WP REVDFIX -- B1, **the ratchet**: a tweeter in the user's own
+//!   rows stays a tweeter for agents until the user changes it in Settings ›
+//!   Speakers, whatever a statement says (`dspi_core::SpeakerLayout::
+//!   user_tweeter_held`); under "never ask" a table that makes one something
+//!   else is refused, and the question shows each of the user's own rows the
+//!   table changes.
 //! - **Trust but check**: before an agent's stimulus plays below the floor
 //!   of an output stated as a midrange, woofer, sub or full range, the app
 //!   checks its top end (the detection's stage B, above the floor only;
@@ -202,8 +208,60 @@ fn outs_words(outs: &[u8]) -> String {
     }
 }
 
-/// The question: the whole table, in the user's words.
-fn question(rows: &[Row], unnamed: &[u8], words: &str, changed: Option<&str>) -> String {
+// -- WP REVDFIX -- B1
+/// What the table does to the user's own rows (`own`, those a statement
+/// replaces): (output, role before, role after) for each it changes, by
+/// output; `None` after for one the table leaves out.
+fn own_changes(
+    own: &[SpeakerLayoutOutput],
+    rows: &[Row],
+) -> Vec<(u8, MeasureRole, Option<MeasureRole>)> {
+    own.iter()
+        .filter_map(|o| {
+            let now = rows.iter().find(|r| r.output == o.output).map(|r| r.role);
+            (now != Some(o.role)).then_some((o.output, o.role, now))
+        })
+        .collect()
+}
+
+// -- WP REVDFIX -- B1
+/// The user's own tweeters the table states as something else (an output it
+/// leaves out stays unknown, a tweeter).
+fn demoted(changes: &[(u8, MeasureRole, Option<MeasureRole>)]) -> Vec<u8> {
+    changes
+        .iter()
+        .filter(|(_, was, now)| {
+            *was == MeasureRole::High && now.is_some_and(|n| n != MeasureRole::High)
+        })
+        .map(|(o, _, _)| *o)
+        .collect()
+}
+
+// -- WP REVDFIX -- B1
+/// The refusal under "never ask" of a table that makes the user's own
+/// tweeters `outs` something else.
+fn demote_refusal(outs: &[u8]) -> String {
+    format!(
+        "{} {} a tweeter in the user's own speaker setup: under \"never ask\" an agent's \
+         statement may not make {} something else. Nothing was changed. State {} a tweeter or \
+         leave {} out, or ask the user to change the setup in Settings › Speakers.",
+        outs_words(outs),
+        if outs.len() == 1 { "is" } else { "are" },
+        if outs.len() == 1 { "it" } else { "them" },
+        if outs.len() == 1 { "it" } else { "them" },
+        if outs.len() == 1 { "it" } else { "them" },
+    )
+}
+
+/// The question: the whole table, in the user's words; (-- WP REVDFIX --)
+/// with what it changes in the user's own rows, row by row.
+fn question(
+    rows: &[Row],
+    unnamed: &[u8],
+    words: &str,
+    changed: Option<&str>,
+    own: &[(u8, MeasureRole, Option<MeasureRole>)],
+) -> String {
     let table: Vec<String> = rows
         .iter()
         .map(|r| {
@@ -221,6 +279,30 @@ fn question(rows: &[Row], unnamed: &[u8], words: &str, changed: Option<&str>) ->
         .collect();
     // The table, then (after a line break, which the sheet shows apart) the rest
     let mut text = format!("Speaker roles from your words: {}.\n", table.join("; "));
+    // -- WP REVDFIX -- B1: each of the user's own rows it changes
+    if !own.is_empty() {
+        let moves: Vec<String> = own
+            .iter()
+            .map(|(o, was, now)| {
+                format!(
+                    "Out {} {} \u{2192} {}",
+                    u16::from(*o).saturating_add(1),
+                    role_text(*was),
+                    now.map_or("not named (unknown, treated as a tweeter)", role_text)
+                )
+            })
+            .collect();
+        text.push_str(&format!(
+            "It changes your own setup: {}. ",
+            moves.join("; ")
+        ));
+        if !demoted(own).is_empty() {
+            text.push_str(
+                "A tweeter you set stays a tweeter for agents until you change it in Settings › \
+                 Speakers. ",
+            );
+        }
+    }
     if !unnamed.is_empty() {
         text.push_str(&format!(
             "{} not named: unknown, treated as tweeters. ",
@@ -283,8 +365,10 @@ static SET_ROLES: Tool = Tool {
                   tweeters; before a test signal plays below 1 kHz on a stated midrange, \
                   woofer or sub the app checks its top end and plays nothing lower if it looks \
                   like a tweeter. Over a confirmed setup only with the user's words on what changed \
-                  (`what_changed`). The user can confirm or correct the roles in Settings › \
-                  Speakers.",
+                  (`what_changed`). A tweeter the user set stays a tweeter for agents until the \
+                  user changes it in Settings › Speakers (user_tweeters_kept; under \"never \
+                  ask\" a table that makes one something else is refused). The user can confirm \
+                  or correct the roles in Settings › Speakers.",
     class: ToolClass::Write,
     device: true,
     input_schema: || {
@@ -344,9 +428,9 @@ fn set_roles(call: &Call<'_>, args: &Map<String, Value>) -> ToolResult {
         .and_then(Value::as_str)
         .map(str::trim)
         .filter(|w| !w.is_empty());
-    let confirmed = core
-        .speaker_layout()
-        .map_err(ToolError::from)?
+    let before = core.speaker_layout().map_err(ToolError::from)?;
+    let confirmed = before
+        .as_ref()
         .is_some_and(|l| l.state() == dspi_core::LayoutState::Confirmed);
     if confirmed && changed.is_none() {
         return Err(ToolError::new(ROLES_CONFIRMED_TEXT));
@@ -354,8 +438,25 @@ fn set_roles(call: &Call<'_>, args: &Map<String, Value>) -> ToolResult {
     let unnamed: Vec<u8> = (0..n_out)
         .filter(|o| !rows.iter().any(|r| r.output == *o))
         .collect();
-    let what = question(&rows, &unnamed, words, changed.filter(|_| confirmed));
-    policy::require_roles(&call.judging, &what, &binding(&rows))?;
+    // -- WP REVDFIX -- B1: the user's own rows it replaces, and their tweeters
+    // it would demote (refused under "never ask"; they stay tweeters for
+    // agents in any case)
+    let own = before
+        .as_ref()
+        .map(dspi_core::speaker_layout::replaced_by_statement)
+        .unwrap_or_default();
+    let changes = own_changes(&own, &rows);
+    let demotes = Some(demoted(&changes))
+        .filter(|d| !d.is_empty())
+        .map(|d| demote_refusal(&d));
+    let what = question(
+        &rows,
+        &unnamed,
+        words,
+        changed.filter(|_| confirmed),
+        &changes,
+    );
+    policy::require_roles(&call.judging, &what, &binding(&rows), demotes.as_deref())?;
     let kept = core
         .speaker_roles_state(
             layout_rows(&rows),
@@ -374,6 +475,8 @@ fn set_roles(call: &Call<'_>, args: &Map<String, Value>) -> ToolResult {
             "group": r.group,
         })).collect::<Vec<_>>(),
         "unknown_treated_as_tweeter": unnamed,
+        // -- WP REVDFIX -- B1
+        "user_tweeters_kept": demoted(&changes),
         "next": NEXT_TEXT,
     }))
 }
@@ -402,7 +505,7 @@ mod tests {
             l.iter().map(|r| r.group).collect::<Vec<_>>(),
             [0, 0, 0, 1, 1, 1]
         );
-        let q = question(&rows, &[6, 7], "L and r front speakers", None);
+        let q = question(&rows, &[6, 7], "L and r front speakers", None, &[]);
         assert!(q.starts_with("Speaker roles from your words: Out 1 · L · tweeter; Out 2 · L · midrange; Out 3 · L · woofer; Out 4 · R · tweeter"), "{q}");
         assert!(
             q.contains("Out 7, 8 not named: unknown, treated as tweeters"),

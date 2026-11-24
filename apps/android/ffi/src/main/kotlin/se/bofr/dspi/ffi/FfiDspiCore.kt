@@ -7276,6 +7276,7 @@ internal fun se.bofr.dspi.ffi.uniffi.Statement.toDomain() =
         whatChanged = whatChanged,
         deviceOutputs = deviceOutputs.toInt(),
         checks = checks.map { it.toDomain() },
+        replaced = replaced.map { it.toDomain() },
     )
 
 internal fun Statement.toFfi() =
@@ -7286,6 +7287,7 @@ internal fun Statement.toFfi() =
         whatChanged = whatChanged,
         deviceOutputs = deviceOutputs.toUByte(),
         checks = checks.map { it.toFfi() },
+        replaced = replaced.map { it.toFfi() },
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.VregChoice.toDomain() =

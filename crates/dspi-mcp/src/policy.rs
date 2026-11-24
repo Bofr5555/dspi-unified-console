@@ -579,9 +579,16 @@ pub const ROLES_NEVER_ASK_TEXT: &str = "under \"never ask\" agents may set the s
 /// Speaker roles from the user's words (owner 2026-11-23): one question
 /// showing the whole table (`what`) under "ask on everything" and "ask for
 /// risky changes"; under "never ask" nothing is asked: refused unless
-/// [`Judging::roles_allowed`]. The grant key is `static.speaker_roles` with
-/// `indices` (the table, so an Allow covers exactly the table shown).
-pub fn require_roles(cell: &JudgingCell, what: &str, indices: &[u8]) -> Result<(), ToolError> {
+/// [`Judging::roles_allowed`], and (-- WP REVDFIX -- B1) always when
+/// `demotes` says why (a statement that makes the user's own tweeter
+/// something else). The grant key is `static.speaker_roles` with `indices`
+/// (the table, so an Allow covers exactly the table shown).
+pub fn require_roles(
+    cell: &JudgingCell,
+    what: &str,
+    indices: &[u8],
+    demotes: Option<&str>,
+) -> Result<(), ToolError> {
     let mut j = lock(cell);
     let Some(mode) = j.mode else {
         return Err(ToolError::new(
@@ -589,6 +596,9 @@ pub fn require_roles(cell: &JudgingCell, what: &str, indices: &[u8]) -> Result<(
         ));
     };
     if mode == ConfirmMode::NeverAsk {
+        if let Some(why) = demotes {
+            return Err(ToolError::new(why));
+        }
         return if j.roles_allowed {
             Ok(())
         } else {
@@ -2281,8 +2291,9 @@ pub struct Held {
 
 // -- WP ROLES --
 /// The outputs `core`'s stated setup takes for tweeters whatever its rows
-/// say: an output the user's words left out, and a stated row whose top-fall
-/// check found a tweeter's top. (A stated row not checked yet is trusted as
+/// say: an output the user's words left out, a stated row whose top-fall
+/// check found a tweeter's top, and (-- WP REVDFIX --) a row that was the
+/// user's own tweeter before the statement. (A stated row not checked yet is trusted as
 /// stated: only an agent's test signals wait for its check. ROLESFIX, owner
 /// 2026-11-24.)
 pub fn held_outputs(core: &DspiCore) -> Vec<Held> {
@@ -2296,6 +2307,12 @@ pub fn held_outputs(core: &DspiCore) -> Vec<Held> {
     (0..n)
         .filter_map(|o| {
             let why = match (l.output(o), l.check_of(o)) {
+                // -- WP REVDFIX -- B1, the ratchet
+                (_, _) if l.user_tweeter_held(o) => {
+                    "was a tweeter in the user's own speaker setup, and an agent's statement \
+                     does not change that"
+                        .to_owned()
+                }
                 (None, _) => "is not among the roles the user stated".to_owned(),
                 (Some(r), Some(c)) if c.verdict == dspi_core::RoleCheckVerdict::TopHolds => {
                     format!(

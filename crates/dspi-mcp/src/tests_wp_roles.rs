@@ -617,8 +617,8 @@ fn wp_roles_a_measurement_across_units_waits_for_the_units_own_check() {
     let _ = core;
 }
 
-// -- WP REVDFIX -- (REVD B2) the 1 kHz rule on a midrange that is not the
-// user's word
+// -- WP REVDFIX -- (REVD B1, B2) the ratchet on the user's own tweeter, and
+// the 1 kHz rule on a midrange that is not the user's word
 
 /// Out 3 (from 0: 2) routed, on and unmuted: it plays programme.
 fn revdfix_plays(core: &dspi_core::DspiCore, o: u8) {
@@ -632,6 +632,143 @@ fn revdfix_rows(role: &str) -> Value {
     json!([{"output": 0, "role": "woofer", "speaker": "L"},
            {"output": 1, "role": "midrange", "speaker": "L"},
            {"output": 2, "role": role, "speaker": "L"}])
+}
+
+const REVDFIX_LOWER: &str = r#"{"family": "linkwitz_riley", "order": 4, "freq_hz": 100}"#;
+
+#[test]
+fn wp_revdfix_never_ask_refuses_a_statement_that_demotes_the_users_tweeter() {
+    let lower: Value = serde_json::from_str(REVDFIX_LOWER).unwrap();
+    for role in ["midrange", "woofer"] {
+        let (set, _id, core) = demo();
+        // The user's confirmed setup: Out 3 a tweeter, playing.
+        layout(&core, true);
+        revdfix_plays(&core, 2);
+        let (mut s, policy) = server(&set, ConfirmMode::NeverAsk);
+        policy.set_agent_roles(true);
+        let c = s.connect();
+        let e = err_at(
+            &mut s,
+            c,
+            0,
+            ROLES,
+            json!({"user_words": "out 3 is the woofer now", "what_changed": "the user rewired",
+                   "rows": revdfix_rows(role)}),
+        );
+        assert!(
+            e.starts_with("Out 3 is a tweeter in the user's own speaker setup"),
+            "{role}: {e}"
+        );
+        assert_eq!(
+            core.speaker_layout().unwrap().unwrap().state(),
+            LayoutState::Confirmed,
+            "nothing kept"
+        );
+        // The high-pass still may not come down.
+        let r = call_at(
+            &mut s,
+            c,
+            0,
+            "dspi_set_crossover",
+            json!({"output": 2, "high_pass": lower.clone()}),
+        );
+        assert_eq!(r["isError"], json!(true), "{role}: {r}");
+        // Left out, or stated a tweeter, the table is kept.
+        let r = ok_at(
+            &mut s,
+            c,
+            0,
+            ROLES,
+            json!({"user_words": "1 woofer 2 mid", "what_changed": "the user rewired",
+                   "rows": [{"output": 0, "role": "woofer", "speaker": "L"},
+                            {"output": 1, "role": "midrange", "speaker": "L"}]}),
+        );
+        assert_eq!(r["roles_from"], json!("speaker_setup_stated"), "{r}");
+        // Still a tweeter to the rules: the lowering is refused.
+        let r = call_at(
+            &mut s,
+            c,
+            0,
+            "dspi_set_crossover",
+            json!({"output": 2, "high_pass": lower.clone()}),
+        );
+        assert_eq!(r["isError"], json!(true), "{role}: {r}");
+        // And a later statement that names it is refused as well: the
+        // statement it replaces carried the user's tweeter forward.
+        let e = err_at(
+            &mut s,
+            c,
+            0,
+            ROLES,
+            json!({"user_words": "out 3 is the woofer now", "rows": revdfix_rows(role)}),
+        );
+        assert!(e.starts_with("Out 3 is a tweeter in the user's own"), "{e}");
+    }
+}
+
+#[test]
+fn wp_revdfix_the_question_shows_the_users_rows_and_their_tweeter_stays_one() {
+    let lower: Value = serde_json::from_str(REVDFIX_LOWER).unwrap();
+    for role in ["midrange", "woofer"] {
+        let (set, _id, core) = demo();
+        layout(&core, true);
+        revdfix_plays(&core, 2);
+        let (mut s, _) = server(&set, ConfirmMode::AskRisky);
+        let c = s.connect();
+        let cid = held_at(
+            &mut s,
+            c,
+            0,
+            ROLES,
+            json!({"user_words": "out 3 is the woofer now", "what_changed": "the user rewired",
+                   "rows": revdfix_rows(role)}),
+        );
+        let sheet = s.confirmation(cid).unwrap().to_json();
+        let what = sheet["risks"][0]["what"].as_str().unwrap().to_owned();
+        let want = format!("It changes your own setup: Out 3 tweeter \u{2192} {role}.");
+        assert!(what.contains(&want), "{what}");
+        assert!(
+            what.contains("A tweeter you set stays a tweeter for agents until you change it in Settings › Speakers."),
+            "{what}"
+        );
+        assert!(
+            what.contains("This replaces your confirmed setup"),
+            "{what}"
+        );
+        let r = allow(&mut s, c, cid);
+        assert_eq!(r["user_tweeters_kept"], json!([2]), "{r}");
+        let l = core.speaker_layout().unwrap().unwrap();
+        assert_eq!(l.state(), LayoutState::Stated);
+        assert!(l.user_tweeter_held(2));
+        assert_eq!(
+            dspi_core::trusted_roles(&l).unwrap()[2],
+            Some(MeasureRole::High)
+        );
+        let ov = overview(&mut s, c);
+        assert_eq!(ov["outputs"][2]["treated_as_tweeter"], json!(true), "{ov}");
+        // The 100 Hz high-pass is refused, not asked: still the user's tweeter.
+        let r = call_at(
+            &mut s,
+            c,
+            0,
+            "dspi_set_crossover",
+            json!({"output": 2, "high_pass": lower.clone()}),
+        );
+        assert_eq!(r["isError"], json!(true), "{role}: {r}");
+        assert!(
+            r["content"][0]["text"]
+                .as_str()
+                .unwrap()
+                .contains("was a tweeter in the user's own speaker setup"),
+            "{r}"
+        );
+        // The user changes it in Settings › Speakers: their word holds.
+        let mut mine = l.clone();
+        mine.confirmed_by_user = true;
+        core.speaker_layout_set(mine).unwrap();
+        let l = core.speaker_layout().unwrap().unwrap();
+        assert!(!l.user_tweeter_held(2));
+    }
 }
 
 #[test]

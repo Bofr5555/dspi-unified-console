@@ -9677,6 +9677,13 @@ data class Statement(
      * The top-fall checks made since, by output.
      */
     val checks: List<RoleCheck>,
+    /**
+     * The user's own rows the statement replaced (a confirmed layout's, or
+     * rows the user set): a tweeter among them stays a tweeter for agents
+     * ([`SpeakerLayout::user_tweeter_held`]) until the user changes its row
+     * in Settings › Speakers.
+     */
+    val replaced: List<SpeakerLayoutOutput>,
 )
 
 /**

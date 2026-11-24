@@ -49418,7 +49418,14 @@ data class Statement (
     /**
      * The top-fall checks made since, by output.
      */
-    var `checks`: List<RoleCheck>
+    var `checks`: List<RoleCheck>, 
+    /**
+     * The user's own rows the statement replaced (a confirmed layout's, or
+     * rows the user set): a tweeter among them stays a tweeter for agents
+     * ([`SpeakerLayout::user_tweeter_held`]) until the user changes its row
+     * in Settings › Speakers.
+     */
+    var `replaced`: List<SpeakerLayoutOutput>
 ) {
     
     companion object
@@ -49436,6 +49443,7 @@ public object FfiConverterTypeStatement: FfiConverterRustBuffer<Statement> {
             FfiConverterString.read(buf),
             FfiConverterUByte.read(buf),
             FfiConverterSequenceTypeRoleCheck.read(buf),
+            FfiConverterSequenceTypeSpeakerLayoutOutput.read(buf),
         )
     }
 
@@ -49445,7 +49453,8 @@ public object FfiConverterTypeStatement: FfiConverterRustBuffer<Statement> {
             FfiConverterString.allocationSize(value.`words`) +
             FfiConverterString.allocationSize(value.`whatChanged`) +
             FfiConverterUByte.allocationSize(value.`deviceOutputs`) +
-            FfiConverterSequenceTypeRoleCheck.allocationSize(value.`checks`)
+            FfiConverterSequenceTypeRoleCheck.allocationSize(value.`checks`) +
+            FfiConverterSequenceTypeSpeakerLayoutOutput.allocationSize(value.`replaced`)
     )
 
     override fun write(value: Statement, buf: ByteBuffer) {
@@ -49455,6 +49464,7 @@ public object FfiConverterTypeStatement: FfiConverterRustBuffer<Statement> {
             FfiConverterString.write(value.`whatChanged`, buf)
             FfiConverterUByte.write(value.`deviceOutputs`, buf)
             FfiConverterSequenceTypeRoleCheck.write(value.`checks`, buf)
+            FfiConverterSequenceTypeSpeakerLayoutOutput.write(value.`replaced`, buf)
     }
 }
 

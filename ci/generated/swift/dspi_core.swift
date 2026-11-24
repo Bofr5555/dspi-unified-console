@@ -59793,6 +59793,13 @@ public struct Statement {
      * The top-fall checks made since, by output.
      */
     public var checks: [RoleCheck]
+    /**
+     * The user's own rows the statement replaced (a confirmed layout's, or
+     * rows the user set): a tweeter among them stays a tweeter for agents
+     * ([`SpeakerLayout::user_tweeter_held`]) until the user changes its row
+     * in Settings › Speakers.
+     */
+    public var replaced: [SpeakerLayoutOutput]
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -59814,13 +59821,20 @@ public struct Statement {
          */deviceOutputs: UInt8, 
         /**
          * The top-fall checks made since, by output.
-         */checks: [RoleCheck]) {
+         */checks: [RoleCheck], 
+        /**
+         * The user's own rows the statement replaced (a confirmed layout's, or
+         * rows the user set): a tweeter among them stays a tweeter for agents
+         * ([`SpeakerLayout::user_tweeter_held`]) until the user changes its row
+         * in Settings › Speakers.
+         */replaced: [SpeakerLayoutOutput]) {
         self.atMs = atMs
         self.by = by
         self.words = words
         self.whatChanged = whatChanged
         self.deviceOutputs = deviceOutputs
         self.checks = checks
+        self.replaced = replaced
     }
 }
 
@@ -59849,6 +59863,9 @@ extension Statement: Equatable, Hashable {
         if lhs.checks != rhs.checks {
             return false
         }
+        if lhs.replaced != rhs.replaced {
+            return false
+        }
         return true
     }
 
@@ -59859,6 +59876,7 @@ extension Statement: Equatable, Hashable {
         hasher.combine(whatChanged)
         hasher.combine(deviceOutputs)
         hasher.combine(checks)
+        hasher.combine(replaced)
     }
 }
 
@@ -59876,7 +59894,8 @@ public struct FfiConverterTypeStatement: FfiConverterRustBuffer {
                 words: FfiConverterString.read(from: &buf), 
                 whatChanged: FfiConverterString.read(from: &buf), 
                 deviceOutputs: FfiConverterUInt8.read(from: &buf), 
-                checks: FfiConverterSequenceTypeRoleCheck.read(from: &buf)
+                checks: FfiConverterSequenceTypeRoleCheck.read(from: &buf), 
+                replaced: FfiConverterSequenceTypeSpeakerLayoutOutput.read(from: &buf)
         )
     }
 
@@ -59887,6 +59906,7 @@ public struct FfiConverterTypeStatement: FfiConverterRustBuffer {
         FfiConverterString.write(value.whatChanged, into: &buf)
         FfiConverterUInt8.write(value.deviceOutputs, into: &buf)
         FfiConverterSequenceTypeRoleCheck.write(value.checks, into: &buf)
+        FfiConverterSequenceTypeSpeakerLayoutOutput.write(value.replaced, into: &buf)
     }
 }
 

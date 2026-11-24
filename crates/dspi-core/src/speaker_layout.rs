@@ -332,6 +332,12 @@ pub struct Statement {
     pub device_outputs: u8,
     /// The top-fall checks made since, by output.
     pub checks: Vec<RoleCheck>,
+    // -- WP REVDFIX -- B1, the ratchet
+    /// The user's own rows the statement replaced (a confirmed layout's, or
+    /// rows the user set): a tweeter among them stays a tweeter for agents
+    /// ([`SpeakerLayout::user_tweeter_held`]) until the user changes its row
+    /// in Settings › Speakers.
+    pub replaced: Vec<SpeakerLayoutOutput>,
 }
 
 impl SpeakerLayout {
@@ -378,15 +384,36 @@ impl SpeakerLayout {
             .find(|c| c.output == output && c.role == row.role)
     }
 
+    // -- WP REVDFIX -- B1, the ratchet
+    /// Whether `output` was a tweeter in the user's own rows a statement
+    /// replaced and its row is still the agent's (stated as something else,
+    /// or not named): it stays a tweeter for agents, whatever a check finds,
+    /// until the user changes the row in Settings › Speakers.
+    pub fn user_tweeter_held(&self, output: u8) -> bool {
+        self.state() == LayoutState::Stated
+            && self
+                .output(output)
+                .is_none_or(|r| r.source == RoleSource::Stated && r.role != MeasureRole::High)
+            && self.stated.as_ref().is_some_and(|s| {
+                s.replaced
+                    .iter()
+                    .any(|r| r.output == output && r.role == MeasureRole::High)
+            })
+    }
+
     // -- WP ROLES --
     /// Whether an agent's stimulus on `output` stays above the floor: in a
     /// stated layout, an output it does not name (unknown, a tweeter), or a
     /// stated row whose top-fall check has not cleared it (not made, not
-    /// finished, or the top held like a tweeter's). Never for the user's own
-    /// rows, a detected or a confirmed layout.
+    /// finished, or the top held like a tweeter's), or (-- WP REVDFIX --) a
+    /// tweeter of the user's the statement replaced. Never for the user's
+    /// own rows, a detected or a confirmed layout.
     pub fn agent_floor_held(&self, output: u8) -> bool {
         if self.state() != LayoutState::Stated {
             return false;
+        }
+        if self.user_tweeter_held(output) {
+            return true;
         }
         let Some(row) = self.output(output) else {
             return true;
@@ -404,7 +431,8 @@ impl SpeakerLayout {
     // -- WP ROLES --
     /// The stated non-tweeter rows an agent's stimulus below the floor waits
     /// for a check on, among `outputs`: no check made yet for their role (a
-    /// check that found a tweeter's top is not made again).
+    /// check that found a tweeter's top is not made again, -- WP REVDFIX --
+    /// nor one on the user's tweeter, which no check clears).
     pub fn unchecked(&self, outputs: &[u8]) -> Vec<u8> {
         if self.state() != LayoutState::Stated {
             return Vec::new();
@@ -412,6 +440,7 @@ impl SpeakerLayout {
         outputs
             .iter()
             .copied()
+            .filter(|o| !self.user_tweeter_held(*o))
             .filter(|o| {
                 self.output(*o)
                     .is_some_and(|r| r.source == RoleSource::Stated && r.role != MeasureRole::High)
@@ -930,6 +959,13 @@ impl DspiCore {
                     .collect()
             })
             .unwrap_or_default();
+        // -- WP REVDFIX -- B1, the ratchet: the user's own rows it replaces
+        // stay on record, and so do those an earlier statement replaced while
+        // their rows are still the agent's
+        let replaced = before
+            .as_ref()
+            .map(replaced_by_statement)
+            .unwrap_or_default();
         layout.detected = before.as_ref().and_then(|b| b.detected.clone());
         layout.stated = Some(Statement {
             at_ms: crate::events::now_ms(),
@@ -938,6 +974,7 @@ impl DspiCore {
             what_changed,
             device_outputs: outputs,
             checks,
+            replaced, // -- WP REVDFIX --
         });
         layout.updated_ms = crate::events::now_ms();
         self.speaker_layouts.save(&layout)?;
@@ -1036,6 +1073,35 @@ impl DspiCore {
             }
         }
     }
+}
+
+// -- WP REVDFIX -- B1, the ratchet
+/// The user's own rows a statement over `before` replaces: every row of a
+/// confirmed layout, else the rows the user set; plus what an earlier
+/// statement replaced, while the row is still the agent's (stated, or not
+/// named). By output.
+pub fn replaced_by_statement(before: &SpeakerLayout) -> Vec<SpeakerLayoutOutput> {
+    let confirmed = before.state() == LayoutState::Confirmed;
+    let mut rows: Vec<SpeakerLayoutOutput> = before
+        .outputs
+        .iter()
+        .filter(|r| confirmed || r.source == RoleSource::User)
+        .cloned()
+        .collect();
+    if before.state() == LayoutState::Stated
+        && let Some(st) = before.stated.as_ref()
+    {
+        for r in &st.replaced {
+            let agents = before
+                .output(r.output)
+                .is_none_or(|x| x.source == RoleSource::Stated);
+            if agents && !rows.iter().any(|k| k.output == r.output) {
+                rows.push(r.clone());
+            }
+        }
+    }
+    rows.sort_by_key(|r| r.output);
+    rows
 }
 
 // -- WP ADET0 --

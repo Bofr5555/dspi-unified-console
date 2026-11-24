@@ -604,8 +604,9 @@ pub(crate) fn summary_of(d: &Detection, probed: usize) -> String {
 
 /// `trusted` roles of `layout`: each output's role, by output, when its
 /// state is confirmed, auto-detected or (-- WP ROLES --) stated from the
-/// user's words (an output a statement leaves out, and a stated row whose
-/// top-fall check found a tweeter's top, is a tweeter); `None` when it is none of these
+/// user's words (an output a statement leaves out, a stated row whose
+/// top-fall check found a tweeter's top, and -- WP REVDFIX -- a row that was
+/// the user's tweeter before the statement, is a tweeter); `None` when it is none of these
 /// (nobody's word: no roles reach the safety rules). AUTODES 3.2.
 pub fn trusted_roles(layout: &SpeakerLayout) -> Option<Vec<Option<MeasureRole>>> {
     if layout.state() == LayoutState::Unconfirmed {
@@ -624,7 +625,9 @@ pub fn trusted_roles(layout: &SpeakerLayout) -> Option<Vec<Option<MeasureRole>>>
             // for its check)
             let tweeter = layout
                 .check_of(o.output)
-                .is_some_and(|c| c.verdict == RoleCheckVerdict::TopHolds);
+                .is_some_and(|c| c.verdict == RoleCheckVerdict::TopHolds)
+                // -- WP REVDFIX -- B1: so is a tweeter of the user's it replaced
+                || layout.user_tweeter_held(o.output);
             *slot = Some(if tweeter { MeasureRole::High } else { o.role });
         }
     }
