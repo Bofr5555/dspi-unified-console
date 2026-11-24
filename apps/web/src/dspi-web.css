@@ -1816,6 +1816,8 @@
 .dspi-web .band-tabs [aria-selected="true"],
 .dspi-web .input-link[aria-pressed="true"],
 .dspi-web .siggen-types [aria-checked="true"],
+.dspi-web .siggen-outputs [aria-pressed="true"],
+.dspi-web .rta-channels [aria-pressed="true"],
 .dspi-web .eq-tools > button[aria-pressed="true"],
 .dspi-web .strip-button[aria-pressed="true"],
 .dspi-web .fx-pick[aria-selected="true"],
