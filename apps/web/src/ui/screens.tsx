@@ -21,7 +21,7 @@ import { Dialog } from "../screens/main/Dialog";
 import { MainScreen } from "../screens/main/MainScreen";
 // -- WP WB6c --
 import { MatrixScreen } from "../screens/matrix/MatrixScreen";
-import { changeSummary } from "../screens/main/model";
+import { PRESET_SLOTS, changeSummary } from "../screens/main/model";
 import type { Session } from "./session";
 // -- WP SW3 -- the System view (WB6d), the scene bar (WB6e), the status rail (WB6f)
 import { safeLocalStorage } from "../fleet/local";
@@ -140,9 +140,9 @@ export const SCREENS: ScreenDef[] = [
   { id: "main", label: "Dashboard", View: MainScreen },
   // -- WP WB6b --
   { id: "eq", label: "PEQ", View: EqScreen }, // -- WP WEBM2 -- the Equaliser's PEQ tab (MODLAY 2)
-  // -- WP WEBM2 -- the Equaliser's Crossover and Delay & gain tabs (setting up: not in Simple)
+  // -- WP WEBM2 -- the Equaliser's Crossover and Delay & Gain tabs (setting up: not in Simple)
   { id: "xover", label: "Crossover", View: CrossoverScreen },
-  { id: "delays", label: "Delay & gain", View: DelaysScreen },
+  { id: "delays", label: "Delay & Gain", View: DelaysScreen },
   // -- WP WB6G -- (UI-MODES: "Channels and EQ", every mode)
   { id: "inputs", label: "Inputs", View: InputsScreen },
   // -- WP WB6c --
@@ -422,7 +422,9 @@ export function Screens(props: {
     session.leaveGuard = async () => {
       const a = await unsaved();
       if (a === "cancel") return false;
-      if (a === "save") return session.savePreset(session.state.snapshot?.state.activePresetSlot ?? 0);
+      // -- WP REVEFIX -- a slot the device has not said is no slot to save to (REVE B1)
+      const slot = session.state.snapshot?.state.activePresetSlot ?? PRESET_SLOTS;
+      if (a === "save") return slot < PRESET_SLOTS && session.savePreset(slot);
       return true;
     };
     return () => {

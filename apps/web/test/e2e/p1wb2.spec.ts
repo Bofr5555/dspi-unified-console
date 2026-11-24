@@ -112,8 +112,8 @@ test("P1WB2 Installer: a limit narrowed below the device is held and reported; a
     ),
   );
   expect(r).toBe("limit_exceeded");
-  // -- WP INTD -- OUT2's gain typed on Delay & gain (the Overview's level cards are gone)
-  await openPage(session, "Delay & gain");
+  // -- WP INTD -- OUT2's gain typed on Delay & Gain (the Overview's level cards are gone)
+  await openPage(session, "Delay & Gain");
   const field = session.getByRole("region", { name: "Delay and gain of every output" }).getByRole("row", { name: /^OUT2 / }).getByRole("textbox", { name: /gain$/ });
   await field.fill("6");
   await field.press("Enter");

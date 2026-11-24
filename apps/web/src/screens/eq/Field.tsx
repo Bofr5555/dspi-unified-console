@@ -36,8 +36,11 @@ export function ValueField(props: {
   const [draft, setDraft] = useState<string | null>(null);
   const [bad, setBad] = useState(false);
   const skip = useRef(false);
+  // -- WP REVEFIX -- (REVE C1, USR1's class) only typed text is written: leaving or pressing Enter in a field nothing
+  // was typed in writes nothing back (its shown text is rounded: "1.41 m" would move a delay of 4.1234 ms)
+  const typed = useRef(false);
   const commit = () => {
-    if (draft === null) return;
+    if (draft === null || !typed.current || draft === props.text) return;
     const v = props.parse(draft);
     if (v === null) {
       setBad(true);
@@ -45,6 +48,7 @@ export function ValueField(props: {
     }
     setBad(false);
     setDraft(null);
+    typed.current = false;
     props.onCommit(v);
   };
   return (
@@ -65,10 +69,14 @@ export function ValueField(props: {
         disabled={props.disabled}
         value={draft ?? props.text}
         onFocus={(e) => {
+          typed.current = false;
           setDraft(props.text);
           (e.target as HTMLInputElement).select();
         }}
-        onInput={(e) => setDraft((e.target as HTMLInputElement).value)}
+        onInput={(e) => {
+          typed.current = true;
+          setDraft((e.target as HTMLInputElement).value);
+        }}
         onKeyDown={(e) => {
           if (e.key === "Enter") {
             e.preventDefault();

@@ -247,12 +247,21 @@ test("WB6a presets: the slot menu renames, sets the startup slot, copies and cle
   const dest = active === 3 ? 5 : 3;
   await slotMenu(session, n, "Copy to…");
   const copy = page.getByRole("dialog", { name: "Copy to…" });
+  await expect(copy).toContainText("Copy the current settings to"); // -- WP REVEFIX --
   await copy.getByRole("combobox").selectOption(String(dest));
   await copy.getByRole("button", { name: "Copy" }).click();
   await expect(slotRow(await openPresets(session), dest + 1)).toHaveAccessibleName(`${dest + 1}: Preset ${dest + 1}`);
   let st = await coreState(page);
   expect(st.presetOccupied & (1 << dest)).not.toBe(0);
   expect(st.activePresetSlot).toBe(active);
+  // -- WP REVEFIX -- (REVE B1) Copy to… is the active slot's alone, as Qt's: the device copies the live settings, so
+  // from a stored slot that is not active it would write them over that slot. Its menu has no such row.
+  pop = await openPresets(session);
+  await slotRow(pop, dest + 1).getByRole("button", { name: "More" }).click();
+  await expect(slotRow(pop, dest + 1).getByRole("menuitem", { name: "Recall", exact: true })).toBeVisible();
+  await expect(slotRow(pop, dest + 1).getByRole("menuitem", { name: "Copy to…" })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape");
   // An empty slot's Copy Here copies the active one into it.
   const here = [...Array(10).keys()].find((i) => (st.presetOccupied & (1 << i)) === 0)!;
   await slotRow(await openPresets(session), here + 1).getByRole("button", { name: "Copy Here" }).click();
