@@ -28,7 +28,7 @@ const PLACES: Record<string, { section: string; id: string; tab?: string }> = {
   Installation: { section: "System", id: "system-installation" }, // -- WP WEB7 --
   "Signal Chain": { section: "System", id: "chain" }, // -- WP WEB7 -- the web's own
   Events: { section: "System", id: "events" },
-  Connect: { section: "Devices", id: "connect", tab: "Open a DSPi" },
+  Connect: { section: "Devices", id: "connect", tab: "This Computer" }, // -- WP WEB7 -- Qt's tab name
   Hub: { section: "Devices", id: "hub" },
   "Hub Settings": { section: "Devices", id: "hub-settings" },
   Device: { section: "Devices", id: "device" },

@@ -33,7 +33,7 @@ export interface SectionDef {
 
 /** The page with the devices to connect to (the page's own, not a session's screen). */
 export const CONNECT = "connect";
-export const CONNECT_PAGE: Page = { id: CONNECT, label: "Open a DSPi" };
+export const CONNECT_PAGE: Page = { id: CONNECT, label: "This Computer" }; // -- WP WEB7 -- Qt's Devices tab
 
 export const SECTIONS: readonly SectionDef[] = [
   { id: "overview", title: "Overview", pages: ["main", "overview", "sender"] },

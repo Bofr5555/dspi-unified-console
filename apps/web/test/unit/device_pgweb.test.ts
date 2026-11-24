@@ -47,12 +47,12 @@ const paged: DeviceProtocolRecord = {
 test("wp_pgweb: the generation, pages and extension rows per generation", () => {
   assert.equal(generationWords(legacy), "Firmware 1.1.6 or older: the 1.1.6 protocol");
   assert.equal(generationWords(paged), "Firmware 1.1.7 or later: paged protocol 1.0");
-  assert.equal(generationWords({ ...legacy, generation: "unknown" }), "Not said by this connection");
-  assert.equal(pagesWords(legacy), "None: the 1.1.6 protocol has no pages");
+  assert.equal(generationWords({ ...legacy, generation: "unknown" }), "Not known on this connection"); // -- WP WEB7 -- Qt's words
+  assert.equal(pagesWords(legacy), "None (the 1.1.6 protocol has no pages)"); // -- WP WEB7 --
   assert.equal(pagesWords(paged), "0x01 SYS rev 1, 0x05 ROUTE rev 2, 0xE0 EXT rev 1");
   assert.equal(pagesWords({ ...paged, pages: [] }), "Not listed on this connection");
-  assert.match(envelopeWords(legacy), /1\.1\.6 extension request \(0x00\)/);
-  assert.match(envelopeWords(paged), /page 0xE0 \(the tunnel 0xE010\)/);
+  assert.equal(envelopeWords(legacy), "This console's extensions, through the 1.1.6 protocol"); // -- WP WEB7 -- no request numbers
+  assert.equal(envelopeWords(paged), "This console's extensions, through the paged protocol"); // -- WP WEB7 --
   assert.equal(envelopeWords({ ...legacy, extEnvelope: "noChannel" }), "None (upstream firmware)");
 });
 
