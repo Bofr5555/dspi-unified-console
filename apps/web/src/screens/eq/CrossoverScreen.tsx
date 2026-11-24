@@ -2,6 +2,10 @@
 // graph, and one table of their high and low passes (`PassFields`). An output's name opens its
 // PEQ page at its XO bands, where all four bands are listed. The curves are the core's (`curves`),
 // asked for when the crossovers change. Read only, nothing is editable.
+//
+// -- WP WEB3 -- (DL8 on the web, REVD W7) The graph unboxed on the panel tone, its axis labels in
+// HTML inside the plot (6 px in, never stretched or cut); the table as §9's (each output's pill),
+// with Qt's legend under it.
 
 import { useEffect, useMemo, useState } from "preact/hooks";
 import type { DspState, FilterParams } from "../../core/protocol";
@@ -12,6 +16,8 @@ import { useCurves, useGrid, type CurveRequest } from "./curves";
 import { channelColour, DEFAULT_LIMITS } from "./model";
 import { PassFields } from "./Passes";
 import { EmptyState } from "../../ui/design"; // -- WP WEB --
+import { Pill } from "./Pill"; // -- WP WEB3 --
+import "./eq.css"; // -- WP WEB3 --
 
 /** The plot's range: 20 Hz..20 kHz, +6..-48 dB. */
 const PLOT = { minFreq: 20, maxFreq: 20000, dbTop: 6, dbBottom: -48 };
@@ -57,7 +63,7 @@ function CrossoverView(props: {
   const freqs = useGrid(session);
   return (
     <div class="eq-xover">
-      <section class="card xo-plot-card" aria-label="Crossover curves">
+      <section class="xo-plot-card" aria-label="Crossover curves">
         <XoverPlot
           freqs={freqs}
           curves={curves?.chains ?? []}
@@ -65,7 +71,7 @@ function CrossoverView(props: {
           names={outs.map((o) => `${o.descriptor} ${o.name}`)}
         />
       </section>
-      <section class="card band-list xo-table" aria-label="Crossovers of every output">
+      <section class="band-list xo-table eq-table" aria-label="Crossovers of every output">
         <div class="tbl-scroll">
           <table>
             <thead>
@@ -93,8 +99,8 @@ function CrossoverView(props: {
                         title={`Open ${who}'s XO bands`}
                         onClick={() => props.open?.({ screen: "eq", wire: o.wire, tab: "xo" })}
                       >
-                        <span class="swatch" style={{ background: channelColour(s, o.wire) }} aria-hidden="true" />
-                        {who}
+                        <Pill text={o.descriptor} colour={channelColour(s, o.wire)} />
+                        <span class="eq-who-name">{o.name}</span>
                       </button>
                     </th>
                     <PassFields session={session} wire={o.wire} bands={bandsOf(o.wire)} freq={props.freq} disabled={ro} who={who} as="cells" />
@@ -104,7 +110,7 @@ function CrossoverView(props: {
             </tbody>
           </table>
         </div>
-        <p class="note">The first high and low pass of each output. Its four bands and Bypass are on its PEQ page, XO.</p>
+        <p class="eq-help">LR is Linkwitz-Riley, BW Butterworth, BS Bessel. The first high and low pass of each output; its four bands and Bypass are on its PEQ page, XO.</p>
       </section>
     </div>
   );
@@ -134,23 +140,40 @@ export function curvePath(freqs: readonly number[], curve: readonly number[]): s
 function XoverPlot(props: { freqs: number[] | null; curves: number[][]; colours: string[]; names: string[] }) {
   const grid = [100, 1000, 10000];
   return (
-    <svg class="xo-plot" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label={`Crossover curves of ${props.names.join(", ")}`}>
-      {grid.map((f) => (
-        <line key={f} class="xo-grid" x1={px(f)} x2={px(f)} y1={0} y2={H} />
-      ))}
-      {[0, -12, -24, -36].map((db) => (
-        <line key={db} class={db === 0 ? "xo-zero" : "xo-grid"} x1={0} x2={W} y1={py(db)} y2={py(db)} />
-      ))}
-      {props.freqs
-        ? props.curves.map((c, i) => (
-            <path key={i} class="xo-curve" d={curvePath(props.freqs!, c)} stroke={props.colours[i]} fill="none" vector-effect="non-scaling-stroke" />
-          ))
-        : null}
-      {grid.map((f) => (
-        <text key={f} class="xo-label" x={px(f) + 3} y={H - 4}>
-          {f >= 1000 ? `${f / 1000}k` : f}
-        </text>
-      ))}
-    </svg>
+    <div class="xo-frame">
+      <svg class="xo-plot" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label={`Crossover curves of ${props.names.join(", ")}`}>
+        {[50, 200, 500, 2000, 5000].map((f) => (
+          <line key={f} class="xo-grid xo-minor" x1={px(f)} x2={px(f)} y1={0} y2={H} />
+        ))}
+        {grid.map((f) => (
+          <line key={f} class="xo-grid" x1={px(f)} x2={px(f)} y1={0} y2={H} />
+        ))}
+        {Y_TICKS.map((db) => (
+          <line key={db} class={db === 0 ? "xo-zero" : "xo-grid"} x1={0} x2={W} y1={py(db)} y2={py(db)} />
+        ))}
+        {props.freqs
+          ? props.curves.map((c, i) => (
+              <path key={i} class="xo-curve" d={curvePath(props.freqs!, c)} stroke={props.colours[i]} fill="none" vector-effect="non-scaling-stroke" />
+            ))
+          : null}
+      </svg>
+      {/* -- WP WEB3 -- the labels in HTML over the plot, at its proportions, 6 px in (never stretched) */}
+      <div class="xo-labels" aria-hidden="true">
+        {X_TICKS.map((f) => (
+          <span key={f} class="xo-x" style={{ left: `${((px(f) / W) * 100).toFixed(2)}%` }} data-edge={f === X_TICKS[0] ? "start" : f === X_TICKS[X_TICKS.length - 1] ? "end" : undefined}>
+            {f >= 1000 ? `${f / 1000}k` : f}
+          </span>
+        ))}
+        {Y_TICKS.map((db) => (
+          <span key={db} class="xo-y" style={{ top: `${((py(db) / H) * 100).toFixed(2)}%` }} data-edge={db === Y_TICKS[0] ? "start" : db === Y_TICKS[Y_TICKS.length - 1] ? "end" : undefined}>
+            {db > 0 ? `+${db}` : db === 0 ? "0" : `\u2212${-db}`}
+          </span>
+        ))}
+      </div>
+    </div>
   );
 }
+
+/** -- WP WEB3 -- The axis labels: Qt's frequencies, and every 12 dB. */
+const X_TICKS = [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000];
+const Y_TICKS = [6, 0, -12, -24, -36, -48];

@@ -96,16 +96,18 @@ export function draw(ctx: CanvasRenderingContext2D, s: Scene): void {
   for (const f of look && !look.freqLabels ? [] : FREQ_LABELS.filter((f) => f >= g.minFreq && f <= g.maxFreq)) { // -- WP WB6I --
     const text = f >= 1000 ? `${f / 1000}k` : String(f);
     const w = ctx.measureText(text).width;
-    const px = Math.min(Math.max(xOf(g, f) - w / 2, 2), g.width - w - 2);
+    // -- WP WEB3 -- (§12) 6 px inside the plot, the last one ("20k") whole
+    const px = Math.min(Math.max(xOf(g, f) - w / 2, LABEL_INSET), g.width - w - LABEL_INSET);
     if (px < lastRight + 6) continue;
-    ctx.fillText(text, px, g.height - 2);
+    ctx.fillText(text, px, g.height - LABEL_INSET);
     lastRight = px + w;
   }
   ctx.textBaseline = "middle";
   for (let db = Math.ceil(g.dbBottom / step) * step; db <= g.dbTop; db += step) {
     const py = yOf(g, db);
-    if (py < 8 || py > g.height - 16 || (look && !look.dbLabels)) continue; // -- WP WB6I --
-    ctx.fillText(db > 0 ? `+${db}` : String(db), 3, py);
+    if (py < 0 || py > g.height || (look && !look.dbLabels)) continue; // -- WP WB6I --
+    // -- WP WEB3 -- (§12) the top and bottom labels ("+25", "−25") whole, 6 px in, clear of the frequencies
+    ctx.fillText(db > 0 ? `+${db}` : db < 0 ? `\u2212${-db}` : "0", LABEL_INSET, Math.min(Math.max(py, LABEL_INSET + 5), g.height - LABEL_INSET - 18));
   }
 
   if (!s.freqs) return;
@@ -202,3 +204,6 @@ export function draw(ctx: CanvasRenderingContext2D, s: Scene): void {
     ctx.setLineDash([]);
   }
 }
+
+/** -- WP WEB3 -- How far inside the plot its axis labels are drawn (§12). */
+const LABEL_INSET = 6;
