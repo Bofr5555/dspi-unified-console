@@ -446,6 +446,17 @@ impl FakeDevice {
         self
     }
 
+    // -- WP SHOWFIX -- (finding 12)
+    /// The same device with `name` as the device name it stores (a simulated
+    /// home's "Centre"), cut to what the firmware keeps.
+    pub fn with_device_name(self, name: &str) -> Self {
+        self.shared
+            .lock()
+            .extras
+            .set_device_name(document::stored_name(name));
+        self
+    }
+
     fn demo_with(surfaces: bool) -> Self {
         let options = FakeOptions {
             extensions: true,

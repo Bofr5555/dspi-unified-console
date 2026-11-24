@@ -240,7 +240,11 @@ pub(crate) fn next_demo() -> Option<FakeDevice> {
         i
     };
     let spec = room.spec.devices.get(i)?;
-    let dev = FakeDevice::demo().with_serial(&spec.serial);
+    // -- WP SHOWFIX -- (finding 12) the device stores the name the user calls
+    // it by, as a real one would: its tab and the Overview's Device card agree
+    let dev = FakeDevice::demo()
+        .with_serial(&spec.serial)
+        .with_device_name(&spec.name);
     let remote = dev.remote();
     let mut s = crate::state::default_state();
     if crate::state::decode_bulk(&remote.image(), &mut s).is_ok() {
