@@ -171,6 +171,18 @@ for both schemes; screens use these, not the Basic style's controls:
 | `LevelMeter` | a dBFS meter: three bands or one colour, the core's hold line and clip hold, a gain reduction variant (QP18) |
 | `NumericField` | a number typed in its unit ("2k", "2.5 kHz", "+=3"), nudged by Up/Down, held to its range with a badge (QP18) |
 | `StatusBar` | a window's foot: connection, scene, mode, then the caller's items (QP18) |
+| `OptionChip`, `ChipGroup` | options as grey chips, the chosen one in the selection tone with accent text: `selected` (many, `toggled(index, on)`, All / None → `setAll(on)`) or `current` (`exclusive`, `chosen(index)`) (DL0) |
+| `ToggleChip` | an on/off chip: graph overlays, Solo; `overlay` for the 0.92 opacity over a graph (DL0) |
+| `EmptyState` | a page with nothing to show: icon, title, one sentence, one action (`actionText`, `actionPrimary`, `action()`) (DL0) |
+| `NoticeRow` | an inline notice where a condition blocks an action: `kind`, `text`, `actionText`, `action()` (DL0) |
+| `ListRow` | a list or table row: stripe, hover, selection, title/subtitle/value, hover actions; `clicked`, `activated`, `menuRequested` (DL0) |
+| `FormRow`, `ContentColumn` | a 36 px form row (title, caption, control at the right); the 760 px left-aligned column (DL0) |
+| `GraphFrame`, `AxisLabels` | a graph's frame: no outline, grid, axis labels whole inside the plot, empty label, toggles, hint (DL0) |
+
+-- WP DL0 -- The Modern look of these (no outlines, the accent only for what
+is on, chosen or the one primary action, left-aligned 760 px forms) and every
+token they use are in `docs/DESIGN-LANGUAGE.md`; its §19 maps each rule to a
+component.
 
 A finished action that needs no answer is a notice (`NoticeCenter.post(text)`,
 shown in the banner stack), never a modal "Success" alert; a question is a
