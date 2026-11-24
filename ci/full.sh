@@ -25,6 +25,9 @@
 #   DSPI_SMOKE_SHARDS  qt-offscreen app instances (default 4) plus its launches
 #   DSPI_RELEASE_JOBS  qt-packages' package builds at once (default 3 here; 1 in a release)
 #   Gradle steps take a slot of ~/.cache/dspi-build/work/gradle-slot.sh when it exists.
+# DSPI_CI_SOLO: steps that never run beside each other (default: test ios-check
+# android-tests, which each run dspi-core's tests: its measurement simulations
+# keep to the wall clock and abort as "overrun" on a starved CPU); "" for none.
 # DSPI_CI_SEED=<target dir name>: a lane whose target directory does not exist
 # yet starts from a reflink copy of $DSPI_BUILD_CACHE/target/<name> (and
 # <name>-cross for the cross lane) instead of from nothing.
@@ -73,9 +76,10 @@ out=$B/work/ci-full/$commit-$(date +%Y%m%d-%H%M%S)
 mkdir -p "$out/logs"
 sum=$out/summary.txt
 slot=$B/work/gradle-slot.sh
+solo=${DSPI_CI_SOLO-test ios-check android-tests}
 export DSPI_TEST_PAR=${DSPI_TEST_PAR:-2} DSPI_SMOKE_SHARDS=${DSPI_SMOKE_SHARDS:-4}
 started=$(date +%s)
-echo "full.sh: commit $commit, $max lanes at once, DSPI_JOBS $jobs per lane (proptest $((jobs * 2))), DSPI_TEST_PAR $DSPI_TEST_PAR, DSPI_SMOKE_SHARDS $DSPI_SMOKE_SHARDS; logs $out" | tee "$sum"
+echo "full.sh: commit $commit, $max lanes at once, DSPI_JOBS $jobs per lane (proptest $((jobs * 2))), DSPI_TEST_PAR $DSPI_TEST_PAR, DSPI_SMOKE_SHARDS $DSPI_SMOKE_SHARDS, one at a time: ${solo:-none}; logs $out" | tee "$sum"
 
 # qt-packages: build-release.sh empties and fills work/release-<version>, the
 # release folder's name. A folder already there is never touched (the step
@@ -112,8 +116,16 @@ lane() {
   fi
   export DSPI_JOBS=$jobs CMAKE_BUILD_PARALLEL_LEVEL=$((jobs * 2))
   [ "$name" != prop ] || DSPI_JOBS=$((jobs * 2))
+  local lock
   for s in $steps; do
     log=$out/logs/$s.log
+    lock=
+    if [[ " $solo " == *" $s "* ]]; then
+      exec {lock}>"$out/solo.lock"
+      t0=$(date +%s)
+      flock "$lock"
+      echo "WAIT $name $s $(( $(date +%s) - t0 ))s for the solo lock" >> "$sum"
+    fi
     t0=$(date +%s)
     echo "START $name $s +$((t0 - started))s" >> "$sum"
     case "$s" in
@@ -122,6 +134,7 @@ lane() {
       *) ci/check.sh --step "$s" ;;
     esac > "$log" 2>&1 < /dev/null
     rc=$?
+    [ -z "$lock" ] || exec {lock}>&-
     echo "END $name $s rc=$rc dur=$(( $(date +%s) - t0 ))s start=+$((t0 - started))s log=$log" >> "$sum"
     [ "$rc" = 0 ] || echo "full.sh: $name/$s FAILED (exit $rc), log $log"
   done
