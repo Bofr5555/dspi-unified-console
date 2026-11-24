@@ -340,13 +340,22 @@ mod tests_bug1 {
         let l = shown(&core);
         assert_eq!(l.len(), usize::from(s.num_output_channels));
         // Every label is either the demo's own name or a derived one, and a
-        // derived one starts with its output number
+        // derived one is its output number, then the words it has (-- WP INTD
+        // -- W12: an unused full-range output is "Out 3" alone)
         for (o, x) in core.output_labels().iter().enumerate() {
             let name = &s.channel_names[usize::from(s.num_input_channels) + o];
             if x.user_named {
                 assert_eq!(&x.label, name);
             } else {
-                assert!(x.label.starts_with(&format!("Out {} · ", o + 1)), "{x:?}");
+                let number = format!("Out {}", o + 1);
+                assert!(
+                    x.label == number || x.label.starts_with(&format!("{number} · ")),
+                    "{x:?}"
+                );
+                assert!(
+                    !x.label.contains("· None") && !x.label.contains("· Full"),
+                    "{x:?}"
+                );
             }
         }
         // The demo has no pair map: cards pair by slot

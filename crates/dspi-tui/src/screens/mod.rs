@@ -971,8 +971,11 @@ pub(crate) mod tests {
         for o in 0..s.caps.num_outputs as usize {
             let l = channel_label(&s, ni + o);
             let stored = channel_name(&s, ni + o);
+            // -- WP INTD -- (W12) an unused full-range output is "Out N" alone
             assert!(
-                l == stored || l.starts_with(&format!("Out {} · ", o + 1)),
+                l == stored
+                    || l == format!("Out {}", o + 1)
+                    || l.starts_with(&format!("Out {} · ", o + 1)),
                 "{o}: {l} / {stored}"
             );
         }
