@@ -15,7 +15,7 @@ SettingsPage {
     readonly property alias enableDialog: enableQuestion
     readonly property alias detectDialog: detectQuestion   // -- WP ADETQ --
     readonly property alias rolesDialog: rolesQuestion     // -- WP ROLES --
-    readonly property string rolesQuestionText: qsTr("When you tell an agent which output drives what (“tweeter, mid, woofer, left then right, outputs 1–6”), it may then set those roles without asking you first. They are not checked: the safety rules use them at once (a tweeter keeps its high-pass at 1 kHz or above), an output you did not name is treated as a tweeter, and before anything plays below 1 kHz on a midrange, woofer or sub the app checks that its top end is not a tweeter's. Settings › Speakers shows them as set by AI from your words until you confirm or correct them. An agent may also replace a setup you confirmed when your words say what changed, but a tweeter you set stays a tweeter for agents until you change it in Settings › Speakers.")   // -- WP ROLES -- REVDFIX (B1)
+    readonly property string rolesQuestionText: qsTr("When you tell an agent which output drives what (“tweeter, mid, woofer, left then right, outputs 1–6”), it may then set those roles without asking you first. They are not checked: the safety rules use them at once (a tweeter keeps its high-pass at 1 kHz or above), an output you did not name is treated as a tweeter, and before anything plays below 1 kHz on a midrange, woofer or sub the app checks that its top end is not a tweeter's. Settings › Speakers shows them as set by AI from your words until you confirm or correct them. An agent may also replace a setup you confirmed when your words say what changed, but a tweeter you set stays a tweeter for agents until you change it in Settings › Speakers. If a stated midrange, woofer or sub is silent above 1 kHz, its check plays the speaker detection's quiet probe (−50 dBFS or quieter, two octaves) below 1 kHz, even with “Agents may detect speakers” off.")   // -- WP ROLES -- REVDFIX (B1, S3)
     readonly property bool watching: visible && Window.window !== null && Window.window.visible
     onWatchingChanged: if (watching) AiController.refresh()
     Component.onDestruction: AiController.clearNewClient()
@@ -230,7 +230,7 @@ SettingsPage {
             objectName: "AiAgents.roles"
             title: qsTr("Agents may set speaker roles from my words")
             caption: AiController.confirmMode === "never_ask"
-                     ? qsTr("Under Never, an agent may set which output drives what from what you told it, without asking, also over a setup you confirmed when your words say what changed; a tweeter you set stays a tweeter for agents. Off, it is refused.")   // -- WP REVDFIX -- B1
+                     ? qsTr("Under Never, an agent may set which output drives what from what you told it, without asking, also over a setup you confirmed when your words say what changed; a tweeter you set stays a tweeter for agents. Its check may play the detection's quiet probe below 1 kHz on an output silent above it. Off, it is refused.")   // -- WP REVDFIX -- B1, S3
                      : qsTr("Needed under Never only: with the other settings, you are asked once, with the whole table.")
             checked: AiController.agentRoles
             onToggled: on => {
