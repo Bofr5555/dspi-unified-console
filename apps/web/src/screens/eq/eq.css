@@ -1,0 +1,103 @@
+/* -- WP WEB3 -- (DL8 on the web) The Equaliser as Qt's Modern pages: PEQ (the channel strip, the
+   channel list at the left, the graph on the panel tone with no box, the band table), Crossover (the
+   graph with its labels inside, never stretched) and Delay & Gain (§9's table). */
+
+/* The graphs' tones: Qt's panel and graph grid, not Classic's bluish greys (REVD W7) */
+.dspi-web .eq-screen, .dspi-web .eq-xover { --eq-bg: var(--panel); --eq-grid: #dcdcdc; --eq-zero: rgba(0, 0, 0, 0.3); --eq-text: #5e5e5e; }
+@media (prefers-color-scheme: dark) {
+  .dspi-web:not([data-theme="light"]) .eq-screen, .dspi-web:not([data-theme="light"]) .eq-xover { --eq-grid: #3a3a3a; --eq-zero: rgba(255, 255, 255, 0.3); --eq-text: #a7a7a7; }
+}
+.dspi-web[data-theme="dark"] .eq-screen, .dspi-web[data-theme="dark"] .eq-xover { --eq-grid: #3a3a3a; --eq-zero: rgba(255, 255, 255, 0.3); --eq-text: #a7a7a7; }
+
+/* ---------------------------------------------------------------- PEQ */
+.dspi-web .eq-screen { display: flex; flex-direction: column; gap: 12px; container-type: inline-size; }
+.dspi-web .eq-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; min-width: 0; align-items: start; }
+.dspi-web .eq-main { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.dspi-web .eq-graph-card { padding: 0; background: none; border-radius: 0; gap: 8px; }
+.dspi-web .eq-screen .eq-graph { height: clamp(16rem, 40vh, 28rem); border-radius: 8px; }
+.dspi-web .eq-list-label { display: none; }
+.dspi-web .eq-eye-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--ch, var(--muted)); }
+.dspi-web .eq-eye[aria-pressed="true"] .eq-eye-dot { background: var(--ch, var(--muted)); }
+.dspi-web .eq-pick .ch-pill { font-size: 10px; }
+.dspi-web .eq-pick .ch-pill.eq-desc { color: #111214; }
+.dspi-web .eq-pick .ch-pill.eq-desc.ring { color: var(--text); }
+.dspi-web .eq-xover .xo-out.link { color: var(--text); text-decoration: none; }
+.dspi-web .eq-xover .xo-out.link:hover .eq-who-name { text-decoration: underline; }
+
+/* Wide: the channels as Qt's list at the left (INPUTS, OUTPUTS; the name, the pill at the right) */
+@container (min-width: 760px) {
+  .dspi-web .eq-body { grid-template-columns: 200px minmax(0, 1fr); }
+  .dspi-web .eq-channels {
+    flex-direction: column; align-items: stretch; gap: 0; height: auto; overflow: visible; padding: 4px 0 8px;
+    background: var(--panel); border-radius: 8px; position: sticky; top: 0;
+  }
+  .dspi-web .eq-channel { display: flex; flex-wrap: wrap; align-items: center; }
+  .dspi-web .eq-list-label { display: block; flex-basis: 100%; padding: 10px 12px 4px; }
+  .dspi-web .eq-channel.out .eq-list-label { padding-top: 14px; }
+  .dspi-web .eq-channels .eq-pick {
+    flex: 1; display: flex; justify-content: space-between; gap: 8px; height: 28px; max-width: none; min-width: 0;
+    padding: 0 4px 0 12px; border: 0; border-radius: 0; background: none; color: var(--text); font-size: inherit;
+  }
+  .dspi-web .eq-channels .eq-pick:hover { background: var(--control-hover); }
+  .dspi-web .eq-channels .eq-pick[aria-pressed="true"] { background: var(--selection); box-shadow: inset 2px 0 var(--accent-fill); }
+  .dspi-web .eq-channels .eq-eye { width: 28px; height: 28px; border: 0; border-radius: 0; background: none; }
+  .dspi-web .eq-channel:has(.eq-pick[aria-pressed="true"]) .eq-eye { background: var(--selection); }
+}
+
+/* The tools in the page head: secondary buttons */
+.dspi-web .page-tools .eq-tools { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; }
+.dspi-web .page-tools .eq-tools > button, .dspi-web .page-tools .eq-tools > .menu > button { min-height: 28px; padding: 0 0.75rem; line-height: normal; }
+
+/* ---------------------------------------------------------------- §9 tables */
+.dspi-web .eq-table { padding: 4px 8px 8px; background: var(--panel); border-radius: 8px; }
+.dspi-web .eq-table table { border-collapse: separate; border-spacing: 0; font-size: 12px; }
+.dspi-web .eq-table thead th {
+  height: 24px; padding: 0 6px; text-align: left; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--muted); border-bottom: 1px solid var(--separator);
+}
+.dspi-web .eq-table tbody td, .dspi-web .eq-table tbody th { height: 28px; padding: 0 6px; border: 0; font-weight: 400; text-align: left; }
+.dspi-web .eq-table tbody tr:nth-child(even) > * { background: var(--stripe); }
+.dspi-web .eq-table tbody tr.chosen > * { background: var(--selection); }
+.dspi-web .eq-table tbody tr:hover > * { background: var(--control-hover); }
+.dspi-web .eq-table .value-field input { height: 24px; font-family: var(--mono); font-size: 12px; text-align: right; }
+.dspi-web .eq-table select { height: 24px; font-size: 12px; }
+.dspi-web .eq-who { display: inline-flex; align-items: center; gap: 8px; min-width: 0; white-space: nowrap; }
+.dspi-web .eq-who-name { overflow: hidden; text-overflow: ellipsis; }
+.dspi-web .xo-out { display: inline-flex; align-items: center; gap: 8px; color: var(--text); }
+.dspi-web .eq-help { margin: 8px 0 0; font-size: 11px; color: var(--muted); }
+.dspi-web .eq-bands .band-list-foot { margin-top: 8px; }
+.dspi-web .eq-bands .band-n { border: 0; background: none; font-family: var(--mono); font-size: 12px; }
+.dspi-web .eq-bands .band-n[aria-pressed="true"] { background: var(--selection); color: var(--accent-text); }
+
+/* Delay & Gain: Qt's columns */
+.dspi-web .delays .c-on { width: 48px; }
+.dspi-web .delays tr.xover-off > *:not(.c-on) { opacity: 0.55; }
+.dspi-web .delays .arrival { background: var(--control); }
+.dspi-web .eq-limit { min-height: 24px; min-width: 4.5rem; padding: 0 0.6rem; border: 0; background: var(--control); color: var(--muted); font-size: 12px; }
+.dspi-web .eq-limit[aria-pressed="true"] { background: var(--selection); color: var(--accent-text); }
+
+/* An icon that toggles (mute, ø): the control tone; muted in the danger text, inverted in the warning's */
+.dspi-web .eq-icon-toggle {
+  display: inline-flex; align-items: center; justify-content: center; min-width: 28px; min-height: 24px; padding: 0 6px;
+  border: 0; border-radius: var(--radius-control); background: var(--control); color: var(--muted);
+}
+.dspi-web .eq-icon-toggle:hover:not(:disabled) { background: var(--control-hover); color: var(--text); }
+.dspi-web .eq-icon-toggle svg { width: 16px; height: 16px; }
+.dspi-web .eq-icon-toggle.eq-mute[aria-pressed="true"], .dspi-web .eq-icon-toggle.output-mute[aria-pressed="true"] { background: color-mix(in srgb, var(--bad) 18%, var(--control)); color: var(--bad); }
+.dspi-web .eq-icon-toggle.route-inv[aria-pressed="true"] { color: var(--warn); }
+
+/* ---------------------------------------------------------------- Crossover */
+.dspi-web .eq-xover { gap: 12px; }
+.dspi-web .eq-xover .xo-plot-card { padding: 0; background: none; }
+.dspi-web .xo-frame { position: relative; height: clamp(14rem, 40vh, 26rem); border-radius: 8px; background: var(--eq-bg); overflow: hidden; }
+.dspi-web .xo-frame .xo-plot { width: 100%; height: 100%; border-radius: 0; background: none; }
+.dspi-web .xo-frame .xo-grid { stroke: var(--eq-grid); }
+.dspi-web .xo-frame .xo-minor { opacity: 0.55; }
+.dspi-web .xo-frame .xo-zero { stroke: var(--eq-zero); }
+.dspi-web .xo-labels { position: absolute; inset: 0; pointer-events: none; font-size: 10px; color: var(--eq-text); font-variant-numeric: tabular-nums; }
+.dspi-web .xo-x { position: absolute; bottom: 6px; transform: translateX(-50%); }
+.dspi-web .xo-x[data-edge="start"] { transform: none; margin-left: 6px; }
+.dspi-web .xo-x[data-edge="end"] { transform: translateX(-100%); margin-left: -6px; }
+.dspi-web .xo-y { position: absolute; left: 6px; transform: translateY(-50%); }
+.dspi-web .xo-y[data-edge="start"] { transform: none; margin-top: 6px; }
+.dspi-web .xo-y[data-edge="end"] { transform: translateY(-100%); margin-top: -22px; }
