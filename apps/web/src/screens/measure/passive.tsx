@@ -9,6 +9,7 @@ import type { MeasureRtaAveraging } from "../../core/measure-protocol";
 import type { MeasureTabProps } from "./MeasureScreen";
 import { MeasureGraph, type Series } from "./graph";
 import { AVERAGING } from "./model";
+import { NoticeRow } from "../../ui/design"; // -- WP WEB --
 
 export function PassiveTab(props: MeasureTabProps) {
   const { desk } = props;
@@ -43,7 +44,8 @@ export function PassiveTab(props: MeasureTabProps) {
       </div>
       {props.blocked ? <p class="note">{props.blocked}</p> : null}
       <p class="muted">The microphone listens to what is playing; nothing is played and nothing on the DSPi changes.</p>
-      {blocker ? <p class="error">{blocker}</p> : null}
+      {/* -- WP WEB -- the condition that holds Listen back, as a notice row (DESIGN-LANGUAGE §14) */}
+      {blocker ? <NoticeRow kind="warning">{blocker}</NoticeRow> : null}
       <div style={{ display: "flex", flexWrap: "wrap", gap: "8px 16px", alignItems: "flex-end" }}>
         <label style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
           <span>Microphone</span>

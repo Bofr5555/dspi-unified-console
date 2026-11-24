@@ -14,6 +14,7 @@ import { download, fileNameFor, type HeldDoc, type SnapshotDesk } from "./model"
 import { DiffTable } from "./DiffTable";
 import { abKeyHint } from "../../ui/keys";
 import { HubSnapshots } from "./HubSnapshots"; // -- WP P2WB2 --
+import { EmptyState } from "../../ui/design"; // -- WP WEB --
 
 export function SnapshotsScreen(props: ScreenProps) {
   const desk = props.desk;
@@ -113,8 +114,13 @@ function SnapshotsView(props: { desk: SnapshotDesk; ask: ScreenProps["ask"]; sim
         {st.guardDefault ? (
           <p class="note">Every recall here can be taken back: it is kept only when you press Keep within {st.timeoutS} s.</p>
         ) : null}
+        {/* -- WP WEB -- DL3a's empty state */}
         {st.docs.length === 0 ? (
-          <p class="note">{simple ? "No snapshots yet. Snapshots captured or opened in Advanced mode are listed here." : "No snapshots yet."}</p>
+          <EmptyState
+            icon="camera"
+            title="No snapshots yet"
+            text={simple ? "Snapshots are captured in Advanced mode." : "A snapshot keeps every setting of the device as it is now, to recall or compare later."}
+          />
         ) : null}
         <ul class="snap-list" aria-label="Held snapshots">
           {st.docs.map((d) => (

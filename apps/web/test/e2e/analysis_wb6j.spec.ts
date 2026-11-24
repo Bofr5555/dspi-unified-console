@@ -100,8 +100,9 @@ test("WB6J M46: the signal generator plays only on Play, shows what it does, and
   expect((await call<Status>(page, "siggenStatus")).state).toBe(0);
   // The core's catalogue: every type the demo plays, and Pink noise chosen.
   await gen.getByRole("radio", { name: "Pink" }).click();
-  await gen.getByRole("spinbutton", { name: "Level in dBFS" }).fill("-30");
-  await gen.getByRole("spinbutton", { name: "Level in dBFS" }).press("Enter");
+  // -- WP WEB -- a text field read as Qt's fields read it: U+2212 and a decimal comma
+  await gen.getByRole("textbox", { name: "Level in dBFS" }).fill("−30,0");
+  await gen.getByRole("textbox", { name: "Level in dBFS" }).press("Enter");
   // No outputs: Play is off and says why.
   await gen.getByRole("group", { name: "Outputs" }).getByRole("button", { name: "None" }).click();
   await expect(gen.locator(".siggen-title")).toHaveText("Select at least one output");
@@ -130,7 +131,7 @@ test("WB6J M46: Identify from an output's page and from the matrix plays channel
   // The matrix's column menu.
   await openPage(session, "Matrix");
   const matrix = session.getByRole("region", { name: "Matrix Mixer" });
-  await matrix.locator("th.m-out").first().getByRole("button").first().click();
+  await matrix.getByRole("button", { name: "OUT1", exact: true }).click(); // -- WP MXW -- the column's OUTn pill
   await matrix.getByRole("menuitem", { name: "Identify" }).click();
   await expect.poll(async () => (await call<Config>(page, "siggenConfig")).channelMask).toBe(1);
   expect((await call<Status>(page, "siggenStatus")).signalType).toBe(14);

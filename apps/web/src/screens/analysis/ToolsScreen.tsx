@@ -34,6 +34,8 @@ import {
   withType,
 } from "./siggen";
 import { FAST_MS, MONITOR_POLL_MS, SLOW_MS, appendLines, copyText, eventCount, fillText, lineTime, mergeSlow, slowSections, starvationDelta } from "./stats";
+import { EmptyState } from "../../ui/design"; // -- WP WEB --
+import { readNumber } from "../../ui/number"; // -- WP WEB --
 
 /** Signal Generator (M46). */
 export function GeneratorScreen(props: ScreenProps) {
@@ -79,7 +81,23 @@ function usePoll(fn: () => Promise<void>, ms: number, on: boolean, deps: unknown
 
 // ------------------------------------------------------------ signal generator
 
-const UNIT_STEP: Record<number, number> = { 1: 1, 2: 1, 3: 1, 4: 1, 5: 0.1, 6: 1 };
+// -- WP WEB -- the generator's decimal fields: text read as Qt's fields read it ("−10,5 dBFS");
+// Enter commits as leaving does; what is not a number puts the value back.
+const DECIMAL = {
+  type: "text",
+  inputMode: "decimal",
+  autoComplete: "off",
+  onKeyDown: (e: KeyboardEvent) => {
+    if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+  },
+} as const;
+
+function typed(e: Event, was: number, units: string[]): number | null {
+  const el = e.target as HTMLInputElement;
+  const v = readNumber(el.value, units);
+  if (v === null) el.value = String(was);
+  return v;
+}
 
 function SiggenPanel(props: { session: Session }) {
   const { session } = props;
@@ -165,7 +183,7 @@ function SiggenPanel(props: { session: Session }) {
   };
 
   if (!s) return null;
-  if (caps && !caps.supported) return <p class="empty">Firmware has no signal generator.</p>;
+  if (caps && !caps.supported) return <EmptyState icon="chart-line" title="No signal generator" text="This DSPi's firmware has no signal generator." />; // -- WP WEB --
   const timing = type?.timing ?? 0;
   return (
     <section class="card siggen" aria-label="Signal Generator">
@@ -241,15 +259,15 @@ function SiggenPanel(props: { session: Session }) {
           onInput={(e) => edit(withLevel(draft, Number((e.target as HTMLInputElement).value)))}
         />
         <input
-          type="number"
+          {...DECIMAL}
           class="siggen-number"
-          min={LEVEL_MIN}
-          max={LEVEL_MAX}
-          step={0.1}
           value={draft.levelDb}
           disabled={disabled}
           aria-label="Level in dBFS"
-          onChange={(e) => edit(withLevel(draft, Number((e.target as HTMLInputElement).value)))}
+          onChange={(e) => {
+            const v = typed(e, draft.levelDb, ["dBFS", "dB"]);
+            if (v !== null) edit(withLevel(draft, v));
+          }}
         />
         <span>dBFS</span>
       </label>
@@ -270,15 +288,15 @@ function SiggenPanel(props: { session: Session }) {
                   </select>
                 ) : (
                   <input
-                    type="number"
+                    {...DECIMAL}
                     class="siggen-number"
-                    min={p.min}
-                    max={p.max}
-                    step={UNIT_STEP[p.semantic] ?? 1}
                     value={draft.p[i] ?? p.def}
                     disabled={disabled}
                     aria-label={p.label}
-                    onChange={(e) => edit(withParam(draft, type, i, Number((e.target as HTMLInputElement).value)))}
+                    onChange={(e) => {
+                      const v = typed(e, draft.p[i] ?? p.def, p.unit ? [p.unit] : []);
+                      if (v !== null) edit(withParam(draft, type, i, v));
+                    }}
                   />
                 )}
                 {p.unit ? <span>{p.unit}</span> : null}
@@ -289,17 +307,14 @@ function SiggenPanel(props: { session: Session }) {
             <label>
               <span>{timing === TIMING_SWEEP ? "Length" : "Duration"}</span>
               <input
-                type="number"
+                {...DECIMAL}
                 class="siggen-number"
-                min={timing === TIMING_SWEEP ? 0.1 : 0}
-                max={600}
-                step={0.1}
                 value={draft.durationMs / 1000}
                 disabled={disabled}
                 aria-label={timing === TIMING_SWEEP ? "Sweep length in seconds" : "Duration in seconds"}
                 onChange={(e) => {
-                  const v = Number((e.target as HTMLInputElement).value);
-                  if (Number.isFinite(v)) edit({ ...draft, durationMs: Math.round(Math.min(600, Math.max(0, v)) * 1000) });
+                  const v = typed(e, draft.durationMs / 1000, ["s"]);
+                  if (v !== null) edit({ ...draft, durationMs: Math.round(Math.min(600, Math.max(0, v)) * 1000) });
                 }}
               />
               <span>s</span>

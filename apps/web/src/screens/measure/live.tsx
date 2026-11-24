@@ -20,6 +20,7 @@ import type { MeasureTabProps } from "./MeasureScreen";
 import { MeasureGraph, type Series } from "./graph";
 import { AVERAGING, COUPLERS, LIVE_PLACEMENT_FIRST, ROLES, SMOOTHING, highestPoint, hz, issueText, liveText, livePlaceOf, smoothingLabel } from "./model";
 import { readTextFile } from "./setup";
+import { plainNumber, readNumber } from "../../ui/number"; // -- WP WEB --
 
 const row = { display: "flex", flexWrap: "wrap", gap: "8px 16px", alignItems: "flex-end" } as const;
 const field = { display: "flex", flexDirection: "column", gap: "2px", minWidth: 0 } as const;
@@ -43,8 +44,10 @@ const LIVE_PLACEMENTS: { id: MeasurePlacement; label: string }[] = [
 
 /** A number field's value, or null when it is not one. */
 function num(s: string): number | null {
-  const v = Number(s.trim());
-  return s.trim() && Number.isFinite(v) ? v : null;
+  // -- WP WEB -- "1,5 kHz" and the like, as Qt's fields (USR1); the unit Hz after it
+  const t = plainNumber(s).toLowerCase();
+  const v = readNumber(t.replace(/k?hz$/, ""));
+  return v === null ? null : t.endsWith("khz") ? v * 1000 : v;
 }
 
 export function LiveTab(props: MeasureTabProps) {

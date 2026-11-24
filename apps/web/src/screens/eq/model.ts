@@ -7,6 +7,7 @@
 // crates/dspi-wasm/src/curves.rs). The unit tests reach all of it.
 
 import type { BandCurve, DspState, FilterParams } from "../../core/protocol";
+import { plainNumber } from "../../ui/number";
 
 /** The firmware's filter types the PEQ uses (config.h `enum FilterType`). */
 export const T = {
@@ -427,10 +428,10 @@ export function qText(q: number): string {
 
 /** A typed frequency: "2k", "2 kHz", "440", or a note, "A4", "C#2+13" (cents). */
 export function parseFreq(text: string): number | null {
-  let s = text.trim().toLowerCase();
-  const note = parseNote(s);
+  const note = parseNote(text.trim().toLowerCase());
   if (note !== null) return note;
-  s = s.replace(/\s+/g, "");
+  // -- WP WEB -- "2,5 kHz", "1 000 Hz" as Qt's fields take them (USR1)
+  let s = plainNumber(text).toLowerCase();
   let scale = 1;
   if (s.endsWith("khz")) {
     scale = 1000;
@@ -445,8 +446,8 @@ export function parseFreq(text: string): number | null {
 
 /** A typed number, its unit ("dB") and a leading "q" or "+" allowed. */
 export function parseNumber(text: string, unit: string): number | null {
-  let s = text.trim().toLowerCase().replace(/\s+/g, "");
-  if (unit && s.endsWith(unit)) s = s.slice(0, -unit.length);
+  // -- WP WEB -- a decimal comma, U+2212 and the unit after the number (USR1)
+  let s = plainNumber(text, unit ? [unit] : []).toLowerCase();
   if (s.startsWith("q")) s = s.slice(1);
   if (s.startsWith("+")) s = s.slice(1);
   return finite(s, 1);

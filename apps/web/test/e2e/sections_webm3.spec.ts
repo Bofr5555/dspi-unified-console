@@ -105,7 +105,7 @@ test("WEBM3: Library › History lists this connection's changes, newest first, 
   const { session } = await openOne(page);
   await openPage(session, "History");
   const screen = session.getByRole("region", { name: "History" });
-  await expect(screen.getByText("No changes since this DSPi was opened.")).toBeVisible();
+  await expect(screen.getByRole("status").filter({ hasText: "No changes yet" })).toBeVisible(); // -- WP WEB -- the empty state
   // A change from the dock: the volume.
   const slider = session.getByRole("slider", { name: "Volume" });
   await slider.fill("128");

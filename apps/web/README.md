@@ -234,9 +234,28 @@ inputs' routing with level and INV, GAIN, DELAY, mute, the limiter with its
 settings and batch actions), the graph, then the PEQ or XO bands (the
 crossover: family, pass, slope, frequency, bypass; Bypass All asks with the
 Console's warning). Outputs also offer the Linkwitz Transform, edited in its
-panel (f0, Q0, fp, Qp, Apply). The Matrix screen is the Console's Matrix Mixer:
-crosspoints, and per output ENABLE (the PDM / Core 1 questions), GAIN, DELAY,
-MUTE.
+panel (f0, Q0, fp, Qp, Apply). The Matrix screen (-- WP MXW --, DESREV's redesign as
+MX1 built it in Qt) reads "from inputs ↓, to outputs →": a connected crosspoint is a
+fixed tile in the input's colour with its gain inside and ø when inverted, an empty one a
+dot; each row ends with the outputs it feeds, each column with its gain, delay and the
+inputs that feed it; enable (the PDM / Core 1 questions) and mute sit in the column's head,
+an input's trim in its row's. The keys are MX1's (arrows, Home/End, PgUp/PgDn, Space, Enter
+or a digit to type, + and − with Ctrl for 3 dB, I, M, E, Delete, Shift+F10); the inspector
+follows the cell, column or row chosen. The page tools: Link L/R pairs (an edit of a stereo
+pair's crosspoint mirrored to `(i ^ 1, o ^ 1)` as one undo step; off by default, kept per
+device), Direct 1:1, Clear (asks past four crosspoints), Dense. The rules without I/O are
+`matrix/model.ts`.
+
+## The design language (WP WEB)
+
+The Modern language of `docs/DESIGN-LANGUAGE.md` on the web: a layer at the end of
+`dspi-web.css` (the Qt tokens: control, selection, separator, stripe, accent fill and text,
+radii, the 760 px content width), no outlines on cards, buttons and fields (the focus ring
+stays), the accent only for on, chosen and the one primary action (options as chips and
+segments in the selection tone), notices with a tint and an edge. `ui/design.tsx` holds
+`EmptyState`, `NoticeRow`, `ChipGroup` and `Glyph`; the empty states use the Qt texts of
+DL2, DL3 and DL4. Typed numbers go through `ui/number.ts` (`readNumber`, `plainNumber`):
+a decimal comma, U+2212 and a unit after the number, as Qt's `BorderedField.number()`.
 
 The delay follows the owner's rule (SL1, `outputs/Level.tsx`): a drag sends
 whole ms live and on release, never -0, and the thumb snaps to what was
@@ -430,7 +449,8 @@ The web step also runs the hosting routes on the real `uconsole` (`test/e2e/host
 | `src/screens/main/` | the main window (WB6a): volume, presets, inputs and outputs; `model.ts` the tapers and layout |
 | `src/screens/eq/` | the EQ (WB6b): graph, chip, band list; `model.ts` its logic, `draw.ts` the canvas; `Linkwitz.tsx` the Transform's panel (WB6c) |
 | `src/screens/outputs/` | WB6c: an output's settings card (`OutputCard.tsx`), the level and delay control (`Level.tsx`, SL1), the limiter (`Limiter.tsx`), the crossover (`Crossover.tsx`); `model.ts` their logic |
-| `src/screens/matrix/` | WB6c: the matrix mixer |
+| `src/screens/matrix/` | WB6c: the matrix mixer; MXW: its redesign, `model.ts` its rules |
+| `src/ui/design.tsx`, `src/ui/number.ts` | WP WEB: EmptyState, NoticeRow, ChipGroup, Glyph; typed numbers as Qt reads them |
 | `src/screens/events/` | WB8u: the event log and Save Diagnostics…; `model.ts` its rows, filter and text |
 | `src/ui/undo.tsx` | WB8u: Undo and Redo, the keys, what a step left alone |
 | `src/screens/system/` | SW3: the System view, Clock and audio links, the scene bar, the status rail; `model.ts` their logic, `feed.ts` the hub's `system.*` |

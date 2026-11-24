@@ -530,39 +530,9 @@
 .dspi-web .lt-boost.warn { color: var(--warn); }
 .dspi-web .lt-status { color: var(--muted); font-size: 0.85rem; }
 .dspi-web .lt-status.pending { color: var(--warn); }
-.dspi-web .matrix-screen { display: grid; gap: 0.75rem; min-width: 0; }
-.dspi-web .matrix-card { min-width: 0; padding: 0.5rem; }
-.dspi-web .matrix-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
-.dspi-web .matrix-actions { display: flex; gap: 0.4rem; }
-.dspi-web .matrix-actions button { font-size: 0.8rem; padding: 0.15rem 0.5rem; }
-.dspi-web .matrix-scroll { overflow-x: auto; max-width: 100%; }
-.dspi-web .matrix { border-collapse: collapse; table-layout: fixed; }
-.dspi-web .matrix th, .dspi-web .matrix td { width: 4.6rem; min-width: 4.6rem; text-align: center; padding: 0.15rem; vertical-align: middle; }
-.dspi-web .matrix .m-corner, .dspi-web .matrix .m-in, .dspi-web .matrix .m-label { width: 5.2rem; min-width: 5.2rem; text-align: right; }
-.dspi-web .m-out .menu > button { width: 100%; font-size: 0.75rem; padding: 0.1rem 0.2rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border: 0; background: none; }
-.dspi-web .m-out .menu [role="menu"] { text-align: left; }
-.dspi-web .m-desc { display: block; font-size: 0.65rem; font-weight: 700; }
-.dspi-web .m-in .m-desc { display: inline; margin-right: 0.3rem; }
-.dspi-web .m-name { font-size: 0.8rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; max-width: 3.4rem; vertical-align: bottom; }
-.dspi-web .m-label { font-size: 0.65rem; font-weight: 700; color: var(--muted); }
-.dspi-web .m-cell { height: 4.6rem; border-top: 1px solid var(--line); }
-.dspi-web .m-cell > span, .dspi-web .m-cell > button { display: flex; justify-content: center; align-items: center; margin: 0 auto; }
-.dspi-web .m-level, .dspi-web .m-inv { height: 1.6rem; }
-.dspi-web .m-point { width: 2rem; height: 1.3rem; border: 0; background: none; }
-.dspi-web .m-cell .route-dot { width: 0.9rem; height: 0.9rem; }
-.dspi-web .m-divide td, .dspi-web .m-divide th { border-bottom: 2px solid var(--line); }
-.dspi-web .matrix .disabled { opacity: 0.3; }
-.dspi-web .m-outputs td, .dspi-web .m-outputs th { height: 2.2rem; border-top: 1px solid var(--line); }
-.dspi-web .m-enable[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
-.dspi-web .m-enable.conflict { border-color: var(--warn); color: var(--warn); opacity: 0.6; }
+/* -- WP MXW -- the matrix is drawn by the Modern layer at the end; the footer's fields keep .m-field */
 .dspi-web .m-field { display: block; }
-.dspi-web .matrix .m-corner, .dspi-web .matrix .m-in, .dspi-web .matrix .m-label { position: sticky; left: 0; z-index: 1; background: var(--panel); }
-.dspi-web .m-outputs .ch-mute { min-width: 2rem; }
 .dspi-web .xover-list th { font-size: 0.75rem; }
-@media (max-width: 520px) {
-  .dspi-web .matrix .m-corner, .dspi-web .matrix .m-in, .dspi-web .matrix .m-label { width: 4rem; min-width: 4rem; }
-  .dspi-web .m-name { max-width: 2.4rem; }
-}
 
 /* -- WP SW3 -- the System view (WB6d), "Clock and audio links", the scene bar (WB6e) and the
    status rail (WB6f). Saturated colour only for meaning: link state, alarms, selection. */
@@ -1779,3 +1749,258 @@
 /* -- WP ADETW -- the main screen's speaker layout line spans the grid */
 .dspi-web .main-layout-note { grid-column: 1 / -1; min-width: 0; }
 .dspi-web .banner-agent .agent-detect { color: var(--muted); }
+
+/* -- WP WEB -- The Modern design language on the web (docs/DESIGN-LANGUAGE.md, DESREV's web
+   parity; the same tokens as Qt's Theme.qml after DL0). Two rules above the rest: surfaces apart
+   by tone and spacing, no outlines but the focus ring; the accent says on, chosen or the one primary
+   action, never a row of options (chips and segments on the control tone, the chosen one in the
+   selection tone with the accent's text). A layer over the rules above: same selectors, later. */
+.dspi-web {
+  --control: #e8e8e8;
+  --control-hover: #e2e2e2;
+  --control-pressed: #d8d8d8;
+  --selection: #e1e1e1;
+  --separator: #e2e2e2;
+  --border: #cdcdcd;
+  --accent-fill: #2563eb;
+  --accent-text: #1d5bd0;
+  --on-accent: #ffffff;
+  --stripe: rgb(0 0 0 / 0.035);
+  --float-edge: transparent;
+  --shadow: 0 10px 30px rgb(0 0 0 / 0.16);
+  --radius-control: 6px;
+  --radius-chip: 12px;
+  --content-max: 760px;
+  --mono: ui-monospace, "Cascadia Mono", "SF Mono", "JetBrains Mono", "Noto Sans Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  .dspi-web:not([data-theme="light"]) {
+    --control: #343434;
+    --control-hover: #3c3c3c;
+    --control-pressed: #464646;
+    --separator: #303030;
+    --border: #484848;
+    --accent-text: #7aaeff;
+    --stripe: rgb(255 255 255 / 0.025);
+    --float-edge: var(--separator);
+    --shadow: 0 12px 34px rgb(0 0 0 / 0.5);
+  }
+}
+.dspi-web[data-theme="dark"] {
+  --control: #343434;
+  --control-hover: #3c3c3c;
+  --control-pressed: #464646;
+  --separator: #303030;
+  --border: #484848;
+  --accent-text: #7aaeff;
+  --stripe: rgb(255 255 255 / 0.025);
+  --float-edge: var(--separator);
+  --shadow: 0 12px 34px rgb(0 0 0 / 0.5);
+}
+
+/* Buttons, fields and lists of choices: the control tone, no outline (the line's room kept, so nothing moves) */
+.dspi-web button { border-color: transparent; background-color: var(--control); border-radius: var(--radius-control); }
+.dspi-web button:where(:hover:not(:disabled)) { background-color: var(--control-hover); }
+.dspi-web button:where(:active:not(:disabled)) { background-color: var(--control-pressed); }
+.dspi-web input:not([type="range"]), .dspi-web select, .dspi-web textarea { border-color: transparent; background-color: var(--control); border-radius: var(--radius-control); }
+.dspi-web input[type="checkbox"], .dspi-web input[type="radio"] { accent-color: var(--accent-fill); }
+.dspi-web input[type="range"] { accent-color: var(--accent-fill); }
+.dspi-web select:focus-visible, .dspi-web textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
+.dspi-web input:not([type="range"]):focus-visible { outline-offset: 0; }
+.dspi-web input[aria-invalid="true"] { outline: 2px solid var(--bad); outline-offset: 0; }
+.dspi-web kbd { border-color: transparent; background: var(--control); }
+.dspi-web button.primary, .dspi-web .guard-buttons .primary, .dspi-web .cs-apply .primary { background: var(--accent-fill); color: var(--on-accent); border-color: transparent; font-weight: 600; }
+.dspi-web button.primary:where(:hover:not(:disabled)) { background: color-mix(in srgb, var(--accent-fill) 88%, #000); }
+
+/* Chosen among options: the selection tone and the accent's text, never an accent outline */
+.dspi-web .eq-pick[aria-pressed="true"],
+.dspi-web .band-n[aria-pressed="true"],
+.dspi-web .limiter-toggle[aria-pressed="true"],
+.dspi-web .limiter-link [aria-checked="true"],
+.dspi-web .band-tabs [aria-selected="true"],
+.dspi-web .input-link[aria-pressed="true"],
+.dspi-web .siggen-types [aria-checked="true"],
+.dspi-web .siggen-outputs [aria-pressed="true"],
+.dspi-web .rta-channels [aria-pressed="true"],
+.dspi-web .eq-tools > button[aria-pressed="true"],
+.dspi-web .strip-button[aria-pressed="true"],
+.dspi-web .fx-pick[aria-selected="true"],
+.dspi-web .fx-split [aria-pressed="true"],
+.dspi-web .fx-chip[aria-pressed="true"],
+.dspi-web .settings-nav button[aria-current="page"],
+.dspi-web .hub-group-pick button[aria-pressed="true"],
+.dspi-web .shape-grid button[aria-checked="true"],
+.dspi-web .slot-bar .slot-verbs > button.on,
+.dspi-web .sys-scene.active,
+.dspi-web .sys-block-on,
+.dspi-web .chip[aria-pressed="true"],
+.dspi-web .tool-chip[aria-pressed="true"] { background: var(--selection); color: var(--accent-text); border-color: transparent; box-shadow: none; font-weight: 600; }
+/* A switch that is on: the accent's fill (it says "on") */
+.dspi-web button[role="switch"][aria-checked="true"], .dspi-web .fx-bool [aria-checked="true"] { background: var(--accent-fill); color: var(--on-accent); border-color: transparent; }
+/* A state that is a warning (mute, a toggle held): its colour on the control tone, no ring */
+.dspi-web .toggle[aria-pressed="true"] { border-color: transparent; background: color-mix(in srgb, var(--warn) 16%, var(--control)); color: var(--warn); }
+.dspi-web .ch-mute[aria-pressed="true"], .dspi-web .output-mute[aria-pressed="true"] { border-color: transparent; background: color-mix(in srgb, var(--bad) 18%, var(--control)); color: var(--bad); }
+
+/* Segments: one control-tone bar as wide as its parts, the chosen one in the selection tone */
+.dspi-web .fx-split, .dspi-web .band-tabs { display: inline-flex; gap: 0; padding: 2px; background: var(--control); border-radius: var(--radius-control); justify-self: start; align-self: flex-start; }
+.dspi-web .fx-split button, .dspi-web .band-tabs button { background: none; border: 0; border-radius: 4px; color: var(--muted); }
+.dspi-web .band-tabs button:first-child, .dspi-web .band-tabs button:last-child { border-radius: 4px; }
+
+/* Chips (§13): options to pick, 24 px, round */
+.dspi-web .chips { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.dspi-web .chip, .dspi-web .fx-chip { min-height: 24px; padding: 0.1rem 0.65rem; border-radius: var(--radius-chip); font-size: 0.8rem; }
+.dspi-web .tool-chip { display: inline-flex; align-items: center; gap: 0.35rem; }
+.dspi-web .tool-chip .shell-icon { width: 0.95rem; height: 0.95rem; }
+
+/* The switch of the inspector and the forms */
+.dspi-web button.switch { position: relative; flex: none; width: 34px; height: 18px; min-height: 0; padding: 0; border: 0; border-radius: 9px; background: var(--control-pressed); }
+.dspi-web button.switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 7px; background: var(--text); transition: left 0.12s; }
+.dspi-web button.switch[aria-checked="true"] { background: var(--accent-fill); }
+.dspi-web button.switch[aria-checked="true"]::after { left: 18px; background: var(--on-accent); }
+
+/* Cards and boxes: apart by tone; a box inside a card by a slightly other tone, not a line */
+.dspi-web .picker .installation, .dspi-web .sys-room, .dspi-web .sys-scenes, .dspi-web .sys-rail, .dspi-web .open-files,
+.dspi-web .sys-chain-col, .dspi-web .ov-inputs, .dspi-web .monitor-lines, .dspi-web .events-manual { border-color: transparent; }
+.dspi-web .desk-outcome, .dspi-web .import-blocks, .dspi-web .lock-covers, .dspi-web .limits-output, .dspi-web .power-dac,
+.dspi-web .limits-report, .dspi-web .autoeq-outcome, .dspi-web .autoeq-preview, .dspi-web .cs-remote, .dspi-web .cs-page,
+.dspi-web .cs-step, .dspi-web .hub-section fieldset, .dspi-web .hub-group-choose, .dspi-web .hub-results,
+.dspi-web .hub-rollout-record, .dspi-web .step-notice, .dspi-web .sys-chip, .dspi-web .sys-lock, .dspi-web .sys-slot, .dspi-web .sys-block {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--text) 4%, transparent);
+}
+.dspi-web .hub-results { border-left: 3px solid var(--ok); }
+.dspi-web .badge { border-color: transparent; background: color-mix(in srgb, var(--warn) 16%, transparent); }
+
+/* Notices (§14): the kind's tint and a 3 px edge, never an outline */
+.dspi-web .banner, .dspi-web .sys-save, .dspi-web .limits-warning, .dspi-web .vreg-warning, .dspi-web .hub-alarm,
+.dspi-web .hub-rollout-tls, .dspi-web .hub-rollout-alarm, .dspi-web .notice-row {
+  border: 0;
+  border-left: 3px solid var(--edge, var(--warn));
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--edge, var(--warn)) 12%, var(--panel));
+}
+.dspi-web .banner-closed, .dspi-web .banner-refused, .dspi-web .hub-rollout-tls, .dspi-web .hub-rollout-alarm, .dspi-web .notice-row-error { --edge: var(--bad); }
+.dspi-web .banner-agent, .dspi-web .notice-row-info { --edge: var(--accent); }
+.dspi-web .notice-row { display: flex; align-items: center; gap: 0.6rem; min-height: 32px; margin: 0; padding: 0.3rem 0.4rem 0.3rem 0.65rem; font-size: 0.9rem; }
+.dspi-web .notice-row .notice-icon { width: 1rem; height: 1rem; color: var(--edge, var(--warn)); }
+.dspi-web .notice-row .notice-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.dspi-web .notice-row button { flex: none; }
+
+/* Floating surfaces: the panel, a shadow, an edge only in the dark */
+.dspi-web .menu [role="menu"], .dspi-web .context-menu, .dspi-web .palette, .dspi-web .main-dialog, .dspi-web .about, .dspi-web .drawer { border-color: var(--float-edge); box-shadow: var(--shadow); }
+
+/* Forms and lists at the left, 760 px at most (§3) */
+.dspi-web .settings-page, .dspi-web .hub-settings-screen, .dspi-web .installer-screen, .dspi-web .device-screen, .dspi-web .devices-page { max-width: var(--content-max); }
+.dspi-web .devices-columns { max-width: var(--content-max); }
+
+/* Empty states (§16): centred where the page has nothing, a 32 px icon, a title, one sentence, one action */
+.dspi-web .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.4rem; min-height: 16rem; padding: 2rem 1rem; text-align: center; flex: 1; }
+.dspi-web .empty-state p { margin: 0; max-width: 28rem; }
+.dspi-web .empty-state .empty-icon { width: 2rem; height: 2rem; color: var(--muted); stroke-width: 1.6; margin-bottom: 0.25rem; }
+.dspi-web .empty-state .empty-title { font-size: 1rem; font-weight: 600; }
+.dspi-web .empty-state .empty-text { color: var(--muted); }
+.dspi-web .empty-state > button { margin-top: 0.5rem; }
+.dspi-web .empty-state.compact { min-height: 0; padding: 1rem; }
+
+/* The page's tools at the right of its head (§7) */
+.dspi-web .page-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; margin-left: auto; }
+.dspi-web .page-head:has(.page-tools) .quick-strip { margin-left: 0; }
+.dspi-web .page-tools > button { min-height: 28px; padding: 0.15rem 0.65rem; font-size: 0.9rem; }
+
+/* Effects: the page is the effect, not a card around it; its head is the intro row (§6) */
+.dspi-web .fx-panel { background: none; padding: 0; border-radius: 0; }
+.dspi-web .fx-panel > .fx-head { min-height: 44px; margin-bottom: 0.25rem; }
+.dspi-web .fx-panel > .fx-head h3 { margin: 0; font-size: 1rem; font-weight: 600; text-transform: none; letter-spacing: 0; color: var(--text); }
+.dspi-web .fx-panel > .fx-plain { margin: -0.25rem 0 1rem; }
+.dspi-web .fx-params { gap: 1rem 1.5rem; }
+
+/* -- WP MXW -- the matrix (DESREV's redesign, MX1's sizes): 56 × 40 cells (dense 44 × 32), 48 × 28 tiles */
+.dspi-web .matrix-screen { --cw: 56px; --chh: 40px; --tw: 48px; --th: 28px; --rw: 168px; display: flex; flex-direction: column; gap: 0.5rem; min-width: 0; }
+.dspi-web .matrix-screen.dense { --cw: 44px; --chh: 32px; --tw: 38px; --th: 24px; --rw: 120px; }
+.dspi-web .mx-scroll { overflow: auto; max-width: 100%; max-height: calc(100vh - var(--top-h, 0px) - var(--bar-h, 0px) - var(--dock-h, 0px) - 6rem); min-height: 12rem; overscroll-behavior: contain; }
+.dspi-web .mx { border-collapse: separate; border-spacing: 0; user-select: none; font-size: 0.85rem; }
+.dspi-web .mx th, .dspi-web .mx td { padding: 0; font-weight: 400; }
+.dspi-web .mx-lab { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.dspi-web .mx-unit { font-size: 10px; color: var(--muted); }
+.dspi-web .mx thead th { position: sticky; top: 0; z-index: 2; background: var(--bg); vertical-align: bottom; }
+.dspi-web .mx .mx-rowhead, .dspi-web .mx .mx-corner, .dspi-web .mx .mx-footlab { position: sticky; left: 0; z-index: 1; background: var(--bg); }
+.dspi-web .mx thead .mx-corner { z-index: 3; }
+.dspi-web .mx-corner { width: var(--rw); min-width: var(--rw); text-align: left; padding: 0 8px 6px !important; }
+.dspi-web .mx-corner .mx-lab { display: block; line-height: 1.3; }
+.dspi-web .mx-pair { width: 12px; min-width: 12px; text-align: center; color: var(--muted); }
+.dspi-web .mx-pairglyph { width: 11px; height: 11px; transform: translateY(calc(var(--chh) / 2)) rotate(90deg); }
+.dspi-web .mx-colhead { width: var(--cw); min-width: var(--cw); max-width: var(--cw); padding: 4px 1px 6px !important; text-align: center; border-radius: 6px 6px 0 0; }
+.dspi-web .mx-colhead.picked { background: var(--selection) !important; }
+.dspi-web .mx-colhead.lit, .dspi-web .mx-rowhead.lit { background-image: linear-gradient(color-mix(in srgb, var(--accent-fill) 9%, transparent), color-mix(in srgb, var(--accent-fill) 9%, transparent)); }
+.dspi-web .mx-colhead.off .mx-colname, .dspi-web .mx-colhead.off .mx-colpill { opacity: 0.7; }
+.dspi-web .mx-pick { border: 0; background: none; padding: 0 2px; min-height: 0; color: var(--muted); font-size: 11px; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; word-break: break-word; max-width: 100%; border-radius: 4px; }
+.dspi-web .mx-pick:hover, .dspi-web .mx-pick[aria-pressed="true"] { color: var(--text); background: none; }
+.dspi-web .mx-colname { width: 100%; }
+.dspi-web .mx-colpill { display: flex; justify-content: center; margin-top: 3px; }
+.dspi-web .mx-colpill .menu > button { min-height: 0; padding: 1px 6px; border-radius: 9px; font-size: 10px; font-weight: 700; color: #111214; background: var(--ch); white-space: nowrap; }
+.dspi-web .mx-colpill .menu > button:hover:not(:disabled) { background: color-mix(in srgb, var(--ch) 85%, #fff); }
+.dspi-web .mx-colpill .menu > button:disabled { opacity: 0.85; }
+.dspi-web .mx-colpill .menu [role="menu"] { right: auto; left: 0; text-align: left; font-size: 0.9rem; }
+.dspi-web .mx thead th.mx-colhead:has([role="menu"]) { z-index: 4; }
+.dspi-web .matrix-screen.dense .mx-colpill .menu > button > span { display: none; }
+.dspi-web .mx-io { display: flex; justify-content: center; gap: 2px; margin-top: 3px; }
+.dspi-web .mx-icon { width: 22px; height: 22px; min-height: 0; padding: 0; display: grid; place-items: center; border: 0; border-radius: 4px; background: none; color: var(--muted); }
+.dspi-web .mx-icon:hover:not(:disabled) { background: var(--control-hover); color: var(--text); }
+.dspi-web .mx-icon .shell-icon { width: 13px; height: 13px; }
+.dspi-web .mx-icon.on { color: var(--accent-text); }
+.dspi-web .mx-icon.muted { color: var(--bad); }
+.dspi-web .mx-icon.conflict { color: var(--warn); }
+.dspi-web .mx-rowhead { width: var(--rw); min-width: var(--rw); max-width: var(--rw); height: var(--chh); padding: 0 8px 0 6px !important; text-align: left; border-radius: 6px 0 0 6px; white-space: nowrap; }
+.dspi-web .mx-rh { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.dspi-web .mx-rowhead.picked { background: var(--selection) !important; }
+.dspi-web .mx-dot-in { flex: none; width: 8px; height: 8px; border-radius: 4px; }
+.dspi-web .mx-rowname { display: block; flex: 1 1 auto; min-width: 0; text-align: left; font-size: 0.85rem; font-weight: 600; color: var(--text); white-space: nowrap; -webkit-line-clamp: unset; }
+.dspi-web .mx-trim { flex: none; width: 64px; }
+.dspi-web .mx-trim .m-trim { margin: 0; }
+.dspi-web .mx-trim input, .dspi-web .mx-footcell input { height: 24px; font: 11.5px var(--mono); text-align: right; padding: 0 6px; }
+.dspi-web .mx-trim.zero input, .dspi-web .mx-footcell .zero input { color: var(--muted); }
+.dspi-web .mx-cell { width: var(--cw); min-width: var(--cw); height: var(--chh); text-align: center; vertical-align: middle; cursor: pointer; outline: none; border-radius: 6px; }
+.dspi-web .mx-stripe > td, .dspi-web .mx-stripe > th { background-image: linear-gradient(var(--stripe), var(--stripe)); }
+.dspi-web .mx-stripe > th.mx-rowhead { background-color: var(--bg); }
+.dspi-web .mx-cell.lit { background-image: linear-gradient(color-mix(in srgb, var(--accent-fill) 8%, transparent), color-mix(in srgb, var(--accent-fill) 8%, transparent)); }
+.dspi-web .mx-cell:focus-visible, .dspi-web .mx-cell.chosen { box-shadow: inset 0 0 0 2px var(--accent-fill); }
+.dspi-web .mx-cell.off > * { opacity: 0.7; }
+.dspi-web .mx-pairend > td, .dspi-web .mx-pairend > th { box-shadow: inset 0 -1px var(--separator); }
+.dspi-web .mx-pairend > td.mx-cell.chosen, .dspi-web .mx-pairend > td.mx-cell:focus-visible { box-shadow: inset 0 0 0 2px var(--accent-fill); }
+.dspi-web .mx-colend { background-image: linear-gradient(to left, var(--separator) 1px, transparent 1px); }
+.dspi-web .mx-empty { display: inline-block; width: 4px; height: 4px; border-radius: 2px; background: var(--border); vertical-align: middle; }
+.dspi-web .mx-cell:not(.on):hover .mx-empty, .dspi-web .mx-cell:not(.on):focus-visible .mx-empty { width: var(--tw); height: var(--th); border-radius: 4px; background: var(--control-hover); }
+.dspi-web .mx-cell:not(.on):hover .mx-empty::after { content: "+"; display: grid; place-items: center; height: 100%; color: var(--muted); font-size: 14px; }
+.dspi-web .mx[aria-readonly="true"] .mx-cell:not(.on):hover .mx-empty::after { content: ""; }
+.dspi-web .mx-tile { position: relative; display: inline-flex; align-items: center; width: var(--tw); height: var(--th); border-radius: 4px; overflow: hidden; vertical-align: middle; font: 12px var(--mono); color: var(--text); }
+.dspi-web .mx-bar { align-self: stretch; width: 3px; flex: none; }
+.dspi-web .mx-g { margin-left: auto; padding-right: 2px; }
+.dspi-web .mx-inv { width: 12px; padding-right: 4px; font-weight: 700; font-size: 11px; color: var(--warn); opacity: 0; cursor: pointer; }
+.dspi-web .mx-inv.on { opacity: 1; }
+.dspi-web .mx-cell:hover .mx-inv:not(.on) { opacity: 0.45; }
+.dspi-web .mx[aria-readonly="true"] .mx-cell:hover .mx-inv:not(.on) { opacity: 0; }
+.dspi-web .mx-edit { position: absolute; inset: 0; width: 100%; height: 100%; border: 0 !important; border-radius: 4px !important; padding: 0 5px !important; font: 12px var(--mono) !important; text-align: right; background: var(--control) !important; outline: 2px solid var(--accent-fill) !important; outline-offset: -2px !important; min-width: 0; }
+.dspi-web .mx-tail { padding: 0 10px !important; height: var(--chh); font-size: 11px; color: var(--muted); white-space: nowrap; text-align: left; }
+.dspi-web .mx-none { opacity: 0.75; }
+.dspi-web .mx-foot-first > * { padding-top: 10px !important; }
+.dspi-web .mx-footlab { text-align: right; padding-right: 10px !important; white-space: nowrap; height: 28px; }
+.dspi-web .mx-footcell { padding: 2px 3px !important; }
+.dspi-web .mx-footcell.off .m-field { opacity: 0.7; }
+.dspi-web .mx-src { height: 24px; font-size: 10.5px; color: var(--muted); text-align: center; white-space: nowrap; overflow: hidden; max-width: var(--cw); text-overflow: ellipsis; }
+.dspi-web .mx-src i { display: inline-block; width: 6px; height: 6px; border-radius: 3px; margin-right: 1px; vertical-align: middle; }
+.dspi-web .mx-src span { margin-left: 2px; }
+.dspi-web .mx-pill { display: inline-block; padding: 1px 6px; border-radius: 9px; font-size: 10px; font-weight: 700; color: #111214; white-space: nowrap; }
+.dspi-web .mx-insp { display: flex; flex-direction: column; gap: 0.5rem; min-width: 0; }
+.dspi-web .mx-insp-head { flex-wrap: wrap; row-gap: 0.25rem; }
+.dspi-web .mx-insp .insp-row input[type="range"] { flex: 1; min-width: 4rem; margin: 0; }
+.dspi-web .mx-insp .insp-row .value-field input { width: 5.5rem; font-family: var(--mono); font-size: 0.85rem; text-align: right; }
+.dspi-web .mx-insp > button { align-self: flex-start; }
+.dspi-web .mx-summary { margin: 0; }
+@media (max-width: 520px) {
+  .dspi-web .matrix-screen:not(.dense) { --rw: 132px; }
+}
+/* -- WP WEB -- what limits the session (the status strip's error, a read-only reason) as a notice row: its tint and edge, words in the text's colour */
+.dspi-web .status-strip > p.error, .dspi-web .status-strip > .read-only-reason { margin: 0; padding: 0.4rem 0.65rem; border-left: 3px solid var(--edge, var(--bad)); border-radius: var(--radius-control); background: color-mix(in srgb, var(--edge, var(--bad)) 12%, var(--panel)); color: var(--text); }
+.dspi-web .status-strip > .read-only-reason { --edge: var(--accent); }
+/* -- WP WEB -- an error sentence of a page (`p.error`, the core's words) as a notice row: never a bare red line (§14) */
+.dspi-web .page p.error { padding: 0.4rem 0.65rem; border-left: 3px solid var(--bad); border-radius: var(--radius-control); background: color-mix(in srgb, var(--bad) 12%, var(--panel)); color: var(--text); }

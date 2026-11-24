@@ -34,6 +34,7 @@ import {
   sourceTitle,
   writeTrim,
 } from "./model";
+import { EmptyState } from "../../ui/design"; // -- WP WEB --
 
 /** The registry's `pre` range until `describe` answers. */
 export const TRIM_RANGE: [number, number] = [-60, 24];
@@ -313,7 +314,7 @@ export function InputsScreen(props: ScreenProps) {
   const range = useTrimRange(session);
   const usbActive = useUsbActive(session);
   const names = useSourceNames(session);
-  if (!s) return <p class="empty">This DSPi's inputs are not known yet.</p>;
+  if (!s) return <EmptyState icon="chart-line" title="Reading the inputs…" text="This DSPi's inputs are not known yet." />; // -- WP WEB --
   const rows = inputRows(s, liveInputs(s, usbActive));
   const pairs: ChannelRow[][] = [];
   for (const r of rows) {

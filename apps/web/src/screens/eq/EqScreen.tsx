@@ -56,6 +56,7 @@ import {
   type Geometry,
   type Limits,
 } from "./model";
+import { EmptyState } from "../../ui/design"; // -- WP WEB --
 
 interface EqChannel extends ChannelRow {
   output: boolean;
@@ -151,7 +152,7 @@ export function EqScreen(props: ScreenProps) {
     };
   }, [session]);
 
-  if (!s || !Array.isArray(s.filters) || !named) return <p class="empty">This DSPi's filters are not known yet.</p>;
+  if (!s || !Array.isArray(s.filters) || !named) return <EmptyState icon="chart-line" title="Reading the filters…" text="This DSPi's filters are not known yet." />; // -- WP WEB --
   // -- WP WB6D -- opened from the System view: at its channel and tab
   return <EqView session={session} ask={ask} s={s} ro={ro} usbActive={usbActive} limits={limits} outLimits={outLimits} labels={st.snapshot?.outputLabels} target={props.target} open={props.open} />;
 }
@@ -295,7 +296,7 @@ const EqView = memo(
     );
 
     const ctx = useContextMenu(); // -- WP WEBM4 -- a channel's menu
-    if (!chosen) return <p class="empty">This DSPi has no channels to show.</p>;
+    if (!chosen) return <EmptyState icon="chart-line" title="No channels" text="This DSPi has no channels to show." />; // -- WP WEB --
     // -- WP WEBM2 -- the band bar: under the graph, or in the inspector with the shape grid
     const chip = (
       <BandChip

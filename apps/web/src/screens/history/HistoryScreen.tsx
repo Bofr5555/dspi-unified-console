@@ -8,6 +8,7 @@ import { useSessionState } from "../../ui/components";
 import type { ScreenProps } from "../../ui/screens";
 import { UndoButtons } from "../../ui/undo";
 import { HISTORY_ROWS, historyRows, sameHistory } from "./model";
+import { EmptyState } from "../../ui/design"; // -- WP WEB --
 
 export function HistoryScreen(props: ScreenProps) {
   const { session } = props;
@@ -63,7 +64,8 @@ export function HistoryScreen(props: ScreenProps) {
           ))}
         </ol>
       ) : (
-        <p class="empty">No changes since this DSPi was opened.</p>
+        // -- WP WEB -- DL3a's empty state
+        <EmptyState icon="history" title="No changes yet" text="What you change on this device is listed here, newest first, to undo or redo." />
       )}
       <p class="muted">The changes of this connection: a reconnect starts a new list.</p>
     </section>

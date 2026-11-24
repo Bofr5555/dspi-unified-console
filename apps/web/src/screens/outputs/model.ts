@@ -7,6 +7,7 @@
 // I/O; the unit tests reach all of it.
 
 import type { DspState } from "../../core/protocol";
+import { readNumber } from "../../ui/number";
 
 // ---------------------------------------------------------------- crossover
 
@@ -119,14 +120,8 @@ function trimmed(v: number, max: number, min: number): string {
 
 /** A typed level or delay: a number with its unit allowed ("-3", "12.5 ms", "+2 dB"). */
 export function parseLevel(text: string, unit: string): number | null {
-  let s = text.trim().toLowerCase().replace(/\s+/g, "").replace("−", "-");
-  if (unit && s.endsWith(unit)) s = s.slice(0, -unit.length);
-  // A dBFS field takes "-6 dB" too.
-  else if (unit === "dbfs" && s.endsWith("db")) s = s.slice(0, -2);
-  if (s.startsWith("+")) s = s.slice(1);
-  if (!/^-?(\d+\.?\d*|\.\d+)$/.test(s)) return null;
-  const v = Number(s);
-  return Number.isFinite(v) ? v : null;
+  // -- WP WEB -- as Qt's fields (USR1): a decimal comma, U+2212, the unit after it; a dBFS field takes "-6 dB" too
+  return readNumber(text, unit === "dbfs" ? ["dbfs", "db"] : unit ? [unit] : []);
 }
 
 export function clamp(v: number, r: readonly [number, number]): number {
