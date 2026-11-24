@@ -1309,6 +1309,9 @@ impl DspiCore {
             self.lock().measure_tap.set(true);
             let mut session = Session::new(plan, ctx, Instant::now());
             session.set_actor(actor); // -- WP ROLL1 --
+            // -- INTC -- the core's tests run it on a loaded CPU's wall clock
+            #[cfg(test)]
+            session.wall_clock_tests();
             let state = session.state();
             // Review P5-D: the passive microphone RTA never runs beside the
             // generator (it would show the stimulus as programme audio).
