@@ -9,8 +9,7 @@ import UConsole
 // -- WP DL3a -- The slots as ListRows in the 760 px column at the page's left
 // (DESIGN-LANGUAGE §3, §9): number, name, a caption with the state; Recall,
 // Save and the menu show on hover and on the active row; a double click
-// recalls. Save is the one accent button, while there is something to save
-// (INTC: in the tab row).
+// recalls. (INTC: Save in the tab row; REVDFIX: not an accent button.)
 Item {
     id: page
     objectName: "LibraryPresets"
@@ -21,16 +20,16 @@ Item {
     function menu(slot, item, x, y) { ContextMenus.slot(slot, page.host ? page.host.dialogs : null, item, x, y) }
 
     // -- INTC (DL3a fold) -- the page's one action in the tab row (PageHost.
-    // pageTools): Save the current settings in the active slot, the accent
-    // while there is something to save. The rows keep Recall, a quiet Save and
-    // the menu on hover.
+    // pageTools): Save the current settings in the active slot. The rows keep
+    // Recall, a quiet Save and the menu on hover.
+    // -- WP REVDFIX -- (REVD D6) a secondary button: the top bar's Save to
+    // Device is the view's one primary (DESIGN-LANGUAGE §7).
     readonly property Component pageTools: Component {
         AppButton {
             objectName: "LibraryPresets.tools.save"
             readonly property int slot: DeviceModel.presets.activeSlot
             visible: DeviceModel.connected && slot >= 0
             enabled: page.writable
-            primary: SidebarController.unsaved
             iconName: "save"
             //: %1 is the active preset slot's number
             text: qsTr("Save to Preset %1").arg(slot + 1)
