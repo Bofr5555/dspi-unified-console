@@ -212,7 +212,7 @@ fun ChannelRow(
 /**
  * -- BUG1, review c86 F3 -- The name column: an output shows its short label here ("R · High",
  * beside its OUTn pill). 100 dp, not the old 96: the narrowest that keeps the short forms whole
- * at 15 sp on a 360 dp phone at font scale 1.0 and 1.3, the longest being "USB 3 · High" (98 dp at
+ * at 15 sp on a 360 dp phone at font scale 1.0 and 1.3, the longest being "USB 3 · Full" (98 dp at
  * 1.3; OutputLabelsFitBug1Test). The meter beside it takes what is left, so the row does not grow.
  */
 private val NAME_WIDTH = 100.dp

@@ -67,17 +67,17 @@ class OutputLabelsFitBug1Test {
         )
 
     /** The default demo's forms, and the longest a routing gives (both inputs, another input, nothing).
-     *  -- WP INTD -- (REVD W12) the core says no "· None" and no "· Full" any more: "Out 3", "R". */
+     *  -- WP INTD -- (REVD W12) the core says no "· None" and no "· Full" any more: "USB 3", "Out 3", "R". */
     private val longer =
         listOf(
             label(0, "Out 1 · L+R · High", "L+R · High", "SPDIF 1 L"),
-            label(1, "Out 2 · USB 3 · High", "USB 3 · High", "SPDIF 1 R"),
+            label(1, "Out 2 · USB 3", "USB 3", "SPDIF 1 R"),
             label(2, "Out 3", "Out 3", "SPDIF 2 L"),
             label(3, "Out 4 · R", "R", "SPDIF 2 R")
         )
     private val longerCards =
         listOf(
-            OutputCard(0, 1, "", "Out 1 · L+R · High", "Out 2 · USB 3 · High", "L+R · High", "USB 3 · High"),
+            OutputCard(0, 1, "", "Out 1 · L+R · High", "Out 2 · USB 3", "L+R · High", "USB 3"),
             OutputCard(2, 3, "", "Out 3", "Out 4 · R", "Out 3", "R")
         )
 

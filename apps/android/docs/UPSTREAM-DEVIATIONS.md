@@ -1074,7 +1074,7 @@ now shows the core's label instead while the name is a default
    not on the Home rows (no room on a phone).
 4. **Row width:** the Home rows' name column is 100 dp, not 96 dp: the
    narrowest that keeps the short forms whole at 15 sp on a 360 dp phone at
-   font scale 1.0 and 1.3, the longest being "USB 3 · High"
+   font scale 1.0 and 1.3, the longest being "USB 3 · Full" (before INTD dropped "· Full")
    (`OutputLabelsFitBug1Test`); the meter beside it takes what is left, so the
    row does not grow.
 5. **Dashboard:** output cards pair by the K340 crossfeed pair map when the
