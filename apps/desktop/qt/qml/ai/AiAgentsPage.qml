@@ -512,21 +512,13 @@ SettingsPage {
             prefix: "AiAgents.grants"
             Layout.fillWidth: true
         }
+        // -- WP DL7 -- Modern: an EmptyState while nothing is done (INTC: the list's own)
         AiActivityList {
+            id: activityLog
             prefix: "AiAgents.log"
-            visible: !page.modern || AiController.activity.length > 0   // -- WP DL7 --
+            emptyName: "AiAgents.logEmpty"
             Layout.fillWidth: true
-            Layout.preferredHeight: 300
-        }
-        EmptyState {   // -- WP DL7 -- Modern: nothing done yet
-            objectName: "AiAgents.logEmpty"
-            visible: page.modern && AiController.activity.length === 0
-            Layout.fillWidth: true
-            iconName: "bot"
-            title: qsTr("No agent activity yet")
-            text: qsTr("What AI agents change shows here, newest first, each with Undo.")
-            actionText: AiController.showReads ? "" : qsTr("Show Reads")
-            onAction: AiController.showReads = true
+            Layout.preferredHeight: activityLog.showsEmpty ? -1 : 300
         }
     }
 

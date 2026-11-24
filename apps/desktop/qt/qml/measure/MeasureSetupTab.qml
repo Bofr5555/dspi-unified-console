@@ -250,6 +250,8 @@ ScrollView {
                             label: qsTr("Speaker")
                             Layout.preferredWidth: 60
                             enabled: tab.editable && modelData.on
+                            //: A speaker field with no speaker named (Measure and Settings › Speakers)
+                            placeholderText: qsTr("Not set")   // -- INTC (DL7 fold) --
                             text: modelData.speaker
                             onCommitted: t => mc.setOutputSpeaker(modelData.output, t)
                         }

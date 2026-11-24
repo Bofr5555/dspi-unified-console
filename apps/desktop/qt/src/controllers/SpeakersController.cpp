@@ -323,6 +323,11 @@ void SpeakersController::setStored(const StatePtr &st, const QJsonObject &layout
     // The person's unconfirmed edits stay in the draft
     const bool keepDraft = st->touched && origin != QLatin1String("confirm");
     st->stored = layout;
+    // -- INTC (DL7 fold) -- a layout written elsewhere (an agent's roles from
+    // the person's words, a detection, another console) makes what this page
+    // said of its own Confirm or save stale: no "Confirmed: …" under roles an
+    // agent set. An error stays until the next action.
+    if (origin == QLatin1String("read") && !st->saidError && !st->said.isEmpty()) say(st, QString(), false);
     if (!keepDraft) rebuild(st);
     else if (shown(st)) emit rowsChanged();   // -- WP ADETQ -- the pills are judged against it
     if (shown(st)) emit storedChanged(origin);

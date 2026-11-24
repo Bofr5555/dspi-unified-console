@@ -6,12 +6,31 @@ import UConsole
 // -- WP MCP4 -- What AI agents did, newest first (AiController.activity), with
 // Undo per change: it puts back what the row changed, as the user's own edit,
 // and leaves alone what someone has changed since (the row then says so).
+// -- INTC (DL7 fold) -- Modern: no outline around the list (Theme.lineWidth),
+// and with nothing done an EmptyState in place of the list and its buttons
+// (`emptyName` is its objectName; its action shows the reads while they are
+// hidden). Classic keeps the framed list and its sentence.
 ColumnLayout {
     id: log
     property string prefix: "AiActivity"
+    property string emptyName: prefix + ".empty"
+    readonly property bool showsEmpty: LayoutController.modern && AiController.activity.length === 0
     spacing: Theme.spacingSmall
 
+    EmptyState {
+        objectName: log.emptyName
+        visible: log.showsEmpty
+        Layout.fillWidth: true
+        Layout.fillHeight: true
+        iconName: "bot"
+        title: qsTr("No agent activity yet")
+        text: qsTr("What AI agents change shows here, newest first, each with Undo.")
+        actionText: AiController.showReads ? "" : qsTr("Show Reads")
+        onAction: AiController.showReads = true
+    }
+
     RowLayout {
+        visible: !log.showsEmpty
         Layout.fillWidth: true
         spacing: Theme.spacingSmall
         AppCheckBox {
@@ -37,12 +56,13 @@ ColumnLayout {
     }
 
     Rectangle {
+        visible: !log.showsEmpty
         Layout.fillWidth: true
         Layout.fillHeight: true
         Layout.minimumHeight: 120
         radius: Theme.radius
         color: Theme.panel
-        border.width: 1
+        border.width: Theme.lineWidth   // -- INTC (DL7 fold) -- none in Modern
         border.color: Theme.separator
 
         ListView {
@@ -56,7 +76,7 @@ ColumnLayout {
                 return !f || f === list || f === list.contentItem
             }
             anchors.fill: parent
-            anchors.margins: 1
+            anchors.margins: Theme.lineWidth
             clip: true
             model: AiController.activity
             boundsBehavior: Flickable.StopAtBounds

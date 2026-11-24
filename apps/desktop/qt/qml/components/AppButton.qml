@@ -7,10 +7,14 @@ import UConsole
 // (`destructive`). An optional icon sits before the text.
 // -- WP DL0 -- Modern: no outline (the control tone is the edge), radius 6,
 // hover and pressed in the control tones; keyboard focus is a 2 px ring.
+// -- INTC (DL7 fold) -- `danger`: a quiet destructive action outside a
+// confirmation (DESIGN-LANGUAGE §7: the red fill only inside the sheet that
+// asks): the secondary button's fill, its icon and text in dangerText.
 Button {
     id: button
     property bool primary: false
     property bool destructive: false
+    property bool danger: false
     property string iconName
     property string toolTip
 
@@ -24,7 +28,7 @@ Button {
     focusPolicy: Qt.StrongFocus
 
     readonly property color fill: primary ? Theme.accent : destructive ? Theme.danger : Theme.control
-    readonly property color ink: primary || destructive ? Theme.textOnAccent : Theme.text
+    readonly property color ink: primary || destructive ? Theme.textOnAccent : danger ? Theme.dangerText : Theme.text
 
     contentItem: Item {
         implicitWidth: label.implicitWidth

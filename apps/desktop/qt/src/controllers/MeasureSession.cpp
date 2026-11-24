@@ -779,7 +779,9 @@ void MeasureSession::onSnapshot() {
                              { QStringLiteral("label"), o.toMap().value(QStringLiteral("label")) },
                              { QStringLiteral("on"), false },
                              { QStringLiteral("role"), QStringLiteral("full") },
-                             { QStringLiteral("speaker"), QStringLiteral("L") },
+                             // -- INTC (DL7 fold) -- no speaker until one is named: the
+                             // field shows "Not set", as Settings › Speakers does (was "L")
+                             { QStringLiteral("speaker"), QString() },
                              { QStringLiteral("group"), 0 } };
             for (const QVariant &old : std::as_const(m_setupOutputs))
                 if (old.toMap().value(QStringLiteral("output")).toInt() == n) {

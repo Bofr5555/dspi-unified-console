@@ -53,32 +53,8 @@ Panel {
                 text: qsTr("Stop")
                 iconName: "square"
                 destructive: !panel.modern   // -- WP DL7 -- Modern: quiet, its text in dangerText
+                danger: panel.modern         // -- INTC (DL7 fold) -- AppButton's quiet danger kind
                 onClicked: AiController.stop()
-                // AppButton's own content, in dangerText in Modern (AppButton has no such kind yet)
-                contentItem: Item {
-                    id: stopFace
-                    readonly property color ink: !stop.enabled ? Theme.textDisabled : panel.modern ? Theme.dangerText : stop.ink
-                    implicitWidth: stopLabel.implicitWidth
-                    implicitHeight: stopLabel.implicitHeight
-                    Row {
-                        id: stopLabel
-                        anchors.centerIn: parent
-                        spacing: 6
-                        Icon {
-                            anchors.verticalCenter: parent.verticalCenter
-                            name: stop.iconName
-                            size: 14
-                            color: stopFace.ink
-                        }
-                        Text {
-                            anchors.verticalCenter: parent.verticalCenter
-                            textFormat: Text.PlainText
-                            text: stop.text
-                            font: stop.font
-                            color: stopFace.ink
-                        }
-                    }
-                }
             }
             AppButton {
                 objectName: "AiAgents.settings"
@@ -152,21 +128,11 @@ Panel {
             Layout.fillWidth: true
         }
 
+        // -- WP DL7 -- Modern: an EmptyState while nothing is done (INTC: the list's own)
         AiActivityList {
-            visible: !panel.modern || AiController.activity.length > 0   // -- WP DL7 --
+            emptyName: "AiAgentsPanel.empty"
             Layout.fillWidth: true
             Layout.fillHeight: true
-        }
-        EmptyState {   // -- WP DL7 -- Modern: nothing done yet
-            objectName: "AiAgentsPanel.empty"
-            visible: panel.modern && AiController.activity.length === 0
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            iconName: "bot"
-            title: qsTr("No agent activity yet")
-            text: qsTr("What AI agents change shows here, newest first, each with Undo.")
-            actionText: AiController.showReads ? "" : qsTr("Show Reads")
-            onAction: AiController.showReads = true
         }
     }
 }

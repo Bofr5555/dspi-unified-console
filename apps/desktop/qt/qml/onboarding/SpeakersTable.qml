@@ -89,7 +89,8 @@ ColumnLayout {
                 label: qsTr("Speaker of %1").arg(row.modelData.label)
                 Layout.preferredWidth: 72
                 enabled: table.editable && row.modelData.included
-                placeholderText: qsTr("Speaker")
+                //: A speaker field with no speaker named (Measure and Settings › Speakers)
+                placeholderText: qsTr("Not set")   // -- INTC (DL7 fold) -- Measure's placeholder (was "Speaker")
                 text: row.modelData.speaker
                 onCommitted: t => table.sc.setSpeaker(row.modelData.output, t)
             }
