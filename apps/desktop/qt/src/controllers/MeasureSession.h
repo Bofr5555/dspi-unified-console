@@ -184,16 +184,19 @@ public:
     bool micCalibrated() const { return !m_micDocument.isEmpty(); }
     QByteArray micDocument() const { return m_micDocument; }
 
-    QVariantList setupOutputs() const { return m_setupOutputs; }
-    QString placement() const { return m_placement; }
+    // -- WP DL2 -- (SHOW 3) while an AI agent's measurement runs, the form
+    // shows the agent's run (its outputs, placement and sweep), not the
+    // person's choices, which stay as they were and come back after it
+    QVariantList setupOutputs() const;
+    QString placement() const;
     void setPlacement(const QString &p);
-    int count() const { return m_count; }
+    int count() const;
     void setCount(int n);
     QString coupler() const { return m_coupler; }
     void setCoupler(const QString &c);
-    int sweepMs() const { return m_sweepMs; }
+    int sweepMs() const;
     void setSweepMs(int ms);
-    int passes() const { return m_passes; }
+    int passes() const;
     void setPasses(int n);
     QString runName() const { return m_runName; }
     void setRunName(const QString &n);
@@ -504,6 +507,8 @@ private:
     // -- WP MCP5 -- the low-end search runs; "AI · name" while an agent's request does
     bool m_rolloffRunning = false;
     QString m_agentLabel;
+    QJsonObject m_agentSetup;   // -- WP DL2 -- the agent's measurement's setup while it runs
+    QString agentRunWords() const;
     void onRolloffState(const QByteArray &json);
     // -- WP ADETQ -- the speaker detection runs (the app's or an agent's), its last state
     bool m_detectRunning = false;

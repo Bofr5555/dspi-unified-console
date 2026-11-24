@@ -13,6 +13,10 @@ import UConsole
 // `graph` is MeasureController.graph()'s map: { series: [{ kind, label,
 // colour, points: [x (0 to 1), dB, trusted (0 or 1), ...], spread? }], yMin,
 // yMax, unit }. A click picks a frequency (picked), a drag a range (spanned).
+// -- WP DL2 -- Modern: in a GraphFrame (DESIGN-LANGUAGE §12): no outline, the
+// plot to the frame's edges, its grid and axis labels (fontCaption, inside
+// the plot, never cut), "No curve yet" as its empty label. Classic keeps the
+// 1 px box and its own labels outside the plot.
 Rectangle {
     id: root
     property string title
@@ -41,9 +45,10 @@ Rectangle {
         return ChannelPalette.outputs[(s.colour || 0) % ChannelPalette.outputs.length]
     }
 
+    readonly property bool modern: LayoutController.modern   // -- WP DL2 --
     radius: Theme.radius
-    color: Theme.panel
-    border.width: 1
+    color: modern ? "transparent" : Theme.panel
+    border.width: modern ? 0 : 1
     border.color: Theme.separator
     implicitHeight: 260
     clip: true
@@ -60,18 +65,41 @@ Rectangle {
         return out
     }
 
+    // -- WP DL2 -- the frame's ticks: `at` 0 to 1 over the plot
+    function dbText(v) { return v > 0 ? "+" + v : v < 0 ? "\u2212" + (-v) : "0" }
+    readonly property var xTicks: freqMarks.map(m => ({ at: Math.log(m.hz / 20) / Math.log(1000), text: m.text }))
+    readonly property var yTicks: dbMarks.map((v, i) => ({
+        at: (yMax - v) / Math.max(1e-6, yMax - yMin),
+        text: dbText(v) + (i === dbMarks.length - 1 && unit.length ? " " + unit : "")
+    }))
+    GraphFrame {
+        id: frame
+        objectName: root.objectName.length ? root.objectName + ".frame" : ""
+        visible: root.modern
+        anchors.fill: parent
+        xTicks: root.xTicks
+        yTicks: root.yTicks
+        // The grid is the canvas's (below): the frame's grid lines are items
+        // under the labels, which the pages' contrast check reads as their ground
+        grid: false
+        empty: root.series.length === 0
+        emptyText: qsTr("No curve yet")
+    }
+
     Item {
         id: plot
+        // -- WP DL2 -- Modern: the frame's plot area (the whole graph)
+        parent: root.modern ? frame.plotArea : root
         anchors.fill: parent
-        anchors.leftMargin: 34
-        anchors.rightMargin: 10
-        anchors.topMargin: 10
-        anchors.bottomMargin: 20
+        anchors.leftMargin: root.modern ? 0 : 34
+        anchors.rightMargin: root.modern ? 0 : 10
+        anchors.topMargin: root.modern ? 0 : 10
+        anchors.bottomMargin: root.modern ? 0 : 20
 
         function yOf(db) { return (root.yMax - db) / Math.max(1e-6, root.yMax - root.yMin) * height }
 
         Repeater {
-            model: root.dbMarks
+            model: root.modern ? [] : root.dbMarks
             Rectangle {
                 required property real modelData
                 width: plot.width
@@ -82,7 +110,7 @@ Rectangle {
             }
         }
         Repeater {
-            model: root.freqMarks
+            model: root.modern ? [] : root.freqMarks
             Rectangle {
                 required property var modelData
                 x: root.xOfHz(modelData.hz)
@@ -113,6 +141,21 @@ Rectangle {
                 ctx.lineJoin = "round"
                 const w = width, h = height
                 const yOf = db => (root.yMax - db) / Math.max(1e-6, root.yMax - root.yMin) * h
+                // -- WP DL2 -- Modern: the grid, under the curves
+                if (root.modern) {
+                    ctx.strokeStyle = Theme.graphGrid
+                    ctx.lineWidth = 1
+                    ctx.beginPath()
+                    for (const m of root.freqMarks) {
+                        const x = Math.round(root.xOfHz(m.hz)) + 0.5
+                        if (x > 1 && x < w - 1) { ctx.moveTo(x, 0); ctx.lineTo(x, h) }
+                    }
+                    for (const v of root.dbMarks) {
+                        const y = Math.round(yOf(v)) + 0.5
+                        if (y > 1 && y < h - 1) { ctx.moveTo(0, y); ctx.lineTo(w, y) }
+                    }
+                    ctx.stroke()
+                }
                 let drawn = 0
                 const kinds = []
                 for (const s of root.series) {
@@ -168,6 +211,11 @@ Rectangle {
             Connections {
                 target: Theme
                 function onDarkChanged() { canvas.requestPaint() }
+                function onGraphGridChanged() { canvas.requestPaint() }   // -- WP DL2 -- the tone
+            }
+            Connections {
+                target: root
+                function onModernChanged() { canvas.requestPaint() }   // -- WP DL2 --
             }
             onWidthChanged: requestPaint()
             onHeightChanged: requestPaint()
@@ -186,9 +234,9 @@ Rectangle {
             }
         }
     }
-    // dB labels on the left, frequency labels along the bottom
+    // dB labels on the left, frequency labels along the bottom (Classic; the frame's in Modern)
     Repeater {
-        model: root.dbMarks
+        model: root.modern ? [] : root.dbMarks
         Text {
             required property real modelData
             x: 4
@@ -200,7 +248,7 @@ Rectangle {
         }
     }
     Repeater {
-        model: root.freqMarks
+        model: root.modern ? [] : root.freqMarks
         Text {
             required property var modelData
             x: plot.x + root.xOfHz(modelData.hz) - width / 2
@@ -212,6 +260,7 @@ Rectangle {
         }
     }
     Text {
+        visible: !root.modern
         x: plot.x + 4
         y: 0
         text: root.unit
@@ -223,12 +272,12 @@ Rectangle {
         visible: root.series.length > 0
         anchors.top: parent.top
         anchors.right: parent.right
-        anchors.margins: 12
+        anchors.margins: root.modern ? 8 : 12
         width: key.implicitWidth + 12
         height: key.implicitHeight + 6
         radius: Theme.radiusSmall
         color: Theme.window
-        opacity: 0.9
+        opacity: root.modern ? 0.92 : 0.9
         Column {
             id: key
             anchors.centerIn: parent
@@ -247,7 +296,7 @@ Rectangle {
                     Text {
                         textFormat: Text.PlainText
                         text: modelData.label + (modelData.kind === "target" ? qsTr(" (dashed)") : modelData.kind === "predicted" ? qsTr(" (dotted)") : "")
-                        font.pixelSize: 9
+                        font.pixelSize: root.modern ? Theme.fontCaption.pixelSize : 9
                         color: Theme.text
                     }
                 }
@@ -255,7 +304,7 @@ Rectangle {
         }
     }
     Text {
-        visible: root.series.length === 0
+        visible: root.series.length === 0 && !root.modern
         anchors.centerIn: parent
         text: qsTr("No curve yet")
         font: Theme.fontSmall

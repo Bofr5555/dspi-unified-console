@@ -94,6 +94,15 @@ ScrollView {
         return null
     }
 
+    // -- WP DL2 -- Modern: no heading that repeats the tab, the state as a
+    // chip beside Start Live, why it waits as a notice row, the adjustments
+    // as a section; Classic keeps its heading, lines and card
+    readonly property bool modern: LayoutController.modern
+    component Section: Card {
+        color: tab.modern ? "transparent" : Theme.panel
+        padding: tab.modern ? 0 : Theme.spacing
+    }
+
     function start() {
         mc.liveStart({ output: tab.output, role: tab.role, mode: tab.mode, placement: tab.placement,
                        coupler: tab.coupler, smoothing: tab.smoothing, averaging: tab.averaging })
@@ -111,6 +120,7 @@ ScrollView {
         RowLayout {
             spacing: Theme.spacingSmall
             Text {
+                visible: !tab.modern
                 Layout.fillWidth: true
                 text: qsTr("Live response")
                 font: Theme.fontTitle
@@ -128,14 +138,55 @@ ScrollView {
                 objectName: "MeasureLive.stop"
                 visible: tab.active
                 text: qsTr("Stop Live")
-                destructive: true
+                destructive: !tab.modern
                 onClicked: mc.liveStop()
             }
+            // -- WP DL2 -- the state as a status chip (a dot and the words)
+            Rectangle {
+                objectName: "MeasureLive.status"
+                visible: tab.modern && mc.liveText.length > 0
+                Layout.maximumWidth: 480
+                implicitWidth: statusRow.implicitWidth + 20
+                implicitHeight: Math.max(22, statusRow.implicitHeight + 6)
+                radius: height / 2
+                color: Theme.control
+                RowLayout {
+                    id: statusRow
+                    anchors.fill: parent
+                    anchors.leftMargin: 10
+                    anchors.rightMargin: 10
+                    spacing: 6
+                    Rectangle {
+                        width: 6
+                        height: 6
+                        radius: 3
+                        color: mc.liveIssueText.length ? Theme.warning : tab.active ? Theme.success : Theme.textMuted
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        textFormat: Text.PlainText
+                        text: mc.liveText
+                        font: Theme.fontSmall
+                        color: Theme.text
+                        elide: Text.ElideRight
+                    }
+                }
+                Accessible.role: Accessible.StaticText
+                Accessible.name: mc.liveText
+            }
+            Item { visible: tab.modern; Layout.fillWidth: true }
         }
         // -- WP P5FOLLOW -- why Start Live waits
+        NoticeRow {
+            objectName: tab.modern ? "MeasureLive.placementNeeded" : ""
+            visible: tab.modern && !tab.active && tab.placement.length === 0
+            Layout.fillWidth: true
+            kind: "warning"
+            text: qsTr("Choose the placement first: speakers or headphones on a coupler. Headphones are measured much more quietly.")
+        }
         Text {
-            objectName: "MeasureLive.placementNeeded"
-            visible: !tab.active && tab.placement.length === 0
+            objectName: tab.modern ? "" : "MeasureLive.placementNeeded"
+            visible: !tab.modern && !tab.active && tab.placement.length === 0
             Layout.fillWidth: true
             text: qsTr("Choose the placement first: speakers or headphones on a coupler. Headphones are measured much more quietly.")
             font: Theme.fontBody
@@ -262,6 +313,7 @@ ScrollView {
         }
         Text {
             objectName: "MeasureLive.state"
+            visible: !tab.modern   // -- WP DL2 -- Modern: the status chip
             Layout.fillWidth: true
             textFormat: Text.PlainText
             text: mc.liveText
@@ -269,13 +321,20 @@ ScrollView {
             color: Theme.text
         }
         Text {
-            visible: text.length > 0
+            visible: text.length > 0 && !tab.modern
             Layout.fillWidth: true
             textFormat: Text.PlainText
             text: mc.liveIssueText
             font: Theme.fontBody
             color: Theme.dangerText
             wrapMode: Text.WordWrap
+        }
+        NoticeRow {
+            objectName: "MeasureLive.issue"
+            visible: text.length > 0 && tab.modern
+            Layout.fillWidth: true
+            kind: "error"
+            text: mc.liveIssueText
         }
         MeasureGraph {
             objectName: "MeasureLive.graph"
@@ -305,7 +364,7 @@ ScrollView {
         }
 
         // The direct adjustments
-        Card {
+        Section {
             title: qsTr("Direct adjustments")
             Layout.fillWidth: true
             RowLayout {
@@ -406,8 +465,16 @@ ScrollView {
                     Layout.fillWidth: true
                     text: mc.proposal.reason || ""
                     font: Theme.fontBody
-                    color: Theme.warning
+                    // -- WP DL2 -- Modern: a warning icon before words in the text colour
+                    color: tab.modern ? Theme.text : Theme.warning
                     wrapMode: Text.WordWrap
+                    leftPadding: tab.modern ? 22 : 0
+                    Icon {
+                        visible: tab.modern
+                        y: Math.max(0, (parent.font.pixelSize * 1.3 - height) / 2)
+                        name: "triangle-alert"
+                        color: Theme.warning
+                    }
                 }
                 RowLayout {
                     visible: (mc.proposal.reason || "").length === 0
