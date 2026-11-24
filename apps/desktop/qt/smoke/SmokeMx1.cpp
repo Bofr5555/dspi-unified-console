@@ -224,11 +224,27 @@ void keys(Mx &m, const QString &where) {
     m.key(Qt::Key_Escape);
     m.check(where + QStringLiteral(": Escape puts the gain back"), m.route(1, 1, true, 3.5, false) && m.gridHasKeys());
     m.check(where + QStringLiteral(": and the tile shows it"), field && field->property("text").toString() == QLatin1String("+3.5"));
-    m.key(Qt::Key_Minus);
-    m.check(where + QStringLiteral(": - steps down 0.5 dB"), m.route(1, 1, true, 3, false));
+    // -- WP REVDFIX -- (REVD G1) "-6" on the grid is −6 dB: - starts the typed gain
+    m.typeKeys(QStringLiteral("-6"));
+    m.check(where + QStringLiteral(": - starts typing a negative gain"), field && field->hasActiveFocus()
+            && field->property("text").toString() == QLatin1String("-6"));
+    m.key(Qt::Key_Return);
+    m.check(where + QStringLiteral(": typed -6 on the grid is -6 dB"), m.route(1, 1, true, -6, false));
+    m.typeKeys(QStringLiteral(".5"));
+    m.key(Qt::Key_Return);
+    m.check(where + QStringLiteral(": and . starts a decimal"), m.route(1, 1, true, 0.5, false));
     m.key(Qt::Key_Plus);
-    m.key(Qt::Key_Plus);
-    m.check(where + QStringLiteral(": + steps up 0.5 dB"), m.route(1, 1, true, 4, false));
+    m.check(where + QStringLiteral(": + starts typing too"), field && field->hasActiveFocus()
+            && field->property("text").toString() == QLatin1String("+"));
+    m.typeKeys(QStringLiteral("3"));
+    m.key(Qt::Key_Return);
+    m.check(where + QStringLiteral(": typed +3"), m.route(1, 1, true, 3, false));
+    m.key(Qt::Key_Minus, Qt::AltModifier);
+    m.check(where + QStringLiteral(": Alt+- steps down 0.5 dB"), m.route(1, 1, true, 2.5, false));
+    m.key(Qt::Key_Plus, Qt::AltModifier);
+    m.key(Qt::Key_Plus, Qt::AltModifier);
+    m.key(Qt::Key_Plus, Qt::AltModifier);
+    m.check(where + QStringLiteral(": Alt++ steps up 0.5 dB"), m.route(1, 1, true, 4, false));
     m.key(Qt::Key_Minus, Qt::ControlModifier);
     m.check(where + QStringLiteral(": Ctrl+- steps 3 dB"), m.route(1, 1, true, 1, false));
     m.key(Qt::Key_I);

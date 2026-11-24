@@ -29,9 +29,9 @@ import UConsole
 // Mouse: see MatrixCell; while a gain is typed, a click on another connected
 // tile types that one's gain next.
 // Keyboard (on the grid): arrows, Home / End (first / last column), PgUp /
-// PgDn (first / last row) move; Space connects or disconnects; Enter or a
-// digit types the gain (connecting first); + and - step it by 0.5 dB (Ctrl:
-// 3 dB); I inverts the phase; M mutes and E enables the column's output;
+// PgDn (first / last row) move; Space connects or disconnects; Enter, a
+// digit, -, +, . or , types the gain (connecting first; -- WP REVDFIX -- REVD
+// G1: "-6" is −6 dB); Alt with + or - steps it by 0.5 dB, Ctrl by 3 dB; I inverts the phase; M mutes and E enables the column's output;
 // Delete disconnects; Shift+F10 or the menu key opens the cell's menu; Escape
 // leaves the cell. The crosspoint the grid is on is MatrixController's
 // current one, which the Routing inspector shows.
@@ -177,6 +177,7 @@ Panel {
     function keyPressed(event) {
         const i = MatrixController.currentInput, o = MatrixController.currentOutput
         const ctrl = (event.modifiers & Qt.ControlModifier) !== 0
+        const alt = (event.modifiers & Qt.AltModifier) !== 0   // -- WP REVDFIX --
         switch (event.key) {
         case Qt.Key_Left: move(0, -1); break
         case Qt.Key_Right: move(0, 1); break
@@ -196,9 +197,15 @@ Panel {
             case Qt.Key_Space: MatrixController.setConnected(i, o, MatrixController.model.get(i, o, "connected") !== true); break
             case Qt.Key_Return:
             case Qt.Key_Enter: beginEdit(i, o, ""); break
+            // -- WP REVDFIX -- (REVD G1) a step takes a modifier; a bare - or +
+            // starts a typed gain as a digit does ("-6" stepped, then typed +6 dB)
             case Qt.Key_Plus:
-            case Qt.Key_Equal: stepGain(i, o, ctrl ? 3 : 0.5); break
-            case Qt.Key_Minus: stepGain(i, o, ctrl ? -3 : -0.5); break
+            case Qt.Key_Equal:
+            case Qt.Key_Minus:
+                if (ctrl || alt) stepGain(i, o, (event.key === Qt.Key_Minus ? -1 : 1) * (ctrl ? 3 : 0.5))
+                else if (event.key !== Qt.Key_Equal) beginEdit(i, o, event.key === Qt.Key_Minus ? "-" : "+")
+                else return false
+                break
             case Qt.Key_I:
                 if (MatrixController.model.get(i, o, "connected") === true)
                     MatrixController.setInvert(i, o, MatrixController.model.get(i, o, "invert") !== true)
@@ -213,7 +220,9 @@ Panel {
                 openCellMenu(i, o, null)
                 break
             default:
-                if (event.text.length === 1 && event.text >= "0" && event.text <= "9" && !ctrl) beginEdit(i, o, event.text)
+                // -- WP REVDFIX -- and so do "." and "," (a decimal)
+                if (event.text.length === 1 && (event.text >= "0" && event.text <= "9" || event.text === "." || event.text === ",") && !ctrl)
+                    beginEdit(i, o, event.text)
                 else return false
             }
         }
