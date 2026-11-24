@@ -13,11 +13,8 @@ Popup {
     focus: true
     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
     // A Popup is not an Item: its background carries the accessible role and name
-    background: Rectangle {
-        radius: Theme.radius
-        color: Theme.panel
-        border.width: 1
-        border.color: Theme.border
+    // -- INTC (DL5 fold) -- a floating surface in Modern (a shadow, no outline)
+    background: FloatingBackground {
         Accessible.role: Accessible.Dialog
         Accessible.name: popover.title
     }

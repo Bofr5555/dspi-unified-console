@@ -289,9 +289,15 @@ def pages_set():
 
     def popups():
         popup("top-appmenu", "Top bar: the app menu (uConsole ▾)", lambda: click("AppMenuButton"))
-        popup("top-preset-menu", "Top bar: the preset slot menu", lambda: click("TopBar.presetMenu"))
-        popup("top-preset-list", "Top bar: the preset list (combo box)", lambda: ctl.set("TopBar.preset", "popup.visible", True),
+        # -- INTC (DL5 fold) -- the preset control is one popover (PresetPopover): the list, then a slot's menu
+        # from the active slot's row
+        def preset_slot_menu():
+            ctl.set("TopBar.preset", "popup.visible", True)
+            settle(0.6)
+            click(f"PresetPopover.slot.{ctl.get('DeviceModel', 'presets.activeSlot')}.menu")
+        popup("top-preset-list", "Top bar: the preset popover", lambda: ctl.set("TopBar.preset", "popup.visible", True),
               lambda: ctl.set("TopBar.preset", "popup.visible", False))
+        popup("top-preset-menu", "Top bar: a slot's menu, from its row in the preset popover", preset_slot_menu)
         popup("dock-source-list", "Dock: the source list (combo box)", lambda: ctl.set("Dock.source", "popup.visible", True),
               lambda: ctl.set("Dock.source", "popup.visible", False))
         popup("top-save-menu", "Top bar: Save to device split button menu", lambda: click("TopBar.save.more"))

@@ -45,8 +45,7 @@ QString textOf(QObject *item) { return item ? item->property("text").toString() 
 bool press(QObject *item) {
     auto *i = qobject_cast<QQuickItem *>(item);
     if (!i || !i->isVisible() || !i->isEnabled()) return false;
-    if (i->metaObject()->indexOfMethod("clicked()") >= 0) return QMetaObject::invokeMethod(i, "clicked");
-    return QMetaObject::invokeMethod(i, "clicked", Q_ARG(int, 0));
+    return SmokeDriver::press(i);   // -- INTC --
 }
 
 bool opened(QObject *popup) { return popup && popup->property("opened").toBool(); }
@@ -97,9 +96,13 @@ void presetPart(SmokeDriver &d) {
         std::printf("smoke: dl5: the list: focus %d, current %d\n", int(list->hasActiveFocus()), list->property("currentIndex").toInt());
     d.check(QStringLiteral("dl5: opened by the pointer, the list has the keyboard but no row yet"), pointer);
     QQuickItem *activeRow = row(start);
+    // -- INTC -- ListRow fades its hidden actions out and keeps them enabled
+    // (the DL0 fold on int/B): what shows is the opacity on the way up to the list
     const auto shown = [&](int slot, const char *part) {
         QQuickItem *i = row(slot, part);
-        return i && i->isVisible() && i->isEnabled() && i->opacity() > 0;
+        qreal seen = 1;
+        for (QQuickItem *p = i; p && p != list; p = p->parentItem()) seen *= p->opacity();
+        return i && i->isVisible() && i->isEnabled() && seen > 0;
     };
     d.check(QStringLiteral("dl5: the active row is chosen, says so, and has Save"),
             activeRow && activeRow->property("selected").toBool() && activeRow->property("subtitle").toString().startsWith(QLatin1String("Active"))
@@ -115,7 +118,8 @@ void presetPart(SmokeDriver &d) {
     d.check(QStringLiteral("dl5: Down takes the first row"), list->property("currentIndex").toInt() == 0);
     list->setProperty("currentIndex", spare);
     d.spin(50);
-    d.check(QStringLiteral("dl5: on the keyboard's row they show"), list->hasActiveFocus() && shown(spare, "copy"));
+    d.check(QStringLiteral("dl5: on the keyboard's row they show"),
+            list->hasActiveFocus() && d.waitFor(1000, [&] { return shown(spare, "copy"); }));   // -- INTC -- after the fade starts
     press(row(spare, "copy"));
     d.check(QStringLiteral("dl5: Copy Here fills the empty slot"),
             d.waitFor(6000, [&] { return sc->presetOccupied(spare) && !sc->presetBusy(); }) && active() == start && opened(popover));

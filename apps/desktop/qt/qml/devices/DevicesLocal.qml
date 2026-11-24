@@ -8,21 +8,13 @@ import UConsole
 // shows it (DevicesContent), and Modern's Devices > This Computer.
 // -- WP DL3b -- `listRows`: the shared rows (ListRow, DESIGN-LANGUAGE §9) for
 // Modern's page, a status dot on each open device and its Close on hover;
-// the list in a popover keeps its DeviceRows.
+// the list in a popover keeps its DeviceRows. (INTC: DeviceListRow, the
+// switcher's rows too.)
 ColumnLayout {
     id: content
     spacing: 4
     property bool listRows: false
 
-    // -- WP DL3b -- an open device's state as a dot
-    function stateColor(d) {
-        return d.state === "lost" ? Theme.textMuted : d.state === "reconnecting" ? Theme.warning : Theme.success
-    }
-    component Dot: Rectangle {
-        implicitWidth: 8
-        implicitHeight: 8
-        radius: 4
-    }
 
     // -- WP MDQT1 -- ---- Open devices: only when several are
     SectionHeading {
@@ -63,36 +55,16 @@ ColumnLayout {
         }
     }
 
-    // -- WP DL3b --
+    // -- WP DL3b -- (INTC: the shared DeviceListRow)
     Repeater {
         model: DeviceRegistry.devices.length > 1 && content.listRows ? DeviceRegistry.devices : []
-        delegate: ListRow {
-            id: openItem
+        delegate: DeviceListRow {
             required property var modelData
             required property int index
             Layout.fillWidth: true
-            objectName: "DevicesPopup.open." + modelData.id
+            kind: "open"
+            device: modelData
             rowIndex: index
-            iconName: modelData.transport === "usb" ? "usb"
-                      : modelData.transport === "demo" ? "play"
-                      : modelData.transport === "file" ? "file-text" : "network"
-            title: modelData.title
-            subtitle: modelData.state === "lost" ? qsTr("Not connected")
-                      : modelData.state === "reconnecting" ? qsTr("Reconnecting…")
-                      : modelData.busy ? modelData.job
-                      : modelData.serial
-            selected: modelData.active
-            leading: Dot { color: content.stateColor(openItem.modelData) }
-            onClicked: DevicesController.chooseOpen(modelData.id)
-            onActivated: DevicesController.chooseOpen(modelData.id)
-            IconButton {
-                objectName: "DevicesPopup.close." + openItem.modelData.id
-                iconName: "x"
-                //: %1 is a device's name
-                toolTip: qsTr("Close %1").arg(openItem.modelData.title)
-                Accessible.name: toolTip
-                onClicked: DevicesController.closeOpen(openItem.modelData.id)
-            }
         }
     }
 
@@ -102,25 +74,16 @@ ColumnLayout {
         Layout.topMargin: content.listRows ? Theme.spacing : 0   // -- WP DL3b --
         text: qsTr("USB")
     }
-    // -- WP DL3b --
+    // -- WP DL3b -- (INTC: the shared DeviceListRow)
     Repeater {
         model: content.listRows ? DevicesController.usbDevices : []
-        delegate: ListRow {
-            id: usbItem
+        delegate: DeviceListRow {
             required property var modelData
             required property int index
             Layout.fillWidth: true
-            objectName: "DevicesPopup.usb." + modelData.serial
+            kind: "usb"
+            device: modelData
             rowIndex: index
-            iconName: "usb"
-            title: qsTr("DSPi (%1)").arg(modelData.serial)
-            subtitle: qsTr("USB")
-            readonly property bool chosen: DeviceModel.connected && !DeviceModel.remote && !DeviceModel.demo
-                                            && DeviceModel.serial === modelData.serial
-            selected: chosen
-            leading: Dot { color: usbItem.chosen ? Theme.success : "transparent" }
-            onClicked: DevicesController.chooseUsb(modelData.serial)
-            onActivated: DevicesController.chooseUsb(modelData.serial)
         }
     }
     Repeater {
@@ -145,21 +108,13 @@ ColumnLayout {
         font: Theme.fontSmall
         color: Theme.textMuted
     }
-    // -- WP DL3b --
-    ListRow {
-        id: demoItem
+    // -- WP DL3b -- (INTC: the shared DeviceListRow)
+    DeviceListRow {
         Layout.fillWidth: true
         Layout.topMargin: Theme.spacingSmall
         visible: content.listRows
         objectName: content.listRows ? "DevicesPopup.demo" : ""
-        iconName: "play"
-        title: qsTr("Demo DSPi")
-        subtitle: qsTr("Simulated DSPi")
-        readonly property bool chosen: DeviceModel.demo && DeviceModel.connected
-        selected: chosen
-        leading: Dot { color: demoItem.chosen ? Theme.success : "transparent" }
-        onClicked: DevicesController.chooseDemo()
-        onActivated: DevicesController.chooseDemo()
+        kind: "demo"
     }
     DeviceRow {
         Layout.fillWidth: true

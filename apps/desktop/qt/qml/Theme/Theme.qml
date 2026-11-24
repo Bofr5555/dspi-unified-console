@@ -102,6 +102,9 @@ QtObject {
     function bannerFill(kind) {
         if (kind === "error") return dark ? "#4a1f1c" : "#fde8e6"
         if (kind === "warning") return dark ? "#45381a" : "#fff4dc"
+        // -- INTC (DL5 fold) -- Modern's info is the mockup's calm grey, so
+        // a NoticeRow and the status strip read the same; Classic keeps its blue
+        if (LayoutController.modern) return panel
         return dark ? "#1f3350" : "#e6f0fd"
     }
     function bannerEdge(kind) {

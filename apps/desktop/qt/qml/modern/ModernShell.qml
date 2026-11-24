@@ -220,6 +220,7 @@ Item {
             switcher.close()
             pages.go("devices", "devices")
         }
+        onHubs: pages.go("devices", "hubs")   // -- INTC (DL5 fold) --
     }
     Connections {
         target: DevicesController

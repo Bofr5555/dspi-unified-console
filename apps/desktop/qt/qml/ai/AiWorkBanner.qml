@@ -38,7 +38,7 @@ Rectangle {
                                   : !AiController.paused && AiController.agents.length ? AiController.agents[0].name : ""
     visible: work.shown === true || grant !== null
     implicitHeight: row.implicitHeight + 8
-    color: modern ? Theme.panel : Theme.bannerFill("info")   // -- WP DL5 --
+    color: Theme.bannerFill("info")   // -- WP DL5 -- (Modern: the panel tone, INTC)
     // In the accent's colour, so that it is none of the other strips
     Rectangle {
         anchors.bottom: parent.bottom

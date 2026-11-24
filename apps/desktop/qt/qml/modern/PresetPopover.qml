@@ -50,32 +50,7 @@ PopoverPanel {
     onAboutToShow: list.currentIndex = fromKeyboard ? activeSlot : -1
     onOpened: list.forceActiveFocus()
 
-    // A floating surface (DESIGN-LANGUAGE §5): panel tone, radius 8, a shadow,
-    // and a 1 px edge in the dark scheme only
-    background: Item {
-        Repeater {
-            model: 4
-            Rectangle {
-                required property int index
-                readonly property real spread: Theme.shadowBlur * (index + 1) / 8
-                x: -spread
-                y: Theme.shadowOffset * (index + 1) / 4 - spread
-                width: parent.width + 2 * spread
-                height: parent.height + 2 * spread
-                radius: Theme.radius + spread
-                color: Qt.rgba(Theme.shadowColor.r, Theme.shadowColor.g, Theme.shadowColor.b, Theme.shadowColor.a / 6)
-            }
-        }
-        Rectangle {
-            anchors.fill: parent
-            radius: Theme.radius
-            color: Theme.panel
-            border.width: Theme.dark ? 1 : 0
-            border.color: Theme.separator
-        }
-        Accessible.role: Accessible.Dialog
-        Accessible.name: popover.title
-    }
+    // A floating surface (DESIGN-LANGUAGE §5): PopoverPanel's FloatingBackground (INTC)
 
     contentItem: ListView {
         id: list

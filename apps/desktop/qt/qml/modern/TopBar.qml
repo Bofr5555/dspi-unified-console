@@ -27,7 +27,7 @@ Rectangle {
     signal bellClicked()
     signal searchRequested()
 
-    implicitHeight: 48
+    implicitHeight: Theme.topBarHeight   // -- INTC (DL5 fold) -- 40, the token (was 48)
     color: Theme.sidebar
     Accessible.role: Accessible.ToolBar
     Accessible.name: AppIdentity.displayName

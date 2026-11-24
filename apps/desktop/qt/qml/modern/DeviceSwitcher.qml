@@ -9,7 +9,8 @@ import UConsole
 // and closes it with DevicesController.listShown.
 // -- WP DL5 -- A popover of ListRows (DESIGN-LANGUAGE §9, §15): no title and no
 // Done (a press outside or Escape closes it); the open devices (with several)
-// with a status dot and Close on hover, the DSPis on USB and the demo, and the
+// with a status dot and Close on hover, the DSPis on USB and the demo (INTC:
+// DeviceListRow, the rows of Devices › This Computer), and the
 // hubs as one row that goes to Devices › Hubs. The rows keep the device list's
 // names (DevicesPopup.open.<id>, .close.<id>, .usb.<serial>, .demo). Under them,
 // what is done to the active device.
@@ -19,6 +20,8 @@ PopoverPanel {
     title: qsTr("Devices")
     // Manage…: the Devices section
     signal manage()
+    // -- INTC (DL5 fold) -- the hubs' row: Devices › Hubs (ModernShell goes there)
+    signal hubs()
 
     // Several open: they are listed, and the active one is chosen there only
     readonly property bool several: DeviceRegistry.devices.length > 1
@@ -28,59 +31,8 @@ PopoverPanel {
     height: Math.min(implicitHeight, hostHeight - y - Theme.spacingLarge)
     padding: Theme.spacingSmall
 
-    // An open device's state as a dot (as Devices › This Computer)
-    function stateColor(d) {
-        return d.state === "lost" ? Theme.textMuted : d.state === "reconnecting" ? Theme.warning : Theme.success
-    }
-    // Devices › Hubs: through the shell's page host, else Manage…
-    function hubs() {
-        close()
-        const host = find(parent, "PageHost")
-        if (host) host.go("devices", "hubs")
-        else manage()
-    }
-    function find(item, name) {
-        if (!item) return null
-        if (item.objectName === name) return item
-        for (let i = 0; i < item.children.length; ++i) {
-            const f = find(item.children[i], name)
-            if (f) return f
-        }
-        return null
-    }
+    // A floating surface (DESIGN-LANGUAGE §5): PopoverPanel's FloatingBackground (INTC)
 
-    // A floating surface (DESIGN-LANGUAGE §5): panel tone, radius 8, a shadow,
-    // and a 1 px edge in the dark scheme only
-    background: Item {
-        Repeater {
-            model: 4
-            Rectangle {
-                required property int index
-                readonly property real spread: Theme.shadowBlur * (index + 1) / 8
-                x: -spread
-                y: Theme.shadowOffset * (index + 1) / 4 - spread
-                width: parent.width + 2 * spread
-                height: parent.height + 2 * spread
-                radius: Theme.radius + spread
-                color: Qt.rgba(Theme.shadowColor.r, Theme.shadowColor.g, Theme.shadowColor.b, Theme.shadowColor.a / 6)
-            }
-        }
-        Rectangle {
-            anchors.fill: parent
-            radius: Theme.radius
-            color: Theme.panel
-            border.width: Theme.dark ? 1 : 0
-            border.color: Theme.separator
-        }
-        Accessible.role: Accessible.Dialog
-        Accessible.name: switcher.title
-    }
-
-    component Dot: Rectangle {
-        implicitWidth: 8
-        implicitHeight: 8
-        radius: 4
-    }
     component Heading: SectionHeading {
         Layout.fillWidth: true
         Layout.leftMargin: Theme.spacingSmall
@@ -131,34 +83,14 @@ PopoverPanel {
                 }
                 Repeater {
                     model: switcher.several ? DeviceRegistry.devices : []
-                    delegate: ListRow {
-                        id: openRow
+                    delegate: DeviceListRow {   // -- INTC -- Devices › This Computer's row
                         required property var modelData
                         required property int index
                         Layout.fillWidth: true
-                        objectName: "DevicesPopup.open." + modelData.id
-                        rowIndex: index
                         activeFocusOnTab: true
-                        iconName: modelData.transport === "usb" ? "usb"
-                                  : modelData.transport === "demo" ? "play"
-                                  : modelData.transport === "file" ? "file-text" : "network"
-                        title: modelData.title
-                        subtitle: modelData.state === "lost" ? qsTr("Not connected")
-                                  : modelData.state === "reconnecting" ? qsTr("Reconnecting…")
-                                  : modelData.busy ? modelData.job   // -- WP MDQT2c --
-                                  : modelData.serial
-                        selected: modelData.active
-                        leading: Dot { color: switcher.stateColor(openRow.modelData) }
-                        onClicked: DevicesController.chooseOpen(modelData.id)
-                        onActivated: DevicesController.chooseOpen(modelData.id)
-                        IconButton {
-                            objectName: "DevicesPopup.close." + openRow.modelData.id
-                            iconName: "x"
-                            //: %1 is a device's name
-                            toolTip: qsTr("Close %1").arg(openRow.modelData.title)
-                            Accessible.name: toolTip
-                            onClicked: DevicesController.closeOpen(openRow.modelData.id)
-                        }
+                        kind: "open"
+                        device: modelData
+                        rowIndex: index
                     }
                 }
 
@@ -169,23 +101,15 @@ PopoverPanel {
                 }
                 Repeater {
                     model: DevicesController.usbDevices
-                    delegate: ListRow {
-                        id: usbRow
+                    delegate: DeviceListRow {   // -- INTC --
                         required property var modelData
                         required property int index
-                        readonly property bool chosen: DeviceModel.connected && !DeviceModel.remote && !DeviceModel.demo
-                                                       && DeviceModel.serial === modelData.serial
                         Layout.fillWidth: true
-                        objectName: "DevicesPopup.usb." + modelData.serial
-                        rowIndex: index
                         activeFocusOnTab: true
-                        iconName: "usb"
-                        title: qsTr("DSPi (%1)").arg(modelData.serial)
-                        subtitle: qsTr("USB")
-                        selected: chosen && !switcher.several
-                        leading: Dot { color: usbRow.chosen ? Theme.success : "transparent" }
-                        onClicked: DevicesController.chooseUsb(modelData.serial)
-                        onActivated: DevicesController.chooseUsb(modelData.serial)
+                        kind: "usb"
+                        device: modelData
+                        rowIndex: index
+                        markChosen: !switcher.several
                     }
                 }
                 Text {
@@ -197,19 +121,11 @@ PopoverPanel {
                     font: Theme.fontSmall
                     color: Theme.textMuted
                 }
-                ListRow {
-                    id: demoRow
-                    readonly property bool chosen: DeviceModel.demo && DeviceModel.connected
+                DeviceListRow {   // -- INTC --
                     Layout.fillWidth: true
-                    objectName: "DevicesPopup.demo"
                     activeFocusOnTab: true
-                    iconName: "play"
-                    title: qsTr("Demo DSPi")
-                    subtitle: qsTr("Simulated DSPi")
-                    selected: chosen && !switcher.several
-                    leading: Dot { color: demoRow.chosen ? Theme.success : "transparent" }
-                    onClicked: DevicesController.chooseDemo()
-                    onActivated: DevicesController.chooseDemo()
+                    kind: "demo"
+                    markChosen: !switcher.several
                 }
 
                 // ---- The hubs: their page
@@ -224,8 +140,8 @@ PopoverPanel {
                     iconName: "wifi"
                     title: qsTr("Hubs and Their Devices…")
                     subtitle: LinkController.hubName.length ? LinkController.hubName + ": " + LinkController.phaseText : LinkController.phaseText
-                    onClicked: switcher.hubs()
-                    onActivated: switcher.hubs()
+                    onClicked: { switcher.close(); switcher.hubs() }
+                    onActivated: { switcher.close(); switcher.hubs() }
                 }
             }
         }
