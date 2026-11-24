@@ -1,0 +1,42 @@
+# WP SHOW2: auto-tune from a measurement (from WP SHOW's film story: FSTORY S0's first prompt limited to the
+# Centre's three drivers, no sub), ask_risky: the test-signal question with its ten-minute grant, the sweeps,
+# then the app's auto-tune refines the starting crossovers (it tunes existing pairs only), levels and delays;
+# the agent applies it under the guard and checks.
+name = "show-centre-tune"
+confirm = "ask_risky"
+show = "Centre"
+
+[[step]]
+label = "measure-tune"
+prompt = """
+I have a home theatre with three DSPi devices open in DSPi Console. Today only the one called "Centre" matters: it drives
+my three-way centre speaker, fully active (no passive crossover): output 1 is the woofer, output 2 the tweeter, output 3
+the midrange. (Output 5 is the subwoofer; leave it alone.) The DSPi gets 5.1 over USB, input 3 is the centre channel.
+Nothing is routed yet. The measurement mic is at my seat and I have confirmed the speaker setup in the app.
+
+Start the crossovers at 400 Hz and 3 kHz (Linkwitz-Riley 24 dB/oct), measure the three drivers, let the app's auto-tune
+refine the crossovers, levels and delays, apply it, and check the result with a measurement. Be careful with the tweeter.
+"""
+
+  [[step.expect]]
+  what = "the centre's drivers were measured"
+  kind = "measured"
+  outputs = { Centre = [1, 2, 3] }
+
+  [[step.expect]]
+  what = "the centre tweeter's high-pass"
+  kind = "highpass"
+  outputs = { Centre = [2] }
+  min_hz = 1000
+  near_hz = 1000
+  slope_db = 12
+
+  [[step.expect]]
+  what = "C reaches the centre's three drivers"
+  kind = "routes"
+  routes = [["Centre", "C", [1, 2, 3]]]
+
+  [[step.expect]]
+  what = "only the Centre changed"
+  kind = "only_changed"
+  devices = ["Centre"]

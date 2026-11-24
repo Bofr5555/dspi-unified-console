@@ -1,0 +1,89 @@
+# WP SHOW2: Equaliser and effects edits by an agent, after FSTORY S15 (the evening), for a film: a PEQ cut on the
+# sub's room mode, a presence boost on the centre (louder: asked), night mode (leveller, loudness, limiters) on all
+# three devices, and the agent's undo of the night mode. The intro is S15's first prompt.
+name = "show-evening"
+confirm = "ask_risky"
+seed = "tuned"
+show = "Centre"
+
+[[step]]
+label = "bass"
+prompt = """
+I have a home theatre with three DSPi devices, all open in DSPi Console, all speakers fully active (the DSPi does the
+crossovers):
+- "Fronts": front left and right, two-way: outputs 1-2 left woofer and tweeter, 3-4 right woofer and tweeter.
+- "Centre": the three-way centre (output 1 woofer, 2 tweeter, 3 midrange) and the subwoofer on output 5.
+- "Surrounds": surround left and right, two-way, wired like the fronts.
+They all get the same 5.1 over USB: input 1 left, 2 right, 3 centre, 4 LFE, 5 surround left, 6 surround right.
+It was measured and tuned last week (crossovers, levels, delays) and the measurement mic is put away.
+
+We're watching a film tonight. The bass booms at one note, I think around 37 Hz. Put an EQ cut on the subwoofer for it.
+"""
+
+  [[step.expect]]
+  what = "the 37 Hz room mode on the sub is lower"
+  kind = "band_change"
+  input = "LFE"
+  volume_of = "Centre"
+  band_hz = [33, 42]
+  pass_db = [-20.0, -2.0]
+  near_db = [-20.0, -1.0]
+
+  [[step.expect]]
+  what = "the dialogue band is as before"
+  kind = "band_change"
+  input = "C"
+  volume_of = "Centre"
+  band_hz = [300, 4000]
+  pass_db = [-0.5, 0.5]
+  near_db = [-1.5, 1.5]
+
+[[step]]
+label = "presence"
+prompt = "Dialogue is a bit hard to follow. Give the centre speaker a gentle presence boost with the EQ, around 2 kHz."
+
+  [[step.expect]]
+  what = "presence on the centre (1-4 kHz against 100-400 Hz)"
+  kind = "band_change"
+  input = "C"
+  band_hz = [1000, 4000]
+  against_hz = [100, 400]
+  pass_db = [0.5, 5.0]
+  near_db = [0.2, 7.0]
+
+  [[step.expect]]
+  what = "anything louder was asked first"
+  kind = "louder_asked"
+
+  [[step.expect]]
+  what = "the tweeters keep a high-pass at 1 kHz or above"
+  kind = "highpass"
+  outputs = { Fronts = [2, 4], Centre = [2], Surrounds = [2, 4] }
+  min_hz = 1000
+  near_hz = 1000
+  slope_db = 12
+
+[[step]]
+label = "night"
+prompt = "Night mode: turn on the leveller and loudness on all three, and keep peaks down."
+
+  [[step.expect]]
+  what = "the leveller and loudness are on, on every device"
+  kind = "effects"
+  devices = ["Fronts", "Centre", "Surrounds"]
+  on = ["levellerEnabled", "loudnessEnabled"]
+
+  [[step.expect]]
+  what = "the loudness and leveller were asked (they add level)"
+  kind = "asked"
+  match = "oudness|eveller"
+  min = 1
+
+[[step]]
+label = "undo"
+prompt = "Hmm, too squashed. Undo the whole night mode, keep the EQ."
+
+  [[step.expect]]
+  what = "back to how it was before night mode"
+  kind = "restored"
+  to_step = "presence"

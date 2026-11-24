@@ -115,6 +115,15 @@ class User:
             ctl.set("AiController", "agentDetect", bool(a.get("on", True)))
             ctl.wait("the detect switch", lambda: bool(ctl.get("AiController", "agentDetect")) == bool(a.get("on", True)))
             return
+        if kind == "page":  # -- WP SHOW2 -- a page the user opens (films): section, tab, a Settings page id
+            if a.get("device"):
+                self.show(a["device"])
+            ctl.send(op="page", section=a["section"], tab=a.get("tab", ""))
+            if a.get("settings"):
+                ctl.call("SettingsController", "open", a["settings"])
+            time.sleep(float(a.get("hold_s", 0)))
+            self.run.event("user-done", {"step": label, "do": kind})
+            return
         if kind == "agents":  # -- WP ODEC -- Stop (off) and on again, as in Settings › AI Agents
             ctl.call("AiController", "setEnabled", bool(a["on"]))
             ctl.wait("AI agents " + ("on" if a["on"] else "off"),
@@ -127,6 +136,8 @@ class User:
             low = a["side"] == "lp"
             band = a.get("band", 1 if low else 0)
             t = ctl.call("ChannelController", "crossoverType", FAMILY[a.get("family", "linkwitz_riley")], a.get("order", 4), low)
+            if a.get("family") == "off":  # -- WP SHOW2 -- crossoverType has no "off" (-1): the band's type none
+                t = 0
             ctl.call("ChannelController", "setBandType", ch, band, True, t)
             ctl.call("ChannelController", "setBandValue", ch, band, True, "freq", float(a["hz"]))
         elif kind == "route":

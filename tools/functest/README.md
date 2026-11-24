@@ -360,3 +360,18 @@ whose request goes on as the measurement's own: `continues_as`).
 - **The order the check needs**: an output whose own low-pass hides its top end is not checked (it stays held at
   1 kHz). The S6 replay sets the protective high-passes first and the low-passes after the measurement, as the agent is
   told.
+
+<!-- -- WP SHOW2 -- -->
+## Films and stills for a show (SHOW2)
+
+- **Stories for films** (real agents, `run --record`): `show-roles.toml` (S20 on the correct wiring, the user opens
+  Settings › Speakers), `show-centre-tune.toml` (the Centre measured and auto-tuned from starting crossovers),
+  `show-matrix.toml` (a phantom centre on the Fronts' matrix), `show-evening.toml` (a PEQ cut, a presence boost, night
+  mode, the agent's undo), `show-compare.toml` (SHOWB's by-hand task from the same state); `show-gallery.toml` (no step:
+  presets 1 "Movie night", 3 "Late night", 9 "Test" and two snapshots, for `gallery.py` and `shots2.py`).
+- **User action `page`** (`section`, `tab`, `settings` = a Settings page id, `hold_s`, `device`): a page the user opens,
+  for a film. A `crossover` with `family = "off"` now clears the band (it passed type -1 before and changed nothing).
+- **`shots2.py RUN [dark|light]`**: the screens `gallery.py` does not take (Measure refusing at 0 dB, a measurement
+  by the user, Auto-tune's layout and proposal, History and Events after it).
+- **The web console's before/after**: `tools/shots/before-after-web.sh OUT [OLD_DIST] [NEW_DIST]` (0.14.0's release
+  and this tree's page on the core's demo DSPi, the same screens, dark and light, 1366x900).

@@ -1,0 +1,58 @@
+# WP SHOW2: FSTORY S20 for a film. The owner's sentence verbatim on the correctly wired "main front"
+# (scenario-mainfront.json): the one question with the table, then the user looks at Settings › Speakers (the
+# "stated" rows); asked to measure the left speaker, the app checks each stated midrange and woofer's top end
+# before anything plays below 1 kHz on it (the checks pass here; s20-roles-trap.toml is the wrong wiring).
+name = "show-roles"
+scenario = "mainfront"
+confirm = "ask_risky"
+speakers = "none"
+show = "main front"
+
+[[step]]
+label = "words"
+prompt = """
+L and r front speakers, both on DSPi named main front, full range three way, tweeter,mid,woofer, l then right, output 1-6
+"""
+
+  [[step.expect]]
+  what = "the table from the words"
+  kind = "layout_table"
+  device = "main front"
+  state = "stated"
+  rows = { 1 = ["high", "L"], 2 = ["mid", "L"], 3 = ["low", "L"], 4 = ["high", "R"], 5 = ["mid", "R"], 6 = ["low", "R"] }
+
+[[step]]
+label = "measure-left"
+prompt = """
+The mic is at my seat. Measure the left speaker's three drivers and set its crossovers. Input 1 is left.
+"""
+
+  [[step.user]]
+  do = "page"
+  section = "settings"
+  settings = "speakers"
+  hold_s = 8
+
+  [[step.user]]
+  do = "page"
+  section = "overview"
+  hold_s = 2
+
+  [[step.expect]]
+  what = "Out 2 and Out 3 (stated midrange and woofer) were checked: their tops fall"
+  kind = "role_checked"
+  outputs = { "main front" = { 2 = "topFalls", 3 = "topFalls" } }
+
+  [[step.expect]]
+  what = "the left tweeter keeps a high-pass at 1 kHz or above"
+  kind = "highpass"
+  outputs = { "main front" = [1] }
+  min_hz = 1000
+  near_hz = 1000
+  slope_db = 12
+
+[[after]]
+do = "page"
+section = "settings"
+settings = "speakers"
+hold_s = 8
