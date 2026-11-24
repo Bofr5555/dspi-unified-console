@@ -8,6 +8,7 @@
 #include "SessionState.h"
 
 #include <QRegularExpression>
+#include <QSettings>
 #include <cmath>
 #include <utility>
 #include <vector>
@@ -37,13 +38,21 @@ MatrixController::MatrixController(const AppContext &ctx, QObject *parent)
     connect(ctx.device, &DeviceModel::writeFailed, this, [this](const QString &what) {
         static const QRegularExpression route(QStringLiteral("^matrix route (\\d+) (\\d+)$"));
         const QRegularExpressionMatch m = route.match(what);
+        // -- WP MX1 -- a linked pair's write: the even row's crosspoint and its mirror
+        static const QRegularExpression pair(QStringLiteral("^matrix route pair (\\d+) (\\d+)$"));
+        const QRegularExpressionMatch p = pair.match(what);
         if (m.hasMatch()) m_model->unstage(m.captured(1).toInt(), m.captured(2).toInt());
-        else if (what == QLatin1String("matrix routes")) m_model->unstageAll();
+        else if (p.hasMatch()) {
+            const int i = p.captured(1).toInt(), o = p.captured(2).toInt();
+            m_model->unstage(i, o);
+            m_model->unstage(i ^ 1, o ^ 1);
+        } else if (what == QLatin1String("matrix routes")) m_model->unstageAll();
     });
     // Nothing queued or running: the last snapshot carries every write
     connect(ctx.device, &DeviceModel::busyChanged, this, [this] {
         if (!m_ctx.device->busy()) m_model->unstageAll();
     });
+    m_dense = QSettings().value(QStringLiteral("matrix/dense"), false).toBool();   // -- WP MX1 --
     onSnapshot();
 }
 
@@ -100,7 +109,56 @@ void MatrixController::onSnapshot() {
     if (cc && pdm >= 0 && pdm < outputs) conflict[pdm] = cc->enableWouldConflict(pdm);
     m_model->update(s, rows, outputs, conflict);
     ++m_revision;
+    loadLinkPairs();   // -- WP MX1 --
+    if (m_currentInput >= 0 && !m_model->valid(m_currentInput, m_currentOutput)) setCurrent(-1, -1);
     emit changed();
+}
+
+// ---- The view (-- WP MX1 --) -------------------------------------------------------
+
+// Link L/R pairs of the device shown: kept under matrix/linkPairs/<serial>
+void MatrixController::loadLinkPairs() {
+    const QString serial = m_ctx.device->connected() ? m_ctx.device->serial() : QString();
+    if (serial == m_linkSerial) return;
+    m_linkSerial = serial;
+    const bool on = !serial.isEmpty() && QSettings().value(QStringLiteral("matrix/linkPairs/%1").arg(serial), false).toBool();
+    if (on == m_linkPairs) return;
+    m_linkPairs = on;
+    emit viewChanged();
+}
+
+void MatrixController::setLinkPairs(bool on) {
+    if (on == m_linkPairs) return;
+    m_linkPairs = on;
+    if (!m_linkSerial.isEmpty()) QSettings().setValue(QStringLiteral("matrix/linkPairs/%1").arg(m_linkSerial), on);
+    emit viewChanged();
+}
+
+void MatrixController::setDense(bool on) {
+    if (on == m_dense) return;
+    m_dense = on;
+    QSettings().setValue(QStringLiteral("matrix/dense"), on);
+    emit viewChanged();
+}
+
+void MatrixController::setCurrent(int input, int output) {
+    if (!m_model->valid(input, output)) input = output = -1;
+    if (input == m_currentInput && output == m_currentOutput) return;
+    m_currentInput = input;
+    m_currentOutput = output;
+    emit currentChanged();
+}
+
+int MatrixController::pairRow(int row) const {
+    const int inputs = m_ctx.device->channels()->inputCount();
+    const int partner = row ^ 1;
+    return row >= 0 && row < rows() && partner < rows() && row < inputs && partner < inputs ? partner : -1;
+}
+
+QVariantMap MatrixController::mirrorOf(int input, int output) const {
+    const int i = pairRow(input), o = output ^ 1;
+    if (!m_linkPairs || i < 0 || output < 0 || !m_model->valid(i, o)) return {};
+    return { { QStringLiteral("input"), i }, { QStringLiteral("output"), o } };
 }
 
 // ---- Reading -------------------------------------------------------------------
@@ -165,7 +223,38 @@ void MatrixController::editCell(int input, int output, const std::function<void(
     MatrixModel::Cell c = m_model->cell(input, output);
     edit(c);
     m_model->stage(input, output, c);
-    cc->setRoute(input, output, c.connected, double(c.gain), c.invert);
+    // -- WP MX1 -- Link L/R pairs: the partner's crosspoint becomes the same,
+    // both in one write and one undo step
+    const QVariantMap mirror = mirrorOf(input, output);
+    if (mirror.isEmpty()) {
+        cc->setRoute(input, output, c.connected, double(c.gain), c.invert);
+        return;
+    }
+    const int pi = mirror.value(QStringLiteral("input")).toInt(), po = mirror.value(QStringLiteral("output")).toInt();
+    m_model->stage(pi, po, c);
+    const RouteWrite routes[2] = { { uint8_t(input), uint8_t(output), c.connected, c.gain, c.invert },
+                                   { uint8_t(pi), uint8_t(po), c.connected, c.gain, c.invert } };
+    const RouteWrite &top = input < pi ? routes[0] : routes[1];
+    const QByteArray label = tr("Linked Routing").toUtf8();
+    m_ctx.device->write(QStringLiteral("matrix route pair %1 %2").arg(top.input).arg(top.output),
+                        [a = routes[0], b = routes[1], label](FfiCore *core) {
+                            dspi_undo_group_begin(core, label.constData());
+                            bool ok = dspi_set_matrix_route(core, a.input, a.output, a.enabled, a.gain, a.invert);
+                            ok = dspi_set_matrix_route(core, b.input, b.output, b.enabled, b.gain, b.invert) && ok;
+                            dspi_undo_group_end(core);
+                            return ok;
+                        });
+}
+
+// -- WP MX1 --
+void MatrixController::setRoute(int input, int output, bool connected, double gain, bool invert) {
+    if (!std::isfinite(gain)) return;
+    const float g = float(qBound(GainMin, gain, GainMax));
+    editCell(input, output, [connected, g, invert](MatrixModel::Cell &c) {
+        c.connected = connected;
+        c.gain = g;
+        c.invert = invert;
+    });
 }
 
 void MatrixController::setConnected(int input, int output, bool connected) {

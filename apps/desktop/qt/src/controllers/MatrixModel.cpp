@@ -41,6 +41,27 @@ QVariant MatrixModel::get(int input, int output, const QString &role) const {
     return {};
 }
 
+// -- WP MX1 --
+QVariantList MatrixModel::feeds(int input) const {
+    QVariantList out;
+    for (int o = 0; o < m_cols; ++o)
+        if (valid(input, o) && m_shown.at(input * m_cols + o).cell.connected) out << o;
+    return out;
+}
+
+QVariantList MatrixModel::sources(int output) const {
+    QVariantList in;
+    for (int i = 0; i < m_rows; ++i)
+        if (valid(i, output) && m_shown.at(i * m_cols + output).cell.connected) in << i;
+    return in;
+}
+
+int MatrixModel::connectedCount() const {
+    int n = 0;
+    for (const Shown &s : m_shown) n += s.cell.connected ? 1 : 0;
+    return n;
+}
+
 MatrixModel::Cell MatrixModel::cell(int input, int output) const {
     if (!valid(input, output)) return {};
     const auto staged = m_staged.constFind(key(input, output));
@@ -81,6 +102,8 @@ void MatrixModel::update(const DspState *s, int rows, int cols, const QVector<bo
             for (int o = 0; o < cols; ++o) m_shown[i * cols + o] = { cell(i, o), m_enabled.at(o), m_conflict.at(o) };
         endResetModel();
         emit shapeChanged();
+        ++m_version;   // -- WP MX1 --
+        emit cellsChanged();
         return;
     }
     m_device = device;
@@ -94,6 +117,8 @@ void MatrixModel::refreshCell(int input, int output) {
     if (now == m_shown.at(row)) return;
     m_shown[row] = now;
     emit dataChanged(index(row), index(row));
+    ++m_version;   // -- WP MX1 --
+    emit cellsChanged();
 }
 
 void MatrixModel::stage(int input, int output, const Cell &c) {
