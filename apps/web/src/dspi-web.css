@@ -2197,6 +2197,7 @@
   margin: 24px 0 8px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted);
 }
 .dspi-web .sys > h3:first-child, .dspi-web .sys > .error + h3 { margin-top: 4px; }
+.dspi-web .sys-room > h3 { margin: 0 0 8px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
 .dspi-web .sys-note { font-size: 11px; }
 .dspi-web .sys-chain { margin-top: 0; padding-top: 0; border-top: 0; }
 .dspi-web .sys-room, .dspi-web .sys-chain-col { border: 0; padding: 8px 12px 10px; }
