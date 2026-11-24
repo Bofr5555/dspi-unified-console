@@ -13,6 +13,7 @@
 #include "DeviceSession.h"
 #include "FilesController.h"
 #include "MeasureController.h"   // -- WP AIVIS --
+#include "SpeakersController.h"  // -- WP ROLES --
 #include "NoticeCenter.h"
 #include "SessionModel.h"
 #include "SettingsController.h"
@@ -65,6 +66,7 @@ const char *const kConfirmKey = "mcp/confirm";
 const char *const kSplCapKey = "mcp/agentSplCapDb";
 const char *const kSplCapOnKey = "mcp/agentSplCapOn";   // -- WP INTG --
 const char *const kAgentDetectKey = "mcp/agentDetect";   // -- WP ADETQ --
+const char *const kAgentRolesKey = "mcp/agentRoles";     // -- WP ROLES --
 const char *const kRememberedKey = "devices/remembered";
 const QString kConfirmDefault = QStringLiteral("ask_risky");
 const QStringList kConfirmModes{ QStringLiteral("ask_everything"), kConfirmDefault, QStringLiteral("never_ask") };
@@ -144,6 +146,9 @@ AiController::AiController(const AppContext &ctx, QObject *parent) : QObject(par
     // -- WP ADETQ -- the never-ask switch for the speaker detection
     m_agentDetect = s.value(QLatin1String(kAgentDetectKey), false).toBool();
     if (m_mcp) dspi_mcp_set_agent_detect(m_mcp, m_agentDetect);
+    // -- WP ROLES -- the never-ask switch for speaker roles from the person's words
+    m_agentRoles = s.value(QLatin1String(kAgentRolesKey), false).toBool();
+    if (m_mcp) dspi_mcp_set_agent_roles(m_mcp, m_agentRoles);
     loadRemembered();
     m_tick.setInterval(1000);
     connect(&m_tick, &QTimer::timeout, this, &AiController::tick);
@@ -702,6 +707,7 @@ QString AiController::riskLabel(const QString &kind) {
         { QStringLiteral("change"), QT_TRANSLATE_NOOP("AiController", "Change") },
         { QStringLiteral("test_signal"), QT_TRANSLATE_NOOP("AiController", "Test signal") },
         { QStringLiteral("detect"), QT_TRANSLATE_NOOP("AiController", "Speaker detection") },   // -- WP ADETQ --
+        { QStringLiteral("speaker_roles"), QT_TRANSLATE_NOOP("AiController", "Speaker roles") },   // -- WP ROLES --
         { QStringLiteral("recall"), QT_TRANSLATE_NOOP("AiController", "Replaces settings") },
         { QStringLiteral("flash_write"), QT_TRANSLATE_NOOP("AiController", "Saved on the device") },
         { QStringLiteral("installation_save"), QT_TRANSLATE_NOOP("AiController", "Installation") },
@@ -734,12 +740,31 @@ void AiController::readConfirmations() {
                          // -- WP LAY8 --
                          const QString label = riskLabel(str(r.toObject(), "kind"));
                          // -- WP ADETQ -- a risk whose words already start with its kind ("Speaker detection: ...") keeps them
-                         const bool named = !label.isEmpty() && w.risks.constLast().startsWith(label + QLatin1Char(':'));
+                         const bool named = (!label.isEmpty() && w.risks.constLast().startsWith(label + QLatin1Char(':')))
+                                            // -- WP ROLES -- "Speaker roles from your words: ..." names itself too
+                                            || str(r.toObject(), "kind") == QLatin1String("speaker_roles");
                          //: %1 is a kind of change ("Louder"), %2 the change ("Out 1 gain up from -12 dB to -3 dB")
                          w.riskLines << (label.isEmpty() || named ? w.risks.constLast() : tr("%1: %2").arg(label, w.risks.constLast()));
                      }
                      w.grant = c.value(QLatin1String("grant")).toObject();   // -- WP ODEC --
                      w.warning = str(c, "warning");   // -- WP ADETQ --
+                     // -- WP ROLES -- the whole table of speaker roles from the person's words
+                     const QJsonObject roles = c.value(QLatin1String("roles")).toObject();
+                     static const QHash<QString, const char *> roleWords{
+                         { QStringLiteral("tweeter"), QT_TRANSLATE_NOOP("AiController", "Tweeter") },
+                         { QStringLiteral("midrange"), QT_TRANSLATE_NOOP("AiController", "Midrange") },
+                         { QStringLiteral("woofer"), QT_TRANSLATE_NOOP("AiController", "Woofer") },
+                         { QStringLiteral("sub"), QT_TRANSLATE_NOOP("AiController", "Subwoofer") },
+                         { QStringLiteral("full_range"), QT_TRANSLATE_NOOP("AiController", "Full range") },
+                     };
+                     for (const QJsonValue &r : roles.value(QLatin1String("rows")).toArray()) {
+                         const QJsonObject row = r.toObject();
+                         const char *word = roleWords.value(str(row, "role"));
+                         //: An output in the speaker roles' table: %1 its number from 1
+                         w.roleCells << tr("Out %1").arg(row.value(QLatin1String("output")).toInt() + 1) << str(row, "speaker")
+                                     << (word ? tr(word) : str(row, "role"));
+                     }
+                     w.rolesAfter = str(roles, "after");
                      w.ends = QDateTime::currentDateTimeUtc().addMSecs(c.value(QLatin1String("remaining_ms")).toInteger());
                      there.insert(w.id);
                      list.append(w);
@@ -774,6 +799,9 @@ QVariantList AiController::confirmations() const {
             // -- WP ADETQ -- the speaker detection's question (AUTODES 4.1): its heading and the warning
             { QStringLiteral("detect"), w.detect },
             { QStringLiteral("warning"), w.warning },
+            // -- WP ROLES -- speaker roles from the person's words: the table, then the rest
+            { QStringLiteral("roleCells"), w.roleCells },
+            { QStringLiteral("rolesAfter"), w.rolesAfter },
         });
     }
     return out;
@@ -1029,6 +1057,7 @@ QString AiController::doing(const QJsonObject &row) const {
         { QStringLiteral("dspi_measure_start"), QT_TRANSLATE_NOOP("AiController", "Starting a measurement") },
         { QStringLiteral("dspi_measure_rolloff_start"), QT_TRANSLATE_NOOP("AiController", "Starting a low-end search") },
         { QStringLiteral("dspi_detect_speakers"), QT_TRANSLATE_NOOP("AiController", "Asking to detect the speakers") },   // -- WP ADETQ --
+        { QStringLiteral("dspi_set_speaker_roles"), QT_TRANSLATE_NOOP("AiController", "Setting the speaker roles from your words") },   // -- WP ROLES --
         { QStringLiteral("dspi_measure_stop"), QT_TRANSLATE_NOOP("AiController", "Stopping a measurement") },
         { QStringLiteral("dspi_tune_propose"), QT_TRANSLATE_NOOP("AiController", "Working out an auto-tune") },
         { QStringLiteral("dspi_tune_apply"), QT_TRANSLATE_NOOP("AiController", "Applying an auto-tune") },
@@ -1472,6 +1501,9 @@ void AiController::readBehind(const QString &device, const QString &tool, bool w
     if (tool.startsWith(QLatin1String("dspi_system_measure_")))
         if (auto *units = Registrar::instance<UnitsMeasureController>()) units->readAgain();
     if (device != m_ctx.registry->activeId()) return;   // read when it comes to the front
+    // -- WP ROLES -- the speaker roles an agent set from the person's words
+    if (tool == QLatin1String("dspi_set_speaker_roles"))
+        if (auto *speakers = Registrar::instance<SpeakersController>()) speakers->reload();
     if (tool == QLatin1String("dspi_set_subharmonic")) {
         if (auto *tools = Registrar::instance<ToolsController>()) tools->readHeadroom();
     } else if (tool == QLatin1String("dspi_monitor_clear")) {
@@ -1584,6 +1616,15 @@ void AiController::setAgentSplCapOn(bool on) {
 }
 
 // -- WP ADETQ --
+// -- WP ROLES --
+void AiController::setAgentRoles(bool on) {
+    if (on == m_agentRoles || !m_mcp) return;
+    m_agentRoles = on;
+    QSettings().setValue(QLatin1String(kAgentRolesKey), on);
+    dspi_mcp_set_agent_roles(m_mcp, on);
+    emit settingsChanged();
+}
+
 void AiController::setAgentDetect(bool on) {
     if (on == m_agentDetect || !m_mcp) return;
     m_agentDetect = on;

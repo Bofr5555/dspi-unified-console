@@ -123,6 +123,8 @@ impl Registry {
         tools.extend(tools::hub::TOOLS.iter().copied());
         tools.extend(tools::analysis::TOOLS.iter().copied());
         tools.extend(tools::info::TOOLS.iter().copied());
+        // -- WP ROLES -- speaker roles from the user's words
+        tools.extend(tools::roles::TOOLS.iter().copied());
         // -- WP MCP5 -- measuring, the auto-tune, measuring across units
         tools.extend(tools::measure::TOOLS.iter().copied());
         // -- WP FEAT1 -- routing and sources in the installation draft

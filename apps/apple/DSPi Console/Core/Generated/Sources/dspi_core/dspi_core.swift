@@ -26390,6 +26390,13 @@ public struct DetectSetup {
      * The capture's rate, Hz (0: 48000).
      */
     public var captureRateHz: UInt32
+    /**
+     * The top-fall check only (stages A and B, never below the floor) of
+     * the listed outputs' stated roles: no class, no layout row; each
+     * output's [`RoleCheck`] goes to the stated layout. Refused when the
+     * layout is not stated or a listed output is not a stated row.
+     */
+    public var check: Bool
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -26417,7 +26424,13 @@ public struct DetectSetup {
          */splCapDb: Float? = nil, 
         /**
          * The capture's rate, Hz (0: 48000).
-         */captureRateHz: UInt32) {
+         */captureRateHz: UInt32, 
+        /**
+         * The top-fall check only (stages A and B, never below the floor) of
+         * the listed outputs' stated roles: no class, no layout row; each
+         * output's [`RoleCheck`] goes to the stated layout. Refused when the
+         * layout is not stated or a listed output is not a stated row.
+         */check: Bool = false) {
         self.outputs = outputs
         self.placement = placement
         self.coupler = coupler
@@ -26425,6 +26438,7 @@ public struct DetectSetup {
         self.micDocument = micDocument
         self.splCapDb = splCapDb
         self.captureRateHz = captureRateHz
+        self.check = check
     }
 }
 
@@ -26456,6 +26470,9 @@ extension DetectSetup: Equatable, Hashable {
         if lhs.captureRateHz != rhs.captureRateHz {
             return false
         }
+        if lhs.check != rhs.check {
+            return false
+        }
         return true
     }
 
@@ -26467,6 +26484,7 @@ extension DetectSetup: Equatable, Hashable {
         hasher.combine(micDocument)
         hasher.combine(splCapDb)
         hasher.combine(captureRateHz)
+        hasher.combine(check)
     }
 }
 
@@ -26485,7 +26503,8 @@ public struct FfiConverterTypeDetectSetup: FfiConverterRustBuffer {
                 floorHz: FfiConverterFloat.read(from: &buf), 
                 micDocument: FfiConverterString.read(from: &buf), 
                 splCapDb: FfiConverterOptionFloat.read(from: &buf), 
-                captureRateHz: FfiConverterUInt32.read(from: &buf)
+                captureRateHz: FfiConverterUInt32.read(from: &buf), 
+                check: FfiConverterBool.read(from: &buf)
         )
     }
 
@@ -26497,6 +26516,7 @@ public struct FfiConverterTypeDetectSetup: FfiConverterRustBuffer {
         FfiConverterString.write(value.micDocument, into: &buf)
         FfiConverterOptionFloat.write(value.splCapDb, into: &buf)
         FfiConverterUInt32.write(value.captureRateHz, into: &buf)
+        FfiConverterBool.write(value.check, into: &buf)
     }
 }
 
@@ -26568,6 +26588,14 @@ public struct DetectState {
      * Who started it: 0 the app, else an agent's actor.
      */
     public var actor: UInt32
+    /**
+     * It is a top-fall check of stated roles ([`DetectSetup::check`]).
+     */
+    public var check: Bool
+    /**
+     * The check's verdicts so far, by output.
+     */
+    public var checks: [RoleCheck]
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -26607,7 +26635,13 @@ public struct DetectState {
          */issue: MeasureIssue?, 
         /**
          * Who started it: 0 the app, else an agent's actor.
-         */actor: UInt32) {
+         */actor: UInt32, 
+        /**
+         * It is a top-fall check of stated roles ([`DetectSetup::check`]).
+         */check: Bool, 
+        /**
+         * The check's verdicts so far, by output.
+         */checks: [RoleCheck]) {
         self.stage = stage
         self.running = running
         self.output = output
@@ -26620,6 +26654,8 @@ public struct DetectState {
         self.detection = detection
         self.issue = issue
         self.actor = actor
+        self.check = check
+        self.checks = checks
     }
 }
 
@@ -26666,6 +26702,12 @@ extension DetectState: Equatable, Hashable {
         if lhs.actor != rhs.actor {
             return false
         }
+        if lhs.check != rhs.check {
+            return false
+        }
+        if lhs.checks != rhs.checks {
+            return false
+        }
         return true
     }
 
@@ -26682,6 +26724,8 @@ extension DetectState: Equatable, Hashable {
         hasher.combine(detection)
         hasher.combine(issue)
         hasher.combine(actor)
+        hasher.combine(check)
+        hasher.combine(checks)
     }
 }
 
@@ -26705,7 +26749,9 @@ public struct FfiConverterTypeDetectState: FfiConverterRustBuffer {
                 session: FfiConverterTypeMeasureState.read(from: &buf), 
                 detection: FfiConverterOptionTypeDetection.read(from: &buf), 
                 issue: FfiConverterOptionTypeMeasureIssue.read(from: &buf), 
-                actor: FfiConverterUInt32.read(from: &buf)
+                actor: FfiConverterUInt32.read(from: &buf), 
+                check: FfiConverterBool.read(from: &buf), 
+                checks: FfiConverterSequenceTypeRoleCheck.read(from: &buf)
         )
     }
 
@@ -26722,6 +26768,8 @@ public struct FfiConverterTypeDetectState: FfiConverterRustBuffer {
         FfiConverterOptionTypeDetection.write(value.detection, into: &buf)
         FfiConverterOptionTypeMeasureIssue.write(value.issue, into: &buf)
         FfiConverterUInt32.write(value.actor, into: &buf)
+        FfiConverterBool.write(value.check, into: &buf)
+        FfiConverterSequenceTypeRoleCheck.write(value.checks, into: &buf)
     }
 }
 
@@ -56832,6 +56880,163 @@ public func FfiConverterTypeRingHealth_lower(_ value: RingHealth) -> RustBuffer 
 
 
 /**
+ * One output's top-fall check.
+ */
+public struct RoleCheck {
+    /**
+     * The output, 0-based.
+     */
+    public var output: UInt8
+    /**
+     * The stated role it checked (a check stands only for that role).
+     */
+    public var role: MeasureRole
+    /**
+     * What it found.
+     */
+    public var verdict: RoleCheckVerdict
+    /**
+     * The mean level 1.5 to 3 kHz less the mean 10 to 16 kHz, dB.
+     */
+    public var topFallDb: Float?
+    /**
+     * The floor it never played below, Hz.
+     */
+    public var floorHz: Float
+    /**
+     * When, ms since the Unix epoch.
+     */
+    public var atMs: Int64
+    /**
+     * Unfinished because the output's own filters (a low-pass) hide its top
+     * end: the check judges the driver, not them.
+     */
+    public var filtersHideTop: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The output, 0-based.
+         */output: UInt8, 
+        /**
+         * The stated role it checked (a check stands only for that role).
+         */role: MeasureRole, 
+        /**
+         * What it found.
+         */verdict: RoleCheckVerdict, 
+        /**
+         * The mean level 1.5 to 3 kHz less the mean 10 to 16 kHz, dB.
+         */topFallDb: Float?, 
+        /**
+         * The floor it never played below, Hz.
+         */floorHz: Float, 
+        /**
+         * When, ms since the Unix epoch.
+         */atMs: Int64, 
+        /**
+         * Unfinished because the output's own filters (a low-pass) hide its top
+         * end: the check judges the driver, not them.
+         */filtersHideTop: Bool) {
+        self.output = output
+        self.role = role
+        self.verdict = verdict
+        self.topFallDb = topFallDb
+        self.floorHz = floorHz
+        self.atMs = atMs
+        self.filtersHideTop = filtersHideTop
+    }
+}
+
+#if compiler(>=6)
+extension RoleCheck: Sendable {}
+#endif
+
+
+extension RoleCheck: Equatable, Hashable {
+    public static func ==(lhs: RoleCheck, rhs: RoleCheck) -> Bool {
+        if lhs.output != rhs.output {
+            return false
+        }
+        if lhs.role != rhs.role {
+            return false
+        }
+        if lhs.verdict != rhs.verdict {
+            return false
+        }
+        if lhs.topFallDb != rhs.topFallDb {
+            return false
+        }
+        if lhs.floorHz != rhs.floorHz {
+            return false
+        }
+        if lhs.atMs != rhs.atMs {
+            return false
+        }
+        if lhs.filtersHideTop != rhs.filtersHideTop {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(output)
+        hasher.combine(role)
+        hasher.combine(verdict)
+        hasher.combine(topFallDb)
+        hasher.combine(floorHz)
+        hasher.combine(atMs)
+        hasher.combine(filtersHideTop)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeRoleCheck: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> RoleCheck {
+        return
+            try RoleCheck(
+                output: FfiConverterUInt8.read(from: &buf), 
+                role: FfiConverterTypeMeasureRole.read(from: &buf), 
+                verdict: FfiConverterTypeRoleCheckVerdict.read(from: &buf), 
+                topFallDb: FfiConverterOptionFloat.read(from: &buf), 
+                floorHz: FfiConverterFloat.read(from: &buf), 
+                atMs: FfiConverterInt64.read(from: &buf), 
+                filtersHideTop: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: RoleCheck, into buf: inout [UInt8]) {
+        FfiConverterUInt8.write(value.output, into: &buf)
+        FfiConverterTypeMeasureRole.write(value.role, into: &buf)
+        FfiConverterTypeRoleCheckVerdict.write(value.verdict, into: &buf)
+        FfiConverterOptionFloat.write(value.topFallDb, into: &buf)
+        FfiConverterFloat.write(value.floorHz, into: &buf)
+        FfiConverterInt64.write(value.atMs, into: &buf)
+        FfiConverterBool.write(value.filtersHideTop, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRoleCheck_lift(_ buf: RustBuffer) throws -> RoleCheck {
+    return try FfiConverterTypeRoleCheck.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRoleCheck_lower(_ value: RoleCheck) -> RustBuffer {
+    return FfiConverterTypeRoleCheck.lower(value)
+}
+
+
+/**
  * What the device's analyser can do.
  */
 public struct RtaCapsInfo {
@@ -59295,6 +59500,12 @@ public struct SpeakerLayout {
      * [`LayoutState::AutoDetected`].
      */
     public var detected: Detection?
+    /**
+     * The roles an AI agent set from the user's words, if it did: the
+     * words, when, and the top-fall checks made since. With a `stated` row
+     * and no suggestion it makes the layout [`LayoutState::Stated`].
+     */
+    public var stated: Statement?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -59319,13 +59530,19 @@ public struct SpeakerLayout {
          * The last speaker detection on this device, if one ran: its evidence
          * per output. With every row `detected` or `user` it makes the layout
          * [`LayoutState::AutoDetected`].
-         */detected: Detection? = nil) {
+         */detected: Detection? = nil, 
+        /**
+         * The roles an AI agent set from the user's words, if it did: the
+         * words, when, and the top-fall checks made since. With a `stated` row
+         * and no suggestion it makes the layout [`LayoutState::Stated`].
+         */stated: Statement? = nil) {
         self.serial = serial
         self.outputs = outputs
         self.confirmedByUser = confirmedByUser
         self.updatedMs = updatedMs
         self.notes = notes
         self.detected = detected
+        self.stated = stated
     }
 }
 
@@ -59354,6 +59571,9 @@ extension SpeakerLayout: Equatable, Hashable {
         if lhs.detected != rhs.detected {
             return false
         }
+        if lhs.stated != rhs.stated {
+            return false
+        }
         return true
     }
 
@@ -59364,6 +59584,7 @@ extension SpeakerLayout: Equatable, Hashable {
         hasher.combine(updatedMs)
         hasher.combine(notes)
         hasher.combine(detected)
+        hasher.combine(stated)
     }
 }
 
@@ -59381,7 +59602,8 @@ public struct FfiConverterTypeSpeakerLayout: FfiConverterRustBuffer {
                 confirmedByUser: FfiConverterBool.read(from: &buf), 
                 updatedMs: FfiConverterInt64.read(from: &buf), 
                 notes: FfiConverterSequenceString.read(from: &buf), 
-                detected: FfiConverterOptionTypeDetection.read(from: &buf)
+                detected: FfiConverterOptionTypeDetection.read(from: &buf), 
+                stated: FfiConverterOptionTypeStatement.read(from: &buf)
         )
     }
 
@@ -59392,6 +59614,7 @@ public struct FfiConverterTypeSpeakerLayout: FfiConverterRustBuffer {
         FfiConverterInt64.write(value.updatedMs, into: &buf)
         FfiConverterSequenceString.write(value.notes, into: &buf)
         FfiConverterOptionTypeDetection.write(value.detected, into: &buf)
+        FfiConverterOptionTypeStatement.write(value.stated, into: &buf)
     }
 }
 
@@ -59539,6 +59762,147 @@ public func FfiConverterTypeSpeakerLayoutOutput_lift(_ buf: RustBuffer) throws -
 #endif
 public func FfiConverterTypeSpeakerLayoutOutput_lower(_ value: SpeakerLayoutOutput) -> RustBuffer {
     return FfiConverterTypeSpeakerLayoutOutput.lower(value)
+}
+
+
+/**
+ * The user's words an AI agent set the roles from.
+ */
+public struct Statement {
+    /**
+     * When, ms since the Unix epoch.
+     */
+    public var atMs: Int64
+    /**
+     * The agent's label ("AI · Claude Code").
+     */
+    public var by: String
+    /**
+     * The user's words, as the agent quoted them.
+     */
+    public var words: String
+    /**
+     * Over a confirmed layout: the user's words on what changed ("" else).
+     */
+    public var whatChanged: String
+    /**
+     * The device's output count then: another count invalidates it.
+     */
+    public var deviceOutputs: UInt8
+    /**
+     * The top-fall checks made since, by output.
+     */
+    public var checks: [RoleCheck]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * When, ms since the Unix epoch.
+         */atMs: Int64, 
+        /**
+         * The agent's label ("AI · Claude Code").
+         */by: String, 
+        /**
+         * The user's words, as the agent quoted them.
+         */words: String, 
+        /**
+         * Over a confirmed layout: the user's words on what changed ("" else).
+         */whatChanged: String, 
+        /**
+         * The device's output count then: another count invalidates it.
+         */deviceOutputs: UInt8, 
+        /**
+         * The top-fall checks made since, by output.
+         */checks: [RoleCheck]) {
+        self.atMs = atMs
+        self.by = by
+        self.words = words
+        self.whatChanged = whatChanged
+        self.deviceOutputs = deviceOutputs
+        self.checks = checks
+    }
+}
+
+#if compiler(>=6)
+extension Statement: Sendable {}
+#endif
+
+
+extension Statement: Equatable, Hashable {
+    public static func ==(lhs: Statement, rhs: Statement) -> Bool {
+        if lhs.atMs != rhs.atMs {
+            return false
+        }
+        if lhs.by != rhs.by {
+            return false
+        }
+        if lhs.words != rhs.words {
+            return false
+        }
+        if lhs.whatChanged != rhs.whatChanged {
+            return false
+        }
+        if lhs.deviceOutputs != rhs.deviceOutputs {
+            return false
+        }
+        if lhs.checks != rhs.checks {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(atMs)
+        hasher.combine(by)
+        hasher.combine(words)
+        hasher.combine(whatChanged)
+        hasher.combine(deviceOutputs)
+        hasher.combine(checks)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeStatement: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Statement {
+        return
+            try Statement(
+                atMs: FfiConverterInt64.read(from: &buf), 
+                by: FfiConverterString.read(from: &buf), 
+                words: FfiConverterString.read(from: &buf), 
+                whatChanged: FfiConverterString.read(from: &buf), 
+                deviceOutputs: FfiConverterUInt8.read(from: &buf), 
+                checks: FfiConverterSequenceTypeRoleCheck.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: Statement, into buf: inout [UInt8]) {
+        FfiConverterInt64.write(value.atMs, into: &buf)
+        FfiConverterString.write(value.by, into: &buf)
+        FfiConverterString.write(value.words, into: &buf)
+        FfiConverterString.write(value.whatChanged, into: &buf)
+        FfiConverterUInt8.write(value.deviceOutputs, into: &buf)
+        FfiConverterSequenceTypeRoleCheck.write(value.checks, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeStatement_lift(_ buf: RustBuffer) throws -> Statement {
+    return try FfiConverterTypeStatement.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeStatement_lower(_ value: Statement) -> RustBuffer {
+    return FfiConverterTypeStatement.lower(value)
 }
 
 
@@ -64971,6 +65335,13 @@ public enum LayoutState {
      * The user confirmed it.
      */
     case confirmed
+    /**
+     * Set by an AI agent from the user's words, not yet confirmed: its
+     * roles guard the outputs as a detected layout's do, an output it does
+     * not name is unknown (a tweeter), and an agent's sub-floor stimulus on
+     * a stated non-tweeter waits for the top-fall check.
+     */
+    case stated
 }
 
 
@@ -64994,6 +65365,8 @@ public struct FfiConverterTypeLayoutState: FfiConverterRustBuffer {
         
         case 3: return .confirmed
         
+        case 4: return .stated
+        
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
@@ -65012,6 +65385,10 @@ public struct FfiConverterTypeLayoutState: FfiConverterRustBuffer {
         
         case .confirmed:
             writeInt(&buf, Int32(3))
+        
+        
+        case .stated:
+            writeInt(&buf, Int32(4))
         
         }
     }
@@ -67785,6 +68162,112 @@ extension ProtocolGeneration: Equatable, Hashable {}
 // Note that we don't yet support `indirect` for enums.
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
 /**
+ * What the top-fall check (the detection's stage B) made of a stated
+ * non-tweeter, before an agent plays anything below its floor.
+ */
+
+public enum RoleCheckVerdict {
+    
+    /**
+     * The top end falls as a woofer's or a midrange's does: the stated
+     * role stands.
+     */
+    case topFalls
+    /**
+     * Nothing heard above the floor, but heard below it by the
+     * detection's shaped probe (at most −50 dBFS, two octaves): a sub or a
+     * low woofer, no tweeter; the stated role stands. (Heard nowhere, the
+     * check is [`RoleCheckVerdict::Unfinished`].)
+     */
+    case silent
+    /**
+     * The top holds like a tweeter's: nothing below the floor plays on it
+     * for an agent, and the safety rules take it for a tweeter.
+     */
+    case topHolds
+    /**
+     * The check did not finish (stopped, the microphone did not follow):
+     * still unchecked.
+     */
+    case unfinished
+}
+
+
+#if compiler(>=6)
+extension RoleCheckVerdict: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeRoleCheckVerdict: FfiConverterRustBuffer {
+    typealias SwiftType = RoleCheckVerdict
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> RoleCheckVerdict {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .topFalls
+        
+        case 2: return .silent
+        
+        case 3: return .topHolds
+        
+        case 4: return .unfinished
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: RoleCheckVerdict, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .topFalls:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .silent:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .topHolds:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .unfinished:
+            writeInt(&buf, Int32(4))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRoleCheckVerdict_lift(_ buf: RustBuffer) throws -> RoleCheckVerdict {
+    return try FfiConverterTypeRoleCheckVerdict.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRoleCheckVerdict_lower(_ value: RoleCheckVerdict) -> RustBuffer {
+    return FfiConverterTypeRoleCheckVerdict.lower(value)
+}
+
+
+extension RoleCheckVerdict: Equatable, Hashable {}
+
+
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
  * Where a row's role comes from.
  */
 
@@ -67802,6 +68285,11 @@ public enum RoleSource {
      * A suggestion (the filters' inference, an import), nobody's word.
      */
     case suggested
+    /**
+     * Set by an AI agent from the user's words (the layout's `stated`),
+     * not checked by the user.
+     */
+    case stated
 }
 
 
@@ -67825,6 +68313,8 @@ public struct FfiConverterTypeRoleSource: FfiConverterRustBuffer {
         
         case 3: return .suggested
         
+        case 4: return .stated
+        
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
@@ -67843,6 +68333,10 @@ public struct FfiConverterTypeRoleSource: FfiConverterRustBuffer {
         
         case .suggested:
             writeInt(&buf, Int32(3))
+        
+        
+        case .stated:
+            writeInt(&buf, Int32(4))
         
         }
     }
@@ -69696,6 +70190,30 @@ fileprivate struct FfiConverterOptionTypeSpeakerLayout: FfiConverterRustBuffer {
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypeSpeakerLayout.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeStatement: FfiConverterRustBuffer {
+    typealias SwiftType = Statement?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeStatement.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeStatement.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -72413,6 +72931,31 @@ fileprivate struct FfiConverterSequenceTypeRawNotification: FfiConverterRustBuff
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeRawNotification.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeRoleCheck: FfiConverterRustBuffer {
+    typealias SwiftType = [RoleCheck]
+
+    public static func write(_ value: [RoleCheck], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeRoleCheck.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [RoleCheck] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [RoleCheck]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeRoleCheck.read(from: &buf))
         }
         return seq
     }

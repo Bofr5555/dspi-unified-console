@@ -1768,6 +1768,10 @@
 .dspi-web .speaker-pill[data-kind="uncertain"],
 .dspi-web .speaker-pill[data-kind="unknown"],
 .dspi-web .speaker-pill[data-kind="nothing"] { border-color: var(--warn); color: var(--warn); }
+/* -- WP ROLES -- set by AI from the person's words; a top that held like a tweeter's; an output not named */
+.dspi-web .speaker-pill[data-kind="stated"] { border-color: var(--accent); color: var(--accent); }
+.dspi-web .speaker-pill[data-kind="statedTweeter"],
+.dspi-web .speaker-pill[data-kind="notNamed"] { border-color: var(--warn); color: var(--warn); }
 .dspi-web .speakers-detection { max-width: 100%; overflow-x: auto; }
 .dspi-web .speakers-detection table { border-collapse: collapse; font-size: 0.8rem; }
 .dspi-web .speakers-detection th,

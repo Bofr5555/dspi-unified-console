@@ -72,7 +72,10 @@ Item {
         // -- WP ADETQ -- the speaker detection's question (AUTODES 4.1) says what it is
         //: %1 a device's name
         heading: host.front && host.front.detect ? qsTr("Detect the speakers on %1?").arg(host.front.device)
-                                                 : qsTr("Allow this change?")
+                 // -- WP ROLES -- speaker roles from the person's words
+                 //: %1 a device's name
+                 : host.front && host.front.roleCells.length ? qsTr("Set the speaker roles on %1?").arg(host.front.device)
+                 : qsTr("Allow this change?")
         onAnswered: allow => { if (host.front) AiController.answer(host.front.id, allow) }
 
         SheetText {
@@ -88,7 +91,8 @@ Item {
             width: parent.width
             spacing: 4
             Repeater {
-                model: host.front ? host.front.riskLines.slice(0, 8) : []   // -- WP LAY8 -- with its kind
+                // -- WP ROLES -- (the speaker roles' question shows its table below instead)
+                model: host.front && !host.front.roleCells.length ? host.front.riskLines.slice(0, 8) : []   // -- WP LAY8 -- with its kind
                 delegate: SheetText {
                     required property string modelData
                     required property int index
@@ -102,6 +106,35 @@ Item {
                 leftPadding: Theme.spacing
                 text: host.front ? qsTr("and %1 more").arg(Math.max(0, host.front.risks.length - 8)) : ""
             }
+        }
+        // -- WP ROLES -- the whole table of speaker roles from the person's words, then the rest
+        Grid {
+            objectName: "AiConfirmSheet.roles"
+            visible: host.front !== null && host.front.roleCells.length > 0
+            columns: 3
+            columnSpacing: Theme.spacing * 2
+            rowSpacing: 2
+            leftPadding: Theme.spacing
+            Repeater {
+                model: host.front && host.front.roleCells.length
+                       ? [qsTr("Output"), qsTr("Speaker"), qsTr("Role")].concat(host.front.roleCells) : []
+                delegate: Text {
+                    required property string modelData
+                    required property int index
+                    objectName: "AiConfirmSheet.roles." + index
+                    textFormat: Text.PlainText
+                    font: index < 3 ? Qt.font({ pixelSize: Theme.fontBody.pixelSize, weight: Font.DemiBold }) : Theme.fontBody
+                    color: Theme.text
+                    text: modelData
+                    Accessible.role: Accessible.StaticText
+                    Accessible.name: text
+                }
+            }
+        }
+        SheetText {
+            objectName: "AiConfirmSheet.rolesAfter"
+            visible: text.length > 0
+            text: host.front && host.front.rolesAfter ? host.front.rolesAfter : ""
         }
         // -- WP ADETQ -- the warning on the speaker detection's mechanism (the server's words)
         SheetText {
@@ -125,6 +158,9 @@ Item {
                   ? qsTr("Nothing has played yet. Sound cannot be taken back once it plays; Stop Measuring in the agent strip ends it.")
                   : host.front && host.front.wholesale
                   ? qsTr("Nothing has been changed yet. This replaces the settings as a whole and ends the undo history; the settings as they are now are kept as a snapshot first, to go back to.")
+                  // -- WP ROLES -- the roles are corrected where they live, not undone
+                  : host.front && host.front.roleCells.length
+                  ? qsTr("Nothing has been changed yet. You can confirm or correct the roles afterwards in Settings › Speakers.")
                   : qsTr("Nothing has been changed yet. You can undo it afterwards in the agents' activity.")
         }
         SheetText {

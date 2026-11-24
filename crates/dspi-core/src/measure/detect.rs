@@ -57,8 +57,8 @@ use super::{
     MeasureRunKind, MeasureSetup, MeasureState, PreflightOptions,
 };
 use crate::speaker_layout::{
-    DetectClass, DetectConfidence, DetectHeard, DetectedOutput, Detection, LayoutState, RoleSource,
-    SpeakerLayout, SpeakerLayoutOutput,
+    DetectClass, DetectConfidence, DetectHeard, DetectedOutput, Detection, LayoutState, RoleCheck,
+    RoleCheckVerdict, RoleSource, SpeakerLayout, SpeakerLayoutOutput,
 };
 use crate::{DspiCore, DspiError, Result};
 
@@ -129,6 +129,11 @@ const EDGE_OCT: f64 = 1.0 / 6.0;
 const LOW_TURN_OCT: f64 = 0.25;
 /// Neighbouring segments are aligned by at most this, dB.
 const ALIGN_MAX_DB: f64 = 6.0;
+// -- WP ROLES --
+/// A top-fall check judges the driver, not the output's own filters: where
+/// they cut more than this (dB under their own loudest point), the response
+/// is their stopband and is not judged.
+pub const CHECK_FILTER_CUT_DB: f64 = 20.0;
 
 // ── The notices (assets/notices/notices.json, family `detect`) ──────────
 
@@ -193,6 +198,13 @@ pub struct DetectSetup {
     pub spl_cap_db: Option<f32>,
     /// The capture's rate, Hz (0: 48000).
     pub capture_rate_hz: u32,
+    // -- WP ROLES --
+    /// The top-fall check only (stages A and B, never below the floor) of
+    /// the listed outputs' stated roles: no class, no layout row; each
+    /// output's [`RoleCheck`] goes to the stated layout. Refused when the
+    /// layout is not stated or a listed output is not a stated row.
+    #[cfg_attr(feature = "uniffi", uniffi(default = false))]
+    pub check: bool,
 }
 
 /// Where the detection stands.
@@ -244,6 +256,13 @@ pub struct DetectState {
     pub issue: Option<MeasureIssue>,
     /// Who started it: 0 the app, else an agent's actor.
     pub actor: u32,
+    // -- WP ROLES --
+    /// It is a top-fall check of stated roles ([`DetectSetup::check`]).
+    #[serde(default)]
+    pub check: bool,
+    /// The check's verdicts so far, by output.
+    #[serde(default)]
+    pub checks: Vec<RoleCheck>,
 }
 
 // ── The judgement (pure) ────────────────────────────────────────────────
@@ -584,8 +603,10 @@ pub(crate) fn summary_of(d: &Detection, probed: usize) -> String {
 }
 
 /// `trusted` roles of `layout`: each output's role, by output, when its
-/// state is confirmed or auto-detected; `None` when it is neither (nobody's
-/// word: no roles reach the safety rules). AUTODES 3.2.
+/// state is confirmed, auto-detected or (-- WP ROLES --) stated from the
+/// user's words (an output a statement leaves out, and a stated row whose
+/// top-fall check found a tweeter's top, is a tweeter); `None` when it is none of these
+/// (nobody's word: no roles reach the safety rules). AUTODES 3.2.
 pub fn trusted_roles(layout: &SpeakerLayout) -> Option<Vec<Option<MeasureRole>>> {
     if layout.state() == LayoutState::Unconfirmed {
         return None;
@@ -597,7 +618,29 @@ pub fn trusted_roles(layout: &SpeakerLayout) -> Option<Vec<Option<MeasureRole>>>
             out.resize(at.saturating_add(1), None);
         }
         if let Some(slot) = out.get_mut(at) {
-            *slot = Some(o.role);
+            // -- WP ROLES -- a stated row whose top-fall check found a
+            // tweeter's top is one (an unchecked one is trusted as stated:
+            // ROLESFIX, owner 2026-11-24; only an agent's test signals wait
+            // for its check)
+            let tweeter = layout
+                .check_of(o.output)
+                .is_some_and(|c| c.verdict == RoleCheckVerdict::TopHolds);
+            *slot = Some(if tweeter { MeasureRole::High } else { o.role });
+        }
+    }
+    // -- WP ROLES -- an output a statement does not name is unknown: a
+    // tweeter
+    if layout.state() == LayoutState::Stated
+        && let Some(st) = layout.stated.as_ref()
+    {
+        let n = usize::from(st.device_outputs);
+        if out.len() < n {
+            out.resize(n, None);
+        }
+        for slot in &mut out {
+            if slot.is_none() {
+                *slot = Some(MeasureRole::High);
+            }
         }
     }
     Some(out)
@@ -637,6 +680,11 @@ struct Work {
     /// The descent's verdicts: the −6 dB point, the segment it stopped at.
     f_low_hz: Option<f64>,
     stopped_at: Option<f32>,
+    // -- WP ROLES --
+    /// A top-fall check of this stated role: stages A and B only.
+    check: Option<MeasureRole>,
+    /// The output's own filters hide its top end from the check.
+    hidden: bool,
 }
 
 impl Work {
@@ -656,6 +704,34 @@ impl Work {
             lowest_hz: None,
             f_low_hz: None,
             stopped_at: None,
+            check: None, // -- WP ROLES --
+            hidden: false,
+        }
+    }
+
+    // -- WP ROLES --
+    /// `output`'s check of its stated `role` (never below `floor`).
+    fn checking(output: u8, floor: f32, role: MeasureRole) -> Work {
+        Work {
+            check: Some(role),
+            ..Work::new(output, floor)
+        }
+    }
+
+    // -- WP ROLES --
+    /// The check's record.
+    fn check_record(&self, verdict: RoleCheckVerdict) -> RoleCheck {
+        RoleCheck {
+            output: self.output,
+            role: self.check.unwrap_or_default(),
+            verdict,
+            top_fall_db: self
+                .shape
+                .and_then(|s| s.top_fall_db)
+                .map(|d| round1(d) as f32),
+            floor_hz: self.floor,
+            at_ms: crate::events::now_ms(),
+            filters_hide_top: self.hidden,
         }
     }
 
@@ -696,6 +772,9 @@ pub(crate) enum Next {
     Session,
     /// The output is classified.
     Done(DetectClass, DetectConfidence),
+    // -- WP ROLES --
+    /// The output's top-fall check is made.
+    Checked(RoleCheckVerdict),
 }
 
 impl Work {
@@ -732,6 +811,14 @@ impl Work {
             reference: shape.reference_db,
         });
         self.pts = pts;
+        // -- WP ROLES -- the check's verdict is the top's: no descent
+        if self.check.is_some() {
+            return Some(Next::Checked(if shape.falls {
+                RoleCheckVerdict::TopFalls
+            } else {
+                RoleCheckVerdict::TopHolds
+            }));
+        }
         if !shape.falls {
             return Some(Next::Done(
                 DetectClass::Tweeter,
@@ -777,6 +864,20 @@ impl Work {
             reference: f64::NEG_INFINITY,
         };
         let silent_above = self.heard == DetectHeard::Never;
+        // -- WP ROLES -- a check of an output silent above the floor: heard by
+        // the shaped probe it is no tweeter; heard nowhere it stays unchecked
+        // (a microphone that hears nothing clears nothing)
+        if self.check.is_some() {
+            let next = k.saturating_add(1);
+            return match band.mean {
+                Some(_) => Next::Checked(RoleCheckVerdict::Silent),
+                None if next < self.shaped => {
+                    self.step = Step::Descent(next);
+                    Next::Session
+                }
+                None => Next::Checked(RoleCheckVerdict::Unfinished),
+            };
+        }
         self.pts.extend(seg);
         self.pts.sort_by(|a, b| a.0.total_cmp(&b.0));
         let next = k.saturating_add(1);
@@ -831,6 +932,41 @@ impl Work {
     }
 }
 
+// -- WP ROLES --
+/// A top-fall check's verdicts in words ("Out 5 (stated midrange): its top
+/// holds like a tweeter's.").
+pub(crate) fn check_summary(checks: &[RoleCheck]) -> String {
+    checks
+        .iter()
+        .map(|c| {
+            let n = u16::from(c.output).saturating_add(1);
+            let role = crate::speaker_layout::role_word(c.role);
+            let what = match c.verdict {
+                RoleCheckVerdict::TopFalls => {
+                    "its top end falls as a non-tweeter's does".to_owned()
+                }
+                RoleCheckVerdict::Silent => {
+                    "nothing heard above the floor, heard below it at the quiet probe's level (no \
+                     tweeter)"
+                        .to_owned()
+                }
+                RoleCheckVerdict::TopHolds => format!(
+                    "its top end holds like a tweeter's{}",
+                    c.top_fall_db
+                        .map(|d| format!(" (10 to 16 kHz only {d:.1} dB under 1.5 to 3 kHz)"))
+                        .unwrap_or_default()
+                ),
+                RoleCheckVerdict::Unfinished if c.filters_hide_top => {
+                    "not checked: its own low-pass hides its top end".to_owned()
+                }
+                RoleCheckVerdict::Unfinished => "not checked (the check did not finish)".to_owned(),
+            };
+            format!("Out {n} (stated {role}): {what}.")
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 fn round1(x: f64) -> f64 {
     (x * 10.0).round() / 10.0
 }
@@ -855,6 +991,10 @@ pub(crate) struct Detect {
     segment_hz: f32,
     /// The layout when it started: the user's rows, names and groups kept.
     base: Option<SpeakerLayout>,
+    // -- WP ROLES --
+    /// A top-fall check of stated roles, and its verdicts.
+    check: bool,
+    checks: Vec<RoleCheck>,
 }
 
 impl Detect {
@@ -887,9 +1027,12 @@ impl Detect {
             segment_hz: self.segment_hz,
             level_dbfs: self.level_now,
             session,
-            detection: (self.setup.is_some()).then(|| self.detection.clone()),
+            // -- WP ROLES -- a check classifies nothing
+            detection: (self.setup.is_some() && !self.check).then(|| self.detection.clone()),
             issue: self.issue.clone(),
             actor: self.actor,
+            check: self.check,
+            checks: self.checks.clone(),
         }
     }
 
@@ -992,6 +1135,20 @@ impl DspiCore {
                  Settings › Speakers"
             )));
         }
+        // -- WP ROLES -- a check is of stated rows only
+        if setup.check {
+            let stated = layout.as_ref().filter(|l| l.state() == LayoutState::Stated);
+            let bad = setup.outputs.iter().find(|o| {
+                !stated
+                    .and_then(|l| l.output(**o))
+                    .is_some_and(|r| r.source == RoleSource::Stated)
+            });
+            if setup.outputs.is_empty() || stated.is_none() || bad.is_some() {
+                return Err(invalid(
+                    "a top-fall check is of roles an agent stated from the user's words only",
+                ));
+            }
+        }
         let (n_out, enabled, muted, profile) = {
             let mut inner = self.lock();
             inner.conn()?;
@@ -1083,7 +1240,70 @@ impl DspiCore {
             );
             detection.outputs.sort_by_key(|r| r.output);
         }
+        // -- WP ROLES -- a check plays nothing on an output whose own
+        // filters hide its top end: it stays unchecked, and says why
+        let mut hidden_checks: Vec<RoleCheck> = Vec::new();
+        if setup.check {
+            queue.retain(|(o, f)| {
+                if !self.top_hidden(*o) {
+                    return true;
+                }
+                if let Some(row) = layout.as_ref().and_then(|l| l.output(*o)) {
+                    hidden_checks.push(RoleCheck {
+                        output: *o,
+                        role: row.role,
+                        verdict: RoleCheckVerdict::Unfinished,
+                        floor_hz: *f,
+                        at_ms: crate::events::now_ms(),
+                        filters_hide_top: true,
+                        ..RoleCheck::default()
+                    });
+                }
+                false
+            });
+            for c in &hidden_checks {
+                self.speaker_roles_checked(c.clone());
+            }
+        }
+        // -- WP ROLES -- each checked output's stated role
+        let check_roles: Vec<(u8, MeasureRole)> = if setup.check {
+            layout
+                .as_ref()
+                .map(|l| {
+                    queue
+                        .iter()
+                        .filter_map(|(o, _)| l.output(*o).map(|r| (*o, r.role)))
+                        .collect()
+                })
+                .unwrap_or_default()
+        } else {
+            Vec::new()
+        };
+        let role_of_check = |o: u8| check_roles.iter().find(|(c, _)| *c == o).map(|(_, r)| *r);
+        let off_checks: Vec<RoleCheck> = if setup.check {
+            outs.iter()
+                .filter(|o| !queue.iter().any(|(q, _)| q == *o))
+                .filter(|o| !hidden_checks.iter().any(|c| c.output == **o))
+                .filter_map(|o| {
+                    let role = layout.as_ref()?.output(*o)?.role;
+                    Some(RoleCheck {
+                        output: *o,
+                        role,
+                        verdict: RoleCheckVerdict::Unfinished,
+                        at_ms: crate::events::now_ms(),
+                        ..RoleCheck::default()
+                    })
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+        let mut checks = off_checks;
+        checks.extend(hidden_checks);
+        checks.sort_by_key(|c| c.output);
         *d = Detect {
+            check: setup.check,
+            checks,
             setup: Some(setup.clone()),
             stage: DetectStage::Ramp,
             running: false,
@@ -1103,7 +1323,10 @@ impl DspiCore {
             return Ok(self.detect_publish(&d));
         }
         let first = d.queue.first().copied();
-        d.work = first.map(|(o, f)| Work::new(o, f));
+        d.work = first.map(|(o, f)| match role_of_check(o) {
+            Some(role) => Work::checking(o, f, role), // -- WP ROLES --
+            None => Work::new(o, f),
+        });
         if let Err(e) = self.detect_session(&mut d) {
             *d = Detect::default();
             self.detect_publish(&d);
@@ -1111,7 +1334,10 @@ impl DspiCore {
         }
         // From the first sound on, the layout says what is known: every
         // output still to come is unknown, a tweeter until its turn.
-        self.detect_write_layout(&d);
+        // -- WP ROLES -- (a check writes no rows)
+        if !d.check {
+            self.detect_write_layout(&d);
+        }
         Ok(self.detect_publish(&d))
     }
 
@@ -1391,14 +1617,30 @@ impl DspiCore {
         });
         let next = match w.step {
             Step::Top | Step::Band => {
+                // -- WP ROLES -- for a check, a run not heard above the floor
+                // is silence there too
                 if matches!(
                     key,
                     Some("measure.mic_not_hearing" | "measure.start_level_quiet")
-                ) {
+                ) || (w.check.is_some() && key == Some("measure.no_signal"))
+                {
                     Some(w.not_heard_above())
                 } else {
                     response.map(|(freqs, mag, valid, played)| {
                         w.level = level.or(played.is_finite().then_some(played));
+                        // -- WP ROLES -- a check judges the driver: the output's
+                        // own filters taken out, their stopband not judged
+                        let (mag, valid) = if w.check.is_some() {
+                            let (mag, valid, hidden) =
+                                self.unfiltered(w.output, &freqs, mag, valid);
+                            w.hidden = hidden;
+                            (mag, valid)
+                        } else {
+                            (mag, valid)
+                        };
+                        if w.hidden {
+                            return Next::Checked(RoleCheckVerdict::Unfinished);
+                        }
                         let raw =
                             trusted(&freqs, &mag, valid.as_deref(), f64::from(w.floor), 20_000.0);
                         w.after_top(raw) // -- WP ADETS --
@@ -1425,8 +1667,72 @@ impl DspiCore {
             Some(Next::Done(class, confidence)) => {
                 self.detect_output_done(d, &w, class, confidence);
             }
+            Some(Next::Checked(verdict)) => self.detect_output_checked(d, &w, verdict), // -- WP ROLES --
             None => self.detect_output_unknown(d, w, issue),
         }
+    }
+
+    // -- WP ROLES --
+    /// How much `output`'s own filters (PEQ, crossover) cut at each of
+    /// `freqs`, dB under their loudest point from 20 Hz to 20 kHz (the
+    /// chain's modelled magnitude, as the graph draws it).
+    fn chain_cut(&self, output: u8, freqs: &[f64]) -> Vec<f64> {
+        let chain = super::preflight::chain_of(&self.lock().state, output);
+        let model = crate::measure_doc::CoreSectionModel;
+        let grid: Vec<f64> = (0..=120)
+            .map(|k| 20.0 * 1000f64.powf(f64::from(k) / 120.0))
+            .collect();
+        let loudest = super::live::chain_db(&chain, &model, &grid)
+            .into_iter()
+            .fold(f64::NEG_INFINITY, f64::max);
+        let loudest = if loudest.is_finite() { loudest } else { 0.0 };
+        super::live::chain_db(&chain, &model, freqs)
+            .into_iter()
+            .map(|d| (loudest - d).max(0.0))
+            .collect()
+    }
+
+    // -- WP ROLES --
+    /// Whether `output`'s own filters cut its whole top band (10 to 16 kHz)
+    /// by more than [`CHECK_FILTER_CUT_DB`]: a low-pass the user or an agent
+    /// set hides the top end, and a check cannot tell the driver from a
+    /// tweeter (nor trust silence above the floor): it is not played.
+    fn top_hidden(&self, output: u8) -> bool {
+        let band: Vec<f64> = (0..=8)
+            .map(|k| PROBE_SHAPE_C.0 * (PROBE_SHAPE_C.1 / PROBE_SHAPE_C.0).powf(f64::from(k) / 8.0))
+            .collect();
+        self.chain_cut(output, &band)
+            .iter()
+            .all(|c| *c > CHECK_FILTER_CUT_DB)
+    }
+
+    // -- WP ROLES --
+    /// A check's response `mag` (on `freqs`, `valid` its trusted points) with
+    /// `output`'s own filters taken out: each point plus the chain's cut
+    /// there; a point where the chain cuts more than [`CHECK_FILTER_CUT_DB`]
+    /// is its stopband, not trusted. `true` when that leaves no point of the
+    /// top band (10 to 16 kHz) to judge by.
+    fn unfiltered(
+        &self,
+        output: u8,
+        freqs: &[f64],
+        mut mag: Vec<f64>,
+        valid: Option<Vec<bool>>,
+    ) -> (Vec<f64>, Option<Vec<bool>>, bool) {
+        let cut = self.chain_cut(output, freqs);
+        let mut kept = valid.unwrap_or_else(|| vec![true; mag.len()]);
+        for ((m, ok), c) in mag.iter_mut().zip(kept.iter_mut()).zip(&cut) {
+            *m += c;
+            if *c > CHECK_FILTER_CUT_DB {
+                *ok = false;
+            }
+        }
+        let mut c_band = freqs
+            .iter()
+            .zip(&cut)
+            .filter(|(f, _)| (PROBE_SHAPE_C.0..=PROBE_SHAPE_C.1).contains(*f));
+        let hidden = c_band.clone().count() > 0 && c_band.all(|(_, c)| *c > CHECK_FILTER_CUT_DB);
+        (mag, Some(kept), hidden)
     }
 
     /// Go on with `w`'s next session, or end the output unknown when it
@@ -1445,7 +1751,34 @@ impl DspiCore {
 
     fn detect_output_unknown(&self, d: &mut Detect, w: Work, issue: Option<MeasureIssue>) {
         d.issue = issue;
+        // -- WP ROLES -- an unfinished check leaves the row unchecked
+        if w.check.is_some() {
+            self.detect_output_checked(d, &w, RoleCheckVerdict::Unfinished);
+            return;
+        }
         self.detect_output_done(d, &w, DetectClass::Unknown, DetectConfidence::Low);
+    }
+
+    // -- WP ROLES --
+    /// The output's top-fall check is made: kept in the stated layout, the
+    /// next output's started.
+    fn detect_output_checked(&self, d: &mut Detect, w: &Work, verdict: RoleCheckVerdict) {
+        let rec = w.check_record(verdict);
+        self.speaker_roles_checked(rec.clone());
+        d.checks.retain(|c| c.output != rec.output);
+        d.checks.push(rec);
+        d.at = d.at.saturating_add(1);
+        match d.queue.get(d.at).copied() {
+            Some((o, f)) => {
+                let role = d
+                    .base
+                    .as_ref()
+                    .and_then(|l| l.output(o))
+                    .map_or(MeasureRole::Full, |r| r.role);
+                self.detect_next(d, Work::checking(o, f, role));
+            }
+            None => self.detect_finish(d),
+        }
     }
 
     /// The output is classified: its row written, the next output started.
@@ -1477,6 +1810,11 @@ impl DspiCore {
         d.work = None;
         d.stage = DetectStage::Done;
         d.running = false;
+        // -- WP ROLES --
+        if d.check {
+            d.detection.summary = check_summary(&d.checks);
+            return;
+        }
         d.detection.summary = summary_of(&d.this_run(), d.at);
         self.detect_write_layout(d);
         crate::actor::user::did_as(self, d.actor, "speakers_detected", &d.detection.summary);
@@ -1493,6 +1831,17 @@ impl DspiCore {
                 "the speaker detection ended before every output was probed",
             ))
         });
+        // -- WP ROLES -- a check stopped leaves its outputs unchecked
+        if d.check {
+            if let Some(w) = d.work.take() {
+                let rec = w.check_record(RoleCheckVerdict::Unfinished);
+                self.speaker_roles_checked(rec.clone());
+                d.checks.retain(|c| c.output != rec.output);
+                d.checks.push(rec);
+            }
+            d.detection.summary = check_summary(&d.checks);
+            return;
+        }
         // The output being probed stays unknown (a tweeter), as do those
         // still to come.
         if let Some(w) = d.work.take()
@@ -1560,6 +1909,7 @@ impl DspiCore {
             updated_ms: 0,
             notes: before.notes.clone(),
             detected: Some(d.detection.clone()),
+            stated: None, // -- WP ROLES --
         };
         if let Err(e) = self.speaker_layout_keep_detected(&layout) {
             log::warn!("the speaker detection's layout could not be kept: {e}");

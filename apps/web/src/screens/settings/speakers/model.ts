@@ -33,9 +33,9 @@ export interface SpeakerLayoutOutputRecord {
 // -- WP ADETW -- the speaker detection's part of the layout (dspi_core speaker_layout.rs, WP ADET0)
 
 /** `dspi_core::RoleSource`. */
-export type RoleSource = "user" | "detected" | "suggested";
+export type RoleSource = "user" | "detected" | "suggested" | "stated"; // -- WP ROLES -- stated
 /** `dspi_core::LayoutState`. */
-export type LayoutState = "unconfirmed" | "autoDetected" | "confirmed";
+export type LayoutState = "unconfirmed" | "autoDetected" | "confirmed" | "stated"; // -- WP ROLES -- stated
 /** `dspi_core::DetectClass`. */
 export type DetectClass = "tweeter" | "midrange" | "woofer" | "sub" | "fullRange" | "nothing" | "unknown" | "off";
 /** `dspi_core::DetectConfidence`. */
@@ -78,6 +78,33 @@ export interface DetectionRecord {
   deviceOutputs: number;
 }
 
+// -- WP ROLES -- roles an AI agent set from the person's words (owner 2026-11-23)
+
+/** `dspi_core::RoleCheckVerdict`: the top-fall check of a stated non-tweeter. */
+export type RoleCheckVerdict = "topFalls" | "silent" | "topHolds" | "unfinished";
+
+/** `dspi_core::RoleCheck`. */
+export interface RoleCheckRecord {
+  output: number;
+  /** The stated role it checked. */
+  role: MeasureRole;
+  verdict: RoleCheckVerdict;
+  topFallDb: number | null;
+  floorHz: number;
+  atMs: number;
+}
+
+/** `dspi_core::Statement`: the person's words an agent set the roles from. */
+export interface StatementRecord {
+  atMs: number;
+  /** The agent's label ("AI · Claude Code"). */
+  by: string;
+  words: string;
+  whatChanged: string;
+  deviceOutputs: number;
+  checks: RoleCheckRecord[];
+}
+
 /** `dspi_core::SpeakerLayout`. */
 export interface SpeakerLayoutRecord {
   /** Set by the core; "" in an exported copy. */
@@ -90,6 +117,9 @@ export interface SpeakerLayoutRecord {
   // -- WP ADETW --
   /** The last speaker detection, if one ran. */
   detected?: DetectionRecord | null;
+  // -- WP ROLES --
+  /** The person's words an agent set the roles from, if it did. */
+  stated?: StatementRecord | null;
 }
 
 declare module "../../../core/protocol" {
@@ -159,7 +189,7 @@ function tidyOutput(o: unknown): SpeakerLayoutOutputRecord | null {
   const group = Number.isInteger(x.group) && x.group! >= 0 && x.group! <= 255 ? x.group! : 0;
   const row: SpeakerLayoutOutputRecord = { output: x.output!, role: x.role, speaker: typeof x.speaker === "string" ? x.speaker : "", group };
   // -- WP ADETW -- the row's source kept (a copy from before has none)
-  if (x.source === "user" || x.source === "detected" || x.source === "suggested") row.source = x.source;
+  if (x.source === "user" || x.source === "detected" || x.source === "suggested" || x.source === "stated") row.source = x.source; // -- WP ROLES -- stated
   return row;
 }
 
@@ -219,6 +249,39 @@ export function tidyDetection(d: unknown): DetectionRecord | null {
   };
 }
 
+// -- WP ROLES -- a kept statement, checked as the detection is
+const VERDICTS: readonly RoleCheckVerdict[] = ["topFalls", "silent", "topHolds", "unfinished"];
+
+/** A kept statement as the core takes it; null when there is none or it does not read. */
+export function tidyStatement(s: unknown): StatementRecord | null {
+  const x = (s ?? {}) as Partial<Record<keyof StatementRecord, unknown>>;
+  if (!s || typeof s !== "object" || typeof x.words !== "string") return null;
+  const n = num(x.deviceOutputs);
+  const checks = (Array.isArray(x.checks) ? x.checks : [])
+    .map((c): RoleCheckRecord | null => {
+      const y = (c ?? {}) as Partial<Record<keyof RoleCheckRecord, unknown>>;
+      if (!Number.isInteger(y.output) || (y.output as number) < 0 || (y.output as number) > 15) return null;
+      if (typeof y.role !== "string" || !(y.role in ROLE_WORDS)) return null;
+      return {
+        output: y.output as number,
+        role: y.role as MeasureRole,
+        verdict: oneOf(y.verdict, VERDICTS, "unfinished"),
+        topFallDb: num(y.topFallDb),
+        floorHz: num(y.floorHz) ?? 0,
+        atMs: num(y.atMs) ?? 0,
+      };
+    })
+    .filter((c): c is RoleCheckRecord => !!c);
+  return {
+    atMs: num(x.atMs) ?? 0,
+    by: typeof x.by === "string" ? x.by : "",
+    words: x.words,
+    whatChanged: typeof x.whatChanged === "string" ? x.whatChanged : "",
+    deviceOutputs: n !== null && Number.isInteger(n) && n >= 0 && n <= 255 ? n : 0,
+    checks,
+  };
+}
+
 /** `serial`'s copy, checked; null when there is none or it does not read. */
 export function loadKept(storage: KeyValueStore | null, serial: string): KeptLayout | null {
   if (!serial) return null;
@@ -235,6 +298,7 @@ export function loadKept(storage: KeyValueStore | null, serial: string): KeptLay
       updatedMs: typeof l.updatedMs === "number" ? l.updatedMs : 0,
       notes: [],
       detected: tidyDetection(l.detected), // -- WP ADETW --
+      stated: tidyStatement(l.stated), // -- WP ROLES --
     },
     imported: k!.imported === true,
   };
@@ -361,8 +425,19 @@ export function layoutState(l: SpeakerLayoutRecord | null): LayoutState {
   if (!l) return "unconfirmed";
   if (l.confirmedByUser) return "confirmed";
   // A row kept before the detection has no source: the core reads it as a suggestion
-  if (l.detected && l.outputs.length && l.outputs.every((o) => o.source === "user" || o.source === "detected")) return "autoDetected";
+  if (!l.outputs.length || l.outputs.some((o) => !o.source || o.source === "suggested")) return "unconfirmed";
+  // -- WP ROLES -- set by an agent from the person's words: the least checked
+  if (l.stated && l.outputs.some((o) => o.source === "stated")) return "stated";
+  if (l.detected) return "autoDetected";
   return "unconfirmed";
+}
+
+// -- WP ROLES --
+/** The top-fall check of output `o`'s stated role, if one was made for the role it has now. */
+export function checkOf(l: SpeakerLayoutRecord | null, o: number): RoleCheckRecord | null {
+  const row = l?.outputs.find((x) => x.output === o);
+  if (!row) return null;
+  return l?.stated?.checks.find((c) => c.output === o && c.role === row.role) ?? null;
 }
 
 /** The detection's record of output `o`, if one. */
@@ -391,7 +466,19 @@ function when(ms: number, now: number): string {
 }
 
 /** A row's marker after its role (AUTODES 5.1): whose word it is, and how sure a detection was. */
-export type PillKind = "detected" | "detectedUnsure" | "uncertain" | "unknown" | "nothing" | "off" | "you" | "suggested";
+export type PillKind =
+  | "detected"
+  | "detectedUnsure"
+  | "uncertain"
+  | "unknown"
+  | "nothing"
+  | "off"
+  | "you"
+  | "suggested"
+  // -- WP ROLES -- set by AI from the person's words; its check found a tweeter's top; not named
+  | "stated"
+  | "statedTweeter"
+  | "notNamed";
 
 export const PILL_WORDS: Record<PillKind, string> = {
   detected: "detected",
@@ -402,6 +489,9 @@ export const PILL_WORDS: Record<PillKind, string> = {
   off: "off, not probed",
   you: "you",
   suggested: "suggested",
+  stated: "from your words", // -- WP ROLES --
+  statedTweeter: "tweeter-like",
+  notNamed: "unknown, treated as a tweeter",
 };
 
 /** Hover text when the notices are not read yet (the notice's reason is shown when they are). */
@@ -414,6 +504,11 @@ const PILL_REASONS: Record<PillKind, string> = {
   off: "The output was off or muted, so the detection did not probe it.",
   you: "Set or confirmed by you.",
   suggested: "Suggested from the filters and the routing: nobody's word yet.",
+  // -- WP ROLES --
+  stated: "Set by AI from your words, not checked. Correct it if it is wrong, then confirm.",
+  statedTweeter:
+    "Set by AI from your words, but its top end holds like a tweeter's: nothing below 1 kHz plays on it for an agent, and it is guarded as a tweeter. Check the wiring and the role.",
+  notNamed: "Not in what you told the AI: unknown, treated as a tweeter until you set its role.",
 };
 
 export interface Pill {
@@ -440,12 +535,16 @@ export function pillOf(draft: SpeakerLayoutRecord | null, stored: SpeakerLayoutR
   if (!row) {
     if (det?.class === "nothing") return pill("nothing", det.note ?? "detect.nothing");
     if (det?.class === "off") return pill("off", det.note ?? "detect.off");
+    // -- WP ROLES -- an output the person's words did not name
+    if (layoutState(stored) === "stated") return pill("notNamed");
     return null;
   }
   const kept = stored?.outputs.find((x) => x.output === o);
   const unchanged = !!kept && kept.role === row.role && kept.source === row.source;
   if (stored?.confirmedByUser && unchanged) return null;
   if (row.source === "user") return pill("you");
+  // -- WP ROLES -- set by AI from the person's words
+  if (row.source === "stated" && unchanged) return pill(checkOf(stored, o)?.verdict === "topHolds" ? "statedTweeter" : "stated");
   if (row.source === "detected" && det) {
     if (det.class === "unknown") return pill("unknown", det.note ?? "detect.unknown");
     if (det.confidence === "high") return pill("detected", det.note);
@@ -479,8 +578,24 @@ export const CLASS_WORDS: Record<DetectClass, string> = {
 };
 
 /** What the banner says, elsewhere (`text`) and on Settings › Speakers (`here`); null when the layout is confirmed. */
-export function bannerOf(v: LayoutView, now = Date.now()): { kind: "autoDetected" | "imported" | "unconfirmed" | "none"; text: string; here: string } | null {
+export function bannerOf(
+  v: LayoutView,
+  now = Date.now(),
+): { kind: "autoDetected" | "stated" | "imported" | "unconfirmed" | "none"; text: string; here: string } | null {
   if (v.stored?.confirmedByUser) return null;
+  // -- WP ROLES -- (owner 2026-11-23) set by AI from the person's words, not checked
+  const s = v.stored?.stated;
+  if (s && layoutState(v.stored) === "stated") {
+    const who = s.by.replace(/[\p{Cc}\p{Cf}]/gu, "").replace(/^AI · /, "").trim() || "An AI agent";
+    const at = s.atMs > 0 ? ` ${when(s.atMs, now)}` : "";
+    const words = s.words.replace(/\s+/g, " ").trim();
+    const quoted = words.length > 160 ? `${words.slice(0, 159)}…` : words;
+    return {
+      kind: "stated",
+      text: "Your speaker roles were set by AI from your words and are not checked. Check them in Settings › Speakers.",
+      here: `Set by AI from your words, not checked: ${who} set these roles${at} from what you told it (“${quoted}”). Check each role, correct what is wrong, then confirm.`,
+    };
+  }
   // -- WP ADETW -- detected, not confirmed (AUTODES 5.1): its roles guard the outputs meanwhile
   const d = v.stored?.detected;
   if (d && layoutState(v.stored) === "autoDetected") {
@@ -516,6 +631,9 @@ export function bannerOf(v: LayoutView, now = Date.now()): { kind: "autoDetected
 
 /** When the layout was confirmed, detected or set, in words; "" for a proposal. */
 export function stampWords(l: SpeakerLayoutRecord | null, now = Date.now()): string {
+  // -- WP ROLES --
+  if (l?.stated && layoutState(l) === "stated")
+    return l.stated.atMs > 0 ? `Set by AI from your words, not checked, ${stampAt(l.stated.atMs, now)}.` : "Set by AI from your words, not checked.";
   // -- WP ADETW -- an auto-detected layout says when it was detected, and by whom
   if (l?.detected && layoutState(l) === "autoDetected") {
     const what = whoDetected(l.detected) ? "Detected by AI, not confirmed" : "Detected, not confirmed";

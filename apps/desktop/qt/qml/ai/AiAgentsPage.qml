@@ -5,14 +5,24 @@ import UConsole
 // -- WP MCP4 -- Settings > AI Agents (both layouts): allowing AI agents on this
 // computer to control the devices, how to connect one, the clients and their
 // tokens, when they ask, and what they did.
+// -- WP DL7 -- Modern (DESREV): the limits offer and an error as notice rows
+// under the first section, one Limits button at a time, the agent picker as
+// content-sized segments, warnings as notices instead of orange sentences,
+// and an empty activity as an EmptyState. Classic keeps its rows.
 SettingsPage {
     id: page
     objectName: "AiAgentsPage"
     readonly property alias enableDialog: enableQuestion
     readonly property alias detectDialog: detectQuestion   // -- WP ADETQ --
+    readonly property alias rolesDialog: rolesQuestion     // -- WP ROLES --
+    readonly property string rolesQuestionText: qsTr("When you tell an agent which output drives what (“tweeter, mid, woofer, left then right, outputs 1–6”), it may then set those roles without asking you first. They are not checked: the safety rules use them at once (a tweeter keeps its high-pass at 1 kHz or above), an output you did not name is treated as a tweeter, and before anything plays below 1 kHz on a midrange, woofer or sub the app checks that its top end is not a tweeter's. Settings › Speakers shows them as set by AI from your words until you confirm or correct them.")   // -- WP ROLES --
     readonly property bool watching: visible && Window.window !== null && Window.window.visible
     onWatchingChanged: if (watching) AiController.refresh()
     Component.onDestruction: AiController.clearNewClient()
+
+    // -- WP DL7 -- the offer of a limits profile shows (Classic: its row; Modern: a notice)
+    readonly property bool offerLimits: AiController.enabled && LimitsController.connected && !LimitsController.active
+    readonly property bool modern: LayoutController.modern
 
     function when(epochSeconds) {
         return epochSeconds > 0 ? new Date(epochSeconds * 1000).toLocaleString(Qt.locale(), Locale.ShortFormat) : ""
@@ -83,7 +93,7 @@ SettingsPage {
         }
         RowLayout {
             objectName: "AiAgents.error"
-            visible: AiController.lastError.length > 0
+            visible: AiController.lastError.length > 0 && !page.modern   // -- WP DL7 --
             Layout.fillWidth: true
             spacing: 6
             Icon {
@@ -109,8 +119,8 @@ SettingsPage {
         }
         // Offered, never required (owner): the agent policy is the floor either way
         RowLayout {
-            objectName: "AiAgents.limitsOffer"
-            visible: AiController.enabled && LimitsController.connected && !LimitsController.active
+            objectName: page.modern ? "" : "AiAgents.limitsOffer"   // -- WP DL7 -- Modern: the notice below
+            visible: page.offerLimits && !page.modern
             Layout.fillWidth: true
             spacing: 6
             Icon {
@@ -156,12 +166,33 @@ SettingsPage {
         }
     }
 
+    // -- WP DL7 -- Modern: what goes wrong, and the limits offer, under the section
+    NoticeRow {
+        objectName: "AiAgents.errorNotice"
+        visible: page.modern && AiController.lastError.length > 0
+        Layout.fillWidth: true
+        kind: "warning"
+        text: AiController.lastError
+        actionText: AiController.enabled && !AiController.running ? qsTr("Try Again") : ""
+        onAction: AiController.dismissError()
+    }
+    NoticeRow {
+        objectName: page.modern ? "AiAgents.limitsOffer" : ""
+        visible: page.modern && page.offerLimits
+        Layout.fillWidth: true
+        text: qsTr("This device has no limits profile. One sets the most gain and volume anyone may set, agents included, and protects your speakers.")
+        actionText: qsTr("Set Up Limits…")
+        onAction: AiController.openLimits()
+    }
+
     // ---- When they ask ------------------------------------------------------------------
     SettingsGroup {
         objectName: "AiAgents.permissions"
         title: qsTr("Ask Before Changes")
         iconName: "circle-question-mark"
-        footer: AiController.confirmMode === "never_ask"
+        // -- WP DL7 -- Modern: Never's warning is a notice under the section
+        footer: AiController.confirmMode === "never_ask" && page.modern ? ""
+                : AiController.confirmMode === "never_ask"
                 ? qsTr("Agents' changes are made at once, louder ones and test signals too. Your limits profile and the protection of outputs you set up as tweeters still apply.")
                 : AiController.confirmMode === "ask_everything"
                 ? qsTr("Every change waits for your answer.")
@@ -193,6 +224,23 @@ SettingsPage {
                 else AiController.agentDetect = false
             }
         }
+        // -- WP ROLES -- (owner 2026-11-23) speaker roles an agent sets from what you
+        // told it: one question with the whole table, or under Never this switch
+        SettingsToggle {
+            objectName: "AiAgents.roles"
+            title: qsTr("Agents may set speaker roles from my words")
+            caption: AiController.confirmMode === "never_ask"
+                     ? qsTr("Under Never, an agent may set which output drives what from what you told it, without asking. Off, it is refused.")
+                     : qsTr("Needed under Never only: with the other settings, you are asked once, with the whole table.")
+            checked: AiController.agentRoles
+            onToggled: on => {
+                control.checked = Qt.binding(() => AiController.agentRoles)
+                if (on) {
+                    rolesQuestion.text = page.rolesQuestionText
+                    rolesQuestion.open()
+                } else AiController.agentRoles = false
+            }
+        }
         SettingsValueRow {
             objectName: "AiAgents.limits"
             title: qsTr("Limits profile")
@@ -200,6 +248,8 @@ SettingsPage {
                  : LimitsController.active ? qsTr("In force: agents are held to it") : qsTr("None")
         }
         RowLayout {
+            // -- WP DL7 -- Modern: one Limits button, the notice's while it offers one
+            visible: !(page.modern && page.offerLimits)
             Layout.fillWidth: true
             Item { Layout.fillWidth: true }
             AppButton {
@@ -208,6 +258,14 @@ SettingsPage {
                 onClicked: AiController.openLimits()
             }
         }
+    }
+
+    NoticeRow {   // -- WP DL7 --
+        objectName: "AiAgents.neverNotice"
+        visible: page.modern && AiController.confirmMode === "never_ask"
+        Layout.fillWidth: true
+        kind: "warning"
+        text: qsTr("Agents' changes are made at once, louder ones and test signals too. Your limits profile and the protection of outputs you set up as tweeters still apply.")
     }
 
     // ---- -- WP FEATUI -- Agents' measurements, and the devices they may open ------------
@@ -229,6 +287,8 @@ SettingsPage {
             enabled: AiController.agentSplCapOn   // -- WP INTG --
             //: %1 a sound pressure level in dB SPL
             label: qsTr("Loudest measurement: %1 dB SPL").arg(AiController.agentSplCap)
+            title: qsTr("Loudest measurement")   // -- WP DL7 -- Modern: the value in its field
+            unit: "dB SPL"
             minimum: 60
             maximum: 95
             step: 1
@@ -267,11 +327,20 @@ SettingsPage {
         AppTabBar {
             id: agentTabs
             objectName: "AiAgents.tabs"
+            visible: !page.modern   // -- WP DL7 -- Modern: the segments below (this keeps the choice)
             label: qsTr("Agent")
             Layout.fillWidth: true
             AppTabButton { objectName: "AiAgents.tab.desktop"; text: qsTr("Claude Desktop") }
             AppTabButton { objectName: "AiAgents.tab.code"; text: qsTr("Claude Code") }
             AppTabButton { objectName: "AiAgents.tab.other"; text: qsTr("Other Agents") }
+        }
+        ToolSegments {   // -- WP DL7 -- grey, content-sized (DESIGN-LANGUAGE §7)
+            objectName: "AiAgents.segments"
+            visible: page.modern
+            label: qsTr("Agent")
+            model: [qsTr("Claude Desktop"), qsTr("Claude Code"), qsTr("Other Agents")]
+            current: agentTabs.currentIndex
+            onChosen: index => agentTabs.currentIndex = index
         }
         Text {
             Layout.fillWidth: true
@@ -445,8 +514,19 @@ SettingsPage {
         }
         AiActivityList {
             prefix: "AiAgents.log"
+            visible: !page.modern || AiController.activity.length > 0   // -- WP DL7 --
             Layout.fillWidth: true
             Layout.preferredHeight: 300
+        }
+        EmptyState {   // -- WP DL7 -- Modern: nothing done yet
+            objectName: "AiAgents.logEmpty"
+            visible: page.modern && AiController.activity.length === 0
+            Layout.fillWidth: true
+            iconName: "bot"
+            title: qsTr("No agent activity yet")
+            text: qsTr("What AI agents change shows here, newest first, each with Undo.")
+            actionText: AiController.showReads ? "" : qsTr("Show Reads")
+            onAction: AiController.showReads = true
         }
     }
 
@@ -460,6 +540,18 @@ SettingsPage {
                "⚠ " + AiController.detectWarning].join("\n\n")
         acceptText: qsTr("I Understand")
         onAnswered: answer => { if (answer === "accept") AiController.agentDetect = true }
+    }
+
+    // -- WP ROLES -- the never-ask users' one question for speaker roles from their words
+    QuestionDialog {
+        id: rolesQuestion
+        objectName: "AiAgents.rolesQuestion"
+        parent: page.Window.window ? page.Window.window.contentItem : null
+        title: qsTr("Let agents set speaker roles from your words without asking?")
+        // (its text is given when it opens: a long text given at creation loops the
+        // dialog's implicitHeight, QuestionDialog's note)
+        acceptText: qsTr("I Understand")
+        onAnswered: answer => { if (answer === "accept") AiController.agentRoles = true }
     }
 
     AiEnableQuestion {   // -- WP LAY8 -- the popover asks it too

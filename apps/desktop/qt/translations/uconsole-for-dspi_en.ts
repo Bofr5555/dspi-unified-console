@@ -298,6 +298,18 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Agents may set speaker roles from my words</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Under Never, an agent may set which output drives what from what you told it, without asking. Off, it is refused.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Needed under Never only: with the other settings, you are asked once, with the whole table.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Limits profile</source>
         <translation type="unfinished"></translation>
     </message>
@@ -488,6 +500,14 @@
         <source>I Understand</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>Let agents set speaker roles from your words without asking?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>When you tell an agent which output drives what (“tweeter, mid, woofer, left then right, outputs 1–6”), it may then set those roles without asking you first. They are not checked: the safety rules use them at once (a tweeter keeps its high-pass at 1 kHz or above), an output you did not name is treated as a tweeter, and before anything plays below 1 kHz on a midrange, woofer or sub the app checks that its top end is not a tweeter&apos;s. Settings › Speakers shows them as set by AI from your words until you confirm or correct them.</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>AiAgentsPanel</name>
@@ -629,6 +649,10 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Speaker roles</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Replaces settings</source>
         <translation type="unfinished"></translation>
     </message>
@@ -653,6 +677,31 @@
         <extracomment>%1 is a kind of change (&quot;Louder&quot;), %2 the change (&quot;Out 1 gain up from -12 dB to -3 dB&quot;)
 ----------
 What an AI agent does, and to what: &quot;Changing the gain: OUT3 Centre&quot;</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Tweeter</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Midrange</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Woofer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Subwoofer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Full range</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Out %1</source>
+        <extracomment>An output in the speaker roles&apos; table: %1 its number from 1</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -815,6 +864,10 @@ What an AI agent does, and to what: &quot;Changing the gain: OUT3 Centre&quot;</
     </message>
     <message>
         <source>Asking to detect the speakers</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Setting the speaker roles from your words</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1044,6 +1097,11 @@ What an AI agent does, and to what: &quot;Changing the gain: OUT3 Centre&quot;</
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Set the speaker roles on %1?</source>
+        <extracomment>%1 a device&apos;s name</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Allow this change?</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1062,11 +1120,27 @@ What an AI agent does, and to what: &quot;Changing the gain: OUT3 Centre&quot;</
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Output</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Speaker</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Role</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Nothing has played yet. Sound cannot be taken back once it plays; Stop Measuring in the agent strip ends it.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Nothing has been changed yet. This replaces the settings as a whole and ends the undo history; the settings as they are now are kept as a snapshot first, to go back to.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Nothing has been changed yet. You can confirm or correct the roles afterwards in Settings › Speakers.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -10858,6 +10932,28 @@ Macros are stored on the device alongside the controls and share their Save and 
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>The check of the speaker roles set from your words stopped: nothing below 1 kHz played on those outputs.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Checked the speaker roles set from your words: no tweeter where you named a midrange, woofer or sub.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Looks like a tweeter, not the role set from your words: %1. Nothing below 1 kHz plays there, and it is guarded as a tweeter. Check the wiring and the role in Settings › Speakers.</source>
+        <extracomment>%1 the outputs&apos; names (&quot;Out 5 · R · Mid&quot;)</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Checking the speaker roles set from your words.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Checking that %1 is not a tweeter, above 1 kHz only.</source>
+        <extracomment>%1 an output&apos;s name</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Detecting the speakers.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -10879,6 +10975,15 @@ Macros are stored on the device alongside the controls and share their Save and 
     <message>
         <source>Detecting the speakers: %1.</source>
         <extracomment>%1 an output&apos;s name</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Checking the stated speaker roles</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Checking the stated speaker roles: %1 (%2 of %3)</source>
+        <extracomment>The agent strip: %1 the output checked now, %2 its turn, %3 how many are checked</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -16948,6 +17053,19 @@ Save before continuing?</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Your speaker roles were set by AI from your words and are not checked. Check them in Settings › Speakers.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>An AI agent</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Set by AI from your words, not checked: %1 set these roles%2 from what you told it (“%3”). Check each role, correct what is wrong, then confirm.</source>
+        <extracomment>%1 the AI agent&apos;s name, %2 when (&quot;today at 14:02&quot;), with a space before it, or &quot;&quot;; %3 the person&apos;s words, quoted</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Imported speaker layout: these roles were set outside this app (a configuration file or another app). Check that they match this DSPi&apos;s speakers, then confirm them.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -17004,6 +17122,14 @@ Save before continuing?</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>from your words</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>tweeter-like</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Found by the speaker detection.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -17033,6 +17159,27 @@ Save before continuing?</source>
     </message>
     <message>
         <source>Suggested from the filters and the routing: nobody&apos;s word yet.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Set by AI from your words, not checked. Correct it if it is wrong, then confirm.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Set by AI from your words, but its top end holds like a tweeter&apos;s: nothing below 1 kHz plays on it for an agent, and it is guarded as a tweeter. Check the wiring and the role.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not in what you told the AI: unknown, treated as a tweeter until you set its role.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Set by AI from your words, not checked, %1.</source>
+        <extracomment>%1 when (&quot;today at 14:02&quot;, &quot;on 23/11/2026&quot;)</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Set by AI from your words, not checked.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>

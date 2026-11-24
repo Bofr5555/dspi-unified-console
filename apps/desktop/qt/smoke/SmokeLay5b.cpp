@@ -13,6 +13,7 @@
 #include "DeviceRegistry.h"
 #include "DeviceSession.h"
 #include "DevicesController.h"
+#include "GraphController.h"   // -- WP DL7 --
 #include "FilesController.h"
 #include "InstallationController.h"
 #include "LayoutController.h"
@@ -356,7 +357,10 @@ void settingsPart(Pages &p) {
     p.check("another tab shows its group's first page", p.settings->currentPage() == QLatin1String("graphing") && p.shown("Settings.row.graphing"));
     p.click("PageTabs.application");
     p.check("back, the page it was on", p.settings->currentPage() == QLatin1String("updates"));
-    p.click("Settings.back");
+    // -- WP DL7 -- Modern has no back and forward buttons (the page list is the
+    // navigation); the controller's history stays
+    p.settings->back();
+    p.settle();
     p.check("Back goes to the page before, and its tab", p.settings->currentPage() == QLatin1String("graphing") && p.at() == QLatin1String("settings/display"));
     // A link into another group, from elsewhere
     p.go("overview");
@@ -401,6 +405,89 @@ void settingsPart(Pages &p) {
     p.check("and the page is on one of them", p.at() == QLatin1String("settings/application") && p.settings->currentPage() == QLatin1String("about"));
     p.d.app().device->openDemo();
     p.d.waitFor(10000, [&] { return p.d.app().device->connected(); });
+    p.settle();
+}
+
+// ---- -- WP DL7 -- Settings in the design language ----------------------------------------
+
+void dl7Part(Pages &p) {
+    const auto chk = [&](const char *what, bool ok) { p.d.check(QStringLiteral("dl7: ") + QString::fromUtf8(what), ok); };
+    const auto pic = [&](const char *name) { p.d.grab(p.main, QStringLiteral("gallery/dl7-%1.png").arg(QLatin1String(name))); };
+    p.activate();
+    p.settings->open(QStringLiteral("about"));
+    p.go("settings", "application");
+    chk("no back and forward in Modern, the title stays",
+        p.shown("Settings.sidebar") && !p.shown("Settings.back") && !p.shown("Settings.forward") && p.shown("Settings.title"));
+    // The page's column: at the left margin, no wider than 760
+    QQuickItem *loader = p.shown("Settings.page");
+    auto *flick = loader ? loader->property("item").value<QQuickItem *>() : nullptr;
+    auto *inner = flick ? flick->property("contentItem").value<QQuickItem *>() : nullptr;
+    QQuickItem *column = inner && !inner->childItems().isEmpty() ? inner->childItems().first() : nullptr;
+    chk("the page's column is left-aligned at 760",
+        column && flick->width() > 800 && qAbs(column->x() - 16) < 0.5 && qAbs(column->width() - 760) < 0.5);
+    pic("about");
+
+    // Graphing: a value field beside each slider, the value not in the label
+    p.settings->open(QStringLiteral("graphing"));
+    p.settle();
+    auto *graph = Registrar::instance<GraphController>();
+    QQuickItem *field = p.shown("Graphing.lineWidth.field");
+    const double width = graph ? graph->graphLineWidth() : 0;
+    chk("a slider row has its field and title", field && p.shown("Graphing.lineWidth.slider") && p.text("Graphing.lineWidth.title") == QLatin1String("Line Width")
+        && p.shown("Graphing.gridOpacity.field") && p.shown("Graphing.dbCenter.field"));
+    if (field && graph) {
+        QMetaObject::invokeMethod(field, "committed", Q_ARG(double, 2.7));
+        p.settle();
+        chk("a typed value is held to the slider's step", graph->graphLineWidth() == 2.5);
+        graph->setGraphLineWidth(width);
+    }
+    pic("graphing");
+
+    // AI Agents: one Limits button, content-sized segments, ROLES' switch, the activity
+    p.settings->open(QStringLiteral("ai"));
+    p.settle();
+    chk("one Limits button", (p.shown("AiAgents.limitsSettings") != nullptr) + (p.shown("AiAgents.limitsOffer.action") != nullptr) == 1);
+    QQuickItem *segments = p.shown("AiAgents.segments");
+    chk("the agent picker is grey segments sized to their content",
+        segments && !p.shown("AiAgents.tabs") && segments->width() < 600 && p.shown("AiAgents.segments.1"));
+    if (segments) {
+        QMetaObject::invokeMethod(segments, "chosen", Q_ARG(int, 1));
+        p.settle();
+        QQuickItem *tabs = p.d.item(QStringLiteral("AiAgents.tabs"));
+        chk("and choose the agent", tabs && tabs->property("currentIndex").toInt() == 1 && segments->property("current").toInt() == 1);
+        QMetaObject::invokeMethod(segments, "chosen", Q_ARG(int, 0));
+    }
+    chk("the roles switch is there, in the section", p.shown("AiAgents.roles.switch") && p.shown("AiAgents.detect.switch"));
+    chk("the activity: its list or the empty state, never both",
+        (p.shown("AiAgents.log.list") != nullptr) != (p.shown("AiAgents.logEmpty") != nullptr));
+    pic("ai-page");
+
+    // The AI activity page: a quiet Stop, an empty state
+    p.go("settings", "aiAgents");
+    QQuickItem *stop = p.d.item(QStringLiteral("AiAgents.stop"));
+    chk("Stop is no red fill", stop && !stop->property("destructive").toBool());
+    chk("the activity page: its list or the empty state",
+        (p.shown("AiActivity.list") != nullptr) != (p.shown("AiAgentsPanel.empty") != nullptr));
+    pic("ai-activity");
+
+    // What's New: a page, no Done
+    p.go("settings", "whatsNew");
+    QQuickItem *release = p.shown("WhatsNew.release.0");
+    chk("What's New has no Done in its page", p.shown("WhatsNew.list") && !p.shown("WhatsNew.done"));
+    chk("and its column stops at 760", release && release->width() <= 760.5);
+    pic("whats-new");
+
+    // Speakers: a section, one state line
+    p.go("settings", "device");
+    p.settings->open(QStringLiteral("speakers"));
+    p.settle();
+    QQuickItem *layout = p.shown("Speakers.layout");
+    QQuickItem *confirm = p.shown("SpeakersPage.confirm");
+    chk("Speakers is a section, not a card", layout && layout->property("flat").toBool());
+    chk("one state line", !p.shown("SpeakersPage.stamp") && !p.shown("SpeakersPage.said") && p.shown("SpeakersPage.state"));
+    chk("Confirm is blue only while it can act", confirm && confirm->property("primary").toBool() == confirm->isEnabled());
+    pic("speakers");
+    p.settings->open(QStringLiteral("about"));
     p.settle();
 }
 
@@ -780,6 +867,7 @@ void pagesSection(SmokeDriver &d) {
     waysPart(p);
     measurePart(p);
     settingsPart(p);
+    dl7Part(p);   // -- WP DL7 --
     libraryPart(p);
     demoAlone(p);
     devicesPart(p);

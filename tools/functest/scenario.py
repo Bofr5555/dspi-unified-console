@@ -7,6 +7,8 @@ simulator, the harness and the judge read). Change the system here.
     python3 tools/functest/scenario.py centre-rewired > tools/functest/scenario-centre-rewired.json
     python3 tools/functest/scenario.py autodetect > tools/functest/scenario-autodetect.json   (-- WP ADETS --)
     python3 tools/functest/scenario.py k340 > tools/functest/scenario-k340.json
+    python3 tools/functest/scenario.py mainfront > tools/functest/scenario-mainfront.json   (-- WP ROLES --)
+    python3 tools/functest/scenario.py mainfront-swapped > tools/functest/scenario-mainfront-swapped.json
 
 A story names a variant with `scenario = "restaurant"` (scenario-restaurant.json).
 """
@@ -211,8 +213,47 @@ k340 = {
     ],
 }
 
+# -- WP ROLES -- FSTORY S20: the owner's "L and r front speakers, both on DSPi named main front,
+# full range three way, tweeter,mid,woofer, l then right, output 1-6": one DSPi named "main front",
+# two three-way speakers, Out 1 L tweeter, 2 L mid, 3 L woofer, 4 R tweeter, 5 R mid, 6 R woofer.
+# Nothing set up (the story seeds no speaker setup). `mainfront-swapped` is the trap: the left
+# speaker's tweeter and midrange are wired the other way round (the tweeter on Out 2, the
+# midrange on Out 1), so the words say midrange where a tweeter plays.
+def three_way(name, group, first, metres, sens, modes, order=("high", "mid", "low")):
+    drivers = {
+        "high": ("tweeter", driver(sens + 4.0, 1400.0, 0.9, 0.0, 0.7, peak(23000.0, 3.0, 4.0), 0.0),
+                 [peak(3300.0, 2.0, 2.5), peak(9500.0, 3.0, -2.5)], TWEETER),
+        "mid": ("midrange", driver(sens + 2.0, 200.0, 0.7, 6200.0, 0.7, peak(7600.0, 4.0, 5.0), 0.06),
+                [peak(1100.0, 1.5, 3.0), peak(2600.0, 2.5, -2.5)], MID),
+        "low": ("woofer", driver(sens, 40.0, 0.75, 2400.0, 0.7, peak(3800.0, 5.0, 6.0), 0.15),
+                modes + [peak(380.0, 1.6, 2.0)], WOOFER),
+    }
+    outs = []
+    for i, role in enumerate(order):
+        word, drv, filters, safe = drivers[role]
+        outs.append(out(first + i, f"{name} {word}", role, name, group, drv, filters, metres, safe))
+    return outs
+
+
+def mainfront(swapped=False):
+    left = ("mid", "high", "low") if swapped else ("high", "mid", "low")
+    return {
+        **{k: v for k, v in scenario.items() if k != "devices"},
+        "name": "ROLES main front" + (", the left tweeter and midrange swapped" if swapped else ""),
+        "devices": [
+            {
+                "serial": "ROLES-MAINFRONT", "name": "main front", "userVolumeDb": -20.0,
+                "inputNames": ["L", "R", "In 3", "In 4", "In 5", "In 6", "In 7", "In 8"], "routes": [],
+                "outputs": three_way("Left", 0, 1, 3.00, -13.0, [peak(112.0, 4.0, 2.5)], left)
+                + three_way("Right", 1, 4, 3.18, -13.5, [peak(146.0, 4.0, -3.0)]),
+            },
+        ],
+    }
+
+
 VARIANTS = {"restaurant": lambda: restaurant, "centre-rewired": centre_rewired,
-            "autodetect": autodetect, "k340": lambda: k340}  # -- WP ADETS --
+            "autodetect": autodetect, "k340": lambda: k340,  # -- WP ADETS --
+            "mainfront": mainfront, "mainfront-swapped": lambda: mainfront(True)}  # -- WP ROLES --
 
 if __name__ == "__main__":
     import sys

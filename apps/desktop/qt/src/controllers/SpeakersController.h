@@ -39,6 +39,11 @@ class QJSEngine;
 //   reason; an edited role is the person's ("you"). The app's own detection
 //   (detect(), after the page's question) runs on the active device's Measure
 //   session, with its microphone.
+// - -- WP ROLES -- (owner 2026-11-23) A layout an AI agent set from the person's
+//   words (rows `stated`, the `stated` record: the words, the checks) is
+//   "stated", shown as "set by AI from your words, not checked" until Confirm;
+//   an output the words leave out is "unknown" (a tweeter), a stated row whose
+//   top-fall check held like a tweeter's is "tweeter-like".
 // - Where the layouts live is the core's: <AppData>/speaker-layouts, which
 //   main.cpp names for every core of the set (MDQT1, dspi_core_set_config).
 class SpeakersController : public QObject {

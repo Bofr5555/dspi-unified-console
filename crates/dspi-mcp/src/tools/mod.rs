@@ -27,3 +27,5 @@ pub mod site;
 pub mod host;
 // -- WP FFIX --
 pub(crate) mod results;
+// -- WP ROLES --
+pub mod roles;

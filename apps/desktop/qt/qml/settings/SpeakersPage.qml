@@ -6,12 +6,22 @@ import UConsole
 // the person's speaker layout for the open DSPi. A SettingsPage, so Classic
 // and Modern show the same page. Confirm is the only way a layout becomes
 // confirmed; the Measure tables write their edits back without confirming.
+// -- WP DL7 -- Modern (DESREV): a section, not a card around the page; one
+// state line by the buttons (an error; a draft; for a confirmed layout what
+// Confirm said, or when; else when it was detected, set by AI from the user's
+// words or kept, ROLES' and ADETQ's stamp); Confirm is the blue
+// primary only while it can act. The notice and the table's pills are ROLEQ's,
+// ADETQ's and ROLES' as they are.
 SettingsPage {
     id: page
     objectName: "SpeakersPage"
     readonly property var sc: SpeakersController
     readonly property bool confirmed: sc.status === "confirmed" && !sc.edited
     readonly property alias detectDialog: detectQuestion   // -- WP ADETQ -- (the smoke driver)
+    readonly property bool modern: LayoutController.modern   // -- WP DL7 --
+    readonly property bool changed: sc.edited && sc.status !== "none"
+    // What this page's own actions said (a Measure table's edit says it there)
+    readonly property string ownSaid: sc.saidMeasure.length ? "" : sc.said
 
     Component.onCompleted: sc.reload()
 
@@ -19,6 +29,7 @@ SettingsPage {
         objectName: "Speakers.layout"
         title: qsTr("Speaker layout")
         iconName: "volume-2"
+        flat: page.modern   // -- WP DL7 --
         footer: qsTr("An output with an active high-pass at 1 kHz or above is measured as a tweeter, whatever its role here.")
 
         Text {
@@ -39,7 +50,7 @@ SettingsPage {
         // -- WP ADETQ -- when the kept layout was confirmed, detected or kept
         Text {
             objectName: "SpeakersPage.stamp"
-            visible: text.length > 0
+            visible: text.length > 0 && !page.modern   // -- WP DL7 -- Modern: in the state line
             Layout.fillWidth: true
             textFormat: Text.PlainText
             text: page.sc.stampText
@@ -65,7 +76,7 @@ SettingsPage {
             AppButton {
                 objectName: "SpeakersPage.confirm"
                 text: qsTr("Confirm")
-                primary: true
+                primary: enabled || !page.modern   // -- WP DL7 -- no disabled blue
                 enabled: page.sc.editable && page.sc.loaded && !page.confirmed
                 onClicked: page.sc.confirm()
             }
@@ -88,10 +99,14 @@ SettingsPage {
                 objectName: "SpeakersPage.state"
                 Layout.fillWidth: true
                 textFormat: Text.PlainText
-                text: page.confirmed ? qsTr("Confirmed.")
-                      : page.sc.edited && page.sc.status !== "none" ? qsTr("Changed: not kept until you confirm.") : ""
+                // -- WP DL7 -- Modern: the page's one state line
+                text: !page.modern ? (page.confirmed ? qsTr("Confirmed.") : page.changed ? qsTr("Changed: not kept until you confirm.") : "")
+                      : page.sc.saidError && page.ownSaid.length ? page.ownSaid
+                      : page.changed ? qsTr("Changed: not kept until you confirm.")
+                      : page.confirmed ? (page.ownSaid || page.sc.stampText || qsTr("Confirmed."))
+                      : page.sc.stampText   // detected, set by AI from your words, kept: when
                 font: Theme.fontSmall
-                color: Theme.textMuted
+                color: page.modern && page.sc.saidError && page.ownSaid.length ? Theme.dangerText : Theme.textMuted
                 wrapMode: Text.Wrap
             }
         }
@@ -182,7 +197,7 @@ SettingsPage {
         }
         Text {
             objectName: "SpeakersPage.said"
-            visible: text.length > 0
+            visible: text.length > 0 && !page.modern   // -- WP DL7 -- Modern: in the state line
             Layout.fillWidth: true
             textFormat: Text.PlainText
             text: page.sc.said

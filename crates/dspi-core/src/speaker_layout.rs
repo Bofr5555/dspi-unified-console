@@ -1,7 +1,9 @@
 //! The speaker layout (WP ROLE0, MPLAN section 2.2): which output drives
 //! what, as the user confirmed it. It is the one source of output roles (full
 //! range, sub, low, mid, high): the measurement takes its roles from it
-//! (`MeasureSetup::roles_from_layout`), and no agent ever writes it.
+//! (`MeasureSetup::roles_from_layout`). -- WP ROLES -- An agent writes it
+//! only as roles stated in the user's words ([`DspiCore::speaker_roles_state`],
+//! after the agents' policy asked the user), never the user's confirmation.
 //!
 //! - **Stored per device**, on the host: a file per serial under the folder
 //!   of [`DspiCore::speaker_layout_set_dir`] (the limits folder's pattern, one
@@ -11,9 +13,10 @@
 //! - **The proposal** ([`DspiCore::speaker_layout_propose`]) is the filters'
 //!   inference (`dspi_session::output_label::driver_role`, the labels' one),
 //!   never saved by itself.
-//! - **Set by the user only** ([`DspiCore::speaker_layout_set`]): the
-//!   Getting Started step, Settings › Speakers and the Measure tables call it;
-//!   an agent's tools never do.
+//! - **Set by the user** ([`DspiCore::speaker_layout_set`]): the Getting
+//!   Started step, Settings › Speakers and the Measure tables call it; an
+//!   agent's tools never do. -- WP ROLES -- An agent's `dspi_set_speaker_roles`
+//!   keeps the user's stated roles as a [`LayoutState::Stated`] layout.
 //! - **It travels with a configuration**: `config_export` writes it in
 //!   `meta.speakerLayout`, and an import of the crossover block keeps it for
 //!   the open device.
@@ -31,6 +34,10 @@ use crate::{DspiCore, DspiError, Result};
 
 /// The notice key of a measurement refused for want of a confirmed layout.
 pub const NOTICE_LAYOUT_UNCONFIRMED: &str = "measure.layout_unconfirmed";
+// -- WP ROLES --
+/// The refusal key of roles stated over a confirmed layout with no words on
+/// what changed.
+pub const NOTICE_LAYOUT_CONFIRMED: &str = "layout.confirmed";
 /// The block of an exported configuration's `meta` that holds the layout.
 pub const META_BLOCK: &str = "speakerLayout";
 /// The file in a device's subfolder.
@@ -91,6 +98,12 @@ pub struct SpeakerLayout {
     /// [`LayoutState::AutoDetected`].
     #[cfg_attr(feature = "uniffi", uniffi(default = None))]
     pub detected: Option<Detection>,
+    // -- WP ROLES --
+    /// The roles an AI agent set from the user's words, if it did: the
+    /// words, when, and the top-fall checks made since. With a `stated` row
+    /// and no suggestion it makes the layout [`LayoutState::Stated`].
+    #[cfg_attr(feature = "uniffi", uniffi(default = None))]
+    pub stated: Option<Statement>,
 }
 
 // -- WP ADET0 -- the speaker detection's part of the layout (AUTODES 3.1)
@@ -107,6 +120,10 @@ pub enum RoleSource {
     /// A suggestion (the filters' inference, an import), nobody's word.
     #[default]
     Suggested,
+    // -- WP ROLES --
+    /// Set by an AI agent from the user's words (the layout's `stated`),
+    /// not checked by the user.
+    Stated,
 }
 
 /// How far the layout can be trusted ([`SpeakerLayout::state`]).
@@ -122,6 +139,12 @@ pub enum LayoutState {
     AutoDetected,
     /// The user confirmed it.
     Confirmed,
+    // -- WP ROLES --
+    /// Set by an AI agent from the user's words, not yet confirmed: its
+    /// roles guard the outputs as a detected layout's do, an output it does
+    /// not name is unknown (a tweeter), and an agent's sub-floor stimulus on
+    /// a stated non-tweeter waits for the top-fall check.
+    Stated,
 }
 
 /// What the speaker detection made of an output.
@@ -242,6 +265,75 @@ pub struct Detection {
     pub device_outputs: u8,
 }
 
+// -- WP ROLES -- roles an agent set from the user's words (owner 2026-11-23)
+
+/// The words a stated layout was set from, at most this many characters.
+pub const MAX_WORDS_CHARS: usize = 1_000;
+
+/// What the top-fall check (the detection's stage B) made of a stated
+/// non-tweeter, before an agent plays anything below its floor.
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum RoleCheckVerdict {
+    /// The top end falls as a woofer's or a midrange's does: the stated
+    /// role stands.
+    TopFalls,
+    /// Nothing heard above the floor, but heard below it by the
+    /// detection's shaped probe (at most −50 dBFS, two octaves): a sub or a
+    /// low woofer, no tweeter; the stated role stands. (Heard nowhere, the
+    /// check is [`RoleCheckVerdict::Unfinished`].)
+    Silent,
+    /// The top holds like a tweeter's: nothing below the floor plays on it
+    /// for an agent, and the safety rules take it for a tweeter.
+    TopHolds,
+    /// The check did not finish (stopped, the microphone did not follow):
+    /// still unchecked.
+    #[default]
+    Unfinished,
+}
+
+/// One output's top-fall check.
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct RoleCheck {
+    /// The output, 0-based.
+    pub output: u8,
+    /// The stated role it checked (a check stands only for that role).
+    pub role: MeasureRole,
+    /// What it found.
+    pub verdict: RoleCheckVerdict,
+    /// The mean level 1.5 to 3 kHz less the mean 10 to 16 kHz, dB.
+    pub top_fall_db: Option<f32>,
+    /// The floor it never played below, Hz.
+    pub floor_hz: f32,
+    /// When, ms since the Unix epoch.
+    pub at_ms: i64,
+    /// Unfinished because the output's own filters (a low-pass) hide its top
+    /// end: the check judges the driver, not them.
+    pub filters_hide_top: bool,
+}
+
+/// The user's words an AI agent set the roles from.
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Statement {
+    /// When, ms since the Unix epoch.
+    pub at_ms: i64,
+    /// The agent's label ("AI · Claude Code").
+    pub by: String,
+    /// The user's words, as the agent quoted them.
+    pub words: String,
+    /// Over a confirmed layout: the user's words on what changed ("" else).
+    pub what_changed: String,
+    /// The device's output count then: another count invalidates it.
+    pub device_outputs: u8,
+    /// The top-fall checks made since, by output.
+    pub checks: Vec<RoleCheck>,
+}
+
 impl SpeakerLayout {
     /// The output's row, if the layout has one.
     pub fn output(&self, output: u8) -> Option<&SpeakerLayoutOutput> {
@@ -253,19 +345,81 @@ impl SpeakerLayout {
     /// when a detection is recorded and no row is a mere suggestion; else
     /// unconfirmed.
     pub fn state(&self) -> LayoutState {
-        if self.confirmed_by_user {
-            LayoutState::Confirmed
-        } else if self.detected.is_some()
-            && !self.outputs.is_empty()
-            && self
+        let nobodys = self.outputs.is_empty()
+            || self
                 .outputs
                 .iter()
-                .all(|o| o.source != RoleSource::Suggested)
+                .any(|o| o.source == RoleSource::Suggested);
+        if self.confirmed_by_user {
+            LayoutState::Confirmed
+        } else if nobodys {
+            LayoutState::Unconfirmed
+        // -- WP ROLES -- an agent's word from the user's is the least checked
+        } else if self.stated.is_some()
+            && self.outputs.iter().any(|o| o.source == RoleSource::Stated)
         {
+            LayoutState::Stated
+        } else if self.detected.is_some() {
             LayoutState::AutoDetected
         } else {
             LayoutState::Unconfirmed
         }
+    }
+
+    // -- WP ROLES --
+    /// The top-fall check of `output`'s stated row, if one was made for
+    /// the role it has now.
+    pub fn check_of(&self, output: u8) -> Option<&RoleCheck> {
+        let row = self.output(output)?;
+        self.stated
+            .as_ref()?
+            .checks
+            .iter()
+            .find(|c| c.output == output && c.role == row.role)
+    }
+
+    // -- WP ROLES --
+    /// Whether an agent's stimulus on `output` stays above the floor: in a
+    /// stated layout, an output it does not name (unknown, a tweeter), or a
+    /// stated row whose top-fall check has not cleared it (not made, not
+    /// finished, or the top held like a tweeter's). Never for the user's own
+    /// rows, a detected or a confirmed layout.
+    pub fn agent_floor_held(&self, output: u8) -> bool {
+        if self.state() != LayoutState::Stated {
+            return false;
+        }
+        let Some(row) = self.output(output) else {
+            return true;
+        };
+        row.source == RoleSource::Stated
+            && row.role != MeasureRole::High
+            && !self.check_of(output).is_some_and(|c| {
+                matches!(
+                    c.verdict,
+                    RoleCheckVerdict::TopFalls | RoleCheckVerdict::Silent
+                )
+            })
+    }
+
+    // -- WP ROLES --
+    /// The stated non-tweeter rows an agent's stimulus below the floor waits
+    /// for a check on, among `outputs`: no check made yet for their role (a
+    /// check that found a tweeter's top is not made again).
+    pub fn unchecked(&self, outputs: &[u8]) -> Vec<u8> {
+        if self.state() != LayoutState::Stated {
+            return Vec::new();
+        }
+        outputs
+            .iter()
+            .copied()
+            .filter(|o| {
+                self.output(*o)
+                    .is_some_and(|r| r.source == RoleSource::Stated && r.role != MeasureRole::High)
+                    && self
+                        .check_of(*o)
+                        .is_none_or(|c| c.verdict == RoleCheckVerdict::Unfinished)
+            })
+            .collect()
     }
 
     // -- WP ADET0 --
@@ -287,6 +441,18 @@ impl SpeakerLayout {
         {
             for o in &mut self.outputs {
                 if o.source == RoleSource::Detected {
+                    o.source = RoleSource::Suggested;
+                }
+            }
+        }
+        // -- WP ROLES -- so is a statement made for another output count
+        if self
+            .stated
+            .as_ref()
+            .is_some_and(|s| s.device_outputs != outputs)
+        {
+            for o in &mut self.outputs {
+                if o.source == RoleSource::Stated {
                     o.source = RoleSource::Suggested;
                 }
             }
@@ -563,6 +729,7 @@ impl DspiCore {
             updated_ms: 0,
             notes: m.notes,
             detected: None, // -- WP ADET0 --
+            stated: None,   // -- WP ROLES --
         })
     }
 
@@ -590,7 +757,8 @@ impl DspiCore {
         // -- WP ADET0 -- a confirmed row is the user's word
         if layout.confirmed_by_user {
             for o in &mut layout.outputs {
-                if o.source == RoleSource::Suggested {
+                // -- WP ROLES -- so is a row an agent set from the user's words
+                if matches!(o.source, RoleSource::Suggested | RoleSource::Stated) {
                     o.source = RoleSource::User;
                 }
             }
@@ -600,7 +768,10 @@ impl DspiCore {
         // the user's word from now on; the detection stands for the other rows
         for o in &mut layout.outputs {
             let was = before.as_ref().and_then(|b| b.output(o.output));
-            if o.source == RoleSource::Detected && was.is_some_and(|w| w.role != o.role) {
+            // -- WP ROLES -- or a stated one
+            if matches!(o.source, RoleSource::Detected | RoleSource::Stated)
+                && was.is_some_and(|w| w.role != o.role)
+            {
                 o.source = RoleSource::User;
             }
         }
@@ -661,6 +832,125 @@ impl DspiCore {
         let mut layout = layout.clone().normalised(&serial, outputs)?;
         layout.updated_ms = crate::events::now_ms();
         self.speaker_layouts.save(&layout)
+    }
+
+    // -- WP ROLES --
+    /// Set the open device's speaker roles **as an AI agent, from the
+    /// user's words** (owner 2026-11-23; the agents' policy asked the user
+    /// first, or the user's switch let it): `rows` as stated (source
+    /// `stated`), `words` the user's words the agent quotes, and over a
+    /// confirmed layout `what_changed`, the user's words on what changed.
+    /// The layout is then [`LayoutState::Stated`]: trusted as a detected one
+    /// is, an output it does not name unknown (a tweeter), and an agent's
+    /// stimulus below a stated non-tweeter's floor waits for its top-fall
+    /// check ([`SpeakerLayout::agent_floor_held`]). A check made for a row
+    /// whose role did not change is kept. Returns what was kept.
+    ///
+    /// Errors: [`DspiError::Disconnected`] with no device;
+    /// [`DspiError::InvalidArgument`] for no rows, no words, words over
+    /// [`MAX_WORDS_CHARS`], a confirmed layout without `what_changed`, or
+    /// the rows' faults of [`DspiCore::speaker_layout_set`] (nothing kept);
+    /// [`DspiError::Io`] when the file cannot be written.
+    pub fn speaker_roles_state(
+        &self,
+        rows: Vec<SpeakerLayoutOutput>,
+        words: String,
+        what_changed: String,
+    ) -> Result<SpeakerLayout> {
+        let actor = crate::actor::JobActor::capture(self).actor();
+        let (serial, outputs) = {
+            let mut inner = self.lock();
+            let serial = inner.conn()?.serial.clone();
+            (serial, inner.state.num_output_channels)
+        };
+        let words = words.trim().to_owned();
+        let what_changed = what_changed.trim().to_owned();
+        if rows.is_empty() {
+            return Err(invalid("no speaker roles were stated"));
+        }
+        if words.is_empty() {
+            return Err(invalid(
+                "the user's words the roles come from are missing: quote them",
+            ));
+        }
+        if words.chars().count() > MAX_WORDS_CHARS || what_changed.chars().count() > MAX_WORDS_CHARS
+        {
+            return Err(invalid(format!(
+                "the user's words are longer than {MAX_WORDS_CHARS} characters"
+            )));
+        }
+        let before = self.speaker_layout()?;
+        if before
+            .as_ref()
+            .is_some_and(|l| l.state() == LayoutState::Confirmed)
+            && what_changed.is_empty()
+        {
+            return Err(invalid(format!(
+                "{NOTICE_LAYOUT_CONFIRMED}: the user confirmed the speaker layout: it is set again \
+                 only from the user's words on what changed"
+            )));
+        }
+        let stated_rows = rows
+            .into_iter()
+            .map(|r| SpeakerLayoutOutput {
+                source: RoleSource::Stated,
+                ..r
+            })
+            .collect();
+        let mut layout = SpeakerLayout {
+            outputs: stated_rows,
+            ..SpeakerLayout::default()
+        }
+        .normalised(&serial, outputs)?;
+        // A check stands while the role it checked does
+        let checks = before
+            .as_ref()
+            .and_then(|b| b.stated.as_ref())
+            .map(|st| {
+                st.checks
+                    .iter()
+                    .filter(|c| layout.output(c.output).is_some_and(|r| r.role == c.role))
+                    .cloned()
+                    .collect()
+            })
+            .unwrap_or_default();
+        layout.detected = before.as_ref().and_then(|b| b.detected.clone());
+        layout.stated = Some(Statement {
+            at_ms: crate::events::now_ms(),
+            by: crate::actor::actor_label(actor).unwrap_or_default(),
+            words,
+            what_changed,
+            device_outputs: outputs,
+            checks,
+        });
+        layout.updated_ms = crate::events::now_ms();
+        self.speaker_layouts.save(&layout)?;
+        Ok(layout)
+    }
+
+    // -- WP ROLES --
+    /// Record the top-fall check `check` in the stated layout (when its row
+    /// still has the role it checked).
+    pub(crate) fn speaker_roles_checked(&self, check: RoleCheck) {
+        let Ok(Some(mut layout)) = self.speaker_layout() else {
+            return;
+        };
+        if layout.state() != LayoutState::Stated
+            || !layout
+                .output(check.output)
+                .is_some_and(|r| r.source == RoleSource::Stated && r.role == check.role)
+        {
+            return;
+        }
+        let Some(st) = layout.stated.as_mut() else {
+            return;
+        };
+        st.checks.retain(|c| c.output != check.output);
+        st.checks.push(check);
+        st.checks.sort_by_key(|c| c.output);
+        if let Err(e) = self.speaker_layouts.save(&layout) {
+            log::warn!("the speaker roles' check could not be kept: {e}");
+        }
     }
 
     /// `text`, an export, with the open device's layout in
@@ -770,7 +1060,7 @@ pub(crate) fn role_changes(before: Option<&SpeakerLayout>, after: &SpeakerLayout
 
 // -- WP ADET0 --
 /// A role in the user's words.
-pub(crate) fn role_word(role: MeasureRole) -> &'static str {
+pub fn role_word(role: MeasureRole) -> &'static str {
     match role {
         MeasureRole::Full => "full range",
         MeasureRole::Sub => "subwoofer",

@@ -236,6 +236,12 @@ class Run:
         if confirmed:
             ctl.call("SpeakersController", "confirm")
             ctl.wait("the layout confirmed", lambda: ctl.get("SpeakersController", "status") == "confirmed")
+        else:
+            # -- WP ROLES -- only Confirm keeps the page's draft: an unconfirmed setup is kept
+            # row by row as the Measure tables' write-back keeps it (before, none was kept at all)
+            for n, o in wanted.items():
+                ctl.call("SpeakersController", "writeBack", n, o["role"], o["speaker"], o["group"])
+                ctl.wait(f"{dev['name']} Out {n + 1} kept", lambda: ctl.call("SpeakersController", "roleOf", n) == o["role"])
         log(f"{dev['name']}: speaker setup {ctl.get('SpeakersController', 'status')}")
 
     # -- WP ADETS -- the user corrects rows of a (detected) setup on the Speakers page, as

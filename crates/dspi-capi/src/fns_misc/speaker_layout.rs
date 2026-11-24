@@ -7,8 +7,9 @@
 //! `{ok: true, value: null}` when none is stored, `{ok}`, or a failure.
 //!
 //! `dspi_speaker_layout_set` is for the user's own screens only (Getting
-//! Started, Settings › Speakers, the Measure tables): an agent never sets
-//! roles.
+//! Started, Settings › Speakers, the Measure tables). -- WP ROLES -- An agent
+//! sets roles only from the user's words, through the MCP server
+//! (`dspi_set_speaker_roles`), never through this call.
 
 use std::ffi::c_char;
 
