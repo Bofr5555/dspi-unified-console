@@ -244,6 +244,9 @@ export class HubFeed {
       caps = null;
     }
     if (!caps?.onHub) {
+      // -- WP WEB5 -- the link reconnecting: the hub's last word stays (the page says it is not connected)
+      // instead of the page going away under the person until the hub answers again
+      if (this.view.caps?.onHub && this.session.state.link?.phase === "reconnecting") return;
       this.set({ caps, role: "", devices: [], health: [], alarms: [], stats: null, error: "", rules: [] /* -- WP P3WHB -- */ });
       this.rulesAt = 0; // -- WP P3WHB --
       return;

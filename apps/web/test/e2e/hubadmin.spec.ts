@@ -146,17 +146,17 @@ test.describe("HUBADMIN on a hub", () => {
     const otherErrors = errorsOf(other);
     const second = await openHub(other, hub);
     await installerPage(second, other);
-    const otherPeq = second.getByRole("region", { name: "Limits" }).getByLabel(/^Highest PEQ boost/);
+    const otherPeq = second.getByRole("region", { name: "Limits" }).getByLabel(/^EQ boost at most/);
     await expect(otherPeq).toHaveValue("");
 
     // The profile: a limit and the note, kept by the hub, never in this browser's own storage.
     const limits = session.getByRole("region", { name: "Limits" });
-    const peq = limits.getByLabel(/^Highest PEQ boost/);
+    const peq = limits.getByLabel(/^EQ boost at most/);
     await peq.fill("3");
     await peq.dispatchEvent("change");
     await expect.poll(() => limitsKept(hub!)?.maxPeqBoostDb).toBe(3);
     await expect(otherPeq).toHaveValue("3");
-    const note = limits.getByLabel("Note for whoever looks after the system");
+    const note = limits.getByLabel("Note", { exact: true });
     await note.fill("Hub note");
     await note.dispatchEvent("change");
     await expect.poll(() => limitsKept(hub!)?.note).toBe("Hub note");
@@ -205,8 +205,8 @@ test.describe("HUBADMIN on a hub", () => {
     await expect(pinPanel.locator(".lock-state")).toContainText("No installer PIN is set on the hub");
     await expect.poll(() => !!kept(hub!).device_pins?.[DEMO]).toBe(false);
 
-    // Clear Profile: the hub keeps none.
-    await session.getByRole("region", { name: "Limits" }).getByRole("button", { name: "Clear Profile" }).click();
+    // Remove All Limits: the hub keeps none.
+    await session.getByRole("region", { name: "Limits" }).getByRole("button", { name: "Remove All Limits" }).click();
     await expect.poll(() => limitsKept(hub!)).toBe(null);
     await expect(otherPeq).toHaveValue("");
     expect(errors).toEqual([]);
@@ -235,12 +235,12 @@ test.describe("HUBADMIN on a hub", () => {
     await expect(ro).toContainText("uconsole hub role <cid> admin");
     await expect(session.locator(".hub-role")).toContainText("Control");
     const limits = session.getByRole("region", { name: "Limits" });
-    await expect(limits.getByLabel(/^Highest PEQ boost/)).toHaveValue("4");
-    await expect(limits.getByLabel(/^Highest PEQ boost/)).toBeDisabled();
-    await expect(limits.getByLabel("Note for whoever looks after the system")).toHaveValue("Kept by the hub.");
-    await expect(limits.getByLabel("Note for whoever looks after the system")).toBeDisabled();
+    await expect(limits.getByLabel(/^EQ boost at most/)).toHaveValue("4");
+    await expect(limits.getByLabel(/^EQ boost at most/)).toBeDisabled();
+    await expect(limits.getByLabel("Note", { exact: true })).toHaveValue("Kept by the hub.");
+    await expect(limits.getByLabel("Note", { exact: true })).toBeDisabled();
     await expect(limits.getByRole("button", { name: "Load Profile…" })).toBeDisabled();
-    await expect(limits.getByRole("button", { name: "Clear Profile" })).toBeDisabled();
+    await expect(limits.getByRole("button", { name: "Remove All Limits" })).toBeDisabled();
     const pinPanel = session.getByRole("region", { name: "Hub installer PIN" });
     await expect(pinPanel.getByLabel("New PIN", { exact: true })).toBeDisabled();
     await expect(pinPanel.getByRole("button", { name: "Set PIN" })).toBeDisabled();
@@ -270,7 +270,7 @@ test("HUBADMIN direct: the demo DSPi edits this console's copy, with no hub part
   await expect(session.getByRole("region", { name: "Hub installer PIN" })).toHaveCount(0);
   await expect(session.getByRole("region", { name: "Pinned modes" })).toHaveCount(0);
   await expect(session.getByRole("region", { name: "Installer lock" })).toContainText("No installer PIN is set: nothing is locked.");
-  await expect(session.getByRole("region", { name: "Limits" }).getByLabel(/^Highest PEQ boost/)).toBeEnabled();
+  await expect(session.getByRole("region", { name: "Limits" }).getByLabel(/^EQ boost at most/)).toBeEnabled();
   await noSidewaysScroll(page);
   expect(errors).toEqual([]);
 });

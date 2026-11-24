@@ -37,13 +37,14 @@ export interface LimitsProfile {
 }
 
 /** The fields of an output's limits, in the order the page shows them, with their words. Their ranges and units are the core's ([fieldRange]). */
+// -- WP WEB5 -- Qt's words (InstallerPage.qml)
 export const OUTPUT_FIELDS: { key: Exclude<keyof OutputLimits, "output">; label: string }[] = [
-  { key: "maxGainDb", label: "Highest gain" },
+  { key: "maxGainDb", label: "Gain at most" },
   { key: "limiterCeilingDb", label: "Limiter on, ceiling at most" },
-  { key: "highpassMinHz", label: "High-pass at least" },
+  { key: "highpassMinHz", label: "High-pass kept, at or above" },
   { key: "highpassMinSlopeDb", label: "High-pass slope at least" },
-  { key: "delayMinMs", label: "Shortest delay" },
-  { key: "delayMaxMs", label: "Longest delay" },
+  { key: "delayMinMs", label: "Delay at least" },
+  { key: "delayMaxMs", label: "Delay at most" },
 ];
 
 // -- WP P1EFIX -- one range table for every client's limits editor: the core's

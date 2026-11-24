@@ -25,6 +25,8 @@ import { Outbound } from "./Outbound";
 import { Schedules } from "./Schedules";
 // -- WP SECWEB -- the link's fingerprint or the "unencrypted" banner; the compatibility mode warning
 import { HubLinkSecurity, UpstreamCompatWarning } from "../../ui/LinkSecurity";
+// -- WP WEB5 -- the page in the Modern design (as Settings): its own stylesheet
+import "./hub-settings.css";
 import { HUB_SETTINGS_ROLE_KEY, HUB_SETTINGS_SCREEN, KEY_ROLES, localTime, mayEdit, mintedFrom, roleWord, sectionsOf, type MintedKey } from "./model";
 
 /** The hub's caps and this session's role on it, read again when the Link phase changes. */
@@ -59,7 +61,8 @@ export function HubSettingsScreen(props: ScreenProps) {
   const p: SectionProps = { session, edit, ask: props.ask, serial };
   return (
     <div class="hub-settings-screen">
-      <h2 class="hub-settings-title">Hub Settings</h2>
+      {/* -- WP WEB5 -- the tab says it (§6: no second title); kept for a screen reader's headings */}
+      <h2 class="hub-settings-title visually-hidden">Hub Settings</h2>
       {/* -- WP SECWEB -- the hub's TLS fingerprint and the "unencrypted" banner */}
       <HubLinkSecurity security={st.security} ctx={session.linkContext} />
       {/* -- WP SECWEB -- the hub's upstream-compatibility mode (owner-approved: off by default,

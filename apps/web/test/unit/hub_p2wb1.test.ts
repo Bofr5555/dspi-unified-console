@@ -331,6 +331,23 @@ test("P2WB1: a Control session reads no statistics; a hub without the families s
   assert.deepEqual(off.calls.map((c) => c.method), ["hubCaps"]);
 });
 
+test("WEB5: while the link reconnects the hub's last view stays; once it is closed the view goes", async () => {
+  const s = fakeSession();
+  const f = feedOn(s);
+  f.start();
+  await f.tick();
+  assert.ok(hubScreenShown(f.view.caps));
+  s.state.link.phase = "reconnecting";
+  s.answers.hubCaps = new CoreCallError("disconnected", "no hub");
+  await f.tick();
+  assert.ok(hubScreenShown(f.view.caps), "the hub page stays while reconnecting");
+  assert.equal(f.view.devices.length, 2);
+  s.state.link.phase = "closed";
+  await f.tick();
+  assert.equal(hubScreenShown(f.view.caps), false);
+  assert.equal(f.view.devices.length, 0);
+});
+
 test("P2WB1: the hub's alarm.changed and inventory.changed update the view between reads", async () => {
   const s = fakeSession();
   const f = feedOn(s);

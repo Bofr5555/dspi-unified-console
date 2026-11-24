@@ -1,0 +1,67 @@
+/* -- WP WEB5 -- The Hub Settings page in the Modern design, as the Settings pages (docs/DESIGN-LANGUAGE.md §3,
+   §8, §10, §14): its groups cards with a caps label inside, at the left and 760 px at most; every value a
+   36 px form row (the words at the left, the control at the right: text fields 15 rem, numbers 88 px in the
+   mono face); the alarm rules one striped list (a rule's switch and name, its thresholds after it); the
+   groups inside a card (a target, TLS, the days) under their name with no box; a warning sentence a
+   notice row; captions small and muted. */
+
+.dspi-web .hub-settings-screen { display: flex; flex-direction: column; gap: 12px; }
+.dspi-web .hub-settings-screen > .card { padding: 12px; }
+.dspi-web .hub-settings-screen .note { font-size: 11px; color: var(--muted); }
+.dspi-web .hub-settings-screen .card > p { margin: 0 0 8px; }
+.dspi-web .hub-settings-screen > .hub-role { margin: 0; }
+
+/* A warning sentence: a notice row */
+.dspi-web .hub-settings-screen .note.warn {
+  margin: 4px 0 8px; padding: 0.3rem 0.65rem; border-left: 3px solid var(--warn); border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--warn) 12%, var(--panel)); color: var(--text); font-size: inherit;
+}
+
+/* Form rows */
+.dspi-web .hub-settings-screen .power-rows { display: flex; flex-direction: column; gap: 0; margin: 0; }
+.dspi-web .hub-settings-screen .limit-field { min-height: 36px; gap: 1rem; font-size: inherit; }
+.dspi-web .hub-settings-screen .limit-field > span:first-child { flex: 1 1 auto; }
+.dspi-web .hub-settings-screen .limit-field :is(input:not([type]), input[type="text"], input[type="password"], input[type="url"], select) { flex: 0 1 15rem; width: 15rem; }
+.dspi-web .hub-settings-screen .limit-field input[type="number"] { flex: none; width: 88px; text-align: right; font-family: var(--mono); font-size: 12px; }
+.dspi-web .hub-settings-screen .limit-field input[type="checkbox"] { flex: none; width: auto; }
+.dspi-web .hub-settings-screen .hub-wide { min-height: 36px; align-items: center; margin: 0; }
+.dspi-web .hub-settings-screen .hub-pem { align-items: stretch; gap: 4px; margin: 6px 0; }
+
+/* The groups inside a card: under their name, no box */
+.dspi-web .hub-settings-screen .hub-section fieldset { margin: 12px 0 0; padding: 0; border: 0; border-radius: 0; background: none; }
+.dspi-web .hub-settings-screen .hub-section legend { padding: 0 0 2px; font-weight: 600; }
+.dspi-web .hub-settings-screen .hub-section legend label { display: inline-flex; align-items: center; gap: 6px; }
+.dspi-web .hub-settings-screen .hub-days { display: flex; flex-wrap: wrap; gap: 2px 14px; }
+.dspi-web .hub-settings-screen .hub-days label { display: inline-flex; align-items: center; gap: 5px; min-height: 28px; }
+.dspi-web .hub-settings-screen .hub-action { border-top: 0; padding: 0 8px; border-radius: 4px; }
+.dspi-web .hub-settings-screen .hub-action:nth-of-type(even) { background: var(--stripe); }
+.dspi-web .hub-settings-screen form > h4 { margin: 16px 0 4px; font-size: inherit; font-weight: 600; }
+
+/* The alarm rules: one striped list; a rule's thresholds indented under its name, none when it has none */
+.dspi-web .hub-settings-screen .hub-rules { gap: 0; }
+.dspi-web .hub-settings-screen .hub-section fieldset.hub-rule { margin: 0; padding: 2px 8px; border-radius: 4px; }
+.dspi-web .hub-settings-screen .hub-section fieldset.hub-rule:nth-child(even) { background: var(--stripe); }
+.dspi-web .hub-settings-screen .hub-rule > legend { float: left; width: 100%; min-height: 32px; padding: 0; font-weight: 400; }
+.dspi-web .hub-settings-screen .hub-rule > legend label { min-height: 32px; }
+.dspi-web .hub-settings-screen .hub-rule > .power-rows { clear: both; padding-left: 22px; }
+.dspi-web .hub-settings-screen .hub-rule > .power-rows:empty { display: none; }
+.dspi-web .hub-settings-screen .hub-rule .limit-field { min-height: 32px; }
+
+/* What a card says once (a new key, a secret, a schedule's run): a tone, not a card in a card */
+.dspi-web .hub-settings-screen .card .card { margin: 8px 0; padding: 8px 12px; border: 0; border-left: 3px solid var(--edge, var(--muted)); border-radius: var(--radius-control); background: color-mix(in srgb, var(--edge, var(--text)) 8%, var(--panel)); }
+.dspi-web .hub-settings-screen .card .card.warn { --edge: var(--warn); }
+.dspi-web .hub-settings-screen .card .card > p { margin: 4px 0; }
+
+/* Lists of the page (schedules, API keys): rows on stripes */
+.dspi-web .hub-settings-screen .snap-list { margin: 4px 0 0; }
+.dspi-web .hub-settings-screen .snap-row { min-height: 32px; padding: 2px 8px; border: 0; border-radius: 4px; }
+.dspi-web .hub-settings-screen .snap-row:nth-child(even) { background: var(--stripe); }
+
+.dspi-web .hub-settings-screen .installer-buttons { gap: 6px 8px; margin-top: 12px; }
+
+@media (max-width: 600px) {
+  .dspi-web .hub-settings-screen .limit-field :is(input:not([type]), input[type="text"], input[type="password"], input[type="url"], select) { flex: 0 1 11rem; width: 11rem; }
+  .dspi-web .hub-settings-screen .limit-field, .dspi-web .hub-settings-screen .hub-wide { min-height: 44px; }
+}
+
+.dspi-web .hub-settings-screen input::placeholder, .dspi-web .hub-settings-screen textarea::placeholder { color: var(--muted); opacity: 0.8; }
