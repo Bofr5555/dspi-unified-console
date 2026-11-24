@@ -28,7 +28,7 @@ GridLayout {
         // Thirds, whatever is in them
         Layout.preferredWidth: 1
         implicitHeight: rows.implicitHeight + 2 * Theme.spacing
-        radius: 10
+        radius: Theme.radius   // -- WP DL6 -- (10)
         color: Theme.panel
         ColumnLayout {
             id: rows
@@ -115,7 +115,7 @@ GridLayout {
                     required property var modelData
                     readonly property bool on: EffectsState.on(modelData.tab) === true
                     objectName: "OverviewSummary.effect." + modelData.tab
-                    implicitHeight: 26
+                    implicitHeight: Theme.controlHeight   // -- WP DL6 -- (26)
                     leftPadding: 10
                     rightPadding: 10
                     text: modelData.title
