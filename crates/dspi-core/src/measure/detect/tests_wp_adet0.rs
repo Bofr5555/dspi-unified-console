@@ -1075,3 +1075,486 @@ fn wp_adets_a_stage_b_with_nothing_trusted_goes_on_as_silent_above_the_floor() {
     );
     assert_eq!(w.heard, DetectHeard::BelowFloor);
 }
+
+// ── -- WP ROLES -- roles an agent set from the user's words ────────────
+
+use crate::speaker_layout::{RoleCheck, RoleCheckVerdict, Statement};
+
+fn stated(output: u8, role: MeasureRole, speaker: &str) -> SpeakerLayoutOutput {
+    SpeakerLayoutOutput {
+        output,
+        role,
+        speaker: speaker.into(),
+        group: 0,
+        source: RoleSource::Stated,
+    }
+}
+
+fn statement(device_outputs: u8, checks: Vec<RoleCheck>) -> Statement {
+    Statement {
+        at_ms: 1_700_000_000_000,
+        by: "AI · Claude Code".into(),
+        words: "output 1 woofer, output 2 mid".into(),
+        device_outputs,
+        checks,
+        ..Statement::default()
+    }
+}
+
+fn check(output: u8, role: MeasureRole, verdict: RoleCheckVerdict) -> RoleCheck {
+    RoleCheck {
+        output,
+        role,
+        verdict,
+        floor_hz: 1_000.0,
+        ..RoleCheck::default()
+    }
+}
+
+#[test]
+fn wp_roles_a_stated_layouts_state_trusted_roles_and_file() {
+    let mut l = SpeakerLayout {
+        outputs: vec![
+            stated(0, MeasureRole::Low, "L"),
+            stated(1, MeasureRole::Mid, "L"),
+            stated(2, MeasureRole::High, "L"),
+        ],
+        stated: Some(statement(5, Vec::new())),
+        ..SpeakerLayout::default()
+    };
+    assert_eq!(l.state(), LayoutState::Stated);
+    // Trusted: a stated tweeter as stated; the stated non-tweeters guarded as
+    // tweeters until their check clears them (programme included); the
+    // outputs it leaves out are tweeters.
+    assert_eq!(trusted_roles(&l), Some(vec![Some(MeasureRole::High); 5]));
+    // An agent's stimulus waits for the check on the stated non-tweeters and
+    // on the outputs left out; never on the stated tweeter.
+    assert!(l.agent_floor_held(0) && l.agent_floor_held(1) && l.agent_floor_held(4));
+    assert!(!l.agent_floor_held(2));
+    assert_eq!(l.unchecked(&[0, 1, 2, 3]), vec![0, 1]);
+    // A top that falls clears it; one that holds makes it a tweeter.
+    l.stated.as_mut().unwrap().checks = vec![
+        check(0, MeasureRole::Low, RoleCheckVerdict::TopFalls),
+        check(1, MeasureRole::Mid, RoleCheckVerdict::TopHolds),
+    ];
+    assert!(!l.agent_floor_held(0));
+    assert!(l.agent_floor_held(1));
+    assert!(
+        l.unchecked(&[0, 1]).is_empty(),
+        "a held top is not checked again"
+    );
+    assert_eq!(
+        trusted_roles(&l).unwrap()[0],
+        Some(MeasureRole::Low),
+        "cleared"
+    );
+    assert_eq!(trusted_roles(&l).unwrap()[1], Some(MeasureRole::High));
+    // A check stands for the role it checked only.
+    l.outputs[0].role = MeasureRole::Sub;
+    assert!(l.agent_floor_held(0));
+    assert_eq!(l.unchecked(&[0]), vec![0]);
+    // The file: version 2 with the statement; loads back the same.
+    let doc = l.to_document();
+    assert_eq!(doc["version"], 2);
+    assert_eq!(doc["outputs"][0]["source"], "stated");
+    let back = SpeakerLayout::from_value(&doc).unwrap();
+    assert_eq!(back, l);
+    // A file without a statement (ADET0's) loads as it did.
+    let mut old = doc.clone();
+    old.as_object_mut().unwrap().remove("stated");
+    let old = SpeakerLayout::from_value(&old).unwrap();
+    assert!(old.stated.is_none());
+    assert_eq!(old.state(), LayoutState::Unconfirmed);
+    // Made for another output count: suggestions, not trusted.
+    assert_eq!(
+        l.clone().checked_against(8).state(),
+        LayoutState::Unconfirmed
+    );
+    assert_eq!(l.clone().checked_against(5).state(), LayoutState::Stated);
+    // A user's row beside stated ones keeps it stated; the user's
+    // confirmation makes it confirmed.
+    l.outputs[1].source = RoleSource::User;
+    assert_eq!(l.state(), LayoutState::Stated);
+    assert!(!l.agent_floor_held(1), "the user's own row is not held");
+    l.confirmed_by_user = true;
+    assert_eq!(l.state(), LayoutState::Confirmed);
+    assert!(!l.agent_floor_held(0));
+}
+
+#[test]
+fn wp_roles_an_agent_states_the_roles_and_its_stimulus_waits_for_the_check() {
+    let core = demo(Vec::new());
+    let n = core.get_state().num_output_channels;
+    // Nothing kept without words, without rows, or over a confirmed layout
+    // without the words on what changed.
+    let rows = vec![
+        stated(0, MeasureRole::Low, "L"),
+        stated(1, MeasureRole::Mid, "L"),
+    ];
+    assert!(
+        core.speaker_roles_state(rows.clone(), " ".into(), String::new())
+            .is_err()
+    );
+    assert!(
+        core.speaker_roles_state(Vec::new(), "w".into(), String::new())
+            .is_err()
+    );
+    let agent = crate::actor::JobActor::of(7);
+    let l = {
+        let _scope = agent.attribute(&core);
+        core.speaker_roles_state(
+            rows.clone(),
+            "output 1 woofer, output 2 mid".into(),
+            String::new(),
+        )
+        .unwrap()
+    };
+    assert_eq!(l.state(), LayoutState::Stated);
+    let st = l.stated.clone().unwrap();
+    assert_eq!(st.words, "output 1 woofer, output 2 mid");
+    assert_eq!(st.device_outputs, n);
+    assert!(l.outputs.iter().all(|o| o.source == RoleSource::Stated));
+    assert_eq!(core.speaker_layout().unwrap().unwrap(), l);
+    // An agent's plan: every stated non-tweeter and every output left out
+    // is held to 1 kHz; the user's own run is not.
+    let plan_of = |outs: &[(u8, MeasureRole)]| {
+        Plan::new(&MeasureSetup {
+            kind: MeasureRunKind::Walked,
+            outputs: outs
+                .iter()
+                .map(|(o, r)| MeasureOutput {
+                    output: *o,
+                    role: *r,
+                    ..MeasureOutput::default()
+                })
+                .collect(),
+            ..MeasureSetup::default()
+        })
+        .unwrap()
+    };
+    let outs = [
+        (0, MeasureRole::Low),
+        (1, MeasureRole::Mid),
+        (2, MeasureRole::Full),
+    ];
+    let resolved = |as_agent: bool| {
+        let mut p = plan_of(&outs);
+        let _scope = as_agent.then(|| agent.attribute(&core));
+        core.measure_resolve_roles(&mut p).unwrap();
+        p
+    };
+    let p = resolved(true);
+    for o in 0..3 {
+        assert_eq!(p.floor_of(&[o]), 1_000.0, "agent, out {o}");
+    }
+    let mine = resolved(false);
+    assert_eq!(mine.floor_of(&[0]), 0.0, "the user's own run is not held");
+    assert_eq!(mine.floor_of(&[1]), 0.0);
+    // The run's sweep starts at the floor for the agent.
+    assert!(p.sweep_of(&p.runs[0]).f1_hz >= 1_000.0);
+    // A held way is laid out as a tweeter: a cleared woofer of its speaker
+    // keeps its full-band run, one run per output at the lowest start.
+    core.speaker_roles_checked(check(0, MeasureRole::Low, RoleCheckVerdict::TopFalls));
+    let p = resolved(true);
+    let woofer: Vec<_> = p.runs.iter().filter(|r| r.outputs.contains(&0)).collect();
+    assert!(
+        woofer.iter().any(|r| p.sweep_of(r).f1_hz < 1_000.0),
+        "the cleared woofer from 20 Hz: {:?}",
+        p.runs
+    );
+    for r in p
+        .runs
+        .iter()
+        .filter(|r| r.outputs.contains(&1) || r.outputs.contains(&2))
+    {
+        assert!(p.sweep_of(r).f1_hz >= 1_000.0, "{r:?}");
+        assert!(!r.outputs.contains(&0) || r.aligns, "{r:?}");
+    }
+    let lowest = |o: u8| {
+        let runs: Vec<_> = p.runs.iter().filter(|r| r.outputs.contains(&o)).collect();
+        let low = runs
+            .iter()
+            .map(|r| p.sweep_of(r).f1_hz)
+            .fold(f32::INFINITY, f32::min);
+        runs.iter().filter(|r| p.sweep_of(r).f1_hz <= low).count()
+    };
+    for o in 0..3 {
+        assert_eq!(
+            lowest(o),
+            1,
+            "out {o}: one run at its lowest start: {:?}",
+            p.runs
+        );
+    }
+    // (the next steps start from no check again: another role drops it)
+    for r in [MeasureRole::Sub, MeasureRole::Low] {
+        core.speaker_roles_state(
+            vec![stated(0, r, "L"), stated(1, MeasureRole::Mid, "L")],
+            "output 1 woofer, output 2 mid".into(),
+            String::new(),
+        )
+        .unwrap();
+    }
+    assert!(
+        core.speaker_layout()
+            .unwrap()
+            .unwrap()
+            .stated
+            .unwrap()
+            .checks
+            .is_empty()
+    );
+    // Pink noise cannot be held to a floor: refused for the agent.
+    let mut pink = Plan::new(&MeasureSetup {
+        kind: MeasureRunKind::Pink,
+        outputs: vec![MeasureOutput {
+            output: 0,
+            role: MeasureRole::Low,
+            ..MeasureOutput::default()
+        }],
+        ..MeasureSetup::default()
+    })
+    .unwrap();
+    {
+        let _scope = agent.attribute(&core);
+        let e = core
+            .measure_resolve_roles(&mut pink)
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains("not checked"), "{e}");
+    }
+    // The check: Out 1's top falls, Out 2's holds.
+    core.speaker_roles_checked(check(0, MeasureRole::Low, RoleCheckVerdict::TopFalls));
+    core.speaker_roles_checked(check(1, MeasureRole::Mid, RoleCheckVerdict::TopHolds));
+    // A check for a role the row no longer has is not kept.
+    core.speaker_roles_checked(check(0, MeasureRole::Sub, RoleCheckVerdict::TopHolds));
+    let p = resolved(true);
+    assert_eq!(p.floor_of(&[0]), 0.0, "cleared");
+    assert_eq!(p.floor_of(&[1]), 1_000.0, "looks like a tweeter");
+    let l = core.speaker_layout().unwrap().unwrap();
+    assert_eq!(l.stated.as_ref().unwrap().checks.len(), 2);
+    assert_eq!(trusted_roles(&l).unwrap()[1], Some(MeasureRole::High));
+    // Stating it again with the same roles keeps the checks; another role
+    // drops that row's.
+    core.speaker_roles_state(
+        vec![
+            stated(0, MeasureRole::Low, "L"),
+            stated(1, MeasureRole::Low, "L"),
+        ],
+        "both woofers".into(),
+        String::new(),
+    )
+    .unwrap();
+    let l = core.speaker_layout().unwrap().unwrap();
+    let checks = &l.stated.as_ref().unwrap().checks;
+    assert_eq!(checks.len(), 1);
+    assert_eq!(checks[0].output, 0);
+    // The user corrects a stated row: theirs; Confirm makes every row theirs.
+    let mut mine = l.clone();
+    mine.outputs[1].role = MeasureRole::Mid;
+    let kept = core.speaker_layout_set(mine).unwrap();
+    assert_eq!(kept.outputs[1].source, RoleSource::User);
+    assert_eq!(kept.outputs[0].source, RoleSource::Stated);
+    assert_eq!(kept.state(), LayoutState::Stated);
+    let mut confirm = kept.clone();
+    confirm.confirmed_by_user = true;
+    let kept = core.speaker_layout_set(confirm).unwrap();
+    assert!(kept.outputs.iter().all(|o| o.source == RoleSource::User));
+    assert_eq!(kept.state(), LayoutState::Confirmed);
+    // Over a confirmed layout only with the user's words on what changed.
+    let e = core
+        .speaker_roles_state(rows.clone(), "words".into(), String::new())
+        .unwrap_err()
+        .to_string();
+    assert!(e.contains("layout.confirmed"), "{e}");
+    let l = core
+        .speaker_roles_state(rows, "words".into(), "I rewired output 2".into())
+        .unwrap();
+    assert_eq!(l.state(), LayoutState::Stated);
+    assert_eq!(l.stated.unwrap().what_changed, "I rewired output 2");
+    // Confirmed layouts and the user's runs: never held.
+    let p = resolved(false);
+    assert_eq!(p.floor_of(&[1]), 0.0);
+}
+
+#[test]
+fn wp_roles_sim_the_top_fall_check_tells_a_tweeter_from_a_woofer() {
+    let core = demo(vec![func1_woofer(), func1_tweeter()]);
+    // Not on a layout nobody stated.
+    let e = core
+        .detect_start(DetectSetup {
+            outputs: vec![0],
+            check: true,
+            ..DetectSetup::default()
+        })
+        .unwrap_err()
+        .to_string();
+    assert!(e.contains("stated"), "{e}");
+    // The user says both are woofers: Out 2 is a tweeter.
+    core.speaker_roles_state(
+        vec![
+            stated(0, MeasureRole::Low, "L"),
+            stated(1, MeasureRole::Low, "R"),
+        ],
+        "outputs 1 and 2 are the woofers".into(),
+        String::new(),
+    )
+    .unwrap();
+    let mut starts = Starts::default();
+    let st = core
+        .detect_start(DetectSetup {
+            outputs: vec![0, 1],
+            check: true,
+            ..DetectSetup::default()
+        })
+        .unwrap();
+    assert!(st.running && st.check, "{st:#?}");
+    assert!(st.detection.is_none(), "a check classifies nothing");
+    let st = detect(&core, &mut starts, None);
+    assert_eq!(st.stage, DetectStage::Done, "{st:#?}");
+    let verdict = |o: u8| st.checks.iter().find(|c| c.output == o).unwrap().verdict;
+    assert!(
+        matches!(
+            verdict(0),
+            RoleCheckVerdict::TopFalls | RoleCheckVerdict::Silent
+        ),
+        "{st:#?}"
+    );
+    assert_eq!(verdict(1), RoleCheckVerdict::TopHolds, "{st:#?}");
+    // Nothing below the floor on either output, never louder than the
+    // probe's ceiling.
+    assert!(!starts.0.is_empty());
+    for c in &starts.0 {
+        assert!(c.p[0].min(c.p[1]) >= 1_000.0, "{c:?}");
+        assert!(c.level_db <= PROBE_CEILING_DBFS, "{c:?}");
+    }
+    // The layout keeps the rows as stated, the checks beside them; no
+    // detection is recorded.
+    let l = core.speaker_layout().unwrap().unwrap();
+    assert_eq!(l.state(), LayoutState::Stated);
+    assert!(l.detected.is_none());
+    assert!(l.outputs.iter().all(|o| o.role == MeasureRole::Low));
+    assert_eq!(
+        trusted_roles(&l),
+        Some(vec![Some(MeasureRole::Low), Some(MeasureRole::High)]).map(|mut v| {
+            v.resize(
+                usize::from(core.get_state().num_output_channels),
+                Some(MeasureRole::High),
+            );
+            v
+        })
+    );
+    assert!(!l.agent_floor_held(0), "{l:#?}");
+    assert!(l.agent_floor_held(1));
+    assert!(
+        super::check_summary(&st.checks)
+            .contains("Out 2 (stated woofer): its top end holds like a tweeter's")
+    );
+}
+
+#[test]
+fn wp_roles_sim_a_check_that_hears_nothing_clears_nothing() {
+    let core = demo(vec![centre_sub(), unwired()]);
+    // A sub the user stated, and an output stated as a woofer that reaches
+    // nothing the microphone hears.
+    core.speaker_roles_state(
+        vec![
+            stated(0, MeasureRole::Sub, "Sub"),
+            stated(1, MeasureRole::Low, "L"),
+        ],
+        "the sub on 1, the woofer on 2".into(),
+        String::new(),
+    )
+    .unwrap();
+    let mut starts = Starts::default();
+    core.detect_start(DetectSetup {
+        outputs: vec![0, 1],
+        check: true,
+        ..DetectSetup::default()
+    })
+    .unwrap();
+    let st = detect(&core, &mut starts, None);
+    assert_eq!(st.stage, DetectStage::Done, "{st:#?}");
+    let verdict = |o: u8| st.checks.iter().find(|c| c.output == o).unwrap().verdict;
+    // The sub: its tail heard above 1 kHz with the top fallen into the
+    // noise, or silent there and heard by the shaped probe below it.
+    assert!(
+        matches!(
+            verdict(0),
+            RoleCheckVerdict::TopFalls | RoleCheckVerdict::Silent
+        ),
+        "{st:#?}"
+    );
+    // Heard nowhere: still unchecked, still held.
+    assert_eq!(verdict(1), RoleCheckVerdict::Unfinished, "{st:#?}");
+    let l = core.speaker_layout().unwrap().unwrap();
+    assert!(!l.agent_floor_held(0));
+    assert!(l.agent_floor_held(1));
+    // Below the floor only the shaped probe: -50 dBFS, two octaves, never
+    // the free descent.
+    for o in [0, 1] {
+        for c in starts.of(o) {
+            let (lo, hi) = (c.p[0].min(c.p[1]), c.p[0].max(c.p[1]));
+            assert!(c.level_db <= PROBE_CEILING_DBFS, "{c:?}");
+            if lo < 1_000.0 {
+                assert!(c.level_db <= PROBE_BELOW_FLOOR_DBFS, "{c:?}");
+                assert!(hi <= lo * 4.0 * 1.001, "{c:?}");
+                assert!(lo >= 150.0, "no free descent: {c:?}");
+            }
+        }
+    }
+}
+
+#[test]
+fn wp_roles_sim_the_check_judges_the_driver_not_the_outputs_own_low_pass() {
+    // Two tweeters the user calls midranges: one behind a 3 kHz low-pass (it
+    // hides the top end), one behind a 14 kHz one (taken out of the
+    // response before the top is judged).
+    let core = demo(vec![func1_tweeter(), func1_tweeter()]);
+    let n_in = core.get_state().num_input_channels;
+    for (o, hz) in [(0u8, 3_000.0f32), (1, 14_000.0)] {
+        core.set_crossover(
+            n_in + o,
+            0,
+            FilterParams {
+                filter_type: 34, // Linkwitz-Riley 24 dB/octave low-pass
+                bypass: false,
+                freq: hz,
+                q: 0.707,
+                gain: 0.0,
+                qp: 0.0,
+            },
+        )
+        .unwrap();
+    }
+    settle(&core);
+    core.speaker_roles_state(
+        vec![
+            stated(0, MeasureRole::Mid, "L"),
+            stated(1, MeasureRole::Mid, "R"),
+        ],
+        "both midranges".into(),
+        String::new(),
+    )
+    .unwrap();
+    let mut starts = Starts::default();
+    core.detect_start(DetectSetup {
+        outputs: vec![0, 1],
+        check: true,
+        ..DetectSetup::default()
+    })
+    .unwrap();
+    let st = detect(&core, &mut starts, None);
+    assert_eq!(st.stage, DetectStage::Done, "{st:#?}");
+    let of = |o: u8| st.checks.iter().find(|c| c.output == o).unwrap().clone();
+    // The top end its low-pass hides: not played at all, still held.
+    assert_eq!(of(0).verdict, RoleCheckVerdict::Unfinished, "{st:#?}");
+    assert!(of(0).filters_hide_top);
+    assert!(starts.of(0).is_empty(), "nothing played on it");
+    // The 14 kHz low-pass taken out: its top holds like the tweeter's it is.
+    assert_eq!(of(1).verdict, RoleCheckVerdict::TopHolds, "{st:#?}");
+    let l = core.speaker_layout().unwrap().unwrap();
+    assert!(l.agent_floor_held(0) && l.agent_floor_held(1));
+    assert!(l.check_of(0).unwrap().filters_hide_top);
+    assert!(super::check_summary(&st.checks).contains("its own low-pass hides its top end"));
+}

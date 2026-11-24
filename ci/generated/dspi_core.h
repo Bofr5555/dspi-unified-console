@@ -8695,6 +8695,15 @@ bool dspi_mcp_set_agent_spl_cap(struct FfiMcp *mcp, float spl_db);
 bool dspi_mcp_set_agent_detect(struct FfiMcp *mcp, bool allowed);
 
 /**
+ * Settings › AI Agents › Agents may set speaker roles from my words (off by
+ * default): under "never ask" an agent's `dspi_set_speaker_roles` is refused
+ * unless it is on; under the other settings the user is asked instead (one
+ * question showing the whole table). Holds from the next call on, also while
+ * the server runs. False for a null handle.
+ */
+bool dspi_mcp_set_agent_roles(struct FfiMcp *mcp, bool allowed);
+
+/**
  * This computer's audio as `dspi_get_host_audio` reads it, for the devices
  * open in the handle's set: the tool's JSON plus `ok` (never an error:
  * what cannot be read says `status: "unknown"` and why). Blocks while the

@@ -115,6 +115,10 @@ class AiController : public QObject {
     // (dspi_mcp_set_agent_detect; off by default, kept in the settings): the
     // page shows detectWarning once before it turns on (AUTODES 4.3)
     Q_PROPERTY(bool agentDetect READ agentDetect WRITE setAgentDetect NOTIFY settingsChanged)
+    // -- WP ROLES -- Settings › AI Agents › Agents may set speaker roles from my
+    // words (mcp/agentRoles, off by default): under "never ask" an agent's
+    // dspi_set_speaker_roles is refused unless it is on
+    Q_PROPERTY(bool agentRoles READ agentRoles WRITE setAgentRoles NOTIFY settingsChanged)
     // -- WP ADETQ -- The speaker detection's warning on the mechanism, as the
     // agent's question has it (dspi-mcp's DETECT_WARNING)
     Q_PROPERTY(QString detectWarning READ detectWarning CONSTANT)
@@ -174,6 +178,8 @@ public:
     bool agentSplCapOn() const { return m_agentSplCapOn; }   // -- WP INTG --
     void setAgentSplCapOn(bool on);
     bool agentDetect() const { return m_agentDetect; }   // -- WP ADETQ --
+    bool agentRoles() const { return m_agentRoles; }     // -- WP ROLES --
+    void setAgentRoles(bool on);                         // -- WP ROLES --
     void setAgentDetect(bool on);
     static QString detectWarning();
     QVariantList rememberedDevices() const { return m_remembered.toVariantList(); }
@@ -377,6 +383,7 @@ private:
     int m_holds = 0;
     bool m_agentSplCapOn = true;   // -- WP INTG --
     bool m_agentDetect = false;    // -- WP ADETQ --
+    bool m_agentRoles = false;     // -- WP ROLES --
     void applySplCap();
     QJsonArray m_remembered;
     void remember();
@@ -408,6 +415,8 @@ private:
         QJsonObject grant;       // -- WP ODEC -- what Allow grants beyond this call ({} for nothing)
         bool detect = false;     // -- WP ADETQ -- it asks to detect the speakers
         QString warning;         // -- WP ADETQ -- the server's warning on the mechanism, "" for none
+        QVariantList roleCells;  // -- WP ROLES -- speaker roles from the person's words: output, speaker, role per row
+        QString rolesAfter;      // -- WP ROLES -- the question's words after the table
         QDateTime ends;
         bool operator==(const Waiting &o) const { return id == o.id; }   // a question never changes
     };

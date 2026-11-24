@@ -7011,6 +7011,13 @@ data class DetectSetup(
      * The capture's rate, Hz (0: 48000).
      */
     val captureRateHz: Long,
+    /**
+     * The top-fall check only (stages A and B, never below the floor) of
+     * the listed outputs' stated roles: no class, no layout row; each
+     * output's [`RoleCheck`] goes to the stated layout. Refused when the
+     * layout is not stated or a listed output is not a stated row.
+     */
+    val check: Boolean,
 )
 
 /**
@@ -7065,6 +7072,14 @@ data class DetectState(
      * Who started it: 0 the app, else an agent's actor.
      */
     val actor: Long,
+    /**
+     * It is a top-fall check of stated roles ([`DetectSetup::check`]).
+     */
+    val check: Boolean,
+    /**
+     * The check's verdicts so far, by output.
+     */
+    val checks: List<RoleCheck>,
 )
 
 /**
@@ -9485,6 +9500,12 @@ data class SpeakerLayout(
      * [`LayoutState::AutoDetected`].
      */
     val detected: Detection?,
+    /**
+     * The roles an AI agent set from the user's words, if it did: the
+     * words, when, and the top-fall checks made since. With a `stated` row
+     * and no suggestion it makes the layout [`LayoutState::Stated`].
+     */
+    val stated: Statement?,
 )
 
 /**
@@ -9591,6 +9612,71 @@ data class Detection(
      * The device's output count when it ran: another count invalidates it.
      */
     val deviceOutputs: Int,
+)
+
+/**
+ * One output's top-fall check.
+ */
+data class RoleCheck(
+    /**
+     * The output, 0-based.
+     */
+    val output: Int,
+    /**
+     * The stated role it checked (a check stands only for that role).
+     */
+    val role: MeasureRole,
+    /**
+     * What it found.
+     */
+    val verdict: RoleCheckVerdict,
+    /**
+     * The mean level 1.5 to 3 kHz less the mean 10 to 16 kHz, dB.
+     */
+    val topFallDb: Float?,
+    /**
+     * The floor it never played below, Hz.
+     */
+    val floorHz: Float,
+    /**
+     * When, ms since the Unix epoch.
+     */
+    val atMs: Long,
+    /**
+     * Unfinished because the output's own filters (a low-pass) hide its top
+     * end: the check judges the driver, not them.
+     */
+    val filtersHideTop: Boolean,
+)
+
+/**
+ * The user's words an AI agent set the roles from.
+ */
+data class Statement(
+    /**
+     * When, ms since the Unix epoch.
+     */
+    val atMs: Long,
+    /**
+     * The agent's label ("AI · Claude Code").
+     */
+    val by: String,
+    /**
+     * The user's words, as the agent quoted them.
+     */
+    val words: String,
+    /**
+     * Over a confirmed layout: the user's words on what changed ("" else).
+     */
+    val whatChanged: String,
+    /**
+     * The device's output count then: another count invalidates it.
+     */
+    val deviceOutputs: Int,
+    /**
+     * The top-fall checks made since, by output.
+     */
+    val checks: List<RoleCheck>,
 )
 
 /**
@@ -10984,6 +11070,11 @@ enum class RoleSource {
      * A suggestion (the filters' inference, an import), nobody's word.
      */
     SUGGESTED,
+    /**
+     * Set by an AI agent from the user's words (the layout's `stated`),
+     * not checked by the user.
+     */
+    STATED,
 }
 
 /**
@@ -11003,6 +11094,14 @@ enum class LayoutState {
      * The user confirmed it.
      */
     CONFIRMED,
+    /**
+     * Set by an AI agent from the user's words, not yet confirmed: its
+     * roles guard the outputs as a detected layout's do, an output it does
+     * not name is unknown (a tweeter), and a stated non-tweeter is guarded
+     * as a tweeter (an agent's sub-floor stimulus, and programme) until its
+     * top-fall check clears it.
+     */
+    STATED,
 }
 
 /**
@@ -11083,6 +11182,35 @@ enum class DetectHeard {
      * Nowhere.
      */
     NEVER,
+}
+
+/**
+ * What the top-fall check (the detection's stage B) made of a stated
+ * non-tweeter, before an agent plays anything below its floor.
+ */
+enum class RoleCheckVerdict {
+    /**
+     * The top end falls as a woofer's or a midrange's does: the stated
+     * role stands.
+     */
+    TOP_FALLS,
+    /**
+     * Nothing heard above the floor, but heard below it by the
+     * detection's shaped probe (at most −50 dBFS, two octaves): a sub or a
+     * low woofer, no tweeter; the stated role stands. (Heard nowhere, the
+     * check is [`RoleCheckVerdict::Unfinished`].)
+     */
+    SILENT,
+    /**
+     * The top holds like a tweeter's: nothing below the floor plays on it
+     * for an agent, and the safety rules take it for a tweeter.
+     */
+    TOP_HOLDS,
+    /**
+     * The check did not finish (stopped, the microphone did not follow):
+     * still unchecked.
+     */
+    UNFINISHED,
 }
 
 /**

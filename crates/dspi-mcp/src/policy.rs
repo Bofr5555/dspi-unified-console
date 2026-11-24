@@ -174,6 +174,10 @@ pub enum RiskKind {
     /// whose result the safety rules then rest on. Always asked with
     /// [`RiskKind::TestSignal`], as one grouped question ([`require_detect`]).
     Detect,
+    // -- WP ROLES --
+    /// Speaker roles set from the user's words (`dspi_set_speaker_roles`):
+    /// the whole table in one question ([`require_roles`]).
+    SpeakerRoles,
 }
 
 impl RiskKind {
@@ -192,9 +196,10 @@ impl RiskKind {
             Self::Recall => "recall",
             Self::FlashWrite => "flash_write",
             Self::InstallationSave => "installation_save",
-            Self::Source => "source", // -- WP MCP2b --
-            Self::System => "system", // -- WP MCP2c --
-            Self::Detect => "detect", // -- WP ADET1 --
+            Self::Source => "source",              // -- WP MCP2b --
+            Self::System => "system",              // -- WP MCP2c --
+            Self::Detect => "detect",              // -- WP ADET1 --
+            Self::SpeakerRoles => "speaker_roles", // -- WP ROLES --
         }
     }
 }
@@ -285,6 +290,17 @@ pub struct Judging {
     /// Agents may detect the speakers under "never ask" (Settings › AI
     /// Agents › Agents may detect speakers; off by default).
     pub detect_allowed: bool,
+    // -- WP ROLES --
+    /// The roles are an agent's, set from the user's words and not yet
+    /// confirmed (the refusals say so).
+    pub stated: bool,
+    /// Agents may set speaker roles from the user's words under "never ask"
+    /// (Settings › AI Agents › Agents may set speaker roles from my words;
+    /// off by default).
+    pub roles_allowed: bool,
+    /// The outputs a stated setup guards as tweeters until their top-fall
+    /// check clears them ([`held_outputs`]).
+    pub held: Vec<Held>,
     // -- WP FFIX --
     /// The limits profile's high-pass per output: (output, corner, slope);
     /// it raises a confirmed tweeter's or midrange's floor, never lowers it.
@@ -547,6 +563,50 @@ pub fn require_detect(
     Err(ToolError::new(HELD_TEXT))
 }
 
+// -- WP ROLES --
+/// The refusal of speaker roles under "never ask" without the setting.
+pub const ROLES_NEVER_ASK_TEXT: &str = "under \"never ask\" agents may set the speaker roles \
+     only when the user has switched on Settings › AI Agents › Agents may set speaker roles from \
+     my words (it is off): nothing was changed. Ask the user to switch it on, or to set up the \
+     speakers in Settings › Speakers.";
+
+// -- WP ROLES --
+/// Speaker roles from the user's words (owner 2026-11-23): one question
+/// showing the whole table (`what`) under "ask on everything" and "ask for
+/// risky changes"; under "never ask" nothing is asked: refused unless
+/// [`Judging::roles_allowed`]. The grant key is `static.speaker_roles` with
+/// `indices` (the table, so an Allow covers exactly the table shown).
+pub fn require_roles(cell: &JudgingCell, what: &str, indices: &[u8]) -> Result<(), ToolError> {
+    let mut j = lock(cell);
+    let Some(mode) = j.mode else {
+        return Err(ToolError::new(
+            "the server's policy does not let agents do this",
+        ));
+    };
+    if mode == ConfirmMode::NeverAsk {
+        return if j.roles_allowed {
+            Ok(())
+        } else {
+            Err(ToolError::new(ROLES_NEVER_ASK_TEXT))
+        };
+    }
+    let key = WriteKey::new(
+        &format!("static.{}", RiskKind::SpeakerRoles.as_str()),
+        indices,
+        ParamValue::Trigger,
+    );
+    if j.grant.contains(&key) {
+        return Ok(());
+    }
+    j.asked.push(Risk {
+        kind: RiskKind::SpeakerRoles,
+        what: what.to_owned(),
+        output: None,
+        keys: vec![key],
+    });
+    Err(ToolError::new(HELD_TEXT))
+}
+
 // -- WP MCP2b --
 /// A static class for a quiet write the hook cannot see (a crossfeed pair
 /// map, a snapshot's name): asked under "ask on everything" only, refused
@@ -692,7 +752,8 @@ pub fn judge(state: &DspState, writes: &[WriteKey], j: &Judging) -> Verdict {
         writes,
         &j.roles,
         &j.floors,
-        setup_word(j.detected), // -- WP ADET1 --
+        setup_word(j.detected, j.stated), // -- WP ADET1 -- ROLES
+        &j.held,                          // -- WP ROLES --
         &mut risks,
         &mut refusals,
     );
@@ -1299,9 +1360,13 @@ fn touched_outputs(st: &DspState, writes: &[WriteKey]) -> Vec<u8> {
 }
 
 // -- WP ADET1 --
-/// The speaker setup's state in a refusal: `confirmed`, or detected by AI.
-fn setup_word(detected: bool) -> &'static str {
-    if detected {
+/// The speaker setup's state in a refusal: `confirmed`, detected by AI, or
+/// (-- WP ROLES --) set by AI from the user's words.
+fn setup_word(detected: bool, stated: bool) -> &'static str {
+    // -- WP ROLES --
+    if stated {
+        "set by AI from the user's words, not yet confirmed"
+    } else if detected {
         "detected by AI, not yet confirmed"
     } else {
         "confirmed"
@@ -1352,6 +1417,7 @@ fn judge_highpass(
     roles: &[Option<MeasureRole>],
     floors: &[(u8, f32, u8)],
     setup: &str,
+    held: &[Held],
     risks: &mut Vec<Risk>,
     refusals: &mut Vec<String>,
 ) {
@@ -1361,7 +1427,28 @@ fn judge_highpass(
             .iter()
             .any(|w| w.item().0 == "eq" && w.indices.first() == Some(&ch));
         if let Some((floor, slope, word)) = hard_rule(roles, floors, o) {
+            // -- WP ROLES -- an output guarded as a tweeter until its check: its
+            // filters are free while it cannot play (a midrange's 300 Hz
+            // high-pass before its measurement, as the preflight asks)
+            let held_o = held.iter().find(|h| h.output == o);
+            if held_o.is_some_and(|h| !h.found_tweeter) && !plays(after, o) {
+                continue;
+            }
             if let Some(why) = hard_verdict(before, after, writes, o, (floor, slope)) {
+                // -- WP ROLES -- trust but check: guarded as a tweeter until
+                // its top end is checked
+                if let Some(Held { why: held, .. }) = held_o {
+                    refusals.push(format!(
+                        "{} {held}, so it is guarded as a tweeter: it must keep a high-pass at \
+                         {floor:.0} Hz or above, {slope} dB/octave or steeper, whenever it can play \
+                         (routed, on and unmuted): {why}. Nothing was changed. A measurement of it \
+                         (dspi_measure_start) checks its top end first; once the check clears it, \
+                         its stated role holds. If the check found a tweeter's top, tell the user: \
+                         only the user can correct the role (Settings › Speakers).",
+                        agent_out(o)
+                    ));
+                    continue;
+                }
                 refusals.push(format!(
                     "{} drives {word} in the user's speaker setup ({setup}), so it must keep a \
                      high-pass at {floor:.0} Hz or above, {slope} dB/octave or steeper, whenever it \
@@ -1551,7 +1638,7 @@ pub fn unprotected_now(st: &DspState, j: &Judging) -> Option<String> {
                 "{} drives {word} in the user's speaker setup ({}) and plays programme \
                  without a high-pass at {floor:.0} Hz or above, {slope} dB/octave or steeper",
                 agent_out(o),
-                setup_word(j.detected) // -- WP ADET1 --
+                setup_word(j.detected, j.stated) // -- WP ADET1 -- ROLES
             )
         })
     })
@@ -2033,6 +2120,8 @@ pub struct AgentPolicy {
     spl_cap_bits: AtomicU32,
     // -- WP ADET1 -- Settings › AI Agents › Agents may detect speakers
     detect: AtomicBool,
+    // -- WP ROLES -- Settings › AI Agents › Agents may set speaker roles from my words
+    roles: AtomicBool,
 }
 
 /// Tools whose writes are never judged: a revert is never refused
@@ -2047,6 +2136,7 @@ impl AgentPolicy {
             mode: AtomicU8::new(mode.to_u8()),
             spl_cap_bits: AtomicU32::new(0), // -- WP FEATUI --
             detect: AtomicBool::new(false),  // -- WP ADET1 --
+            roles: AtomicBool::new(false),   // -- WP ROLES --
         }
     }
 
@@ -2084,6 +2174,20 @@ impl AgentPolicy {
     /// [`AgentPolicy::set_agent_detect`]'s switch.
     pub fn agent_detect(&self) -> bool {
         self.detect.load(Ordering::Relaxed)
+    }
+
+    // -- WP ROLES --
+    /// Settings › AI Agents › Agents may set speaker roles from my words
+    /// (off by default): under "never ask" `dspi_set_speaker_roles` is
+    /// refused unless it is on.
+    pub fn set_agent_roles(&self, allowed: bool) {
+        self.roles.store(allowed, Ordering::Relaxed);
+    }
+
+    // -- WP ROLES --
+    /// [`AgentPolicy::set_agent_roles`]'s switch.
+    pub fn agent_roles(&self) -> bool {
+        self.roles.load(Ordering::Relaxed)
     }
 
     fn hook(cell: JudgingCell) -> WriteHook {
@@ -2148,6 +2252,68 @@ pub fn trusted_setup(core: &DspiCore) -> (Vec<Option<MeasureRole>>, bool, Vec<u8
     let roles = dspi_core::trusted_roles(&layout).unwrap_or_default();
     let detected = layout.state() == dspi_core::LayoutState::AutoDetected;
     (roles, detected, nothing_outputs(&layout))
+}
+
+// -- WP ROLES --
+/// Whether `core`'s speaker setup was set by an agent from the user's words
+/// and is not yet confirmed.
+pub fn stated_setup(core: &DspiCore) -> bool {
+    core.speaker_layout()
+        .ok()
+        .flatten()
+        .is_some_and(|l| l.state() == dspi_core::LayoutState::Stated)
+}
+
+// -- WP ROLES --
+/// An output a stated setup guards as a tweeter (trust but check).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Held {
+    /// The output, from 0.
+    pub output: u8,
+    /// Why, in words that follow "Out N".
+    pub why: String,
+    /// Its top-fall check found a tweeter's top: the whole tweeter rule
+    /// holds; otherwise (no evidence yet) its filters are free while it
+    /// cannot play.
+    pub found_tweeter: bool,
+}
+
+// -- WP ROLES --
+/// The outputs `core`'s stated setup guards as tweeters (trust but check):
+/// a stated midrange, woofer, sub or full range its top-fall check has not
+/// cleared, and an output the user's words left out.
+pub fn held_outputs(core: &DspiCore) -> Vec<Held> {
+    let Ok(Some(l)) = core.speaker_layout() else {
+        return Vec::new();
+    };
+    let n = l.stated.as_ref().map_or(0, |s| s.device_outputs);
+    (0..n)
+        .filter(|o| l.agent_floor_held(*o))
+        .map(|o| {
+            let found_tweeter = l
+                .check_of(o)
+                .is_some_and(|c| c.verdict == dspi_core::RoleCheckVerdict::TopHolds);
+            let why = match (l.output(o), l.check_of(o)) {
+                (None, _) => "is not among the roles the user stated".to_owned(),
+                (Some(r), Some(c)) if c.verdict == dspi_core::RoleCheckVerdict::TopHolds => {
+                    format!(
+                        "was stated a {} in the user's words, but its top end holds like a \
+                         tweeter's",
+                        dspi_core::speaker_layout::role_word(r.role)
+                    )
+                }
+                (Some(r), _) => format!(
+                    "is a {} in the user's words, not checked yet",
+                    dspi_core::speaker_layout::role_word(r.role)
+                ),
+            };
+            Held {
+                output: o,
+                why,
+                found_tweeter,
+            }
+        })
+        .collect()
 }
 
 // -- WP ADET1 --
@@ -2216,6 +2382,10 @@ impl Policy for AgentPolicy {
             j.detected = detected;
             j.nothing = nothing;
             j.detect_allowed = self.agent_detect();
+            // -- WP ROLES --
+            j.stated = stated_setup(core);
+            j.roles_allowed = self.agent_roles();
+            j.held = held_outputs(core);
         }
         (!UNJUDGED_TOOLS.contains(&call.tool)).then(|| Self::hook(Arc::clone(judging)))
     }
@@ -2240,6 +2410,8 @@ impl Policy for AgentPolicy {
             "measure": true, // -- WP FEAT2 -- where the app measures (`Call::agent_may`)
             // -- WP ADET1 -- under "never ask" only with the user's switch
             "detect": self.mode() != ConfirmMode::NeverAsk || self.agent_detect(),
+            // -- WP ROLES -- the same for speaker roles from the user's words
+            "set_roles": self.mode() != ConfirmMode::NeverAsk || self.agent_roles(),
             "confirm": self.mode().as_str(),
             "peq_boost_step_db": PEQ_BOOST_STEP_DB,
             "delay_step_ms": DELAY_STEP_MS,

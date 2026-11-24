@@ -1,0 +1,145 @@
+{
+ "story": "s20-roles-trap.toml",
+ "confirm": "ask_risky",
+ "steps": {
+  "words": [
+   [
+    "dspi_set_speaker_roles",
+    {
+     "device": "demo:1",
+     "user_words": "L and r front speakers, both on DSPi named main front, full range three way, tweeter,mid,woofer, l then right, output 1-6",
+     "rows": [
+      {
+       "output": 0,
+       "role": "tweeter",
+       "speaker": "L"
+      },
+      {
+       "output": 1,
+       "role": "midrange",
+       "speaker": "L"
+      },
+      {
+       "output": 2,
+       "role": "woofer",
+       "speaker": "L"
+      },
+      {
+       "output": 3,
+       "role": "tweeter",
+       "speaker": "R"
+      },
+      {
+       "output": 4,
+       "role": "midrange",
+       "speaker": "R"
+      },
+      {
+       "output": 5,
+       "role": "woofer",
+       "speaker": "R"
+      }
+     ]
+    },
+    "ok",
+    "the table from the words",
+    "",
+    "speaker_setup_stated"
+   ]
+  ],
+  "measure": [
+   [
+    "dspi_measure_start",
+    {
+     "device": "demo:1",
+     "outputs": [
+      1
+     ]
+    },
+    "error",
+    "a stated midrange needs its high-pass first (the preflight)",
+    "",
+    "80 Hz"
+   ],
+   [
+    "dspi_set_crossover",
+    {
+     "device": "demo:1",
+     "output": 1,
+     "high_pass": {
+      "family": "linkwitz_riley",
+      "order": 4,
+      "freq_hz": 300
+     }
+    },
+    "ok",
+    "a stated midrange's high-pass (the preflight's rule): trusted as stated until checked"
+   ],
+   [
+    "dspi_measure_start",
+    {
+     "device": "demo:1",
+     "outputs": [
+      1
+     ]
+    },
+    "ok",
+    "the stated midrange is checked first",
+    "",
+    "First a check that Out 2 \\(stated midrange\\)"
+   ],
+   [
+    "wait",
+    {
+     "device": "demo:1"
+    }
+   ],
+   [
+    "dspi_measure_status",
+    {
+     "device": "demo:1"
+    },
+    "ok",
+    "the trap caught: the agent is told",
+    "",
+    "Out 2 looks like a tweeter"
+   ],
+   [
+    "dspi_set_crossover",
+    {
+     "device": "demo:1",
+     "output": 1,
+     "high_pass": {
+      "family": "linkwitz_riley",
+      "order": 4,
+      "freq_hz": 250
+     },
+     "low_pass": {
+      "family": "linkwitz_riley",
+      "order": 4,
+      "freq_hz": 3000
+     }
+    },
+    "error",
+    "now a tweeter to the safety rules: a midrange's crossover refused",
+    "",
+    "tweeter"
+   ],
+   [
+    "dspi_set_crossover",
+    {
+     "device": "demo:1",
+     "output": 1,
+     "high_pass": {
+      "family": "linkwitz_riley",
+      "order": 4,
+      "freq_hz": 2000
+     },
+     "low_pass": null
+    },
+    "ok",
+    "the tweeter's high-pass at 2 kHz passes"
+   ]
+  ]
+ }
+}

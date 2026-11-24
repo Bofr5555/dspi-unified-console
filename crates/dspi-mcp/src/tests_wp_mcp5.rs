@@ -705,6 +705,9 @@ fn wp_mcp5_a_role_argument_is_rejected_by_the_schema() {
         !names
             .iter()
             .filter(|n| **n != "dspi_detect_speakers")
+            // -- WP ROLES -- the owner's reversal (2026-11-23): roles from the
+            // user's words, still no `speaker_layout` in a name (AGENT_PROOF)
+            .filter(|n| **n != crate::tools::roles::SET_ROLES_NAME)
             .any(|n| n.contains("layout") || n.contains("speaker"))
     );
 }

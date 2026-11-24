@@ -67,8 +67,25 @@ device the app shows is used. A device that is not open may be a known one
   too, is fine while it stays at the floor or above. A tweeter the user left playing without
   that high-pass may be turned down or muted, never made louder (its gain, the volumes, a
   route, an effect or an EQ boost on it or on an input that feeds it).
+- If the user tells you which output drives what (\"tweeter, mid, woofer, left then right,
+  outputs 1-6\"), set it with `dspi_set_speaker_roles`: one row per output they named (outputs
+  from 0), their words quoted verbatim in `user_words`. The user is asked once, with the whole
+  table (under \"never ask\" only with their switch: `agent_may.set_roles`). The roles then
+  guard the outputs (`roles_from: speaker_setup_stated`, every tweeter rule applies); an output
+  you leave out is unknown and treated as a tweeter (`treated_as_tweeter`). They are not
+  checked: an output stated as a midrange, woofer, sub or full range is guarded as a tweeter
+  until its top end is checked (`treated_as_tweeter`: no route, unmute or switch-on without a
+  high-pass at 1 kHz or above; its filters are free while it cannot play). A measurement of it
+  checks the top end first (quiet sweeps above 1 kHz), so measure before routing: if the top
+  falls, its stated role holds; if it holds like a tweeter's, nothing lower plays there and the
+  request's note says \"looks like a tweeter\": tell the user, who corrects the wiring or the
+  role in Settings › Speakers. Set a low-pass after the measurement: one that hides the top end
+  leaves the output unchecked. Never set roles
+  the user did not state. Over a confirmed setup only when the user's own words say what
+  changed (`what_changed`).
 - If the user has not set up the speakers (`roles_from` is `none` or
-  `speaker_setup_unconfirmed`), do not guess: run `dspi_detect_speakers`. It plays quiet sweeps
+  `speaker_setup_unconfirmed`) and did not tell you the roles, do not guess: run
+  `dspi_detect_speakers`. It plays quiet sweeps
   on each output, finds which outputs reach a driver and which drive a tweeter, and gives every
   output a detected role that the safety rules then use as if the user had confirmed it
   (`roles_from: speaker_setup_auto_detected`). Anything it cannot tell apart is a tweeter. Tell
@@ -134,8 +151,12 @@ device the app shows is used. A device that is not open may be a known one
 - A measurement needs a person: the app's microphone, put where you say. Tell the user what
   to do before you start, and wait for them.
 - `dspi_measure_preflight` says what blocks a measurement. The roles come from the user's
-  confirmed speaker layout, or one `dspi_detect_speakers` found; if there is neither, detect it
-  or ask the user to confirm it in Settings › Speakers. No tool sets a role.
+  confirmed speaker layout, one `dspi_detect_speakers` found, or one set from the user's words
+  (`dspi_set_speaker_roles`); if there is none, set it from what the user told you, detect it,
+  or ask the user to set it up in Settings › Speakers. No measuring tool takes a role.
+- On roles set from the user's words, a measurement or low-end search first checks the top
+  end of each stated midrange, woofer, sub or full range not yet checked, then goes on as its
+  own request (`continues_as`; `dspi_measure_status` follows it). Relay the note.
 - `dspi_detect_speakers` is one question to the user with a warning (under \"never ask\" it
   needs the user's switch: `agent_may.detect`). Poll `dspi_measure_status`; its `detect` block
   gives each output's class, confidence, role and evidence, the summary and what to do next.

@@ -282,6 +282,8 @@ pub use output_labels::{
     OutputCard, OutputLabel, OutputLabelInput, output_cards_for, output_labels_for,
 };
 pub use speaker_layout::{SpeakerLayout, SpeakerLayoutOutput};
+// -- WP ROLES --
+pub use speaker_layout::{RoleCheck, RoleCheckVerdict, Statement};
 // -- WP ADET0 -- the speaker detection
 pub use measure::{DETECT_NOTICE_KEYS, DetectSetup, DetectStage, DetectState, trusted_roles};
 pub use speaker_layout::{

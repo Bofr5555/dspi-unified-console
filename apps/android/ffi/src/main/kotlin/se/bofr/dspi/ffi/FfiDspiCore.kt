@@ -5613,6 +5613,7 @@ internal fun se.bofr.dspi.ffi.uniffi.DetectSetup.toDomain() =
         micDocument = micDocument,
         splCapDb = splCapDb,
         captureRateHz = captureRateHz.toLong(),
+        check = check,
     )
 
 internal fun DetectSetup.toFfi() =
@@ -5624,6 +5625,7 @@ internal fun DetectSetup.toFfi() =
         micDocument = micDocument,
         splCapDb = splCapDb,
         captureRateHz = captureRateHz.toUInt(),
+        check = check,
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.DetectState.toDomain() =
@@ -5640,6 +5642,8 @@ internal fun se.bofr.dspi.ffi.uniffi.DetectState.toDomain() =
         detection = detection?.let { it.toDomain() },
         issue = issue?.let { it.toDomain() },
         actor = actor.toLong(),
+        check = check,
+        checks = checks.map { it.toDomain() },
     )
 
 internal fun DetectState.toFfi() =
@@ -5656,6 +5660,8 @@ internal fun DetectState.toFfi() =
         detection = detection?.let { it.toFfi() },
         issue = issue?.let { it.toFfi() },
         actor = actor.toUInt(),
+        check = check,
+        checks = checks.map { it.toFfi() },
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.MeasureDocCurvesOptions.toDomain() =
@@ -7164,6 +7170,7 @@ internal fun se.bofr.dspi.ffi.uniffi.SpeakerLayout.toDomain() =
         updatedMs = updatedMs,
         notes = notes,
         detected = detected?.let { it.toDomain() },
+        stated = stated?.let { it.toDomain() },
     )
 
 internal fun SpeakerLayout.toFfi() =
@@ -7174,6 +7181,7 @@ internal fun SpeakerLayout.toFfi() =
         updatedMs = updatedMs,
         notes = notes,
         detected = detected?.let { it.toFfi() },
+        stated = stated?.let { it.toFfi() },
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.DetectedOutput.toDomain() =
@@ -7236,6 +7244,48 @@ internal fun Detection.toFfi() =
         stopped = stopped,
         summary = summary,
         deviceOutputs = deviceOutputs.toUByte(),
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.RoleCheck.toDomain() =
+    RoleCheck(
+        output = output.toInt(),
+        role = role.toDomain(),
+        verdict = verdict.toDomain(),
+        topFallDb = topFallDb,
+        floorHz = floorHz,
+        atMs = atMs,
+        filtersHideTop = filtersHideTop,
+    )
+
+internal fun RoleCheck.toFfi() =
+    se.bofr.dspi.ffi.uniffi.RoleCheck(
+        output = output.toUByte(),
+        role = role.toFfi(),
+        verdict = verdict.toFfi(),
+        topFallDb = topFallDb,
+        floorHz = floorHz,
+        atMs = atMs,
+        filtersHideTop = filtersHideTop,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.Statement.toDomain() =
+    Statement(
+        atMs = atMs,
+        by = by,
+        words = words,
+        whatChanged = whatChanged,
+        deviceOutputs = deviceOutputs.toInt(),
+        checks = checks.map { it.toDomain() },
+    )
+
+internal fun Statement.toFfi() =
+    se.bofr.dspi.ffi.uniffi.Statement(
+        atMs = atMs,
+        by = by,
+        words = words,
+        whatChanged = whatChanged,
+        deviceOutputs = deviceOutputs.toUByte(),
+        checks = checks.map { it.toFfi() },
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.VregChoice.toDomain() =
@@ -8117,6 +8167,7 @@ internal fun se.bofr.dspi.ffi.uniffi.RoleSource.toDomain(): RoleSource =
         se.bofr.dspi.ffi.uniffi.RoleSource.USER -> RoleSource.USER
         se.bofr.dspi.ffi.uniffi.RoleSource.DETECTED -> RoleSource.DETECTED
         se.bofr.dspi.ffi.uniffi.RoleSource.SUGGESTED -> RoleSource.SUGGESTED
+        se.bofr.dspi.ffi.uniffi.RoleSource.STATED -> RoleSource.STATED
     }
 
 internal fun RoleSource.toFfi(): se.bofr.dspi.ffi.uniffi.RoleSource =
@@ -8124,6 +8175,7 @@ internal fun RoleSource.toFfi(): se.bofr.dspi.ffi.uniffi.RoleSource =
         RoleSource.USER -> se.bofr.dspi.ffi.uniffi.RoleSource.USER
         RoleSource.DETECTED -> se.bofr.dspi.ffi.uniffi.RoleSource.DETECTED
         RoleSource.SUGGESTED -> se.bofr.dspi.ffi.uniffi.RoleSource.SUGGESTED
+        RoleSource.STATED -> se.bofr.dspi.ffi.uniffi.RoleSource.STATED
     }
 
 internal fun se.bofr.dspi.ffi.uniffi.LayoutState.toDomain(): LayoutState =
@@ -8131,6 +8183,7 @@ internal fun se.bofr.dspi.ffi.uniffi.LayoutState.toDomain(): LayoutState =
         se.bofr.dspi.ffi.uniffi.LayoutState.UNCONFIRMED -> LayoutState.UNCONFIRMED
         se.bofr.dspi.ffi.uniffi.LayoutState.AUTO_DETECTED -> LayoutState.AUTO_DETECTED
         se.bofr.dspi.ffi.uniffi.LayoutState.CONFIRMED -> LayoutState.CONFIRMED
+        se.bofr.dspi.ffi.uniffi.LayoutState.STATED -> LayoutState.STATED
     }
 
 internal fun LayoutState.toFfi(): se.bofr.dspi.ffi.uniffi.LayoutState =
@@ -8138,6 +8191,7 @@ internal fun LayoutState.toFfi(): se.bofr.dspi.ffi.uniffi.LayoutState =
         LayoutState.UNCONFIRMED -> se.bofr.dspi.ffi.uniffi.LayoutState.UNCONFIRMED
         LayoutState.AUTO_DETECTED -> se.bofr.dspi.ffi.uniffi.LayoutState.AUTO_DETECTED
         LayoutState.CONFIRMED -> se.bofr.dspi.ffi.uniffi.LayoutState.CONFIRMED
+        LayoutState.STATED -> se.bofr.dspi.ffi.uniffi.LayoutState.STATED
     }
 
 internal fun se.bofr.dspi.ffi.uniffi.DetectClass.toDomain(): DetectClass =
@@ -8192,6 +8246,22 @@ internal fun DetectHeard.toFfi(): se.bofr.dspi.ffi.uniffi.DetectHeard =
         DetectHeard.ABOVE_FLOOR -> se.bofr.dspi.ffi.uniffi.DetectHeard.ABOVE_FLOOR
         DetectHeard.BELOW_FLOOR -> se.bofr.dspi.ffi.uniffi.DetectHeard.BELOW_FLOOR
         DetectHeard.NEVER -> se.bofr.dspi.ffi.uniffi.DetectHeard.NEVER
+    }
+
+internal fun se.bofr.dspi.ffi.uniffi.RoleCheckVerdict.toDomain(): RoleCheckVerdict =
+    when (this) {
+        se.bofr.dspi.ffi.uniffi.RoleCheckVerdict.TOP_FALLS -> RoleCheckVerdict.TOP_FALLS
+        se.bofr.dspi.ffi.uniffi.RoleCheckVerdict.SILENT -> RoleCheckVerdict.SILENT
+        se.bofr.dspi.ffi.uniffi.RoleCheckVerdict.TOP_HOLDS -> RoleCheckVerdict.TOP_HOLDS
+        se.bofr.dspi.ffi.uniffi.RoleCheckVerdict.UNFINISHED -> RoleCheckVerdict.UNFINISHED
+    }
+
+internal fun RoleCheckVerdict.toFfi(): se.bofr.dspi.ffi.uniffi.RoleCheckVerdict =
+    when (this) {
+        RoleCheckVerdict.TOP_FALLS -> se.bofr.dspi.ffi.uniffi.RoleCheckVerdict.TOP_FALLS
+        RoleCheckVerdict.SILENT -> se.bofr.dspi.ffi.uniffi.RoleCheckVerdict.SILENT
+        RoleCheckVerdict.TOP_HOLDS -> se.bofr.dspi.ffi.uniffi.RoleCheckVerdict.TOP_HOLDS
+        RoleCheckVerdict.UNFINISHED -> se.bofr.dspi.ffi.uniffi.RoleCheckVerdict.UNFINISHED
     }
 
 internal fun se.bofr.dspi.ffi.uniffi.VregCalPhase.toDomain(): VregCalPhase =

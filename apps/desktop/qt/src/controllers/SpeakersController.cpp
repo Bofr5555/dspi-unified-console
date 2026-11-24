@@ -99,16 +99,30 @@ QJsonObject withRow(QJsonObject layout, int o, const QString &role, const QStrin
 
 // -- WP ADETQ -- SpeakerLayout::state(): "confirmed", "autoDetected" (a detection
 // recorded and no row a mere suggestion), "unconfirmed"; "" for none
+// -- WP ROLES -- or "stated": set by an AI agent from the user's words (a
+// statement recorded, a stated row, no suggestion)
 QString stateOf(const QJsonObject &layout) {
     if (layout.isEmpty()) return {};
     if (layout.value(QLatin1String("confirmedByUser")).toBool()) return QStringLiteral("confirmed");
     const QJsonArray outs = layout.value(QLatin1String("outputs")).toArray();
-    bool trusted = layout.value(QLatin1String("detected")).isObject() && !outs.isEmpty();
+    bool anyone = !outs.isEmpty(), stated = false;
     for (const QJsonValue &v : outs) {
         const QString source = v.toObject().value(QLatin1String("source")).toString();
-        trusted = trusted && (source == QLatin1String("user") || source == QLatin1String("detected"));
+        anyone = anyone && source != QLatin1String("suggested") && !source.isEmpty();
+        stated = stated || source == QLatin1String("stated");
     }
-    return trusted ? QStringLiteral("autoDetected") : QStringLiteral("unconfirmed");
+    if (!anyone) return QStringLiteral("unconfirmed");
+    if (stated && layout.value(QLatin1String("stated")).isObject()) return QStringLiteral("stated");
+    return layout.value(QLatin1String("detected")).isObject() ? QStringLiteral("autoDetected") : QStringLiteral("unconfirmed");
+}
+
+// -- WP ROLES -- the top-fall check of `output`'s stated role, {} for none
+QJsonObject checkIn(const QJsonObject &layout, int output) {
+    const QJsonObject row = rowIn(layout, output);
+    for (const QJsonValue &v : layout.value(QLatin1String("stated")).toObject().value(QLatin1String("checks")).toArray())
+        if (v.toObject().value(QLatin1String("output")).toInt() == output && str(v.toObject(), "role") == str(row, "role"))
+            return v.toObject();
+    return {};
 }
 
 // -- WP ADETQ -- the detection's record of `output`, {} for none
@@ -268,6 +282,8 @@ QString SpeakersController::status() const {
     if (st->stored.value(QLatin1String("confirmedByUser")).toBool()) return QStringLiteral("confirmed");
     // -- WP ADETQ -- the detection wrote it: not an import
     if (stateOf(st->stored) == QLatin1String("autoDetected")) return QStringLiteral("autoDetected");
+    // -- WP ROLES -- an agent set it from the person's words: not an import either
+    if (stateOf(st->stored) == QLatin1String("stated")) return QStringLiteral("stated");
     return imported(st->serial, st->stored) ? QStringLiteral("imported") : QStringLiteral("unconfirmed");
 }
 
@@ -384,6 +400,8 @@ QJsonObject SpeakersController::draftLayout() const {
     }
     QJsonObject layout{ { QStringLiteral("outputs"), outs } };
     if (const QJsonValue d = state()->stored.value(QLatin1String("detected")); d.isObject()) layout.insert(QStringLiteral("detected"), d);
+    // -- WP ROLES -- the words the roles were set from, and their checks
+    if (const QJsonValue d = state()->stored.value(QLatin1String("stated")); d.isObject()) layout.insert(QStringLiteral("stated"), d);
     return layout;
 }
 
@@ -500,6 +518,21 @@ QString SpeakersController::bannerText(bool here) const {
                    : tr("Detected by AI, not confirmed: %1 probed this DSPi's outputs%2 (%3). Check each role, correct what "
                         "is wrong, then confirm.").arg(who, when, where);
     }
+    // -- WP ROLES -- (owner 2026-11-23) set by AI from the person's words, not checked
+    if (s == QLatin1String("stated")) {
+        if (!here) return tr("Your speaker roles were set by AI from your words and are not checked. Check them in Settings › Speakers.");
+        const QJsonObject d = state()->stored.value(QLatin1String("stated")).toObject();
+        const qint64 at = d.value(QLatin1String("atMs")).toVariant().toLongLong();
+        const QString when = at > 0 ? QStringLiteral(" ") + stampAt(at) : QString();
+        QString who = str(d, "by").trimmed();
+        if (who.startsWith(QStringLiteral("AI · "))) who = who.mid(5);
+        if (who.isEmpty()) who = tr("An AI agent");
+        QString words = str(d, "words").simplified();
+        if (words.size() > 160) words = words.left(159) + QChar(0x2026);
+        //: %1 the AI agent's name, %2 when ("today at 14:02"), with a space before it, or ""; %3 the person's words, quoted
+        return tr("Set by AI from your words, not checked: %1 set these roles%2 from what you told it (“%3”). Check each "
+                  "role, correct what is wrong, then confirm.").arg(who, when, words);
+    }
     // -- WP MCP5 -- (review RB C4) "imported" is any unconfirmed layout this console
     // did not write: a configuration file or another app (never an agent: no tool
     // writes it), so the words do not claim a file
@@ -549,7 +582,7 @@ QVariantList SpeakersController::rows() const {
 // says whose word it is, and how sure the detection was. None on a confirmed
 // layout's rows as kept, or with no layout and no detection.
 QVariantMap SpeakersController::pillOf(const State &st, const QVariantMap &row) const {
-    enum Kind { None, Detected, Unsure, Uncertain, Unknown, Nothing, Off, You, Suggested };
+    enum Kind { None, Detected, Unsure, Uncertain, Unknown, Nothing, Off, You, Suggested, Stated, StatedTweeter, NotNamed };   // -- WP ROLES -- the last three
     const int o = row.value(QStringLiteral("output")).toInt();
     const QJsonObject det = detectedIn(st.stored, o);
     const QString klass = str(det, "class");
@@ -558,6 +591,8 @@ QVariantMap SpeakersController::pillOf(const State &st, const QVariantMap &row) 
     if (!row.value(QStringLiteral("included")).toBool()) {
         if (klass == QLatin1String("nothing")) kind = Nothing;
         else if (klass == QLatin1String("off")) kind = Off;
+        // -- WP ROLES -- an output the person's words did not name: unknown, a tweeter
+        else if (stateOf(st.stored) == QLatin1String("stated")) kind = NotNamed;
     } else {
         const QString source = row.value(QStringLiteral("source")).toString();
         const QJsonObject kept = rowIn(st.stored, o);
@@ -565,6 +600,9 @@ QVariantMap SpeakersController::pillOf(const State &st, const QVariantMap &row) 
                                str(kept, "source") == source;
         if (st.stored.value(QLatin1String("confirmedByUser")).toBool() && unchanged) kind = None;
         else if (source == QLatin1String("user")) kind = You;
+        // -- WP ROLES -- set by AI from the person's words; its check may have found a tweeter's top
+        else if (source == QLatin1String("stated") && unchanged)
+            kind = str(checkIn(st.stored, o), "verdict") == QLatin1String("topHolds") ? StatedTweeter : Stated;
         else if (source == QLatin1String("detected") && !det.isEmpty()) {
             const QString confidence = str(det, "confidence");
             kind = klass == QLatin1String("unknown")    ? Unknown
@@ -585,8 +623,12 @@ QVariantMap SpeakersController::pillOf(const State &st, const QVariantMap &row) 
                                          QT_TR_NOOP("nothing heard"),
                                          QT_TR_NOOP("off, not probed"),
                                          QT_TR_NOOP("you"),
-                                         QT_TR_NOOP("suggested") };
-    static const char *const kinds[] = { "", "detected", "detectedUnsure", "uncertain", "unknown", "nothing", "off", "you", "suggested" };
+                                         QT_TR_NOOP("suggested"),
+                                         QT_TR_NOOP("from your words"),
+                                         QT_TR_NOOP("tweeter-like"),
+                                         QT_TR_NOOP("unknown") };
+    static const char *const kinds[] = { "", "detected", "detectedUnsure", "uncertain", "unknown", "nothing", "off", "you", "suggested",
+                                         "stated", "statedTweeter", "notNamed" };
     // When the notice table lacks the reason
     static const char *const reasons[] = {
         "",
@@ -599,6 +641,11 @@ QVariantMap SpeakersController::pillOf(const State &st, const QVariantMap &row) 
         QT_TR_NOOP("The output was off or muted, so the detection did not probe it."),
         QT_TR_NOOP("Set or confirmed by you."),
         QT_TR_NOOP("Suggested from the filters and the routing: nobody's word yet."),
+        QT_TR_NOOP("Set by AI from your words, not checked. Until a measurement checks its top end, agents guard it as a "
+                   "tweeter. Correct it if it is wrong, then confirm."),
+        QT_TR_NOOP("Set by AI from your words, but its top end holds like a tweeter's: nothing below 1 kHz plays on it "
+                   "for an agent, and it is guarded as a tweeter. Check the wiring and the role."),
+        QT_TR_NOOP("Not in what you told the AI: unknown, treated as a tweeter until you set its role."),
     };
     QString reason = tr(reasons[kind]);
     if (!note.isEmpty())
@@ -611,6 +658,12 @@ QVariantMap SpeakersController::pillOf(const State &st, const QVariantMap &row) 
 QString SpeakersController::stampText() const {
     const QJsonObject &l = state()->stored;
     if (l.isEmpty()) return {};
+    // -- WP ROLES --
+    if (stateOf(l) == QLatin1String("stated")) {
+        const qint64 at = l.value(QLatin1String("stated")).toObject().value(QLatin1String("atMs")).toVariant().toLongLong();
+        //: %1 when ("today at 14:02", "on 23/11/2026")
+        return at > 0 ? tr("Set by AI from your words, not checked, %1.").arg(stampAt(at)) : tr("Set by AI from your words, not checked.");
+    }
     if (stateOf(l) == QLatin1String("autoDetected")) {
         const QJsonObject d = l.value(QLatin1String("detected")).toObject();
         const qint64 at = d.value(QLatin1String("atMs")).toVariant().toLongLong();
