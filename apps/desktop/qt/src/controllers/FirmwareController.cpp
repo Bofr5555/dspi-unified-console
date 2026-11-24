@@ -208,7 +208,7 @@ QString FirmwareController::imageName() const {
     QStringList names;
     for (const Image &img : m_bundled)
         if (chip < 0 || img.chip == chip) names.append(img.name);
-    return names.join(QLatin1String(" · "));
+    return names.join(QStringLiteral(" · "));
 }
 
 QString FirmwareController::imageVersion() const {
