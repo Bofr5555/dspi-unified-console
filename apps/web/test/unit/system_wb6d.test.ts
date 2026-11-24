@@ -138,6 +138,9 @@ test("WB6d: outputs: routing summary, blocks on or off, level, and where each op
   assert.equal(o3!.enabled, false);
   assert.deepEqual(o3!.open, { screen: "matrix" });
   assert.deepEqual(block(o3!.blocks, "eq").open, { screen: "matrix" });
+  // -- WP WEB7 -- the core's `unused` (nothing routed): the chain view leaves it out
+  assert.deepEqual(c.outputs.map((o) => o.unused), [false, false, true]);
+  assert.deepEqual(chainView(state(), undefined, 2).outputs.map((o) => o.unused), [false, false, false], "no labels, nothing known unused");
 });
 
 test("WB6d: effects: per-output ones only while on, by their output mask; device-wide ones listed with their state", () => {

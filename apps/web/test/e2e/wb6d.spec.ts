@@ -67,11 +67,21 @@ test("WB6d: the chain lists the live inputs and every output with meters, blocks
   await expect(chain.getByRole("region", { name: "Chain inputs" }).getByRole("heading")).toHaveText(`Inputs · Source: ${title}`);
   // The demo streams two USB inputs until the device says more.
   await expect(inputs).toHaveCount(2);
-  await expect(chain.getByRole("region", { name: "Chain outputs" }).getByRole("group")).toHaveCount(s.numOutputChannels);
-  await expect(chain.getByRole("meter")).toHaveCount(2 + s.numOutputChannels);
+  // -- WP WEB7 -- an output nothing is routed to (the core's `unused`) is not shown: the chain only shows (owner 2026-11-24)
+  const labels = ((await page.evaluate(() => (globalThis as unknown as G).dspiClients[0]!.call("state", null))) as { outputLabels: { unused: boolean }[] }).outputLabels;
+  const shown = labels.filter((l) => !l.unused).length;
+  expect(shown).toBeGreaterThan(0);
+  expect(shown).toBeLessThan(s.numOutputChannels);
+  await expect(chain.getByRole("region", { name: "Chain outputs" }).getByRole("group")).toHaveCount(shown);
+  await expect(chain.getByText(`${s.numOutputChannels - shown} outputs with nothing routed to them are not shown.`)).toBeVisible();
+  await expect(chain.getByRole("meter")).toHaveCount(2 + shown);
   await expect(inputs.first().getByRole("meter")).toHaveAttribute("aria-valuemin", "-90");
   for (let o = 0; o < s.numOutputChannels; o++) {
     const row = outRow(chain, o);
+    if (labels[o]!.unused) {
+      await expect(row).toHaveCount(0); // -- WP WEB7 --
+      continue;
+    }
     await expect(row).toHaveAttribute("data-enabled", String(s.outputEnabled[o] !== false));
     const level = row.getByLabel(`Level of OUT${o + 1}`);
     await expect(level).toContainText(`${(Math.round(s.outputGainDb[o]! * 10) / 10).toFixed(1)} dB`);
