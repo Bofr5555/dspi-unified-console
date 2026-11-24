@@ -193,7 +193,7 @@ export const EFFECTS: readonly EffectDef[] = [
   },
   {
     id: "psybass",
-    label: "Psychoacoustic bass",
+    label: "Psy Bass", // -- WP WEB3 -- (REVD W9) Qt's tab
     feature: "psychoacoustic_bass",
     on: { path: "bass.on", read: field("psybassEnabled") },
     params: [
@@ -205,7 +205,6 @@ export const EFFECTS: readonly EffectDef[] = [
       { path: "bass.mask", read: field("psybassOutputMask"), mask: "outputs" },
     ],
   },
-  { id: "tube", label: "Tube", feature: "tube_preamp", on: tube[0]!, params: tube.slice(1), split: true },
   {
     id: "subharm",
     label: "Subharmonic",
@@ -213,6 +212,8 @@ export const EFFECTS: readonly EffectDef[] = [
     on: subharm[0]!,
     params: [...subharm.slice(1), { path: "sub.solo", read: field("subharmSolo") }],
   },
+  // -- WP WEB3 -- (REVD W9) Tube after Subharmonic, as Qt's tabs
+  { id: "tube", label: "Tube", feature: "tube_preamp", on: tube[0]!, params: tube.slice(1), split: true },
   { id: "upmix", label: "Upmixer", feature: "upmixer", on: upmix[0]!, params: upmix.slice(1) },
 ];
 

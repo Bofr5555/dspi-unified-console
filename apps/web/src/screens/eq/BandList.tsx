@@ -75,7 +75,7 @@ export const BandList = memo(function BandList(props: {
   };
 
   return (
-    <section class="card band-list" aria-label={`Bands of ${props.channelName}`}>
+    <section class="band-list eq-bands eq-table" aria-label={`Bands of ${props.channelName}`}> {/* -- WP WEB3 -- §9, no card */}
       <table>
         <thead>
           <tr>

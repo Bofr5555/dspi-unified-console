@@ -1,0 +1,47 @@
+/* -- WP WEB3 -- The Equaliser's Inputs page in the Modern language: two sections in the 760 px column
+   at the left (the trims by pair, the source names), no cards; each input its pill, its name, the
+   slider and a mono field; a pair's Link a toggle chip (the selection tone when on, never the
+   warning's); the active source a status chip. And an input's strip atop its PEQ page. */
+
+.dspi-web .inputs-screen { display: flex; flex-direction: column; gap: 24px; max-width: var(--content-max, 760px); grid-template-columns: none; }
+.dspi-web .inputs-screen > section { padding: 0; background: none; border-radius: 0; display: flex; flex-direction: column; gap: 8px; }
+.dspi-web .inputs-screen .section-label { margin: 0; }
+.dspi-web .inputs-source { font-size: 11px; color: var(--muted); }
+.dspi-web .inputs-screen .note { margin: 0; font-size: 11px; color: var(--muted); }
+
+.dspi-web .input-pair { display: flex; flex-direction: column; gap: 0; padding: 0; margin: 0; border: 0; }
+.dspi-web .input-pair.linked { border: 0; padding-left: 0; }
+.dspi-web .input-pair + .input-pair { margin-top: 8px; }
+.dspi-web .input-link { align-self: flex-start; margin-bottom: 4px; }
+.dspi-web .input-link, .dspi-web .input-link.on { border: 0; background: var(--control); color: var(--text); }
+.dspi-web .input-link.on { background: var(--selection); color: var(--accent-text); font-weight: 600; }
+
+.dspi-web .input-trim {
+  display: grid; grid-template-columns: 44px minmax(0, 1fr) minmax(0, 1.6fr) 88px; align-items: center; gap: 10px;
+  min-height: 32px; padding: 0 8px; border-radius: 4px;
+}
+.dspi-web .input-pair .input-trim:nth-child(even) { background: var(--stripe); }
+.dspi-web .input-trim .ch-gain { width: 100%; margin: 0; grid-column: auto; grid-row: auto; }
+.dspi-web .inputs-screen .input-trim, .dspi-web .ch-strip .input-trim { grid-template-rows: auto; row-gap: 0; }
+.dspi-web .input-trim .value-field input { height: 24px; font-family: var(--mono); font-size: 12px; text-align: right; }
+
+.dspi-web .source-rows { list-style: none; margin: 0; padding: 0; }
+.dspi-web .source-row label { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 280px); align-items: center; gap: 12px; min-height: 36px; }
+.dspi-web .source-title { display: inline-flex; align-items: center; gap: 8px; }
+.dspi-web .source-active { display: inline-flex; align-items: center; height: 18px; padding: 0 8px 0 4px; border-radius: 9px; background: var(--control); font-size: 11px; color: var(--text); }
+
+/* An input's strip atop its PEQ page: its pill and name are the strip's, the trim a slider and field */
+.dspi-web .input-header.ch-strip { grid-template-columns: none; margin: 0; }
+.dspi-web .ch-strip .input-trim { display: flex; align-items: center; gap: 8px; padding: 0; min-height: 24px; }
+.dspi-web .ch-strip .input-trim::before { content: "Trim"; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.dspi-web .ch-strip .input-trim .ch-gain { width: 160px; }
+.dspi-web .ch-strip .input-trim .value-field { width: 88px; }
+.dspi-web .ch-strip .input-trim .ch-tag, .dspi-web .ch-strip .input-trim .ch-name-text { display: none; }
+.dspi-web .ch-strip .input-link { margin: 0; align-self: center; }
+
+/* Narrow: the input's pill, name and field on one line, its slider under them */
+.dspi-web .inputs-screen { container-type: inline-size; }
+@container (max-width: 560px) {
+  .dspi-web .inputs-screen .input-trim { grid-template-columns: 44px minmax(0, 1fr) 88px; grid-template-rows: auto auto; row-gap: 4px; padding: 4px 8px; }
+  .dspi-web .inputs-screen .input-trim .ch-gain { grid-column: 1 / -1; grid-row: 2; }
+}

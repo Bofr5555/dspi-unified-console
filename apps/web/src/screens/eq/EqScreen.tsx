@@ -11,6 +11,12 @@
 // -- WP WBCLIP -- The Channel menu copies the chosen channel's parameters and
 // pastes them onto it (M45, screens/clipboard/model.ts); Ctrl/Cmd+C and +V do
 // the same while this screen is shown.
+//
+// -- WP WEB3 -- (DL8 on the web) Drawn as Qt's Modern PEQ: the chosen channel's strip above the graph
+// (its pill and name, routing, gain, delay, mute, limiter; an input's link and trim), the channels
+// as a list at the left (INPUTS, OUTPUTS: name and pill; the dot shows its curve), the graph on the
+// panel tone with no box, the band table under it; AutoEQ…, Channel ▾ and the spectrum in the
+// page's tools. Narrow, the channels are one row of pills that scrolls sideways.
 
 import { memo } from "preact/compat";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
@@ -57,6 +63,9 @@ import {
   type Limits,
 } from "./model";
 import { EmptyState } from "../../ui/design"; // -- WP WEB --
+import { PageTools } from "../../ui/shell/Parts"; // -- WP WEB3 --
+import { Pill } from "./Pill"; // -- WP WEB3 --
+import "./eq.css"; // -- WP WEB3 --
 
 interface EqChannel extends ChannelRow {
   output: boolean;
@@ -373,9 +382,16 @@ const EqView = memo(
 
     return (
       <div class="eq-screen">
+        <div class="eq-body">
         <div class="eq-channels" role="group" aria-label="Channels">
-          {channels.map((c) => (
-            <span class="eq-channel" key={c.wire}>
+          {channels.map((c, i) => (
+            <span class={`eq-channel${c.output ? " out" : " in"}`} key={c.wire}>
+              {/* -- WP WEB3 -- the list's section labels (wide only) */}
+              {i === 0 || channels[i - 1]!.output !== c.output ? (
+                <span class="section-label eq-list-label" aria-hidden="true">
+                  {c.output ? "Outputs" : "Inputs"}
+                </span>
+              ) : null}
               <button
                 type="button"
                 class="eq-pick"
@@ -386,8 +402,8 @@ const EqView = memo(
                 onContextMenu={(e) => ctx.open(e, `${c.descriptor} ${c.name}`, channelItems(c))}
                 onKeyDown={(e) => isMenuKey(e) && ctx.open(e, `${c.descriptor} ${c.name}`, channelItems(c))}
               >
-                <span class="swatch" style={{ background: c.colour }} aria-hidden="true" />
-                <span class="eq-desc">{c.descriptor}</span> <span class="eq-name">{c.name}</span>
+                <span class="eq-name">{c.name}</span>
+                <Pill text={c.descriptor} colour={c.colour} ring={c.wire !== cw} class="eq-desc" />
               </button>
               <button
                 type="button"
@@ -395,6 +411,7 @@ const EqView = memo(
                 aria-label={`Show ${c.descriptor} ${c.name} on the graph`}
                 aria-pressed={c.wire === cw || !hidden.has(c.wire)}
                 disabled={c.wire === cw}
+                style={{ "--ch": c.colour }}
                 onClick={() =>
                   setHidden((h) => {
                     const n = new Set(h);
@@ -404,13 +421,14 @@ const EqView = memo(
                   })
                 }
               >
-                <span aria-hidden="true">{c.wire === cw || !hidden.has(c.wire) ? "●" : "○"}</span>
+                <span aria-hidden="true" class="eq-eye-dot" />
               </button>
             </span>
           ))}
         </div>
         {ctx.menu /* -- WP WEBM4 -- */}
         {/* -- WP P1WB2 -- */}
+        <PageTools label="Equaliser tools">
         <div class="eq-tools">
           <button type="button" aria-expanded={autoeq} onClick={() => setAutoeq((v) => !v)}>
             AutoEQ…
@@ -426,13 +444,17 @@ const EqView = memo(
             </button>
           ) : null}
         </div>
-        {autoeq ? <AutoEqPanel session={session} channels={channels} wire={cw} disabled={ro} onPreview={setAePreview} /> : null}
+        </PageTools>
+        <div class="eq-main">
         {chosen.output ? (
           <OutputCard
             session={session}
             s={s}
             output={chosen.index}
             name={`${chosen.descriptor} ${chosen.name}`}
+            tag={chosen.descriptor}
+            title={chosen.name}
+            colour={chosen.colour}
             inputs={channels.filter((c) => !c.output)}
             limits={props.outLimits}
             disabled={ro}
@@ -440,9 +462,10 @@ const EqView = memo(
           />
         ) : (
           // -- WP WB6G -- an input's page: its pair's link and its trim (the Console's InputChannelHeader)
-          <InputHeader session={session} ask={ask} s={s} input={chosen.index} name={`${chosen.descriptor} ${chosen.name}`} disabled={ro} />
+          <InputHeader session={session} ask={ask} s={s} input={chosen.index} name={`${chosen.descriptor} ${chosen.name}`} title={chosen.name} colour={chosen.colour} disabled={ro} />
         )}
-        <section class="card eq-graph-card" aria-label="Graph">
+        {autoeq ? <AutoEqPanel session={session} channels={channels} wire={cw} disabled={ro} onPreview={setAePreview} /> : null}
+        <section class="eq-graph-card" aria-label="Graph">
           {/* -- WP WB6J -- the spectrum over the graph, in one box with it */}
           <div class="rta-host">
           <EqGraph
@@ -537,6 +560,8 @@ const EqView = memo(
         </Inspect>
         {/* -- WP WB6J -- this channel's bars, below its bands */}
         <SpectrumStrip session={session} names={tapNames(s, props.labels)} want={{ tap: chosen.output ? TAP_OUTPUT : TAP_INPUT, mask: 1 << chosen.index }} />
+        </div>
+        </div>
       </div>
     );
   },

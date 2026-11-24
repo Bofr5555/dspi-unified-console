@@ -80,7 +80,7 @@ export const CrossoverList = memo(function CrossoverList(props: {
   };
 
   return (
-    <section class="card band-list xover-list" aria-label={`Crossover of ${props.channelName}`}>
+    <section class="band-list xover-list eq-table" /* -- WP WEB3 -- */ aria-label={`Crossover of ${props.channelName}`}>
       <table>
         <thead>
           <tr>

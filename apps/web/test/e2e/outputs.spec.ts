@@ -441,7 +441,7 @@ test("WB6c matrix: crosspoints connect, level and invert; outputs enable, gain, 
   await expect.poll(async () => (await core(page)).outputDelayMs[o]).toBe(5);
   await page.mouse.wheel(0, 100);
   await expect.poll(async () => (await core(page)).outputDelayMs[o]).toBe(4);
-  await expect(delay).toHaveValue("4.0");
+  await expect(delay).toHaveValue(/^4(\.0)?$/); // -- WP WEB3 -- WEB2 shows a whole delay bare ("4", REVD W11)
   const mute = matrix.getByRole("button", { name: re(`Mute ${oName}`) });
   await mute.click();
   await expect.poll(async () => (await core(page)).outputMuted[o]).toBe(true);
