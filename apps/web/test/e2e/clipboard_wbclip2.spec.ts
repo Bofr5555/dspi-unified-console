@@ -43,8 +43,9 @@ async function pick(session: Locator, desc: string) {
   await b.click();
   await expect(b).toHaveAttribute("aria-pressed", "true");
 }
-const channelMenu = (session: Locator) => session.locator(".eq-tools").getByRole("button", { name: "Channel" });
-const item = (session: Locator, name: string | RegExp) => session.getByRole("menuitem", { name });
+// -- WP WEB6 -- the chosen channel's menu is its right click (Qt's page tools have no Channel button)
+const channelMenu = (session: Locator) => ({ click: () => session.locator(".eq-pick[aria-pressed='true']").click({ button: "right" }) });
+const item = (session: Locator, name: string | RegExp) => session.page().getByRole("menuitem", { name });
 const undo = (s: Locator) => s.getByRole("group", { name: "Undo and Redo" }).getByRole("button", { name: "Undo" });
 const named = (s: Snap) => (s.device.serial && s.device.serial !== s.device.name ? `${s.device.name} (${s.device.serial})` : s.device.name);
 

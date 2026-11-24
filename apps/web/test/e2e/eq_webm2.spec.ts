@@ -128,15 +128,16 @@ test("WEBM2: an output's inspector sets its high pass and limiter; an input's li
   // From Off (the demo may have one already: Off first).
   await xo.getByRole("combobox", { name: "High pass", exact: true }).selectOption({ label: "Off" });
   await expect.poll(async () => (await core(page)).xover[w]!.some((b) => b.filterType % 2 === 1 && b.filterType >= 32)).toBe(false);
-  await xo.getByRole("combobox", { name: "High pass", exact: true }).selectOption({ label: "LR4 24 dB/oct" });
+  await xo.getByRole("combobox", { name: "High pass", exact: true }).selectOption({ label: "Linkwitz-Riley 24 dB/oct" }); // -- WP WEB6 -- Qt's words
   await expect.poll(async () => (await core(page)).xover[w]!.some((b) => b.filterType === LR4_HP)).toBe(true);
   await xo.getByRole("textbox", { name: "High pass frequency" }).fill("90");
   await xo.getByRole("textbox", { name: "High pass frequency" }).press("Enter");
   await expect.poll(async () => (await core(page)).xover[w]!.find((b) => b.filterType === LR4_HP)?.freq).toBeCloseTo(90, 0);
-  await expect(xo).toContainText("HP LR4 90.00 Hz");
+  await expect(xo).toContainText("HP 90 Hz"); // -- WP WEB6 -- Qt's summary
   await shot(page, "output-inspector");
   // The limiter's switch.
   const lim = inspector.getByRole("group", { name: "Limiter" });
+  await lim.locator("summary").click(); // -- WP WEB6 -- closed while off, as Qt's
   const was = (await core(page)).limiterEnabled[0]!;
   await lim.getByRole("switch", { name: "Output limiter" }).click();
   await expect.poll(async () => (await core(page)).limiterEnabled[0]).toBe(!was);
@@ -149,7 +150,7 @@ test("WEBM2: an output's inspector sets its high pass and limiter; an input's li
   expect(errors).toEqual([]);
 });
 
-test("WEBM2: the Crossover tab draws every output and sets a high pass; an output's name opens its XO bands", async ({ page }) => {
+test("WEBM2: the Crossover tab draws every output and sets a high pass; an output's name chooses it and shows its XO bands", async ({ page }) => {
   const errors = errorsOf(page);
   const { session } = await openEq(page);
   const w = (await core(page)).numInputChannels;
@@ -158,13 +159,14 @@ test("WEBM2: the Crossover tab draws every output and sets a high pass; an outpu
   const table = session.getByRole("region", { name: "Crossovers of every output" });
   const hp = table.getByRole("combobox", { name: /^OUT1 .* high pass$/ });
   await hp.selectOption({ label: "Off" });
-  await hp.selectOption({ label: "BW2 12 dB/oct" });
+  await hp.selectOption({ label: "BW 12 dB" }); // -- WP WEB6 -- Qt's short words in the table
   await expect.poll(async () => (await core(page)).xover[w]!.some((b) => b.filterType === 43)).toBe(true);
   await shot(page, "crossover");
   await noSidewaysScroll(page);
-  await table.getByRole("button", { name: /^OUT1 / }).click();
-  await expect(session.locator(".page[data-page]")).toHaveAttribute("data-page", "eq");
-  await expect(session.getByRole("tablist", { name: "Bands" }).getByRole("tab", { name: "XO" })).toHaveAttribute("aria-selected", "true");
+  // -- WP WEB6 -- a row chooses its output (Qt's): the frame's channel, its four bands under the table
+  await table.getByRole("button", { name: /^OUT2 / }).click();
+  await expect(session.locator(".eq-pick", { hasText: "OUT2" })).toHaveAttribute("aria-pressed", "true");
+  await expect(session.getByRole("region", { name: /^Crossover bands of OUT2 / })).toBeVisible();
   expect(errors).toEqual([]);
 });
 

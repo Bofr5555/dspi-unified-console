@@ -52,6 +52,8 @@ export const BandChip = memo(function BandChip(props: {
   remove: () => void;
   freqRef: (el: HTMLInputElement | null) => void;
 }) {
+  // -- WP WEB6 -- the bar is under the graph only now (the inspector has its own band part): Q
+  // keeps its − and + there, the touch control beside the pinch
   const { band, limits, g } = props;
   // On a phone the slopes in short: "12 dB", "2nd".
   const compact = useCompact();

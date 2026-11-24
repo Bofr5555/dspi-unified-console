@@ -72,7 +72,10 @@ test("WB6J M23 M22: a channel's page draws its spectrum over the EQ graph and in
   const session = await connect(page);
   await openPage(session, "EQ");
   await session.locator(".eq-pick", { hasText: "OUT1" }).click();
-  await session.getByRole("button", { name: "Spectrum on Graph" }).click();
+  // -- WP WEB6 -- Qt's RTA chip in the graph's corner (was the page tool "Spectrum on Graph")
+  const rta = session.getByRole("group", { name: "Graph options" }).getByRole("button", { name: "RTA" });
+  await rta.click();
+  await expect(rta).toHaveAttribute("aria-pressed", "true");
   const overlay = session.locator("canvas.rta-overlay");
   await expect(overlay).toHaveCount(1);
   await expect(overlay).not.toHaveAttribute("data-bars", "0");
@@ -86,7 +89,7 @@ test("WB6J M23 M22: a channel's page draws its spectrum over the EQ graph and in
   await strip.getByRole("button", { name: "Show Bars" }).click();
   await expect(strip.locator(".rta-cell")).toHaveCount(1);
   await expect(strip.locator(".rta-cell figcaption")).toContainText("OUT1");
-  await session.getByRole("button", { name: "Spectrum on Graph" }).click();
+  await rta.click();
   await expect(overlay).toHaveCount(0);
   expect(errors).toEqual([]);
 });
@@ -123,7 +126,9 @@ test("WB6J M46: Identify from an output's page and from the matrix plays channel
   const session = await connect(page);
   await openPage(session, "EQ");
   await session.locator(".eq-pick", { hasText: "OUT2" }).click();
-  await session.getByRole("button", { name: "Identify" }).click();
+  // -- WP WEB6 -- the channel's menu (its right click), as Qt's: no Identify among the page tools
+  await session.locator(".eq-pick", { hasText: "OUT2" }).click({ button: "right" });
+  await page.getByRole("menu", { name: /^OUT2/ }).getByRole("menuitem", { name: "Identify" }).click();
   await expect.poll(async () => (await call<Config>(page, "siggenConfig")).channelMask).toBe(2);
   const cfg = await call<Config>(page, "siggenConfig");
   expect([cfg.signalType, cfg.levelDb, cfg.repeat]).toEqual([14, -12, 2]);
@@ -150,7 +155,8 @@ test("WB6J M46: read only, the generator and Identify are off and nothing plays"
   await expect(gen.locator(".siggen-title")).toHaveText("You can view this DSPi but not change it");
   await openPage(session, "EQ");
   await session.locator(".eq-pick", { hasText: "OUT1" }).click();
-  await expect(session.getByRole("button", { name: "Identify" })).toBeDisabled();
+  await session.locator(".eq-pick", { hasText: "OUT1" }).click({ button: "right" }); // -- WP WEB6 -- the channel's menu
+  await expect(page.getByRole("menu", { name: /^OUT1/ }).getByRole("menuitem", { name: "Identify" })).toBeDisabled();
   expect((await call<Status>(page, "siggenStatus")).state).toBe(0);
 });
 

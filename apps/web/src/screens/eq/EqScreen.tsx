@@ -17,6 +17,14 @@
 // as a list at the left (INPUTS, OUTPUTS: name and pill; the dot shows its curve), the graph on the
 // panel tone with no box, the band table under it; AutoEQ…, Channel ▾ and the spectrum in the
 // page's tools. Narrow, the channels are one row of pills that scrolls sideways.
+//
+// -- WP WEB6 -- (REVE §3.1) Qt's Equaliser frame on PEQ and Crossover alike (EqualiserSection): the
+// channel strip, the channel list and the inspector stay, the chosen channel kept across the tabs
+// (per session, as Qt's one selection); Crossover puts its graph and table where PEQ has its own
+// (CrossoverScreen.tsx). The page tools are Qt's: Headphone Profile… (an input's), Files ▾ (Import
+// and Export Filters) and the Inspector's toggle; the channel's menu stays on its right click. The
+// graph has Qt's toggle chips at its top right (RTA: the spectrum over it; All Curves); the PEQ/XO
+// band tabs are gone (an output's crossover bands are on the Crossover tab, as Qt's).
 
 import { memo } from "preact/compat";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
@@ -29,8 +37,7 @@ import { BandChip, retypeAll } from "./Chip";
 import { useCurves, useGrid, type CurveRequest } from "./curves";
 import { useBandEdits } from "./edits";
 import { EqGraph } from "./EqGraph";
-// -- WP WB6c -- the output's page: its settings card and crossover
-import { CrossoverList } from "../outputs/Crossover";
+// -- WP WB6c -- the output's page: its settings card
 import { OutputCard, type OutputLimits } from "../outputs/OutputCard";
 // -- WP P1WB2 -- AutoEQ with its preview on the graph
 import { AutoEqPanel } from "./AutoEq";
@@ -39,7 +46,7 @@ import type { AutoEqPreviewRecord } from "../../core/protocol";
 import { InputHeader } from "../inputs/InputsScreen";
 import { inputLinks } from "../inputs/model";
 // -- WP WB6J -- the analyser on a channel's page: its bars (M22) and over the graph (M23)
-import { OverlayToggle, RtaOverlay, SpectrumStrip, tapNames } from "../analysis/SpectrumStrip";
+import { RtaOverlay, SpectrumStrip, tapNames, useAnalyser } from "../analysis/SpectrumStrip";
 import { TAP_INPUT, TAP_OUTPUT } from "../analysis/analyser";
 import { identifyOutput } from "../analysis/siggen";
 // -- WP WBCLIP -- the channel clipboard (M45): the chosen channel's menu, and the keys act on it
@@ -49,8 +56,16 @@ import { menuItems, type Handler } from "../../ui/menus/actions";
 import { ActionMenuButton, isMenuKey, useContextMenu } from "../../ui/menus/ActionMenu";
 import { RenameDialog } from "../main/Dialog"; // -- WP INTD --
 // -- WP WEBM2 -- the inspector: the chosen band and channel
-import { Inspect, InspectorSection, useInspector } from "../../ui/inspector/Inspector";
-import { EqInspector, ShapeGrid } from "./EqInspector";
+import { Inspect, useInspector } from "../../ui/inspector/Inspector";
+import { BandPart, EqInspector } from "./EqInspector";
+// -- WP WEB6 -- Qt's page tools and the Crossover tab in the same frame
+import { useArrangement } from "../../ui/arrangement/Appearance";
+import { CrossoverCentre } from "./XoverCentre";
+import { OutcomeLine, useDesk } from "../snapshots/Bars";
+import { download, type SnapshotDesk } from "../snapshots/model";
+import { FilterPicker, type PendingFilters } from "../files/FilesCards";
+import { FILTERS_FILE, exportFilters, failureWords, inspectFilters, inspectProblem } from "../files/model";
+import type { Session } from "../../ui/session";
 import {
   DEFAULT_LIMITS,
   OFF_BAND,
@@ -95,7 +110,10 @@ function offsetOf(s: DspState, c: EqChannel): number {
   return (c.output ? s.outputGainDb[c.index] : s.inputPreampDb[c.index]) ?? 0;
 }
 
-export function EqScreen(props: ScreenProps) {
+// -- WP WEB6 -- the channel chosen on the Equaliser's tabs, per session (Qt's one selection)
+const chosenWire = new WeakMap<Session, number>();
+
+export function EqScreen(props: ScreenProps & { eqTab?: "peq" | "crossover" }) {
   const { session, ask } = props;
   const st = useSessionState(session);
   const s = st.snapshot?.state;
@@ -164,7 +182,22 @@ export function EqScreen(props: ScreenProps) {
 
   if (!s || !Array.isArray(s.filters) || !named) return <EmptyState icon="chart-line" title="Reading the filters…" text="This DSPi's filters are not known yet." />; // -- WP WEB --
   // -- WP WB6D -- opened from the System view: at its channel and tab
-  return <EqView session={session} ask={ask} s={s} ro={ro} usbActive={usbActive} limits={limits} outLimits={outLimits} labels={st.snapshot?.outputLabels} target={props.target} open={props.open} />;
+  return (
+    <EqView
+      session={session}
+      ask={ask}
+      s={s}
+      ro={ro}
+      usbActive={usbActive}
+      limits={limits}
+      outLimits={outLimits}
+      labels={st.snapshot?.outputLabels}
+      target={props.target}
+      open={props.open}
+      eqTab={props.eqTab ?? "peq"}
+      desk={props.desk}
+    />
+  );
 }
 
 // -- WP WB6c --
@@ -185,8 +218,13 @@ const EqView = memo(
     target?: ScreenProps["target"];
     /** -- WP WEBM2 -- another page of the session (the inspector's Edit routing) */
     open?: ScreenProps["open"];
+    /** -- WP WEB6 -- the tab: PEQ, or Crossover in the same frame */
+    eqTab: "peq" | "crossover";
+    /** -- WP WEB6 -- Files ▾'s filter files */
+    desk?: SnapshotDesk;
   }) {
     const { session, ask, s, ro, limits } = props;
+    const mode = props.eqTab;
     const idBase = useMemo(() => `eq-${Math.random().toString(36).slice(2, 9)}`, []);
     // -- WP WEBM2 -- the band bar goes to the inspector when it is beside the page (and not on touch)
     const insp = useInspector();
@@ -201,12 +239,24 @@ const EqView = memo(
     }, [channelsKey]);
 
     // -- WP WB6D -- the System view's channel when it opened this screen (and it is listed)
-    const [wire, setWire] = useState<number>(() => (channels.some((c) => c.wire === props.target?.wire) ? props.target!.wire! : (channels[0]?.wire ?? 0)));
+    // -- WP WEB6 -- else the one chosen on the other tab
+    const [wire, setWire] = useState<number>(() => {
+      if (channels.some((c) => c.wire === props.target?.wire)) return props.target!.wire!;
+      const kept = chosenWire.get(session);
+      return kept !== undefined && channels.some((c) => c.wire === kept) ? kept : (channels[0]?.wire ?? 0);
+    });
     const chosen = channels.find((c) => c.wire === wire) ?? channels[0];
     const cw = chosen?.wire ?? 0;
     useEffect(() => {
       if (chosen && chosen.wire !== wire) setWire(chosen.wire);
     }, [chosen, wire]);
+    useEffect(() => {
+      chosenWire.set(session, cw);
+    }, [session, cw]);
+    // -- WP WEB6 -- the System view's "Crossover" block opens PEQ at "xo": the crossover is its own tab now
+    useEffect(() => {
+      if (mode === "peq" && props.target?.tab === "xo" && props.open) props.open({ screen: "xover", wire: cw });
+    }, []);
     // -- WP WBCLIP -- the channel Ctrl/Cmd+C and +V act on, while this screen is shown
     // (a layout effect: set as the chosen channel shows, before a key can arrive)
     const board = useClipboard(session);
@@ -219,14 +269,9 @@ const EqView = memo(
 
     // Which other channels' curves are shown (M58): this viewer's, in this view.
     const [hidden, setHidden] = useState<ReadonlySet<number>>(new Set());
-    // -- WP WB6c -- an output's PEQ or XO bands (the Console's tab toggle), PEQ on every new channel
-    // -- WP WB6D -- the System view's tab, on the channel it opened
-    const opened = useRef(props.target?.wire === wire ? (props.target?.tab ?? null) : null);
-    const [tab, setTab] = useState<"peq" | "xo">(opened.current ?? "peq");
-    useEffect(() => {
-      setTab(opened.current ?? "peq");
-      opened.current = null;
-    }, [cw]);
+    // -- WP WEB6 -- the graph's chips: the spectrum over it (the analyser's choice), every curve
+    const analyser = useAnalyser(session);
+    const { inspector, showInspector } = useArrangement();
 
     // The chosen channel's bands from the device, the same array while they are the same.
     const deviceKey = JSON.stringify(peq(s, cw));
@@ -308,6 +353,11 @@ const EqView = memo(
     );
 
     const ctx = useContextMenu(); // -- WP WEBM4 -- a channel's menu
+    // -- WP WEB6 -- Files ▾: a filter file chosen (its channels asked next), why one was refused
+    const fileInput = useRef<HTMLInputElement>(null);
+    const [pendingFilters, setPendingFilters] = useState<PendingFilters | null>(null);
+    const [filesProblem, setFilesProblem] = useState("");
+    const [filesUsed, setFilesUsed] = useState(false);
     if (!chosen) return <EmptyState icon="chart-line" title="No channels" text="This DSPi has no channels to show." />; // -- WP WEB --
     // -- WP WEBM2 -- the band bar: under the graph, or in the inspector with the shape grid
     const chip = (
@@ -330,9 +380,44 @@ const EqView = memo(
       />
     );
     const offset = offsetOf(s, chosen);
-    // -- WP WB6c -- the crossover, where the firmware has one (outputs only)
-    const xoBands = chosen.output ? (s.xover?.[cw] ?? []) : [];
-    const showXo = tab === "xo" && xoBands.length > 0;
+    // -- WP WEB6 -- a linked input pair's Clear says so ("Clear 1/2 PEQ"), as Qt's
+    const partner = chosen.output ? -1 : inputLinks(session).partner(cw);
+    const clearText = partner >= 0 ? `Clear ${Math.min(cw, partner) + 1}/${Math.max(cw, partner) + 1} PEQ` : "Clear PEQ";
+    const desk = props.desk;
+    const chooseFilterFile = async (input: HTMLInputElement) => {
+      const f = input.files?.[0];
+      input.value = "";
+      if (!f) return;
+      setFilesUsed(true);
+      try {
+        const text = await f.text();
+        const inspect = await inspectFilters(session, text);
+        const why = inspectProblem(inspect);
+        setFilesProblem(why ? `${f.name}: ${why}` : "");
+        if (!why) setPendingFilters({ text, name: f.name, inspect });
+      } catch (e) {
+        setFilesProblem(`${f.name}: ${failureWords(e)}`);
+      }
+    };
+    /** Files ▾ (Qt's MenuTable place "files"): Import Filters…, Export Filters…, the Files page's own. */
+    const filesItems = () =>
+      menuItems("files", {
+        "file.importFilters": {
+          run: () => fileInput.current?.click(),
+          enabled: !ro && !!desk && !session.document,
+          reason: session.readOnlyReason || undefined,
+        },
+        "file.exportFilters": {
+          run: () => {
+            if (!desk) return;
+            setFilesUsed(true);
+            void exportFilters(desk).then((t) => t && download(t, FILTERS_FILE));
+          },
+          enabled: !!desk && !session.document,
+        },
+      });
+    const allShown = channels.every((c) => c.wire === cw || !hidden.has(c.wire));
+    const inspectorShown = inspector !== "hidden";
 
     // -- WP WEBM4 -- one undo step: every band flat, as one group (the band list's Clear All, and the channel menu's Clear PEQ…)
     const clearAll = () =>
@@ -385,7 +470,7 @@ const EqView = memo(
     };
 
     return (
-      <div class="eq-screen">
+      <div class={`eq-screen${mode === "crossover" ? " eq-mode-xo" : ""}`}>
         <div class="eq-body">
         <div class="eq-channels" role="group" aria-label="Channels">
           {channels.map((c, i) => (
@@ -446,21 +531,25 @@ const EqView = memo(
           />
         ) : null}
         {/* -- WP P1WB2 -- */}
+        {/* -- WP WEB6 -- Qt's page tools (EqualiserTools): Headphone Profile… on an input's page, Files ▾,
+            the inspector's toggle. The channel's menu (Copy/Paste, Identify, Clear PEQ…) is its right click. */}
         <PageTools label="Equaliser tools">
         <div class="eq-tools">
-          <button type="button" aria-expanded={autoeq} onClick={() => setAutoeq((v) => !v)}>
-            AutoEQ…
-          </button>
-          {/* -- WP WB6J -- the spectrum over the graph; on an output's page, Identify (M46) */}
-          {/* -- WP WBCLIP -- Copy and Paste Parameters, as the Console's channel menu */}
-          {/* -- WP WEBM4 -- the channel menu's rows (actions.json) */}
-          <ActionMenuButton label="Channel" items={() => (chosen ? channelItems(chosen) : [])} />
-          <OverlayToggle session={session} />
-          {chosen.output ? (
-            <button type="button" class="output-identify" disabled={ro} title="Play counted blips on this output alone" onClick={() => void identifyOutput(session, chosen.index)}>
-              Identify
+          {!chosen.output && mode === "peq" ? (
+            <button type="button" aria-expanded={autoeq} onClick={() => setAutoeq((v) => !v)}>
+              Headphone Profile…
             </button>
           ) : null}
+          <ActionMenuButton label="Files" items={filesItems} />
+          <button
+            type="button"
+            class="eq-inspector-tool"
+            aria-expanded={inspectorShown}
+            title={inspectorShown ? "Hide the inspector to give the page the full width" : "Show the inspector"}
+            onClick={() => showInspector(inspectorShown ? "hidden" : "shown")}
+          >
+            <span aria-hidden="true">{inspectorShown ? "›" : "‹"}</span> Inspector
+          </button>
         </div>
         </PageTools>
         <div class="eq-main">
@@ -482,6 +571,19 @@ const EqView = memo(
           // -- WP WB6G -- an input's page: its pair's link and its trim (the Console's InputChannelHeader)
           <InputHeader session={session} ask={ask} s={s} input={chosen.index} name={`${chosen.descriptor} ${chosen.name}`} title={chosen.name} colour={chosen.colour} disabled={ro} />
         )}
+        {/* -- WP WEB6 -- Files ▾: the chosen filter file's channels, and what came of it */}
+        <input ref={fileInput} type="file" hidden accept=".txt,text/plain" aria-label="Filter file to import" onChange={(e) => void chooseFilterFile(e.target as HTMLInputElement)} />
+        {filesProblem ? (
+          <p class="error" role="alert">
+            {filesProblem}
+          </p>
+        ) : null}
+        {desk && pendingFilters ? <FilterPicker desk={desk} pending={pendingFilters} onDone={() => setPendingFilters(null)} /> : null}
+        {desk && filesUsed ? <FilesOutcome desk={desk} /> : null}
+        {mode === "crossover" ? (
+          <CrossoverCentre session={session} s={s} freq={limits.freq} labels={props.labels} chosen={chosen.output ? cw : -1} choose={setWire} ask={ask} />
+        ) : (
+        <>
         {autoeq ? <AutoEqPanel session={session} channels={channels} wire={cw} disabled={ro} onPreview={setAePreview} /> : null}
         <section class="eq-graph-card" aria-label="Graph">
           {/* -- WP WB6J -- the spectrum over the graph, in one box with it */}
@@ -505,37 +607,30 @@ const EqView = memo(
             openFields={openFields}
           />
           <RtaOverlay session={session} want={{ tap: chosen.output ? TAP_OUTPUT : TAP_INPUT, mask: 1 << chosen.index }} names={tapNames(s, props.labels)} />
+          {/* -- WP WEB6 -- Qt's toggle chips in the graph's top right corner (EqualiserGraphToggles) */}
+          <div class="eq-graph-chips" role="group" aria-label="Graph options">
+            <button
+              type="button"
+              class="graph-chip"
+              aria-pressed={analyser.choice.graph}
+              title="Show the spectrum on the graph"
+              onClick={() => analyser.setChoice({ graph: !analyser.choice.graph })}
+            >
+              RTA
+            </button>
+            <button
+              type="button"
+              class="graph-chip"
+              aria-pressed={allShown}
+              title="Show every channel's curve"
+              onClick={() => setHidden(allShown ? new Set(channels.filter((c) => c.wire !== cw).map((c) => c.wire)) : new Set())}
+            >
+              All Curves
+            </button>
+          </div>
           </div>
           {insp.band ? null : chip}
         </section>
-        {xoBands.length ? (
-          <div class="band-tabs" role="tablist" aria-label="Bands">
-            {(["peq", "xo"] as const).map((t) => (
-              <button
-                type="button"
-                role="tab"
-                key={t}
-                aria-selected={(t === "xo") === showXo}
-                title={(t === "xo") === showXo ? `Currently showing ${t.toUpperCase()} bands` : `Switch to ${t.toUpperCase()} bands`}
-                onClick={() => setTab(t)}
-              >
-                {t.toUpperCase()}
-              </button>
-            ))}
-          </div>
-        ) : null}
-        {showXo ? (
-          <CrossoverList
-            session={session}
-            wire={cw}
-            channelName={`${chosen.descriptor} ${chosen.name}`}
-            bands={xoBands}
-            freq={limits.freq}
-            bypassOk={bypassOk}
-            disabled={ro}
-            ask={ask}
-          />
-        ) : (
         <BandList
           channelName={`${chosen.descriptor} ${chosen.name}`}
           bands={edits.shown}
@@ -549,7 +644,9 @@ const EqView = memo(
           commit={edits.commit}
           // -- WP P1WB2 -- one undo step: every band flat, as one group
           clearAll={clearAll}
+          clearText={clearText}
         />
+        </>
         )}
         {/* -- WP WEBM2 -- the inspector: the chosen band (beside the page) and the chosen channel */}
         <Inspect>
@@ -563,21 +660,38 @@ const EqView = memo(
             disabled={ro}
             choose={setWire}
             openRouting={() => props.open?.({ screen: "matrix" })}
-            openCrossover={() => props.open?.({ screen: "xover" })}
-            headphones={() => setAutoeq(true)}
+            headphones={() => {
+              if (mode === "crossover") props.open?.({ screen: "eq", wire: cw });
+              setAutoeq(true);
+            }}
             setBand={(b, p) => edits.commit(new Map([[b, p]]))}
             band={
-              insp.band ? (
-                <InspectorSection title="Selected band" summary={chipBand ? `Band ${chipBand.b + 1}` : "None"}>
-                  <ShapeGrid p={chipBand?.p ?? null} available={available} disabled={ro} retype={(t) => edits.commit(retypeAll(targets(), t))} />
-                  {chip}
-                </InspectorSection>
+              // -- WP WEB6 -- Qt's band part (BandInspector): the sentence with no band chosen
+              mode === "peq" && insp.band ? (
+                <BandPart
+                  band={chipBand}
+                  count={sel.set.size}
+                  available={available}
+                  bypassOk={bypassOk}
+                  limits={limits}
+                  disabled={ro}
+                  set={(p) => anchor !== null && edits.commit(new Map([[anchor, p]]))}
+                  retype={(t) => edits.commit(retypeAll(targets(), t))}
+                  bypass={(on) => edits.commit(new Map([...targets()].map(([b, p]) => [b, { ...p, bypass: on }])))}
+                  reset={() => {
+                    edits.commit(new Map([...sel.set].map((b) => [b, { ...OFF_BAND }])));
+                    setSel({ set: new Set(), anchor: null });
+                  }}
+                  freqRef={freqRef}
+                />
               ) : null
             }
           />
         </Inspect>
         {/* -- WP WB6J -- this channel's bars, below its bands */}
-        <SpectrumStrip session={session} names={tapNames(s, props.labels)} want={{ tap: chosen.output ? TAP_OUTPUT : TAP_INPUT, mask: 1 << chosen.index }} />
+        {mode === "peq" ? (
+          <SpectrumStrip session={session} names={tapNames(s, props.labels)} want={{ tap: chosen.output ? TAP_OUTPUT : TAP_INPUT, mask: 1 << chosen.index }} />
+        ) : null}
         </div>
         </div>
       </div>
@@ -591,6 +705,8 @@ const EqView = memo(
     a.usbActive === b.usbActive &&
     a.limits === b.limits &&
     a.outLimits === b.outLimits &&
+    a.eqTab === b.eqTab &&
+    a.desk === b.desk &&
     JSON.stringify(a.labels) === JSON.stringify(b.labels) &&
     eqKey(a.s) === eqKey(b.s),
 );
@@ -624,4 +740,10 @@ function eqKey(s: DspState): string {
     s.limiterThresholdDb,
     s.limiterReleaseMs,
   ]);
+}
+
+/** -- WP WEB6 -- What Files ▾'s import or export came to (the desk's outcome), on this page. */
+function FilesOutcome(props: { desk: SnapshotDesk }) {
+  const st = useDesk(props.desk);
+  return <OutcomeLine desk={props.desk} outcome={st.outcome} />;
 }

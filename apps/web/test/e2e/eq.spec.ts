@@ -183,12 +183,14 @@ test("WB6b chip and list: change type and Q, bypass a band (chip, Alt-click, lis
   // A 1st-order shelf has no Q.
   await expect(chip.getByRole("textbox", { name: "Q", exact: true })).toBeDisabled();
 
-  // Bypass: the chip's button, the list's box, Alt-click on the dot.
+  // Bypass: the chip's button, the list's disc (-- WP WEB6 -- Qt's "Band N plays"), Alt-click on the dot.
   await chip.getByRole("button", { name: "Bypass" }).click();
   await expect.poll(async () => (await out1(page))[slot]!.bypass).toBe(true);
-  await expect(list.getByRole("checkbox", { name: `Band ${slot + 1} bypass` })).toBeChecked();
-  await list.getByRole("checkbox", { name: `Band ${slot + 1} bypass` }).uncheck();
+  const disc = list.getByRole("checkbox", { name: `Band ${slot + 1} plays` });
+  await expect(disc).not.toBeChecked();
+  await disc.click();
   await expect.poll(async () => (await out1(page))[slot]!.bypass).toBe(false);
+  await expect(disc).toBeChecked();
   const b = (await out1(page))[slot]!;
   // A 1st-order shelf's dot is at about half its gain.
   const dot = await at(graph, b.freq, b.gain / 2);
@@ -206,7 +208,7 @@ test("WB6b chip and list: change type and Q, bypass a band (chip, Alt-click, lis
   // Clear All asks first, as on the Console.
   await list.getByRole("combobox", { name: `Band ${slot + 1} type` }).selectOption("1");
   await expect.poll(async () => (await out1(page))[slot]!.filterType).toBe(1);
-  await list.getByRole("button", { name: "Clear All" }).click();
+  await list.getByRole("button", { name: "Clear PEQ" }).click(); // -- WP WEB6 -- Qt's words
   const ask = page.getByRole("dialog", { name: "Clear All Bands?" });
   await expect(ask).toContainText("One Undo puts them all back."); // -- WP P1WB2 -- one undo group
   await ask.getByRole("button", { name: "Clear All" }).click();
@@ -335,7 +337,8 @@ test("WB6b read only: a view-only session shows the EQ with editing off, and a d
   const list = session.getByRole("region", { name: /^Bands of OUT1/ });
   for (const c of await list.getByRole("combobox").all()) await expect(c).toBeDisabled();
   for (const t of await list.getByRole("textbox").all()) await expect(t).toBeDisabled();
-  await expect(list.getByRole("button", { name: "Clear All" })).toBeDisabled();
+  await expect(list.getByRole("button", { name: "Clear PEQ" })).toBeDisabled(); // -- WP WEB6 -- Qt's words
+  for (const d of await list.getByRole("checkbox").all()) await expect(d).toBeDisabled();
   for (const name of ["Shape", "Slope"]) await expect(session.getByRole("combobox", { name, exact: true })).toBeDisabled();
   await expect(session.getByRole("textbox", { name: "Frequency", exact: true })).toBeDisabled();
   // Keys change nothing either.

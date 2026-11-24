@@ -101,3 +101,78 @@
 .dspi-web .xo-y { position: absolute; left: 6px; transform: translateY(-50%); }
 .dspi-web .xo-y[data-edge="start"] { transform: none; margin-top: 6px; }
 .dspi-web .xo-y[data-edge="end"] { transform: translateY(-100%); margin-top: -22px; }
+
+/* ---------------------------------------------------------------- WP WEB6: Qt's PEQ and Crossover (REVE §3.1) */
+/* The graph's toggle chips in its top right corner (Qt's EqualiserGraphToggles: 22 px, the control tone) */
+.dspi-web .eq-screen .rta-host { position: relative; }
+.dspi-web .eq-graph-chips { position: absolute; top: 6px; right: 10px; display: flex; gap: 4px; z-index: 1; }
+.dspi-web .eq-graph-chips .graph-chip {
+  min-height: 22px; height: 22px; padding: 0 8px; border: 0; border-radius: var(--radius-chip, 4px);
+  background: var(--control); color: var(--text); font-size: 12px; line-height: 22px; opacity: 0.92;
+}
+.dspi-web .eq-graph-chips .graph-chip:hover { background: var(--control-hover); }
+.dspi-web .eq-graph-chips .graph-chip[aria-pressed="true"] { color: var(--accent-text); }
+
+/* The band table: the bypass disc, the number, Qt's combo, values with their units after */
+.dspi-web .eq-bands .c-on { width: 22px; padding: 0 0 0 8px; }
+.dspi-web .band-disc {
+  display: block; width: 10px; height: 10px; min-height: 0; padding: 0; border: 1.5px solid var(--band, var(--muted)); border-radius: 50%;
+  background: transparent; cursor: pointer;
+}
+.dspi-web .band-disc[aria-checked="true"] { background: var(--band); }
+.dspi-web .band-disc:disabled { border-color: var(--muted); opacity: 0.5; cursor: default; }
+.dspi-web .band-disc:hover:not(:disabled) { transform: scale(1.15); }
+/* Wide: Qt's column widths; narrow, the table's own (its values short, the units in the headings) */
+@container (min-width: 760px) {
+  .dspi-web .eq-bands .c-n { width: 32px; }
+  .dspi-web .eq-bands .c-type { width: 190px; }
+  .dspi-web .eq-bands .c-freq, .dspi-web .eq-bands .c-gain, .dspi-web .eq-bands .c-q { width: 110px; }
+  .dspi-web .eq-table .c-freq .value-field input { width: 64px; }
+  .dspi-web .eq-table .c-gain .value-field input { width: 52px; }
+  .dspi-web .eq-table .c-q .value-field input { width: 44px; }
+  .dspi-web .eq-table .value-field { width: auto; gap: 4px; }
+}
+.dspi-web .eq-bands tr.band-off .band-n { color: var(--muted); }
+.dspi-web .eq-bands tr.band-bypassed td:not(.c-on) { opacity: 0.55; }
+.dspi-web .field-unit { flex: none; min-width: 1.2em; font-size: 11px; color: var(--muted); }
+/* Qt's AppComboBox: the control tone, no outline, the up/down mark at the right */
+.dspi-web select.combo {
+  appearance: none; -webkit-appearance: none; height: 24px; min-width: 0; padding: 0 24px 0 8px; border: 0; border-radius: var(--radius-control, 4px);
+  background-color: var(--control); color: var(--text); font-size: 12px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='10' viewBox='0 0 8 10'%3E%3Cpath d='M1 3.5 4 1l3 2.5M1 6.5 4 9l3-2.5' fill='none' stroke='%23909090' stroke-width='1.2'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 9px center;
+}
+.dspi-web select.combo:hover:not(:disabled) { background-color: var(--control-hover); }
+.dspi-web .eq-bands select.combo { width: 100%; max-width: 180px; background-color: transparent; }
+.dspi-web .eq-bands tr:hover select.combo:not(:disabled), .dspi-web .eq-bands select.combo:focus { background-color: var(--control); }
+.dspi-web .eq-bands .band-list-foot { align-items: center; }
+.dspi-web .eq-bands .band-list-foot .band-clear { margin-left: auto; }
+
+/* The inspector's band part (Qt's BandInspector) and its rows */
+.dspi-web .eq-inspector .insp-none { margin: 4px 0; font-size: 11px; line-height: 1.45; }
+.dspi-web .eq-inspector .insp-band { display: flex; flex-direction: column; gap: 6px; }
+.dspi-web .eq-inspector .shape-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
+.dspi-web .eq-inspector .shape-grid button { min-height: 40px; padding: 4px 2px; font-size: 11px; border: 0; background: var(--control); color: var(--muted); }
+.dspi-web .eq-inspector .shape-grid button[aria-checked="true"] { background: var(--selection); color: var(--accent-text); box-shadow: inset 0 0 0 1.5px var(--accent-fill); }
+.dspi-web .eq-inspector .insp-row .value-field { gap: 4px; }
+.dspi-web .eq-inspector .insp-row .value-field input { width: 72px; font-family: var(--mono); font-size: 12px; text-align: right; }
+.dspi-web .eq-inspector .insp-row .field-unit { width: 1.6em; }
+.dspi-web .eq-inspector .insp-q .insp-label { display: flex; flex-direction: column; }
+.dspi-web .eq-inspector .insp-caption { font-size: 11px; color: var(--muted); }
+.dspi-web .eq-inspector .insp-actions { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+.dspi-web .eq-inspector .insp-gap { flex: 1; }
+.dspi-web .eq-inspector .insp-switch { display: inline-flex; align-items: center; gap: 8px; }
+.dspi-web .eq-inspector .insp-routing { align-self: flex-start; margin-top: 12px; }
+.dspi-web .eq-inspector .insp-row select.combo { max-width: 13rem; }
+
+/* Crossover in the Equaliser's frame: the graph, the table of every output, the chosen output's bands */
+.dspi-web .eq-xover { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.dspi-web .xo-plot .xo-curve { stroke-width: 1.5; opacity: 0.85; }
+.dspi-web .xo-plot .xo-curve.active { stroke-width: 2.2; opacity: 1; }
+.dspi-web .xo-table tbody tr { cursor: pointer; }
+.dspi-web .xo-table tbody tr.xo-disabled > * { opacity: 0.55; }
+.dspi-web .xo-table .c-pass select.combo { width: 100%; max-width: 210px; min-width: 90px; }
+.dspi-web .xo-table .c-freq { width: 110px; }
+.dspi-web .xo-table .xo-out[aria-pressed="true"] .eq-who-name { font-weight: 600; }
+.dspi-web .xo-bands { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.dspi-web .xo-bands > .section-label { margin: 0; }
