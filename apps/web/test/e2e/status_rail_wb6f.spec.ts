@@ -10,6 +10,7 @@
 import { mkdirSync } from "node:fs";
 import { expect, test, type APIRequestContext, type Locator, type Page } from "@playwright/test";
 import { openPage, rail as sections } from "../nav";
+import { setOutputGain } from "../presets"; // -- WP INTD --
 
 type Clients = { dspiClients: { call(m: string, p: unknown): Promise<unknown> }[] };
 
@@ -74,9 +75,7 @@ test("WB6F rail: the device, the preset and its unsaved changes, the two cores' 
   await expect(panel(session)).toHaveCount(0);
   // A change makes the preset unsaved (an output trim, as main.spec.ts): the rail says so.
   await expect(r.getByLabel("Preset")).not.toContainText("unsaved");
-  const slider = session.getByRole("region", { name: "Outputs" }).getByRole("slider").first();
-  await slider.fill("-6");
-  await slider.dispatchEvent("change");
+  await setOutputGain(session, -6); // -- WP INTD -- on Delay & gain
   await expect(r.getByLabel("Preset")).toContainText("unsaved changes");
   // The panel opens on request, empty.
   await healthButton(session).click();

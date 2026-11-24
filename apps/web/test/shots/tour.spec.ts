@@ -16,6 +16,7 @@ import { pbkdf2Sync, randomBytes } from "node:crypto";
 import { createInterface } from "node:readline";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { hasPage, openDevices, openPage } from "../nav";
+import { setOutputGain } from "../presets"; // -- WP INTD --
 
 type OwnHub = { port: number; pin: string; child: ChildProcess; store: string };
 
@@ -173,15 +174,13 @@ test.describe("snapshots and files on the core's demo", () => {
     await openPage(session, "Snapshots");
     const screen = session.getByRole("region", { name: "Snapshots" });
     const capture = async (name: string, note: string) => {
+      await screen.getByRole("button", { name: "Capture…" }).click(); // -- WP INTD -- Capture is a popover
       await screen.getByLabel("Name").fill(name);
       await screen.getByLabel("Note").fill(note);
-      await Promise.all([page.waitForEvent("download"), screen.getByRole("button", { name: "Capture" }).click()]);
+      await Promise.all([page.waitForEvent("download"), screen.getByRole("button", { name: "Capture", exact: true }).click()]);
     };
     await capture("Evening", "Warm, -3 dB on the tops");
-    const gain = session.getByRole("region", { name: "Outputs" });
-    await openPage(session, "Main");
-    await gain.getByRole("slider").first().fill("-4");
-    await gain.getByRole("slider").first().dispatchEvent("change");
+    await setOutputGain(session, -4); // -- WP INTD -- on Delay & gain
     await openPage(session, "Snapshots");
     await capture("Bright", "Output 1 at -4 dB");
     await expect(screen.getByRole("list", { name: "Held snapshots" }).getByRole("listitem")).toHaveCount(2);

@@ -35,15 +35,14 @@ async function openDemo(page: Page): Promise<Locator> {
   const one = page.locator("#one");
   await one.getByRole("region", { name: "Venue A" }).getByRole("button", { name: "Connect" }).click();
   const session = one.getByRole("article").first();
-  await expect(session.getByRole("region", { name: "Presets" })).toBeVisible();
+  await expect(session.getByRole("button", { name: /^Presets: / })).toBeVisible(); // -- WP INTD -- the session bar's presets (DL5)
   return session;
 }
 
 
-/** -- WP P1DCFIX -- (F6) the page's own unsaved indicator (Main's Presets card) shows; then back to `back`. */
+/** -- WP P1DCFIX -- (F6) the page's own unsaved indicator (-- WP INTD -- the session bar's presets, on every page) shows. */
 async function unsavedShown(session: Locator, back = "Snapshots") {
-  await openPage(session, "Main");
-  await expect(session.getByText("Unsaved changes", { exact: true })).toBeVisible();
+  await expect(session.getByRole("button", { name: /^Presets: .*, unsaved changes$/ })).toBeVisible();
   await openPage(session, back);
 }
 
@@ -56,9 +55,10 @@ test("P1WB1 snapshots: capture downloads, recall puts every value back, Open Sna
   const session = await openDemo(page);
   await openPage(session, "Snapshots");
   const screen = session.getByRole("region", { name: "Snapshots" });
+  await screen.getByRole("button", { name: "Capture…" }).click(); // -- WP INTD -- Capture is a popover
   await screen.getByLabel("Name").fill("Kväll ✓");
   await screen.getByLabel("Note").fill("before the gig");
-  const [dl] = await Promise.all([page.waitForEvent("download"), screen.getByRole("button", { name: "Capture" }).click()]);
+  const [dl] = await Promise.all([page.waitForEvent("download"), screen.getByRole("button", { name: "Capture", exact: true }).click()]);
   expect(dl.suggestedFilename()).toBe("Kväll ✓.dspipreset");
   const text = readFileSync(await dl.path(), "utf8");
   expect(JSON.parse(text).meta.kind).toBe("snapshot");
@@ -96,8 +96,9 @@ test("P1WB1 A/B and safe apply: the toggle in the scene bar and its key, off dur
   await openPage(session, "Snapshots");
   const screen = session.getByRole("region", { name: "Snapshots" });
   await call(page, "write", { path: "out.gain", indices: [0], value: { float: -4 } });
+  await screen.getByRole("button", { name: "Capture…" }).click(); // -- WP INTD -- Capture is a popover
   await screen.getByLabel("Name").fill("Bright");
-  await Promise.all([page.waitForEvent("download"), screen.getByRole("button", { name: "Capture" }).click()]);
+  await Promise.all([page.waitForEvent("download"), screen.getByRole("button", { name: "Capture", exact: true }).click()]);
   await call(page, "write", { path: "out.gain", indices: [0], value: { float: 0 } });
   const row = screen.getByRole("list", { name: "Held snapshots" }).getByRole("listitem", { name: "Bright" });
 
@@ -183,7 +184,7 @@ test("P1WB1 offline: Open File… and New from Template… open sessions with no
   await filesSide.getByLabel("File to open").setInputFiles(MAC_PATH.pathname);
   const doc = one.getByRole("article").first();
   await expect(doc.locator(".device-meta")).toContainText("File: mac-swift-v32.dspipreset");
-  await expect(doc.getByRole("region", { name: "Presets" })).toBeVisible();
+  await expect(doc.getByRole("button", { name: /^Presets: / })).toBeVisible(); // -- WP INTD -- the session bar's presets (DL5)
   await doc.getByRole("complementary", { name: "Status" }).getByText("a file").waitFor();
 
   await openDevices(one); // -- WP WEBM1 --
@@ -211,6 +212,7 @@ test("P1WB1 keys: Qt's table, never while a text field has focus", async ({ page
   await expect.poll(async () => (await coreState(page)).bypass).toBe(true);
   // A text field keeps its keys.
   await openPage(session, "Snapshots");
+  await session.getByRole("region", { name: "Snapshots" }).getByRole("button", { name: "Capture…" }).click(); // -- WP INTD -- Capture is a popover
   await session.getByRole("region", { name: "Snapshots" }).getByLabel("Name").focus();
   await page.keyboard.press("Control+m");
   await page.waitForTimeout(300);
@@ -281,8 +283,9 @@ test.describe("over DSPi Link", () => {
     await openPage(session, "Snapshots");
     const screen = session.getByRole("region", { name: "Snapshots" });
     await expect(screen).toContainText("Every recall here can be taken back");
+    await screen.getByRole("button", { name: "Capture…" }).click(); // -- WP INTD -- Capture is a popover
     await screen.getByLabel("Name").fill("Site");
-    await Promise.all([page.waitForEvent("download"), screen.getByRole("button", { name: "Capture" }).click()]);
+    await Promise.all([page.waitForEvent("download"), screen.getByRole("button", { name: "Capture", exact: true }).click()]);
     const item = screen.getByRole("list", { name: "Held snapshots" }).getByRole("listitem", { name: "Site" });
     await expect(item.getByRole("button", { name: "Recall with Rollback" })).toHaveCount(0);
     await item.getByRole("button", { name: "Recall", exact: true }).click();

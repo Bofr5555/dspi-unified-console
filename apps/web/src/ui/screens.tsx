@@ -48,7 +48,6 @@ import { RecoveryCode } from "../screens/installer/HubAdmin"; // -- WP HUBADMIN 
 // -- WP WB6D -- the System view's blocks open the screen that edits them
 import type { ChainTarget } from "../screens/system/chain";
 // -- WP WB6E -- the scene bar: the device's ten preset slots, Recall and Store
-import { SlotBar } from "../screens/scenebar/SlotBar";
 
 // -- WP WB6F -- the status rail's health row and panel
 import { HealthFeed } from "./status-rail/feed";
@@ -122,6 +121,9 @@ export interface ScreenProps {
   open?: (t: ChainTarget) => void;
   /** Where this screen was opened at by `open`, null when its tab was chosen; read when it mounts. */
   target?: ChainTarget | null;
+  // -- WP INTD --
+  /** Open another screen of this session as its tab would ("connect": Devices › Open a DSPi). */
+  go?: (screen: string) => void;
   // -- WP P2WB1 --
   /** The session's hub: its devices, health and alarms (the hub screen). */
   hub?: HubFeed;
@@ -162,7 +164,7 @@ export const SCREENS: ScreenDef[] = [
   { id: "installer", label: "Installer", View: InstallerScreen },
   // -- WP WB6J -- (the Console's Tools windows; Advanced and Installer, before the event log; WB6L's shortcuts open them by id)
   { id: "generator", label: "Signal Generator", View: GeneratorScreen },
-  { id: "analyser", label: "Analyser", View: AnalyserScreen },
+  { id: "analyser", label: "Spectrum", View: AnalyserScreen }, // -- WP INTD -- Qt's tab name (WEB4 D3)
   { id: "stats", label: "Stats for nerbs", View: StatsScreen },
   { id: "monitor", label: "Interrupt Monitor", View: MonitorScreen },
   { id: "measure", label: "Measure", View: MeasureScreen }, // -- WP P5WMS -- (modes.json: Advanced and Installer, with the tools)
@@ -516,12 +518,11 @@ export function Screens(props: {
     >
       {/* -- WP SW3 -- on an installation, the scene bar */}
       {pro && (section === "overview" || section === "system") ? <SceneBar feed={system} session={session} ask={ask} /> : null}
-      {/* -- WP WB6E -- the device's preset slots, in Advanced and Installer (the Pro layer; Simple keeps the Main window's picker) */}
-      {pro && (section === "overview" || section === "library") ? <SlotBar session={session} ask={ask} unsaved={unsaved} /> : null}
+      {/* -- WP WB6E -- the preset slots strip is gone (INTD): the session bar's preset popover (DL5) holds them on every page */}
       {page === CONNECT ? (
         shell.connect
       ) : (
-        <screen.View key={`${screen.id}:${jump}` /* -- WP WEBM4 -- */} session={session} ask={ask} unsaved={unsaved} system={system} mode={mode} desk={desk} open={openAt} target={target} hub={hub} /* -- WP P2WB1 -- */ />
+        <screen.View key={`${screen.id}:${jump}` /* -- WP WEBM4 -- */} session={session} ask={ask} unsaved={unsaved} system={system} mode={mode} desk={desk} open={openAt} target={target} hub={hub} /* -- WP P2WB1 -- */ go={setCurrent} /* -- WP INTD -- */ />
       )}
       {shortcutsOpen ? <ShortcutsDialog screens={shownIds} onClose={() => setShortcutsOpen(false)} /> : null}
       {question ? (

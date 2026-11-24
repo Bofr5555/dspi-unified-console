@@ -27,3 +27,8 @@
 /* The recall's form row */
 .dspi-web .snapshots .snap-seconds { width: 72px; font-family: var(--mono); font-size: 12px; text-align: right; }
 .dspi-web .snapshots .snap-unit { font-size: 11px; color: var(--muted); }
+/* -- WP INTD -- Capture's popover: Name and Note one under the other, Capture at the right */
+.dspi-web .snapshots .popover { width: 320px; }
+.dspi-web .snapshots .popover .snap-capture { flex-direction: column; align-items: stretch; gap: 8px; }
+.dspi-web .snapshots .popover .snap-capture label { flex: none; }
+.dspi-web .snapshots .popover .snap-capture > button { align-self: flex-end; }

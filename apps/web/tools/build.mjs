@@ -78,6 +78,10 @@ if (args.has("--unit")) {
   const screensCss = join(out, "dspi-web.css");
   const own = existsSync(screensCss) ? readFileSync(screensCss, "utf8").replace(/\/\*# sourceMappingURL=.*?\*\/\s*$/, "") : "";
   writeFileSync(screensCss, readFileSync(join(root, "src/dspi-web.css"), "utf8") + (own ? `\n/* -- the screens' own stylesheets (src/screens/**.css) -- */\n${own}` : ""));
+  // -- WP INTD -- the standalone entry bundles the same screen stylesheets as dist/app.css, which
+  // nothing links (index.html links dspi-web.css): not shipped
+  rmSync(join(out, "app.css"), { force: true });
+  rmSync(join(out, "app.css.map"), { force: true });
   // -- WP WB7 --
   cpSync(join(root, "src/page.css"), join(out, "page.css"));
   // -- job ICON1 -- the standalone page's icons (assets/icon/render.sh makes them)

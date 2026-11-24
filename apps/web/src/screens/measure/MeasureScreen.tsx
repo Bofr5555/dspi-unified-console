@@ -495,6 +495,8 @@ export interface MeasureTabProps {
   outputs: number[];
   /** Show another tab. */
   show: (id: string) => void;
+  /** -- WP INTD -- Open another screen of the session (ScreenProps.go): Several units' "Hubs…". */
+  go?: (screen: string) => void;
 }
 
 export interface MeasureTab {
@@ -547,7 +549,7 @@ export function MeasureScreen(props: ScreenProps) {
   const [chosen, setChosen] = usePart(session, "measure", tabs.map((t) => t.id));
   const tab = tabs.find((t) => t.id === chosen) ?? tabs[0]!;
   if (!snap) return null;
-  const p: MeasureTabProps = { session, desk, ask: props.ask, blocked, outputName, outputs: rows.map((r) => r.index), show: setChosen };
+  const p: MeasureTabProps = { session, desk, ask: props.ask, blocked, outputName, outputs: rows.map((r) => r.index), show: setChosen, go: props.go };
   return (
     <div class="measure-screen" role="region" aria-label="Measure">
       {/* -- WP WEB4 -- DL2's stop bar: an info notice with a secondary Stop; the error as an error notice */}

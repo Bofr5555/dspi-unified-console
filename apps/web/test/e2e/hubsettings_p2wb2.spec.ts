@@ -282,7 +282,7 @@ test("P2WB2 direct: the demo DSPi has no hub settings page and no On the hub sec
   const one = page.locator("#one");
   await one.getByRole("region", { name: "Venue A" }).getByRole("button", { name: "Connect" }).click();
   const session = one.getByRole("article").first();
-  await expect(session.getByRole("region", { name: "Presets" })).toBeVisible();
+  await expect(session.getByRole("button", { name: /^Presets: / })).toBeVisible(); // -- WP INTD -- the session bar's presets (DL5)
   await setMode(session, page, "Advanced");
   expect(await hasPage(session, "Events")).toBe(true);
   expect(await hasPage(session, "Hub Settings")).toBe(false);

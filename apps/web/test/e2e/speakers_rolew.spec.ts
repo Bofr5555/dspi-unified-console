@@ -27,7 +27,7 @@ async function openDemo(page: Page): Promise<Locator> {
   const one = page.locator("#one");
   await one.getByRole("region", { name: "Venue A" }).getByRole("button", { name: "Connect" }).click();
   const session = one.getByRole("article").first();
-  await expect(session.getByRole("region", { name: "Presets" })).toBeVisible();
+  await expect(session.getByRole("button", { name: /^Presets: / })).toBeVisible(); // -- WP INTD -- the session bar's presets (DL5)
   return session;
 }
 
@@ -151,7 +151,7 @@ test("ROLEW: a view-only console shows the layout, not changes it", async ({ pag
   // Venue B is this console's view-only installation.
   await one.getByRole("region", { name: "Venue B" }).getByRole("button", { name: "Connect" }).click();
   const session = one.getByRole("article").first();
-  await expect(session.getByRole("region", { name: "Presets" })).toBeVisible();
+  await expect(session.getByRole("button", { name: /^Presets: / })).toBeVisible(); // -- WP INTD -- the session bar's presets (DL5)
   const sp = await speakersPage(session);
   await expect(sp.getByRole("combobox", { name: /^Role of OUT1 / })).toBeDisabled();
   await expect(sp.getByRole("button", { name: "Confirm" })).toBeDisabled();

@@ -1,4 +1,4 @@
-// WP WB6e unit tests: the scene bar's slot buttons, their names and marks, what a recall
+// WP WB6e unit tests (the verbs the session bar's preset popover uses since INTD): what a recall
 // asks first, the Store question; and on the real core the two verbs through the session:
 // Recall's unsaved-changes prompt (Cancel, Discard, Save), the reload of the active slot,
 // Store into an empty and an occupied slot (with its token), and nothing while read only.
@@ -7,7 +7,7 @@ import { after, test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { activeLine, recall, recallStep, slotLabel, slotViews, store, storeText } from "../../src/screens/scenebar/model";
+import { recall, recallStep, store, storeText } from "../../src/screens/scenebar/model";
 import type { Question, Unsaved } from "../../src/ui/screens";
 import { WasmCore, loadWasmModule } from "../../src/core/wasm";
 import type { CoreClient } from "../../src/core/client";
@@ -17,27 +17,6 @@ const slots = (active: number, occupied: number, names: string[] = []) => ({
   activePresetSlot: active,
   presetOccupied: occupied,
   presetNames: Array.from({ length: 10 }, (_, i) => names[i] ?? ""),
-});
-
-test("WB6e: ten numbered slots, the active one and its unsaved state marked, empty ones said", () => {
-  const v = slotViews(slots(2, 0b101, ["Demo", "", ""]), true);
-  assert.equal(v.length, 10);
-  assert.deepEqual(
-    v.slice(0, 4).map((x) => [x.number, x.name, x.occupied, x.active, x.unsaved]),
-    [
-      [1, "Demo", true, false, false],
-      [2, "Empty", false, false, false],
-      [3, "Preset 3", true, true, true],
-      [4, "Empty", false, false, false],
-    ],
-  );
-  assert.equal(v[9]!.number, 10);
-  assert.equal(slotViews(slots(2, 0b101), false)[2]!.unsaved, false);
-  assert.equal(slotLabel(v[2]!, false), "Recall 3: Preset 3 (active, unsaved)");
-  assert.equal(slotLabel(v[0]!, false), "Recall 1: Demo");
-  assert.equal(slotLabel(v[1]!, true), "Store in 2: Empty");
-  assert.deepEqual(activeLine(v), { text: "3: Preset 3", unsaved: true });
-  assert.deepEqual(activeLine(slotViews(slots(0, 1, ["Demo"]), false)), { text: "1: Demo", unsaved: false });
 });
 
 test("WB6e: a recall asks only when something unsaved would be lost", () => {

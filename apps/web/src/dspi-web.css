@@ -218,13 +218,6 @@
 .dspi-web button.danger,
 .dspi-web [role="menuitem"].danger { color: var(--bad); }
 
-.dspi-web .presets-card .card-head { flex-wrap: wrap; }
-/* -- WP WB6b -- (c6p WB6a-1) the picker has its row to itself, the menu button under it, so a
-   card's width never cuts the slot's name */
-.dspi-web .preset-pick { display: flex; align-items: center; gap: 0.5rem; min-width: 0; flex: 1 1 100%; }
-.dspi-web .presets-card .card-head .menu { margin-left: auto; }
-.dspi-web .preset-pick select { flex: 1; min-width: 7rem; }
-.dspi-web .preset-status { margin: 0.4rem 0 0; min-height: 1.4rem; display: flex; gap: 0.5rem; align-items: center; }
 
 .dspi-web .menu { position: relative; flex: none; }
 .dspi-web .menu [role="menu"] {
@@ -829,13 +822,7 @@
 
 /* -- WP WB6J -- the analyser (bar strip, overlay), the tools screen, cards per row */
 .dspi-web { --rta-bar: #3aa76d; --rta-peak: #d49a00; }
-.dspi-web .main-screen.per-row { grid-template-columns: repeat(var(--per-row), minmax(0, 1fr)); }
-@media (max-width: 40rem) {
-  .dspi-web .main-screen.per-row { grid-template-columns: minmax(0, 1fr); }
-}
-.dspi-web .main-tools, .dspi-web .main-spectrum { grid-column: 1 / -1; min-width: 0; }
-.dspi-web .main-tools { display: flex; justify-content: flex-end; }
-.dspi-web .main-tools label { display: inline-flex; gap: 0.4rem; align-items: center; color: var(--muted); font-size: 0.85rem; }
+.dspi-web .main-spectrum { grid-column: 1 / -1; min-width: 0; }
 .dspi-web .seg { display: inline-flex; flex-wrap: wrap; gap: 0.25rem; }
 .dspi-web .seg [aria-pressed="true"], .dspi-web .seg [aria-selected="true"],
 .dspi-web .rta-channels [aria-pressed="true"], .dspi-web .siggen-outputs [aria-pressed="true"],
@@ -933,28 +920,6 @@
   .dspi-web .cs-body { margin-left: 0; }
 }
 
-/* -- WP WB6E -- the scene bar's preset slots
-   -- fixup b4fix F1 -- a head of one line (label, the active slot or the Store hint, cut short;
-   the verbs) and the slots below, wrapping by width only; numbers only when the bar is narrow (a container query: a console may be narrow on a wide page). The
-   unsaved marks keep their room when hidden. Nothing below the bar moves as they change. */
-.dspi-web .slot-bar { container-type: inline-size; }
-.dspi-web .slot-bar .slot-head { flex-wrap: nowrap; min-width: 0; }
-.dspi-web .slot-bar .slot-line { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dspi-web .slot-bar .slot-active { font-weight: 600; }
-.dspi-web .slot-bar.storing .slot-line { color: var(--warn); }
-.dspi-web .slot-bar .slot-unsaved { visibility: hidden; }
-.dspi-web .slot-bar .slot-buttons { display: flex; flex-wrap: wrap; gap: 0.35rem; min-width: 0; margin-top: 4px; }
-.dspi-web .slot-bar .slot { flex: none; display: inline-flex; align-items: center; gap: 0.3rem; max-width: 11rem; }
-.dspi-web .slot-bar .slot-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-.dspi-web .slot-bar .slot.empty .slot-name { color: var(--muted); font-style: italic; }
-.dspi-web .slot-bar .slot.unsaved { border-style: dashed; }
-.dspi-web .slot-bar .slot-dot { color: var(--warn); font-weight: 700; visibility: hidden; }
-.dspi-web .slot-bar .slot-dot.on, .dspi-web .slot-bar .slot-unsaved.on { visibility: visible; }
-.dspi-web .slot-bar .slot-verbs { flex: none; display: inline-flex; gap: 0; }
-.dspi-web .slot-bar .slot-verbs > button.on { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); font-weight: 600; }
-.dspi-web .slot-bar.storing .slot { border-color: var(--warn); }
-@container (max-width: 560px) {
-  .dspi-web .slot-bar .slot-name { display: none; }
   .dspi-web .slot-bar .slot { min-width: 2rem; justify-content: center; gap: 0.15rem; padding: 1px 5px; }
 }
 
@@ -1315,7 +1280,13 @@
 .dspi-web .strip .close:hover { background: var(--selection); color: var(--text); }
 .dspi-web .session-actions { display: flex; align-items: center; gap: 0.4rem; flex: none; min-width: 0; }
 .dspi-web .session-actions button, .dspi-web .session-actions select { height: 2rem; }
-.dspi-web .bar-preset { width: 10rem; min-width: 5rem; }
+/* -- WP INTD -- the presets' popover button (DL5): the active slot, a dot while unsaved, a chevron */
+.dspi-web .preset-control { min-width: 0; }
+.dspi-web .bar-preset { display: inline-flex; align-items: center; gap: 0.35rem; width: 11rem; min-width: 5rem; max-width: 100%; padding: 0 0.55rem; text-align: left; }
+.dspi-web .bar-preset-text { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dspi-web .bar-preset-dot { flex: none; width: 6px; height: 6px; border-radius: 3px; background: var(--warn); visibility: hidden; }
+.dspi-web .bar-preset-dot.on { visibility: visible; }
+.dspi-web .bar-preset-chevron { flex: none; color: var(--muted); font-size: 0.8em; }
 .dspi-web .session-actions .undo-redo button { border-color: transparent; background: none; }
 .dspi-web .session-actions .undo-redo button:not(:disabled):hover { background: var(--selection); }
 .dspi-web .save-split { display: inline-flex; flex: none; }
@@ -1396,7 +1367,6 @@
   .dspi-web .session-actions .save-split { margin-left: auto; }
   .dspi-web .strip { flex: 1 1 100%; flex-wrap: wrap; gap: 0.1rem 0.5rem; }
   .dspi-web .strip .device-meta { order: 5; flex: 1 1 100%; }
-  .dspi-web .bar-preset { flex: 1 1 6rem; width: auto; }
   .dspi-web .shell-main .guard-bar { top: 0; }
   .dspi-web .page-tabs { flex: 1 1 100%; order: 2; }
   .dspi-web .page-head .quick-strip { margin-left: 0; order: 3; }
@@ -1830,7 +1800,6 @@
 .dspi-web .settings-nav button[aria-current="page"],
 .dspi-web .hub-group-pick button[aria-pressed="true"],
 .dspi-web .shape-grid button[aria-checked="true"],
-.dspi-web .slot-bar .slot-verbs > button.on,
 .dspi-web .sys-scene.active,
 .dspi-web .sys-block-on,
 .dspi-web .chip[aria-pressed="true"],
@@ -1935,7 +1904,7 @@
 .dspi-web .mx-colhead.off .mx-colname, .dspi-web .mx-colhead.off .mx-colpill { opacity: 0.7; }
 .dspi-web .mx-pick { border: 0; background: none; padding: 0 2px; min-height: 0; color: var(--muted); font-size: 11px; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; word-break: break-word; max-width: 100%; border-radius: 4px; }
 .dspi-web .mx-pick:hover, .dspi-web .mx-pick[aria-pressed="true"] { color: var(--text); background: none; }
-.dspi-web .mx-colname { width: 100%; }
+.dspi-web .mx-colname { width: 100%; min-height: 2.5em; } /* -- WP INTD -- two lines kept: a label's length follows the routing ("Out 2", "Out 2 · L · Low"), the header does not grow with it */
 .dspi-web .mx-colpill { display: flex; justify-content: center; margin-top: 3px; }
 .dspi-web .mx-colpill .menu > button { min-height: 0; padding: 1px 6px; border-radius: 9px; font-size: 10px; font-weight: 700; color: #111214; background: var(--ch); white-space: nowrap; }
 .dspi-web .mx-colpill .menu > button:hover:not(:disabled) { background: color-mix(in srgb, var(--ch) 85%, #fff); }
@@ -2159,7 +2128,7 @@
    a mark (a dot, an edge, an icon), never as body text. A difference, an issue or a warning sentence in the
    text's or the muted tone with a 6 px warning dot before it; a whole warning sentence a notice row */
 .dspi-web .sys-diff, .dspi-web .sys-warn, .dspi-web .hub-count.warn, .dspi-web .hub-result.warn .hub-result-text,
-.dspi-web .hub-image-verified.warn, .dspi-web .lt-status.pending, .dspi-web .slot-bar.storing .slot-line { color: var(--muted); }
+.dspi-web .hub-image-verified.warn, .dspi-web .lt-status.pending { color: var(--muted); }
 .dspi-web .sys-diff::before, .dspi-web .sys-warn::before, .dspi-web .hub-count.warn::before, .dspi-web .hub-health-table td.tone-warn::before {
   content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 4px; border-radius: 3px; vertical-align: middle; background: var(--warn);
 }
@@ -2275,4 +2244,38 @@
   .dspi-web .inspector-toggle, .dspi-web .strip-button, .dspi-web .segments > button, .dspi-web .seg > button,
   .dspi-web .screen-tabs > button, .dspi-web .settings-group-list button, .dspi-web .tool-chip { min-height: 44px; }
   .dspi-web .strip-button { min-width: 44px; }
+}
+
+/* -- WP INTD -- a popover (ui/Popover.tsx, DESIGN-LANGUAGE §5): a floating surface under its button,
+   the panel tone, radius 8, the shadow (an edge in dark only) */
+.dspi-web .popover-anchor { position: relative; flex: none; }
+.dspi-web .session-actions .preset-control { flex: 0 1 auto; min-width: 0; }
+/* A narrow console: the presets' button takes the bar's room, its words cut short */
+@container console (max-width: 720px) {
+  .dspi-web .session-actions .preset-control { flex: 1 1 6rem; }
+  .dspi-web .session-actions .preset-control .bar-preset { width: 100%; }
+}
+.dspi-web .popover { position: absolute; top: calc(100% + 4px); left: 0; z-index: 25; box-sizing: border-box; width: max-content; min-width: 16rem; max-width: min(360px, calc(100vw - 16px)); max-height: min(600px, calc(100vh - 96px)); overflow: auto; padding: 6px; border: 0; border-radius: 8px; background: var(--panel); color: var(--text); box-shadow: 0 10px 30px rgb(0 0 0 / 0.16); outline: none; }
+.dspi-web .popover.popover-right { left: auto; right: 0; }
+@media (prefers-color-scheme: dark) {
+  .dspi-web:not([data-theme="light"]) .popover { box-shadow: 0 12px 34px rgb(0 0 0 / 0.5), 0 0 0 1px var(--border); }
+}
+.dspi-web[data-theme="dark"] .popover { box-shadow: 0 12px 34px rgb(0 0 0 / 0.5), 0 0 0 1px var(--border); }
+/* The presets' popover: every slot a row (§9's ListRow: number, name and what it is, the actions at the right) */
+.dspi-web .preset-control .popover { width: 360px; }
+.dspi-web .preset-rows { list-style: none; margin: 0; padding: 0; }
+.dspi-web .preset-row { display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 2px 4px 2px 6px; border-radius: 6px; }
+.dspi-web .preset-row:hover, .dspi-web .preset-row:focus-within { background: var(--control); }
+.dspi-web .preset-row.active { background: var(--selection); }
+.dspi-web .preset-row .pr-n { flex: none; width: 18px; text-align: right; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.dspi-web .preset-row .pr-text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+.dspi-web .preset-row .pr-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dspi-web .preset-row.empty .pr-name { color: var(--muted); }
+.dspi-web .preset-row .pr-note { font-size: 11px; color: var(--muted); }
+.dspi-web .preset-row > button { flex: none; height: 24px; padding: 0 10px; font-size: 12px; }
+.dspi-web .preset-row .menu > button { height: 24px; padding: 0 6px; border-color: transparent; background: none; }
+.dspi-web .preset-row .menu > button:hover:not(:disabled) { background: var(--control-hover); }
+.dspi-web .preset-startup { margin: 6px 6px 2px; font-size: 11px; color: var(--muted); }
+@media (pointer: coarse), (max-width: 40rem) {
+  .dspi-web .preset-row > button, .dspi-web .preset-row .menu > button { height: 44px; min-width: 44px; }
 }

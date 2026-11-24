@@ -8,6 +8,7 @@
 // download, remove, rollback choice or rollback time (those are Advanced's and Installer's).
 
 import { useId, useRef, useState } from "preact/hooks";
+import { Popover } from "../../ui/Popover"; // -- WP INTD --
 import type { ScreenProps } from "../../ui/screens";
 import { OutcomeLine, useDesk } from "./Bars";
 import { download, fileNameFor, type HeldDoc, type SnapshotDesk } from "./model";
@@ -90,30 +91,34 @@ function SnapshotsView(props: { desk: SnapshotDesk; ask: ScreenProps["ask"]; sim
                 aria-label="Snapshot file"
                 onChange={(e) => void open(e.target as HTMLInputElement)}
               />
+              {/* -- WP INTD -- Capture as Qt's popover: Capture… opens Name, Note and Capture under it */}
+              <Popover label="Capture Snapshot" button="Capture…" buttonClass="primary" disabled={busy} align="right" title="Keep the device's settings as they are now">
+                {(close) => (
+                  <form
+                    class="snap-capture"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      close();
+                      void capture();
+                    }}
+                  >
+                    <label>
+                      Name
+                      <input name="snapshot-name" value={name} placeholder="Snapshot" onInput={(e) => setName((e.target as HTMLInputElement).value)} />
+                    </label>
+                    <label>
+                      Note
+                      <input name="snapshot-note" value={note} onInput={(e) => setNote((e.target as HTMLInputElement).value)} />
+                    </label>
+                    <button type="submit" class="primary" disabled={busy}>
+                      Capture
+                    </button>
+                  </form>
+                )}
+              </Popover>
             </div>
           )}
         </div>
-        {simple ? null : (
-          <form
-            class="snap-capture"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void capture();
-            }}
-          >
-            <label>
-              Name
-              <input name="snapshot-name" value={name} placeholder="Snapshot" onInput={(e) => setName((e.target as HTMLInputElement).value)} />
-            </label>
-            <label>
-              Note
-              <input name="snapshot-note" value={note} onInput={(e) => setNote((e.target as HTMLInputElement).value)} />
-            </label>
-            <button type="submit" class="primary" disabled={busy}>
-              Capture
-            </button>
-          </form>
-        )}
         {simple ? null : <p class="snap-caption">A snapshot is the whole device: every setting, saved as a file. Capture downloads one; Open Snapshot… brings one back. The list holds this visit's snapshots.</p>}
         {st.guardDefault ? <p class="snap-caption">Every recall here can be taken back: it is kept only when you press Keep within {st.timeoutS} s.</p> : null}
         {/* -- WP WEB -- DL3a's empty state */}

@@ -47,6 +47,7 @@ import { useClipboard } from "../clipboard/model";
 // -- WP WEBM4 -- the channel's menu (the Channel button, a right click on a channel) is actions.json's
 import { menuItems, type Handler } from "../../ui/menus/actions";
 import { ActionMenuButton, isMenuKey, useContextMenu } from "../../ui/menus/ActionMenu";
+import { RenameDialog } from "../main/Dialog"; // -- WP INTD --
 // -- WP WEBM2 -- the inspector: the chosen band and channel
 import { Inspect, InspectorSection, useInspector } from "../../ui/inspector/Inspector";
 import { EqInspector, ShapeGrid } from "./EqInspector";
@@ -258,6 +259,8 @@ const EqView = memo(
     // -- WP P1WB2 -- AutoEQ: open or not, and its preview (drawn dashed for the edited channel)
     const [autoeq, setAutoeq] = useState(false);
     const [aePreview, setAePreview] = useState<AutoEqPreviewRecord | null>(null);
+    // -- WP INTD -- the channel menu's Rename… (the Overview's level cards that renamed inputs are gone)
+    const [renaming, setRenaming] = useState<EqChannel | null>(null);
     const others = useMemo(
       () => {
         const list: { curve: number[]; colour: string; offset: number; dashed?: boolean }[] = othersShown
@@ -349,6 +352,7 @@ const EqView = memo(
     /** A channel's menu (LAY3b's `channel`): the rows this channel has here. */
     const channelItems = (c: EqChannel) => {
       const h: Record<string, Handler> = {
+        "channel.rename": { run: () => setRenaming(c), enabled: !ro, reason: session.readOnlyReason || undefined }, // -- WP INTD --
         "channel.copy": { run: () => void board.copy(c.wire) },
         // -- WP WBCLIP2 -- naming the source when it is another device's
         "channel.paste": { run: () => void board.paste(c.wire), text: board.pasteLabel, enabled: !ro && board.hasClip },
@@ -427,6 +431,20 @@ const EqView = memo(
           ))}
         </div>
         {ctx.menu /* -- WP WEBM4 -- */}
+        {renaming ? (
+          // -- WP INTD -- as the matrix's column menu renames an output
+          <RenameDialog
+            title={`Rename ${renaming.name}`}
+            label="Name"
+            initial={renaming.stored ?? renaming.name}
+            onCancel={() => setRenaming(null)}
+            onSave={(name) => {
+              const wire = renaming.wire;
+              setRenaming(null);
+              if (name.trim()) void session.write("ch.name", { text: name }, [wire]);
+            }}
+          />
+        ) : null}
         {/* -- WP P1WB2 -- */}
         <PageTools label="Equaliser tools">
         <div class="eq-tools">

@@ -1,4 +1,4 @@
-// -- WP WEBM1 -- The actions of one device, above its pages: the preset picker, Undo and Redo, Save
+// -- WP WEBM1 -- The actions of one device, above its pages: the presets (INTD: DL5's popover), Undo and Redo, Save
 // to device with what belongs to it, and the installer's lock. Every action is the core's and the
 // one other places already run (the scene bar's recall, the keys' Commit and Revert), with the
 // same questions.
@@ -9,8 +9,7 @@ import type { SnapshotDesk } from "../../screens/snapshots/model";
 import { ActionMenuButton } from "../menus/ActionMenu";
 import { menuItems } from "../menus/actions";
 import { factoryReset as askFactoryReset } from "../menus/session-actions";
-import { PRESET_SLOTS, presetLabel } from "../../screens/main/model";
-import { recall } from "../../screens/scenebar/model";
+import { PresetPopover } from "./PresetPopover"; // -- WP INTD --
 import { UndoButtons, appleKeys } from "../undo";
 import { runKey, type Ask, type Unsaved } from "../screens";
 import type { Session, SessionState } from "../session";
@@ -45,26 +44,8 @@ export function SessionBar(props: {
   const mod = appleKeys(navigator.platform ?? "") ? "⌘" : "Ctrl+";
   return (
     <div class="session-actions" role="group" aria-label="Device actions">
-      <select
-        class="bar-preset"
-        aria-label="Recall preset"
-        title={state.unsaved.length ? "Preset (unsaved changes)" : "Preset"}
-        value={String(s.activePresetSlot)}
-        disabled={off}
-        onChange={(e) => {
-          const el = e.target as HTMLSelectElement;
-          const slot = Number(el.value);
-          // The picker shows what the device has active; the load moves it.
-          el.value = String(s.activePresetSlot);
-          void run(() => recall({ session, ask, unsaved }, slot));
-        }}
-      >
-        {Array.from({ length: PRESET_SLOTS }, (_, i) => (
-          <option key={i} value={i}>
-            {presetLabel(s, i)}
-          </option>
-        ))}
-      </select>
+      {/* -- WP INTD -- the presets as one popover (DL5), in place of the slot picker */}
+      <PresetPopover session={session} state={state} ask={ask} unsaved={unsaved} disabled={busy} />
       <UndoButtons session={session} state={state} />
       {props.locked ? null : (
         <span class="save-split">

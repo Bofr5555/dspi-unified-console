@@ -17,7 +17,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { createInterface } from "node:readline";
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { openPage, partsOf, rail as sections } from "../nav"; // -- WP WEBM3 -- partsOf
+import { expectPage, openPage, partsOf, rail as sections } from "../nav"; // -- WP WEBM3 -- partsOf; -- WP INTD -- expectPage
 
 test.skip(({ browserName }) => browserName === "webkit", "Chromium and Firefox only");
 // Chromium's headless shell has no getUserMedia: the full Chromium, headless (as P5WMS).
@@ -323,6 +323,9 @@ test("ATWEB: a console not on the DSPi hub says that measuring several units nee
   await expect(note).toHaveAttribute("data-key", "measure.system.needs_hub");
   await expect(note).toContainText("Measuring several units needs the DSPi hub");
   await expect(screen.getByRole("button", { name: "Measure the units" })).toHaveCount(0);
+  // -- WP INTD -- Qt's "Hubs…": the page that connects through a hub
+  await note.getByRole("button", { name: "Hubs…" }).click();
+  await expectPage(session, "Connect");
 });
 
 test("ATWEB: the Several units step at 375 px: no sideways scroll", async ({ page, viewport }) => {

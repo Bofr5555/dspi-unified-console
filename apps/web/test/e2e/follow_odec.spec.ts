@@ -61,7 +61,9 @@ async function openOn(page: Page, hub: OwnHub, serial: string): Promise<Locator>
   await expect(meta).toContainText(serial);
   const rail = session.getByRole("complementary", { name: "Status" });
   await expect(rail.getByLabel("Connection")).toHaveText(/^Connected/);
-  await expect(session.locator(".banner")).toHaveCount(0);
+  // -- WP INTD -- no banner but the agent's strip: a page opened while the agent works shows it at
+  // once (the second page below), which raced this check in Firefox
+  await expect(session.locator(".banner:not(.banner-agent)")).toHaveCount(0);
   return session;
 }
 

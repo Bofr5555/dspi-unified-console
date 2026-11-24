@@ -27,7 +27,7 @@ async function openDemo(page: Page): Promise<Locator> {
   const one = page.locator("#one");
   await one.getByRole("region", { name: "Venue A" }).getByRole("button", { name: "Connect" }).click();
   const session = one.getByRole("article").first();
-  await expect(session.getByRole("region", { name: "Presets" })).toBeVisible();
+  await expect(session.getByRole("button", { name: /^Presets: / })).toBeVisible(); // -- WP INTD -- the session bar's presets (DL5)
   return session;
 }
 
@@ -48,22 +48,25 @@ test("P1DCFIX Simple: Snapshots with Recall and A/B only; B toggles, not in a te
   const screen = session.getByRole("region", { name: "Snapshots" });
   await expect(screen.getByLabel("Rollback time (s)")).toHaveValue("30");
   await call(page, "write", { path: "out.gain", indices: [0], value: { float: -5 } });
+  await screen.getByRole("button", { name: "Capture…" }).click(); // -- WP INTD -- Capture is a popover
   await screen.getByLabel("Name").fill("Loud");
-  await Promise.all([page.waitForEvent("download"), screen.getByRole("button", { name: "Capture" }).click()]);
+  await Promise.all([page.waitForEvent("download"), screen.getByRole("button", { name: "Capture", exact: true }).click()]);
   await call(page, "write", { path: "out.gain", indices: [0], value: { float: 0 } });
 
   // A plain B in a text field is the field's.
+  await screen.getByRole("button", { name: "Capture…" }).click(); // -- WP INTD -- Capture is a popover
   await screen.getByLabel("Name").fill("");
   await screen.getByLabel("Name").focus();
   await page.keyboard.press("b");
   await expect(screen.getByLabel("Name")).toHaveValue("b");
   await screen.getByLabel("Name").fill("");
+  await page.keyboard.press("Escape"); // -- WP INTD -- closes Capture's popover
 
   // Simple: the list, Recall and Compare; no capture, open, download, remove, rollback choice or time; no Files.
   await setMode(session, page, "Simple");
   expect(await hasPage(session, "Files")).toBe(false);
   await openPage(session, "Snapshots");
-  await expect(screen.getByRole("button", { name: "Capture" })).toHaveCount(0);
+  await expect(screen.getByRole("button", { name: /^Capture/ })).toHaveCount(0);
   await expect(screen.getByRole("button", { name: "Open Snapshot…" })).toHaveCount(0);
   await expect(screen.getByLabel("Rollback time (s)")).toHaveCount(0);
   const row = screen.getByRole("list", { name: "Held snapshots" }).getByRole("listitem", { name: "Loud" });

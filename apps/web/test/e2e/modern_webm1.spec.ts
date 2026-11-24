@@ -5,6 +5,7 @@
 
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { appMenu, expectPage, openDevices, openPage, pageTab, pageTabs, rail, section } from "../nav";
+import { presetsButton, setOutputGain } from "../presets"; // -- WP INTD --
 
 function errorsOf(page: Page) {
   const errors: string[] = [];
@@ -95,10 +96,8 @@ test("WEBM1: a tab's close button shows its device and asks about unsaved change
   const errors = errorsOf(page);
   const { one, session, tabs } = await openTwo(page);
   await tabs.nth(0).click();
-  await openPage(session, "Main");
-  const gain = session.getByRole("region", { name: "Outputs" }).getByRole("slider").first();
-  await gain.focus();
-  await page.keyboard.press("ArrowLeft");
+  // -- WP INTD -- an output's gain on Delay & gain (the Overview's level cards are gone)
+  await setOutputGain(session, -1);
   await expect(one.locator(".device-tab").nth(0).locator(".device-tab-unsaved.on")).toHaveCount(1);
   await expect(session.getByRole("group", { name: "Device actions" }).locator(".bar-count.on")).toHaveText(/^[1-9]/);
   // From the other tab, and while the devices are shown: the question comes on its own device.
@@ -179,7 +178,10 @@ test("WEBM1: what limits a device is above its page; the dock and the bars never
   expect(strip.y + strip.height).toBeLessThanOrEqual(head.y + 0.5);
   await expect(session.getByRole("button", { name: /^Save to device/ })).toBeDisabled();
   await expect(session.getByRole("combobox", { name: "Source", exact: true })).toBeDisabled();
-  await expect(session.getByRole("combobox", { name: "Recall preset" })).toBeDisabled();
+  // -- WP INTD -- the presets' popover opens (to look), its actions are off
+  await presetsButton(session).click();
+  for (const b of await session.getByRole("dialog", { name: "Presets" }).getByRole("button", { name: /^(Recall .*|Save|Copy Here)$/ }).all()) await expect(b).toBeDisabled();
+  await page.keyboard.press("Escape");
   // Scrolled to the end, the status rail ends above the dock.
   await openPage(session, "EQ");
   await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
@@ -206,7 +208,7 @@ test("WEBM1: arranged as tabs across the top (variant A), the same sections and 
   expect(nav.y + nav.height).toBeLessThanOrEqual(body.y + 0.5);
   expect(nav.height).toBeLessThan(80);
   await openPage(session, "Signal Generator");
-  await expect(pageTabs(session).getByRole("tab")).toHaveText(["Analyser", "Signal Generator", "Stats for nerbs", "Interrupt Monitor"]);
+  await expect(pageTabs(session).getByRole("tab")).toHaveText(["Spectrum", "Signal Generator", "Stats for nerbs", "Interrupt Monitor"]);
   await shot(page, "nav-tabs");
   await noSidewaysScroll(page);
 });

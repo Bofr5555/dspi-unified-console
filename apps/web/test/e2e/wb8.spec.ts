@@ -10,6 +10,7 @@ import { mkdirSync, readFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { hasPage, openPage } from "../nav";
+import { presetsButton } from "../presets"; // -- WP INTD --
 
 type Clients = { dspiClients: { call(m: string, p: unknown): Promise<unknown> }[] };
 type Band = { filterType: number; freq: number; gain: number };
@@ -78,7 +79,7 @@ test("WB8 undo: the buttons and the keys step back and forward through the core'
   const start = (await coreState(page)).userVolumeDb;
   // -- WP WEBM1 -- Undo and Redo sit in the device's bar, in one line with the preset picker at every width
   const bar = (await session.getByRole("group", { name: "Device actions" }).boundingBox())!;
-  const picker = (await session.getByRole("combobox", { name: "Recall preset" }).boundingBox())!;
+  const picker = (await presetsButton(session).boundingBox())!; // -- WP INTD -- the presets' popover button
   // (two consoles side by side at 375 px are slivers, where it wraps)
   if (test.info().project.name !== "narrow") expect(Math.abs(bar.height - picker.height)).toBeLessThan(0.5);
 

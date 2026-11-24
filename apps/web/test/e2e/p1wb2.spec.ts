@@ -12,6 +12,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { expect, test, type APIRequestContext, type Locator, type Page } from "@playwright/test";
 import { hasPage, openPage, rail as sections } from "../nav";
+import { presetsButton, presetsReady } from "../presets"; // -- WP INTD --
 
 type Clients = { dspiClients: { call(m: string, p: unknown): Promise<unknown> }[] };
 type State = { outputGainDb: number[]; presetDefaultSlot: number; presetStartupMode: number; activePresetSlot: number; filters: { filterType: number }[][]; limiterEnabled: boolean[]; numOutputChannels: number };
@@ -51,7 +52,7 @@ async function openDemo(page: Page): Promise<Locator> {
   const one = page.locator("#one");
   await one.getByRole("region", { name: "Venue A" }).getByRole("button", { name: "Connect" }).click();
   const session = one.getByRole("article").first();
-  await expect(session.getByRole("region", { name: "Presets" })).toBeVisible();
+  await presetsReady(session); // -- WP INTD --
   return session;
 }
 
@@ -111,11 +112,11 @@ test("P1WB2 Installer: a limit narrowed below the device is held and reported; a
     ),
   );
   expect(r).toBe("limit_exceeded");
-  await openPage(session, "Main");
-  const outputs = session.getByRole("region", { name: "Outputs" });
-  const slider = outputs.getByRole("slider").nth(1);
-  await slider.fill("6");
-  await slider.dispatchEvent("change");
+  // -- WP INTD -- OUT2's gain typed on Delay & gain (the Overview's level cards are gone)
+  await openPage(session, "Delay & gain");
+  const field = session.getByRole("region", { name: "Delay and gain of every output" }).getByRole("row", { name: /^OUT2 / }).getByRole("textbox", { name: /gain$/ });
+  await field.fill("6");
+  await field.press("Enter");
   const alert = session.locator("p.error.notice");
   await expect(alert).toHaveAttribute("data-key", "limit_exceeded");
   await expect(alert).toContainText("Outside the limits.");
@@ -198,7 +199,7 @@ test("P1WB2 tokens and groups: tokens on, Save asks and saves; an EQ Clear All i
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
   await page.keyboard.press("Control+s");
   await page.getByRole("dialog", { name: "Save Preset" }).getByRole("button", { name: "Save" }).click();
-  await expect(session.getByRole("region", { name: "Presets" }).getByText("Unsaved changes")).toHaveCount(0);
+  await expect(presetsButton(session)).not.toHaveAccessibleName(/unsaved/); // -- WP INTD --
   await expect(session.locator("p.error")).toHaveCount(0);
 
   // Clear All on the EQ: one undo puts every band back.
@@ -337,16 +338,15 @@ test.describe("P1WB2 on a hub", () => {
     await expect(session.getByRole("tab")).toHaveCount(0);
     await shot(page, "locked-user");
     await noSidewaysScroll(page);
-    // Volume passes; an output trim is refused, by the hub, in its notice row's words.
+    // Volume passes; Bypass is refused, by the hub, in its notice row's words (-- WP INTD -- the
+    // Overview's output trims are gone; the dock's Bypass is the write the lock leaves out there).
     const volume = session.getByRole("slider", { name: "Volume" });
     const shown = await session.locator(".volume-value").textContent();
     await volume.fill("100");
     await volume.dispatchEvent("change");
     await expect(session.locator(".volume-value")).not.toHaveText(shown!);
     await expect(session.locator("p.error")).toHaveCount(0);
-    const trim = session.getByRole("region", { name: "Outputs" }).getByRole("slider").first();
-    await trim.fill("-3");
-    await trim.dispatchEvent("change");
+    await session.getByRole("button", { name: "Bypass", exact: true }).click();
     const refused = session.locator("p.error.notice");
     await expect(refused).toHaveAttribute("data-key", /^installer_lock/);
     await shot(page, "locked-refused", refused);
@@ -374,8 +374,9 @@ test.describe("P1WB2 on a hub", () => {
     await rail.getByRole("button", { name: /^Mode:/ }).click();
     await expect(page.getByRole("dialog", { name: "Mode" })).toContainText("This console is pinned to Simple for this DSPi.");
     await page.getByRole("dialog", { name: "Mode" }).getByRole("button", { name: "Cancel" }).click();
-    await trim.fill("-3");
-    await trim.dispatchEvent("change");
+    // -- WP INTD -- unlocked, the Bypass the lock refused goes through
+    await session.getByRole("button", { name: "Bypass", exact: true }).click();
+    await expect(session.getByRole("button", { name: "Bypass", exact: true })).toHaveAttribute("aria-pressed", "true");
     await expect(session.locator("p.error")).toHaveCount(0);
     await shot(page, "unlocked-pinned");
     expect(errors).toEqual([]);

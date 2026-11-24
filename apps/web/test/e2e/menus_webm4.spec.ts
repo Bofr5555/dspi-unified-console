@@ -171,7 +171,8 @@ test("WEBM4: context menus of a channel, a device tab and a preset slot, by the 
   await out1.click({ button: "right" });
   const menu = one.getByRole("menu", { name: /^OUT1/ });
   await expect(menu).toBeVisible();
-  await expect(menu.getByRole("menuitem", { name: "Copy Parameters" })).toBeFocused();
+  await expect(menu.getByRole("menuitem", { name: "Rename", exact: true })).toBeFocused(); // -- WP INTD -- actions.json's channel.rename first
+  await expect(menu.getByRole("menuitem", { name: "Copy Parameters" })).toBeVisible();
   await expect(menu.getByRole("menuitem", { name: "Identify" })).toBeVisible();
   await shot(page, "channel-menu");
   await page.keyboard.press("Escape");
@@ -187,13 +188,14 @@ test("WEBM4: context menus of a channel, a device tab and a preset slot, by the 
   await expect(session.getByRole("menu", { name: "Channel" }).getByRole("menuitem", { name: "Copy Parameters" })).toBeVisible();
   await page.keyboard.press("Escape");
 
-  // A preset slot (Library): Recall and Save Current Settings Here
-  await openPage(session, "Snapshots");
-  const slot = session.getByRole("group", { name: "Preset slots" }).locator(".slot").nth(1);
-  await slot.click({ button: "right" });
-  const slotMenu = one.getByRole("menu", { name: "Preset 2" });
-  await expect(slotMenu.getByRole("menuitem", { name: "Recall" })).toBeVisible();
-  await expect(slotMenu.getByRole("menuitem", { name: "Save Current Settings Here" })).toBeVisible();
+  // A preset slot (-- WP INTD -- its row in the session bar's preset popover): actions.json's `slot` menu
+  await session.getByRole("button", { name: /^Presets: / }).click();
+  const slot = session.getByRole("dialog", { name: "Presets" }).getByRole("listitem", { name: /^2: / });
+  await slot.getByRole("button", { name: "More" }).click();
+  const slotMenu = slot.getByRole("menu");
+  for (const item of ["Recall", "Save Current Settings Here", "Rename…", "Set as Startup Preset", "Copy to…", "Clear…", "Clear All Slots…"])
+    await expect(slotMenu.getByRole("menuitem", { name: item, exact: true })).toBeVisible();
+  await page.keyboard.press("Escape");
   await page.keyboard.press("Escape");
 
   await noSidewaysScroll(page);

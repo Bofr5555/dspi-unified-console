@@ -16,7 +16,7 @@ const PLACES: Record<string, { section: string; id: string; tab?: string }> = {
   Matrix: { section: "Routing", id: "matrix" },
   Effects: { section: "Effects", id: "effects" },
   Measure: { section: "Measure", id: "measure" },
-  Analyser: { section: "Analyse", id: "analyser" },
+  Analyser: { section: "Analyse", id: "analyser", tab: "Spectrum" }, // -- WP INTD -- Qt's tab name
   "Signal Generator": { section: "Analyse", id: "generator" },
   "Stats for nerbs": { section: "Analyse", id: "stats" },
   "Interrupt Monitor": { section: "Analyse", id: "monitor" },

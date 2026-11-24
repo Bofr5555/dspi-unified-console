@@ -10,6 +10,7 @@
 import { useEffect, useMemo, useState } from "preact/hooks";
 import type { MeasureDocCurvesRecord, MeasureRole } from "../../../core/measure-protocol";
 import { noticeRow } from "../../../ui/texts";
+import { CONNECT } from "../../../ui/shell/sections"; // -- WP INTD --
 import { MeasureGraph, type Series } from "../graph";
 import { ROLES } from "../model";
 import type { MeasureTab, MeasureTabProps } from "../MeasureScreen";
@@ -88,6 +89,8 @@ export function SystemTabView(props: MeasureTabProps) {
             icon="network"
             title={noticeRow(KEYS.needsHub)?.title ?? "Measuring several units needs the DSPi hub"}
             text="The hub starts every unit's generator on one shared clock. Connect through the DSPi hub, or measure one unit at a time."
+            // -- WP INTD -- Qt's "Hubs…": the page that connects through a hub (Devices › Open a DSPi)
+            action={props.go ? { label: "Hubs…", run: () => props.go?.(CONNECT) } : undefined}
           />
         </div>
       </section>

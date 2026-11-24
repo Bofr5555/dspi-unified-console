@@ -28,7 +28,7 @@ async function openDemo(page: Page): Promise<Locator> {
   const one = page.locator("#one");
   await one.getByRole("region", { name: "Venue A" }).getByRole("button", { name: "Connect" }).click();
   const session = one.getByRole("article").first();
-  await expect(session.getByRole("region", { name: "Presets" })).toBeVisible();
+  await expect(session.getByRole("button", { name: /^Presets: / })).toBeVisible(); // -- WP INTD -- the session bar's presets (DL5)
   return session;
 }
 
@@ -141,7 +141,7 @@ test("ADETW: an auto-detected layout shown on the main screen and Settings › S
     [1, "mid", "user"],
   ]);
   await openPage(session, "Main");
-  await expect(session.getByRole("region", { name: "Presets" })).toBeVisible();
+  await expect(session.getByRole("button", { name: /^Presets: / })).toBeVisible(); // -- WP INTD -- the session bar's presets (DL5)
   await expect(note).toHaveCount(0);
   expect(errors).toEqual([]);
 });

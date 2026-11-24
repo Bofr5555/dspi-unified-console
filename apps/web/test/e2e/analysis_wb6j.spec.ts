@@ -201,18 +201,15 @@ test("WB6J M22: the Analyser screen shows the strip with its chooser", async ({ 
   expect(errors).toEqual([]);
 });
 
-test("WB6J M59: dashboard cards per row: Auto, or a fixed number, kept", async ({ page }, info) => {
-  const session = await connect(page);
-  const screen = session.locator(".main-screen");
-  const columns = () => screen.evaluate((el) => getComputedStyle(el).gridTemplateColumns.split(" ").filter(Boolean).length);
-  const layout = session.getByRole("combobox", { name: "Dashboard layout" });
-  await expect(layout).toHaveValue("0");
-  await layout.selectOption({ label: "1 card per row" });
-  await expect.poll(columns).toBe(1);
-  await layout.selectOption({ label: "2 cards per row" });
-  // A narrow screen keeps one column whatever is chosen.
-  await expect.poll(columns).toBe(info.project.name === "narrow" ? 1 : 2);
-  await page.reload();
-  const again = await connect(page);
-  await expect(again.getByRole("combobox", { name: "Dashboard layout" })).toHaveValue("2");
+// -- WP INTD -- M59's cards-per-row picker is gone with the Overview's old cards: the dashboard's
+// channel cards wrap by width, as on Qt's Modern Overview.
+test("WB6J M59 (INTD): the dashboard has no layout picker; its cards wrap by width", async ({ page }) => {
+  // One console on the page (two side by side at 375 px are slivers)
+  await page.goto("/test/embed.html?one");
+  await page.locator("#one").getByRole("region", { name: "Venue A" }).getByRole("button", { name: "Connect" }).click();
+  const session = page.locator("#one").getByRole("article", { name: "DSPi" });
+  await expect(session.locator(".main-screen")).toBeVisible();
+  await expect(session.getByRole("combobox", { name: "Dashboard layout" })).toHaveCount(0);
+  const wide = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(wide).toBeLessThanOrEqual(0);
 });

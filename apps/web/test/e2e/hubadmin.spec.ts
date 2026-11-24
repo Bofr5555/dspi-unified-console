@@ -261,7 +261,7 @@ test("HUBADMIN direct: the demo DSPi edits this console's copy, with no hub part
   const one = page.locator("#one");
   await one.getByRole("region", { name: "Venue A" }).getByRole("button", { name: "Connect" }).click();
   const session = one.getByRole("article").first();
-  await expect(session.getByRole("region", { name: "Presets" })).toBeVisible();
+  await expect(session.getByRole("button", { name: /^Presets: / })).toBeVisible(); // -- WP INTD -- the session bar's presets (DL5)
   await installerPage(session, page);
   const copy = session.getByRole("note", { name: "Copy edited" });
   await expect(copy).toHaveAttribute("data-key", "installer.console_copy");
