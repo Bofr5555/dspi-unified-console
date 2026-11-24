@@ -43,8 +43,8 @@ test("WEBM3: History's values, names, sources and times in words", () => {
   assert.equal(sourceWords("undo"), "Undo");
   assert.equal(sourceWords("hub_scene"), "Hub scene");
   const at = new Date(2026, 10, 22, 9, 5, 7).getTime();
-  assert.equal(timeWords(at, at + 1000), "09:05:07");
-  assert.equal(timeWords(at, at + 2 * 86_400_000), "2026-11-22 09:05:07");
+  assert.equal(timeWords(at, at + 1000), "09:05"); // -- WP WEB7 -- Qt's HH:MM
+  assert.equal(timeWords(at, at + 2 * 86_400_000), "2026-11-22 09:05");
 });
 
 test("WEBM3: History's rows keep the core's order (newest first) and say before → after", () => {

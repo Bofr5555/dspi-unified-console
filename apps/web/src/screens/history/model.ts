@@ -50,10 +50,10 @@ export function sourceWords(source: string): string {
   }
 }
 
-/** The clock time today, the date and time before. */
+/** The clock time today, the date and time before (-- WP WEB7 -- hours and minutes, as Qt's list). */
 export function timeWords(atMs: number, now: number): string {
   const d = new Date(atMs);
-  const hm = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}:${String(d.getSeconds()).padStart(2, "0")}`;
+  const hm = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
   return new Date(now).toDateString() === d.toDateString() ? hm : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${hm}`;
 }
 
