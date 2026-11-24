@@ -43,6 +43,11 @@ RowLayout {
         readonly property int modernCount: Math.max(1, Math.min(count, fits, chipRow.modernColumns > 0 ? chipRow.modernColumns : count))
 
         Layout.fillWidth: !LayoutController.modern
+        // -- WP REVDFIX -- (REVD D4) Modern: the row may be as narrow as one
+        // chip, its lines following the width it gets (`fits`); the chips of
+        // one line no longer set its column's minimum (the Crossfeed window
+        // at 780 px clipped its right column)
+        Layout.minimumWidth: LayoutController.modern ? widest : -1
         columns: LayoutController.modern ? modernCount : Math.max(1, chipRow.classicColumns > 0 ? chipRow.classicColumns : count)
         columnSpacing: 6
         rowSpacing: 6
