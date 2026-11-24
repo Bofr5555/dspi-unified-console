@@ -1,6 +1,7 @@
 // WP ROLEW: Settings › Speakers (MPLAN section 2.2): which output drives what. Pre-filled from the
 // stored layout, else from the core's proposal; Confirm keeps it as the person's own. The
-// measurement and the tweeter rule take the roles from here; an agent never sets them.
+// measurement and the tweeter rule take the roles from here. -- WP ROLES -- an agent sets them only
+// from the person's words (through a desktop console), shown here as set by AI from your words.
 
 import { useEffect, useState } from "preact/hooks";
 import { useSessionState } from "../../../ui/components";

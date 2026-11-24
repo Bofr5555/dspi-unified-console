@@ -235,7 +235,8 @@ ColumnLayout {
                 objectName: "Inspector.tweeter"
                 // The user's layout, not the one suggested from the filters
                 // -- WP ADETQ -- a detected tweeter too (its roles guard the outputs until Confirm)
-                readonly property bool stored: ["confirmed", "autoDetected", "unconfirmed", "imported"].indexOf(SpeakersController.status) >= 0
+                // -- WP ROLES -- and one set by AI from the person's words
+                readonly property bool stored: ["confirmed", "autoDetected", "stated", "unconfirmed", "imported"].indexOf(SpeakersController.status) >= 0
                 visible: inspector.isOutput && stored && SpeakersController.rows.length >= 0
                          && SpeakersController.roleOf(inspector.output) === "high" && (!highPass.on || highPass.bypassed)
                 color: Theme.warning

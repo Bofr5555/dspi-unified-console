@@ -2444,6 +2444,11 @@ void MeasureSession::onDetectState(const QByteArray &json) {
 }
 
 void MeasureSession::detectEnded(const QJsonObject &o) {
+    // -- WP ROLES -- the top-fall check of roles set from the person's words
+    if (o.value(QLatin1String("check")).toBool()) {
+        checkEnded(o);
+        return;
+    }
     const QJsonObject detection = o.value(QLatin1String("detection")).toObject();
     QString summary = detection.value(QLatin1String("summary")).toString().trimmed();
     if (!summary.isEmpty() && !summary.endsWith(QLatin1Char('.'))) summary += QLatin1Char('.');
@@ -2475,9 +2480,46 @@ void MeasureSession::detectEnded(const QJsonObject &o) {
     if (auto *sc = Registrar::instance<SpeakersController>()) sc->reload();
 }
 
+// -- WP ROLES -- (owner 2026-11-23) Before an agent plays below 1 kHz on an output
+// the person's words made a midrange, woofer or sub, its top end is checked:
+// one that holds like a tweeter's gets nothing lower, and the person hears of it
+void MeasureSession::checkEnded(const QJsonObject &o) {
+    QStringList tweeters;
+    for (const QJsonValue &v : o.value(QLatin1String("checks")).toArray())
+        if (str(v.toObject(), "verdict") == QLatin1String("topHolds")) tweeters << outputName(v.toObject().value(QLatin1String("output")).toInt());
+    const bool done = str(o, "stage") == QLatin1String("done");
+    QString text;
+    if (!done)
+        text = tr("The check of the speaker roles set from your words stopped: nothing below 1 kHz played on those outputs.");
+    else if (tweeters.isEmpty())
+        text = tr("Checked the speaker roles set from your words: no tweeter where you named a midrange, woofer or sub.");
+    else
+        //: %1 the outputs' names ("Out 5 · R · Mid")
+        text = tr("Looks like a tweeter, not the role set from your words: %1. Nothing below 1 kHz plays there, and it is "
+                  "guarded as a tweeter. Check the wiring and the role in Settings › Speakers.")
+                   .arg(tweeters.join(QStringLiteral(", ")));
+    if (done && tweeters.isEmpty()) say(text);
+    else fail(text);
+    if (!tweeters.isEmpty() || !done)
+        if (auto *notices = Registrar::instance<NoticeCenter>()) {
+            const QString line = isActive() ? text : tr("%1: %2").arg(m_session ? m_session->title() : QString(), text);
+            notices->postTagged(QStringLiteral("detect"), line, tr("Settings › Speakers…"), [] {
+                if (auto *sc = Registrar::instance<SpeakersController>()) sc->openSettings();
+            });
+        }
+    if (auto *sc = Registrar::instance<SpeakersController>()) sc->reload();
+}
+
 QString MeasureSession::detectText() const {
     if (!m_detectRunning) return {};
     const QJsonObject &d = m_detect;
+    // -- WP ROLES -- the top-fall check of roles set from the person's words
+    if (d.value(QLatin1String("check")).toBool()) {
+        const QJsonValue outV = d.value(QLatin1String("output"));
+        if (!outV.isDouble()) return tr("Checking the speaker roles set from your words.");
+        //: %1 an output's name
+        return tr("Checking that %1 is not a tweeter, above 1 kHz only.").arg(outputName(outV.toInt()));
+    }
     const QJsonValue outV = d.value(QLatin1String("output"));
     const QString out = outV.isDouble() ? outputName(outV.toInt()) : QString();
     const QString stage = str(d, "stage");
@@ -2500,6 +2542,11 @@ QString MeasureSession::detectStripText() const {
     const QJsonValue outV = m_detect.value(QLatin1String("output"));
     const int total = m_detect.value(QLatin1String("outputsTotal")).toInt();
     const int done = m_detect.value(QLatin1String("outputsDone")).toInt();
+    // -- WP ROLES --
+    const bool check = m_detect.value(QLatin1String("check")).toBool();
+    if (check && (!outV.isDouble() || total <= 0)) return tr("Checking the stated speaker roles");
+    //: The agent strip: %1 the output checked now, %2 its turn, %3 how many are checked
+    if (check) return tr("Checking the stated speaker roles: %1 (%2 of %3)").arg(outputName(outV.toInt())).arg(qMin(done + 1, total)).arg(total);
     if (!outV.isDouble() || total <= 0) return tr("Detecting speakers");
     //: The agent strip: %1 the output probed now, %2 its turn, %3 how many are probed
     return tr("Detecting speakers: %1 (%2 of %3)").arg(outputName(outV.toInt())).arg(qMin(done + 1, total)).arg(total);

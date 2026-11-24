@@ -32950,7 +32950,14 @@ data class DetectSetup (
     /**
      * The capture's rate, Hz (0: 48000).
      */
-    var `captureRateHz`: kotlin.UInt
+    var `captureRateHz`: kotlin.UInt, 
+    /**
+     * The top-fall check only (stages A and B, never below the floor) of
+     * the listed outputs' stated roles: no class, no layout row; each
+     * output's [`RoleCheck`] goes to the stated layout. Refused when the
+     * layout is not stated or a listed output is not a stated row.
+     */
+    var `check`: kotlin.Boolean = false
 ) {
     
     companion object
@@ -32969,6 +32976,7 @@ public object FfiConverterTypeDetectSetup: FfiConverterRustBuffer<DetectSetup> {
             FfiConverterString.read(buf),
             FfiConverterOptionalFloat.read(buf),
             FfiConverterUInt.read(buf),
+            FfiConverterBoolean.read(buf),
         )
     }
 
@@ -32979,7 +32987,8 @@ public object FfiConverterTypeDetectSetup: FfiConverterRustBuffer<DetectSetup> {
             FfiConverterFloat.allocationSize(value.`floorHz`) +
             FfiConverterString.allocationSize(value.`micDocument`) +
             FfiConverterOptionalFloat.allocationSize(value.`splCapDb`) +
-            FfiConverterUInt.allocationSize(value.`captureRateHz`)
+            FfiConverterUInt.allocationSize(value.`captureRateHz`) +
+            FfiConverterBoolean.allocationSize(value.`check`)
     )
 
     override fun write(value: DetectSetup, buf: ByteBuffer) {
@@ -32990,6 +32999,7 @@ public object FfiConverterTypeDetectSetup: FfiConverterRustBuffer<DetectSetup> {
             FfiConverterString.write(value.`micDocument`, buf)
             FfiConverterOptionalFloat.write(value.`splCapDb`, buf)
             FfiConverterUInt.write(value.`captureRateHz`, buf)
+            FfiConverterBoolean.write(value.`check`, buf)
     }
 }
 
@@ -33046,7 +33056,15 @@ data class DetectState (
     /**
      * Who started it: 0 the app, else an agent's actor.
      */
-    var `actor`: kotlin.UInt
+    var `actor`: kotlin.UInt, 
+    /**
+     * It is a top-fall check of stated roles ([`DetectSetup::check`]).
+     */
+    var `check`: kotlin.Boolean, 
+    /**
+     * The check's verdicts so far, by output.
+     */
+    var `checks`: List<RoleCheck>
 ) {
     
     companion object
@@ -33070,6 +33088,8 @@ public object FfiConverterTypeDetectState: FfiConverterRustBuffer<DetectState> {
             FfiConverterOptionalTypeDetection.read(buf),
             FfiConverterOptionalTypeMeasureIssue.read(buf),
             FfiConverterUInt.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterSequenceTypeRoleCheck.read(buf),
         )
     }
 
@@ -33085,7 +33105,9 @@ public object FfiConverterTypeDetectState: FfiConverterRustBuffer<DetectState> {
             FfiConverterTypeMeasureState.allocationSize(value.`session`) +
             FfiConverterOptionalTypeDetection.allocationSize(value.`detection`) +
             FfiConverterOptionalTypeMeasureIssue.allocationSize(value.`issue`) +
-            FfiConverterUInt.allocationSize(value.`actor`)
+            FfiConverterUInt.allocationSize(value.`actor`) +
+            FfiConverterBoolean.allocationSize(value.`check`) +
+            FfiConverterSequenceTypeRoleCheck.allocationSize(value.`checks`)
     )
 
     override fun write(value: DetectState, buf: ByteBuffer) {
@@ -33101,6 +33123,8 @@ public object FfiConverterTypeDetectState: FfiConverterRustBuffer<DetectState> {
             FfiConverterOptionalTypeDetection.write(value.`detection`, buf)
             FfiConverterOptionalTypeMeasureIssue.write(value.`issue`, buf)
             FfiConverterUInt.write(value.`actor`, buf)
+            FfiConverterBoolean.write(value.`check`, buf)
+            FfiConverterSequenceTypeRoleCheck.write(value.`checks`, buf)
     }
 }
 
@@ -47952,6 +47976,83 @@ public object FfiConverterTypeRingHealth: FfiConverterRustBuffer<RingHealth> {
 
 
 /**
+ * One output's top-fall check.
+ */
+data class RoleCheck (
+    /**
+     * The output, 0-based.
+     */
+    var `output`: kotlin.UByte, 
+    /**
+     * The stated role it checked (a check stands only for that role).
+     */
+    var `role`: MeasureRole, 
+    /**
+     * What it found.
+     */
+    var `verdict`: RoleCheckVerdict, 
+    /**
+     * The mean level 1.5 to 3 kHz less the mean 10 to 16 kHz, dB.
+     */
+    var `topFallDb`: kotlin.Float?, 
+    /**
+     * The floor it never played below, Hz.
+     */
+    var `floorHz`: kotlin.Float, 
+    /**
+     * When, ms since the Unix epoch.
+     */
+    var `atMs`: kotlin.Long, 
+    /**
+     * Unfinished because the output's own filters (a low-pass) hide its top
+     * end: the check judges the driver, not them.
+     */
+    var `filtersHideTop`: kotlin.Boolean
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeRoleCheck: FfiConverterRustBuffer<RoleCheck> {
+    override fun read(buf: ByteBuffer): RoleCheck {
+        return RoleCheck(
+            FfiConverterUByte.read(buf),
+            FfiConverterTypeMeasureRole.read(buf),
+            FfiConverterTypeRoleCheckVerdict.read(buf),
+            FfiConverterOptionalFloat.read(buf),
+            FfiConverterFloat.read(buf),
+            FfiConverterLong.read(buf),
+            FfiConverterBoolean.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: RoleCheck) = (
+            FfiConverterUByte.allocationSize(value.`output`) +
+            FfiConverterTypeMeasureRole.allocationSize(value.`role`) +
+            FfiConverterTypeRoleCheckVerdict.allocationSize(value.`verdict`) +
+            FfiConverterOptionalFloat.allocationSize(value.`topFallDb`) +
+            FfiConverterFloat.allocationSize(value.`floorHz`) +
+            FfiConverterLong.allocationSize(value.`atMs`) +
+            FfiConverterBoolean.allocationSize(value.`filtersHideTop`)
+    )
+
+    override fun write(value: RoleCheck, buf: ByteBuffer) {
+            FfiConverterUByte.write(value.`output`, buf)
+            FfiConverterTypeMeasureRole.write(value.`role`, buf)
+            FfiConverterTypeRoleCheckVerdict.write(value.`verdict`, buf)
+            FfiConverterOptionalFloat.write(value.`topFallDb`, buf)
+            FfiConverterFloat.write(value.`floorHz`, buf)
+            FfiConverterLong.write(value.`atMs`, buf)
+            FfiConverterBoolean.write(value.`filtersHideTop`, buf)
+    }
+}
+
+
+
+/**
  * What the device's analyser can do.
  */
 data class RtaCapsInfo (
@@ -49175,7 +49276,13 @@ data class SpeakerLayout (
      * per output. With every row `detected` or `user` it makes the layout
      * [`LayoutState::AutoDetected`].
      */
-    var `detected`: Detection? = null
+    var `detected`: Detection? = null, 
+    /**
+     * The roles an AI agent set from the user's words, if it did: the
+     * words, when, and the top-fall checks made since. With a `stated` row
+     * and no suggestion it makes the layout [`LayoutState::Stated`].
+     */
+    var `stated`: Statement? = null
 ) {
     
     companion object
@@ -49193,6 +49300,7 @@ public object FfiConverterTypeSpeakerLayout: FfiConverterRustBuffer<SpeakerLayou
             FfiConverterLong.read(buf),
             FfiConverterSequenceString.read(buf),
             FfiConverterOptionalTypeDetection.read(buf),
+            FfiConverterOptionalTypeStatement.read(buf),
         )
     }
 
@@ -49202,7 +49310,8 @@ public object FfiConverterTypeSpeakerLayout: FfiConverterRustBuffer<SpeakerLayou
             FfiConverterBoolean.allocationSize(value.`confirmedByUser`) +
             FfiConverterLong.allocationSize(value.`updatedMs`) +
             FfiConverterSequenceString.allocationSize(value.`notes`) +
-            FfiConverterOptionalTypeDetection.allocationSize(value.`detected`)
+            FfiConverterOptionalTypeDetection.allocationSize(value.`detected`) +
+            FfiConverterOptionalTypeStatement.allocationSize(value.`stated`)
     )
 
     override fun write(value: SpeakerLayout, buf: ByteBuffer) {
@@ -49212,6 +49321,7 @@ public object FfiConverterTypeSpeakerLayout: FfiConverterRustBuffer<SpeakerLayou
             FfiConverterLong.write(value.`updatedMs`, buf)
             FfiConverterSequenceString.write(value.`notes`, buf)
             FfiConverterOptionalTypeDetection.write(value.`detected`, buf)
+            FfiConverterOptionalTypeStatement.write(value.`stated`, buf)
     }
 }
 
@@ -49276,6 +49386,75 @@ public object FfiConverterTypeSpeakerLayoutOutput: FfiConverterRustBuffer<Speake
             FfiConverterString.write(value.`speaker`, buf)
             FfiConverterUByte.write(value.`group`, buf)
             FfiConverterTypeRoleSource.write(value.`source`, buf)
+    }
+}
+
+
+
+/**
+ * The user's words an AI agent set the roles from.
+ */
+data class Statement (
+    /**
+     * When, ms since the Unix epoch.
+     */
+    var `atMs`: kotlin.Long, 
+    /**
+     * The agent's label ("AI · Claude Code").
+     */
+    var `by`: kotlin.String, 
+    /**
+     * The user's words, as the agent quoted them.
+     */
+    var `words`: kotlin.String, 
+    /**
+     * Over a confirmed layout: the user's words on what changed ("" else).
+     */
+    var `whatChanged`: kotlin.String, 
+    /**
+     * The device's output count then: another count invalidates it.
+     */
+    var `deviceOutputs`: kotlin.UByte, 
+    /**
+     * The top-fall checks made since, by output.
+     */
+    var `checks`: List<RoleCheck>
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeStatement: FfiConverterRustBuffer<Statement> {
+    override fun read(buf: ByteBuffer): Statement {
+        return Statement(
+            FfiConverterLong.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterSequenceTypeRoleCheck.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: Statement) = (
+            FfiConverterLong.allocationSize(value.`atMs`) +
+            FfiConverterString.allocationSize(value.`by`) +
+            FfiConverterString.allocationSize(value.`words`) +
+            FfiConverterString.allocationSize(value.`whatChanged`) +
+            FfiConverterUByte.allocationSize(value.`deviceOutputs`) +
+            FfiConverterSequenceTypeRoleCheck.allocationSize(value.`checks`)
+    )
+
+    override fun write(value: Statement, buf: ByteBuffer) {
+            FfiConverterLong.write(value.`atMs`, buf)
+            FfiConverterString.write(value.`by`, buf)
+            FfiConverterString.write(value.`words`, buf)
+            FfiConverterString.write(value.`whatChanged`, buf)
+            FfiConverterUByte.write(value.`deviceOutputs`, buf)
+            FfiConverterSequenceTypeRoleCheck.write(value.`checks`, buf)
     }
 }
 
@@ -53082,7 +53261,14 @@ enum class LayoutState {
     /**
      * The user confirmed it.
      */
-    CONFIRMED;
+    CONFIRMED,
+    /**
+     * Set by an AI agent from the user's words, not yet confirmed: its
+     * roles guard the outputs as a detected layout's do, an output it does
+     * not name is unknown (a tweeter), and an agent's sub-floor stimulus on
+     * a stated non-tweeter waits for the top-fall check.
+     */
+    STATED;
     companion object
 }
 
@@ -54538,6 +54724,60 @@ public object FfiConverterTypeProtocolGeneration: FfiConverterRustBuffer<Protoco
 
 
 /**
+ * What the top-fall check (the detection's stage B) made of a stated
+ * non-tweeter, before an agent plays anything below its floor.
+ */
+
+enum class RoleCheckVerdict {
+    
+    /**
+     * The top end falls as a woofer's or a midrange's does: the stated
+     * role stands.
+     */
+    TOP_FALLS,
+    /**
+     * Nothing heard above the floor, but heard below it by the
+     * detection's shaped probe (at most −50 dBFS, two octaves): a sub or a
+     * low woofer, no tweeter; the stated role stands. (Heard nowhere, the
+     * check is [`RoleCheckVerdict::Unfinished`].)
+     */
+    SILENT,
+    /**
+     * The top holds like a tweeter's: nothing below the floor plays on it
+     * for an agent, and the safety rules take it for a tweeter.
+     */
+    TOP_HOLDS,
+    /**
+     * The check did not finish (stopped, the microphone did not follow):
+     * still unchecked.
+     */
+    UNFINISHED;
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeRoleCheckVerdict: FfiConverterRustBuffer<RoleCheckVerdict> {
+    override fun read(buf: ByteBuffer) = try {
+        RoleCheckVerdict.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: RoleCheckVerdict) = 4UL
+
+    override fun write(value: RoleCheckVerdict, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+/**
  * Where a row's role comes from.
  */
 
@@ -54554,7 +54794,12 @@ enum class RoleSource {
     /**
      * A suggestion (the filters' inference, an import), nobody's word.
      */
-    SUGGESTED;
+    SUGGESTED,
+    /**
+     * Set by an AI agent from the user's words (the layout's `stated`),
+     * not checked by the user.
+     */
+    STATED;
     companion object
 }
 
@@ -56590,6 +56835,38 @@ public object FfiConverterOptionalTypeSpeakerLayout: FfiConverterRustBuffer<Spea
         } else {
             buf.put(1)
             FfiConverterTypeSpeakerLayout.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeStatement: FfiConverterRustBuffer<Statement?> {
+    override fun read(buf: ByteBuffer): Statement? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeStatement.read(buf)
+    }
+
+    override fun allocationSize(value: Statement?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeStatement.allocationSize(value)
+        }
+    }
+
+    override fun write(value: Statement?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeStatement.write(value, buf)
         }
     }
 }
@@ -59674,6 +59951,34 @@ public object FfiConverterSequenceTypeRawNotification: FfiConverterRustBuffer<Li
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeRawNotification.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeRoleCheck: FfiConverterRustBuffer<List<RoleCheck>> {
+    override fun read(buf: ByteBuffer): List<RoleCheck> {
+        val len = buf.getInt()
+        return List<RoleCheck>(len) {
+            FfiConverterTypeRoleCheck.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<RoleCheck>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeRoleCheck.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<RoleCheck>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeRoleCheck.write(it, buf)
         }
     }
 }

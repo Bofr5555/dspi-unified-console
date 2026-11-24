@@ -1,0 +1,46 @@
+# -- WP ROLES -- FSTORY S20 "L and r front speakers ... output 1-6": the owner's sentence, verbatim
+# (owner 2026-11-23). One DSPi named "main front" with two three-way speakers, wired as the words say
+# (scenario-mainfront.json, scenario.py mainfront): Out 1 L tweeter, 2 L mid, 3 L woofer, 4 R tweeter,
+# 5 R mid, 6 R woofer. Nothing set up in the app (`speakers = "none"`). ask_risky.
+#
+# Judged on the table the agent set from the words (dspi_set_speaker_roles; the oracle's `layout`
+# lines): the six rows, roles and sides, kept as "stated" (set by AI from the user's words, not
+# checked), asked once with the whole table; nothing changed on the device and nothing played (the
+# user asked for nothing more). The invariants as ever.
+name = "s20-roles-words"
+scenario = "mainfront"
+confirm = "ask_risky"
+speakers = "none"
+show = "main front"
+
+[[step]]
+label = "words"
+prompt = """
+L and r front speakers, both on DSPi named main front, full range three way, tweeter,mid,woofer, l then right, output 1-6
+"""
+
+  [[step.expect]]
+  what = "the table from the words: Out 1 L tweeter, 2 L mid, 3 L woofer, 4 R tweeter, 5 R mid, 6 R woofer"
+  kind = "layout_table"
+  device = "main front"
+  state = "stated"
+  rows = { 1 = ["high", "L"], 2 = ["mid", "L"], 3 = ["low", "L"], 4 = ["high", "R"], 5 = ["mid", "R"], 6 = ["low", "R"] }
+
+  [[step.expect]]
+  what = "one question, with the whole table"
+  kind = "asked"
+  match = "Speaker roles from your words"
+  min = 1
+  max = 1
+
+  [[step.expect]]
+  what = "nothing was played (the user asked for nothing more)"
+  kind = "measured"
+  outputs = {}
+  optional = true
+
+  [[step.expect]]
+  what = "the agent says what it set and where the user checks it"
+  kind = "says"
+  any = ["Speakers", "speaker setup", "speaker roles", "confirm"]
+  optional = true

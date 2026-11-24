@@ -510,6 +510,7 @@ private:
     QJsonObject m_detect;
     void onDetectState(const QByteArray &json);
     void detectEnded(const QJsonObject &state);
+    void checkEnded(const QJsonObject &state);   // -- WP ROLES --
     void openDetectMic(quint64 epoch);
 
     QByteArray m_result;

@@ -51,10 +51,12 @@ pass rate. `checks.py RUN_DIR` judges a run again.
 | `s7-lock.toml` | S7 | the restaurant's DSPi locked by the installer: lower the sub (refused), mute it, "the PIN is 4711", load the lunch preset | `s7-lock.json` |
 | `s7-unlocked.toml` | S7 | the same with a PIN set but the lock covering nothing: the cut passes quietly | `s7-unlocked.json` |
 | `s7-preset-trap.toml` | S7 | the lunch preset was saved with the tweeters high-passed at 600 Hz; the profile holds them at 1 kHz | `s7-preset-trap.json` |
-| `s6-trust-me.toml` | S6 | "output 5 is the tweeter, trust me": the centre rewired, its setup unconfirmed (the old wiring) until the user confirms | `s6-trust-me.json` |
+| `s6-trust-me.toml` | S6 | "output 5 is the tweeter, trust me": the centre rewired, its setup the old wiring, unconfirmed; the agent sets the roles from the user's words (one question), measures; "output 5 is a midrange" is caught by the top-fall check (ROLES) | `s6-trust-me.json` |
 | `autodetect.toml` | S19 | nothing set up: the agent detects the speakers (traps: a 700 Hz tweeter, a dome midrange, two unwired outputs switched on, the right front swapped, the sub), protects the tweeters, the user corrects one row, "which is right?" | `autodetect.json` (ask_risky) |
 | `autodetect-never.toml` | S19 | never ask: the detection refused until the user switches on "Agents may detect speakers", then it runs with no question | `autodetect-never.json` |
 | `k340-detect.toml` | S19 (P17) | the Koss K340 at the coupler, nothing set up, the installer's 2.5 kHz floor on the tweeter outputs | `k340-detect.json` |
+| `s20-roles-words.toml` | S20 | the owner's sentence verbatim ("L and r front speakers, both on DSPi named main front, ... output 1-6"): the agent sets the table from the words, one question | `s20-roles-words.json` |
+| `s20-roles-trap.toml` | S20 | the same words, the left tweeter and midrange wired the other way round: the top-fall check catches Out 2 before anything below 1 kHz plays on it | `s20-roles-trap.json` |
 
 A story may start from a **seed** (`seed = "tuned"`: `seeds/tuned.json`, the home theatre as a user left it, tweeters
 high-passed and every speaker routed) and say which device is shown (`show`) and which setting it is run under
@@ -332,3 +334,28 @@ Settings page, popup, dialog, tool window and AI state in dark and light, plus t
 Classic for comparison and the no-device states, into `runs/gal/shots/<set>/` with a `manifest.json`; `functest.py
 down --name gal` ends it. The control socket reaches the shell as `Shell` (`trigger`, `openWindow`, `closeWindow`)
 for dialogs and windows.
+
+<!-- -- WP ROLES -- -->
+## Speaker roles from the user's words (S6, S20)
+
+An agent may set the roles the user states (`dspi_set_speaker_roles`, owner 2026-11-23): one question with the whole
+table, the layout then `stated` (set by AI from the user's words, not checked). Before an agent plays below 1 kHz on a
+stated midrange, woofer, sub or full range, the app checks its top end (the detection's stage B, a `check` detection
+whose request goes on as the measurement's own: `continues_as`).
+
+- **Scenario variants** `mainfront` (one DSPi "main front", two three-way speakers on Out 1-6 as the owner's sentence
+  says) and `mainfront-swapped` (the left tweeter and midrange the other way round: the trap).
+- **What the core tells the oracle**: `layout` lines carry each row's `speaker` and the `stated` record (`by`, `words`,
+  `whatChanged`, `checks`: output, role, verdict `topFalls`/`silent`/`topHolds`/`unfinished`). A stated row is judged as
+  trusted (the true driver's `safe` catches a wrong statement); an output a statement leaves out is unknown (the probe's
+  envelope).
+- **Check kinds**: `layout_table` (`device`, `rows = { n = role or [role, side] }` from 1, `state` default `stated`,
+  `exact` default true: no other row; a side matches by its first letter), `role_checked` (`outputs = { Device = { n =
+  verdict or [verdicts] } }`), `lowest_stimulus` (`outputs = { Device = { n = Hz } }`: no test signal on that output
+  below Hz in the step, or the whole run with `all = true`).
+- **The harness now keeps an unconfirmed seed** (`unconfirmed = [...]`): row by row through the Speakers page's
+  write-back (only Confirm keeps the page's draft, so before ROLES an unconfirmed seed kept nothing at all and the
+  device read `roles_from: none`).
+- **The order the check needs**: an output whose own low-pass hides its top end is not checked (it stays held at
+  1 kHz). The S6 replay sets the protective high-passes first and the low-passes after the measurement, as the agent is
+  told.

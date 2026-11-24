@@ -303,7 +303,8 @@ pub(crate) fn layout_saved(layout: &crate::speaker_layout::SpeakerLayout) {
         .map(|o| {
             let d = layout.detected_output(o.output);
             json!({"output": o.output, "role": o.role, "source": o.source,
-                "class": d.map(|d| d.class), "confidence": d.map(|d| d.confidence)})
+                "class": d.map(|d| d.class), "confidence": d.map(|d| d.confidence),
+                "speaker": o.speaker}) // -- WP ROLES -- the side the words gave it
         })
         .collect();
     let detected: Vec<Value> = layout
@@ -319,7 +320,12 @@ pub(crate) fn layout_saved(layout: &crate::speaker_layout::SpeakerLayout) {
     room.note(
         json!({"kind": "layout", "device": name, "serial": layout.serial,
         "state": layout.state(), "outputs": outputs, "detected": detected,
-        "summary": layout.detected.as_ref().map(|d| d.summary.clone())}),
+        "summary": layout.detected.as_ref().map(|d| d.summary.clone()),
+        // -- WP ROLES -- the person's words an agent set the roles from, and the checks
+        "stated": layout.stated.as_ref().map(|st| json!({"by": st.by, "words": st.words,
+            "whatChanged": st.what_changed,
+            "checks": st.checks.iter().map(|c| json!({"output": c.output, "role": c.role,
+                "verdict": c.verdict, "topFallDb": c.top_fall_db})).collect::<Vec<_>>()}))}),
     );
 }
 
@@ -603,6 +609,10 @@ impl Room {
                         Some(_) => Some((row.role, true)),
                     },
                 },
+                // -- WP ROLES -- a stated row is trusted as stated (the
+                // driver's own `safe` judges a wrong statement); an output
+                // the statement leaves out is unknown
+                LayoutState::Stated => Some((row.role, false)),
                 LayoutState::Unconfirmed => None,
             }
         });

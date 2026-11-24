@@ -130,6 +130,11 @@ pub(crate) struct OutSpec {
     /// The limits profile's high-pass minimum for it, Hz (0: none): a high
     /// way's stimulus floor when above 1 kHz (the K340's 2.5 kHz).
     pub(crate) profile_floor_hz: f32,
+    // -- WP ROLES --
+    /// A floor an agent's stimulus is held to whatever the role (0: none):
+    /// a stated non-tweeter its top-fall check has not cleared, or an output
+    /// a stated layout leaves out (`SpeakerLayout::agent_floor_held`).
+    pub(crate) held_floor_hz: f32,
 }
 
 /// One run: the outputs it plays, at which position.
@@ -423,6 +428,7 @@ impl Plan {
                 top_hz: f32::INFINITY, // -- WP ROLL1 --
                 declared: o.role,
                 profile_floor_hz: 0.0, // -- WP ADETS --
+                held_floor_hz: 0.0,    // -- WP ROLES --
             })
             .collect();
         outputs.sort_by_key(|o| o.output);
@@ -594,7 +600,13 @@ impl Plan {
                     .iter()
                     .find(|s| s.output == *o && role == MeasureRole::High)
                     .map_or(0.0, |s| s.profile_floor_hz);
-                stimulus_floor_hz(role).max(profile)
+                // -- WP ROLES -- an agent's floor on a stated role not cleared
+                let held = self
+                    .outputs
+                    .iter()
+                    .find(|s| s.output == *o)
+                    .map_or(0.0, |s| s.held_floor_hz);
+                stimulus_floor_hz(role).max(profile).max(held)
             })
             .fold(0.0, f32::max);
         // -- WP ADET0 -- an unknown output's floor
@@ -751,10 +763,13 @@ fn runs_of(
     f1: f32,
 ) -> Vec<RunSpec> {
     let all: Vec<u8> = outputs.iter().map(|o| o.output).collect();
+    // -- WP ROLES -- an output held to the floor (a stated role its check
+    // has not cleared) is laid out as a tweeter: in the band-limited run, so
+    // its floor never raises another way's sweep
     let high = |o: &u8| {
         outputs
             .iter()
-            .any(|s| s.output == *o && s.role == MeasureRole::High)
+            .any(|s| s.output == *o && (s.role == MeasureRole::High || s.held_floor_hz > 0.0))
     };
     let f1_of = |outs: &[u8]| {
         if outs.iter().any(high) {

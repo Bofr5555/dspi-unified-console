@@ -123,6 +123,23 @@ impl Confirmation {
             // -- WP ADET1 -- the speaker detection's warning on the mechanism
             "warning": crate::grant::asks_detect(&self.risks)
                 .then_some(crate::tools::measure::DETECT_WARNING),
+            // -- WP ROLES -- speaker roles from the user's words: the table
+            // (`after`: the question's words after the table)
+            "roles": (self.tool == crate::tools::roles::SET_ROLES_NAME)
+                .then(|| crate::tools::roles::table_json(&self.args))
+                .flatten()
+                .map(|mut t| {
+                    let after = self
+                        .risks
+                        .iter()
+                        .find(|r| r.kind == crate::policy::RiskKind::SpeakerRoles)
+                        .and_then(|r| r.what.split_once('\n'))
+                        .map_or("", |(_, a)| a);
+                    if let Some(o) = t.as_object_mut() {
+                        o.insert("after".into(), json!(after));
+                    }
+                    t
+                }),
         })
     }
 }

@@ -28,6 +28,18 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
   yours, and the layout stays "detected, not confirmed" (that row marked "you") until you confirm it. The manual now says
   that a profile's high-pass minimum belongs on tweeter outputs only (it also holds the music's high-pass there): for the
   Koss K340, 2.5 kHz on the two tweeter outputs, or tell the agent the floor for the detection.
+- AI agents can set the speaker roles from your words (WP ROLES, owner decision 2026-11-23; before, an agent could never
+  set them): tell an agent "L and R front speakers, three way, tweeter, mid, woofer, left then right, outputs 1–6" and
+  it sets that table with `dspi_set_speaker_roles`, your words quoted. One question shows the whole table ("Set the
+  speaker roles on …?"); under **Never** it needs Settings › AI Agents › **Agents may set speaker roles from my words**
+  (off by default, asked once). The roles guard the outputs at once (every tweeter rule applies; an output you did not
+  name is treated as a tweeter); Settings › Speakers and the main screen say "Set by AI from your words, not checked",
+  each row is marked "from your words", and you confirm or correct them there. Over a confirmed setup only when your
+  words say what changed. **Trust but check:** before an agent's test signal plays below 1 kHz on an output your words
+  made a midrange, woofer, sub or full range, the console checks its top end above 1 kHz (the detection's top-fall
+  test); if it holds like a tweeter's, nothing below 1 kHz plays there, it is guarded as a tweeter from then on
+  ("tweeter-like"), and the agent tells you. Routing music and filters follow the roles as you stated them. An output whose own low-pass hides its top end is not checked and stays held at 1 kHz. Your own
+  measurements and confirmed setups are not checked.
 - Fixed (a user's report on 0.14.0, WP USR1): a number typed into a gain, delay or filter field went back to the old
   value when you clicked another field after pressing Enter, in the main window and the matrix mixer: the field showed
   the old value again while the device took the new one, and leaving it wrote the old one back. Leaving a field now
@@ -271,6 +283,10 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
   dialogs, snackbars). (WP ANBAR)
 
 ### Web console
+- Settings › Speakers and the main screen know speaker roles an AI agent set from your words (WP ROLES): "Set by AI from
+  your words, not checked" in the banner and stamp, a row marker "from your words" ("tweeter-like" when the top-fall
+  check found a tweeter's top; "unknown, treated as a tweeter" for an output the words did not name), and the page's
+  copy keeps the words and the checks.
 - The Installation tab sets up sources, what each zone plays, a unit's slots, scenes and programme sources, with the
   notice of replaced hand-made slots and Align after Save, as the desktop's; the System view sets a room's or zone's
   volume. A strip on every screen and an AI mark on the device's tab show when an AI agent works on the hub's devices

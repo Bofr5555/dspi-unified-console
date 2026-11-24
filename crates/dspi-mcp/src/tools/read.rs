@@ -381,6 +381,7 @@ fn detected_fields(layout: Option<&dspi_core::SpeakerLayout>, o: u8) -> Value {
         RoleSource::User => "user",
         RoleSource::Detected => "detected",
         RoleSource::Suggested => "suggested",
+        RoleSource::Stated => "stated", // -- WP ROLES --
     });
     let reaches = match found.map(|d| d.class) {
         Some(DetectClass::Nothing) if row.is_none() => "nothing",
@@ -400,6 +401,19 @@ fn detected_fields(layout: Option<&dspi_core::SpeakerLayout>, o: u8) -> Value {
             .map(|d| super::measure::confidence_word(d.confidence)),
         "reaches": reaches,
         "detected_at_ms": found.map(|d| d.probed_ms).filter(|ms| *ms > 0),
+        // -- WP ROLES -- a stated role's top-fall check, and an output the
+        // safety rules take for a tweeter whatever the row says (one a
+        // statement leaves out, a stated row whose check found a tweeter's top)
+        "role_check": layout
+            .filter(|_| row.is_some_and(|r| r.source == RoleSource::Stated))
+            .and_then(|l| l.check_of(o))
+            .map(|c| super::measure::check_verdict_word(c.verdict)),
+        "treated_as_tweeter": layout.is_some_and(|l| {
+            l.state() == dspi_core::LayoutState::Stated
+                && (row.is_none()
+                    || l.check_of(o)
+                        .is_some_and(|c| c.verdict == dspi_core::RoleCheckVerdict::TopHolds))
+        }),
     })
 }
 
@@ -407,7 +421,8 @@ static GET_OVERVIEW: Tool = Tool {
     name: "dspi_get_overview",
     title: "Device overview",
     description: "Inputs and outputs with their numbers and wire channels, each output's role \
-                  from the user's speaker setup (read-only: only the user sets roles), \
+                  from the speaker setup (roles_from: confirmed by the user, auto-detected, or \
+                  stated: set by an agent from the user's words, dspi_set_speaker_roles), \
                   enabled, mute, gain, delay and routing; volume, the installer lock, the \
                   limits profile, the preset and what an agent may do; and `programme`: the \
                   DSPi has no player, it plays what its input source receives, which source \
@@ -489,6 +504,8 @@ static GET_OVERVIEW: Tool = Tool {
                 Some(dspi_core::LayoutState::Confirmed) => "speaker_setup_confirmed",
                 // -- WP ADET1 -- trusted as a confirmed one's until the user confirms
                 Some(dspi_core::LayoutState::AutoDetected) => "speaker_setup_auto_detected",
+                // -- WP ROLES -- set by an agent from the user's words, not checked
+                Some(dspi_core::LayoutState::Stated) => "speaker_setup_stated",
                 _ => "speaker_setup_unconfirmed",
             },
             "volume": {
