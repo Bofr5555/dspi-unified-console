@@ -1,6 +1,7 @@
 #ifndef HISTORYCONTROLLER_H
 #define HISTORYCONTROLLER_H
 
+#include <QHash>
 #include <QJsonObject>
 #include <QObject>
 #include <QString>
@@ -54,8 +55,19 @@ public:
     // Reads the journal again (on the worker)
     Q_INVOKABLE void reload();
 
-    // A journal entry in words: { title, detail } (tests)
-    static QVariantMap describe(const QJsonObject &entry);
+    // -- WP DL3a -- The device's channels by the glossary's descriptor ("IN1",
+    // "OUT3") or the name the user gave them: by wire channel, by input and by
+    // output number. A channel missing here is named by its number.
+    struct ChannelNames {
+        QHash<int, QString> wire;
+        QHash<int, QString> inputs;
+        QHash<int, QString> outputs;
+    };
+
+    // A journal entry in words: { title, detail } (tests). -- WP DL3a -- with
+    // `names`, a channel by its name; a crossover band, a preset slot and the
+    // signal generator as the person knows them
+    static QVariantMap describe(const QJsonObject &entry, const ChannelNames *names = nullptr);
 
 signals:
     void changed();
@@ -64,6 +76,7 @@ signals:
 
 private:
     void step(bool forward);
+    ChannelNames channelNames() const; // -- WP DL3a --
 
     AppContext m_ctx;
     bool m_canUndo = false;

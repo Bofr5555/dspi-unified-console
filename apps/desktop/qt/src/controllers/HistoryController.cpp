@@ -1,5 +1,6 @@
 #include "HistoryController.h"
 
+#include "ChannelListModel.h"   // -- WP DL3a --
 #include "Core.h"
 #include "CoreApi.h"
 #include "CoreWorker.h"
@@ -53,6 +54,83 @@ QString labelOf(const QString &path) {
         { "out.enable", QT_TRANSLATE_NOOP("HistoryController", "Output on") },
         { "in.source", QT_TRANSLATE_NOOP("HistoryController", "Input source") },
         { "dev.name", QT_TRANSLATE_NOOP("HistoryController", "Device name") },
+        // -- WP DL3a -- the rest of what the journal keeps
+        { "eq.fp", QT_TRANSLATE_NOOP("HistoryController", "Target frequency") },
+        { "eq.qp", QT_TRANSLATE_NOOP("HistoryController", "Target Q") },
+        { "in.name", QT_TRANSLATE_NOOP("HistoryController", "Source name") },
+        { "out.latency", QT_TRANSLATE_NOOP("HistoryController", "Output latency") },
+        { "ext.pairmap", QT_TRANSLATE_NOOP("HistoryController", "Crossfeed pairs") },
+        { "ext.vreg", QT_TRANSLATE_NOOP("HistoryController", "Core voltage") },
+        { "sig.config", QT_TRANSLATE_NOOP("HistoryController", "Signal generator settings") },
+        { "bulk", QT_TRANSLATE_NOOP("HistoryController", "All settings written") },
+        { "dev.reset", QT_TRANSLATE_NOOP("HistoryController", "Factory reset") },
+        { "preset.startup", QT_TRANSLATE_NOOP("HistoryController", "Startup preset") },
+        { "preset.iomode", QT_TRANSLATE_NOOP("HistoryController", "I/O storage") },
+    };
+    // -- WP DL3a -- an effect's parameter: "Loudness › Reference level"; its
+    // switch is the effect's name alone
+    static const struct { const char *path; const char *label; } param[] = {
+        { "limit.threshold", QT_TRANSLATE_NOOP("HistoryController", "Threshold") },
+        { "limit.release", QT_TRANSLATE_NOOP("HistoryController", "Release") },
+        { "limit.link", QT_TRANSLATE_NOOP("HistoryController", "Link group") },
+        { "loud.ref", QT_TRANSLATE_NOOP("HistoryController", "Reference level") },
+        { "loud.intensity", QT_TRANSLATE_NOOP("HistoryController", "Intensity") },
+        { "loud.mask", QT_TRANSLATE_NOOP("HistoryController", "Outputs") },
+        { "lev.amount", QT_TRANSLATE_NOOP("HistoryController", "Amount") },
+        { "lev.speed", QT_TRANSLATE_NOOP("HistoryController", "Speed") },
+        { "lev.maxgain", QT_TRANSLATE_NOOP("HistoryController", "Maximum boost") },
+        { "lev.lookahead", QT_TRANSLATE_NOOP("HistoryController", "Lookahead") },
+        { "lev.gate", QT_TRANSLATE_NOOP("HistoryController", "Silence gate") },
+        { "lev.masks", QT_TRANSLATE_NOOP("HistoryController", "Channels") },
+        { "cf.preset", QT_TRANSLATE_NOOP("HistoryController", "Voicing") },
+        { "cf.freq", QT_TRANSLATE_NOOP("HistoryController", "Cutoff frequency") },
+        { "cf.feed", QT_TRANSLATE_NOOP("HistoryController", "Feed level") },
+        { "cf.itd", QT_TRANSLATE_NOOP("HistoryController", "Interaural delay") },
+        { "cf.outputs", QT_TRANSLATE_NOOP("HistoryController", "Outputs") },
+        { "bass.cutoff", QT_TRANSLATE_NOOP("HistoryController", "Speaker limit") },
+        { "bass.harmonics", QT_TRANSLATE_NOOP("HistoryController", "Harmonics") },
+        { "bass.drive", QT_TRANSLATE_NOOP("HistoryController", "Drive") },
+        { "bass.character", QT_TRANSLATE_NOOP("HistoryController", "Character") },
+        { "bass.original", QT_TRANSLATE_NOOP("HistoryController", "Original bass") },
+        { "bass.mask", QT_TRANSLATE_NOOP("HistoryController", "Outputs") },
+        { "up.center_mode", QT_TRANSLATE_NOOP("HistoryController", "Centre mode") },
+        { "up.surround_mode", QT_TRANSLATE_NOOP("HistoryController", "Surround mode") },
+        { "up.strength", QT_TRANSLATE_NOOP("HistoryController", "Strength") },
+        { "up.width", QT_TRANSLATE_NOOP("HistoryController", "Centre width") },
+        { "up.threshold", QT_TRANSLATE_NOOP("HistoryController", "Correlation threshold") },
+        { "up.attack", QT_TRANSLATE_NOOP("HistoryController", "Attack") },
+        { "up.release", QT_TRANSLATE_NOOP("HistoryController", "Release") },
+        { "up.det_hpf", QT_TRANSLATE_NOOP("HistoryController", "Detector high-pass") },
+        { "up.sur_delay", QT_TRANSLATE_NOOP("HistoryController", "Surround delay") },
+        { "up.sur_hpf", QT_TRANSLATE_NOOP("HistoryController", "Surround high-pass") },
+        { "up.sur_lpf", QT_TRANSLATE_NOOP("HistoryController", "Surround low-pass") },
+        { "up.decorr", QT_TRANSLATE_NOOP("HistoryController", "Decorrelation") },
+        { "up.presence", QT_TRANSLATE_NOOP("HistoryController", "Centre presence") },
+        { "up.config", QT_TRANSLATE_NOOP("HistoryController", "Settings") },
+        { "sub.low", QT_TRANSLATE_NOOP("HistoryController", "24 - 36 Hz") },
+        { "sub.high", QT_TRANSLATE_NOOP("HistoryController", "36 - 56 Hz") },
+        { "sub.top", QT_TRANSLATE_NOOP("HistoryController", "56 - 80 Hz") },
+        { "sub.boost", QT_TRANSLATE_NOOP("HistoryController", "70 Hz bell") },
+        { "sub.mask", QT_TRANSLATE_NOOP("HistoryController", "Outputs") },
+        { "sub.select", QT_TRANSLATE_NOOP("HistoryController", "Selectivity") },
+        { "sub.depth", QT_TRANSLATE_NOOP("HistoryController", "Depth") },
+        { "sub.hold", QT_TRANSLATE_NOOP("HistoryController", "Hold") },
+        { "sub.ceiling", QT_TRANSLATE_NOOP("HistoryController", "Sub ceiling") },
+        { "sub.link", QT_TRANSLATE_NOOP("HistoryController", "Link output pairs") },
+        { "sub.solo", QT_TRANSLATE_NOOP("HistoryController", "Solo") },
+        { "tube.mask", QT_TRANSLATE_NOOP("HistoryController", "Outputs") },
+        { "tube.type", QT_TRANSLATE_NOOP("HistoryController", "Tube") },
+        { "tube.drive", QT_TRANSLATE_NOOP("HistoryController", "Drive") },
+        { "tube.bias", QT_TRANSLATE_NOOP("HistoryController", "Bias") },
+        { "tube.asym", QT_TRANSLATE_NOOP("HistoryController", "Asymmetry") },
+        { "tube.hardness", QT_TRANSLATE_NOOP("HistoryController", "Knee hardness") },
+        { "tube.sag", QT_TRANSLATE_NOOP("HistoryController", "Sag") },
+        { "tube.rectifier", QT_TRANSLATE_NOOP("HistoryController", "Rectifier") },
+        { "tube.xfmr", QT_TRANSLATE_NOOP("HistoryController", "Output stage") },
+        { "tube.damping", QT_TRANSLATE_NOOP("HistoryController", "Damping factor") },
+        { "tube.resonance", QT_TRANSLATE_NOOP("HistoryController", "Speaker resonance") },
+        { "tube.mix", QT_TRANSLATE_NOOP("HistoryController", "Mix") },
+        { "tube.trim", QT_TRANSLATE_NOOP("HistoryController", "Output trim") },
     };
     static const struct { const char *prefix; const char *label; } feature[] = {
         { "limit.", QT_TRANSLATE_NOOP("HistoryController", "Output Limiter") },
@@ -66,11 +144,20 @@ QString labelOf(const QString &path) {
         { "tube.", QT_TRANSLATE_NOOP("HistoryController", "Tube Modeller") },
         { "preset.", QT_TRANSLATE_NOOP("HistoryController", "Preset") },
         { "cs.", QT_TRANSLATE_NOOP("HistoryController", "Control surface") },
+        { "ext.alink.", QT_TRANSLATE_NOOP("HistoryController", "Audio link") },   // -- WP DL3a --
     };
     for (const auto &e : exact)
         if (path == QLatin1String(e.path)) return QCoreApplication::translate("HistoryController", e.label);
-    for (const auto &f : feature)
-        if (path.startsWith(QLatin1String(f.prefix))) return QCoreApplication::translate("HistoryController", f.label);
+    for (const auto &f : feature) {
+        if (!path.startsWith(QLatin1String(f.prefix))) continue;
+        const QString name = QCoreApplication::translate("HistoryController", f.label);
+        for (const auto &p : param)   // -- WP DL3a --
+            if (path == QLatin1String(p.path))
+                //: An effect's setting in the change history: %1 the effect, %2 the setting
+                return QCoreApplication::translate("HistoryController", "%1 › %2")
+                    .arg(name, QCoreApplication::translate("HistoryController", p.label));
+        return name;
+    }
     return path;
 }
 
@@ -122,35 +209,94 @@ HistoryController *HistoryController::create(QQmlEngine *, QJSEngine *) {
     return self;
 }
 
-QVariantMap HistoryController::describe(const QJsonObject &entry) {
+QVariantMap HistoryController::describe(const QJsonObject &entry, const ChannelNames *names) {
     const QString path = entry.value(QLatin1String("path")).toString();
     QStringList where;
     const QJsonArray indices = entry.value(QLatin1String("indices")).toArray();
+    // -- WP DL3a -- a channel by its name when the device gives one
+    const auto named = [names](const QHash<int, QString> ChannelNames::*table, int i, const QString &number) {
+        const QString name = names ? (names->*table).value(i) : QString();
+        return name.isEmpty() ? number : name;
+    };
+    const auto output = [&](int i) { return named(&ChannelNames::outputs, i, tr("OUT%1").arg(i + 1)); };
+    const auto input = [&](int i) { return named(&ChannelNames::inputs, i, tr("IN%1").arg(i + 1)); };
+    const int first = indices.isEmpty() ? -1 : indices.at(0).toInt();
+    // -- WP DL3a -- a crossover band is a band from XOVER_BAND_BASE on
+    const bool crossover = path.startsWith(QLatin1String("eq.")) && indices.size() > 1
+                           && indices.at(1).toInt() >= XOVER_BAND_BASE;
+    QString title = labelOf(path);
     if (path.startsWith(QLatin1String("out.")) && !indices.isEmpty())
-        where << QCoreApplication::translate("HistoryController", "OUT%1").arg(indices.at(0).toInt() + 1);
+        where << output(first);
     else if ((path.startsWith(QLatin1String("eq.")) || path.startsWith(QLatin1String("ch.")) || path == QLatin1String("pre")
               || path == QLatin1String("bypass"))
              && !indices.isEmpty()) {
         //: A wire channel's number in the change history
-        where << QCoreApplication::translate("HistoryController", "channel %1").arg(indices.at(0).toInt() + 1);
-        if (path.startsWith(QLatin1String("eq.")) && indices.size() > 1)
-            where << QCoreApplication::translate("HistoryController", "band %1").arg(indices.at(1).toInt() + 1);
+        where << named(&ChannelNames::wire, first, tr("channel %1").arg(first + 1));
+        if (crossover) {
+            static const struct { const char *path; const char *label; } xo[] = {
+                { "eq.band", QT_TR_NOOP("Crossover filter") },
+                { "eq.type", QT_TR_NOOP("Crossover type") },
+                { "eq.freq", QT_TR_NOOP("Crossover frequency") },
+                { "eq.q", QT_TR_NOOP("Crossover Q") },
+                { "eq.gain", QT_TR_NOOP("Crossover gain") },
+                { "eq.bypass", QT_TR_NOOP("Crossover bypass") },
+            };
+            for (const auto &x : xo)
+                if (path == QLatin1String(x.path)) title = tr(x.label);
+            //: One of a channel's crossover filters (1 to 4) in the change history
+            where << tr("filter %1").arg(indices.at(1).toInt() - XOVER_BAND_BASE + 1);
+        } else if (path.startsWith(QLatin1String("eq.")) && indices.size() > 1)
+            where << tr("band %1").arg(indices.at(1).toInt() + 1);
     } else if (path == QLatin1String("mix") && indices.size() > 1) {
         //: A matrix crosspoint: input %1 to output %2
-        where << QCoreApplication::translate("HistoryController", "IN%1 to OUT%2").arg(indices.at(0).toInt() + 1).arg(indices.at(1).toInt() + 1);
+        where << tr("%1 to %2").arg(input(first), output(indices.at(1).toInt()));
+    } else if (path.startsWith(QLatin1String("preset.")) && !indices.isEmpty()) {
+        // -- WP DL3a -- a slot as the Presets page numbers it
+        const int slot = first + 1;
+        if (path == QLatin1String("preset.load")) title = tr("Preset %1 loaded").arg(slot);
+        else if (path == QLatin1String("preset.save")) title = tr("Saved to preset %1").arg(slot);
+        else if (path == QLatin1String("preset.delete")) title = tr("Preset %1 cleared").arg(slot);
+        else if (path == QLatin1String("preset.name")) title = tr("Preset %1 name").arg(slot);
+        else where << tr("preset %1").arg(slot);
     }
-    QString title = labelOf(path);
+    // -- WP DL3a -- the generator's start and stop (its choices, SIGGEN_CTL_*)
+    if (path == QLatin1String("sig.control")) {
+        const int choice = entry.value(QLatin1String("after")).toObject().value(QLatin1String("choice")).toInt(-1);
+        title = choice == 1 ? tr("Signal generator started") : choice == 2 ? tr("Signal generator stopped at once")
+                                                                            : tr("Signal generator stopped");
+    }
     if (!where.isEmpty()) title += QStringLiteral(", ") + where.join(QStringLiteral(", "));
     // -- WP P1QT2 -- the group it was part of (P1UG: Clear All, Direct 1:1, AutoEQ, ...)
     const QString label = entry.value(QLatin1String("label")).toString();
     //: A change made as part of a group: %1 the group ("Clear All"), %2 the change
     if (!label.isEmpty()) title = QCoreApplication::translate("HistoryController", "%1: %2").arg(label, title);
-    const QString before = valueText(entry.value(QLatin1String("before")), path);
-    const QString after = valueText(entry.value(QLatin1String("after")), path);
+    // -- WP DL3a -- the generator's choice is in the title
+    const bool worded = path == QLatin1String("sig.control");
+    const QString before = worded ? QString() : valueText(entry.value(QLatin1String("before")), path);
+    const QString after = worded ? QString() : valueText(entry.value(QLatin1String("after")), path);
     QString detail;
     if (!before.isEmpty() && !after.isEmpty()) detail = before + QStringLiteral(" → ") + after;
     else detail = after;
     return { { QStringLiteral("title"), title }, { QStringLiteral("detail"), detail } };
+}
+
+// -- WP DL3a -- the channels' names, read on the GUI thread
+HistoryController::ChannelNames HistoryController::channelNames() const {
+    ChannelNames names;
+    const ChannelListModel *channels = m_ctx.device ? m_ctx.device->channels() : nullptr;
+    if (!channels) return names;
+    for (int row = 0; row < channels->rowCount(); ++row) {
+        const QModelIndex at = channels->index(row);
+        // The glossary's "OUT3", or the name the user gave it
+        const QString label = channels->data(at, channels->data(at, ChannelListModel::UserNamedRole).toBool()
+                                                     ? ChannelListModel::NameRole : ChannelListModel::DescriptorRole).toString();
+        if (label.isEmpty()) continue;
+        names.wire.insert(channels->data(at, ChannelListModel::ChannelRole).toInt(), label);
+        const int index = channels->data(at, ChannelListModel::IndexRole).toInt();
+        if (channels->data(at, ChannelListModel::KindRole).toString() == QLatin1String("output")) names.outputs.insert(index, label);
+        else names.inputs.insert(index, label);
+    }
+    return names;
 }
 
 void HistoryController::reload() {
@@ -180,9 +326,10 @@ void HistoryController::reload() {
                 return;
             }
             QVariantList list;
+            const ChannelNames names = channelNames();   // -- WP DL3a --
             for (const QJsonValue &v : j.entries) {
                 const QJsonObject e = v.toObject();
-                QVariantMap row = describe(e);
+                QVariantMap row = describe(e, &names);
                 row.insert(QStringLiteral("source"), e.value(QLatin1String("source")).toString());
                 // -- WP MCP4 --
                 row.insert(QStringLiteral("agent"), e.value(QLatin1String("actor")).toInteger() != 0
@@ -224,14 +371,15 @@ void HistoryController::step(bool forward) {
         [this, reply](bool ok) {
             const QJsonObject r = QJsonDocument::fromJson(*reply).object();
             const QJsonValue entry = r.value(QLatin1String("entry"));
-            const QString title = entry.isObject() ? describe(entry.toObject()).value(QStringLiteral("title")).toString() : QString();
+            const ChannelNames known = channelNames();   // -- WP DL3a --
+            const QString title = entry.isObject() ? describe(entry.toObject(), &known).value(QStringLiteral("title")).toString() : QString();
             m_lastNote = r.value(QLatin1String("note")).toString();
             NoticeCenter *notices = Registrar::instance<NoticeCenter>();
             if (notices && !m_lastNote.isEmpty()) notices->post(m_lastNote, QStringLiteral("warning"));
             const QJsonArray skipped = r.value(QLatin1String("skipped")).toArray();
             if (notices && !skipped.isEmpty() && m_lastNote.isEmpty()) {
                 QStringList names;
-                for (const QJsonValue &s : skipped) names << describe(s.toObject()).value(QStringLiteral("title")).toString();
+                for (const QJsonValue &s : skipped) names << describe(s.toObject(), &known).value(QStringLiteral("title")).toString();
                 notices->post(skipped.size() == 1
                                   //: %1 names a change that cannot be undone (a preset load, an output switched on)
                                   ? tr("Stepped over a change that cannot be undone: %1").arg(names.first())
