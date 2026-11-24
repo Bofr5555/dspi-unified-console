@@ -20,6 +20,9 @@ class MatrixModel : public QAbstractListModel {
     QML_UNCREATABLE("MatrixController.model")
     Q_PROPERTY(int rows READ rows NOTIFY shapeChanged)
     Q_PROPERTY(int columns READ columns NOTIFY shapeChanged)
+    // -- WP MX1 -- Bumped whenever a crosspoint as shown changes (a staged edit
+    // too): bindings calling feeds() / sources() name it
+    Q_PROPERTY(int version READ version NOTIFY cellsChanged)
 public:
     enum Role {
         InputRole = Qt::UserRole + 1, // the source row (an input, or a derived upmix row)
@@ -53,6 +56,12 @@ public:
     bool valid(int input, int output) const { return input >= 0 && input < m_rows && output >= 0 && output < m_cols; }
     // A role of one crosspoint by name, for QML outside a delegate
     Q_INVOKABLE QVariant get(int input, int output, const QString &role) const;
+    // -- WP MX1 -- The outputs source row `input` feeds, and the rows that feed
+    // `output`, as shown (ascending); every connected crosspoint
+    Q_INVOKABLE QVariantList feeds(int input) const;
+    Q_INVOKABLE QVariantList sources(int output) const;
+    Q_INVOKABLE int connectedCount() const;
+    int version() const { return m_version; }
 
     // From a snapshot: `rows` source rows by `cols` outputs. Staged edits the
     // snapshot now carries are dropped.
@@ -68,6 +77,7 @@ public:
 
 signals:
     void shapeChanged();
+    void cellsChanged();   // -- WP MX1 --
 
 private:
     struct Shown {
@@ -88,6 +98,7 @@ private:
     QVector<bool> m_enabled;  // per output
     QVector<bool> m_conflict; // per output
     QHash<int, Cell> m_staged;
+    int m_version = 0;   // -- WP MX1 --
 };
 
 #endif // MATRIXMODEL_H

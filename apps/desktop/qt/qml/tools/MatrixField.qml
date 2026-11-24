@@ -8,6 +8,10 @@ import UConsole
 // number is read as BorderedField.number reads it ("-3,5", "−3.5", "-3 dB"). The wheel steps the
 // value while the field is not being typed in: gains by `wheelStep` dB,
 // delays on whole milliseconds. A right-click resets to `resetValue`.
+// -- WP MX1 -- `showUnit: false` shows the bare number (a tile, a footer
+// under its "Gain dB" label); `bare` draws no fill until it is typed in (the
+// tile's own number); Shift with the wheel takes six steps (3 dB); the tile
+// turns `resetOnRightClick` off, its right-click opens the cell's menu.
 //
 //     MatrixField { kind: "gain"; value: 0; onCommitted: v => ... }
 BorderedField {
@@ -19,6 +23,10 @@ BorderedField {
     property real maxValue: kind === "gain" ? 12 : Infinity
     property real wheelStep: kind === "gain" ? 0.5 : 1
     property real resetValue: 0
+    // -- WP MX1 --
+    property bool showUnit: true
+    property bool bare: false
+    property bool resetOnRightClick: true
     signal valueCommitted(real value)
 
     readonly property string unit: kind === "gain" ? qsTr("dB") : qsTr("ms")
@@ -34,12 +42,12 @@ BorderedField {
         let d = Number(v).toFixed(4).replace(/0+$/, "")
         return d.endsWith(".") ? d.slice(0, -1) : d
     }
-    function shown() { return activeFocus ? format(value) : format(value) + " " + unit }
+    function shown() { return activeFocus || !showUnit ? format(value) : format(value) + " " + unit }
     function parse(t) { return number(t, unit) }   // -- WP USR1 -- BorderedField's reading
     // A delay step stays on the whole-millisecond grid from a fractional start
-    function stepped(v, dir) {
+    function stepped(v, dir, coarse) {
         let n
-        if (kind !== "delay") n = v + dir * wheelStep
+        if (kind !== "delay") n = v + dir * wheelStep * (coarse ? 6 : 1)   // -- WP MX1 --
         else if (v === Math.round(v)) n = Math.round(v + dir * wheelStep)
         else n = dir > 0 ? Math.max(Math.floor(v + wheelStep), Math.ceil(v)) : Math.min(Math.ceil(v - wheelStep), Math.floor(v))
         return Math.min(maxValue, Math.max(minValue, n))
@@ -54,6 +62,13 @@ BorderedField {
     color: activeFocus ? Theme.accentText : (enabled ? Theme.text : Theme.textDisabled)
     text: shown()
     Accessible.description: format(value) + " " + unit
+    // -- WP MX1 -- the control tone and the focus ring only while typed in
+    background: Rectangle {
+        radius: field.bare ? Theme.radiusSmall : Theme.radiusControl
+        color: field.bare && !field.activeFocus ? "transparent" : Theme.control
+        border.width: field.activeFocus ? Theme.focusRingWidth : field.bare ? 0 : Theme.lineWidth
+        border.color: field.activeFocus ? Theme.focusRing : Theme.border
+    }
 
     onActiveFocusChanged: {
         text = shown()
@@ -74,12 +89,12 @@ BorderedField {
         acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
         onWheel: event => {
             const dir = event.angleDelta.y > 0 ? 1 : event.angleDelta.y < 0 ? -1 : 0
-            if (dir !== 0) field.send(field.stepped(field.value, dir))
+            if (dir !== 0) field.send(field.stepped(field.value, dir, (event.modifiers & Qt.ShiftModifier) !== 0))
         }
     }
     TapHandler {
         acceptedButtons: Qt.RightButton
-        enabled: field.enabled
+        enabled: field.enabled && field.resetOnRightClick   // -- WP MX1 --
         onTapped: field.send(field.resetValue)
     }
 }
