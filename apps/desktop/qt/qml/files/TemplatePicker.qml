@@ -6,6 +6,8 @@ import UConsole
 // -- WP P1QT1 -- File > New from Template…: the templates shipped with the app
 // first, then those saved here (Save as Template…). The chosen one opens as a
 // new file with no device (P1OF); Save File asks where it goes.
+// -- WP DL3a -- Modern: a template's description in muted text, not the
+// warning colour (DESIGN-LANGUAGE §14), and the list without its outline.
 Dialog {
     id: picker
     objectName: "TemplatePicker"
@@ -69,6 +71,7 @@ Dialog {
             radius: Theme.radiusSmall
             color: Theme.window
             border.color: Theme.separator
+            border.width: Theme.lineWidth   // -- WP DL3a --
             ListView {
                 id: list
                 objectName: "TemplatePicker.list"
@@ -131,7 +134,7 @@ Dialog {
                             textFormat: Text.PlainText
                             text: row.modelData.status || ""
                             font: Theme.fontSmall
-                            color: Theme.warning
+                            color: LayoutController.modern ? Theme.textMuted : Theme.warning   // -- WP DL3a --
                             // -- WP TPL1 -- wrapped, not elided: a shipped template's
                             // status line says what it is and what to check
                             wrapMode: Text.Wrap
