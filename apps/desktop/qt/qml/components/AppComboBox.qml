@@ -21,6 +21,9 @@ ComboBox {
     // current, not the click.
     property bool follows: false
     property int followIndex: -1
+    // -- WP REVDFIX -- (REVD D1) its tone, and on hover (Theme.barControl on a bar)
+    property color fill: Theme.control
+    property color fillHover: Theme.controlHover
     function _follow() {
         if (follows) currentIndex = Qt.binding(() => followIndex)
     }
@@ -84,7 +87,7 @@ ComboBox {
     }
     background: Rectangle {
         radius: Theme.radiusControl   // -- WP DL0 -- Modern: no outline but the focus ring
-        color: control.down ? Theme.controlPressed : control.hovered ? Theme.controlHover : Theme.control
+        color: control.down ? Theme.controlPressed : control.hovered ? control.fillHover : control.fill
         border.width: control.visualFocus ? Theme.focusRingWidth : Theme.lineWidth
         border.color: control.visualFocus ? Theme.focusRing : Theme.border
     }

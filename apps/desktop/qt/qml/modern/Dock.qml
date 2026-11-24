@@ -32,6 +32,8 @@ Rectangle {
             readonly property string shownName: displayText
             visible: SidebarController.sourceSupported
             implicitWidth: 116
+            fill: Theme.barControl   // -- WP REVDFIX -- D1
+            fillHover: Theme.barControlHover
             label: qsTr("Source")
             model: SidebarController.sources
             textRole: "title"
@@ -55,6 +57,7 @@ Rectangle {
         }
         ToolSegments {
             objectName: "Dock.mode"
+            track: Theme.barControl   // -- WP REVDFIX -- D1
             label: qsTr("Volume mode")
             model: [qsTr("User"), qsTr("Master")]
             current: volume.master ? 1 : 0
@@ -190,7 +193,7 @@ Rectangle {
         background: Rectangle {
             radius: Theme.radiusSmall
             color: toggle.on && toggle.enabled ? Theme.danger
-                 : toggle.down ? Theme.controlPressed : toggle.hovered ? Theme.controlHover : Theme.control
+                 : toggle.down ? Theme.controlPressed : toggle.hovered ? Theme.barControlHover : Theme.barControl   // -- WP REVDFIX -- D1
             border.width: toggle.visualFocus ? 2 : 0
             border.color: Theme.focusRing
         }

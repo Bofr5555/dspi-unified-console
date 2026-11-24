@@ -27,7 +27,10 @@ Item {
         x: inspector.width - width
         width: InspectorState.width
         height: parent.height
-        color: InspectorState.narrow ? Theme.menu : Theme.sidebar
+        // -- WP REVDFIX -- (REVD D1, DESIGN-LANGUAGE §5) beside the page, the
+        // window's tone with a 1 px separator: on the sidebar's, light controls
+        // vanished (Darker light: the same grey)
+        color: InspectorState.narrow ? Theme.menu : Theme.window
         // Its clicks and its wheel are its own
         MouseArea {
             anchors.fill: parent
@@ -35,10 +38,9 @@ Item {
             onWheel: wheel => wheel.accepted = true
         }
         Rectangle {
-            visible: InspectorState.narrow
             width: 1
             height: parent.height
-            color: Theme.border
+            color: InspectorState.narrow ? Theme.border : Theme.separator
         }
         IconButton {
             objectName: inspector.objectName + ".close"

@@ -62,6 +62,14 @@ QtObject {
     // -- WP LAY4 -- selected text in a field, which stays blue where `selection` is a grey
     readonly property color textSelection: dark ? "#203a63" : "#dbe8fc"
     readonly property color menu: toned.menu || (dark ? "#2a2b2f" : "#ffffff")
+    // -- WP REVDFIX -- (REVD D1) A control on a sidebar-tone bar (the top bar,
+    // the dock, the Settings list): in Modern's light schemes the control tone
+    // is within 1.03:1 of the bar (the same grey in Darker light), so with no
+    // outline it vanished; there it takes the panel's tone and the window's
+    // on hover. Dark and Classic keep the control tones.
+    readonly property bool barLift: LayoutController.modern && !dark
+    readonly property color barControl: barLift ? panel : control
+    readonly property color barControlHover: barLift ? window : controlHover
     readonly property color tooltip: dark ? "#3a3b40" : "#1c1c1e"
     readonly property color tooltipText: "#f2f2f2"
     // Behind a modal question: the window dimmed

@@ -35,7 +35,7 @@ TextField {
 
     background: Rectangle {
         radius: Theme.radiusSmall
-        color: Theme.control
+        color: Theme.barControl   // -- WP REVDFIX -- D1: on the Settings list
         border.width: field.activeFocus ? 2 : 1
         border.color: field.activeFocus ? Theme.focusRing : Theme.border
         Icon {

@@ -29,6 +29,8 @@ Item {
     property string label
     // -- WP DL0 -- the bar keeps to its segments' width (Modern's default)
     property bool contentSized: LayoutController.modern
+    // -- WP REVDFIX -- (REVD D1) the bar's tone (Theme.barControl on a bar)
+    property color track: Theme.control
     signal chosen(int index)
 
     implicitHeight: Theme.controlHeight
@@ -41,7 +43,7 @@ Item {
         width: segments.contentSized ? Math.min(segments.width, segments.implicitWidth) : segments.width
         height: segments.height
         radius: Theme.radiusControl
-        color: Theme.control
+        color: segments.track
         border.width: Theme.lineWidth
         border.color: Theme.border
 

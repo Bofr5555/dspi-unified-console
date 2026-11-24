@@ -40,7 +40,7 @@ AbstractButton {
     }
     background: Rectangle {
         radius: Theme.radiusSmall
-        color: button.down ? Theme.controlPressed : button.hovered ? Theme.controlHover : Theme.control
+        color: button.down ? Theme.controlPressed : button.hovered ? Theme.barControlHover : Theme.barControl   // -- WP REVDFIX -- D1: on the top bar
         border.width: button.visualFocus ? 2 : 0
         border.color: Theme.focusRing
     }

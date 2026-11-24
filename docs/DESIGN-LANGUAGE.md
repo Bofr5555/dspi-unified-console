@@ -24,10 +24,11 @@ option. Values below are Grey; the Darker set is in `Theme.qml`.
 | Role | Token | Dark | Light | Use |
 |---|---|---|---|---|
 | Window | `Theme.window` | `#202020` | `#f3f3f3` | the page background behind everything |
-| Panel | `Theme.panel` | `#2a2a2a` | `#fbfbfb` | cards, tables, the inspector sheet, popovers, dialogs |
+| Panel | `Theme.panel` | `#2a2a2a` | `#fbfbfb` | cards, tables, popovers, dialogs, the inspector over a narrow page |
 | Sidebar | `Theme.sidebar` | `#1c1c1c` | `#ebebeb` | the rail, the device-tab row, the dock, the settings sub-list |
 | Control | `Theme.control` | `#343434` | `#e8e8e8` | buttons, fields, chips, segments, slider tracks |
 | Control hover / pressed | `Theme.controlHover` / `controlPressed` | `#3c3c3c` / `#464646` | `#e2e2e2` / `#d8d8d8` | |
+| Control on a bar | `Theme.barControl` / `barControlHover` | = control / controlHover | = panel / window | buttons, fields and segments on a sidebar-tone bar (top bar, dock, the settings sub-list): in light the control tone is within 1.03:1 of the sidebar (Darker light: the same grey), REVDFIX |
 | Selection | `Theme.selection` | `#3b3b3b` | `#e1e1e1` | the chosen row, tab, rail item, chip; never blue |
 | Text selection | `Theme.textSelection` | blue tint | blue tint | selected text inside a field only |
 | Separator | `Theme.separator` | `#303030` | `#e2e2e2` | the few lines that remain (table header rule, popover edge in dark) |
@@ -109,7 +110,8 @@ room on the right is for an aside (preview graph, chain, inspector) or stays emp
 - Cards, sections, tables, the band list, graphs: no border (`Card.border.width` must be 0 in Modern; today it is 1 and
   every Measure, Hubs, Speakers, Snapshots, Events and Files card shows it).
 - Buttons, fields, chips, segments: no border; the control tone separates them (`AppButton.border.width` 1 and
-  `BorderedField` must go to 0 in Modern; keep the focus ring at 2 px accent).
+  `BorderedField` must go to 0 in Modern; keep the focus ring at 2 px accent). Every control tone must differ from
+  the surface it sits on by 1.08:1 or more (`tools/contrast.py`): on a sidebar-tone bar that is `Theme.barControl`.
 - Floating surfaces (menus, popovers, the device switcher, the command palette, dialogs): `Theme.panel`, radius 8, a
   shadow (`Theme.shadow`, via `MultiEffect` or a pre-rendered nine-patch), plus a 1 px `Theme.separator` edge in the
   dark scheme only, because panel and window are close in tone there.
@@ -216,7 +218,7 @@ empty "Disabled / No curve yet" label; the plot stays each page's).
 |---|---|---|
 | Modal sheet (`QuestionDialog`, `AiSheet`, `UnlockDialog`, `PairingDialog`) | destructive confirmations, PIN, an agent's question, unsaved changes, pairing | centred, 420–460 wide, `panel`, radius 8, shadow, scrim; title `fontTitle`, body `fontBody`, buttons at the right with the primary last; Escape cancels |
 | Inline (a page) | everything that is worked in: tools, lists, forms, wizards | never a Cancel/OK row at the bottom of a page (AutoEQ, What's New, Firmware have one) |
-| Inspector (`Inspector`, `InspectorSection`) | details of the current selection: band, channel, the effects chain | 320 px sheet, collapsible sections with the section label and a value summary at the right; one primary action at most |
+| Inspector (`Inspector`, `InspectorSection`) | details of the current selection: band, channel, the effects chain | 320 px sheet on `window` with a 1 px `separator` at its left (over a narrow page: `menu` and a `border` line), collapsible sections with the section label and a value summary at the right; one primary action at most |
 | Popover (`PopoverPanel`, `AiPopover`, `DeviceSwitcher`, menus) | pickers and status that are read and closed: devices, AI, notifications, slot menu, split menus | anchored under their button, `panel`, radius 8, shadow, no heading unless it has actions (then title left, "Done" right) |
 | Window | "Open in Window" of any page, the graph pop-out | the page's own content, 12 px padding, no extra header |
 | File picking | import / export / open / save | the platform's dialog (portal on Linux). The Qt widgets fallback seen in the container is not acceptable in a release build: verify that the AppImage and the Fedora package get the native one |

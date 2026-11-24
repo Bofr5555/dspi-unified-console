@@ -118,7 +118,7 @@ Rectangle {
             }
             background: Rectangle {
                 radius: Theme.radiusControl
-                color: presetBox.down || presetPopover.opened ? Theme.controlPressed : presetBox.hovered ? Theme.controlHover : Theme.control
+                color: presetBox.down || presetPopover.opened ? Theme.controlPressed : presetBox.hovered ? Theme.barControlHover : Theme.barControl   // -- WP REVDFIX -- D1
                 border.width: presetBox.visualFocus ? Theme.focusRingWidth : 0
                 border.color: Theme.focusRing
             }
@@ -135,6 +135,7 @@ Rectangle {
         }
         ToolSegments {
             objectName: "TopBar.ab"
+            track: Theme.barControl   // -- WP REVDFIX -- D1
             visible: !DeviceInfoController.sender
             label: qsTr("A/B compare")
             model: ["A", "B"]
@@ -198,7 +199,7 @@ Rectangle {
             }
             background: Rectangle {
                 radius: Theme.radiusSmall
-                color: search.hovered ? Theme.controlHover : Theme.control
+                color: search.hovered ? Theme.barControlHover : Theme.barControl   // -- WP REVDFIX -- D1
                 border.width: search.visualFocus ? 2 : 0
                 border.color: Theme.focusRing
             }
