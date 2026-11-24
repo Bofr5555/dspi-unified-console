@@ -7,25 +7,49 @@ import UConsole
 // Stop Measuring while its measurement plays. It is there while a call or a job
 // of an agent's runs, while one waits for the person, for a while after the last
 // call, and as long as the agents are paused.
+// -- WP DL5 -- It always says something (SHOW finding 5): what the agent does,
+// else the grant that keeps it there, else that the agents are paused or
+// connected. In Modern it is dressed as the status strip's banners (the panel
+// tone, a 3 px accent edge, no line under it), and a grant's Revoke is in the
+// AI popover, which the strip's last button opens; Classic keeps its look and
+// its Revoke.
 Rectangle {
     id: strip
     objectName: "AiWorkBanner"
     readonly property var work: AiController.work
-    readonly property string text: work.text !== undefined ? work.text : ""
+    readonly property string workText: work.text !== undefined ? work.text : ""
     // -- WP ODEC -- a grant lasts ten minutes: the strip says so while it does
     readonly property var grant: AiController.grants.length ? AiController.grants[0] : null
+    readonly property bool modern: LayoutController.modern
+    // -- WP DL5 -- what the grant allows, and for how long
+    readonly property string grantText: !grant ? ""
+          //: The strip: an AI agent may play test signals and detect the speakers without asking for %1 ("9:41") more
+          : grant.detect ? qsTr("Test signals and speaker detection allowed, %1 left").arg(grant.left)   // -- WP ADETQ --
+          //: The strip: an AI agent may play test signals without asking for %1 ("9:41") more
+          : qsTr("Test signals allowed, %1 left").arg(grant.left)
+    // -- WP DL5 -- the line it shows: never empty while the strip is
+    readonly property string text: workText.length ? workText
+                                 : grant ? grantText
+                                 : AiController.paused ? qsTr("AI agents are paused. Nothing is changed until Resume.")
+                                 : AiController.agents.length ? qsTr("Connected. Nothing runs now.")
+                                 : AiController.statusLine
+    readonly property string agent: work.agent !== undefined && work.agent.length ? work.agent
+                                  : grant && grant.agent !== undefined ? grant.agent
+                                  : !AiController.paused && AiController.agents.length ? AiController.agents[0].name : ""
     visible: work.shown === true || grant !== null
     implicitHeight: row.implicitHeight + 8
-    color: Theme.bannerFill("info")
+    color: modern ? Theme.panel : Theme.bannerFill("info")   // -- WP DL5 --
     // In the accent's colour, so that it is none of the other strips
     Rectangle {
         anchors.bottom: parent.bottom
         width: parent.width
         height: 2
+        visible: !strip.modern   // -- WP DL5 --
         color: Theme.accent
     }
     Rectangle {
-        width: 4
+        objectName: "AiWorkBanner.edge"
+        width: strip.modern ? 3 : 4   // -- WP DL5 --
         height: parent.height
         color: Theme.accent
     }
@@ -52,7 +76,7 @@ Rectangle {
             visible: text.length > 0
             Layout.maximumWidth: strip.width / 4
             textFormat: Text.PlainText
-            text: strip.work.agent !== undefined ? strip.work.agent : ""
+            text: strip.agent   // -- WP DL5 --
             font: Qt.font({ pixelSize: Theme.fontBody.pixelSize, weight: Font.DemiBold })
             color: Theme.text
             elide: Text.ElideRight
@@ -69,19 +93,16 @@ Rectangle {
         }
         Text {
             objectName: "AiWorkBanner.grant"
-            visible: strip.grant !== null
+            // -- WP DL5 -- beside what the agent does; alone, it is the line itself
+            visible: strip.grant !== null && strip.workText.length > 0
             textFormat: Text.PlainText
-            text: !strip.grant ? ""
-                  //: The strip: an AI agent may play test signals and detect the speakers without asking for %1 ("9:41") more
-                  : strip.grant.detect ? qsTr("Test signals and speaker detection allowed, %1 left").arg(strip.grant.left)   // -- WP ADETQ --
-                  //: The strip: an AI agent may play test signals without asking for %1 ("9:41") more
-                  : qsTr("Test signals allowed, %1 left").arg(strip.grant.left)
+            text: strip.grantText
             font: Theme.fontSmall
             color: Theme.text
         }
         AppButton {
             objectName: "AiWorkBanner.revokeGrant"
-            visible: strip.grant !== null
+            visible: strip.grant !== null && !strip.modern   // -- WP DL5 -- Modern: in the AI popover
             implicitHeight: 24
             text: qsTr("Revoke")
             toolTip: qsTr("Ask again before the agent's next test signal")
@@ -119,9 +140,17 @@ Rectangle {
             toolTip: qsTr("Turn AI agents off: what they run stops, their timed previews are put back")
             onClicked: AiController.stop()
         }
+        // -- WP DL5 -- Modern: the AI popover, with what the agents may do and Revoke
+        IconButton {
+            objectName: "AiWorkBanner.details"
+            visible: strip.modern
+            iconName: "chevron-down"
+            toolTip: strip.grant !== null ? qsTr("AI agents: what they may do, and Revoke") : qsTr("AI agents")
+            onClicked: ContextMenus.showAi()
+        }
     }
 
     Accessible.role: Accessible.StatusBar
     //: %1 is an AI agent's name, %2 what it does
-    Accessible.name: qsTr("%1: %2").arg(work.agent !== undefined ? work.agent : "").arg(text)
+    Accessible.name: qsTr("%1: %2").arg(agent).arg(text)   // -- WP DL5 --
 }

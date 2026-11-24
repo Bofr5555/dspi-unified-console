@@ -9,8 +9,15 @@ import UConsole
 // under the pointer is here. Whatever shows such a thing opens its menu:
 //     ContextMenus.channel(channel, item, x, y, rename)
 // In Classic the components open their own menus, as before.
+// -- WP DL5 -- The top bar's preset popover (PresetPopover) opens a slot's menu
+// from its rows; showAi() asks the top bar for the AI popover (the AI strip's
+// grants and their Revoke are there).
 QtObject {
     id: menus
+
+    // -- WP DL5 --
+    signal aiRequested()
+    function showAi() { aiRequested() }
 
     // ---- Opening them, at a point of `item`
     // Wire channel `channel`; `rename` is the function that begins its renaming
