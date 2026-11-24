@@ -14,6 +14,8 @@ ItemDelegate {
     required property int channel
     required property string name
     required property string label
+    // -- WP SHOWFIX -- (finding 13) the Overview's name: "Centre woofer" from the speaker layout, else the label
+    required property string displayName
     required property string descriptor
     required property bool outputEnabled
     required property bool pdm
@@ -39,7 +41,7 @@ ItemDelegate {
 
     objectName: "Sidebar.channel." + channel
     // What the row shows, for the smoke driver
-    readonly property string shownName: label
+    readonly property string shownName: displayName
     width: ListView.view ? ListView.view.width : implicitWidth
     visible: kind === "input" || outputEnabled
     height: visible ? rowHeight : 0
@@ -96,7 +98,7 @@ ItemDelegate {
             Layout.preferredWidth: row.nameWidth
             Layout.leftMargin: 8
             textFormat: Text.PlainText
-            text: row.label
+            text: row.displayName
             font: Theme.fontBody
             color: Theme.text
             elide: Text.ElideRight
@@ -231,7 +233,7 @@ ItemDelegate {
     }
 
     Accessible.role: Accessible.ListItem
-    Accessible.name: label + ", " + descriptor
+    Accessible.name: displayName + ", " + descriptor
     Accessible.selected: selectedRow
     Accessible.description: qsTr("Alt+click or the context menu renames it")
 
