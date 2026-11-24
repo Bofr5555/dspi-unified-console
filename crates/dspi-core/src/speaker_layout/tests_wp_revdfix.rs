@@ -177,15 +177,28 @@ fn wp_revdfix_an_imported_statement_brings_no_checks() {
 #[test]
 fn wp_revdfix_a_statement_keeps_only_its_own_rows_checks() {
     let core = core_as("REVDFIX-B3");
-    // The caller's statement is not kept by the user's set.
+    // The user's set on a fresh core (the web page's kept copy) keeps a
+    // caller's statement, but none of its checks that would clear an output.
     let mut forged = users(&LMH, false);
+    let holds = RoleCheck {
+        verdict: RoleCheckVerdict::TopHolds,
+        ..top_falls(1, MeasureRole::Mid)
+    };
     forged.stated = Some(Statement {
-        checks: vec![top_falls(0, MeasureRole::Low)],
+        words: "w".into(),
+        checks: vec![top_falls(0, MeasureRole::Low), holds.clone()],
         device_outputs: 8,
         ..Statement::default()
     });
+    let l = core.speaker_layout_set(forged.clone()).unwrap();
+    let st = l.stated.as_ref().unwrap();
+    assert_eq!(st.words, "w");
+    assert_eq!(st.checks, vec![holds], "the clearing check is dropped");
+    // With a statement on record, that one stays, whatever the caller says.
+    forged.stated.as_mut().unwrap().words = "other".into();
     let l = core.speaker_layout_set(forged).unwrap();
-    assert!(l.stated.is_none());
+    assert_eq!(l.stated.as_ref().unwrap().words, "w");
+    assert_eq!(l.stated.as_ref().unwrap().checks.len(), 1);
     // Over a layout that is not a statement, no checks are kept...
     let l = core
         .speaker_roles_state(vec![row(0, MeasureRole::Low)], "w".into(), String::new())

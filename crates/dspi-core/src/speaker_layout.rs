@@ -784,9 +784,23 @@ impl DspiCore {
         let mut layout = layout.normalised(&serial, outputs)?;
         layout.updated_ms = crate::events::now_ms();
         let before = self.speaker_layouts.load(&serial);
-        // -- WP REVDFIX -- B3: the statement on record is the core's (its
-        // checks are written by the checks alone), never the caller's
-        layout.stated = before.as_ref().and_then(|b| b.stated.clone());
+        // -- WP REVDFIX -- B3: a statement's checks are written by the checks
+        // alone. The statement on record stays as it is; with none (the web
+        // page setting its kept copy on a fresh core) the caller's is kept,
+        // but of its checks only those that hold an output back (a tweeter's
+        // top, unfinished), never one that would clear it
+        layout.stated = match before.as_ref().and_then(|b| b.stated.clone()) {
+            Some(stored) => Some(stored),
+            None => layout.stated.take().map(|mut st| {
+                st.checks.retain(|c| {
+                    matches!(
+                        c.verdict,
+                        RoleCheckVerdict::TopHolds | RoleCheckVerdict::Unfinished
+                    )
+                });
+                st
+            }),
+        };
         // -- WP ADET0 -- a confirmed row is the user's word
         if layout.confirmed_by_user {
             for o in &mut layout.outputs {
