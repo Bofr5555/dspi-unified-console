@@ -180,8 +180,11 @@ test("P1WB1 import: the preview's rows per block before anything is written; onl
   expect((await call<{ count: number }>(page, "configPreview", { text: MAC, options: (1 << 16) | 1 })).count).toBe(0);
 
   // Export downloads the device as a .dspipreset.
-  await files.getByLabel("Name", { exact: true }).fill("Hall");
-  const [dl] = await Promise.all([page.waitForEvent("download"), files.getByRole("button", { name: "Export Configuration" }).click()]);
+  // -- WP WEB7 -- Qt's Export Device Configuration…: the name asked in a dialog
+  await files.getByRole("button", { name: "Export Device Configuration…" }).click();
+  const named = page.getByRole("dialog", { name: "Export Device Configuration" });
+  await named.getByLabel("Name", { exact: true }).fill("Hall");
+  const [dl] = await Promise.all([page.waitForEvent("download"), named.getByRole("button", { name: "Export" }).click()]);
   expect(dl.suggestedFilename()).toBe("Hall.dspipreset");
   expect(JSON.parse(readFileSync(await dl.path(), "utf8")).meta.name).toBe("Hall");
   expect(errors).toEqual([]);

@@ -14,6 +14,7 @@ import { UndoButtons, appleKeys } from "../undo";
 import { runKey, type Ask, type Unsaved } from "../screens";
 import type { Session, SessionState } from "../session";
 import { LockIcon, SaveIcon } from "./icons";
+import { saveMasterVolume, saveOutputConfig } from "../../screens/files/model"; // -- WP WEB7 --
 
 export function SessionBar(props: {
   session: Session;
@@ -37,6 +38,14 @@ export function SessionBar(props: {
     } finally {
       setBusy(false);
     }
+  };
+  // -- WP WEB7 -- a store to the device, then what it did in a notice (Qt's NoticeDialog)
+  const saveTold = async (f: (d: SnapshotDesk) => Promise<boolean>) => {
+    await f(desk);
+    const o = desk.state.outcome;
+    if (!o) return;
+    desk.dismiss();
+    await ask({ title: o.title, body: <p>{o.lines.join(" ")}</p>, buttons: [{ label: "OK", value: "ok" }] });
   };
   const key = (action: "commit" | "revert") => void run(() => runKey({ action }, session, desk, ask, unsaved));
   const factoryReset = () => void run(() => askFactoryReset(session, ask)); // -- WP WEBM4 -- the question is session-actions' now
@@ -62,6 +71,9 @@ export function SessionBar(props: {
             items={() =>
               menuItems("save", {
                 "device.revert": { run: () => key("revert") },
+                // -- WP WEB7 -- Qt's Save ▾ rows (they were a card on Library › Files); the result as Qt's notice
+                "file.saveMasterVolume": { run: () => void run(() => saveTold(saveMasterVolume)) },
+                "file.saveOutputConfiguration": { run: () => void run(() => saveTold(saveOutputConfig)) },
                 "device.factoryReset": { run: factoryReset, danger: true },
               })
             }
