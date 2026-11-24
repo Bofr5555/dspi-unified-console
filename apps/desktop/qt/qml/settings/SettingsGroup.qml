@@ -4,6 +4,9 @@ import UConsole
 
 // One section of a Settings page (the Mac's Form Section): a header with its
 // icon, the rows on a rounded panel, and an optional footnote under it.
+// -- WP DL7 -- No outline in Modern (Theme.lineWidth). `flat` drops the panel:
+// a section (its heading, then the rows on the page), for a page whose one
+// group would otherwise frame everything (DESIGN-LANGUAGE §8).
 ColumnLayout {
     id: group
     property string title
@@ -13,6 +16,7 @@ ColumnLayout {
     default property alias rows: panel.data
     // Something beside the title (a refresh button)
     property alias trailing: trailingSlot.data
+    property bool flat: false   // -- WP DL7 --
 
     Layout.fillWidth: true
     spacing: 6
@@ -46,16 +50,18 @@ ColumnLayout {
 
     Rectangle {
         Layout.fillWidth: true
-        implicitHeight: panel.implicitHeight + 2 * Theme.spacing
+        // -- WP DL7 -- flat: no panel, no inset
+        readonly property int inset: group.flat ? 0 : Theme.spacing
+        implicitHeight: panel.implicitHeight + 2 * inset
         radius: Theme.radius
-        color: Theme.panel
-        border.width: 1
+        color: group.flat ? "transparent" : Theme.panel
+        border.width: group.flat ? 0 : Theme.lineWidth
         border.color: Theme.separator
         ColumnLayout {
             id: panel
-            x: Theme.spacing
-            y: Theme.spacing
-            width: parent.width - 2 * Theme.spacing
+            x: parent.inset
+            y: parent.inset
+            width: parent.width - 2 * parent.inset
             spacing: Theme.spacing
         }
         Accessible.role: Accessible.Grouping

@@ -9,9 +9,13 @@ import UConsole
 // Showing it counts the notes of this build's firmware as read.
 // -- WP LAY1b -- A panel (Panel.qml): PanelTable's row for help.whatsNew gives
 // its window's title and sizes.
+// -- WP DL7 -- In a Modern page it is a page, not a dialog: no Done, the
+// notes in a left-aligned column of Theme.contentMaxWidth, and an EmptyState
+// when the build has none. Its window (Classic, or after an update) keeps Done.
 Panel {
     id: panel
     objectName: "WhatsNewPanel"
+    readonly property bool asPage: inPage && LayoutController.modern   // -- WP DL7 --
 
     onShownChanged: if (shown) OnboardingController.markWhatsNewRead()
 
@@ -22,14 +26,15 @@ Panel {
             left: parent.left
             right: parent.right
             top: parent.top
-            bottom: bar.top
+            bottom: panel.asPage ? parent.bottom : bar.top   // -- WP DL7 --
         }
         clip: true
         spacing: 24
         topMargin: 20
         bottomMargin: 20
-        leftMargin: 20
-        rightMargin: 20
+        leftMargin: panel.asPage ? Theme.spacingLarge : 20   // -- WP DL7 --
+        // -- WP DL7 -- a page: the column stops at contentMaxWidth
+        rightMargin: panel.asPage ? Math.max(Theme.spacingLarge, width - Theme.spacingLarge - Theme.contentMaxWidth) : 20
         boundsBehavior: Flickable.StopAtBounds
         model: OnboardingController.releases
         ScrollBar.vertical: AppScrollBar {}
@@ -87,7 +92,7 @@ Panel {
 
     Text {
         objectName: "WhatsNew.empty"
-        visible: list.count === 0
+        visible: list.count === 0 && !panel.asPage   // -- WP DL7 -- a page: the EmptyState below
         anchors {
             left: parent.left
             top: parent.top
@@ -98,9 +103,19 @@ Panel {
         text: qsTr("No release notes are available in this build.")
     }
 
+    EmptyState {   // -- WP DL7 --
+        objectName: "WhatsNew.emptyState"
+        visible: list.count === 0 && panel.asPage
+        anchors.fill: parent
+        iconName: "file-text"
+        title: qsTr("No release notes")
+        text: qsTr("No release notes are available in this build.")
+    }
+
     // Done, under a line
     Rectangle {
         id: bar
+        visible: !panel.asPage   // -- WP DL7 -- a page has no Done
         anchors {
             left: parent.left
             right: parent.right

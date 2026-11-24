@@ -8,6 +8,9 @@ import UConsole
 // right a title row with back and forward through the pages visited, the page,
 // and the bars other packages register along the bottom (the save bar).
 // Edit > Settings... opens it; Help > About opens it on About.
+// -- WP DL7 -- Modern: no back and forward (the page list is the navigation),
+// no lines between the list, the title and the page (tone and spacing), and
+// the title left-aligned over the page's 760 px column.
 // -- WP LAY1b -- A panel (Panel.qml): PanelTable's row for edit.settings gives
 // its window's title and sizes.
 Panel {
@@ -125,6 +128,7 @@ Panel {
             }
         }
         Rectangle {
+            visible: !LayoutController.modern   // -- WP DL7 --
             Layout.fillHeight: true
             implicitWidth: 1
             color: Theme.separator
@@ -142,6 +146,7 @@ Panel {
                 spacing: 2
                 IconButton {
                     objectName: "Settings.back"
+                    visible: !LayoutController.modern   // -- WP DL7 --
                     iconName: "chevron-left"
                     toolTip: qsTr("Back")
                     enabled: SettingsController.canGoBack
@@ -149,6 +154,7 @@ Panel {
                 }
                 IconButton {
                     objectName: "Settings.forward"
+                    visible: !LayoutController.modern   // -- WP DL7 --
                     iconName: "chevron-right"
                     toolTip: qsTr("Forward")
                     enabled: SettingsController.canGoForward
@@ -157,7 +163,8 @@ Panel {
                 Text {
                     objectName: "Settings.title"
                     Layout.fillWidth: true
-                    Layout.leftMargin: Theme.spacingSmall
+                    // -- WP DL7 -- Modern: over the page's column (SettingsPage's x)
+                    Layout.leftMargin: LayoutController.modern ? Theme.spacingLarge - Theme.spacingSmall : Theme.spacingSmall
                     text: SettingsController.currentTitle
                     font: Theme.fontTitle
                     color: Theme.text
@@ -174,6 +181,7 @@ Panel {
                 }
             }
             Rectangle {
+                visible: !LayoutController.modern   // -- WP DL7 --
                 Layout.fillWidth: true
                 implicitHeight: 1
                 color: Theme.separator

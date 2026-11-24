@@ -30,6 +30,9 @@ SettingsPage {
         SettingsSliderRow {
             objectName: "Spectrum.graphOpacity"
             label: qsTr("Spectrum Strength: %1%").arg(Math.round(page.prefs.graphOpacity * 100))
+            title: qsTr("Spectrum Strength")   // -- WP DL7 -- Modern: the value in its field
+            unit: "%"
+            scale: 100
             minimum: 0.3
             maximum: 1.0
             step: 0.05

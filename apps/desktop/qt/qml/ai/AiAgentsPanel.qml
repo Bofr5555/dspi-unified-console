@@ -4,16 +4,22 @@ import UConsole
 
 // -- WP MCP4 -- Device > AI Agents... (Classic's tool window; a panel as any):
 // the agents' state, Pause and Stop, what waits for the user, and what they did.
+// -- WP DL7 -- Modern (DESREV): Stop is a secondary button in dangerText, not
+// a red fill beside Pause; with nothing done yet the page shows an EmptyState
+// instead of an empty framed list.
 Panel {
     id: panel
     objectName: "AiAgentsPanel"
     readonly property string state: AiController.state
+    readonly property bool modern: LayoutController.modern   // -- WP DL7 --
 
     onShownChanged: if (shown) AiController.refresh()
 
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: Theme.spacing
+        // -- WP DL7 -- Modern: a list stops at Theme.contentMaxWidth, left-aligned
+        anchors.rightMargin: panel.modern ? Math.max(Theme.spacing, panel.width - Theme.spacing - Theme.contentMaxWidth) : Theme.spacing
         spacing: Theme.spacing
 
         RowLayout {
@@ -41,12 +47,38 @@ Panel {
                 onClicked: AiController.setPaused(!AiController.paused)
             }
             AppButton {
+                id: stop
                 objectName: "AiAgents.stop"
                 visible: AiController.enabled
                 text: qsTr("Stop")
                 iconName: "square"
-                destructive: true
+                destructive: !panel.modern   // -- WP DL7 -- Modern: quiet, its text in dangerText
                 onClicked: AiController.stop()
+                // AppButton's own content, in dangerText in Modern (AppButton has no such kind yet)
+                contentItem: Item {
+                    id: stopFace
+                    readonly property color ink: !stop.enabled ? Theme.textDisabled : panel.modern ? Theme.dangerText : stop.ink
+                    implicitWidth: stopLabel.implicitWidth
+                    implicitHeight: stopLabel.implicitHeight
+                    Row {
+                        id: stopLabel
+                        anchors.centerIn: parent
+                        spacing: 6
+                        Icon {
+                            anchors.verticalCenter: parent.verticalCenter
+                            name: stop.iconName
+                            size: 14
+                            color: stopFace.ink
+                        }
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            textFormat: Text.PlainText
+                            text: stop.text
+                            font: stop.font
+                            color: stopFace.ink
+                        }
+                    }
+                }
             }
             AppButton {
                 objectName: "AiAgents.settings"
@@ -121,8 +153,20 @@ Panel {
         }
 
         AiActivityList {
+            visible: !panel.modern || AiController.activity.length > 0   // -- WP DL7 --
             Layout.fillWidth: true
             Layout.fillHeight: true
+        }
+        EmptyState {   // -- WP DL7 -- Modern: nothing done yet
+            objectName: "AiAgentsPanel.empty"
+            visible: panel.modern && AiController.activity.length === 0
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            iconName: "bot"
+            title: qsTr("No agent activity yet")
+            text: qsTr("What AI agents change shows here, newest first, each with Undo.")
+            actionText: AiController.showReads ? "" : qsTr("Show Reads")
+            onAction: AiController.showReads = true
         }
     }
 }

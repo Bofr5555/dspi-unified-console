@@ -44,6 +44,9 @@ SettingsPage {
         SettingsSliderRow {
             objectName: "Graphing.lineWidth"
             label: qsTr("Line Width: %1pt").arg(Number(page.prefs.graphLineWidth).toFixed(1))
+            title: qsTr("Line Width")   // -- WP DL7 -- Modern: the value in its field
+            unit: "pt"
+            decimals: 1
             minimum: 1.0
             maximum: 4.0
             step: 0.5
@@ -95,6 +98,9 @@ SettingsPage {
         SettingsSliderRow {
             objectName: "Graphing.gridOpacity"
             label: qsTr("Grid Opacity: %1%").arg(Math.round(page.prefs.graphGridOpacity * 100))
+            title: qsTr("Grid Opacity")   // -- WP DL7 --
+            unit: "%"
+            scale: 100
             enabled: page.prefs.showFrequencyGrid || page.prefs.showDBGrid
             minimum: 0
             maximum: 2
@@ -103,6 +109,7 @@ SettingsPage {
             onMoved: v => page.prefs.graphGridOpacity = v
         }
         Rectangle {
+            visible: !LayoutController.modern   // -- WP DL7 -- tone and spacing, not lines
             Layout.fillWidth: true
             implicitHeight: 1
             color: Theme.separator
@@ -110,6 +117,8 @@ SettingsPage {
         SettingsSliderRow {
             objectName: "Graphing.dbRange"
             label: qsTr("Vertical Range: %1 dB").arg(Math.round(page.prefs.dbRange))
+            title: qsTr("Vertical Range")   // -- WP DL7 --
+            unit: "dB"
             minimum: 10
             maximum: 100
             resetValue: 50
@@ -122,6 +131,10 @@ SettingsPage {
             readonly property real dbBottom: page.prefs.dbCenter - page.prefs.dbRange / 2
             function signedDb(db) { const n = Math.round(db); return n > 0 ? "+" + n : String(n) }
             label: qsTr("Center: %1 dB → %2 to %3").arg(Math.round(page.prefs.dbCenter)).arg(signedDb(dbTop)).arg(signedDb(dbBottom))
+            title: qsTr("Center")   // -- WP DL7 --
+            //: %1 and %2 are the graph's top and bottom in dB ("+25", "−25")
+            caption: qsTr("Shows %1 to %2 dB").arg(signedDb(dbTop)).arg(signedDb(dbBottom))
+            unit: "dB"
             minimum: -40
             maximum: 20
             resetValue: 0
@@ -129,6 +142,7 @@ SettingsPage {
             onMoved: v => page.prefs.dbCenter = Math.round(v)
         }
         Rectangle {
+            visible: !LayoutController.modern   // -- WP DL7 -- tone and spacing, not lines
             Layout.fillWidth: true
             implicitHeight: 1
             color: Theme.separator
