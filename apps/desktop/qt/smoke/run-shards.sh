@@ -11,9 +11,10 @@
 # (ci/run.sh), so loopback ports and the fake hub's never meet. Paths are the
 # container's. DSPI_SMOKE_FAKEHUB and DSPI_SMOKE_UCONSOLE pass through.
 #
-# The sections run in their usual order within a shard; shards are balanced
-# by the last run's section times (<work>/smoke-section-times.txt, rewritten by
-# each run; a section not in it counts as 10 s). The verdict is the whole
+# A shard is a stretch of the usual run order, so each section but a shard's
+# first follows the section it follows in a single run; the stretches are
+# balanced by the last run's section times (<work>/smoke-section-times.txt,
+# rewritten by each run; a section not in it counts as 10 s). The verdict is the whole
 # run's: every part passes (each with run.sh's own checks, the repeated-warning
 # one among them) and every listed section ran in some shard. The warning check
 # stays per app instance, as in a single run: dspi-capi's limiter is per process
@@ -42,14 +43,23 @@ mapfile -t sections < <("$RUN" "set -e; d=$out-list; rm -rf \$d; mkdir -p \$d/ho
     DSPI_SMOKE_LIST=1 timeout 300 $app --demo 2>/dev/null | sed -n 's/^smoke: section //p'; rm -rf \$d")
 [ ${#sections[@]} -gt 0 ] || { echo "run-shards.sh: the app listed no sections" >&2; exit 1; }
 
-# Deal them out: the longest first, each to the least loaded shard
 declare -A secs
 [ -f "$times" ] && while read -r s t; do secs[$s]=$t; done < "$times"
+# Cut the run order into n stretches, as even in time as stretches can be (the
+# smallest largest stretch: a binary search over it, each try filled greedily).
+# Every section but a stretch's first keeps the predecessor it has in a single run.
 mapfile -t plan < <(for i in "${!sections[@]}"; do echo "$i ${sections[$i]} ${secs[${sections[$i]}]:-10}"; done |
-  sort -k3,3 -g -r | awk -v n="$n" '
-    { best = 0; for (k = 1; k < n; k++) if (load[k] < load[best]) best = k
-      load[best] += $3; print best, $1, $2 }
-    END { for (k = 0; k < n; k++) printf "load %d %.0f\n", k, load[k] > "/dev/stderr" }' 2>"$W/smoke-shard-plan.txt" | sort -k1,1n -k2,2n)
+  awk -v n="$n" '
+    { name[NR] = $2; w[NR] = $3; total += $3; if ($3 > lo) lo = $3 }
+    function parts(m,   k, sum, i) { k = 1; sum = 0
+      for (i = 1; i <= NR; i++) { if (sum + w[i] > m) { k++; sum = 0 } sum += w[i] }
+      return k }
+    END { hi = total
+      while (hi - lo > 0.5) { mid = (lo + hi) / 2; if (parts(mid) <= n) hi = mid; else lo = mid }
+      k = 0; sum = 0
+      for (i = 1; i <= NR; i++) { if (sum + w[i] > hi) { printf "load %d %.0f\n", k, sum > "/dev/stderr"; k++; sum = 0 }
+        sum += w[i]; print k, i, name[i] }
+      printf "load %d %.0f\n", k, sum > "/dev/stderr" }' 2>"$W/smoke-shard-plan.txt")
 lists=()
 for line in "${plan[@]}"; do
   read -r k _ s <<<"$line"
