@@ -215,6 +215,8 @@ public:
     bool timingReliable() const;
     bool running() const;
     QString runningText() const;
+    // -- WP REVDFIX -- (REVD D3) what an AI agent's run plays, without "Requested by"
+    QString agentDoing() const;
 
     bool hasResult() const { return !m_result.isEmpty(); }
     QByteArray resultDocument() const { return m_result; }

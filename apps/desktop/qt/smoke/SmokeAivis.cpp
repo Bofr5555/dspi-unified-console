@@ -391,7 +391,8 @@ void aivisSection(SmokeDriver &d) {
     }, [&](bool) { set = true; });
     d.waitFor(5000, [&] { return set; });
     for (int o = 0; o < 3; ++o) userGain(o, -10);
-    QJsonObject args{ { QStringLiteral("outputs"), QJsonArray{ 0 } }, { QStringLiteral("sweep_ms"), 5000 }, { QStringLiteral("passes"), 8 } };
+    // -- WP REVDFIX -- (REVD D3) 5.5 s: a decimal point in the run's words
+    QJsonObject args{ { QStringLiteral("outputs"), QJsonArray{ 0 } }, { QStringLiteral("sweep_ms"), 5500 }, { QStringLiteral("passes"), 8 } };
     r = s.result(s.call("dspi_measure_start", args));
     d.check("aivis: an agent starts a measurement", !r.value(QLatin1String("isError")).toBool(true));
     d.check("aivis: it runs in the Measure view", d.waitFor(15000, [&] { return mc->measuring(); }));
@@ -399,6 +400,9 @@ void aivisSection(SmokeDriver &d) {
         QQuickItem *stop = s.item(QStringLiteral("AiWorkBanner.stopJob"));
         return stop && stop->isVisible() && s.strip().contains(QLatin1String("easur"));
     }) && textOf(s.item(QStringLiteral("AiWorkBanner.agent"))) == QLatin1String("Smoke agent"));
+    // -- WP REVDFIX -- (REVD D3) the whole sentence, not its end after "5."
+    d.check("aivis: the strip's words are the whole run", s.strip().startsWith(QLatin1String("Measuring "))
+            && s.strip().contains(QLatin1String("5.5 s sweeps")));
     d.spin(21000);   // longer than any call lingers
     d.check("aivis: and stays while it plays", mc->measuring() && s.strip().contains(QLatin1String("easur")) && ai->working());
     d.grab(d.mainWindow(), QStringLiteral("aivis-measuring.png"));

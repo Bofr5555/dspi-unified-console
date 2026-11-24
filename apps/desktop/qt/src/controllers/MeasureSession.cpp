@@ -1432,17 +1432,25 @@ bool MeasureSession::running() const {
            (m_capture && m_capture->isRunning());
 }
 
+// -- WP REVDFIX -- (REVD D3) the AI strip shows this as it is: cutting the
+// "Requested by …" off runningText at the first "." cut "(5.5 s sweeps)"
+QString MeasureSession::agentDoing() const {
+    if (m_agentLabel.isEmpty()) return {};
+    QString what;
+    if (m_detectRunning) what = detectText();   // -- WP ADETQ --
+    else if (m_rolloffRunning) what = tr("Finding an output's low end with the DSPi's generator.");
+    else if (m_tuneRunning) what = tr("The auto-tune's runs are playing the DSPi's generator.");
+    else if (m_state.value(QLatin1String("active")).toBool())
+        //: -- WP DL2 -- %1 the outputs and the sweep ("Out 1 and Out 3 (5 s sweeps)")
+        what = m_agentSetup.isEmpty() ? tr("Measuring with the DSPi's generator.")
+                                      : tr("Measuring %1 with the DSPi's generator; the form shows this run.").arg(agentRunWords());
+    return what;
+}
+
 QString MeasureSession::runningText() const {
     // -- WP MCP5 -- what an AI agent asked for says so
     if (!m_agentLabel.isEmpty()) {
-        QString what;
-        if (m_detectRunning) what = detectText();   // -- WP ADETQ --
-        else if (m_rolloffRunning) what = tr("Finding an output's low end with the DSPi's generator.");
-        else if (m_tuneRunning) what = tr("The auto-tune's runs are playing the DSPi's generator.");
-        else if (m_state.value(QLatin1String("active")).toBool())
-            //: -- WP DL2 -- %1 the outputs and the sweep ("Out 1 and Out 3 (5 s sweeps)")
-            what = m_agentSetup.isEmpty() ? tr("Measuring with the DSPi's generator.")
-                                          : tr("Measuring %1 with the DSPi's generator; the form shows this run.").arg(agentRunWords());
+        const QString what = agentDoing();   // -- WP REVDFIX --
         //: %1 is "AI · " and the agent's name, %2 what plays
         if (!what.isEmpty()) return tr("Requested by %1: %2").arg(m_agentLabel, what);
     }

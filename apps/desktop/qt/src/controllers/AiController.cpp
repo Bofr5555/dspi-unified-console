@@ -1150,14 +1150,19 @@ void AiController::refreshWork() {
         plays = running;
         // The Measure view's own words for where it is ("Measuring: position 1 of 3")
         const DeviceSession *s = device_of(device);
-        text = running && s && s->hasJob(QStringLiteral("MeasureController")) ? s->job() : QString();
-        text.remove(QRegularExpression(QStringLiteral("^Requested by [^.]*\\. ?")));
-        // -- WP ADETQ -- the speaker detection says which output, of how many (AUTODES 5.1)
-        if (running && str(job, "kind") == QLatin1String("detect")) {
-            const auto *measure = Registrar::instance<MeasureController>();
-            const MeasureSession *m = measure ? measure->sessionOf(const_cast<DeviceSession *>(s)) : nullptr;
-            text = m && m->detecting() ? m->detectStripText() : tr("Detecting speakers");
+        const auto *measure = Registrar::instance<MeasureController>();
+        const MeasureSession *m = measure && s ? measure->sessionOf(const_cast<DeviceSession *>(s)) : nullptr;
+        const bool measureJob = running && s && s->hasJob(QStringLiteral("MeasureController"));
+        // -- WP REVDFIX -- (REVD D3) the agent's run as the session says it, not
+        // its job line cut at the first "." ("5.5 s sweeps" lost the sentence)
+        text = measureJob && m ? m->agentDoing() : QString();
+        if (text.isEmpty() && measureJob) {
+            text = s->job();
+            text.remove(QRegularExpression(QStringLiteral("^Requested by [^:]*: ?")));
         }
+        // -- WP ADETQ -- the speaker detection says which output, of how many (AUTODES 5.1)
+        if (running && str(job, "kind") == QLatin1String("detect"))
+            text = m && m->detecting() ? m->detectStripText() : tr("Detecting speakers");
         if (text.isEmpty()) text = running ? tr("Measuring: %1").arg(str(job, "what")) : tr("Starting: %1").arg(str(job, "what"));
     } else if (!asked.isEmpty()) {
         const QVariantMap q = asked.first().toMap();
