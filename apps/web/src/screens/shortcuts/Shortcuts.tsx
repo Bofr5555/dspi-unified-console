@@ -25,6 +25,7 @@ import type { Session } from "../../ui/session";
 import { useSessionState } from "../../ui/components";
 import { appleKeys, isTextField } from "../../ui/undo";
 import { ariaKeys, keyText, listed, shortcutFor, toolRow, type OpenAction, type ShortcutRow } from "./table";
+import { Glyph } from "../../ui/design"; // -- WP WEB2 --
 
 function platform(): string {
   const n = typeof navigator === "undefined" ? null : navigator;
@@ -148,7 +149,7 @@ export function QuickStrip(props: { session: Session; screens: Set<string>; curr
         aria-keyshortcuts={key ? ariaKeys(key, apple) : undefined}
         onClick={() => (on ? props.leave() : props.open({ screen }))}
       >
-        <span aria-hidden="true">{glyph}</span>
+        <Glyph name={glyph} />
       </button>
     );
   };
@@ -201,7 +202,7 @@ export function QuickStrip(props: { session: Session; screens: Set<string>; curr
         onPointerLeave={clear}
         onPointerCancel={clear}
       >
-        <span aria-hidden="true">{glyph}</span>
+        <Glyph name={glyph} />
       </button>
     );
   };
@@ -209,16 +210,17 @@ export function QuickStrip(props: { session: Session; screens: Set<string>; curr
   if (!snap || st.status !== "open") return null;
   return (
     <div class="quick-strip" role="toolbar" aria-label="Quick access">
-      {windowButton("matrix", "Matrix Mixer", "▦", "Ctrl+Shift+M")}
-      {effectButton("crossfeed", "🎧")}
-      {effectButton("loudness", "🔉")}
-      {effectButton("leveller", "∿")}
-      {effectButton("psybass", "𝄢")}
-      {windowButton("stats", "Stats for nerbs", "ⓘ", "Ctrl+Shift+T")}
-      {windowButton("settings", "Settings", "⚙", "Ctrl+,")}
-      {effectButton("bypass", "✕")}
+      {/* -- WP WEB2 -- Lucide icons as the rest of the console's (§17), not emoji */}
+      {windowButton("matrix", "Matrix Mixer", "grid-3x3", "Ctrl+Shift+M")}
+      {effectButton("crossfeed", "headphones")}
+      {effectButton("loudness", "ear")}
+      {effectButton("leveller", "activity")}
+      {effectButton("psybass", "audio-lines")}
+      {windowButton("stats", "Stats for nerbs", "info", "Ctrl+Shift+T")}
+      {windowButton("settings", "Settings", "settings", "Ctrl+,")}
+      {effectButton("bypass", "circle-slash")}
       <button type="button" class="strip-button strip-help" aria-label="Keyboard Shortcuts" title={`Keyboard Shortcuts (${keyText("Shift+?", apple)})`} aria-keyshortcuts="Shift+?" onClick={props.onHelp}>
-        <span aria-hidden="true">⌨</span>
+        <Glyph name="keyboard" />
       </button>
     </div>
   );

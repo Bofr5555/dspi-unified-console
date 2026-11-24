@@ -2,7 +2,7 @@
 // and what it is called, how it is reached, an unsaved mark, a close button; "+" opens another.
 
 import { useEffect, useRef } from "preact/hooks";
-import { TabLabel, useSessionState } from "../components";
+import { sessionName, TabLabel, useSessionState } from "../components";
 import type { Session, SessionState } from "../session";
 import { tabKeys } from "./tab-keys";
 import { transportName } from "./open-rule";
@@ -77,7 +77,7 @@ function DeviceTab(props: { session: Session; on: boolean; stop: boolean; onChoo
   const s = props.session;
   const st = useSessionState(s);
   const state = tabState(st);
-  const name = st.snapshot?.device.name ?? "Connecting";
+  const name = sessionName(st); // -- WP WEB2 --
   const unsaved = st.unsaved.length > 0;
   const transport = transportName(s.source);
   // -- WP FEATUI -- an AI agent works on this device (its hub's `presence`): marked, as the desktop's tabs

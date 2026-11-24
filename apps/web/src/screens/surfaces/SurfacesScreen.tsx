@@ -13,7 +13,7 @@ import { useEffect, useMemo, useReducer, useState } from "preact/hooks";
 import type { CsRecord, CsRow } from "../../core/protocol";
 import type { ScreenProps } from "../../ui/screens";
 import { CsDesk } from "./desk";
-import { rangeFill } from "../../ui/design"; // -- WP WEB2 --
+import { EmptyState, rangeFill } from "../../ui/design"; // -- WP WEB2 --
 import {
   PAGE_LABELS,
   TY,
@@ -580,10 +580,8 @@ export function SurfacesScreen(props: ScreenProps) {
         </div>
       ) : null}
       {keys.length === 0 ? (
-        <section class="card cs-empty">
-          <h3>{EMPTY[shown].title}</h3>
-          <p class="empty">{EMPTY[shown].text}</p>
-        </section>
+        // -- WP WEB2 -- (§16) nothing on this page yet: the empty state, not a card with a sentence
+        <EmptyState icon="list-ordered" title={EMPTY[shown].title} text={EMPTY[shown].text} />
       ) : null}
       {keys.map((k) => {
         const rec = desk.rec(k)!;

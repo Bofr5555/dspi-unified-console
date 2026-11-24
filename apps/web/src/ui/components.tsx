@@ -268,6 +268,17 @@ function hostOf(url: string): string {
 
 // ---------------------------------------------------------------- one session
 
+/**
+ * -- WP WEB2 -- (REVD W13) What a session is called before its DSPi answered: "Connecting" only while it
+ * is still trying; a session that failed says so, as its notice does (a hub that does not answer).
+ */
+export function sessionName(st: { snapshot: { device: { name: string } } | null; status: string }): string {
+  if (st.snapshot) return st.snapshot.device.name;
+  if (st.status === "failed") return "Not connected";
+  if (st.status === "closed") return "Closed";
+  return "Connecting";
+}
+
 /** A tab's name: where the device is, then what it is called once it answers. */
 export function TabLabel(props: { session: Session }) {
   const st = useSessionState(props.session);
@@ -275,7 +286,7 @@ export function TabLabel(props: { session: Session }) {
     <>
       {/* -- WP WEBM5 -- the site's part is left to screen readers where the top bar is narrow */}
       <span class="device-tab-site">{props.session.installationName} · </span>
-      {st.snapshot?.device.name ?? "Connecting"}
+      {sessionName(st)}
     </>
   );
 }
@@ -289,7 +300,7 @@ export function SessionView(props: { session: Session; onClose: () => void; shel
   const head = (
     <header class="strip">
       <span class={`dot dot-${st.status}`} aria-hidden="true" />
-      <strong class="device-name">{snap?.device.name ?? "Connecting"}</strong>
+      <strong class="device-name">{sessionName(st)}</strong>
       {snap && st.document ? (
         // -- WP P1WB1 -- a document opened with no device: its file in place of a serial
         <span class="device-meta">
