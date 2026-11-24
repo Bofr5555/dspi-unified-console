@@ -5,7 +5,7 @@
 // SHOTS_DIR names a directory.
 
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { expectPage, openDevices, openPage, partsOf, rail } from "../nav";
+import { expectPage, openDevices, openPage, partsOf, rail, openSetting } from "../nav";
 
 function errorsOf(page: Page) {
   const errors: string[] = [];
@@ -238,7 +238,7 @@ test("WEBM4: Settings › Appearance arranges the shell at once and keeps it in 
   const errors = errorsOf(page);
   const { one, session } = await open(page, true);
   await openPage(session, "Settings");
-  await session.getByRole("navigation", { name: "Settings pages" }).getByRole("button", { name: "Appearance" }).click();
+  await openSetting(session, "Appearance"); // -- WP WEB7 -- its part, then its row
   const card = session.getByRole("region", { name: "Appearance" });
   const root = one.locator(".dspi-web");
   // The device tabs at the rail's top

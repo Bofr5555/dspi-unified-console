@@ -40,8 +40,9 @@ test("WEBM1 sections: the pages of each mode; a mode's empty sections are not in
   assert.deepEqual(ids(advanced), ids([...SECTIONS]));
   assert.deepEqual(ids(advanced.find((s) => s.id === "analyse")!.pages), ["analyser", "generator", "stats", "monitor"]);
   assert.deepEqual(ids(advanced.find((s) => s.id === "system")!.pages), ["system", "events"]);
-  assert.deepEqual(ids(advanced.find((s) => s.id === "settings")!.pages), ["settings", "surfaces"]);
-  assert.deepEqual(ids(of("installer").find((s) => s.id === "settings")!.pages), ["settings", "surfaces", "installer"]);
+  // -- WP WEB7 -- Control Surfaces is Settings' Control part (Qt Modern), no page of its own
+  assert.deepEqual(ids(advanced.find((s) => s.id === "settings")!.pages), ["settings"]);
+  assert.deepEqual(ids(of("installer").find((s) => s.id === "settings")!.pages), ["settings", "installer"]);
   // Nothing shown is lost: every screen of the mode is a page of some section, once.
   for (const m of ["simple", "advanced", "installer"] as const) {
     const shown = ids(withHubScreen(withDeviceScreen(screensFor(m, true)), m, true));

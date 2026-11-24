@@ -59,7 +59,7 @@ import { InputsScreen } from "../screens/inputs/InputsScreen";
 import { AnalyserScreen, GeneratorScreen, MonitorScreen, StatsScreen } from "../screens/analysis/ToolsScreen";
 
 // -- WP WB6L -- the control-surface editor, the quick strip, the app shortcuts
-import { SurfacesScreen } from "../screens/surfaces/SurfacesScreen";
+// -- WP WEB7 -- the editor is Settings › Control (screens/settings), no screen of its own
 import { QuickStrip, ShortcutsDialog, useAppShortcuts } from "../screens/shortcuts/Shortcuts";
 import type { OpenAction, ShortcutRow } from "../screens/shortcuts/table";
 // -- WP WBCLIP -- the channel clipboard's keys
@@ -89,7 +89,7 @@ import { placeOf } from "./shell/places";
 import { watchFollow } from "./follow-agent"; // -- WP ODEC --
 // -- WP WEBM4 -- what this device can do, for the app menu and the command palette
 import { sessionEntries, sessionHandlers, type SessionContext } from "./menus/session-actions";
-import { SETTINGS_PAGES } from "../screens/settings/SettingsScreen";
+import { settingsPagesFor } from "../screens/settings/SettingsScreen"; // -- WP WEB7 -- Control's pages where the mode has them
 
 /** A question in a modal dialog; the answer is the chosen button's value, or "cancel". */
 export interface Question {
@@ -157,7 +157,7 @@ export const SCREENS: ScreenDef[] = [
   { id: "history", label: "History", View: HistoryScreen }, // -- WP WEBM3 -- Library › History (setting up: not in Simple)
   { id: "files", label: "Files", View: FilesScreen },
   // -- WP WB6L -- (setting up the hardware: Advanced and Installer, as files)
-  { id: "surfaces", label: "Control Surfaces", View: SurfacesScreen },
+  // -- WP WEB7 -- Control Surfaces is Settings › Control now, as Qt Modern's (its id opens it there: `setChosen`)
   // -- WP WB8 -- (UI-MODES: monitoring of the Advanced and Installer modes)
   { id: "events", label: "Events", View: EventsScreen },
   // -- WP P1WB2 -- (the manifest's "Limits and power-on": the Installer mode only)
@@ -296,6 +296,11 @@ export function Screens(props: {
   const [chosen, setChosenState] = useState<string | null>(place.screen);
   const setChosen = useCallback(
     (id: string) => {
+      // -- WP WEB7 -- Control Surfaces' old id opens Settings at its Control part
+      if (id === "surfaces") {
+        place.parts.set("settings", "control");
+        id = "settings";
+      }
       place.screen = id;
       setChosenState(id);
       shell.onPicking(false);
@@ -443,7 +448,7 @@ export function Screens(props: {
       setJump((n) => n + 1);
     },
   };
-  shell.board?.setSession(session.id, { handlers: sessionHandlers(actionsCtx), entries: sessionEntries(actionsCtx, SETTINGS_PAGES) });
+  shell.board?.setSession(session.id, { handlers: sessionHandlers(actionsCtx), entries: sessionEntries(actionsCtx, settingsPagesFor(mode)) }); // -- WP WEB7 --
   const board = shell.board;
   useEffect(() => () => board?.clearSession(session.id), [board, session]);
 

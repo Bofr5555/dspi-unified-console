@@ -45,7 +45,7 @@ export const SECTIONS: readonly SectionDef[] = [
   { id: "library", title: "Library", pages: ["snapshots", "history", "files"] }, // -- WP WEBM3 -- history
   { id: "system", title: "System", pages: ["system", "events"] },
   { id: "devices", title: "Devices", foot: true, pages: [CONNECT, "hub", "hub-settings", "device"] },
-  { id: "settings", title: "Settings", foot: true, pages: ["settings", "surfaces", "installer"] },
+  { id: "settings", title: "Settings", foot: true, pages: ["settings", "installer"] }, // -- WP WEB7 -- Control Surfaces is Settings' Control part
 ];
 
 /** The section a screen is a page of; Settings for one no section lists. */
