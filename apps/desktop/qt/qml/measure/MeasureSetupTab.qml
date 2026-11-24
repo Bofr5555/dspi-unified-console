@@ -363,7 +363,9 @@ ScrollView {
             AppButton {
                 objectName: "MeasureSetup.start"
                 text: qsTr("Measure")
-                primary: !mc.waitingPosition   // -- WP DL2 -- one primary: Next Position while it waits
+                // -- WP DL2 -- one primary: Next Position while it waits (-- WP REVDFIX --
+                // REVD D11: in Modern; Classic keeps Measure the accent)
+                primary: !LayoutController.modern || !mc.waitingPosition
                 enabled: tab.editable && mc.setupProblem.length === 0
                 onClicked: mc.start()
             }

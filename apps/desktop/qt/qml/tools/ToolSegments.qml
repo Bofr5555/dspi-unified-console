@@ -71,8 +71,11 @@ Item {
                         textFormat: Text.PlainText
                         text: segment.text
                         font: Theme.fontSmall
-                        color: !segment.enabled ? Theme.textDisabled
-                             : segment.chosenNow ? (LayoutController.modern ? Theme.accentText : Theme.textOnAccent)
+                        // -- WP REVDFIX -- (REVD D11) Classic's order: a chosen segment's
+                        // label stays on its accent fill when disabled
+                        color: segment.chosenNow && !LayoutController.modern ? Theme.textOnAccent
+                             : !segment.enabled ? Theme.textDisabled
+                             : segment.chosenNow ? Theme.accentText
                              : Theme.text
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
