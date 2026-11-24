@@ -42,12 +42,14 @@ RowLayout {
         readonly property int fits: widest > 0 ? Math.max(1, Math.floor((chipRow.width + columnSpacing) / (widest + columnSpacing))) : 1
         readonly property int modernCount: Math.max(1, Math.min(count, fits, chipRow.modernColumns > 0 ? chipRow.modernColumns : count))
 
-        Layout.fillWidth: !LayoutController.modern
-        // -- WP REVDFIX -- (REVD D4) Modern: the row may be as narrow as one
-        // chip, its lines following the width it gets (`fits`); the chips of
-        // one line no longer set its column's minimum (the Crossfeed window
-        // at 780 px clipped its right column)
+        // -- WP REVDFIX -- (REVD D4) Modern: the grid may be as narrow as one
+        // chip and no wider than its chips, its lines following the width it
+        // gets (`fits`). A grid that does not fill is fixed at its width, so
+        // the chips of one line set its column's minimum (the Crossfeed window
+        // at 780 px clipped its right column). Classic fills the row as before.
+        Layout.fillWidth: true
         Layout.minimumWidth: LayoutController.modern ? widest : -1
+        Layout.maximumWidth: LayoutController.modern ? implicitWidth : Number.POSITIVE_INFINITY
         columns: LayoutController.modern ? modernCount : Math.max(1, chipRow.classicColumns > 0 ? chipRow.classicColumns : count)
         columnSpacing: 6
         rowSpacing: 6
