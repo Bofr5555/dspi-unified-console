@@ -6,9 +6,10 @@ import UConsole
 // -- WP MX1 -- Redrawn (DESREV's matrix-mockup.html): a cell never changes
 // size. Connected, it is a fixed tile tinted with the input's colour, a solid
 // 3 px bar of it at the left and the gain inside ("0", "-6", "+1.5"); an
-// inverted crosspoint adds a warning-coloured ø. Empty, it is a 4 px dot (in
-// the warning colour on the PDM column while enabling PDM would collide on
-// Core 1), a "+" tile while hovered. A cell whose output is off is dimmed
+// inverted crosspoint adds a warning-coloured ø. Empty, it is a 4 px dot,
+// a "+" tile while hovered. (-- WP REVDFIX -- REVD D7: the PDM column's dots
+// are no longer in the warning colour while enabling PDM would collide on
+// Core 1: only its power icon is, with the tooltip, and enabling it asks.) A cell whose output is off is dimmed
 // (45 %; in Modern no lower than AA contrast allows, Theme.dim) and stays
 // editable.
 //
@@ -76,7 +77,7 @@ Item {
         width: 4
         height: 4
         radius: 2
-        color: cell.conflict ? Theme.warning : Theme.border
+        color: Theme.border   // -- WP REVDFIX -- D7: not a standing warning
     }
     Rectangle {
         anchors.centerIn: parent
