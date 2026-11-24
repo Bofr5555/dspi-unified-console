@@ -38,6 +38,50 @@ Panel {
     }
     Component.onDestruction: if (shown) MeasureController.panelShown(false)
 
+    // -- INTC (DL2 fold) -- Modern's page: Results' Open… and Documents' kind
+    // filter, Reload and Import Calibration… in the tab row (PageHost.pageTools);
+    // a window keeps them in its tabs
+    readonly property Component pageTools: part === "results" ? resultsTools : part === "documents" ? docsTools : null
+    Component {
+        id: resultsTools
+        AppButton {
+            objectName: "MeasureResults.open"
+            text: qsTr("Open…")
+            onClicked: MeasureController.chooseResultFile()
+        }
+    }
+    Component {
+        id: docsTools
+        Row {
+            objectName: "MeasureDocsTools"
+            spacing: 6
+            AppComboBox {
+                objectName: "MeasureDocs.kind"
+                anchors.verticalCenter: parent.verticalCenter
+                visible: !docsTab.none
+                label: qsTr("Kind")
+                width: 160
+                model: docsTab.kinds
+                textRole: "text"
+                currentIndex: Math.max(0, docsTab.kinds.findIndex(k => k.id === docsTab.kind))
+                onActivated: index => docsTab.kind = docsTab.kinds[index].id
+            }
+            AppButton {
+                objectName: "MeasureDocs.reload"
+                anchors.verticalCenter: parent.verticalCenter
+                visible: !docsTab.none
+                text: qsTr("Reload")
+                onClicked: MeasureController.reloadDocuments()
+            }
+            AppButton {
+                objectName: "MeasureDocs.importCalibration"
+                anchors.verticalCenter: parent.verticalCenter
+                text: qsTr("Import Calibration…")
+                onClicked: MeasureController.chooseMicFile()
+            }
+        }
+    }
+
     // -- WP LAY5b -- Modern's page has the tabs (SectionTable.parts): the part is
     // its; a window has its own tabs, as Classic
     readonly property var partIds: ["measure", "results", "live", "tune", "documents", "passive", "units"]
@@ -235,10 +279,10 @@ Panel {
             Layout.fillHeight: true
             currentIndex: panel.index   // -- WP LAY5b --
             MeasureSetupTab { id: setupTab; onShowResults: panel.showPart("results") }
-            MeasureResultsTab { id: resultsTab; onShowTune: panel.showPart("tune") }
+            MeasureResultsTab { id: resultsTab; toolsAbove: panel.paged; onShowTune: panel.showPart("tune") }   // -- INTC -- toolsAbove
             MeasureLiveTab { id: liveTab }
             MeasureTuneTab { id: tuneTab }
-            MeasureDocsTab { onShowResults: panel.showPart("results") }
+            MeasureDocsTab { id: docsTab; toolsAbove: panel.paged; onShowResults: panel.showPart("results") }   // -- INTC -- toolsAbove
             MeasurePassiveTab { id: passiveTab }
             MeasureUnitsTab {}   // -- WP ATQT --
         }

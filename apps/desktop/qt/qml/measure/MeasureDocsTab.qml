@@ -15,6 +15,9 @@ ColumnLayout {
 
     readonly property var mc: MeasureController
     property string kind: ""
+    // -- INTC (DL2 fold) -- Modern's page shows the filter, Reload and Import
+    // Calibration… in its tab row (MeasurePanel's pageTools), not here
+    property bool toolsAbove: false
     readonly property var kinds: [
         { id: "", text: qsTr("Every kind") }, { id: "measurement", text: qsTr("Measurements") },
         { id: "mic", text: qsTr("Microphones") }, { id: "target", text: qsTr("Targets") }
@@ -35,7 +38,7 @@ ColumnLayout {
     readonly property bool none: mc.documents.length === 0 && tab.kind === ""
 
     RowLayout {
-        visible: !(tab.modern && tab.none)
+        visible: !(tab.modern && tab.none) && !tab.toolsAbove   // -- INTC --
         spacing: Theme.spacingSmall
         AppComboBox {
             label: qsTr("Kind")

@@ -19,6 +19,8 @@ ScrollView {
     contentWidth: availableWidth
 
     readonly property var mc: MeasureController
+    // -- INTC (DL2 fold) -- Modern's page shows Open… in its tab row (MeasurePanel's pageTools)
+    property bool toolsAbove: false
     readonly property var smoothings: [0, 1, 2, 3, 6, 12, 24, 48]
     // -- WP DL2 -- Modern: nothing to show is an empty state; Classic keeps its line
     readonly property bool modern: LayoutController.modern
@@ -51,6 +53,7 @@ ScrollView {
                 wrapMode: Text.WordWrap
             }
             AppButton {
+                visible: !tab.toolsAbove   // -- INTC -- on Modern's page: the tab row's
                 text: qsTr("Open…")
                 onClicked: mc.chooseResultFile()
             }

@@ -44,6 +44,72 @@ Panel {
         }
     }
 
+    // -- INTC (DL3a fold) -- Modern's page: the search, its count and the ▾
+    // menu in the tab row (PageHost.pageTools), with the same names; the body
+    // keeps them in a window. The keys reach the list through the body.
+    property Item toolSearch: null
+    readonly property Component pageTools: Component {
+        Row {
+            objectName: "AutoEqTools"
+            spacing: 6
+            BorderedField {
+                id: toolSearchField
+                objectName: "AutoEqWindow.search"
+                anchors.verticalCenter: parent.verticalCenter
+                width: 240
+                placeholderText: qsTr("Search headphones…")
+                text: AutoEqController.profiles.searchText
+                onTextEdited: AutoEqController.profiles.searchText = text
+                Accessible.name: qsTr("Search headphones")
+                Keys.onDownPressed: if (body.item) body.item.focusList()
+                Keys.onReturnPressed: panel.applySelected()
+                Keys.onEscapePressed: {
+                    if (text.length) AutoEqController.profiles.searchText = ""
+                    else panel.close()
+                }
+                Component.onCompleted: panel.toolSearch = toolSearchField
+                Component.onDestruction: if (panel.toolSearch === toolSearchField) panel.toolSearch = null
+            }
+            IconButton {
+                objectName: "AutoEqWindow.clearSearch"
+                anchors.verticalCenter: parent.verticalCenter
+                visible: toolSearchField.text.length > 0
+                iconName: "circle-x"
+                iconColor: Theme.textMuted
+                toolTip: qsTr("Clear search")
+                onClicked: {
+                    AutoEqController.profiles.searchText = ""
+                    toolSearchField.forceActiveFocus()
+                }
+            }
+            Text {
+                objectName: "AutoEqWindow.count"
+                anchors.verticalCenter: parent.verticalCenter
+                readonly property int count: body.item && body.item.count !== undefined ? body.item.count : 0
+                visible: count > 0
+                //: How many headphones the list shows; %1 is a number
+                text: qsTr("%1 headphones").arg(count)
+                font: Theme.fontSmall
+                color: Theme.textMuted
+            }
+            // -- WP LAY3b -- what Classic's AutoEQ menu has besides
+            IconButton {
+                id: more
+                objectName: "AutoEqWindow.more"
+                anchors.verticalCenter: parent.verticalCenter
+                iconName: "chevron-down"
+                toolTip: qsTr("More")
+                onClicked: moreMenu.dropFrom(more)
+                ActionMenu {
+                    id: moreMenu
+                    objectName: "AutoEqWindow.menu"
+                    place: "autoeq"
+                    handlers: ({ "autoeq.clearFavorites": { enabled: () => AutoEqController.favouriteList.length > 0 } })
+                }
+            }
+        }
+    }
+
     // -- WP DL3a -- one body or the other, by layout
     Loader {
         id: body
@@ -369,7 +435,13 @@ Panel {
         id: modernBody
         Item {
             id: modern
-            function focusSearch() { search.forceActiveFocus() }
+            // -- INTC -- on a page the search is in the tab row
+            function focusSearch() { (panel.inPage && panel.toolSearch ? panel.toolSearch : search).forceActiveFocus() }
+            function focusList() {
+                list.forceActiveFocus()
+                if (list.currentIndex < 0 && list.count > 0) list.currentIndex = 0
+            }
+            readonly property int count: list.count
             property alias listIndex: list.currentIndex
             // The chosen one beside the list when there is room for both
             readonly property bool wide: width >= Theme.contentMaxWidth + InspectorState.width + 3 * Theme.spacing
@@ -391,6 +463,7 @@ Panel {
 
                     RowLayout {
                         Layout.fillWidth: true
+                        visible: !panel.inPage   // -- INTC -- on a page: the tab row
                         spacing: Theme.spacingSmall
                         BorderedField {
                             id: search
@@ -431,21 +504,7 @@ Panel {
                             font: Theme.fontSmall
                             color: Theme.textMuted
                         }
-                        // -- WP LAY3b -- what Classic's AutoEQ menu has besides
-                        IconButton {
-                            id: more
-                            objectName: "AutoEqWindow.more"
-                            visible: panel.inPage
-                            iconName: "chevron-down"
-                            toolTip: qsTr("More")
-                            onClicked: moreMenu.dropFrom(more)
-                            ActionMenu {
-                                id: moreMenu
-                                objectName: "AutoEqWindow.menu"
-                                place: "autoeq"
-                                handlers: ({ "autoeq.clearFavorites": { enabled: () => AutoEqController.favouriteList.length > 0 } })
-                            }
-                        }
+                        // -- WP LAY3b -- AutoEQ's ▾ (on a page only: INTC, the tab row's)
                     }
 
                     Item {

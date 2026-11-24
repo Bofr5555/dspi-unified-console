@@ -9,7 +9,8 @@ import UConsole
 // -- WP DL3a -- The slots as ListRows in the 760 px column at the page's left
 // (DESIGN-LANGUAGE §3, §9): number, name, a caption with the state; Recall,
 // Save and the menu show on hover and on the active row; a double click
-// recalls. Save is the one accent button, while there is something to save.
+// recalls. Save is the one accent button, while there is something to save
+// (INTC: in the tab row).
 Item {
     id: page
     objectName: "LibraryPresets"
@@ -18,6 +19,25 @@ Item {
 
     readonly property bool writable: DeviceModel.connected && !DeviceModel.readOnly && !SidebarController.presetBusy
     function menu(slot, item, x, y) { ContextMenus.slot(slot, page.host ? page.host.dialogs : null, item, x, y) }
+
+    // -- INTC (DL3a fold) -- the page's one action in the tab row (PageHost.
+    // pageTools): Save the current settings in the active slot, the accent
+    // while there is something to save. The rows keep Recall, a quiet Save and
+    // the menu on hover.
+    readonly property Component pageTools: Component {
+        AppButton {
+            objectName: "LibraryPresets.tools.save"
+            readonly property int slot: DeviceModel.presets.activeSlot
+            visible: DeviceModel.connected && slot >= 0
+            enabled: page.writable
+            primary: SidebarController.unsaved
+            iconName: "save"
+            //: %1 is the active preset slot's number
+            text: qsTr("Save to Preset %1").arg(slot + 1)
+            toolTip: qsTr("Save the current settings in this slot")
+            onClicked: SidebarController.savePreset()
+        }
+    }
 
     EmptyState {
         objectName: "LibraryPresets.none"
@@ -75,13 +95,13 @@ Item {
             width: ListView.view.width
             rowIndex: index
             title: label
+            titleMuted: !occupied && !active && !name.length   // -- INTC (DL3a fold) -- "Empty", quietly
             subtitle: note
             selected: active
             iconName: startup ? "power" : ""
             // The actions show on hover and on the active row; they stay
             // enabled for the keyboard and for a click that comes first
-            actionsAlways: true
-            readonly property real actionOpacity: hovered || selected || current || activeFocus ? 1 : 0
+            // (INTC: ListRow's own fade, DL0 fold)
             onClicked: list.currentIndex = index
             onActivated: if (!active && page.writable) SidebarController.requestPresetSwitch(slot)
             onMenuRequested: (x, y) => page.menu(row.slot, row, x, y)
@@ -96,7 +116,6 @@ Item {
 
             AppButton {
                 objectName: row.objectName + ".recall"
-                opacity: row.actionOpacity || activeFocus ? 1 : 0
                 visible: !row.active
                 enabled: page.writable
                 text: qsTr("Recall")
@@ -105,18 +124,15 @@ Item {
             }
             AppButton {
                 objectName: row.objectName + ".save"
-                opacity: row.actionOpacity || activeFocus ? 1 : 0
                 visible: row.active
                 enabled: page.writable
-                primary: SidebarController.unsaved
-                text: qsTr("Save")
+                text: qsTr("Save")   // -- INTC -- quiet: the tab row's Save is the accent
                 toolTip: qsTr("Save the current settings in this slot")
                 onClicked: SidebarController.savePreset()
             }
             IconButton {
                 id: more
                 objectName: row.objectName + ".menu"
-                opacity: row.actionOpacity || activeFocus ? 1 : 0
                 iconName: "chevron-down"
                 toolTip: qsTr("More")
                 Accessible.name: qsTr("More") + ", " + (row.slot + 1) + ": " + row.label

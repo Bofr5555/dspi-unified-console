@@ -42,6 +42,8 @@ Item {
     id: row
     property int rowIndex: -1
     property string title
+    // -- INTC (DL3a fold) -- the title quiet, as a placeholder (an empty preset slot's "Empty")
+    property bool titleMuted: false
     property string subtitle
     property string value
     property bool monoValue: true
@@ -114,7 +116,7 @@ Item {
                 textFormat: Text.PlainText
                 text: row.title
                 font: Theme.fontTable
-                color: row.enabled ? Theme.text : Theme.textDisabled
+                color: !row.enabled ? Theme.textDisabled : row.titleMuted ? Theme.textMuted : Theme.text
                 elide: Text.ElideRight
             }
             Text {

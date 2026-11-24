@@ -342,6 +342,25 @@ QString MeasureSession::failureText(const QJsonObject &reply) {
     return error.isEmpty() ? tr("The call was refused.") : error;
 }
 
+// -- INTC (DL2 fold) -- (from issueWords, WP DL2's SHOW 4)
+QString MeasureSession::changedWho(const QJsonObject &i) const {
+    const QJsonValue out = i.value(QLatin1String("output"));
+    if (str(i, "key") != QLatin1String("measure.tune.chains_changed") || !out.isDouble()) return {};
+    const QString msg = str(i, "message");
+    const qsizetype cut = msg.indexOf(QLatin1String("'s settings"));
+    return msg.startsWith(QLatin1String("Out ")) && cut > 0 ? msg.left(cut) : outputName(out.toInt());
+}
+
+QString MeasureSession::changedWords(const QStringList &who) const {
+    if (who.isEmpty()) return {};
+    //: An auto-tune warning: %1 the output ("Out 1 (Centre low)")
+    if (who.size() == 1) return tr("%1 was changed after it was measured; the prediction starts from its settings now.").arg(who.first());
+    //: Outputs in a list: %1 all but the last, joined by ", "; %2 the last
+    const QString all = tr("%1 and %2").arg(who.mid(0, who.size() - 1).join(QStringLiteral(", ")), who.last());
+    //: An auto-tune warning for several outputs: %1 them ("Out 1 (Centre low) and Out 2 (Centre high)")
+    return tr("%1 were changed after they were measured; the prediction starts from their settings now.").arg(all);
+}
+
 QString MeasureSession::issueWords(const QJsonObject &i) const {
     if (i.isEmpty()) return {};
     const QString key = str(i, "key");
@@ -356,12 +375,7 @@ QString MeasureSession::issueWords(const QJsonObject &i) const {
     const QString where = out.isDouble() && !saysWhich ? outputName(out.toInt()) + QStringLiteral(": ") : QString();
     // -- WP DL2 -- (SHOW 4) the tune's "settings changed" warning in plain
     // words, once: who, and what the prediction does about it
-    if (key == QLatin1String("measure.tune.chains_changed") && out.isDouble()) {
-        const qsizetype cut = msg.indexOf(QLatin1String("'s settings"));
-        const QString who = msg.startsWith(QLatin1String("Out ")) && cut > 0 ? msg.left(cut) : outputName(out.toInt());
-        //: An auto-tune warning: %1 the output ("Out 1 (Centre low)")
-        return tr("%1 was changed after it was measured; the prediction starts from its settings now.").arg(who);
-    }
+    if (const QString who = changedWho(i); !who.isEmpty()) return changedWords({ who });   // -- INTC --
     QString title;
     if (auto *notices = Registrar::instance<NoticeCenter>()) title = notices->row(key).value(QStringLiteral("title")).toString();
     // -- WP DL2 -- the title once when the core's words begin with it

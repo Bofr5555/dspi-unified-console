@@ -85,6 +85,42 @@ Panel {
         }
     }
 
+    // -- INTC (DL3a fold) -- Modern's page: Import… and Capture… in the tab row
+    // (PageHost.pageTools), with the same names; Capture's popover opens under
+    // its button there. A window keeps them at the right of the Snapshots label.
+    signal captureRequested()
+    property Item captureAnchor: null
+    readonly property Component pageTools: Component {
+        Row {
+            objectName: "SnapshotsTools"
+            spacing: 6
+            visible: !panel.simple
+            AppButton {
+                objectName: "SnapshotsWindow.import"
+                anchors.verticalCenter: parent.verticalCenter
+                text: qsTr("Import…")
+                iconName: "file-up"
+                enabled: panel.hasDevice
+                toolTip: qsTr("Keep a configuration file as a snapshot of this device")
+                onClicked: SnapshotsController.importSnapshot()
+            }
+            AppButton {
+                id: toolCapture
+                objectName: "SnapshotsWindow.capture"
+                anchors.verticalCenter: parent.verticalCenter
+                visible: SnapshotsController.snapshots.length > 0
+                text: qsTr("Capture…")
+                iconName: "plus"
+                primary: true
+                enabled: panel.hasDevice && !SnapshotsController.busy
+                toolTip: qsTr("Keep the device's settings as they are now")
+                onClicked: panel.captureRequested()
+                Component.onCompleted: panel.captureAnchor = toolCapture
+                Component.onDestruction: if (panel.captureAnchor === toolCapture) panel.captureAnchor = null
+            }
+        }
+    }
+
     // -- WP DL3a -- one body or the other, by layout
     Loader {
         anchors.fill: parent
@@ -858,7 +894,7 @@ Panel {
                         tools: [
                             AppButton {
                                 objectName: "SnapshotsWindow.import"
-                                visible: !panel.simple
+                                visible: !panel.simple && !panel.inPage   // -- INTC -- on a page: the tab row
                                 text: qsTr("Import…")
                                 iconName: "file-up"
                                 enabled: panel.hasDevice
@@ -868,7 +904,7 @@ Panel {
                             AppButton {
                                 id: captureButton
                                 objectName: "SnapshotsWindow.capture"
-                                visible: !panel.simple && list.count > 0
+                                visible: !panel.simple && list.count > 0 && !panel.inPage   // -- INTC --
                                 text: qsTr("Capture…")
                                 iconName: "plus"
                                 primary: true
@@ -1241,10 +1277,17 @@ Panel {
                 id: capture
                 objectName: "SnapshotsWindow.captureRow"
                 title: qsTr("Capture a Snapshot")
-                parent: captureButton.visible ? captureButton : modern
-                x: captureButton.visible ? captureButton.width - width : (modern.width - width) / 2
-                y: captureButton.visible ? captureButton.height + 4 : modern.height / 3
+                // -- INTC -- under the tab row's Capture… on a page
+                readonly property Item anchor: panel.inPage && panel.captureAnchor && panel.captureAnchor.visible ? panel.captureAnchor
+                                               : captureButton.visible ? captureButton : null
+                parent: anchor || modern
+                x: anchor ? anchor.width - width : (modern.width - width) / 2
+                y: anchor ? anchor.height + 4 : modern.height / 3
                 width: 320
+                Connections {
+                    target: panel
+                    function onCaptureRequested() { capture.open() }
+                }
                 onOpened: captureName.forceActiveFocus()
                 // Not left open over another page
                 Connections {

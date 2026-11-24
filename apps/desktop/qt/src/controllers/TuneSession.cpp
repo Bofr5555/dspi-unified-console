@@ -496,8 +496,19 @@ void TuneSession::setProposal(const QJsonObject &p) {
     for (const QJsonValue &v : p.value(QLatin1String("withdrawn")).toArray())
         m_withdrawn << (m ? m->issueWords(v.toObject()) : str(v.toObject(), "message"));
     m_warnings.clear();
-    for (const QJsonValue &v : p.value(QLatin1String("warnings")).toArray())
+    // -- INTC (DL2 fold) -- "changed after it was measured" for several
+    // outputs is one line naming them, where the first of them was
+    QStringList changed;
+    qsizetype changedAt = -1;
+    for (const QJsonValue &v : p.value(QLatin1String("warnings")).toArray()) {
+        if (const QString who = m ? m->changedWho(v.toObject()) : QString(); !who.isEmpty()) {
+            if (changedAt < 0) changedAt = m_warnings.size();
+            if (!changed.contains(who)) changed << who;
+            continue;
+        }
         m_warnings << (m ? m->issueWords(v.toObject()) : str(v.toObject(), "message"));
+    }
+    if (changedAt >= 0) m_warnings.insert(changedAt, m->changedWords(changed));
     m_notes.clear();
     for (const QJsonValue &v : p.value(QLatin1String("notes")).toArray()) m_notes << v.toString();
     // Each speaker's curves: before solid, predicted dotted, target dashed

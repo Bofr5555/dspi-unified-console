@@ -383,6 +383,11 @@ public:
     static QString failureText(const QJsonObject &reply);
     // An issue {key, output, message} in words
     QString issueWords(const QJsonObject &issue) const;
+    // -- INTC (DL2 fold) -- the output a tune's "changed after it was measured"
+    // warning (measure.tune.chains_changed) is about, "" for another issue; and
+    // that warning for one or several outputs, as one line
+    QString changedWho(const QJsonObject &issue) const;
+    QString changedWords(const QStringList &who) const;
     QString outputName(int output) const;
     void fail(const QString &text);
     void say(const QString &text);
