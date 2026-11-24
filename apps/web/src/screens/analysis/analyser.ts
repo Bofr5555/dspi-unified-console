@@ -94,16 +94,22 @@ export interface AnalyserChoice {
   /** The main screen strip's tap and channels. */
   tap: number;
   mask: number;
+  /** -- WP WEB6 -- how the Spectrum page draws: Qt's Curves / Bars / Both. */
+  view: SpectrumView;
 }
 
-export const DEFAULT_CHOICE: AnalyserChoice = { bars: false, graph: false, tap: TAP_INPUT, mask: 0b11 };
+/** -- WP WEB6 -- the Spectrum page's drawing (Qt's SpectrumPanel `mode`: 0 Curves, 1 Bars, 2 Both). */
+export type SpectrumView = "curves" | "bars" | "both";
+
+export const DEFAULT_CHOICE: AnalyserChoice = { bars: false, graph: false, tap: TAP_INPUT, mask: 0b11, view: "curves" };
 const CHOICE_KEY = "dspi-web.analyser";
 
 export function tidyChoice(raw: unknown): AnalyserChoice {
   const o = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   const tap = o.tap === TAP_OUTPUT ? TAP_OUTPUT : TAP_INPUT;
   const mask = typeof o.mask === "number" && Number.isInteger(o.mask) && o.mask >= 0 && o.mask <= 0xffff ? o.mask : DEFAULT_CHOICE.mask;
-  return { bars: bool(o.bars, DEFAULT_CHOICE.bars), graph: bool(o.graph, DEFAULT_CHOICE.graph), tap, mask };
+  const view: SpectrumView = o.view === "bars" || o.view === "both" ? o.view : "curves"; // -- WP WEB6 --
+  return { bars: bool(o.bars, DEFAULT_CHOICE.bars), graph: bool(o.graph, DEFAULT_CHOICE.graph), tap, mask, view };
 }
 
 export function loadChoice(store: KeyValueStore | null): AnalyserChoice {
@@ -209,6 +215,58 @@ export function followingText(o: AnalyserView["ownership"], names: { inputs: str
   return which.length
     ? `Another console is running the analyser: ${which.join(", ")}.`
     : `Another console is running the analyser on the ${side}.`;
+}
+
+// -- WP WEB6 ------------------------------------------- the Spectrum page (Qt's SpectrumPanel)
+
+/** The frequency marks under the plot, Hz (Qt's RtaSurface). */
+export const FREQ_TICKS = [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000];
+
+/** "20", "500", "1k", "20k". */
+export function hzText(hz: number): string {
+  return hz >= 1000 ? `${Math.round(hz / 1000)}k` : String(Math.round(hz));
+}
+
+/** The level marks at the plot's right: every 12 dB from 0 down to the floor, and the ceiling's side above 0. */
+export function dbTicks(floorDb: number, ceilingDb: number): number[] {
+  const out: number[] = [];
+  for (let db = Math.floor(ceilingDb / 12) * 12; db >= floorDb; db -= 12) if (db <= ceilingDb) out.push(db);
+  return out;
+}
+
+/** The status line's parts, as Qt's `RtaController.statusParts`: who is live and how often, the frame rate, the transform, the main loop. */
+export function statusParts(s: AnalyserView["snapshot"]): string[] {
+  const parts: string[] = [];
+  const live = s.liveCount ?? channelsOf(s.liveMask).length;
+  if (!s.running || live === 0) parts.push("idle");
+  else {
+    const ms = Math.round((s.refreshIntervalS ?? 0) * 1000);
+    parts.push(live === 1 ? `1 channel, each refreshed every ${ms} ms` : `${live} channels, each refreshed every ${ms} ms`);
+  }
+  if (s.framesPerS > 0) parts.push(`${s.framesPerS} frames/s`);
+  if ((s.lastFrameUs ?? 0) > 0) parts.push(`transform ${s.lastFrameUs} µs`);
+  if ((s.busyUsPerS ?? 0) > 0) parts.push(`main loop ${((s.busyUsPerS ?? 0) / 10000).toFixed(1)}%`);
+  return parts;
+}
+
+/** The bass bands' share of both cores, "bass 0.12%" ("≥" when the counter is saturated); "" for none. */
+export function bassText(s: AnalyserView["snapshot"]): string {
+  const b = s.bassBusyUsPerS ?? 0;
+  if (b === 0) return "";
+  return `bass ${b === 0xffff ? "≥" : ""}${(b / 10000).toFixed(2)}%`;
+}
+
+/** Bands without data at this transform size, as Qt says it; "" when every band has data or the size is the largest. */
+export function lowBandText(v: AnalyserView, fftOrder: number): string {
+  const s = v.snapshot;
+  if (!s.running || fftOrder >= v.caps.orderMax || s.firstBand === 0xff || s.firstBand < 1 || s.firstBand >= v.caps.maxBands) return "";
+  return `shaded bands below ${hzText(v.caps.centres[s.firstBand] ?? 0)} Hz need a larger transform size in Settings`;
+}
+
+/** "120/70 dB range": the transform's and the bass bands' usable range; "" when the device does not say. */
+export function rangeText(v: AnalyserView): string {
+  if (!v.caps.dynamicRangeDb) return "";
+  return `${v.caps.dynamicRangeDb}/${v.caps.bassDynamicRangeDb ?? 0} dB range`;
 }
 
 // ------------------------------------------------------------------ the model

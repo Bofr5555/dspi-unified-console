@@ -191,13 +191,65 @@ test("WB6J M22: the Analyser screen shows the strip with its chooser", async ({ 
   const errors = errorsOf(page);
   const session = await connect(page);
   await openPage(session, "Analyser");
+  // -- WP WEB6 -- Qt's Spectrum page: the chosen channels' curves over one plot at once, no Show Bars,
+  // no second heading; the tap and the channels in the head row
   const strip = session.getByRole("region", { name: "Spectrum" });
-  // -- WP WEB2 -- (REVD W4) the bars at once: no Show Bars and no second heading on the Analyser page
   await expect(strip.getByRole("button", { name: "Show Bars" })).toHaveCount(0);
   await expect(strip.getByRole("heading", { name: "Spectrum Analyser" })).toHaveCount(0);
   await expect(strip.getByRole("group", { name: "Analyse", exact: true })).toBeVisible();
-  await expect(strip.locator(".rta-cell")).toHaveCount(2);
-  await expect(strip.locator(".rta-cell").first()).not.toHaveAttribute("data-bars", "0");
+  await expect(strip.getByRole("group", { name: "Channels analysed" }).getByRole("button", { pressed: true })).toHaveCount(2);
+  await expect(strip.locator(".sp-curves")).toHaveAttribute("data-curves", "2");
+  expect(errors).toEqual([]);
+});
+
+// -- WP WEB6 -- the Spectrum page as Qt's: Curves / Bars / Both, the legend choosing the channels,
+// the status line, "On the Equaliser's Graph"
+test("WEB6: the Spectrum page draws curves, bars or both, says how the analyser runs, and puts the spectrum on the EQ graph", async ({ page }) => {
+  const errors = errorsOf(page);
+  const session = await connect(page);
+  await openPage(session, "Analyser");
+  const sp = session.getByRole("region", { name: "Spectrum" });
+  const view = sp.getByRole("group", { name: "View" });
+  await expect(view.getByRole("button", { name: "Curves" })).toHaveAttribute("aria-pressed", "true");
+  await expect(sp.locator(".sp-curves")).toHaveAttribute("data-curves", "2");
+  await expect(sp.locator(".sp-cell")).toHaveCount(0);
+  // Bars: one cell per channel, each with its bands; no curves
+  await view.getByRole("button", { name: "Bars" }).click();
+  await expect(sp.locator(".sp-cell")).toHaveCount(2);
+  await expect(sp.locator(".sp-cell").first()).not.toHaveAttribute("data-bars", "0");
+  await expect(sp.locator(".sp-curves")).toHaveCount(0);
+  // Both: the curves and the bars
+  await view.getByRole("button", { name: "Both" }).click();
+  await expect(sp.locator(".sp-curves")).toHaveAttribute("data-curves", "2");
+  await expect(sp.locator(".sp-cell")).toHaveCount(2);
+  // The status line: running, the frame rate as the core reports it
+  const status = sp.getByRole("status", { name: "Analyser status" });
+  await expect(status).toContainText("Running");
+  await expect(status).toContainText(/\d+ frames\/s/);
+  // The legend: the second input off, the analyser runs on the first alone
+  const legend = sp.getByRole("group", { name: "Channels analysed" });
+  await legend.getByRole("button").nth(1).click();
+  await expect(legend.getByRole("button").nth(1)).toHaveAttribute("aria-pressed", "false");
+  await expect(sp.locator(".sp-curves")).toHaveAttribute("data-curves", "1");
+  await expect.poll(async () => (await call<{ snapshot: { frames: { channel: number }[] } }>(page, "analyserView")).snapshot.frames.map((f) => f.channel)).toEqual([0]);
+  // The outputs: the first output alone, named as the page names it
+  await sp.getByRole("group", { name: "Analyse", exact: true }).getByRole("button", { name: "Outputs" }).click();
+  await expect.poll(async () => (await call<{ snapshot: { tap: number } }>(page, "analyserView")).snapshot.tap).toBe(1);
+  await expect(legend.getByRole("button", { pressed: true })).toHaveCount(1);
+  await expect(legend.getByRole("button", { pressed: true })).toContainText("Out 1");
+  // The choice is kept: the page comes back as it was left
+  await page.reload();
+  const again = await connect(page);
+  await openPage(again, "Analyser");
+  const sp2 = again.getByRole("region", { name: "Spectrum" });
+  await expect(sp2.getByRole("group", { name: "View" }).getByRole("button", { name: "Both" })).toHaveAttribute("aria-pressed", "true");
+  // On the Equaliser's Graph: the EQ graph shows the spectrum
+  const tool = again.getByRole("toolbar", { name: "Spectrum tools" }).getByRole("checkbox", { name: "On the Equaliser's Graph" });
+  await expect(tool).toHaveAttribute("aria-checked", "false");
+  await tool.click();
+  await expect(tool).toHaveAttribute("aria-checked", "true");
+  await openPage(again, "EQ");
+  await expect(again.locator("canvas.rta-overlay")).toHaveCount(1);
   expect(errors).toEqual([]);
 });
 

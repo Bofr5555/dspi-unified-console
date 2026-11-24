@@ -61,10 +61,14 @@ test("Spectrum, Effects, Equaliser PEQ and Crossover", async ({ page }) => {
   await go(session, "Analyse", "Spectrum");
   await page.waitForTimeout(2500);
   await shot(page, "analyse-spectrum");
-  if (await maybe("bars", () => session.getByRole("radio", { name: "Bars", exact: true }).click(T))) {
+  const view = session.getByRole("group", { name: "View" });
+  if (await maybe("bars", () => view.getByRole("button", { name: "Bars", exact: true }).click(T))) {
     await page.waitForTimeout(1500);
     await shot(page, "analyse-spectrum-bars");
-    await maybe("curves", () => session.getByRole("radio", { name: "Curves", exact: true }).click(T));
+    await maybe("both", () => view.getByRole("button", { name: "Both", exact: true }).click(T));
+    await page.waitForTimeout(1500);
+    await shot(page, "analyse-spectrum-both");
+    await maybe("curves", () => view.getByRole("button", { name: "Curves", exact: true }).click(T));
   }
 
   // Effects: every part, off and on

@@ -10,7 +10,7 @@ import { useSessionState } from "../../ui/components";
 import type { ScreenProps } from "../../ui/screens";
 import type { Session } from "../../ui/session";
 import { outputRows } from "../main/model";
-import { SpectrumStrip, tapNames } from "./SpectrumStrip";
+import { SpectrumPage } from "./SpectrumPage"; // -- WP WEB6 --
 import {
   FLAG_DECORR,
   FLAG_RAW,
@@ -44,12 +44,12 @@ export function GeneratorScreen(props: ScreenProps) {
   return <SiggenPanel session={props.session} />;
 }
 
-/** The Spectrum Analyser: the bar strip with its chooser, on a screen of its own (M22). */
+/** The Spectrum Analyser on a screen of its own (M22): -- WP WEB6 -- Qt's Spectrum page. */
 export function AnalyserScreen(props: ScreenProps) {
   const st = useSessionState(props.session);
   const snap = st.snapshot;
   if (!snap) return null;
-  return <SpectrumStrip session={props.session} names={tapNames(snap.state, snap.outputLabels)} title="Spectrum Analyser" always />;
+  return <SpectrumPage session={props.session} s={snap.state} labels={snap.outputLabels} />;
 }
 
 /** Stats for nerbs (M53). */
