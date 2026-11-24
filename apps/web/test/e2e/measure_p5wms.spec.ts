@@ -25,13 +25,21 @@ async function call<T>(page: Page, method: string, params: unknown = null): Prom
   return (await page.evaluate(([m, p]) => (globalThis as unknown as G).dspiClients[0]!.call(m as string, p), [method, params] as const)) as T;
 }
 
-function errorsOf(page: Page) {
+// -- INTC -- `expected`: a console error the test causes on purpose, left out
+function errorsOf(page: Page, expected: (text: string) => boolean = () => false) {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   page.on("console", (m) => {
-    if (m.type() === "error") errors.push(m.text());
+    if (m.type() === "error" && !expected(m.text())) errors.push(m.text());
   });
   return errors;
+}
+
+/** -- INTC -- The browser's console line for a WebSocket to `port`'s /dspi/v1 that was refused (Firefox: "Firefox
+ * can't establish a connection to the server at ws://…", Chromium: "WebSocket connection to 'ws://…' failed"). */
+function refusedSocket(text: string, port: number): boolean {
+  const url = `ws://127.0.0.1:${port}/dspi/v1`;
+  return text.includes(`establish a connection to the server at ${url}`) || text.includes(`WebSocket connection to '${url}' failed`);
 }
 
 const desktop = (w: number | undefined) => (w ?? 0) >= 500;
@@ -330,15 +338,24 @@ test.describe("passive", () => {
   test("P5WMS: a Viewer through the hub gets the passive RTA computed and nothing that plays", async ({ page, browserName, viewport }) => {
     test.skip(!desktop(viewport?.width) || !process.env.DSPI_TERM, "desktop width, with uconsole");
     test.setTimeout(120_000);
-    const errors = errorsOf(page);
+    // -- INTC -- While the test has the hub stopped, the first page's session tries to reconnect to it (its worker
+    // keeps the hub's entry), and the browser may log the refused socket before the page is left: that line, for
+    // this hub only, is expected until the first page is gone. Any other error, and any error after it, still counts.
+    let hubDown = 0;
+    const errors = errorsOf(page, (text) => hubDown > 0 && refusedSocket(text, hubDown));
     let hub = await demoHub(true);
     try {
       await hubSession(page, hub, true);
       const { port, store } = hub;
+      hubDown = port;
       await stopHub(hub);
       const listed = JSON.parse(execFileSync(process.env.DSPI_TERM!, ["hub", "clients", "--store", store, "--json"], { encoding: "utf8" }).trim().split("\n").pop()!) as { clients: { cid: number }[] };
       execFileSync(process.env.DSPI_TERM!, ["hub", "role", String(listed.clients[0]!.cid), "viewer", "--store", store]);
       hub = await demoHub(false, store, port);
+      // -- INTC -- leave the first page (its worker with it) before the window closes: the reconnect as the Viewer
+      // below is the second page's, from the kept token, and must log nothing
+      await page.goto("about:blank");
+      hubDown = 0;
       const session = await hubSession(page, hub, false);
       await openPage(session, "Measure");
       const screen = session.getByRole("region", { name: "Measure" });
