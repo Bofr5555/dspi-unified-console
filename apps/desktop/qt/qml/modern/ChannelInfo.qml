@@ -11,6 +11,8 @@ QtObject {
     readonly property int number: known ? (DeviceModel.channels.get(row, "number") ?? -1) : -1
     readonly property bool pdm: known && DeviceModel.channels.get(row, "pdm") === true
     readonly property string label: field("label")
+    // -- WP SHOWFIX -- the core's name for it: the speaker layout's "Centre woofer", else the label
+    readonly property string displayName: field("displayName")
     readonly property string descriptor: field("descriptor")
     readonly property color tint: known ? ChannelPalette.forRow(isOutput ? "output" : "input", number, pdm) : Theme.textMuted
 

@@ -123,6 +123,9 @@ public:
     // proposal) has them; "" role for an output in neither
     Q_INVOKABLE QString roleOf(int output) const;
     Q_INVOKABLE QVariantMap rowOf(int output) const;
+    // -- WP SHOWFIX -- (finding 8) an output's pill as the Speakers page shows it
+    // ({pill, pillKind, pillReason}; empty words for none), for the Overview's cards
+    Q_INVOKABLE QVariantMap pillFor(int output) const;
     // A Measure table's edit of one output, kept in the layout with its
     // confirmation as it was; group < 0 or an empty speaker keep the layout's
     Q_INVOKABLE void writeBack(int output, const QString &role, const QString &speaker = QString(), int group = -1);

@@ -362,6 +362,12 @@ QVariantMap SpeakersController::rowOf(const State &st, int output) {
 
 QVariantMap SpeakersController::rowOf(int output) const { return rowOf(*state(), output); }
 
+// -- WP SHOWFIX -- (finding 8)
+QVariantMap SpeakersController::pillFor(int output) const {
+    const StatePtr st = state();
+    return pillOf(*st, rowOf(*st, output));
+}
+
 QString SpeakersController::roleOf(int output) const {
     const StatePtr st = state();
     const QJsonObject r = rowIn(st->stored.isEmpty() ? st->proposal : st->stored, output);
