@@ -754,6 +754,10 @@ impl DspiCore {
         };
         let mut layout = layout.normalised(&serial, outputs)?;
         layout.updated_ms = crate::events::now_ms();
+        let before = self.speaker_layouts.load(&serial);
+        // -- WP REVDFIX -- B3: the statement on record is the core's (its
+        // checks are written by the checks alone), never the caller's
+        layout.stated = before.as_ref().and_then(|b| b.stated.clone());
         // -- WP ADET0 -- a confirmed row is the user's word
         if layout.confirmed_by_user {
             for o in &mut layout.outputs {
@@ -763,7 +767,6 @@ impl DspiCore {
                 }
             }
         }
-        let before = self.speaker_layouts.load(&serial);
         // -- WP ADETS -- (AUTODES 3.1) a detected row the user gave another role is
         // the user's word from now on; the detection stands for the other rows
         for o in &mut layout.outputs {
@@ -902,14 +905,27 @@ impl DspiCore {
             ..SpeakerLayout::default()
         }
         .normalised(&serial, outputs)?;
-        // A check stands while the role it checked does
+        // A check stands while the role it checked does (-- WP REVDFIX --
+        // B3: and the stated row it was made on: same role, same speaker;
+        // never one carried in by an import or another layout)
         let checks = before
             .as_ref()
-            .and_then(|b| b.stated.as_ref())
-            .map(|st| {
+            .filter(|b| b.state() == LayoutState::Stated)
+            .and_then(|b| b.stated.as_ref().map(|st| (b, st)))
+            .map(|(b, st)| {
                 st.checks
                     .iter()
-                    .filter(|c| layout.output(c.output).is_some_and(|r| r.role == c.role))
+                    .filter(|c| {
+                        let was = b.output(c.output);
+                        layout.output(c.output).is_some_and(|r| {
+                            r.role == c.role
+                                && was.is_some_and(|w| {
+                                    w.source == RoleSource::Stated
+                                        && w.role == r.role
+                                        && w.speaker == r.speaker
+                                })
+                        })
+                    })
                     .cloned()
                     .collect()
             })
@@ -1007,6 +1023,8 @@ impl DspiCore {
         layout.confirmed_by_user = false;
         // -- WP ADET0 -- another speaker's detection is nobody's word here
         layout.detected = None;
+        // -- WP REVDFIX -- B3: nor another speaker's statement and its checks
+        layout.stated = None;
         for o in &mut layout.outputs {
             o.source = RoleSource::Suggested;
         }
@@ -1076,3 +1094,6 @@ mod tests_wp_role0;
 // -- WP ADETS --
 #[cfg(test)]
 mod tests_wp_adets;
+// -- WP REVDFIX --
+#[cfg(test)]
+mod tests_wp_revdfix;
