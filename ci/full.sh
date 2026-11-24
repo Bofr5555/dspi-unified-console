@@ -21,6 +21,7 @@
 #   DSPI_TEST_PAR   test binaries at once in test and proptest (default 2 here, as
 #                   the other lanes load the host too; ci/check.sh alone uses 4)
 #   DSPI_SMOKE_SHARDS  qt-offscreen app instances (default 4) plus its launches
+#   DSPI_RELEASE_JOBS  qt-packages' package builds at once (default 3 here; 1 in a release)
 #   Gradle steps take a slot of ~/.cache/dspi-build/work/gradle-slot.sh when it exists.
 # DSPI_CI_SEED=<target dir name>: a lane whose target directory does not exist
 # yet starts from a reflink copy of $DSPI_BUILD_CACHE/target/<name> (and
@@ -84,7 +85,7 @@ qt_packages() {
     echo "full.sh: $B/work/release-$v is there (a release's files?); move it away to run qt-packages" >&2
     return 1
   fi
-  ci/release-desktop.sh --test
+  DSPI_RELEASE_JOBS=${DSPI_RELEASE_JOBS:-3} ci/release-desktop.sh --test
   local rc=$?
   [ ! -d "$B/work/release-$v" ] || mv "$B/work/release-$v" "$out/release-$v-ci"
   return "$rc"
