@@ -213,7 +213,8 @@ export function InputTrimField(props: { session: Session; input: number; name: s
     >
       <ValueField
         label={`Input trim (preamp) for ${props.name}`}
-        text={compactGain(shown)}
+        // -- WP WEB3 -- (REVD W11) a bare number as the mockup and Qt: "0", "+3.5" (the unit is the column's)
+        text={compactGain(shown).replace(/ dB$/, "")}
         parse={(t) => parseLevel(t, "db")}
         disabled={props.disabled}
         onCommit={(v) => live.release(clamp(Math.round(v * 10) / 10, TRIM_RANGE))}
