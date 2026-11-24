@@ -1075,3 +1075,127 @@ fn wp_adets_a_stage_b_with_nothing_trusted_goes_on_as_silent_above_the_floor() {
     );
     assert_eq!(w.heard, DetectHeard::BelowFloor);
 }
+
+// -- RGFIX -- (review RG F1) a second detection on some outputs keeps what
+// the first found of the others: their rows (the hard tweeter rule's roles)
+// and the `nothing` records; its summary counts its own outputs only.
+#[test]
+fn rgfix_a_second_detection_on_some_outputs_keeps_the_rest() {
+    let core = demo(vec![func1_woofer(), func1_tweeter(), unwired()]);
+    let mut starts = Starts::default();
+    core.detect_start(DetectSetup::default()).unwrap();
+    let st = detect(&core, &mut starts, None);
+    assert_eq!(st.stage, DetectStage::Done, "{st:#?}");
+    let l = core.speaker_layout().unwrap().unwrap();
+    assert_eq!(l.output(0).unwrap().role, MeasureRole::Low);
+    assert_eq!(l.output(1).unwrap().role, MeasureRole::High);
+    assert!(l.output(2).is_none());
+    assert_eq!(l.detected_output(2).unwrap().class, DetectClass::Nothing);
+    // The microphone moved near Out 2: detect that one again
+    core.detect_clear().unwrap();
+    core.detect_start(DetectSetup {
+        outputs: vec![1],
+        ..DetectSetup::default()
+    })
+    .unwrap();
+    let kept = |l: &SpeakerLayout, when: &str| {
+        assert_eq!(l.state(), LayoutState::AutoDetected, "{when}: {l:#?}");
+        assert_eq!(
+            l.output(0).map(|o| (o.role, o.source)),
+            Some((MeasureRole::Low, RoleSource::Detected)),
+            "{when}: the woofer's row survives"
+        );
+        let nothing = l.detected_output(2).unwrap();
+        assert_eq!(
+            (nothing.class, nothing.heard),
+            (DetectClass::Nothing, DetectHeard::Never),
+            "{when}: nothing heard on Out 3 is still known"
+        );
+        assert!(l.output(2).is_none(), "{when}");
+        let roles = trusted_roles(l).unwrap();
+        assert_eq!(
+            roles.first().copied().flatten(),
+            Some(MeasureRole::Low),
+            "{when}"
+        );
+        assert_eq!(
+            roles.get(1).copied().flatten(),
+            Some(MeasureRole::High),
+            "{when}"
+        );
+    };
+    kept(
+        &core.speaker_layout().unwrap().unwrap(),
+        "at the second start",
+    );
+    let st = detect(&core, &mut starts, None);
+    assert_eq!(st.stage, DetectStage::Done, "{st:#?}");
+    let l = core.speaker_layout().unwrap().unwrap();
+    kept(&l, "at its end");
+    assert_eq!(class_of(&st, 1).0, DetectClass::Tweeter, "{st:#?}");
+    let d = l.detected.as_ref().unwrap();
+    assert_eq!(
+        d.outputs.iter().map(|o| o.output).collect::<Vec<_>>(),
+        (0..d.device_outputs).collect::<Vec<_>>(),
+        "every output's record, in order"
+    );
+    assert!(d.summary.starts_with("1 tweeter"), "{}", d.summary);
+    assert!(!d.summary.contains("woofer"), "{}", d.summary);
+    assert!(!d.summary.contains("nothing heard"), "{}", d.summary);
+}
+
+/// A limits-profile directory beside the test binary (never tmpfs).
+fn scratch(name: &str) -> std::path::PathBuf {
+    let dir = std::env::current_exe()
+        .unwrap()
+        .with_file_name("test-scratch")
+        .join(format!("rgfix-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
+}
+
+// -- RGFIX -- (review RG F2) the limits profile's high-pass minimum raises
+// the probe's floor of its output in a detection given no floor (the K340's
+// 2.5 kHz on the tweeter outputs, AUTODES owner Q3); the others keep 1 kHz.
+#[test]
+fn rgfix_sim_the_profiles_highpass_minimum_is_the_detections_floor() {
+    use dspi_session::limits::{LimitsProfile, OutputLimits};
+    let core = demo(vec![func1_woofer(), func1_tweeter()]);
+    core.limits_set_dir(scratch("profile").to_string_lossy().into())
+        .unwrap();
+    let profile = LimitsProfile {
+        outputs: vec![OutputLimits {
+            output: 1,
+            highpass_min_hz: Some(2_500.0),
+            highpass_min_slope_db: Some(12),
+            ..OutputLimits::default()
+        }],
+        ..LimitsProfile::default()
+    };
+    core.limits_apply_profile(profile.to_document()).unwrap();
+    let mut starts = Starts::default();
+    core.detect_start(DetectSetup::default()).unwrap();
+    let st = detect(&core, &mut starts, None);
+    assert_eq!(st.stage, DetectStage::Done, "{st:#?}");
+    assert_eq!(class_of(&st, 0).0, DetectClass::Woofer, "{st:#?}");
+    assert_eq!(class_of(&st, 1).0, DetectClass::Tweeter, "{st:#?}");
+    let d = st.detection.as_ref().unwrap();
+    let floor = |o: u8| d.outputs.iter().find(|r| r.output == o).unwrap().floor_hz;
+    assert_eq!(floor(0), 1_000.0);
+    assert_eq!(floor(1), 2_500.0);
+    assert!(!starts.of(1).is_empty());
+    assert!(
+        starts.of(1).iter().all(|c| c.p[0].min(c.p[1]) >= 2_500.0),
+        "{:?}",
+        starts.of(1)
+    );
+    starts.envelope_holds(1, 2_500.0);
+    // Out 1 (no profile floor): its band from 1 kHz
+    assert!(
+        starts.of(0).iter().any(|c| c.p[0].min(c.p[1]) == 1_000.0),
+        "{:?}",
+        starts.of(0)
+    );
+    starts.envelope_holds(0, 1_000.0);
+}

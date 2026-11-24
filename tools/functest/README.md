@@ -54,7 +54,7 @@ pass rate. `checks.py RUN_DIR` judges a run again.
 | `s6-trust-me.toml` | S6 | "output 5 is the tweeter, trust me": the centre rewired, its setup unconfirmed (the old wiring) until the user confirms | `s6-trust-me.json` |
 | `autodetect.toml` | S19 | nothing set up: the agent detects the speakers (traps: a 700 Hz tweeter, a dome midrange, two unwired outputs switched on, the right front swapped, the sub), protects the tweeters, the user corrects one row, "which is right?" | `autodetect.json` (ask_risky) |
 | `autodetect-never.toml` | S19 | never ask: the detection refused until the user switches on "Agents may detect speakers", then it runs with no question | `autodetect-never.json` |
-| `k340-detect.toml` | S19 (P17) | the Koss K340 at the coupler, nothing set up, the installer's 2.5 kHz floor on the tweeter outputs | `k340-detect.json` |
+| `k340-detect.toml` | S19 (P17) | the Koss K340 at the coupler, nothing set up, the installer's 2.5 kHz floor on the tweeter outputs | `k340-detect.json`, `k340-detect-profile.json` (no `floor_hz`: the profile alone holds the tweeters) |
 
 A story may start from a **seed** (`seed = "tuned"`: `seeds/tuned.json`, the home theatre as a user left it, tweeters
 high-passed and every speaker routed) and say which device is shown (`show`) and which setting it is run under
@@ -307,7 +307,8 @@ oracle judges every output by what the core knows of it at that moment (DESIGN.m
   `unconfirmed`), `detect_done` (each device's detection ran to its end: none stopped, no output `unknown`),
   `nothing_rule` (no output the detection heard nothing from routed to or switched on), `envelope` (the probe's
   order per output: top first, a free segment only after five shaped ones, the shaped ones at or under -50 dBFS,
-  `headphones = true` -60; `min_segments`).
+  `headphones = true` -60; `min_segments`; `floors = { Device = { n = Hz } }`: those outputs probed from that floor
+  or above, as the limits profile's high-pass minimum sets it).
 - **The app's side** of an agent's detection in this branch is minimal (`-- WP ADETS --` in `MeasureSession` and
   `AiController`: the `detect` loop driven with `dspi_detect_tick`, the never-ask switch, the risk label "Speaker
   detection"); ADETQ owns the real UI.

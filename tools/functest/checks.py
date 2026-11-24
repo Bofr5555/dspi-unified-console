@@ -407,8 +407,10 @@ def more_adets(k, e, now, before):
     if k == "envelope":
         # The probe's order and levels per output (AUTODES 7.2.6): no shaped segment before the
         # output's top was looked at, no free segment before the shaped descent reached its last
-        # step, the shaped ones at or under the sub-floor level, the free ones from 20 Hz
+        # step, the shaped ones at or under the sub-floor level, the free ones from 20 Hz.
+        # -- RGFIX -- `floors` = {device: {n from 1: Hz}}: those outputs probed from that floor or above
         hp = e.get("headphones", False)
+        floors = {(d, int(n) - 1): hz for d, outs in e.get("floors", {}).items() for n, hz in outs.items()}
         below, ceiling = (-60.0, -36.0) if hp else (-50.0, -24.0)
         bad, n = [], 0
         for (d, o), seq in probe_sequences(now, before).items():
@@ -425,6 +427,8 @@ def more_adets(k, e, now, before):
                     bad.append(f"{d} {o + 1}: {x['stage']} at {x['levelDbfs']} dBFS")
                 if x["stage"] in ("top", "band") and x["f1"] < x["floorHz"] - 0.5:
                     bad.append(f"{d} {o + 1}: {x['stage']} from {x['f1']:.0f} Hz under its floor {x['floorHz']:.0f}")
+                if x["floorHz"] < floors.get((d, o), 0) - 0.5:
+                    bad.append(f"{d} {o + 1}: probed from a {x['floorHz']:.0f} Hz floor, not {floors[(d, o)]} Hz")
         sc = "fail" if bad or (e.get("min_segments", 1) > n) else "pass"
         return sc, f"{n} segments" + (": " + "; ".join(bad[:6]) if bad else "")
     return None

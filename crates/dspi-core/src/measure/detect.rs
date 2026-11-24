@@ -893,6 +893,21 @@ impl Detect {
         }
     }
 
+    /// The detection's records of this run's outputs only (RGFIX): those
+    /// carried from the detection before are not counted in its summary.
+    fn this_run(&self) -> Detection {
+        let asked = self
+            .setup
+            .as_ref()
+            .map(|s| s.outputs.as_slice())
+            .unwrap_or_default();
+        let mut run = self.detection.clone();
+        if !asked.is_empty() {
+            run.outputs.retain(|o| asked.contains(&o.output));
+        }
+        run
+    }
+
     fn levels(&self) -> (f32, f32, f32) {
         if self.headphones {
             (
@@ -1052,6 +1067,21 @@ impl DspiCore {
                     ..DetectedOutput::default()
                 });
             }
+        }
+        // -- RGFIX -- A detection of some outputs keeps what the one before
+        // found of the others (their roles, the `nothing` records).
+        if let Some(prev) = layout
+            .as_ref()
+            .and_then(|l| l.detected.as_ref())
+            .filter(|p| p.device_outputs == n_out)
+        {
+            detection.outputs.extend(
+                prev.outputs
+                    .iter()
+                    .filter(|r| !outs.contains(&r.output))
+                    .cloned(),
+            );
+            detection.outputs.sort_by_key(|r| r.output);
         }
         *d = Detect {
             setup: Some(setup.clone()),
@@ -1447,7 +1477,7 @@ impl DspiCore {
         d.work = None;
         d.stage = DetectStage::Done;
         d.running = false;
-        d.detection.summary = summary_of(&d.detection, d.at);
+        d.detection.summary = summary_of(&d.this_run(), d.at);
         self.detect_write_layout(d);
         crate::actor::user::did_as(self, d.actor, "speakers_detected", &d.detection.summary);
     }
@@ -1474,7 +1504,7 @@ impl DspiCore {
         {
             *slot = w.record(DetectClass::Unknown, DetectConfidence::Low);
         }
-        d.detection.summary = summary_of(&d.detection, d.at);
+        d.detection.summary = summary_of(&d.this_run(), d.at);
         if d.setup.is_some() {
             self.detect_write_layout(d);
             crate::actor::user::did_as(self, d.actor, "speakers_detected", &d.detection.summary);

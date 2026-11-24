@@ -49,10 +49,11 @@ is the left channel and input 2 the right. Find out which output drives which dr
   state = "autoDetected"
 
   [[step.expect]]
-  what = "the probe's order and the headphones' levels"
+  what = "the probe's order, the headphones' levels, the tweeters probed from 2.5 kHz"
   kind = "envelope"
   headphones = true
   min_segments = 4
+  floors = { K340 = { 2 = 2500, 4 = 2500 } }
 
   [[step.expect]]
   what = "one speaker-detection question"
