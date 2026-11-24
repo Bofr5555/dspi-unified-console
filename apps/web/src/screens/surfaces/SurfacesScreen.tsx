@@ -7,15 +7,25 @@
 // runs an applied change at once as a live preview; Save writes it to flash and
 // Revert reloads what is stored. Read only: everything shows, nothing can be
 // changed, and the core refuses a write that got past the page.
+//
+// -- WP WEB7 -- Settings › Control as Qt Modern has it: no screen of its own; the
+// Settings screen lists Control Surfaces, Channel Groups, Macros and Auxiliary Outputs
+// beside the page and shows one (`SurfacesPage`). Cards as Qt's CsCard (chevron, the
+// type's tinted badge, the name over the summary, the state chip, a trash button);
+// "Add Control" a menu of the types (no select); Save and Revert on a bar along the
+// bottom only while something is unsaved (`SurfacesSaveBar`, Qt's SettingsSaveBar).
 
 import type { ComponentChildren } from "preact";
-import { useEffect, useMemo, useReducer, useState } from "preact/hooks";
+import { useEffect, useMemo, useReducer, useRef, useState } from "preact/hooks";
 import type { CsRecord, CsRow } from "../../core/protocol";
-import type { ScreenProps } from "../../ui/screens";
+import type { Ask } from "../../ui/screens";
+import type { Session } from "../../ui/session";
 import { CsDesk } from "./desk";
 import { EmptyState, rangeFill } from "../../ui/design"; // -- WP WEB2 --
+import { Group } from "../settings/group"; // -- WP WEB7 --
+import { Icon } from "../settings/icons"; // -- WP WEB7 --
+import "./surfaces.css"; // -- WP WEB7 --
 import {
-  PAGE_LABELS,
   TY,
   activePages,
   addableTypes,
@@ -46,22 +56,139 @@ import {
   type CsRec,
 } from "./model";
 
-/** The desk of this screen, read again when the screen shows; a learn waiting for a press ends when it goes. */
-function useDesk(props: ScreenProps): CsDesk {
-  const desk = useMemo(() => new CsDesk(props.session), [props.session]);
+/**
+ * -- WP WEB7 -- The control-surface desk of a session's Settings: made with the screen, read when
+ * `active` turns on (the Control part shows); a learn waiting for a press ends when it goes.
+ */
+export function useCsDesk(session: Session, active: boolean): CsDesk {
+  const desk = useMemo(() => new CsDesk(session), [session]);
   const [, bump] = useReducer((n: number) => n + 1, 0);
-  const redraw = () => bump(undefined);
   useEffect(() => {
+    const redraw = () => bump(undefined);
     const off = desk.watch(redraw);
-    const offSession = props.session.watch(redraw);
-    void desk.fetch();
+    const offSession = session.watch(redraw);
     return () => {
       off();
       offSession();
       desk.dispose();
     };
-  }, [desk, props.session]);
+  }, [desk, session]);
+  useEffect(() => {
+    if (active) void desk.fetch();
+  }, [desk, active]);
   return desk;
+}
+
+/** -- WP WEB7 -- The editor's pages this device has (Controls always; the rest by its capabilities). */
+export function csPagesOf(desk: CsDesk): CsPage[] {
+  return desk.loaded && desk.snap ? pagesOf(desk.snap) : ["controls"];
+}
+
+// -- WP WEB7 -- Qt's csTypeTints (Theme.qml) and CsController.typeIcon, by component type
+const TYPE_TINTS = ["#75879e", "#339ebd", "#267d9e", "#367dd1", "#575ecc", "#eda12e", "#e67333", "#8c59b8", "#04856f", "#7a5aac", "#9e669e"];
+const TYPE_ICONS: Record<number, string> = {
+  [TY.Button]: "pointer",
+  [TY.Switch]: "toggle-left",
+  [TY.Pot]: "gauge",
+  [TY.Encoder]: "rotate-cw",
+  [TY.Led]: "lightbulb",
+  [TY.LedPwm]: "sun",
+  [TY.Ir]: "radio",
+  [TY.Display]: "monitor",
+  [TY.AuxOut]: "power",
+  [TY.AuxPwm]: "sun-dim",
+};
+
+/** A component type's badge (Qt's CsBadge): a rounded square in the type's tint with its glyph in white. */
+function TypeBadge(props: { type: number }) {
+  const t = props.type;
+  return (
+    <span class="cs-badge" style={{ background: t > 0 && t < TYPE_TINTS.length ? TYPE_TINTS[t] : TYPE_TINTS[0] }} role="img" aria-label={typeName(t)}>
+      <Icon name={TYPE_ICONS[t] ?? "gauge"} />
+    </span>
+  );
+}
+
+/** A quiet icon button (Qt's IconButton): the icon alone, its name for assistive technology and as a tooltip. */
+function IconButton(props: { icon: string; label: string; title?: string; disabled?: boolean; class?: string; onClick: () => void }) {
+  return (
+    <button type="button" class={`cs-icon-button${props.class ? ` ${props.class}` : ""}`} aria-label={props.label} title={props.title ?? props.label} disabled={props.disabled} onClick={props.onClick}>
+      <Icon name={props.icon} />
+    </button>
+  );
+}
+
+/** "+ Add Control" (Qt's CsAddButton): a menu of the component types it can add. ARIA's menu button pattern. */
+function AddMenu(props: { label: string; types: { type: number; name: string }[]; disabled?: boolean; primary?: boolean; onAdd: (type: number) => void }) {
+  const [open, setOpen] = useState(false);
+  const button = useRef<HTMLButtonElement>(null);
+  const list = useRef<HTMLUListElement>(null);
+  const items = () => Array.from(list.current?.querySelectorAll<HTMLButtonElement>("[role=menuitem]:not([disabled])") ?? []);
+  const close = (refocus: boolean) => {
+    setOpen(false);
+    if (refocus) button.current?.focus();
+  };
+  useEffect(() => {
+    if (!open) return;
+    items()[0]?.focus();
+    const outside = (e: PointerEvent) => {
+      const t = e.target as Node;
+      if (!list.current?.contains(t) && !button.current?.contains(t)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", outside);
+    return () => document.removeEventListener("pointerdown", outside);
+  }, [open]);
+  const onKey = (e: KeyboardEvent) => {
+    if (!open) return;
+    const all = items();
+    const at = all.indexOf(document.activeElement as HTMLButtonElement);
+    const go = (i: number) => all[(i + all.length) % all.length]?.focus();
+    if (e.key === "ArrowDown") go(at + 1);
+    else if (e.key === "ArrowUp") go(at - 1);
+    else if (e.key === "Home") go(0);
+    else if (e.key === "End") go(all.length - 1);
+    else if (e.key === "Escape") close(true);
+    else if (e.key === "Tab") return setOpen(false);
+    else return;
+    e.preventDefault();
+  };
+  return (
+    <div class="menu cs-add-menu" onKeyDown={onKey}>
+      <button ref={button} type="button" class={props.primary ? "primary cs-add-button" : "cs-add-button"} aria-haspopup="menu" aria-expanded={open} disabled={props.disabled} onClick={() => setOpen(!open)}>
+        <Icon name="plus" />
+        {props.label}
+      </button>
+      {open ? (
+        <ul ref={list} role="menu" aria-label={props.label}>
+          {props.types.map((t) => (
+            <li key={t.type} role="none">
+              <button
+                type="button"
+                role="menuitem"
+                tabIndex={-1}
+                onClick={() => {
+                  close(true);
+                  props.onAdd(t.type);
+                }}
+              >
+                {t.name}
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
+/** A plain "+ Add Group" / "+ Add Macro" button (Qt's AppButton with the plus icon). */
+function AddButton(props: { label: string; disabled?: boolean; primary?: boolean; onClick: () => void }) {
+  return (
+    <button type="button" class={props.primary ? "primary cs-add-button" : "cs-add-button"} disabled={props.disabled} onClick={props.onClick}>
+      <Icon name="plus" />
+      {props.label}
+    </button>
+  );
 }
 
 /** The rows the core describes for one record: a pick is a list, a number a field in the row's unit, a toggle a check box, a note words. */
@@ -180,6 +307,10 @@ function Card(props: {
   ready?: boolean;
   hint?: string;
   applyLeading?: ComponentChildren;
+  /** -- WP WEB7 -- the type's badge (a binding), else this icon (a group, a macro) */
+  badgeType?: number;
+  icon?: string;
+  iconRunning?: boolean;
   children?: ComponentChildren;
 }) {
   const { desk, rec } = props;
@@ -190,9 +321,17 @@ function Card(props: {
   return (
     <section class="card cs-card" role="group" aria-label={title}>
       <div class="cs-card-head">
-        <button type="button" class="cs-disclose" aria-expanded={props.open} aria-label={props.open ? `Collapse ${title}` : `Expand ${title}`} onClick={() => props.onOpen(!props.open)}>
-          <span aria-hidden="true">{props.open ? "▾" : "▸"}</span>
+        <button type="button" class="cs-icon-button cs-disclose" aria-expanded={props.open} aria-label={props.open ? `Collapse ${title}` : `Expand ${title}`} title={props.open ? "Collapse" : "Expand"} onClick={() => props.onOpen(!props.open)}>
+          <Icon name={props.open ? "chevron-down" : "chevron-right"} />
         </button>
+        {/* -- WP WEB7 -- Qt's badge or icon */}
+        {props.badgeType !== undefined ? (
+          <TypeBadge type={props.badgeType} />
+        ) : props.icon ? (
+          <span class={props.iconRunning ? "cs-card-icon running" : "cs-card-icon"} aria-hidden="true">
+            <Icon name={props.icon} />
+          </span>
+        ) : null}
         <div class="cs-title">
           <input
             type="text"
@@ -208,20 +347,18 @@ function Card(props: {
         </div>
         {props.warning ? (
           <span class="cs-warning" title={props.warning} role="img" aria-label={props.warning}>
-            ⚠
+            <Icon name="circle-alert" />
           </span>
         ) : null}
-        {props.pill ? <span class={props.pill.good ? "badge cs-pill good" : "badge cs-pill"}>{props.pill.text}</span> : null}
+        {/* -- WP WEB7 -- the state as a status chip (§13): a dot and the word */}
+        {props.pill ? (
+          <span class={`status-chip cs-pill${props.pill.good ? " good status-chip-ok" : " status-chip-idle"}`}>
+            <span class={`status-dot${props.pill.good ? " ok" : ""}`} aria-hidden="true" />
+            {props.pill.text}
+          </span>
+        ) : null}
         {props.extras}
-        <button
-          type="button"
-          class="cs-remove"
-          aria-label={`Remove ${title}`}
-          disabled={rec.applying || (liveConfigured(rec) && !desk.writable)}
-          onClick={() => void desk.remove(rec.key)}
-        >
-          Remove
-        </button>
+        <IconButton icon="trash" class="cs-remove" label={`Remove ${title}`} title="Remove" disabled={rec.applying || (liveConfigured(rec) && !desk.writable)} onClick={() => void desk.remove(rec.key)} />
       </div>
       {props.open ? <div class="cs-body">{props.children}</div> : null}
       {props.open || dirty || rec.applying || rec.message ? (
@@ -258,9 +395,7 @@ function RemoteButtons(props: { desk: CsDesk; receiver: CsRec }) {
                   Learn
                 </button>
               )}
-              <button type="button" aria-label={`Remove remote button ${r.slot + 1}`} disabled={r.applying || (liveConfigured(r) && !desk.writable)} onClick={() => void desk.remove(k)}>
-                Remove
-              </button>
+              <IconButton icon="trash" label={`Remove remote button ${r.slot + 1}`} title="Remove" disabled={r.applying || (liveConfigured(r) && !desk.writable)} onClick={() => void desk.remove(k)} />
             </div>
             {learning ? <p class="cs-note" role="status">{desk.learnMessage}</p> : null}
             {r.message ? <p class={r.isError ? "cs-note error" : "cs-note"}>{r.message}</p> : null}
@@ -296,16 +431,12 @@ function DisplayPanel(props: { desk: CsDesk }) {
               Page {n + 1}
               {p.shown ? " (shown)" : ""}: {summaryOf(desk.pages.get(p.index) ?? null)}
             </span>
-            <button type="button" aria-label={`Remove page ${n + 1}`} disabled={!desk.writable || desk.busy > 0} onClick={() => void desk.removePage(p.index)}>
-              Remove
-            </button>
+            <IconButton icon="trash" label={`Remove page ${n + 1}`} title="Remove" disabled={!desk.writable || desk.busy > 0} onClick={() => void desk.removePage(p.index)} />
           </div>
           <CsRows rows={rowsOf(desk.pages.get(p.index) ?? null)} disabled={!desk.writable || desk.busy > 0} onEdit={(id, v) => void desk.editPage(p.index, id, v)} prefix={`Page ${n + 1}`} />
         </div>
       ))}
-      <button type="button" disabled={!desk.writable || freePage(snap) === null || desk.busy > 0} onClick={() => void desk.addPage()}>
-        Add Page
-      </button>
+      <AddButton label="Add Page" disabled={!desk.writable || freePage(snap) === null || desk.busy > 0} onClick={() => void desk.addPage()} />
       {desk.displayMessage ? <p class="cs-note error" role="alert">{desk.displayMessage}</p> : null}
     </div>
   );
@@ -332,11 +463,10 @@ function BindingCard(props: { desk: CsDesk; rec: CsRec; open: boolean; onOpen: (
       onOpen={props.onOpen}
       summary={name ? `${typeName(type)} - ${summary}` : summary}
       pill={pillOf(rec, snap, desk.recs)}
+      badgeType={type}
       applyLeading={
         type === TY.Ir && props.open ? (
-          <button type="button" disabled={!desk.writable || freeSlot("ir", snap, desk.recs) === null} onClick={() => void desk.addRemoteButton()}>
-            Add Remote Button
-          </button>
+          <AddButton label="Add Remote Button" disabled={!desk.writable || freeSlot("ir", snap, desk.recs) === null} onClick={() => void desk.addRemoteButton()} />
         ) : null
       }
     >
@@ -400,6 +530,7 @@ function GroupCard(props: { desk: CsDesk; rec: CsRec; open: boolean; onOpen: (on
       warning={st !== 0 && liveConfigured(rec) ? desk.texts[String(st)] : undefined}
       ready={configured}
       hint="Choose at least one member, then apply."
+      icon="group"
     >
       <CsRows rows={rowsOf(rec.description)} disabled={!desk.writable || rec.applying} onEdit={(id, v) => void desk.edit(rec.key, id, v)} prefix={nameOfRec(desk, rec) || placeholderOf(rec)} />
     </Card>
@@ -422,10 +553,16 @@ function MacroCard(props: { desk: CsDesk; rec: CsRec; open: boolean; onOpen: (on
       onOpen={props.onOpen}
       summary={macroSummary(rec, snap)}
       warning={st !== 0 && liveSteps > 0 ? desk.texts[String(st)] : undefined}
+      icon={running ? "play" : "list-ordered"}
+      iconRunning={running}
       extras={
-        <button type="button" aria-label={running ? `Stop ${title}` : `Run ${title}`} disabled={!desk.writable || (!running && liveSteps === 0)} onClick={() => void desk.fire(rec.key)}>
-          {running ? "Stop" : "Run"}
-        </button>
+        <IconButton
+          icon={running ? "square" : "play"}
+          label={running ? `Stop ${title}` : `Run ${title}`}
+          title={running ? "Stop this macro" : "Run this macro now"}
+          disabled={!desk.writable || (!running && liveSteps === 0)}
+          onClick={() => void desk.fire(rec.key)}
+        />
       }
     >
       {steps.length === 0 ? <p class="empty">No steps yet.</p> : null}
@@ -436,23 +573,15 @@ function MacroCard(props: { desk: CsDesk; rec: CsRec; open: boolean; onOpen: (on
               <span>
                 Step {i + 1}: {summaryOf(rec.steps[i] ?? null)}
               </span>
-              <button type="button" aria-label={`Move step ${i + 1} up`} disabled={i === 0 || !desk.writable} onClick={() => desk.moveStep(rec.key, i, -1)}>
-                ↑
-              </button>
-              <button type="button" aria-label={`Move step ${i + 1} down`} disabled={i === steps.length - 1 || !desk.writable} onClick={() => desk.moveStep(rec.key, i, 1)}>
-                ↓
-              </button>
-              <button type="button" aria-label={`Remove step ${i + 1}`} disabled={!desk.writable} onClick={() => desk.removeStep(rec.key, i)}>
-                Remove
-              </button>
+              <IconButton icon="arrow-up" label={`Move step ${i + 1} up`} title="Move Up" disabled={i === 0 || !desk.writable} onClick={() => desk.moveStep(rec.key, i, -1)} />
+              <IconButton icon="arrow-down" label={`Move step ${i + 1} down`} title="Move Down" disabled={i === steps.length - 1 || !desk.writable} onClick={() => desk.moveStep(rec.key, i, 1)} />
+              <IconButton icon="circle-minus" label={`Remove step ${i + 1}`} title="Remove Step" disabled={!desk.writable} onClick={() => desk.removeStep(rec.key, i)} />
             </div>
             <CsRows rows={rowsOf(rec.steps[i] ?? null)} disabled={!desk.writable || rec.applying} onEdit={(id, v) => void desk.editStep(rec.key, i, id, v)} prefix={`${title} step ${i + 1}`} />
           </li>
         ))}
       </ol>
-      <button type="button" disabled={!desk.writable || steps.length >= maxSteps(snap)} onClick={() => void desk.addStep(rec.key)}>
-        Add Step
-      </button>
+      <AddButton label="Add Step" disabled={!desk.writable || steps.length >= maxSteps(snap)} onClick={() => void desk.addStep(rec.key)} />
     </Card>
   );
 }
@@ -471,60 +600,49 @@ const EMPTY: Record<CsPage, { title: string; text: string }> = {
 const HELP =
   "Wire push buttons, toggle switches, potentiometers, rotary encoders, indicator LEDs, and an IR remote receiver to spare GPIOs and bind each to a device function. Buttons and switches wire between the GPIO and GND (internal pull-up); pots use an ADC pin (GPIO 26, 27, or 28) between 3V3 and GND; encoders use two GPIOs with the common wired to GND. LEDs drive active-high by default. An IR receiver module's OUT pin connects to any GPIO, and its remote buttons are learned by pressing them at the device.\n\nThis wiring is a board-level setting: it is stored on the device, survives preset changes, and survives a factory reset. Changes take effect immediately as a live preview; use Save to keep them across a reboot, or Revert to discard them.";
 
-export function SurfacesScreen(props: ScreenProps) {
-  const desk = useDesk(props);
+/** -- WP WEB7 -- One page of Settings › Control: its cards, Add, and on Control Surfaces the wiring help. */
+export function SurfacesPage(props: { desk: CsDesk; page: CsPage; session: Session }) {
+  const { desk } = props;
   const snap = desk.snap;
   const pages = pagesOf(snap);
-  const [page, setPage] = useState<CsPage>("controls");
-  const shown = pages.includes(page) ? page : "controls";
+  const shown = pages.includes(props.page) ? props.page : "controls";
   const [opened, setOpened] = useState<Record<string, boolean>>({});
   const setOpen = (key: string, on: boolean) => setOpened((o) => ({ ...o, [key]: on }));
-  const [addType, setAddType] = useState(0);
-  const [saveMessage, setSaveMessage] = useState("");
   const readOnly = props.session.readOnlyReason;
 
   if (!desk.loaded || !snap)
-    return (
-      <div class="surfaces-screen">
-        <section class="card">
-          {desk.loadError ? (
-            <p class="error" role="alert">
-              {desk.loadError}{" "}
-              <button type="button" onClick={() => void desk.fetch()}>
-                Try Again
-              </button>
-            </p>
-          ) : (
-            <p class="empty" role="status">
-              Reading control-surface capabilities from the device…
-            </p>
-          )}
-        </section>
-      </div>
+    return desk.loadError ? (
+      <p class="error" role="alert">
+        {desk.loadError}{" "}
+        <button type="button" onClick={() => void desk.fetch()}>
+          Try Again
+        </button>
+      </p>
+    ) : (
+      <p class="cs-note" role="status">
+        Reading control-surface capabilities from the device…
+      </p>
     );
-  if (!supported(snap))
-    return (
-      <div class="surfaces-screen">
-        <section class="card">
-          <p class="empty">This firmware has no control surfaces.</p>
-        </section>
-      </div>
-    );
+  if (!supported(snap)) return <EmptyState icon="circle-slash" title="No Control Surfaces" text="This firmware has no control surfaces." />;
 
   const keys = keysFor(shown, snap, desk.recs);
   const kind = shown === "groups" ? "group" : shown === "macros" ? "macro" : "binding";
   const free = freeSlot(kind, snap, desk.recs);
   const types = shown === "controls" || shown === "aux" ? addableTypes(shown, snap, desk.recs) : [];
-  const chosenType = types.find((t) => t.type === addType)?.type ?? types[0]?.type ?? 0;
-  const add = async () => {
+  const add = async (type: number) => {
     let key: string | null = null;
     if (shown === "groups") key = desk.addGroup();
     else if (shown === "macros") key = desk.addMacro();
-    else if (chosenType) key = await desk.addControl(chosenType);
+    else if (type) key = await desk.addControl(type);
     if (key) setOpen(key, true);
   };
-  const dirty = deviceDirty(snap);
-  const anyDraft = [...desk.recs.values()].some((r) => isDirty(r, desk.recs));
+  const addOff = !desk.writable || free === null || desk.busy > 0;
+  const adder = (primary: boolean) =>
+    shown === "controls" || shown === "aux" ? (
+      <AddMenu label={ADD_WORDS[shown]} types={types} primary={primary} disabled={addOff || types.length === 0} onAdd={(t) => void add(t)} />
+    ) : (
+      <AddButton label={ADD_WORDS[shown]} primary={primary} disabled={addOff} onClick={() => void add(0)} />
+    );
 
   return (
     <div class="surfaces-screen">
@@ -533,55 +651,12 @@ export function SurfacesScreen(props: ScreenProps) {
           {readOnly}
         </div>
       ) : null}
-      <section class="card cs-save" aria-label="Control surfaces">
-        <div class="card-head">
-          <h3>Control Surfaces</h3>
-          <span class={dirty ? "badge cs-pill" : "badge cs-pill good"} role="status">
-            {dirty ? "Unsaved changes" : "Saved"}
-          </span>
-        </div>
-        <p class="cs-note">
-          {dirty ? "Changes run now as a live preview. Save keeps them across a reboot; Revert puts back what is stored." : "What runs now is what is stored on the device."}
-          {anyDraft ? " Cards marked Pending have edits that are not applied yet." : ""}
-        </p>
-        <div class="cs-apply">
-          <span class={saveMessage ? "cs-message error" : "cs-message"} role={saveMessage ? "alert" : undefined}>
-            {saveMessage}
-          </span>
-          <button
-            type="button"
-            disabled={!dirty || !desk.writable || desk.busy > 0}
-            onClick={async () => {
-              const a = await props.ask({
-                title: "Revert Control Surfaces",
-                body: <p>Put back the control-surface configuration stored on the device? Changes not saved are lost.</p>,
-                buttons: [
-                  { label: "Revert", value: "yes", danger: true },
-                  { label: "Cancel", value: "cancel" },
-                ],
-              });
-              if (a === "yes") setSaveMessage(await desk.revert());
-            }}
-          >
-            Revert
-          </button>
-          <button type="button" class="primary" disabled={!dirty || !desk.writable || desk.busy > 0} onClick={async () => setSaveMessage(await desk.save())}>
-            Save
-          </button>
-        </div>
-      </section>
-      {pages.length > 1 ? (
-        <div class="screen-tabs cs-tabs" role="tablist" aria-label="Control-surface pages">
-          {pages.map((p) => (
-            <button type="button" role="tab" key={p} aria-selected={p === shown} onClick={() => setPage(p)}>
-              {PAGE_LABELS[p]}
-            </button>
-          ))}
-        </div>
-      ) : null}
       {keys.length === 0 ? (
         // -- WP WEB2 -- (§16) nothing on this page yet: the empty state, not a card with a sentence
-        <EmptyState icon="list-ordered" title={EMPTY[shown].title} text={EMPTY[shown].text} />
+        // -- WP WEB7 -- with its Add as the primary next step (Qt's CsEmptyState)
+        <EmptyState icon="list-ordered" title={EMPTY[shown].title} text={EMPTY[shown].text}>
+          {adder(true)}
+        </EmptyState>
       ) : null}
       {keys.map((k) => {
         const rec = desk.rec(k)!;
@@ -591,32 +666,73 @@ export function SurfacesScreen(props: ScreenProps) {
         if (rec.kind === "macro") return <MacroCard key={k} desk={desk} rec={rec} open={open} onOpen={onOpen} />;
         return <BindingCard key={k} desk={desk} rec={rec} open={open} onOpen={onOpen} />;
       })}
-      <div class="cs-add">
-        {types.length > 1 ? (
-          <select aria-label="Component type" value={String(chosenType)} disabled={!desk.writable} onChange={(e) => setAddType(Number((e.target as HTMLSelectElement).value))}>
-            {types.map((t) => (
-              <option key={t.type} value={String(t.type)}>
-                {t.name}
-              </option>
-            ))}
-          </select>
-        ) : null}
-        <button type="button" disabled={!desk.writable || free === null || ((shown === "controls" || shown === "aux") && !chosenType) || desk.busy > 0} onClick={() => void add()}>
-          {ADD_WORDS[shown]}
-          {(shown === "controls" || shown === "aux") && types.length === 1 ? `: ${types[0]!.name}` : ""}
-        </button>
-        {free === null && desk.writable && kind === "binding" ? <span class="empty">All {slotCount(snap)} control slots are in use.</span> : null}
-      </div>
+      {keys.length ? (
+        <div class="cs-add">
+          {adder(false)}
+          {free === null && desk.writable && kind === "binding" ? <span class="cs-note">All {slotCount(snap)} control slots are in use.</span> : null}
+        </div>
+      ) : null}
       {shown === "controls" ? (
-        <section class="card cs-help">
+        <Group class="cs-help" footer={num(snap, "capsVersion") ? `Control-surface capability version ${num(snap, "capsVersion")}.` : undefined}>
           {HELP.split("\n\n").map((p, i) => (
             <p key={i} class="cs-note">
               {p}
             </p>
           ))}
-          {num(snap, "capsVersion") ? <p class="cs-note">Control-surface capability version {num(snap, "capsVersion")}.</p> : null}
-        </section>
+        </Group>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * -- WP WEB7 -- Qt's SettingsSaveBar for the control surfaces: along the bottom of the page, only
+ * while the device runs a change it has not stored (or a save failed): one Revert, one Save.
+ */
+export function SurfacesSaveBar(props: { desk: CsDesk; ask: Ask }) {
+  const { desk } = props;
+  const [message, setMessage] = useState("");
+  const snap = desk.snap;
+  const dirty = !!snap && desk.loaded && supported(snap) && deviceDirty(snap);
+  if (!dirty && !message) return null;
+  return (
+    <div class="cs-save-bar" role="region" aria-label="Control surfaces">
+      <Icon name="circle-alert" class="cs-save-icon" />
+      <div class="cs-save-text">
+        {dirty ? (
+          <>
+            <span class="cs-save-title" role="status">
+              Unsaved changes
+            </span>
+            <span class="cs-save-sub">Your controls are live now; saving keeps them across a reboot.</span>
+          </>
+        ) : null}
+        {message ? (
+          <span class="cs-save-failure" role="alert">
+            {message}
+          </span>
+        ) : null}
+      </div>
+      <button
+        type="button"
+        disabled={!dirty || !desk.writable || desk.busy > 0}
+        onClick={async () => {
+          const a = await props.ask({
+            title: "Revert Control Surfaces",
+            body: <p>Put back the control-surface configuration stored on the device? Changes not saved are lost.</p>,
+            buttons: [
+              { label: "Revert", value: "yes", danger: true },
+              { label: "Cancel", value: "cancel" },
+            ],
+          });
+          if (a === "yes") setMessage(await desk.revert());
+        }}
+      >
+        Revert
+      </button>
+      <button type="button" class="primary" disabled={!dirty || !desk.writable || desk.busy > 0} onClick={async () => setMessage(await desk.save())}>
+        Save
+      </button>
     </div>
   );
 }

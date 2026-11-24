@@ -5,7 +5,7 @@
 // "imported" banner until it is confirmed (review RA F1).
 
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { openPage } from "../nav";
+import { openPage, openSetting } from "../nav";
 
 type Clients = { dspiClients: { call(m: string, p: unknown): Promise<unknown> }[] };
 
@@ -33,7 +33,7 @@ async function openDemo(page: Page): Promise<Locator> {
 
 async function speakersPage(session: Locator): Promise<Locator> {
   await openPage(session, "Settings");
-  await session.getByRole("navigation", { name: "Settings pages" }).getByRole("button", { name: "Speakers" }).click();
+  await openSetting(session, "Speakers"); // -- WP WEB7 -- its part, then its row
   const page = session.getByRole("region", { name: "Speakers" });
   await expect(page.getByRole("list", { name: "Speaker layout" })).toBeVisible();
   return page;

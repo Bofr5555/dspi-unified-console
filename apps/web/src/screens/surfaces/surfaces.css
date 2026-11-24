@@ -1,0 +1,54 @@
+/* -- WP WEB7 -- Settings › Control as Qt Modern draws it (qml/settings/cs): each card a panel with the
+   separator edge (CsCard), its row chevron · badge · name over summary · state chip · trash; the body
+   rows as form rows (title left, control at the right edge); quiet icon buttons; the save bar along
+   the page's bottom (SettingsSaveBar). Overrides the WB6l/WEB2 rules in dspi-web.css by specificity. */
+.dspi-web .settings-page .surfaces-screen { display: flex; flex-direction: column; gap: 12px; max-width: var(--content-max); min-width: 0; }
+.dspi-web .surfaces-screen .cs-card { margin: 0; padding: 12px; border: 1px solid var(--separator); border-radius: 8px; background: var(--panel); }
+.dspi-web .surfaces-screen .cs-card:nth-of-type(odd) { background: var(--panel); }
+.dspi-web .surfaces-screen .cs-card + .cs-card { margin-top: 0; }
+.dspi-web .surfaces-screen .cs-card-head { gap: 12px; flex-wrap: nowrap; }
+.dspi-web .cs-badge { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 32px; height: 32px; border-radius: 8px; color: #fff; }
+.dspi-web .cs-badge .shell-icon { width: 16px; height: 16px; }
+.dspi-web .cs-card-icon { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 20px; height: 20px; color: var(--accent-text); }
+.dspi-web .cs-card-icon.running { color: var(--ok); }
+.dspi-web .cs-card-icon .shell-icon { width: 14px; height: 14px; }
+.dspi-web .surfaces-screen .cs-title { gap: 2px; flex: 1 1 auto; }
+.dspi-web .surfaces-screen .cs-name { width: 100%; max-width: 280px; height: 24px; padding: 0 6px; border: 0; border-radius: 6px; background: var(--control) !important; font-weight: 400; }
+.dspi-web .surfaces-screen .cs-name::placeholder { color: var(--text); opacity: 1; }
+.dspi-web .surfaces-screen .cs-summary { font-size: 11px; color: var(--muted); }
+.dspi-web .surfaces-screen .cs-pill { flex: none; }
+.dspi-web .cs-warning { display: inline-flex; color: var(--warn); }
+.dspi-web .cs-warning .shell-icon { width: 12px; height: 12px; }
+.dspi-web button.cs-icon-button { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 24px; height: 24px; min-height: 0; padding: 0; border: 0; background: none; color: var(--text); }
+.dspi-web button.cs-icon-button:hover:not(:disabled) { background: var(--control-hover); }
+.dspi-web button.cs-icon-button .shell-icon { width: 13px; height: 13px; }
+.dspi-web button.cs-disclose .shell-icon { width: 12px; height: 12px; }
+.dspi-web .surfaces-screen .cs-body { margin: 12px 0 0 36px; gap: 8px; }
+.dspi-web .surfaces-screen .cs-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 28px; }
+.dspi-web .surfaces-screen .cs-row > .cs-row-title { flex: 1 1 auto; min-width: 0; }
+.dspi-web .surfaces-screen .cs-row > select, .dspi-web .surfaces-screen .cs-row > .cs-number, .dspi-web .surfaces-screen .cs-row > input[type="range"] { flex: 0 1 260px; }
+.dspi-web .surfaces-screen .cs-number input { width: 88px; height: 24px; font-family: var(--mono); font-size: 12px; text-align: right; }
+.dspi-web .surfaces-screen .cs-remote, .dspi-web .surfaces-screen .cs-page, .dspi-web .surfaces-screen .cs-step { border: 0; border-radius: 6px; padding: 8px; background: var(--stripe); }
+.dspi-web .surfaces-screen .cs-remotes h4, .dspi-web .surfaces-screen .cs-display h4 { font-size: 13px; font-weight: 600; }
+.dspi-web .surfaces-screen .cs-apply { justify-content: flex-end; margin-top: 12px; }
+.dspi-web button.cs-add-button { display: inline-flex; align-items: center; gap: 6px; }
+.dspi-web button.cs-add-button .shell-icon { width: 13px; height: 13px; }
+.dspi-web .cs-add-menu [role="menu"] { left: 0; right: auto; }
+.dspi-web .surfaces-screen .cs-add { display: flex; align-items: center; gap: 12px; }
+.dspi-web .surfaces-screen .cs-add > .cs-note { margin-left: auto; }
+.dspi-web .surfaces-screen .cs-help .cs-note { white-space: normal; }
+.dspi-web .surfaces-screen .empty-state .menu { margin-top: 4px; }
+/* The save bar: the sidebar's tone, a separator above, the page's width, stuck to the bottom */
+.dspi-web .cs-save-bar { position: sticky; bottom: 0; z-index: 2; display: flex; align-items: center; gap: 8px; margin-top: 12px; padding: 8px 16px; border-top: 1px solid var(--separator); background: var(--chrome); max-width: var(--content-max); }
+.dspi-web .cs-save-icon.shell-icon { width: 14px; height: 14px; align-self: flex-start; margin-top: 2px; color: var(--warn); }
+.dspi-web .cs-save-text { display: flex; flex-direction: column; gap: 1px; flex: 1 1 auto; min-width: 0; }
+.dspi-web .cs-save-title { font-size: 11px; color: var(--muted); }
+.dspi-web .cs-save-sub { font-size: 11px; color: var(--muted); }
+.dspi-web .cs-save-failure { font-size: 11px; color: var(--warn); overflow-wrap: anywhere; }
+@container console (max-width: 720px) {
+  .dspi-web .surfaces-screen .cs-body { margin-left: 0; }
+  .dspi-web .surfaces-screen .cs-card-head { flex-wrap: wrap; }
+  .dspi-web .surfaces-screen .cs-row { flex-wrap: wrap; }
+  .dspi-web .surfaces-screen .cs-row > select, .dspi-web .surfaces-screen .cs-row > .cs-number, .dspi-web .surfaces-screen .cs-row > input[type="range"] { flex: 1 1 100%; }
+  .dspi-web .cs-save-bar { flex-wrap: wrap; padding: 8px; }
+}
