@@ -27,7 +27,9 @@
 # <name>-cross for the cross lane) instead of from nothing.
 #
 # Logs, summary.txt and summary.md: $DSPI_BUILD_CACHE/work/ci-full/<commit>-<time>/
-# (never tmpfs). qt-packages builds from a commit: run it on a clean tree.
+# (never tmpfs). qt-packages builds from a commit: run it on a clean tree; its
+# files end up in that directory too (release-<version>-ci), never in
+# work/release-<version>, and it will not run while that folder exists.
 set -uo pipefail
 cd "$(dirname "$0")/.."
 B=${DSPI_BUILD_CACHE:-$HOME/.cache/dspi-build}
@@ -72,6 +74,22 @@ export DSPI_TEST_PAR=${DSPI_TEST_PAR:-2} DSPI_SMOKE_SHARDS=${DSPI_SMOKE_SHARDS:-
 started=$(date +%s)
 echo "full.sh: commit $commit, $max lanes at once, DSPI_JOBS $jobs per lane (proptest $((jobs * 2))), DSPI_TEST_PAR $DSPI_TEST_PAR, DSPI_SMOKE_SHARDS $DSPI_SMOKE_SHARDS; logs $out" | tee "$sum"
 
+# qt-packages: build-release.sh empties and fills work/release-<version>, the
+# release folder's name. A folder already there is never touched (the step
+# fails instead); the one this run makes moves into the run's directory.
+qt_packages() {
+  local v
+  v=$(sed -n 's/^project(uconsole-for-dspi VERSION \([0-9.]*\).*/\1/p' apps/desktop/qt/CMakeLists.txt)
+  if [ -e "$B/work/release-$v" ]; then
+    echo "full.sh: $B/work/release-$v is there (a release's files?); move it away to run qt-packages" >&2
+    return 1
+  fi
+  ci/release-desktop.sh --test
+  local rc=$?
+  [ ! -d "$B/work/release-$v" ] || mv "$B/work/release-$v" "$out/release-$v-ci"
+  return "$rc"
+}
+
 # One lane: its steps in order, each logged; a failure goes on to the next
 lane() {
   local name=$1 key=$2 steps=$3 s log t0 rc
@@ -96,7 +114,7 @@ lane() {
     t0=$(date +%s)
     echo "START $name $s +$((t0 - started))s" >> "$sum"
     case "$s" in
-      qt-packages) ci/release-desktop.sh --test ;;
+      qt-packages) qt_packages ;;
       android-tests|android-aab) if [ -x "$slot" ]; then "$slot" ci/check.sh --step "$s"; else ci/check.sh --step "$s"; fi ;;
       *) ci/check.sh --step "$s" ;;
     esac > "$log" 2>&1 < /dev/null
