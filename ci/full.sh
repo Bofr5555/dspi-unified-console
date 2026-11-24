@@ -17,7 +17,9 @@
 #   DSPI_CI_LANES   lanes running at once (default 8: all; the longest start first)
 #   DSPI_CI_JOBS    cargo jobs over all running lanes (default 24): each lane's
 #                   DSPI_JOBS is DSPI_CI_JOBS / DSPI_CI_LANES (at least 2), the
-#                   proptest lane twice that (its build is the critical path)
+#                   proptest lane twice that (its build is the critical path);
+#                   cmake --build in a lane (the Qt steps) twice DSPI_JOBS, as
+#                   C++ units are smaller (CMAKE_BUILD_PARALLEL_LEVEL, ci/run.sh)
 #   DSPI_TEST_PAR   test binaries at once in test and proptest (default 2 here, as
 #                   the other lanes load the host too; ci/check.sh alone uses 4)
 #   DSPI_SMOKE_SHARDS  qt-offscreen app instances (default 4) plus its launches
@@ -108,7 +110,7 @@ lane() {
         fi ;;
     esac
   fi
-  export DSPI_JOBS=$jobs
+  export DSPI_JOBS=$jobs CMAKE_BUILD_PARALLEL_LEVEL=$((jobs * 2))
   [ "$name" != prop ] || DSPI_JOBS=$((jobs * 2))
   for s in $steps; do
     log=$out/logs/$s.log

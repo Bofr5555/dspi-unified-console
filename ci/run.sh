@@ -59,6 +59,8 @@ common=(--rm -i --userns=keep-id --user "$(id -u):$(id -g)"
   -v "$B/work/empty":/sys/bus/usb/devices:ro,z
   -v "$B/cargo-home":/cache/cargo:z -e CARGO_HOME=/cache/cargo
   -e HOME=/work/home -e TMPDIR=/work/tmp -e CARGO_BUILD_JOBS="${DSPI_JOBS:-4}" -w /src)
+# -- WP CIPAR -- cmake --build's jobs, when the caller caps them (ci/full.sh)
+[ -z "${CMAKE_BUILD_PARALLEL_LEVEL:-}" ] || common+=(-e CMAKE_BUILD_PARALLEL_LEVEL="$CMAKE_BUILD_PARALLEL_LEVEL")
 case "$profile" in
   default)
     mkdir -p "$B/target/$tkey"
