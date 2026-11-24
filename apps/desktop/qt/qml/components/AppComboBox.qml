@@ -83,9 +83,9 @@ ComboBox {
         verticalAlignment: Text.AlignVCenter
     }
     background: Rectangle {
-        radius: Theme.radiusSmall
+        radius: Theme.radiusControl   // -- WP DL0 -- Modern: no outline but the focus ring
         color: control.down ? Theme.controlPressed : control.hovered ? Theme.controlHover : Theme.control
-        border.width: control.visualFocus ? 2 : 1
+        border.width: control.visualFocus ? Theme.focusRingWidth : Theme.lineWidth
         border.color: control.visualFocus ? Theme.focusRing : Theme.border
     }
     popup: Popup {

@@ -59,7 +59,7 @@ SpinBox {
         x: 0
         height: control.height
         width: height
-        radius: Theme.radiusSmall
+        radius: Theme.radiusControl   // -- WP DL0 --
         color: control.down.pressed ? Theme.controlPressed : "transparent"
         Icon {
             anchors.centerIn: parent
@@ -72,7 +72,7 @@ SpinBox {
         x: control.width - width
         height: control.height
         width: height
-        radius: Theme.radiusSmall
+        radius: Theme.radiusControl   // -- WP DL0 --
         color: control.up.pressed ? Theme.controlPressed : "transparent"
         Icon {
             anchors.centerIn: parent
@@ -82,9 +82,9 @@ SpinBox {
         }
     }
     background: Rectangle {
-        radius: Theme.radiusSmall
+        radius: Theme.radiusControl   // -- WP DL0 -- Modern: no outline but the focus ring
         color: Theme.control
-        border.width: control.activeFocus ? 2 : 1
+        border.width: control.activeFocus ? Theme.focusRingWidth : Theme.lineWidth
         border.color: control.activeFocus ? Theme.focusRing : Theme.border
     }
 

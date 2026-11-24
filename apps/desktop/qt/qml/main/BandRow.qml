@@ -53,15 +53,23 @@ Rectangle {
     color: selected ? Theme.selection : "transparent"
     enabled: ChannelController.writable
 
-    // Every other row a shade lighter
+    // Every other row a shade lighter. -- WP DL0 -- Modern: the stripe token
+    // (DESIGN-LANGUAGE §9), and the row under the pointer in the hover tone
     Rectangle {
         anchors.fill: parent
         visible: row.band % 2 === 0 && !row.selected
-        color: Theme.text
-        opacity: 0.03
+        color: LayoutController.modern ? Theme.stripe : Theme.text
+        opacity: LayoutController.modern ? 1 : 0.03
+    }
+    Rectangle {
+        anchors.fill: parent
+        visible: LayoutController.modern && rowHover.hovered && !row.selected && row.enabled
+        color: Theme.controlHover
+        opacity: 0.6
     }
 
     HoverHandler {
+        id: rowHover   // -- WP DL0 --
         onHoveredChanged: if (row.active || !hovered) row.hoverChanged(row.band, hovered)
     }
 

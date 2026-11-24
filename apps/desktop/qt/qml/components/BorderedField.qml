@@ -17,6 +17,8 @@ import UConsole
 // -- WP QTTWEAK -- With `selectAllOnFocus`, Tab or a click into the field
 // selects all its text, so typing replaces the value; a click in a field that
 // already has the focus places the cursor, and a drag selects part of it.
+//
+// -- WP DL0 -- Modern: no outline, radius 6; the focus ring is the only line.
 TextField {
     id: field
     property string label
@@ -97,9 +99,9 @@ TextField {
     bottomPadding: 2
     verticalAlignment: TextInput.AlignVCenter
     background: Rectangle {
-        radius: Theme.radiusSmall
+        radius: Theme.radiusControl   // -- WP DL0 --
         color: Theme.control
-        border.width: field.activeFocus ? 2 : 1
+        border.width: field.activeFocus ? Theme.focusRingWidth : Theme.lineWidth
         border.color: field.activeFocus ? Theme.focusRing : Theme.border
     }
 

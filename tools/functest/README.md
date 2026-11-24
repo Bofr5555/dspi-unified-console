@@ -312,3 +312,24 @@ oracle judges every output by what the core knows of it at that moment (DESIGN.m
 - **The app's side** of an agent's detection in this branch is minimal (`-- WP ADETS --` in `MeasureSession` and
   `AiController`: the `detect` loop driven with `dspi_detect_tick`, the never-ask switch, the risk label "Speaker
   detection"); ADETQ owns the real UI.
+
+<!-- -- WP SHOW -- -->
+## Filming a run (`--record`)
+
+`functest.py run --record ...` (or `FUNCTEST_SCREEN=1600x1000` for a screen without a film) runs the app on an Xvfb
+screen in its container (the xcb platform, in place of offscreen; `FUNCTEST_ENV=DSPI_COLOR_SCHEME=dark` for the dark
+theme). The window fills the screen and the host's `ffmpeg` films it through the X socket in the run's `x11/` folder
+(the container shares the host's IPC namespace for MIT-SHM, else x11grab fails or hangs) into `screen.mp4` (H.264,
+`FUNCTEST_FPS`, default 20). `record.jsonl` stamps, with epoch times, the prompts, the agent's tool calls and words
+(stream-json has no times) and the app's questions, for a caption bar. `FUNCTEST_READ_S` (default 1.5) is how long the
+harness user reads a question before answering; 4 keeps a sheet readable in a film.
+
+<!-- -- WP DESREV -- -->
+## A gallery of every Modern screen (DESREV)
+
+`FUNCTEST_SCREEN=1600x1000 functest.py up --name gal --story stories/s12-presets.toml --confirm ask_everything`, then
+`gallery.py gal` (or `gallery.py gal dark`, `light`, `extras`, with `only=popups,dialogs,...`) grabs every page, tab,
+Settings page, popup, dialog, tool window and AI state in dark and light, plus the Darker tone, a 1100×720 window,
+Classic for comparison and the no-device states, into `runs/gal/shots/<set>/` with a `manifest.json`; `functest.py
+down --name gal` ends it. The control socket reaches the shell as `Shell` (`trigger`, `openWindow`, `closeWindow`)
+for dialogs and windows.
