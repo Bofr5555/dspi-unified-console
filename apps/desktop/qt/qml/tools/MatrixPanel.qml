@@ -31,8 +31,9 @@ import UConsole
 // Keyboard (on the grid): arrows, Home / End (first / last column), PgUp /
 // PgDn (first / last row) move; Space connects or disconnects; Enter, a
 // digit, -, +, . or , types the gain (connecting first; -- WP REVDFIX -- REVD
-// G1: "-6" is −6 dB); Alt with + or - steps it by 0.5 dB, Ctrl by 3 dB; I inverts the phase; M mutes and E enables the column's output;
-// Delete disconnects; Shift+F10 or the menu key opens the cell's menu; Escape
+// G1: "-6" is −6 dB, as on the web); Alt with + or - steps it by 0.5 dB,
+// Ctrl by 3 dB; I inverts the phase; M mutes and E enables the column's
+// output; Delete disconnects; Shift+F10 or the menu key opens the cell's menu; Escape
 // leaves the cell. The crosspoint the grid is on is MatrixController's
 // current one, which the Routing inspector shows.
 //
