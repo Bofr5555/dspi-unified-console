@@ -139,9 +139,9 @@ export const SCREENS: ScreenDef[] = [
   { id: "main", label: "Dashboard", View: MainScreen },
   // -- WP WB6b --
   { id: "eq", label: "PEQ", View: EqScreen }, // -- WP WEBM2 -- the Equaliser's PEQ tab (MODLAY 2)
-  // -- WP WEBM2 -- the Equaliser's Crossover and Delay & gain tabs (setting up: not in Simple)
+  // -- WP WEBM2 -- the Equaliser's Crossover and Delay & Gain tabs (setting up: not in Simple)
   { id: "xover", label: "Crossover", View: CrossoverScreen },
-  { id: "delays", label: "Delay & gain", View: DelaysScreen },
+  { id: "delays", label: "Delay & Gain", View: DelaysScreen },
   // -- WP WB6G -- (UI-MODES: "Channels and EQ", every mode)
   { id: "inputs", label: "Inputs", View: InputsScreen },
   // -- WP WB6c --
