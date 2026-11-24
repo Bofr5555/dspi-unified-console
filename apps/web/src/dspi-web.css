@@ -2118,3 +2118,58 @@
 .dspi-web .insp-sec > summary { align-items: center; min-height: 24px; padding: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
 .dspi-web .insp-sec > summary .insp-summary { font-size: 11px; letter-spacing: 0; text-transform: none; }
 .dspi-web .insp-label { color: var(--text); }
+/* -- WP WEB2 -- (§9) the shared table: the header's caps labels over the one rule that stays, 28 px rows
+   on stripes instead of rules, numbers and times in the mono face */
+.dspi-web .ds-table { border-collapse: separate; border-spacing: 0; }
+.dspi-web .ds-table th { padding: 0 8px 6px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--separator); text-align: left; }
+.dspi-web .ds-table td { height: 28px; padding: 4px 8px; border-top: 0; vertical-align: middle; }
+.dspi-web .ds-table tbody tr:nth-child(even) > td { background: var(--stripe); }
+.dspi-web .ds-table tbody tr > td:first-child { border-radius: 4px 0 0 4px; }
+.dspi-web .ds-table tbody tr > td:last-child { border-radius: 0 4px 4px 0; }
+.dspi-web .ds-table tbody tr:hover > td { background: var(--control-hover); }
+/* -- WP WEB2 -- (§8) a card's title is a section label at its top left (the Device page's cards, the
+   Devices page's "This console" and "Files"); the picker's rows without rules, their buttons on one line */
+.dspi-web .card > h2, .dspi-web .card > .card-head > h2, .dspi-web .card > .card-head > h3, .dspi-web .installation > h2 {
+  margin: 0 0 8px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted);
+}
+.dspi-web .card > .card-head { min-height: 24px; margin-bottom: 4px; }
+.dspi-web .card > .card-head > h2, .dspi-web .card > .card-head > h3 { margin: 0; }
+.dspi-web .source { border-top: 0; min-height: 36px; padding: 2px 0; }
+.dspi-web .source button, .dspi-web .open-files button { white-space: nowrap; }
+.dspi-web .devices-columns { gap: 12px; }
+.dspi-web .device-info dl, .dspi-web .device-screen .settings-facts { row-gap: 6px; }
+.dspi-web .device-screen .note, .dspi-web .devices-page .unavailable, .dspi-web .add-hub label { font-size: 11px; }
+/* -- WP WEB2 -- (§7) a page's own sub-pages (`.screen-tabs`: Control Surfaces' Controls/Groups/…, System's
+   Status/Installation) are segments: one control-tone bar, the chosen one in the selection tone with the
+   accent's text (they were adjacent filled buttons with no chosen state) */
+.dspi-web .screen-tabs { display: inline-flex; flex-wrap: wrap; align-self: flex-start; gap: 0; padding: 2px; background: var(--control); border-radius: var(--radius-control); }
+.dspi-web .screen-tabs > button { min-height: 24px; padding: 0.15rem 0.75rem; border: 0; border-radius: 4px; background: none; color: var(--text); }
+.dspi-web .screen-tabs > button:hover:not(:disabled) { background: var(--control-hover); }
+.dspi-web .screen-tabs > button[aria-selected="true"] { background: var(--selection); color: var(--accent-text); font-weight: 600; }
+/* -- WP WEB2 -- (§7, §17) the quick strip: quiet icon buttons (no fill until hovered), 16 px Lucide icons
+   in the muted tone; an effect that is on in the selection tone with the icon in the accent's text */
+.dspi-web .quick-strip { display: flex; align-items: center; gap: 2px; }
+.dspi-web .strip-button { display: inline-grid; place-items: center; min-width: 28px; min-height: 28px; padding: 0; background: none; color: var(--muted); }
+.dspi-web .strip-button .shell-icon { width: 16px; height: 16px; stroke-width: 1.75; }
+.dspi-web .strip-button:hover:not(:disabled) { background: var(--control-hover); color: var(--text); }
+.dspi-web .strip-button.toggle[aria-pressed="true"] { background: var(--selection); color: var(--accent-text); }
+/* -- WP WEB2 -- (§1, §14) the hub's pages, the System page and the shared notes: warning orange only as
+   a mark (a dot, an edge, an icon), never as body text. A difference, an issue or a warning sentence in the
+   text's or the muted tone with a 6 px warning dot before it; a whole warning sentence a notice row */
+.dspi-web .sys-diff, .dspi-web .sys-warn, .dspi-web .hub-count.warn, .dspi-web .hub-result.warn .hub-result-text,
+.dspi-web .hub-image-verified.warn, .dspi-web .lt-status.pending, .dspi-web .slot-bar.storing .slot-line { color: var(--muted); }
+.dspi-web .sys-diff::before, .dspi-web .sys-warn::before, .dspi-web .hub-count.warn::before, .dspi-web .hub-health-table td.tone-warn::before {
+  content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 4px; border-radius: 3px; vertical-align: middle; background: var(--warn);
+}
+.dspi-web .hub-health-table td.tone-warn { color: var(--text); font-weight: 600; }
+.dspi-web .sys-issue, .dspi-web .error.notice-warning, .dspi-web .rta-following {
+  color: var(--text); padding: 0.25rem 0.6rem; border-left: 3px solid var(--warn); border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--warn) 12%, var(--panel));
+}
+/* -- WP WEB2 -- at a phone's width the controls the layers above made smaller are 44 px tap targets again
+   (RB, WEBM5 RC13): the inspector's toggle, the quick strip, segments and sub-pages, the settings list */
+@container console (max-width: 720px) {
+  .dspi-web .inspector-toggle, .dspi-web .strip-button, .dspi-web .segments > button, .dspi-web .seg > button,
+  .dspi-web .screen-tabs > button, .dspi-web .settings-group-list button, .dspi-web .tool-chip { min-height: 44px; }
+  .dspi-web .strip-button { min-width: 44px; }
+}
