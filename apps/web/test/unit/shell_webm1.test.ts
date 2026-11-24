@@ -34,7 +34,7 @@ test("WEBM1 sections: the pages of each mode; a mode's empty sections are not in
   const of = (m: "simple" | "advanced" | "installer") => sectionsFor(withDeviceScreen(screensFor(m, false)));
   const simple = of("simple");
   assert.deepEqual(ids(simple), ["overview", "equaliser", "routing", "effects", "library", "devices", "settings"]);
-  assert.deepEqual(ids(simple.find((s) => s.id === "library")!.pages), ["presets", "snapshots"], "snapshots: recall and A/B only; -- WP WEB7 -- Presets in every mode, as Qt");
+  assert.deepEqual(ids(simple.find((s) => s.id === "library")!.pages), ["presets", "snapshots", "autoeq"], "snapshots: recall and A/B only; -- WP WEB7 -- Presets and AutoEQ in every mode, as Qt");
   assert.deepEqual(ids(simple.find((s) => s.id === "settings")!.pages), ["settings"]);
   const advanced = of("advanced");
   assert.deepEqual(ids(advanced), ids([...SECTIONS]));

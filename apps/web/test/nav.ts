@@ -24,6 +24,7 @@ const PLACES: Record<string, { section: string; id: string; tab?: string }> = {
   Snapshots: { section: "Library", id: "snapshots" },
   History: { section: "Library", id: "history" }, // -- WP WEBM3 --
   Files: { section: "Library", id: "files" },
+  AutoEQ: { section: "Library", id: "autoeq" }, // -- WP WEB7 --
   System: { section: "System", id: "system" },
   Events: { section: "System", id: "events" },
   Connect: { section: "Devices", id: "connect", tab: "Open a DSPi" },

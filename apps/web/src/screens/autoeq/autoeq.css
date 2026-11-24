@@ -1,0 +1,37 @@
+/* -- WP WEB7 -- Library › AutoEQ as Qt Modern's (AutoEqPanel.qml): the search, its count and ▾ in the page's
+   tools; the headphones as ListRows at the left, the chosen one at the right (wide: two columns, else one). */
+.dspi-web .aeq-screen { max-width: none; }
+.dspi-web .aeq-columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; align-items: start; min-width: 0; }
+.dspi-web .aeq-list { min-width: 0; max-width: var(--content-max); }
+.dspi-web .aeq-side { display: flex; flex-direction: column; gap: 8px; min-width: 0; max-width: var(--content-max); }
+.dspi-web .aeq-side > p { margin: 0; }
+.dspi-web .aeq-name { font-size: 15px; font-weight: 600; }
+.dspi-web .aeq-hint { color: var(--muted); }
+.dspi-web .aeq-apply { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }
+.dspi-web .aeq-pair { display: inline-flex; align-items: center; gap: 8px; }
+.dspi-web .aeq-pair select { min-width: 12rem; max-width: 240px; }
+.dspi-web .aeq-check { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; }
+.dspi-web .aeq-frame { position: relative; margin: 4px 0 0; min-height: 180px; border-radius: 8px; background: var(--panel); overflow: hidden; }
+.dspi-web .aeq-frame svg { display: block; width: 100%; height: 180px; }
+.dspi-web .aeq-empty { display: grid; place-items: center; min-height: 180px; margin: 0; padding: 0 16px; color: var(--muted); text-align: center; }
+.dspi-web .aeq-grid { stroke: var(--eq-grid); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.dspi-web .aeq-zero { stroke: var(--eq-zero); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.dspi-web .aeq-curve { fill: none; stroke: var(--accent); stroke-width: 2; }
+.dspi-web .aeq-curve.second { stroke-dasharray: 5 4; opacity: 0.8; }
+.dspi-web .aeq-ticks { position: absolute; inset: 0; pointer-events: none; font: 10.5px var(--mono); color: var(--eq-text); }
+.dspi-web .aeq-ticks > span { position: absolute; bottom: 4px; transform: translateX(4px); }
+.dspi-web .aeq-ticks > .aeq-db { left: 6px; transform: none; }
+.dspi-web .aeq-ticks > .aeq-db.top { top: 4px; bottom: auto; }
+.dspi-web .aeq-preview { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--muted); }
+.dspi-web .aeq-preview p { margin: 0; }
+.dspi-web .aeq-search input { width: 15rem; max-width: 40vw; height: 28px; }
+.dspi-web .aeq-count { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.dspi-web .aeq-choose { all: unset; display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; padding: 3px 0; cursor: pointer; }
+.dspi-web .aeq-choose:focus-visible { outline: 2px solid var(--accent-fill); outline-offset: 2px; border-radius: 4px; }
+.dspi-web .aeq-heart > button { min-height: 24px; padding: 0 0.45rem; background: none; color: var(--muted); }
+.dspi-web .aeq-row.fav .aeq-heart { opacity: 1; }
+.dspi-web .aeq-row.fav .aeq-heart > button { color: var(--bad); }
+.dspi-web .aeq-list .empty-state { min-height: 16rem; }
+@media (max-width: 900px) {
+  .dspi-web .aeq-columns { grid-template-columns: minmax(0, 1fr); }
+}

@@ -1,4 +1,4 @@
-// WP WEB7 e2e: Library's Presets tab as Qt Modern's, on the core's demo device
+// WP WEB7 e2e: Library's Presets and AutoEQ tabs as Qt Modern's, on the core's demo device
 // (crates/dspi-wasm), in Chromium, Firefox and Chromium at 375 px (the `narrow` project). Every
 // action is the page's; its effect is read back from the core. The rule REVE B1 found broken in
 // the popover is pinned here for the tab: Copy to… is offered on the active row only and copies
@@ -139,5 +139,49 @@ test("WEB7 Presets read only: the slots can be looked at, not used", async ({ pa
   for (const b of await screen.getByRole("button", { name: /^(Recall .*|Save)$/ }).all()) await expect(b).toBeDisabled();
   const menu = await menuOf(session, slotRow(screen, /^1: Demo/), "1: Demo");
   for (const item of await menu.getByRole("menuitem").all()) await expect(item).toBeDisabled();
+  expect(errors).toEqual([]);
+});
+
+test("WEB7 AutoEQ: search, the heart, what a headphone would do, Apply to a pair as one undo step", async ({ page }) => {
+  const errors = errorsOf(page);
+  const session = await openDemo(page);
+  await openPage(session, "AutoEQ");
+  const screen = session.getByRole("region", { name: "AutoEQ" });
+  const tools = session.getByRole("toolbar", { name: "AutoEQ tools" });
+  await expect(tools).toContainText(/\d{3,} headphones/, { timeout: 15_000 });
+  await expect(screen.getByRole("group", { name: "Headphone profile" })).toContainText("Select a headphone to apply its EQ profile");
+  await expect(screen.getByRole("button", { name: "Apply" })).toBeDisabled();
+
+  await tools.getByLabel("Search headphones").fill("sennheiser hd 600");
+  const list = screen.getByRole("list", { name: "Headphones" });
+  const hit = list.getByRole("listitem").filter({ has: page.getByRole("button", { name: /^Sennheiser HD 600 / }) }).first();
+  await expect(hit).toBeVisible({ timeout: 15_000 });
+  await hit.getByRole("button", { name: "Favorite Sennheiser HD 600", exact: true }).click();
+  await hit.getByRole("button", { name: /^Sennheiser HD 600 / }).click();
+  const side = screen.getByRole("group", { name: "Headphone profile" });
+  await expect(side.locator(".aeq-name")).toHaveText("Sennheiser HD 600");
+  await expect(side.getByRole("img", { name: "The response of Sennheiser HD 600" })).toBeVisible();
+  await expect(side.getByRole("status", { name: "AutoEQ preview" })).toBeVisible();
+  // Nothing written by the preview.
+  const before = (await coreState(page)).filters[0]!.map((b) => b.gain);
+  expect(before.every((g) => g === 0)).toBe(true);
+
+  await expect(side.getByRole("combobox", { name: "Apply to" })).toHaveValue("0");
+  await expect(side.getByRole("combobox", { name: "Apply to" }).getByRole("option").first()).toHaveText("Inputs 1 and 2");
+  await side.getByRole("button", { name: "Apply" }).click();
+  await expect(side.getByRole("status").filter({ hasText: "Applied" })).toContainText("Applied Sennheiser HD 600 to Inputs 1 and 2.");
+  await expect.poll(async () => (await coreState(page)).filters[0]!.some((b) => b.gain !== 0)).toBe(true);
+  // One step: one undo takes it back.
+  await call(page, "undo");
+  await expect.poll(async () => (await coreState(page)).filters[0]!.every((b) => b.gain === 0)).toBe(true);
+
+  // With no search: the favourites; a search with no match: the empty state and Clear Search.
+  await tools.getByLabel("Search headphones").fill("");
+  await expect(screen.getByRole("list", { name: "Favorite Profiles" })).toContainText("Sennheiser HD 600");
+  await tools.getByLabel("Search headphones").fill("zzzz no such headphone");
+  await expect(screen).toContainText("Nothing matches “zzzz no such headphone”.");
+  await screen.getByRole("button", { name: "Clear Search" }).click();
+  await expect(tools.getByLabel("Search headphones")).toHaveValue("");
+  if (test.info().project.name === "narrow") await noSidewaysScroll(page);
   expect(errors).toEqual([]);
 });

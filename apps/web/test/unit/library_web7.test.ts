@@ -1,11 +1,13 @@
 // WP WEB7 unit tests: Library › Presets' rows and the actions each row offers
 // (src/screens/presets/model.ts): Copy to… only on the active row and only from it (the core's
 // copy saves the LIVE settings into both slots: REVE B1), an unknown active slot (>= 10) with no
-// active row and nothing that copies, a read-only session with every action off (REVE C3).
+// active row and nothing that copies, a read-only session with every action off (REVE C3);
+// Library › AutoEQ's pair titles and curve path (src/screens/autoeq/model.ts).
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { copyTargets, knownActive, slotActions, slotLabel, slotRows, startupWords, type Slots } from "../../src/screens/presets/model";
+import { curvePath, dbSpan, hitIcon, hitLine, pairsOf } from "../../src/screens/autoeq/model";
 
 const slots = (over: Partial<Slots> = {}): Slots => ({
   presetNames: ["Music", "", "Movie", "", "", "", "", "", "", ""],
@@ -71,4 +73,20 @@ test("WEB7 presets (REVE C3): a read-only session looks only; a running action h
       for (const [k, v] of Object.entries(x)) assert.equal((v as { enabled: boolean }).enabled, false, `slot ${slot} ${k}`);
     }
   }
+});
+
+test("WEB7 AutoEQ: pairs titled as Qt's combo, a headphone's line and icon, the curve's path", () => {
+  const ch = (wire: number, output: boolean) => ({ wire, descriptor: output ? `OUT${wire - 1}` : `IN${wire + 1}`, name: "", output });
+  const pairs = pairsOf([ch(0, false), ch(1, false), ch(2, true), ch(3, true), ch(4, true)], 2);
+  assert.deepEqual(
+    pairs.map((p) => p.title),
+    ["Inputs 1 and 2", "Outputs 1 and 2"],
+  );
+  assert.equal(hitLine({ source: "Crinacle", formFactor: "in-ear" }), "Crinacle · in-ear");
+  assert.equal(hitIcon({ formFactor: "in-ear" }), "ear");
+  assert.equal(hitIcon({ formFactor: "over-ear" }), "headphones");
+  assert.equal(dbSpan([[1, -3]]), 12);
+  assert.equal(dbSpan([[13]]), 18);
+  assert.equal(curvePath([10, 20, 20000, 30000], [0, 0, 0, 0], 0, 12), "M0.0 110.0 L600.0 110.0");
+  assert.equal(curvePath([20], [0], 0, 12), "");
 });

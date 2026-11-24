@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import type { FilterFileInspect } from "../../core/protocol";
 import { useDesk } from "../snapshots/Bars";
 import { download, type SnapshotDesk } from "../snapshots/model";
+import type { Session } from "../../ui/session";
 import {
   FILTERS_FILE,
   autoEqLibrary,
@@ -291,6 +292,105 @@ export function AutoEqDatabaseCard(props: { desk: SnapshotDesk; library?: AutoEq
           </button>
         </>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * -- WP WEB7 -- The AutoEQ database (Library › AutoEQ's ▾ › Update Database…, as Qt's dialog): what is
+ * loaded, Download…, Import File…, Reset to Built-in, the favourites and Clear Favorites.
+ */
+export function AutoEqDatabasePanel(props: { session: Session; library?: AutoEqLibrary }) {
+  const session = props.session;
+  const lib = props.library ?? autoEqLibrary();
+  const st = useLibrary(lib);
+  const [url, setUrl] = useState("");
+  const [result, setResult] = useState<{ text: string; tone: "info" | "error" } | null>(null);
+  const [names, setNames] = useState<{ id: string; name: string }[]>([]);
+  const file = useRef<HTMLInputElement>(null);
+  const busy = !!st.busy;
+
+  useEffect(() => void lib.ready(session), [session]);
+  useEffect(() => {
+    let alive = true;
+    void lib.favouriteHits(session).then((h) => alive && setNames(h.map((x) => ({ id: x.id, name: x.name }))));
+    return () => {
+      alive = false;
+    };
+  }, [st.favourites, st.info]);
+
+  const done = (what: string, p: Promise<{ entryCount: number }>) =>
+    p.then(
+      (info) => setResult({ text: `${what}: ${info.entryCount} profiles.`, tone: "info" }),
+      (e: unknown) => setResult({ text: `${what}: not done. ${failureWords(e)}`, tone: "error" }),
+    );
+
+  const importFile = async (input: HTMLInputElement) => {
+    const f = input.files?.[0];
+    input.value = "";
+    if (!f) return;
+    await done("Import File", f.text().then((t) => lib.importFile(session, t)));
+  };
+
+  const fetchIt = async () => {
+    const address = downloadAddress(url);
+    if (!address) {
+      setResult({ text: "Download: give an http or https address.", tone: "error" });
+      return;
+    }
+    await done("Download", lib.download(session, address));
+  };
+
+  return (
+    <div class="autoeq-db" role="region" aria-label="AutoEQ database">
+      <p role="status" aria-label="Current database">
+        {st.problem && !st.info ? st.problem : databaseLine(st.info)}
+      </p>
+      {st.info?.problem ? <p class="note">Your own database could not be read ({st.info.problem}); the built-in one is used.</p> : null}
+      <div class="files-row">
+        <label>
+          Address of a database file
+          <input name="autoeq-url" type="url" value={url} placeholder="https://…/autoeq_database.json" onInput={(e) => setUrl((e.target as HTMLInputElement).value)} />
+        </label>
+        <button type="button" disabled={busy || !url.trim()} onClick={() => void fetchIt()}>
+          Download
+        </button>
+      </div>
+      <div class="files-row">
+        <button type="button" disabled={busy} onClick={() => file.current?.click()}>
+          Import File…
+        </button>
+        <input ref={file} type="file" hidden accept=".json,application/json" aria-label="AutoEQ database file" onChange={(e) => void importFile(e.target as HTMLInputElement)} />
+        {st.info?.hasUserDatabase ? (
+          <button type="button" disabled={busy} onClick={() => void done("Reset to Built-in", lib.resetToBuiltIn(session))}>
+            Reset to Built-in
+          </button>
+        ) : null}
+      </div>
+      <p class="note">Rebuild from GitHub is not offered here: download a ready-made database file or import one instead.</p>
+      {result ? (
+        <p class={`autoeq-outcome ${result.tone}`} role={result.tone === "error" ? "alert" : "status"} aria-label="Database result">
+          {result.text}
+        </p>
+      ) : null}
+      <h4 class="section-label">Favorite Profiles</h4>
+      {names.length ? (
+        <ul class="change-list" aria-label="Favorite Profiles">
+          {names.map((n) => (
+            <li key={n.id}>
+              {n.name}{" "}
+              <button type="button" class="dismiss" aria-label={`Remove ${n.name} from the favorites`} onClick={() => void lib.toggleFavourite(session, n.id)}>
+                ×
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p class="note">No favorites yet. Mark a headphone with its heart in Library › AutoEQ.</p>
+      )}
+      <button type="button" disabled={!st.favourites.length} onClick={() => void lib.clearFavourites(session)}>
+        Clear Favorites
+      </button>
     </div>
   );
 }

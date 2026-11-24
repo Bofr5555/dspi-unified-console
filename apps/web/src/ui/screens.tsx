@@ -79,8 +79,9 @@ import { OverviewScreen } from "../screens/overview/OverviewScreen";
 import { MeasureScreen } from "../screens/measure/MeasureScreen"; // -- WP P5WMS --
 import { DeviceScreen } from "../screens/device/DeviceScreen"; // -- WP PGWEB --
 import { HistoryScreen } from "../screens/history/HistoryScreen"; // -- WP WEBM3 --
-// -- WP WEB7 -- Library's Presets tab (Qt's LibraryPresets)
+// -- WP WEB7 -- Library's Presets and AutoEQ tabs (Qt's LibraryPresets, AutoEqPanel)
 import { PresetsScreen } from "../screens/presets/PresetsScreen";
+import { AutoEqScreen } from "../screens/autoeq/AutoEqScreen";
 
 // -- WP WEBM1 -- the Modern shell
 import { Frame } from "./shell/Frame";
@@ -159,6 +160,7 @@ export const SCREENS: ScreenDef[] = [
   { id: "snapshots", label: "Snapshots", View: SnapshotsScreen },
   { id: "history", label: "History", View: HistoryScreen }, // -- WP WEBM3 -- Library › History (setting up: not in Simple)
   { id: "files", label: "Files", View: FilesScreen },
+  { id: "autoeq", label: "AutoEQ", View: AutoEqScreen }, // -- WP WEB7 -- Library › AutoEQ (every mode)
   // -- WP WB6L -- (setting up the hardware: Advanced and Installer, as files)
   { id: "surfaces", label: "Control Surfaces", View: SurfacesScreen },
   // -- WP WB8 -- (UI-MODES: monitoring of the Advanced and Installer modes)
