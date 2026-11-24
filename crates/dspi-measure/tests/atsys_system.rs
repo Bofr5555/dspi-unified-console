@@ -601,24 +601,40 @@ fn wp_atsys_a_moved_microphone_refuses_the_chain() {
     ));
 }
 
-proptest! {
-    #![proptest_config(ProptestConfig::with_cases(24))]
-    #[test]
-    fn proptest_wp_atsys_chain_runs_never_panics(
-        offsets in proptest::collection::vec(-100.0f64..100.0, 3),
-        nan_at in proptest::option::of(0usize..1066),
-        band in proptest::option::of((1.0f64..30_000.0, 1.0f64..30_000.0)),
-        spread in 0.0f64..10.0,
-        one_clock in any::<bool>(),
-    ) {
+/// At most this many cases, whatever `PROPTEST_CASES` says: each case runs
+/// the whole chain (about 66 ms), and the gate's 20000 cases made this one
+/// property the full CI's critical path (about 22 min) for a small input
+/// space (owner 2026-11-24). 1000 cases cover every NaN position about once.
+const CHAIN_CASES_MAX: u32 = 1000;
+
+#[test]
+fn proptest_wp_atsys_chain_runs_never_panics() {
+    let mut config = proptest::test_runner::contextualize_config(ProptestConfig::with_cases(24));
+    config.cases = config.cases.min(CHAIN_CASES_MAX);
+    config.source_file = Some(file!());
+    config.test_name = Some("proptest_wp_atsys_chain_runs_never_panics");
+    let strategy = (
+        proptest::collection::vec(-100.0f64..100.0, 3),
+        proptest::option::of(0usize..1066),
+        proptest::option::of((1.0f64..30_000.0, 1.0f64..30_000.0)),
+        0.0f64..10.0,
+        any::<bool>(),
+    );
+    let mut runner = proptest::test_runner::TestRunner::new(config);
+    let result = runner.run(&strategy, |(offsets, nan_at, band, spread, one_clock)| {
         let (_, _, runs) = three_runs();
-        let base = response_of(&runs[0].1, runs[0].1.output(ANCHOR.unit, ANCHOR.output).unwrap().key);
+        let base = response_of(
+            &runs[0].1,
+            runs[0].1.output(ANCHOR.unit, ANCHOR.output).unwrap().key,
+        );
         let responses: Vec<Response> = offsets
             .iter()
             .map(|o| {
                 let mut r = base.clone();
                 r.mag_db.iter_mut().for_each(|m| *m += o);
-                if let Some(i) = nan_at && let Some(m) = r.mag_db.get_mut(i) {
+                if let Some(i) = nan_at
+                    && let Some(m) = r.mag_db.get_mut(i)
+                {
                     *m = f64::NAN;
                 }
                 r
@@ -627,7 +643,10 @@ proptest! {
         let chain_in: Vec<ChainRun<'_>> = runs
             .iter()
             .zip(&responses)
-            .map(|((_, a), r)| ChainRun { analysis: a, anchor_response: r })
+            .map(|((_, a), r)| ChainRun {
+                analysis: a,
+                anchor_response: r,
+            })
             .collect();
         let opts = ChainOptions {
             band_hz: band,
@@ -641,6 +660,10 @@ proptest! {
                 prop_assert!(o.relative_ms.is_finite());
             }
         }
+        Ok(())
+    });
+    if let Err(e) = result {
+        panic!("proptest_wp_atsys_chain_runs_never_panics: {e}");
     }
 }
 
