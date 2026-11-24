@@ -250,7 +250,8 @@ void aiSection(SmokeDriver &d) {
     d.check("mcp4: a quieter change is made at once", !failed(agent.result(*e)) && d.waitFor(3000, [&] { return gainIs(-15); }));
     const auto row = [&](int n) { return ai->activity().value(n).toMap(); };
     d.check("mcp4: the activity says what, who and on which device", d.waitFor(3000, [&] { return row(0).value(QStringLiteral("undo")) == QLatin1String("can"); })
-            && row(0).value(QStringLiteral("detail")).toString().contains(QLatin1String("-15 dB"))
+            // -- WP SHOWFIX -- (finding 4) the core's words, with a typographic minus
+            && row(0).value(QStringLiteral("detail")).toString().contains(QStringLiteral("\u221215 dB"))
             && row(0).value(QStringLiteral("client")).toString().contains(QLatin1String("Fake agent"))
             && !row(0).value(QStringLiteral("device")).toString().isEmpty());
     d.check("mcp4: the state says an agent is active", ai->state() == QLatin1String("active"));

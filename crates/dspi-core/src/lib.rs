@@ -172,7 +172,8 @@ pub mod actor;
 // -- WP ROLE0 -- the speaker layout: output roles from the user's setup (MPLAN 2.2)
 pub mod speaker_layout;
 // -- WP SHOWFIX -- the names a person knows a channel by
-pub mod channel_words;
+pub mod change_words;
+pub mod channel_words; // -- WP SHOWFIX -- (finding 4)
 // -- WP FUNC2a -- the function test's config-time oracle (test-only)
 #[cfg(feature = "sim-scenario")]
 mod functest_oracle;

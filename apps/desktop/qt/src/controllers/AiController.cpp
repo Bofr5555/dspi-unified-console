@@ -910,7 +910,8 @@ QVariantList AiController::activity() const {
               QLocale().toString(QDateTime::fromMSecsSinceEpoch(e.value(QLatin1String("at_unix_ms")).toInteger()).time(), QLocale::ShortFormat) },
             { QStringLiteral("client"), str(e, "client_name") },
             { QStringLiteral("title"), title.isEmpty() ? str(e, "tool") : title },
-            { QStringLiteral("detail"), str(e, "detail") },
+            // -- WP SHOWFIX -- (finding 4) the core's words where the server has them
+            { QStringLiteral("detail"), str(e, "said").isEmpty() ? str(e, "detail") : str(e, "said") },
             { QStringLiteral("device"), deviceTitle(device) },
             { QStringLiteral("write"), write },
             { QStringLiteral("outcome"), outcome },
@@ -1474,7 +1475,10 @@ void AiController::tell(const QList<QJsonObject> &rows) {
         if (notices->tag() != QLatin1String("ai") || agent != m_noticeAgent) m_noticeKeys.clear();
         m_noticeAgent = agent;
         m_noticeKeys << rowKey(e);
-        const QString detail = str(e, "detail").isEmpty() ? str(e, "title") : str(e, "detail");
+        // -- WP SHOWFIX -- (finding 4) the core's words, the channels as the
+        // person knows them ("LFE → Left woofer off"), where the server has them
+        const QString detail = !str(e, "said").isEmpty() ? str(e, "said")
+                               : str(e, "detail").isEmpty() ? str(e, "title") : str(e, "detail");
         const DeviceSession *on = m_ctx.registry->session(device);
         const QString where = on && m_ctx.registry->sessions().size() > 1 ? QStringLiteral(" · ") + on->title() : QString();
         //: An AI agent's change: %1 is its name, %2 the change ("Out 3 output gain -6 dB to -8 dB")

@@ -327,7 +327,7 @@ fn crosspoint(shown: &str) -> String {
     line
 }
 
-fn filter_name(code: f64) -> String {
+pub(crate) fn filter_name(code: f64) -> String {
     if !(0.0..=255.0).contains(&code) {
         return "unknown filter".to_owned();
     }
@@ -344,7 +344,7 @@ fn name(bytes: &[u8]) -> String {
 }
 
 /// A volume: one decimal, a typographic minus ("−20.0 dB").
-fn volume(db: f64) -> String {
+pub(crate) fn volume(db: f64) -> String {
     if db <= -128.0 {
         return "mute".to_owned();
     }
@@ -352,15 +352,15 @@ fn volume(db: f64) -> String {
 }
 
 /// A gain: "+3 dB", "−6 dB", "0 dB".
-fn db_text(db: f64) -> String {
+pub(crate) fn db_text(db: f64) -> String {
     format!("{} dB", signed(db, 1, true))
 }
 
-fn ms_text(ms: f64) -> String {
+pub(crate) fn ms_text(ms: f64) -> String {
     format!("{} ms", trim(ms, 2))
 }
 
-fn hz(f: f64) -> String {
+pub(crate) fn hz(f: f64) -> String {
     if f >= 1000.0 {
         format!("{} kHz", trim(f / 1000.0, 2))
     } else {
@@ -369,7 +369,7 @@ fn hz(f: f64) -> String {
 }
 
 /// `v` with up to `places` decimals, trailing zeros dropped.
-fn trim(v: f64, places: usize) -> String {
+pub(crate) fn trim(v: f64, places: usize) -> String {
     let t = format!("{v:.places$}");
     let t = if t.contains('.') {
         t.trim_end_matches('0').trim_end_matches('.').to_owned()

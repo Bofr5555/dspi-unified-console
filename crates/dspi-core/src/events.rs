@@ -673,11 +673,13 @@ impl DspiCore {
     }
 }
 
-// -- WP SHOWFIX -- (finding 2)
+// -- WP SHOWFIX -- (finding 2) the log's plain words; its number words serve
+// `change_words` too (finding 4)
+pub(crate) mod words;
+
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_p0m;
-mod words;
 // -- WP CS1 --
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]

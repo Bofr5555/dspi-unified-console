@@ -225,6 +225,9 @@ fn wp_mcp4_a_held_call_is_answered_by_allow_and_deny_and_blocks_no_connection() 
         .find(|e| e["outcome"] == "ok")
         .expect("the allowed call");
     assert_eq!(done["detail"], "Out 2 output gain -12 dB to -11 dB");
+    // -- WP SHOWFIX -- (finding 4) the app's toast has the core's words, the
+    // channel as the person knows it (agents never read them: activity.rs)
+    assert_eq!(done["said"], "Out 2: gain \u{2212}11 dB");
     assert_eq!(done["title"], "Set a gain");
     assert_eq!(done["journal_ids"], json!([entry.id]));
     assert!(done["at_unix_ms"].as_u64().unwrap() >= entry.at_ms - 60_000);
