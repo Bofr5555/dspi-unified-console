@@ -6,14 +6,19 @@ import UConsole
 // -- WP QP7 -- The body of a two-column effect window (the Mac's ToolColumns
 // with toolColumn()): two equal columns with a line between them, pinned to
 // the top, scrolling when the window is shorter than they are.
+// -- WP DL1 -- Modern: no line between them, the section gap (24) under the
+// intro row, and the pair no wider than `modernMaxWidth` (1200), from the
+// left of the page.
 Flickable {
     id: body
     property alias leftItems: leftColumn.data
     property alias rightItems: rightColumn.data
     readonly property alias leftHeight: leftColumn.implicitHeight
     readonly property alias rightHeight: rightColumn.implicitHeight
+    property int modernMaxWidth: 1200   // -- WP DL1 --
+    readonly property int topGap: LayoutController.modern ? Theme.spacingSection : Theme.spacingLarge
 
-    contentHeight: row.implicitHeight + 2 * Theme.spacingLarge
+    contentHeight: row.implicitHeight + topGap + Theme.spacingLarge
     clip: true
     boundsBehavior: Flickable.StopAtBounds
     ScrollBar.vertical: AppScrollBar {}
@@ -24,8 +29,8 @@ Flickable {
 
     RowLayout {
         id: row
-        y: Theme.spacingLarge
-        width: body.width
+        y: body.topGap
+        width: LayoutController.modern ? Math.min(body.width, body.modernMaxWidth) : body.width
         spacing: 0
 
         ColumnLayout {

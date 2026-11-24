@@ -8,6 +8,8 @@ import UConsole
 // to four times it) with the starting points, over the harmonics controls;
 // on the right the outputs and the shaping. Firmware before wire V23 has none
 // of it and gets a note instead.
+// -- WP DL1 -- Modern: the intro row, the sketch in a GraphFrame, the
+// outputs as option chips, "Apply preset" and "Presets" secondary buttons.
 // -- WP LAY1a -- A panel (Panel.qml): PanelTable's row for
 // tools.psybass gives its window's title and sizes.
 Panel {
@@ -138,7 +140,7 @@ Panel {
                         id: sketch
                         objectName: "PsybassWindow.graph"
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 160
+                        Layout.preferredHeight: LayoutController.modern ? 200 : 160   // -- WP DL1 --
                         title: qsTr("Spectrum")
                         active: EffectsController.psybassOn
                         bottomInset: 6
@@ -261,9 +263,8 @@ Panel {
                         color: Theme.textMuted
                         wrapMode: Text.Wrap
                     }
-                    RowLayout {
+                    EffectChipRow {   // -- WP DL1 --
                         Layout.fillWidth: true
-                        spacing: 6
                         Repeater {
                             model: EffectsController.numOutputs
                             EffectChip {

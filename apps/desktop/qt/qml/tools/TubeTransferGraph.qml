@@ -6,26 +6,57 @@ import UConsole
 // would draw, and the inputs the stage clips shaded. `graph` is
 // ToolsController.tubeGraph(); x and y are 0..1 across the plot. The static
 // curve only: sag, the DC blocker and the output stage have memory.
-Rectangle {
+// -- WP DL1 -- In Modern the plot sits in a GraphFrame (DESIGN-LANGUAGE §12):
+// no outline, the panel tone, "Disabled" the frame's empty label, and the
+// axis names in fontCaption kept whole inside the plot. Classic keeps its box
+// and 7 px labels.
+Item {
     id: frame
     property var graph: ({})
     property bool active: true
+    readonly property bool modern: LayoutController.modern   // -- WP DL1 --
 
-    radius: 8
-    color: Theme.control
-    border.width: 1
-    border.color: Theme.separator
     onGraphChanged: canvas.requestPaint()
     onActiveChanged: canvas.requestPaint()
+    onModernChanged: canvas.requestPaint()
     // The colours are the theme's: a scheme change repaints
     readonly property bool dark: Theme.dark
     onDarkChanged: canvas.requestPaint()
 
+    // -- WP DL1 -- Modern: the frame; the canvas draws its own grid
+    GraphFrame {
+        objectName: frame.objectName.length ? frame.objectName + ".frame" : ""
+        visible: frame.modern
+        anchors.fill: parent
+        grid: false
+        empty: !frame.active
+        emptyText: qsTr("Disabled")
+        Item {
+            id: modernRoom
+            anchors.fill: parent
+        }
+    }
+
+    // Classic: the boxed plot
+    Rectangle {
+        visible: !frame.modern
+        anchors.fill: parent
+        radius: 8
+        color: Theme.control
+        border.width: 1
+        border.color: Theme.separator
+        Item {
+            id: classicRoom
+            anchors.fill: parent
+            anchors.margins: 8
+        }
+    }
+
     Canvas {
         id: canvas
         objectName: frame.objectName.length ? frame.objectName + ".canvas" : ""
+        parent: frame.modern ? modernRoom : classicRoom
         anchors.fill: parent
-        anchors.margins: 8
         onWidthChanged: requestPaint()
         onHeightChanged: requestPaint()
 
@@ -41,6 +72,18 @@ Rectangle {
             ctx.textAlign = "center"
             ctx.textBaseline = "middle"
             ctx.fillText(text, x, y)
+        }
+        // -- WP DL1 -- Modern: an axis name in fontCaption, whole: `align`
+        // "left" or "right" puts it 6 px inside that edge, else centred on x
+        function caption(ctx, text, x, y, color, align) {
+            const f = Theme.fontCaption
+            ctx.font = f.pixelSize + "px \"" + f.family + "\""
+            ctx.fillStyle = color
+            ctx.textBaseline = "middle"
+            const w = ctx.measureText(text).width
+            const at = align === "left" ? 6 : align === "right" ? width - 6 - w : Math.max(6, Math.min(x - w / 2, width - 6 - w))
+            ctx.textAlign = "left"
+            ctx.fillText(text, at, Math.max(6 + f.pixelSize / 2, Math.min(y, height - 6 - f.pixelSize / 2)))
         }
 
         onPaint: {
@@ -70,6 +113,7 @@ Rectangle {
             line(ctx, 0, g.zeroY * h, w, g.zeroY * h)
 
             if (!frame.active) {
+                if (frame.modern) return   // the frame's empty label
                 ctx.font = "bold 11px \"" + Theme.fontBody.family + "\""
                 ctx.fillStyle = Theme.textMuted
                 ctx.textAlign = "center"
@@ -98,6 +142,12 @@ Rectangle {
                     else ctx.lineTo(g.curve[i] * w, g.curve[i + 1] * h)
                 }
                 ctx.stroke()
+            }
+            if (frame.modern) {
+                caption(ctx, qsTr("in"), w, g.zeroY * h + 9, Theme.textMuted, "right")
+                caption(ctx, qsTr("out"), w / 2 + 12, 0, Theme.textMuted, "")
+                caption(ctx, qsTr("0 dBFS"), 0, g.fullScaleTop * h - 8, Theme.dangerText, "left")
+                return
             }
             label(ctx, qsTr("in"), w - 8, g.zeroY * h + 7, Theme.textMuted, true)
             label(ctx, qsTr("out"), w / 2 + 10, 6, Theme.textMuted, true)

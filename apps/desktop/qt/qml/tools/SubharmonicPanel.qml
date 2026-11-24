@@ -8,6 +8,9 @@ import UConsole
 // band levels; on the right selectivity and the sub ceiling (wire V30), the LF
 // boost and the outputs with their sub meters and the pair link. Firmware
 // before wire V29 gets a note instead. Closing the window switches Solo off.
+// -- WP DL1 -- Modern: Solo a toggle chip beside the switch, the bands in a
+// GraphFrame, the outputs as option chips, segments as wide as their labels,
+// no lines between the parts.
 // -- WP LAY1a -- A panel (Panel.qml): PanelTable's row for
 // tools.subharmonic gives its window's title and sizes.
 Panel {
@@ -50,7 +53,7 @@ Panel {
             AppButton {
                 id: solo
                 objectName: "SubharmonicWindow.solo"
-                visible: panel.extended
+                visible: panel.extended && !LayoutController.modern   // -- WP DL1 -- Modern: the chip under it
                 readonly property bool soloed: ToolsController.subharmSolo
                 text: qsTr("SOLO")
                 primary: soloed
@@ -62,6 +65,16 @@ Panel {
                 Accessible.role: Accessible.CheckBox
                 Accessible.checkable: true
                 Accessible.checked: soloed
+            }
+            // -- WP DL1 -- Modern: a toggle chip, the selection tone while soloed
+            ToggleChip {
+                objectName: "SubharmonicWindow.solo"
+                visible: panel.extended && LayoutController.modern
+                text: qsTr("Solo")
+                checked: solo.soloed
+                enabled: solo.enabled
+                toolTip: solo.toolTip
+                onToggled: ToolsController.setSubharmSolo(checked)
             }
         }
         EffectRule {}
@@ -364,9 +377,8 @@ Panel {
                             }
                         }
                     }
-                    RowLayout {
+                    EffectChipRow {   // -- WP DL1 --
                         Layout.fillWidth: true
-                        spacing: 6
                         HoverHandler { id: chipsHover }
                         HelpTip {
                             visible: chipsHover.hovered
@@ -378,7 +390,9 @@ Panel {
                                 id: chipColumn
                                 required property int index
                                 readonly property bool on: (panel.mask & (1 << index)) !== 0
-                                Layout.fillWidth: true
+                                // -- WP DL1 -- Modern: as wide as the row's widest chip
+                                Layout.fillWidth: !LayoutController.modern
+                                Layout.preferredWidth: LayoutController.modern && parent && parent.widest ? parent.widest : -1
                                 spacing: 3
                                 EffectChip {
                                     objectName: "SubharmonicWindow.output." + chipColumn.index

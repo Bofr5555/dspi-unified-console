@@ -7,6 +7,8 @@ import UConsole
 // curve as it is 40 dB below the reference level on the left; the reference
 // level, the intensity and, on firmware with the output mask (wire V19), the
 // outputs on the right.
+// -- WP DL1 -- Modern: the intro row, the curve in a GraphFrame, the outputs
+// as option chips, no lines between the parts.
 // -- WP LAY1a -- A panel (Panel.qml): PanelTable's row for
 // tools.loudness gives its window's title and sizes.
 Panel {
@@ -133,9 +135,8 @@ Panel {
                         color: Theme.textMuted
                         wrapMode: Text.Wrap
                     }
-                    RowLayout {
+                    EffectChipRow {   // -- WP DL1 --
                         Layout.fillWidth: true
-                        spacing: 6
                         Repeater {
                             model: EffectsController.numOutputs
                             EffectChip {
