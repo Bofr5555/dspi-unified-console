@@ -5,6 +5,8 @@
 //
 //   PW_ARGS="test/shots/parity_web.spec.ts --project desktop" tools/shots/web.sh <out dir>
 //
+// -- WP WEB2 -- with SHOTS_ONLY="effects|measure" only the pictures whose name matches.
+//
 // Files: `<project>-<name>-<scheme>.png` in $SHOTS_DIR. Only pictures; a step that cannot find
 // what it pictures is skipped (the "before" run has no new matrix).
 
@@ -22,6 +24,9 @@ async function openDemo(page: Page): Promise<Locator> {
 }
 
 async function shot(page: Page, name: string) {
+  // -- WP WEB2 -- SHOTS_ONLY (a regular expression) takes the pictures whose name matches it, for a quick look
+  const only = process.env.SHOTS_ONLY;
+  if (only && !new RegExp(only).test(name)) return;
   const dir = process.env.SHOTS_DIR ?? "test-results/shots";
   mkdirSync(dir, { recursive: true });
   const project = test.info().project.name;

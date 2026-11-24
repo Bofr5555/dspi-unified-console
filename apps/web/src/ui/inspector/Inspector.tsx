@@ -17,6 +17,8 @@ interface Slot {
   coarse: boolean;
   /** A page's `Inspect` mounted (+1) or gone (-1). */
   use: (d: 1 | -1) => void;
+  /** -- WP WEB2 -- the width the page needs beside the inspector (0: any). */
+  need: (px: number) => void;
 }
 
 const SlotContext = createContext<Slot | null>(null);
@@ -55,8 +57,9 @@ export function InspectorArea(props: { children: ComponentChildren }) {
     return () => ro.disconnect();
   }, []);
   const use = useCallback((d: 1 | -1) => setUsers((n) => n + d), []);
-  const place = placement(width, collapsed);
-  const slot = useMemo<Slot>(() => ({ body, placement: place, coarse, use }), [body, place, coarse, use]);
+  const [pageMin, need] = useState(0);
+  const place = placement(width, collapsed, pageMin);
+  const slot = useMemo<Slot>(() => ({ body, placement: place, coarse, use, need }), [body, place, coarse, use]);
   const toggle = () => showInspector(collapsed ? "shown" : "hidden");
   const shown = users > 0;
   return (
@@ -84,7 +87,7 @@ export function InspectorArea(props: { children: ComponentChildren }) {
 }
 
 /** Draws its children in the inspector beside the page; nothing outside a frame with one. */
-export function Inspect(props: { children: ComponentChildren }) {
+export function Inspect(props: { children: ComponentChildren; pageMin?: number }) {
   const slot = useContext(SlotContext);
   const use = slot?.use;
   useLayoutEffect(() => {
@@ -92,6 +95,14 @@ export function Inspect(props: { children: ComponentChildren }) {
     use(1);
     return () => use(-1);
   }, [use]);
+  // -- WP WEB2 -- the page's own minimum width (`placement`)
+  const need = slot?.need;
+  const pageMin = props.pageMin ?? 0;
+  useLayoutEffect(() => {
+    if (!need) return;
+    need(pageMin);
+    return () => need(0);
+  }, [need, pageMin]);
   return slot?.body ? createPortal(<>{props.children}</>, slot.body) : null;
 }
 

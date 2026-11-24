@@ -192,8 +192,10 @@ test("WB6J M22: the Analyser screen shows the strip with its chooser", async ({ 
   const session = await connect(page);
   await openPage(session, "Analyser");
   const strip = session.getByRole("region", { name: "Spectrum" });
-  await expect(strip.getByRole("heading", { name: "Spectrum Analyser" })).toBeVisible();
-  await strip.getByRole("button", { name: "Show Bars" }).click();
+  // -- WP WEB2 -- (REVD W4) the bars at once: no Show Bars and no second heading on the Analyser page
+  await expect(strip.getByRole("button", { name: "Show Bars" })).toHaveCount(0);
+  await expect(strip.getByRole("heading", { name: "Spectrum Analyser" })).toHaveCount(0);
+  await expect(strip.getByRole("group", { name: "Analyse", exact: true })).toBeVisible();
   await expect(strip.locator(".rta-cell")).toHaveCount(2);
   await expect(strip.locator(".rta-cell").first()).not.toHaveAttribute("data-bars", "0");
   expect(errors).toEqual([]);

@@ -46,7 +46,7 @@ import { InputTrimField } from "../inputs/InputsScreen";
 // -- WP WBCLIP -- the column menu's Copy and Paste Parameters (M45)
 import { clipEntries, useClipboard } from "../clipboard/model";
 import type { ChainTarget } from "../system/chain";
-import { CLEAR_ASKS_ABOVE, DENSE_FROM, feedsOf, linkPairsOf, mirrorOf, moveCell, setLinkPairs, sourcesOf, stepGain, summaryText, tailText, tileGain, type CellAt } from "./model";
+import { CLEAR_ASKS_ABOVE, DENSE_FROM, feedsOf, linkPairsOf, mirrorOf, moveCell, setLinkPairs, sourcesOf, stepGain, stepSign, summaryText, tailText, tileGain, type CellAt } from "./model";
 
 /** The output gain's range until the registry says (`describe out.gain`). */
 const OUT_GAIN: [number, number] = [-60, 12];
@@ -313,18 +313,19 @@ const MatrixView = memo(
         setSel({ kind: "none" });
         return;
       }
-      // + and − step with Ctrl for 3 dB (MX1: "+" needs Shift on most layouts)
-      if (e.key === "+" || e.key === "=" || e.key === "-" || e.key === "_") {
-        if (e.altKey || e.metaKey) return;
+      // -- WP WEB2 -- (REVD G1) + and − step only with a modifier: Alt 0.5 dB, Ctrl 3 dB (by the key's
+      // place, so Alt's dead keys and Shift for "+" do not matter); without one they start a typed gain
+      const sign = stepSign(e);
+      if (sign && (e.ctrlKey || e.altKey) && !e.metaKey) {
         e.preventDefault();
-        step(i, o, e.key === "+" || e.key === "=" ? 1 : -1, e.ctrlKey);
+        step(i, o, sign, e.ctrlKey);
         return;
       }
       if (e.ctrlKey || e.metaKey || e.altKey || ro) return;
       const c = at(i, o);
       if (e.key === " ") void route(i, o, { enabled: !c.on });
       else if (e.key === "Enter") startEdit(i, o, null);
-      else if (/^[0-9.,]$/.test(e.key)) startEdit(i, o, e.key);
+      else if (/^[0-9.,+-]$/.test(e.key)) startEdit(i, o, e.key);
       else if (e.key === "i" || e.key === "I") {
         if (c.on) void route(i, o, { invert: !c.inv });
       } else if (e.key === "m" || e.key === "M") mute(o);
@@ -537,7 +538,7 @@ const MatrixView = memo(
                       <CompactField
                         label={`${o.name} delay`}
                         value={s.outputDelayMs[o.index] ?? 0}
-                        text={(v) => delayText(v).replace(/ ms$/, "")}
+                        text={footDelay}
                         unit="ms"
                         range={[0, props.maxDelay]}
                         step={1}
@@ -571,7 +572,8 @@ const MatrixView = memo(
             )}
           </table>
         </div>
-        <Inspect>
+        {/* -- WP WEB2 -- (REVD W11) the grid whole: the inspector under it when both do not fit */}
+        <Inspect pageMin={gridWidth(nOut, dense)}>
           <MatrixInspector
             session={session}
             s={s}
@@ -618,6 +620,17 @@ const MatrixView = memo(
     matrixKey(a.s) === matrixKey(b.s) &&
     JSON.stringify(a.labels) === JSON.stringify(b.labels),
 );
+
+/** -- WP WEB2 -- (REVD W11) The grid's width at `nOut` outputs: row heads, the pair column, the cells, the tails (CSS's sizes). */
+function gridWidth(nOut: number, dense: boolean): number {
+  return dense ? 120 + 12 + nOut * 44 + 80 : 168 + 12 + nOut * 56 + 90;
+}
+
+/** -- WP WEB2 -- (REVD W11) A delay in the footer as the mockup and Qt: "0", "1.25". */
+function footDelay(ms: number): string {
+  const v = Math.round(ms * 1e4) / 1e4;
+  return v === 0 ? "0" : String(v);
+}
 
 function cls(...names: (string | false | null | undefined)[]): string {
   return names.filter(Boolean).join(" ");
