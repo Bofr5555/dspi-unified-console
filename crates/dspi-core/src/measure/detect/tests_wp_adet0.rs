@@ -1198,6 +1198,7 @@ fn rgfix_sim_the_profiles_highpass_minimum_is_the_detections_floor() {
         starts.of(0)
     );
     starts.envelope_holds(0, 1_000.0);
+}
 
 // ── -- WP ROLES -- roles an agent set from the user's words ────────────
 
