@@ -11,5 +11,6 @@ list(APPEND DSPI_QML_FILES
     qml/components/ListRow.qml
     qml/components/NoticeRow.qml
     qml/components/OptionChip.qml
+    qml/components/StatusChip.qml
     qml/components/ToggleChip.qml)
 list(APPEND DSPI_SMOKE_SOURCES smoke/SmokeDl0.cpp)

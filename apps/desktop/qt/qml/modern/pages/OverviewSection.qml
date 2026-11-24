@@ -136,37 +136,12 @@ Item {
                             Accessible.name: text
                         }
                         // The meters' state, by the first heading so no card moves
-                        Rectangle {
+                        StatusChip {
                             objectName: "OverviewSection.stale"
                             visible: group.index === 0 && DashboardController.stale
-                            implicitWidth: staleRow.implicitWidth + 16
-                            implicitHeight: 20
-                            radius: height / 2
-                            color: Theme.control
-                            Row {
-                                id: staleRow
-                                anchors.centerIn: parent
-                                spacing: 6
-                                Rectangle {
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    width: 6
-                                    height: 6
-                                    radius: 3
-                                    color: Theme.warning
-                                }
-                                Text {
-                                    text: qsTr("Meters stale")
-                                    font: Theme.fontSmall
-                                    color: Theme.text
-                                }
-                            }
-                            HoverHandler { id: staleHover }
-                            HelpTip {
-                                text: qsTr("No meter reading has come from the device for a while. The meters show the last values read.")
-                                visible: staleHover.hovered
-                            }
-                            Accessible.role: Accessible.StatusBar
-                            Accessible.name: qsTr("Meters stale")
+                            kind: "warning"
+                            text: qsTr("Meters stale")
+                            toolTip: qsTr("No meter reading has come from the device for a while. The meters show the last values read.")
                         }
                     }
                     Text {

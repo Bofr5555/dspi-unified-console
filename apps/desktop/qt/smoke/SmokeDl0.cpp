@@ -9,6 +9,7 @@
 #include "LayoutController.h"
 
 #include <QAccessible>
+#include <QFile>
 #include <QQmlApplicationEngine>
 #include <QQmlComponent>
 #include <QQmlContext>
@@ -16,6 +17,7 @@
 #include <QQuickItem>
 #include <QQuickWindow>
 
+#include <functional>
 #include <memory>
 
 namespace {
@@ -28,7 +30,7 @@ import UConsole
 Window {
     id: probe
     width: 900
-    height: 720
+    height: 900
     visible: true
     color: Theme.window
     title: "dl0"
@@ -37,6 +39,7 @@ Window {
     property int chosenIndex: -1
     property int actions: 0
     property int rowClicks: 0
+    property int deletes: 0
     property var selected: [0, 2]
 
     ColumnLayout {
@@ -118,8 +121,15 @@ Window {
                             value: (-index) + ".0 dB"
                             selected: index === 1
                             onClicked: probe.rowClicks += 1
-                            IconButton { iconName: "trash"; toolTip: "Delete" }
+                            IconButton { objectName: "Dl0.row." + index + ".delete"; iconName: "trash"; toolTip: "Delete"; onClicked: probe.deletes += 1 }
                         }
+                    }
+                    // -- WP DL0 fold -- a leading slot whose item is hidden
+                    ListRow {
+                        objectName: "Dl0.leadRow"
+                        Layout.fillWidth: true
+                        title: "Lead"
+                        leading: Item { visible: false; implicitWidth: 120; implicitHeight: 10 }
                     }
                 }
                 RowLayout {
@@ -149,6 +159,19 @@ Window {
                     Layout.preferredHeight: 100
                     empty: true
                     emptyText: "Disabled"
+                }
+                // -- WP DL0 fold --
+                StatusChip {
+                    objectName: "Dl0.status"
+                    kind: "warning"
+                    text: "Meters stale"
+                    toolTip: "No reading for a while."
+                }
+                EmptyState {
+                    objectName: "Dl0.emptyDefault"
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 90
+                    title: "Default icon"
                 }
                 EmptyState {
                     objectName: "Dl0.empty"
@@ -291,6 +314,51 @@ void probeChecks(SmokeDriver &d, QQuickWindow *w, QObject *theme) {
             && item("Dl0.emptyGraph.plot") && !item("Dl0.emptyGraph.plot")->isVisible());
     QQuickItem *header = item("Dl0.header");
     d.check("dl0: the intro row is 44 high", header && qAbs(header->height() - 44) < 1);
+
+    // -- WP DL0 fold --
+    // The frame's grid is painted, not line items a label could sit on
+    QQuickItem *graph = item("Dl0.graph");
+    const QColor gridTone = theme->property("graphGrid").value<QColor>();
+    int gridItems = 0, canvases = 0;
+    const std::function<void(QQuickItem *)> walk = [&](QQuickItem *it) {
+        for (QQuickItem *c : it->childItems()) {
+            if (c->isVisible() && c->inherits("QQuickRectangle") && c->property("color").value<QColor>() == gridTone) ++gridItems;
+            if (c->isVisible() && c->inherits("QQuickCanvasItem")) ++canvases;
+            walk(c);
+        }
+    };
+    if (graph) walk(graph);
+    d.check("dl0 fold: the graph frame paints its grid (no grid-line items under the labels)", graph && gridItems == 0 && canvases == 1);
+    // A row's hidden actions fade but stay enabled
+    QQuickItem *del = item("Dl0.row.0.delete");
+    QQuickItem *actions = del ? del->parentItem() : nullptr;
+    d.spin(200);
+    d.check("dl0 fold: a row's actions are hidden off hover, yet enabled", actions && actions->opacity() < 0.01 && del->isEnabled());
+    if (del) QMetaObject::invokeMethod(del, "clicked");
+    d.check("dl0 fold: and a scripted press reaches them", w->property("deletes").toInt() == 1);
+    // A leading slot with nothing shown takes no room from the title
+    QQuickItem *lead = item("Dl0.leadRow");
+    QQuickItem *leadTitle = nullptr;
+    const std::function<void(QQuickItem *)> findTitle = [&](QQuickItem *it) {
+        for (QQuickItem *c : it->childItems()) {
+            if (!leadTitle && c->inherits("QQuickText") && c->property("text").toString() == QLatin1String("Lead")) leadTitle = c;
+            findTitle(c);
+        }
+    };
+    if (lead) findTitle(lead);
+    d.check("dl0 fold: an empty leading slot leaves the title at the left",
+            leadTitle && leadTitle->mapToItem(lead, QPointF(0, 0)).x() < 40);
+    // The status chip
+    QQuickItem *status = item("Dl0.status");
+    d.check("dl0 fold: a status chip: its dot in the state's colour, the status role, its words",
+            status && status->property("dot").value<QColor>() == theme->property("warning").value<QColor>()
+            && attached(status, "Accessible.role").toInt() == QAccessible::StatusBar
+            && attached(status, "Accessible.name").toString() == QLatin1String("Meters stale"));
+    // EmptyState's default icon is one the app ships
+    QQuickItem *emptyDefault = item("Dl0.emptyDefault");
+    const QString defaultName = emptyDefault ? emptyDefault->property("iconName").toString() : QString();
+    d.check("dl0 fold: EmptyState's default icon is in the app's icons",
+            !defaultName.isEmpty() && QFile::exists(QStringLiteral(":/qt/qml/UConsole/icons/lucide/%1.svg").arg(defaultName)));
 }
 
 void dl0Section(SmokeDriver &d) {

@@ -6,7 +6,8 @@ import UConsole
 // Effects previews, Measure, Live, AutoEQ. The plot itself stays the page's;
 // the frame gives the rest the same everywhere:
 // - the plot area in Theme.panel with radius 8 and no outline (`filled`);
-// - grid lines in Theme.graphGrid at the ticks (`grid`), under the plot;
+// - grid lines in Theme.graphGrid at the ticks (`grid`), under the plot,
+//   stopping short of the axis labels (none while `empty`);
 // - axis labels in fontCaption muted drawn inside with a 6 px inset, never
 //   cut (AxisLabels: `xTicks`, `yTicks`, `rightTicks`, lists of { at, text },
 //   `at` from 0 to 1: left to right, top to bottom);
@@ -56,27 +57,45 @@ Item {
         color: frame.filled ? Theme.panel : "transparent"
         clip: true
 
-        // The grid, at the ticks that are not on an edge
-        Repeater {
-            model: frame.grid ? frame.xTicks : []
-            Rectangle {
-                required property var modelData
-                visible: modelData.at > 0 && modelData.at < 1
-                x: Math.round(modelData.at * surface.width)
-                width: 1
-                height: surface.height
-                color: Theme.graphGrid
+        // The grid, at the ticks that are not on an edge. A Canvas, not line
+        // items, and each line stops short of the axis labels, so no label is
+        // drawn on a grid line (lay7's contrast check reads the tone under it).
+        Canvas {
+            id: gridCanvas
+            anchors.fill: parent
+            visible: frame.grid && !frame.empty
+            renderStrategy: Canvas.Cooperative
+            readonly property color tone: Theme.graphGrid
+            onPaint: {
+                const ctx = getContext("2d")
+                ctx.reset()
+                ctx.fillStyle = tone
+                const w = width, h = height
+                for (const t of frame.xTicks || []) {
+                    if (!(t.at > 0 && t.at < 1)) continue
+                    ctx.fillRect(Math.round(t.at * w), 0, 1, Math.max(0, h - labels.bottomExtent))
+                }
+                const left = labels.leftExtent, right = w - labels.rightExtent
+                for (const t of frame.yTicks || []) {
+                    if (!(t.at > 0 && t.at < 1)) continue
+                    ctx.fillRect(left, Math.round(t.at * h), Math.max(0, right - left), 1)
+                }
             }
-        }
-        Repeater {
-            model: frame.grid ? frame.yTicks : []
-            Rectangle {
-                required property var modelData
-                visible: modelData.at > 0 && modelData.at < 1
-                y: Math.round(modelData.at * surface.height)
-                width: surface.width
-                height: 1
-                color: Theme.graphGrid
+            onWidthChanged: requestPaint()
+            onHeightChanged: requestPaint()
+            onToneChanged: requestPaint()
+            onVisibleChanged: if (visible) requestPaint()
+            Connections {
+                target: frame
+                function onXTicksChanged() { gridCanvas.requestPaint() }
+                function onYTicksChanged() { gridCanvas.requestPaint() }
+                function onRightTicksChanged() { gridCanvas.requestPaint() }
+            }
+            Connections {
+                target: labels
+                function onLeftExtentChanged() { gridCanvas.requestPaint() }
+                function onRightExtentChanged() { gridCanvas.requestPaint() }
+                function onBottomExtentChanged() { gridCanvas.requestPaint() }
             }
         }
 
@@ -88,6 +107,7 @@ Item {
         }
 
         AxisLabels {
+            id: labels
             objectName: frame.objectName.length ? frame.objectName + ".labels" : ""
             anchors.fill: parent
             visible: !frame.empty

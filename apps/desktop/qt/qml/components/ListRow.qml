@@ -10,7 +10,9 @@ import UConsole
 // (a channel pill, a status dot, a badge), an icon, the title in fontTable
 // with an optional subtitle in fontSmall muted, the value at the right (mono
 // when `monoValue`), then the row actions: quiet buttons (IconButton) that
-// show while the row is hovered or selected, or always with `actionsAlways`.
+// show while the row is hovered, selected or current, or one of them has the
+// focus, or always with `actionsAlways`. Hidden they fade out but stay
+// enabled (a click, the keyboard and a script still reach them).
 //
 // The list owns the keyboard: as a ListView delegate the row draws the focus
 // ring while it is the current item and the view has the focus. A click emits
@@ -92,6 +94,9 @@ Item {
 
         RowLayout {
             id: leadingSlot
+            // -- WP DL0 fold -- as wide as what it holds: a slot whose items
+            // are all hidden takes no room from the title
+            Layout.fillWidth: false
             spacing: 6
             visible: children.length > 0
         }
@@ -134,9 +139,17 @@ Item {
             id: actionRow
             spacing: 2
             visible: children.length > 0
-            readonly property bool shown: row.actionsAlways || row.hovered || row.selected || row.current
+            // -- WP DL0 fold -- hidden actions fade out but stay enabled: a
+            // click that comes before the hover, the keyboard and a scripted
+            // press still reach them, and one with the focus shows
+            readonly property bool focused: {
+                for (let i = 0; i < children.length; ++i)
+                    if (children[i].activeFocus) return true
+                return false
+            }
+            readonly property bool shown: row.actionsAlways || row.hovered || row.selected || row.current || focused
             opacity: shown ? 1 : 0
-            enabled: shown
+            Behavior on opacity { NumberAnimation { duration: 120 } }
         }
     }
 

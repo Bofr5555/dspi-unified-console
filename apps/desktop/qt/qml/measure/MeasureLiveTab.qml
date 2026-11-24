@@ -142,37 +142,12 @@ ScrollView {
                 onClicked: mc.liveStop()
             }
             // -- WP DL2 -- the state as a status chip (a dot and the words)
-            Rectangle {
+            StatusChip {
                 objectName: "MeasureLive.status"
                 visible: tab.modern && mc.liveText.length > 0
                 Layout.maximumWidth: 480
-                implicitWidth: statusRow.implicitWidth + 20
-                implicitHeight: Math.max(22, statusRow.implicitHeight + 6)
-                radius: height / 2
-                color: Theme.control
-                RowLayout {
-                    id: statusRow
-                    anchors.fill: parent
-                    anchors.leftMargin: 10
-                    anchors.rightMargin: 10
-                    spacing: 6
-                    Rectangle {
-                        width: 6
-                        height: 6
-                        radius: 3
-                        color: mc.liveIssueText.length ? Theme.warning : tab.active ? Theme.success : Theme.textMuted
-                    }
-                    Text {
-                        Layout.fillWidth: true
-                        textFormat: Text.PlainText
-                        text: mc.liveText
-                        font: Theme.fontSmall
-                        color: Theme.text
-                        elide: Text.ElideRight
-                    }
-                }
-                Accessible.role: Accessible.StaticText
-                Accessible.name: mc.liveText
+                kind: mc.liveIssueText.length ? "warning" : tab.active ? "success" : "idle"
+                text: mc.liveText
             }
             Item { visible: tab.modern; Layout.fillWidth: true }
         }

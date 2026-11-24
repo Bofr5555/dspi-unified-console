@@ -53,6 +53,11 @@ Item {
     readonly property var placedX: place(xTicks, width, inset, width - inset, t => metrics.advanceWidth(t))
     readonly property var placedY: place(yTicks, height, sideTop, sideBottom, t => rowHeight)
     readonly property var placedRight: place(rightTicks, height, sideTop, sideBottom, t => rowHeight)
+    // The room the labels take from each edge (0 without labels there): a grid
+    // drawn under them stops short of it
+    readonly property real bottomExtent: placedX.length ? inset + rowHeight + 2 : 0
+    readonly property real leftExtent: placedY.length ? inset + Math.max(...placedY.map(t => metrics.advanceWidth(t.text))) + 4 : 0
+    readonly property real rightExtent: placedRight.length ? inset + Math.max(...placedRight.map(t => metrics.advanceWidth(t.text))) + 4 : 0
 
     FontMetrics { id: metrics; font: axes.font }
 
