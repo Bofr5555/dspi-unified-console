@@ -651,6 +651,10 @@ pub(crate) fn refusal(pre: &MeasureSystemPreflight) -> Option<DspiError> {
     if has("read_only.client") || has("read_only") {
         return Some(DspiError::ReadOnly);
     }
-    let words: Vec<&str> = pre.blockers.iter().map(|b| b.message.as_str()).collect();
-    Some(invalid(format!("cannot measure: {}", words.join("; "))))
+    // -- WP SHOWFIX -- (finding 1) sentences, as a one-unit refusal reads
+    Some(invalid(crate::measure::preflight::refusal_words(
+        pre.blockers
+            .iter()
+            .map(|b| (b.key.as_str(), b.message.as_str())),
+    )))
 }

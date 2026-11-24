@@ -175,6 +175,8 @@ pub(crate) fn json_reply<T: serde::Serialize>(result: Result<T>) -> String {
             "code": error_code(&e),
             "error": e.to_string(),
             "noticeKey": e.notice_key(),
+            // -- WP SHOWFIX -- (finding 1) the words to show, worded in the core
+            "text": e.user_text(),
         }),
     };
     reply.to_string()

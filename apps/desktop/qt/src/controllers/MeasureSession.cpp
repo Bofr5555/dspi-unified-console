@@ -316,6 +316,11 @@ QJsonObject MeasureSession::object(const QByteArray &text) { return QJsonDocumen
 
 QString MeasureSession::failureText(const QJsonObject &reply) {
     if (reply.isEmpty()) return tr("The core did not answer.");
+    // -- WP SHOWFIX -- (finding 1) the core words its refusals for the person
+    // in one place (DspiError::user_text): "Lower the volume to −12 dB or below
+    // to measure; it is 0.0 dB.", not the error chain. The rest is for an
+    // older core's replies without it.
+    if (const QString text = str(reply, "text"); !text.isEmpty()) return text;
     const QString key = str(reply, "noticeKey");
     QString error = str(reply, "error");
     auto *notices = Registrar::instance<NoticeCenter>();
