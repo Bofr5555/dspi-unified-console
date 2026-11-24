@@ -30,6 +30,7 @@ import { loadMode, saveMode, type Mode } from "../screens/system/model";
 import { SceneBar } from "../screens/system/SceneBar";
 import { StatusRail } from "../screens/system/StatusRail";
 import { SystemScreen, useFeed } from "../screens/system/SystemScreen";
+import { ChainScreen, ClockScreen, InstallationScreen, isSystemPage } from "../screens/system/pages"; // -- WP WEB7 -- Qt's System tabs
 // -- WP WB8 -- the event log (with Save Diagnostics…), undo and redo
 import { EventsScreen } from "../screens/events/EventsScreen";
 import { useSessionState, type ShellProps } from "./components";
@@ -150,7 +151,10 @@ export const SCREENS: ScreenDef[] = [
   { id: "effects", label: "Effects", View: EffectsScreen },
   { id: "overview", label: "All Channels", View: OverviewScreen }, // -- WP P3OV -- (PLAN-P3 U1, OD-P3j: every mode)
   // -- WP SW3 -- (UI-MODES: the Pro layer, not in Simple)
-  { id: "system", label: "System", View: SystemScreen },
+  { id: "system", label: "Units", View: SystemScreen }, // -- WP WEB7 -- Qt's first System tab
+  { id: "system-clock", label: "Clock and Links", View: ClockScreen }, // -- WP WEB7 --
+  { id: "system-installation", label: "Installation", View: InstallationScreen }, // -- WP WEB7 --
+  { id: "chain", label: "Signal Chain", View: ChainScreen }, // -- WP WEB7 -- the web's own, last
   // -- WP P1WB1 -- (Advanced and Installer: setting up and handing over;
   // -- WP P1DCFIX -- Simple has Snapshots as recall and A/B only)
   { id: "snapshots", label: "Snapshots", View: SnapshotsScreen },
@@ -188,15 +192,16 @@ const TOOLS = new Set(["generator", "analyser", "stats", "monitor", "measure" /*
  */
 export function screensFor(mode: Mode, installation: boolean): ScreenDef[] {
   // -- WP WB8 -- the event log last, in Advanced and Installer
-  const today = SCREENS.filter((x) => x.id !== "system" && x.id !== "events" && x.id !== "installer" && !TOOLS.has(x.id) && x.id !== "settings"); // -- WP WB6J -- tools -- WP WB6I -- settings
+  const today = SCREENS.filter((x) => x.id !== "system" && !isSystemPage(x.id) /* -- WP WEB7 -- */ && x.id !== "events" && x.id !== "installer" && !TOOLS.has(x.id) && x.id !== "settings"); // -- WP WB6J -- tools -- WP WB6I -- settings
   const settings = SCREENS.filter((x) => x.id === "settings"); // -- WP WB6I -- last, in every mode
   if (mode === "simple") return [...today.filter((x) => !SETUP.has(x.id)), ...settings]; // -- WP P1WB1 -- -- WP WB6I -- settings
   const tools = SCREENS.filter((x) => TOOLS.has(x.id)); // -- WP WB6J --
   const system = SCREENS.find((x) => x.id === "system")!;
+  const systemTabs = SCREENS.filter((x) => isSystemPage(x.id)); // -- WP WEB7 --
   const events = SCREENS.find((x) => x.id === "events")!;
   // -- WP P1WB2 -- the Installer page last, in the Installer mode
   const tail = mode === "installer" ? SCREENS.filter((x) => x.id === "installer") : [];
-  return installation ? [system, ...today, ...tools, events, ...tail, ...settings] : [...today, system, ...tools, events, ...tail, ...settings]; // -- WP WB6J -- tools -- WP WB6I -- settings
+  return installation ? [system, ...systemTabs, ...today, ...tools, events, ...tail, ...settings] : [...today, system, ...systemTabs, ...tools, events, ...tail, ...settings]; // -- WP WEB7 -- systemTabs // -- WP WB6J -- tools -- WP WB6I -- settings
 }
 
 // -- WP P1WB2 --

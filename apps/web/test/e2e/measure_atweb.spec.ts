@@ -298,7 +298,7 @@ test.describe("ATWEB: measuring several units on the hub", () => {
     hub = await measureHub(["--open", "--forget-clients"]);
     const session = await openUnit(page, hub, A);
     await setMode(session, page, "Installer");
-    await openPage(session, "System");
+    await openPage(session, "Clock and Links"); // -- WP WEB7 -- Qt's tab
     const panel = session.getByRole("region", { name: "Clock and audio links" });
     const table = panel.getByRole("table", { name: "S/PDIF units" });
     await expect(table.getByRole("row", { name: "S/PDIF clock of S/PDIF source" })).toContainText("Source");

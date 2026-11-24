@@ -45,7 +45,7 @@ async function openChain(page: Page, venue = "Venue A") {
   const one = page.locator("#one");
   await one.getByRole("region", { name: venue }).getByRole("button", { name: "Connect" }).click();
   const session = one.getByRole("article", { name: "DSPi" });
-  await openPage(session, "System");
+  await openPage(session, "Signal Chain"); // -- WP WEB7 -- the chain is the System section's last tab
   const chain = session.getByRole("region", { name: "Signal chain" });
   await expect(chain).toBeVisible();
   return { session, chain };
@@ -117,7 +117,7 @@ test("WB6d: a change made on another screen shows in the chain (limiter, mute)",
   await card.getByRole("button", { name: "Mute", exact: true }).click();
   await expect.poll(async () => (await core(page)).outputMuted[o]).toBe(!muted);
   // Back on the System view: the chain says so.
-  await openPage(session, "System");
+  await openPage(session, "Signal Chain"); // -- WP WEB7 -- the chain is the System section's last tab
   await expect(block(outRow(chain, o), "Limiter")).toContainText(!wasOn ? ": on" : ": off");
   if (!muted) await expect(outRow(chain, o).getByLabel(`Level of ${n}`)).toContainText("Muted");
   else await expect(outRow(chain, o).getByLabel(`Level of ${n}`)).not.toContainText("Muted");
@@ -133,7 +133,7 @@ test("WB6d: a block opens its screen: EQ at the channel and tab, the Matrix, the
   await expectPage(session, "EQ");
   await expect(session.locator(".eq-pick", { hasText: "IN2" })).toHaveAttribute("aria-pressed", "true");
   // OUT1's crossover: OUT1 chosen, the XO tab.
-  await openPage(session, "System");
+  await openPage(session, "Signal Chain"); // -- WP WEB7 -- the chain is the System section's last tab
   const o1 = s.outputEnabled.findIndex((e) => e !== false);
   await block(outRow(chain, o1), "Crossover").getByRole("button").click();
   await expect(session.locator(".eq-pick", { hasText: `OUT${o1 + 1}` })).toHaveAttribute("aria-pressed", "true");
@@ -144,13 +144,13 @@ test("WB6d: a block opens its screen: EQ at the channel and tab, the Matrix, the
   await openPage(session, "EQ");
   await expect(session.locator(".eq-pick").first()).toHaveAttribute("aria-pressed", "true");
   // The routing summary: the Matrix.
-  await openPage(session, "System");
+  await openPage(session, "Signal Chain"); // -- WP WEB7 -- the chain is the System section's last tab
   await outRow(chain, o1).getByRole("button", { name: /^Routing of / }).click();
   await expectPage(session, "Matrix");
   await expect(session.getByRole("region", { name: "Matrix Mixer" })).toBeVisible();
   // -- fixup b4fix N3 -- a device-wide effect and an output's effect block: the Effects screen at that effect.
   for (const list of [chain.getByRole("list", { name: "Effects" }), chain.getByRole("list", { name: /^Processing of / })]) {
-    await openPage(session, "System");
+    await openPage(session, "Signal Chain"); // -- WP WEB7 -- the chain is the System section's last tab
     const fxBlock = list.locator("button[data-block]:not([data-block=eq]):not([data-block=xo]):not([data-block=limiter])").first();
     if (!(await fxBlock.count())) continue;
     const id = (await fxBlock.getAttribute("data-block"))!;
@@ -159,7 +159,7 @@ test("WB6d: a block opens its screen: EQ at the channel and tab, the Matrix, the
     await expect(session.locator(`.page-parts [data-part="${id}"]`) /* -- WP WEBM3 -- the effect's part */).toHaveAttribute("aria-selected", "true");
   }
   // The volume: the Main window.
-  await openPage(session, "System");
+  await openPage(session, "Signal Chain"); // -- WP WEB7 -- the chain is the System section's last tab
   await chain.getByRole("button", { name: /^Volume / }).click();
   await expectPage(session, "Main");
   expect(errors).toEqual([]);

@@ -23,7 +23,10 @@ const PLACES: Record<string, { section: string; id: string; tab?: string }> = {
   Snapshots: { section: "Library", id: "snapshots" },
   History: { section: "Library", id: "history" }, // -- WP WEBM3 --
   Files: { section: "Library", id: "files" },
-  System: { section: "System", id: "system" },
+  System: { section: "System", id: "system", tab: "Units" }, // -- WP WEB7 -- Qt's System tabs
+  "Clock and Links": { section: "System", id: "system-clock" }, // -- WP WEB7 --
+  Installation: { section: "System", id: "system-installation" }, // -- WP WEB7 --
+  "Signal Chain": { section: "System", id: "chain" }, // -- WP WEB7 -- the web's own
   Events: { section: "System", id: "events" },
   Connect: { section: "Devices", id: "connect", tab: "Open a DSPi" },
   Hub: { section: "Devices", id: "hub" },
