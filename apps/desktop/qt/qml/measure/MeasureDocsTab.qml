@@ -29,7 +29,13 @@ ColumnLayout {
 
     Component.onCompleted: mc.reloadDocuments()
 
+    // -- WP DL2 -- Modern: no documents at all is an empty state (the filter
+    // row only while there is something to filter); rows are list rows
+    readonly property bool modern: LayoutController.modern
+    readonly property bool none: mc.documents.length === 0 && tab.kind === ""
+
     RowLayout {
+        visible: !(tab.modern && tab.none)
         spacing: Theme.spacingSmall
         AppComboBox {
             label: qsTr("Kind")
@@ -59,19 +65,31 @@ ColumnLayout {
         wrapMode: Text.WordWrap
     }
     Text {
-        visible: tab.rows.length === 0
+        visible: tab.rows.length === 0 && !(tab.modern && tab.none)
         Layout.fillWidth: true
-        text: qsTr("No documents yet: save a measurement from Results.")
+        text: tab.modern ? qsTr("No documents of this kind.") : qsTr("No documents yet: save a measurement from Results.")
         font: Theme.fontBody
         color: Theme.textMuted
+    }
+    EmptyState {
+        objectName: "MeasureDocs.empty"
+        visible: tab.modern && tab.none
+        Layout.fillWidth: true
+        Layout.fillHeight: true
+        iconName: "folder-open"
+        title: qsTr("No documents yet")
+        text: qsTr("Measurements you save from Results, microphone calibrations and targets are kept here.")
+        actionText: qsTr("Import Calibration…")
+        onAction: mc.chooseMicFile()
     }
     ListView {
         id: list
         objectName: "MeasureDocs.list"
+        visible: !(tab.modern && tab.none)
         Layout.fillWidth: true
         Layout.fillHeight: true
         clip: true
-        spacing: 4
+        spacing: tab.modern ? 0 : 4
         model: tab.rows
         ScrollBar.vertical: AppScrollBar {}
         delegate: Rectangle {
@@ -81,8 +99,9 @@ ColumnLayout {
             width: list.width
             implicitHeight: cols.implicitHeight + 12
             radius: Theme.radiusSmall
-            color: Theme.panel
-            border.width: 1
+            // -- WP DL2 -- Modern: the stripe on every second row, no box
+            color: tab.modern ? (row.index % 2 === 1 ? Theme.stripe : "transparent") : Theme.panel
+            border.width: tab.modern ? 0 : 1
             border.color: Theme.separator
             ColumnLayout {
                 id: cols
@@ -116,7 +135,7 @@ ColumnLayout {
                     AppButton {
                         objectName: "MeasureDocs.delete." + row.index
                         text: qsTr("Delete…")
-                        destructive: true
+                        destructive: !tab.modern   // -- WP DL2 -- the question is the destructive one
                         onClicked: {
                             deleteQuestion.doc = row.modelData
                             deleteQuestion.open()
