@@ -179,7 +179,15 @@ void crosspoints(Matrix &m) {
     m.rightClick(gainField);
     QObject *cellMenu = m.obj(QStringLiteral("Matrix.cellMenu"));
     d.check(QStringLiteral("mx1: a right-click on a crosspoint opens its menu"), m.opened(cellMenu));
-    QMetaObject::invokeMethod(m.obj(QStringLiteral("Matrix.cellMenu.reset")), "triggered");
+    // -- WP REVDFIX -- (REVD C2) MX1 ended the instant reset: the right-click
+    // alone leaves the gain, and the menu's item is pressed as a person would
+    // (click() does nothing on a disabled item; "triggered" ignored that)
+    d.waitIdle();
+    d.check(QStringLiteral("mx1: the right-click alone leaves the gain"), m.deviceRoute(i, o, true, -1, false)
+            && gainField->property("text").toString() == QLatin1String("-1"));
+    QObject *reset = m.obj(QStringLiteral("Matrix.cellMenu.reset"));
+    d.check(QStringLiteral("mx1: the menu's Gain to 0 dB is enabled"), reset && reset->property("enabled").toBool());
+    if (reset) QMetaObject::invokeMethod(reset, "click");
     if (cellMenu) cellMenu->setProperty("visible", false);
     d.waitIdle();
     d.check(QStringLiteral("qp6: the menu resets the crosspoint gain to 0 dB"), m.deviceRoute(i, o, true, 0, false));
