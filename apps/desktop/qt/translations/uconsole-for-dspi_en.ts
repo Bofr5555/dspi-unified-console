@@ -314,7 +314,11 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Under Never, an agent may set which output drives what from what you told it, without asking. Off, it is refused.</source>
+        <source>When you tell an agent which output drives what (“tweeter, mid, woofer, left then right, outputs 1–6”), it may then set those roles without asking you first. They are not checked: the safety rules use them at once (a tweeter keeps its high-pass at 1 kHz or above), an output you did not name is treated as a tweeter, and before anything plays below 1 kHz on a midrange, woofer or sub the app checks that its top end is not a tweeter&apos;s. Settings › Speakers shows them as set by AI from your words until you confirm or correct them. An agent may also replace a setup you confirmed when your words say what changed, but a tweeter you set stays a tweeter for agents until you change it in Settings › Speakers. If a stated midrange, woofer or sub is silent above 1 kHz, its check plays the speaker detection&apos;s quiet probe (−50 dBFS or quieter, two octaves) below 1 kHz, even with “Agents may detect speakers” off.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Under Never, an agent may set which output drives what from what you told it, without asking, also over a setup you confirmed when your words say what changed; a tweeter you set stays a tweeter for agents. Its check may play the detection&apos;s quiet probe below 1 kHz on an output silent above it. Off, it is refused.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -518,10 +522,6 @@
     </message>
     <message>
         <source>Let agents set speaker roles from your words without asking?</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>When you tell an agent which output drives what (“tweeter, mid, woofer, left then right, outputs 1–6”), it may then set those roles without asking you first. They are not checked: the safety rules use them at once (a tweeter keeps its high-pass at 1 kHz or above), an output you did not name is treated as a tweeter, and before anything plays below 1 kHz on a midrange, woofer or sub the app checks that its top end is not a tweeter&apos;s. Settings › Speakers shows them as set by AI from your words until you confirm or correct them.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -4760,6 +4760,12 @@ Current unsaved changes will be lost.</source>
     </message>
     <message>
         <source>Factory Reset</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Do you wish to clear all active parameters?
+
+This will not overwrite your saved parameters unless you run &apos;Save to Device&apos;.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
