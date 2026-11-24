@@ -218,6 +218,11 @@ pub struct EventRecord {
     /// Detail lines: an import's or a recall's changes.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub lines: Vec<String>,
+    // -- WP SHOWFIX -- (finding 2)
+    /// The device's own record as the Interrupt Monitor shows it, when `text`
+    /// says it in plain words: for a details row.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub raw: Option<String>,
     /// How many occurrences this record stands for (coalesced repeats, counter
     /// steps); 1 when absent.
     #[serde(default = "one", skip_serializing_if = "is_one")]
@@ -247,6 +252,7 @@ impl EventRecord {
             fw: None,
             uptime_s: None,
             lines: Vec::new(),
+            raw: None, // -- WP SHOWFIX --
             count: 1,
             coalesce: None,
         }

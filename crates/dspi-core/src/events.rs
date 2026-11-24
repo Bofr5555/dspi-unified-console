@@ -355,7 +355,11 @@ impl Store {
             }
             _ => (None, None),
         };
-        let mut r = EventRecord::new(EventKind::Notification, t, crate::monitor::describe(note));
+        // -- WP SHOWFIX -- (finding 2) plain words, the raw line for details
+        let raw = crate::monitor::describe(note);
+        let plain = words::plain(note, self.inputs.load(Ordering::Relaxed));
+        let mut r = EventRecord::new(EventKind::Notification, t, plain.as_deref().unwrap_or(&raw));
+        r.raw = plain.is_some().then_some(raw);
         r.source = source.map(crate::monitor::source_label);
         r.session = note.origin.filter(|&o| o != 0).map(u32::from);
         r.own = own;
@@ -669,9 +673,11 @@ impl DspiCore {
     }
 }
 
+// -- WP SHOWFIX -- (finding 2)
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_p0m;
+mod words;
 // -- WP CS1 --
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]

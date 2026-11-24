@@ -89,6 +89,8 @@ QVariantMap EventsController::row(const QJsonObject &r) {
         { QStringLiteral("text"), r.value(QLatin1String("text")).toString() },
         { QStringLiteral("by"), r.value(QLatin1String("by")).toString() },
         { QStringLiteral("detail"), lines.join(QStringLiteral("; ")) },
+        // -- WP SHOWFIX -- (finding 2) the device's own record, for details
+        { QStringLiteral("raw"), r.value(QLatin1String("raw")).toString() },
         { QStringLiteral("count"), count < 1 ? 1 : count },
     };
 }
