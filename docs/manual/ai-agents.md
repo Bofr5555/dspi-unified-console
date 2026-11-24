@@ -424,10 +424,10 @@ main screen say **Set by AI from your words, not checked**, each such row is mar
 or correct them there. Over a setup you have confirmed, an agent sets roles only when your words say what changed ("I
 rewired output 5"); you are still asked.
 
-**Trust but check.** The roles are your words, not a measurement, and a wire can be in the wrong place. Until it is
-checked, an output your words made a midrange, woofer, sub or full range is guarded as a tweeter: an agent may set its
-filters while it cannot play, but may not route music to it, unmute it or switch it on without a high-pass at 1 kHz or
-above. Before an agent plays anything below 1 kHz on it, the console checks that output's top end first: a quiet sweep above 1 kHz only, at most −24 dBFS (an output silent there is probed lower at most
+**Trust but check.** The roles are your words, not a measurement, and a wire can be in the wrong place. Before an
+agent's test signal plays below 1 kHz on an output your words made a midrange, woofer, sub or full range, the console
+checks that output's top end first (<!-- WP ROLESFIX --> the check is for the console's own test signals; routing music,
+unmuting and filters follow the roles as you stated them): a quiet sweep above 1 kHz only, at most −24 dBFS (an output silent there is probed lower at most
 −50 dBFS, as the detection does). If the top end falls as a woofer's or a midrange's does, its stated role holds from then on. If
 it holds up to 16 kHz as a tweeter's does, nothing below 1 kHz plays on that output, the safety rules keep it a tweeter, and the agent tells you ("Out 2 looks like a tweeter");
 the row shows **tweeter-like**. A check stands for the role it checked; stating the same role again does not run it

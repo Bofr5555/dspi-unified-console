@@ -403,12 +403,17 @@ fn detected_fields(layout: Option<&dspi_core::SpeakerLayout>, o: u8) -> Value {
         "detected_at_ms": found.map(|d| d.probed_ms).filter(|ms| *ms > 0),
         // -- WP ROLES -- a stated role's top-fall check, and an output the
         // safety rules take for a tweeter whatever the row says (one a
-        // statement leaves out, a stated non-tweeter not cleared by its check)
+        // statement leaves out, a stated row whose check found a tweeter's top)
         "role_check": layout
             .filter(|_| row.is_some_and(|r| r.source == RoleSource::Stated))
             .and_then(|l| l.check_of(o))
             .map(|c| super::measure::check_verdict_word(c.verdict)),
-        "treated_as_tweeter": layout.is_some_and(|l| l.agent_floor_held(o)),
+        "treated_as_tweeter": layout.is_some_and(|l| {
+            l.state() == dspi_core::LayoutState::Stated
+                && (row.is_none()
+                    || l.check_of(o)
+                        .is_some_and(|c| c.verdict == dspi_core::RoleCheckVerdict::TopHolds))
+        }),
     })
 }
 

@@ -11097,9 +11097,8 @@ enum class LayoutState {
     /**
      * Set by an AI agent from the user's words, not yet confirmed: its
      * roles guard the outputs as a detected layout's do, an output it does
-     * not name is unknown (a tweeter), and a stated non-tweeter is guarded
-     * as a tweeter (an agent's sub-floor stimulus, and programme) until its
-     * top-fall check clears it.
+     * not name is unknown (a tweeter), and an agent's sub-floor stimulus on
+     * a stated non-tweeter waits for the top-fall check.
      */
     STATED,
 }

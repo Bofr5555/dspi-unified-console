@@ -641,8 +641,7 @@ QVariantMap SpeakersController::pillOf(const State &st, const QVariantMap &row) 
         QT_TR_NOOP("The output was off or muted, so the detection did not probe it."),
         QT_TR_NOOP("Set or confirmed by you."),
         QT_TR_NOOP("Suggested from the filters and the routing: nobody's word yet."),
-        QT_TR_NOOP("Set by AI from your words, not checked. Until a measurement checks its top end, agents guard it as a "
-                   "tweeter. Correct it if it is wrong, then confirm."),
+        QT_TR_NOOP("Set by AI from your words, not checked. Correct it if it is wrong, then confirm."),
         QT_TR_NOOP("Set by AI from your words, but its top end holds like a tweeter's: nothing below 1 kHz plays on it "
                    "for an agent, and it is guarded as a tweeter. Check the wiring and the role."),
         QT_TR_NOOP("Not in what you told the AI: unknown, treated as a tweeter until you set its role."),

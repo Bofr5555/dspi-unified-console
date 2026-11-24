@@ -73,14 +73,13 @@ device the app shows is used. A device that is not open may be a known one
   table (under \"never ask\" only with their switch: `agent_may.set_roles`). The roles then
   guard the outputs (`roles_from: speaker_setup_stated`, every tweeter rule applies); an output
   you leave out is unknown and treated as a tweeter (`treated_as_tweeter`). They are not
-  checked: an output stated as a midrange, woofer, sub or full range is guarded as a tweeter
-  until its top end is checked (`treated_as_tweeter`: no route, unmute or switch-on without a
-  high-pass at 1 kHz or above; its filters are free while it cannot play). A measurement of it
-  checks the top end first (quiet sweeps above 1 kHz), so measure before routing: if the top
-  falls, its stated role holds; if it holds like a tweeter's, nothing lower plays there and the
-  request's note says \"looks like a tweeter\": tell the user, who corrects the wiring or the
-  role in Settings › Speakers. Set a low-pass after the measurement: one that hides the top end
-  leaves the output unchecked. Never set roles
+  checked: before your test signal plays below 1 kHz on an output stated as a midrange, woofer,
+  sub or full range, the app first checks its top end (quiet sweeps above 1 kHz). If the top
+  falls, its stated role holds; if it holds like a tweeter's, nothing lower plays there, it is a
+  tweeter to the safety rules from then on (`treated_as_tweeter`), and the request's note says
+  \"looks like a tweeter\": tell the user, who corrects the wiring or the role in Settings ›
+  Speakers. Set a low-pass after the measurement: one that hides the top end leaves the output
+  unchecked. Never set roles
   the user did not state. Over a confirmed setup only when the user's own words say what
   changed (`what_changed`).
 - If the user has not set up the speakers (`roles_from` is `none` or

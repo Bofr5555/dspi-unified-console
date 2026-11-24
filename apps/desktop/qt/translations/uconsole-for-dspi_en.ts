@@ -16183,7 +16183,7 @@ Save before continuing?</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Set by AI from your words, not checked. Until a measurement checks its top end, agents guard it as a tweeter. Correct it if it is wrong, then confirm.</source>
+        <source>Set by AI from your words, not checked. Correct it if it is wrong, then confirm.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>

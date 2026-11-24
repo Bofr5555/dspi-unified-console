@@ -298,8 +298,8 @@ pub struct Judging {
     /// (Settings › AI Agents › Agents may set speaker roles from my words;
     /// off by default).
     pub roles_allowed: bool,
-    /// The outputs a stated setup guards as tweeters until their top-fall
-    /// check clears them ([`held_outputs`]).
+    /// The outputs a stated setup takes for tweeters whatever the rows say
+    /// ([`held_outputs`]): the refusals say why.
     pub held: Vec<Held>,
     // -- WP FFIX --
     /// The limits profile's high-pass per output: (output, corner, slope);
@@ -1427,24 +1427,15 @@ fn judge_highpass(
             .iter()
             .any(|w| w.item().0 == "eq" && w.indices.first() == Some(&ch));
         if let Some((floor, slope, word)) = hard_rule(roles, floors, o) {
-            // -- WP ROLES -- an output guarded as a tweeter until its check: its
-            // filters are free while it cannot play (a midrange's 300 Hz
-            // high-pass before its measurement, as the preflight asks)
-            let held_o = held.iter().find(|h| h.output == o);
-            if held_o.is_some_and(|h| !h.found_tweeter) && !plays(after, o) {
-                continue;
-            }
             if let Some(why) = hard_verdict(before, after, writes, o, (floor, slope)) {
-                // -- WP ROLES -- trust but check: guarded as a tweeter until
-                // its top end is checked
-                if let Some(Held { why: held, .. }) = held_o {
+                // -- WP ROLES -- an output the stated setup takes for a tweeter
+                // whatever its row says: said why
+                if let Some(Held { why: held, .. }) = held.iter().find(|h| h.output == o) {
                     refusals.push(format!(
                         "{} {held}, so it is guarded as a tweeter: it must keep a high-pass at \
                          {floor:.0} Hz or above, {slope} dB/octave or steeper, whenever it can play \
-                         (routed, on and unmuted): {why}. Nothing was changed. A measurement of it \
-                         (dspi_measure_start) checks its top end first; once the check clears it, \
-                         its stated role holds. If the check found a tweeter's top, tell the user: \
-                         only the user can correct the role (Settings › Speakers).",
+                         (routed, on and unmuted): {why}. Nothing was changed. Only the user can \
+                         change its role (Settings › Speakers); tell the user.",
                         agent_out(o)
                     ));
                     continue;
@@ -2265,34 +2256,31 @@ pub fn stated_setup(core: &DspiCore) -> bool {
 }
 
 // -- WP ROLES --
-/// An output a stated setup guards as a tweeter (trust but check).
+/// An output a stated setup takes for a tweeter whatever its row says.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Held {
     /// The output, from 0.
     pub output: u8,
     /// Why, in words that follow "Out N".
     pub why: String,
-    /// Its top-fall check found a tweeter's top: the whole tweeter rule
-    /// holds; otherwise (no evidence yet) its filters are free while it
-    /// cannot play.
-    pub found_tweeter: bool,
 }
 
 // -- WP ROLES --
-/// The outputs `core`'s stated setup guards as tweeters (trust but check):
-/// a stated midrange, woofer, sub or full range its top-fall check has not
-/// cleared, and an output the user's words left out.
+/// The outputs `core`'s stated setup takes for tweeters whatever its rows
+/// say: an output the user's words left out, and a stated row whose top-fall
+/// check found a tweeter's top. (A stated row not checked yet is trusted as
+/// stated: only an agent's test signals wait for its check. ROLESFIX, owner
+/// 2026-11-24.)
 pub fn held_outputs(core: &DspiCore) -> Vec<Held> {
     let Ok(Some(l)) = core.speaker_layout() else {
         return Vec::new();
     };
+    if l.state() != dspi_core::LayoutState::Stated {
+        return Vec::new();
+    }
     let n = l.stated.as_ref().map_or(0, |s| s.device_outputs);
     (0..n)
-        .filter(|o| l.agent_floor_held(*o))
-        .map(|o| {
-            let found_tweeter = l
-                .check_of(o)
-                .is_some_and(|c| c.verdict == dspi_core::RoleCheckVerdict::TopHolds);
+        .filter_map(|o| {
             let why = match (l.output(o), l.check_of(o)) {
                 (None, _) => "is not among the roles the user stated".to_owned(),
                 (Some(r), Some(c)) if c.verdict == dspi_core::RoleCheckVerdict::TopHolds => {
@@ -2302,16 +2290,9 @@ pub fn held_outputs(core: &DspiCore) -> Vec<Held> {
                         dspi_core::speaker_layout::role_word(r.role)
                     )
                 }
-                (Some(r), _) => format!(
-                    "is a {} in the user's words, not checked yet",
-                    dspi_core::speaker_layout::role_word(r.role)
-                ),
+                _ => return None,
             };
-            Held {
-                output: o,
-                why,
-                found_tweeter,
-            }
+            Some(Held { output: o, why })
         })
         .collect()
 }

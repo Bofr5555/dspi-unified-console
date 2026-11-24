@@ -150,8 +150,8 @@ fn wp_roles_the_owners_sentence_is_one_question_with_the_whole_table() {
         assert_eq!(o["outputs"][1]["role_source"], json!("stated"));
         assert_eq!(
             o["outputs"][1]["treated_as_tweeter"],
-            json!(true),
-            "until checked"
+            json!(false),
+            "a midrange as stated, checked or not (ROLESFIX)"
         );
         assert_eq!(
             o["outputs"][0]["treated_as_tweeter"],
@@ -273,40 +273,51 @@ fn wp_roles_the_tweeter_rules_hold_on_stated_and_unnamed_outputs() {
                 && e.contains("set by AI from the user's words, not yet confirmed"),
             "{e}"
         );
-        // Trust but check, programme included: a stated woofer its check has not
-        // cleared is guarded as a tweeter, so music reaches it only through a
-        // high-pass at 1 kHz or above (without a route its filters are free)
+        // -- ROLESFIX -- (owner 2026-11-24) the boundary: music may reach a
+        // stated woofer before any check (routing, filters, unmute follow the
+        // stated role); a test signal below 1 kHz there waits for the check
         for i in 0..core.get_state().num_input_channels {
             core.set_matrix_route(i, 0, false, 0.0, false).unwrap();
         }
-        ok_at(
-            &mut s,
-            c,
-            0,
-            "dspi_set_crossover",
-            json!({"output": 0, "low_pass": {"family": "linkwitz_riley", "order": 4, "freq_hz": 300}}),
-        );
-        // (the woofer's own high-pass below 1 kHz is free while it cannot play)
-        ok_at(
-            &mut s,
-            c,
-            0,
-            "dspi_set_crossover",
-            json!({"output": 0, "high_pass": {"family": "linkwitz_riley", "order": 4, "freq_hz": 40}}),
-        );
-        let e = err_at(
-            &mut s,
-            c,
-            0,
-            "dspi_set_route",
-            json!({"input": 0, "output": 0, "on": true}),
+        let woofer = json!({"output": 0, "high_pass": {"family": "linkwitz_riley", "order": 4, "freq_hz": 40}});
+        ok_at(&mut s, c, 0, "dspi_set_crossover", woofer);
+        let route = json!({"input": 0, "output": 0, "on": true});
+        match mode {
+            ConfirmMode::NeverAsk => {
+                ok_at(&mut s, c, 0, "dspi_set_route", route);
+            }
+            _ => {
+                // a new route is asked, as anywhere
+                let cid = held_at(&mut s, c, 0, "dspi_set_route", route);
+                allow(&mut s, c, cid);
+            }
+        }
+        let st = core.get_state();
+        assert!(
+            (0..st.num_input_channels).any(|i| st.matrix_routing[usize::from(i)][0]),
+            "routed before any check"
         );
         assert!(
-            e.contains("is a woofer in the user's words, not checked yet")
-                && e.contains("guarded as a tweeter")
-                && e.contains("dspi_measure_start"),
-            "{e}"
+            core.speaker_layout()
+                .unwrap()
+                .unwrap()
+                .check_of(0)
+                .is_none(),
+            "unchecked"
         );
+        if mode == ConfirmMode::NeverAsk {
+            let r = ok_at(&mut s, c, 0, "dspi_measure_start", json!({"outputs": [0]}));
+            assert!(
+                r["what"]
+                    .as_str()
+                    .unwrap()
+                    .starts_with("First a check that Out 1 (stated woofer) is not a tweeter"),
+                "{r}"
+            );
+            ok_at(&mut s, c, 0, "dspi_measure_stop", json!({}));
+        }
+        // (the core holds an agent's plan for it to 1 kHz until then:
+        // dspi-core's wp_roles_an_agent_states_the_roles_and_its_stimulus_waits_for_the_check)
         // An output the words left out is guarded as a tweeter: while it plays
         // (the user switched it on and routed it), no high-pass under 1 kHz.
         core.set_output_enable(3, true).unwrap();
@@ -492,27 +503,8 @@ fn wp_roles_trust_but_check_a_wrong_woofer_is_caught_before_anything_plays_low()
     );
     assert!(core.measure_rolloff_state().floor_hz >= 1_000.0, "held");
     ok_at(&mut s, c, 20_000, "dspi_measure_stop", json!({}));
-    // Its low-pass taken off, as the note says: while it plays programme the
-    // guard refuses that (it is guarded as a tweeter until checked), so its
-    // route goes first (the check's generator needs none; a mute would stop
-    // the check too); then checked again, its top falls, measured as stated.
-    let e = err_at(
-        &mut s,
-        c,
-        20_000,
-        "dspi_set_crossover",
-        json!({"output": 0, "low_pass": null}),
-    );
-    assert!(e.contains("guarded as a tweeter"), "{e}");
-    for i in 0..core.get_state().num_input_channels {
-        ok_at(
-            &mut s,
-            c,
-            20_000,
-            "dspi_set_route",
-            json!({"input": i, "output": 0, "on": false}),
-        );
-    }
+    // Its low-pass taken off, as the note says (music and filters follow the
+    // stated role, ROLESFIX): checked again, its top falls, measured as stated.
     ok_at(
         &mut s,
         c,

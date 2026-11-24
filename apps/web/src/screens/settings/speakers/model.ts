@@ -505,7 +505,7 @@ const PILL_REASONS: Record<PillKind, string> = {
   you: "Set or confirmed by you.",
   suggested: "Suggested from the filters and the routing: nobody's word yet.",
   // -- WP ROLES --
-  stated: "Set by AI from your words, not checked. Until a measurement checks its top end, agents guard it as a tweeter. Correct it if it is wrong, then confirm.",
+  stated: "Set by AI from your words, not checked. Correct it if it is wrong, then confirm.",
   statedTweeter:
     "Set by AI from your words, but its top end holds like a tweeter's: nothing below 1 kHz plays on it for an agent, and it is guarded as a tweeter. Check the wiring and the role.",
   notNamed: "Not in what you told the AI: unknown, treated as a tweeter until you set its role.",

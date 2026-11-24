@@ -35,11 +35,10 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
   (off by default, asked once). The roles guard the outputs at once (every tweeter rule applies; an output you did not
   name is treated as a tweeter); Settings › Speakers and the main screen say "Set by AI from your words, not checked",
   each row is marked "from your words", and you confirm or correct them there. Over a confirmed setup only when your
-  words say what changed. **Trust but check:** an output your words made a midrange, woofer, sub or full range is guarded
-  as a tweeter (no music without a 1 kHz high-pass) until the console has checked its top end above 1 kHz (the
-  detection's top-fall test, run before an agent's measurement plays anything lower); if the top falls, the stated role
-  holds; if it holds like a tweeter's, nothing below 1 kHz plays there, it stays guarded as a tweeter
-  ("tweeter-like"), and the agent tells you. An output whose own low-pass hides its top end is not checked and stays held at 1 kHz. Your own
+  words say what changed. **Trust but check:** before an agent's test signal plays below 1 kHz on an output your words
+  made a midrange, woofer, sub or full range, the console checks its top end above 1 kHz (the detection's top-fall
+  test); if it holds like a tweeter's, nothing below 1 kHz plays there, it is guarded as a tweeter from then on
+  ("tweeter-like"), and the agent tells you. Routing music and filters follow the roles as you stated them. An output whose own low-pass hides its top end is not checked and stays held at 1 kHz. Your own
   measurements and confirmed setups are not checked.
 - Fixed (a user's report on 0.14.0, WP USR1): a number typed into a gain, delay or filter field went back to the old
   value when you clicked another field after pressing Enter, in the main window and the matrix mixer: the field showed

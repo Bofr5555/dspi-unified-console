@@ -1123,10 +1123,18 @@ fn wp_roles_a_stated_layouts_state_trusted_roles_and_file() {
         ..SpeakerLayout::default()
     };
     assert_eq!(l.state(), LayoutState::Stated);
-    // Trusted: a stated tweeter as stated; the stated non-tweeters guarded as
-    // tweeters until their check clears them (programme included); the
-    // outputs it leaves out are tweeters.
-    assert_eq!(trusted_roles(&l), Some(vec![Some(MeasureRole::High); 5]));
+    // Trusted: as stated, checked or not (ROLESFIX: only an agent's test
+    // signals wait for the check); the outputs it leaves out are tweeters.
+    assert_eq!(
+        trusted_roles(&l),
+        Some(vec![
+            Some(MeasureRole::Low),
+            Some(MeasureRole::Mid),
+            Some(MeasureRole::High),
+            Some(MeasureRole::High),
+            Some(MeasureRole::High),
+        ])
+    );
     // An agent's stimulus waits for the check on the stated non-tweeters and
     // on the outputs left out; never on the stated tweeter.
     assert!(l.agent_floor_held(0) && l.agent_floor_held(1) && l.agent_floor_held(4));

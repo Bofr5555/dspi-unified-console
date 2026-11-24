@@ -604,8 +604,8 @@ pub(crate) fn summary_of(d: &Detection, probed: usize) -> String {
 
 /// `trusted` roles of `layout`: each output's role, by output, when its
 /// state is confirmed, auto-detected or (-- WP ROLES --) stated from the
-/// user's words (an output a statement leaves out, and a stated non-tweeter
-/// its top-fall check has not cleared, is a tweeter); `None` when it is none of these
+/// user's words (an output a statement leaves out, and a stated row whose
+/// top-fall check found a tweeter's top, is a tweeter); `None` when it is none of these
 /// (nobody's word: no roles reach the safety rules). AUTODES 3.2.
 pub fn trusted_roles(layout: &SpeakerLayout) -> Option<Vec<Option<MeasureRole>>> {
     if layout.state() == LayoutState::Unconfirmed {
@@ -618,12 +618,14 @@ pub fn trusted_roles(layout: &SpeakerLayout) -> Option<Vec<Option<MeasureRole>>>
             out.resize(at.saturating_add(1), None);
         }
         if let Some(slot) = out.get_mut(at) {
-            // -- WP ROLES -- trust but check: a stated non-tweeter its check has
-            // not cleared (not made yet, or its top held like a tweeter's) is
-            // guarded as a tweeter, so nothing plays below its floor, programme
-            // included
-            let held = layout.agent_floor_held(o.output);
-            *slot = Some(if held { MeasureRole::High } else { o.role });
+            // -- WP ROLES -- a stated row whose top-fall check found a
+            // tweeter's top is one (an unchecked one is trusted as stated:
+            // ROLESFIX, owner 2026-11-24; only an agent's test signals wait
+            // for its check)
+            let tweeter = layout
+                .check_of(o.output)
+                .is_some_and(|c| c.verdict == RoleCheckVerdict::TopHolds);
+            *slot = Some(if tweeter { MeasureRole::High } else { o.role });
         }
     }
     // -- WP ROLES -- an output a statement does not name is unknown: a

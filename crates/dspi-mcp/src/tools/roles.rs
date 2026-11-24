@@ -258,14 +258,14 @@ fn binding(rows: &[Row]) -> Vec<u8> {
 /// What the agent does next.
 const NEXT_TEXT: &str = "The roles are set as the user stated them and are not checked: the \
      safety rules use them now (a tweeter keeps a high-pass at 1 kHz or above, 12 dB/octave or \
-     steeper), and an output not in the table is unknown, treated as a tweeter. An output stated \
-     as a midrange, woofer, sub or full range is guarded as a tweeter until its top end is \
-     checked: no route, unmute or switch-on without a high-pass at 1 kHz or above (its filters \
-     are free while it cannot play). Measure next (dspi_measure_start), before routing and \
-     before setting low-passes: it checks each such output's top end first with a quiet sweep \
-     above 1 kHz; if the top falls, the stated role holds; if it holds like a tweeter's, nothing \
-     below 1 kHz plays there and the request's note says so: tell the user. The user can \
-     confirm or correct the roles in Settings › Speakers.";
+     steeper), and an output not in the table is unknown, treated as a tweeter. Before an \
+     agent's test signal plays below 1 kHz on an output stated as a midrange, woofer, sub or \
+     full range, the app checks its top end with a quiet sweep above 1 kHz (measure before \
+     setting its low-pass: one that hides the top end leaves it unchecked); if the top falls, \
+     the stated role holds; if it holds like a tweeter's, nothing below 1 kHz plays there, it is \
+     a tweeter to the safety rules from then on, and the request's note says so: tell the user. \
+     The user can confirm or correct the roles in Settings › Speakers. Measure next \
+     (dspi_measure_start).";
 
 static SET_ROLES: Tool = Tool {
     name: SET_ROLES_NAME,
@@ -280,9 +280,9 @@ static SET_ROLES: Tool = Tool {
                   table (under \"never ask\" only with the user's switch, agent_may.set_roles). \
                   The roles then guard the outputs (roles_from: speaker_setup_stated; every \
                   tweeter rule applies); outputs you leave out are unknown and treated as \
-                  tweeters; a stated midrange, woofer or sub is guarded as a tweeter until a \
-                  measurement has checked its top end (measure before routing it), and plays \
-                  nothing below 1 kHz if it looks like a tweeter. Over a confirmed setup only with the user's words on what changed \
+                  tweeters; before a test signal plays below 1 kHz on a stated midrange, \
+                  woofer or sub the app checks its top end and plays nothing lower if it looks \
+                  like a tweeter. Over a confirmed setup only with the user's words on what changed \
                   (`what_changed`). The user can confirm or correct the roles in Settings › \
                   Speakers.",
     class: ToolClass::Write,
