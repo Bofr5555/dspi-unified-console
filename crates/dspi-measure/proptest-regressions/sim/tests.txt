@@ -5,3 +5,4 @@
 # It is recommended to check this file in to source control so that
 # everyone who runs the test benefits from these saved cases.
 cc 0f88ccd5ad20a5ddd4dd4180c8b7b6f739d237fbca7b502a36f81096d9cb6d57 # shrinks to filters = [], f = 0.0, fs = 0.0, mode = (-3.786926895104768e307, 0.0, 28066.849417668705), band = (0, false, 0.0, 0.0, 0.0), block = (0, 0, 0), out = 0
+cc 8c17b987c1a597bb7ca578084027439ddbe08a204d6e3aebb4bd55e00632ecd3 # shrinks to rate = 707608000, f1 = 1.9359964396757705e-308, f2 = 32.907799050644215, dur = 0.019542921413866796, fade = 0.0, amp = -0.0

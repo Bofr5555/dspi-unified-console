@@ -712,8 +712,9 @@ impl<'a> Stimulus<'a> {
 /// ends, peak `amplitude` (0 to 1).
 ///
 /// Errors: [`MeasureError::Invalid`] for a rate outside 8 to 192 kHz, a
-/// duration outside 0.01 to 15 s, `0 < f1 < f2 <= rate/2` not holding, a fade
-/// longer than half the sweep or an amplitude outside 0 to 1.
+/// duration outside 0.01 to 15 s, `0 < f1 < f2 <= rate/2` not holding, a span
+/// `f2 / f1` too wide for an `f64` (a subnormal `f1`), a fade longer than half
+/// the sweep or an amplitude outside 0 to 1.
 pub fn test_sweep(
     rate_hz: u32,
     f1: f64,
@@ -730,6 +731,9 @@ pub fn test_sweep(
         && f1 > 0.0
         && f2 > f1
         && f2 <= fs / 2.0
+        // The sweep's rate ln(f2 / f1): infinite for a subnormal f1, which
+        // made every sample NaN (INTB, CIPAR's proptest case)
+        && (f2 / f1).is_finite()
         && (0.0..=duration_s * 500.0).contains(&fade_ms)
         && (0.0..=1.0).contains(&amplitude);
     if !ok {
