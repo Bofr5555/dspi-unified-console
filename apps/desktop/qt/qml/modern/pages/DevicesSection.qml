@@ -54,6 +54,7 @@ Item {
             }
             Flow {
                 Layout.fillWidth: true
+                visible: DeviceModel.connected   // -- WP REVDFIX -- (REVD D8) as its heading
                 spacing: Theme.spacingSmall
                 // -- WP LAY3b -- MenuTable's place device, as the switcher
                 Repeater {
