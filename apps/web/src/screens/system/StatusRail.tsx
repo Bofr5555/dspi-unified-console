@@ -10,7 +10,11 @@ import type { Session } from "../../ui/session";
 import { useSessionState } from "../../ui/components";
 import type { SystemFeed } from "./feed";
 import { useFeed } from "./SystemScreen";
-import { MODES, mayWrite, railAlarms, subjectName, systemMuted, writeNote, type Alarm, type Mode } from "./model";
+import { MODES, mayWrite, railAlarmWord, railAlarms, subjectName, systemMuted, writeNote, type Alarm, type Mode } from "./model";
+// -- WP WEB7 -- (REVE D5) the hub's device alarms, as the banner counts them
+import type { HubFeed } from "../hub/feed";
+import { useHubView } from "../hub/HubScreen";
+import { alarmSummary } from "../hub/model";
 // -- WP P1WB2 -- the mode switch onto the core's mode manifest and its resolution (P1LK)
 import type { ModeChoice } from "../../core/protocol";
 // -- WP SECWEB -- a hub link that is not encrypted: red, " (unsecured)", and the info button
@@ -29,6 +33,9 @@ export function StatusRail(props: {
   // -- WP WB6F --
   /** The rail's health row and panel (ui/status-rail/HealthRail.tsx), below this row. */
   children?: ComponentChildren;
+  // -- WP WEB7 --
+  /** The session's hub feed: its device alarms when there is no installation (the banner's count). */
+  hub?: HubFeed;
 }) {
   const st = useFeed(props.feed);
   const ss = useSessionState(props.session);
@@ -39,6 +46,9 @@ export function StatusRail(props: {
   const mayAck = mayWrite(st.role, "ack") && !props.feed.readOnly;
   const alarms = hub ? railAlarms(st.status?.alarms ?? []) : [];
   const on = alarms.filter((a) => a.state !== "cleared");
+  // -- WP WEB7 -- (REVE D5)
+  const hubView = useHubView(props.hub);
+  const hubRaised = hubView?.caps?.alarms ? alarmSummary(hubView.alarms.filter((a) => a.source !== "alink")).raised : null;
   const kind = props.session.source.kind;
   // -- WP P1WB1 -- a document opened with no device
   const where = kind === "hub" ? `hub ${ss.hubName || ""}`.trim() : kind === "usb" ? "USB" : kind === "document" ? "a file" : "the demo";
@@ -79,8 +89,8 @@ export function StatusRail(props: {
             System mute: {muted === null ? "unknown" : muted ? "on" : "off"}
           </button>
         ) : null}
-        <span class={`sys-rail-item sys-alarm-sum${on.length ? " raised" : ""}`} aria-label="Alarms">
-          {hub ? (on.length ? `${on.length} ${on.length === 1 ? "alarm" : "alarms"}` : "No alarms") : "No hub alarms"}
+        <span class={`sys-rail-item sys-alarm-sum${(hub ? on.length : hubRaised) ? " raised" : ""}`} aria-label="Alarms">
+          {railAlarmWord(!!hub, on.length, hubRaised) /* -- WP WEB7 -- (REVE D5) */}
         </span>
       </div>
       {props.children /* -- WP WB6F -- device, preset, core load, health */}

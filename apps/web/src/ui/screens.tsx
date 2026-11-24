@@ -505,6 +505,7 @@ export function Screens(props: {
       foot={
         // -- WP SW3 -- the status rail, below the screen as a status bar
         <StatusRail
+          hub={hub} /* -- WP WEB7 -- (REVE D5) the rail counts the banner's hub alarms */
           feed={system}
           session={session}
           mode={mode}
