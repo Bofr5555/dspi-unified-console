@@ -114,6 +114,8 @@ export function SettingsScreen(props: ScreenProps) {
         })}
       </nav>
       <div class="settings-page">
+        {/* -- WP WEB2 -- (DL7) the page's name over it, as Qt's Settings pages */}
+        <h2 class="settings-page-title">{PAGE_TITLES[current]}</h2>
         {current === "global" ? <GlobalPage session={session} /> : null}
         {current === "pins" ? <PinsPage session={session} /> : null}
         {current === "speakers" ? <SpeakersPage session={session} /> : null /* -- WP ROLEW -- */}

@@ -117,9 +117,10 @@ export function EventsScreen(props: ScreenProps) {
   };
 
   return (
-    <section class="card events" aria-label="Event log">
-      <div class="card-head events-head">
-        <h2>Event log</h2>
+    // -- WP WEB2 -- (§8, §9) the log is the page, not a card around it: its name a section label, the tools at its right
+    <section class="events" aria-label="Event log">
+      <div class="events-head">
+        <h2 class="section-label">Event log</h2>
         {/* -- WP P2WB1 -- */}
         {hubLog ? (
           <label class="events-source">
@@ -175,7 +176,7 @@ export function EventsScreen(props: ScreenProps) {
       {onHub ? (
         <HubHistory session={session} />
       ) : shown.length ? (
-        <table class="event-list">
+        <table class="event-list ds-table">
           <thead>
             <tr>
               <th scope="col">Time</th>
