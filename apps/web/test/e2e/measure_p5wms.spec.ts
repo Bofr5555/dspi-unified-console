@@ -61,11 +61,12 @@ async function measureScreen(page: Page, venue = "Venue A", lowerVolume = true):
 // -- WP P5FOLLOW --
 /** No placement is assumed: Check and Start wait for the person, said in words; then speakers at the listening position. */
 async function choosePlacement(setup: Locator): Promise<void> {
-  await expect(setup.getByRole("radiogroup", { name: "Placement" }).getByRole("radio", { checked: true })).toHaveCount(0);
+  // -- WP WEB7 -- a combo as Qt's: "Choose the placement" until the person chooses
+  await expect(setup.getByLabel("Placement", { exact: true })).toHaveValue("");
   await expect(setup.getByRole("button", { name: "Measure", exact: true })).toBeDisabled();
   await expect(setup.getByRole("button", { name: "Check" })).toBeDisabled();
   await expect(setup).toContainText("Choose the placement first: speakers or headphones on a coupler.");
-  await setup.getByRole("radio", { name: "Listening position" }).check();
+  await setup.getByLabel("Placement", { exact: true }).selectOption("listeningPosition");
   await expect(setup.getByRole("button", { name: "Measure", exact: true })).toBeEnabled();
 }
 
@@ -96,7 +97,7 @@ test("P5WMS: a measurement end to end on the simulated microphone: preflight in 
   await call(page, "write", { path: "vol.user", value: { float: -20 } });
   await setup.getByLabel("Sweep length").fill("1");
   await setup.getByRole("button", { name: "Check" }).click();
-  await expect(preflight).toContainText("Ready: nothing blocks the measurement.");
+  await expect(preflight).toContainText("Clear to measure."); // -- WP WEB7 -- Qt's words
   await setup.getByRole("button", { name: "Measure", exact: true }).click();
   // Stop is shown while it runs, above the tabs.
   await expect(screen.getByRole("status", { name: "Measuring" }).getByRole("button", { name: "Stop" })).toBeVisible();
@@ -110,12 +111,12 @@ test("P5WMS: a measurement end to end on the simulated microphone: preflight in 
   const graph = results.getByRole("img", { name: "Measured responses" });
   // The core's curves: smoothed (1/6 octave by default), each output with its levelled target.
   await expect(results.getByLabel("Curves drawn")).toHaveAttribute("data-smoothing", "6");
-  await expect(graph).toHaveAttribute("data-series", /^measured:OUT1 [^|]*\|target:Target for OUT1 [^|]*\|measured:OUT2 [^|]*\|target:Target for OUT2 /);
+  await expect(graph).toHaveAttribute("data-series", /^measured:Out 1[^|]*\|target:Target for Out 1[^|]*\|measured:Out 2[^|]*\|target:Target for Out 2/);
   expect(await graph.locator('path[data-kind="target"]').count()).toBeGreaterThan(1);
   await results.getByLabel("Results smoothing").selectOption("24");
   await expect(results.getByLabel("Curves drawn")).toHaveAttribute("data-smoothing", "24");
   await results.getByLabel("Show the target").uncheck();
-  await expect(graph).toHaveAttribute("data-series", /^measured:OUT1 [^|]*\|measured:OUT2 /);
+  await expect(graph).toHaveAttribute("data-series", /^measured:Out 1[^|]*\|measured:Out 2/);
   // The curves drawn, the untrusted points faint.
   expect(await graph.locator("path.trusted").count()).toBeGreaterThan(1);
   expect(await graph.locator("path.untrusted").count()).toBeGreaterThan(0);
@@ -141,9 +142,9 @@ test("P5FOLLOW: nothing is measured before the placement is chosen; headphones s
   await expect(setup).toContainText("Choose the placement first");
   expect((await call<{ active: boolean }>(page, "measureState")).active).toBe(false);
   expect((await call<{ state: number }>(page, "siggenStatus")).state).toBe(0);
-  await setup.getByRole("radio", { name: "Headphones on a coupler" }).check();
+  await setup.getByLabel("Placement", { exact: true }).selectOption("headphones");
   await expect(setup.getByLabel("Placement detail")).toContainText("On the coupler, not on a head");
-  await expect(setup.getByText("Coupler", { exact: true })).toBeVisible();
+  await expect(setup.getByLabel("Coupler", { exact: true })).toBeVisible();
   await expect(setup.getByRole("button", { name: "Measure", exact: true })).toBeEnabled();
   await expect(setup.getByLabel("Passes hint")).toHaveCount(0);
   await setup.getByRole("spinbutton", { name: "Passes" }).fill("2");
@@ -171,13 +172,13 @@ test("P5FOLLOW: the live view assumes no placement, plays nothing until one is c
   // Several positions on the Setup tab is no live placement: still none.
   await tabs.getByRole("tab", { name: "Measure", exact: true }).click();
   const setup = screen.getByRole("region", { name: "Measurement setup" });
-  await setup.getByRole("radio", { name: "Several positions" }).check();
+  await setup.getByLabel("Placement", { exact: true }).selectOption("multiPosition");
   await tabs.getByRole("tab", { name: "Live" }).click();
   live = screen.getByRole("region", { name: "Live response" });
   await expect(live.getByRole("button", { name: "Start Live" })).toBeDisabled();
   // Headphones chosen on the Setup tab: the live view takes it, with its coupler.
   await tabs.getByRole("tab", { name: "Measure", exact: true }).click();
-  await setup.getByRole("radio", { name: "Headphones on a coupler" }).check();
+  await setup.getByLabel("Placement", { exact: true }).selectOption("headphones");
   await tabs.getByRole("tab", { name: "Live" }).click();
   live = screen.getByRole("region", { name: "Live response" });
   await expect(live.getByLabel("Live placement", { exact: true })).toHaveValue("headphones");
@@ -225,6 +226,9 @@ test("P5WMS: the live view: a curve per sweep with the target, 'cut this peak' p
   await expect.poll(async () => Number(await live.locator("[data-seq]").getAttribute("data-seq")), { timeout: 60_000 }).toBeGreaterThanOrEqual(2);
   const graph = live.getByRole("img", { name: "Live response" });
   await expect(graph).toHaveAttribute("data-series", /measured:.*\|target:Target/);
+  // -- WP WEB7 -- (REVE D4) one Stop on the Live tab: Stop Live, no second stop bar above the tabs
+  await expect(live.getByRole("button", { name: "Stop Live" })).toBeVisible();
+  await expect(screen.getByRole("status", { name: "Measuring" })).toHaveCount(0);
   const filters = async () => JSON.stringify((await call<{ state: { filters: unknown } }>(page, "state")).state.filters);
   const before = await filters();
   await live.getByRole("button", { name: "Find the Highest Peak" }).click();
@@ -281,7 +285,7 @@ test.describe("the browsers' fake microphone", () => {
       await run.getByRole("button", { name: "See the results" }).click();
       const results = screen.getByRole("region", { name: "Measurement results" });
       await expect(results.getByLabel("Timing")).toHaveText(/^(Timing reliable|Timing unreliable|No timing)/);
-      await expect(results.getByRole("img", { name: "Measured responses" })).toHaveAttribute("data-series", /measured:OUT1 /);
+      await expect(results.getByRole("img", { name: "Measured responses" })).toHaveAttribute("data-series", /measured:Out 1/);
     } else await expect(run.getByRole("alert")).not.toBeEmpty();
     await expect(screen.getByRole("status", { name: "Measuring" })).toHaveCount(0);
     expect((await call<{ state: number }>(page, "siggenStatus")).state).toBe(0);
