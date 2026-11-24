@@ -626,10 +626,9 @@ function gridWidth(nOut: number, dense: boolean): number {
   return dense ? 120 + 12 + nOut * 44 + 80 : 168 + 12 + nOut * 56 + 90;
 }
 
-/** -- WP WEB2 -- (REVD W11) A delay in the footer as the mockup and Qt: "0", "1.25". */
+/** -- WP WEB2 -- (REVD W11) A delay in the footer: none is "0" as the mockup and Qt, else as the delay fields ("4.0"). */
 function footDelay(ms: number): string {
-  const v = Math.round(ms * 1e4) / 1e4;
-  return v === 0 ? "0" : String(v);
+  return Math.round(ms * 1e4) === 0 ? "0" : delayText(ms).replace(/ ms$/, "");
 }
 
 function cls(...names: (string | false | null | undefined)[]): string {
