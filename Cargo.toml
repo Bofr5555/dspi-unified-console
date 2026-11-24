@@ -71,3 +71,11 @@ uniffi = "=0.29.5"
 lto = "thin"
 codegen-units = 1
 strip = true
+
+# -- WP CIPAR -- The property tests' build (ci/check.sh --step proptest): the
+# release profile's code (opt-level 3, no debug assertions) without its link-
+# time work, which made that build take most of the step. Not for shipping.
+[profile.proptest]
+inherits = "release"
+lto = false
+codegen-units = 16

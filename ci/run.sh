@@ -25,6 +25,10 @@
 # Caches written before this (WP MR3) are fixed once, with nothing building, by
 #   podman unshare find ~/.cache/dspi-build -xdev \( -uid 1 -o -gid 1 \) -exec chown -h 0:0 {} +
 #
+# -- WP CIPAR -- DSPI_TARGET_KEY and DSPI_WORK_KEY name the target/ and work/
+# directories in place of the branch (ci/full.sh gives each lane its own, so
+# lanes do not wait on one cargo lock). Scripts that find /target's files on
+# the host use the same key.
 # SRC overrides the source tree (default: this worktree). DSPI_JOBS caps
 # cargo's parallel jobs per container (default 4; several WPs build at once). No USB devices are
 # visible in the container.
@@ -34,6 +38,9 @@ here=${SRC:-$(cd "$(dirname "$0")/.." && pwd)}
 . "$(dirname "$0")/container/images.conf"
 branch=$(git -C "$here" rev-parse --abbrev-ref HEAD 2>/dev/null || echo detached)
 branch=${branch//\//-}
+# -- WP CIPAR --
+tkey=${DSPI_TARGET_KEY:-$branch}
+branch=${DSPI_WORK_KEY:-$branch}
 B=${DSPI_BUILD_CACHE:-$HOME/.cache/dspi-build}
 profile=${DSPI_PROFILE:-default}
 case "$profile" in
@@ -52,15 +59,17 @@ common=(--rm -i --userns=keep-id --user "$(id -u):$(id -g)"
   -v "$B/work/empty":/sys/bus/usb/devices:ro,z
   -v "$B/cargo-home":/cache/cargo:z -e CARGO_HOME=/cache/cargo
   -e HOME=/work/home -e TMPDIR=/work/tmp -e CARGO_BUILD_JOBS="${DSPI_JOBS:-4}" -w /src)
+# -- WP CIPAR -- cmake --build's jobs, when the caller caps them (ci/full.sh)
+[ -z "${CMAKE_BUILD_PARALLEL_LEVEL:-}" ] || common+=(-e CMAKE_BUILD_PARALLEL_LEVEL="$CMAKE_BUILD_PARALLEL_LEVEL")
 case "$profile" in
   default)
-    mkdir -p "$B/target/$branch"
-    exec podman run "${common[@]}" -v "$B/target/$branch":/target:z \
+    mkdir -p "$B/target/$tkey"
+    exec podman run "${common[@]}" -v "$B/target/$tkey":/target:z \
       -e CARGO_TARGET_DIR=/target \
       "$image" bash -c "$*" ;;
   cross)
-    mkdir -p "$B/target/$branch-cross"
-    exec podman run "${common[@]}" -v "$B/target/$branch-cross":/target:z \
+    mkdir -p "$B/target/$tkey-cross"
+    exec podman run "${common[@]}" -v "$B/target/$tkey-cross":/target:z \
       -v "$B/xwin-cache":/xwin:z \
       -e CARGO_TARGET_DIR=/target -e RUSTUP_HOME=/opt/rustup \
       -e XWIN_CACHE_DIR=/xwin -e ANDROID_NDK_HOME=/opt/android-sdk/ndk/27.2.12479018 \

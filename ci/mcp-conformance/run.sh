@@ -40,7 +40,7 @@ bin=$("$root/ci/run.sh" 'cargo test -p dspi-mcp --features http,link --test wp_m
   tee -a "$log" | sed -n 's/.*Executable tests\/wp_mcp6_serve.rs (\(.*\))$/\1/p' | tail -1)
 [ -n "$bin" ] || { say "no test binary (see $log)"; exit 1; }
 branch=$(git -C "$root" rev-parse --abbrev-ref HEAD 2>/dev/null || echo detached)
-target=$B/target/${branch//\//-}
+target=$B/target/${DSPI_TARGET_KEY:-${branch//\//-}}  # -- WP CIPAR --
 
 name=mcp6-serve-$$
 cleanup() {

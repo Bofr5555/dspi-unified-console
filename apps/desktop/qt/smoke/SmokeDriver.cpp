@@ -228,6 +228,15 @@ void SmokeDriver::run() {
         if (a.order != b.order) return a.order < b.order;
         return std::string(a.name) < std::string(b.name);
     });
+    // -- WP CIPAR -- DSPI_SMOKE_LIST=1: this mode's sections in run order, one
+    // "smoke: section <name>" line each, and nothing run (run-shards.sh)
+    if (qEnvironmentVariableIntValue("DSPI_SMOKE_LIST") == 1) {
+        for (const SectionEntry &s : list)
+            if (s.mode == mode()) printf("smoke: section %s\n", s.name);
+        fflush(stdout);
+        QCoreApplication::exit(0);
+        return;
+    }
     const QStringList only = qEnvironmentVariable("DSPI_SMOKE_SECTION").split(QLatin1Char(','), Qt::SkipEmptyParts);
     int ran = 0;
     const Mode want = mode();
