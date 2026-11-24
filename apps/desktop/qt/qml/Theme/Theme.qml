@@ -116,7 +116,7 @@ QtObject {
     readonly property int spacingSmall: 8
     readonly property int spacing: 12
     readonly property int spacingLarge: 16
-    readonly property int rowHeight: 26
+    readonly property int rowHeight: LayoutController.modern ? 28 : 26   // -- WP DL0 -- Modern's table rows
     readonly property int controlHeight: 24
     readonly property int sidebarWidth: 240
     readonly property int popupMaxHeight: 320
@@ -193,4 +193,40 @@ QtObject {
     })
     function density(name) { return densities[name] !== undefined ? densities[name] : densities["classic"] }
     readonly property int statusBarHeight: 24
+
+    // -- WP DL0 -- The Modern design language (DESREV's DESIGN-LANGUAGE.md):
+    // surfaces apart by tone and spacing, not by lines; the accent only for
+    // what is on, chosen or the one primary action. Tokens that would change
+    // Classic are gated on LayoutController.modern, so Classic keeps its look.
+    //
+    // The outline of a card, button, field, combo box or segment bar: none in
+    // Modern (the control tone separates them), Classic's 1 px otherwise.
+    // Keyboard focus is the one outline that stays: focusRing, focusRingWidth.
+    readonly property int lineWidth: LayoutController.modern ? 0 : 1
+    readonly property int focusRingWidth: 2
+    // Every second row of a table or list, instead of row rules
+    readonly property color stripe: dark ? "#06ffffff" : "#09000000"
+    // Floating surfaces (popovers, menus, dialogs): the shadow's colour, its
+    // downward offset and its blur radius
+    readonly property color shadowColor: dark ? "#80000000" : "#29000000"
+    readonly property int shadowOffset: dark ? 12 : 10
+    readonly property int shadowBlur: dark ? 34 : 30
+    // Buttons, fields, segments, toggle chips (Classic keeps radiusSmall); option
+    // chips are rounder
+    readonly property int radiusControl: LayoutController.modern ? 6 : radiusSmall
+    readonly property int radiusChip: 12
+    // The gap between a page's sections, and under an intro row
+    readonly property int spacingSection: 24
+    // The shell's bars, a form row and a tool's intro row (ToolHeader)
+    readonly property int topBarHeight: 40
+    readonly property int tabBarHeight: 36
+    readonly property int dockHeight: 44
+    readonly property int formRowHeight: 36
+    readonly property int introRowHeight: 44
+    // Forms and lists in Modern: left-aligned, no wider than this
+    readonly property int contentMaxWidth: 760
+    // The page title at the left of the tab row; table cells and list rows
+    // (the spec's 12.5 px, whole pixels here)
+    readonly property font fontPageTitle: Qt.font({ pixelSize: 15, weight: Font.DemiBold })
+    readonly property font fontTable: Qt.font({ pixelSize: 12 })
 }

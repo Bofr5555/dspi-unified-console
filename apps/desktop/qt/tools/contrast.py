@@ -15,6 +15,7 @@ def ratio(a, b):
 surf = ('window', 'panel', 'sidebar', 'control', 'menu', 'selection')
 pairs = [(t, b) for t in ('text', 'textMuted', 'textDisabled') for b in surf]
 pairs += [(t, b) for t in ('accentText', 'dangerText', 'warning', 'success') for b in ('window', 'panel', 'sidebar', 'control')]
+pairs += [('accentText', 'selection')]  # -- WP DL0 -- a chosen chip or segment: accent text on the selection tone
 pairs += [(t, 'meterTrack') for t in ('meterLevel', 'meterLow', 'meterMid', 'meterHigh', 'meterHold')]  # -- WP QP18 -- graphics, 3:1
 pairs += [(t, b) for t in ('alarmRaised', 'alarmAcknowledged') for b in ('window', 'panel', 'sidebar', 'control')]
 pairs += [('textOnAccent', 'accent'), ('textOnAccent', 'danger'), ('tooltipText', 'tooltip')]

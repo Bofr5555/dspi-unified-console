@@ -4,6 +4,7 @@ import UConsole
 
 // A rounded panel with an optional title, for grouped controls (the Mac's
 // cards and grouped forms). Children go in a column.
+// -- WP DL0 -- No outline in Modern: the panel tone on the window is the edge.
 Rectangle {
     id: card
     property string title
@@ -14,7 +15,7 @@ Rectangle {
     implicitHeight: column.implicitHeight + 2 * padding
     radius: Theme.radius
     color: Theme.panel
-    border.width: 1
+    border.width: Theme.lineWidth   // -- WP DL0 --
     border.color: Theme.separator
 
     ColumnLayout {
