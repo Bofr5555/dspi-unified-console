@@ -8,9 +8,8 @@ import { useSessionState } from "../../ui/components";
 import type { ScreenProps } from "../../ui/screens";
 import { UndoButtons } from "../../ui/undo";
 import { HISTORY_ROWS, historyRows, sameHistory, type HistoryNames } from "./model";
-import { EmptyState } from "../../ui/design"; // -- WP WEB --
+import { EmptyState, Glyph } from "../../ui/design"; // -- WP WEB -- (Glyph: WEB4, INTD)
 import type { DspState } from "../../core/protocol";
-import { Icon } from "../measure/parts"; // -- WP WEB4 --
 import "./history.css"; // -- WP WEB4 --
 
 /** -- WP WEB4 -- The channels as Qt's history names them: the name the user gave, else "Out 3", "In 1". */
@@ -75,7 +74,7 @@ export function HistoryScreen(props: ScreenProps) {
               <li key={r.key}>
                 <span class="h-time">{r.time}</span>
                 <span class="h-mark" title={mark?.words}>
-                  {mark ? <Icon name={mark.icon} class="h-icon" /> : null}
+                  {mark ? <Glyph name={mark.icon} class="h-icon" /> : null}
                 </span>
                 <span class="h-what">
                   {r.what}

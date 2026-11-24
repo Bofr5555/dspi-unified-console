@@ -64,7 +64,7 @@ import {
 } from "./model";
 import { EmptyState } from "../../ui/design"; // -- WP WEB --
 import { PageTools } from "../../ui/shell/Parts"; // -- WP WEB3 --
-import { Pill } from "./Pill"; // -- WP WEB3 --
+import { Pill } from "../../ui/Pill"; // -- WP WEB3 --
 import "./eq.css"; // -- WP WEB3 --
 
 interface EqChannel extends ChannelRow {

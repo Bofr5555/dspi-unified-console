@@ -140,6 +140,41 @@ const GLYPHS: Record<string, ComponentChildren> = {
       <path d="M15 2v2M15 20v2M2 15h2M2 9h2M20 15h2M20 9h2M9 2v2M9 20v2" />
     </>
   ),
+  // -- WP WEB4 (INTD: moved from screens/measure/parts.tsx) -- Measure's and History's
+  check: <path d="M20 6 9 17l-5-5" />,
+  "circle-check": (
+    <>
+      <circle cx="12" cy="12" r="10" />
+      <path d="m9 12 2 2 4-4" />
+    </>
+  ),
+  lock: (
+    <>
+      <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
+      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+    </>
+  ),
+  "undo-2": <path d="M9 14 4 9l5-5M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5 5.5 5.5 0 0 1-5.5 5.5H11" />,
+  "redo-2": <path d="m15 14 5-5-5-5M20 9H9.5A5.5 5.5 0 0 0 4 14.5 5.5 5.5 0 0 0 9.5 20H13" />,
+  "file-up": (
+    <>
+      <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" />
+      <path d="M14 2v4a2 2 0 0 0 2 2h4M12 12v6M15 15l-3-3-3 3" />
+    </>
+  ),
+  save: (
+    <>
+      <path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" />
+      <path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7M7 3v4a1 1 0 0 0 1 1h7" />
+    </>
+  ),
+  "list-x": <path d="M11 12H3M16 6H3M16 18H3M18 9l3 3M21 9l-3 3" />,
+  timer: (
+    <>
+      <path d="M10 2h4M12 14l3-3" />
+      <circle cx="12" cy="14" r="8" />
+    </>
+  ),
 };
 
 export type GlyphName = keyof typeof GLYPHS;
@@ -150,6 +185,16 @@ export function Glyph(props: { name: string; class?: string }) {
     <svg class={`shell-icon${props.class ? ` ${props.class}` : ""}`} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
       {GLYPHS[props.name] ?? null}
     </svg>
+  );
+}
+
+/** §13: a pill with a 6 px dot in the state's colour and its words (-- WP WEB4, INTD: moved to ui/ --). */
+export function StatusChip(props: { kind: "ok" | "idle" | "warn" | "bad"; role?: "status"; children: ComponentChildren }) {
+  return (
+    <span class={`status-chip status-chip-${props.kind}`} role={props.role}>
+      <span class={`status-dot${props.kind === "idle" ? "" : ` ${props.kind}`}`} aria-hidden="true" />
+      {props.children}
+    </span>
   );
 }
 

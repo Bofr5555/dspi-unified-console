@@ -10,7 +10,7 @@ import { memo } from "preact/compat";
 import type { DspState } from "../../core/protocol"; // -- WP WEB3 --
 import { Glyph } from "../../ui/design"; // -- WP WEB3 --
 import { channelColour } from "../eq/model"; // -- WP WEB3 --
-import { Pill } from "../eq/Pill"; // -- WP WEB3 --
+import { Pill } from "../../ui/Pill"; // -- WP WEB3 --
 import type { Session } from "../../ui/session";
 import { ValueField } from "../eq/Field";
 import { compactGain, parseLevel } from "../outputs/model";

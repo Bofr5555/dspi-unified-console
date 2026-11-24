@@ -66,9 +66,6 @@
 .dspi-web .m-progress { height: 4px; border-radius: 2px; background: var(--control-pressed); overflow: hidden; }
 .dspi-web .m-progress > div { height: 100%; background: var(--accent-fill); }
 
-/* The status chip (§13) */
-.dspi-web .status-chip { display: inline-flex; align-items: center; min-height: 22px; padding: 0 10px 0 6px; border-radius: 11px; background: var(--control); font-size: 11px; color: var(--text); }
-
 /* The auto-tune's steps */
 .dspi-web .step-dots { display: flex; gap: 0; list-style: none; margin: 0 0 4px; padding: 0; }
 .dspi-web .step-dots > li { position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px; width: 120px; font-size: 11px; color: var(--muted); }

@@ -12,8 +12,7 @@ import type { MeasureTabProps } from "./MeasureScreen";
 import { fileNameOf, micSummary } from "./model";
 import { download, readTextFile } from "./setup";
 import { KINDS, docOutputs, docsDeskOf, tuneDeskOf, type DocRow, type DocsDesk } from "./tune-model";
-import { EmptyState } from "../../ui/design"; // -- WP WEB --
-import { Icon } from "./parts"; // -- WP WEB4 --
+import { EmptyState, Glyph } from "../../ui/design"; // -- WP WEB -- (Glyph: WEB4, INTD)
 
 const row = { display: "flex", flexWrap: "wrap", gap: "6px 12px", alignItems: "center" } as const;
 
@@ -98,7 +97,7 @@ export function DocsTab(props: MeasureTabProps) {
       ) : null}
       {d.said ? (
         <p class="m-iconline m-ok" role="status" aria-label="Documents outcome">
-          <Icon name="circle-check" class="m-line-icon" />
+          <Glyph name="circle-check" class="m-line-icon" />
           <span>{d.said}</span>
         </p>
       ) : null}

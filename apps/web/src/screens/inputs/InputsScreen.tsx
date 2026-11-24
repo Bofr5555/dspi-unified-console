@@ -35,7 +35,7 @@ import {
   writeTrim,
 } from "./model";
 import { EmptyState, rangeFill } from "../../ui/design"; // -- WP WEB --
-import { Pill } from "../eq/Pill"; // -- WP WEB3 --
+import { Pill } from "../../ui/Pill"; // -- WP WEB3 --
 import "./inputs.css"; // -- WP WEB3 --
 
 /** The registry's `pre` range until `describe` answers. */

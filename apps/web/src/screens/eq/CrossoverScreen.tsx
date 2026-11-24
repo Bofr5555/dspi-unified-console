@@ -16,7 +16,7 @@ import { useCurves, useGrid, type CurveRequest } from "./curves";
 import { channelColour, DEFAULT_LIMITS } from "./model";
 import { PassFields } from "./Passes";
 import { EmptyState } from "../../ui/design"; // -- WP WEB --
-import { Pill } from "./Pill"; // -- WP WEB3 --
+import { Pill } from "../../ui/Pill"; // -- WP WEB3 --
 import "./eq.css"; // -- WP WEB3 --
 
 /** The plot's range: 20 Hz..20 kHz, +6..-48 dB. */

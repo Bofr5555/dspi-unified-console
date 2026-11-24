@@ -14,7 +14,8 @@ import { MeasureGraph } from "./graph";
 import { COUPLERS, ROLES } from "./model";
 import { RunPanel } from "./run";
 import { download } from "./setup";
-import { Icon, StepDots } from "./parts"; // -- WP WEB4 --
+import { Glyph } from "../../ui/design"; // -- WP WEB4 (INTD: ui/) --
+import { StepDots } from "./parts"; // -- WP WEB4 --
 import {
   CONFIRM_MS,
   checkWords,
@@ -84,7 +85,7 @@ export function TuneTab(props: MeasureTabProps) {
       <StepDots steps={["Layout", "Proposal", "Applied"]} current={step} label="Auto-tune steps" />
       {t.running && !desk.running ? (
         <div class="notice-row notice-row-info measure-stopbar" role="status" aria-label="Tuning">
-          <Icon name="volume" class="notice-icon" />
+          <Glyph name="volume" class="notice-icon" />
           <span class="notice-text">{stageWords(st)}</span>
           <button type="button" onClick={() => void t.stop()}>
             Stop
@@ -164,12 +165,12 @@ export function TuneTab(props: MeasureTabProps) {
         <h4 class="section-label">Measurement</h4>
         {src ? (
           <p class="m-iconline m-ok" aria-label="Measurement to tune from" data-source="yes">
-            <Icon name="circle-check" class="m-line-icon" />
+            <Glyph name="circle-check" class="m-line-icon" />
             <span>{`Tuning from ${src.from ? `${src.from}` : "the measurement"}.`}</span>
           </p>
         ) : (
           <div class="notice-row notice-row-info" role="status" aria-label="Measurement to tune from" data-source="none">
-            <Icon name="info" class="notice-icon" />
+            <Glyph name="info" class="notice-icon" />
             <span class="notice-text">No measurement yet: measure the layout here (the preflight comes first), or open one on the Documents tab.</span>
           </div>
         )}
@@ -258,7 +259,7 @@ function ProposalCard(props: MeasureTabProps & { t: TuneDesk }) {
     <section class="m-sec" aria-label="Tune proposal" style={col} data-proposal={p.id}>
       <h4 class="section-label">The proposal{p.measurementName ? `: ${p.measurementName}` : ""}</h4>
       <p class={`m-iconline ${p.timingReliable ? "m-ok" : "m-bad"}`} aria-label="Proposal timing" data-reliable={String(p.timingReliable)}>
-        <Icon name={p.timingReliable ? "circle-check" : "warning"} class="m-line-icon" />
+        <Glyph name={p.timingReliable ? "circle-check" : "warning"} class="m-line-icon" />
         <span>{p.timingReliable ? "The measurement's timing is reliable: delay, polarity and crossover changes may be offered." : "The measurement's timing is unreliable: no delay, polarity or crossover change is offered from it."}</span>
       </p>
       {series.length ? <MeasureGraph label="Tune curves" series={series} unit={series.some((s) => s.curve.spl) ? "dB SPL" : "dB (relative)"} /> : null}
@@ -324,7 +325,7 @@ function ProposalCard(props: MeasureTabProps & { t: TuneDesk }) {
         </ul>
       ) : null}
       <p aria-label="Summed check" data-check={p.sumCheck} class={`m-iconline ${p.sumCheck === "failed" ? "m-bad" : p.sumCheck === "passed" ? "m-ok" : "m-note"}`}>
-        <Icon name={p.sumCheck === "failed" ? "error" : p.sumCheck === "passed" ? "circle-check" : "info"} class="m-line-icon" />
+        <Glyph name={p.sumCheck === "failed" ? "error" : p.sumCheck === "passed" ? "circle-check" : "info"} class="m-line-icon" />
         <span>{checkWords(p.sumCheck)}</span>
       </p>
       <div style={row}>

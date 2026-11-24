@@ -5,7 +5,7 @@
 import { noticeRow } from "../../ui/texts";
 import type { MeasureTabProps } from "./MeasureScreen";
 import { issueText, phaseText, progressPct, timingWords } from "./model";
-import { Icon } from "./parts"; // -- WP WEB4 --
+import { Glyph } from "../../ui/design"; // -- WP WEB4 (INTD: ui/) --
 
 /** -- WP WEB4 -- `inTune`: inside the auto-tune, where "See the results" is not the page's one primary. */
 export function RunPanel(props: MeasureTabProps & { inTune?: boolean }) {
@@ -55,7 +55,7 @@ export function RunPanel(props: MeasureTabProps & { inTune?: boolean }) {
       ) : null}
       {timing ? (
         <p class={`m-iconline ${timing.reliable ? "m-ok" : "m-bad"}`} aria-label="Timing" data-reliable={String(timing.reliable)}>
-          <Icon name={timing.reliable ? "circle-check" : "warning"} class="m-line-icon" />
+          <Glyph name={timing.reliable ? "circle-check" : "warning"} class="m-line-icon" />
           <span>{timing.text}</span>
         </p>
       ) : null}

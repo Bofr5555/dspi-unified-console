@@ -34,7 +34,7 @@ import {
   withType,
 } from "./siggen";
 import { FAST_MS, MONITOR_POLL_MS, SLOW_MS, appendLines, copyText, eventCount, fillText, lineTime, mergeSlow, slowSections, starvationDelta } from "./stats";
-import { EmptyState, FormRow, Glyph, Section, Switch, rangeFill } from "../../ui/design"; // -- WP WEB --
+import { EmptyState, FormRow, Glyph, Section, StatusChip, Switch, rangeFill } from "../../ui/design"; // -- WP WEB --
 import { WAVE_BOX, wavePath } from "./waves"; // -- WP WEB4 --
 import "./analysis.css"; // -- WP WEB4 --
 import { readNumber } from "../../ui/number"; // -- WP WEB --
@@ -201,10 +201,7 @@ function SiggenPanel(props: { session: Session }) {
           <span class="sg-intro-title">Signal Generator</span>
           <span class="sg-caption">Onboard test and measurement signals</span>
         </div>
-        <span class="status-chip">
-          <span class={`status-dot${isPlaying ? " ok" : ""}`} aria-hidden="true" />
-          {isPlaying ? "Playing" : "Idle"}
-        </span>
+        <StatusChip kind={isPlaying ? "ok" : "idle"}>{isPlaying ? "Playing" : "Idle"}</StatusChip>
       </div>
       <div class="sg-columns">
         <div class="sg-col">
@@ -601,10 +598,9 @@ function MonitorPanel(props: { session: Session }) {
         <button type="button" title="Copies the lines shown, oldest first" disabled={!lines.length} onClick={copy}>
           Copy
         </button>
-        <span class="status-chip" role="status">
-          <span class={`status-dot${open && !paused ? " ok" : ""}`} aria-hidden="true" />
+        <StatusChip kind={open && !paused ? "ok" : "idle"} role="status">
           {!open ? "Inactive" : paused ? "Paused" : "Listening"} · {eventCount(lines.length)}
-        </span>
+        </StatusChip>
       </div>
       {/* the empty state's look without its status role: the chip above is this page's status */}
       {lines.length ? null : (

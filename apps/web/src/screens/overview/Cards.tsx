@@ -10,7 +10,7 @@ import type { ScreenProps } from "../../ui/screens";
 import type { Session } from "../../ui/session";
 import type { ComponentChildren } from "preact";
 import { useCurves, useGrid, type CurveRequest } from "../eq/curves";
-import { Pill } from "../eq/Pill";
+import { Pill } from "../../ui/Pill";
 import { liveInputs } from "../main/model";
 import { MINI_ZERO_Y, miniPath, overviewCards, type ChannelCard } from "./channel-cards";
 import { meterPct, meterReading } from "./model";

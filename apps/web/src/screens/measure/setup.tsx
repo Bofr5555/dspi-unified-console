@@ -3,8 +3,7 @@
 // and alignment groups, the sweep; then the core's preflight in words. Nothing is played here.
 
 import { useEffect, useRef, useState } from "preact/hooks";
-import { NoticeRow } from "../../ui/design"; // -- WP WEB4 --
-import { Icon } from "./parts"; // -- WP WEB4 --
+import { Glyph, NoticeRow } from "../../ui/design"; // -- WP WEB4 --
 import { measureCall } from "../../core/measure-protocol";
 import { noticeRow } from "../../ui/texts";
 import type { MeasureTabProps } from "./MeasureScreen";
@@ -85,7 +84,7 @@ export function SetupPanel(props: MeasureTabProps) {
     <section class="measure-setup measure-column" aria-label="Measurement setup">
       {banner ? (
         <div class={`notice-row notice-row-${banner.kind === "stated" || banner.kind === "imported" ? "info" : "warning"}`} role="status" aria-label="Speaker layout" data-kind={banner.kind}>
-          <Icon name={banner.kind === "stated" || banner.kind === "imported" ? "info" : "warning"} class="notice-icon" />
+          <Glyph name={banner.kind === "stated" || banner.kind === "imported" ? "info" : "warning"} class="notice-icon" />
           <span class="notice-text">{banner.text}</span>
         </div>
       ) : null}
@@ -263,13 +262,13 @@ export function SetupPanel(props: MeasureTabProps) {
         <ul role="list" aria-label="Preflight" class="m-lines">
           {desk.preflight?.clear ? (
             <li role="listitem" class="m-ok">
-              <Icon name="check" class="m-line-icon" />
+              <Glyph name="check" class="m-line-icon" />
               Ready: nothing blocks the measurement.
             </li>
           ) : null}
           {lines.map((l, i) => (
             <li key={i} role="listitem" class={l.kind === "blocker" ? "m-bad" : "m-note"} data-key={l.key}>
-              <Icon name={l.kind === "blocker" ? "error" : "info"} class="m-line-icon" />
+              <Glyph name={l.kind === "blocker" ? "error" : "info"} class="m-line-icon" />
               <span>
                 {l.kind === "blocker" ? "Blocks: " : "Note: "}
                 {l.text}

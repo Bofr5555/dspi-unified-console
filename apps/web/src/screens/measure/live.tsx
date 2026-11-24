@@ -21,7 +21,7 @@ import { MeasureGraph, type Series } from "./graph";
 import { AVERAGING, COUPLERS, LIVE_PLACEMENT_FIRST, ROLES, SMOOTHING, highestPoint, hz, issueText, liveText, livePlaceOf, smoothingLabel } from "./model";
 import { readTextFile } from "./setup";
 import { plainNumber, readNumber } from "../../ui/number"; // -- WP WEB --
-import { Icon, StatusChip } from "./parts"; // -- WP WEB4 --
+import { Glyph, StatusChip } from "../../ui/design"; // -- WP WEB4 (INTD: ui/) --
 
 interface LiveDraft {
   output: number;
@@ -212,7 +212,7 @@ export function LiveTab(props: MeasureTabProps) {
       </div>
       {!active && !d.placement ? (
         <div class="notice-row notice-row-warning" role="status" aria-label="Live placement needed">
-          <Icon name="warning" class="notice-icon" />
+          <Glyph name="warning" class="notice-icon" />
           <span class="notice-text">{LIVE_PLACEMENT_FIRST}</span>
         </div>
       ) : null}
@@ -223,7 +223,7 @@ export function LiveTab(props: MeasureTabProps) {
           </p>
         ) : (
           <div class="notice-row notice-row-error" role="alert" data-key={issue.key}>
-            <Icon name="error" class="notice-icon" />
+            <Glyph name="error" class="notice-icon" />
             <span class="notice-text">{issueText(issue, (k) => noticeRow(k)?.title ?? null, outputName)}</span>
           </div>
         )

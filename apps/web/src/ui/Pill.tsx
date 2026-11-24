@@ -1,4 +1,4 @@
-// -- WP WEB3: move to ui/ -- §13's channel pill (Qt's `Pill`): the channel's tint with dark text, 18 px,
+// -- WP WEB3 (INTD: moved to ui/) -- §13's channel pill (Qt's `Pill`): the channel's tint with dark text, 18 px,
 // pill radius ("OUT1", "IN2"); `ring` is the checkable form while it is not chosen (a ring in the
 // tint). The tint is Qt's ChannelPalette (`channelColour`).
 

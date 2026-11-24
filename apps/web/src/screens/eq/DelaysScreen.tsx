@@ -17,7 +17,7 @@ import { arrivals, delayToMetres, distanceText, metresToDelay, parseDistance, SO
 import { ValueField } from "./Field";
 import { channelColour } from "./model";
 import { EmptyState, Glyph, Switch } from "../../ui/design"; // -- WP WEB -- -- WP WEB3 -- Glyph, Switch
-import { Pill } from "./Pill"; // -- WP WEB3 --
+import { Pill } from "../../ui/Pill"; // -- WP WEB3 --
 import { toggleOutput } from "../outputs/enable"; // -- WP WEB3 --
 import "./eq.css"; // -- WP WEB3 --
 

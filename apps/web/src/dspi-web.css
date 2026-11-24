@@ -2094,6 +2094,8 @@
 .dspi-web .status-dot.ok { background: var(--ok); }
 .dspi-web .status-dot.warn { background: var(--warn); }
 .dspi-web .status-dot.bad { background: var(--bad); }
+/* -- WP WEB4 (INTD: moved from measure.css / analysis.css) -- the status chip (§13, ui/design `StatusChip`) */
+.dspi-web .status-chip { display: inline-flex; align-items: center; min-height: 22px; padding: 0 10px 0 6px; border-radius: 11px; background: var(--control); font-size: 11px; color: var(--text); }
 .dspi-web .health-unsaved { color: var(--muted); }
 .dspi-web .health-row { border-top-color: var(--separator); }
 .dspi-web .health-sum { border-color: transparent !important; border-radius: 9px; }

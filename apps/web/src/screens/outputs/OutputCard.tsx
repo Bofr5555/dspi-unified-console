@@ -10,7 +10,7 @@
 
 import { memo } from "preact/compat";
 import { Glyph } from "../../ui/design"; // -- WP WEB3 --
-import { Pill } from "../eq/Pill"; // -- WP WEB3 --
+import { Pill } from "../../ui/Pill"; // -- WP WEB3 --
 import "./outputs.css"; // -- WP WEB3 --
 import { useState } from "preact/hooks";
 import type { DspState, OutputLabel } from "../../core/protocol";

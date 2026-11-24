@@ -60,4 +60,3 @@
 .dspi-web .monitor .status-chip { margin-left: auto; }
 .dspi-web .monitor .monitor-lines { max-height: calc(100vh - 16rem); padding: 8px 10px; border: 0; border-radius: 8px; background: var(--panel); font-family: var(--mono); font-size: 12px; }
 .dspi-web .monitor .monitor-lines code { font: inherit; }
-.dspi-web .monitor .status-chip, .dspi-web .siggen .status-chip { display: inline-flex; align-items: center; min-height: 22px; padding: 0 10px 0 6px; border-radius: 11px; background: var(--control); font-size: 11px; color: var(--text); }

@@ -12,9 +12,8 @@ import type { MeasureTabProps } from "./MeasureScreen";
 import { MeasureGraph, type Series } from "./graph";
 import { SMOOTHING, fileNameOf, resultView, smoothingLabel } from "./model";
 import { download, readTextFile } from "./setup";
-import { EmptyState } from "../../ui/design"; // -- WP WEB --
+import { EmptyState, Glyph } from "../../ui/design"; // -- WP WEB -- (Glyph: WEB4, INTD)
 import { PageTools } from "../../ui/shell/Parts"; // -- WP WEB4 --
-import { Icon } from "./parts"; // -- WP WEB4 --
 
 export function ResultsTab(props: MeasureTabProps) {
   const { desk, outputName, session } = props;
@@ -133,7 +132,7 @@ export function ResultsTab(props: MeasureTabProps) {
         data-reliable={view.timingReliable === null ? "none" : String(view.timingReliable)}
         class={`m-iconline ${view.timingReliable === false ? "m-bad" : view.timingReliable ? "m-ok" : "m-note"}`}
       >
-        <Icon name={view.timingReliable === false ? "warning" : view.timingReliable ? "circle-check" : "info"} class="m-line-icon" />
+        <Glyph name={view.timingReliable === false ? "warning" : view.timingReliable ? "circle-check" : "info"} class="m-line-icon" />
         <span>
         {view.timingReliable === null
           ? "No timing: this measurement is magnitude only."
