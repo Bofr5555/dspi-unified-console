@@ -2069,3 +2069,10 @@
   .dspi-web:not([data-theme="light"]) { --knob: #d8d8d8; --knob-edge: #5a5a5a; }
 }
 .dspi-web[data-theme="dark"] { --knob: #d8d8d8; --knob-edge: #5a5a5a; }
+
+/* -- WP WEB2 -- (REVD W11) the matrix: a switched-off output's whole column dimmed as Qt's (0.75: the
+   head's icons and the Fed-by too), dense shows the pills without the names, the link glyph legible */
+.dspi-web .mx-colhead.off .mx-colname, .dspi-web .mx-colhead.off .mx-colpill, .dspi-web .mx-colhead.off .mx-io,
+.dspi-web .mx-cell.off > *, .dspi-web .mx-footcell.off .m-field, .dspi-web .mx-src.off { opacity: 0.75; }
+.dspi-web .matrix-screen.dense .mx-colname { display: none; }
+.dspi-web .mx-pairglyph { width: 14px; height: 14px; color: var(--accent-text); }

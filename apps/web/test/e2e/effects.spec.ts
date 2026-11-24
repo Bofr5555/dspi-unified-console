@@ -179,7 +179,7 @@ test("WB6h: the subharmonic synthesizer's solo is switched off on leaving it, as
   const errors = errorsOf(page);
   const { screen } = await openEffects(page);
   const sub = await show(screen, "Subharmonic");
-  const solo = sub.getByRole("switch", { name: "Subharmonic Solo" });
+  const solo = sub.getByRole("button", { name: "Subharmonic Solo" }); // -- WP WEB2 -- a toggle chip (Qt's ToggleChip)
   await solo.click();
   await expect.poll(async () => (await core(page)).subharmSolo).toBe(true);
   await show(screen, "Tube");

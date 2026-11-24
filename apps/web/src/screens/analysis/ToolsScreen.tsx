@@ -34,7 +34,7 @@ import {
   withType,
 } from "./siggen";
 import { FAST_MS, MONITOR_POLL_MS, SLOW_MS, appendLines, copyText, eventCount, fillText, lineTime, mergeSlow, slowSections, starvationDelta } from "./stats";
-import { EmptyState } from "../../ui/design"; // -- WP WEB --
+import { EmptyState, rangeFill } from "../../ui/design"; // -- WP WEB --
 import { readNumber } from "../../ui/number"; // -- WP WEB --
 
 /** Signal Generator (M46). */
@@ -47,7 +47,7 @@ export function AnalyserScreen(props: ScreenProps) {
   const st = useSessionState(props.session);
   const snap = st.snapshot;
   if (!snap) return null;
-  return <SpectrumStrip session={props.session} names={tapNames(snap.state, snap.outputLabels)} title="Spectrum Analyser" />;
+  return <SpectrumStrip session={props.session} names={tapNames(snap.state, snap.outputLabels)} title="Spectrum Analyser" always />;
 }
 
 /** Stats for nerbs (M53). */
@@ -262,6 +262,7 @@ function SiggenPanel(props: { session: Session }) {
           {...DECIMAL}
           class="siggen-number"
           value={draft.levelDb}
+          style={rangeFill(draft.levelDb, SLIDER_MIN, LEVEL_MAX)}
           disabled={disabled}
           aria-label="Level in dBFS"
           onChange={(e) => {
