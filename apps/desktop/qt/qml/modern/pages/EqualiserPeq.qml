@@ -85,11 +85,15 @@ EqualiserSection {
         // What the graph may take: the table whole, and the rest is the graph's;
         // where that is too little, the height the graph was dragged to, as far
         // as the table keeps a few rows
+        // -- WP DL8 -- (DESREV §5, 720 px high) the rows it keeps are every band
+        // in use and one more: the empty rows yield their height to the graph,
+        // and a graph over many bands gets smaller, down to 160
         readonly property real bars: spectrum.visible ? spectrum.implicitHeight + spacing : 0
         readonly property real dock: page.bandBar ? Theme.controlHeight + 18 : 0
         readonly property real rest: height - bars - dock - spacing - bands.implicitHeight
         readonly property real most: height - bars - dock - 2 * spacing - 12 - bands.leastHeight
         readonly property bool roomy: rest >= GraphController.graphHeight
+        readonly property real least: 160
 
         Item {
             Layout.fillWidth: true
@@ -100,7 +104,7 @@ EqualiserSection {
                 selectedChannel: page.channel
                 linkedPartner: page.isOutput || page.channel < 0 ? -1
                     : (ChannelController.revision < 0 ? -1 : ChannelController.linkedPartner(page.channel))
-                plotHeight: Math.max(120, column.roomy ? column.rest : Math.min(GraphController.graphHeight, column.most))
+                plotHeight: Math.max(column.least, column.roomy ? column.rest : Math.min(GraphController.graphHeight, column.most))   // -- WP DL8 -- least
                 resizable: !column.roomy
                 bandBar: page.bandBar
             }
@@ -122,7 +126,17 @@ EqualiserSection {
         FilterList {
             id: bands
             objectName: "EqualiserPeq.bands"
-            readonly property real leastHeight: 26 + 4 * (rowHeight + 1) + 40
+            // -- WP DL8 -- the rows down to the last band in use and one more,
+            // at least four
+            readonly property int lastUsed: {
+                if (ChannelController.revision < 0 || page.channel < 0) return 0
+                let n = 0
+                for (let b = 0; b < bandCount; ++b)
+                    if (ChannelController.band(page.channel, b, false).type !== 0) n = b + 1
+                return n
+            }
+            readonly property int leastRows: Math.max(4, Math.min(bandCount, lastUsed + 1))
+            readonly property real leastHeight: 26 + leastRows * (rowHeight + 1) + 40
             function isAncestor(item) {
                 for (let i = item; i; i = i.parent) if (i === bands) return true
                 return false
