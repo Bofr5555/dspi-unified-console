@@ -434,6 +434,13 @@ QStringList SmokeDriver::modernTabs() const {
     return keys;
 }
 
+// -- INTC -- A button's clicked(), or a ListRow's clicked(int modifiers)
+bool SmokeDriver::press(QObject *item) {
+    if (!item) return false;
+    if (item->metaObject()->indexOfMethod("clicked()") >= 0) return QMetaObject::invokeMethod(item, "clicked");
+    return QMetaObject::invokeMethod(item, "clicked", Q_ARG(int, 0));
+}
+
 // Nothing of `bar` is cut off or pushed out at the window's width
 bool SmokeDriver::fits(QQuickItem *bar) {
     if (!bar) return false;

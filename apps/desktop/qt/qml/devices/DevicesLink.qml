@@ -7,8 +7,9 @@ import UConsole
 // DevicesContent): the session's state in the core's words, the hub's devices,
 // the hubs found on this network and a field for a hub's address. The list
 // shows it (DevicesContent), and Modern's Devices > Hubs.
-// -- WP DL3b -- `listRows`: Modern's page, with notices for its errors. The
-// rows stay DeviceRows (the smoke driver presses them by `clicked()`).
+// -- WP DL3b -- `listRows`: Modern's page, with notices for its errors.
+// -- INTC (DL3b fold) -- and its hub rows as ListRows (the smoke driver
+// presses a ListRow through SmokeDriver::press); the list keeps DeviceRows.
 ColumnLayout {
     id: content
     spacing: 4
@@ -116,8 +117,35 @@ ColumnLayout {
             onClicked: LinkController.closeSession()
         }
     }
+    // -- INTC -- Modern's page: the hub's devices as ListRows
     Repeater {
-        model: LinkController.devices
+        model: content.listRows ? LinkController.devices : []
+        delegate: ListRow {
+            id: hubDeviceRow
+            required property var modelData
+            required property int index
+            readonly property bool chosen: content.phase === "bound" && LinkController.boundSerial === modelData.serial
+            Layout.fillWidth: true
+            objectName: "DevicesPopup.hubDevice." + modelData.serial
+            rowIndex: index
+            iconName: "network"
+            title: modelData.name && modelData.name.length ? modelData.name : modelData.serial
+            subtitle: [LinkController.hubName, content.boardName(modelData.platform), modelData.fw]
+                      .filter(part => part && String(part).length).join(" · ")
+            selected: chosen
+            enabled: content.phase !== "reconnecting" && !LinkController.busy
+            leading: Rectangle {
+                implicitWidth: 8
+                implicitHeight: 8
+                radius: 4
+                color: hubDeviceRow.chosen ? Theme.success : "transparent"
+            }
+            onClicked: DevicesController.chooseHubDevice(modelData.handle, modelData.serial)
+            onActivated: DevicesController.chooseHubDevice(modelData.handle, modelData.serial)
+        }
+    }
+    Repeater {
+        model: content.listRows ? [] : LinkController.devices   // -- INTC --
         delegate: DeviceRow {
             required property var modelData
             Layout.fillWidth: true
@@ -173,8 +201,34 @@ ColumnLayout {
         color: Theme.warning
         wrapMode: Text.Wrap
     }
+    // -- INTC -- Modern's page: the hubs found as ListRows
     Repeater {
-        model: DevicesController.hubs
+        model: content.listRows ? DevicesController.hubs : []
+        delegate: ListRow {
+            required property var modelData
+            required property int index
+            Layout.fillWidth: true
+            objectName: "DevicesPopup.foundHub." + modelData.id
+            rowIndex: index
+            iconName: modelData.kind === "console" ? "monitor" : "wifi"
+            title: modelData.name
+            readonly property bool here: content.inSession
+                                         && LinkController.hubId.toLowerCase() === String(modelData.id).toLowerCase()
+            readonly property string security: !here ? ""
+                : LinkController.encrypted ? qsTr("verified")
+                : LinkController.unsecured ? qsTr("unencrypted") : ""
+            subtitle: (modelData.deviceCount === 1
+                       ? qsTr("%1:%2, 1 device").arg(modelData.host).arg(modelData.port)
+                       : qsTr("%1:%2, %3 devices").arg(modelData.host).arg(modelData.port).arg(modelData.deviceCount || 0))
+                      + (security.length ? " · " + security : "")
+            selected: here
+            enabled: !LinkController.busy
+            onClicked: DevicesController.connectFound(modelData)
+            onActivated: DevicesController.connectFound(modelData)
+        }
+    }
+    Repeater {
+        model: content.listRows ? [] : DevicesController.hubs   // -- INTC --
         delegate: DeviceRow {
             required property var modelData
             Layout.fillWidth: true

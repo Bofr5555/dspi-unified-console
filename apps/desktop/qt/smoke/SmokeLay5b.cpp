@@ -99,7 +99,7 @@ struct Pages {
     // As a press on it, when the page has it scrolled out of sight
     bool press(const QString &name) const {
         QQuickItem *i = shown(name);
-        const bool ok = i && i->isEnabled() && QMetaObject::invokeMethod(i, "clicked");
+        const bool ok = i && i->isEnabled() && SmokeDriver::press(i);   // -- INTC -- a ListRow too
         settle();
         return ok;
     }

@@ -98,6 +98,9 @@ public:
     bool goTo(const QString &key, int settleMs = 120);
     // Nothing of `bar` is cut off or pushed out at its width
     static bool fits(QQuickItem *bar);
+    // -- INTC -- Presses a button (clicked()) or a ListRow (clicked(int
+    // modifiers), with none); false if there is no such signal
+    static bool press(QObject *item);
     QString outDir() const { return m_out; }
     // -- WP ATQTSIM -- This section may run up to `seconds` (a whole measurement
     // across units); the run's limit still applies when it is longer. Ends with
