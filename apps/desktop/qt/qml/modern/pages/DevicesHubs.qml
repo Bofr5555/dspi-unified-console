@@ -8,13 +8,16 @@ import UConsole
 // its key to compare, and pairing again after its key changed. The dialogs for
 // these stay closed while this page shows (PageHost.pairsInline), and come up
 // when the person leaves it. Beside it, the hub this console is on.
+// -- WP DL3b -- At the left (DESIGN-LANGUAGE §3): the list in a 760 px column,
+// the hub and this computer's DSPi as sections beside it (no cards), what is
+// said about the hub as notices.
 Item {
     id: page
     objectName: "DevicesHubs"
     property bool shown: false
     property Item host: null
 
-    readonly property bool wide: width >= 900
+    readonly property bool wide: width >= Theme.contentMaxWidth + 320 + Theme.spacingLarge + 2 * Theme.spacing   // -- WP DL3b --
     readonly property bool pairing: LinkController.phase === "needs_pairing"
 
     Flickable {
@@ -27,15 +30,17 @@ Item {
 
         GridLayout {
             id: grid
-            x: (flick.width - width) / 2
-            y: Theme.spacingLarge
-            width: Math.min(page.wide ? 1000 : 640, flick.width - 2 * Theme.spacingLarge)
+            x: Theme.spacing   // -- WP DL3b --
+            y: Theme.spacing
+            width: Math.min(page.wide ? Theme.contentMaxWidth + 320 + Theme.spacingLarge : Theme.contentMaxWidth,
+                            flick.width - 2 * Theme.spacing)
             columns: page.wide ? 2 : 1
             columnSpacing: Theme.spacingLarge
-            rowSpacing: Theme.spacing
+            rowSpacing: Theme.spacingSection
 
             ColumnLayout {
                 Layout.fillWidth: true
+                Layout.maximumWidth: Theme.contentMaxWidth   // -- WP DL3b --
                 Layout.alignment: Qt.AlignTop
                 spacing: Theme.spacing
 
@@ -121,6 +126,7 @@ Item {
                 DevicesLink {
                     id: link
                     Layout.fillWidth: true
+                    listRows: true   // -- WP DL3b --
                 }
             }
 
@@ -131,11 +137,10 @@ Item {
                 Layout.preferredWidth: page.wide ? 320 : -1
                 Layout.maximumWidth: page.wide ? 320 : Number.POSITIVE_INFINITY
                 Layout.fillWidth: !page.wide
-                spacing: Theme.spacing
+                spacing: Theme.spacingSection   // -- WP DL3b -- sections
 
-                Card {
+                Section {   // -- WP DL3b -- was a card
                     visible: link.inSession
-                    Layout.fillWidth: true
                     title: qsTr("This hub")
                     Fact { name: "name"; label: qsTr("Name"); value: LinkController.hubName }
                     Fact {
@@ -192,8 +197,7 @@ Item {
                     warn: true
                     dismissable: false
                 }
-                Card {
-                    Layout.fillWidth: true
+                Section {   // -- WP DL3b -- was a card
                     title: qsTr("This computer's DSPi")
                     Text {
                         Layout.fillWidth: true
@@ -239,28 +243,39 @@ Item {
         Accessible.role: Accessible.StaticText
         Accessible.name: label + ": " + value
     }
-    component Said: Card {
+    // -- WP DL3b -- a notice (was a card), its OK at the right
+    component Said: NoticeRow {
         id: said
-        property string text
         property bool warn: false
         property bool dismissable: true
         signal ok()
         Layout.fillWidth: true
         visible: text.length > 0
-        Text {
-            Layout.fillWidth: true
-            textFormat: Text.PlainText
-            text: said.text
-            font: Theme.fontSmall
-            color: said.warn ? Theme.warning : Theme.text
-            wrapMode: Text.Wrap
-        }
+        kind: warn ? "warning" : "info"
         AppButton {
             objectName: said.objectName + ".ok"
             visible: said.dismissable
-            Layout.alignment: Qt.AlignRight
             text: qsTr("OK")
             onClicked: said.ok()
         }
+    }
+    // -- WP DL3b -- a section label and what it holds, no box (DESIGN-LANGUAGE §8)
+    component Section: ColumnLayout {
+        id: section
+        property string title
+        default property alias content: body.data
+        Layout.fillWidth: true
+        spacing: Theme.spacingSmall
+        SectionHeading {
+            Layout.fillWidth: true
+            text: section.title
+        }
+        ColumnLayout {
+            id: body
+            Layout.fillWidth: true
+            spacing: Theme.spacingSmall
+        }
+        Accessible.role: Accessible.Grouping
+        Accessible.name: title
     }
 }

@@ -17,6 +17,22 @@ Panel {
 
     readonly property var fw: FirmwareController
 
+    // -- WP DL3b -- On Modern's page (DESIGN-LANGUAGE §3, §15, §16): no rules,
+    // the state the installer is in without a box and right under the steps,
+    // then the one primary action (no Cancel or Done: the page is no dialog);
+    // Export Configuration… in the row over the page. The window keeps its
+    // dialog layout.
+    readonly property bool paged: inPage
+    readonly property Component pageTools: Component {
+        AppButton {
+            objectName: "FirmwareTools.export"
+            visible: panel.fw.showExport && panel.fw.stage !== "verified"
+            enabled: !DeviceInfoController.sender
+            text: qsTr("Export Configuration…")
+            onClicked: FirmwareController.exportConfiguration()
+        }
+    }
+
     onShownChanged: {
         FirmwareController.windowShown(shown)
         // A question asked before the window showed (the wizard's run)
@@ -84,13 +100,14 @@ Panel {
         }
         Rectangle {
             Layout.fillWidth: true
+            visible: !panel.paged   // -- WP DL3b --
             implicitHeight: 1
             color: Theme.separator
         }
 
         ColumnLayout {
             Layout.fillWidth: true
-            Layout.fillHeight: true
+            Layout.fillHeight: !panel.paged   // -- WP DL3b --
             Layout.margins: Theme.spacingLarge
             spacing: Theme.spacing
 
@@ -288,8 +305,10 @@ Panel {
             Card {
                 objectName: "FirmwareWindow.status"
                 Layout.fillWidth: true
-                Layout.fillHeight: true
+                Layout.fillHeight: !panel.paged   // -- WP DL3b --
+                Layout.topMargin: panel.paged ? Theme.spacingLarge : 0
                 padding: 14
+                color: panel.paged ? "transparent" : Theme.panel   // -- WP DL3b -- unboxed on the page
                 Item { Layout.fillHeight: true }
                 Item {
                     Layout.alignment: Qt.AlignHCenter
@@ -414,16 +433,19 @@ Panel {
 
         Rectangle {
             Layout.fillWidth: true
+            visible: !panel.paged   // -- WP DL3b --
             implicitHeight: 1
             color: Theme.separator
         }
 
         // ---- Buttons ----
         RowLayout {
-            Layout.fillWidth: true
+            // -- WP DL3b -- on the page: under the state, centred as it is
+            Layout.fillWidth: !panel.paged
+            Layout.alignment: panel.paged ? Qt.AlignHCenter : Qt.AlignLeft
             Layout.leftMargin: Theme.spacingLarge
             Layout.rightMargin: Theme.spacingLarge
-            Layout.topMargin: Theme.spacing
+            Layout.topMargin: panel.paged ? 0 : Theme.spacing
             Layout.bottomMargin: Theme.spacing
             spacing: Theme.spacingSmall
             readonly property bool done: panel.fw.stage === "verified"
@@ -435,21 +457,21 @@ Panel {
             }
             AppButton {
                 objectName: "FirmwareWindow.cancel"
-                visible: !parent.done
+                visible: !parent.done && !panel.paged   // -- WP DL3b --
                 text: qsTr("Cancel")
                 onClicked: panel.close()
             }
             AppButton {
                 objectName: "FirmwareWindow.export"
-                visible: !parent.done && panel.fw.showExport
+                visible: !parent.done && panel.fw.showExport && !panel.paged   // -- WP DL3b -- the page's tools
                 enabled: !DeviceInfoController.sender   // -- WP QTSENDER -- the sender has no configuration to export
                 text: qsTr("Export Configuration…")
                 onClicked: FirmwareController.exportConfiguration()
             }
-            Item { Layout.fillWidth: true }
+            Item { Layout.fillWidth: true; visible: !panel.paged }   // -- WP DL3b --
             AppButton {
                 objectName: "FirmwareWindow.done"
-                visible: parent.done
+                visible: parent.done && !panel.paged   // -- WP DL3b --
                 primary: true
                 text: qsTr("Done")
                 onClicked: panel.close()
@@ -464,6 +486,11 @@ Panel {
                                               && panel.fw.imageNote.length === 0)   // -- WP PGQT --
                 onClicked: panel.fw.failed ? FirmwareController.resetRun() : FirmwareController.start()
             }
+        }
+        // -- WP DL3b -- on the page the content stays at the top
+        Item {
+            Layout.fillHeight: true
+            visible: panel.paged
         }
     }
 

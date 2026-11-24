@@ -7,9 +7,12 @@ import UConsole
 // DevicesContent): the session's state in the core's words, the hub's devices,
 // the hubs found on this network and a field for a hub's address. The list
 // shows it (DevicesContent), and Modern's Devices > Hubs.
+// -- WP DL3b -- `listRows`: Modern's page, with notices for its errors. The
+// rows stay DeviceRows (the smoke driver presses them by `clicked()`).
 ColumnLayout {
     id: content
     spacing: 4
+    property bool listRows: false
 
     readonly property string phase: LinkController.phase
     readonly property bool inSession: phase !== "idle" && phase !== "closed" && phase !== "refused"
@@ -128,10 +131,17 @@ ColumnLayout {
             onClicked: DevicesController.chooseHubDevice(modelData.handle, modelData.serial)
         }
     }
-    Text {
-        objectName: "DevicesPopup.error"
+    NoticeRow {   // -- WP DL3b --
+        objectName: content.listRows ? "DevicesPopup.error" : ""
         Layout.fillWidth: true
-        visible: LinkController.errorText.length > 0
+        visible: content.listRows && LinkController.errorText.length > 0
+        kind: "warning"
+        text: LinkController.errorText
+    }
+    Text {
+        objectName: content.listRows ? "" : "DevicesPopup.error"   // -- WP DL3b --
+        Layout.fillWidth: true
+        visible: !content.listRows && LinkController.errorText.length > 0   // -- WP DL3b -- listRows
         textFormat: Text.PlainText
         text: LinkController.errorText
         font: Theme.fontSmall
@@ -148,9 +158,15 @@ ColumnLayout {
         checked: DevicesController.lookForHubs
         onToggled: DevicesController.lookForHubs = checked
     }
+    NoticeRow {   // -- WP DL3b --
+        Layout.fillWidth: true
+        visible: content.listRows && DevicesController.lookForHubs && DevicesController.browseError.length > 0
+        kind: "warning"
+        text: DevicesController.browseError
+    }
     Text {
         Layout.fillWidth: true
-        visible: DevicesController.lookForHubs && DevicesController.browseError.length > 0
+        visible: !content.listRows && DevicesController.lookForHubs && DevicesController.browseError.length > 0   // -- WP DL3b --
         textFormat: Text.PlainText
         text: DevicesController.browseError
         font: Theme.fontSmall

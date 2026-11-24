@@ -30,6 +30,10 @@ Panel {
     function showPart(id) { if (!paged) tabs.currentIndex = id === "installation" ? 1 : 0 }
 
     readonly property bool simple: ModeController.mode === "simple"
+    // -- WP DL3b -- Modern's look (DESIGN-LANGUAGE): an empty state, notices
+    // instead of orange sentences, the units table without its outline.
+    // Classic keeps its own.
+    readonly property bool modern: LayoutController.modern
     readonly property bool editable: SystemController.mayEdit && !SystemController.busy
 
     onShownChanged: if (shown) SystemController.refresh()
@@ -83,11 +87,25 @@ Panel {
     }
 
     // Not on a hub (a device this console holds itself, or none)
+    // -- WP DL3b -- Modern: one empty state for Units, Clock and Links and
+    // Installation, with the way to the hubs
+    EmptyState {
+        objectName: panel.modern ? "SystemWindow.none" : ""
+        anchors.fill: parent
+        visible: panel.modern && !SystemController.available
+        iconName: "network"
+        title: qsTr("Not on a hub")
+        text: SystemController.error.length > 0 && DeviceModel.remote
+              ? SystemController.error
+              : qsTr("Open a DSPi on a hub with an audio link to see its installation here.")
+        actionText: Shell.pageHost !== null ? qsTr("Hubs and Their Devices") : ""
+        onAction: if (Shell.pageHost) Shell.pageHost.go("devices", "hubs")
+    }
     Text {
-        objectName: "SystemWindow.none"
+        objectName: panel.modern ? "" : "SystemWindow.none"   // -- WP DL3b --
         anchors.centerIn: parent
         width: parent.width - 2 * Theme.spacingLarge
-        visible: !SystemController.available
+        visible: !panel.modern && !SystemController.available   // -- WP DL3b -- modern
         horizontalAlignment: Text.AlignHCenter
         wrapMode: Text.Wrap
         textFormat: Text.PlainText
@@ -175,12 +193,19 @@ Panel {
             }
             Text {
                 Layout.fillWidth: true
-                visible: SystemController.error.length > 0
+                visible: !panel.modern && SystemController.error.length > 0   // -- WP DL3b -- modern
                 textFormat: Text.PlainText
                 text: SystemController.error
                 font: Theme.fontSmall
                 color: Theme.warning
                 wrapMode: Text.Wrap
+            }
+            NoticeRow {   // -- WP DL3b --
+                Layout.fillWidth: true
+                Layout.maximumWidth: Theme.contentMaxWidth
+                visible: panel.modern && SystemController.error.length > 0
+                kind: "warning"
+                text: SystemController.error
             }
             Repeater {
                 model: SystemController.alarms
@@ -280,6 +305,7 @@ Panel {
                 implicitHeight: table.implicitHeight + 2
                 radius: Theme.radius
                 color: Theme.panel
+                border.width: Theme.lineWidth   // -- WP DL3b --
                 border.color: Theme.separator
 
                 ColumnLayout {
@@ -649,10 +675,18 @@ Panel {
                 visible: panel.clock && (SystemController.spdifUnits.length > 0 || panel.editable)
                 editable: panel.editable
             }
-            Text {
-                objectName: "SystemWindow.stale"
+            NoticeRow {   // -- WP DL3b --
+                objectName: panel.modern ? "SystemWindow.stale" : ""
                 Layout.fillWidth: true
-                visible: panel.clock && SystemController.stale
+                Layout.maximumWidth: Theme.contentMaxWidth
+                visible: panel.modern && panel.clock && SystemController.stale
+                kind: "warning"
+                text: qsTr("The installation changed on the hub while you edited it. Save is withdrawn: reload it and make your changes again.")
+            }
+            Text {
+                objectName: panel.modern ? "" : "SystemWindow.stale"   // -- WP DL3b --
+                Layout.fillWidth: true
+                visible: !panel.modern && panel.clock && SystemController.stale   // -- WP DL3b -- modern
                 text: qsTr("The installation changed on the hub while you edited it. Save is withdrawn: reload it and make your changes again.")
                 font: Theme.fontBody
                 color: Theme.warning

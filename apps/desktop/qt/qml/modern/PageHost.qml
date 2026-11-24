@@ -36,6 +36,21 @@ Item {
         if (want) show(want)
     }
 
+    // -- WP DL4 -- Without a device, a page that has nothing to show without
+    // one shows the one empty state here, its tools off (PageTabs), instead of
+    // its own sentence or skeleton. Devices, Settings, Measure (its results and
+    // documents open from files), Library's Files and AutoEQ work without one;
+    // the Overview has its own way to a device (OverviewSection).
+    function needsDevice(sectionId, tabId) {
+        if (sectionId === "devices" || sectionId === "settings" || sectionId === "measure" || sectionId === "overview") return false
+        if (sectionId === "library") return tabId !== "files" && tabId !== "autoeq"
+        return sectionId.length > 0
+    }
+    readonly property bool noDevice: !DeviceModel.connected && needsDevice(section, tab)
+    // -- WP DL3b -- A panel's own buttons for the row over its page (its
+    // `pageTools`, a Component), PageTabs shows them beside the section's
+    property Component pageTools: null
+
     // The current page's panel action, "" for a page that is no panel
     readonly property string action: entry && entry.row ? entry.row.action : ""
     // Whether the person can see a page at all (not in the tray, not under the
@@ -159,7 +174,10 @@ Item {
         readonly property Item content: body.item
         // Its window is open: the panel is there, not here
         readonly property bool inWindow: action.length > 0 && Shell.shownWindows.indexOf(action) >= 0
-        readonly property bool shown: current && pageHost !== null && pageHost.onScreen && !inWindow
+        // -- WP DL4 -- the host's empty state in its place
+        readonly property bool noDevice: entry !== null && pageHost !== null && !DeviceModel.connected
+                                         && pageHost.needsDevice(entry.section, entry.tab)
+        readonly property bool shown: current && pageHost !== null && pageHost.onScreen && !inWindow && !noDevice
         readonly property bool locked: action.length > 0 && DeviceInfoController.sender && !DeviceInfoController.senderKeeps(action)
 
         // -- WP LAY5b -- Which of its panel's parts; kept while the page is not current
@@ -167,6 +185,14 @@ Item {
         onWantedChanged: if (wanted.length && content) content.part = wanted
 
         function release() { if (row && content && !inWindow) content.closing() }
+        // -- WP DL3b --
+        Binding {
+            target: page.pageHost
+            property: "pageTools"
+            value: page.content && page.content.pageTools !== undefined ? page.content.pageTools : null
+            when: page.current && page.pageHost !== null
+            restoreMode: Binding.RestoreNone
+        }
 
         visible: current
         padding: 0
@@ -179,7 +205,8 @@ Item {
                 id: scroll
                 objectName: page.objectName + ".scroll"
                 anchors.fill: parent
-                anchors.rightMargin: aside.width   // -- WP LAY5a --
+                anchors.rightMargin: aside.visible ? aside.width : 0   // -- WP LAY5a -- (-- WP DL4 --)
+                visible: !page.noDevice   // -- WP DL4 --
                 // A panel keeps its window's least size; a smaller page scrolls
                 contentWidth: Math.max(width, page.row ? page.row.minWidth || 0 : 0)
                 contentHeight: Math.max(height, page.row ? Math.max(page.row.minHeight || 0, page.content ? page.content.minimumHeight : 0) : 0)
@@ -191,13 +218,13 @@ Item {
 
                 Loader {
                     id: body
-                    // A narrow form (the leveller, the upmixer) keeps near its window's width
+                    // A narrow form (the leveller, the upmixer) keeps near its window's width.
+                    // -- WP DL3b -- Left-aligned, as wide as a form may be (DESIGN-LANGUAGE §3)
                     readonly property real most: !page.row ? Infinity
                                                 : page.row.maxWidth ? page.row.maxWidth
-                                                : page.row.width < 520 ? Math.max(page.row.width, 560) : Infinity
+                                                : page.row.width < 520 ? Math.max(page.row.width, Theme.contentMaxWidth) : Infinity
                     width: Math.min(scroll.contentWidth, most)
                     height: scroll.contentHeight
-                    x: Math.max(0, (scroll.contentWidth - width) / 2)
                     visible: !page.inWindow
                     enabled: !page.locked
                     Component.onCompleted: {
@@ -238,6 +265,7 @@ Item {
                 width: item ? item.implicitWidth : 0
                 height: parent.height
                 enabled: !page.locked
+                visible: !page.noDevice   // -- WP DL4 --
                 active: type.length > 0
                 Component.onCompleted: if (type.length) sourceComponent = Qt.createComponent("UConsole", type)
                 onLoaded: {
@@ -246,6 +274,19 @@ Item {
                     item.shown = Qt.binding(() => page.shown)
                 }
                 onStatusChanged: if (status === Loader.Error) console.warn("PageHost: the aside of", page.key, "did not load")
+            }
+
+            // -- WP DL4 -- No device: the one empty state of every page that needs one
+            EmptyState {
+                objectName: page.objectName + ".noDevice"
+                anchors.fill: parent
+                visible: page.noDevice && !page.inWindow
+                iconName: "unplug"
+                title: qsTr("No device")
+                text: qsTr("Connect one over USB or open the demo.")
+                actionText: qsTr("Choose a Device…")
+                actionPrimary: true
+                onAction: page.pageHost.go("devices", "devices")
             }
 
             // The panel is in its own window

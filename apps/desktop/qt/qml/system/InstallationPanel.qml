@@ -15,6 +15,10 @@ Panel {
     readonly property Flickable body: flick
     readonly property bool editable: InstallationController.editable
     fitBodies: [flick]
+    // -- WP DL3b -- Modern (DESIGN-LANGUAGE §3, §14): the cards in a 760 px
+    // column at the left, notices instead of orange sentences. Classic as before.
+    readonly property bool modern: LayoutController.modern
+    readonly property real columnWidth: modern ? Math.min(Theme.contentMaxWidth, width - 2 * Theme.spacing) : width - 2 * Theme.spacing
 
     // -- WP LAY5b -- counted: a page and a window may each show one
     onShownChanged: InstallationController.panelShown(shown)
@@ -152,7 +156,7 @@ Panel {
             id: column
             x: Theme.spacing
             y: Theme.spacing
-            width: flick.width - 2 * Theme.spacing
+            width: Math.min(panel.columnWidth, flick.width - 2 * Theme.spacing)   // -- WP DL3b --
             spacing: Theme.spacing
 
             Note {
@@ -161,9 +165,15 @@ Panel {
                 text: qsTr("%1 This part is read only.").arg(InstallationController.editNote)
             }
             Note {
-                visible: InstallationController.error.length > 0
+                visible: !panel.modern && InstallationController.error.length > 0   // -- WP DL3b -- modern
                 text: InstallationController.error
                 color: Theme.warning
+            }
+            NoticeRow {   // -- WP DL3b --
+                Layout.fillWidth: true
+                visible: panel.modern && InstallationController.error.length > 0
+                kind: "warning"
+                text: InstallationController.error
             }
 
             // ---- Not in the installation -----------------------------------
@@ -462,13 +472,22 @@ Panel {
             id: bar
             x: Theme.spacing
             y: Theme.spacing
-            width: parent.width - 2 * Theme.spacing
+            width: Math.min(panel.columnWidth, parent.width - 2 * Theme.spacing)   // -- WP DL3b --
             spacing: Theme.spacingSmall
 
-            Text {
-                objectName: "Installation.stale"
+            NoticeRow {   // -- WP DL3b --
+                objectName: panel.modern ? "Installation.stale" : ""
                 Layout.fillWidth: true
-                visible: InstallationController.stale
+                visible: panel.modern && InstallationController.stale
+                kind: "warning"
+                text: qsTr("The installation was changed elsewhere while you edited it. Reload it and make your changes again.")
+                Accessible.role: Accessible.AlertMessage
+                Accessible.name: text
+            }
+            Text {
+                objectName: panel.modern ? "" : "Installation.stale"   // -- WP DL3b --
+                Layout.fillWidth: true
+                visible: !panel.modern && InstallationController.stale   // -- WP DL3b -- modern
                 text: qsTr("The installation was changed elsewhere while you edited it. Reload it and make your changes again.")
                 font: Theme.fontBody
                 color: Theme.warning
@@ -483,8 +502,17 @@ Panel {
                 visible: InstallationController.lost.length > 0 && !InstallationController.stale
                 spacing: Theme.spacingSmall
                 property string shownName: InstallationController.lost.join("\n")
+                NoticeRow {   // -- WP DL3b --
+                    Layout.fillWidth: true
+                    visible: panel.modern
+                    kind: "warning"
+                    text: qsTr("The installation was changed elsewhere and has been read again: these changes were not saved. Make them again on the installation as it is now, or leave them.")
+                    Accessible.role: Accessible.AlertMessage
+                    Accessible.name: text
+                }
                 Text {
                     Layout.fillWidth: true
+                    visible: !panel.modern   // -- WP DL3b --
                     text: qsTr("The installation was changed elsewhere and has been read again: these changes were not saved. Make them again on the installation as it is now, or leave them.")
                     font: Theme.fontBody
                     color: Theme.warning
@@ -537,7 +565,7 @@ Panel {
                       + " " + qsTr("The units play them after the next alignment.")
                 textFormat: Text.PlainText
                 font: Theme.fontBody
-                color: Theme.warning
+                color: panel.modern ? Theme.text : Theme.warning   // -- WP DL3b -- said before Save, no warning colour
                 wrapMode: Text.Wrap
                 Accessible.role: Accessible.AlertMessage
                 Accessible.name: text
