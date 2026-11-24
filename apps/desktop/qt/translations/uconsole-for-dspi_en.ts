@@ -184,6 +184,18 @@
 <context>
     <name>AiActivityList</name>
     <message>
+        <source>No agent activity yet</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>What AI agents change shows here, newest first, each with Undo.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show Reads</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Show reads</source>
         <translation type="unfinished"></translation>
     </message>
@@ -348,6 +360,10 @@
     <message>
         <source>Loudest measurement: %1 dB SPL</source>
         <extracomment>%1 a sound pressure level in dB SPL</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Loudest measurement</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1269,6 +1285,14 @@ What an AI agent does, and to what: &quot;Changing the gain: OUT3 Centre&quot;</
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>AI agents are paused. Nothing is changed until Resume.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Connected. Nothing runs now.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Revoke</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1311,6 +1335,14 @@ What an AI agent does, and to what: &quot;Changing the gain: OUT3 Centre&quot;</
     </message>
     <message>
         <source>Turn AI agents off: what they run stops, their timed previews are put back</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>AI agents: what they may do, and Revoke</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>AI agents</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -3624,6 +3656,38 @@ Switching an output is instant and never writes to flash. The pin, name and powe
     </message>
 </context>
 <context>
+    <name>DeviceListRow</name>
+    <message>
+        <source>DSPi (%1)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Demo DSPi</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>USB</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Simulated DSPi</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not connected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reconnecting…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Close %1</source>
+        <extracomment>%1 is a device&apos;s name</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>DeviceRegistry</name>
     <message>
         <source>%1 is already open here, and a device has one session at a time. Choose it under Open devices.</source>
@@ -3680,6 +3744,26 @@ Switching an output is instant and never writes to flash. The pin, name and powe
     <name>DeviceSwitcher</name>
     <message>
         <source>Devices</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open devices</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>USB</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No DSPi on USB</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>DSPi Link</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hubs and Their Devices…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -4223,6 +4307,10 @@ Switching an output is instant and never writes to flash. The pin, name and powe
 <context>
     <name>EqualiserCrossover</name>
     <message>
+        <source>No crossovers</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>This firmware has no crossovers.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -4247,11 +4335,12 @@ Switching an output is instant and never writes to flash. The pin, name and powe
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>LR is Linkwitz-Riley, BW Butterworth, BS Bessel. The four crossover bands of %1:</source>
+        <source>LR is Linkwitz-Riley, BW Butterworth, BS Bessel.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Inputs have no crossover. Select an output to see its four bands.</source>
+        <source>Crossover bands of %1</source>
+        <extracomment>%1 is an output&apos;s name (&quot;Out 1&quot;)</extracomment>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -4508,11 +4597,8 @@ Switching an output is instant and never writes to flash. The pin, name and powe
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Import…</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Export…</source>
+        <source>Files</source>
+        <extracomment>A button that opens a menu: Import Filters, Export Filters</extracomment>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -5820,6 +5906,10 @@ Do you wish to proceed?</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Line Width</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Scale &amp; Grid</source>
         <translation type="unfinished"></translation>
     </message>
@@ -5852,11 +5942,28 @@ Do you wish to proceed?</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Grid Opacity</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Vertical Range: %1 dB</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Vertical Range</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Center: %1 dB → %2 to %3</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Center</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Shows %1 to %2 dB</source>
+        <extracomment>%1 and %2 are the graph&apos;s top and bottom in dB (&quot;+25&quot;, &quot;−25&quot;)</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -9047,6 +9154,11 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Save to Preset %1</source>
+        <extracomment>%1 is the active preset slot&apos;s number</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>More</source>
         <translation type="unfinished"></translation>
     </message>
@@ -10226,6 +10338,22 @@ Macros are stored on the device alongside the controls and share their Save and 
 <context>
     <name>MeasurePanel</name>
     <message>
+        <source>Open…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Kind</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reload</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Import Calibration…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Running on %1. %2</source>
         <translation type="unfinished"></translation>
     </message>
@@ -10635,6 +10763,16 @@ Macros are stored on the device alongside the controls and share their Save and 
     <message>
         <source>%1 was changed after it was measured; the prediction starts from its settings now.</source>
         <extracomment>An auto-tune warning: %1 the output (&quot;Out 1 (Centre low)&quot;)</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 and %2</source>
+        <extracomment>Outputs in a list: %1 all but the last, joined by &quot;, &quot;; %2 the last</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 were changed after they were measured; the prediction starts from their settings now.</source>
+        <extracomment>An auto-tune warning for several outputs: %1 them (&quot;Out 1 (Centre low) and Out 2 (Centre high)&quot;)</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -11132,6 +11270,11 @@ Macros are stored on the device alongside the controls and share their Save and 
     </message>
     <message>
         <source>Speaker</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not set</source>
+        <extracomment>A speaker field with no speaker named (Measure and Settings › Speakers)</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -12649,7 +12792,11 @@ Macros are stored on the device alongside the controls and share their Save and 
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Nothing waits for you.</source>
+        <source>No notifications</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Nothing waits for you. What the app and your devices tell you shows here.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -14069,6 +14216,67 @@ Save before continuing?</source>
     </message>
     <message>
         <source>OK</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>PresetPopover</name>
+    <message>
+        <source>Presets</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Preset %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Active, with unsaved changes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Active</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Startup</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Empty</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Recall</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Copy Here</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Copy &quot;%1&quot; into this slot</source>
+        <extracomment>%1 is the active slot&apos;s label, &quot;3: Living Room&quot;</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Save</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Save the current settings in this slot</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>More</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>At power-on the device loads preset %1.</source>
+        <extracomment>%1 is a slot&apos;s number</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>At power-on the device loads the preset it was last on.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -17466,7 +17674,8 @@ Save before continuing?</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Speaker</source>
+        <source>Not set</source>
+        <extracomment>A speaker field with no speaker named (Measure and Settings › Speakers)</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -17490,6 +17699,10 @@ Save before continuing?</source>
     </message>
     <message>
         <source>Spectrum Strength: %1%</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Spectrum Strength</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -19402,10 +19615,6 @@ This wiring is a board-level setting: it is stored on the device, survives prese
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Preset Slot…</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>A/B compare</source>
         <translation type="unfinished"></translation>
     </message>
@@ -20864,6 +21073,10 @@ This wiring is a board-level setting: it is stored on the device, survives prese
     <name>WhatsNewPanel</name>
     <message>
         <source>No release notes are available in this build.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No release notes</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
