@@ -78,7 +78,7 @@ test("MXW drawing: direction, tiles of one size, dots, tails, footers, enable an
   expect(errors).toEqual([]);
 });
 
-test("MXW keys: move, connect, type, step (Ctrl for 3 dB), invert, mute, enable, disconnect, the menu, Escape", async ({ page }) => {
+test("MXW keys: move, connect, type (\"-6\" is −6 dB), step (Alt 0.5 dB, Ctrl 3 dB), invert, mute, enable, disconnect, the menu, Escape", async ({ page }) => {
   const errors = errorsOf(page);
   const { matrix, inspector } = await openMatrix(page);
   const s0 = await core(page);
@@ -108,8 +108,24 @@ test("MXW keys: move, connect, type, step (Ctrl for 3 dB), invert, mute, enable,
   await editor.press("Escape");
   await expect(editor).toHaveCount(0);
   expect((await core(page)).matrixGain[0]![2]).toBe(-2.5);
-  // + and − step 0.5 dB, with Ctrl 3 dB
+  // -- WP WEB2 -- (REVD G1) "-6" typed on the cell is −6 dB, "+" starts a typed gain too
+  await page.keyboard.press("-");
+  await expect(editor).toHaveValue("-");
+  await page.keyboard.press("6");
+  await editor.press("Enter");
+  await expect.poll(async () => (await core(page)).matrixGain[0]![2]).toBe(-6);
+  await expect(c).toBeFocused();
   await page.keyboard.press("+");
+  await expect(editor).toHaveValue("+");
+  await page.keyboard.type("1");
+  await editor.press("Enter");
+  await expect.poll(async () => (await core(page)).matrixGain[0]![2]).toBe(1);
+  await page.keyboard.press("-");
+  await page.keyboard.type("2,5");
+  await editor.press("Enter");
+  await expect.poll(async () => (await core(page)).matrixGain[0]![2]).toBe(-2.5);
+  // Alt + and − step 0.5 dB, Ctrl 3 dB
+  await page.keyboard.press("Alt+=");
   await expect.poll(async () => (await core(page)).matrixGain[0]![2]).toBe(-2);
   await page.keyboard.press("Control+-");
   await expect.poll(async () => (await core(page)).matrixGain[0]![2]).toBe(-5);

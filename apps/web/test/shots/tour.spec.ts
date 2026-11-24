@@ -400,13 +400,13 @@ test.describe("P1WB2: the Installer page, AutoEQ, the lock", () => {
     await expect(limits).toBeVisible();
     await shot(page, "demo-installer-page");
     const out2 = limits.getByRole("group", { name: /^OUT2/ });
-    const highest = out2.getByLabel("Highest gain (dB)");
+    const highest = out2.getByLabel("Gain at most (dB)");
     await highest.fill("-3");
     await highest.dispatchEvent("change");
     await expect(limits.getByRole("status", { name: "Limits report" })).toContainText("Held to the new limits");
     await shot(page, "demo-limits-held", { of: limits });
     await shot(page, "demo-power-on", { of: session.getByRole("region", { name: "At power-on" }) });
-    await limits.getByRole("button", { name: "Clear Profile" }).click();
+    await limits.getByRole("button", { name: "Remove All Limits" }).click();
     await openPage(session, "EQ");
     await session.getByRole("button", { name: "AutoEQ…" }).click();
     const panel = session.getByRole("region", { name: "AutoEQ" });

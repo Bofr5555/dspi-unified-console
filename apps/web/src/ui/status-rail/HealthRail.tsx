@@ -43,7 +43,14 @@ export function HealthRail(props: { session: Session; feed: HealthFeed }) {
         {snap ? (
           <span class="sys-rail-item" aria-label="Preset">
             Preset {presetLabel(snap.state, slot)}
-            {ss.unsaved.length ? <span class="health-unsaved"> · unsaved changes</span> : null}
+            {/* -- WP WEB2 -- (REVD W5) a warning dot and muted words, never orange body text */}
+            {ss.unsaved.length ? (
+              <span class="health-unsaved">
+                {" · "}
+                <i class="status-dot warn" aria-hidden="true" />
+                unsaved changes
+              </span>
+            ) : null}
           </span>
         ) : null}
         <span class="sys-rail-item health-load" aria-label="Core load">

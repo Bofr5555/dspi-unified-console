@@ -187,7 +187,7 @@ const EqView = memo(
     const channels = useMemo<EqChannel[]>(() => {
       const ins = inputRows(s, liveInputs(s, props.usbActive)).map((r) => ({ ...r, output: false }));
       const outs = outputRows(s, labels).map((r) => ({ ...r, output: true }));
-      return [...ins, ...outs].map((c) => ({ ...c, colour: channelColour(c.wire) }));
+      return [...ins, ...outs].map((c) => ({ ...c, colour: channelColour(s, c.wire) }));
     }, [channelsKey]);
 
     // -- WP WB6D -- the System view's channel when it opened this screen (and it is listed)

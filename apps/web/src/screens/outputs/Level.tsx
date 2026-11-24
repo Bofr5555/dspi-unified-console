@@ -20,6 +20,7 @@ import { ValueField } from "../eq/Field";
 import { useLiveWrite } from "../main/live";
 import type { Session } from "../../ui/session";
 import { clamp, onGrid, parseLevel, stepGrid } from "./model";
+import { rangeFill } from "../../ui/design"; // -- WP WEB2 --
 
 export function LevelControl(props: {
   /** The caption: "Gain", "Delay". */
@@ -120,6 +121,7 @@ export function LevelControl(props: {
         max={props.slider[1]}
         step={step}
         value={clamp(shown, props.slider)}
+        style={rangeFill(clamp(shown, props.slider), props.slider[0], props.slider[1])}
         disabled={disabled}
         onPointerDown={() => {
           dragging.current = true;

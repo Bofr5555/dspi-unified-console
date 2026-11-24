@@ -21,6 +21,7 @@ import type { Session } from "../../ui/session";
 import { CoreVoltage } from "./CoreVoltage";
 import { SpeakersPage } from "./speakers/SpeakersPage"; // -- WP ROLEW --
 import { AppearanceSettings } from "../../ui/arrangement/Appearance"; // -- WP WEBM4 --
+import { rangeFill } from "../../ui/design"; // -- WP WEB2 --
 import {
   AVERAGING,
   CEILINGS,
@@ -113,6 +114,8 @@ export function SettingsScreen(props: ScreenProps) {
         })}
       </nav>
       <div class="settings-page">
+        {/* -- WP WEB2 -- (DL7) the page's name over it, as Qt's Settings pages */}
+        <h2 class="settings-page-title">{PAGE_TITLES[current]}</h2>
         {current === "global" ? <GlobalPage session={session} /> : null}
         {current === "pins" ? <PinsPage session={session} /> : null}
         {current === "speakers" ? <SpeakersPage session={session} /> : null /* -- WP ROLEW -- */}
@@ -357,6 +360,7 @@ function Slider(props: { label: string; min: number; max: number; step: number; 
         max={props.max}
         step={props.step}
         value={props.value}
+        style={rangeFill(props.value, props.min, props.max)}
         disabled={props.disabled}
         onInput={(e) => props.onChange(Number((e.target as HTMLInputElement).value))}
       />

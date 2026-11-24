@@ -16,6 +16,9 @@ import { HealthBoard } from "./HealthBoard"; // -- WP P3WHB --
 import { HubGroups, useHubGroups } from "./Groups"; // -- WP P3WGR --
 import { Rollout } from "./Rollout"; // -- WP P3WRO --
 import { rolloutShown } from "./rollout-model"; // -- WP P3WRO --
+// -- WP WEB5 -- the page in the Modern design (Qt's Devices › Hubs): sections, not cards; its own stylesheet
+import { Glyph, NoticeRow } from "../../ui/design";
+import "./hub.css";
 
 /** The screen's entry (screens.tsx shows it when `hubScreenShown`). */
 export const HUB_SCREEN_ID = "hub";
@@ -36,11 +39,19 @@ export function useHubView(feed: HubFeed | undefined): HubView | null {
 export const HubScreen: FunctionComponent<ScreenProps> = (props) => {
   const feed = props.hub;
   const view = useHubView(feed);
-  const hubName = useSessionState(props.session).hubName; // -- WP P2WB3 --
+  const st = useSessionState(props.session);
+  const hubName = st.hubName; // -- WP P2WB3 --
+  // -- WP WEB5 -- the hub gone (the link reconnecting or closed): what the page shows is its last word
+  const away = !!st.link?.phase && st.link.phase !== "bound";
   const groups = useHubGroups(props.session, !!view?.caps?.onHub && !!view.caps.groups); // -- WP P3WGR --
   if (!feed || !view) return null;
   return (
-    <div class="hub-screen">
+    <div class={away ? "hub-screen away" : "hub-screen"}>
+      {away ? (
+        <NoticeRow kind="warning" class="hub-away">
+          Not connected to the hub. What this page shows is what the hub said last.
+        </NoticeRow>
+      ) : null}
       {/* -- SEC hook (SECWEB, PLAN-SEC section 6) -- the "unencrypted" banner and the hub's fingerprint go here */}
       <HubDevices feed={feed} view={view} props={props} />
       {/* -- WP P3WHB -- (-- WP P3WGR -- with the groups for its filter) */ view.caps?.health ? <HealthBoard feed={feed} view={view} readOnly={props.session.readOnlyReason} groups={groups.view.groups} /> : null}
@@ -415,6 +426,7 @@ export function HubAlarmBanner(props: { feed: HubFeed; onShow: (() => void) | nu
   if (!s.raised) return null;
   return (
     <div class={s.critical ? "hub-alarm-banner bad" : "hub-alarm-banner"} role="status" aria-label="Hub alarms">
+      <Glyph name={s.critical ? "error" : "warning"} class="notice-icon" />
       <span>{s.raised === 1 ? "The hub has 1 alarm to acknowledge." : `The hub has ${s.raised} alarms to acknowledge.`}</span>
       {props.onShow ? (
         <button type="button" onClick={props.onShow}>

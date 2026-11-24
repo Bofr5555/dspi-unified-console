@@ -121,7 +121,19 @@ export function moveCell(at: CellAt, key: string, inputs: number, outputs: numbe
   }
 }
 
-/** A crosspoint's gain one step on: 0.5 dB, or 3 dB (`big`: Ctrl on a key, Shift on the wheel). */
+/**
+ * -- WP WEB2 -- (REVD G1) Which way a "+" or "−" key steps a crosspoint's gain: by the key's place
+ * (`code`) as well as its character, since Alt turns "-" into a dead key or a dash on some layouts and
+ * Shift is how "+" is typed on most. 0 for any other key. Stepping needs Alt or Ctrl; the plain keys
+ * start a typed gain, so "-6" is −6 dB.
+ */
+export function stepSign(e: { key: string; code?: string }): 1 | -1 | 0 {
+  if (e.key === "+" || e.key === "=" || e.code === "Equal" || e.code === "NumpadAdd") return 1;
+  if (e.key === "-" || e.key === "_" || e.key === "\u2212" || e.code === "Minus" || e.code === "NumpadSubtract") return -1;
+  return 0;
+}
+
+/** A crosspoint's gain one step on: 0.5 dB, or 3 dB (`big`: Ctrl on a key, Shift on the wheel; Alt on a key is 0.5). */
 export function stepGain(db: number, dir: 1 | -1, big: boolean, range: readonly [number, number]): number {
   return stepGrid(db, dir, 0.5, range, big ? 6 : 1);
 }

@@ -88,12 +88,12 @@ test("P1WB2 Installer: a limit narrowed below the device is held and reported; a
   await expect(page.getByRole("dialog", { name: "Unlock" })).toHaveCount(0);
 
   const out2 = limits.getByRole("group", { name: /^OUT2/ });
-  const highest = out2.getByLabel("Highest gain (dB)");
+  const highest = out2.getByLabel("Gain at most (dB)");
   // -- WP P1EFIX -- the ranges are the core's one table (-- WP WEB -- on the text field, which reads "−2,5 dB" as Qt's fields do)
   await expect(highest).toHaveAttribute("data-max", "20");
   await expect(highest).toHaveAttribute("data-min", "-60");
-  await expect(limits.getByLabel("Highest master volume (dB)")).toHaveAttribute("data-min", "-128");
-  await expect(out2.getByLabel("Longest delay (ms)")).toHaveAttribute("data-max", "85");
+  await expect(limits.getByLabel("Master volume at most (dB)")).toHaveAttribute("data-min", "-128");
+  await expect(out2.getByLabel("Delay at most (ms)")).toHaveAttribute("data-max", "85");
   await highest.fill("2,0 dB");
   await highest.dispatchEvent("change");
   const report = limits.getByRole("status", { name: "Limits report" });
@@ -127,8 +127,8 @@ test("P1WB2 Installer: a limit narrowed below the device is held and reported; a
   await expect.poll(async () => (await call<{ text: string }>(page, "limitsProfile")).text).toContain('"maxGainDb": 2');
   await setMode(again, page, "Installer");
   await openPage(again, "Installer");
-  await expect(again.getByRole("region", { name: "Limits" }).getByRole("group", { name: /^OUT2/ }).getByLabel("Highest gain (dB)")).toHaveValue("2");
-  await again.getByRole("region", { name: "Limits" }).getByRole("button", { name: "Clear Profile" }).click();
+  await expect(again.getByRole("region", { name: "Limits" }).getByRole("group", { name: /^OUT2/ }).getByLabel("Gain at most (dB)")).toHaveValue("2");
+  await again.getByRole("region", { name: "Limits" }).getByRole("button", { name: "Remove All Limits" }).click();
   await expect.poll(async () => (await call<{ text: string }>(page, "limitsProfile")).text).toBe("");
   expect(errors).toEqual([]);
 });
@@ -142,7 +142,7 @@ test("P1WB2 Installer: outputs without a limiter, Protect all outputs; power-on 
   await openPage(session, "Installer");
   const limits = session.getByRole("region", { name: "Limits" });
   const warning = limits.getByRole("status", { name: "Outputs without a limiter" });
-  await expect(warning).toContainText("above -10 dB gain");
+  await expect(warning).toContainText("above -10 dB of gain");
   await shot(page, "protect-warning", limits);
   await warning.getByRole("button", { name: "Protect all outputs" }).click();
   await expect(warning).toHaveCount(0);

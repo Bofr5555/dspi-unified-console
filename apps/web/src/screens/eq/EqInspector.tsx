@@ -77,7 +77,7 @@ export function EqInspector(props: {
   return (
     <div class="eq-inspector">
       <div class="insp-head">
-        <span class="swatch" style={{ background: channelColour(c.wire) }} aria-hidden="true" />
+        <span class="swatch" style={{ background: channelColour(props.s, c.wire) }} aria-hidden="true" />
         <span class="insp-tag">{c.descriptor}</span> <span class="insp-name">{c.name}</span>
       </div>
       {props.band}
@@ -97,7 +97,7 @@ function InputParts(props: Parameters<typeof EqInspector>[0]) {
             {feeds.map((o) => (
               <li key={o}>
                 <button type="button" class="link" title="Show this output" onClick={() => props.choose(s.numInputChannels + o)}>
-                  <span class="swatch" style={{ background: channelColour(s.numInputChannels + o) }} aria-hidden="true" />
+                  <span class="swatch" style={{ background: channelColour(s, s.numInputChannels + o) }} aria-hidden="true" />
                   {`OUT${o + 1} ${outputLabel(s, props.labels, o)}`}
                 </button>{" "}
                 <span class="insp-value">

@@ -43,6 +43,9 @@ import { UnlockDialog, scopeLine } from "./Unlock";
 import type { HubAdminStateRecord } from "../../core/protocol";
 import { CopyNotice, HubModesPanel, HubPinPanel, failure, useHubAdmin, type HubAdmin } from "./HubAdmin";
 import { editsHubCopy, withLockedPage } from "./model";
+// -- WP WEB5 -- the page in the Modern design (Qt's Settings › Installer): its own stylesheet, notice rows
+import { Glyph } from "../../ui/design";
+import "./installer.css";
 
 const PRESET_SLOTS = 10;
 
@@ -269,78 +272,110 @@ function LimitsPanel(props: { session: Session; s: DspState; serial: string; dis
   };
 
   const outputs = Array.from({ length: s.numOutputChannels }, (_, o) => o);
-  const names = new Map(outputRows({ ...s, outputEnabled: s.outputEnabled.map(() => true) }, props.labels).map((r) => [r.index, `${r.descriptor} ${r.name}`]));
+  // -- WP WEB5 -- the output's number and its label apart (the number muted before the label, as the matrix's pills)
+  const rows = new Map(outputRows({ ...s, outputEnabled: s.outputEnabled.map(() => true) }, props.labels).map((r) => [r.index, r]));
   const forOutput = (o: number) => profile.outputs?.find((x) => x.output === o);
   // -- WP P1EFIX -- each field's range and unit from the core's one table (`fieldRange`)
+  // -- WP WEB5 -- a form row (§10): the words at the left, the field and its unit after it at the right;
+  // the field's name keeps the unit ("Gain at most (dB)")
   const field = (label: string, key: string, value: number | undefined, onSet: (v: number | undefined) => void) => {
     const r = fieldRange(key);
     return (
       <label class="limit-field" key={key}>
-        <span>{r ? `${label} (${r.unit})` : label}</span>
-        {/* -- WP WEB -- text, so "−2,5 dB" is read as Qt's fields read it (limitValue) */}
-        <input
-          type="text"
-          inputMode="decimal"
-          autoComplete="off"
-          data-min={r?.min}
-          data-max={r?.max}
-          title={r ? `${r.min} to ${r.max} ${r.unit}` : undefined}
-          placeholder="none"
-          value={limitText(value)}
-          disabled={disabled}
-          onChange={(e) => onSet(limitValue((e.target as HTMLInputElement).value, r))}
-        />
+        <span>{label}</span>
+        <span class="limit-input">
+          {/* -- WP WEB -- text, so "−2,5 dB" is read as Qt's fields read it (limitValue) */}
+          <input
+            type="text"
+            inputMode="decimal"
+            autoComplete="off"
+            aria-label={r ? `${label} (${r.unit})` : label}
+            data-min={r?.min}
+            data-max={r?.max}
+            title={r ? `${r.min} to ${r.max} ${r.unit}` : undefined}
+            placeholder="none"
+            value={limitText(value)}
+            disabled={disabled}
+            onChange={(e) => onSet(limitValue((e.target as HTMLInputElement).value, r))}
+          />
+          <span class="limit-unit">{r?.unit ?? ""}</span>
+        </span>
       </label>
     );
   };
+  const scope = noticeRow("limits.scope");
 
   return (
     <section class="card installer-limits" aria-label="Limits">
       <h3>Limits</h3>
-      <p class="note">
-        A change applies at once and holds the DSPi to it. A field left empty is not limited. A limit the firmware does not know can be crossed from a
-        control surface, the UART or another console that does not have this profile.
+      {/* -- WP WEB5 -- Qt's words; a field left empty is the web's way of "not limited" (Qt's check box) */}
+      <p class="limits-intro">
+        {hub
+          ? "Limits narrow what this DSPi may be set to from any console on the hub. A change applies at once; settings already outside a new limit are brought inside it, and what changed is shown."
+          : "Limits narrow what this DSPi may be set to from this console. A change applies at once; settings already outside a new limit are brought inside it, and what changed is shown."}{" "}
+        A field left empty is not limited.
       </p>
       {status ? (
         <p class="error" role="alert">
           {status}
         </p>
       ) : null}
+      <div class="limits-device">
+        {field("Master volume at most", "masterVolumeMaxDb", profile.masterVolumeMaxDb, (v) => void apply(withField(profile, "masterVolumeMaxDb", v)))}
+        {field("EQ boost at most, every band", "maxPeqBoostDb", profile.maxPeqBoostDb, (v) => void apply(withField(profile, "maxPeqBoostDb", v)))}
+      </div>
+      {/* -- WP WEB5 -- a notice row (§14) in Qt's words (ToolsController::unprotectedText) */}
       {bare.length ? (
-        <div class="limits-warning" role="status" aria-label="Outputs without a limiter">
-          <span>
-            {bare.length === 1 ? "An output above -10 dB gain has no limiter: " : "Outputs above -10 dB gain have no limiter: "}
-            {bare.map((o) => names.get(o) ?? `OUT${o + 1}`).join(", ")}
-          </span>
-          <button type="button" disabled={!!session.readOnlyReason} onClick={() => void session.change("protectAllOutputs", undefined)}>
+        <div class="limits-warning notice-row notice-row-warning" role="status" aria-label="Outputs without a limiter">
+          <Glyph name="warning" class="notice-icon" />
+          <span class="notice-text">No limiter on {bare.map((o) => rows.get(o)?.name ?? `Out ${o + 1}`).join(", ")}, above -10 dB of gain.</span>
+          <button
+            type="button"
+            title="Every limiter on at -1 dBFS, the stereo pairs linked"
+            disabled={!!session.readOnlyReason}
+            onClick={() => void session.change("protectAllOutputs", undefined)}
+          >
             Protect all outputs
           </button>
         </div>
       ) : null}
-      <div class="limits-device">
-        {field("Highest PEQ boost", "maxPeqBoostDb", profile.maxPeqBoostDb, (v) => void apply(withField(profile, "maxPeqBoostDb", v)))}
-        {field("Highest master volume", "masterVolumeMaxDb", profile.masterVolumeMaxDb, (v) => void apply(withField(profile, "masterVolumeMaxDb", v)))}
-      </div>
       <div class="limits-outputs">
         {outputs.map((o) => (
           <fieldset key={o} class="limits-output" disabled={disabled}>
-            <legend>{names.get(o) ?? `OUT${o + 1}`}</legend>
+            <legend>
+              <span class="limits-out-n">{`OUT${o + 1}`}</span> {rows.get(o)?.name ?? `Out ${o + 1}`}
+            </legend>
             {OUTPUT_FIELDS.map((f) =>
               field(f.label, f.key, forOutput(o)?.[f.key], (v) => void apply(withOutputLimit(profile, o, f.key, v))),
             )}
           </fieldset>
         ))}
       </div>
-      <div class="limits-hand-over">
+      {/* -- WP WEB5 -- Qt's "Installer's note" group */}
+      <fieldset class="limits-output limits-hand-over">
+        <legend>Installer's note</legend>
         <label class="limit-text">
-          <span>Note for whoever looks after the system</span>
-          <textarea rows={2} value={profile.note ?? ""} disabled={disabled} onChange={(e) => void apply(withField(profile, "note", (e.target as HTMLTextAreaElement).value))} />
+          <span>Note</span>
+          <textarea
+            rows={2}
+            placeholder="What this system is set up for"
+            value={profile.note ?? ""}
+            disabled={disabled}
+            onChange={(e) => void apply(withField(profile, "note", (e.target as HTMLTextAreaElement).value))}
+          />
         </label>
         <label class="limit-text">
-          <span>How to reach the installer</span>
-          <input type="text" value={profile.contact ?? ""} disabled={disabled} onChange={(e) => void apply(withField(profile, "contact", (e.target as HTMLInputElement).value))} />
+          <span>Contact</span>
+          <input
+            type="text"
+            placeholder="How to reach the installer"
+            value={profile.contact ?? ""}
+            disabled={disabled}
+            onChange={(e) => void apply(withField(profile, "contact", (e.target as HTMLInputElement).value))}
+          />
         </label>
-      </div>
+        <p class="note">Shown to the people who use this system while it is locked.</p>
+      </fieldset>
       {report ? (
         <div class={`limits-report ${report.tone}`} role={report.tone === "error" ? "alert" : "status"} aria-label="Limits report">
           <strong>{report.title}</strong>
@@ -360,9 +395,17 @@ function LimitsPanel(props: { session: Session; s: DspState; serial: string; dis
         </button>
         <input ref={file} type="file" hidden accept=".dspipreset,.json,application/json" aria-label="Limits profile to load" onChange={(e) => void load(e.target as HTMLInputElement)} />
         <button type="button" class="danger" disabled={disabled} onClick={() => void clear()}>
-          Clear Profile
+          Remove All Limits
         </button>
       </div>
+      {/* -- WP WEB5 -- Qt's footer: the core's row `limits.scope` (this console's copy only) */}
+      {hub ? null : (
+        <p class="note limits-scope">
+          {scope
+            ? `${scope.title}: ${scope.reason}`
+            : "A limit the firmware does not know can be crossed from a control surface, the UART or another console that does not have this profile."}
+        </p>
+      )}
     </section>
   );
 }

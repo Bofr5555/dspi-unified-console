@@ -22,7 +22,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import type { DspState, OutputLabel } from "../../core/protocol";
 import { safeLocalStorage } from "../../fleet/local";
 import { useSessionState } from "../../ui/components";
-import { ChipGroup, EmptyState, Glyph } from "../../ui/design";
+import { ChipGroup, EmptyState, Glyph, rangeFill } from "../../ui/design";
 import { Inspect, InspectorSection } from "../../ui/inspector/Inspector";
 import { ownRow, type MenuItem } from "../../ui/menus/actions";
 import { isMenuKey, useContextMenu } from "../../ui/menus/ActionMenu";
@@ -32,7 +32,7 @@ import type { Session } from "../../ui/session";
 import { PageTools } from "../../ui/shell/Parts";
 import { passes, passName } from "../eq/align";
 import { ValueField } from "../eq/Field";
-import { channelColour, freqText } from "../eq/model";
+import { channelColour, freqText, inputColour } from "../eq/model";
 import { RenameDialog } from "../main/Dialog";
 import { useLiveWrite } from "../main/live";
 import { Menu } from "../main/Menu";
@@ -46,7 +46,7 @@ import { InputTrimField } from "../inputs/InputsScreen";
 // -- WP WBCLIP -- the column menu's Copy and Paste Parameters (M45)
 import { clipEntries, useClipboard } from "../clipboard/model";
 import type { ChainTarget } from "../system/chain";
-import { CLEAR_ASKS_ABOVE, DENSE_FROM, feedsOf, linkPairsOf, mirrorOf, moveCell, setLinkPairs, sourcesOf, stepGain, summaryText, tailText, tileGain, type CellAt } from "./model";
+import { CLEAR_ASKS_ABOVE, DENSE_FROM, feedsOf, linkPairsOf, mirrorOf, moveCell, setLinkPairs, sourcesOf, stepGain, stepSign, summaryText, tailText, tileGain, type CellAt } from "./model";
 
 /** The output gain's range until the registry says (`describe out.gain`). */
 const OUT_GAIN: [number, number] = [-60, 12];
@@ -313,18 +313,19 @@ const MatrixView = memo(
         setSel({ kind: "none" });
         return;
       }
-      // + and − step with Ctrl for 3 dB (MX1: "+" needs Shift on most layouts)
-      if (e.key === "+" || e.key === "=" || e.key === "-" || e.key === "_") {
-        if (e.altKey || e.metaKey) return;
+      // -- WP WEB2 -- (REVD G1) + and − step only with a modifier: Alt 0.5 dB, Ctrl 3 dB (by the key's
+      // place, so Alt's dead keys and Shift for "+" do not matter); without one they start a typed gain
+      const sign = stepSign(e);
+      if (sign && (e.ctrlKey || e.altKey) && !e.metaKey) {
         e.preventDefault();
-        step(i, o, e.key === "+" || e.key === "=" ? 1 : -1, e.ctrlKey);
+        step(i, o, sign, e.ctrlKey);
         return;
       }
       if (e.ctrlKey || e.metaKey || e.altKey || ro) return;
       const c = at(i, o);
       if (e.key === " ") void route(i, o, { enabled: !c.on });
       else if (e.key === "Enter") startEdit(i, o, null);
-      else if (/^[0-9.,]$/.test(e.key)) startEdit(i, o, e.key);
+      else if (/^[0-9.,+-]$/.test(e.key)) startEdit(i, o, e.key);
       else if (e.key === "i" || e.key === "I") {
         if (c.on) void route(i, o, { invert: !c.inv });
       } else if (e.key === "m" || e.key === "M") mute(o);
@@ -396,7 +397,7 @@ const MatrixView = memo(
                       scope="col"
                       key={o.index}
                       class={cls("mx-colhead", !o.enabled && "off", picked && "picked", lit?.o === o.index && "lit", pairEnd(o.index, nOut) && "mx-colend")}
-                      style={{ "--ch": channelColour(o.wire) }}
+                      style={{ "--ch": channelColour(s, o.wire) }}
                     >
                       <button type="button" class="mx-pick mx-colname" aria-pressed={picked} title={`${o.name} · ${o.slot}`} onClick={() => setSel({ kind: "col", o: o.index })}>
                         {o.name}
@@ -454,7 +455,7 @@ const MatrixView = memo(
                   <tr key={inp.wire} class={cls(r % 2 === 1 && "mx-stripe", r % 2 === 1 && r < nIn - 1 && "mx-pairend")}>
                     <th scope="row" class={cls("mx-rowhead", picked && "picked", lit?.i === r && "lit")}>
                       <div class="mx-rh">
-                        <span class="mx-dot-in" style={{ background: channelColour(inp.wire) }} aria-hidden="true" />
+                        <span class="mx-dot-in" style={{ background: channelColour(s, inp.wire) }} aria-hidden="true" />
                         <button type="button" class="mx-pick mx-rowname" aria-pressed={picked} title={`${inp.descriptor} ${inp.name}`} onClick={() => setSel({ kind: "row", i: inp.index })}>
                           {inp.name}
                         </button>
@@ -537,7 +538,7 @@ const MatrixView = memo(
                       <CompactField
                         label={`${o.name} delay`}
                         value={s.outputDelayMs[o.index] ?? 0}
-                        text={(v) => delayText(v).replace(/ ms$/, "")}
+                        text={footDelay}
                         unit="ms"
                         range={[0, props.maxDelay]}
                         step={1}
@@ -559,7 +560,7 @@ const MatrixView = memo(
                     return (
                       <td key={o.index} class={cls("mx-src", !o.enabled && "off", pairEnd(o.index, nOut) && "mx-colend")} title={names.length ? `Fed by ${names.join(", ")}` : "Fed by nothing"}>
                         {from.slice(0, 3).map((i) => (
-                          <i key={i} style={{ background: channelColour(inputs[i]!.wire) }} aria-hidden="true" />
+                          <i key={i} style={{ background: channelColour(s, inputs[i]!.wire) }} aria-hidden="true" />
                         ))}
                         <span>{from.length === 1 ? names[0] : from.length > 1 ? String(from.length) : "–"}</span>
                       </td>
@@ -571,7 +572,8 @@ const MatrixView = memo(
             )}
           </table>
         </div>
-        <Inspect>
+        {/* -- WP WEB2 -- (REVD W11) the grid whole: the inspector under it when both do not fit */}
+        <Inspect pageMin={gridWidth(nOut, dense)}>
           <MatrixInspector
             session={session}
             s={s}
@@ -618,6 +620,16 @@ const MatrixView = memo(
     matrixKey(a.s) === matrixKey(b.s) &&
     JSON.stringify(a.labels) === JSON.stringify(b.labels),
 );
+
+/** -- WP WEB2 -- (REVD W11) The grid's width at `nOut` outputs: row heads, the pair column, the cells, the tails (CSS's sizes). */
+function gridWidth(nOut: number, dense: boolean): number {
+  return dense ? 120 + 12 + nOut * 44 + 80 : 168 + 12 + nOut * 56 + 90;
+}
+
+/** -- WP WEB2 -- (REVD W11) A delay in the footer: none is "0" as the mockup and Qt, else as the delay fields ("4.0"). */
+function footDelay(ms: number): string {
+  return Math.round(ms * 1e4) === 0 ? "0" : delayText(ms).replace(/ ms$/, "");
+}
 
 function cls(...names: (string | false | null | undefined)[]): string {
   return names.filter(Boolean).join(" ");
@@ -678,7 +690,7 @@ const Cell = memo(function Cell(props: {
   const { input, out, c } = props;
   const where = `${input.name} to ${out.name}`;
   const state = c.on ? `connected, ${compactGain(c.gain)}${c.inv ? ", phase inverted" : ""}` : "not connected";
-  const colour = channelColour(input.wire);
+  const colour = inputColour(input.index); // -- WP WEB2 --
   const tint = `color-mix(in srgb, ${colour} 22%, var(--panel))`;
   return (
     <td
@@ -820,9 +832,9 @@ function CompactField(props: {
 
 // ---------------------------------------------------------------- the inspector
 
-function Pill(props: { wire: number; text: string }) {
+function Pill(props: { colour: string; text: string }) {
   return (
-    <span class="mx-pill" style={{ background: channelColour(props.wire) }}>
+    <span class="mx-pill" style={{ background: props.colour }}>
       {props.text}
     </span>
   );
@@ -893,7 +905,7 @@ function MatrixInspector(props: {
     return (
       <div class="mx-insp" aria-label={`${inp.name} to ${out.name}`}>
         <div class="insp-head mx-insp-head">
-          <Pill wire={inp.wire} text={inp.descriptor} /> <span class="insp-name">{inp.name}</span> <span aria-hidden="true">→</span> <Pill wire={out.wire} text={out.descriptor} />{" "}
+          <Pill colour={inputColour(inp.index)} text={inp.descriptor} /> <span class="insp-name">{inp.name}</span> <span aria-hidden="true">→</span> <Pill colour={channelColour(s, out.wire)} text={out.descriptor} />{" "}
           <span class="insp-name">{out.name}</span>
         </div>
         <InspectorSection title="Crosspoint" summary={on ? `${compactGain(gain)}${inv ? " · inverted" : ""}` : "off"}>
@@ -908,6 +920,7 @@ function MatrixInspector(props: {
                   max={CROSSPOINT_RANGE[1]}
                   step={0.5}
                   value={gain}
+                  style={rangeFill(gain, CROSSPOINT_RANGE[0], CROSSPOINT_RANGE[1])}
                   disabled={ro}
                   onChange={(e) => void props.route(i, o, { gain: Number((e.target as HTMLInputElement).value) })}
                 />
@@ -947,7 +960,7 @@ function MatrixInspector(props: {
     return (
       <div class="mx-insp" aria-label={out.name}>
         <div class="insp-head mx-insp-head">
-          <Pill wire={out.wire} text={out.descriptor} /> <span class="insp-name">{out.name}</span>
+          <Pill colour={channelColour(s, out.wire)} text={out.descriptor} /> <span class="insp-name">{out.name}</span>
         </div>
         <InspectorSection title="Output" summary={outLine(out)}>
           <Switch label="Enabled" on={out.enabled} disabled={ro} toggle={() => props.enable(o)} />
@@ -990,7 +1003,7 @@ function MatrixInspector(props: {
     return (
       <div class="mx-insp" aria-label={inp.name}>
         <div class="insp-head mx-insp-head">
-          <Pill wire={inp.wire} text={inp.descriptor} /> <span class="insp-name">{inp.name}</span>
+          <Pill colour={inputColour(inp.index)} text={inp.descriptor} /> <span class="insp-name">{inp.name}</span>
         </div>
         <InspectorSection title="Input">
           <Row label="Trim (preamp)">

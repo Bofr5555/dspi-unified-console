@@ -127,7 +127,7 @@ export function HubPinPanel(props: { session: Session; hub: HubAdmin; covers: nu
   };
   return (
     <section class="card hub-pin" aria-label="Hub installer PIN">
-      <h3>Installer PIN on the hub</h3>
+      <h3>The hub's installer PIN</h3>
       <p class="lock-state">{hubLockLine(hub.state, props.covers)}</p>
       <div class="power-rows">
         <label class="limit-field">
@@ -177,8 +177,9 @@ export function HubModesPanel(props: { session: Session; hub: HubAdmin }) {
   };
   return (
     <section class="card hub-modes" aria-label="Pinned modes">
-      <h3>Pinned modes on the hub</h3>
-      <p class="note">A pinned mode is the one every console of that role shows for this DSPi.</p>
+      {/* -- WP WEB5 -- Qt's title and words (InstallerPage.qml) */}
+      <h3>Pinned modes</h3>
+      <p class="note">A pinned mode is the one every console with that role on the hub shows; none leaves the choice to each console.</p>
       <div class="power-rows">
         {roles.map((role) => (
           <label class="limit-field" key={role}>

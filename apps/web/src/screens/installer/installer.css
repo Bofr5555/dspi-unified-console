@@ -1,0 +1,64 @@
+/* -- WP WEB5 -- The Installer page in the Modern design (Qt's Settings › Installer; docs/DESIGN-LANGUAGE.md
+   §8, §10, §14): its groups cards with a caps label inside, at the left and 760 px at most; every value a
+   36 px form row (the words at the left, a 88 px mono field and its unit after it at the right); each
+   output's limits a group under its name, not a box in a box; which copy is edited, and the outputs
+   without a limiter, notice rows; captions small and muted. */
+
+.dspi-web .installer-screen { display: flex; flex-direction: column; gap: 12px; }
+.dspi-web .installer-screen > .card { padding: 12px; }
+.dspi-web .installer-screen .note { font-size: 11px; color: var(--muted); }
+.dspi-web .installer-screen .card > p { margin: 0 0 8px; }
+.dspi-web .installer-screen .lock-state { margin: 0 0 4px; }
+.dspi-web .installer-screen .hub-role { margin: 0; }
+
+/* Which copy is edited, and why it is read-only: notice rows */
+.dspi-web .installer-screen .installer-copy {
+  display: block; padding: 8px 12px; border: 0; border-left: 3px solid var(--edge, var(--accent)); border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--edge, var(--accent)) 12%, var(--panel)); color: var(--text);
+}
+.dspi-web .installer-screen .installer-copy.read-only, .dspi-web .installer-screen .installer-copy.notice-warning { --edge: var(--warn); }
+.dspi-web .installer-screen .installer-copy.notice-error { --edge: var(--bad); }
+.dspi-web .installer-screen .installer-copy strong { font-weight: 600; }
+.dspi-web .installer-screen .installer-copy .notice-action { margin-top: 2px; font-size: 11px; color: var(--muted); }
+
+/* Form rows */
+.dspi-web .installer-screen .limits-device, .dspi-web .installer-screen .power-rows { display: flex; flex-direction: column; gap: 0; margin: 0; }
+.dspi-web .installer-screen .limit-field { min-height: 36px; gap: 1rem; font-size: inherit; }
+.dspi-web .installer-screen .limit-field > span:first-child { flex: 1 1 auto; }
+.dspi-web .installer-screen .limit-field select { flex: 0 1 15rem; width: 15rem; }
+.dspi-web .installer-screen .limit-field input[type="password"] { flex: 0 1 15rem; width: 15rem; }
+.dspi-web .installer-screen .limit-field input[type="number"] { flex: none; width: 88px; text-align: right; font-family: var(--mono); font-size: 12px; }
+.dspi-web .installer-screen .limit-input { display: inline-flex; align-items: center; gap: 6px; flex: none; }
+.dspi-web .installer-screen .limit-input input { flex: none; width: 88px; min-height: 24px; text-align: right; font-family: var(--mono); font-size: 12px; }
+.dspi-web .installer-screen .limit-unit { width: 2.4rem; font-size: 11px; color: var(--muted); }
+.dspi-web .installer-screen .limit-check { min-height: 36px; align-items: center; font-size: inherit; }
+
+/* Each output's limits (and the note, the DAC mute): a group under its name, no box */
+.dspi-web .installer-screen .limits-outputs { display: flex; flex-direction: column; gap: 0; }
+.dspi-web .installer-screen .limits-output, .dspi-web .installer-screen .power-dac {
+  display: block; margin: 16px 0 0; padding: 0; border: 0; border-radius: 0; background: none;
+}
+.dspi-web .installer-screen .limits-output > legend, .dspi-web .installer-screen .power-dac > legend { padding: 0 0 2px; font-weight: 600; }
+.dspi-web .installer-screen .limits-out-n { margin-right: 2px; font-family: var(--mono); font-size: 11px; font-weight: 400; color: var(--muted); }
+.dspi-web .installer-screen .limit-text { margin-top: 6px; font-size: inherit; }
+.dspi-web .installer-screen .limits-hand-over .note { margin: 6px 0 0; }
+.dspi-web .installer-screen .limits-warning { margin: 8px 0 4px; }
+.dspi-web .installer-screen .limits-intro { margin: 0 0 4px; }
+.dspi-web .installer-screen .limits-scope { margin: 12px 0 0; }
+
+/* What the lock covers: check boxes in a flow under a small label */
+.dspi-web .installer-screen .lock-covers { margin: 8px 0 0; padding: 0; border: 0; background: none; gap: 2px 16px; }
+.dspi-web .installer-screen .lock-covers > legend { padding: 0 0 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.dspi-web .installer-screen .lock-covers label { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; }
+
+.dspi-web .installer-screen .installer-buttons { gap: 6px 8px; margin-top: 12px; }
+.dspi-web .installer-screen .limits-report { margin-top: 12px; }
+
+@media (max-width: 600px) {
+  .dspi-web .installer-screen .limit-field select, .dspi-web .installer-screen .limit-field input[type="password"] { flex: 0 1 11rem; width: 11rem; }
+  .dspi-web .installer-screen .limit-field { min-height: 44px; }
+}
+
+/* Fields: the placeholder ("none") muted, the note in the page's face */
+.dspi-web .installer-screen input::placeholder, .dspi-web .installer-screen textarea::placeholder { color: var(--muted); opacity: 0.8; }
+.dspi-web .installer-screen textarea { font: inherit; }

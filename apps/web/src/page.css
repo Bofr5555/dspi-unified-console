@@ -2,6 +2,8 @@
    dspi-web.css so an embedding page keeps its own. A file, not an inline style,
    so the page runs under a policy of style-src 'self' (WP WB7). */
 html, body { margin: 0; height: 100%; }
+/* -- WP WEB2 -- the page's own canvas and scrollbars in the system's scheme too */
+html { color-scheme: light dark; }
 #console > .dspi-web { min-height: 100vh; }
 /* -- WP WEBM1 -- the page is the console's alone: the rail is as high as the window (Devices and
    Settings at its foot), and what is scrolled to is not left under the bars that stay in sight */

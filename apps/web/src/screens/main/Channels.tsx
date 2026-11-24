@@ -12,6 +12,7 @@ import { dragProps, useLiveWrite } from "./live";
 import { type ChannelRow, sameItems } from "./model";
 // -- WP WB6G -- an input's trim through its pair's link
 import { writeTrim } from "../inputs/model";
+import { rangeFill } from "../../ui/design"; // -- WP WEB2 --
 
 export const ChannelList = memo(
   function ChannelList(props: {
@@ -124,6 +125,7 @@ const Row = memo(
         max={info?.max ?? 0}
         step={0.1}
         value={db}
+        style={rangeFill(db, info?.min ?? -60, info?.max ?? 0)}
         disabled={disabled || !info}
         {...dragProps(live)}
         onInput={(e) => live.move(value(e))}

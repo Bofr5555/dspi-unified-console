@@ -9,6 +9,7 @@ import { useState } from "preact/hooks";
 import { safeLocalStorage } from "../../fleet/local";
 import type { Session } from "../../ui/session";
 import { dragProps, useLiveWrite } from "./live";
+import { rangeFill } from "../../ui/design"; // -- WP WEB2 --
 import {
   MASTER_STEPS,
   USER_STEPS,
@@ -88,6 +89,7 @@ export const VolumeCard = memo(function VolumeCard(props: {
         max={master ? MASTER_STEPS : USER_STEPS}
         step={1}
         value={master ? masterToPos(db) : userToPos(db)}
+        style={rangeFill(master ? masterToPos(db) : userToPos(db), 0, master ? MASTER_STEPS : USER_STEPS)}
         disabled={disabled}
         {...dragProps(live)}
         onInput={(e) => live.move(toDb(Number((e.target as HTMLInputElement).value)))}

@@ -128,9 +128,10 @@ function Following(props: { a: Analyser; names: TapNames; readOnly: boolean }) {
  * The bar strip. On the main screen (`want` absent) it shows the strip's own choice of tap and
  * channels, with the chooser; on a channel page, `want` (that channel).
  */
-export function SpectrumStrip(props: { session: Session; names: TapNames; want?: ViewWant; title?: string }) {
+export function SpectrumStrip(props: { session: Session; names: TapNames; want?: ViewWant; title?: string; always?: boolean }) {
   const a = useAnalyser(props.session);
-  const on = a.choice.bars;
+  // -- WP WEB2 -- (REVD W4) `always`: the bars shown, no Show/Hide (the Analyser page is the bars)
+  const on = props.always === true || a.choice.bars;
   const own: ViewWant = props.want ?? { tap: a.choice.tap, mask: a.choice.mask };
   useAnalyserView(a, on && own.mask ? own : null);
   const ro = props.session.readOnlyReason !== "";
@@ -144,12 +145,14 @@ export function SpectrumStrip(props: { session: Session; names: TapNames; want?:
   const count = props.want ? 1 : shownTap === TAP_OUTPUT ? (v?.caps.outputChannels ?? props.names.outputs.length) : (v?.caps.inputChannels ?? props.names.inputs.length);
   return (
     <section class="card rta-strip" aria-label="Spectrum">
-      <div class="card-head">
-        <h3>{props.title ?? "Spectrum"}</h3>
-        <button type="button" class="toggle" aria-pressed={on} onClick={() => a.setChoice({ bars: !on })}>
-          {on ? "Hide Bars" : "Show Bars"}
-        </button>
-      </div>
+      {props.always ? null : (
+        <div class="card-head">
+          <h3>{props.title ?? "Spectrum"}</h3>
+          <button type="button" class="toggle" aria-pressed={on} onClick={() => a.setChoice({ bars: !on })}>
+            {on ? "Hide Bars" : "Show Bars"}
+          </button>
+        </div>
+      )}
       {on && !props.want ? (
         <div class="rta-chooser">
           <div class="seg" role="group" aria-label="Analyse">

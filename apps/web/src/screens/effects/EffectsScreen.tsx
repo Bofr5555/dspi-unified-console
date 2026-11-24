@@ -54,7 +54,7 @@ import {
   type Features,
   type ParamDef,
 } from "./model";
-import { EmptyState } from "../../ui/design"; // -- WP WEB --
+import { EmptyState, Switch } from "../../ui/design"; // -- WP WEB --, WEB2
 
 export type EffectsScreenProps = ScreenProps & {
   /** Open at this effect. */
@@ -168,17 +168,8 @@ const EffectPanel = memo(function EffectPanel(props: {
     <section class="card fx-panel" id={effectPanelId(def.id)} role="tabpanel" aria-label={def.label}>
       <div class="card-head fx-head">
         <h3>{onInfo?.label ?? def.label}</h3>
-        <button
-          type="button"
-          role="switch"
-          class="toggle fx-switch"
-          aria-checked={on}
-          aria-label={def.label}
-          disabled={ro || !onInfo}
-          onClick={() => onInfo && void session.write(def.on.path, paramValue(onInfo, !on))}
-        >
-          {on ? "On" : "Off"}
-        </button>
+        {/* -- WP WEB2 -- (REVD W3) the switch (Qt's AppSwitch), not an accent-filled "On" button */}
+        <Switch class="fx-switch" label={def.label} on={on} disabled={ro || !onInfo} toggle={() => onInfo && void session.write(def.on.path, paramValue(onInfo, !on))} />
       </div>
       {onInfo?.plain ? <p class="fx-plain">{onInfo.plain}</p> : null}
       {def.split ? (
@@ -250,14 +241,24 @@ function ParamRow(props: {
   switch (info.kind) {
     case "bool": {
       const on = asBool(value);
+      // -- WP WEB2 -- (REVD W3) Solo is a toggle chip (Qt's ToggleChip); the other on/off parameters switches
+      if (p.path === "sub.solo")
+        return (
+          <div class="fx-row fx-bool" title={info.plain}>
+            <span class="level-caption" aria-hidden="true">
+              {info.label}
+            </span>
+            <button type="button" class="tool-chip" aria-pressed={on} aria-label={`${def.label} ${info.label}`} disabled={disabled} onClick={() => void write(!on)}>
+              {info.label}
+            </button>
+          </div>
+        );
       return (
         <div class="fx-row fx-bool" title={info.plain}>
           <span class="level-caption" aria-hidden="true">
             {info.label}
           </span>
-          <button type="button" role="switch" class="toggle" aria-checked={on} aria-label={`${def.label} ${info.label}`} disabled={disabled} onClick={() => void write(!on)}>
-            {on ? "On" : "Off"}
-          </button>
+          <Switch label={`${def.label} ${info.label}`} on={on} disabled={disabled} toggle={() => void write(!on)} />
         </div>
       );
     }

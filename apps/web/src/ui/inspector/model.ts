@@ -12,10 +12,15 @@ const KEY = "dspi-web.inspector";
 /** Where the inspector shows: beside the page, under it, or hidden by the viewer. */
 export type Placement = "beside" | "under" | "hidden";
 
-export function placement(rowWidth: number, collapsed: boolean): Placement {
+export function placement(rowWidth: number, collapsed: boolean, pageMin = 0): Placement {
   if (collapsed) return "hidden";
-  return rowWidth >= BESIDE_MIN_PX ? "beside" : "under";
+  // -- WP WEB2 -- (REVD W11) a page that needs `pageMin` px (the matrix's grid) keeps it whole: the
+  // inspector goes under the page when the row cannot hold both (the mockup's narrow layout)
+  return rowWidth >= Math.max(BESIDE_MIN_PX, pageMin + INSPECTOR_PX) ? "beside" : "under";
 }
+
+/** -- WP WEB2 -- The inspector's width beside the page with its gap (§3: 320 px). */
+export const INSPECTOR_PX = 340;
 
 /**
  * Whether the selected band's fields go to the inspector, or stay in the band bar under the

@@ -1,0 +1,153 @@
+/* -- WP WEB5 -- The Hub page in the Modern design (Qt's Devices › Hubs; docs/DESIGN-LANGUAGE.md §1, §8, §9,
+   §13, §14): each part a section (its caps label, then its content; no card around it), 24 px apart; the
+   tables as §9 has them (caps header with the one rule under it, 28 px rows on stripes, no row rules,
+   numbers and serials in the mono face); states as a 6 px dot before the word, never coloured words; the
+   role and the alarm count as status chips; a row's actions quiet buttons; the alarms a striped list with
+   a severity dot; the lists and forms (alarms, groups, the rollout, the hub's name) at most 760 px wide;
+   the alarm banner a notice row; the page dimmed under a notice while the hub does not answer. */
+
+.dspi-web .hub-screen { display: flex; flex-direction: column; gap: 24px; }
+.dspi-web .hub-screen > .card { padding: 0; border: 0; border-radius: 0; background: none; }
+.dspi-web .hub-screen > .card > .card-head { flex-wrap: wrap; justify-content: flex-start; gap: 6px 12px; min-height: 28px; margin-bottom: 4px; }
+.dspi-web .hub-screen > .card > .card-head > h2 { margin-right: auto; }
+.dspi-web .hub-screen > .card > h2 { margin: 0 0 8px; }
+.dspi-web .hub-screen > .card > p { margin: 4px 0; }
+.dspi-web .hub-screen > .hub-alarms, .dspi-web .hub-screen > .hub-groups, .dspi-web .hub-screen > .hub-rollout,
+.dspi-web .hub-screen > .hub-name-card { max-width: var(--content-max); }
+.dspi-web .hub-screen .note { font-size: 11px; color: var(--muted); }
+.dspi-web .hub-screen.away > section { opacity: 0.6; }
+
+/* A part inside a section: a title in the text's tone, no rule above it */
+.dspi-web .hub-screen .card h3 { margin: 16px 0 4px; font-size: inherit; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--text); }
+.dspi-web .hub-screen .hub-group, .dspi-web .hub-screen .hub-group-actions, .dspi-web .hub-screen .hub-bulk,
+.dspi-web .hub-screen .hub-fleet-history { margin-top: 16px; padding-top: 0; border-top: 0; }
+.dspi-web .hub-screen .hub-group h3, .dspi-web .hub-screen .hub-group-actions h3, .dspi-web .hub-screen .hub-bulk h3,
+.dspi-web .hub-screen .hub-fleet-history h3 { margin-top: 0; }
+
+/* Tables (§9) */
+.dspi-web .hub-screen :is(.hub-table, .hub-health-table, .hub-fleet-list) { border-collapse: separate; border-spacing: 0; font-size: 12px; margin-top: 4px; }
+.dspi-web .hub-screen :is(.hub-table, .hub-health-table, .hub-fleet-list) th {
+  padding: 0 8px 6px; border-bottom: 1px solid var(--separator); font-size: 11px; font-weight: 600; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--muted); text-align: left; vertical-align: bottom;
+}
+.dspi-web .hub-screen :is(.hub-table, .hub-health-table, .hub-fleet-list) td { height: 28px; padding: 4px 8px; border-top: 0; vertical-align: middle; }
+.dspi-web .hub-screen :is(.hub-table, .hub-health-table, .hub-fleet-list) tbody tr:nth-child(even) > td { background: var(--stripe); }
+.dspi-web .hub-screen :is(.hub-table, .hub-health-table, .hub-fleet-list) tbody tr > td:first-child { border-radius: 4px 0 0 4px; }
+.dspi-web .hub-screen :is(.hub-table, .hub-health-table, .hub-fleet-list) tbody tr > td:last-child { border-radius: 0 4px 4px 0; }
+.dspi-web .hub-screen .hub-sort { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+.dspi-web .hub-screen .hub-sort:hover { color: var(--text); background: none; }
+.dspi-web .hub-screen .hub-name { font-weight: 600; font-size: 13px; }
+.dspi-web .hub-screen .hub-serial { font-family: var(--mono); font-size: 11px; }
+.dspi-web .hub-screen .hub-tags, .dspi-web .hub-screen .hub-note { font-size: 11px; }
+.dspi-web .hub-screen :is(.hub-health-cpu, .hub-health-temp, .hub-health-clip, .hub-health-underruns, .hub-health-starvation,
+  .hub-health-uptime, .hub-health-hangs) { font-family: var(--mono); white-space: nowrap; }
+
+/* States: a dot before the word (§13), the word in the text's tone */
+.dspi-web .hub-screen .hub-state, .dspi-web .hub-screen .hub-image-verified { color: var(--text); white-space: nowrap; }
+.dspi-web .hub-screen .hub-state::before, .dspi-web .hub-screen .hub-image-verified::before {
+  content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 3px; vertical-align: middle; background: var(--muted);
+}
+.dspi-web .hub-screen .hub-state.ok::before, .dspi-web .hub-screen .hub-image-verified.ok::before { background: var(--ok); }
+.dspi-web .hub-screen .hub-state.bad::before { background: var(--bad); }
+.dspi-web .hub-screen .hub-image-verified.warn::before { background: var(--warn); }
+.dspi-web .hub-screen tr.offline .hub-state, .dspi-web .hub-screen .hub-state.offline { color: var(--muted); white-space: normal; }
+/* A value at or above an alarm rule: the text's tone with the rule's dot */
+.dspi-web .hub-screen .hub-health-table td.tone-bad { color: var(--text); font-weight: 600; }
+.dspi-web .hub-screen .hub-health-table td.tone-bad::before {
+  content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 4px; border-radius: 3px; vertical-align: middle; background: var(--bad);
+}
+
+/* The role and the count: status chips */
+.dspi-web .hub-screen .hub-role-tag, .dspi-web .hub-screen .hub-count {
+  display: inline-flex; align-items: center; min-height: 20px; padding: 0 8px; border-radius: 10px; background: var(--control); color: var(--text); font-size: 11px;
+}
+.dspi-web .hub-screen .hub-count.bad, .dspi-web .hub-screen .hub-count.warn { color: var(--text); }
+.dspi-web .hub-screen .hub-count.bad::before, .dspi-web .hub-screen .hub-count.warn::before {
+  content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 3px; background: var(--warn);
+}
+.dspi-web .hub-screen .hub-count.bad::before { background: var(--bad); }
+.dspi-web .hub-screen .hub-count.bad { background: color-mix(in srgb, var(--bad) 16%, var(--control)); }
+
+/* A row's actions: quiet buttons (no fill until hovered) */
+.dspi-web .hub-screen .hub-action-row { flex-wrap: nowrap; gap: 2px; justify-content: flex-end; }
+.dspi-web .hub-screen .hub-action-row button, .dspi-web .hub-screen .hub-row-alarm button {
+  min-height: 24px; padding: 0.1rem 0.55rem; background: transparent; font-size: 12px;
+}
+.dspi-web .hub-screen .hub-action-row button:hover:not(:disabled), .dspi-web .hub-screen .hub-row-alarm button:hover:not(:disabled) { background: var(--control-hover); }
+
+/* The alarms of a row on the health board: the severity as a dot */
+.dspi-web .hub-screen .hub-row-alarm { border-left: 0; padding-left: 0; gap: 2px 6px; }
+.dspi-web .hub-screen .hub-row-alarm > span:first-child::before {
+  content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 3px; vertical-align: middle; background: var(--warn);
+}
+.dspi-web .hub-screen .hub-row-alarm.bad > span:first-child::before { background: var(--bad); }
+.dspi-web .hub-screen .hub-row-alarm.acknowledged > span:first-child::before, .dspi-web .hub-screen .hub-row-alarm.cleared > span:first-child::before { background: var(--muted); }
+
+/* The alarm board: a striped list, a dot for the severity, the state a chip, Acknowledge at the right */
+.dspi-web .hub-screen .hub-alarm-list { gap: 0; margin-top: 4px; }
+.dspi-web .hub-screen .hub-alarm {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 12px;
+  padding: 6px 8px; border: 0; border-radius: 4px; background: none;
+}
+.dspi-web .hub-screen .hub-alarm:nth-child(even) { background: var(--stripe); }
+.dspi-web .hub-screen .hub-alarm > * { grid-column: 1; }
+.dspi-web .hub-screen .hub-alarm > button { grid-column: 2; grid-row: 1 / span 4; align-self: center; }
+.dspi-web .hub-screen .hub-alarm p { margin: 1px 0 0; }
+.dspi-web .hub-screen .hub-alarm-head { justify-content: flex-start; align-items: center; gap: 4px 8px; }
+.dspi-web .hub-screen .hub-alarm-head strong { font-weight: 600; }
+.dspi-web .hub-screen .hub-alarm-head strong::before {
+  content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 8px; border-radius: 3px; vertical-align: middle; background: var(--warn);
+}
+.dspi-web .hub-screen .hub-alarm.bad .hub-alarm-head strong::before { background: var(--bad); }
+.dspi-web .hub-screen .hub-alarm.acknowledged .hub-alarm-head strong::before, .dspi-web .hub-screen .hub-alarm.cleared .hub-alarm-head strong::before { background: var(--muted); }
+.dspi-web .hub-screen .hub-alarm-state { padding: 0 8px; border-radius: 10px; background: var(--control); color: var(--text); font-size: 11px; line-height: 18px; }
+.dspi-web .hub-screen .hub-alarm-detail, .dspi-web .hub-screen .hub-alarm .note, .dspi-web .hub-screen .hub-alarm-time { padding-left: 14px; }
+.dspi-web .hub-screen .hub-alarm-time { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+
+/* Groups: the picker as chips (§13); the boxes that remain on the page's tone without a line */
+.dspi-web .hub-screen .hub-group-pick { gap: 4px; }
+.dspi-web .hub-screen .hub-group-pick button { min-height: 24px; padding: 0.1rem 0.7rem; border-radius: var(--radius-chip); font-size: 12px; }
+.dspi-web .hub-screen .hub-group-pick button[aria-pressed="true"] { font-weight: 600; }
+.dspi-web .hub-screen .hub-group-members li { min-height: 28px; align-items: center; padding: 0 8px; border-radius: 4px; }
+.dspi-web .hub-screen .hub-group-members li:nth-child(even) { background: var(--stripe); }
+.dspi-web .hub-screen .hub-results { border: 0; border-left: 3px solid var(--ok); }
+.dspi-web .hub-screen .hub-results.partial { border-left-color: var(--bad); }
+.dspi-web .hub-screen .hub-result.bad .hub-result-text { color: var(--text); }
+.dspi-web .hub-screen .hub-result.bad .hub-result-text::before {
+  content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 3px; vertical-align: middle; background: var(--bad);
+}
+
+/* The rollout: a failed rollout or step said by an edge or a mark, not by red words */
+.dspi-web .hub-screen .hub-rollout-record { border: 0; }
+.dspi-web .hub-screen .hub-rollout-record.failed { border-left: 3px solid var(--bad); }
+.dspi-web .hub-screen .hub-step.failed { color: var(--text); }
+.dspi-web .hub-screen .hub-step.failed .hub-step-mark { color: var(--bad); }
+.dspi-web .hub-screen .hub-rollout-upload .note, .dspi-web .hub-screen .hub-rollout-start .note { font-size: 11px; }
+.dspi-web .hub-screen .hub-rollout-start label { font-size: 11px; color: var(--muted); }
+.dspi-web .hub-screen .hub-rollout-start select { color: var(--text); font-size: 13px; }
+
+/* Narrow: the health board's and the groups' cards per row on a tone, no line */
+@container (max-width: 900px) {
+  .dspi-web .hub-screen .hub-health-table .hub-health-row { border: 0; background: color-mix(in srgb, var(--text) 4%, transparent); }
+  .dspi-web .hub-screen .hub-health-table .hub-health-row > td { background: none !important; height: auto; }
+  .dspi-web .hub-screen .hub-health-table thead th { border-bottom: 0; }
+}
+@container (max-width: 640px) {
+  .dspi-web .hub-screen .hub-offsets tr { border: 0; background: color-mix(in srgb, var(--text) 4%, transparent); }
+  .dspi-web .hub-screen .hub-offsets td, .dspi-web .hub-screen .hub-fleet-list td { background: none !important; height: auto; }
+  .dspi-web .hub-screen .hub-fleet-list tr { border-top: 0; }
+}
+
+/* The alarm banner above every page (HubAlarmBanner): a notice row (§14) */
+.dspi-web div.hub-alarm-banner {
+  --edge: var(--warn);
+  min-height: 32px; padding: 0.3rem 0.4rem 0.3rem 0.65rem; gap: 0.6rem; border: 0; border-left: 3px solid var(--edge);
+  border-radius: var(--radius-control); background: color-mix(in srgb, var(--edge) 12%, var(--panel)); color: var(--text);
+}
+.dspi-web div.hub-alarm-banner.bad { --edge: var(--bad); }
+.dspi-web div.hub-alarm-banner .notice-icon { width: 1rem; height: 1rem; color: var(--edge); }
+
+/* A name and a serial are never broken inside a word: the table scrolls sideways instead (phones) */
+.dspi-web .hub-screen :is(.hub-table, .hub-fleet-list) td { overflow-wrap: normal; }
+.dspi-web .hub-screen .hub-table td:first-child { min-width: 8rem; }
+.dspi-web .hub-screen .hub-table .hub-serial { white-space: nowrap; }
