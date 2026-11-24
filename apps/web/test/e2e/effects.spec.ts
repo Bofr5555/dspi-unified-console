@@ -69,7 +69,7 @@ async function type(field: Locator, text: string) {
 test("WB6h: the demo lists all seven effects, each with its state; a switch turns one on, read back in the list and the core", async ({ page }) => {
   const errors = errorsOf(page);
   const { screen } = await openEffects(page);
-  for (const name of ["Crossfeed", "Loudness", "Leveller", "Psychoacoustic bass", "Tube", "Subharmonic", "Upmixer"]) await expect(effect(screen, name)).toBeVisible();
+  for (const name of ["Crossfeed", "Loudness", "Leveller", "Psy Bass", "Subharmonic", "Tube", "Upmixer"] /* -- WP WEB3 -- Qt's tabs */) await expect(effect(screen, name)).toBeVisible();
   const was = (await core(page)).crossfeedEnabled;
   const panel = await show(screen, "Crossfeed");
   const sw = panel.getByRole("switch", { name: "Crossfeed", exact: true });
@@ -88,11 +88,12 @@ test("WB6h P1XF: a named voicing shows its own values; a typed frequency makes i
   const errors = errorsOf(page);
   const { session, screen } = await openEffects(page);
   const panel = await show(screen, "Crossfeed");
-  const voicing = panel.getByRole("combobox", { name: "Crossfeed Voicing" });
-  await voicing.selectOption({ label: "Chu Moy" });
+  // -- WP WEB3 -- the presets as Qt's radio list, the parameters with Qt's titles
+  const presets = panel.getByRole("radiogroup", { name: "Crossfeed Preset" });
+  await presets.getByRole("radio", { name: /^Chu Moy/ }).check();
   await expect.poll(async () => (await core(page)).crossfeedPreset).toBe(1);
-  const freq = panel.getByRole("textbox", { name: "Crossfeed Cutoff frequency" });
-  const feed = panel.getByRole("textbox", { name: "Crossfeed Feed level" });
+  const freq = panel.getByRole("textbox", { name: "Crossfeed Cutoff Frequency" });
+  const feed = panel.getByRole("textbox", { name: "Crossfeed Feed Level" });
   await expect(freq).toHaveValue("700 Hz");
   await expect(feed).toHaveValue("6.0 dB");
   await expect(panel.getByText("700 Hz / 6.0 dB")).toBeVisible();
@@ -101,7 +102,7 @@ test("WB6h P1XF: a named voicing shows its own values; a typed frequency makes i
     const s = await core(page);
     return [s.crossfeedPreset, s.crossfeedFreq, s.crossfeedFeed];
   }).toEqual([3, 900, 6]);
-  await expect(voicing).toHaveValue("3");
+  await expect(presets.getByRole("radio", { name: /^Custom/ })).toBeChecked();
   await expect(freq).toHaveValue("900 Hz");
   await expect(feed).toHaveValue("6.0 dB");
   await session.getByRole("button", { name: "Undo" }).click();
@@ -136,20 +137,21 @@ test("WB6h: a slider's drag is one undo step; keys step it", async ({ page }) =>
 test("WB6h: an output chip toggles its bit of the effect's mask; a choice and a typed value read back", async ({ page }) => {
   const errors = errorsOf(page);
   const { screen } = await openEffects(page);
-  const bass = await show(screen, "Psychoacoustic bass");
+  const bass = await show(screen, "Psy Bass"); // -- WP WEB3 --
   const mask0 = (await core(page)).psybassOutputMask;
-  const chip = bass.getByRole("group", { name: "Psychoacoustic bass Outputs" }).getByRole("button", { name: "OUT1", exact: true });
+  const chip = bass.getByRole("group", { name: "Psy Bass Outputs" }).getByRole("button", { name: "OUT1", exact: true });
   await expect(chip).toHaveAttribute("aria-pressed", String((mask0 & 1) !== 0));
   await chip.click();
   await expect.poll(async () => (await core(page)).psybassOutputMask).toBe((mask0 ^ 1) >>> 0);
   await expect(chip).toHaveAttribute("aria-pressed", String((mask0 & 1) === 0));
-  await type(bass.getByRole("textbox", { name: "Psychoacoustic bass Speaker limit" }), "120 Hz");
+  await type(bass.getByRole("textbox", { name: "Psy Bass Cutoff Frequency" }), "120 Hz");
   await expect.poll(async () => (await core(page)).psybassCutoffHz).toBe(120);
 
   const up = await show(screen, "Upmixer");
-  await up.getByRole("combobox", { name: "Upmixer Surround mode" }).selectOption({ label: "Logician" });
+  // -- WP WEB3 -- three engines: segments
+  await up.getByRole("group", { name: "Upmixer Surround", exact: true }).getByRole("button", { name: "Logician" }).click();
   await expect.poll(async () => (await core(page)).upmix[2]).toBe(2);
-  await type(up.getByRole("textbox", { name: "Upmixer Centre presence" }), "2.5");
+  await type(up.getByRole("textbox", { name: "Upmixer Presence" }), "2.5");
   await expect.poll(async () => (await core(page)).upmix[13]).toBe(2.5);
   expect(errors).toEqual([]);
 });
@@ -179,7 +181,7 @@ test("WB6h: the subharmonic synthesizer's solo is switched off on leaving it, as
   const errors = errorsOf(page);
   const { screen } = await openEffects(page);
   const sub = await show(screen, "Subharmonic");
-  const solo = sub.getByRole("switch", { name: "Subharmonic Solo" });
+  const solo = sub.getByRole("button", { name: "Subharmonic Solo" }); // -- WP WEB3 -- a toggle chip (Qt's ToggleChip)
   await solo.click();
   await expect.poll(async () => (await core(page)).subharmSolo).toBe(true);
   await show(screen, "Tube");
@@ -198,6 +200,6 @@ test("WB6h: a read-only session shows the effects with every control off", async
   await expect(panel.getByRole("switch", { name: "Loudness", exact: true })).toBeDisabled();
   await expect(panel.getByRole("slider", { name: "Loudness Intensity" })).toBeDisabled();
   const cf = await show(screen, "Crossfeed");
-  await expect(cf.getByRole("combobox", { name: "Crossfeed Voicing" })).toBeDisabled();
+  await expect(cf.getByRole("radio", { name: /^Default/ })).toBeDisabled(); // -- WP WEB3 --
   expect(errors).toEqual([]);
 });
