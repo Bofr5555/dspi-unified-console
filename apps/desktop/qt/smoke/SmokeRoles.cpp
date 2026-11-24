@@ -32,12 +32,14 @@ extern "C" {
 
 #include <QDateTime>
 #include <QDir>
+#include <QFile>   // -- WP REVDFIX --
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QSettings>
+#include <QStandardPaths>   // -- WP REVDFIX --
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <functional>
@@ -77,6 +79,25 @@ QJsonObject setLayout(SmokeDriver &d, QJsonObject layout) {
     return onWorker(d, [text](FfiCore *c) {
         return fill([c, &text](char *b, uint32_t l) { return dspi_speaker_layout_set(c, text.constData(), b, l); });
     });
+}
+
+// -- WP REVDFIX -- (REVD B3) The user's set keeps the core's statement, never
+// the caller's, so a forged check goes into the layout's file (main.cpp's
+// <AppData>/speaker-layouts, the folder snapshot_store::dir_name names), as
+// another process on the host could write it.
+bool writeLayoutFile(QJsonObject layout) {
+    const QString serial = layout.value(QLatin1String("serial")).toString();
+    bool safe = !serial.isEmpty();
+    for (const QChar c : serial)
+        safe = safe && c.unicode() < 128 && (c.isLetterOrNumber() || c == QLatin1Char('-') || c == QLatin1Char('_'));
+    const QString folder = safe ? QStringLiteral("s-") + serial : QStringLiteral("x-") + QString::fromLatin1(serial.toUtf8().toHex());
+    const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + QStringLiteral("/speaker-layouts/") + folder;
+    layout.remove(QStringLiteral("ok"));
+    layout.insert(QStringLiteral("kind"), QStringLiteral("speakerLayout"));
+    layout.insert(QStringLiteral("version"), 2);
+    QFile f(dir + QStringLiteral("/speaker_layout.json"));
+    return QDir().mkpath(dir) && f.open(QIODevice::WriteOnly | QIODevice::Truncate)
+           && f.write(QJsonDocument(layout).toJson()) > 0;
 }
 
 QVariantMap rowFor(SpeakersController *sc, int output) {
@@ -303,7 +324,12 @@ void rolesSection(SmokeDriver &d) {
                                                                  { QStringLiteral("verdict"), QStringLiteral("topHolds") },
                                                                  { QStringLiteral("topFallDb"), 0.4 }, { QStringLiteral("floorHz"), 1000 } } });
     tweeterLike.insert(QStringLiteral("stated"), st);
-    setLayout(d, tweeterLike);
+    // -- WP REVDFIX -- the user's set takes no statement (B3): in its file
+    const QJsonObject forged = setLayout(d, tweeterLike);
+    d.check(QStringLiteral("roles: the user's set keeps the core's checks, not the caller's"),
+            forged.value(QLatin1String("stated")).toObject().value(QLatin1String("checks")).toArray().at(0).toObject()
+                    .value(QLatin1String("verdict")).toString() != QLatin1String("topHolds"));
+    d.check(QStringLiteral("roles: a forged file is the test's way in"), writeLayoutFile(tweeterLike));
     sc->reload();
     d.check(QStringLiteral("roles: a top that held reads tweeter-like"), d.waitFor(3000, [&] {
         return rowFor(sc, 0).value(QStringLiteral("pillKind")).toString() == QLatin1String("statedTweeter")
