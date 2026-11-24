@@ -564,6 +564,16 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
         // -- WP WB6H -- the effect screens: the probe's feature names, the choices' words
         "features" => crate::effects::features(&core, params(req.params)?),
         "effectChoices" => Ok(crate::effects::effect_choices()),
+        // -- WP WEB6 -- the effect pages' drawings and starting points (dspi_core::effect_curves),
+        // the subharmonic's headroom cost (`fetch_subharm_headroom`, as C's)
+        "effectGraph" => crate::effects::effect_graph(params(req.params)?),
+        "effectStartingPoints" => crate::effects::starting_points(&core, params(req.params)?),
+        "tubeFamily" => Ok(crate::effects::tube_family(params(req.params)?)),
+        "subharmHeadroom" => {
+            need_open(&core)?;
+            core.link_service();
+            Ok(tidy(&core.fetch_subharm_headroom()?))
+        }
         // -- WP PAIRBAND -- a linked input pair's band, one undo step
         "inputPairFilter" => crate::band::input_pair_filter(&core, params(req.params)?),
         "inputPairBandBypass" => crate::band::input_pair_band_bypass(&core, params(req.params)?),

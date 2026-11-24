@@ -171,6 +171,8 @@ mod measure_sim;
 pub mod actor;
 // -- WP ROLE0 -- the speaker layout: output roles from the user's setup (MPLAN 2.2)
 pub mod speaker_layout;
+// -- WP WEB6 -- the effect pages' drawings (Qt's C++ curves, moved to the core)
+pub mod effect_curves;
 // -- WP FUNC2a -- the function test's config-time oracle (test-only)
 #[cfg(feature = "sim-scenario")]
 mod functest_oracle;

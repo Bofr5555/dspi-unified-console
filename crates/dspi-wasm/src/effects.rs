@@ -96,6 +96,208 @@ pub fn effect_choices() -> Value {
     })
 }
 
+// -- WP WEB6 -- the effect pages' drawings and starting points, the core's
+// (`dspi_core::effect_curves`, Qt's C++ curves moved there), and the
+// subharmonic synthesizer's headroom cost as the device reports it.
+
+/// `effectGraph`'s parameters: which drawing, and the values it is drawn at
+/// (the sliders' live values while they move).
+#[derive(Debug, Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum GraphParams {
+    Crossfeed {
+        freq: f64,
+        feed: f64,
+    },
+    #[serde(rename_all = "camelCase")]
+    Loudness {
+        ref_spl: f64,
+        intensity: f64,
+    },
+    Psybass {
+        cutoff: f64,
+        harmonics: f64,
+        original: f64,
+    },
+    Subharm {
+        low: f64,
+        high: f64,
+        top: f64,
+        boost: f64,
+        ceiling: f64,
+    },
+    Tube {
+        #[serde(flatten)]
+        shape: dspi_core::effect_curves::TubeShape,
+        #[serde(default)]
+        damping: Option<f64>,
+    },
+}
+
+/// `effectGraph`: the drawing's data (`EffectGraph`, `PsybassSketch`,
+/// `SubharmGraph`, or `TubeGraph` with `family` of `type` and the output
+/// stage's `lift` at `damping`). No device needed.
+pub fn effect_graph(p: GraphParams) -> Result<Value, CallError> {
+    use dspi_core::effect_curves as fx;
+    Ok(match p {
+        GraphParams::Crossfeed { freq, feed } => json!(fx::crossfeed_graph(freq, feed)),
+        GraphParams::Loudness { ref_spl, intensity } => {
+            json!(fx::loudness_graph(ref_spl, intensity))
+        }
+        GraphParams::Psybass {
+            cutoff,
+            harmonics,
+            original,
+        } => json!(fx::psybass_sketch(cutoff, harmonics, original)),
+        GraphParams::Subharm {
+            low,
+            high,
+            top,
+            boost,
+            ceiling,
+        } => json!(fx::subharm_graph(low, high, top, boost, ceiling)),
+        GraphParams::Tube { shape, damping } => {
+            let mut v = json!(fx::tube_graph(&shape));
+            if let (Some(d), Some(o)) = (damping, v.as_object_mut()) {
+                o.insert("lift".into(), json!(fx::transformer_lift(d)));
+            }
+            v
+        }
+    })
+}
+
+/// `effectStartingPoints`' parameters: `effect` "psybass", "subharm" or "tube".
+#[derive(Debug, Deserialize)]
+pub struct StartingParams {
+    pub effect: String,
+}
+
+/// `effectStartingPoints`: `[{name, detail, writes: [[path, value], ...]}]`;
+/// the subharmonic's set the top band only where the device has it.
+pub fn starting_points(core: &DspiCore, p: StartingParams) -> Result<Value, CallError> {
+    use dspi_core::effect_curves as fx;
+    let rows = match p.effect.as_str() {
+        "psybass" => fx::psybass_starting_points(),
+        "subharm" => fx::subharm_starting_points(core.feature_present("subharmonic_extended")),
+        "tube" => fx::tube_starting_points(),
+        other => {
+            return Err(CallError::new(
+                "invalid",
+                format!("no starting points for {other:?}"),
+            ));
+        }
+    };
+    Ok(json!(rows))
+}
+
+/// `tubeFamily {type}`: the picture's family of a tube type (0..9).
+#[derive(Debug, Deserialize)]
+pub struct FamilyParams {
+    #[serde(rename = "type")]
+    pub tube_type: u8,
+}
+
+pub fn tube_family(p: FamilyParams) -> Value {
+    json!(dspi_core::effect_curves::tube_family(p.tube_type))
+}
+
+#[cfg(test)]
+mod tests_wp_web6 {
+    use crate::calls::{call, session_new};
+    use crate::guard;
+    use serde_json::{Value, json};
+
+    fn run(h: u32, method: &str, params: Value) -> Value {
+        let out = call(
+            h,
+            json!({ "method": method, "params": params })
+                .to_string()
+                .as_bytes(),
+        );
+        serde_json::from_slice(&out).unwrap()
+    }
+
+    fn ok(h: u32, method: &str, params: Value) -> Value {
+        let r = run(h, method, params);
+        assert_eq!(r["ok"], true, "{method}: {r}");
+        r["value"].clone()
+    }
+
+    #[test]
+    fn wp_web6_effect_graphs_without_a_device() {
+        guard::reset_for_test();
+        let h = session_new().unwrap();
+        let cf = ok(
+            h,
+            "effectGraph",
+            json!({ "kind": "crossfeed", "freq": 700, "feed": 4.5 }),
+        );
+        assert_eq!(cf["curves"][0]["name"], "direct");
+        assert_eq!(cf["curves"][1]["points"].as_array().unwrap().len(), 100);
+        assert!(cf["gridDb"].as_array().unwrap().len() >= 2);
+        let ld = ok(
+            h,
+            "effectGraph",
+            json!({ "kind": "loudness", "refSpl": 83, "intensity": 100 }),
+        );
+        assert_eq!(ld["curves"][0]["points"].as_array().unwrap().len(), 30);
+        let pb = ok(
+            h,
+            "effectGraph",
+            json!({ "kind": "psybass", "cutoff": 80, "harmonics": 12, "original": -60 }),
+        );
+        assert_eq!(pb["harmonics"], 1.0);
+        let sb = ok(
+            h,
+            "effectGraph",
+            json!({ "kind": "subharm", "low": 0, "high": -6, "top": -30, "boost": 3, "ceiling": -12 }),
+        );
+        assert_eq!(sb["blocks"][2]["off"], true);
+        assert_eq!(sb["ceilingOn"], true);
+        let tb = ok(
+            h,
+            "effectGraph",
+            json!({ "kind": "tube", "drive": -12, "bias": 10, "asym": 3, "hardness": 40, "mix": 100, "trim": 0, "damping": 2 }),
+        );
+        assert_eq!(tb["curve"].as_array().unwrap().len(), 241);
+        assert_eq!(tb["clipPos"], Value::Null);
+        assert!((tb["lift"]["bell"].as_f64().unwrap() - 2.4988).abs() < 1e-3);
+        assert_eq!(
+            run(h, "effectGraph", json!({ "kind": "nope" }))["code"],
+            "invalid"
+        );
+        assert_eq!(
+            run(h, "effectGraph", json!({ "kind": "crossfeed" }))["code"],
+            "invalid"
+        );
+        assert_eq!(ok(h, "tubeFamily", json!({ "type": 16 })), 9);
+    }
+
+    #[test]
+    fn wp_web6_starting_points_and_headroom() {
+        guard::reset_for_test();
+        let h = session_new().unwrap();
+        let sub = ok(h, "effectStartingPoints", json!({ "effect": "subharm" }));
+        assert_eq!(sub[3]["name"], "Cinema LFE");
+        assert_eq!(
+            sub[3]["writes"].as_array().unwrap().len(),
+            3,
+            "no device: no top band"
+        );
+        assert_eq!(
+            run(h, "effectStartingPoints", json!({ "effect": "nope" }))["code"],
+            "invalid"
+        );
+        assert_eq!(run(h, "subharmHeadroom", Value::Null)["code"], "not_open");
+        ok(h, "open", json!({ "kind": "demo" }));
+        let sub = ok(h, "effectStartingPoints", json!({ "effect": "subharm" }));
+        assert_eq!(sub[3]["writes"][3], json!(["sub.top", -30.0]));
+        let t = ok(h, "effectStartingPoints", json!({ "effect": "tube" }));
+        assert_eq!(t[0]["writes"][0], json!(["tube.type", 1.0]));
+        assert!(ok(h, "subharmHeadroom", Value::Null).is_number());
+    }
+}
+
 #[cfg(test)]
 mod tests_wp_wb6h {
     use crate::calls::{call, session_new};
