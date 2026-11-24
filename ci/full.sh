@@ -12,6 +12,8 @@
 # A step that fails stops nothing: its lane goes on with its next step and the
 # other lanes are not touched. At the end: a table of every step (lane, exit
 # code, time, when it started) and the wall time; exits 1 if any step failed.
+# -- WP REVDFIX -- (REVD C1) A lane that dies partway (killed, out of memory)
+# fails the run too: each of its steps that never ended is listed as NOT RUN.
 #
 # The budget (the host is shared):
 #   DSPI_CI_LANES   lanes running at once (default 8: all; the longest start first)
@@ -142,9 +144,11 @@ lane() {
 }
 
 running=0
+ran=()   # -- WP REVDFIX -- the lanes started, to check each ended
 for l in "${lanes[@]}"; do
   IFS='|' read -r name key steps <<<"$l"
   [ -z "$only" ] || [[ "$only" == *",$name,"* ]] || continue
+  ran+=("$l")
   if [ "$running" -ge "$max" ]; then wait -n; running=$((running - 1)); fi
   echo "full.sh: lane $name: $steps"
   ( lane "$name" "$key" "$steps" ) &
@@ -152,6 +156,19 @@ for l in "${lanes[@]}"; do
 done
 wait
 wall=$(( $(date +%s) - started ))
+
+# -- WP REVDFIX -- (REVD C1) a lane with no LANEDONE died: each of its steps
+# with no END line did not run (NOTRUN), and the run fails
+for l in "${ran[@]}"; do
+  IFS='|' read -r name _ steps <<<"$l"
+  grep -q "^LANEDONE $name " "$sum" && continue
+  echo "LANEDIED $name" >> "$sum"
+  for s in $steps; do
+    grep -q "^END $name $s " "$sum" && continue
+    echo "NOTRUN $name $s" >> "$sum"
+    echo "full.sh: $name/$s NOT RUN (lane died)"
+  done
+done
 
 {
   echo "# Full CI: commit $commit, branch $branch"
@@ -162,12 +179,17 @@ wall=$(( $(date +%s) - started ))
     rc=${rc#rc=}; [ "$rc" = 0 ] && r=OK || r="FAILED ($rc)"
     echo "| $lane | $step | $r | ${dur#dur=} | ${start#start=} |"
   done < <(grep '^END ' "$sum")
+  while read -r _ lane step; do
+    echo "| $lane | $step | NOT RUN (lane died) | – | – |"
+  done < <(grep '^NOTRUN ' "$sum")
   echo
   grep '^LANEDONE ' "$sum" | awk '{printf "%s lane ended at %s; ", $2, $3}'
+  grep '^LANEDIED ' "$sum" | awk '{printf "%s lane DIED; ", $2}'
   echo
   echo
   echo "Wall time $wall s ($((wall / 60)) min). Lanes at once $max, DSPI_JOBS $jobs per lane. Logs: $out/logs"
 } > "$out/summary.md"
 cat "$out/summary.md"
 grep -q '^END .* rc=[^0]' "$sum" && exit 1
+grep -q '^LANEDIED ' "$sum" && exit 1
 exit 0
