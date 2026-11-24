@@ -5,7 +5,8 @@ import UConsole
 // -- WP LAY4 -- The Equaliser's buttons in the row over its pages (MODLAY 3.2):
 // the headphone profiles, the filter files, and the inspector.
 // -- WP DL8 -- Headphone Profile only while an input is selected (a profile
-// is an input's), and Import / Export under one "Files ▾" (DESREV §5).
+// is an input's), and Import / Export under one "Files ▾" (DESREV §5): an
+// ActionMenu of MenuTable's place "files" (INTC).
 Row {
     id: tools
     objectName: "EqualiserTools"
@@ -20,14 +21,6 @@ Row {
         toolTip: MenuTable.shortcutOf(actionId)
         onClicked: Shell.trigger(actionId)
     }
-    component FileRow: AppMenuItem {
-        required property string actionId
-        objectName: "EqualiserTools.files.menu." + actionId
-        text: MenuTable.row(actionId).text
-        shortcutText: MenuTable.shortcutOf(actionId)
-        enabled: Shell.allows(actionId)
-        onTriggered: Shell.trigger(actionId)
-    }
     Tool {
         actionId: "autoeq.browse"
         visible: selected.known && !selected.isOutput
@@ -39,15 +32,16 @@ Row {
         //: A button that opens a menu: Import Filters, Export Filters
         text: qsTr("Files") + " ▾"
         enabled: Shell.allows("file.importFilters") || Shell.allows("file.exportFilters")
-        onClicked: menu.popup(files, files.width - menu.width, files.height + 2)
+        onClicked: menu.dropFrom(files)
         Accessible.role: Accessible.ButtonMenu
         Accessible.name: qsTr("Files")
 
-        AppMenu {
+        // -- INTC (DL8 fold) -- MenuTable's place "files": its rows, texts,
+        // shortcuts and greying are the table's
+        ActionMenu {
             id: menu
             objectName: "EqualiserTools.files.menu"
-            FileRow { actionId: "file.importFilters" }
-            FileRow { actionId: "file.exportFilters" }
+            place: "files"
         }
     }
     // -- WP LAY5a -- a type of its own, for the other pages

@@ -19,8 +19,8 @@ QtObject {
         {
             title: qsTr("&File"),
             rows: [
-                { id: "file.importFilters", text: qsTr("Import Filters…"), shortcut: "Ctrl+I", modern: ["toolbar.eq", "appMenu.transfer"] },
-                { id: "file.exportFilters", text: qsTr("Export Filters…"), shortcut: "Ctrl+E", modern: ["toolbar.eq", "appMenu.transfer"] },
+                { id: "file.importFilters", text: qsTr("Import Filters…"), shortcut: "Ctrl+I", modern: ["files.filters", "appMenu.transfer"] },   // -- INTC -- Files ▾ (was toolbar.eq)
+                { id: "file.exportFilters", text: qsTr("Export Filters…"), shortcut: "Ctrl+E", modern: ["files.filters", "appMenu.transfer"] },   // -- INTC -- Files ▾ (was toolbar.eq)
                 { separator: true },
                 { id: "file.importConfiguration", text: qsTr("Import Device Configuration…"), modern: ["appMenu.transfer"] },
                 { id: "file.exportConfiguration", text: qsTr("Export Device Configuration…"), modern: ["appMenu.transfer"] },
@@ -171,6 +171,7 @@ QtObject {
     //   history  Undo ▾
     //   device   the device switcher and a device tab's right-click menu
     //   autoeq   Library > AutoEQ's ▾
+    //   files    the Equaliser's Files ▾ (-- INTC (DL8 fold) --)
     //   channel, band, graph, slot   the right-click menu of a channel, a band
     //            (its row or its dot), the graph and a preset slot
     readonly property var places: ({
@@ -179,6 +180,7 @@ QtObject {
         history: ["step", "recent", "all"],
         device: ["act", "tab"],
         autoeq: ["favorites", "database"],
+        files: ["filters"],   // -- INTC --
         channel: ["name", "copy", "act", "clear"],
         band: ["shape", "play", "copy", "reset"],
         graph: ["add", "select", "view"],

@@ -7,7 +7,7 @@
       "menu": "File",
       "shortcut": "Ctrl+I",
       "places": [
-        "toolbar.eq",
+        "files.filters",
         "appMenu.transfer"
       ]
     },
@@ -17,7 +17,7 @@
       "menu": "File",
       "shortcut": "Ctrl+E",
       "places": [
-        "toolbar.eq",
+        "files.filters",
         "appMenu.transfer"
       ]
     },
@@ -937,6 +937,12 @@
       ],
       [
         "autoeq.updateDatabase"
+      ]
+    ],
+    "files": [
+      [
+        "file.importFilters",
+        "file.exportFilters"
       ]
     ],
     "channel": [

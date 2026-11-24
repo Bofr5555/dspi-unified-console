@@ -136,7 +136,14 @@ grep -q '^smoke: [0-9]* checks' "$out/log.txt" || { echo "no summary line: the d
 # here: its evidence is the N in the log.
 # -- WP QD11 -- The guard logs each accepted typed answer on purpose, and the updater's
 # tests answer many times over: that is not a call failing at the poll rate.
-noisy=$(grep -E '^\[.*WARN' "$out/log.txt" | grep -vE '^\[WARN  dspi_core::firmware_guard\] firmware guard: risk accepted by typed confirmation: ' | sed -E 's/^\[[^ ]* *//' | sort | uniq -c | sort -rn | awk '$1 > 5')
+# -- INTC (DL8 fold) -- dspi-capi's limiter (fns_device.rs, every warning of
+# dspi_capi::fns_device) writes a failure at most once per 30 s, plain when
+# nothing was held back since ("... [place]") and else with ", N more since the
+# last time": how many of its lines a run has follows the run's length and
+# load (the demo device's stalled opcodes 0xE2/0xCE/0x8A gave 7 plain lines in
+# one full run and 3 in another), not how often the call fails, so they are not
+# counted here either way.
+noisy=$(grep -E '^\[.*WARN' "$out/log.txt" | grep -vE '^\[WARN  dspi_core::firmware_guard\] firmware guard: risk accepted by typed confirmation: ' | grep -vE '^\[WARN +dspi_capi::fns_device\] ' | sed -E 's/^\[[^ ]* *//' | sort | uniq -c | sort -rn | awk '$1 > 5')
 if [ -n "$noisy" ]; then
     echo "repeated core warnings:" >&2
     echo "$noisy" >&2
