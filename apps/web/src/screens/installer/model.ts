@@ -11,6 +11,7 @@
 import type { LimitFieldRangeRecord } from "../../core/protocol";
 import type { KeyValueStore } from "../../fleet/local";
 import { noticeRow } from "../../ui/texts";
+import { readNumber } from "../../ui/number";
 
 /** One output's limits (`dspi_session::limits::OutputLimits`). */
 export interface OutputLimits {
@@ -136,13 +137,12 @@ export function withField<K extends "maxPeqBoostDb" | "masterVolumeMaxDb" | "not
 }
 
 /** A number field's text as a limit: "" (or junk) is no limit; a number is kept within `range` (none: as typed). */
-export function limitValue(text: string, range: { min: number; max: number } | null): number | undefined {
+export function limitValue(text: string, range: { min: number; max: number; unit?: string } | null): number | undefined {
   const min = range?.min ?? -Infinity;
   const max = range?.max ?? Infinity;
-  const t = text.trim().replace(",", ".");
-  if (!t) return undefined;
-  const v = Number(t);
-  if (!Number.isFinite(v)) return undefined;
+  // -- WP WEB -- a decimal comma, U+2212 and the unit after it, as Qt's fields (USR1)
+  const v = readNumber(text, range?.unit ? [range.unit] : []);
+  if (v === null) return undefined;
   return Math.min(max, Math.max(min, v));
 }
 

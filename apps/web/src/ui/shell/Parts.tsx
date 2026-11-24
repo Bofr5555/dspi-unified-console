@@ -71,6 +71,22 @@ export function PageParts(props: { label: string; parts: readonly Part[]; curren
   return slot.body ? createPortal(row, slot.body) : null;
 }
 
+// -- WP MXW --
+/**
+ * A page's tools at the right of its head (DESIGN-LANGUAGE §7: secondary buttons, at most four),
+ * through the same slot as its parts; where the page draws without a frame, where it is.
+ */
+export function PageTools(props: { label: string; children: ComponentChildren }) {
+  const slot = useContext(SlotContext);
+  const row = (
+    <div class="page-tools" role="toolbar" aria-label={props.label}>
+      {props.children}
+    </div>
+  );
+  if (!slot) return row;
+  return slot.body ? createPortal(row, slot.body) : null;
+}
+
 /**
  * The part of `screen` on show for this session: `first` until one is chosen, and the one chosen
  * since (also when the screen was left and opened again). `ids` are the parts shown now; a kept

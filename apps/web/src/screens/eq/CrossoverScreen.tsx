@@ -11,6 +11,7 @@ import { outputRows } from "../main/model";
 import { useCurves, useGrid, type CurveRequest } from "./curves";
 import { channelColour, DEFAULT_LIMITS } from "./model";
 import { PassFields } from "./Passes";
+import { EmptyState } from "../../ui/design"; // -- WP WEB --
 
 /** The plot's range: 20 Hz..20 kHz, +6..-48 dB. */
 const PLOT = { minFreq: 20, maxFreq: 20000, dbTop: 6, dbBottom: -48 };
@@ -32,8 +33,8 @@ export function CrossoverScreen(props: ScreenProps) {
       alive = false;
     };
   }, [session]);
-  if (!s) return <p class="empty">This DSPi's outputs are not known yet.</p>;
-  if (!Array.isArray(s.xover) || !s.xover.length) return <p class="empty">This DSPi's firmware has no crossovers.</p>;
+  if (!s) return <EmptyState icon="chart-line" title="Reading the outputs…" text="This DSPi's outputs are not known yet." />; // -- WP WEB --
+  if (!Array.isArray(s.xover) || !s.xover.length) return <EmptyState icon="chart-line" title="No crossovers" text="This DSPi's firmware has no crossovers." />;
   return <CrossoverView session={session} s={s} freq={freq} labels={st.snapshot?.outputLabels} open={props.open} />;
 }
 

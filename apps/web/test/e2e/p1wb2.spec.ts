@@ -89,12 +89,12 @@ test("P1WB2 Installer: a limit narrowed below the device is held and reported; a
 
   const out2 = limits.getByRole("group", { name: /^OUT2/ });
   const highest = out2.getByLabel("Highest gain (dB)");
-  // -- WP P1EFIX -- the ranges are the core's one table
-  await expect(highest).toHaveAttribute("max", "20");
-  await expect(highest).toHaveAttribute("min", "-60");
-  await expect(limits.getByLabel("Highest master volume (dB)")).toHaveAttribute("min", "-128");
-  await expect(out2.getByLabel("Longest delay (ms)")).toHaveAttribute("max", "85");
-  await highest.fill("2");
+  // -- WP P1EFIX -- the ranges are the core's one table (-- WP WEB -- on the text field, which reads "−2,5 dB" as Qt's fields do)
+  await expect(highest).toHaveAttribute("data-max", "20");
+  await expect(highest).toHaveAttribute("data-min", "-60");
+  await expect(limits.getByLabel("Highest master volume (dB)")).toHaveAttribute("data-min", "-128");
+  await expect(out2.getByLabel("Longest delay (ms)")).toHaveAttribute("data-max", "85");
+  await highest.fill("2,0 dB");
   await highest.dispatchEvent("change");
   const report = limits.getByRole("status", { name: "Limits report" });
   await expect(report).toContainText("Held to the new limits");

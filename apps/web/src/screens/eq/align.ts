@@ -4,6 +4,7 @@
 
 import type { FilterParams } from "../../core/protocol";
 import { FAMILIES, FAMILY_ORDERS, decodeXover, encodeXover } from "../outputs/model";
+import { plainNumber } from "../../ui/number";
 
 /** The speed of sound the distances use, m/s (as the mockup and Measure's alignment). */
 export const SOUND_MPS = 343;
@@ -85,8 +86,9 @@ export function distanceText(m: number): string {
 
 /** Typed distance to metres: "1.2", "1.2 m", "35 cm"; null when it is not one or below 0. */
 export function parseDistance(text: string): number | null {
-  const t = text.trim().toLowerCase().replace(",", ".");
-  const m = /^([0-9]*\.?[0-9]+)\s*(cm|mm|m)?$/.exec(t);
+  // -- WP WEB -- spaces, a decimal comma and U+2212 as Qt's fields take them (USR1)
+  const t = plainNumber(text).toLowerCase();
+  const m = /^([0-9]*\.?[0-9]+)(cm|mm|m)?$/.exec(t);
   if (!m) return null;
   const v = Number(m[1]);
   if (!Number.isFinite(v)) return null;

@@ -17,6 +17,7 @@ import { alarmRow, fullTime, merged, recordRow, rowsText, shownRows, timeText, u
 // -- WP P2WB1 -- "On the hub": the hub's shared history of this DSPi, with who did it
 import { useHubView } from "../hub/HubScreen";
 import { HubHistory } from "./HubHistory";
+import { EmptyState } from "../../ui/design"; // -- WP WEB --
 
 /** How often the log is read while shown. */
 export const EVENTS_POLL_MS = 1000;
@@ -197,7 +198,8 @@ export function EventsScreen(props: ScreenProps) {
           </tbody>
         </table>
       ) : (
-        <p class="note">No events yet.</p>
+        // -- WP WEB -- DL3b's empty state
+        <EmptyState icon="list-ordered" title="No events yet" />
       )}
     </section>
   );

@@ -20,6 +20,7 @@ import type { ComponentChildren } from "preact";
 import { Frame } from "./shell/Frame";
 import { CONNECT, sectionsFor, type Page, type SectionId } from "./shell/sections";
 import type { ActionBoard } from "./menus/board"; // -- WP WEBM4 --
+import { EmptyState } from "./design"; // -- WP WEB --
 
 export function useSessionState(s: Session) {
   const [, bump] = useState(0);
@@ -344,6 +345,16 @@ export function SessionView(props: { session: Session; onClose: () => void; shel
           {st.status === "pairing" ? <PinEntry session={s} error={st.pinError} /> : null}
           {st.status === "choosing" ? <HubChooser session={s} /> : null}
           {sender ? <SenderScreen session={s} /> : null}
+          {/* -- WP WEB -- DL4's no-device state: a tab with no DSPi behind it (yet, or any more) */}
+          {st.status === "opening" ? <EmptyState icon="unplug" title="Connecting…" text="Waiting for the DSPi to answer." /> : null}
+          {st.status === "failed" || st.status === "closed" ? (
+            <EmptyState
+              icon="unplug"
+              title="No device"
+              text="Connect one over USB or open the demo."
+              action={{ label: "Choose a Device…", primary: true, run: () => props.shell.onPicking(true) }}
+            />
+          ) : null}
         </BareFrame>
       )}
     </article>

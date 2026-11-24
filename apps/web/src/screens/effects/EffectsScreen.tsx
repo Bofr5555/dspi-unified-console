@@ -54,6 +54,7 @@ import {
   type Features,
   type ParamDef,
 } from "./model";
+import { EmptyState } from "../../ui/design"; // -- WP WEB --
 
 export type EffectsScreenProps = ScreenProps & {
   /** Open at this effect. */
@@ -123,9 +124,9 @@ export function EffectsScreen(props: EffectsScreenProps) {
     if (isEffectId(asked)) setChosen(asked);
   }, [asked]);
 
-  if (!s) return <p class="empty">This DSPi's effects are not known yet.</p>;
-  if (features === null || words === null) return <p class="empty">Reading the effects…</p>;
-  if (!list.length) return <p class="empty">This DSPi has no effects this console can set.</p>;
+  // -- WP WEB -- empty states (DESIGN-LANGUAGE §16)
+  if (!s || features === null || words === null) return <EmptyState icon="sparkles" title="Reading the effects…" text={s ? undefined : "This DSPi's effects are not known yet."} />;
+  if (!list.length) return <EmptyState icon="sparkles" title="No effects" text="This DSPi has no effects this console can set." />;
   const current = list.find((e) => e.id === chosen) ?? list[0]!;
   const ro = session.readOnlyReason !== "";
   return (

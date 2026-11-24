@@ -12,6 +12,7 @@ import { clamp, delayText, levelText, limiterSupported, parseLevel } from "../ou
 import { arrivals, delayToMetres, distanceText, metresToDelay, parseDistance, SOUND_MPS } from "./align";
 import { ValueField } from "./Field";
 import { channelColour } from "./model";
+import { EmptyState } from "../../ui/design"; // -- WP WEB --
 
 const DEFAULT_GAIN: [number, number] = [-60, 20];
 const DEFAULT_DELAY: [number, number] = [0, 21];
@@ -36,7 +37,7 @@ export function DelaysScreen(props: ScreenProps) {
       alive = false;
     };
   }, [session]);
-  if (!snap) return <p class="empty">This DSPi's outputs are not known yet.</p>;
+  if (!snap) return <EmptyState icon="chart-line" title="Reading the outputs…" text="This DSPi's outputs are not known yet." />; // -- WP WEB --
   const s = snap.state;
   const ro = session.readOnlyReason !== "";
   const rows = overviewRows(s, snap.outputLabels);

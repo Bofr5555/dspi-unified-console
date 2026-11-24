@@ -277,12 +277,14 @@ function LimitsPanel(props: { session: Session; s: DspState; serial: string; dis
     return (
       <label class="limit-field" key={key}>
         <span>{r ? `${label} (${r.unit})` : label}</span>
+        {/* -- WP WEB -- text, so "−2,5 dB" is read as Qt's fields read it (limitValue) */}
         <input
-          type="number"
+          type="text"
           inputMode="decimal"
-          min={r?.min}
-          max={r?.max}
-          step={r?.step ?? "any"}
+          autoComplete="off"
+          data-min={r?.min}
+          data-max={r?.max}
+          title={r ? `${r.min} to ${r.max} ${r.unit}` : undefined}
           placeholder="none"
           value={limitText(value)}
           disabled={disabled}

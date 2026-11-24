@@ -33,6 +33,7 @@ import {
   withUnit,
   type SystemPlacement,
 } from "./model";
+import { EmptyState } from "../../../ui/design"; // -- WP WEB --
 
 const col = { display: "flex", flexDirection: "column", gap: "8px", minWidth: 0 } as const;
 const row = { display: "flex", flexWrap: "wrap", gap: "8px 16px", alignItems: "flex-end" } as const;
@@ -78,10 +79,17 @@ export function SystemTabView(props: MeasureTabProps) {
   d.micDeviceId = screen.mic.kind === "browser" ? screen.mic.deviceId : "";
   d.micDocument = screen.draft?.micDocument ?? screen.micDocument;
 
+  // -- WP WEB -- the empty state of DL2 (Qt's words), keeping the core's notice key
   if (d.unavailable)
     return (
-      <section class="card" aria-label="Several units" style={col}>
-        <Notice k={KEYS.needsHub} />
+      <section aria-label="Several units">
+        <div role="note" aria-label={noticeRow(KEYS.needsHub)?.title ?? "Notice"} data-key={KEYS.needsHub}>
+          <EmptyState
+            icon="network"
+            title={noticeRow(KEYS.needsHub)?.title ?? "Measuring several units needs the DSPi hub"}
+            text="The hub starts every unit's generator on one shared clock. Connect through the DSPi hub, or measure one unit at a time."
+          />
+        </div>
       </section>
     );
   const busy = !!d.busy || d.running;

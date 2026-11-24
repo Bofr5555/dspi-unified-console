@@ -6,12 +6,13 @@
 // smoothed as chosen, with the target levelled to each output when asked; no maths here (R1).
 // The document's own curves (decoded) are drawn only while the core's answer is not in.
 
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import { measureCall, type MeasureDocCurvesRecord } from "../../core/measure-protocol";
 import type { MeasureTabProps } from "./MeasureScreen";
 import { MeasureGraph, type Series } from "./graph";
 import { SMOOTHING, fileNameOf, resultView, smoothingLabel } from "./model";
 import { download, readTextFile } from "./setup";
+import { EmptyState } from "../../ui/design"; // -- WP WEB --
 
 export function ResultsTab(props: MeasureTabProps) {
   const { desk, outputName, session } = props;
@@ -36,6 +37,7 @@ export function ResultsTab(props: MeasureTabProps) {
       alive = false;
     };
   }, [desk.result, smoothing, withTarget, targetDocument]);
+  const fileField = useRef<HTMLInputElement>(null); // -- WP WEB --
   const open = async (input: HTMLInputElement) => {
     try {
       const f = await readTextFile(input);
@@ -53,11 +55,26 @@ export function ResultsTab(props: MeasureTabProps) {
       Open a measurement file… <input type="file" aria-label="Open a measurement file" accept=".dspipreset,.json,application/json" onChange={(e) => void open(e.currentTarget as HTMLInputElement)} />
     </label>
   );
+  // -- WP WEB -- DL2's empty state; its action opens the file field
   if (!desk.result || !view)
     return (
-      <section class="card" aria-label="Measurement results">
-        <p class="empty">No measurement yet: run one on the Measure tab, or open a measurement file.</p>
-        {opener}
+      <section aria-label="Measurement results">
+        <EmptyState
+          icon="chart-line"
+          title="No measurement yet"
+          text="Measure on the Measure tab, or open a measurement file."
+          action={{ label: "Open a Measurement…", run: () => fileField.current?.click() }}
+        >
+          <input
+            ref={fileField}
+            type="file"
+            class="visually-hidden"
+            tabIndex={-1}
+            aria-label="Open a measurement file"
+            accept=".dspipreset,.json,application/json"
+            onChange={(e) => void open(e.currentTarget as HTMLInputElement)}
+          />
+        </EmptyState>
       </section>
     );
 

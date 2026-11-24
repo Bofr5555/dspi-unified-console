@@ -135,7 +135,8 @@ test("WBCLIP M45: the matrix column menu copies and pastes an output", async ({ 
   await shapeOut1(page);
   await openPage(session, "Matrix");
   const matrix = session.getByRole("region", { name: "Matrix Mixer" });
-  const column = (n: number) => matrix.locator("th.m-out").nth(n).getByRole("button").first();
+  // -- WP MXW -- a column's menu is its OUTn pill
+  const column = (n: number) => matrix.getByRole("button", { name: `OUT${n + 1}`, exact: true });
   await column(1).click();
   await expect(item(matrix, "Paste Parameters")).toBeDisabled();
   await page.keyboard.press("Escape");
@@ -146,7 +147,7 @@ test("WBCLIP M45: the matrix column menu copies and pastes an output", async ({ 
   await expect.poll(async () => (await core(page)).outputGainDb[1]).toBe(-7);
   // Off the EQ screen no channel is chosen: the keys do nothing.
   const g = (await core(page)).outputGainDb;
-  await matrix.getByRole("heading", { name: "Routing" }).click();
+  await session.locator(".page-title").click(); // -- WP MXW -- the matrix has no heading of its own
   await page.keyboard.press("ControlOrMeta+v");
   await page.waitForTimeout(200);
   expect((await core(page)).outputGainDb).toEqual(g);
@@ -169,5 +170,5 @@ test("WBCLIP read only: a view-only session copies but never pastes, by menu or 
   expect([s1.filters, s1.outputGainDb]).toEqual([s0.filters, s0.outputGainDb]);
   await openPage(session, "Matrix");
   const matrix = session.getByRole("region", { name: "Matrix Mixer" });
-  await expect(matrix.locator("th.m-out").first().getByRole("button").first()).toBeDisabled();
+  await expect(matrix.getByRole("button", { name: "OUT1", exact: true })).toBeDisabled(); // -- WP MXW --
 });

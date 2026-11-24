@@ -6,12 +6,13 @@
 // by Admin only (the hub refuses the others too). The microphone and target libraries: import a
 // calibration or a target file, the built-in targets. The core reads and validates every document.
 
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import { measureCall, type TargetInfoRecord } from "../../core/measure-protocol";
 import type { MeasureTabProps } from "./MeasureScreen";
 import { fileNameOf, micSummary } from "./model";
 import { download, readTextFile } from "./setup";
 import { KINDS, docOutputs, docsDeskOf, tuneDeskOf, type DocRow, type DocsDesk } from "./tune-model";
+import { EmptyState } from "../../ui/design"; // -- WP WEB --
 
 const row = { display: "flex", flexWrap: "wrap", gap: "6px 12px", alignItems: "center" } as const;
 const col = { display: "flex", flexDirection: "column", gap: "10px", minWidth: 0 } as const;
@@ -44,6 +45,7 @@ export function DocsTab(props: MeasureTabProps) {
   }, [d, desk.hubMeasure, desk.result]);
   const rights = d.rights;
   const rows = d.rows;
+  const micField = useRef<HTMLInputElement>(null); // -- WP WEB --
 
   const pick = async (input: HTMLInputElement, what: "doc" | "mic" | "target") => {
     try {
@@ -84,7 +86,16 @@ export function DocsTab(props: MeasureTabProps) {
       <p class="muted" aria-label="In use">
         Microphone: {desk.micDocument ? micSummary(desk.micDocument) || "a calibration" : "none (relative dB)"} · Target: {desk.targetName || "the placement's default"}
       </p>
-      {KINDS.map((k) => {
+      {/* -- WP WEB -- DL2's empty state while there is no document of any kind */}
+      {rows.length === 0 ? (
+        <EmptyState
+          icon="folder-open"
+          title="No documents yet"
+          text="Measurements you save from Results, microphone calibrations and targets are kept here."
+          action={{ label: "Import Calibration…", run: () => micField.current?.click() }}
+        />
+      ) : null}
+      {rows.length === 0 ? null : KINDS.map((k) => {
         const list = rows.filter((r) => r.info.kind === k.id);
         return (
           <div key={k.id} style={col}>
@@ -111,7 +122,7 @@ export function DocsTab(props: MeasureTabProps) {
           </label>
           <label>
             Import a microphone calibration…{" "}
-            <input type="file" aria-label="Import a microphone calibration" accept=".txt,.cal,.frd,.csv,text/plain" onChange={(e) => void pick(e.currentTarget as HTMLInputElement, "mic")} />
+            <input ref={micField} type="file" aria-label="Import a microphone calibration" accept=".txt,.cal,.frd,.csv,text/plain" onChange={(e) => void pick(e.currentTarget as HTMLInputElement, "mic")} />
           </label>
         </div>
         <div style={row}>

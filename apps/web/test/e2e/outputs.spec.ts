@@ -405,35 +405,43 @@ test("WB6c matrix: crosspoints connect, level and invert; outputs enable, gain, 
   const s0 = await core(page);
   const inName = s0.channelNames[1]!;
   const where = `${esc(inName)} to ${OUT(2)}`;
-  const point = matrix.getByRole("button", { name: re(`Route ${where}`) });
+  // -- WP MXW -- a crosspoint is a grid cell: a click on an empty one connects it, a second
+  // click on the chosen one disconnects it; its gain is typed in its tile, I inverts it
+  const point = matrix.getByRole("gridcell", { name: re(`${where}, .*`) });
   const was = s0.matrixRouting[1]![2]!;
   await point.click();
-  await expect.poll(async () => (await core(page)).matrixRouting[1]![2]).toBe(!was);
-  if (was) await point.click();
+  if (was) {
+    await point.click();
+    await expect.poll(async () => (await core(page)).matrixRouting[1]![2]).toBe(false);
+    await point.click();
+  }
   await expect.poll(async () => (await core(page)).matrixRouting[1]![2]).toBe(true);
-  await expect(point).toHaveAttribute("aria-pressed", "true");
-  await type(matrix.getByRole("textbox", { name: re(`${where} level`) }), "+3.5");
+  await expect(point).toHaveAttribute("data-connected", "true");
+  await point.dblclick();
+  await type(matrix.getByRole("textbox", { name: re(`${where} level`) }), "+3,5");
   await expect.poll(async () => (await core(page)).matrixGain[1]![2]).toBe(3.5);
-  await expect(matrix.getByRole("textbox", { name: re(`${where} level`) })).toHaveValue("+3.5 dB");
-  await matrix.getByRole("button", { name: re(`${where} inverted`) }).click();
+  await expect(point).toContainText("+3.5");
+  await expect(point).toHaveAttribute("aria-label", /connected, \+3\.5 dB$/);
+  await point.press("i");
   await expect.poll(async () => (await core(page)).matrixInvert[1]![2]).toBe(true);
+  await expect(point).toHaveAttribute("aria-label", /phase inverted$/);
 
   // Output rows.
   const o = 1;
   const oName = OUT(o);
-  await type(matrix.getByRole("textbox", { name: re(`${oName} gain`) }), "-2.5");
+  await type(matrix.getByRole("textbox", { name: re(`${oName} gain`) }), "−2,5");
   await expect.poll(async () => (await core(page)).outputGainDb[o]).toBe(-2.5);
-  await expect(matrix.getByRole("textbox", { name: re(`${oName} gain`) })).toHaveValue("-2.5 dB");
+  await expect(matrix.getByRole("textbox", { name: re(`${oName} gain`) })).toHaveValue("-2.5");
   const delay = matrix.getByRole("textbox", { name: re(`${oName} delay`) });
-  await type(delay, "4.125");
+  await type(delay, "4.125 ms");
   await expect.poll(async () => (await core(page)).outputDelayMs[o]).toBe(4.125);
-  await expect(delay).toHaveValue("4.125 ms");
+  await expect(delay).toHaveValue("4.125");
   await delay.hover();
   await page.mouse.wheel(0, -100);
   await expect.poll(async () => (await core(page)).outputDelayMs[o]).toBe(5);
   await page.mouse.wheel(0, 100);
   await expect.poll(async () => (await core(page)).outputDelayMs[o]).toBe(4);
-  await expect(delay).toHaveValue("4.0 ms");
+  await expect(delay).toHaveValue("4.0");
   const mute = matrix.getByRole("button", { name: re(`Mute ${oName}`) });
   await mute.click();
   await expect.poll(async () => (await core(page)).outputMuted[o]).toBe(true);
@@ -456,8 +464,8 @@ test("WB6c matrix: crosspoints connect, level and invert; outputs enable, gain, 
     expect((await core(page)).outputEnabled[pdm]).toBe(false);
   }
 
-  // Rename from the column's menu.
-  await matrix.getByRole("button", { name: re(oName) }).click();
+  // Rename from the column's menu (-- WP MXW -- its OUTn pill).
+  await matrix.getByRole("button", { name: `OUT${o + 1}`, exact: true }).click();
   await matrix.getByRole("menuitem", { name: "Rename…" }).click();
   const dlg = page.getByRole("dialog", { name: re(`Rename ${oName}`) });
   await dlg.getByRole("textbox").fill("Sub left");
@@ -515,10 +523,20 @@ test("WB6c read only: a view-only session shows the output page and the matrix w
   await expect(session.getByRole("combobox", { name: "Crossover 1 family" })).toBeDisabled();
   await openPage(session, "Matrix");
   const matrix = session.getByRole("region", { name: "Matrix Mixer" });
-  const buttons = matrix.getByRole("button");
+  // -- WP MXW -- every control but the names that choose a row or column for the inspector
+  const buttons = matrix.locator("button:not(.mx-pick)");
   const n = await buttons.count();
   expect(n).toBeGreaterThan(0);
   for (let i = 0; i < n; i++) await expect(buttons.nth(i)).toBeDisabled();
+  for (const tool of ["Direct 1:1", "Clear"]) await expect(session.getByRole("toolbar", { name: "Routing tools" }).getByRole("button", { name: tool })).toBeDisabled();
+  // Nothing in the grid changes: a click on an empty cell only chooses it, keys do nothing
+  const s0 = await core(page);
+  const empty = matrix.locator('[role="gridcell"][data-connected="false"]').first();
+  await empty.click();
+  await empty.press("Space");
+  await empty.press("Enter");
+  await expect(matrix.getByRole("textbox", { name: / level$/ })).toHaveCount(0);
+  expect((await core(page)).matrixRouting).toEqual(s0.matrixRouting);
 });
 
 test.describe("375 px, in every browser", () => {
@@ -551,16 +569,21 @@ test.describe("375 px, in every browser", () => {
     await openPage(session, "Matrix");
     const scroll = session.getByRole("region", { name: "Matrix", exact: true });
     await expect(scroll).toBeVisible();
-    expect(await overflow(page, ".matrix-scroll")).toEqual([]);
+    expect(await overflow(page, ".mx-scroll")).toEqual([]);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
     expect(await scroll.evaluate((e) => e.scrollWidth > e.clientWidth)).toBe(true);
     const ms = (await session.locator(".matrix-screen").boundingBox())!.height;
     const inName = s0.channelNames[0]!;
-    const point = scroll.getByRole("button", { name: re(`Route ${esc(inName)} to ${OUT(1)}`) });
+    // -- WP MXW -- a tap on an empty cell connects it; on a connected one it chooses it, and a second tap disconnects it
+    const point = scroll.getByRole("gridcell", { name: re(`${esc(inName)} to ${OUT(1)}, .*`) });
     const was = (await core(page)).matrixRouting[0]![1]!;
     await point.tap();
+    if (was) {
+      await page.waitForTimeout(500);
+      await point.tap();
+    }
     await expect.poll(async () => (await core(page)).matrixRouting[0]![1]).toBe(!was);
-    // A cell's level and polarity appear in room it keeps: the matrix does not grow.
+    // A cell's level and polarity are inside its tile: the matrix does not grow.
     // -- WP P5WMS -- within a thousandth of a pixel: Firefox rounds a box at a fractional top (the
     // tab row's wrap moved with the Measure tab) differently from one layout to the next
     expect((await session.locator(".matrix-screen").boundingBox())!.height).toBeCloseTo(ms, 3);

@@ -9,6 +9,7 @@
 // No I/O here, so the unit tests reach it.
 
 import type { DspState, ParamInfo, ParamValue } from "../../core/protocol";
+import { readNumber } from "../../ui/number";
 
 /** An effect's stable id; the System view's blocks use the same ones (WB6d). */
 export type EffectId = "crossfeed" | "loudness" | "leveller" | "psybass" | "tube" | "subharm" | "upmix";
@@ -348,14 +349,9 @@ export function valueText(v: number, info: Pick<ParamInfo, "unit">, step: number
 
 /** A typed value: a number, its unit allowed ("650", "650 Hz", "-3dB", "+2"). Null when it is not one. */
 export function parseValue(text: string, info: Pick<ParamInfo, "unit">): number | null {
-  let t = text.trim().toLowerCase().replace(/\s+/g, "").replace("−", "-");
+  // -- WP WEB -- as Qt's fields (USR1): a decimal comma, U+2212, the unit after it
   const unit = (info.unit ?? "").toLowerCase().replace(/\s+/g, "");
-  if (unit && t.endsWith(unit)) t = t.slice(0, -unit.length);
-  else if (unit === "dbfs" && t.endsWith("db")) t = t.slice(0, -2);
-  if (t.startsWith("+")) t = t.slice(1);
-  if (!/^-?(\d+\.?\d*|\.\d+)$/.test(t)) return null;
-  const v = Number(t);
-  return Number.isFinite(v) ? v : null;
+  return readNumber(text, unit === "dbfs" ? ["dbfs", "db"] : unit ? [unit] : []);
 }
 
 /** The registry kind's value for `v` (`{float: 700}`, `{choice: 2}`, `{int: 5}`, `{mask: 3}`, `{bool: true}`). */
