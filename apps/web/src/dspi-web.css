@@ -2076,3 +2076,45 @@
 .dspi-web .mx-cell.off > *, .dspi-web .mx-footcell.off .m-field, .dspi-web .mx-src.off { opacity: 0.75; }
 .dspi-web .matrix-screen.dense .mx-colname { display: none; }
 .dspi-web .mx-pairglyph { width: 14px; height: 14px; color: var(--accent-text); }
+/* -- WP WEB2 -- (REVD W10, §1, §2, §6) the tokens as Qt's: body 13 px, the page title 15 DemiBold, the
+   few remaining rules in the separator's tone, Save to Device in the accent's fill like every primary;
+   tabs are never pills: a hovered tab only takes the text's colour, the chosen one DemiBold on the
+   accent's 2 px underline */
+.dspi-web { font-size: 13px; --line: var(--separator); --save-bg: var(--accent-fill); --save-line: rgb(255 255 255 / 0.3); }
+.dspi-web .page-head { min-height: 36px; }
+.dspi-web .page-title { font-size: 15px; font-weight: 600; }
+.dspi-web .page-tabs button, .dspi-web .page-parts button { padding: 0.4rem 0.7rem 0.35rem; border-radius: 0; }
+.dspi-web .page-tabs button:hover:not(:disabled), .dspi-web .page-parts button:hover:not(:disabled) { background: none; color: var(--text); }
+.dspi-web .page-tabs button[aria-selected="true"], .dspi-web .page-parts button[aria-selected="true"] { background: none; color: var(--text); font-weight: 600; border-bottom-color: var(--accent-fill); }
+.dspi-web .page-tabs + .page-parts-slot > .page-parts { border-left-color: var(--separator); }
+.dspi-web .part-dot.on { border-color: var(--ok); background: var(--ok); }
+/* -- WP WEB2 -- (REVD W5, W6, §13) status chips: a tint or the control tone with a 6 px dot, never a
+   coloured outline, never warning-coloured words */
+.dspi-web .status-dot { display: inline-block; width: 6px; height: 6px; border-radius: 3px; margin: 0 0.35rem 0 0.1rem; vertical-align: middle; background: var(--muted); }
+.dspi-web .status-dot.ok { background: var(--ok); }
+.dspi-web .status-dot.warn { background: var(--warn); }
+.dspi-web .status-dot.bad { background: var(--bad); }
+.dspi-web .health-unsaved { color: var(--muted); }
+.dspi-web .health-row { border-top-color: var(--separator); }
+.dspi-web .health-sum { border-color: transparent !important; border-radius: 9px; }
+.dspi-web .health-sum.health-ok { color: var(--text); background: color-mix(in srgb, var(--ok) 16%, var(--control)); }
+.dspi-web .health-sum.health-warn { color: var(--text); background: color-mix(in srgb, var(--warn) 18%, var(--control)); }
+.dspi-web .health-sum.health-bad { color: var(--text); background: color-mix(in srgb, var(--bad) 18%, var(--control)); }
+.dspi-web .cs-pill, .dspi-web .cs-pill.good { border-color: transparent; }
+.dspi-web .cs-pill.good { color: var(--text); background: color-mix(in srgb, var(--ok) 16%, var(--control)); }
+/* -- WP WEB2 -- (REVD W8, §5, §15) the inspector is a sheet, not a card: the page's tone, a 1 px separator
+   at its edge, no radius, 320 px; no heading of its own (the page says what is inspected), its Hide a quiet
+   button at the top right; its sections caps labels with the summary at the right, no rules */
+.dspi-web .inspector { background: var(--bg); border-radius: 0; padding: 0 0 0.75rem 14px; box-shadow: inset 1px 0 var(--separator); gap: 0.4rem; }
+.dspi-web .inspector-beside > .inspector { flex: 0 0 320px; width: 320px; }
+.dspi-web .inspector-under > .inspector { padding-left: 0; padding-top: 0.75rem; box-shadow: inset 0 1px var(--separator); }
+.dspi-web .inspector-head { min-height: 28px; justify-content: flex-end; }
+.dspi-web .inspector-head h3 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.dspi-web .inspector-toggle { min-height: 24px; padding: 0.1rem 0.55rem; font-size: 0.85rem; }
+.dspi-web .inspector-toggle:hover:not(:disabled) { background: var(--control-hover); }
+.dspi-web .inspector-hidden > .inspector { box-shadow: none; padding-left: 0; }
+.dspi-web .insp-head { font-size: 15px; }
+.dspi-web .insp-sec { border-top: 0; padding-top: 0; margin-top: 12px; }
+.dspi-web .insp-sec > summary { align-items: center; min-height: 24px; padding: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.dspi-web .insp-sec > summary .insp-summary { font-size: 11px; letter-spacing: 0; text-transform: none; }
+.dspi-web .insp-label { color: var(--text); }
