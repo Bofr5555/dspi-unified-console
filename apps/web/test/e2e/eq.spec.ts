@@ -84,15 +84,21 @@ async function levelAt(page: Page, freq: number): Promise<number> {
   }, freq);
 }
 
-/** A synthetic touch pointer (every browser takes PointerEvents with pointerType "touch"). */
-async function touch(graph: Locator, type: string, id: number, x: number, y: number) {
-  await graph.evaluate(
-    (el, [type, id, x, y]) =>
+/** A synthetic touch pointer event (every browser takes PointerEvents with pointerType "touch"). */
+type Touch = [type: string, id: number, x: number, y: number];
+
+/** -- INTC -- One touch gesture: its pointer events in order, in one call into the page, each in its own task (the
+ * page handles and renders it before the next, as with a real finger). The graph times its double tap (400 ms) and
+ * long press (500 ms); with a round trip to the test per event, a loaded host turned the drag into a long press. */
+async function gesture(graph: Locator, steps: Touch[]) {
+  await graph.evaluate(async (el, steps) => {
+    for (const [type, id, x, y] of steps) {
       el.dispatchEvent(
-        new PointerEvent(type as string, { pointerId: id as number, pointerType: "touch", isPrimary: id === 1, clientX: x as number, clientY: y as number, bubbles: true, button: 0, buttons: type === "pointerup" ? 0 : 1 }),
-      ),
-    [type, id, x, y] as const,
-  );
+        new PointerEvent(type, { pointerId: id, pointerType: "touch", isPrimary: id === 1, clientX: x, clientY: y, bubbles: true, button: 0, buttons: type === "pointerup" ? 0 : 1 }),
+      );
+      await new Promise((r) => setTimeout(r, 0));
+    }
+  }, steps);
 }
 
 test("WB6b graph: add a band by double click, drag it, and the device keeps what the page shows", async ({ page }) => {
@@ -419,26 +425,29 @@ test.describe("375 px, in every browser", () => {
     // Touch: a double tap adds a bell.
     const slot = (await out1(page)).findIndex((b) => b.filterType === 0);
     const p = await at(graph, 1000, 6);
-    for (const t of ["pointerdown", "pointerup", "pointerdown", "pointerup"]) await touch(graph, t, 1, p.x, p.y);
+    await gesture(graph, ["pointerdown", "pointerup", "pointerdown", "pointerup"].map((t): Touch => [t, 1, p.x, p.y]));
     await expect.poll(async () => (await out1(page))[slot]!.filterType).toBe(1);
     const band = (await out1(page))[slot]!;
     // A finger drags its dot up 4 dB.
     const dot = await at(graph, band.freq, band.gain);
     const up = await at(graph, band.freq, band.gain + 4);
-    await touch(graph, "pointerdown", 1, dot.x, dot.y);
-    for (let i = 1; i <= 6; i++) await touch(graph, "pointermove", 1, dot.x, dot.y + ((up.y - dot.y) * i) / 6);
-    await touch(graph, "pointerup", 1, up.x, up.y);
+    const drag: Touch[] = [["pointerdown", 1, dot.x, dot.y]];
+    for (let i = 1; i <= 6; i++) drag.push(["pointermove", 1, dot.x, dot.y + ((up.y - dot.y) * i) / 6]);
+    drag.push(["pointerup", 1, up.x, up.y]);
+    await gesture(graph, drag);
     await expect.poll(async () => (await out1(page))[slot]!.gain).toBeGreaterThan(band.gain + 3);
     // Two fingers pinch its Q: closer together, narrower.
     const q0 = (await out1(page))[slot]!.q;
-    await touch(graph, "pointerdown", 1, dot.x - 60, dot.y);
-    await touch(graph, "pointerdown", 2, dot.x + 60, dot.y);
+    const pinch: Touch[] = [
+      ["pointerdown", 1, dot.x - 60, dot.y],
+      ["pointerdown", 2, dot.x + 60, dot.y],
+    ];
     for (let i = 1; i <= 4; i++) {
-      await touch(graph, "pointermove", 1, dot.x - 60 + i * 7, dot.y);
-      await touch(graph, "pointermove", 2, dot.x + 60 - i * 7, dot.y);
+      pinch.push(["pointermove", 1, dot.x - 60 + i * 7, dot.y]);
+      pinch.push(["pointermove", 2, dot.x + 60 - i * 7, dot.y]);
     }
-    await touch(graph, "pointerup", 2, dot.x + 32, dot.y);
-    await touch(graph, "pointerup", 1, dot.x - 32, dot.y);
+    pinch.push(["pointerup", 2, dot.x + 32, dot.y], ["pointerup", 1, dot.x - 32, dot.y]);
+    await gesture(graph, pinch);
     await expect.poll(async () => (await out1(page))[slot]!.q).toBeGreaterThan(q0 * 1.5);
 
     // With a band chosen, its chip filled, and a menu open: the same height, still no sideways scroll.
