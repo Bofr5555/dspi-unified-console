@@ -38,3 +38,10 @@
 .dspi-web .ch-strip .input-trim .value-field { width: 88px; }
 .dspi-web .ch-strip .input-trim .ch-tag, .dspi-web .ch-strip .input-trim .ch-name-text { display: none; }
 .dspi-web .ch-strip .input-link { margin: 0; align-self: center; }
+
+/* Narrow: the input's pill, name and field on one line, its slider under them */
+.dspi-web .inputs-screen { container-type: inline-size; }
+@container (max-width: 560px) {
+  .dspi-web .inputs-screen .input-trim { grid-template-columns: 44px minmax(0, 1fr) 88px; grid-template-rows: auto auto; row-gap: 4px; padding: 4px 8px; }
+  .dspi-web .inputs-screen .input-trim .ch-gain { grid-column: 1 / -1; grid-row: 2; }
+}

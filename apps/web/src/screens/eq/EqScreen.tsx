@@ -12,7 +12,7 @@
 // pastes them onto it (M45, screens/clipboard/model.ts); Ctrl/Cmd+C and +V do
 // the same while this screen is shown.
 //
-// -- WP WEB3 -- (DL8 on the web) Drawn as Qt's Modern PEQ: the chosen channel's strip at the top
+// -- WP WEB3 -- (DL8 on the web) Drawn as Qt's Modern PEQ: the chosen channel's strip above the graph
 // (its pill and name, routing, gain, delay, mute, limiter; an input's link and trim), the channels
 // as a list at the left (INPUTS, OUTPUTS: name and pill; the dot shows its curve), the graph on the
 // panel tone with no box, the band table under it; AutoEQ…, Channel ▾ and the spectrum in the
@@ -382,24 +382,6 @@ const EqView = memo(
 
     return (
       <div class="eq-screen">
-        {chosen.output ? (
-          <OutputCard
-            session={session}
-            s={s}
-            output={chosen.index}
-            name={`${chosen.descriptor} ${chosen.name}`}
-            tag={chosen.descriptor}
-            title={chosen.name}
-            colour={chosen.colour}
-            inputs={channels.filter((c) => !c.output)}
-            limits={props.outLimits}
-            disabled={ro}
-            labels={props.labels}
-          />
-        ) : (
-          // -- WP WB6G -- an input's page: its pair's link and its trim (the Console's InputChannelHeader)
-          <InputHeader session={session} ask={ask} s={s} input={chosen.index} name={`${chosen.descriptor} ${chosen.name}`} title={chosen.name} colour={chosen.colour} disabled={ro} />
-        )}
         <div class="eq-body">
         <div class="eq-channels" role="group" aria-label="Channels">
           {channels.map((c, i) => (
@@ -464,6 +446,24 @@ const EqView = memo(
         </div>
         </PageTools>
         <div class="eq-main">
+        {chosen.output ? (
+          <OutputCard
+            session={session}
+            s={s}
+            output={chosen.index}
+            name={`${chosen.descriptor} ${chosen.name}`}
+            tag={chosen.descriptor}
+            title={chosen.name}
+            colour={chosen.colour}
+            inputs={channels.filter((c) => !c.output)}
+            limits={props.outLimits}
+            disabled={ro}
+            labels={props.labels}
+          />
+        ) : (
+          // -- WP WB6G -- an input's page: its pair's link and its trim (the Console's InputChannelHeader)
+          <InputHeader session={session} ask={ask} s={s} input={chosen.index} name={`${chosen.descriptor} ${chosen.name}`} title={chosen.name} colour={chosen.colour} disabled={ro} />
+        )}
         {autoeq ? <AutoEqPanel session={session} channels={channels} wire={cw} disabled={ro} onPreview={setAePreview} /> : null}
         <section class="eq-graph-card" aria-label="Graph">
           {/* -- WP WB6J -- the spectrum over the graph, in one box with it */}

@@ -22,7 +22,8 @@
 .dspi-web .ov-mini-line { fill: none; stroke: var(--ch); stroke-width: 1.5; }
 .dspi-web .ov-card-meter { display: block; height: 3px; border-radius: 2px; background: var(--control); overflow: hidden; }
 .dspi-web .ov-card-meter > span { display: block; height: 100%; background: var(--ok); transition: width 0.1s linear; }
-.dspi-web .ov-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+/* One line: a change (a gain, Muted) never makes the card taller; the rest is in its accessible name */
+.dspi-web .ov-chips { display: flex; flex-wrap: nowrap; gap: 6px; margin-top: 4px; overflow: hidden; mask-image: linear-gradient(to right, #000 88%, transparent); }
 .dspi-web .ov-chip { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 4px; background: var(--control); font-size: 11px; color: var(--text); white-space: nowrap; }
 .dspi-web .ov-chip.muted { color: var(--muted); }
 .dspi-web .ov-chip.warn { color: var(--warn); }

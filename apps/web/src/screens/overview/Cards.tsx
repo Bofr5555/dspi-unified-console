@@ -8,7 +8,7 @@ import { useMemo } from "preact/hooks";
 import type { DeviceSnapshot } from "../../core/protocol";
 import type { ScreenProps } from "../../ui/screens";
 import type { Session } from "../../ui/session";
-import { Section } from "../../ui/design";
+import type { ComponentChildren } from "preact";
 import { useCurves, useGrid, type CurveRequest } from "../eq/curves";
 import { Pill } from "../eq/Pill";
 import { liveInputs } from "../main/model";
@@ -33,14 +33,27 @@ export function ChannelCards(props: { session: Session; snap: DeviceSnapshot; us
   );
   return (
     <>
-      <Section label="Inputs" class="ov-cards-section">
+      {/* Named apart from the Dashboard's level lists ("Inputs", "Outputs" regions) */}
+      <CardSection label="Inputs" name="Input channels">
         {cards.idle.length ? <p class="ov-idle">Not in use: {cards.idle.join(", ")}</p> : null}
         {cards.inputs.length ? <div class="ov-cards">{cards.inputs.map((c, i) => card(c, i))}</div> : null}
-      </Section>
-      <Section label="Outputs" class="ov-cards-section">
+      </CardSection>
+      <CardSection label="Outputs" name="Output channels">
         <div class="ov-cards">{cards.outputs.map((c, i) => card(c, cards.inputs.length + i))}</div>
-      </Section>
+      </CardSection>
     </>
+  );
+}
+
+/** §8's section (as ui/design's `Section`) with its own accessible name. */
+function CardSection(props: { label: string; name: string; children: ComponentChildren }) {
+  return (
+    <section class="ds-section ov-cards-section" aria-label={props.name}>
+      <div class="ds-section-head">
+        <h4 class="section-label">{props.label}</h4>
+      </div>
+      {props.children}
+    </section>
   );
 }
 
