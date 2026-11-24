@@ -16,7 +16,7 @@ import { useSessionState } from "../../ui/components";
 import type { Ask, ScreenProps } from "../../ui/screens";
 import type { Session } from "../../ui/session";
 import { ValueField } from "../eq/Field";
-import { channelColour } from "../eq/model";
+import { inputColour } from "../eq/model"; // -- WP WEB2 --
 import { dragProps, useLiveWrite } from "../main/live";
 import { inputRows, liveInputs, type ChannelRow } from "../main/model";
 import { clamp, compactGain, parseLevel, stepGrid } from "../outputs/model";
@@ -34,7 +34,7 @@ import {
   sourceTitle,
   writeTrim,
 } from "./model";
-import { EmptyState } from "../../ui/design"; // -- WP WEB --
+import { EmptyState, rangeFill } from "../../ui/design"; // -- WP WEB --
 
 /** The registry's `pre` range until `describe` answers. */
 export const TRIM_RANGE: [number, number] = [-60, 24];
@@ -140,7 +140,7 @@ function TrimRow(props: { session: Session; row: ChannelRow; db: number; range: 
   };
   return (
     <div class="input-trim" data-input={row.index}>
-      <span class="ch-tag" style={{ color: channelColour(row.wire) }}>
+      <span class="ch-tag" style={{ color: inputColour(row.index) }}>
         {row.descriptor}
       </span>
       <span class="ch-name-text">{row.name}</span>
@@ -153,6 +153,7 @@ function TrimRow(props: { session: Session; row: ChannelRow; db: number; range: 
         max={range[1]}
         step={0.1}
         value={db}
+        style={rangeFill(db, range[0], range[1])}
         disabled={disabled}
         {...dragProps(live)}
         onInput={(e) => live.move(value(e))}

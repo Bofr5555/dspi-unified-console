@@ -68,7 +68,7 @@ export function DelaysScreen(props: ScreenProps) {
               return (
                 <tr key={o} class={r.enabled ? undefined : "xover-off"} aria-label={who} data-output={o}>
                   <th scope="row">
-                    <span class="swatch" style={{ background: channelColour(r.wire) }} aria-hidden="true" />
+                    <span class="swatch" style={{ background: channelColour(s, r.wire) }} aria-hidden="true" />
                     {who}
                     {r.enabled ? null : <span class="ov-state"> Disabled</span>}
                   </th>
@@ -102,7 +102,7 @@ export function DelaysScreen(props: ScreenProps) {
                       aria-valuemax={100}
                       aria-valuenow={Math.round(bars[i]! * 100)}
                     >
-                      <span style={{ width: `${(bars[i]! * 100).toFixed(1)}%`, background: channelColour(r.wire) }} />
+                      <span style={{ width: `${(bars[i]! * 100).toFixed(1)}%`, background: channelColour(s, r.wire) }} />
                     </span>
                   </td>
                   <td>

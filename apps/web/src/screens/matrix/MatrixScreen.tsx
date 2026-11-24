@@ -22,7 +22,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import type { DspState, OutputLabel } from "../../core/protocol";
 import { safeLocalStorage } from "../../fleet/local";
 import { useSessionState } from "../../ui/components";
-import { ChipGroup, EmptyState, Glyph } from "../../ui/design";
+import { ChipGroup, EmptyState, Glyph, rangeFill } from "../../ui/design";
 import { Inspect, InspectorSection } from "../../ui/inspector/Inspector";
 import { ownRow, type MenuItem } from "../../ui/menus/actions";
 import { isMenuKey, useContextMenu } from "../../ui/menus/ActionMenu";
@@ -32,7 +32,7 @@ import type { Session } from "../../ui/session";
 import { PageTools } from "../../ui/shell/Parts";
 import { passes, passName } from "../eq/align";
 import { ValueField } from "../eq/Field";
-import { channelColour, freqText } from "../eq/model";
+import { channelColour, freqText, inputColour } from "../eq/model";
 import { RenameDialog } from "../main/Dialog";
 import { useLiveWrite } from "../main/live";
 import { Menu } from "../main/Menu";
@@ -396,7 +396,7 @@ const MatrixView = memo(
                       scope="col"
                       key={o.index}
                       class={cls("mx-colhead", !o.enabled && "off", picked && "picked", lit?.o === o.index && "lit", pairEnd(o.index, nOut) && "mx-colend")}
-                      style={{ "--ch": channelColour(o.wire) }}
+                      style={{ "--ch": channelColour(s, o.wire) }}
                     >
                       <button type="button" class="mx-pick mx-colname" aria-pressed={picked} title={`${o.name} · ${o.slot}`} onClick={() => setSel({ kind: "col", o: o.index })}>
                         {o.name}
@@ -454,7 +454,7 @@ const MatrixView = memo(
                   <tr key={inp.wire} class={cls(r % 2 === 1 && "mx-stripe", r % 2 === 1 && r < nIn - 1 && "mx-pairend")}>
                     <th scope="row" class={cls("mx-rowhead", picked && "picked", lit?.i === r && "lit")}>
                       <div class="mx-rh">
-                        <span class="mx-dot-in" style={{ background: channelColour(inp.wire) }} aria-hidden="true" />
+                        <span class="mx-dot-in" style={{ background: channelColour(s, inp.wire) }} aria-hidden="true" />
                         <button type="button" class="mx-pick mx-rowname" aria-pressed={picked} title={`${inp.descriptor} ${inp.name}`} onClick={() => setSel({ kind: "row", i: inp.index })}>
                           {inp.name}
                         </button>
@@ -559,7 +559,7 @@ const MatrixView = memo(
                     return (
                       <td key={o.index} class={cls("mx-src", !o.enabled && "off", pairEnd(o.index, nOut) && "mx-colend")} title={names.length ? `Fed by ${names.join(", ")}` : "Fed by nothing"}>
                         {from.slice(0, 3).map((i) => (
-                          <i key={i} style={{ background: channelColour(inputs[i]!.wire) }} aria-hidden="true" />
+                          <i key={i} style={{ background: channelColour(s, inputs[i]!.wire) }} aria-hidden="true" />
                         ))}
                         <span>{from.length === 1 ? names[0] : from.length > 1 ? String(from.length) : "–"}</span>
                       </td>
@@ -678,7 +678,7 @@ const Cell = memo(function Cell(props: {
   const { input, out, c } = props;
   const where = `${input.name} to ${out.name}`;
   const state = c.on ? `connected, ${compactGain(c.gain)}${c.inv ? ", phase inverted" : ""}` : "not connected";
-  const colour = channelColour(input.wire);
+  const colour = inputColour(input.index); // -- WP WEB2 --
   const tint = `color-mix(in srgb, ${colour} 22%, var(--panel))`;
   return (
     <td
@@ -820,9 +820,9 @@ function CompactField(props: {
 
 // ---------------------------------------------------------------- the inspector
 
-function Pill(props: { wire: number; text: string }) {
+function Pill(props: { colour: string; text: string }) {
   return (
-    <span class="mx-pill" style={{ background: channelColour(props.wire) }}>
+    <span class="mx-pill" style={{ background: props.colour }}>
       {props.text}
     </span>
   );
@@ -893,7 +893,7 @@ function MatrixInspector(props: {
     return (
       <div class="mx-insp" aria-label={`${inp.name} to ${out.name}`}>
         <div class="insp-head mx-insp-head">
-          <Pill wire={inp.wire} text={inp.descriptor} /> <span class="insp-name">{inp.name}</span> <span aria-hidden="true">→</span> <Pill wire={out.wire} text={out.descriptor} />{" "}
+          <Pill colour={inputColour(inp.index)} text={inp.descriptor} /> <span class="insp-name">{inp.name}</span> <span aria-hidden="true">→</span> <Pill colour={channelColour(s, out.wire)} text={out.descriptor} />{" "}
           <span class="insp-name">{out.name}</span>
         </div>
         <InspectorSection title="Crosspoint" summary={on ? `${compactGain(gain)}${inv ? " · inverted" : ""}` : "off"}>
@@ -908,6 +908,7 @@ function MatrixInspector(props: {
                   max={CROSSPOINT_RANGE[1]}
                   step={0.5}
                   value={gain}
+                  style={rangeFill(gain, CROSSPOINT_RANGE[0], CROSSPOINT_RANGE[1])}
                   disabled={ro}
                   onChange={(e) => void props.route(i, o, { gain: Number((e.target as HTMLInputElement).value) })}
                 />
@@ -947,7 +948,7 @@ function MatrixInspector(props: {
     return (
       <div class="mx-insp" aria-label={out.name}>
         <div class="insp-head mx-insp-head">
-          <Pill wire={out.wire} text={out.descriptor} /> <span class="insp-name">{out.name}</span>
+          <Pill colour={channelColour(s, out.wire)} text={out.descriptor} /> <span class="insp-name">{out.name}</span>
         </div>
         <InspectorSection title="Output" summary={outLine(out)}>
           <Switch label="Enabled" on={out.enabled} disabled={ro} toggle={() => props.enable(o)} />
@@ -990,7 +991,7 @@ function MatrixInspector(props: {
     return (
       <div class="mx-insp" aria-label={inp.name}>
         <div class="insp-head mx-insp-head">
-          <Pill wire={inp.wire} text={inp.descriptor} /> <span class="insp-name">{inp.name}</span>
+          <Pill colour={inputColour(inp.index)} text={inp.descriptor} /> <span class="insp-name">{inp.name}</span>
         </div>
         <InspectorSection title="Input">
           <Row label="Trim (preamp)">

@@ -88,6 +88,33 @@ const GLYPHS: Record<string, ComponentChildren> = {
     </>
   ),
   "chevron-down": <path d="m6 9 6 6 6-6" />,
+  // -- WP WEB2 -- the effects' intro rows (Qt's ToolHeader icons), the overview's tiles
+  headphones: <path d="M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a9 9 0 0 1 18 0v7a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3" />,
+  ear: (
+    <>
+      <path d="M6 8.5a6.5 6.5 0 1 1 13 0c0 6-6 6-6 10a3.5 3.5 0 1 1-7 0" />
+      <path d="M15 8.5a2.5 2.5 0 0 0-5 0v1a2 2 0 1 1 0 4" />
+    </>
+  ),
+  activity: <path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2" />,
+  "audio-lines": <path d="M2 10v3M6 6v11M10 3v18M14 8v7M18 5v13M22 10v3" />,
+  waves: <path d="M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1M2 18c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1" />,
+  flame: <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.07-2.14-.22-4.05 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.15.43-2.29 1-3a2.5 2.5 0 0 0 2.5 2.5z" />,
+  speaker: (
+    <>
+      <rect width="16" height="20" x="4" y="2" rx="2" />
+      <circle cx="12" cy="14" r="4" />
+      <path d="M12 6h.01M12 14h.01" />
+    </>
+  ),
+  plug: <path d="M12 22v-5M9 8V2M15 8V2M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z" />,
+  cpu: (
+    <>
+      <rect width="16" height="16" x="4" y="4" rx="2" />
+      <rect width="6" height="6" x="9" y="9" rx="1" />
+      <path d="M15 2v2M15 20v2M2 15h2M2 9h2M20 15h2M20 9h2M9 2v2M9 20v2" />
+    </>
+  ),
 };
 
 export type GlyphName = keyof typeof GLYPHS;
@@ -171,4 +198,79 @@ export function ChipGroup(props: {
       ))}
     </div>
   );
+}
+
+// -- WP WEB2 -- the rest of the shared pieces the page passes use (Qt's AppSwitch, a section
+// with its label, ToolSegments, FormRow, ToggleChip)
+
+/** An on/off switch (Qt's AppSwitch): no text, the label is the row's; `role="switch"`. */
+export function Switch(props: { label: string; on: boolean; disabled?: boolean; toggle: () => void; class?: string }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      class={`switch${props.class ? ` ${props.class}` : ""}`}
+      aria-checked={props.on}
+      aria-label={props.label}
+      disabled={props.disabled}
+      onClick={props.toggle}
+    />
+  );
+}
+
+/** §8: a section: its caps label (with tools at its right), then its content; no box. */
+export function Section(props: { label: string; tools?: ComponentChildren; children: ComponentChildren; class?: string; id?: string }) {
+  return (
+    <section class={`ds-section${props.class ? ` ${props.class}` : ""}`} aria-label={props.label} id={props.id}>
+      <div class="ds-section-head">
+        <h4 class="section-label">{props.label}</h4>
+        {props.tools ? <div class="ds-section-tools">{props.tools}</div> : null}
+      </div>
+      {props.children}
+    </section>
+  );
+}
+
+/** §7: one choice of a few as one control-tone bar, the chosen segment in the selection tone. */
+export function Segments<T extends string | number>(props: {
+  label: string;
+  options: readonly { value: T; text: string; title?: string }[];
+  value: T;
+  choose: (v: T) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div class="segments" role="group" aria-label={props.label}>
+      {props.options.map((o) => (
+        <button type="button" key={String(o.value)} aria-pressed={o.value === props.value} title={o.title} disabled={props.disabled} onClick={() => props.choose(o.value)}>
+          {o.text}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** §10: a 36 px form row: the title (and a caption under it) at the left, the control(s) at the right. */
+export function FormRow(props: { title: ComponentChildren; caption?: ComponentChildren; children?: ComponentChildren; class?: string; titleId?: string }) {
+  return (
+    <div class={`form-row${props.class ? ` ${props.class}` : ""}`}>
+      <div class="form-row-text">
+        <span class="form-row-title" id={props.titleId}>
+          {props.title}
+        </span>
+        {props.caption ? <span class="form-row-caption">{props.caption}</span> : null}
+      </div>
+      {props.children ? <div class="form-row-control">{props.children}</div> : null}
+    </div>
+  );
+}
+
+/**
+ * §11: how far a slider is filled, as `--fill` for the stylesheet's track (the browsers draw no filled
+ * part of an unstyled track the same way, and Chromium none at all once it is styled).
+ */
+export function rangeFill(value: number, min: number, max: number): Record<string, string> {
+  const span = max - min;
+  const f = span > 0 && Number.isFinite(value) ? Math.min(1, Math.max(0, (value - min) / span)) : 0;
+  return { "--fill": `${(f * 100).toFixed(2)}%` };
 }

@@ -2004,3 +2004,68 @@
 .dspi-web .status-strip > .read-only-reason { --edge: var(--accent); }
 /* -- WP WEB -- an error sentence of a page (`p.error`, the core's words) as a notice row: never a bare red line (§14) */
 .dspi-web .page p.error { padding: 0.4rem 0.65rem; border-left: 3px solid var(--bad); border-radius: var(--radius-control); background: color-mix(in srgb, var(--bad) 12%, var(--panel)); color: var(--text); }
+
+/* -- WP WEB2 -- (REVD W1) The native controls follow the scheme: without `color-scheme` the browser draws
+   slider tracks, file buttons, selects, checkboxes, radios and scrollbars light inside the dark theme */
+.dspi-web { color-scheme: light; }
+@media (prefers-color-scheme: dark) {
+  .dspi-web:not([data-theme="light"]) { color-scheme: dark; }
+}
+.dspi-web[data-theme="dark"] { color-scheme: dark; }
+.dspi-web input[type="file"] { padding: 0; background: none; color: var(--muted); font-size: 0.9rem; }
+.dspi-web input[type="file"]::file-selector-button {
+  font: inherit; margin-right: 0.6rem; padding: 0.3rem 0.8rem; border: 0; border-radius: var(--radius-control);
+  background: var(--control); color: var(--text); cursor: pointer;
+}
+.dspi-web input[type="file"]::file-selector-button:hover { background: var(--control-hover); }
+.dspi-web input[type="file"]:disabled::file-selector-button { opacity: 0.55; cursor: default; }
+
+/* -- WP WEB2 -- the shared pieces of the page passes (ui/design.tsx): a section's caps label (§2, §8),
+   segments (§7), the 36 px form row (§10) */
+.dspi-web .section-label { margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.dspi-web .ds-section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.dspi-web .ds-section + .ds-section { margin-top: 24px; }
+.dspi-web .ds-section-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; min-height: 24px; }
+.dspi-web .ds-section-tools { display: flex; align-items: center; gap: 0.35rem; }
+.dspi-web .segments { display: inline-flex; flex-wrap: wrap; align-self: flex-start; gap: 0; padding: 2px; background: var(--control); border-radius: var(--radius-control); }
+.dspi-web .segments > button { min-height: 22px; padding: 0.1rem 0.6rem; border: 0; border-radius: 4px; background: none; color: var(--text); font-size: 0.8rem; }
+.dspi-web .segments > button:hover:not(:disabled) { background: var(--control-hover); }
+.dspi-web .segments > button[aria-pressed="true"] { background: var(--selection); color: var(--accent-text); font-weight: 600; }
+.dspi-web .form-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; min-height: 36px; min-width: 0; }
+.dspi-web .form-row-text { display: flex; flex-direction: column; min-width: 0; }
+.dspi-web .form-row-title { color: var(--text); }
+.dspi-web .form-row-caption { font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
+.dspi-web .form-row-control { display: flex; align-items: center; gap: 0.4rem; flex: none; }
+/* `.seg` (the older segmented groups: Inputs/Outputs, Basic/Simple, …) as the segments: one control-tone bar,
+   the chosen part in the selection tone with the accent's text, never an accent outline (rule 2) */
+.dspi-web .seg { display: inline-flex; flex-wrap: wrap; align-self: flex-start; gap: 0; padding: 2px; background: var(--control); border-radius: var(--radius-control); }
+.dspi-web .seg > button { min-height: 24px; padding: 0.15rem 0.7rem; border: 0; border-radius: 4px; background: none; color: var(--text); }
+.dspi-web .seg > button:hover:not(:disabled) { background: var(--control-hover); }
+.dspi-web .seg > button[aria-pressed="true"], .dspi-web .seg > button[aria-selected="true"] { background: var(--selection); color: var(--accent-text); font-weight: 600; border-color: transparent; }
+.dspi-web .tool-chip { min-height: 24px; padding: 0.1rem 0.65rem; border-radius: var(--radius-control); font-size: 0.8rem; }
+
+/* -- WP WEB2 -- (REVD W1, §11) sliders: a 4 px track in the control tone, the filled part in the accent
+   (`--fill`, ui/design.tsx's rangeFill), a 14 px handle; the same in Chromium and Firefox and both schemes */
+.dspi-web input[type="range"] { -webkit-appearance: none; appearance: none; height: 18px; margin: 0; padding: 0; border: 0; background: transparent; cursor: pointer; min-width: 0; }
+.dspi-web input[type="range"]:disabled { cursor: default; opacity: 0.55; }
+.dspi-web input[type="range"]::-webkit-slider-runnable-track {
+  height: 4px; border-radius: 2px;
+  background: linear-gradient(to right, var(--accent-fill) var(--fill, 0%), var(--control-pressed) var(--fill, 0%));
+}
+.dspi-web input[type="range"]::-moz-range-track { height: 4px; border-radius: 2px; background: var(--control-pressed); }
+.dspi-web input[type="range"]::-moz-range-progress { height: 4px; border-radius: 2px; background: var(--accent-fill); }
+.dspi-web input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none; width: 14px; height: 14px; margin-top: -5px; border: 0; border-radius: 50%;
+  background: var(--knob); box-shadow: 0 0 0 1px var(--knob-edge), 0 1px 2px rgb(0 0 0 / 0.25);
+}
+.dspi-web input[type="range"]::-moz-range-thumb {
+  width: 14px; height: 14px; border: 0; border-radius: 50%; background: var(--knob); box-shadow: 0 0 0 1px var(--knob-edge), 0 1px 2px rgb(0 0 0 / 0.25);
+}
+.dspi-web input[type="range"]:focus-visible { outline: none; }
+.dspi-web input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 2px var(--accent-fill); }
+.dspi-web input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 2px var(--accent-fill); }
+.dspi-web { --knob: #ffffff; --knob-edge: #b8b8b8; }
+@media (prefers-color-scheme: dark) {
+  .dspi-web:not([data-theme="light"]) { --knob: #d8d8d8; --knob-edge: #5a5a5a; }
+}
+.dspi-web[data-theme="dark"] { --knob: #d8d8d8; --knob-edge: #5a5a5a; }

@@ -13,6 +13,7 @@ import { useEffect, useMemo, useReducer, useState } from "preact/hooks";
 import type { CsRecord, CsRow } from "../../core/protocol";
 import type { ScreenProps } from "../../ui/screens";
 import { CsDesk } from "./desk";
+import { rangeFill } from "../../ui/design"; // -- WP WEB2 --
 import {
   PAGE_LABELS,
   TY,
@@ -367,6 +368,7 @@ function BindingCard(props: { desk: CsDesk; rec: CsRec; open: boolean; onOpen: (
                 step={1}
                 aria-label={`Level ${name || typeName(type)}`}
                 value={Math.round(auxNow.level)}
+                style={rangeFill(Math.round(auxNow.level), 0, 100)}
                 disabled={!auxLive || !desk.writable}
                 onChange={(e) => void desk.setAuxLevel(rec.slot, Number((e.target as HTMLInputElement).value))}
               />

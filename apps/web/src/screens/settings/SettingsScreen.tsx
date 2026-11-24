@@ -21,6 +21,7 @@ import type { Session } from "../../ui/session";
 import { CoreVoltage } from "./CoreVoltage";
 import { SpeakersPage } from "./speakers/SpeakersPage"; // -- WP ROLEW --
 import { AppearanceSettings } from "../../ui/arrangement/Appearance"; // -- WP WEBM4 --
+import { rangeFill } from "../../ui/design"; // -- WP WEB2 --
 import {
   AVERAGING,
   CEILINGS,
@@ -357,6 +358,7 @@ function Slider(props: { label: string; min: number; max: number; step: number; 
         max={props.max}
         step={props.step}
         value={props.value}
+        style={rangeFill(props.value, props.min, props.max)}
         disabled={props.disabled}
         onInput={(e) => props.onChange(Number((e.target as HTMLInputElement).value))}
       />

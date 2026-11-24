@@ -503,11 +503,31 @@ export function bandColour(b: number): string {
   return BAND_COLOURS[((b % BAND_COLOURS.length) + BAND_COLOURS.length) % BAND_COLOURS.length]!;
 }
 
-/** One hue per channel on the graph. */
-export const CHANNEL_COLOURS = ["#5ac8fa", "#ff9f0a", "#30d158", "#ff375f", "#bf5af2", "#ffd60a", "#64d2ff", "#ff6961", "#a2845e", "#8e8e93"];
+/**
+ * -- WP WEB2 -- (REVD W2) One colour per channel, Qt's `ChannelPalette` (the Mac console's): eight input
+ * colours (the stereo pair's blue and red first), eight output colours (the four pairs), and the PDM
+ * output's violet; the accent past the eighth. Keyed by the input's or output's own number, so a
+ * channel has the same colour on the web and on the desktop.
+ */
+export const INPUT_COLOURS = ["#4a8fe3", "#f57373", "#73c78c", "#edb24c", "#998ceb", "#e68cc7", "#66c7d1", "#ccb86b"];
+export const OUTPUT_COLOURS = ["#45c2a3", "#59d180", "#f0c459", "#f2a64c", "#598cf2", "#8cb2f2", "#d9738c", "#f299a6"];
+export const PDM_COLOUR = "#ba87f2";
+const PAST_PALETTE = "#2563eb";
 
-export function channelColour(i: number): string {
-  return CHANNEL_COLOURS[((i % CHANNEL_COLOURS.length) + CHANNEL_COLOURS.length) % CHANNEL_COLOURS.length]!;
+/** An input's colour by its number. */
+export function inputColour(i: number): string {
+  return INPUT_COLOURS[i] ?? PAST_PALETTE;
+}
+
+/** An output's colour by its number; the PDM output (the last of an odd count: 9 on the RP2350, 5 on the RP2040) its own. */
+export function outputColour(s: Pick<DspState, "numOutputChannels">, o: number): string {
+  if (s.numOutputChannels % 2 === 1 && o === s.numOutputChannels - 1) return PDM_COLOUR;
+  return OUTPUT_COLOURS[o] ?? PAST_PALETTE;
+}
+
+/** A wire channel's colour: inputs are wires 0..numInputChannels, outputs follow. */
+export function channelColour(s: Pick<DspState, "numInputChannels" | "numOutputChannels">, wire: number): string {
+  return wire < s.numInputChannels ? inputColour(wire) : outputColour(s, wire - s.numInputChannels);
 }
 
 // ---------------------------------------------------------------- rounding

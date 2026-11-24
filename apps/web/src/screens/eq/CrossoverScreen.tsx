@@ -61,7 +61,7 @@ function CrossoverView(props: {
         <XoverPlot
           freqs={freqs}
           curves={curves?.chains ?? []}
-          colours={outs.map((o) => channelColour(o.wire))}
+          colours={outs.map((o) => channelColour(s, o.wire))}
           names={outs.map((o) => `${o.descriptor} ${o.name}`)}
         />
       </section>
@@ -93,7 +93,7 @@ function CrossoverView(props: {
                         title={`Open ${who}'s XO bands`}
                         onClick={() => props.open?.({ screen: "eq", wire: o.wire, tab: "xo" })}
                       >
-                        <span class="swatch" style={{ background: channelColour(o.wire) }} aria-hidden="true" />
+                        <span class="swatch" style={{ background: channelColour(s, o.wire) }} aria-hidden="true" />
                         {who}
                       </button>
                     </th>
