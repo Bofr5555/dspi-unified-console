@@ -54756,12 +54756,14 @@ public struct OutputLabel {
      */
     public var output: UInt8
     /**
-     * What to show: the user's name, else "Out 1 · R · Low".
+     * What to show: the user's name, else "Out 1 · R · Low"; an unused
+     * output "3 · None" (owner 2026-11-24).
      */
     public var label: String
     /**
      * The same for a phone row, beside the output's "OUTn" button: the
-     * user's name, else "R · Low" (owner decision, review c86 F3).
+     * user's name, else "R · Low" (owner decision, review c86 F3); an unused
+     * output "None".
      */
     public var shortLabel: String
     /**
@@ -54781,6 +54783,13 @@ public struct OutputLabel {
      * "Low", "High", "Band" or "Full".
      */
     public var band: String
+    /**
+     * No input is routed to the output (owner 2026-11-24): a view that only
+     * shows (the Overview's cards and tiles, a phone's Home, a summary) leaves
+     * it out; a view that edits it shows `label`. [`DspiCore::output_cards`]
+     * leaves it out already.
+     */
+    public var unused: Bool
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -54789,11 +54798,13 @@ public struct OutputLabel {
          * 0-based output index.
          */output: UInt8, 
         /**
-         * What to show: the user's name, else "Out 1 · R · Low".
+         * What to show: the user's name, else "Out 1 · R · Low"; an unused
+         * output "3 · None" (owner 2026-11-24).
          */label: String, 
         /**
          * The same for a phone row, beside the output's "OUTn" button: the
-         * user's name, else "R · Low" (owner decision, review c86 F3).
+         * user's name, else "R · Low" (owner decision, review c86 F3); an unused
+         * output "None".
          */shortLabel: String, 
         /**
          * The firmware's name for the slot ("I2S 1 L", "PDM"), for a tooltip or
@@ -54807,7 +54818,13 @@ public struct OutputLabel {
          */channel: String, 
         /**
          * "Low", "High", "Band" or "Full".
-         */band: String) {
+         */band: String, 
+        /**
+         * No input is routed to the output (owner 2026-11-24): a view that only
+         * shows (the Overview's cards and tiles, a phone's Home, a summary) leaves
+         * it out; a view that edits it shows `label`. [`DspiCore::output_cards`]
+         * leaves it out already.
+         */unused: Bool) {
         self.output = output
         self.label = label
         self.shortLabel = shortLabel
@@ -54815,6 +54832,7 @@ public struct OutputLabel {
         self.userNamed = userNamed
         self.channel = channel
         self.band = band
+        self.unused = unused
     }
 }
 
@@ -54846,6 +54864,9 @@ extension OutputLabel: Equatable, Hashable {
         if lhs.band != rhs.band {
             return false
         }
+        if lhs.unused != rhs.unused {
+            return false
+        }
         return true
     }
 
@@ -54857,6 +54878,7 @@ extension OutputLabel: Equatable, Hashable {
         hasher.combine(userNamed)
         hasher.combine(channel)
         hasher.combine(band)
+        hasher.combine(unused)
     }
 }
 
@@ -54875,7 +54897,8 @@ public struct FfiConverterTypeOutputLabel: FfiConverterRustBuffer {
                 slotName: FfiConverterString.read(from: &buf), 
                 userNamed: FfiConverterBool.read(from: &buf), 
                 channel: FfiConverterString.read(from: &buf), 
-                band: FfiConverterString.read(from: &buf)
+                band: FfiConverterString.read(from: &buf), 
+                unused: FfiConverterBool.read(from: &buf)
         )
     }
 
@@ -54887,6 +54910,7 @@ public struct FfiConverterTypeOutputLabel: FfiConverterRustBuffer {
         FfiConverterBool.write(value.userNamed, into: &buf)
         FfiConverterString.write(value.channel, into: &buf)
         FfiConverterString.write(value.band, into: &buf)
+        FfiConverterBool.write(value.unused, into: &buf)
     }
 }
 

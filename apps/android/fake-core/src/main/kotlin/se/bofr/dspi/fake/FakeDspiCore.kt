@@ -706,7 +706,7 @@ open class FakeDspiCore(
                 "${if (s.outputTypes.getOrNull(o / 2) == 1) "I2S" else "SPDIF"} ${o / 2 + 1} ${if (o % 2 == 0) "L" else "R"}"
             }
             val name = s.channelNames.getOrElse(s.numInputChannels + o) { "" }
-            OutputLabel(o, name.ifEmpty { slot }, name.ifEmpty { slot }, slot, false, "", "")
+            OutputLabel(o, name.ifEmpty { slot }, name.ifEmpty { slot }, slot, false, "", "", false)
         }
     }
 
