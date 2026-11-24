@@ -24,7 +24,8 @@ export function PresetPopover(props: { session: Session; state: SessionState; as
   const s = state.snapshot?.state;
   if (!s) return null;
   const ro = session.readOnlyReason;
-  const active = s.activePresetSlot;
+  // -- WP REVEFIX -- (REVE B1) a slot the device has not said (255 while it does not know): no row is active, nothing copies
+  const active = s.activePresetSlot < PRESET_SLOTS ? s.activePresetSlot : -1;
   const dirty = state.unsaved.length > 0 && !ro;
   const off = !!ro || busy || props.disabled;
   const startupSlot = s.presetStartupMode === 0 ? s.presetDefaultSlot : -1;
@@ -42,26 +43,30 @@ export function PresetPopover(props: { session: Session; state: SessionState; as
   const confirm = async (title: string, text: string, yes: string, danger = false) =>
     (await ask({ title, body: <p>{text}</p>, buttons: [{ label: yes, value: "yes", danger }, { label: "Cancel", value: "cancel" }] })) === "yes";
 
-  /** Copy slot `source` into `dest`; from the active slot with unsaved changes, asked first (Save, Discard, Cancel). */
-  const copy = (source: number, dest: number) =>
+  /**
+   * Copy the current settings into `dest`, as the device copies: it saves them there and to the active slot again, so
+   * only the active slot can be the source (-- WP REVEFIX -- REVE B1: another source lost its stored contents). With
+   * unsaved changes, asked first (Save, Discard, Cancel).
+   */
+  const copy = (dest: number) =>
     run(async () => {
-      if (source === active) {
-        const a = await unsaved();
-        if (a === "cancel") return;
-        if (a === "save" && !(await session.savePreset(active))) return;
-        if (a === "discard" && !(await session.change("presetRevert", undefined))) return;
-      }
+      if (active < 0) return;
+      const a = await unsaved();
+      if (a === "cancel") return;
+      if (a === "save" && !(await session.savePreset(active))) return;
+      if (a === "discard" && !(await session.change("presetRevert", undefined))) return;
       // The destination keeps its name; one without gets the Console's default.
       if (!(s.presetNames[dest] ?? "").trim() && !(await session.write("preset.name", { text: `Preset ${dest + 1}` }, [dest]))) return;
-      await session.change("presetCopy", { source, dest, token: await session.token("copy_preset") }); // -- WP P1WB2 -- with its token
+      await session.change("presetCopy", { source: active, dest, token: await session.token("copy_preset") }); // -- WP P1WB2 -- with its token
     });
-  const askCopy = async (source: number) => {
+  const askCopy = async () => {
+    const source = active;
     let dest = source === 0 ? 1 : 0;
     const a = await ask({
       title: "Copy to…",
       body: (
         <label class="dialog-field">
-          Copy “{presetName(s, source)}” to
+          Copy the current settings to
           <select
             name="dest"
             onChange={(e) => {
@@ -80,7 +85,7 @@ export function PresetPopover(props: { session: Session; state: SessionState; as
       ),
       buttons: [{ label: "Copy", value: "copy" }, { label: "Cancel", value: "cancel" }],
     });
-    if (a === "copy") await copy(source, dest);
+    if (a === "copy") await copy(dest);
   };
   const clear = async (slot: number) => {
     if (await confirm("Clear Preset?", `Clear "${presetLabel(s, slot)}" and restore factory defaults? This cannot be undone.`, "Clear", true))
@@ -120,13 +125,14 @@ export function PresetPopover(props: { session: Session; state: SessionState; as
       "slot.save": w(() => run(() => store(verbs, slot))),
       "slot.rename": w(() => setRenaming(slot), stored),
       "slot.startup": w(() => run(() => session.write("preset.startup", { bytes: [0, slot] })), stored && startupSlot !== slot),
-      "slot.copyTo": w(() => askCopy(slot), stored),
+      // -- WP REVEFIX -- (REVE B1) the device copies the active slot: on its row only, as Qt's menu
+      ...(slot === active ? { "slot.copyTo": w(() => askCopy()) } : {}),
       "slot.clear": { ...w(() => clear(slot), stored), danger: true },
       "slot.clearAll": { ...w(() => clearAll(), s.presetOccupied !== 0), danger: true },
     });
   };
 
-  const activeText = presetLabel(s, active);
+  const activeText = active < 0 ? "–" : presetLabel(s, active);
   return (
     <>
       <Popover
@@ -193,11 +199,11 @@ export function PresetPopover(props: { session: Session; state: SessionState; as
                     ) : (
                       <button
                         type="button"
-                        disabled={off}
-                        title={ro || `Copy “${presetLabel(s, active)}” into this slot`}
+                        disabled={off || active < 0}
+                        title={ro || "Copy the current settings into this slot"}
                         onClick={() => {
                           close(false);
-                          void copy(active, slot);
+                          void copy(slot);
                         }}
                       >
                         Copy Here

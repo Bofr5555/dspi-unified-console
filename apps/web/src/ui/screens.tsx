@@ -21,7 +21,7 @@ import { Dialog } from "../screens/main/Dialog";
 import { MainScreen } from "../screens/main/MainScreen";
 // -- WP WB6c --
 import { MatrixScreen } from "../screens/matrix/MatrixScreen";
-import { changeSummary } from "../screens/main/model";
+import { PRESET_SLOTS, changeSummary } from "../screens/main/model";
 import type { Session } from "./session";
 // -- WP SW3 -- the System view (WB6d), the scene bar (WB6e), the status rail (WB6f)
 import { safeLocalStorage } from "../fleet/local";
@@ -417,7 +417,9 @@ export function Screens(props: {
     session.leaveGuard = async () => {
       const a = await unsaved();
       if (a === "cancel") return false;
-      if (a === "save") return session.savePreset(session.state.snapshot?.state.activePresetSlot ?? 0);
+      // -- WP REVEFIX -- a slot the device has not said is no slot to save to (REVE B1)
+      const slot = session.state.snapshot?.state.activePresetSlot ?? PRESET_SLOTS;
+      if (a === "save") return slot < PRESET_SLOTS && session.savePreset(slot);
       return true;
     };
     return () => {

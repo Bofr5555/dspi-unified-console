@@ -199,13 +199,14 @@ fn wp_p1tz_required_by_default_and_a_given_token_is_checked() {
     let p = rig();
     assert!(p.core.confirmation_required_for_tests());
     let before = p.traffic();
+    let active = p.core.get_state().active_preset_slot; // -- WP REVEFIX -- a copy is from the active slot
     for r in [
         p.core.save_preset_confirmed(1, None),
         p.core.save_params_confirmed(None),
         p.core.save_output_config_confirmed(None),
         p.core.factory_reset_confirmed(None),
         p.core.delete_preset_confirmed(1, None),
-        p.core.copy_preset_confirmed(1, 2, None),
+        p.core.copy_preset_confirmed(active, 2, None),
         p.core.enter_bootloader_confirmed(None),
     ] {
         assert_eq!(code_of(r), Err(refusal::MISSING.into()));
