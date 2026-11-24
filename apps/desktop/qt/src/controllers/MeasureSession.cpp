@@ -1366,6 +1366,9 @@ void MeasureSession::takeResult() {
                const QJsonObject o = object(r);
                if (o.contains(QLatin1String("ok")) && !isOk(o)) return;
                setResultDocument(r, QStringLiteral("run"));
+               // -- WP SHOWFIX -- (finding 6) only with a result to see: never
+               // "complete" beside the tune's "No measurement"
+               if (m_result.isEmpty()) return;
                say(tr("The measurement is complete: see Results."));
                if (!isActive()) m_owner->report(this, m_said, false);   // -- WP MDQT2c --
            });
@@ -2408,6 +2411,9 @@ void MeasureSession::startForAgent(const QJsonObject &ticket, std::function<void
                 m_resultView.clear();
                 m_resultGraph.clear();
                 emit resultChanged();
+                // -- WP SHOWFIX -- (finding 6) the last run's "complete" goes with its result
+                m_said.clear();
+                emit errorChanged();
                 m_tuneSession = false;
                 m_state = o;
                 m_wasActive = true;
