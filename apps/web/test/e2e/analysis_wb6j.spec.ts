@@ -91,7 +91,7 @@ test("WB6J M23 M22: a channel's page draws its spectrum over the EQ graph and in
   expect(errors).toEqual([]);
 });
 
-test("WB6J M46: the signal generator plays only on Play, shows what it does, and stops", async ({ page }) => {
+test("WB6J M46: the signal generator plays only on Start, shows what it does, and stops", async ({ page }) => {
   const errors = errorsOf(page);
   const session = await connect(page);
   await openPage(session, "Signal Generator");
@@ -104,11 +104,11 @@ test("WB6J M46: the signal generator plays only on Play, shows what it does, and
   await gen.getByRole("textbox", { name: "Level in dBFS" }).fill("−30,0");
   await gen.getByRole("textbox", { name: "Level in dBFS" }).press("Enter");
   // No outputs: Play is off and says why.
-  await gen.getByRole("group", { name: "Outputs" }).getByRole("button", { name: "None" }).click();
+  await gen.getByRole("region", { name: "Outputs" }).getByRole("button", { name: "None", exact: true }).click(); // -- WP WEB4 -- All/None at the section's label
   await expect(gen.locator(".siggen-title")).toHaveText("Select at least one output");
-  await expect(gen.getByRole("button", { name: "Play" })).toBeDisabled();
+  await expect(gen.getByRole("button", { name: "Start" })).toBeDisabled();
   await gen.getByRole("group", { name: "Outputs" }).getByRole("button", { name: /^OUT1/ }).click();
-  await gen.getByRole("button", { name: "Play" }).click();
+  await gen.getByRole("button", { name: "Start" }).click();
   await expect(gen.locator(".siggen-title")).toHaveText(/^(Fading in|Running) · Pink noise$/);
   const cfg = await call<Config>(page, "siggenConfig");
   expect([cfg.signalType, cfg.channelMask, cfg.levelDb]).toEqual([3, 1, -30]);
@@ -146,7 +146,7 @@ test("WB6J M46: read only, the generator and Identify are off and nothing plays"
   const session = await connect(page, "Venue B");
   await openPage(session, "Signal Generator");
   const gen = session.getByRole("region", { name: "Signal Generator" });
-  await expect(gen.getByRole("button", { name: "Play" })).toBeDisabled();
+  await expect(gen.getByRole("button", { name: "Start" })).toBeDisabled();
   await expect(gen.locator(".siggen-title")).toHaveText("You can view this DSPi but not change it");
   await openPage(session, "EQ");
   await session.locator(".eq-pick", { hasText: "OUT1" }).click();

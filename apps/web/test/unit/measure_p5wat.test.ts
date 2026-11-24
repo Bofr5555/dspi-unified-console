@@ -154,7 +154,8 @@ test("P5WAT: documents: who may delete a hub document, the merge, a page documen
 
 test("P5WAT: the tab slot holds the auto-tune and the documents; the documents are a Viewer's too", () => {
   const ids = MEASURE_TABS.map((t) => `${t.id}${t.passive ? "*" : ""}`);
-  assert.deepEqual(ids.slice(-2), ["tune", "docs*"]);
+  // -- WP WEB4 -- in Qt's order: Several units (ATWEB's "system") after them, last
+  assert.deepEqual(ids, ["measure", "results*", "live", "tune", "docs*", "system"]);
 });
 
 // ------------------------------------------------------------------ the Worker's turns of the tune

@@ -2,7 +2,9 @@
 // and its calibration file, the placement and the coupler, the outputs with their ways, speakers
 // and alignment groups, the sweep; then the core's preflight in words. Nothing is played here.
 
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
+import { NoticeRow } from "../../ui/design"; // -- WP WEB4 --
+import { Icon } from "./parts"; // -- WP WEB4 --
 import { measureCall } from "../../core/measure-protocol";
 import { noticeRow } from "../../ui/texts";
 import type { MeasureTabProps } from "./MeasureScreen";
@@ -10,9 +12,6 @@ import { COUPLERS, PLACEMENTS, ROLES, TWO_PASSES_HINT, countRange, draftProblem,
 // -- WP ROLEW -- the rows from the speaker layout, an edit written back, the banner
 import { SAVED_TO_LAYOUT, bannerOf, baseOf, withRow } from "../settings/speakers/model";
 import { useSpeakerLayout } from "../settings/speakers/use-layout";
-
-const field = { display: "flex", flexDirection: "column", gap: "2px", minWidth: 0 } as const;
-const row = { display: "flex", flexWrap: "wrap", gap: "8px 16px", alignItems: "flex-end" } as const;
 
 /** A file's text, at most `max` bytes (the core bounds it again). */
 export async function readTextFile(input: HTMLInputElement, max = 1 << 20): Promise<{ name: string; text: string } | null> {
@@ -78,14 +77,16 @@ export function SetupPanel(props: MeasureTabProps) {
   // The microphone first (Firefox opens audio only close to the click), then the core's preflight.
   const start = () => void desk.startRun(setupOf(d, 48_000));
 
+  // -- WP WEB4 -- DL2's Measure page: sections (label, no box) in the 760 px column, the calibration
+  // as a line with Import Calibration…, the placement as chips, the outputs striped, the blocking
+  // condition as a warning notice above Check and the one primary, Measure.
+  const calField = useRef<HTMLInputElement>(null);
   return (
-    <section class="card" aria-label="Measurement setup" style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-      <div class="card-head">
-        <strong>Setup</strong>
-      </div>
+    <section class="measure-setup measure-column" aria-label="Measurement setup">
       {banner ? (
-        <div class="banner" role="status" aria-label="Speaker layout" data-kind={banner.kind} style={{ flexWrap: "wrap", margin: 0 }}>
-          <span style={{ flex: "1 1 14em", minWidth: 0 }}>{banner.text}</span>
+        <div class={`notice-row notice-row-${banner.kind === "stated" || banner.kind === "imported" ? "info" : "warning"}`} role="status" aria-label="Speaker layout" data-kind={banner.kind}>
+          <Icon name={banner.kind === "stated" || banner.kind === "imported" ? "info" : "warning"} class="notice-icon" />
+          <span class="notice-text">{banner.text}</span>
         </div>
       ) : null}
       {layout.view.problem ? (
@@ -94,9 +95,9 @@ export function SetupPanel(props: MeasureTabProps) {
         </p>
       ) : null}
 
-      <fieldset style={{ border: 0, padding: 0, margin: 0, ...row }} disabled={running}>
-        <label style={field}>
-          <span>Microphone</span>
+      <fieldset class="m-sec" disabled={running}>
+        <legend class="section-label">Microphone</legend>
+        <div class="m-line">
           <select
             aria-label="Microphone"
             value={micValue}
@@ -113,150 +114,177 @@ export function SetupPanel(props: MeasureTabProps) {
               </option>
             ))}
           </select>
-        </label>
-        <label style={field}>
-          <span>Calibration file (UMIK, Dayton, REW or CSV)</span>
-          <input type="file" aria-label="Import a calibration file" accept=".txt,.cal,.csv,.frd,text/plain" onChange={(e) => void importCal(e.currentTarget as HTMLInputElement)} />
-        </label>
-        {d.micDocument ? (
-          <span style={field}>
+        </div>
+        {mic.kind === "browser" ? <p class="m-caption">The browser asks for the microphone when the measurement starts; nothing is played by this page.</p> : null}
+        <div class="m-line m-spread">
+          {d.micDocument ? (
             <span aria-label="Calibration">{micSummary(d.micDocument)}</span>
-            <button type="button" onClick={() => (desk.setDocs({ micDocument: "" }), set({ micDocument: "" }))}>
-              No calibration
+          ) : (
+            <span>No calibration: levels are relative (dB), with no SPL cap.</span>
+          )}
+          <span class="m-line">
+            {d.micDocument ? (
+              <button type="button" onClick={() => (desk.setDocs({ micDocument: "" }), set({ micDocument: "" }))}>
+                No calibration
+              </button>
+            ) : null}
+            <button type="button" onClick={() => calField.current?.click()}>
+              Import Calibration…
             </button>
           </span>
-        ) : (
-          <span class="muted">No calibration: levels are relative (dB), with no SPL cap.</span>
-        )}
+          <input ref={calField} type="file" class="visually-hidden" tabIndex={-1} aria-label="Import a calibration file" accept=".txt,.cal,.csv,.frd,text/plain" onChange={(e) => void importCal(e.currentTarget as HTMLInputElement)} />
+        </div>
       </fieldset>
-      {mic.kind === "browser" ? <p class="muted">The browser asks for the microphone when the measurement starts; nothing is played by this page.</p> : null}
 
-      <fieldset style={{ border: 0, padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: "6px" }} disabled={running}>
-        <legend>Placement</legend>
-        <div role="radiogroup" aria-label="Placement" style={row}>
+      <fieldset class="m-sec" disabled={running}>
+        <legend class="section-label">Placement</legend>
+        <div role="radiogroup" aria-label="Placement" class="chips">
           {PLACEMENTS.map((p) => (
-            <label key={p.id} title={p.detail}>
-              <input type="radio" name="measure-placement" checked={d.placement === p.id} onChange={() => set({ placement: p.id, count: p.id === "headphones" ? 3 : d.count < 3 ? 3 : d.count })} /> {p.label}
-            </label>
+            <button
+              type="button"
+              role="radio"
+              class="chip"
+              key={p.id}
+              title={p.detail}
+              aria-checked={d.placement === p.id}
+              onClick={() => set({ placement: p.id, count: p.id === "headphones" ? 3 : d.count < 3 ? 3 : d.count })}
+            >
+              {p.label}
+            </button>
           ))}
         </div>
-        <span class="muted" aria-label="Placement detail">
+        <span class="m-caption" aria-label="Placement detail">
           {PLACEMENTS.find((p) => p.id === d.placement)?.detail ?? "Where is the microphone? Speakers or headphones on a coupler: the levels depend on it, and headphones are measured much more quietly."}
         </span>
-        <div style={row}>
-          {range ? (
-            <label style={field}>
-              <span>{d.placement === "headphones" ? "Reseats" : "Positions"}</span>
-              <input type="number" min={range[0]} max={range[1]} step={1} value={d.count} onInput={(e) => set({ count: Number((e.currentTarget as HTMLInputElement).value) })} />
-            </label>
-          ) : null}
-          {d.placement === "headphones" ? (
-            <label style={field}>
-              <span>Coupler</span>
-              <select value={d.coupler} onChange={(e) => set({ coupler: (e.currentTarget as HTMLSelectElement).value as MeasureDraft["coupler"] })}>
-                {COUPLERS.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : null}
-          <label style={field}>
-            <span>Sweep, s</span>
-            <input type="number" aria-label="Sweep length" min={1} max={15} step={0.5} value={d.sweepMs / 1000} onInput={(e) => set({ sweepMs: Math.round(Number((e.currentTarget as HTMLInputElement).value) * 1000) })} />
-          </label>
-          <label style={field}>
-            <span>Passes</span>
-            <input type="number" aria-label="Passes" min={2} max={8} step={1} value={d.passes} onInput={(e) => set({ passes: Number((e.currentTarget as HTMLInputElement).value) })} />
-            {d.passes === 2 ? (
-              <span class="muted" aria-label="Passes hint">
-                {TWO_PASSES_HINT}
-              </span>
+        {range || d.placement === "headphones" ? (
+          <div class="m-line">
+            {range ? (
+              <label class="m-field">
+                <span>{d.placement === "headphones" ? "Reseats" : "Positions"}</span>
+                <input type="number" class="m-num" min={range[0]} max={range[1]} step={1} value={d.count} onInput={(e) => set({ count: Number((e.currentTarget as HTMLInputElement).value) })} />
+              </label>
             ) : null}
-          </label>
-          <label style={{ ...field, flex: "1 1 10em" }}>
-            <span>Name</span>
-            <input type="text" aria-label="Measurement name" maxLength={256} value={d.name} placeholder="By the date" onInput={(e) => set({ name: (e.currentTarget as HTMLInputElement).value })} />
-          </label>
-        </div>
+            {d.placement === "headphones" ? (
+              <label class="m-field">
+                <span>Coupler</span>
+                <select value={d.coupler} onChange={(e) => set({ coupler: (e.currentTarget as HTMLSelectElement).value as MeasureDraft["coupler"] })}>
+                  {COUPLERS.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+          </div>
+        ) : null}
       </fieldset>
 
-      <fieldset style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }} disabled={running}>
-        <legend>Outputs</legend>
-        <div style={{ overflowX: "auto" }}>
-          <table class="measure-outputs" aria-label="Outputs to measure" style={{ borderCollapse: "collapse", width: "100%" }}>
-            <thead>
-              <tr>
-                <th scope="col">Output</th>
-                <th scope="col">Way</th>
-                <th scope="col">Speaker</th>
-                <th scope="col" title="The outputs of one group are measured in one run and aligned to each other">Group</th>
+      <fieldset class="m-sec" disabled={running}>
+        <legend class="section-label">Outputs</legend>
+        <p class="m-caption">The outputs measured together in one walked run are an alignment group: their delays and polarity are compared within the run only.</p>
+        <div class="m-scroll">
+        <table class="measure-outputs m-rows" aria-label="Outputs to measure">
+          <thead>
+            <tr>
+              <th scope="col">Output</th>
+              <th scope="col">Way</th>
+              <th scope="col">Speaker</th>
+              <th scope="col" title="The outputs of one group are measured in one run and aligned to each other">Group</th>
+            </tr>
+          </thead>
+          <tbody>
+            {d.outputs.map((o) => (
+              <tr key={o.output} class={o.on ? undefined : "off"}>
+                <td>
+                  <label class="m-check">
+                    <input type="checkbox" aria-label={`Measure ${outputName(o.output)}`} checked={o.on} onChange={(e) => setOut(o.output, { on: (e.currentTarget as HTMLInputElement).checked })} /> {outputName(o.output)}
+                  </label>
+                </td>
+                <td>
+                  <select aria-label={`Way of ${outputName(o.output)}`} value={o.role} onChange={(e) => {
+                      const role = (e.currentTarget as HTMLSelectElement).value as OutputDraft["role"];
+                      setOut(o.output, { role });
+                      void writeBack(o.output, { role });
+                    }}
+                  >
+                    {ROLES.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.label}
+                      </option>
+                    ))}
+                  </select>
+                </td>
+                <td>
+                  <input type="text" class="m-speaker" aria-label={`Speaker of ${outputName(o.output)}`} size={4} maxLength={16} value={o.speaker} placeholder="Not set" onInput={(e) => setOut(o.output, { speaker: (e.currentTarget as HTMLInputElement).value })} onChange={(e) => void writeBack(o.output, { speaker: (e.currentTarget as HTMLInputElement).value })} />
+                </td>
+                <td>
+                  <input type="number" class="m-num" aria-label={`Group of ${outputName(o.output)}`} min={0} max={15} step={1} value={o.group} onInput={(e) => setOut(o.output, { group: Math.max(0, Math.min(15, Math.trunc(Number((e.currentTarget as HTMLInputElement).value) || 0))) })} onChange={(e) => void writeBack(o.output, { group: Math.max(0, Math.min(15, Math.trunc(Number((e.currentTarget as HTMLInputElement).value) || 0))) })} />
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {d.outputs.map((o) => (
-                <tr key={o.output}>
-                  <td>
-                    <label>
-                      <input type="checkbox" aria-label={`Measure ${outputName(o.output)}`} checked={o.on} onChange={(e) => setOut(o.output, { on: (e.currentTarget as HTMLInputElement).checked })} /> {outputName(o.output)}
-                    </label>
-                  </td>
-                  <td>
-                    <select aria-label={`Way of ${outputName(o.output)}`} value={o.role} onChange={(e) => {
-                        const role = (e.currentTarget as HTMLSelectElement).value as OutputDraft["role"];
-                        setOut(o.output, { role });
-                        void writeBack(o.output, { role });
-                      }}
-                    >
-                      {ROLES.map((r) => (
-                        <option key={r.id} value={r.id}>
-                          {r.label}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                  <td>
-                    <input type="text" aria-label={`Speaker of ${outputName(o.output)}`} size={4} maxLength={16} value={o.speaker} onInput={(e) => setOut(o.output, { speaker: (e.currentTarget as HTMLInputElement).value })} onChange={(e) => void writeBack(o.output, { speaker: (e.currentTarget as HTMLInputElement).value })} />
-                  </td>
-                  <td>
-                    <input type="number" aria-label={`Group of ${outputName(o.output)}`} min={0} max={15} step={1} style={{ width: "4em" }} value={o.group} onInput={(e) => setOut(o.output, { group: Math.max(0, Math.min(15, Math.trunc(Number((e.currentTarget as HTMLInputElement).value) || 0))) })} onChange={(e) => void writeBack(o.output, { group: Math.max(0, Math.min(15, Math.trunc(Number((e.currentTarget as HTMLInputElement).value) || 0))) })} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+            ))}
+          </tbody>
+        </table>
         </div>
-        <p class="muted">A mid or a tweeter is measured only through an active high-pass; the core checks it (the tweeter rule).</p>
+        <p class="m-caption">A mid or a tweeter is measured only through an active high-pass; the core checks it (the tweeter rule).</p>
         {saved ? (
-          <p class={saved.error ? "error" : "note"} role="status" aria-label="Speaker layout saved">
+          <p class={saved.error ? "error" : "m-caption"} role="status" aria-label="Speaker layout saved">
             {saved.text}
           </p>
         ) : null}
       </fieldset>
 
+      <fieldset class="m-sec" disabled={running}>
+        <legend class="section-label">Sweep</legend>
+        <div class="m-line">
+          <label class="m-inline">
+            <span>Sweep length</span>
+            <input type="number" class="m-num" aria-label="Sweep length" min={1} max={15} step={0.5} value={d.sweepMs / 1000} onInput={(e) => set({ sweepMs: Math.round(Number((e.currentTarget as HTMLInputElement).value) * 1000) })} />
+            <span class="m-unit">s</span>
+          </label>
+          <label class="m-inline">
+            <span>Passes</span>
+            <input type="number" class="m-num" aria-label="Passes" min={2} max={8} step={1} value={d.passes} onInput={(e) => set({ passes: Number((e.currentTarget as HTMLInputElement).value) })} />
+          </label>
+          <label class="m-inline m-grow">
+            <span>Name</span>
+            <input type="text" aria-label="Measurement name" maxLength={256} value={d.name} placeholder="By the date" onInput={(e) => set({ name: (e.currentTarget as HTMLInputElement).value })} />
+          </label>
+        </div>
+        {d.passes === 2 ? (
+          <span class="m-caption" aria-label="Passes hint">
+            {TWO_PASSES_HINT}
+          </span>
+        ) : null}
+        <p class="m-caption">The level is the core's: it starts quiet and rises in steps until the microphone hears the output well, never past the ceiling.</p>
+      </fieldset>
+
       {lines.length || desk.preflight ? (
-        <div role="list" aria-label="Preflight">
+        <ul role="list" aria-label="Preflight" class="m-lines">
           {desk.preflight?.clear ? (
-            <p role="listitem" class="note">
+            <li role="listitem" class="m-ok">
+              <Icon name="check" class="m-line-icon" />
               Ready: nothing blocks the measurement.
-            </p>
+            </li>
           ) : null}
           {lines.map((l, i) => (
-            <p key={i} role="listitem" class={l.kind === "blocker" ? "error" : "muted"} data-key={l.key}>
-              {l.kind === "blocker" ? "Blocks: " : "Note: "}
-              {l.text}
-            </p>
+            <li key={i} role="listitem" class={l.kind === "blocker" ? "m-bad" : "m-note"} data-key={l.key}>
+              <Icon name={l.kind === "blocker" ? "error" : "info"} class="m-line-icon" />
+              <span>
+                {l.kind === "blocker" ? "Blocks: " : "Note: "}
+                {l.text}
+              </span>
+            </li>
           ))}
-        </div>
+        </ul>
       ) : null}
-      {problem ? <p class="muted">{problem}</p> : null}
-      <div style={row}>
+      {problem ? <NoticeRow kind="warning">{problem}</NoticeRow> : null}
+      <div class="m-actions">
         <button type="button" disabled={running || !!problem} onClick={preflight}>
           Check
         </button>
         <button type="button" class="primary" disabled={running || !!problem} onClick={start}>
-          Start measuring
+          Measure
         </button>
       </div>
     </section>

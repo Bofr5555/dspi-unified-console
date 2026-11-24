@@ -1,0 +1,16 @@
+/* -- WP WEB4 -- Library › Files in the Modern design (DL3a): four and more sections in the 760 px column
+   at the left, each its caps label, one muted sentence and its buttons; no cards. The import's preview
+   is a section too, its choices on the control tone. */
+.dspi-web .files { display: flex; flex-direction: column; gap: 24px; max-width: var(--content-max); }
+.dspi-web .files > .card, .dspi-web .files > .card.import-preview { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; background: none; border-radius: 0; }
+.dspi-web .files > .card > h3 { margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.dspi-web .files > .card.import-preview > h3 { font-size: 15px; letter-spacing: 0; text-transform: none; color: var(--text); }
+.dspi-web .files > .card > .note, .dspi-web .files > .card > p { margin: 0; color: var(--text); }
+.dspi-web .files > .card > .note { color: var(--muted); }
+.dspi-web .files .files-row { gap: 8px; }
+.dspi-web .files .files-row label { font-size: 12px; color: var(--muted); max-width: 22rem; }
+.dspi-web .files .files-row > button { align-self: end; }
+.dspi-web .files .autoeq-db h4 { margin: 8px 0 0; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.dspi-web .files .import-blocks { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0; padding: 8px 10px; border: 0; border-radius: 8px; background: var(--panel); }
+.dspi-web .files .import-blocks legend { float: left; width: 100%; padding: 0; margin-bottom: 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.dspi-web .files > .card > button, .dspi-web .files > .card > .snap-actions, .dspi-web .files > .card > div > button { align-self: flex-start; }

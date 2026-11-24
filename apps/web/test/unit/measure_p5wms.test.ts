@@ -74,8 +74,9 @@ test("P5WMS: a draft's setup is a walked run of the chosen outputs; its problems
   assert.deepEqual(
     s.outputs.map((o) => [o.output, o.role, o.speaker]),
     [
-      [0, "full", "L"],
-      [1, "full", "L"],
+      // -- WP WEB4 -- (REVD G8) no speaker until the person or the layout names one, as Qt ("Not set")
+      [0, "full", ""],
+      [1, "full", ""],
     ],
   );
   assert.equal(s.captureRateHz, 44100);

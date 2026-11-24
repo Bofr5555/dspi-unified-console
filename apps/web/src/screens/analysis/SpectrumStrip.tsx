@@ -144,7 +144,8 @@ export function SpectrumStrip(props: { session: Session; names: TapNames; want?:
   const list = shownTap === TAP_OUTPUT ? props.names.outputs : props.names.inputs;
   const count = props.want ? 1 : shownTap === TAP_OUTPUT ? (v?.caps.outputChannels ?? props.names.outputs.length) : (v?.caps.inputChannels ?? props.names.inputs.length);
   return (
-    <section class="card rta-strip" aria-label="Spectrum">
+    // -- WP WEB4 -- on the Analyser page (`always`) the bars are the page: no card around them
+    <section class={props.always ? "rta-strip rta-page" : "card rta-strip"} aria-label="Spectrum">
       {props.always ? null : (
         <div class="card-head">
           <h3>{props.title ?? "Spectrum"}</h3>

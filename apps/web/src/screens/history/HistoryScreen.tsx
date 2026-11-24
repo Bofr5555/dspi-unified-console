@@ -7,8 +7,22 @@ import type { HistoryEntry } from "../../core/protocol";
 import { useSessionState } from "../../ui/components";
 import type { ScreenProps } from "../../ui/screens";
 import { UndoButtons } from "../../ui/undo";
-import { HISTORY_ROWS, historyRows, sameHistory } from "./model";
+import { HISTORY_ROWS, historyRows, sameHistory, type HistoryNames } from "./model";
 import { EmptyState } from "../../ui/design"; // -- WP WEB --
+import type { DspState } from "../../core/protocol";
+import { Icon } from "../measure/parts"; // -- WP WEB4 --
+import "./history.css"; // -- WP WEB4 --
+
+/** -- WP WEB4 -- The channels as Qt's history names them: the name the user gave, else "Out 3", "In 1". */
+export function namesOf(s: DspState): HistoryNames {
+  const given = (wire: number, fallbacks: string[]) => {
+    const n = (s.channelNames[wire] ?? "").trim();
+    return n && !fallbacks.includes(n) ? n : "";
+  };
+  const output = (o: number) => given(s.numInputChannels + o, [`Output ${o + 1}`, `Out ${o + 1}`, `OUT${o + 1}`]) || `Out ${o + 1}`;
+  const input = (i: number) => given(i, [`Input ${i + 1}`, `In ${i + 1}`, `IN${i + 1}`]) || `In ${i + 1}`;
+  return { output, input, wire: (w) => (w < s.numInputChannels ? input(w) : output(w - s.numInputChannels)) };
+}
 
 export function HistoryScreen(props: ScreenProps) {
   const { session } = props;
@@ -40,34 +54,44 @@ export function HistoryScreen(props: ScreenProps) {
     };
   }, [session, st.snapshot, st.history.canUndo, st.history.canRedo]);
   // -- WP WEBM5 -- (review RC16) made again only for a new list or new names, not on every snapshot
-  const rows = useMemo(() => historyRows(entries ?? [], (p) => labels.current.get(p) ?? p, Date.now()), [entries, named]);
+  const state = st.snapshot?.state;
+  const names = useMemo(() => (state ? namesOf(state) : undefined), [state?.channelNames, state?.numInputChannels]);
+  const rows = useMemo(() => historyRows(entries ?? [], (p) => labels.current.get(p) ?? p, Date.now(), names), [entries, named, names]);
   if (!st.snapshot) return null;
+  // -- WP WEB4 -- DL3a's History: Undo and Redo at the top, the changes as striped rows in the 760 px
+  // column (the time in mono, an icon for what Undo can do with it, the change in words with its values under it)
   return (
     <section class="history-screen" aria-label="History">
-      <div class="settings-buttons">
+      <div class="settings-buttons history-tools">
         <UndoButtons session={session} state={st} />
       </div>
       {entries === null ? (
         <p class="empty">Reading the changes…</p>
       ) : rows.length ? (
         <ol class="history-list" aria-label="Changes, newest first">
-          {rows.map((r) => (
-            <li key={r.key}>
-              <span class="h-time">{r.time}</span>
-              <span class="h-what">
-                {r.what}
-                {r.source ? <span class="h-source"> · {r.source}</span> : null}
-                {r.undoable ? null : <span class="h-source"> · cannot be undone</span>}
-              </span>
-              <span class="h-values">{r.values}</span>
-            </li>
-          ))}
+          {rows.map((r) => {
+            const mark = !r.undoable ? { icon: "lock", words: "cannot be undone" } : r.source === "Undo" ? { icon: "undo-2", words: "undone" } : r.source === "Redo" ? { icon: "redo-2", words: "redone" } : null;
+            return (
+              <li key={r.key}>
+                <span class="h-time">{r.time}</span>
+                <span class="h-mark" title={mark?.words}>
+                  {mark ? <Icon name={mark.icon} class="h-icon" /> : null}
+                </span>
+                <span class="h-what">
+                  {r.what}
+                  {r.source && r.source !== "Undo" && r.source !== "Redo" && r.source !== "Local" ? <span class="h-pill">{r.source}</span> : null}
+                  {mark ? <span class="visually-hidden"> · {r.source === "Undo" || r.source === "Redo" ? `${r.source}: ` : ""}{mark.words}</span> : null}
+                  {r.values ? <span class="h-values">{r.values}</span> : null}
+                </span>
+              </li>
+            );
+          })}
         </ol>
       ) : (
         // -- WP WEB -- DL3a's empty state
         <EmptyState icon="history" title="No changes yet" text="What you change on this device is listed here, newest first, to undo or redo." />
       )}
-      <p class="muted">The changes of this connection: a reconnect starts a new list.</p>
+      <p class="h-caption">The changes of this connection: a reconnect starts a new list.</p>
     </section>
   );
 }

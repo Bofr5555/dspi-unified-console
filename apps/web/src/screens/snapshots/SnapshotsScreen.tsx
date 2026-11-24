@@ -7,7 +7,7 @@
 // -- WP P1DCFIX -- Simple: the list with Recall and the A/B compare only; no capture, open,
 // download, remove, rollback choice or rollback time (those are Advanced's and Installer's).
 
-import { useRef, useState } from "preact/hooks";
+import { useId, useRef, useState } from "preact/hooks";
 import type { ScreenProps } from "../../ui/screens";
 import { OutcomeLine, useDesk } from "./Bars";
 import { download, fileNameFor, type HeldDoc, type SnapshotDesk } from "./model";
@@ -15,6 +15,7 @@ import { DiffTable } from "./DiffTable";
 import { abKeyHint } from "../../ui/keys";
 import { HubSnapshots } from "./HubSnapshots"; // -- WP P2WB2 --
 import { EmptyState } from "../../ui/design"; // -- WP WEB --
+import "./snapshots.css"; // -- WP WEB4 --
 
 export function SnapshotsScreen(props: ScreenProps) {
   const desk = props.desk;
@@ -32,6 +33,7 @@ function SnapshotsView(props: { desk: SnapshotDesk; ask: ScreenProps["ask"]; sim
   const file = useRef<HTMLInputElement>(null);
   const busy = !!st.busy;
   const waiting = st.guard?.phase === "waiting";
+  const timeoutId = useId(); // -- WP WEB4 --
 
   const capture = async () => {
     const preset = session.state.snapshot?.state.presetNames[session.state.snapshot.state.activePresetSlot] ?? "";
@@ -64,56 +66,56 @@ function SnapshotsView(props: { desk: SnapshotDesk; ask: ScreenProps["ask"]; sim
     await desk.recall(d.id, guarded);
   };
 
+  // -- WP WEB4 -- DL3a's Snapshots: the A/B compare first, then the snapshots as a section (Capture the one
+  // primary, Open Snapshot… beside it), striped rows with their actions, the empty state; the recall's
+  // rollback time as a form row; the hub's snapshots last. Sections, not cards, in the 760 px column.
   return (
     <section class="snapshots" aria-label="Snapshots">
       <OutcomeLine desk={desk} outcome={st.outcome} />
-      {simple ? null : (
-      <div class="card">
-        <h3>Capture</h3>
-        <p class="note">
-          A snapshot is the whole device: every setting, saved as a file. Capture downloads one; Open Snapshot… brings one
-          back. The list below holds this visit's snapshots.
-        </p>
-        <form
-          class="snap-capture"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void capture();
-          }}
-        >
-          <label>
-            Name
-            <input name="snapshot-name" value={name} placeholder="Snapshot" onInput={(e) => setName((e.target as HTMLInputElement).value)} />
-          </label>
-          <label>
-            Note
-            <input name="snapshot-note" value={note} onInput={(e) => setNote((e.target as HTMLInputElement).value)} />
-          </label>
-          <div class="snap-actions">
-            <button type="submit" disabled={busy}>
+      <Compare desk={desk} st={st} />
+      <div class="snap-sec" role="group" aria-label="Snapshots list">
+        <div class="ds-section-head">
+          <h4 class="section-label">Snapshots</h4>
+          {simple ? null : (
+            <div class="ds-section-tools">
+              <button type="button" disabled={busy} onClick={() => file.current?.click()}>
+                Open Snapshot…
+              </button>
+              <input
+                ref={file}
+                type="file"
+                hidden
+                multiple
+                accept=".dspipreset,.json,application/json"
+                aria-label="Snapshot file"
+                onChange={(e) => void open(e.target as HTMLInputElement)}
+              />
+            </div>
+          )}
+        </div>
+        {simple ? null : (
+          <form
+            class="snap-capture"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void capture();
+            }}
+          >
+            <label>
+              Name
+              <input name="snapshot-name" value={name} placeholder="Snapshot" onInput={(e) => setName((e.target as HTMLInputElement).value)} />
+            </label>
+            <label>
+              Note
+              <input name="snapshot-note" value={note} onInput={(e) => setNote((e.target as HTMLInputElement).value)} />
+            </label>
+            <button type="submit" class="primary" disabled={busy}>
               Capture
             </button>
-            <button type="button" disabled={busy} onClick={() => file.current?.click()}>
-              Open Snapshot…
-            </button>
-            <input
-              ref={file}
-              type="file"
-              hidden
-              multiple
-              accept=".dspipreset,.json,application/json"
-              aria-label="Snapshot file"
-              onChange={(e) => void open(e.target as HTMLInputElement)}
-            />
-          </div>
-        </form>
-      </div>
-      )}
-      <div class="card">
-        <h3>Snapshots</h3>
-        {st.guardDefault ? (
-          <p class="note">Every recall here can be taken back: it is kept only when you press Keep within {st.timeoutS} s.</p>
-        ) : null}
+          </form>
+        )}
+        {simple ? null : <p class="snap-caption">A snapshot is the whole device: every setting, saved as a file. Capture downloads one; Open Snapshot… brings one back. The list holds this visit's snapshots.</p>}
+        {st.guardDefault ? <p class="snap-caption">Every recall here can be taken back: it is kept only when you press Keep within {st.timeoutS} s.</p> : null}
         {/* -- WP WEB -- DL3a's empty state */}
         {st.docs.length === 0 ? (
           <EmptyState
@@ -122,13 +124,13 @@ function SnapshotsView(props: { desk: SnapshotDesk; ask: ScreenProps["ask"]; sim
             text={simple ? "Snapshots are captured in Advanced mode." : "A snapshot keeps every setting of the device as it is now, to recall or compare later."}
           />
         ) : null}
-        <ul class="snap-list" aria-label="Held snapshots">
+        <ul class="snap-list" aria-label="Held snapshots" hidden={st.docs.length === 0}>
           {st.docs.map((d) => (
             <li key={d.id} class="snap-row" aria-label={d.name}>
               <div class="snap-what">
                 <strong>{d.name}</strong>
                 {d.kind !== "snapshot" ? <span class="badge">{d.kind}</span> : null}
-                <span class="note">
+                <span class="snap-meta">
                   {d.savedUtc ? when(d.savedUtc) : d.fileName}
                   {d.note ? ` · ${d.note}` : ""}
                 </span>
@@ -159,24 +161,36 @@ function SnapshotsView(props: { desk: SnapshotDesk; ask: ScreenProps["ask"]; sim
             </li>
           ))}
         </ul>
-        {/* -- WP P1DCFIX -- the rollback time in Advanced and Installer, over DSPi Link too (5..300 s, 30 by default) */}
-        {simple ? null : (
-          <label class="snap-timeout">
-            Rollback time (s)
-            <input
-              type="number"
-              min={5}
-              max={300}
-              step={5}
-              value={st.timeoutS}
-              onChange={(e) => desk.setTimeoutS(Number((e.target as HTMLInputElement).value))}
-            />
-          </label>
-        )}
       </div>
+      {/* -- WP P1DCFIX -- the rollback time in Advanced and Installer, over DSPi Link too (5..300 s, 30 by default) */}
+      {simple ? null : (
+        <div class="snap-sec" role="group" aria-label="Recall">
+          <h4 class="section-label">Recall</h4>
+          <div class="form-row">
+            <div class="form-row-text">
+              <label class="form-row-title" for={timeoutId}>
+                Rollback time (s)
+              </label>
+              <span class="form-row-caption">How long Keep or Revert waits after a recall with rollback</span>
+            </div>
+            <div class="form-row-control">
+              <input
+                id={timeoutId}
+                class="snap-seconds"
+                type="number"
+                min={5}
+                max={300}
+                step={5}
+                value={st.timeoutS}
+                onChange={(e) => desk.setTimeoutS(Number((e.target as HTMLInputElement).value))}
+              />
+              <span class="snap-unit">s</span>
+            </div>
+          </div>
+        </div>
+      )}
       {/* -- WP P2WB2 -- the hub's shared snapshots, when the hub keeps them */}
       <HubSnapshots desk={desk} ask={ask} simple={simple} />
-      <Compare desk={desk} st={st} />
     </section>
   );
 }
@@ -190,11 +204,11 @@ function Compare(props: { desk: SnapshotDesk; st: ReturnType<typeof useDesk> }) 
   const waiting = st.guard?.phase === "waiting";
   const bId = b ? Number(b) : (st.docs[0]?.id ?? 0);
   return (
-    <div class="card" role="region" aria-label="A/B compare">
-      <h3>A/B compare</h3>
+    <div class="snap-sec" role="region" aria-label="A/B compare">
+      <h4 class="section-label">A/B compare</h4>
       {st.ab.active ? (
         <>
-          <p class="note">
+          <p class="snap-caption">
             On the device now: <strong>{st.ab.side === "b" ? `B (${st.ab.bName})` : `A (${st.ab.aName})`}</strong>. Switch with the
             A/B button above the screens or {abKeyHint().text}; edits on a side are kept until you switch back.
           </p>
@@ -209,7 +223,7 @@ function Compare(props: { desk: SnapshotDesk; st: ReturnType<typeof useDesk> }) 
           {st.abDiff ? <DiffTable diff={st.abDiff} label={`From A to B`} /> : null}
         </>
       ) : st.docs.length === 0 ? (
-        <p class="note">Capture or open a snapshot to compare it with the device.</p>
+        <p class="snap-caption">Capture or open a snapshot to compare it with the device. Recall two states in turn and hear the difference; Keep ends the compare on one of them.</p>
       ) : (
         <form
           class="snap-compare"
@@ -242,6 +256,7 @@ function Compare(props: { desk: SnapshotDesk; st: ReturnType<typeof useDesk> }) 
           <button type="submit" disabled={ro || st.busy !== "" || waiting}>
             Start Compare
           </button>
+          <p class="snap-caption">Recall two states in turn and hear the difference; Keep ends the compare on one of them.</p>
         </form>
       )}
     </div>

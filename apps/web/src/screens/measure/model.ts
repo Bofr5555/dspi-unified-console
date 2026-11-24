@@ -93,13 +93,14 @@ export interface MeasureDraft {
   layoutFrom?: string;
 }
 
-/** A draft for the device's enabled outputs: the first two chosen, full range, speaker L. */
+/** A draft for the device's enabled outputs: the first two chosen, full range, no speaker ("Not set":
+ * -- WP WEB4 -- REVD G8, as Qt since INTC; the core takes "" on every path). */
 export function initialDraft(outputs: number[]): MeasureDraft {
   return {
     placement: null,
     count: 3,
     coupler: "iec60318_4",
-    outputs: outputs.map((o, i) => ({ output: o, on: i < 2, role: "full", speaker: "L", group: 0 })),
+    outputs: outputs.map((o, i) => ({ output: o, on: i < 2, role: "full", speaker: "", group: 0 })),
     sweepMs: 5500,
     passes: 3,
     name: "",

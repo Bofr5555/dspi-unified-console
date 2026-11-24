@@ -4,7 +4,7 @@
 // and a drag a span (the live view's "cut this peak" and "fit this range"); the same values have
 // fields beside the graph, so nothing needs a pointer. P5WAT's tune draws on it too.
 
-import { useRef, useState } from "preact/hooks";
+import { useLayoutEffect, useRef, useState } from "preact/hooks";
 import type { MeasureCurveRecord } from "../../core/measure-protocol";
 import { GRAPH_MAX_HZ, GRAPH_MIN_HZ, freqOf, hz, segments, xOf, yRange } from "./model";
 
@@ -21,14 +21,16 @@ export interface Series {
   colour?: number;
 }
 
-const W = 720;
+// -- WP WEB4 -- DL2's GraphFrame (§12): no box, the plot to the edges, the axis labels inside it 6 px
+// from the edge (never cut, never stretched: the drawing is the element's own size), the grid in the
+// graph grid's tone, "No curve yet" while there is nothing to draw. The plot's height is fixed.
+const DEFAULT_W = 720;
 const H = 300;
-const PAD_L = 40;
-const PAD_B = 22;
-const PAD_T = 8;
-const PAD_R = 8;
-const PLOT_W = W - PAD_L - PAD_R;
-const PLOT_H = H - PAD_T - PAD_B;
+const INSET = 6;
+const PAD_L = 0;
+const PAD_B = 0;
+const PAD_T = 0;
+const PAD_R = 0;
 const COLOURS = ["var(--accent)", "#d9822b", "#2f9e5c", "#a64fbf", "#c0362c", "#2a9fa8", "#8a6d3b", "#5f6068"];
 const DASH: Record<SeriesKind, string | undefined> = { measured: undefined, target: "8 5", predicted: "2 4", held: "4 3", compare: undefined };
 const TICKS_HZ = [20, 50, 100, 200, 500, 1000, 2000, 5000, 10_000, 20_000];
@@ -53,6 +55,24 @@ export function MeasureGraph(props: {
   mark?: { f1: number; f2?: number } | null;
 }) {
   const { series } = props;
+  // -- WP WEB4 -- the drawing in the element's own pixels, so its text keeps its size at every width
+  const box = useRef<HTMLDivElement>(null);
+  const [W, setW] = useState(DEFAULT_W);
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const fit = () => {
+      const w = Math.round(el.getBoundingClientRect().width);
+      if (w > 0) setW(w);
+    };
+    fit();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const PLOT_W = W - PAD_L - PAD_R;
+  const PLOT_H = H - PAD_T - PAD_B;
   const [lo, hi] = yRange(series.map((s) => s.curve));
   const y = (v: number) => PAD_T + PLOT_H - ((Math.min(hi, Math.max(lo, v)) - lo) / (hi - lo)) * PLOT_H;
   const x = (f: number) => PAD_L + xOf(f, PLOT_W);
@@ -108,14 +128,17 @@ export function MeasureGraph(props: {
   for (let v = lo; v <= hi; v += (hi - lo) / 6) gridDb.push(Math.round(v));
 
   return (
-    <figure class="measure-graph" style={{ margin: 0 }}>
+    <figure class="measure-graph">
+      <div class="mg-plot" ref={box}>
       <svg
         ref={svg}
         role="img"
         aria-label={props.label}
         data-series={series.map((s) => `${s.kind}:${s.label}`).join("|")}
         viewBox={`0 0 ${W} ${H}`}
-        style={{ width: "100%", height: "auto", display: "block", background: "var(--panel)", border: "1px solid var(--line)", borderRadius: "6px", touchAction: interactive ? "none" : "auto", cursor: interactive ? "crosshair" : "default" }}
+        width={W}
+        height={H}
+        style={{ touchAction: interactive ? "none" : "auto", cursor: interactive ? "crosshair" : "default" }}
         onPointerDown={down}
         onPointerMove={move}
         onPointerUp={up}
@@ -125,20 +148,10 @@ export function MeasureGraph(props: {
         }}
       >
         {TICKS_HZ.map((f) => (
-          <g key={f}>
-            <line x1={x(f)} x2={x(f)} y1={PAD_T} y2={PAD_T + PLOT_H} stroke="var(--line)" stroke-width="1" />
-            <text x={x(f)} y={H - 6} font-size="11" text-anchor="middle" fill="var(--muted)">
-              {f >= 1000 ? `${f / 1000}k` : f}
-            </text>
-          </g>
+          <line key={f} class="mg-grid" x1={x(f)} x2={x(f)} y1={PAD_T} y2={PAD_T + PLOT_H - 20} />
         ))}
         {gridDb.map((v) => (
-          <g key={v}>
-            <line x1={PAD_L} x2={PAD_L + PLOT_W} y1={y(v)} y2={y(v)} stroke="var(--line)" stroke-width="1" />
-            <text x={PAD_L - 4} y={y(v) + 4} font-size="11" text-anchor="end" fill="var(--muted)">
-              {v}
-            </text>
-          </g>
+          <line key={v} class="mg-grid" x1={PAD_L + 34} x2={PAD_L + PLOT_W} y1={y(v)} y2={y(v)} />
         ))}
         {props.mark ? (
           props.mark.f2 ? (
@@ -166,8 +179,25 @@ export function MeasureGraph(props: {
             />
           )),
         )}
+        {/* -- WP WEB4 -- the axis labels inside the plot, over the curves; the unit on the top label */}
+        {TICKS_HZ.map((f, i) => (
+          <text key={`f${f}`} class="mg-label" x={Math.min(W - INSET, Math.max(INSET, x(f)))} y={H - INSET} text-anchor={i === 0 ? "start" : i === TICKS_HZ.length - 1 ? "end" : "middle"}>
+            {f >= 1000 ? `${f / 1000}k` : f}
+          </text>
+        ))}
+        {gridDb.map((v, i) => (
+          <text key={`d${v}`} class="mg-label" x={INSET} y={Math.min(H - 24, Math.max(INSET + 9, y(v) + 4))}>
+            {i === gridDb.length - 1 ? `${v} dB` : v}
+          </text>
+        ))}
+        {series.length ? null : (
+          <text class="mg-empty" x={W / 2} y={H / 2} text-anchor="middle">
+            No curve yet
+          </text>
+        )}
       </svg>
-      <figcaption class="muted" style={{ display: "flex", flexWrap: "wrap", gap: "4px 14px", fontSize: "12px", marginTop: "4px" }}>
+      </div>
+      <figcaption class="mg-legend">
         {series.map((s, k) => (
           <span key={k}>
             <svg width="22" height="8" aria-hidden="true">

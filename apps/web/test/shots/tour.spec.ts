@@ -15,7 +15,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { pbkdf2Sync, randomBytes } from "node:crypto";
 import { createInterface } from "node:readline";
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { hasPage, openPage } from "../nav";
+import { hasPage, openDevices, openPage } from "../nav";
 
 type OwnHub = { port: number; pin: string; child: ChildProcess; store: string };
 
@@ -215,7 +215,10 @@ test.describe("snapshots and files on the core's demo", () => {
     await expect(preview.getByRole("table", { name: "What the import changes" })).toBeVisible();
     await shot(page, "demo-import-preview");
     await preview.getByRole("button", { name: "Cancel" }).click();
-    await page.getByRole("region", { name: "Files" }).first().getByLabel("File to open").setInputFiles(mac);
+    // -- WP WEB4 -- the devices page's Files (it has "File to open"), not Library › Files, which is open too;
+    // with a session open the devices page is one step away (WEBM1's shell)
+    await openDevices(page);
+    await page.getByRole("region", { name: "Files" }).filter({ has: page.getByLabel("File to open") }).first().getByLabel("File to open").setInputFiles(mac);
     const doc = page.getByRole("article").last();
     await expect(page.locator(".device-meta").filter({ hasText: "File: mac-swift-v32.dspipreset" })).toBeVisible();
     await expect(doc).toBeVisible();
