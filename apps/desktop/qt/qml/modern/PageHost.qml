@@ -220,7 +220,10 @@ Item {
                     id: body
                     // A narrow form (the leveller, the upmixer) keeps near its window's width.
                     // -- WP DL3b -- Left-aligned, as wide as a form may be (DESIGN-LANGUAGE §3)
+                    // -- WP DL1 fold -- an effect's page takes the width (Leveller and
+                    // Upmixer go to two columns from 720 px; the panels cap themselves)
                     readonly property real most: !page.row ? Infinity
+                                                : page.row.section === "effects" ? Infinity
                                                 : page.row.maxWidth ? page.row.maxWidth
                                                 : page.row.width < 520 ? Math.max(page.row.width, Theme.contentMaxWidth) : Infinity
                     width: Math.min(scroll.contentWidth, most)
