@@ -426,8 +426,12 @@ void aiSection(SmokeDriver &d) {
 
     // ---- A client made by hand ------------------------------------------------------------------
     ai->addClient(QStringLiteral("<b>By hand</b>"));
-    d.check("mcp4: a client made by hand shows its token once, with the command", d.waitFor(3000, [&] { return !ai->newClient().isEmpty(); })
-            && ai->httpCommand().contains(ai->newClient().value(QStringLiteral("token")).toString()) && ai->clients().size() == 2);
+    // -- INTC -- the token comes first and the list of clients is read after it
+    // (AiController::addClient): wait for both, not for the token alone; the
+    // bound only stops a hang, the wait ends when both are there
+    d.check("mcp4: a client made by hand shows its token once, with the command",
+            d.waitFor(15000, [&] { return !ai->newClient().isEmpty() && ai->clients().size() == 2; })
+            && ai->httpCommand().contains(ai->newClient().value(QStringLiteral("token")).toString()));
     const QByteArray handToken = ai->newClient().value(QStringLiteral("token")).toString().toUtf8();
     ai->clearNewClient();
     d.check("mcp4: and not again", ai->newClient().isEmpty() && ai->httpCommand().isEmpty());

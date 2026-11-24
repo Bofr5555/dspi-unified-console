@@ -231,12 +231,15 @@ void hardwareSection(SmokeDriver &d) {
     d.grab(w, QStringLiteral("settings-names-global.png"));
     hw->save();
     d.check(QStringLiteral("qp11: Save names the device"),
-            d.waitFor(3000, [&]() { return device->deviceName() == QLatin1String("Smoke Room"); }));
-    d.check(QStringLiteral("qp11: and the name is no longer held"), d.waitFor(2000, [&]() { return !names->deviceNameEdited() && !hw->pending(); }));
+            d.waitFor(15000, [&]() { return device->deviceName() == QLatin1String("Smoke Room"); }));   // -- INTC -- a hang's bound
+    d.check(QStringLiteral("qp11: and the name is no longer held"),
+            d.waitFor(15000, [&]() { return !names->deviceNameEdited() && !hw->saving() && !hw->pending(); }));   // -- INTC --
     names->setDeviceName(nameBefore);
     hw->save();
-    d.waitFor(3000, [&]() { return device->deviceName() == nameBefore && !hw->pending(); });
-    d.check(QStringLiteral("qp11: the device name is back"), device->deviceName() == nameBefore);
+    // -- INTC -- the check is the wait: the save's end and the name read back
+    // (the bound only stops a hang; a loaded host took longer than 3 s)
+    d.check(QStringLiteral("qp11: the device name is back"),
+            d.waitFor(15000, [&]() { return device->deviceName() == nameBefore && !hw->saving() && !hw->pending(); }));
 
     // ---- Outputs: a live pin change, Save refused (QD31), Revert ---------------------------
     if (device->state()->output_config_mode != 0) {
