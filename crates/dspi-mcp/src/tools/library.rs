@@ -101,6 +101,7 @@ fn tweeter_lost(roles: &Judging, before: &DspState, after: &DspState) -> Option<
         mode: Some(ConfirmMode::AskRisky),
         roles: roles.roles.clone(),
         floors: roles.floors.clone(),
+        own: roles.own.clone(), // -- WP REVDFIX --
         ..Judging::default()
     };
     match policy::judge(before, &writes, &j) {
@@ -351,6 +352,7 @@ pub(crate) fn scene_loads_guard(
         let roles = Judging {
             roles: policy::trusted_roles(&core), // -- WP ADET1 --
             floors: policy::profile_floors(&core),
+            own: policy::own_outputs(&core), // -- WP REVDFIX --
             ..Judging::default()
         };
         let hard = roles.roles.iter().any(|r| {

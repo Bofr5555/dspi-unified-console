@@ -616,3 +616,90 @@ fn wp_roles_a_measurement_across_units_waits_for_the_units_own_check() {
     assert!(!r.to_string().contains("not measured across units"), "{r}");
     let _ = core;
 }
+
+// -- WP REVDFIX -- (REVD B2) the 1 kHz rule on a midrange that is not the
+// user's word
+
+/// Out 3 (from 0: 2) routed, on and unmuted: it plays programme.
+fn revdfix_plays(core: &dspi_core::DspiCore, o: u8) {
+    core.set_output_enable(o, true).unwrap();
+    core.set_output_mute(o, false).unwrap();
+    core.set_matrix_route(0, o, true, 0.0, false).unwrap();
+}
+
+/// Out 1 woofer, Out 2 midrange, Out 3 as `role`.
+fn revdfix_rows(role: &str) -> Value {
+    json!([{"output": 0, "role": "woofer", "speaker": "L"},
+           {"output": 1, "role": "midrange", "speaker": "L"},
+           {"output": 2, "role": role, "speaker": "L"}])
+}
+
+#[test]
+fn wp_revdfix_never_ask_guards_a_stated_midranges_tweeter_high_pass() {
+    let keep = json!({"family": "linkwitz_riley", "order": 4, "freq_hz": 1200});
+    let lower = json!({"family": "linkwitz_riley", "order": 4, "freq_hz": 500});
+    // Stated (not the user's word): refused as for a woofer.
+    for role in ["midrange", "woofer"] {
+        let (set, _id, core) = demo();
+        revdfix_plays(&core, 2);
+        let (mut s, policy) = server(&set, ConfirmMode::NeverAsk);
+        policy.set_agent_roles(true);
+        let c = s.connect();
+        ok_at(
+            &mut s,
+            c,
+            0,
+            ROLES,
+            json!({"user_words": "w", "rows": revdfix_rows(role)}),
+        );
+        ok_at(
+            &mut s,
+            c,
+            0,
+            "dspi_set_crossover",
+            json!({"output": 2, "high_pass": keep.clone()}),
+        );
+        let r = call_at(
+            &mut s,
+            c,
+            0,
+            "dspi_set_crossover",
+            json!({"output": 2, "high_pass": lower.clone()}),
+        );
+        assert_eq!(r["isError"], json!(true), "stated {role}: {r}");
+    }
+    // The user's own midrange: its 80 Hz rule is the user's word.
+    let (set, _id, core) = demo();
+    core.speaker_layout_set(dspi_core::SpeakerLayout {
+        outputs: [MeasureRole::Low, MeasureRole::Mid, MeasureRole::Mid]
+            .iter()
+            .enumerate()
+            .map(|(o, role)| dspi_core::SpeakerLayoutOutput {
+                output: o as u8,
+                role: *role,
+                speaker: "L".into(),
+                ..Default::default()
+            })
+            .collect(),
+        confirmed_by_user: true,
+        ..Default::default()
+    })
+    .unwrap();
+    revdfix_plays(&core, 2);
+    let (mut s, _) = server(&set, ConfirmMode::NeverAsk);
+    let c = s.connect();
+    ok_at(
+        &mut s,
+        c,
+        0,
+        "dspi_set_crossover",
+        json!({"output": 2, "high_pass": keep}),
+    );
+    ok_at(
+        &mut s,
+        c,
+        0,
+        "dspi_set_crossover",
+        json!({"output": 2, "high_pass": lower}),
+    );
+}

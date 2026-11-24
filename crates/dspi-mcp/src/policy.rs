@@ -301,6 +301,11 @@ pub struct Judging {
     /// The outputs a stated setup takes for tweeters whatever the rows say
     /// ([`held_outputs`]): the refusals say why.
     pub held: Vec<Held>,
+    // -- WP REVDFIX -- B2
+    /// The outputs whose role is the user's own word ([`own_outputs`]): only
+    /// their midrange rule stands alone; on any other row a high-pass at
+    /// 1 kHz or above still shows a tweeter (owner 2026-11-23, answer 3).
+    pub own: Vec<u8>,
     // -- WP FFIX --
     /// The limits profile's high-pass per output: (output, corner, slope);
     /// it raises a confirmed tweeter's or midrange's floor, never lowers it.
@@ -754,6 +759,7 @@ pub fn judge(state: &DspState, writes: &[WriteKey], j: &Judging) -> Verdict {
         &j.floors,
         setup_word(j.detected, j.stated), // -- WP ADET1 -- ROLES
         &j.held,                          // -- WP ROLES --
+        &j.own,                           // -- WP REVDFIX --
         &mut risks,
         &mut refusals,
     );
@@ -1408,7 +1414,8 @@ fn judge_nothing(before: &DspState, after: &DspState, nothing: &[u8], refusals: 
 /// shallow; or when they lower its protection, playing or not. An output that
 /// already played unprotected (the user's doing) may be changed in ways that
 /// do not make it worse. A high-pass at 1 kHz or above shows a tweeter on any
-/// other output: lowering it is asked (refused under "never ask").
+/// other output (-- WP REVDFIX -- and on a midrange that is not the user's
+/// own word): lowering it is asked (refused under "never ask").
 #[allow(clippy::too_many_arguments)] // the judgement's facts, each once
 fn judge_highpass(
     before: &DspState,
@@ -1418,6 +1425,7 @@ fn judge_highpass(
     floors: &[(u8, f32, u8)],
     setup: &str,
     held: &[Held],
+    own: &[u8],
     risks: &mut Vec<Risk>,
     refusals: &mut Vec<String>,
 ) {
@@ -1448,8 +1456,14 @@ fn judge_highpass(
                      the user to change the speaker setup in the app.",
                     agent_out(o)
                 ));
+                continue;
             }
-            continue;
+            // -- WP REVDFIX -- B2: a floor below 1 kHz holds alone only on the
+            // user's own word; a stated or detected midrange is still judged
+            // by the high-pass it has
+            if floor >= TWEETER_FLOOR_HZ - HZ_SLACK || own.contains(&o) {
+                continue;
+            }
         }
         // The user's word holds hard; a high-pass at 1 kHz or above shows a
         // tweeter whatever the user called it (the effective role).
@@ -2297,6 +2311,21 @@ pub fn held_outputs(core: &DspiCore) -> Vec<Held> {
         .collect()
 }
 
+// -- WP REVDFIX -- B2
+/// The outputs whose role in `core`'s speaker setup is the user's own word:
+/// every row of a confirmed setup, else the rows the user set.
+pub fn own_outputs(core: &DspiCore) -> Vec<u8> {
+    let Ok(Some(l)) = core.speaker_layout() else {
+        return Vec::new();
+    };
+    let confirmed = l.state() == dspi_core::LayoutState::Confirmed;
+    l.outputs
+        .iter()
+        .filter(|r| confirmed || r.source == dspi_core::RoleSource::User)
+        .map(|r| r.output)
+        .collect()
+}
+
 // -- WP ADET1 --
 /// The outputs `layout`'s speaker detection heard nothing from (class
 /// `nothing`, heard nowhere) and the layout leaves out: no agent routes to,
@@ -2367,6 +2396,7 @@ impl Policy for AgentPolicy {
             j.stated = stated_setup(core);
             j.roles_allowed = self.agent_roles();
             j.held = held_outputs(core);
+            j.own = own_outputs(core); // -- WP REVDFIX --
         }
         (!UNJUDGED_TOOLS.contains(&call.tool)).then(|| Self::hook(Arc::clone(judging)))
     }
