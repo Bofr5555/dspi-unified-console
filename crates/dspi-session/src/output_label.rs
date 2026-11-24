@@ -96,10 +96,12 @@ impl Band {
 pub struct OutputLabel {
     /// 0-based output index.
     pub output: usize,
-    /// What to show: the user's name, else "Out 1 · R · Low".
+    /// What to show: the user's name, else "Out 1 · R · Low" (no "· None" for
+    /// an unused output, no "· Full" for a full-range one: "Out 3", "Out 1 · L").
     pub label: String,
     /// The same for a phone row, beside the output's "OUTn" button: the
-    /// user's name, else channel and band alone, "R · Low" (owner, c86 F3).
+    /// user's name, else channel and band alone, "R · Low" (owner, c86 F3), or
+    /// "Out 3" when the output is unused and full range.
     pub short_label: String,
     /// The firmware's name for the slot, "I2S 1 L" or "PDM".
     pub slot_name: String,
@@ -317,19 +319,32 @@ pub fn output_labels(src: &LabelSource) -> Vec<OutputLabel> {
             let user_named = !is_default_name(name, out, src);
             let channel = channel(src, out);
             let band = band(src.filters.get(out).map(Vec::as_slice).unwrap_or(&[]));
+            // -- WP INTD -- (REVD W12) an unused output says no "· None", a
+            // full-range one no "· Full": "Out 3", "Out 1 · L", "Out 4 · Low"
+            let words: Vec<&str> = [
+                (0..src.num_inputs)
+                    .any(|i| routed(src, i, out))
+                    .then_some(channel.as_str()),
+                (band != Band::Full).then_some(band.word()),
+            ]
+            .into_iter()
+            .flatten()
+            .collect();
+            let number = format!("Out {}", out.saturating_add(1));
             let label = if user_named {
                 name.to_string()
             } else {
-                format!(
-                    "Out {} · {channel} · {}",
-                    out.saturating_add(1),
-                    band.word()
-                )
+                std::iter::once(number.as_str())
+                    .chain(words.iter().copied())
+                    .collect::<Vec<_>>()
+                    .join(" · ")
             };
             let short_label = if user_named {
                 name.to_string()
+            } else if words.is_empty() {
+                number.clone()
             } else {
-                format!("{channel} · {}", band.word())
+                words.join(" · ")
             };
             OutputLabel {
                 output: out,
@@ -562,8 +577,10 @@ mod tests_bug1 {
             ]
         );
         assert!(l.iter().all(|l| !l.user_named));
-        assert_eq!(l[4].label, "Out 5 · None · Full");
-        assert_eq!(l[8].label, "Out 9 · None · Full");
+        assert_eq!(l[4].label, "Out 5");
+        assert_eq!(l[8].label, "Out 9");
+        // -- WP INTD -- (W12) the short form of an unused full-range output is its number
+        assert_eq!(l[4].short_label, "Out 5");
         // Fits a phone row: no label longer than the longest stock one
         assert!(l.iter().all(|l| l.label.chars().count() <= 20), "{l:?}");
     }
@@ -603,11 +620,11 @@ mod tests_bug1 {
         s.names[2] = String::new();
         s.routing[2][8] = true; // an unnamed input
         let l = labels(&s);
-        assert_eq!(l[4], "Out 5 · L+R · Full");
-        assert_eq!(l[5], "Out 6 · In 3 · Full");
-        assert_eq!(l[6], "Out 7 · Mix · Full");
-        assert_eq!(l[7], "Out 8 · Cente… · Full");
-        assert_eq!(l[8], "Out 9 · In 3 · Full");
+        assert_eq!(l[4], "Out 5 · L+R");
+        assert_eq!(l[5], "Out 6 · In 3");
+        assert_eq!(l[6], "Out 7 · Mix");
+        assert_eq!(l[7], "Out 8 · Cente…");
+        assert_eq!(l[8], "Out 9 · In 3");
     }
 
     #[test]
@@ -724,16 +741,7 @@ mod tests_bug1 {
             num_outputs: 5,
             ..LabelSource::default()
         };
-        assert_eq!(
-            labels(&s),
-            [
-                "Out 1 · None · Full",
-                "Out 2 · None · Full",
-                "Out 3 · None · Full",
-                "Out 4 · None · Full",
-                "Out 5 · None · Full"
-            ]
-        );
+        assert_eq!(labels(&s), ["Out 1", "Out 2", "Out 3", "Out 4", "Out 5"]);
         assert!(output_cards(&s).is_empty());
         assert!(output_labels(&LabelSource::default()).is_empty());
         let mut odd = s.clone();

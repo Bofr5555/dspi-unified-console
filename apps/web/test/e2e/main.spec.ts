@@ -31,9 +31,9 @@ type State = {
  * the device's value once its writes are read back, so a read made in between
  * may come before the last write (it shares the Worker's queue).
  */
-// -- BUG1 -- An output's name on the page is its label ("Out 3 · R · Full"), which follows the
+// -- BUG1 -- An output's name on the page is its label ("Out 3 · R"), which follows the
 // routing and the filters while the device keeps the slot's default name: matched by its number.
-const OUT = (o: number) => `Out ${o + 1} · [^·]+ · \\w+`;
+const OUT = (o: number) => `Out ${o + 1}(?: · [^·]+){0,2}`;
 const re = (s: string) => new RegExp(`^${s}$`);
 
 async function coreState(page: Page, n = 0): Promise<State> {

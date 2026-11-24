@@ -1551,7 +1551,7 @@ mod tests {
         let n = snap["state"]["numOutputChannels"].as_u64().unwrap() as usize;
         assert_eq!(snap["outputLabels"].as_array().unwrap().len(), n);
         assert_eq!(
-            snap["outputLabels"][0]["label"], "Out 1 · L · Full",
+            snap["outputLabels"][0]["label"], "Out 1 · L",
             "{}",
             snap["outputLabels"]
         );

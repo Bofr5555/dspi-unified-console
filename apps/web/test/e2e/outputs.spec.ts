@@ -32,9 +32,9 @@ type State = {
 type Client = { call(m: string, p: unknown): Promise<unknown> };
 type G = { dspiClients: Client[]; dspiLog: [string, unknown][] };
 
-// -- BUG1 -- An output's name on the page is its label ("Out 3 · R · Full"), which follows the
+// -- BUG1 -- An output's name on the page is its label ("Out 3 · R"), which follows the
 // routing and the filters while the device keeps the slot's default name: matched by its number.
-const OUT = (o: number) => `Out ${o + 1} · [^·]+ · \\w+`;
+const OUT = (o: number) => `Out ${o + 1}(?: · [^·]+){0,2}`;
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const re = (s: string) => new RegExp(`^${s}$`);
 

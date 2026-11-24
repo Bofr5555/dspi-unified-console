@@ -11,9 +11,9 @@ import { appMenu, openDevices } from "../nav";
 type Clients = { dspiClients: { call(m: string, p: unknown): Promise<unknown> }[] };
 
 /** A call on the n-th session the embedding page opened, straight to its core. */
-// -- BUG1 -- An output's name on the page is its label ("Out 3 · R · Full"), which follows the
+// -- BUG1 -- An output's name on the page is its label ("Out 3 · R"), which follows the
 // routing and the filters while the device keeps the slot's default name: matched by its number.
-const OUT = (o: number) => `Out ${o + 1} · [^·]+ · \\w+`;
+const OUT = (o: number) => `Out ${o + 1}(?: · [^·]+){0,2}`;
 const re = (s: string) => new RegExp(`^${s}$`);
 
 function core(page: Page, n: number, method: string, params: unknown = null) {
