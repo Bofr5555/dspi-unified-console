@@ -9,10 +9,11 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import { measureCall, type TargetInfoRecord } from "../../core/measure-protocol";
 import type { MeasureTabProps } from "./MeasureScreen";
-import { fileNameOf, micSummary } from "./model";
+import { displayName, fileNameOf, micSummary } from "./model";
 import { download, readTextFile } from "./setup";
 import { KINDS, docOutputs, docsDeskOf, tuneDeskOf, type DocRow, type DocsDesk } from "./tune-model";
 import { EmptyState, Glyph } from "../../ui/design"; // -- WP WEB -- (Glyph: WEB4, INTD)
+import { PageTools } from "../../ui/shell/Parts"; // -- WP WEB7 --
 
 const row = { display: "flex", flexWrap: "wrap", gap: "6px 12px", alignItems: "center" } as const;
 
@@ -62,34 +63,35 @@ export function DocsTab(props: MeasureTabProps) {
   // there is nothing, the kinds as sections of striped rows, the built-in targets as rows (their names)
   const docField = useRef<HTMLInputElement>(null);
   const targetField = useRef<HTMLInputElement>(null);
+  const targetUse = (
+    <label class="m-inline m-caption">
+      Import Target… for{" "}
+      <select aria-label="Target use" value={use} onChange={(e) => setUse((e.currentTarget as HTMLSelectElement).value as typeof use)}>
+        <option value="speakers">speakers</option>
+        <option value="headphones">headphones</option>
+      </select>
+    </label>
+  );
   return (
     <section class="measure-docs measure-column" aria-label="Measurement documents">
-      <div class="m-toolbar">
-        <label class="m-inline">
-          Targets for{" "}
-          <select aria-label="Target use" value={use} onChange={(e) => setUse((e.currentTarget as HTMLSelectElement).value as typeof use)}>
-            <option value="speakers">speakers</option>
-            <option value="headphones">headphones</option>
-          </select>
-        </label>
-        <button type="button" onClick={() => targetField.current?.click()}>
-          Import Target…
-        </button>
-        {rows.length ? (
-          <button type="button" onClick={() => micField.current?.click()}>
-            Import Calibration…
-          </button>
-        ) : null}
+      {/* -- WP WEB7 -- the tools in the page's head (Qt's page tools), at most four; the files' fields stay here */}
+      <PageTools label="Documents tools">
         <button type="button" onClick={() => docField.current?.click()}>
           Open…
         </button>
-        <button type="button" onClick={() => void d.refresh()}>
-          Refresh
+        <button type="button" onClick={() => micField.current?.click()}>
+          Import Calibration…
         </button>
-        <input ref={docField} type="file" class="visually-hidden" tabIndex={-1} aria-label="Open a document file" accept=".dspipreset,.json,application/json" onChange={(e) => void pick(e.currentTarget as HTMLInputElement, "doc")} />
-        <input ref={micField} type="file" class="visually-hidden" tabIndex={-1} aria-label="Import a microphone calibration" accept=".txt,.cal,.frd,.csv,text/plain" onChange={(e) => void pick(e.currentTarget as HTMLInputElement, "mic")} />
-        <input ref={targetField} type="file" class="visually-hidden" tabIndex={-1} aria-label="Import a target" accept=".txt,.csv,.frd,text/plain" onChange={(e) => void pick(e.currentTarget as HTMLInputElement, "target")} />
-      </div>
+        <button type="button" onClick={() => targetField.current?.click()}>
+          Import Target…
+        </button>
+        <button type="button" onClick={() => void d.refresh()}>
+          Reload
+        </button>
+      </PageTools>
+      <input ref={docField} type="file" class="visually-hidden" tabIndex={-1} aria-label="Open a document file" accept=".dspipreset,.json,application/json" onChange={(e) => void pick(e.currentTarget as HTMLInputElement, "doc")} />
+      <input ref={micField} type="file" class="visually-hidden" tabIndex={-1} aria-label="Import a microphone calibration" accept=".txt,.cal,.frd,.csv,text/plain" onChange={(e) => void pick(e.currentTarget as HTMLInputElement, "mic")} />
+      <input ref={targetField} type="file" class="visually-hidden" tabIndex={-1} aria-label="Import a target" accept=".txt,.csv,.frd,text/plain" onChange={(e) => void pick(e.currentTarget as HTMLInputElement, "target")} />
       {d.error ? (
         <p class="error" role="alert" aria-label="Documents problem">
           {d.error}
@@ -123,20 +125,21 @@ export function DocsTab(props: MeasureTabProps) {
           Microphone: {desk.micDocument ? micSummary(desk.micDocument) || "a calibration" : "none (relative dB)"} · Target: {desk.targetName || "the placement's default"}
         </p>
       )}
+      {/* -- WP WEB7 -- only the kinds there are documents of (no "None." lines); imported targets are for the chosen use */}
       {rows.length === 0 ? null : KINDS.map((k) => {
         const list = rows.filter((r) => r.info.kind === k.id);
+        if (!list.length) return null;
         return (
           <div key={k.id} class="m-sec">
-            <h4 class="section-label">{k.label}</h4>
-            {list.length ? (
-              <ul aria-label={k.label} class="m-rowlist m-docs">
-                {list.map((r) => (
-                  <DocItem key={r.key} {...props} d={d} r={r} />
-                ))}
-              </ul>
-            ) : (
-              <p class="m-caption">None.</p>
-            )}
+            <div class="ds-section-head">
+              <h4 class="section-label">{k.label}</h4>
+              {k.id === "target" ? targetUse : null}
+            </div>
+            <ul aria-label={k.label} class="m-rowlist m-docs">
+              {list.map((r) => (
+                <DocItem key={r.key} {...props} d={d} r={r} />
+              ))}
+            </ul>
           </div>
         );
       })}
@@ -145,6 +148,7 @@ export function DocsTab(props: MeasureTabProps) {
         <div class="m-sec" role="group" aria-label="Libraries">
           <div class="ds-section-head">
             <h4 class="section-label">Built-in targets</h4>
+            {rows.some((r) => r.info.kind === "target") ? null : targetUse}
             {desk.targetDocument ? (
               <button type="button" onClick={() => desk.setDocs({ targetDocument: "", targetName: "" })}>
                 Use the placement's default target
@@ -178,7 +182,7 @@ function DocItem(props: MeasureTabProps & { d: DocsDesk; r: DocRow }) {
   const mayEdit = hub ? rights.write : true;
   const mayDelete = hub ? rights.remove : true;
   const outputs = r.text !== undefined ? docOutputs(r.text) : [];
-  const label = r.info.name || "(no name)";
+  const label = r.info.name ? displayName(r.info.name) : "(no name)"; // -- WP WEB7 -- (REVE F17) no raw ISO time
 
   const save = async () => {
     if (!edit) return;
