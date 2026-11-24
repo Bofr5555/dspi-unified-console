@@ -8,6 +8,7 @@ import UConsole
 // preset picker, A/B, the search, the AI button, the theme, undo and redo, Save
 // to device, the installer's lock and the notifications. Actions are MenuTable
 // ids, so a row greyed in Classic is greyed here.
+// -- WP DL5 -- The preset picker is one button and its popover (PresetPopover).
 Rectangle {
     id: bar
     objectName: "TopBar"
@@ -50,48 +51,87 @@ Rectangle {
         }
 
         // ---- Presets and A/B
-        AppComboBox {
+        // -- WP DL5 -- One control (DESREV §5): the active preset's name, and its
+        // popover with every slot and what can be done to it (PresetPopover), in
+        // place of the combo box and the slot menu beside it. The name is the
+        // active slot's title, with its "*" while unsaved (WP USR1); Up and Down
+        // load the slot next to it, as the combo box did; a right-click opens the
+        // active slot's menu (WP LAY3b).
+        AbstractButton {
             id: presetBox
             AiTouched { path: "preset." }   // -- WP AIVIS --
             AiTouched { path: "bulk" }
             objectName: "TopBar.preset"
-            readonly property string shownName: displayText
+            readonly property var titles: SidebarController.presetTitles
+            readonly property string shownName: bar.activeSlot >= 0 && bar.activeSlot < titles.length ? titles[bar.activeSlot] : "–"
+            // The popover, as the combo box's list was (the smoke driver, gallery.py)
+            readonly property alias popup: presetPopover
             visible: !DeviceInfoController.sender
             implicitWidth: bar.compact ? 124 : 150
-            label: qsTr("Preset")
-            model: SidebarController.presetTitles
-            displayText: count > 0 && currentIndex >= 0 ? currentText : "–"
-            // -- WP FUNC2b -- -- WP USR1 -- the active slot through every new list of titles (a
-            // preset saved, renamed or marked unsaved): AppComboBox.follows. Save beside it saves
-            // to the active slot, so the box must say which that is
-            follows: true
-            followIndex: bar.activeSlot
+            implicitHeight: 28
             enabled: bar.writable && !SidebarController.presetBusy
-            // The device says which slot is active, not the click (AppComboBox.follows)
-            onActivated: index => SidebarController.requestPresetSwitch(index)
-            // -- WP LAY3b -- a right-click on a slot in the list: that slot's menu
-            rowMenus: true
-            onRowMenu: (index, row, x, y) => {
-                const at = row.mapToItem(bar, x, y)
-                popup.close()
-                ContextMenus.slot(index, bar.dialogs, bar, at.x, at.y)
+            hoverEnabled: true
+            focusPolicy: Qt.StrongFocus
+            text: shownName
+            // From the keyboard, the popover's keyboard row starts on the active slot
+            function toggle(keyboard) {
+                if (presetPopover.opened) {
+                    presetPopover.close()
+                    return
+                }
+                presetPopover.fromKeyboard = keyboard
+                presetPopover.open()
             }
+            onClicked: toggle(false)
+            function step(by) {
+                const to = bar.activeSlot + by
+                if (bar.activeSlot >= 0 && to >= 0 && to < titles.length) SidebarController.requestPresetSwitch(to)
+            }
+            Keys.onDownPressed: step(1)
+            Keys.onUpPressed: step(-1)
+            Keys.onSpacePressed: toggle(true)
+            Keys.onReturnPressed: toggle(true)
+            Keys.onEnterPressed: toggle(true)
             TapHandler {
                 acceptedButtons: Qt.RightButton
                 onTapped: point => {
                     ContextMenus.slot(bar.activeSlot, bar.dialogs, presetBox, point.position.x, point.position.y)   // -- WP LAY3b --
                 }
             }
-        }
-        IconButton {
-            id: slotButton
-            objectName: "TopBar.presetMenu"
-            visible: presetBox.visible
-            iconName: "save"
-            iconSize: 14
-            toolTip: qsTr("Preset Slot…")
-            enabled: bar.writable && !SidebarController.presetBusy && bar.activeSlot >= 0
-            onClicked: ContextMenus.slot(bar.activeSlot, bar.dialogs, slotButton, 0, slotButton.height + 2)   // -- WP LAY3b --
+            contentItem: RowLayout {
+                spacing: 4
+                Text {
+                    Layout.fillWidth: true
+                    leftPadding: 8
+                    textFormat: Text.PlainText
+                    text: presetBox.shownName
+                    font: Theme.fontBody
+                    color: presetBox.enabled ? Theme.text : Theme.textDisabled
+                    elide: Text.ElideRight
+                }
+                Icon {
+                    Layout.rightMargin: 6
+                    name: "chevrons-up-down"
+                    size: 12
+                    color: presetBox.enabled ? Theme.textMuted : Theme.textDisabled
+                }
+            }
+            background: Rectangle {
+                radius: Theme.radiusControl
+                color: presetBox.down || presetPopover.opened ? Theme.controlPressed : presetBox.hovered ? Theme.controlHover : Theme.control
+                border.width: presetBox.visualFocus ? Theme.focusRingWidth : 0
+                border.color: Theme.focusRing
+            }
+            PresetPopover {
+                id: presetPopover
+                y: presetBox.height + 4
+                dialogs: bar.dialogs
+                maximumHeight: bar.window ? bar.window.height - presetBox.mapToItem(null, 0, presetBox.height).y - 16 : 600
+            }
+            Accessible.role: Accessible.ComboBox
+            Accessible.name: qsTr("Preset")
+            Accessible.description: shownName
+            Accessible.onPressAction: toggle(true)
         }
         ToolSegments {
             objectName: "TopBar.ab"
@@ -171,7 +211,15 @@ Rectangle {
         }
 
         // -- WP LAY8 -- the AI button, with the agents' state and its popover
-        AiButton { objectName: "TopBar.ai" }
+        AiButton {
+            id: aiButton
+            objectName: "TopBar.ai"
+            // -- WP DL5 -- the AI strip's way to its popover (grants and Revoke)
+            Connections {
+                target: ContextMenus
+                function onAiRequested() { if (!aiButton.popover.opened) aiButton.popover.open() }
+            }
+        }
 
         // ---- The theme: the system's, light or dark
         IconButton {

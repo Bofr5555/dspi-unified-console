@@ -95,7 +95,10 @@ const SmokeDriver::Section tray("qp19-tray-launch", 10, &trayLaunch, SmokeDriver
 // ---- The demo from an app started with nothing connected (QD7) ----
 
 bool click(QQuickItem *item) {
-    return item && item->isVisible() && item->isEnabled() && QMetaObject::invokeMethod(item, "clicked");
+    if (!item || !item->isVisible() || !item->isEnabled()) return false;
+    // -- WP DL5 -- Modern's switcher lists the devices as ListRows: clicked(int modifiers)
+    if (item->metaObject()->indexOfMethod("clicked()") < 0) return QMetaObject::invokeMethod(item, "clicked", Q_ARG(int, 0));
+    return QMetaObject::invokeMethod(item, "clicked");
 }
 
 void demoEntry(SmokeDriver &d) {
