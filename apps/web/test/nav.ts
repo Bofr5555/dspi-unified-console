@@ -20,6 +20,7 @@ const PLACES: Record<string, { section: string; id: string; tab?: string }> = {
   "Signal Generator": { section: "Analyse", id: "generator" },
   "Stats for nerbs": { section: "Analyse", id: "stats" },
   "Interrupt Monitor": { section: "Analyse", id: "monitor" },
+  Presets: { section: "Library", id: "presets" }, // -- WP WEB7 --
   Snapshots: { section: "Library", id: "snapshots" },
   History: { section: "Library", id: "history" }, // -- WP WEBM3 --
   Files: { section: "Library", id: "files" },

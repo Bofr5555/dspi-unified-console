@@ -79,6 +79,8 @@ import { OverviewScreen } from "../screens/overview/OverviewScreen";
 import { MeasureScreen } from "../screens/measure/MeasureScreen"; // -- WP P5WMS --
 import { DeviceScreen } from "../screens/device/DeviceScreen"; // -- WP PGWEB --
 import { HistoryScreen } from "../screens/history/HistoryScreen"; // -- WP WEBM3 --
+// -- WP WEB7 -- Library's Presets tab (Qt's LibraryPresets)
+import { PresetsScreen } from "../screens/presets/PresetsScreen";
 
 // -- WP WEBM1 -- the Modern shell
 import { Frame } from "./shell/Frame";
@@ -153,6 +155,7 @@ export const SCREENS: ScreenDef[] = [
   { id: "system", label: "System", View: SystemScreen },
   // -- WP P1WB1 -- (Advanced and Installer: setting up and handing over;
   // -- WP P1DCFIX -- Simple has Snapshots as recall and A/B only)
+  { id: "presets", label: "Presets", View: PresetsScreen }, // -- WP WEB7 -- Library › Presets (every mode)
   { id: "snapshots", label: "Snapshots", View: SnapshotsScreen },
   { id: "history", label: "History", View: HistoryScreen }, // -- WP WEBM3 -- Library › History (setting up: not in Simple)
   { id: "files", label: "Files", View: FilesScreen },

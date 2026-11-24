@@ -72,8 +72,9 @@ test("WEBM3: History's rows keep the core's order (newest first) and say before 
 
 test("WEBM3: Library has History between Snapshots and Files, not in Simple; a page's part is kept per session", () => {
   const lib = (mode: "simple" | "advanced") => sectionsFor(screensFor(mode, false)).find((s) => s.id === "library")!.pages.map((p) => p.id);
-  assert.deepEqual(lib("advanced"), ["snapshots", "history", "files"]);
-  assert.deepEqual(lib("simple"), ["snapshots"]);
+  // -- WP WEB7 -- Qt's Library: Presets first, in every mode
+  assert.deepEqual(lib("advanced"), ["presets", "snapshots", "history", "files"]);
+  assert.deepEqual(lib("simple"), ["presets", "snapshots"]);
   const a = {} as Session;
   const b = {} as Session;
   placeOf(a).parts.set("effects", "loudness");
