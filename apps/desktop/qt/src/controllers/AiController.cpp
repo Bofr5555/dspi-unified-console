@@ -19,6 +19,9 @@
 #include "SettingsController.h"
 #include "Shell.h"
 #include "SnapshotsController.h"
+#include "ChannelController.h"     // -- WP SHOWFIX --
+#include "PeqEditorController.h"   // -- WP SHOWFIX --
+#include "SidebarController.h"     // -- WP SHOWFIX --
 #include "UnitsMeasureController.h"   // -- WP AIVIS --
 #include "Snapshot.h"
 
@@ -167,8 +170,13 @@ AiController::AiController(const AppContext &ctx, QObject *parent) : QObject(par
     m_followTimer.setSingleShot(true);
     connect(&m_followTimer, &QTimer::timeout, this, [this] {
         const QString device = std::exchange(m_followPendingDevice, QString());
-        const QString section = std::exchange(m_followPendingSection, QString());
-        if (!device.isEmpty()) followChange(device, section);
+        const FollowAt at = std::exchange(m_followPendingAt, FollowAt());   // -- WP SHOWFIX --
+        if (!device.isEmpty()) followTo(device, at);
+    });
+    // -- WP SHOWFIX -- (finding 3) the channel and band of a change followed to
+    m_showTimer.setInterval(50);
+    connect(&m_showTimer, &QTimer::timeout, this, [this] {
+        if (showFollowedStep()) m_showTimer.stop();
     });
     // -- WP INTI -- (review RF7) the user's input, for the follow gate
     if (QCoreApplication::instance()) QCoreApplication::instance()->installEventFilter(this);
@@ -1364,26 +1372,88 @@ bool AiController::mayFollow(const QString &device, const QString &section, bool
 // the section of the change; held off while the user is at something, and at most
 // one switch in kFollowMs (the newest change is followed after it)
 void AiController::followChange(const QString &device, const QString &section) {
+    FollowAt at;   // -- WP SHOWFIX --
+    at.section = section;
+    followTo(device, at);
+}
+
+// -- WP SHOWFIX -- (finding 3) and the tab, channel and band of the change
+void AiController::followTo(const QString &device, const FollowAt &at) {
     if (!m_followAgent || device.isEmpty() || !m_ctx.registry->session(device)) return;
     const QDateTime now = QDateTime::currentDateTimeUtc();
-    const QString key = device + QLatin1Char('\n') + section;
-    if (key == m_lastFollowKey && m_lastFollowKeyAt.isValid() && m_lastFollowKeyAt.msecsTo(now) < kFollowSameMs) return;
+    const QString key = device + QLatin1Char('\n') + at.section;
+    // The same device and section again soon after: left alone where the user went
+    // from it; where the user still is, only the tab, channel and band of the change
+    const bool again = key == m_lastFollowKey && m_lastFollowKeyAt.isValid() && m_lastFollowKeyAt.msecsTo(now) < kFollowSameMs;
+    if (again && !stillAt(device, at.section)) return;
     if (m_lastFollow.isValid() && m_lastFollow.msecsTo(now) < kFollowMs) {
         m_followPendingDevice = device;
-        m_followPendingSection = section;
+        m_followPendingAt = at;
         m_followTimer.start(int(kFollowMs - m_lastFollow.msecsTo(now)) + 50);
         return;
     }
     // -- WP INTI -- (review RF7) an input in flight: tried again once it is over
     if (inputBusy()) {
         m_followPendingDevice = device;
-        m_followPendingSection = section;
+        m_followPendingAt = at;
         m_followTimer.start(inputIdleLeftMs() + 50);
         return;
     }
-    if (!mayFollow(device, section)) return;
-    if (device != m_ctx.registry->activeId()) m_ctx.registry->activate(device);
-    if (!section.isEmpty()) emit followSection(section);
+    if (again) {
+        if (userInteracting()) return;
+        m_lastFollow = now;
+    } else {
+        if (!mayFollow(device, at.section)) return;
+        if (device != m_ctx.registry->activeId()) m_ctx.registry->activate(device);
+    }
+    if (!at.section.isEmpty()) emit followSection(at.section, at.tab);
+    showFollowed(device, at);
+}
+
+// -- WP SHOWFIX -- The device shown, and Modern's section (none in Classic)
+bool AiController::stillAt(const QString &device, const QString &section) const {
+    if (device != m_ctx.registry->activeId()) return false;
+    const QObject *pages = m_ctx.shell ? m_ctx.shell->pageHost() : nullptr;
+    return section.isEmpty() || !pages || pages->property("section").toString() == section;
+}
+
+// -- WP SHOWFIX -- (finding 3) The channel of a change selected (the Equaliser's, and
+// Classic's sidebar), and its PEQ band in the graph and the table. Each waits for
+// what it needs: the device's channels, the graph editing that channel.
+void AiController::showFollowed(const QString &device, const FollowAt &at) {
+    m_showTimer.stop();
+    if (at.channel < 0 && at.output < 0) return;
+    m_showDevice = device;
+    m_showAt = at;
+    m_showFor.start();
+    if (!showFollowedStep()) m_showTimer.start();
+}
+
+bool AiController::showFollowedStep() {
+    // The user went elsewhere or took over meanwhile: left as it is
+    if (m_showDevice != m_ctx.registry->activeId() || m_showFor.elapsed() > kShowMs || inputBusy()) return true;
+    auto *sidebar = Registrar::instance<SidebarController>();
+    if (!sidebar || !m_ctx.device) return true;
+    int channel = m_showAt.channel;
+    if (channel < 0) {
+        auto *channels = Registrar::instance<ChannelController>();
+        if (!channels) return true;
+        if (!m_ctx.device->state()) return false;   // the device's state is not read yet
+        channel = channels->outputChannel(m_showAt.output);
+    }
+    if (sidebar->selectedChannel() != channel) {
+        sidebar->select(channel);
+        if (sidebar->selectedChannel() != channel) return false;   // its channels are not read yet
+    }
+    if (m_showAt.band < 0) return true;
+    auto *peq = Registrar::instance<PeqEditorController>();
+    if (!peq) return true;
+    // The graph takes the channel after the selection (PeqOverlay), which drops
+    // the selection of another channel's bands: the band once it has
+    if (peq->editedChannel() != channel) return false;
+    if (peq->selected() != QList<int>{ m_showAt.band }) peq->rowClicked(m_showAt.band, 0);
+    peq->reveal(m_showAt.band);
+    return true;
 }
 
 void AiController::showWork() { m_ctx.registry->activate(m_workShown.value(QStringLiteral("deviceId")).toString()); }
@@ -1408,6 +1478,35 @@ QString AiController::sectionOf(const QString &path) {
     return {};
 }
 
+// -- WP SHOWFIX -- (finding 3) The journal's indices: a band's [wire channel, band]
+// (a crossover band from 20, as BandRow's), a channel's or an input's preamp
+// [wire channel], an output's [output from 0] (255: every output)
+AiController::FollowAt AiController::followAtOf(const QString &path, const QVariantList &indices) {
+    FollowAt at;
+    at.section = sectionOf(path);
+    if (at.section != QLatin1String("equaliser")) return at;
+    const QString group = path.section(QLatin1Char('.'), 0, 0);
+    const int i0 = indices.isEmpty() ? -1 : indices.value(0).toInt();
+    constexpr int kCrossoverBase = 20;
+    if (group == QLatin1String("eq") && indices.size() >= 2) {
+        const int band = indices.value(1).toInt();
+        at.channel = i0;
+        if (band >= kCrossoverBase) {
+            at.tab = QStringLiteral("crossover");
+        } else {
+            at.tab = QStringLiteral("peq");
+            at.band = band;
+        }
+    } else if (group == QLatin1String("ch") || path == QLatin1String("pre")) {
+        at.channel = i0;
+        if (path == QLatin1String("ch.delay")) at.tab = QStringLiteral("delay");
+    } else if (group == QLatin1String("out") || group == QLatin1String("limit")) {
+        if (i0 >= 0 && i0 < MAX_OUTPUTS) at.output = i0;
+        if (group == QLatin1String("out")) at.tab = QStringLiteral("delay");   // gain, delay, mute: Delay & Gain
+    }
+    return at;
+}
+
 QVariantList AiController::recentTouches() const {
     QVariantList out;
     const QDateTime now = QDateTime::currentDateTimeUtc();
@@ -1426,7 +1525,8 @@ void AiController::tell(const QList<QJsonObject> &rows) {
     if (first && rows.size() > 8) return;
     const QDateTime now = QDateTime::currentDateTimeUtc();
     m_touches.removeIf([&](const Touch &t) { return t.at.msecsTo(now) >= kTouchMs; });
-    QString followDevice, followSectionOf;   // -- WP ODEC --
+    QString followDevice;   // -- WP ODEC --
+    FollowAt followAt;      // -- WP SHOWFIX --
     for (const QJsonObject &e : rows) {
         const QString device = str(e, "device");
         const bool write = e.value(QLatin1String("write")).toBool();
@@ -1453,12 +1553,13 @@ void AiController::tell(const QList<QJsonObject> &rows) {
         // -- WP ODEC -- the screens follow it (the newest change of this read)
         if (!first) {
             const QJsonArray touched = e.value(QLatin1String("touched")).toArray();
-            QString section;
+            FollowAt at;   // -- WP SHOWFIX -- where it is: the section, tab, channel and band
             for (const QJsonValue &v : touched)
-                if (section.isEmpty()) section = sectionOf(str(v.toObject(), "path"));
+                if (at.section.isEmpty())
+                    at = followAtOf(str(v.toObject(), "path"), v.toObject().value(QLatin1String("indices")).toArray().toVariantList());
             if (!touched.isEmpty() || !device.isEmpty()) {
                 followDevice = device;
-                followSectionOf = section;
+                followAt = at;
             }
         }
         for (const QJsonValue &v : e.value(QLatin1String("touched")).toArray()) {
@@ -1492,7 +1593,7 @@ void AiController::tell(const QList<QJsonObject> &rows) {
         notices->postTagged(QStringLiteral("ai"), text, canUndo ? tr("Undo") : QString(), [this] { undoNoticed(); });
     }
     emit recentTouchesChanged();
-    if (!followDevice.isEmpty()) followChange(followDevice, followSectionOf);   // -- WP ODEC --
+    if (!followDevice.isEmpty()) followTo(followDevice, followAt);   // -- WP ODEC --, SHOWFIX
 }
 
 // What `tool` changed on `device` that its snapshot does not hold
