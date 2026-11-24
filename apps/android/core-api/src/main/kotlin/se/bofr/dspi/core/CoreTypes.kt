@@ -6373,7 +6373,10 @@ data class HistoryEntry(
      * gain and the Linkwitz target Q as little-endian `f32`s), `ext.pairmap`
      * (the crossfeed pair map's four bytes), `ext.vreg` (a core-voltage
      * request: op and value), `raw` (a raw request: opcode and `wValue` as
-     * indices, the payload as the value), `ext.alink.slots` (the 8
+     * indices, the payload as the value), `sig.run` (a measurement's run of
+     * the signal generator's changes: the outputs it played on as indices,
+     * the number of starts as the value, the row in words as the label;
+     * WP SHOWFIX), `ext.alink.slots` (the 8
      * slot bytes), `ext.alink.phase` (mode, then the delay and the
      * hops offset as little-endian 16-bit values), `ext.alink.apply`
      * (op and arg as indices, the 16-byte request as the value) and

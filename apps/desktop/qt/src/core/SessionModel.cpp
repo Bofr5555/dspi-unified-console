@@ -195,6 +195,12 @@ void SessionModel::reconnect() {
         });
 }
 
+// -- WP SHOWFIX --
+void SessionModel::reread() {
+    m_session->worker()->call(
+        this, [](FfiCore *c) { return readSnapshot(c); }, [this](const DeviceSnapshot &snap) { apply(snap, 0); });
+}
+
 void SessionModel::refresh() {
     track(1);
     m_session->worker()->call(

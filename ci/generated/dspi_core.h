@@ -5343,6 +5343,12 @@ uint32_t dspi_output_labels(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_output_cards(struct FfiCore *core, char *buf, uint32_t len);
 
 /**
+ * The names a person knows the channels by (`DspiCore::channel_words`), in
+ * JSON: `{ok, inputs, outputs, fromLayout}`; "Centre woofer", "LFE", "Out 3".
+ */
+uint32_t dspi_channel_words(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
  * Step back through the change history (`DspiCore::undo`): the newest
  * change that can be undone is written back through its setter. The reply
  * is `{ok, entry, skipped, note}`: `entry` the change reversed (`null` when

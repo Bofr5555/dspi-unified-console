@@ -119,6 +119,13 @@ struct Scene {
     }
 };
 
+// -- WP SHOWFIX -- (finding 5) an output as the app's texts name it: the core's
+// channel word ("Centre woofer", a user's name, else "Out 3")
+QString outputWord(DeviceModel *device, int output) {
+    const QString w = device ? device->snapshot().channelWords.value(QLatin1String("outputs")).toArray().at(output).toString() : QString();
+    return w.isEmpty() ? QStringLiteral("Out %1").arg(output + 1) : w;
+}
+
 QJsonObject gain(int output, double db, const QString &device = QString()) {
     QJsonObject o{ { QStringLiteral("output"), output }, { QStringLiteral("gain_db"), db } };
     if (!device.isEmpty()) o.insert(QStringLiteral("device"), device);
@@ -142,7 +149,7 @@ void changes(Scene &s, const QString &layout) {
     d.check(say("the agent sets a gain"), s.ok("dspi_set_gain", gain(one, modern ? -21 : -23)));
     d.check(say("the value on the screen follows"), d.waitFor(1000, [&] { return gainIs(modern ? -21 : -23); }));
     d.check(say("the strip is there, with the agent, what it does and to what"), d.waitFor(2000, [&] {
-        return s.strip().contains(QLatin1String("gain"), Qt::CaseInsensitive) && s.strip().contains(QStringLiteral("Out %1").arg(one + 1));
+        return s.strip().contains(QLatin1String("gain"), Qt::CaseInsensitive) && s.strip().contains(outputWord(device, one));
     }) && textOf(s.item(QStringLiteral("AiWorkBanner.agent"))) == QLatin1String("Smoke agent"));
     d.check(say("it counts as working a moment after the call"), s.ai->working());
     QQuickItem *mark = s.item(QStringLiteral("AiWorkBanner.mark"));
@@ -249,7 +256,7 @@ void aivisSection(SmokeDriver &d) {
         d.spin(200);
         const bool hidden = tray->windowHidden();
         s.ok("dspi_set_gain", gain(1, -25));
-        const bool said = d.waitFor(2000, [&] { return tray->icon() && tray->icon()->toolTip().contains(QLatin1String("Out 2")); });
+        const bool said = d.waitFor(2000, [&] { return tray->icon() && tray->icon()->toolTip().contains(outputWord(d.app().device, 1)); });
         tray->restore();
         d.spin(200);
         return hidden && said;

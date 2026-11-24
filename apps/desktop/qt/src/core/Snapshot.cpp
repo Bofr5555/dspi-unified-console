@@ -47,6 +47,12 @@ DeviceSnapshot readSnapshot(FfiCore *core) {
         if (dspi_cached_device_name(core, name.data(), uint32_t(name.size()))) snap.deviceName = QString::fromUtf8(name.data());
         snap.outputLabels =
             jsonValue(readSized([core](char *b, uint32_t n) { return dspi_output_labels(core, b, n); })).toArray();
+        // -- WP SHOWFIX -- the names a person knows the channels by
+        if (const QJsonObject words = QJsonDocument::fromJson(readSized([core](char *b, uint32_t n) {
+                                          return dspi_channel_words(core, b, n);
+                                      })).object();
+            words.value(QStringLiteral("ok")).toBool())
+            snap.channelWords = words;
         snap.wireFeatures = dspi_wire_features(core);
     }
     return snap;

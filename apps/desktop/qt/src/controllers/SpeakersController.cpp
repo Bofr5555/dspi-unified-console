@@ -332,6 +332,9 @@ void SpeakersController::setStored(const StatePtr &st, const QJsonObject &layout
     else if (shown(st)) emit rowsChanged();   // -- WP ADETQ -- the pills are judged against it
     if (shown(st)) emit storedChanged(origin);
     if (shown(st)) emit detectChanged();      // -- WP ADETQ -- a confirmed layout is not detected over
+    // -- WP SHOWFIX -- the channels' names follow the layout ("Left tweeter"):
+    // the snapshot carries the core's channel words, and no state changed
+    if (shown(st) && m_ctx.device) m_ctx.device->reread();
 }
 
 void SpeakersController::rebuild(const StatePtr &st) {

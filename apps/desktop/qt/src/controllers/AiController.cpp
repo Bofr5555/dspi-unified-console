@@ -1074,33 +1074,26 @@ QString AiController::doing(const QJsonObject &row) const {
     return (row.value(QLatin1String("write")).toBool() ? tr("Changing: %1") : tr("Reading: %1")).arg(title);
 }
 
-// Where: "OUT3 Centre, band 2", with the device's own labels
+// Where: "Centre woofer, band 2", as the person knows the channel
+// -- WP SHOWFIX -- (finding 5) the core's channel words (dspi_channel_words):
+// the speaker layout's "Centre woofer", the input's "LFE", else "Out 3"
 QString AiController::targetOf(const QJsonObject &row, DeviceSession *session) const {
     QStringList parts;
     const DspState *st = session ? session->model()->state() : nullptr;
-    const auto channelName = [&](int wire) {
-        if (!st || wire < 0 || wire >= MAX_CHANNELS) return QString();
-        return fieldText(st->channel_names[wire], CHANNEL_NAME_LEN);
+    const QJsonObject words = session ? session->model()->snapshot().channelWords : QJsonObject();
+    const auto word = [&](const char *kind, int i, const QString &number) {
+        const QString w = words.value(QLatin1String(kind)).toArray().at(i).toString();
+        return w.isEmpty() ? number : w;
     };
     const int inputs = st ? st->num_input_channels : 0;
-    const auto named = [](const QString &what, const QString &name) { return name.isEmpty() ? what : what + QLatin1Char(' ') + name; };
     int output = row.value(QLatin1String("output")).toInt(-1);
     int input = row.value(QLatin1String("input")).toInt(-1);
     const int channel = row.value(QLatin1String("channel")).toInt(-1);
     if (channel >= 0 && st) (channel < inputs ? input : output) = channel < inputs ? channel : channel - inputs;
-    //: An input's or an output's short name: %1 is its number
-    if (input >= 0) parts << named(tr("IN%1").arg(input + 1), channelName(input));
-    if (output >= 0) {
-        QString label;
-        for (const QJsonValue &v : session ? session->model()->snapshot().outputLabels : QJsonArray()) {
-            const QJsonObject o = v.toObject();
-            if (o.value(QLatin1String("output")).toInt(-1) == output) label = str(o, "label");
-        }
-        if (label.isEmpty() && st) label = channelName(inputs + output);
-        // The core's label of an unnamed output says its number itself
-        const QString number = QStringLiteral("Out %1").arg(output + 1);
-        parts << (label == number || label.startsWith(number + QLatin1Char(' ')) ? label : named(tr("OUT%1").arg(output + 1), label));
-    }
+    //: An input's short name: %1 is its number
+    if (input >= 0) parts << word("inputs", input, tr("In %1").arg(input + 1));
+    //: An output's short name: %1 is its number
+    if (output >= 0) parts << word("outputs", output, tr("Out %1").arg(output + 1));
     const int band = row.value(QLatin1String("band")).toInt(-1);
     if (band >= 0) parts << tr("band %1").arg(band + 1);
     return parts.join(QStringLiteral(", "));

@@ -988,7 +988,10 @@ pub struct HistoryEntry {
     /// gain and the Linkwitz target Q as little-endian `f32`s), `ext.pairmap`
     /// (the crossfeed pair map's four bytes), `ext.vreg` (a core-voltage
     /// request: op and value), `raw` (a raw request: opcode and `wValue` as
-    /// indices, the payload as the value), `ext.alink.slots` (the 8
+    /// indices, the payload as the value), `sig.run` (a measurement's run of
+    /// the signal generator's changes: the outputs it played on as indices,
+    /// the number of starts as the value, the row in words as the label;
+    /// WP SHOWFIX), `ext.alink.slots` (the 8
     /// slot bytes), `ext.alink.phase` (mode, then the delay and the
     /// hops offset as little-endian 16-bit values), `ext.alink.apply`
     /// (op and arg as indices, the 16-byte request as the value) and
@@ -1212,18 +1215,26 @@ impl DspiCore {
             .is_some_and(|s| s.can_redo())
     }
 
+    // -- WP SHOWFIX -- (finding 5) a measurement's generator changes are one
+    // `sig.run` entry (`journal/runs.rs`), its label naming the outputs as the
+    // person knows them
     /// The newest `n` changes of this connection, newest first: every typed
     /// setter's, undo's and redo's, with the value before and after, who
     /// made it and when. The connection's session keeps the newest 1000; a
     /// reconnect starts with none. Empty with no device.
     pub fn history(&self, n: u32) -> Vec<HistoryEntry> {
         let n = usize::try_from(n).unwrap_or(usize::MAX);
-        self.lock()
+        let entries: Vec<HistoryEntry> = self
+            .lock()
             .conn
             .as_mut()
             .and_then(|c| c.session().ok())
             .map(|s| s.history(n).iter().map(HistoryEntry::from).collect())
-            .unwrap_or_default()
+            .unwrap_or_default();
+        if !entries.iter().any(|e| e.path.starts_with("sig.")) {
+            return entries;
+        }
+        runs::fold(entries, &self.channel_words())
     }
 
     // -- WP MCP0 --
@@ -1605,6 +1616,10 @@ fn judge(
         note: (!notes.is_empty()).then(|| notes.join(" ")),
     }
 }
+
+// -- WP SHOWFIX -- (finding 5)
+#[path = "journal/runs.rs"]
+mod runs;
 
 /// The history's state for `NOTIFY_HISTORY`: the connection and its
 /// journal's version, `None` while there is no history at all.

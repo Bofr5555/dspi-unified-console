@@ -218,8 +218,9 @@ QVariantMap HistoryController::describe(const QJsonObject &entry, const ChannelN
         const QString name = names ? (names->*table).value(i) : QString();
         return name.isEmpty() ? number : name;
     };
-    const auto output = [&](int i) { return named(&ChannelNames::outputs, i, tr("OUT%1").arg(i + 1)); };
-    const auto input = [&](int i) { return named(&ChannelNames::inputs, i, tr("IN%1").arg(i + 1)); };
+    // -- WP SHOWFIX -- (finding 5) numbered as the screens' words do, "Out 3"
+    const auto output = [&](int i) { return named(&ChannelNames::outputs, i, tr("Out %1").arg(i + 1)); };
+    const auto input = [&](int i) { return named(&ChannelNames::inputs, i, tr("In %1").arg(i + 1)); };
     const int first = indices.isEmpty() ? -1 : indices.at(0).toInt();
     // -- WP DL3a -- a crossover band is a band from XOVER_BAND_BASE on
     const bool crossover = path.startsWith(QLatin1String("eq.")) && indices.size() > 1
@@ -268,10 +269,14 @@ QVariantMap HistoryController::describe(const QJsonObject &entry, const ChannelN
     if (!where.isEmpty()) title += QStringLiteral(", ") + where.join(QStringLiteral(", "));
     // -- WP P1QT2 -- the group it was part of (P1UG: Clear All, Direct 1:1, AutoEQ, ...)
     const QString label = entry.value(QLatin1String("label")).toString();
+    // -- WP SHOWFIX -- (finding 5) a measurement's generator changes, one row
+    // the core words ("Measurement: Out 1–3, 6 sweeps")
+    const bool run = path == QLatin1String("sig.run");
+    if (run) title = label.isEmpty() ? tr("Measurement") : label;
     //: A change made as part of a group: %1 the group ("Clear All"), %2 the change
-    if (!label.isEmpty()) title = QCoreApplication::translate("HistoryController", "%1: %2").arg(label, title);
+    else if (!label.isEmpty()) title = QCoreApplication::translate("HistoryController", "%1: %2").arg(label, title);
     // -- WP DL3a -- the generator's choice is in the title
-    const bool worded = path == QLatin1String("sig.control");
+    const bool worded = path == QLatin1String("sig.control") || run;
     const QString before = worded ? QString() : valueText(entry.value(QLatin1String("before")), path);
     const QString after = worded ? QString() : valueText(entry.value(QLatin1String("after")), path);
     QString detail;
@@ -287,9 +292,10 @@ HistoryController::ChannelNames HistoryController::channelNames() const {
     if (!channels) return names;
     for (int row = 0; row < channels->rowCount(); ++row) {
         const QModelIndex at = channels->index(row);
-        // The glossary's "OUT3", or the name the user gave it
-        const QString label = channels->data(at, channels->data(at, ChannelListModel::UserNamedRole).toBool()
-                                                     ? ChannelListModel::NameRole : ChannelListModel::DescriptorRole).toString();
+        // -- WP SHOWFIX -- (finding 5) as the person knows it, the core's word
+        // for every text: "Centre woofer" from the speaker layout, "LFE", "Out 3"
+        QString label = channels->data(at, ChannelListModel::ShortNameRole).toString();
+        if (label.isEmpty()) label = channels->data(at, ChannelListModel::DescriptorRole).toString();
         if (label.isEmpty()) continue;
         names.wire.insert(channels->data(at, ChannelListModel::ChannelRole).toInt(), label);
         const int index = channels->data(at, ChannelListModel::IndexRole).toInt();
