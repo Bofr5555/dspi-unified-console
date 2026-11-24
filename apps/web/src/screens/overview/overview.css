@@ -1,18 +1,8 @@
-/* -- WP WEB3 -- (DL6 on the web) The Overview as Qt's Modern page: three tiles (cards on the panel tone,
-   a caps label, key/value rows; the effects as status chips), then INPUTS and OUTPUTS as sections of
-   channel cards (each one button: pill and name, caption, a 48 px mini response in the channel's
+/* -- WP WEB3 -- (DL6 on the web) The Overview's INPUTS and OUTPUTS as sections of channel cards, under
+   WEB2's tiles (each one button: pill and name, caption, a 48 px mini response in the channel's
    tint, a 3 px meter, grey read-only chips). And All Channels as §9's table. */
 
-.dspi-web .ov-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 12px; }
-.dspi-web .ov-tile { display: flex; flex-direction: column; gap: 8px; padding: 12px; background: var(--panel); border-radius: 8px; min-width: 0; }
-.dspi-web .ov-facts { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 12px; margin: 0; }
-.dspi-web .ov-facts dt { color: var(--muted); }
-.dspi-web .ov-facts dd { margin: 0; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dspi-web .ov-facts dd.mono { font-family: var(--mono); font-size: 12px; color: var(--text); }
-.dspi-web .ov-fx { display: flex; flex-wrap: wrap; gap: 6px; }
-.dspi-web .ov-fx-chip { display: inline-flex; align-items: center; min-height: 24px; padding: 0 10px 0 6px; border: 0; border-radius: var(--radius-chip, 12px); background: var(--control); color: var(--text); font-size: 12px; }
-.dspi-web .ov-fx-chip:hover:not(:disabled) { background: var(--control-hover); }
-.dspi-web .ov-hint { margin: 0; font-size: 11px; color: var(--muted); }
+.dspi-web .ov-idle { margin: 0; font-size: 11px; color: var(--muted); }
 
 .dspi-web .ov-cards-section { margin-top: 12px; }
 .dspi-web .ov-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: 12px; }
@@ -37,8 +27,6 @@
 .dspi-web .ov-chip.muted { color: var(--muted); }
 .dspi-web .ov-chip.warn { color: var(--warn); }
 
-/* The Dashboard's own parts under the cards: presets and levels as before, in the new tones */
-.dspi-web .main-screen > .ov-tiles, .dspi-web .main-screen > .ov-cards-section { grid-column: 1 / -1; }
 
 /* All Channels: the inputs' meters on the panel tone, the outputs as §9's table (eq.css's .eq-table) */
 .dspi-web .overview { display: flex; flex-direction: column; gap: 12px; }
@@ -53,3 +41,7 @@
 .dspi-web .ov-table-wrap .ov-gain .value-field input { height: 24px; font-family: var(--mono); font-size: 12px; text-align: right; }
 .dspi-web .ov-table-wrap .ov-gain .value-field .step { height: 24px; min-width: 22px; padding: 0 4px; border: 0; background: none; color: var(--muted); }
 .dspi-web .ov-table-wrap .ov-gain .value-field .step:hover:not(:disabled) { background: var(--control-hover); color: var(--text); }
+
+/* On the Dashboard (a grid of cards): the two sections across the whole width */
+.dspi-web .main-screen > .ov-cards-section { grid-column: 1 / -1; margin-top: 0; }
+.dspi-web .overview .ov-inputs h4.section-label { font-size: 11px; font-weight: 600; }

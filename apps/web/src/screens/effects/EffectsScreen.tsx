@@ -96,7 +96,7 @@ function useWords(session: Session): Words | null {
 }
 
 /** What the probe found on the open device, asked again when another device is open in the session. */
-export function useFeatures(session: Session, device: string): Features { // -- WP WEB3 -- exported: the Overview's Effects tile
+function useFeatures(session: Session, device: string): Features {
   const [features, setFeatures] = useState<{ device: string; found: Features }>({ device: "", found: null });
   useEffect(() => {
     let alive = true;

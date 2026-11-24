@@ -19,6 +19,7 @@ import { SpectrumStrip, tapNames } from "../analysis/SpectrumStrip";
 import { MAX_CARDS_PER_ROW, columnsFor, perRowLabel, perRowSummary, usePerRow } from "../analysis/dashboard";
 import { LayoutNote } from "../settings/speakers/LayoutNote"; // -- WP ADETW --
 import { DashboardTiles } from "./Tiles"; // -- WP WEB2 --
+import { ChannelCards } from "../overview/Cards"; // -- WP WEB3 -- (DL6) the channel cards under the tiles
 
 // -- WP WB6b -- the questions and the unsaved-changes prompt are the session
 // view's now (src/ui/screens.tsx), so every screen shares them.
@@ -110,6 +111,7 @@ export function MainScreen(props: ScreenProps) {
       </div>
       {/* -- WP WEB2 -- (DL6) the device, its effects and its connection first, as Qt's Overview */}
       <DashboardTiles session={session} open={props.open} />
+      {snap ? <ChannelCards session={session} snap={snap} usbActive={usbActive} open={props.open} /> : null}
       <div class="main-spectrum">
         <SpectrumStrip session={session} names={tapNames(s, snap?.outputLabels)} />
       </div>
