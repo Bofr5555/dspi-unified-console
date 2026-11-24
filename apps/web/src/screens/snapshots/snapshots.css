@@ -32,3 +32,21 @@
 .dspi-web .snapshots .popover .snap-capture { flex-direction: column; align-items: stretch; gap: 8px; }
 .dspi-web .snapshots .popover .snap-capture label { flex: none; }
 .dspi-web .snapshots .popover .snap-capture > button { align-self: flex-end; }
+
+/* -- WP WEB7 -- Qt Modern's page: the A/B row always (A ▾ B ▾ Start on one line), the running compare's
+   segments and buttons, the rows (rows.css), the rollback switch and its stepper as form rows. */
+.dspi-web .snapshots .snap-compare { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.dspi-web .snapshots .snap-compare label { display: flex; align-items: center; gap: 8px; flex: 1 1 12rem; min-width: 0; font-size: 13px; }
+.dspi-web .snapshots .snap-compare select { flex: 1 1 auto; min-width: 0; }
+.dspi-web .snapshots .snap-side { color: var(--muted); }
+.dspi-web .snapshots .snap-compare > button { align-self: center; }
+.dspi-web .snapshots .snap-ab-run { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.dspi-web .snapshots .snap-rows .badge { margin-left: 6px; font-size: 10.5px; }
+.dspi-web .snapshots .empty-state .popover-anchor { display: inline-block; }
+.dspi-web .snapshots .snap-stepper { display: inline-flex; align-items: center; gap: 0; height: 24px; border-radius: 6px; background: var(--control); }
+.dspi-web .snapshots .snap-stepper > button { min-height: 24px; width: 24px; padding: 0; background: none; }
+.dspi-web .snapshots .snap-stepper > button:hover:not(:disabled) { background: var(--control-hover); }
+.dspi-web .snapshots .snap-stepper .snap-seconds { width: 48px; height: 24px; padding: 0 4px; background: none; text-align: right; }
+.dspi-web .snapshots .snap-stepper .snap-unit { padding: 0 4px 0 3px; }
+.dspi-web .snapshots .snap-sec > .form-row { min-height: 36px; }
+.dspi-web .popover .snap-capture > button { align-self: flex-end; }
