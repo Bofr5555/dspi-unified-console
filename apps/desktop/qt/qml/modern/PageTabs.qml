@@ -18,6 +18,8 @@ Item {
     readonly property string quietTab: entry && entry.quiet ? tab : ""
     readonly property var entries: SectionTable.tabs(section).filter(t => t.quiet ? t.tab === quietTab : SectionTable.shows(section, t.tab))
     readonly property string action: entry && entry.row ? entry.row.action : ""
+    // -- WP DL4 -- the page shows the host's "No device": its tools are off
+    readonly property bool noDevice: Shell.pageHost !== null && Shell.pageHost.noDevice === true
     signal chosen(string tab)
 
     implicitHeight: 38
@@ -32,7 +34,7 @@ Item {
             objectName: "PageTabs.title"
             visible: !bar.pills
             text: { const s = SectionTable.section(bar.section); return s ? s.title : "" }
-            font: Theme.fontTitle
+            font: Theme.fontPageTitle   // -- WP DL4 --
             color: Theme.text
             Accessible.role: Accessible.Heading
             Accessible.name: text
@@ -122,18 +124,27 @@ Item {
                 }
             }
         }
+        // -- WP DL3b -- the panel's own (PageHost.pageTools), before the section's
+        Loader {
+            objectName: "PageTabs.panelTools"
+            visible: active
+            enabled: !bar.noDevice   // -- WP DL4 --
+            active: Shell.pageHost !== null && Shell.pageHost.pageTools !== null && Shell.pageHost.pageTools !== undefined
+            sourceComponent: active ? Shell.pageHost.pageTools : null
+        }
         // -- WP LAY4 -- the page's own buttons
         Loader {
             objectName: "PageTabs.tools"
             readonly property string type: bar.entry && bar.entry.tools ? bar.entry.tools : ""
             visible: active
+            enabled: !bar.noDevice   // -- WP DL4 --
             active: type.length > 0
             sourceComponent: active ? Qt.createComponent("UConsole", type) : null
         }
         IconButton {
             objectName: "PageTabs.openWindow"
             visible: bar.action.length > 0
-            enabled: Shell.allows(bar.action) && Shell.shownWindows.indexOf(bar.action) < 0
+            enabled: !bar.noDevice && Shell.allows(bar.action) && Shell.shownWindows.indexOf(bar.action) < 0   // -- WP DL4 -- noDevice
             iconName: "app-window"
             toolTip: qsTr("Open in Window")
             // -- WP LAY5b -- on the part shown here
