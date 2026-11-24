@@ -15,6 +15,8 @@ root=$(cd "$(dirname "$0")/../.." && pwd)
 . "$root/ci/container/images.conf"
 B=${DSPI_BUILD_CACHE:-$HOME/.cache/dspi-build}
 branch=$(git -C "$root" rev-parse --abbrev-ref HEAD 2>/dev/null || echo detached)
+# -- WP SHOWFIX -- a detached worktree is named by its short commit, not "HEAD"
+if [ "$branch" = HEAD ]; then branch=$(git -C "$root" rev-parse --short HEAD); fi
 work=$B/work/web/${branch//\//-}
 old=${2:-$B/work/rel-0.14.0b-web/uConsole-for-DSPi-0.14.0-web}
 new=${3:-$work/dist}

@@ -37,6 +37,8 @@ here=${SRC:-$(cd "$(dirname "$0")/.." && pwd)}
 # shellcheck source=container/images.conf
 . "$(dirname "$0")/container/images.conf"
 branch=$(git -C "$here" rev-parse --abbrev-ref HEAD 2>/dev/null || echo detached)
+# -- WP SHOWFIX -- a detached worktree is named by its short commit, not "HEAD"
+if [ "$branch" = HEAD ]; then branch=$(git -C "$here" rev-parse --short HEAD); fi
 branch=${branch//\//-}
 # -- WP CIPAR --
 tkey=${DSPI_TARGET_KEY:-$branch}

@@ -34,6 +34,10 @@ REPO = HERE.parent.parent
 CACHE = pathlib.Path(os.environ.get("DSPI_BUILD_CACHE", pathlib.Path.home() / ".cache/dspi-build"))
 BRANCH = subprocess.run(["git", "-C", str(REPO), "rev-parse", "--abbrev-ref", "HEAD"],
                         capture_output=True, text=True).stdout.strip().replace("/", "-") or "detached"
+# -- WP SHOWFIX -- a detached worktree is named by its short commit (as ci/run.sh does), not "HEAD"
+if BRANCH == "HEAD":
+    BRANCH = subprocess.run(["git", "-C", str(REPO), "rev-parse", "--short", "HEAD"],
+                            capture_output=True, text=True).stdout.strip() or "detached"
 WORK = CACHE / "work" / BRANCH
 AGENT = os.environ.get("FUNCTEST_AGENT", "claude2")
 MODEL = os.environ.get("FUNCTEST_MODEL", "opus")
