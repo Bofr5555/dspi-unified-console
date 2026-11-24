@@ -83,6 +83,7 @@ fn wp_mcp5_a_measurement_request_through_c() {
             role: MeasureRole::Low,
             speaker: "L".into(),
             group: 0,
+            source: Default::default(), // -- WP ADET0 --
         }],
         confirmed_by_user: true,
         ..SpeakerLayout::default()

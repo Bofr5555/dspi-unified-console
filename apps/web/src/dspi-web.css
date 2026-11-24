@@ -1753,3 +1753,25 @@
   font-size: 0.7rem;
   font-weight: 600;
 }
+
+/* -- WP ADETW -- Settings › Speakers: a row's marker (whose word, how sure a detection was) and the detection's details */
+.dspi-web .speaker-pill {
+  padding: 0 6px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+.dspi-web .speaker-pill[data-kind="detected"],
+.dspi-web .speaker-pill[data-kind="detectedUnsure"] { border-color: var(--accent); color: var(--accent); }
+.dspi-web .speaker-pill[data-kind="uncertain"],
+.dspi-web .speaker-pill[data-kind="unknown"],
+.dspi-web .speaker-pill[data-kind="nothing"] { border-color: var(--warn); color: var(--warn); }
+.dspi-web .speakers-detection { max-width: 100%; overflow-x: auto; }
+.dspi-web .speakers-detection table { border-collapse: collapse; font-size: 0.8rem; }
+.dspi-web .speakers-detection th,
+.dspi-web .speakers-detection td { padding: 2px 8px 2px 0; text-align: left; white-space: nowrap; }
+/* -- WP ADETW -- the main screen's speaker layout line spans the grid */
+.dspi-web .main-layout-note { grid-column: 1 / -1; min-width: 0; }
+.dspi-web .banner-agent .agent-detect { color: var(--muted); }

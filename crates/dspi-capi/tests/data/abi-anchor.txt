@@ -1870,6 +1870,16 @@ uint32_t dspi_measure_rolloff_tick(struct FfiCore *core, char *buf, uint32_t len
 uint32_t dspi_measure_rolloff_state(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_measure_rolloff_stop(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_measure_rolloff_clear(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_detect_start(struct FfiCore *core, const char *setup_json, char *buf, uint32_t len);
+uint32_t dspi_detect_tick(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_detect_state(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_detect_stop(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_detect_clear(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_detect_agents_allowed(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_detect_set_agents_allowed(struct FfiCore *core,
+bool allowed,
+char *buf,
+uint32_t len);
 uint32_t dspi_measure_system_unit_check(struct FfiCore *core,
 const char *setup_json,
 const char *unit_json,
@@ -2134,6 +2144,7 @@ void dspi_mcp_pause(struct FfiMcp *mcp, bool paused);
 uint32_t dspi_mcp_activity(struct FfiMcp *mcp, uint32_t n, char *buf, uint32_t len);
 bool dspi_mcp_set_confirm(struct FfiMcp *mcp, const char *mode);
 bool dspi_mcp_set_agent_spl_cap(struct FfiMcp *mcp, float spl_db);
+bool dspi_mcp_set_agent_detect(struct FfiMcp *mcp, bool allowed);
 uint32_t dspi_mcp_host_audio(struct FfiMcp *mcp, char *buf, uint32_t len);
 bool dspi_mcp_set_autoeq(struct FfiMcp *mcp, const uint8_t *data, uint32_t len);
 uint32_t dspi_mcp_confirmations(struct FfiMcp *mcp, char *buf, uint32_t len);

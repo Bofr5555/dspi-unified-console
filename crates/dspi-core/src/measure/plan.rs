@@ -126,6 +126,10 @@ pub(crate) struct OutSpec {
     /// The role the caller (or the layout) gave it; `role` is the effective
     /// one once resolved.
     pub(crate) declared: MeasureRole,
+    // -- WP ADETS --
+    /// The limits profile's high-pass minimum for it, Hz (0: none): a high
+    /// way's stimulus floor when above 1 kHz (the K340's 2.5 kHz).
+    pub(crate) profile_floor_hz: f32,
 }
 
 /// One run: the outputs it plays, at which position.
@@ -188,7 +192,84 @@ pub(crate) struct Plan {
     /// The setup's start level only (its ramp's one step must be heard too,
     /// WP P5RAMPFIX).
     pub(crate) start_level_only: bool,
+    // -- WP ADET0 -- the speaker detection's sessions
+    /// Its outputs are unknown outputs, held to the probe's envelope
+    /// ([`Probe`]) instead of their roles' rules.
+    pub(crate) probe: Option<Probe>,
+    /// The run plays at `start_db` with no ramp (a descent segment): it is
+    /// heard or not by its own response.
+    pub(crate) fixed_level: bool,
+    /// The in-band SNR at which the ramp stops, dB (the session's 35 dB
+    /// when `None`).
+    pub(crate) ramp_snr_db: Option<f64>,
+    /// The ramp's own band, Hz (the run's when `None`), never below the
+    /// floor.
+    pub(crate) ramp_band: Option<(f32, f32)>,
 }
+
+// -- WP ADET0 --
+/// The envelope of an unknown output (AUTODES 1.1, 1.8): above its floor a
+/// log sweep at most `ceiling_dbfs`; below it only a log sweep of at most two
+/// octaves at most `below_dbfs` (the shaped probe); nothing else.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct Probe {
+    pub(crate) floor_hz: f32,
+    pub(crate) below_dbfs: f32,
+    pub(crate) ceiling_dbfs: f32,
+}
+
+impl Probe {
+    /// Why `cfg` breaks the envelope, or `None`.
+    pub(crate) fn refuses(&self, cfg: &crate::records::SiggenConfig) -> Option<String> {
+        if cfg.signal_type != super::preflight::SIG_LOG_SWEEP {
+            return Some("refused a stimulus other than a sweep on an unknown output".into());
+        }
+        let f1 = cfg.p.first().copied().unwrap_or(f32::NAN);
+        let f2 = cfg.p.get(1).copied().unwrap_or(f32::NAN);
+        let level = cfg.level_db;
+        if !f1.is_finite() || !f2.is_finite() || !level.is_finite() {
+            return Some("refused a sweep without a band or a level".into());
+        }
+        if level > self.ceiling_dbfs {
+            return Some(format!(
+                "refused {level} dBFS on an unknown output (the probe's ceiling is {} dBFS)",
+                self.ceiling_dbfs
+            ));
+        }
+        let (lo, hi) = (f1.min(f2), f1.max(f2));
+        if lo >= self.floor_hz - HZ_SLACK {
+            return None;
+        }
+        if level > self.below_dbfs {
+            return Some(format!(
+                "refused {level} dBFS below {:.0} Hz on an unknown output (at most {} dBFS there)",
+                self.floor_hz, self.below_dbfs
+            ));
+        }
+        if lo <= 0.0 || hi > lo * PROBE_SPAN * (1.0 + 1e-4) {
+            return Some(format!(
+                "refused a sweep of {lo:.0} to {hi:.0} Hz below the floor on an unknown output \
+                 (two octaves at most)"
+            ));
+        }
+        None
+    }
+
+    /// A run from `f1_hz` to the plan's top is a shaped segment the envelope
+    /// allows below the floor.
+    fn allows_below(&self, plan: &Plan, f1_hz: f32) -> bool {
+        plan.fixed_level
+            && plan.ceiling_db <= self.below_dbfs
+            && f1_hz > 0.0
+            && plan.sweep.f2_hz <= f1_hz * PROBE_SPAN * (1.0 + 1e-4)
+    }
+}
+
+/// The widest band of a sweep below an unknown output's floor: two octaves
+/// (-- WP ADET0 --).
+pub(crate) const PROBE_SPAN: f32 = 4.0;
+/// Rounding slack of a frequency at a floor, Hz (-- WP ADET0 --).
+const HZ_SLACK: f32 = 0.01;
 
 fn invalid(msg: impl Into<String>) -> DspiError {
     DspiError::InvalidArgument { msg: msg.into() }
@@ -341,6 +422,7 @@ impl Plan {
                 inverted: o.inverted,
                 top_hz: f32::INFINITY, // -- WP ROLL1 --
                 declared: o.role,
+                profile_floor_hz: 0.0, // -- WP ADETS --
             })
             .collect();
         outputs.sort_by_key(|o| o.output);
@@ -373,6 +455,10 @@ impl Plan {
             mic,
             name: setup.name.clone(),
             start_level_only: setup.start_level_only,
+            probe: None, // -- WP ADET0 --
+            fixed_level: false,
+            ramp_snr_db: None,
+            ramp_band: None,
         })
     }
 
@@ -392,6 +478,13 @@ impl Plan {
         confirmed: Option<&SpeakerLayout>,
     ) -> Result<()> {
         for o in &mut self.outputs {
+            // -- WP ADET0 -- an unknown output's envelope is its rule
+            if self.probe.is_some() {
+                if let Some((_, c)) = chains.iter().find(|(out, _)| *out == o.output) {
+                    o.top_hz = low_pass_hz(c);
+                }
+                continue;
+            }
             o.role = confirmed_role(o.role, o.output, confirmed);
             if let Some((_, c)) = chains.iter().find(|(out, _)| *out == o.output) {
                 o.role = effective_role(o.role, c);
@@ -450,6 +543,35 @@ impl Plan {
         Ok(())
     }
 
+    // -- WP ADET0 --
+    /// Sweep `f1_hz` to `f2_hz` (20 Hz to 20 kHz, `f2` at least a sixth of
+    /// an octave above `f1`) instead of the plan's band: the detection's
+    /// bands. A run still never plays below a floor its envelope forbids.
+    ///
+    /// Errors: [`DspiError::InvalidArgument`] for a band out of range.
+    pub(crate) fn set_sweep_band(&mut self, f1_hz: f32, f2_hz: f32) -> Result<()> {
+        if !f1_hz.is_finite()
+            || !f2_hz.is_finite()
+            || !(20.0..=20_000.0).contains(&f1_hz)
+            || !(20.0..=20_000.0).contains(&f2_hz)
+            || f2_hz < f1_hz * 2f32.powf(1.0 / 6.0)
+        {
+            return Err(invalid(format!(
+                "a sweep from {f1_hz} Hz to {f2_hz} Hz (20 Hz to 20 kHz, rising)"
+            )));
+        }
+        self.sweep.f1_hz = f1_hz;
+        self.sweep.f2_hz = f2_hz;
+        self.runs = runs_of(
+            self.kind,
+            &self.placement,
+            &self.outputs,
+            self.positions,
+            self.sweep.f1_hz,
+        );
+        Ok(())
+    }
+
     // -- WP ROLL1 --
     /// The role of `output` in the plan (`Full` for one it lacks).
     pub(crate) fn role_of(&self, output: u8) -> MeasureRole {
@@ -462,20 +584,43 @@ impl Plan {
     // -- WP ROLL1 --
     /// The lowest frequency any stimulus may play on `outputs`, Hz.
     pub(crate) fn floor_of(&self, outputs: &[u8]) -> f32 {
-        outputs
+        // -- WP ADETS -- a high way's floor rises with its limits profile
+        let floor = outputs
             .iter()
-            .map(|o| stimulus_floor_hz(self.role_of(*o)))
-            .fold(0.0, f32::max)
+            .map(|o| {
+                let role = self.role_of(*o);
+                let profile = self
+                    .outputs
+                    .iter()
+                    .find(|s| s.output == *o && role == MeasureRole::High)
+                    .map_or(0.0, |s| s.profile_floor_hz);
+                stimulus_floor_hz(role).max(profile)
+            })
+            .fold(0.0, f32::max);
+        // -- WP ADET0 -- an unknown output's floor
+        match self.probe {
+            Some(p)
+                if outputs
+                    .iter()
+                    .any(|o| self.outputs.iter().any(|s| s.output == *o)) =>
+            {
+                floor.max(p.floor_hz)
+            }
+            _ => floor,
+        }
     }
 
     // -- WP ROLL1 --
     /// The sweep `run` plays: the plan's from the run's start, never below
     /// the floor of its outputs (whatever built the run).
     pub(crate) fn sweep_of(&self, run: &RunSpec) -> SweepConfig {
-        let f1 = run
-            .f1_hz
-            .max(self.sweep.f1_hz)
-            .max(self.floor_of(&run.outputs));
+        let f1 = run.f1_hz.max(self.sweep.f1_hz);
+        // -- WP ADET0 -- a shaped segment may start below an unknown
+        // output's floor; nothing else does
+        let f1 = match self.probe {
+            Some(p) if p.allows_below(self, f1) => f1,
+            _ => f1.max(self.floor_of(&run.outputs)),
+        };
         SweepConfig {
             f1_hz: if f1.is_finite() {
                 f1

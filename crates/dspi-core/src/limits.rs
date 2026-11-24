@@ -831,6 +831,9 @@ impl DspiCore {
             }
             inner.limits.memory.retain(|p| p.serial != serial);
             inner.limits.memory.push(profile.clone());
+            // -- WP ADETS -- the function test's oracle holds unknown outputs to its floors
+            #[cfg(feature = "sim-scenario")]
+            crate::measure_sim::scenario::profile_saved(&serial, Some(&profile));
             inner.limits.current = Some(Current {
                 serial,
                 profile: Some(profile),
@@ -861,6 +864,8 @@ impl DspiCore {
             })?;
         }
         inner.limits.memory.retain(|p| p.serial != serial);
+        #[cfg(feature = "sim-scenario")] // -- WP ADETS --
+        crate::measure_sim::scenario::profile_saved(&serial, None);
         inner.limits.current = None;
         inner.limits.last_held.clear();
         Ok(())

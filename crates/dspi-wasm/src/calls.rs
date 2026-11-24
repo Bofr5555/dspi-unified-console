@@ -345,6 +345,10 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
     if let Some(r) = crate::measure_rolloff::dispatch(&core, &req.method, req.params.clone()) {
         return r;
     }
+    // -- WP ADET0 -- the speaker detection (src/detect.rs)
+    if let Some(r) = crate::detect::dispatch(&core, &req.method, req.params.clone()) {
+        return r;
+    }
     // -- WP ROLE0 -- the speaker layout (src/speaker_layout.rs)
     if let Some(r) = crate::speaker_layout::dispatch(&core, &req.method, req.params.clone()) {
         return r;

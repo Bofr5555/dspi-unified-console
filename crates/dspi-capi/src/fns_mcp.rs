@@ -555,6 +555,21 @@ pub extern "C" fn dspi_mcp_set_agent_spl_cap(mcp: *mut FfiMcp, spl_db: f32) -> b
     })
 }
 
+// -- WP ADET1 --
+/// Settings › AI Agents › Agents may detect speakers (off by default):
+/// under "never ask" an agent's speaker detection (`dspi_detect_speakers`)
+/// is refused unless it is on; under the other settings the user is asked
+/// instead. The app shows its warning once when the user switches it on.
+/// Holds from the next call on, also while the server runs. False for a null
+/// handle.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_mcp_set_agent_detect(mcp: *mut FfiMcp, allowed: bool) -> bool {
+    with_mcp(mcp, false, |m| {
+        m.policy.set_agent_detect(allowed);
+        true
+    })
+}
+
 // -- WP FEATUI --
 /// This computer's audio as `dspi_get_host_audio` reads it, for the devices
 /// open in the handle's set: the tool's JSON plus `ok` (never an error:
@@ -919,6 +934,12 @@ mod tests_wp_feat2;
 #[allow(clippy::cast_possible_truncation)]
 #[path = "fns_mcp/tests_wp_featui.rs"]
 mod tests_wp_featui;
+
+// -- WP ADET1 --
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[path = "fns_mcp/tests_wp_adet1.rs"]
+mod tests_wp_adet1;
 
 // -- WP FEAT2 -- the agents' requests to open a known device or close one
 //

@@ -104,6 +104,8 @@ mod measure_sim;
 mod measure_tune;
 // -- WP ROLL1 -- the roll-off search (a tweeter's low end)
 mod measure_rolloff;
+// -- WP ADET0 -- the speaker detection
+mod detect;
 // -- WP ATCORE -- the system measurement across units
 mod measure_system;
 // -- WP PGCORE -- the protocol generation and raw paged requests

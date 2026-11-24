@@ -584,6 +584,20 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun measureClear(): Unit = throw NotImplementedError("measure_clear")
 
+    override fun detectStart(setup: DetectSetup): DetectState = throw NotImplementedError("detect_start")
+
+    override fun detectTick(): DetectState = throw NotImplementedError("detect_tick")
+
+    override fun detectState(): DetectState = throw NotImplementedError("detect_state")
+
+    override fun detectStop(): DetectState = throw NotImplementedError("detect_stop")
+
+    override fun detectClear(): Unit = throw NotImplementedError("detect_clear")
+
+    override fun detectAgentsAllowed(): Boolean = throw NotImplementedError("detect_agents_allowed")
+
+    override fun detectSetAgentsAllowed(allowed: Boolean): Unit = throw NotImplementedError("detect_set_agents_allowed")
+
     override fun measureLiveStart(setup: MeasureLiveSetup): MeasureLiveState = throw NotImplementedError("measure_live_start")
 
     override fun measureLiveTick(): MeasureLiveState = throw NotImplementedError("measure_live_tick")

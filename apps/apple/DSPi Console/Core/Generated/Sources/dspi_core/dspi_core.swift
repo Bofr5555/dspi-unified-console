@@ -2162,6 +2162,64 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func demoRenameElsewhere(target: UInt8, name: String) throws 
     
     /**
+     * Whether AI agents may detect the speakers under the "never ask"
+     * setting (Settings › AI Agents › Agents may detect speakers; off by
+     * default). The app sets it from its settings at start; the agents'
+     * policy reads it. Never fails.
+     */
+    func detectAgentsAllowed()  -> Bool
+    
+    /**
+     * Forget a finished detection's state (the layout keeps what it found).
+     * Refused while one runs.
+     *
+     * Errors: [`DspiError::InvalidArgument`] while a detection runs.
+     */
+    func detectClear() throws 
+    
+    /**
+     * Set [`DspiCore::detect_agents_allowed`] (the user's switch only).
+     *
+     * Errors: [`DspiError::ConfirmationRequired`] `user_only` inside
+     * another actor's scope.
+     */
+    func detectSetAgentsAllowed(allowed: Bool) throws 
+    
+    /**
+     * Start the speaker detection (module docs): each output probed in
+     * turn, quietly, from the top down; the speaker layout written as each
+     * output completes. Outputs that are off or muted are not probed.
+     *
+     * Errors: as `measure_start` (a blocker, read-only, a Viewer, the device
+     * lock); [`DspiError::InvalidArgument`] for a setup that is not one, a
+     * confirmed speaker layout (`detect.confirmed_layout`: v1 never detects
+     * over the user's word), or while a detection, a session, a roll-off
+     * search, a tune's run or the live view runs on this core.
+     */
+    func detectStart(setup: DetectSetup) throws  -> DetectState
+    
+    /**
+     * The detection's state, without I/O (safe from the measurement
+     * listener).
+     */
+    func detectState()  -> DetectState
+    
+    /**
+     * The user's Stop: the session's generator stopped at once
+     * (`SIGGEN_CTL_STOP_NOW`), the output being probed left unknown (a
+     * tweeter), the rows already written kept. Idempotent; never fails.
+     */
+    func detectStop()  -> DetectState
+    
+    /**
+     * Drive the detection: its session (`measure_tick`), then the verdict
+     * and the next session, output or the end. Call it about every 50 ms
+     * off the UI thread while `running`, instead of `measure_tick`. Never
+     * fails.
+     */
+    func detectTick()  -> DetectState
+    
+    /**
      * Hold the device lock across a flow of several calls (a restore, a
      * firmware install), for at most `timeout_ms` (capped at 60 000), until
      * [`DspiCore::device_lock_release`]: another DSPi Link session's
@@ -8488,6 +8546,99 @@ open func demoRenameElsewhere(target: UInt8, name: String)throws   {try rustCall
         FfiConverterString.lower(name),$0
     )
 }
+}
+    
+    /**
+     * Whether AI agents may detect the speakers under the "never ask"
+     * setting (Settings › AI Agents › Agents may detect speakers; off by
+     * default). The app sets it from its settings at start; the agents'
+     * policy reads it. Never fails.
+     */
+open func detectAgentsAllowed() -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_detect_agents_allowed(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Forget a finished detection's state (the layout keeps what it found).
+     * Refused while one runs.
+     *
+     * Errors: [`DspiError::InvalidArgument`] while a detection runs.
+     */
+open func detectClear()throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_detect_clear(self.uniffiClonePointer(),$0
+    )
+}
+}
+    
+    /**
+     * Set [`DspiCore::detect_agents_allowed`] (the user's switch only).
+     *
+     * Errors: [`DspiError::ConfirmationRequired`] `user_only` inside
+     * another actor's scope.
+     */
+open func detectSetAgentsAllowed(allowed: Bool)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_detect_set_agents_allowed(self.uniffiClonePointer(),
+        FfiConverterBool.lower(allowed),$0
+    )
+}
+}
+    
+    /**
+     * Start the speaker detection (module docs): each output probed in
+     * turn, quietly, from the top down; the speaker layout written as each
+     * output completes. Outputs that are off or muted are not probed.
+     *
+     * Errors: as `measure_start` (a blocker, read-only, a Viewer, the device
+     * lock); [`DspiError::InvalidArgument`] for a setup that is not one, a
+     * confirmed speaker layout (`detect.confirmed_layout`: v1 never detects
+     * over the user's word), or while a detection, a session, a roll-off
+     * search, a tune's run or the live view runs on this core.
+     */
+open func detectStart(setup: DetectSetup)throws  -> DetectState  {
+    return try  FfiConverterTypeDetectState_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_detect_start(self.uniffiClonePointer(),
+        FfiConverterTypeDetectSetup_lower(setup),$0
+    )
+})
+}
+    
+    /**
+     * The detection's state, without I/O (safe from the measurement
+     * listener).
+     */
+open func detectState() -> DetectState  {
+    return try!  FfiConverterTypeDetectState_lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_detect_state(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * The user's Stop: the session's generator stopped at once
+     * (`SIGGEN_CTL_STOP_NOW`), the output being probed left unknown (a
+     * tweeter), the rows already written kept. Idempotent; never fails.
+     */
+open func detectStop() -> DetectState  {
+    return try!  FfiConverterTypeDetectState_lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_detect_stop(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Drive the detection: its session (`measure_tick`), then the verdict
+     * and the next session, output or the end. Call it about every 50 ms
+     * off the UI thread while `running`, instead of `measure_tick`. Never
+     * fails.
+     */
+open func detectTick() -> DetectState  {
+    return try!  FfiConverterTypeDetectState_lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_detect_tick(self.uniffiClonePointer(),$0
+    )
+})
 }
     
     /**
@@ -26201,6 +26352,832 @@ public func FfiConverterTypeCtrlIfaceStatus_lift(_ buf: RustBuffer) throws -> Ct
 #endif
 public func FfiConverterTypeCtrlIfaceStatus_lower(_ value: CtrlIfaceStatus) -> RustBuffer {
     return FfiConverterTypeCtrlIfaceStatus.lower(value)
+}
+
+
+/**
+ * What to detect (`detect_start`). Every field may be left out.
+ */
+public struct DetectSetup {
+    /**
+     * The outputs, 0-based; empty for every output of the device.
+     */
+    public var outputs: Data
+    /**
+     * Where the microphone is: the listening position (default), near
+     * field, or a headphone coupler (the headphones' levels).
+     */
+    public var placement: MeasurePlacement
+    /**
+     * The coupler, for headphones.
+     */
+    public var coupler: MeasureCoupler?
+    /**
+     * The floor for every output, Hz: 0 for 1 kHz; may only raise it (1000
+     * to 8000). The limits profile's `highpass_min_hz` raises an output's
+     * own further.
+     */
+    public var floorHz: Float
+    /**
+     * The microphone's `mic` document's text ("" uncalibrated).
+     */
+    public var micDocument: String
+    /**
+     * The SPL cap with a calibrated microphone (as `MeasureSetup`).
+     */
+    public var splCapDb: Float?
+    /**
+     * The capture's rate, Hz (0: 48000).
+     */
+    public var captureRateHz: UInt32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The outputs, 0-based; empty for every output of the device.
+         */outputs: Data, 
+        /**
+         * Where the microphone is: the listening position (default), near
+         * field, or a headphone coupler (the headphones' levels).
+         */placement: MeasurePlacement, 
+        /**
+         * The coupler, for headphones.
+         */coupler: MeasureCoupler? = nil, 
+        /**
+         * The floor for every output, Hz: 0 for 1 kHz; may only raise it (1000
+         * to 8000). The limits profile's `highpass_min_hz` raises an output's
+         * own further.
+         */floorHz: Float, 
+        /**
+         * The microphone's `mic` document's text ("" uncalibrated).
+         */micDocument: String, 
+        /**
+         * The SPL cap with a calibrated microphone (as `MeasureSetup`).
+         */splCapDb: Float? = nil, 
+        /**
+         * The capture's rate, Hz (0: 48000).
+         */captureRateHz: UInt32) {
+        self.outputs = outputs
+        self.placement = placement
+        self.coupler = coupler
+        self.floorHz = floorHz
+        self.micDocument = micDocument
+        self.splCapDb = splCapDb
+        self.captureRateHz = captureRateHz
+    }
+}
+
+#if compiler(>=6)
+extension DetectSetup: Sendable {}
+#endif
+
+
+extension DetectSetup: Equatable, Hashable {
+    public static func ==(lhs: DetectSetup, rhs: DetectSetup) -> Bool {
+        if lhs.outputs != rhs.outputs {
+            return false
+        }
+        if lhs.placement != rhs.placement {
+            return false
+        }
+        if lhs.coupler != rhs.coupler {
+            return false
+        }
+        if lhs.floorHz != rhs.floorHz {
+            return false
+        }
+        if lhs.micDocument != rhs.micDocument {
+            return false
+        }
+        if lhs.splCapDb != rhs.splCapDb {
+            return false
+        }
+        if lhs.captureRateHz != rhs.captureRateHz {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(outputs)
+        hasher.combine(placement)
+        hasher.combine(coupler)
+        hasher.combine(floorHz)
+        hasher.combine(micDocument)
+        hasher.combine(splCapDb)
+        hasher.combine(captureRateHz)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeDetectSetup: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> DetectSetup {
+        return
+            try DetectSetup(
+                outputs: FfiConverterData.read(from: &buf), 
+                placement: FfiConverterTypeMeasurePlacement.read(from: &buf), 
+                coupler: FfiConverterOptionTypeMeasureCoupler.read(from: &buf), 
+                floorHz: FfiConverterFloat.read(from: &buf), 
+                micDocument: FfiConverterString.read(from: &buf), 
+                splCapDb: FfiConverterOptionFloat.read(from: &buf), 
+                captureRateHz: FfiConverterUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: DetectSetup, into buf: inout [UInt8]) {
+        FfiConverterData.write(value.outputs, into: &buf)
+        FfiConverterTypeMeasurePlacement.write(value.placement, into: &buf)
+        FfiConverterOptionTypeMeasureCoupler.write(value.coupler, into: &buf)
+        FfiConverterFloat.write(value.floorHz, into: &buf)
+        FfiConverterString.write(value.micDocument, into: &buf)
+        FfiConverterOptionFloat.write(value.splCapDb, into: &buf)
+        FfiConverterUInt32.write(value.captureRateHz, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDetectSetup_lift(_ buf: RustBuffer) throws -> DetectSetup {
+    return try FfiConverterTypeDetectSetup.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDetectSetup_lower(_ value: DetectSetup) -> RustBuffer {
+    return FfiConverterTypeDetectSetup.lower(value)
+}
+
+
+/**
+ * The detection's state.
+ */
+public struct DetectState {
+    /**
+     * Where it stands.
+     */
+    public var stage: DetectStage
+    /**
+     * Tick it (`detect_tick`): a session runs or is next.
+     */
+    public var running: Bool
+    /**
+     * The output probed now (or last).
+     */
+    public var output: UInt8?
+    /**
+     * Outputs finished so far.
+     */
+    public var outputsDone: UInt16
+    /**
+     * Outputs to probe (those off or muted are not).
+     */
+    public var outputsTotal: UInt16
+    /**
+     * The output's floor, Hz.
+     */
+    public var floorHz: Float
+    /**
+     * The segment's start (or the band's bottom), Hz.
+     */
+    public var segmentHz: Float
+    /**
+     * The level it plays at (the ramp's ceiling while ramping), peak dBFS.
+     */
+    public var levelDbfs: Float
+    /**
+     * The session (push capture while it wants it).
+     */
+    public var session: MeasureState
+    /**
+     * The detection so far: each output's class and evidence, the summary.
+     */
+    public var detection: Detection?
+    /**
+     * Why it stopped, or what the last session asked.
+     */
+    public var issue: MeasureIssue?
+    /**
+     * Who started it: 0 the app, else an agent's actor.
+     */
+    public var actor: UInt32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Where it stands.
+         */stage: DetectStage, 
+        /**
+         * Tick it (`detect_tick`): a session runs or is next.
+         */running: Bool, 
+        /**
+         * The output probed now (or last).
+         */output: UInt8?, 
+        /**
+         * Outputs finished so far.
+         */outputsDone: UInt16, 
+        /**
+         * Outputs to probe (those off or muted are not).
+         */outputsTotal: UInt16, 
+        /**
+         * The output's floor, Hz.
+         */floorHz: Float, 
+        /**
+         * The segment's start (or the band's bottom), Hz.
+         */segmentHz: Float, 
+        /**
+         * The level it plays at (the ramp's ceiling while ramping), peak dBFS.
+         */levelDbfs: Float, 
+        /**
+         * The session (push capture while it wants it).
+         */session: MeasureState, 
+        /**
+         * The detection so far: each output's class and evidence, the summary.
+         */detection: Detection?, 
+        /**
+         * Why it stopped, or what the last session asked.
+         */issue: MeasureIssue?, 
+        /**
+         * Who started it: 0 the app, else an agent's actor.
+         */actor: UInt32) {
+        self.stage = stage
+        self.running = running
+        self.output = output
+        self.outputsDone = outputsDone
+        self.outputsTotal = outputsTotal
+        self.floorHz = floorHz
+        self.segmentHz = segmentHz
+        self.levelDbfs = levelDbfs
+        self.session = session
+        self.detection = detection
+        self.issue = issue
+        self.actor = actor
+    }
+}
+
+#if compiler(>=6)
+extension DetectState: Sendable {}
+#endif
+
+
+extension DetectState: Equatable, Hashable {
+    public static func ==(lhs: DetectState, rhs: DetectState) -> Bool {
+        if lhs.stage != rhs.stage {
+            return false
+        }
+        if lhs.running != rhs.running {
+            return false
+        }
+        if lhs.output != rhs.output {
+            return false
+        }
+        if lhs.outputsDone != rhs.outputsDone {
+            return false
+        }
+        if lhs.outputsTotal != rhs.outputsTotal {
+            return false
+        }
+        if lhs.floorHz != rhs.floorHz {
+            return false
+        }
+        if lhs.segmentHz != rhs.segmentHz {
+            return false
+        }
+        if lhs.levelDbfs != rhs.levelDbfs {
+            return false
+        }
+        if lhs.session != rhs.session {
+            return false
+        }
+        if lhs.detection != rhs.detection {
+            return false
+        }
+        if lhs.issue != rhs.issue {
+            return false
+        }
+        if lhs.actor != rhs.actor {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(stage)
+        hasher.combine(running)
+        hasher.combine(output)
+        hasher.combine(outputsDone)
+        hasher.combine(outputsTotal)
+        hasher.combine(floorHz)
+        hasher.combine(segmentHz)
+        hasher.combine(levelDbfs)
+        hasher.combine(session)
+        hasher.combine(detection)
+        hasher.combine(issue)
+        hasher.combine(actor)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeDetectState: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> DetectState {
+        return
+            try DetectState(
+                stage: FfiConverterTypeDetectStage.read(from: &buf), 
+                running: FfiConverterBool.read(from: &buf), 
+                output: FfiConverterOptionUInt8.read(from: &buf), 
+                outputsDone: FfiConverterUInt16.read(from: &buf), 
+                outputsTotal: FfiConverterUInt16.read(from: &buf), 
+                floorHz: FfiConverterFloat.read(from: &buf), 
+                segmentHz: FfiConverterFloat.read(from: &buf), 
+                levelDbfs: FfiConverterFloat.read(from: &buf), 
+                session: FfiConverterTypeMeasureState.read(from: &buf), 
+                detection: FfiConverterOptionTypeDetection.read(from: &buf), 
+                issue: FfiConverterOptionTypeMeasureIssue.read(from: &buf), 
+                actor: FfiConverterUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: DetectState, into buf: inout [UInt8]) {
+        FfiConverterTypeDetectStage.write(value.stage, into: &buf)
+        FfiConverterBool.write(value.running, into: &buf)
+        FfiConverterOptionUInt8.write(value.output, into: &buf)
+        FfiConverterUInt16.write(value.outputsDone, into: &buf)
+        FfiConverterUInt16.write(value.outputsTotal, into: &buf)
+        FfiConverterFloat.write(value.floorHz, into: &buf)
+        FfiConverterFloat.write(value.segmentHz, into: &buf)
+        FfiConverterFloat.write(value.levelDbfs, into: &buf)
+        FfiConverterTypeMeasureState.write(value.session, into: &buf)
+        FfiConverterOptionTypeDetection.write(value.detection, into: &buf)
+        FfiConverterOptionTypeMeasureIssue.write(value.issue, into: &buf)
+        FfiConverterUInt32.write(value.actor, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDetectState_lift(_ buf: RustBuffer) throws -> DetectState {
+    return try FfiConverterTypeDetectState.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDetectState_lower(_ value: DetectState) -> RustBuffer {
+    return FfiConverterTypeDetectState.lower(value)
+}
+
+
+/**
+ * One output's detection and its evidence.
+ */
+public struct DetectedOutput {
+    /**
+     * The output, 0-based.
+     */
+    public var output: UInt8
+    /**
+     * What it was found to be.
+     */
+    public var `class`: DetectClass
+    /**
+     * How sure.
+     */
+    public var confidence: DetectConfidence
+    /**
+     * The role it was given; `None` for `nothing` and `off`.
+     */
+    public var role: MeasureRole?
+    /**
+     * Its floor, Hz: nothing below it but the shaped probe.
+     */
+    public var floorHz: Float
+    /**
+     * Where it was first heard.
+     */
+    public var heard: DetectHeard
+    /**
+     * The level it was heard at in the presence ramp, peak dBFS.
+     */
+    public var levelDbfs: Float?
+    /**
+     * The mean level 1.5 to 3 kHz less the mean 10 to 16 kHz, dB.
+     */
+    public var topFallDb: Float?
+    /**
+     * How far the response has turned down in the half octave above the
+     * floor, dB below its loudest point.
+     */
+    public var lowTurnDb: Float?
+    /**
+     * Where the response is 6 dB under its loudest point, Hz; `None` when
+     * not reached (or not looked for).
+     */
+    public var fLowHz: Float?
+    /**
+     * The lowest frequency any stimulus played on it, Hz.
+     */
+    public var lowestHz: Float?
+    /**
+     * The descent's segment it stopped at, Hz.
+     */
+    public var stoppedAtHz: Float?
+    /**
+     * A notice key (`detect.nothing`, `detect.off`, `detect.unknown`, ...).
+     */
+    public var note: String?
+    /**
+     * When it was probed, ms since the Unix epoch.
+     */
+    public var probedMs: Int64
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The output, 0-based.
+         */output: UInt8, 
+        /**
+         * What it was found to be.
+         */`class`: DetectClass, 
+        /**
+         * How sure.
+         */confidence: DetectConfidence, 
+        /**
+         * The role it was given; `None` for `nothing` and `off`.
+         */role: MeasureRole?, 
+        /**
+         * Its floor, Hz: nothing below it but the shaped probe.
+         */floorHz: Float, 
+        /**
+         * Where it was first heard.
+         */heard: DetectHeard, 
+        /**
+         * The level it was heard at in the presence ramp, peak dBFS.
+         */levelDbfs: Float?, 
+        /**
+         * The mean level 1.5 to 3 kHz less the mean 10 to 16 kHz, dB.
+         */topFallDb: Float?, 
+        /**
+         * How far the response has turned down in the half octave above the
+         * floor, dB below its loudest point.
+         */lowTurnDb: Float?, 
+        /**
+         * Where the response is 6 dB under its loudest point, Hz; `None` when
+         * not reached (or not looked for).
+         */fLowHz: Float?, 
+        /**
+         * The lowest frequency any stimulus played on it, Hz.
+         */lowestHz: Float?, 
+        /**
+         * The descent's segment it stopped at, Hz.
+         */stoppedAtHz: Float?, 
+        /**
+         * A notice key (`detect.nothing`, `detect.off`, `detect.unknown`, ...).
+         */note: String?, 
+        /**
+         * When it was probed, ms since the Unix epoch.
+         */probedMs: Int64) {
+        self.output = output
+        self.`class` = `class`
+        self.confidence = confidence
+        self.role = role
+        self.floorHz = floorHz
+        self.heard = heard
+        self.levelDbfs = levelDbfs
+        self.topFallDb = topFallDb
+        self.lowTurnDb = lowTurnDb
+        self.fLowHz = fLowHz
+        self.lowestHz = lowestHz
+        self.stoppedAtHz = stoppedAtHz
+        self.note = note
+        self.probedMs = probedMs
+    }
+}
+
+#if compiler(>=6)
+extension DetectedOutput: Sendable {}
+#endif
+
+
+extension DetectedOutput: Equatable, Hashable {
+    public static func ==(lhs: DetectedOutput, rhs: DetectedOutput) -> Bool {
+        if lhs.output != rhs.output {
+            return false
+        }
+        if lhs.`class` != rhs.`class` {
+            return false
+        }
+        if lhs.confidence != rhs.confidence {
+            return false
+        }
+        if lhs.role != rhs.role {
+            return false
+        }
+        if lhs.floorHz != rhs.floorHz {
+            return false
+        }
+        if lhs.heard != rhs.heard {
+            return false
+        }
+        if lhs.levelDbfs != rhs.levelDbfs {
+            return false
+        }
+        if lhs.topFallDb != rhs.topFallDb {
+            return false
+        }
+        if lhs.lowTurnDb != rhs.lowTurnDb {
+            return false
+        }
+        if lhs.fLowHz != rhs.fLowHz {
+            return false
+        }
+        if lhs.lowestHz != rhs.lowestHz {
+            return false
+        }
+        if lhs.stoppedAtHz != rhs.stoppedAtHz {
+            return false
+        }
+        if lhs.note != rhs.note {
+            return false
+        }
+        if lhs.probedMs != rhs.probedMs {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(output)
+        hasher.combine(`class`)
+        hasher.combine(confidence)
+        hasher.combine(role)
+        hasher.combine(floorHz)
+        hasher.combine(heard)
+        hasher.combine(levelDbfs)
+        hasher.combine(topFallDb)
+        hasher.combine(lowTurnDb)
+        hasher.combine(fLowHz)
+        hasher.combine(lowestHz)
+        hasher.combine(stoppedAtHz)
+        hasher.combine(note)
+        hasher.combine(probedMs)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeDetectedOutput: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> DetectedOutput {
+        return
+            try DetectedOutput(
+                output: FfiConverterUInt8.read(from: &buf), 
+                class: FfiConverterTypeDetectClass.read(from: &buf), 
+                confidence: FfiConverterTypeDetectConfidence.read(from: &buf), 
+                role: FfiConverterOptionTypeMeasureRole.read(from: &buf), 
+                floorHz: FfiConverterFloat.read(from: &buf), 
+                heard: FfiConverterTypeDetectHeard.read(from: &buf), 
+                levelDbfs: FfiConverterOptionFloat.read(from: &buf), 
+                topFallDb: FfiConverterOptionFloat.read(from: &buf), 
+                lowTurnDb: FfiConverterOptionFloat.read(from: &buf), 
+                fLowHz: FfiConverterOptionFloat.read(from: &buf), 
+                lowestHz: FfiConverterOptionFloat.read(from: &buf), 
+                stoppedAtHz: FfiConverterOptionFloat.read(from: &buf), 
+                note: FfiConverterOptionString.read(from: &buf), 
+                probedMs: FfiConverterInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: DetectedOutput, into buf: inout [UInt8]) {
+        FfiConverterUInt8.write(value.output, into: &buf)
+        FfiConverterTypeDetectClass.write(value.`class`, into: &buf)
+        FfiConverterTypeDetectConfidence.write(value.confidence, into: &buf)
+        FfiConverterOptionTypeMeasureRole.write(value.role, into: &buf)
+        FfiConverterFloat.write(value.floorHz, into: &buf)
+        FfiConverterTypeDetectHeard.write(value.heard, into: &buf)
+        FfiConverterOptionFloat.write(value.levelDbfs, into: &buf)
+        FfiConverterOptionFloat.write(value.topFallDb, into: &buf)
+        FfiConverterOptionFloat.write(value.lowTurnDb, into: &buf)
+        FfiConverterOptionFloat.write(value.fLowHz, into: &buf)
+        FfiConverterOptionFloat.write(value.lowestHz, into: &buf)
+        FfiConverterOptionFloat.write(value.stoppedAtHz, into: &buf)
+        FfiConverterOptionString.write(value.note, into: &buf)
+        FfiConverterInt64.write(value.probedMs, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDetectedOutput_lift(_ buf: RustBuffer) throws -> DetectedOutput {
+    return try FfiConverterTypeDetectedOutput.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDetectedOutput_lower(_ value: DetectedOutput) -> RustBuffer {
+    return FfiConverterTypeDetectedOutput.lower(value)
+}
+
+
+/**
+ * A speaker detection's record in the layout.
+ */
+public struct Detection {
+    /**
+     * When it started, ms since the Unix epoch.
+     */
+    public var atMs: Int64
+    /**
+     * Who ran it: an agent's label, "" for the app (the user).
+     */
+    public var by: String
+    /**
+     * Where the microphone was.
+     */
+    public var placement: MeasurePlacement
+    /**
+     * The floor the caller asked for, Hz (each output's own may be higher).
+     */
+    public var floorHz: Float
+    /**
+     * The microphone's name ("" uncalibrated).
+     */
+    public var microphone: String
+    /**
+     * Each output it was asked about, probed or not.
+     */
+    public var outputs: [DetectedOutput]
+    /**
+     * It was stopped before every output was probed.
+     */
+    public var stopped: Bool
+    /**
+     * The result in words.
+     */
+    public var summary: String
+    /**
+     * The device's output count when it ran: another count invalidates it.
+     */
+    public var deviceOutputs: UInt8
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * When it started, ms since the Unix epoch.
+         */atMs: Int64, 
+        /**
+         * Who ran it: an agent's label, "" for the app (the user).
+         */by: String, 
+        /**
+         * Where the microphone was.
+         */placement: MeasurePlacement, 
+        /**
+         * The floor the caller asked for, Hz (each output's own may be higher).
+         */floorHz: Float, 
+        /**
+         * The microphone's name ("" uncalibrated).
+         */microphone: String, 
+        /**
+         * Each output it was asked about, probed or not.
+         */outputs: [DetectedOutput], 
+        /**
+         * It was stopped before every output was probed.
+         */stopped: Bool, 
+        /**
+         * The result in words.
+         */summary: String, 
+        /**
+         * The device's output count when it ran: another count invalidates it.
+         */deviceOutputs: UInt8) {
+        self.atMs = atMs
+        self.by = by
+        self.placement = placement
+        self.floorHz = floorHz
+        self.microphone = microphone
+        self.outputs = outputs
+        self.stopped = stopped
+        self.summary = summary
+        self.deviceOutputs = deviceOutputs
+    }
+}
+
+#if compiler(>=6)
+extension Detection: Sendable {}
+#endif
+
+
+extension Detection: Equatable, Hashable {
+    public static func ==(lhs: Detection, rhs: Detection) -> Bool {
+        if lhs.atMs != rhs.atMs {
+            return false
+        }
+        if lhs.by != rhs.by {
+            return false
+        }
+        if lhs.placement != rhs.placement {
+            return false
+        }
+        if lhs.floorHz != rhs.floorHz {
+            return false
+        }
+        if lhs.microphone != rhs.microphone {
+            return false
+        }
+        if lhs.outputs != rhs.outputs {
+            return false
+        }
+        if lhs.stopped != rhs.stopped {
+            return false
+        }
+        if lhs.summary != rhs.summary {
+            return false
+        }
+        if lhs.deviceOutputs != rhs.deviceOutputs {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(atMs)
+        hasher.combine(by)
+        hasher.combine(placement)
+        hasher.combine(floorHz)
+        hasher.combine(microphone)
+        hasher.combine(outputs)
+        hasher.combine(stopped)
+        hasher.combine(summary)
+        hasher.combine(deviceOutputs)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeDetection: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Detection {
+        return
+            try Detection(
+                atMs: FfiConverterInt64.read(from: &buf), 
+                by: FfiConverterString.read(from: &buf), 
+                placement: FfiConverterTypeMeasurePlacement.read(from: &buf), 
+                floorHz: FfiConverterFloat.read(from: &buf), 
+                microphone: FfiConverterString.read(from: &buf), 
+                outputs: FfiConverterSequenceTypeDetectedOutput.read(from: &buf), 
+                stopped: FfiConverterBool.read(from: &buf), 
+                summary: FfiConverterString.read(from: &buf), 
+                deviceOutputs: FfiConverterUInt8.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: Detection, into buf: inout [UInt8]) {
+        FfiConverterInt64.write(value.atMs, into: &buf)
+        FfiConverterString.write(value.by, into: &buf)
+        FfiConverterTypeMeasurePlacement.write(value.placement, into: &buf)
+        FfiConverterFloat.write(value.floorHz, into: &buf)
+        FfiConverterString.write(value.microphone, into: &buf)
+        FfiConverterSequenceTypeDetectedOutput.write(value.outputs, into: &buf)
+        FfiConverterBool.write(value.stopped, into: &buf)
+        FfiConverterString.write(value.summary, into: &buf)
+        FfiConverterUInt8.write(value.deviceOutputs, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDetection_lift(_ buf: RustBuffer) throws -> Detection {
+    return try FfiConverterTypeDetection.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDetection_lower(_ value: Detection) -> RustBuffer {
+    return FfiConverterTypeDetection.lower(value)
 }
 
 
@@ -58312,6 +59289,12 @@ public struct SpeakerLayout {
      * Remarks in words (a proposal's: outputs left out and why).
      */
     public var notes: [String]
+    /**
+     * The last speaker detection on this device, if one ran: its evidence
+     * per output. With every row `detected` or `user` it makes the layout
+     * [`LayoutState::AutoDetected`].
+     */
+    public var detected: Detection?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -58331,12 +59314,18 @@ public struct SpeakerLayout {
          */updatedMs: Int64, 
         /**
          * Remarks in words (a proposal's: outputs left out and why).
-         */notes: [String]) {
+         */notes: [String], 
+        /**
+         * The last speaker detection on this device, if one ran: its evidence
+         * per output. With every row `detected` or `user` it makes the layout
+         * [`LayoutState::AutoDetected`].
+         */detected: Detection? = nil) {
         self.serial = serial
         self.outputs = outputs
         self.confirmedByUser = confirmedByUser
         self.updatedMs = updatedMs
         self.notes = notes
+        self.detected = detected
     }
 }
 
@@ -58362,6 +59351,9 @@ extension SpeakerLayout: Equatable, Hashable {
         if lhs.notes != rhs.notes {
             return false
         }
+        if lhs.detected != rhs.detected {
+            return false
+        }
         return true
     }
 
@@ -58371,6 +59363,7 @@ extension SpeakerLayout: Equatable, Hashable {
         hasher.combine(confirmedByUser)
         hasher.combine(updatedMs)
         hasher.combine(notes)
+        hasher.combine(detected)
     }
 }
 
@@ -58387,7 +59380,8 @@ public struct FfiConverterTypeSpeakerLayout: FfiConverterRustBuffer {
                 outputs: FfiConverterSequenceTypeSpeakerLayoutOutput.read(from: &buf), 
                 confirmedByUser: FfiConverterBool.read(from: &buf), 
                 updatedMs: FfiConverterInt64.read(from: &buf), 
-                notes: FfiConverterSequenceString.read(from: &buf)
+                notes: FfiConverterSequenceString.read(from: &buf), 
+                detected: FfiConverterOptionTypeDetection.read(from: &buf)
         )
     }
 
@@ -58397,6 +59391,7 @@ public struct FfiConverterTypeSpeakerLayout: FfiConverterRustBuffer {
         FfiConverterBool.write(value.confirmedByUser, into: &buf)
         FfiConverterInt64.write(value.updatedMs, into: &buf)
         FfiConverterSequenceString.write(value.notes, into: &buf)
+        FfiConverterOptionTypeDetection.write(value.detected, into: &buf)
     }
 }
 
@@ -58436,6 +59431,12 @@ public struct SpeakerLayoutOutput {
      * Its alignment group: the outputs of one speaker share one.
      */
     public var group: UInt8
+    /**
+     * Where its role comes from: the user, the speaker detection, or a
+     * suggestion (a version 1 file's rows are the user's when the layout is
+     * confirmed, else suggestions).
+     */
+    public var source: RoleSource
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -58451,11 +59452,17 @@ public struct SpeakerLayoutOutput {
          */speaker: String, 
         /**
          * Its alignment group: the outputs of one speaker share one.
-         */group: UInt8) {
+         */group: UInt8, 
+        /**
+         * Where its role comes from: the user, the speaker detection, or a
+         * suggestion (a version 1 file's rows are the user's when the layout is
+         * confirmed, else suggestions).
+         */source: RoleSource) {
         self.output = output
         self.role = role
         self.speaker = speaker
         self.group = group
+        self.source = source
     }
 }
 
@@ -58478,6 +59485,9 @@ extension SpeakerLayoutOutput: Equatable, Hashable {
         if lhs.group != rhs.group {
             return false
         }
+        if lhs.source != rhs.source {
+            return false
+        }
         return true
     }
 
@@ -58486,6 +59496,7 @@ extension SpeakerLayoutOutput: Equatable, Hashable {
         hasher.combine(role)
         hasher.combine(speaker)
         hasher.combine(group)
+        hasher.combine(source)
     }
 }
 
@@ -58501,7 +59512,8 @@ public struct FfiConverterTypeSpeakerLayoutOutput: FfiConverterRustBuffer {
                 output: FfiConverterUInt8.read(from: &buf), 
                 role: FfiConverterTypeMeasureRole.read(from: &buf), 
                 speaker: FfiConverterString.read(from: &buf), 
-                group: FfiConverterUInt8.read(from: &buf)
+                group: FfiConverterUInt8.read(from: &buf), 
+                source: FfiConverterTypeRoleSource.read(from: &buf)
         )
     }
 
@@ -58510,6 +59522,7 @@ public struct FfiConverterTypeSpeakerLayoutOutput: FfiConverterRustBuffer {
         FfiConverterTypeMeasureRole.write(value.role, into: &buf)
         FfiConverterString.write(value.speaker, into: &buf)
         FfiConverterUInt8.write(value.group, into: &buf)
+        FfiConverterTypeRoleSource.write(value.source, into: &buf)
     }
 }
 
@@ -61006,6 +62019,454 @@ extension ConfirmOp: Equatable, Hashable {}
 // Note that we don't yet support `indirect` for enums.
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
 /**
+ * What the speaker detection made of an output.
+ */
+
+public enum DetectClass {
+    
+    /**
+     * A tweeter, or anything that plays flat to 20 kHz and is not probed
+     * lower (a full-range driver, a dome midrange): role high.
+     */
+    case tweeter
+    /**
+     * Rolls off between 70 and 200 Hz: role mid.
+     */
+    case midrange
+    /**
+     * Plays below 70 Hz and above 1 kHz: role low.
+     */
+    case woofer
+    /**
+     * Plays below 70 Hz, 20 dB or more quieter at 1 to 2 kHz: role sub.
+     */
+    case sub
+    /**
+     * A full-range driver: the user's correction only, never detected.
+     */
+    case fullRange
+    /**
+     * Nothing reached the microphone: left out of the layout.
+     */
+    case nothing
+    /**
+     * The probe did not finish it (stopped, the microphone did not follow,
+     * the settings changed): role high.
+     */
+    case unknown
+    /**
+     * The output was off or muted: not probed.
+     */
+    case off
+}
+
+
+#if compiler(>=6)
+extension DetectClass: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeDetectClass: FfiConverterRustBuffer {
+    typealias SwiftType = DetectClass
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> DetectClass {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .tweeter
+        
+        case 2: return .midrange
+        
+        case 3: return .woofer
+        
+        case 4: return .sub
+        
+        case 5: return .fullRange
+        
+        case 6: return .nothing
+        
+        case 7: return .unknown
+        
+        case 8: return .off
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: DetectClass, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .tweeter:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .midrange:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .woofer:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .sub:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .fullRange:
+            writeInt(&buf, Int32(5))
+        
+        
+        case .nothing:
+            writeInt(&buf, Int32(6))
+        
+        
+        case .unknown:
+            writeInt(&buf, Int32(7))
+        
+        
+        case .off:
+            writeInt(&buf, Int32(8))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDetectClass_lift(_ buf: RustBuffer) throws -> DetectClass {
+    return try FfiConverterTypeDetectClass.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDetectClass_lower(_ value: DetectClass) -> RustBuffer {
+    return FfiConverterTypeDetectClass.lower(value)
+}
+
+
+extension DetectClass: Equatable, Hashable {}
+
+
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
+ * How sure the detection is of a class.
+ */
+
+public enum DetectConfidence {
+    
+    /**
+     * The evidence is plain.
+     */
+    case high
+    /**
+     * Probably ("Tweeter?": flat to 20 kHz, could be a full-range driver).
+     */
+    case medium
+    /**
+     * Uncertain, treated as the most protective class.
+     */
+    case low
+}
+
+
+#if compiler(>=6)
+extension DetectConfidence: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeDetectConfidence: FfiConverterRustBuffer {
+    typealias SwiftType = DetectConfidence
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> DetectConfidence {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .high
+        
+        case 2: return .medium
+        
+        case 3: return .low
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: DetectConfidence, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .high:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .medium:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .low:
+            writeInt(&buf, Int32(3))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDetectConfidence_lift(_ buf: RustBuffer) throws -> DetectConfidence {
+    return try FfiConverterTypeDetectConfidence.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDetectConfidence_lower(_ value: DetectConfidence) -> RustBuffer {
+    return FfiConverterTypeDetectConfidence.lower(value)
+}
+
+
+extension DetectConfidence: Equatable, Hashable {}
+
+
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
+ * Where the detection first heard an output.
+ */
+
+public enum DetectHeard {
+    
+    /**
+     * In the presence band, 4 to 16 kHz (stage A).
+     */
+    case top
+    /**
+     * Between the floor and 4 kHz (stage A2).
+     */
+    case aboveFloor
+    /**
+     * Only by the shaped probe below the floor (stage C1).
+     */
+    case belowFloor
+    /**
+     * Nowhere.
+     */
+    case never
+}
+
+
+#if compiler(>=6)
+extension DetectHeard: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeDetectHeard: FfiConverterRustBuffer {
+    typealias SwiftType = DetectHeard
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> DetectHeard {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .top
+        
+        case 2: return .aboveFloor
+        
+        case 3: return .belowFloor
+        
+        case 4: return .never
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: DetectHeard, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .top:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .aboveFloor:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .belowFloor:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .never:
+            writeInt(&buf, Int32(4))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDetectHeard_lift(_ buf: RustBuffer) throws -> DetectHeard {
+    return try FfiConverterTypeDetectHeard.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDetectHeard_lower(_ value: DetectHeard) -> RustBuffer {
+    return FfiConverterTypeDetectHeard.lower(value)
+}
+
+
+extension DetectHeard: Equatable, Hashable {}
+
+
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
+ * Where the detection stands.
+ */
+
+public enum DetectStage {
+    
+    /**
+     * No detection on this core.
+     */
+    case idle
+    /**
+     * An output's presence ramp (stage A or A2).
+     */
+    case ramp
+    /**
+     * Its shape above the floor (stage B).
+     */
+    case shape
+    /**
+     * Its descent below the floor (C1 or C2).
+     */
+    case descent
+    /**
+     * Every output was probed.
+     */
+    case done
+    /**
+     * It stopped before the end (`issue` says why).
+     */
+    case stopped
+}
+
+
+#if compiler(>=6)
+extension DetectStage: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeDetectStage: FfiConverterRustBuffer {
+    typealias SwiftType = DetectStage
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> DetectStage {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .idle
+        
+        case 2: return .ramp
+        
+        case 3: return .shape
+        
+        case 4: return .descent
+        
+        case 5: return .done
+        
+        case 6: return .stopped
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: DetectStage, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .idle:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .ramp:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .shape:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .descent:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .done:
+            writeInt(&buf, Int32(5))
+        
+        
+        case .stopped:
+            writeInt(&buf, Int32(6))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDetectStage_lift(_ buf: RustBuffer) throws -> DetectStage {
+    return try FfiConverterTypeDetectStage.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDetectStage_lower(_ value: DetectStage) -> RustBuffer {
+    return FfiConverterTypeDetectStage.lower(value)
+}
+
+
+extension DetectStage: Equatable, Hashable {}
+
+
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
  * What kind of device the open connection is (PLAN-PG section 1.9, PGMAT F1).
  * A client shows the screens of the kind only.
  */
@@ -63483,6 +64944,96 @@ public func FfiConverterTypeInstallationRole_lower(_ value: InstallationRole) ->
 
 
 extension InstallationRole: Equatable, Hashable {}
+
+
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
+ * How far the layout can be trusted ([`SpeakerLayout::state`]).
+ */
+
+public enum LayoutState {
+    
+    /**
+     * Nobody's word: no roles reach the safety rules.
+     */
+    case unconfirmed
+    /**
+     * Found by the speaker detection, not yet confirmed: its roles guard the
+     * outputs as a confirmed layout's do.
+     */
+    case autoDetected
+    /**
+     * The user confirmed it.
+     */
+    case confirmed
+}
+
+
+#if compiler(>=6)
+extension LayoutState: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLayoutState: FfiConverterRustBuffer {
+    typealias SwiftType = LayoutState
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LayoutState {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .unconfirmed
+        
+        case 2: return .autoDetected
+        
+        case 3: return .confirmed
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: LayoutState, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .unconfirmed:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .autoDetected:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .confirmed:
+            writeInt(&buf, Int32(3))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLayoutState_lift(_ buf: RustBuffer) throws -> LayoutState {
+    return try FfiConverterTypeLayoutState.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLayoutState_lower(_ value: LayoutState) -> RustBuffer {
+    return FfiConverterTypeLayoutState.lower(value)
+}
+
+
+extension LayoutState: Equatable, Hashable {}
 
 
 
@@ -66234,6 +67785,95 @@ extension ProtocolGeneration: Equatable, Hashable {}
 // Note that we don't yet support `indirect` for enums.
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
 /**
+ * Where a row's role comes from.
+ */
+
+public enum RoleSource {
+    
+    /**
+     * The user set or confirmed it.
+     */
+    case user
+    /**
+     * The speaker detection found it.
+     */
+    case detected
+    /**
+     * A suggestion (the filters' inference, an import), nobody's word.
+     */
+    case suggested
+}
+
+
+#if compiler(>=6)
+extension RoleSource: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeRoleSource: FfiConverterRustBuffer {
+    typealias SwiftType = RoleSource
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> RoleSource {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .user
+        
+        case 2: return .detected
+        
+        case 3: return .suggested
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: RoleSource, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .user:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .detected:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .suggested:
+            writeInt(&buf, Int32(3))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRoleSource_lift(_ buf: RustBuffer) throws -> RoleSource {
+    return try FfiConverterTypeRoleSource.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRoleSource_lower(_ value: RoleSource) -> RustBuffer {
+    return FfiConverterTypeRoleSource.lower(value)
+}
+
+
+extension RoleSource: Equatable, Hashable {}
+
+
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
  * Which volume of the units.
  */
 
@@ -67224,6 +68864,30 @@ fileprivate struct FfiConverterOptionTypeCoreVregInfo: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeDetection: FfiConverterRustBuffer {
+    typealias SwiftType = Detection?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeDetection.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeDetection.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeDeviceResetInfo: FfiConverterRustBuffer {
     typealias SwiftType = DeviceResetInfo?
 
@@ -68112,6 +69776,30 @@ fileprivate struct FfiConverterOptionTypeMeasureCoupler: FfiConverterRustBuffer 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeMeasureRole: FfiConverterRustBuffer {
+    typealias SwiftType = MeasureRole?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeMeasureRole.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeMeasureRole.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeParamValue: FfiConverterRustBuffer {
     typealias SwiftType = ParamValue?
 
@@ -68700,6 +70388,31 @@ fileprivate struct FfiConverterSequenceTypeBootloaderDrive: FfiConverterRustBuff
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeBootloaderDrive.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeDetectedOutput: FfiConverterRustBuffer {
+    typealias SwiftType = [DetectedOutput]
+
+    public static func write(_ value: [DetectedOutput], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeDetectedOutput.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [DetectedOutput] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [DetectedOutput]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeDetectedOutput.read(from: &buf))
         }
         return seq
     }
@@ -72504,6 +74217,27 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_demo_rename_elsewhere() != 20262) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_detect_agents_allowed() != 12488) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_detect_clear() != 6772) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_detect_set_agents_allowed() != 42374) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_detect_start() != 32252) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_detect_state() != 31649) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_detect_stop() != 62596) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_detect_tick() != 5425) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_device_lock_acquire() != 28409) {

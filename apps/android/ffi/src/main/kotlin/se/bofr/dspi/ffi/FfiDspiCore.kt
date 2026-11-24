@@ -655,6 +655,20 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun measureClear() = call { core.measureClear() }
 
+    override fun detectStart(setup: DetectSetup): DetectState = call { core.detectStart(setup.toFfi()).toDomain() }
+
+    override fun detectTick(): DetectState = core.detectTick().toDomain()
+
+    override fun detectState(): DetectState = core.detectState().toDomain()
+
+    override fun detectStop(): DetectState = core.detectStop().toDomain()
+
+    override fun detectClear() = call { core.detectClear() }
+
+    override fun detectAgentsAllowed(): Boolean = core.detectAgentsAllowed()
+
+    override fun detectSetAgentsAllowed(allowed: Boolean) = call { core.detectSetAgentsAllowed(allowed) }
+
     override fun measureLiveStart(setup: MeasureLiveSetup): MeasureLiveState = call { core.measureLiveStart(setup.toFfi()).toDomain() }
 
     override fun measureLiveTick(): MeasureLiveState = core.measureLiveTick().toDomain()
@@ -5590,6 +5604,60 @@ internal fun MeasureState.toFfi() =
         actor = actor.toUInt(),
     )
 
+internal fun se.bofr.dspi.ffi.uniffi.DetectSetup.toDomain() =
+    DetectSetup(
+        outputs = outputs.map { it.toInt() and 0xFF },
+        placement = placement.toDomain(),
+        coupler = coupler?.let { it.toDomain() },
+        floorHz = floorHz,
+        micDocument = micDocument,
+        splCapDb = splCapDb,
+        captureRateHz = captureRateHz.toLong(),
+    )
+
+internal fun DetectSetup.toFfi() =
+    se.bofr.dspi.ffi.uniffi.DetectSetup(
+        outputs = ByteArray(outputs.size) { outputs[it].toByte() },
+        placement = placement.toFfi(),
+        coupler = coupler?.let { it.toFfi() },
+        floorHz = floorHz,
+        micDocument = micDocument,
+        splCapDb = splCapDb,
+        captureRateHz = captureRateHz.toUInt(),
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.DetectState.toDomain() =
+    DetectState(
+        stage = stage.toDomain(),
+        running = running,
+        output = output?.let { it.toInt() },
+        outputsDone = outputsDone.toInt(),
+        outputsTotal = outputsTotal.toInt(),
+        floorHz = floorHz,
+        segmentHz = segmentHz,
+        levelDbfs = levelDbfs,
+        session = session.toDomain(),
+        detection = detection?.let { it.toDomain() },
+        issue = issue?.let { it.toDomain() },
+        actor = actor.toLong(),
+    )
+
+internal fun DetectState.toFfi() =
+    se.bofr.dspi.ffi.uniffi.DetectState(
+        stage = stage.toFfi(),
+        running = running,
+        output = output?.let { it.toUByte() },
+        outputsDone = outputsDone.toUShort(),
+        outputsTotal = outputsTotal.toUShort(),
+        floorHz = floorHz,
+        segmentHz = segmentHz,
+        levelDbfs = levelDbfs,
+        session = session.toFfi(),
+        detection = detection?.let { it.toFfi() },
+        issue = issue?.let { it.toFfi() },
+        actor = actor.toUInt(),
+    )
+
 internal fun se.bofr.dspi.ffi.uniffi.MeasureDocCurvesOptions.toDomain() =
     MeasureDocCurvesOptions(
         smoothing = smoothing.toInt(),
@@ -7076,6 +7144,7 @@ internal fun se.bofr.dspi.ffi.uniffi.SpeakerLayoutOutput.toDomain() =
         role = role.toDomain(),
         speaker = speaker,
         group = group.toInt(),
+        source = source.toDomain(),
     )
 
 internal fun SpeakerLayoutOutput.toFfi() =
@@ -7084,6 +7153,7 @@ internal fun SpeakerLayoutOutput.toFfi() =
         role = role.toFfi(),
         speaker = speaker,
         group = group.toUByte(),
+        source = source.toFfi(),
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.SpeakerLayout.toDomain() =
@@ -7093,6 +7163,7 @@ internal fun se.bofr.dspi.ffi.uniffi.SpeakerLayout.toDomain() =
         confirmedByUser = confirmedByUser,
         updatedMs = updatedMs,
         notes = notes,
+        detected = detected?.let { it.toDomain() },
     )
 
 internal fun SpeakerLayout.toFfi() =
@@ -7102,6 +7173,69 @@ internal fun SpeakerLayout.toFfi() =
         confirmedByUser = confirmedByUser,
         updatedMs = updatedMs,
         notes = notes,
+        detected = detected?.let { it.toFfi() },
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.DetectedOutput.toDomain() =
+    DetectedOutput(
+        output = output.toInt(),
+        class = class.toDomain(),
+        confidence = confidence.toDomain(),
+        role = role?.let { it.toDomain() },
+        floorHz = floorHz,
+        heard = heard.toDomain(),
+        levelDbfs = levelDbfs,
+        topFallDb = topFallDb,
+        lowTurnDb = lowTurnDb,
+        fLowHz = fLowHz,
+        lowestHz = lowestHz,
+        stoppedAtHz = stoppedAtHz,
+        note = note,
+        probedMs = probedMs,
+    )
+
+internal fun DetectedOutput.toFfi() =
+    se.bofr.dspi.ffi.uniffi.DetectedOutput(
+        output = output.toUByte(),
+        class = class.toFfi(),
+        confidence = confidence.toFfi(),
+        role = role?.let { it.toFfi() },
+        floorHz = floorHz,
+        heard = heard.toFfi(),
+        levelDbfs = levelDbfs,
+        topFallDb = topFallDb,
+        lowTurnDb = lowTurnDb,
+        fLowHz = fLowHz,
+        lowestHz = lowestHz,
+        stoppedAtHz = stoppedAtHz,
+        note = note,
+        probedMs = probedMs,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.Detection.toDomain() =
+    Detection(
+        atMs = atMs,
+        by = by,
+        placement = placement.toDomain(),
+        floorHz = floorHz,
+        microphone = microphone,
+        outputs = outputs.map { it.toDomain() },
+        stopped = stopped,
+        summary = summary,
+        deviceOutputs = deviceOutputs.toInt(),
+    )
+
+internal fun Detection.toFfi() =
+    se.bofr.dspi.ffi.uniffi.Detection(
+        atMs = atMs,
+        by = by,
+        placement = placement.toFfi(),
+        floorHz = floorHz,
+        microphone = microphone,
+        outputs = outputs.map { it.toFfi() },
+        stopped = stopped,
+        summary = summary,
+        deviceOutputs = deviceOutputs.toUByte(),
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.VregChoice.toDomain() =
@@ -7680,6 +7814,26 @@ internal fun MeasurePhase.toFfi(): se.bofr.dspi.ffi.uniffi.MeasurePhase =
         MeasurePhase.FAILED -> se.bofr.dspi.ffi.uniffi.MeasurePhase.FAILED
     }
 
+internal fun se.bofr.dspi.ffi.uniffi.DetectStage.toDomain(): DetectStage =
+    when (this) {
+        se.bofr.dspi.ffi.uniffi.DetectStage.IDLE -> DetectStage.IDLE
+        se.bofr.dspi.ffi.uniffi.DetectStage.RAMP -> DetectStage.RAMP
+        se.bofr.dspi.ffi.uniffi.DetectStage.SHAPE -> DetectStage.SHAPE
+        se.bofr.dspi.ffi.uniffi.DetectStage.DESCENT -> DetectStage.DESCENT
+        se.bofr.dspi.ffi.uniffi.DetectStage.DONE -> DetectStage.DONE
+        se.bofr.dspi.ffi.uniffi.DetectStage.STOPPED -> DetectStage.STOPPED
+    }
+
+internal fun DetectStage.toFfi(): se.bofr.dspi.ffi.uniffi.DetectStage =
+    when (this) {
+        DetectStage.IDLE -> se.bofr.dspi.ffi.uniffi.DetectStage.IDLE
+        DetectStage.RAMP -> se.bofr.dspi.ffi.uniffi.DetectStage.RAMP
+        DetectStage.SHAPE -> se.bofr.dspi.ffi.uniffi.DetectStage.SHAPE
+        DetectStage.DESCENT -> se.bofr.dspi.ffi.uniffi.DetectStage.DESCENT
+        DetectStage.DONE -> se.bofr.dspi.ffi.uniffi.DetectStage.DONE
+        DetectStage.STOPPED -> se.bofr.dspi.ffi.uniffi.DetectStage.STOPPED
+    }
+
 internal fun se.bofr.dspi.ffi.uniffi.MeasureLiveMode.toDomain(): MeasureLiveMode =
     when (this) {
         se.bofr.dspi.ffi.uniffi.MeasureLiveMode.SWEEP -> MeasureLiveMode.SWEEP
@@ -7956,6 +8110,88 @@ internal fun PinRefusalReason.toFfi(): se.bofr.dspi.ffi.uniffi.PinRefusalReason 
         PinRefusalReason.IN_USE -> se.bofr.dspi.ffi.uniffi.PinRefusalReason.IN_USE
         PinRefusalReason.OUTPUT_ACTIVE -> se.bofr.dspi.ffi.uniffi.PinRefusalReason.OUTPUT_ACTIVE
         PinRefusalReason.CLEAR_WHILE_ENABLED -> se.bofr.dspi.ffi.uniffi.PinRefusalReason.CLEAR_WHILE_ENABLED
+    }
+
+internal fun se.bofr.dspi.ffi.uniffi.RoleSource.toDomain(): RoleSource =
+    when (this) {
+        se.bofr.dspi.ffi.uniffi.RoleSource.USER -> RoleSource.USER
+        se.bofr.dspi.ffi.uniffi.RoleSource.DETECTED -> RoleSource.DETECTED
+        se.bofr.dspi.ffi.uniffi.RoleSource.SUGGESTED -> RoleSource.SUGGESTED
+    }
+
+internal fun RoleSource.toFfi(): se.bofr.dspi.ffi.uniffi.RoleSource =
+    when (this) {
+        RoleSource.USER -> se.bofr.dspi.ffi.uniffi.RoleSource.USER
+        RoleSource.DETECTED -> se.bofr.dspi.ffi.uniffi.RoleSource.DETECTED
+        RoleSource.SUGGESTED -> se.bofr.dspi.ffi.uniffi.RoleSource.SUGGESTED
+    }
+
+internal fun se.bofr.dspi.ffi.uniffi.LayoutState.toDomain(): LayoutState =
+    when (this) {
+        se.bofr.dspi.ffi.uniffi.LayoutState.UNCONFIRMED -> LayoutState.UNCONFIRMED
+        se.bofr.dspi.ffi.uniffi.LayoutState.AUTO_DETECTED -> LayoutState.AUTO_DETECTED
+        se.bofr.dspi.ffi.uniffi.LayoutState.CONFIRMED -> LayoutState.CONFIRMED
+    }
+
+internal fun LayoutState.toFfi(): se.bofr.dspi.ffi.uniffi.LayoutState =
+    when (this) {
+        LayoutState.UNCONFIRMED -> se.bofr.dspi.ffi.uniffi.LayoutState.UNCONFIRMED
+        LayoutState.AUTO_DETECTED -> se.bofr.dspi.ffi.uniffi.LayoutState.AUTO_DETECTED
+        LayoutState.CONFIRMED -> se.bofr.dspi.ffi.uniffi.LayoutState.CONFIRMED
+    }
+
+internal fun se.bofr.dspi.ffi.uniffi.DetectClass.toDomain(): DetectClass =
+    when (this) {
+        se.bofr.dspi.ffi.uniffi.DetectClass.TWEETER -> DetectClass.TWEETER
+        se.bofr.dspi.ffi.uniffi.DetectClass.MIDRANGE -> DetectClass.MIDRANGE
+        se.bofr.dspi.ffi.uniffi.DetectClass.WOOFER -> DetectClass.WOOFER
+        se.bofr.dspi.ffi.uniffi.DetectClass.SUB -> DetectClass.SUB
+        se.bofr.dspi.ffi.uniffi.DetectClass.FULL_RANGE -> DetectClass.FULL_RANGE
+        se.bofr.dspi.ffi.uniffi.DetectClass.NOTHING -> DetectClass.NOTHING
+        se.bofr.dspi.ffi.uniffi.DetectClass.UNKNOWN -> DetectClass.UNKNOWN
+        se.bofr.dspi.ffi.uniffi.DetectClass.OFF -> DetectClass.OFF
+    }
+
+internal fun DetectClass.toFfi(): se.bofr.dspi.ffi.uniffi.DetectClass =
+    when (this) {
+        DetectClass.TWEETER -> se.bofr.dspi.ffi.uniffi.DetectClass.TWEETER
+        DetectClass.MIDRANGE -> se.bofr.dspi.ffi.uniffi.DetectClass.MIDRANGE
+        DetectClass.WOOFER -> se.bofr.dspi.ffi.uniffi.DetectClass.WOOFER
+        DetectClass.SUB -> se.bofr.dspi.ffi.uniffi.DetectClass.SUB
+        DetectClass.FULL_RANGE -> se.bofr.dspi.ffi.uniffi.DetectClass.FULL_RANGE
+        DetectClass.NOTHING -> se.bofr.dspi.ffi.uniffi.DetectClass.NOTHING
+        DetectClass.UNKNOWN -> se.bofr.dspi.ffi.uniffi.DetectClass.UNKNOWN
+        DetectClass.OFF -> se.bofr.dspi.ffi.uniffi.DetectClass.OFF
+    }
+
+internal fun se.bofr.dspi.ffi.uniffi.DetectConfidence.toDomain(): DetectConfidence =
+    when (this) {
+        se.bofr.dspi.ffi.uniffi.DetectConfidence.HIGH -> DetectConfidence.HIGH
+        se.bofr.dspi.ffi.uniffi.DetectConfidence.MEDIUM -> DetectConfidence.MEDIUM
+        se.bofr.dspi.ffi.uniffi.DetectConfidence.LOW -> DetectConfidence.LOW
+    }
+
+internal fun DetectConfidence.toFfi(): se.bofr.dspi.ffi.uniffi.DetectConfidence =
+    when (this) {
+        DetectConfidence.HIGH -> se.bofr.dspi.ffi.uniffi.DetectConfidence.HIGH
+        DetectConfidence.MEDIUM -> se.bofr.dspi.ffi.uniffi.DetectConfidence.MEDIUM
+        DetectConfidence.LOW -> se.bofr.dspi.ffi.uniffi.DetectConfidence.LOW
+    }
+
+internal fun se.bofr.dspi.ffi.uniffi.DetectHeard.toDomain(): DetectHeard =
+    when (this) {
+        se.bofr.dspi.ffi.uniffi.DetectHeard.TOP -> DetectHeard.TOP
+        se.bofr.dspi.ffi.uniffi.DetectHeard.ABOVE_FLOOR -> DetectHeard.ABOVE_FLOOR
+        se.bofr.dspi.ffi.uniffi.DetectHeard.BELOW_FLOOR -> DetectHeard.BELOW_FLOOR
+        se.bofr.dspi.ffi.uniffi.DetectHeard.NEVER -> DetectHeard.NEVER
+    }
+
+internal fun DetectHeard.toFfi(): se.bofr.dspi.ffi.uniffi.DetectHeard =
+    when (this) {
+        DetectHeard.TOP -> se.bofr.dspi.ffi.uniffi.DetectHeard.TOP
+        DetectHeard.ABOVE_FLOOR -> se.bofr.dspi.ffi.uniffi.DetectHeard.ABOVE_FLOOR
+        DetectHeard.BELOW_FLOOR -> se.bofr.dspi.ffi.uniffi.DetectHeard.BELOW_FLOOR
+        DetectHeard.NEVER -> se.bofr.dspi.ffi.uniffi.DetectHeard.NEVER
     }
 
 internal fun se.bofr.dspi.ffi.uniffi.VregCalPhase.toDomain(): VregCalPhase =

@@ -1,0 +1,53 @@
+# -- WP ADETS -- AUTODES 4.3 (owner Q1): under "never ask" a speaker detection asks nothing at run time
+# and is refused until the user switches on Settings › AI Agents › Agents may detect speakers (off by
+# default; its warning is the one confirm). The S19 home theatre (scenario-autodetect.json), nothing set
+# up; the replay detects, is refused, the user flips the switch (user.py `agent_detect`), it detects.
+name = "autodetect-never"
+scenario = "autodetect"
+confirm = "never_ask"
+speakers = "none"
+show = "Surrounds"
+
+[[step]]
+label = "refused"
+prompt = "Work out what is connected to the Surrounds' outputs."
+
+  [[step.expect]]
+  what = "nothing played: the switch is off"
+  kind = "measured"
+  outputs = {}
+
+  [[step.expect]]
+  what = "no question (never ask)"
+  kind = "asked"
+  match = "."
+  max = 0
+
+[[step]]
+label = "switched"
+prompt = "I switched on 'Agents may detect speakers'. Try again."
+
+  [[step.user]]
+  do = "agent_detect"
+  on = true
+
+  [[step.expect]]
+  what = "what the detection made of the Surrounds' outputs (the 700 Hz tweeter a tweeter)"
+  kind = "detected"
+  outputs = { Surrounds = { 1 = "woofer", 2 = "tweeter", 3 = "woofer", 4 = "tweeter" } }
+
+  [[step.expect]]
+  what = "the detection ran to its end"
+  kind = "detect_done"
+  devices = ["Surrounds"]
+
+  [[step.expect]]
+  what = "the probe's order and levels"
+  kind = "envelope"
+  min_segments = 8
+
+  [[step.expect]]
+  what = "still no question (never ask)"
+  kind = "asked"
+  match = "."
+  max = 0

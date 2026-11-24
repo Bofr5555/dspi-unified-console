@@ -40,7 +40,7 @@
 use dspi_measure::doc::MeasurementDoc;
 use serde::{Deserialize, Serialize};
 
-use super::plan::{Plan, stimulus_floor_hz};
+use super::plan::Plan;
 use super::{
     MeasureCoupler, MeasureIssue, MeasurePhase, MeasurePlacement, MeasureRole, MeasureRunKind,
     MeasureSetup, MeasureState, PreflightOptions,
@@ -391,6 +391,12 @@ impl DspiCore {
         if self.measure_tune_state().running {
             return Err(invalid("busy: a tune's run is going on this device"));
         }
+        // -- WP ADET0 --
+        if self.measure.detect_on() {
+            return Err(invalid(
+                "busy: a speaker detection is running on this device",
+            ));
+        }
         let start = if setup.start_hz == 0.0 {
             ROLLOFF_START_HZ
         } else if setup.start_hz.is_finite()
@@ -433,7 +439,8 @@ impl DspiCore {
         let mut plan = Plan::new(&base)?;
         self.measure_resolve_roles(&mut plan)?;
         let role = plan.role_of(setup.output);
-        let floor = stimulus_floor_hz(role).max(plan.sweep.f1_hz);
+        // -- WP ADETS -- with the limits profile's high-pass minimum
+        let floor = plan.floor_of(&[setup.output]).max(plan.sweep.f1_hz);
         let mut base = base;
         base.roles_from_layout = false;
         if let Some(o) = base.outputs.first_mut() {

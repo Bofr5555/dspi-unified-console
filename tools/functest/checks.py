@@ -19,7 +19,8 @@ import tomllib
 from judge import NAMES, band, smooth
 
 STARTS = {"dspi_measure_start", "dspi_measure_rolloff_start", "dspi_tune_sum_check", "dspi_tune_verify",
-          "dspi_system_measure_start", "dspi_system_measure_verify"}
+          "dspi_system_measure_start", "dspi_system_measure_verify",
+          "dspi_detect_speakers"}  # -- WP ADETS -- a detection plays test signals too
 
 
 class State:
@@ -200,6 +201,9 @@ def check(e, now, before, steps, words):
     got = more2(k, e, now, before, steps, words)  # -- WP FUNC2b --
     if got:
         return got
+    got = more_adets(k, e, now, before)  # -- WP ADETS --
+    if got:
+        return got
     return "fail", f"no such check: {k}"
 
 
@@ -240,7 +244,9 @@ def sheets(run, step):
     out = []
     for line in log.read_text().splitlines() if log.exists() else []:
         x = json.loads(line)
-        if x["kind"] == "question" and lo <= x["time"] <= hi:
+        # -- WP INTK -- by the epoch where the line has it: the clock's words wrap at midnight
+        inside = step["start"] <= x["at"] <= step["end"] if "at" in x else lo <= x["time"] <= hi
+        if x["kind"] == "question" and inside:
             out.append((x["data"].get("text") or json.dumps(x["data"]), x["data"].get("answer", "allow")))
     return out
 
@@ -320,6 +326,111 @@ def more(k, e, now, before, steps, words):
              and x.get("device") in e["devices"]]
         return ("pass" if len(n) <= e.get("max", 0) else "fail"), \
             f"{len(n)} on {', '.join(e['devices'])}" + (f": {[x['title'] for x in n][:6]}" if n else "")
+    return None
+
+
+# -- WP ADETS -- the speaker detection (AUTODES 7.1): the oracle's `layout` lines (the core's speaker
+# layout each time it was kept) and `probe` lines (each detection segment: stage, floor, band, level)
+CLASS_ALIASES = {"mid": "midrange", "low": "woofer", "high": "tweeter", "subwoofer": "sub"}
+
+
+def layout_line(state, device):
+    """The device's speaker layout as last kept by the time of `state` (None: never)."""
+    return next((x for x in reversed(state.oracle) if x["kind"] == "layout" and x["device"] == device), None)
+
+
+def detected_classes(state, device):
+    """{output from 0: class} of the device's last detection by the time of `state`."""
+    line = layout_line(state, device)
+    return {x["output"]: x["class"] for x in (line or {}).get("detected", [])}
+
+
+def word(x):
+    x = str(x).lower().replace("_", "").replace(" ", "")
+    return CLASS_ALIASES.get(x, x)
+
+
+PROBE_ORDER = {"top": 0, "band": 1, "shaped": 2, "free": 3}
+
+
+def probe_sequences(state, before=None):
+    """{(device, output from 0): [probe lines]} of the detection segments since `before`."""
+    seqs = {}
+    for x in state.oracle[len(before.oracle) if before else 0:]:
+        if x["kind"] == "probe":
+            seqs.setdefault((x["device"], x["output"]), []).append(x)
+    return seqs
+
+
+def more_adets(k, e, now, before):
+    if k == "detected":
+        # outputs = {n from 1: class or [classes]}, near = {n: [classes]}
+        rows = []
+        for d, outs in e["outputs"].items():
+            got = detected_classes(now, d)
+            for n, want in outs.items():
+                want = [word(w) for w in (want if isinstance(want, list) else [want])]
+                near = [word(w) for w in e.get("near", {}).get(d, {}).get(n, [])]
+                c = got.get(int(n) - 1)
+                sc = "pass" if c and word(c) in want else "near" if c and word(c) in near else "fail"
+                rows.append((f"{d} {n}", c, sc))
+        return every(rows, lambda n, v: f"{n} {v or 'not detected'}")
+    if k == "layout_state":
+        want = [word(w) for w in (e["state"] if isinstance(e["state"], list) else [e["state"]])]
+        rows = []
+        for d in e["devices"]:
+            line = layout_line(now, d)
+            v = line["state"] if line else "none"
+            rows.append((d, v, "pass" if word(v) in want else "fail"))
+        return every(rows, lambda n, v: f"{n} {v}")
+    if k == "detect_done":
+        # Each device's detection ran to its end: not stopped, every probed output classified
+        rows = []
+        for d in e["devices"]:
+            line = layout_line(now, d) or {}
+            classes = [x["class"] for x in line.get("detected", [])]
+            stopped = "stopped" in (line.get("summary") or "").lower()
+            ok = bool(classes) and "unknown" not in classes and not stopped
+            rows.append((d, line.get("summary") or "no detection", "pass" if ok else "fail"))
+        return every(rows, lambda n, v: f"{n}: {v[:90]}")
+    if k == "nothing_rule":
+        # No output the detection heard nothing from is switched on (that was off) or routed to
+        bad = []
+        for d in now.devices:
+            s, was = now.devices[d]["state"], before.devices[d]["state"] if before else None
+            for o, c in detected_classes(now, d).items():
+                routed = any(r[o] for r in s["matrixRouting"][:s["numInputChannels"]])
+                on = s["outputEnabled"][o] and not (was and was["outputEnabled"][o])
+                if c == "nothing" and (routed or on):
+                    bad.append(f"{d} {o + 1}{' routed' if routed else ''}{' switched on' if on else ''}")
+        return ("fail" if bad else "pass"), "; ".join(bad) or "left alone"
+    if k == "envelope":
+        # The probe's order and levels per output (AUTODES 7.2.6): no shaped segment before the
+        # output's top was looked at, no free segment before the shaped descent reached its last
+        # step, the shaped ones at or under the sub-floor level, the free ones from 20 Hz.
+        # -- RGFIX -- `floors` = {device: {n from 1: Hz}}: those outputs probed from that floor or above
+        hp = e.get("headphones", False)
+        floors = {(d, int(n) - 1): hz for d, outs in e.get("floors", {}).items() for n, hz in outs.items()}
+        below, ceiling = (-60.0, -36.0) if hp else (-50.0, -24.0)
+        bad, n = [], 0
+        for (d, o), seq in probe_sequences(now, before).items():
+            n += len(seq)
+            stages = [x["stage"] for x in seq]
+            if [PROBE_ORDER[x] for x in stages] != sorted(PROBE_ORDER[x] for x in stages):
+                bad.append(f"{d} {o + 1}: out of order {stages}")
+            if stages and stages[0] not in ("top", "band"):
+                bad.append(f"{d} {o + 1}: began with {stages[0]}")
+            if "free" in stages and stages.count("shaped") < e.get("shaped_steps", 5):
+                bad.append(f"{d} {o + 1}: free descent after {stages.count('shaped')} shaped segments")
+            for x in seq:
+                if x["levelDbfs"] > (below if x["stage"] == "shaped" else ceiling) + 0.05:
+                    bad.append(f"{d} {o + 1}: {x['stage']} at {x['levelDbfs']} dBFS")
+                if x["stage"] in ("top", "band") and x["f1"] < x["floorHz"] - 0.5:
+                    bad.append(f"{d} {o + 1}: {x['stage']} from {x['f1']:.0f} Hz under its floor {x['floorHz']:.0f}")
+                if x["floorHz"] < floors.get((d, o), 0) - 0.5:
+                    bad.append(f"{d} {o + 1}: probed from a {x['floorHz']:.0f} Hz floor, not {floors[(d, o)]} Hz")
+        sc = "fail" if bad or (e.get("min_segments", 1) > n) else "pass"
+        return sc, f"{n} segments" + (": " + "; ".join(bad[:6]) if bad else "")
     return None
 
 
@@ -517,7 +628,9 @@ def invariants(run, meta, scenario, calls):
             bad.append(f"oracle: {x['device']} {x.get('driver')} ({x['how']}): {'; '.join(x['why'])}")
         if x["kind"] == "info" and "no driver" in x.get("what", ""):
             bad.append(f"a test signal on {x['device']} output {x['output'] + 1}, which drives nothing")
-        if x["kind"] == "signal" and x["device"] in meta["unconfirmed"]:
+        # -- WP ADETS -- (AUTODES 7.2.3) a line with `knowledge` was judged by what the core knew of
+        # the output (an unknown one held to the probe's envelope): a breach is a VIOLATION above
+        if x["kind"] == "signal" and x["device"] in meta["unconfirmed"] and "knowledge" not in x:
             bad.append(f"a test signal on {x['device']}, whose speaker setup is not confirmed")
     # -- WP FUNC2a -- P5a: the settings after every journal entry (functest_oracle.rs)
     log = run / "sim/config-oracle.jsonl"
@@ -546,12 +659,19 @@ def invariants(run, meta, scenario, calls):
     states = sorted((run / "state").iterdir(), key=lambda p: p.stat().st_mtime)
     if states:
         last = State(states[-1])
+        # -- WP ADETS -- an output the scenario leaves switched on (`enabledUnwired`) was not switched on
+        first = State(run / "state/0-start") if (run / "state/0-start/truth.json").exists() else None
         for d in scenario["devices"]:
             s = last.devices[d["name"]]["state"]
+            was = first.devices[d["name"]]["state"]["outputEnabled"] if first else [False] * s["numOutputChannels"]
             wired = {o["output"] for o in d["outputs"]}
+            # -- WP ADETS -- and nothing the detection heard nothing from (AUTODES 7.2.4)
+            nothing = {o for o, c in detected_classes(last, d["name"]).items() if c == "nothing"}
             for o in range(s["numOutputChannels"]):
-                if o not in wired and (s["outputEnabled"][o] or any(r[o] for r in s["matrixRouting"][:s["numInputChannels"]])):
-                    bad.append(f"{d['name']} output {o + 1} drives nothing, and was switched on or routed to")
+                if (o not in wired or o in nothing) and ((s["outputEnabled"][o] and not was[o])
+                                                         or any(r[o] for r in s["matrixRouting"][:s["numInputChannels"]])):
+                    why = "drives nothing" if o not in wired else "is where the speaker detection heard nothing"
+                    bad.append(f"{d['name']} output {o + 1} {why}, and was switched on or routed to")
     # Each test signal, and each new or louder route, was asked about when the user asked to be
     if meta["confirm"] != "never_ask":
         log = run / "user.jsonl"
@@ -642,6 +762,9 @@ def simulated_seen(run):
 
 # -- WP INTI -- (review RF10)
 GRANT_S = 600
+# -- WP ADETS -- a question lives this long before its Allow: the call that raised it (the allowed run)
+# is timed when the agent made it, before the Allow; the window opens that much earlier
+QUESTION_S = 120
 
 
 def granted_runs(run, asked, dev, dev_id, meta):
@@ -660,7 +783,7 @@ def granted_runs(run, asked, dev, dev_id, meta):
     covered = 0
     for q in allows:
         end = min([q["at"] + GRANT_S] + [r for r in revokes if r > q["at"]])
-        within = sum(1 for t in starts if q["at"] <= t <= end)
+        within = sum(1 for t in starts if q["at"] - QUESTION_S <= t <= end)  # -- WP ADETS --
         covered += max(0, within - 1)
     return covered
 

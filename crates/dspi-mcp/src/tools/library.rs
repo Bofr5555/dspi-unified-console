@@ -349,7 +349,7 @@ pub(crate) fn scene_loads_guard(
         let before = state(&core)?;
         let snap = capture_before(&core, what)?;
         let roles = Judging {
-            roles: policy::confirmed_roles(&core),
+            roles: policy::trusted_roles(&core), // -- WP ADET1 --
             floors: policy::profile_floors(&core),
             ..Judging::default()
         };

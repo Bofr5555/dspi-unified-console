@@ -206,6 +206,16 @@ fn wp_p1nt_codes_refine_the_key_where_the_table_has_a_row() {
                 );
                 continue;
             }
+            // -- WP ADET0 -- the speaker detection's words: its state and
+            // the layout's evidence name these keys
+            if family == "detect" {
+                assert!(
+                    crate::DETECT_NOTICE_KEYS.contains(&n.key.as_str()),
+                    "{}: not a key detect.rs names",
+                    n.key
+                );
+                continue;
+            }
             // -- WP REVERTW -- a revert not fully successful: no error makes
             // these keys, a guard's end and a system apply carry them
             if family == "revert" {

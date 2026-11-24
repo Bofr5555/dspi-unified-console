@@ -5,7 +5,7 @@
 
 import type { Session } from "./session";
 import { useSessionState } from "./components";
-import { cleanPresence, presenceText, usePresence } from "./presence";
+import { DETECTING_HERE, cleanPresence, detectingSpeakers, presenceText, usePresence } from "./presence";
 import { splitGrant } from "./follow"; // -- WP ODEC --
 
 export function AgentStrip(props: { session: Session }) {
@@ -28,6 +28,8 @@ export function AgentStrip(props: { session: Session }) {
             <span key={`${p.by}-${i}`} class="agent-row">
               {presenceText({ ...p, what: work }, name, mine)}
               {grant ? <span class="agent-grant"> {grant}</span> : null}
+              {/* -- WP ADETW -- */}
+              {p.serial && p.serial === mine && detectingSpeakers(work) ? <span class="agent-detect"> {DETECTING_HERE}</span> : null}
             </span>
           );
         })}

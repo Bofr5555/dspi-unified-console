@@ -346,10 +346,11 @@ static GET_DEVICE_INFO: Tool = Tool {
 type Role = (Value, String, u8);
 
 /// The outputs' roles from the user's speaker setup, `None` where it names
-/// none, and whether the user confirmed the setup.
-fn roles(core: &DspiCore) -> (Vec<Option<Role>>, bool) {
+/// none, and (-- WP ADET1 --) the layout itself, for its state and the
+/// detection's record.
+fn roles(core: &DspiCore) -> (Vec<Option<Role>>, Option<dspi_core::SpeakerLayout>) {
     let Ok(Some(layout)) = core.speaker_layout() else {
-        return (Vec::new(), false);
+        return (Vec::new(), None);
     };
     let mut out = Vec::new();
     for o in &layout.outputs {
@@ -365,7 +366,41 @@ fn roles(core: &DspiCore) -> (Vec<Option<Role>>, bool) {
             ));
         }
     }
-    (out, layout.confirmed_by_user)
+    (out, Some(layout))
+}
+
+// -- WP ADET1 --
+/// What the speaker setup says of output `o` beyond its role (AUTODES 6.1):
+/// where the role came from, the detection's confidence, whether the output
+/// reaches a driver, and when it was probed.
+fn detected_fields(layout: Option<&dspi_core::SpeakerLayout>, o: u8) -> Value {
+    use dspi_core::{DetectClass, RoleSource};
+    let row = layout.and_then(|l| l.output(o));
+    let found = layout.and_then(|l| l.detected_output(o));
+    let source = row.map(|r| match r.source {
+        RoleSource::User => "user",
+        RoleSource::Detected => "detected",
+        RoleSource::Suggested => "suggested",
+    });
+    let reaches = match found.map(|d| d.class) {
+        Some(DetectClass::Nothing) if row.is_none() => "nothing",
+        Some(
+            DetectClass::Tweeter
+            | DetectClass::Midrange
+            | DetectClass::Woofer
+            | DetectClass::Sub
+            | DetectClass::FullRange,
+        ) => "driver",
+        _ => "unknown",
+    };
+    json!({
+        "role_source": source,
+        "confidence": found
+            .filter(|_| row.is_some_and(|r| r.source == RoleSource::Detected))
+            .map(|d| super::measure::confidence_word(d.confidence)),
+        "reaches": reaches,
+        "detected_at_ms": found.map(|d| d.probed_ms).filter(|ms| *ms > 0),
+    })
 }
 
 static GET_OVERVIEW: Tool = Tool {
@@ -392,7 +427,7 @@ static GET_OVERVIEW: Tool = Tool {
         let n_in = usize::from(st.num_input_channels);
         let n_out = usize::from(st.num_output_channels);
         let labels = core.output_labels();
-        let (roles, confirmed) = roles(core);
+        let (roles, layout) = roles(core); // -- WP ADET1 -- the layout
         let inputs: Vec<Value> = (0..n_in)
             .map(|i| {
                 json!({
@@ -418,7 +453,8 @@ static GET_OVERVIEW: Tool = Tool {
                     })
                     .collect();
                 let role = roles.get(o).cloned().flatten();
-                json!({
+                let found = detected_fields(layout.as_ref(), u8::try_from(o).unwrap_or(u8::MAX)); // -- WP ADET1 --
+                let mut row = json!({
                     "output": o,
                     "channel": ch,
                     "output_name": label.filter(|l| l.user_named).map(|l| untrusted::name(&l.label)),
@@ -433,7 +469,12 @@ static GET_OVERVIEW: Tool = Tool {
                     "delay_ms": num(at(&st.output_delay_ms, o)),
                     "limiter": at(&st.limiter_enabled, o),
                     "routes": routes,
-                })
+                });
+                // -- WP ADET1 --
+                if let (Some(r), Some(f)) = (row.as_object_mut(), found.as_object()) {
+                    r.extend(f.clone());
+                }
+                row
             })
             .collect();
         let lock = core.installer_lock_state();
@@ -443,12 +484,12 @@ static GET_OVERVIEW: Tool = Tool {
             "device": call.device_text(),
             "inputs": inputs,
             "outputs": outputs,
-            "roles_from": if roles.is_empty() {
-                "none"
-            } else if confirmed {
-                "speaker_setup_confirmed"
-            } else {
-                "speaker_setup_unconfirmed"
+            "roles_from": match layout.as_ref().map(dspi_core::SpeakerLayout::state) {
+                _ if roles.is_empty() => "none",
+                Some(dspi_core::LayoutState::Confirmed) => "speaker_setup_confirmed",
+                // -- WP ADET1 -- trusted as a confirmed one's until the user confirms
+                Some(dspi_core::LayoutState::AutoDetected) => "speaker_setup_auto_detected",
+                _ => "speaker_setup_unconfirmed",
             },
             "volume": {
                 "user_db": num(st.user_volume_db),

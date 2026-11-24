@@ -96,7 +96,10 @@ class User:
             self.show(a["device"])
             return
         if kind == "layout":
-            self.run.confirm_layout(a["device"])
+            if a.get("roles"):  # -- WP ADETS -- correct rows (outputs from 1), not confirm
+                self.run.correct_layout(a["device"], a["roles"])
+            else:
+                self.run.confirm_layout(a["device"])
             return
         if kind in INSTALLER:  # -- WP FUNC2c --
             self.installer(a)
@@ -107,6 +110,10 @@ class User:
                 if g.get("device") == a["device"]:
                     ctl.call("AiController", "revokeGrant", g["id"])
                     self.run.event("grant-revoked", {"device": a["device"], "id": g["id"]})
+            return
+        if kind == "agent_detect":  # -- WP ADETS -- Settings › AI Agents › Agents may detect speakers
+            ctl.set("AiController", "agentDetect", bool(a.get("on", True)))
+            ctl.wait("the detect switch", lambda: bool(ctl.get("AiController", "agentDetect")) == bool(a.get("on", True)))
             return
         if kind == "agents":  # -- WP ODEC -- Stop (off) and on again, as in Settings › AI Agents
             ctl.call("AiController", "setEnabled", bool(a["on"]))

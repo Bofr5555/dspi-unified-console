@@ -9,6 +9,7 @@ SettingsPage {
     id: page
     objectName: "AiAgentsPage"
     readonly property alias enableDialog: enableQuestion
+    readonly property alias detectDialog: detectQuestion   // -- WP ADETQ --
     readonly property bool watching: visible && Window.window !== null && Window.window.visible
     onWatchingChanged: if (watching) AiController.refresh()
     Component.onDestruction: AiController.clearNewClient()
@@ -174,6 +175,23 @@ SettingsPage {
             texts: [qsTr("About every change"), qsTr("About risky changes"), qsTr("Never")]
             value: AiController.confirmMode
             onChosen: mode => AiController.confirmMode = mode
+        }
+        // -- WP ADETQ -- (AUTODES 4.3) under Never the detection asks nothing at run
+        // time: this switch, off by default, is its one question, with the warning
+        SettingsToggle {
+            id: detectToggle
+            objectName: "AiAgents.detect"
+            title: qsTr("Agents may detect speakers")
+            caption: AiController.confirmMode === "never_ask"
+                     ? qsTr("Under Never, an agent may play the speaker detection's quiet test sweeps without asking. Off, it is refused.")
+                     : qsTr("Needed under Never only: with the other settings, each detection is asked, with its warning.")
+            checked: AiController.agentDetect
+            onToggled: on => {
+                // The warning first; the switch shows the setting, never the click
+                control.checked = Qt.binding(() => AiController.agentDetect)
+                if (on) detectQuestion.open()
+                else AiController.agentDetect = false
+            }
         }
         SettingsValueRow {
             objectName: "AiAgents.limits"
@@ -430,6 +448,18 @@ SettingsPage {
             Layout.fillWidth: true
             Layout.preferredHeight: 300
         }
+    }
+
+    // -- WP ADETQ -- the never-ask users' one confirm box for the speaker detection
+    QuestionDialog {
+        id: detectQuestion
+        objectName: "AiAgents.detectQuestion"
+        parent: page.Window.window ? page.Window.window.contentItem : null
+        title: qsTr("Let agents detect the speakers without asking?")
+        text: [qsTr("An agent may then find out what is wired to a DSPi's outputs by playing quiet test sweeps on each output in turn, without asking you first. Each output is first played only above 1 kHz, at most −24 dBFS. Only an output whose response says it is not a tweeter is played lower, and then at most −50 dBFS. Whatever cannot be told apart is treated as a tweeter."),
+               "⚠ " + AiController.detectWarning].join("\n\n")
+        acceptText: qsTr("I Understand")
+        onAnswered: answer => { if (answer === "accept") AiController.agentDetect = true }
     }
 
     AiEnableQuestion {   // -- WP LAY8 -- the popover asks it too

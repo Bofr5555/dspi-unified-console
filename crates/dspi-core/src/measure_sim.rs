@@ -70,6 +70,9 @@ pub(crate) struct SimSlot {
     on: AtomicBool,
     seed: AtomicU64,
     feed: Mutex<Option<Feed>>,
+    // -- WP ADET0 -- a test's own drivers in the room, one path per output
+    #[cfg(test)]
+    test_paths: Mutex<Option<Vec<dspi_measure::sim::OutputPath>>>,
 }
 
 impl SimSlot {
@@ -602,6 +605,18 @@ mod world {
             Ok(())
         }
 
+        // -- WP ADET0 --
+        /// Put `paths` (one per output, from output 0) in the room for the
+        /// sessions to come: a test's own drivers.
+        #[cfg(test)]
+        pub(crate) fn measure_sim_test_paths(&self, paths: Vec<dspi_measure::sim::OutputPath>) {
+            *self
+                .measure_sim
+                .test_paths
+                .lock()
+                .unwrap_or_else(|p| p.into_inner()) = Some(paths);
+        }
+
         /// The demo's serial, or why the simulated microphone cannot be on.
         fn measure_sim_demo_checked(&self) -> Result<String> {
             self.lock().conn()?;
@@ -641,6 +656,20 @@ mod world {
             if feed.mic.is_none() {
                 let outputs = usize::from(self.lock().state.num_output_channels);
                 feed.mic = Some(SimMic::new(feed.seed, outputs, rate));
+                // -- WP ADET0 -- a test's drivers instead of the three-way's
+                #[cfg(test)]
+                if let Some(paths) = self
+                    .measure_sim
+                    .test_paths
+                    .lock()
+                    .unwrap_or_else(|p| p.into_inner())
+                    .clone()
+                    && let Some(mic) = feed.mic.as_mut()
+                {
+                    for (slot, p) in mic.world.outputs.iter_mut().zip(paths) {
+                        *slot = p;
+                    }
+                }
                 // -- WP FUNC1 -- in the scenario's room when there is one
                 #[cfg(feature = "sim-scenario")]
                 if let Some(mic) = SimMic::in_scenario(&feed.serial, outputs, rate) {

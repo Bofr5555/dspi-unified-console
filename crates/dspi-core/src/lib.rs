@@ -282,6 +282,11 @@ pub use output_labels::{
     OutputCard, OutputLabel, OutputLabelInput, output_cards_for, output_labels_for,
 };
 pub use speaker_layout::{SpeakerLayout, SpeakerLayoutOutput};
+// -- WP ADET0 -- the speaker detection
+pub use measure::{DETECT_NOTICE_KEYS, DetectSetup, DetectStage, DetectState, trusted_roles};
+pub use speaker_layout::{
+    DetectClass, DetectConfidence, DetectHeard, DetectedOutput, Detection, LayoutState, RoleSource,
+};
 // -- WP P0W --
 pub use journal::{HistoryEntry, HistoryMove, HistorySource};
 // -- WP P0E --

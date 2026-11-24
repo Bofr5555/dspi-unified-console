@@ -6977,6 +6977,97 @@ data class MeasureState(
 )
 
 /**
+ * What to detect (`detect_start`). Every field may be left out.
+ */
+data class DetectSetup(
+    /**
+     * The outputs, 0-based; empty for every output of the device.
+     */
+    val outputs: List<Int>,
+    /**
+     * Where the microphone is: the listening position (default), near
+     * field, or a headphone coupler (the headphones' levels).
+     */
+    val placement: MeasurePlacement,
+    /**
+     * The coupler, for headphones.
+     */
+    val coupler: MeasureCoupler?,
+    /**
+     * The floor for every output, Hz: 0 for 1 kHz; may only raise it (1000
+     * to 8000). The limits profile's `highpass_min_hz` raises an output's
+     * own further.
+     */
+    val floorHz: Float,
+    /**
+     * The microphone's `mic` document's text ("" uncalibrated).
+     */
+    val micDocument: String,
+    /**
+     * The SPL cap with a calibrated microphone (as `MeasureSetup`).
+     */
+    val splCapDb: Float?,
+    /**
+     * The capture's rate, Hz (0: 48000).
+     */
+    val captureRateHz: Long,
+)
+
+/**
+ * The detection's state.
+ */
+data class DetectState(
+    /**
+     * Where it stands.
+     */
+    val stage: DetectStage,
+    /**
+     * Tick it (`detect_tick`): a session runs or is next.
+     */
+    val running: Boolean,
+    /**
+     * The output probed now (or last).
+     */
+    val output: Int?,
+    /**
+     * Outputs finished so far.
+     */
+    val outputsDone: Int,
+    /**
+     * Outputs to probe (those off or muted are not).
+     */
+    val outputsTotal: Int,
+    /**
+     * The output's floor, Hz.
+     */
+    val floorHz: Float,
+    /**
+     * The segment's start (or the band's bottom), Hz.
+     */
+    val segmentHz: Float,
+    /**
+     * The level it plays at (the ramp's ceiling while ramping), peak dBFS.
+     */
+    val levelDbfs: Float,
+    /**
+     * The session (push capture while it wants it).
+     */
+    val session: MeasureState,
+    /**
+     * The detection so far: each output's class and evidence, the summary.
+     */
+    val detection: Detection?,
+    /**
+     * Why it stopped, or what the last session asked.
+     */
+    val issue: MeasureIssue?,
+    /**
+     * Who started it: 0 the app, else an agent's actor.
+     */
+    val actor: Long,
+)
+
+/**
  * How to give a measurement's curves (`measure_doc_curves`).
  */
 data class MeasureDocCurvesOptions(
@@ -9355,6 +9446,12 @@ data class SpeakerLayoutOutput(
      * Its alignment group: the outputs of one speaker share one.
      */
     val group: Int,
+    /**
+     * Where its role comes from: the user, the speaker detection, or a
+     * suggestion (a version 1 file's rows are the user's when the layout is
+     * confirmed, else suggestions).
+     */
+    val source: RoleSource,
 )
 
 /**
@@ -9382,6 +9479,118 @@ data class SpeakerLayout(
      * Remarks in words (a proposal's: outputs left out and why).
      */
     val notes: List<String>,
+    /**
+     * The last speaker detection on this device, if one ran: its evidence
+     * per output. With every row `detected` or `user` it makes the layout
+     * [`LayoutState::AutoDetected`].
+     */
+    val detected: Detection?,
+)
+
+/**
+ * One output's detection and its evidence.
+ */
+data class DetectedOutput(
+    /**
+     * The output, 0-based.
+     */
+    val output: Int,
+    /**
+     * What it was found to be.
+     */
+    val class: DetectClass,
+    /**
+     * How sure.
+     */
+    val confidence: DetectConfidence,
+    /**
+     * The role it was given; `None` for `nothing` and `off`.
+     */
+    val role: MeasureRole?,
+    /**
+     * Its floor, Hz: nothing below it but the shaped probe.
+     */
+    val floorHz: Float,
+    /**
+     * Where it was first heard.
+     */
+    val heard: DetectHeard,
+    /**
+     * The level it was heard at in the presence ramp, peak dBFS.
+     */
+    val levelDbfs: Float?,
+    /**
+     * The mean level 1.5 to 3 kHz less the mean 10 to 16 kHz, dB.
+     */
+    val topFallDb: Float?,
+    /**
+     * How far the response has turned down in the half octave above the
+     * floor, dB below its loudest point.
+     */
+    val lowTurnDb: Float?,
+    /**
+     * Where the response is 6 dB under its loudest point, Hz; `None` when
+     * not reached (or not looked for).
+     */
+    val fLowHz: Float?,
+    /**
+     * The lowest frequency any stimulus played on it, Hz.
+     */
+    val lowestHz: Float?,
+    /**
+     * The descent's segment it stopped at, Hz.
+     */
+    val stoppedAtHz: Float?,
+    /**
+     * A notice key (`detect.nothing`, `detect.off`, `detect.unknown`, ...).
+     */
+    val note: String?,
+    /**
+     * When it was probed, ms since the Unix epoch.
+     */
+    val probedMs: Long,
+)
+
+/**
+ * A speaker detection's record in the layout.
+ */
+data class Detection(
+    /**
+     * When it started, ms since the Unix epoch.
+     */
+    val atMs: Long,
+    /**
+     * Who ran it: an agent's label, "" for the app (the user).
+     */
+    val by: String,
+    /**
+     * Where the microphone was.
+     */
+    val placement: measure::MeasurePlacement,
+    /**
+     * The floor the caller asked for, Hz (each output's own may be higher).
+     */
+    val floorHz: Float,
+    /**
+     * The microphone's name ("" uncalibrated).
+     */
+    val microphone: String,
+    /**
+     * Each output it was asked about, probed or not.
+     */
+    val outputs: List<DetectedOutput>,
+    /**
+     * It was stopped before every output was probed.
+     */
+    val stopped: Boolean,
+    /**
+     * The result in words.
+     */
+    val summary: String,
+    /**
+     * The device's output count when it ran: another count invalidates it.
+     */
+    val deviceOutputs: Int,
 )
 
 /**
@@ -10309,6 +10518,36 @@ enum class MeasurePhase {
 }
 
 /**
+ * Where the detection stands.
+ */
+enum class DetectStage {
+    /**
+     * No detection on this core.
+     */
+    IDLE,
+    /**
+     * An output's presence ramp (stage A or A2).
+     */
+    RAMP,
+    /**
+     * Its shape above the floor (stage B).
+     */
+    SHAPE,
+    /**
+     * Its descent below the floor (C1 or C2).
+     */
+    DESCENT,
+    /**
+     * Every output was probed.
+     */
+    DONE,
+    /**
+     * It stopped before the end (`issue` says why).
+     */
+    STOPPED,
+}
+
+/**
  * What the live view plays.
  */
 enum class MeasureLiveMode {
@@ -10727,6 +10966,123 @@ enum class PinRefusalReason {
      * The ADAT input's pin cannot be cleared while the input is enabled.
      */
     CLEAR_WHILE_ENABLED,
+}
+
+/**
+ * Where a row's role comes from.
+ */
+enum class RoleSource {
+    /**
+     * The user set or confirmed it.
+     */
+    USER,
+    /**
+     * The speaker detection found it.
+     */
+    DETECTED,
+    /**
+     * A suggestion (the filters' inference, an import), nobody's word.
+     */
+    SUGGESTED,
+}
+
+/**
+ * How far the layout can be trusted ([`SpeakerLayout::state`]).
+ */
+enum class LayoutState {
+    /**
+     * Nobody's word: no roles reach the safety rules.
+     */
+    UNCONFIRMED,
+    /**
+     * Found by the speaker detection, not yet confirmed: its roles guard the
+     * outputs as a confirmed layout's do.
+     */
+    AUTO_DETECTED,
+    /**
+     * The user confirmed it.
+     */
+    CONFIRMED,
+}
+
+/**
+ * What the speaker detection made of an output.
+ */
+enum class DetectClass {
+    /**
+     * A tweeter, or anything that plays flat to 20 kHz and is not probed
+     * lower (a full-range driver, a dome midrange): role high.
+     */
+    TWEETER,
+    /**
+     * Rolls off between 70 and 200 Hz: role mid.
+     */
+    MIDRANGE,
+    /**
+     * Plays below 70 Hz and above 1 kHz: role low.
+     */
+    WOOFER,
+    /**
+     * Plays below 70 Hz, 20 dB or more quieter at 1 to 2 kHz: role sub.
+     */
+    SUB,
+    /**
+     * A full-range driver: the user's correction only, never detected.
+     */
+    FULL_RANGE,
+    /**
+     * Nothing reached the microphone: left out of the layout.
+     */
+    NOTHING,
+    /**
+     * The probe did not finish it (stopped, the microphone did not follow,
+     * the settings changed): role high.
+     */
+    UNKNOWN,
+    /**
+     * The output was off or muted: not probed.
+     */
+    OFF,
+}
+
+/**
+ * How sure the detection is of a class.
+ */
+enum class DetectConfidence {
+    /**
+     * The evidence is plain.
+     */
+    HIGH,
+    /**
+     * Probably ("Tweeter?": flat to 20 kHz, could be a full-range driver).
+     */
+    MEDIUM,
+    /**
+     * Uncertain, treated as the most protective class.
+     */
+    LOW,
+}
+
+/**
+ * Where the detection first heard an output.
+ */
+enum class DetectHeard {
+    /**
+     * In the presence band, 4 to 16 kHz (stage A).
+     */
+    TOP,
+    /**
+     * Between the floor and 4 kHz (stage A2).
+     */
+    ABOVE_FLOOR,
+    /**
+     * Only by the shaped probe below the floor (stage C1).
+     */
+    BELOW_FLOOR,
+    /**
+     * Nowhere.
+     */
+    NEVER,
 }
 
 /**

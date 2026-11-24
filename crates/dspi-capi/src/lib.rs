@@ -210,6 +210,8 @@ mod tests {
             "src/fns_misc/measure_tune.rs",
             // -- WP ROLL1 --
             "src/fns_misc/measure_rolloff.rs",
+            // -- WP ADET0 --
+            "src/fns_misc/detect.rs",
             // -- WP ATCORE --
             "src/fns_misc/measure_system.rs",
             // -- WP PGCORE --

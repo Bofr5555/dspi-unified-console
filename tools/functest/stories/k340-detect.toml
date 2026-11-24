@@ -1,0 +1,92 @@
+# -- WP ADETS -- AUTODES P17: the Koss K340 on its DSPi at the measuring coupler, nothing set up
+# (scenario-k340.json, scenario.py k340: both cups, each a dynamic woofer and a tweeter behind a
+# transformer; Out 1, 2 the right cup, Out 3, 4 the left). The installer's profile holds the tweeter
+# outputs' high-pass at 2.5 kHz or above (the owner's tweeter floor, AUTODES owner Q3), set before the
+# first prompt: the detection's floor and a measurement's stimulus floor on them follow it. Not on the
+# woofers' outputs: a profile's high-pass minimum also holds the programme's high-pass there. The user
+# names the floor, so an agent may pass floor_hz 2500 for the whole device (the woofers then probed
+# from 2.5 kHz too). ask_risky.
+#
+# Judged by outcome: what the detection made of each output, the tweeters' high-pass at 2.5 kHz or
+# above, one detection question. The oracle holds the tweeters to nothing over -60 dBFS below 2.5 kHz
+# and every test signal to -30 dBFS (their `safe`), and any output with no trusted role to the
+# headphones' probe envelope (-36 dBFS; -60 dBFS below its 2.5 kHz floor).
+name = "k340-detect"
+scenario = "k340"
+confirm = "ask_risky"
+speakers = "none"
+show = "K340"
+
+[[user]]
+do = "limits"
+device = "K340"
+outputs = { 2 = { highpassMinHz = 2500, highpassMinSlopeDb = 12 }, 4 = { highpassMinHz = 2500, highpassMinSlopeDb = 12 } }
+
+[[step]]
+label = "detect"
+prompt = """
+My Koss K340 headphones run from the DSPi "K340" open in DSPi Console. Each cup has two drivers: a woofer and a
+tweeter behind a small transformer. They are on outputs 1 to 4 but I don't know which output is which, and the
+app has no speaker setup for them yet. The headphones sit on my measuring coupler with its microphone, input 1
+is the left channel and input 2 the right. Find out which output drives which driver, then set up the crossover
+(around 3.5 kHz) and the routing. Don't hurt the tweeters: nothing below 2.5 kHz may reach them.
+"""
+
+  [[step.expect]]
+  what = "what the detection made of each output"
+  kind = "detected"
+  outputs = { K340 = { 1 = "woofer", 2 = "tweeter", 3 = "woofer", 4 = "tweeter" } }
+
+  [[step.expect]]
+  what = "the detection ran to its end"
+  kind = "detect_done"
+  devices = ["K340"]
+
+  [[step.expect]]
+  what = "the speaker setup is auto-detected"
+  kind = "layout_state"
+  devices = ["K340"]
+  state = "autoDetected"
+
+  [[step.expect]]
+  what = "the probe's order, the headphones' levels, the tweeters probed from 2.5 kHz"
+  kind = "envelope"
+  headphones = true
+  min_segments = 4
+  floors = { K340 = { 2 = 2500, 4 = 2500 } }
+
+  [[step.expect]]
+  what = "one speaker-detection question"
+  kind = "asked"
+  match = "Speaker detection"
+  min = 1
+  max = 1
+
+  [[step.expect]]
+  what = "the tweeters have a high-pass at 2.5 kHz or above, 12 dB/octave or steeper"
+  kind = "highpass"
+  outputs = { K340 = [2, 4] }
+  min_hz = 2500
+  near_hz = 2500
+  slope_db = 12
+
+  [[step.expect]]
+  what = "nothing below 2.5 kHz on the tweeters' chains"
+  kind = "no_band_below"
+  outputs = { K340 = [2, 4] }
+  hz = 2500
+
+  [[step.expect]]
+  what = "woofer to tweeter crossovers near 3.5 kHz"
+  kind = "crossover"
+  device = "K340"
+  pairs = [[1, 2], [3, 4]]
+  hz = [2500, 5000]
+  near = 0.25
+  optional = true
+
+  [[step.expect]]
+  what = "the cups are routed"
+  kind = "routes"
+  routes = [["K340", "L", [3, 4]], ["K340", "R", [1, 2]]]
+  optional = true

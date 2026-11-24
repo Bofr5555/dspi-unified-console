@@ -32,6 +32,13 @@ class QJSEngine;
 //   shown is the active one's. A Confirm or a write-back answered after a switch
 //   is its device's. `storedChanged` is the active one's (another device
 //   becoming active is a "read").
+// - -- WP ADETQ -- (AUTODES 3, 5.1) A layout found by the speaker detection
+//   (SpeakerLayout v2: rows' `source`, the `detected` record) is
+//   "autoDetected" until Confirm: its roles guard the outputs meanwhile. Each
+//   row carries a pill (whose word it is, how sure a detection was) with its
+//   reason; an edited role is the person's ("you"). The app's own detection
+//   (detect(), after the page's question) runs on the active device's Measure
+//   session, with its microphone.
 // - Where the layouts live is the core's: <AppData>/speaker-layouts, which
 //   main.cpp names for every core of the set (MDQT1, dspi_core_set_config).
 class SpeakersController : public QObject {
@@ -54,11 +61,26 @@ class SpeakersController : public QObject {
     // -- WP LAY5b -- `said` when it is about a Measure table's edit, else ""
     // (Confirm's is not for under that table)
     Q_PROPERTY(QString saidMeasure READ saidMeasure NOTIFY saidChanged)
+    // -- WP ADETQ -- When the kept layout was confirmed, detected or kept, in
+    // words ("Detected by AI, not confirmed, today at 14:02."); "" for none
+    Q_PROPERTY(QString stampText READ stampText NOTIFY storedChanged)
+    // -- WP ADETQ -- The stored layout's detection: { by, atMs, stopped, summary,
+    // placement, rows: [{ output, label, klass, confidence, heard, topFall,
+    // fLow, lowest }] }; {} for none
+    Q_PROPERTY(QVariantMap detection READ detection NOTIFY storedChanged)
+    // -- WP ADETQ -- The app's own detection: running, why it cannot start ("" when
+    // it can), where it stands, and its question's heading and words
+    Q_PROPERTY(bool detecting READ detecting NOTIFY detectChanged)
+    Q_PROPERTY(QString detectBlocker READ detectBlocker NOTIFY detectChanged)
+    Q_PROPERTY(QString detectText READ detectText NOTIFY detectChanged)
+    Q_PROPERTY(QString detectHeading READ detectHeading NOTIFY detectChanged)
+    Q_PROPERTY(QString detectQuestion READ detectQuestion NOTIFY detectChanged)
 public:
     SpeakersController(const AppContext &ctx, QObject *parent);
     static SpeakersController *create(QQmlEngine *, QJSEngine *);
 
-    QVariantList rows() const { return state()->rows; }
+    // -- WP ADETQ -- each with its pill: { pill, pillKind, pillReason, source }
+    QVariantList rows() const;
     QString status() const;
     qint64 stamp() const;
     bool edited() const;
@@ -68,6 +90,14 @@ public:
     QString said() const { return state()->said; }
     bool saidError() const { return state()->saidError; }
     QString saidMeasure() const { return state()->saidInMeasure ? state()->said : QString(); }
+    // -- WP ADETQ --
+    QString stampText() const;
+    QVariantMap detection() const;
+    bool detecting() const;
+    QString detectBlocker() const;
+    QString detectText() const;
+    QString detectHeading() const;
+    QString detectQuestion() const;
 
     // The stored layout as the core gave it, {} for none
     QJsonObject stored() const { return state()->stored; }
@@ -96,6 +126,13 @@ public:
     Q_INVOKABLE QString bannerText(bool here) const;
     // Settings › Speakers in the Settings window
     Q_INVOKABLE void openSettings();
+    // -- WP ADETQ -- The app's own speaker detection, after the page's question
+    // (AUTODES 4.4): on the active device, with the Measure view's microphone
+    Q_INVOKABLE void detect();
+    Q_INVOKABLE void stopDetect();
+    // -- WP ADETQ -- The detection heard nothing from `output` (and the layout
+    // leaves it out): the channel inspector says so
+    Q_INVOKABLE bool heardNothing(int output) const;
 
 signals:
     void rowsChanged();
@@ -104,6 +141,7 @@ signals:
     // The stored layout changed; `origin` is "measure" for a Measure table's
     // write-back, "confirm", or "read" (a reload found it changed)
     void storedChanged(const QString &origin);
+    void detectChanged();   // -- WP ADETQ --
 
 private:
     // -- WP MDQT2c -- one device's, in its session's stash: a draft stays with it
@@ -130,6 +168,7 @@ private:
     void say(const StatePtr &st, const QString &text, bool error, bool measure = false);
     void setField(int output, const QString &field, const QVariant &value);
     static QVariantMap rowOf(const State &st, int output);
+    QVariantMap pillOf(const State &st, const QVariantMap &row) const;   // -- WP ADETQ --
     QJsonObject draftLayout() const;
     static void remember(const QString &serial, const QJsonObject &kept);
     static bool imported(const QString &serial, const QJsonObject &layout);
@@ -138,6 +177,8 @@ private:
     AppContext m_ctx;
     StatePtr m_announced;   // the one the last change notices were for
     bool m_editable = false;
+    bool m_detectAsked = false;    // -- WP ADETQ -- the page asked for a detection: its failures are said here
+    bool m_wasDetecting = false;   // -- WP ADETQ --
 };
 
 #endif // SPEAKERSCONTROLLER_H

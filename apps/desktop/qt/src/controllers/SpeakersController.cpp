@@ -2,18 +2,24 @@
 // Speakers and the Measure tables' write-back (SpeakersController.h)
 #include "SpeakersController.h"
 
+#include "AiController.h"        // -- WP ADETQ --
 #include "ChannelListModel.h"
 #include "Core.h"
 #include "CoreApi.h"
 #include "CoreWorker.h"
 #include "DeviceModel.h"
+#include "DeviceSession.h"       // -- WP ADETQ --
 #include "FilesController.h"
+#include "MeasureController.h"   // -- WP ADETQ --
+#include "NoticeCenter.h"        // -- WP ADETQ --
 #include "SessionState.h"
 #include "SettingsController.h"
 #include "Snapshot.h"
 
+#include <QDateTime>   // -- WP ADETQ --
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QLocale>     // -- WP ADETQ --
 #include <QMetaObject>
 #include <QQmlEngine>
 #include <QSettings>
@@ -22,6 +28,8 @@
 namespace {
 
 const Registrar::Controller<SpeakersController> speakersController;
+// -- WP ADETQ -- a kept layout that is not confirmed, on the main screen (both layouts)
+const Registrar::Banner speakersLayoutNote("SpeakersLayoutNote", 60, Registrar::Blocking);
 const SettingsRegistry::Page speakersPage{
     "speakers", SettingsRegistry::System, 55, QT_TRANSLATE_NOOP("SettingsPages", "Speakers"), "volume-2", "SpeakersPage",
     { QT_TRANSLATE_NOOP("SettingsPages", "Speaker layout"), QT_TRANSLATE_NOOP("SettingsPages", "Roles"),
@@ -67,11 +75,14 @@ QJsonObject rowIn(const QJsonObject &layout, int output) {
 QJsonObject withRow(QJsonObject layout, int o, const QString &role, const QString &speaker, int group) {
     QJsonArray outs;
     QJsonObject row{ { QStringLiteral("output"), o }, { QStringLiteral("role"), QStringLiteral("full") },
-                     { QStringLiteral("speaker"), QString() }, { QStringLiteral("group"), 0 } };
+                     { QStringLiteral("speaker"), QString() }, { QStringLiteral("group"), 0 },
+                     { QStringLiteral("source"), QStringLiteral("user") } };   // -- WP ADETQ --
     for (const QJsonValue &v : layout.value(QLatin1String("outputs")).toArray()) {
         if (v.toObject().value(QLatin1String("output")).toInt() == o) row = v.toObject();
         else outs.append(v);
     }
+    // -- WP ADETQ -- a role the person gives is theirs (a speaker or group edit keeps the source)
+    if (!role.isEmpty() && row.value(QLatin1String("role")).toString() != role) row.insert(QStringLiteral("source"), QStringLiteral("user"));
     if (!role.isEmpty()) row.insert(QStringLiteral("role"), role);
     if (!speaker.isEmpty()) row.insert(QStringLiteral("speaker"), speaker.left(kMaxSpeakerChars));
     if (group >= 0) row.insert(QStringLiteral("group"), std::clamp(group, 0, 15));
@@ -84,6 +95,45 @@ QJsonObject withRow(QJsonObject layout, int o, const QString &role, const QStrin
     for (const QJsonValue &v : sorted) out.append(v);
     layout.insert(QStringLiteral("outputs"), out);
     return layout;
+}
+
+// -- WP ADETQ -- SpeakerLayout::state(): "confirmed", "autoDetected" (a detection
+// recorded and no row a mere suggestion), "unconfirmed"; "" for none
+QString stateOf(const QJsonObject &layout) {
+    if (layout.isEmpty()) return {};
+    if (layout.value(QLatin1String("confirmedByUser")).toBool()) return QStringLiteral("confirmed");
+    const QJsonArray outs = layout.value(QLatin1String("outputs")).toArray();
+    bool trusted = layout.value(QLatin1String("detected")).isObject() && !outs.isEmpty();
+    for (const QJsonValue &v : outs) {
+        const QString source = v.toObject().value(QLatin1String("source")).toString();
+        trusted = trusted && (source == QLatin1String("user") || source == QLatin1String("detected"));
+    }
+    return trusted ? QStringLiteral("autoDetected") : QStringLiteral("unconfirmed");
+}
+
+// -- WP ADETQ -- the detection's record of `output`, {} for none
+QJsonObject detectedIn(const QJsonObject &layout, int output) {
+    for (const QJsonValue &v : layout.value(QLatin1String("detected")).toObject().value(QLatin1String("outputs")).toArray())
+        if (v.toObject().value(QLatin1String("output")).toInt() == output) return v.toObject();
+    return {};
+}
+
+// -- WP ADETQ -- "today at 14:02", or "on 23/11/2026"
+QString stampAt(qint64 ms) {
+    const QDateTime at = QDateTime::fromMSecsSinceEpoch(ms);
+    if (at.date() == QDate::currentDate())
+        //: When a speaker layout was kept: %1 a time of day
+        return SpeakersController::tr("today at %1").arg(QLocale().toString(at.time(), QLocale::ShortFormat));
+    //: When a speaker layout was kept: %1 a date
+    return SpeakersController::tr("on %1").arg(QLocale().toString(at.date(), QLocale::ShortFormat));
+}
+
+// -- WP ADETQ -- "500 Hz", "2.5 kHz", "—" for none
+QString hzWords(const QJsonValue &v) {
+    if (!v.isDouble() || v.toDouble() <= 0) return QStringLiteral("—");
+    const double hz = v.toDouble();
+    return hz < 1000 ? SpeakersController::tr("%1 Hz").arg(qRound(hz))
+                     : SpeakersController::tr("%1 kHz").arg(QLocale().toString(hz / 1000.0, 'g', 3));
 }
 
 QByteArray setLayout(FfiCore *c, const QJsonObject &layout) {
@@ -112,6 +162,20 @@ SpeakersController::SpeakersController(const AppContext &ctx, QObject *parent) :
                 connect(files, &FilesController::importingChanged, this, [this, files] {
                     if (!files->importing()) reload();
                 });
+            // -- WP ADETQ -- whether a detection may start follows what runs
+            if (auto *measure = Registrar::instance<MeasureController>()) {
+                connect(measure, &MeasureController::runningChanged, this, [this] {
+                    const bool now = detecting();
+                    if (m_wasDetecting && !now) m_detectAsked = false;
+                    m_wasDetecting = now;
+                    emit detectChanged();
+                });
+                connect(measure, &MeasureController::deviceChanged, this, &SpeakersController::detectChanged);
+                // Why the page's detection did not start, or stopped: said under its buttons
+                connect(measure, &MeasureController::errorChanged, this, [this, measure] {
+                    if (m_detectAsked && !measure->error().isEmpty()) say(state(), measure->error(), true);
+                });
+            }
         },
         Qt::QueuedConnection);
 }
@@ -202,6 +266,8 @@ QString SpeakersController::status() const {
     if (st->serial.isEmpty()) return QStringLiteral("disconnected");
     if (st->stored.isEmpty()) return QStringLiteral("none");
     if (st->stored.value(QLatin1String("confirmedByUser")).toBool()) return QStringLiteral("confirmed");
+    // -- WP ADETQ -- the detection wrote it: not an import
+    if (stateOf(st->stored) == QLatin1String("autoDetected")) return QStringLiteral("autoDetected");
     return imported(st->serial, st->stored) ? QStringLiteral("imported") : QStringLiteral("unconfirmed");
 }
 
@@ -242,7 +308,9 @@ void SpeakersController::setStored(const StatePtr &st, const QJsonObject &layout
     const bool keepDraft = st->touched && origin != QLatin1String("confirm");
     st->stored = layout;
     if (!keepDraft) rebuild(st);
+    else if (shown(st)) emit rowsChanged();   // -- WP ADETQ -- the pills are judged against it
     if (shown(st)) emit storedChanged(origin);
+    if (shown(st)) emit detectChanged();      // -- WP ADETQ -- a confirmed layout is not detected over
 }
 
 void SpeakersController::rebuild(const StatePtr &st) {
@@ -264,7 +332,8 @@ QVariantMap SpeakersController::rowOf(const State &st, int output) {
                         { QStringLiteral("included"), !r.isEmpty() },
                         { QStringLiteral("role"), r.isEmpty() ? QStringLiteral("full") : str(r, "role") },
                         { QStringLiteral("speaker"), str(r, "speaker") },
-                        { QStringLiteral("group"), r.value(QLatin1String("group")).toInt() } };
+                        { QStringLiteral("group"), r.value(QLatin1String("group")).toInt() },
+                        { QStringLiteral("source"), str(r, "source") } };   // -- WP ADETQ --
 }
 
 QVariantMap SpeakersController::rowOf(int output) const { return rowOf(*state(), output); }
@@ -282,6 +351,9 @@ void SpeakersController::setField(int output, const QString &field, const QVaria
         if (m.value(QStringLiteral("output")).toInt() != output) continue;
         if (m.value(field) == value) return;
         m.insert(field, value);
+        // -- WP ADETQ -- a role (or an output taken in) the person gives is theirs
+        if (field == QLatin1String("role") || (field == QLatin1String("included") && value.toBool()))
+            m.insert(QStringLiteral("source"), QStringLiteral("user"));
         v = m;
         st->touched = true;
         emit rowsChanged();
@@ -301,12 +373,18 @@ QJsonObject SpeakersController::draftLayout() const {
     for (const QVariant &v : std::as_const(state()->rows)) {
         const QVariantMap m = v.toMap();
         if (!m.value(QStringLiteral("included")).toBool()) continue;
-        outs.append(QJsonObject{ { QStringLiteral("output"), m.value(QStringLiteral("output")).toInt() },
-                                 { QStringLiteral("role"), m.value(QStringLiteral("role")).toString() },
-                                 { QStringLiteral("speaker"), m.value(QStringLiteral("speaker")).toString() },
-                                 { QStringLiteral("group"), m.value(QStringLiteral("group")).toInt() } });
+        QJsonObject row{ { QStringLiteral("output"), m.value(QStringLiteral("output")).toInt() },
+                         { QStringLiteral("role"), m.value(QStringLiteral("role")).toString() },
+                         { QStringLiteral("speaker"), m.value(QStringLiteral("speaker")).toString() },
+                         { QStringLiteral("group"), m.value(QStringLiteral("group")).toInt() } };
+        // -- WP ADETQ -- whose word each row is, and the detection's record, kept
+        const QString source = m.value(QStringLiteral("source")).toString();
+        row.insert(QStringLiteral("source"), source.isEmpty() ? QStringLiteral("user") : source);
+        outs.append(row);
     }
-    return QJsonObject{ { QStringLiteral("outputs"), outs } };
+    QJsonObject layout{ { QStringLiteral("outputs"), outs } };
+    if (const QJsonValue d = state()->stored.value(QLatin1String("detected")); d.isObject()) layout.insert(QStringLiteral("detected"), d);
+    return layout;
 }
 
 bool SpeakersController::edited() const {
@@ -327,7 +405,8 @@ void SpeakersController::useSuggestion() {
                                  { QStringLiteral("included"), !r.isEmpty() },
                                  { QStringLiteral("role"), r.isEmpty() ? QStringLiteral("full") : str(r, "role") },
                                  { QStringLiteral("speaker"), str(r, "speaker") },
-                                 { QStringLiteral("group"), r.value(QLatin1String("group")).toInt() } });
+                                 { QStringLiteral("group"), r.value(QLatin1String("group")).toInt() },
+                                 { QStringLiteral("source"), str(r, "source") } });   // -- WP ADETQ --
     }
     st->rows = rows;
     st->touched = true;
@@ -400,6 +479,27 @@ void SpeakersController::writeBack(int output, const QString &role, const QStrin
 
 QString SpeakersController::bannerText(bool here) const {
     const QString s = status();
+    // -- WP ADETQ -- (AUTODES 5.1) detected, not confirmed: its roles guard the outputs meanwhile
+    if (s == QLatin1String("autoDetected")) {
+        const QJsonObject d = state()->stored.value(QLatin1String("detected")).toObject();
+        const QString who = str(d, "by").trimmed();
+        if (!here)
+            return who.isEmpty() ? tr("Your speaker layout was detected and is not confirmed. Check it in Settings › Speakers.")
+                                 : tr("Your speaker layout was detected by AI and is not confirmed. Check it in Settings › Speakers.");
+        const qint64 at = d.value(QLatin1String("atMs")).toVariant().toLongLong();
+        const QString when = at > 0 ? QStringLiteral(" ") + stampAt(at) : QString();
+        const QString placement = str(d, "placement");
+        const QString where = placement == QLatin1String("nearField")    ? tr("microphone close to each driver")
+                              : placement == QLatin1String("headphones") ? tr("headphones on a coupler")
+                                                                         : tr("microphone at the listening position");
+        return who.isEmpty()
+                   //: %1 when ("today at 14:02"), with a space before it, or ""; %2 where the microphone was
+                   ? tr("Detected, not confirmed: the speaker detection probed this DSPi's outputs%1 (%2). Check each role, "
+                        "correct what is wrong, then confirm.").arg(when, where)
+                   //: %1 the AI agent's name, %2 when ("today at 14:02"), with a space before it, or ""; %3 where the microphone was
+                   : tr("Detected by AI, not confirmed: %1 probed this DSPi's outputs%2 (%3). Check each role, correct what "
+                        "is wrong, then confirm.").arg(who, when, where);
+    }
     // -- WP MCP5 -- (review RB C4) "imported" is any unconfirmed layout this console
     // did not write: a configuration file or another app (never an agent: no tool
     // writes it), so the words do not claim a file
@@ -429,4 +529,250 @@ void SpeakersController::say(const StatePtr &st, const QString &text, bool error
     st->saidError = error;
     st->saidInMeasure = measure;
     if (shown(st)) emit saidChanged();
+}
+
+// ---- -- WP ADETQ -- The speaker detection's part (AUTODES 2, 3, 5.1) ------------------
+
+QVariantList SpeakersController::rows() const {
+    const StatePtr st = state();
+    QVariantList out;
+    out.reserve(st->rows.size());
+    for (const QVariant &v : std::as_const(st->rows)) {
+        QVariantMap row = v.toMap();
+        row.insert(pillOf(*st, row));
+        out.append(row);
+    }
+    return out;
+}
+
+// The web's pillOf (ADETW): a row left out says why (nothing heard, off); a row
+// says whose word it is, and how sure the detection was. None on a confirmed
+// layout's rows as kept, or with no layout and no detection.
+QVariantMap SpeakersController::pillOf(const State &st, const QVariantMap &row) const {
+    enum Kind { None, Detected, Unsure, Uncertain, Unknown, Nothing, Off, You, Suggested };
+    const int o = row.value(QStringLiteral("output")).toInt();
+    const QJsonObject det = detectedIn(st.stored, o);
+    const QString klass = str(det, "class");
+    QString note = str(det, "note");
+    Kind kind = None;
+    if (!row.value(QStringLiteral("included")).toBool()) {
+        if (klass == QLatin1String("nothing")) kind = Nothing;
+        else if (klass == QLatin1String("off")) kind = Off;
+    } else {
+        const QString source = row.value(QStringLiteral("source")).toString();
+        const QJsonObject kept = rowIn(st.stored, o);
+        const bool unchanged = !kept.isEmpty() && str(kept, "role") == row.value(QStringLiteral("role")).toString() &&
+                               str(kept, "source") == source;
+        if (st.stored.value(QLatin1String("confirmedByUser")).toBool() && unchanged) kind = None;
+        else if (source == QLatin1String("user")) kind = You;
+        else if (source == QLatin1String("detected") && !det.isEmpty()) {
+            const QString confidence = str(det, "confidence");
+            kind = klass == QLatin1String("unknown")    ? Unknown
+                   : confidence == QLatin1String("high")   ? Detected
+                   : confidence == QLatin1String("medium") ? Unsure
+                                                           : Uncertain;
+        } else if (!st.stored.isEmpty() || st.stored.value(QLatin1String("detected")).isObject()) kind = Suggested;
+    }
+    if (kind == None) return { { QStringLiteral("pill"), QString() }, { QStringLiteral("pillKind"), QString() }, { QStringLiteral("pillReason"), QString() } };
+    if (note.isEmpty() && kind == Nothing) note = QStringLiteral("detect.nothing");
+    if (note.isEmpty() && kind == Off) note = QStringLiteral("detect.off");
+    if (note.isEmpty() && kind == Unknown) note = QStringLiteral("detect.unknown");
+    static const char *const words[] = { "",
+                                         QT_TR_NOOP("detected"),
+                                         QT_TR_NOOP("detected?"),
+                                         QT_TR_NOOP("uncertain"),
+                                         QT_TR_NOOP("unknown"),
+                                         QT_TR_NOOP("nothing heard"),
+                                         QT_TR_NOOP("off, not probed"),
+                                         QT_TR_NOOP("you"),
+                                         QT_TR_NOOP("suggested") };
+    static const char *const kinds[] = { "", "detected", "detectedUnsure", "uncertain", "unknown", "nothing", "off", "you", "suggested" };
+    // When the notice table lacks the reason
+    static const char *const reasons[] = {
+        "",
+        QT_TR_NOOP("Found by the speaker detection."),
+        QT_TR_NOOP("Found by the speaker detection, not sure: correct it if it is wrong."),
+        QT_TR_NOOP("The detection was not sure; it is treated as a tweeter to be safe."),
+        QT_TR_NOOP("The probe did not finish this output; it is treated as a tweeter until you set its role."),
+        QT_TR_NOOP("Nothing reached the microphone from this output: nothing is wired here, or it does not reach the "
+                   "microphone. Left out of the layout."),
+        QT_TR_NOOP("The output was off or muted, so the detection did not probe it."),
+        QT_TR_NOOP("Set or confirmed by you."),
+        QT_TR_NOOP("Suggested from the filters and the routing: nobody's word yet."),
+    };
+    QString reason = tr(reasons[kind]);
+    if (!note.isEmpty())
+        if (auto *notices = Registrar::instance<NoticeCenter>()) reason = notices->sentence(note, reason);
+    return { { QStringLiteral("pill"), tr(words[kind]) },
+             { QStringLiteral("pillKind"), QString::fromLatin1(kinds[kind]) },
+             { QStringLiteral("pillReason"), reason } };
+}
+
+QString SpeakersController::stampText() const {
+    const QJsonObject &l = state()->stored;
+    if (l.isEmpty()) return {};
+    if (stateOf(l) == QLatin1String("autoDetected")) {
+        const QJsonObject d = l.value(QLatin1String("detected")).toObject();
+        const qint64 at = d.value(QLatin1String("atMs")).toVariant().toLongLong();
+        const bool ai = !str(d, "by").trimmed().isEmpty();
+        if (at <= 0) return ai ? tr("Detected by AI, not confirmed.") : tr("Detected, not confirmed.");
+        //: %1 when ("today at 14:02", "on 23/11/2026")
+        return ai ? tr("Detected by AI, not confirmed, %1.").arg(stampAt(at)) : tr("Detected, not confirmed, %1.").arg(stampAt(at));
+    }
+    const qint64 at = stampOf(l);
+    if (at <= 0) return {};
+    //: %1 when ("today at 14:02", "on 23/11/2026")
+    return l.value(QLatin1String("confirmedByUser")).toBool() ? tr("Confirmed %1.").arg(stampAt(at))
+                                                               : tr("Kept, not confirmed, %1.").arg(stampAt(at));
+}
+
+QVariantMap SpeakersController::detection() const {
+    const StatePtr st = state();
+    const QJsonObject d = st->stored.value(QLatin1String("detected")).toObject();
+    if (d.isEmpty()) return {};
+    static const QHash<QString, const char *> classes{
+        { QStringLiteral("tweeter"), QT_TR_NOOP("Tweeter") },    { QStringLiteral("midrange"), QT_TR_NOOP("Midrange") },
+        { QStringLiteral("woofer"), QT_TR_NOOP("Woofer") },      { QStringLiteral("sub"), QT_TR_NOOP("Subwoofer") },
+        { QStringLiteral("fullRange"), QT_TR_NOOP("Full range") }, { QStringLiteral("nothing"), QT_TR_NOOP("Nothing heard") },
+        { QStringLiteral("unknown"), QT_TR_NOOP("Unknown, treated as a tweeter") },
+        { QStringLiteral("off"), QT_TR_NOOP("Off, not probed") },
+    };
+    static const QHash<QString, const char *> heard{
+        { QStringLiteral("top"), QT_TR_NOOP("4–16 kHz") },
+        { QStringLiteral("aboveFloor"), QT_TR_NOOP("above the floor") },
+        { QStringLiteral("belowFloor"), QT_TR_NOOP("below the floor") },
+        { QStringLiteral("never"), QT_TR_NOOP("never") },
+    };
+    QVariantList rows;
+    for (const QJsonValue &v : d.value(QLatin1String("outputs")).toArray()) {
+        const QJsonObject o = v.toObject();
+        const int n = o.value(QLatin1String("output")).toInt();
+        QString label = tr("Out %1").arg(n + 1);
+        for (const QVariant &out : std::as_const(st->outputs))
+            if (out.toMap().value(QStringLiteral("output")).toInt() == n) label = out.toMap().value(QStringLiteral("label")).toString();
+        const QString klass = str(o, "class");
+        const char *cw = classes.value(klass);
+        QString words = cw ? tr(cw) : klass;
+        const bool sure = str(o, "confidence") == QLatin1String("high");
+        if (!sure && klass != QLatin1String("nothing") && klass != QLatin1String("off") && klass != QLatin1String("unknown"))
+            words += QLatin1Char('?');
+        const char *hw = heard.value(str(o, "heard"));
+        const QJsonValue fall = o.value(QLatin1String("topFallDb"));
+        rows.append(QVariantMap{
+            { QStringLiteral("output"), n },
+            { QStringLiteral("label"), label },
+            { QStringLiteral("klass"), words },
+            { QStringLiteral("confidence"), str(o, "confidence") },
+            { QStringLiteral("heard"), klass == QLatin1String("off") ? tr("not probed") : hw ? tr(hw) : QString() },
+            //: A level difference in dB, one decimal
+            { QStringLiteral("topFall"), fall.isDouble() ? tr("%1 dB").arg(QLocale().toString(fall.toDouble(), 'f', 1)) : QStringLiteral("—") },
+            { QStringLiteral("fLow"), hzWords(o.value(QLatin1String("fLowHz"))) },
+            { QStringLiteral("lowest"), hzWords(o.value(QLatin1String("lowestHz"))) },
+        });
+    }
+    return { { QStringLiteral("by"), str(d, "by").trimmed() },
+             { QStringLiteral("atMs"), d.value(QLatin1String("atMs")).toDouble() },
+             { QStringLiteral("stopped"), d.value(QLatin1String("stopped")).toBool() },
+             { QStringLiteral("summary"), str(d, "summary") },
+             { QStringLiteral("placement"), str(d, "placement") },
+             { QStringLiteral("rows"), rows } };
+}
+
+bool SpeakersController::detecting() const {
+    const auto *measure = Registrar::instance<MeasureController>();
+    return measure && measure->session()->detecting();
+}
+
+QString SpeakersController::detectBlocker() const {
+    if (state()->serial.isEmpty()) return tr("No device connected.");
+    if (!m_editable) return tr("This connection may not change the DSPi.");
+    // (AUTODES owner question 7: not over a confirmed layout in v1)
+    if (status() == QLatin1String("confirmed"))
+        return tr("Your speaker layout is confirmed, so the speakers are not detected over it. Correct the roles yourself here.");
+    const auto *measure = Registrar::instance<MeasureController>();
+    return measure ? measure->session()->detectBlocker() : tr("The Measure view is not available.");
+}
+
+QString SpeakersController::detectText() const {
+    const auto *measure = Registrar::instance<MeasureController>();
+    return measure ? measure->session()->detectText() : QString();
+}
+
+QString SpeakersController::detectHeading() const {
+    const DeviceSession *s = m_ctx.activeSession();
+    //: %1 a device's name
+    return tr("Detect the speakers on %1?").arg(s ? s->title() : tr("this DSPi"));
+}
+
+// "Out 1–2, 5": as dspi-mcp's risk text names outputs (outs_range_words)
+static QString outsWords(const QList<int> &outputs) {
+    QStringList runs;
+    for (qsizetype i = 0; i < outputs.size();) {
+        qsizetype j = i;
+        while (j + 1 < outputs.size() && outputs[j + 1] == outputs[j] + 1) ++j;
+        runs << (i == j ? QString::number(outputs[i] + 1)
+                        : QStringLiteral("%1–%2").arg(outputs[i] + 1).arg(outputs[j] + 1));
+        i = j + 1;
+    }
+    //: Outputs by number: %1 "1–2, 5"
+    return SpeakersController::tr("Out %1").arg(runs.join(QStringLiteral(", ")));
+}
+
+// AUTODES 4.1 without the agent's and the grant's sentences (4.4); the bullet
+// in the words of the agent's question (dspi-mcp's detect risk)
+QString SpeakersController::detectQuestion() const {
+    const DeviceSession *s = m_ctx.activeSession();
+    const QString device = s ? s->title() : tr("this DSPi");
+    QList<int> on, off;
+    ChannelListModel *ch = m_ctx.device->channels();
+    for (int r = 0; r < ch->rowCount(); ++r) {
+        if (ch->get(r, QStringLiteral("kind")).toString() != QLatin1String("output")) continue;
+        (ch->get(r, QStringLiteral("outputEnabled")).toBool() ? on : off) << ch->get(r, QStringLiteral("number")).toInt();
+    }
+    const auto *measure = Registrar::instance<MeasureController>();
+    const QString placement = measure ? measure->session()->placement() : QString();
+    const bool headphones = placement == QLatin1String("headphones");
+    const QString from = headphones ? tr("from the headphones on the coupler")
+                         : placement == QLatin1String("nearField") ? tr("from the microphone close to each driver")
+                                                                   : tr("from the microphone at the listening position");
+    const QString list = on.isEmpty() ? tr("its outputs") : outsWords(on);
+    //: %1 a device's name, %2 its outputs ("Out 1–6"), %3 where the microphone is ("from the microphone at the listening position")
+    QStringList parts{ tr("This finds out what is wired to %1's outputs (%2) by playing quiet test sweeps on each output in turn, %3.")
+                           .arg(device, list, from) };
+    const QString offWords = off.isEmpty() ? QString()
+                             : off.size() == 1
+                                 //: %1 an output that is off ("Out 3")
+                                 ? tr(" (%1 is off and is not probed)").arg(outsWords(off))
+                                 //: %1 outputs that are off ("Out 3–8")
+                                 : tr(" (%1 are off and are not probed)").arg(outsWords(off));
+    //: %1 the outputs ("Out 1–2"), %2 those that are off, with a space before them, or ""; %3 and %4 levels ("−24 dBFS", "−50 dBFS")
+    parts << QStringLiteral("• ") +
+                 tr("Speaker detection: %1%2. Each output is first played only above 1 kHz, at most %3. Only an output whose "
+                    "response says it is not a tweeter is played lower, and then at most %4. Whatever cannot be told apart "
+                    "is treated as a tweeter.")
+                     .arg(list, offWords, headphones ? QStringLiteral("−36 dBFS") : QStringLiteral("−24 dBFS"),
+                          headphones ? QStringLiteral("−60 dBFS") : QStringLiteral("−50 dBFS"));
+    parts << QStringLiteral("⚠ ") + AiController::detectWarning();
+    parts << tr("Nothing has played yet. Sound cannot be taken back once it plays; Stop ends it.");
+    return parts.join(QStringLiteral("\n\n"));
+}
+
+void SpeakersController::detect() {
+    if (const QString why = detectBlocker(); !why.isEmpty()) {
+        say(state(), why, true);
+        return;
+    }
+    say(state(), QString(), false);
+    m_detectAsked = true;
+    if (auto *measure = Registrar::instance<MeasureController>()) measure->session()->startDetect();
+    emit detectChanged();
+}
+
+void SpeakersController::stopDetect() {
+    if (auto *measure = Registrar::instance<MeasureController>(); measure && measure->session()->detecting()) measure->session()->stop();
+}
+
+bool SpeakersController::heardNothing(int output) const {
+    const StatePtr st = state();
+    return str(detectedIn(st->stored, output), "class") == QLatin1String("nothing") && rowIn(st->stored, output).isEmpty();
 }

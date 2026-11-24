@@ -175,7 +175,8 @@ const MCP2C_TOOLS: &[&str] = &[
 
 /// The agent-proof list (MPLAN 3.2): words no tool name may hold.
 #[cfg(feature = "link")]
-const AGENT_PROOF: &[&str] = &[
+pub(crate) const AGENT_PROOF: &[&str] = &[
+    // -- WP ADET1 -- pub(crate)
     "flash",
     "bootloader",
     "picoboot",

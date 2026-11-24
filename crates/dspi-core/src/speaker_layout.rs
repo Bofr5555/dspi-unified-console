@@ -38,6 +38,9 @@ pub const META_BLOCK: &str = "speakerLayout";
 const FILE: &str = "speaker_layout.json";
 /// The `kind` a layout file carries.
 const KIND: &str = "speakerLayout";
+/// The version a layout file is written with (-- WP ADET0 -- 2: rows' sources
+/// and the detection; version 1 files still load).
+const VERSION: u32 = 2;
 /// A layout file larger than this is not one.
 #[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), allow(dead_code))]
 const MAX_BYTES: usize = 64 * 1024;
@@ -59,11 +62,16 @@ pub struct SpeakerLayoutOutput {
     pub speaker: String,
     /// Its alignment group: the outputs of one speaker share one.
     pub group: u8,
+    // -- WP ADET0 --
+    /// Where its role comes from: the user, the speaker detection, or a
+    /// suggestion (a version 1 file's rows are the user's when the layout is
+    /// confirmed, else suggestions).
+    pub source: RoleSource,
 }
 
 /// Which output drives what, for one device.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct SpeakerLayout {
     /// The device's serial (set by the core; "" in an exported copy).
@@ -77,12 +85,213 @@ pub struct SpeakerLayout {
     pub updated_ms: i64,
     /// Remarks in words (a proposal's: outputs left out and why).
     pub notes: Vec<String>,
+    // -- WP ADET0 --
+    /// The last speaker detection on this device, if one ran: its evidence
+    /// per output. With every row `detected` or `user` it makes the layout
+    /// [`LayoutState::AutoDetected`].
+    #[cfg_attr(feature = "uniffi", uniffi(default = None))]
+    pub detected: Option<Detection>,
+}
+
+// -- WP ADET0 -- the speaker detection's part of the layout (AUTODES 3.1)
+
+/// Where a row's role comes from.
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum RoleSource {
+    /// The user set or confirmed it.
+    User,
+    /// The speaker detection found it.
+    Detected,
+    /// A suggestion (the filters' inference, an import), nobody's word.
+    #[default]
+    Suggested,
+}
+
+/// How far the layout can be trusted ([`SpeakerLayout::state`]).
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum LayoutState {
+    /// Nobody's word: no roles reach the safety rules.
+    #[default]
+    Unconfirmed,
+    /// Found by the speaker detection, not yet confirmed: its roles guard the
+    /// outputs as a confirmed layout's do.
+    AutoDetected,
+    /// The user confirmed it.
+    Confirmed,
+}
+
+/// What the speaker detection made of an output.
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum DetectClass {
+    /// A tweeter, or anything that plays flat to 20 kHz and is not probed
+    /// lower (a full-range driver, a dome midrange): role high.
+    Tweeter,
+    /// Rolls off between 70 and 200 Hz: role mid.
+    Midrange,
+    /// Plays below 70 Hz and above 1 kHz: role low.
+    Woofer,
+    /// Plays below 70 Hz, 20 dB or more quieter at 1 to 2 kHz: role sub.
+    Sub,
+    /// A full-range driver: the user's correction only, never detected.
+    FullRange,
+    /// Nothing reached the microphone: left out of the layout.
+    Nothing,
+    /// The probe did not finish it (stopped, the microphone did not follow,
+    /// the settings changed): role high.
+    #[default]
+    Unknown,
+    /// The output was off or muted: not probed.
+    Off,
+}
+
+/// How sure the detection is of a class.
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum DetectConfidence {
+    /// The evidence is plain.
+    High,
+    /// Probably ("Tweeter?": flat to 20 kHz, could be a full-range driver).
+    Medium,
+    /// Uncertain, treated as the most protective class.
+    #[default]
+    Low,
+}
+
+/// Where the detection first heard an output.
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum DetectHeard {
+    /// In the presence band, 4 to 16 kHz (stage A).
+    Top,
+    /// Between the floor and 4 kHz (stage A2).
+    AboveFloor,
+    /// Only by the shaped probe below the floor (stage C1).
+    BelowFloor,
+    /// Nowhere.
+    #[default]
+    Never,
+}
+
+/// One output's detection and its evidence.
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct DetectedOutput {
+    /// The output, 0-based.
+    pub output: u8,
+    /// What it was found to be.
+    pub class: DetectClass,
+    /// How sure.
+    pub confidence: DetectConfidence,
+    /// The role it was given; `None` for `nothing` and `off`.
+    pub role: Option<MeasureRole>,
+    /// Its floor, Hz: nothing below it but the shaped probe.
+    pub floor_hz: f32,
+    /// Where it was first heard.
+    pub heard: DetectHeard,
+    /// The level it was heard at in the presence ramp, peak dBFS.
+    pub level_dbfs: Option<f32>,
+    /// The mean level 1.5 to 3 kHz less the mean 10 to 16 kHz, dB.
+    pub top_fall_db: Option<f32>,
+    /// How far the response has turned down in the half octave above the
+    /// floor, dB below its loudest point.
+    pub low_turn_db: Option<f32>,
+    /// Where the response is 6 dB under its loudest point, Hz; `None` when
+    /// not reached (or not looked for).
+    pub f_low_hz: Option<f32>,
+    /// The lowest frequency any stimulus played on it, Hz.
+    pub lowest_hz: Option<f32>,
+    /// The descent's segment it stopped at, Hz.
+    pub stopped_at_hz: Option<f32>,
+    /// A notice key (`detect.nothing`, `detect.off`, `detect.unknown`, ...).
+    pub note: Option<String>,
+    /// When it was probed, ms since the Unix epoch.
+    pub probed_ms: i64,
+}
+
+/// A speaker detection's record in the layout.
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Detection {
+    /// When it started, ms since the Unix epoch.
+    pub at_ms: i64,
+    /// Who ran it: an agent's label, "" for the app (the user).
+    pub by: String,
+    /// Where the microphone was.
+    pub placement: crate::measure::MeasurePlacement,
+    /// The floor the caller asked for, Hz (each output's own may be higher).
+    pub floor_hz: f32,
+    /// The microphone's name ("" uncalibrated).
+    pub microphone: String,
+    /// Each output it was asked about, probed or not.
+    pub outputs: Vec<DetectedOutput>,
+    /// It was stopped before every output was probed.
+    pub stopped: bool,
+    /// The result in words.
+    pub summary: String,
+    /// The device's output count when it ran: another count invalidates it.
+    pub device_outputs: u8,
 }
 
 impl SpeakerLayout {
     /// The output's row, if the layout has one.
     pub fn output(&self, output: u8) -> Option<&SpeakerLayoutOutput> {
         self.outputs.iter().find(|o| o.output == output)
+    }
+
+    // -- WP ADET0 --
+    /// How far it can be trusted: confirmed by the user; else auto-detected
+    /// when a detection is recorded and no row is a mere suggestion; else
+    /// unconfirmed.
+    pub fn state(&self) -> LayoutState {
+        if self.confirmed_by_user {
+            LayoutState::Confirmed
+        } else if self.detected.is_some()
+            && !self.outputs.is_empty()
+            && self
+                .outputs
+                .iter()
+                .all(|o| o.source != RoleSource::Suggested)
+        {
+            LayoutState::AutoDetected
+        } else {
+            LayoutState::Unconfirmed
+        }
+    }
+
+    // -- WP ADET0 --
+    /// The detection's record of `output`, if one.
+    pub fn detected_output(&self, output: u8) -> Option<&DetectedOutput> {
+        self.detected
+            .as_ref()
+            .and_then(|d| d.outputs.iter().find(|o| o.output == output))
+    }
+
+    // -- WP ADET0 --
+    /// A detection made when the device had another output count no longer
+    /// stands: its rows read as suggestions (kept, not trusted).
+    pub(crate) fn checked_against(mut self, outputs: u8) -> Self {
+        if self
+            .detected
+            .as_ref()
+            .is_some_and(|d| d.device_outputs != outputs)
+        {
+            for o in &mut self.outputs {
+                if o.source == RoleSource::Detected {
+                    o.source = RoleSource::Suggested;
+                }
+            }
+        }
+        self
     }
 
     /// Checked and put in order for `serial` on a device of `outputs`
@@ -118,24 +327,37 @@ impl SpeakerLayout {
 
     /// The layout as a file's document.
     #[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), allow(dead_code))]
-    fn to_document(&self) -> Value {
+    pub(crate) fn to_document(&self) -> Value {
         let mut v = serde_json::to_value(self).unwrap_or_else(|_| json!({}));
         if let Some(o) = v.as_object_mut() {
             o.insert("kind".into(), json!(KIND));
-            o.insert("version".into(), json!(1));
+            o.insert("version".into(), json!(VERSION)); // -- WP ADET0 --
         }
         v
     }
 
     /// A layout from a file's document or an export's `meta.speakerLayout`.
-    fn from_value(v: &Value) -> std::result::Result<Self, String> {
+    pub(crate) fn from_value(v: &Value) -> std::result::Result<Self, String> {
         let o = v.as_object().ok_or("not a JSON object")?;
         if let Some(k) = o.get("kind")
             && k.as_str() != Some(KIND)
         {
             return Err(format!("not a speaker layout (kind {k})"));
         }
-        serde_json::from_value(v.clone()).map_err(|e| e.to_string())
+        let mut l: SpeakerLayout = serde_json::from_value(v.clone()).map_err(|e| e.to_string())?;
+        // -- WP ADET0 -- a version 1 row has no source: the user's in a
+        // confirmed layout, else a suggestion
+        let rows = o.get("outputs").and_then(Value::as_array);
+        for (row, value) in l.outputs.iter_mut().zip(rows.into_iter().flatten()) {
+            if value.get("source").is_none() {
+                row.source = if l.confirmed_by_user {
+                    RoleSource::User
+                } else {
+                    RoleSource::Suggested
+                };
+            }
+        }
+        Ok(l)
     }
 }
 
@@ -178,6 +400,9 @@ impl LayoutSlot {
 
     /// Keep `layout` for its serial.
     pub(crate) fn save(&self, layout: &SpeakerLayout) -> Result<()> {
+        // -- WP ADETS -- the function test's oracle judges each output by it
+        #[cfg(feature = "sim-scenario")]
+        crate::measure_sim::scenario::layout_saved(layout);
         let mut store = self.store();
         #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
         if let Some(dir) = store.dir.clone() {
@@ -297,8 +522,18 @@ impl DspiCore {
     ///
     /// Errors: [`DspiError::Disconnected`] with no device.
     pub fn speaker_layout(&self) -> Result<Option<SpeakerLayout>> {
-        let serial = self.lock().conn()?.serial.clone();
-        Ok(self.speaker_layouts.load(&serial))
+        let (serial, outputs) = {
+            let mut inner = self.lock();
+            (
+                inner.conn()?.serial.clone(),
+                inner.state.num_output_channels,
+            )
+        };
+        // -- WP ADET0 -- a detection of another output count no longer stands
+        Ok(self
+            .speaker_layouts
+            .load(&serial)
+            .map(|l| l.checked_against(outputs)))
     }
 
     /// What the device's filters and routing suggest (the inference the
@@ -321,11 +556,13 @@ impl DspiCore {
                     role: o.role,
                     speaker: o.speaker,
                     group: o.group,
+                    source: RoleSource::Suggested, // -- WP ADET0 --
                 })
                 .collect(),
             confirmed_by_user: false,
             updated_ms: 0,
             notes: m.notes,
+            detected: None, // -- WP ADET0 --
         })
     }
 
@@ -350,6 +587,23 @@ impl DspiCore {
         };
         let mut layout = layout.normalised(&serial, outputs)?;
         layout.updated_ms = crate::events::now_ms();
+        // -- WP ADET0 -- a confirmed row is the user's word
+        if layout.confirmed_by_user {
+            for o in &mut layout.outputs {
+                if o.source == RoleSource::Suggested {
+                    o.source = RoleSource::User;
+                }
+            }
+        }
+        let before = self.speaker_layouts.load(&serial);
+        // -- WP ADETS -- (AUTODES 3.1) a detected row the user gave another role is
+        // the user's word from now on; the detection stands for the other rows
+        for o in &mut layout.outputs {
+            let was = before.as_ref().and_then(|b| b.output(o.output));
+            if o.source == RoleSource::Detected && was.is_some_and(|w| w.role != o.role) {
+                o.source = RoleSource::User;
+            }
+        }
         self.speaker_layouts.save(&layout)?;
         // -- WP AIVIS -- an agent learns that its roles have moved
         let act = if layout.confirmed_by_user {
@@ -357,33 +611,56 @@ impl DspiCore {
         } else {
             "speakers"
         };
-        crate::actor::user::did(self, act);
+        // -- WP ADET0 -- with what moved, in numbers and role words
+        crate::actor::user::did_with(self, act, &role_changes(before.as_ref(), &layout));
         Ok(layout)
     }
 }
 
 impl DspiCore {
-    /// The open device's layout if the user confirmed it, else the
+    // -- WP ADET0 -- `confirmed_speaker_layout` and `confirmed_layout_now`
+    // (ROLE0, RCFIX) became the trusted layout's calls below: a detected
+    // layout's roles guard the outputs as a confirmed one's do.
+
+    // -- WP ADET0 --
+    /// The open device's layout if its roles can be trusted (confirmed by the
+    /// user, or found by the speaker detection); `None` otherwise.
+    pub(crate) fn trusted_layout_now(&self) -> Option<SpeakerLayout> {
+        self.speaker_layout()
+            .ok()
+            .flatten()
+            .filter(|l| l.state() != LayoutState::Unconfirmed)
+    }
+
+    // -- WP ADET0 --
+    /// The open device's layout if its roles can be trusted, else the
     /// `measure.layout_unconfirmed` refusal.
-    pub(crate) fn confirmed_speaker_layout(&self) -> Result<SpeakerLayout> {
+    pub(crate) fn trusted_speaker_layout(&self) -> Result<SpeakerLayout> {
         self.speaker_layout()?
-            .filter(|l| l.confirmed_by_user)
+            .filter(|l| l.state() != LayoutState::Unconfirmed)
             .ok_or_else(|| {
                 invalid(format!(
-                    "{NOTICE_LAYOUT_UNCONFIRMED}: the speaker layout is not confirmed: ask the \
-                     user to confirm it in Settings › Speakers"
+                    "{NOTICE_LAYOUT_UNCONFIRMED}: the speaker layout is neither confirmed nor \
+                     detected: ask the user to confirm it in Settings › Speakers, or detect \
+                     the speakers"
                 ))
             })
     }
 
-    // -- WP RCFIX --
-    /// The open device's layout if the user confirmed it; `None` without one
-    /// or with no device.
-    pub(crate) fn confirmed_layout_now(&self) -> Option<SpeakerLayout> {
-        self.speaker_layout()
-            .ok()
-            .flatten()
-            .filter(|l| l.confirmed_by_user)
+    // -- WP ADET0 --
+    /// Keep a layout the speaker detection wrote (not the user's act: no
+    /// `user_only`, no `did`).
+    pub(crate) fn speaker_layout_keep_detected(&self, layout: &SpeakerLayout) -> Result<()> {
+        let (serial, outputs) = {
+            let mut inner = self.lock();
+            (
+                inner.conn()?.serial.clone(),
+                inner.state.num_output_channels,
+            )
+        };
+        let mut layout = layout.clone().normalised(&serial, outputs)?;
+        layout.updated_ms = crate::events::now_ms();
+        self.speaker_layouts.save(&layout)
     }
 
     /// `text`, an export, with the open device's layout in
@@ -438,6 +715,11 @@ impl DspiCore {
         }
         layout.notes.clear();
         layout.confirmed_by_user = false;
+        // -- WP ADET0 -- another speaker's detection is nobody's word here
+        layout.detected = None;
+        for o in &mut layout.outputs {
+            o.source = RoleSource::Suggested;
+        }
         match self.speaker_layout_set(layout) {
             Ok(_) => true,
             Err(e) => {
@@ -448,6 +730,59 @@ impl DspiCore {
     }
 }
 
+// -- WP ADET0 --
+/// What a newly set layout changed against `before`, in numbers and role
+/// words only ("Out 3 midrange (was tweeter?)"); "" for nothing or no
+/// layout before.
+pub(crate) fn role_changes(before: Option<&SpeakerLayout>, after: &SpeakerLayout) -> String {
+    let Some(before) = before else {
+        return String::new();
+    };
+    let mut words = Vec::new();
+    for row in &after.outputs {
+        let n = u16::from(row.output).saturating_add(1);
+        match before.output(row.output) {
+            Some(old) if old.role == row.role => {}
+            Some(old) => {
+                let unsure = before
+                    .detected_output(row.output)
+                    .is_some_and(|d| d.confidence != DetectConfidence::High);
+                words.push(format!(
+                    "Out {n} {} (was {}{})",
+                    role_word(row.role),
+                    role_word(old.role),
+                    if unsure { "?" } else { "" }
+                ));
+            }
+            None => words.push(format!("Out {n} {} (added)", role_word(row.role))),
+        }
+    }
+    for old in &before.outputs {
+        if after.output(old.output).is_none() {
+            words.push(format!(
+                "Out {} left out",
+                u16::from(old.output).saturating_add(1)
+            ));
+        }
+    }
+    words.join(", ")
+}
+
+// -- WP ADET0 --
+/// A role in the user's words.
+pub(crate) fn role_word(role: MeasureRole) -> &'static str {
+    match role {
+        MeasureRole::Full => "full range",
+        MeasureRole::Sub => "subwoofer",
+        MeasureRole::Low => "woofer",
+        MeasureRole::Mid => "midrange",
+        MeasureRole::High => "tweeter",
+    }
+}
+
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_role0;
+// -- WP ADETS --
+#[cfg(test)]
+mod tests_wp_adets;

@@ -31,7 +31,7 @@ ColumnLayout {
             AppCheckBox {
                 objectName: "Speakers.included." + row.modelData.output
                 text: row.modelData.label
-                Layout.preferredWidth: 190
+                Layout.preferredWidth: 170   // -- WP ADETQ -- (190) room for the pill
                 enabled: table.editable
                 checked: row.modelData.included
                 onToggled: table.sc.setIncluded(row.modelData.output, checked)
@@ -40,12 +40,49 @@ ColumnLayout {
             AppComboBox {
                 objectName: "Speakers.role." + row.modelData.output
                 label: qsTr("Role of %1").arg(row.modelData.label)
-                Layout.preferredWidth: 150
+                Layout.preferredWidth: 140   // -- WP ADETQ -- (150) room for the pill
                 enabled: table.editable && row.modelData.included
                 model: table.roles
                 textRole: "text"
                 currentIndex: table.indexOf(row.modelData.role)
                 onActivated: index => table.sc.setRole(row.modelData.output, table.roles[index].id)
+            }
+            // -- WP ADETQ -- (AUTODES 5.1) whose word the role is, how sure a detection was
+            // A slot of its own on every row, so the columns after it line up
+            Item {
+                Layout.preferredWidth: 104
+                Layout.preferredHeight: 18
+                Rectangle {
+                    id: pill
+                    objectName: "Speakers.pill." + row.modelData.output
+                    readonly property string kind: row.modelData.pillKind || ""
+                    readonly property bool warn: ["uncertain", "unknown", "nothing"].indexOf(kind) >= 0
+                    visible: kind.length > 0
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: Math.min(parent.width, pillText.implicitWidth + 12)
+                    height: 18
+                    radius: height / 2
+                    color: "transparent"
+                    border.color: warn ? Theme.warning : kind === "suggested" || kind === "off" ? Theme.border : Theme.accent
+                    Text {
+                        id: pillText
+                        anchors.centerIn: parent
+                        width: Math.min(implicitWidth, pill.parent.width - 12)
+                        elide: Text.ElideRight
+                        textFormat: Text.PlainText
+                        text: row.modelData.pill || ""
+                        font: Theme.fontCaption
+                        color: pill.warn ? Theme.warning : Theme.text
+                    }
+                    HoverHandler { id: pillHover }
+                    HelpTip {
+                        visible: pillHover.hovered && text.length > 0
+                        text: row.modelData.pillReason || ""
+                    }
+                    Accessible.role: Accessible.StaticText
+                    Accessible.name: pillText.text
+                    Accessible.description: row.modelData.pillReason || ""
+                }
             }
             BorderedField {
                 objectName: "Speakers.speaker." + row.modelData.output

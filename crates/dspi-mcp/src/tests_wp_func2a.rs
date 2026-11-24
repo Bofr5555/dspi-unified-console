@@ -46,6 +46,7 @@ fn tweeter_at_2500(core: &dspi_core::DspiCore) {
             },
             speaker: "L".into(),
             group: 0,
+            source: Default::default(), // -- WP ADET0 --
         })
         .collect();
     core.speaker_layout_set(SpeakerLayout {

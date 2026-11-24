@@ -75,7 +75,7 @@ pub(crate) fn ramp_listener(
     // -- WP ROLL1 -- the run's own band (its ramp steps' sweeps)
     let cfg = SweepConfig {
         duration_ms: RAMP_SWEEP_MS,
-        ..plan.sweep_of(run)
+        ..super::runs::ramp_sweep(plan, run, &run.outputs) // -- WP ADET0 --
     };
     let sweep = LogSweep::new(device_rate_hz, &cfg).map_err(|e| e.to_string())?;
     let template = sweep
@@ -197,6 +197,9 @@ pub(crate) struct Ramp {
     pub(crate) spl_cap_db: Option<f32>,
     /// The setup's start level only: the one step must be heard as well.
     pub(crate) start_level_only: bool,
+    /// The in-band SNR at which it stops, dB (-- WP ADET0 -- the
+    /// detection's 20; else [`RAMP_SNR_DB`]).
+    pub(crate) snr_stop_db: f64,
     /// `(level, snr_db, in_band_db)` of each step so far.
     pub(crate) history: Vec<(f32, f64, Option<f64>)>,
 }
@@ -215,8 +218,18 @@ impl Ramp {
             ceiling_db,
             spl_cap_db,
             start_level_only,
+            snr_stop_db: RAMP_SNR_DB,
             history: Vec::new(),
         }
+    }
+
+    // -- WP ADET0 --
+    /// The ramp stopping at `db` of in-band SNR instead (never below "heard").
+    pub(crate) fn stopping_at(mut self, db: Option<f64>) -> Ramp {
+        if let Some(db) = db.filter(|d| d.is_finite()) {
+            self.snr_stop_db = db.max(HEARD_SNR_DB);
+        }
+        self
     }
 
     /// The first step's level.
@@ -292,7 +305,7 @@ impl Ramp {
                 };
             }
         }
-        if snr >= RAMP_SNR_DB {
+        if snr >= self.snr_stop_db {
             return RampNext::Done(level);
         }
         // Once heard, a step must raise the in-band level by half of it (the

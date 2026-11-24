@@ -234,11 +234,20 @@ ColumnLayout {
             Note {
                 objectName: "Inspector.tweeter"
                 // The user's layout, not the one suggested from the filters
-                readonly property bool stored: ["confirmed", "unconfirmed", "imported"].indexOf(SpeakersController.status) >= 0
+                // -- WP ADETQ -- a detected tweeter too (its roles guard the outputs until Confirm)
+                readonly property bool stored: ["confirmed", "autoDetected", "unconfirmed", "imported"].indexOf(SpeakersController.status) >= 0
                 visible: inspector.isOutput && stored && SpeakersController.rows.length >= 0
                          && SpeakersController.roleOf(inspector.output) === "high" && (!highPass.on || highPass.bypassed)
                 color: Theme.warning
                 text: qsTr("The speaker layout has a tweeter here. A tweeter without its high pass can be damaged.")
+            }
+            // -- WP ADETQ -- an output the speaker detection heard nothing from
+            Note {
+                objectName: "Inspector.nothing"
+                visible: inspector.isOutput && SpeakersController.rows.length >= 0 && SpeakersController.status.length > 0
+                         && SpeakersController.heardNothing(inspector.output)
+                color: Theme.textMuted
+                text: qsTr("The speaker detection heard nothing from this output.")
             }
         }
     }

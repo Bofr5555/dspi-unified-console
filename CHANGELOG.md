@@ -5,6 +5,29 @@ Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
 ## Unreleased
 
 ### Desktop (Qt)
+- AI agents can detect the speakers (WP ADET1, the agents' side; the console's own Detect… and its screens follow): on a
+  device whose speaker setup nobody has confirmed, `dspi_detect_speakers` asks the console to play quiet test sweeps on
+  each output (above 1 kHz at most −24 dBFS; lower only on an output that is no tweeter, at most −50 dBFS) and writes what
+  it finds as a detected speaker setup. One question with a warning; **Allow** also covers the agent's test signals and
+  further detections on that device for 10 minutes, and **Revoke** stops a running detection. Under **Never** it needs
+  Settings › AI Agents › **Agents may detect speakers** (off by default). The detected roles guard the speakers as a
+  confirmed setup does (a detected tweeter keeps its 1 kHz high-pass under every setting), so agents may measure and tune
+  with them; an output where nothing was heard may not be routed, switched on or unmuted by an agent. Refused on a
+  confirmed setup.
+- Speaker detection on screen (WP ADETQ): Settings › Speakers has **Detect…** (one question with the same warning as
+  the agent's; it plays on the open device with the Measure view's microphone, says where it is, and **Stop** keeps what
+  it found). A detected layout says so in its banner and stamp ("Detected by AI, not confirmed"), each row has a marker
+  (detected, detected?, uncertain, nothing heard, off, you, suggested; the reason on hover), and **Show Details** lists
+  the evidence. A speaker layout that is kept but not confirmed is now named on the main screen (Classic's banners,
+  Modern's status strip). The agent's question is headed "Detect the speakers on …"; the Stop bar and the agent strip
+  say which output is probed; Settings › AI Agents has **Agents may detect speakers** (for **Never**; off by default,
+  its warning asked once). The channel inspector says when nothing was heard from an output.
+- Speaker detection, fixes from the function test (WP ADETS, merged in INTK): a measurement of a tweeter now starts no
+  lower than the limits profile's high-pass minimum for that output (it started at 1 kHz); a sub whose top the first
+  sweep could not hear is probed further down and found, instead of ending "unknown"; a detected role you correct is
+  yours, and the layout stays "detected, not confirmed" (that row marked "you") until you confirm it. The manual now says
+  that a profile's high-pass minimum belongs on tweeter outputs only (it also holds the music's high-pass there): for the
+  Koss K340, 2.5 kHz on the two tweeter outputs, or tell the agent the floor for the detection.
 - Fixed (a user's report on 0.14.0, WP USR1): a number typed into a gain, delay or filter field went back to the old
   value when you clicked another field after pressing Enter, in the main window and the matrix mixer: the field showed
   the old value again while the device took the new one, and leaving it wrote the old one back. Leaving a field now
