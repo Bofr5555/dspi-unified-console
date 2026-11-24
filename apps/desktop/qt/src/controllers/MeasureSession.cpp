@@ -1111,6 +1111,9 @@ QString MeasureSession::agentRunWords() const {
 }
 
 QString MeasureSession::setupProblem() const {
+    // -- WP SHOWFIX -- (finding 7) the form shows an agent's run: its setup is
+    // the agent's, checked by the core, not the person's to finish
+    if (!m_agentSetup.isEmpty()) return {};
     int on = 0;
     for (const QVariant &v : m_setupOutputs)
         if (v.toMap().value(QStringLiteral("on")).toBool()) ++on;
@@ -2358,9 +2361,21 @@ void MeasureSession::startForAgent(const QJsonObject &ticket, std::function<void
             return once([&](char *b, uint32_t l) { return dspi_mcp_measure_begin(c, text.constData(), uint32_t(rateHz), b, l); });
         });
     };
+    // -- WP SHOWFIX -- (finding 7) every agent's run shows on the form, its
+    // detection's and its tune's too: the agent's placement (the core's
+    // default, the listening position, when it names none) and outputs, never
+    // the person's unfinished form with its "Choose the placement first"
+    const auto showAgentForm = [this, agentSetup] {
+        QJsonObject shown = agentSetup;
+        shown.insert(QStringLiteral("agent"), true);
+        if (str(shown, "placement").isEmpty()) shown.insert(QStringLiteral("placement"), QStringLiteral("listeningPosition"));
+        m_agentSetup = shown;
+        emit setupChanged();
+    };
     if (loopWord == QLatin1String("tune")) {
         // The tune's runs are the tune's (TuneSession), as its own Check and Verify
         m_agentLabel = label;
+        showAgentForm();
         m_tune->agentRuns(begin(0), [this, done](bool ok, const QString &why) {
             if (!ok) m_agentLabel.clear();
             setRunning();
@@ -2377,7 +2392,7 @@ void MeasureSession::startForAgent(const QJsonObject &ticket, std::function<void
     const quint64 epoch = m_stopEpoch;
     m_starting = true;
     m_agentLabel = label;
-    openMic([this, epoch, begin, loopWord, done, agentSetup](bool ok, int rateHz) {
+    openMic([this, epoch, begin, loopWord, done, agentSetup, showAgentForm](bool ok, int rateHz) {
         if (!ok || epoch != m_stopEpoch) {
             m_starting = false;
             m_agentLabel.clear();
@@ -2386,7 +2401,7 @@ void MeasureSession::startForAgent(const QJsonObject &ticket, std::function<void
                            : (m_error.isEmpty() ? tr("The microphone could not be opened.") : m_error));
             return;
         }
-        onLoop(this, begin(rateHz), [this, epoch, loopWord, done, agentSetup](const QByteArray &r) {
+        onLoop(this, begin(rateHz), [this, epoch, loopWord, done, agentSetup, showAgentForm](const QByteArray &r) {
             m_starting = false;
             const QJsonObject o = object(r);
             if (!isOk(o)) {
@@ -2406,6 +2421,7 @@ void MeasureSession::startForAgent(const QJsonObject &ticket, std::function<void
                 m_detect = o;
                 m_state = o.value(QLatin1String("session")).toObject();
                 m_loop->detect.store(true);
+                showAgentForm();   // -- WP SHOWFIX --
             } else {
                 m_result.clear();
                 m_resultView.clear();
@@ -2419,8 +2435,7 @@ void MeasureSession::startForAgent(const QJsonObject &ticket, std::function<void
                 m_wasActive = true;
                 m_loop->session.store(true);
                 // -- WP DL2 -- (SHOW 3) the form shows the agent's run
-                m_agentSetup = agentSetup.isEmpty() ? QJsonObject{ { QStringLiteral("agent"), true } } : agentSetup;
-                emit setupChanged();
+                showAgentForm();   // -- WP SHOWFIX --
             }
             emit stateChanged();
             setRunning();
