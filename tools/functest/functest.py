@@ -10,6 +10,10 @@ network. run.sh is the way in.
     functest.py ask  --name r1 --steps 1   the story's prompt, or: ask --name r1 --label l "the words"
     functest.py save --name r1 label       the state now
     functest.py down --name r1             History, screenshots, stop, the verdict
+
+    --record (or FUNCTEST_SCREEN=1600x1000): the app on a screen of its own (Xvfb in its container, the
+    xcb platform) in place of offscreen; --record also films it (screen.mp4, host ffmpeg) and stamps the
+    agent's tool calls and the app's questions in record.jsonl, for captions (WP SHOW)
 """
 import argparse
 import json
@@ -34,6 +38,7 @@ WORK = CACHE / "work" / BRANCH
 AGENT = os.environ.get("FUNCTEST_AGENT", "claude2")
 MODEL = os.environ.get("FUNCTEST_MODEL", "opus")
 CONTAINER_WORK = "/work"
+SCREEN = os.environ.get("FUNCTEST_SCREEN", "")  # -- WP SHOW -- "1600x1000": Xvfb, not offscreen
 
 
 def image():
@@ -132,14 +137,32 @@ class Run:
         cmd = ["podman", "run", "-d", "--rm", "--name", self.container, "--network", "none", "--userns=keep-id",
                "--user", f"{os.getuid()}:{os.getgid()}", "-v", f"{WORK}:{CONTAINER_WORK}:z",
                "-v", f"{CACHE}/work/empty:/sys/bus/usb/devices:ro,z", "-w", c]
+        start = ""
+        # -- WP SHOW -- a screen: Xvfb's socket in the run's folder (the host's ffmpeg films it from
+        # there; MIT-SHM needs the host's IPC namespace, else x11grab fails or hangs)
+        if SCREEN:
+            (self.dir / "x11").mkdir()
+            (self.dir / "x11").chmod(0o1777)
+            env.update(QT_QPA_PLATFORM="xcb", DISPLAY=":99")
+            cmd += ["--ipc=host", "-v", f"{self.dir}/x11:/tmp/.X11-unix:z"]
+            start = (f"Xvfb :99 -screen 0 {SCREEN}x24 -nolisten tcp > {c}/xvfb.log 2>&1 & "
+                     "while [ ! -S /tmp/.X11-unix/X99 ]; do sleep 0.1; done; ")
         for k, v in env.items():
             cmd += ["-e", f"{k}={v}"]
         cmd += [image(), "bash", "-c",
-                f"exec {CONTAINER_WORK}/build-functest/uconsole-for-dspi > {c}/app.log 2>&1"]
+                f"{start}exec {CONTAINER_WORK}/build-functest/uconsole-for-dspi > {c}/app.log 2>&1"]
         subprocess.run(cmd, check=True, capture_output=True)
         log("the app starts in", self.container, "(simulated: DSPI_SIM_SCENARIO)")  # -- WP ODEC -- testers see it
         ctl = self.ctl
         ctl.wait("the app's socket", lambda: ctl.get("AiController", "port"), 60)
+        if SCREEN:  # -- WP SHOW -- the window fills the screen (no window manager)
+            time.sleep(1)
+            w, h = SCREEN.split("x")
+            subprocess.run(["podman", "exec", "-e", "DISPLAY=:99", self.container, "xdotool", "search", "--onlyvisible",
+                            "--name", ".", "windowsize", w, h, "windowmove", "0", "0", "mousemove", str(int(w) - 1),
+                            str(int(h) - 1)], capture_output=True)  # the pointer out of the way (no hover)
+            if os.environ.get("FUNCTEST_RECORD"):
+                self.record()
         # -- WP FUNC2b -- Modern unless the story or --layout says Classic (FSTORY S15)
         # (a string; a `[layout.<device>]` table is FUNC2c's seeded setup, not the app's layout: INTI)
         story_layout = self.story().get("layout")
@@ -276,8 +299,9 @@ class Run:
                                           prefix=f"question-{len(seen)}-")
                         allow, rule, text = answers.answer(q)
                         self.event("question", dict(q, text=text, answer="allow" if allow else "deny", rule=rule))
+                        self.stamp("question", text=text, answer="allow" if allow else "deny")  # -- WP SHOW --
                         if answer:
-                            time.sleep(1.5)  # a person reads it
+                            time.sleep(float(os.environ.get("FUNCTEST_READ_S", "1.5")))  # a person reads it
                             self.ctl.call("AiController", "answer", q["id"], allow)
                     self.screen(screen)  # -- WP FUNC2a --
                 except (OSError, RuntimeError) as e:
@@ -322,6 +346,42 @@ class Run:
                 continue
             self.secret(*[rec.get(k) for k in ("salt", "hash") if isinstance(rec.get(k), str)])
 
+    # -- WP SHOW -- the film: the host's ffmpeg on the container's Xvfb, from now until down()
+    def record(self):
+        w, h = SCREEN.split("x")
+        self.ffmpeg = subprocess.Popen(
+            ["ffmpeg", "-nostdin", "-loglevel", "error", "-f", "x11grab", "-draw_mouse", "0", "-framerate",
+             os.environ.get("FUNCTEST_FPS", "20"), "-video_size", f"{w}x{h}", "-i", str(self.dir / "x11/X99"),
+             "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", str(self.dir / "screen.mp4")],
+            stdout=subprocess.DEVNULL, stderr=open(self.dir / "ffmpeg.log", "w"))
+        self.stamp("record")
+        log("filming the screen:", self.dir / "screen.mp4")
+
+    def stamp(self, kind, **data):
+        if getattr(self, "ffmpeg", None):
+            with open(self.dir / "record.jsonl", "a") as f:
+                f.write(json.dumps({"t": round(time.time(), 2), "kind": kind, **data}) + "\n")
+
+    def stamp_calls(self, path, done):
+        """The agent's tool calls as they come (stream-json has no times)."""
+        seen = 0
+        while not done.wait(0.3):
+            try:
+                lines = path.read_text().splitlines()
+            except OSError:
+                continue
+            for line in lines[seen:]:
+                try:
+                    m = json.loads(line)
+                except ValueError:
+                    break  # a line still being written
+                seen += 1
+                for c in (m.get("message") or {}).get("content") or [] if m.get("type") == "assistant" else []:
+                    if c.get("type") == "tool_use":
+                        self.stamp("tool", tool=c["name"].replace("mcp__dspi__", ""), args=c.get("input"))
+                    elif c.get("type") == "text":
+                        self.stamp("text", text=c["text"])
+
     def event(self, kind, data):
         with open(self.dir / "user.jsonl", "a") as f:
             # -- WP INTI -- `at` (epoch s): a grant's window is judged against the agents' calls
@@ -348,6 +408,10 @@ class Run:
         start = time.time()
         env = dict(os.environ, MCP_TOOL_TIMEOUT="120000", MCP_TIMEOUT="60000",
                    CLAUDE_CODE_DISABLE_AUTO_MEMORY="1", CLAUDE_CODE_DISABLE_CLAUDE_MDS="1")
+        self.stamp("prompt", label=label, text=prompt)  # -- WP SHOW --
+        calls_done = threading.Event()
+        if getattr(self, "ffmpeg", None):
+            threading.Thread(target=self.stamp_calls, args=(path, calls_done), daemon=True).start()
         with open(path, "w") as f, open(self.dir / "agent/stderr.log", "a") as err:
             try:
                 p = subprocess.run(cmd, cwd=self.dir / "agent", stdout=f, stderr=err, stdin=subprocess.DEVNULL,
@@ -355,6 +419,9 @@ class Run:
                 code = p.returncode
             except subprocess.TimeoutExpired:
                 code = "timeout"
+        time.sleep(0.5)
+        calls_done.set()
+        self.stamp("answer", label=label)
         result, session, cost = "", meta["session"], None
         for line in path.read_text().splitlines():
             try:
@@ -477,6 +544,13 @@ class Run:
         try:
             self.history()
             self.ctl.send(op="grab", dir=f"{CONTAINER_WORK}/runs/{self.name}", prefix="end-")
+            if getattr(self, "ffmpeg", None):  # -- WP SHOW --
+                self.stamp("end")
+                self.ffmpeg.send_signal(signal.SIGINT)
+                try:
+                    self.ffmpeg.wait(30)
+                except subprocess.TimeoutExpired:
+                    self.ffmpeg.kill()
             self.save("end")
             self.secret_files()  # -- WP FUNC2c --
             self.ctl.send(op="quit")
@@ -551,7 +625,12 @@ def main():
     ap.add_argument("--label", default="ask")
     ap.add_argument("--keep", action="store_true", help="leave the app running")
     ap.add_argument("--layout", choices=["modern", "classic"], help="the app's layout (default: the story's, else modern)")
+    ap.add_argument("--record", action="store_true", help="film the app on a screen of its own (WP SHOW)")
     a = ap.parse_args()
+    if a.record:  # -- WP SHOW --
+        global SCREEN
+        SCREEN = SCREEN or "1600x1000"
+        os.environ["FUNCTEST_RECORD"] = "1"
     if a.layout:  # -- WP FUNC2b --
         os.environ["FUNCTEST_LAYOUT"] = a.layout
     run = Run(a.name)
