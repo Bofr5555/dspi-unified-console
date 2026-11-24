@@ -62,11 +62,11 @@ async function measureScreen(page: Page, venue = "Venue A", lowerVolume = true):
 /** No placement is assumed: Check and Start wait for the person, said in words; then speakers at the listening position. */
 async function choosePlacement(setup: Locator): Promise<void> {
   await expect(setup.getByRole("radiogroup", { name: "Placement" }).getByRole("radio", { checked: true })).toHaveCount(0);
-  await expect(setup.getByRole("button", { name: "Start measuring" })).toBeDisabled();
+  await expect(setup.getByRole("button", { name: "Measure", exact: true })).toBeDisabled();
   await expect(setup.getByRole("button", { name: "Check" })).toBeDisabled();
   await expect(setup).toContainText("Choose the placement first: speakers or headphones on a coupler.");
   await setup.getByRole("radio", { name: "Listening position" }).check();
-  await expect(setup.getByRole("button", { name: "Start measuring" })).toBeEnabled();
+  await expect(setup.getByRole("button", { name: "Measure", exact: true })).toBeEnabled();
 }
 
 async function noSidewaysScroll(page: Page) {
@@ -97,7 +97,7 @@ test("P5WMS: a measurement end to end on the simulated microphone: preflight in 
   await setup.getByLabel("Sweep length").fill("1");
   await setup.getByRole("button", { name: "Check" }).click();
   await expect(preflight).toContainText("Ready: nothing blocks the measurement.");
-  await setup.getByRole("button", { name: "Start measuring" }).click();
+  await setup.getByRole("button", { name: "Measure", exact: true }).click();
   // Stop is shown while it runs, above the tabs.
   await expect(screen.getByRole("status", { name: "Measuring" }).getByRole("button", { name: "Stop" })).toBeVisible();
   const run = screen.getByRole("region", { name: "Measurement run" });
@@ -136,7 +136,7 @@ test("P5FOLLOW: nothing is measured before the placement is chosen; headphones s
   const screen = await measureScreen(page);
   const setup = screen.getByRole("region", { name: "Measurement setup" });
   await expect(setup.getByLabel("Placement detail")).toContainText("Where is the microphone?");
-  await expect(setup.getByRole("button", { name: "Start measuring" })).toBeDisabled();
+  await expect(setup.getByRole("button", { name: "Measure", exact: true })).toBeDisabled();
   await expect(setup.getByRole("button", { name: "Check" })).toBeDisabled();
   await expect(setup).toContainText("Choose the placement first");
   expect((await call<{ active: boolean }>(page, "measureState")).active).toBe(false);
@@ -144,11 +144,11 @@ test("P5FOLLOW: nothing is measured before the placement is chosen; headphones s
   await setup.getByRole("radio", { name: "Headphones on a coupler" }).check();
   await expect(setup.getByLabel("Placement detail")).toContainText("On the coupler, not on a head");
   await expect(setup.getByText("Coupler", { exact: true })).toBeVisible();
-  await expect(setup.getByRole("button", { name: "Start measuring" })).toBeEnabled();
+  await expect(setup.getByRole("button", { name: "Measure", exact: true })).toBeEnabled();
   await expect(setup.getByLabel("Passes hint")).toHaveCount(0);
   await setup.getByRole("spinbutton", { name: "Passes" }).fill("2");
   await expect(setup.getByLabel("Passes hint")).toHaveText("Two passes cannot judge timing; use three or more for auto-tune.");
-  await expect(setup.getByRole("button", { name: "Start measuring" })).toBeEnabled();
+  await expect(setup.getByRole("button", { name: "Measure", exact: true })).toBeEnabled();
   await setup.getByRole("spinbutton", { name: "Passes" }).fill("3");
   await expect(setup.getByLabel("Passes hint")).toHaveCount(0);
   expect((await call<{ state: number }>(page, "siggenStatus")).state).toBe(0);
@@ -164,7 +164,7 @@ test("P5FOLLOW: the live view assumes no placement, plays nothing until one is c
   await tabs.getByRole("tab", { name: "Live" }).click();
   let live = screen.getByRole("region", { name: "Live response" });
   await expect(live.getByLabel("Live placement", { exact: true })).toHaveValue("");
-  await expect(live.getByRole("button", { name: "Start live" })).toBeDisabled();
+  await expect(live.getByRole("button", { name: "Start Live" })).toBeDisabled();
   await expect(live.getByLabel("Live placement needed")).toHaveText("Choose the placement first: speakers or headphones on a coupler. Headphones are measured much more quietly.");
   expect((await call<{ active: boolean }>(page, "measureLiveState")).active).toBe(false);
   expect((await call<{ state: number }>(page, "siggenStatus")).state).toBe(0);
@@ -174,7 +174,7 @@ test("P5FOLLOW: the live view assumes no placement, plays nothing until one is c
   await setup.getByRole("radio", { name: "Several positions" }).check();
   await tabs.getByRole("tab", { name: "Live" }).click();
   live = screen.getByRole("region", { name: "Live response" });
-  await expect(live.getByRole("button", { name: "Start live" })).toBeDisabled();
+  await expect(live.getByRole("button", { name: "Start Live" })).toBeDisabled();
   // Headphones chosen on the Setup tab: the live view takes it, with its coupler.
   await tabs.getByRole("tab", { name: "Measure", exact: true }).click();
   await setup.getByRole("radio", { name: "Headphones on a coupler" }).check();
@@ -182,7 +182,7 @@ test("P5FOLLOW: the live view assumes no placement, plays nothing until one is c
   live = screen.getByRole("region", { name: "Live response" });
   await expect(live.getByLabel("Live placement", { exact: true })).toHaveValue("headphones");
   await expect(live.getByLabel("Live coupler")).toBeVisible();
-  await expect(live.getByRole("button", { name: "Start live" })).toBeEnabled();
+  await expect(live.getByRole("button", { name: "Start Live" })).toBeEnabled();
   await expect(live.getByLabel("Live placement needed")).toHaveCount(0);
   expect((await call<{ state: number }>(page, "siggenStatus")).state).toBe(0);
   expect(errors).toEqual([]);
@@ -195,7 +195,7 @@ test("P5WMS: Stop stops the generator at once, and the run says nothing was kept
   const screen = await measureScreen(page);
   const setup = screen.getByRole("region", { name: "Measurement setup" });
   await choosePlacement(setup); // -- WP P5FOLLOW --
-  await setup.getByRole("button", { name: "Start measuring" }).click();
+  await setup.getByRole("button", { name: "Measure", exact: true }).click();
   const run = screen.getByRole("region", { name: "Measurement run" });
   // Once the generator plays (the ramp), Stop.
   await expect.poll(async () => (await call<{ state: number }>(page, "siggenStatus")).state, { timeout: 20_000 }).not.toBe(0);
@@ -217,19 +217,19 @@ test("P5WMS: the live view: a curve per sweep with the target, 'cut this peak' p
   const live = screen.getByRole("region", { name: "Live response" });
   await live.getByLabel("Smoothing").selectOption("6");
   // -- WP P5FOLLOW -- no placement assumed: Start live waits for the person, said in words
-  await expect(live.getByRole("button", { name: "Start live" })).toBeDisabled();
+  await expect(live.getByRole("button", { name: "Start Live" })).toBeDisabled();
   await expect(live.getByLabel("Live placement needed")).toContainText("Choose the placement first");
   await live.getByLabel("Live placement", { exact: true }).selectOption("listeningPosition");
   await expect(live.getByLabel("Live placement needed")).toHaveCount(0);
-  await live.getByRole("button", { name: "Start live" }).click();
+  await live.getByRole("button", { name: "Start Live" }).click();
   await expect.poll(async () => Number(await live.locator("[data-seq]").getAttribute("data-seq")), { timeout: 60_000 }).toBeGreaterThanOrEqual(2);
   const graph = live.getByRole("img", { name: "Live response" });
   await expect(graph).toHaveAttribute("data-series", /measured:.*\|target:Target/);
   const filters = async () => JSON.stringify((await call<{ state: { filters: unknown } }>(page, "state")).state.filters);
   const before = await filters();
-  await live.getByRole("button", { name: "Find the highest peak" }).click();
+  await live.getByRole("button", { name: "Find the Highest Peak" }).click();
   await expect(live.getByLabel("Peak frequency")).not.toHaveValue("");
-  await live.getByRole("button", { name: "Cut this peak" }).click();
+  await live.getByRole("button", { name: "Cut This Peak" }).click();
   const pending = live.getByRole("group", { name: "Pending change" });
   await expect(pending).toContainText(/PEQ band \d+: flat → peak -[\d.]+ dB/);
   await expect(graph).toHaveAttribute("data-series", /predicted:Predicted/);
@@ -239,8 +239,8 @@ test("P5WMS: the live view: a curve per sweep with the target, 'cut this peak' p
   expect(await filters()).not.toBe(before);
   await page.locator("#one").getByRole("group", { name: "Undo and Redo" }).getByRole("button", { name: /^Undo/ }).click();
   await expect.poll(filters).toBe(before);
-  await live.getByRole("button", { name: "Stop live" }).click();
-  await expect(live.getByRole("button", { name: "Start live" })).toBeVisible();
+  await live.getByRole("button", { name: "Stop Live" }).click();
+  await expect(live.getByRole("button", { name: "Start Live" })).toBeVisible();
   expect((await call<{ state: number }>(page, "siggenStatus")).state).toBe(0);
   expect(errors).toEqual([]);
 });
@@ -256,7 +256,7 @@ test.describe("the browsers' fake microphone", () => {
     const setup = screen.getByRole("region", { name: "Measurement setup" });
     await setup.getByLabel("Microphone").selectOption("mic:");
     await choosePlacement(setup); // -- WP P5FOLLOW --
-    await setup.getByRole("button", { name: "Start measuring" }).click();
+    await setup.getByRole("button", { name: "Measure", exact: true }).click();
     const refused = screen.getByRole("alert").filter({ hasText: "Microphone capture did not start" });
     await expect(screen.getByRole("status", { name: "Measuring" }).or(refused)).toBeVisible({ timeout: 15_000 });
     if (await refused.isVisible()) {
@@ -293,8 +293,8 @@ test.describe("the browsers' fake microphone", () => {
 async function passiveListens(page: Page, screen: Locator, browserName: string) {
   const tabs = partsOf(screen, "Measurement").getByRole("tab");
   await expect(tabs).toHaveText(["Passive RTA", "Results", "Documents"]); // -- WP P5WAT -- its documents tab (a Viewer reads documents)
-  await expect(screen.getByRole("button", { name: "Start measuring" })).toHaveCount(0);
-  await expect(screen.getByRole("button", { name: "Start live" })).toHaveCount(0);
+  await expect(screen.getByRole("button", { name: "Measure", exact: true })).toHaveCount(0);
+  await expect(screen.getByRole("button", { name: "Start Live" })).toHaveCount(0);
   const passive = screen.getByRole("region", { name: "Passive microphone RTA" });
   await expect(passive).toContainText(/only the passive microphone RTA and the documents/i);
   await passive.getByRole("button", { name: "Listen" }).click();

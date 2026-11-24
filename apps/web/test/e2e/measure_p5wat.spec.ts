@@ -77,7 +77,7 @@ async function measureAndPropose(page: Page, tune: (name: string) => Locator): P
   await m.getByRole("button", { name: "Measure this layout" }).click();
   await expect(m.getByLabel("Measurement to tune from")).toHaveAttribute("data-source", "yes", { timeout: 240_000 });
   await expect(m.getByRole("region", { name: "Measurement run" }).locator("[data-phase]")).toHaveAttribute("data-phase", "done");
-  await tune("Tune options").getByRole("button", { name: "Propose a tune" }).click();
+  await tune("Tune options").getByRole("button", { name: "Propose a Tune" }).click();
   const p = tune("Tune proposal");
   await expect(p.getByRole("list", { name: "Changes" })).toBeVisible();
   await expect(p.getByRole("img", { name: "Tune curves" })).toHaveAttribute("data-series", /measured:L now\|predicted:L predicted\|target:L target/);
@@ -176,7 +176,7 @@ test("P5WAT: a tune reverted puts the settings back; a timing-unreliable measure
   await expect(copy).toBeVisible();
   await copy.getByRole("button", { name: "Tune from this" }).click();
   await expect(tune("Tune measurement").getByLabel("Measurement to tune from")).toContainText("Unreliable copy");
-  await tune("Tune options").getByRole("button", { name: "Propose a tune" }).click();
+  await tune("Tune options").getByRole("button", { name: "Propose a Tune" }).click();
   const p = tune("Tune proposal");
   await expect(p.getByLabel("Proposal timing")).toHaveAttribute("data-reliable", "false");
   const withdrawn = p.getByRole("list", { name: "Withdrawn" });

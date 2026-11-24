@@ -13,9 +13,9 @@ import { fileNameOf, micSummary } from "./model";
 import { download, readTextFile } from "./setup";
 import { KINDS, docOutputs, docsDeskOf, tuneDeskOf, type DocRow, type DocsDesk } from "./tune-model";
 import { EmptyState } from "../../ui/design"; // -- WP WEB --
+import { Icon } from "./parts"; // -- WP WEB4 --
 
 const row = { display: "flex", flexWrap: "wrap", gap: "6px 12px", alignItems: "center" } as const;
-const col = { display: "flex", flexDirection: "column", gap: "10px", minWidth: 0 } as const;
 
 function useDocs(d: DocsDesk, props: MeasureTabProps): void {
   const [, bump] = useState(0);
@@ -59,33 +59,58 @@ export function DocsTab(props: MeasureTabProps) {
     }
   };
 
+  // -- WP WEB4 -- DL2's Documents: no card; the tools in one row at the top, the empty state alone when
+  // there is nothing, the kinds as sections of striped rows, the built-in targets as rows (their names)
+  const docField = useRef<HTMLInputElement>(null);
+  const targetField = useRef<HTMLInputElement>(null);
   return (
-    <section class="card" aria-label="Measurement documents" style={col}>
-      <div class="card-head" style={row}>
-        <strong style={{ flex: "1 1 auto" }}>Documents</strong>
+    <section class="measure-docs measure-column" aria-label="Measurement documents">
+      <div class="m-toolbar">
+        <label class="m-inline">
+          Targets for{" "}
+          <select aria-label="Target use" value={use} onChange={(e) => setUse((e.currentTarget as HTMLSelectElement).value as typeof use)}>
+            <option value="speakers">speakers</option>
+            <option value="headphones">headphones</option>
+          </select>
+        </label>
+        <button type="button" onClick={() => targetField.current?.click()}>
+          Import Target…
+        </button>
+        {rows.length ? (
+          <button type="button" onClick={() => micField.current?.click()}>
+            Import Calibration…
+          </button>
+        ) : null}
+        <button type="button" onClick={() => docField.current?.click()}>
+          Open…
+        </button>
         <button type="button" onClick={() => void d.refresh()}>
           Refresh
         </button>
+        <input ref={docField} type="file" class="visually-hidden" tabIndex={-1} aria-label="Open a document file" accept=".dspipreset,.json,application/json" onChange={(e) => void pick(e.currentTarget as HTMLInputElement, "doc")} />
+        <input ref={micField} type="file" class="visually-hidden" tabIndex={-1} aria-label="Import a microphone calibration" accept=".txt,.cal,.frd,.csv,text/plain" onChange={(e) => void pick(e.currentTarget as HTMLInputElement, "mic")} />
+        <input ref={targetField} type="file" class="visually-hidden" tabIndex={-1} aria-label="Import a target" accept=".txt,.csv,.frd,text/plain" onChange={(e) => void pick(e.currentTarget as HTMLInputElement, "target")} />
       </div>
-      <p class="muted">
-        {desk.hubMeasure
-          ? `The hub's documents and this page's, in one list. ${rights.remove ? "As the hub's Admin you may delete hub documents." : rights.write ? "Your role may rename, note and file hub documents; only the hub's Admin deletes them." : "Your role may read the hub's documents."}`
-          : "No hub with measurement documents: these are this page's documents (download them to keep them)."}
-        {d.hubNotice ? ` ${d.hubNotice}` : ""}
-      </p>
       {d.error ? (
         <p class="error" role="alert" aria-label="Documents problem">
           {d.error}
         </p>
       ) : null}
       {d.said ? (
-        <p class="note" role="status" aria-label="Documents outcome">
-          {d.said}
+        <p class="m-iconline m-ok" role="status" aria-label="Documents outcome">
+          <Icon name="circle-check" class="m-line-icon" />
+          <span>{d.said}</span>
         </p>
       ) : null}
-      <p class="muted" aria-label="In use">
-        Microphone: {desk.micDocument ? micSummary(desk.micDocument) || "a calibration" : "none (relative dB)"} · Target: {desk.targetName || "the placement's default"}
-      </p>
+      {/* the hub's rights in words, also before its first document (who may file, rename, delete) */}
+      {rows.length || desk.hubMeasure ? (
+        <p class="m-caption">
+          {desk.hubMeasure
+            ? `The hub's documents and this page's, in one list. ${rights.remove ? "As the hub's Admin you may delete hub documents." : rights.write ? "Your role may rename, note and file hub documents; only the hub's Admin deletes them." : "Your role may read the hub's documents."}`
+            : "No hub with measurement documents: these are this page's documents (download them to keep them)."}
+          {d.hubNotice ? ` ${d.hubNotice}` : ""}
+        </p>
+      ) : null}
       {/* -- WP WEB -- DL2's empty state while there is no document of any kind */}
       {rows.length === 0 ? (
         <EmptyState
@@ -94,69 +119,53 @@ export function DocsTab(props: MeasureTabProps) {
           text="Measurements you save from Results, microphone calibrations and targets are kept here."
           action={{ label: "Import Calibration…", run: () => micField.current?.click() }}
         />
-      ) : null}
+      ) : (
+        <p class="m-caption" aria-label="In use">
+          Microphone: {desk.micDocument ? micSummary(desk.micDocument) || "a calibration" : "none (relative dB)"} · Target: {desk.targetName || "the placement's default"}
+        </p>
+      )}
       {rows.length === 0 ? null : KINDS.map((k) => {
         const list = rows.filter((r) => r.info.kind === k.id);
         return (
-          <div key={k.id} style={col}>
-            <strong>{k.label}</strong>
+          <div key={k.id} class="m-sec">
+            <h4 class="section-label">{k.label}</h4>
             {list.length ? (
-              <ul aria-label={k.label} style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: "8px" }}>
+              <ul aria-label={k.label} class="m-rowlist m-docs">
                 {list.map((r) => (
                   <DocItem key={r.key} {...props} d={d} r={r} />
                 ))}
               </ul>
             ) : (
-              <p class="empty">None.</p>
+              <p class="m-caption">None.</p>
             )}
           </div>
         );
       })}
 
-      <div style={col} role="group" aria-label="Libraries">
-        <strong>Add</strong>
-        <div style={row}>
-          <label>
-            Open a document file…{" "}
-            <input type="file" aria-label="Open a document file" accept=".dspipreset,.json,application/json" onChange={(e) => void pick(e.currentTarget as HTMLInputElement, "doc")} />
-          </label>
-          <label>
-            Import a microphone calibration…{" "}
-            <input ref={micField} type="file" aria-label="Import a microphone calibration" accept=".txt,.cal,.frd,.csv,text/plain" onChange={(e) => void pick(e.currentTarget as HTMLInputElement, "mic")} />
-          </label>
-        </div>
-        <div style={row}>
-          <label>
-            Target for{" "}
-            <select aria-label="Target use" value={use} onChange={(e) => setUse((e.currentTarget as HTMLSelectElement).value as typeof use)}>
-              <option value="speakers">speakers</option>
-              <option value="headphones">headphones</option>
-            </select>
-          </label>
-          <label>
-            Import a target…{" "}
-            <input type="file" aria-label="Import a target" accept=".txt,.csv,.frd,text/plain" onChange={(e) => void pick(e.currentTarget as HTMLInputElement, "target")} />
-          </label>
-        </div>
-        {builtins.length ? (
-          <div>
-            <span>Built-in targets (our own curves; each placement uses its default):</span>
-            <ul class="change-list" aria-label="Built-in targets">
-              {builtins.map((b) => (
-                <li key={b.id}>
-                  {b.name} ({b.targetUse}
-                  {b.coupler ? `, ${b.coupler}` : ""}){b.params.length ? `: ${b.params.map((x) => `${x.name} ${x.value}`).join(", ")}` : ""}
-                </li>
-              ))}
-            </ul>
+      {rows.length && builtins.length ? (
+        <div class="m-sec" role="group" aria-label="Libraries">
+          <div class="ds-section-head">
+            <h4 class="section-label">Built-in targets</h4>
             {desk.targetDocument ? (
               <button type="button" onClick={() => desk.setDocs({ targetDocument: "", targetName: "" })}>
                 Use the placement's default target
               </button>
             ) : null}
           </div>
-        ) : null}
-      </div>
+          <p class="m-caption">Our own curves; each placement uses its default.</p>
+          <ul class="m-rowlist" aria-label="Built-in targets">
+            {builtins.map((b) => (
+              <li key={b.id} title={b.params.map((x) => `${x.name} ${x.value}`).join(", ")}>
+                <span>{b.name}</span>
+                <span class="m-caption">
+                  {b.targetUse}
+                  {b.coupler ? ` · ${b.coupler}` : ""}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -197,16 +206,16 @@ function DocItem(props: MeasureTabProps & { d: DocsDesk; r: DocRow }) {
   };
 
   return (
-    <li class="doc-row" data-where={r.where} data-kind={r.info.kind} aria-label={label} style={{ ...col, gap: "4px", borderTop: "1px solid var(--line)", paddingTop: "6px" }}>
+    <li class="doc-row" data-where={r.where} data-kind={r.info.kind} aria-label={label}>
       <div style={row}>
         <strong>{label}</strong>
-        <span class="muted">
+        <span class="m-caption">
           {hub ? "on the hub" : `this page${r.from ? `, ${r.from}` : ""}`}
           {r.info.serial ? ` · ${r.info.serial}` : ""}
           {r.info.savedMs ? ` · ${when(r.info.savedMs)}` : ""} · {Math.max(1, Math.round(r.info.bytes / 1024))} KiB
         </span>
       </div>
-      {r.info.note ? <span class="muted" aria-label="Note">{r.info.note}</span> : null}
+      {r.info.note ? <span class="m-caption" aria-label="Note">{r.info.note}</span> : null}
       {edit ? (
         <div style={row}>
           <input aria-label={edit.field === "name" ? "New name" : "Note"} value={edit.value} maxLength={edit.field === "name" ? 256 : 4000} onInput={(e) => setEdit({ ...edit, value: (e.currentTarget as HTMLInputElement).value })} />
@@ -218,7 +227,7 @@ function DocItem(props: MeasureTabProps & { d: DocsDesk; r: DocRow }) {
           </button>
         </div>
       ) : null}
-      <div style={row}>
+      <div style={row} class="m-rowactions">
         {r.info.kind === "measurement" ? (
           <>
             <button type="button" onClick={() => void results()}>
@@ -254,18 +263,18 @@ function DocItem(props: MeasureTabProps & { d: DocsDesk; r: DocRow }) {
           </button>
         ) : null}
         {mayDelete ? (
-          <button type="button" class="danger" onClick={() => void d.remove(r)}>
+          <button type="button" class="danger-text" onClick={() => void d.remove(r)}>
             Delete
           </button>
         ) : (
-          <span class="muted" aria-label="Delete">
+          <span class="m-caption" aria-label="Delete">
             Only the hub's Admin deletes it.
           </span>
         )}
       </div>
       {r.info.kind === "measurement" && outputs.length ? (
-        <div style={row}>
-          <label>
+        <div style={row} class="m-rowactions">
+          <label class="m-inline">
             REW text of{" "}
             <select aria-label={`REW output of ${label}`} value={String(rewOut ?? outputs[0])} onChange={(e) => setRewOut(Number((e.currentTarget as HTMLSelectElement).value))}>
               {outputs.map((o) => (

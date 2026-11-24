@@ -14,6 +14,7 @@ import { MeasureGraph } from "./graph";
 import { COUPLERS, ROLES } from "./model";
 import { RunPanel } from "./run";
 import { download } from "./setup";
+import { Icon, StepDots } from "./parts"; // -- WP WEB4 --
 import {
   CONFIRM_MS,
   checkWords,
@@ -31,7 +32,7 @@ import {
 } from "./tune-model";
 
 const row = { display: "flex", flexWrap: "wrap", gap: "8px 14px", alignItems: "center" } as const;
-const col = { display: "flex", flexDirection: "column", gap: "10px", minWidth: 0 } as const;
+const col = { display: "flex", flexDirection: "column", gap: "8px", minWidth: 0 } as const;
 
 /** Re-render on the desks' changes, and once a second while a countdown or the second question shows. */
 function useTune(t: TuneDesk, props: MeasureTabProps): void {
@@ -76,12 +77,16 @@ export function TuneTab(props: MeasureTabProps) {
     await desk.startRun(layoutSetup(on, t.sweepMs, desk.micDocument || desk.draft?.micDocument || "", "Auto-tune layout", place));
   };
 
+  // -- WP WEB4 -- DL2's Auto-tune: step dots over sections without numbers, the stop bar as an info notice
+  const step = st && (t.applied || st.stage === "kept" || st.stage === "reverted" || st.stage === "revertIncomplete") ? 2 : p ? 1 : 0;
   return (
-    <div style={col}>
+    <div class="measure-tune measure-column">
+      <StepDots steps={["Layout", "Proposal", "Applied"]} current={step} label="Auto-tune steps" />
       {t.running && !desk.running ? (
-        <div class="banner" role="status" aria-label="Tuning" style={{ position: "sticky", top: 0, zIndex: 2, display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "center" }}>
-          <span style={{ flex: "1 1 12em" }}>{stageWords(st)}</span>
-          <button type="button" class="danger" onClick={() => void t.stop()}>
+        <div class="notice-row notice-row-info measure-stopbar" role="status" aria-label="Tuning">
+          <Icon name="volume" class="notice-icon" />
+          <span class="notice-text">{stageWords(st)}</span>
+          <button type="button" onClick={() => void t.stop()}>
             Stop
           </button>
         </div>
@@ -92,16 +97,16 @@ export function TuneTab(props: MeasureTabProps) {
         </p>
       ) : null}
 
-      <section class="card" aria-label="Tune layout" style={col}>
-        <div class="card-head" style={row}>
-          <strong style={{ flex: "1 1 auto" }}>1. Layout</strong>
+      <section class="m-sec" aria-label="Tune layout" style={col}>
+        <div class="ds-section-head">
+          <h4 class="section-label">Layout</h4>
           <button type="button" disabled={busy || t.applied} onClick={() => void t.loadLayout()}>
             Read the layout again
           </button>
         </div>
         {l ? (
           <>
-            <p class="muted" aria-label="Layout recognised">
+            <p class="m-caption" aria-label="Layout recognised">
               {templateWords(l.template)} Each output's way, speaker and alignment group come from its crossover and its programme input; correct them here. One walked run measures each group.
             </p>
             {l.notes.length ? (
@@ -111,10 +116,10 @@ export function TuneTab(props: MeasureTabProps) {
                 ))}
               </ul>
             ) : null}
-            <ul class="tune-layout" aria-label="Outputs" style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: "6px" }}>
+            <ul class="tune-layout m-rowlist" aria-label="Outputs">
               {l.outputs.map((o) => (
-                <li key={o.output} data-output={o.output} style={row}>
-                  <label style={{ minWidth: "9em" }}>
+                <li key={o.output} data-output={o.output}>
+                  <label class="m-check" style={{ minWidth: "9em" }}>
                     <input type="checkbox" aria-label={`Tune ${outputName(o.output)}`} checked={!t.off.has(o.output)} disabled={busy || t.applied} onChange={(e) => t.setOn(o.output, (e.currentTarget as HTMLInputElement).checked)} />{" "}
                     {outputName(o.output)}
                   </label>
@@ -125,19 +130,19 @@ export function TuneTab(props: MeasureTabProps) {
                       </option>
                     ))}
                   </select>
-                  <label>
+                  <label class="m-inline">
                     Speaker{" "}
-                    <input aria-label={`Speaker of ${outputName(o.output)}`} value={o.speaker} size={4} maxLength={16} disabled={busy || t.applied} onChange={(e) => t.editOutput(o.output, { speaker: (e.currentTarget as HTMLInputElement).value })} />
+                    <input class="m-speaker" aria-label={`Speaker of ${outputName(o.output)}`} value={o.speaker} size={4} maxLength={16} disabled={busy || t.applied} onChange={(e) => t.editOutput(o.output, { speaker: (e.currentTarget as HTMLInputElement).value })} />
                   </label>
-                  <label>
+                  <label class="m-inline">
                     Group{" "}
                     <input
+                      class="m-num"
                       aria-label={`Alignment group of ${outputName(o.output)}`}
                       type="number"
                       min={0}
                       max={15}
                       value={o.group}
-                      style={{ width: "4em" }}
                       disabled={busy || t.applied}
                       onChange={(e) => {
                         const g = Number((e.currentTarget as HTMLInputElement).value);
@@ -145,7 +150,7 @@ export function TuneTab(props: MeasureTabProps) {
                       }}
                     />
                   </label>
-                  <span class="muted">{feedWords(o)}</span>
+                  <span class="m-caption">{feedWords(o)}</span>
                 </li>
               ))}
             </ul>
@@ -155,19 +160,25 @@ export function TuneTab(props: MeasureTabProps) {
         )}
       </section>
 
-      <section class="card" aria-label="Tune measurement" style={col}>
-        <div class="card-head">
-          <strong>2. Measure</strong>
-        </div>
-        <p aria-label="Measurement to tune from" data-source={src ? "yes" : "none"}>
-          {src ? `Tuning from ${src.from ? `${src.from}` : "the measurement"}.` : "No measurement yet: measure the layout here (the preflight comes first), or open one on the Documents tab."}
-        </p>
+      <section class="m-sec" aria-label="Tune measurement" style={col}>
+        <h4 class="section-label">Measurement</h4>
+        {src ? (
+          <p class="m-iconline m-ok" aria-label="Measurement to tune from" data-source="yes">
+            <Icon name="circle-check" class="m-line-icon" />
+            <span>{`Tuning from ${src.from ? `${src.from}` : "the measurement"}.`}</span>
+          </p>
+        ) : (
+          <div class="notice-row notice-row-info" role="status" aria-label="Measurement to tune from" data-source="none">
+            <Icon name="info" class="notice-icon" />
+            <span class="notice-text">No measurement yet: measure the layout here (the preflight comes first), or open one on the Documents tab.</span>
+          </div>
+        )}
         <div style={row}>
-          <label>
-            Sweep length, s{" "}
-            <input aria-label="Tune sweep length" type="number" min={1} max={15} step={0.5} value={t.sweepMs / 1000} style={{ width: "5em" }} disabled={busy} onChange={(e) => t.setSweepMs(Number((e.currentTarget as HTMLInputElement).value) * 1000)} />
+          <label class="m-inline">
+            Sweep length{" "}
+            <input class="m-num" aria-label="Tune sweep length" type="number" min={1} max={15} step={0.5} value={t.sweepMs / 1000} disabled={busy} onChange={(e) => t.setSweepMs(Number((e.currentTarget as HTMLInputElement).value) * 1000)} />
           </label>
-          <label>
+          <label class="m-inline">
             Measured{" "}
             <select aria-label="Tune placement" value={place?.placement ?? ""} disabled={busy || t.applied} onChange={(e) => t.setHeadphones((e.currentTarget as HTMLSelectElement).value === "headphones")}>
               {place ? null : (
@@ -183,7 +194,7 @@ export function TuneTab(props: MeasureTabProps) {
             Measure this layout
           </button>
         </div>
-        <p class={place ? "muted" : "note"} aria-label="Tune placement levels">
+        <p class={place ? "m-caption" : "m-iconline m-note"} aria-label="Tune placement levels">
           {!place
             ? t.placeProblem
             : place.placement === "headphones"
@@ -199,14 +210,12 @@ export function TuneTab(props: MeasureTabProps) {
             ))}
           </ul>
         ) : null}
-        <RunPanel {...props} />
+        <RunPanel {...props} inTune />
       </section>
 
-      <section class="card" aria-label="Tune options" style={col}>
-        <div class="card-head">
-          <strong>3. Propose</strong>
-        </div>
-        <div role="group" aria-label="What the tune may change" style={row}>
+      <section class="m-sec" aria-label="Tune options" style={col}>
+        <h4 class="section-label">Proposal</h4>
+        <div role="group" aria-label="What the tune may change" class="m-checks">
           <label>
             <input type="checkbox" checked={t.options.keepCrossover} disabled={busy || t.applied} onChange={(e) => t.setOptions({ keepCrossover: (e.currentTarget as HTMLInputElement).checked })} /> Keep the crossover, align only
           </label>
@@ -220,10 +229,10 @@ export function TuneTab(props: MeasureTabProps) {
             <input type="checkbox" checked={t.options.keepEq} disabled={busy || t.applied} onChange={(e) => t.setOptions({ keepEq: (e.currentTarget as HTMLInputElement).checked })} /> No EQ fit
           </label>
         </div>
-        <p class="muted">Target: {desk.targetName ? desk.targetName : "the placement's default (our own curve)"}. Choose another on the Documents tab.</p>
+        <p class="m-caption">Target: {desk.targetName ? desk.targetName : "the placement's default (our own curve)"}. Choose another on the Documents tab.</p>
         <div>
-          <button type="button" class="primary" disabled={busy || t.applied || !src || !l} onClick={() => void t.propose()}>
-            Propose a tune
+          <button type="button" class={src && !p ? "primary" : undefined} disabled={busy || t.applied || !src || !l} onClick={() => void t.propose()}>
+            Propose a Tune
           </button>
         </div>
       </section>
@@ -231,7 +240,7 @@ export function TuneTab(props: MeasureTabProps) {
       {p ? <ProposalCard {...props} t={t} /> : null}
       {st && (t.applied || st.stage === "kept" || st.stage === "reverted" || st.stage === "revertIncomplete") ? <GuardCard {...props} t={t} /> : null /* -- WP REVERTW -- */}
       {t.said ? (
-        <p class="note" role="status" aria-label="Tune outcome">
+        <p class="m-iconline m-note" role="status" aria-label="Tune outcome">
           {t.said}
         </p>
       ) : null}
@@ -246,16 +255,15 @@ function ProposalCard(props: MeasureTabProps & { t: TuneDesk }) {
   const pending = p.sumCheck === "pending";
   const series = proposalSeries(p);
   return (
-    <section class="card" aria-label="Tune proposal" style={col} data-proposal={p.id}>
-      <div class="card-head">
-        <strong>4. The proposal{p.measurementName ? `: ${p.measurementName}` : ""}</strong>
-      </div>
-      <p class={p.timingReliable ? "note" : "error"} aria-label="Proposal timing" data-reliable={String(p.timingReliable)}>
-        {p.timingReliable ? "The measurement's timing is reliable: delay, polarity and crossover changes may be offered." : "The measurement's timing is unreliable: no delay, polarity or crossover change is offered from it."}
+    <section class="m-sec" aria-label="Tune proposal" style={col} data-proposal={p.id}>
+      <h4 class="section-label">The proposal{p.measurementName ? `: ${p.measurementName}` : ""}</h4>
+      <p class={`m-iconline ${p.timingReliable ? "m-ok" : "m-bad"}`} aria-label="Proposal timing" data-reliable={String(p.timingReliable)}>
+        <Icon name={p.timingReliable ? "circle-check" : "warning"} class="m-line-icon" />
+        <span>{p.timingReliable ? "The measurement's timing is reliable: delay, polarity and crossover changes may be offered." : "The measurement's timing is unreliable: no delay, polarity or crossover change is offered from it."}</span>
       </p>
       {series.length ? <MeasureGraph label="Tune curves" series={series} unit={series.some((s) => s.curve.spl) ? "dB SPL" : "dB (relative)"} /> : null}
       <div>
-        <strong>Changes</strong> <span class="muted">(nothing is written until Apply)</span>
+        <strong>Changes</strong> <span class="m-caption">(nothing is written until Apply)</span>
         {p.writes.length ? (
           <ul class="change-list" aria-label="Changes">
             {p.writes.map((w, i) => (
@@ -265,7 +273,7 @@ function ProposalCard(props: MeasureTabProps & { t: TuneDesk }) {
             ))}
           </ul>
         ) : (
-          <p class="muted" aria-label="Changes">
+          <p class="m-caption" aria-label="Changes">
             No change: the speaker is as close to its target as the tune can bring it.
           </p>
         )}
@@ -315,8 +323,9 @@ function ProposalCard(props: MeasureTabProps & { t: TuneDesk }) {
           ))}
         </ul>
       ) : null}
-      <p aria-label="Summed check" data-check={p.sumCheck} class={p.sumCheck === "failed" ? "error" : "note"}>
-        {checkWords(p.sumCheck)}
+      <p aria-label="Summed check" data-check={p.sumCheck} class={`m-iconline ${p.sumCheck === "failed" ? "m-bad" : p.sumCheck === "passed" ? "m-ok" : "m-note"}`}>
+        <Icon name={p.sumCheck === "failed" ? "error" : p.sumCheck === "passed" ? "circle-check" : "info"} class="m-line-icon" />
+        <span>{checkWords(p.sumCheck)}</span>
       </p>
       <div style={row}>
         {pending ? (
@@ -328,7 +337,7 @@ function ProposalCard(props: MeasureTabProps & { t: TuneDesk }) {
           Apply and verify
         </button>
       </div>
-      <p class="muted">
+      <p class="m-caption">
         Apply files a "before" snapshot, writes every change as one undo step inside a guard, then verifies at once: Keep or Revert before the guard ends, or the settings from before come back.
       </p>
     </section>
@@ -347,10 +356,8 @@ function GuardCard(props: MeasureTabProps & { t: TuneDesk }) {
   const kept = t.kept;
   const row2 = noticeRow("measure.tune.keep_unverified");
   return (
-    <section class="card" aria-label="Tune guard" style={col} data-stage={st.stage}>
-      <div class="card-head">
-        <strong>5. Verify, then Keep or Revert</strong>
-      </div>
+    <section class="m-sec" aria-label="Tune guard" style={col} data-stage={st.stage}>
+      <h4 class="section-label">Verify, then Keep or Revert</h4>
       {/* -- WP REVERTW -- a revert not fully successful is an alert, not a status line */}
       <p aria-label="Tune stage" aria-live="polite" role={st.stage === "revertIncomplete" ? "alert" : undefined} class={st.stage === "revertIncomplete" ? "error" : undefined}>
         {stageWords(st)}
@@ -365,13 +372,13 @@ function GuardCard(props: MeasureTabProps & { t: TuneDesk }) {
       ) : null}
       {st.running ? (
         <div role="progressbar" aria-label="Verify progress" aria-valuemin={0} aria-valuemax={st.runs || 1} aria-valuenow={st.run}>
-          <span class="muted">
+          <span class="m-caption">
             Run {Math.max(1, st.run)} of {Math.max(1, st.runs)}
           </span>
         </div>
       ) : null}
       {v && st.stage === "verified" ? (
-        <div aria-label="Verify" data-passed={String(v.passed)} class={v.passed ? "note" : "error"}>
+        <div aria-label="Verify" data-passed={String(v.passed)} class={`m-verify ${v.passed ? "m-ok" : "m-bad"}`}>
           <strong>{v.passed ? "The verify confirmed the tune." : "The verify did not confirm the tune."}</strong>
           <ul class="change-list">
             {verifyLines(v, outputName).map((x, i) => (
@@ -381,15 +388,15 @@ function GuardCard(props: MeasureTabProps & { t: TuneDesk }) {
         </div>
       ) : null}
       {st.issue && !q && !st.running && st.stage !== "kept" ? (
-        <p class={st.stage === "revertIncomplete" ? "error" : "note"} data-key={st.issue.key}>
+        <p class={st.stage === "revertIncomplete" ? "error" : "m-iconline m-note"} data-key={st.issue.key}>
           {issueWords(st.issue)}
         </p>
       ) : null}
       {q ? (
-        <div role="alertdialog" aria-label="Keep anyway?" class="banner" style={col}>
+        <div role="alertdialog" aria-label="Keep anyway?" class="notice-row notice-row-warning m-question" style={col}>
           <strong>{q.why === "unverified" ? (row2?.title ?? "The verify did not confirm the tune") : "The tune is not verified"}</strong>
           <span>{q.text}</span>
-          {q.why === "unverified" && row2 ? <span class="muted">{`${row2.reason} ${row2.action}`}</span> : null}
+          {q.why === "unverified" && row2 ? <span class="m-caption">{`${row2.reason} ${row2.action}`}</span> : null}
           <div style={row}>
             <button type="button" class="danger" disabled={!ready || !!t.busy} onClick={() => void t.confirmKeep()}>
               {ready ? "Keep anyway" : `Keep anyway (in ${wait} s)`}
@@ -420,7 +427,7 @@ function GuardCard(props: MeasureTabProps & { t: TuneDesk }) {
           </button>
         ) : null}
         {t.running ? (
-          <button type="button" class="danger" onClick={() => void t.stop()}>
+          <button type="button" onClick={() => void t.stop()}>
             Stop the verify
           </button>
         ) : null}

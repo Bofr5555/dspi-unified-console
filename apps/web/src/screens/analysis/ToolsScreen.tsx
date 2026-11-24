@@ -34,7 +34,9 @@ import {
   withType,
 } from "./siggen";
 import { FAST_MS, MONITOR_POLL_MS, SLOW_MS, appendLines, copyText, eventCount, fillText, lineTime, mergeSlow, slowSections, starvationDelta } from "./stats";
-import { EmptyState, rangeFill } from "../../ui/design"; // -- WP WEB --
+import { EmptyState, FormRow, Glyph, Section, Switch, rangeFill } from "../../ui/design"; // -- WP WEB --
+import { WAVE_BOX, wavePath } from "./waves"; // -- WP WEB4 --
+import "./analysis.css"; // -- WP WEB4 --
 import { readNumber } from "../../ui/number"; // -- WP WEB --
 
 /** Signal Generator (M46). */
@@ -185,9 +187,196 @@ function SiggenPanel(props: { session: Session }) {
   if (!s) return null;
   if (caps && !caps.supported) return <EmptyState icon="chart-line" title="No signal generator" text="This DSPi's firmware has no signal generator." />; // -- WP WEB --
   const timing = type?.timing ?? 0;
+  // -- WP WEB4 -- Qt's Modern Signal Generator: the intro row with the state's chip, two columns
+  // (Signal and Outputs at the left; Level, Parameters, Timing and Options at the right), the
+  // waveform tiles, the outputs as chips, the options as switches, and the transport at the foot
+  // with Start the one primary.
+  const params = type ? type.params.map((p, i) => ({ p, i })).filter((x) => x.p.semantic !== 0) : [];
+  const timed = timing === TIMING_SWEEP || timing === TIMING_PATTERN;
   return (
-    <section class="card siggen" aria-label="Signal Generator">
-      <div class="siggen-transport" role="group" aria-label="Transport">
+    <section class="siggen" aria-label="Signal Generator">
+      <div class="sg-intro">
+        <Glyph name="audio-lines" class="sg-intro-icon" />
+        <div class="sg-intro-text">
+          <span class="sg-intro-title">Signal Generator</span>
+          <span class="sg-caption">Onboard test and measurement signals</span>
+        </div>
+        <span class="status-chip">
+          <span class={`status-dot${isPlaying ? " ok" : ""}`} aria-hidden="true" />
+          {isPlaying ? "Playing" : "Idle"}
+        </span>
+      </div>
+      <div class="sg-columns">
+        <div class="sg-col">
+          <Section label="Signal">
+            <div class="siggen-types sg-tiles" role="radiogroup" aria-label="Signal">
+              {(caps?.types ?? []).filter((t) => t.offered).map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  role="radio"
+                  class="sg-tile"
+                  aria-checked={t.id === draft.signalType}
+                  title={t.blurb}
+                  disabled={disabled}
+                  onClick={() => edit(withType(draft, t))}
+                >
+                  <svg viewBox={`0 0 ${WAVE_BOX.width} ${WAVE_BOX.height}`} aria-hidden="true" focusable="false">
+                    <path d={wavePath(t.tile)} />
+                  </svg>
+                  <span>{t.tile}</span>
+                </button>
+              ))}
+            </div>
+            {type ? <p class="siggen-blurb sg-caption">{type.name}: {type.blurb}</p> : null}
+          </Section>
+          <Section
+            label="Outputs"
+            tools={
+              <>
+                <button type="button" class="sg-quiet" disabled={disabled} onClick={() => edit({ ...draft, channelMask: playable })}>
+                  All
+                </button>
+                <button type="button" class="sg-quiet" disabled={disabled} onClick={() => edit({ ...draft, channelMask: 0 })}>
+                  None
+                </button>
+              </>
+            }
+          >
+            <div class="siggen-outputs sg-outs" role="group" aria-label="Outputs">
+              {Array.from({ length: Math.min(16, outputs) }, (_, o) => {
+                const bit = 1 << o;
+                if (!(playable & bit)) return null;
+                const on = (draft.channelMask & bit) !== 0;
+                return (
+                  <button key={o} type="button" class="chip" aria-pressed={on} disabled={disabled} onClick={() => edit({ ...draft, channelMask: draft.channelMask ^ bit })}>
+                    {nameOf(o)}
+                  </button>
+                );
+              })}
+            </div>
+            <p class="sg-caption">Click to choose; the generator plays on the chosen outputs together, or one at a time with Walk.</p>
+          </Section>
+        </div>
+        <div class="sg-col sg-right">
+          <Section
+            label="Level"
+            tools={
+              <span class="sg-value">
+                <input
+                  {...DECIMAL}
+                  class="siggen-number"
+                  value={draft.levelDb}
+                  disabled={disabled}
+                  aria-label="Level in dBFS"
+                  onChange={(e) => {
+                    const v = typed(e, draft.levelDb, ["dBFS", "dB"]);
+                    if (v !== null) edit(withLevel(draft, v));
+                  }}
+                />
+                <span class="sg-unit">dBFS</span>
+              </span>
+            }
+          >
+            <input
+              type="range"
+              class="sg-slider"
+              min={SLIDER_MIN}
+              max={LEVEL_MAX}
+              step={0.5}
+              value={Math.max(SLIDER_MIN, draft.levelDb)}
+              style={rangeFill(draft.levelDb, SLIDER_MIN, LEVEL_MAX)}
+              disabled={disabled}
+              aria-label="Level"
+              onInput={(e) => edit(withLevel(draft, Number((e.target as HTMLInputElement).value)))}
+            />
+            <p class="sg-caption">Peak level in dBFS. Output trim, master volume and mute still apply downstream.</p>
+          </Section>
+          {type && params.length ? (
+            <Section label="Parameters">
+              <div class="siggen-params">
+                {params.map(({ p, i }) => (
+                  <FormRow key={i} title={p.label}>
+                    {p.semantic === 6 ? (
+                      <select aria-label={p.label} disabled={disabled} value={draft.p[i] ?? 0} onChange={(e) => edit(withParam(draft, type, i, Number((e.target as HTMLSelectElement).value)))}>
+                        {Array.from({ length: Math.round(p.max - p.min) + 1 }, (_, k) => (
+                          <option key={k} value={p.min + k}>
+                            Pattern {p.min + k + 1}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        {...DECIMAL}
+                        class="siggen-number"
+                        value={draft.p[i] ?? p.def}
+                        disabled={disabled}
+                        aria-label={p.label}
+                        onChange={(e) => {
+                          const v = typed(e, draft.p[i] ?? p.def, p.unit ? [p.unit] : []);
+                          if (v !== null) edit(withParam(draft, type, i, v));
+                        }}
+                      />
+                    )}
+                    <span class="sg-unit">{p.unit}</span>
+                  </FormRow>
+                ))}
+              </div>
+            </Section>
+          ) : null}
+          {timed ? (
+            <Section label="Timing">
+              <FormRow title={timing === TIMING_SWEEP ? "Length" : "Duration"} caption={timing === TIMING_SWEEP ? undefined : "0 = play until stopped"}>
+                <input
+                  {...DECIMAL}
+                  class="siggen-number"
+                  value={draft.durationMs / 1000}
+                  disabled={disabled}
+                  aria-label={timing === TIMING_SWEEP ? "Sweep length in seconds" : "Duration in seconds"}
+                  onChange={(e) => {
+                    const v = typed(e, draft.durationMs / 1000, ["s"]);
+                    if (v !== null) edit({ ...draft, durationMs: Math.round(Math.min(600, Math.max(0, v)) * 1000) });
+                  }}
+                />
+                <span class="sg-unit">s</span>
+              </FormRow>
+              {timing === TIMING_SWEEP ? (
+                <FormRow title="Repeat" caption="0 = once">
+                  <input
+                    type="number"
+                    class="siggen-number"
+                    min={0}
+                    max={1000}
+                    step={1}
+                    value={draft.repeat}
+                    disabled={disabled}
+                    aria-label="Repeat count"
+                    onChange={(e) => {
+                      const v = Math.round(Number((e.target as HTMLInputElement).value));
+                      if (Number.isFinite(v)) edit({ ...draft, repeat: Math.min(1000, Math.max(0, v)) });
+                    }}
+                  />
+                  <span class="sg-unit" />
+                </FormRow>
+              ) : null}
+            </Section>
+          ) : null}
+          <Section label="Options">
+            <div class="siggen-options" role="group" aria-label="Options">
+              {[
+                { flag: FLAG_RAW, label: "Bypass output EQ (RAW)", tip: "Skips crossover and PEQ on the selected outputs. Trim, master volume, mute and delay still apply." },
+                { flag: FLAG_WALK, label: "Walk outputs one at a time", tip: "Plays the selected outputs sequentially instead of together." },
+                { flag: FLAG_DECORR, label: "Decorrelated", tip: "A different noise on each output." },
+              ].map((o) => (
+                <FormRow key={o.flag} title={o.label} caption={o.tip}>
+                  <Switch label={o.label} on={(draft.flags & o.flag) !== 0} disabled={disabled} toggle={() => edit({ ...draft, flags: draft.flags & o.flag ? draft.flags & ~o.flag : draft.flags | o.flag })} />
+                </FormRow>
+              ))}
+            </div>
+          </Section>
+        </div>
+      </div>
+      <div class="siggen-transport sg-foot" role="group" aria-label="Transport">
         <div>
           <strong class="siggen-title" aria-live="polite">
             {transportTitle(caps, draft, status, blocker)}
@@ -196,7 +385,7 @@ function SiggenPanel(props: { session: Session }) {
         </div>
         {isPlaying ? (
           <>
-            <button type="button" class="danger" disabled={!open || !!ro} onClick={() => void stop(false)}>
+            <button type="button" disabled={!open || !!ro} onClick={() => void stop(false)}>
               Stop
             </button>
             <button type="button" disabled={!open || !!ro} onClick={() => void stop(true)} title="Cut at once, no fade">
@@ -205,160 +394,9 @@ function SiggenPanel(props: { session: Session }) {
           </>
         ) : (
           <button type="button" class="primary" disabled={!!blocker} onClick={() => void send(draft, true)}>
-            Play
+            Start
           </button>
         )}
-      </div>
-
-      <div class="siggen-types" role="radiogroup" aria-label="Signal">
-        {(caps?.types ?? []).filter((t) => t.offered).map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            role="radio"
-            aria-checked={t.id === draft.signalType}
-            title={t.blurb}
-            disabled={disabled}
-            onClick={() => edit(withType(draft, t))}
-          >
-            {t.tile}
-          </button>
-        ))}
-      </div>
-      {type ? <p class="siggen-blurb">{type.name}: {type.blurb}</p> : null}
-
-      <div class="siggen-outputs" role="group" aria-label="Outputs">
-        {Array.from({ length: Math.min(16, outputs) }, (_, o) => {
-          const bit = 1 << o;
-          if (!(playable & bit)) return null;
-          const on = (draft.channelMask & bit) !== 0;
-          return (
-            <button key={o} type="button" aria-pressed={on} disabled={disabled} onClick={() => edit({ ...draft, channelMask: draft.channelMask ^ bit })}>
-              {nameOf(o)}
-            </button>
-          );
-        })}
-        <button type="button" disabled={disabled} onClick={() => edit({ ...draft, channelMask: playable })}>
-          All
-        </button>
-        <button type="button" disabled={disabled} onClick={() => edit({ ...draft, channelMask: 0 })}>
-          None
-        </button>
-      </div>
-
-      <label class="siggen-level">
-        <span>Level</span>
-        <input
-          type="range"
-          min={SLIDER_MIN}
-          max={LEVEL_MAX}
-          step={0.5}
-          value={Math.max(SLIDER_MIN, draft.levelDb)}
-          disabled={disabled}
-          aria-label="Level"
-          onInput={(e) => edit(withLevel(draft, Number((e.target as HTMLInputElement).value)))}
-        />
-        <input
-          {...DECIMAL}
-          class="siggen-number"
-          value={draft.levelDb}
-          style={rangeFill(draft.levelDb, SLIDER_MIN, LEVEL_MAX)}
-          disabled={disabled}
-          aria-label="Level in dBFS"
-          onChange={(e) => {
-            const v = typed(e, draft.levelDb, ["dBFS", "dB"]);
-            if (v !== null) edit(withLevel(draft, v));
-          }}
-        />
-        <span>dBFS</span>
-      </label>
-
-      {type ? (
-        <div class="siggen-params">
-          {type.params.map((p, i) =>
-            p.semantic === 0 ? null : (
-              <label key={i}>
-                <span>{p.label}</span>
-                {p.semantic === 6 ? (
-                  <select disabled={disabled} value={draft.p[i] ?? 0} onChange={(e) => edit(withParam(draft, type, i, Number((e.target as HTMLSelectElement).value)))}>
-                    {Array.from({ length: Math.round(p.max - p.min) + 1 }, (_, k) => (
-                      <option key={k} value={p.min + k}>
-                        Pattern {p.min + k + 1}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <input
-                    {...DECIMAL}
-                    class="siggen-number"
-                    value={draft.p[i] ?? p.def}
-                    disabled={disabled}
-                    aria-label={p.label}
-                    onChange={(e) => {
-                      const v = typed(e, draft.p[i] ?? p.def, p.unit ? [p.unit] : []);
-                      if (v !== null) edit(withParam(draft, type, i, v));
-                    }}
-                  />
-                )}
-                {p.unit ? <span>{p.unit}</span> : null}
-              </label>
-            ),
-          )}
-          {timing === TIMING_SWEEP || timing === TIMING_PATTERN ? (
-            <label>
-              <span>{timing === TIMING_SWEEP ? "Length" : "Duration"}</span>
-              <input
-                {...DECIMAL}
-                class="siggen-number"
-                value={draft.durationMs / 1000}
-                disabled={disabled}
-                aria-label={timing === TIMING_SWEEP ? "Sweep length in seconds" : "Duration in seconds"}
-                onChange={(e) => {
-                  const v = typed(e, draft.durationMs / 1000, ["s"]);
-                  if (v !== null) edit({ ...draft, durationMs: Math.round(Math.min(600, Math.max(0, v)) * 1000) });
-                }}
-              />
-              <span>s</span>
-            </label>
-          ) : null}
-          {timing === TIMING_SWEEP ? (
-            <label>
-              <span>Repeat</span>
-              <input
-                type="number"
-                class="siggen-number"
-                min={0}
-                max={1000}
-                step={1}
-                value={draft.repeat}
-                disabled={disabled}
-                aria-label="Repeat count"
-                onChange={(e) => {
-                  const v = Math.round(Number((e.target as HTMLInputElement).value));
-                  if (Number.isFinite(v)) edit({ ...draft, repeat: Math.min(1000, Math.max(0, v)) });
-                }}
-              />
-            </label>
-          ) : null}
-        </div>
-      ) : null}
-
-      <div class="siggen-options" role="group" aria-label="Options">
-        {[
-          { flag: FLAG_RAW, label: "Bypass EQ", tip: "Played past each output's crossover and EQ" },
-          { flag: FLAG_WALK, label: "Walk Outputs", tip: "One output at a time, in turn" },
-          { flag: FLAG_DECORR, label: "Decorrelated", tip: "A different noise on each output" },
-        ].map((o) => (
-          <label key={o.flag} title={o.tip}>
-            <input
-              type="checkbox"
-              checked={(draft.flags & o.flag) !== 0}
-              disabled={disabled}
-              onChange={(e) => edit({ ...draft, flags: (e.target as HTMLInputElement).checked ? draft.flags | o.flag : draft.flags & ~o.flag })}
-            />
-            {o.label}
-          </label>
-        ))}
       </div>
     </section>
   );
@@ -420,7 +458,7 @@ function StatsPanel(props: { session: Session }) {
   return (
     <section class="stats" aria-label="Stats for nerbs">
       <div class="stats-head">
-        <span class="muted">Updated every 2 seconds</span>
+        <span class="sg-caption">Updated every 2 seconds</span>
         <button type="button" disabled={!open || !!session.readOnlyReason} onClick={() => void reset()}>
           Reset Watermarks
         </button>
@@ -551,13 +589,8 @@ function MonitorPanel(props: { session: Session }) {
     void navigator.clipboard?.writeText(copyText(lines)).catch(() => undefined);
   };
   return (
-    <section class="card monitor" aria-label="Interrupt Monitor">
-      <div class="card-head">
-        <h3>Notifications</h3>
-        <span class="muted" role="status">
-          {!open ? "Inactive" : paused ? "Paused" : "Listening"} · {eventCount(lines.length)}
-        </span>
-      </div>
+    // -- WP WEB4 -- no card: the tools and the state in one row at the top, the lines in mono, an empty state while there are none
+    <section class="monitor" aria-label="Interrupt Monitor">
       <div class="monitor-tools">
         <button type="button" aria-pressed={paused} onClick={() => setPaused((p) => !p)}>
           {paused ? "Resume" : "Pause"}
@@ -568,8 +601,20 @@ function MonitorPanel(props: { session: Session }) {
         <button type="button" title="Copies the lines shown, oldest first" disabled={!lines.length} onClick={copy}>
           Copy
         </button>
+        <span class="status-chip" role="status">
+          <span class={`status-dot${open && !paused ? " ok" : ""}`} aria-hidden="true" />
+          {!open ? "Inactive" : paused ? "Paused" : "Listening"} · {eventCount(lines.length)}
+        </span>
       </div>
-      <ol class="monitor-lines" ref={list} aria-label="Notification lines">
+      {/* the empty state's look without its status role: the chip above is this page's status */}
+      {lines.length ? null : (
+        <div class="empty-state">
+          <Glyph name="activity" class="empty-icon" />
+          <p class="empty-title">No notifications yet</p>
+          <p class="empty-text">The device's notifications are listed here as they come, oldest first.</p>
+        </div>
+      )}
+      <ol class="monitor-lines" ref={list} aria-label="Notification lines" hidden={!lines.length}>
         {lines.map((l) => (
           <li key={l.id}>
             <time>{lineTime(l.timeMs)}</time> <code>{l.text}</code>

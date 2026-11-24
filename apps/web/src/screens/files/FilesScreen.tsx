@@ -14,6 +14,7 @@ import { BLOCKS, DiffTable } from "../snapshots/DiffTable";
 import { docMeta, download, fileNameFor, type SnapshotDesk } from "../snapshots/model";
 // -- WP WB6K -- filter files, the saves to the device, the AutoEQ database
 import { AutoEqDatabaseCard, DeviceSaveCard, FilterPicker, FiltersCard, type PendingFilters } from "./FilesCards";
+import "./files.css"; // -- WP WEB4 --
 
 export function FilesScreen(props: ScreenProps) {
   const desk = props.desk;
@@ -77,8 +78,10 @@ function FilesView(props: { desk: SnapshotDesk }) {
         <FilterPicker desk={desk} pending={filters} onDone={() => setFilters(null)} />
       ) : (
         <>
+          {/* -- WP WB6K -- (-- WP WEB4 -- first, as Qt's Files page) */}
+          <FiltersCard desk={desk} onChosen={setFilters} />
           <div class="card">
-            <h3>Configuration file</h3>
+            <h3>Device configuration</h3>
             <p class="note">The whole configuration as a .dspipreset file, the format every DSPi console reads and writes.</p>
             <div class="files-row">
               <label>
@@ -111,7 +114,7 @@ function FilesView(props: { desk: SnapshotDesk }) {
           </div>
           {doc ? (
             <div class="card">
-              <h3>File</h3>
+              <h3>File without a device</h3>
               <p class="note">
                 Editing {doc.fileName || doc.name} with no device. Save File downloads it as it now stands.
               </p>
@@ -149,8 +152,6 @@ function FilesView(props: { desk: SnapshotDesk }) {
               </button>
             </div>
           </div>
-          {/* -- WP WB6K -- */}
-          <FiltersCard desk={desk} onChosen={setFilters} />
           <DeviceSaveCard desk={desk} />
           <AutoEqDatabaseCard desk={desk} />
         </>

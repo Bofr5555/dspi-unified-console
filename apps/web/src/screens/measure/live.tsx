@@ -21,9 +21,7 @@ import { MeasureGraph, type Series } from "./graph";
 import { AVERAGING, COUPLERS, LIVE_PLACEMENT_FIRST, ROLES, SMOOTHING, highestPoint, hz, issueText, liveText, livePlaceOf, smoothingLabel } from "./model";
 import { readTextFile } from "./setup";
 import { plainNumber, readNumber } from "../../ui/number"; // -- WP WEB --
-
-const row = { display: "flex", flexWrap: "wrap", gap: "8px 16px", alignItems: "flex-end" } as const;
-const field = { display: "flex", flexDirection: "column", gap: "2px", minWidth: 0 } as const;
+import { Icon, StatusChip } from "./parts"; // -- WP WEB4 --
 
 interface LiveDraft {
   output: number;
@@ -187,112 +185,118 @@ export function LiveTab(props: MeasureTabProps) {
   if (predicted) series.push({ label: "Predicted", kind: "predicted", curve: predicted });
   const spl = !!(measured?.spl || rta?.current?.spl);
   const issue = f?.issue ?? live?.issue ?? null;
+  const targetField = useRef<HTMLInputElement>(null); // -- WP WEB4 --
+  const issueShown = !!issue && !active && issue.key !== "measure.stopped";
   const mark = num(span[0]) !== null && num(span[1]) !== null ? { f1: num(span[0])!, f2: num(span[1])! } : num(at) !== null ? { f1: num(at)! } : null;
 
   return (
-    <section class="card" aria-label="Live response" style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-      <div class="card-head" style={{ display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "center" }}>
-        <strong style={{ flex: "1 1 auto" }}>Live response</strong>
+    // -- WP WEB4 -- DL2's Live: no heading and no card; Start Live (the one primary) with a status chip,
+    // why it waits as a notice row, the choices in one row, the target with Import Target…, the graph
+    // in its frame, Direct adjustments as a section
+    <section class="measure-live" aria-label="Live response">
+      <div class="m-line">
         {active ? (
-          <button type="button" class="danger" onClick={() => void desk.stopLive()}>
-            Stop live
+          <button type="button" onClick={() => void desk.stopLive()}>
+            Stop Live
           </button>
         ) : (
           <button type="button" class="primary" disabled={desk.running || !d.placement} onClick={() => void start()}>
-            Start live
+            Start Live
           </button>
         )}
+        <StatusChip kind={active ? "ok" : issueShown ? "warn" : "idle"}>
+          <span aria-live="polite" data-seq={live?.seq ?? 0}>
+            {liveText(live)}
+          </span>
+        </StatusChip>
       </div>
       {!active && !d.placement ? (
-        <p class="note" aria-label="Live placement needed">
-          {LIVE_PLACEMENT_FIRST}
-        </p>
-      ) : null}
-      <fieldset style={{ border: 0, padding: 0, margin: 0, ...row }} disabled={active || desk.running}>
-        <label style={field}>
-          <span>Output</span>
-          <select aria-label="Live output" value={String(d.output)} onChange={(e) => set({ output: Number((e.currentTarget as HTMLSelectElement).value) })}>
-            {outputs.map((o) => (
-              <option key={o} value={o}>
-                {outputName(o)}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label style={field}>
-          <span>Way</span>
-          <select aria-label="Live way" value={d.role} onChange={(e) => set({ role: (e.currentTarget as HTMLSelectElement).value as MeasureRole })}>
-            {ROLES.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label style={field}>
-          <span>Placement</span>
-          <select aria-label="Live placement" value={d.placement ?? ""} onChange={(e) => set({ placement: (e.currentTarget as HTMLSelectElement).value as MeasurePlacement })}>
-            {d.placement ? null : (
-              <option value="" disabled>
-                Choose the placement
-              </option>
-            )}
-            {LIVE_PLACEMENTS.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        {d.placement === "headphones" ? (
-          <label style={field}>
-            <span>Coupler</span>
-            <select aria-label="Live coupler" value={d.coupler} onChange={(e) => set({ coupler: (e.currentTarget as HTMLSelectElement).value as MeasureCoupler })}>
-              {COUPLERS.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.label}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : null}
-        <div role="radiogroup" aria-label="Live mode" style={field}>
-          <span>Plays</span>
-          <span style={{ display: "flex", gap: "10px" }}>
-            <label>
-              <input type="radio" name="measure-live-mode" checked={d.mode === "sweep"} onChange={() => set({ mode: "sweep" })} /> Sweeps
-            </label>
-            <label>
-              <input type="radio" name="measure-live-mode" checked={d.mode === "pinkRta"} onChange={() => set({ mode: "pinkRta" })} /> Pink noise (RTA)
-            </label>
-          </span>
+        <div class="notice-row notice-row-warning" role="status" aria-label="Live placement needed">
+          <Icon name="warning" class="notice-icon" />
+          <span class="notice-text">{LIVE_PLACEMENT_FIRST}</span>
         </div>
-        <label style={field}>
-          <span>Smoothing</span>
-          <select aria-label="Smoothing" value={String(d.smoothing)} onChange={(e) => set({ smoothing: Number((e.currentTarget as HTMLSelectElement).value) })}>
-            {SMOOTHING.map((n) => (
-              <option key={n} value={n}>
-                {smoothingLabel(n)}
+      ) : null}
+      {issue && !active ? (
+        issue.key === "measure.stopped" ? (
+          <p class="m-caption" data-key={issue.key}>
+            {issueText(issue, (k) => noticeRow(k)?.title ?? null, outputName)}
+          </p>
+        ) : (
+          <div class="notice-row notice-row-error" role="alert" data-key={issue.key}>
+            <Icon name="error" class="notice-icon" />
+            <span class="notice-text">{issueText(issue, (k) => noticeRow(k)?.title ?? null, outputName)}</span>
+          </div>
+        )
+      ) : null}
+      <fieldset class="m-line m-choices" disabled={active || desk.running}>
+        <select aria-label="Live output" title="Output" value={String(d.output)} onChange={(e) => set({ output: Number((e.currentTarget as HTMLSelectElement).value) })}>
+          {outputs.map((o) => (
+            <option key={o} value={o}>
+              {outputName(o)}
+            </option>
+          ))}
+        </select>
+        <select aria-label="Live way" title="Way" value={d.role} onChange={(e) => set({ role: (e.currentTarget as HTMLSelectElement).value as MeasureRole })}>
+          {ROLES.map((r) => (
+            <option key={r.id} value={r.id}>
+              {r.label}
+            </option>
+          ))}
+        </select>
+        <select aria-label="Live placement" title="Placement" value={d.placement ?? ""} onChange={(e) => set({ placement: (e.currentTarget as HTMLSelectElement).value as MeasurePlacement })}>
+          {d.placement ? null : (
+            <option value="" disabled>
+              Choose the placement
+            </option>
+          )}
+          {LIVE_PLACEMENTS.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.label}
+            </option>
+          ))}
+        </select>
+        {d.placement === "headphones" ? (
+          <select aria-label="Live coupler" title="Coupler" value={d.coupler} onChange={(e) => set({ coupler: (e.currentTarget as HTMLSelectElement).value as MeasureCoupler })}>
+            {COUPLERS.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.label}
               </option>
             ))}
           </select>
-        </label>
-        <label style={field}>
-          <span>Target file (REW or CSV)</span>
-          <input type="file" aria-label="Import a target file" accept=".txt,.csv,.frd,text/plain" onChange={(e) => void importTarget(e.currentTarget as HTMLInputElement)} />
-        </label>
-        <span class="muted" style={field}>
-          {desk.targetName ? `Target: ${desk.targetName}` : "Target: the placement's default (our own curve)"}
+        ) : null}
+        <div role="radiogroup" aria-label="Live mode" class="segments">
+          <button type="button" role="radio" aria-checked={d.mode === "sweep"} aria-pressed={d.mode === "sweep"} onClick={() => set({ mode: "sweep" })}>
+            Sweeps
+          </button>
+          <button type="button" role="radio" aria-checked={d.mode === "pinkRta"} aria-pressed={d.mode === "pinkRta"} onClick={() => set({ mode: "pinkRta" })}>
+            Pink noise (RTA)
+          </button>
+        </div>
+        <select aria-label="Smoothing" title="Smoothing" value={String(d.smoothing)} onChange={(e) => set({ smoothing: Number((e.currentTarget as HTMLSelectElement).value) })}>
+          {SMOOTHING.map((n) => (
+            <option key={n} value={n}>
+              {smoothingLabel(n)}
+            </option>
+          ))}
+        </select>
+      </fieldset>
+      <div class="m-line m-spread">
+        <span class="m-caption">{desk.targetName ? `Target: ${desk.targetName}` : "Target: the placement's default (our own curve)"}</span>
+        <span class="m-line">
           {desk.targetName ? (
-            <button type="button" onClick={() => desk.setDocs({ targetDocument: "", targetName: "" })}>
+            <button type="button" disabled={active || desk.running} onClick={() => desk.setDocs({ targetDocument: "", targetName: "" })}>
               Default target
             </button>
           ) : null}
+          <button type="button" disabled={active || desk.running} onClick={() => targetField.current?.click()}>
+            Import Target…
+          </button>
         </span>
-      </fieldset>
+        <input ref={targetField} type="file" class="visually-hidden" tabIndex={-1} aria-label="Import a target file" accept=".txt,.csv,.frd,text/plain" onChange={(e) => void importTarget(e.currentTarget as HTMLInputElement)} />
+      </div>
       {d.mode === "pinkRta" ? (
-        <div style={row}>
-          <label style={field}>
+        <div class="m-line">
+          <label class="m-inline">
             <span>Averaging</span>
             <select aria-label="Averaging" value={d.averaging} onChange={(e) => void averaging((e.currentTarget as HTMLSelectElement).value as MeasureRtaAveraging)}>
               {AVERAGING.map((a) => (
@@ -308,16 +312,8 @@ export function LiveTab(props: MeasureTabProps) {
           <button type="button" disabled={!rta?.held} onClick={() => void hold(false)}>
             Clear hold
           </button>
-          {rta ? <span class="muted">{rta.frames} frames averaged</span> : null}
+          {rta ? <span class="m-caption">{rta.frames} frames averaged</span> : null}
         </div>
-      ) : null}
-      <p aria-live="polite" data-seq={live?.seq ?? 0}>
-        {liveText(live)}
-      </p>
-      {issue && !active ? (
-        <p class={issue.key === "measure.stopped" ? "muted" : "error"} data-key={issue.key}>
-          {issueText(issue, (k) => noticeRow(k)?.title ?? null, outputName)}
-        </p>
       ) : null}
       <MeasureGraph
         label="Live response"
@@ -335,32 +331,35 @@ export function LiveTab(props: MeasureTabProps) {
       />
       {rta?.compare ? <MeasureGraph label="Compared with the held spectrum" series={[{ label: "Now minus held", kind: "compare", curve: rta.compare }]} unit="dB" /> : null}
 
-      <div role="group" aria-label="Direct adjustments" style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-        <div style={row}>
-          <label style={field}>
+      <div role="group" aria-label="Direct adjustments" class="m-sec">
+        <h4 class="section-label">Direct adjustments</h4>
+        <div class="m-line">
+          <label class="m-inline">
             <span>Peak at, Hz</span>
-            <input type="text" inputMode="decimal" aria-label="Peak frequency" size={7} value={at} onInput={(e) => setAt((e.currentTarget as HTMLInputElement).value)} />
+            <input type="text" class="m-num m-freq" inputMode="decimal" aria-label="Peak frequency" size={7} value={at} onInput={(e) => setAt((e.currentTarget as HTMLInputElement).value)} />
           </label>
           <button type="button" disabled={!active} onClick={() => setAt(String(Math.round(highestPoint(measured) ?? 1000)))} title="The highest trusted point from 100 Hz to 5 kHz">
-            Find the highest peak
+            Find the Highest Peak
           </button>
           <button type="button" disabled={!active || !measured} onClick={cut}>
-            Cut this peak
+            Cut This Peak
           </button>
-          <label style={field}>
+        </div>
+        <div class="m-line">
+          <label class="m-inline">
             <span>From, Hz</span>
-            <input type="text" inputMode="decimal" aria-label="Range from" size={7} value={span[0]} onInput={(e) => setSpan([(e.currentTarget as HTMLInputElement).value, span[1]])} />
+            <input type="text" class="m-num m-freq" inputMode="decimal" aria-label="Range from" size={7} value={span[0]} onInput={(e) => setSpan([(e.currentTarget as HTMLInputElement).value, span[1]])} />
           </label>
-          <label style={field}>
-            <span>To, Hz</span>
-            <input type="text" inputMode="decimal" aria-label="Range to" size={7} value={span[1]} onInput={(e) => setSpan([span[0], (e.currentTarget as HTMLInputElement).value])} />
+          <label class="m-inline">
+            <span>to</span>
+            <input type="text" class="m-num m-freq" inputMode="decimal" aria-label="Range to" size={7} value={span[1]} onInput={(e) => setSpan([span[0], (e.currentTarget as HTMLInputElement).value])} />
           </label>
           <button type="button" disabled={!active || !measured} onClick={fit}>
-            Fit this range
+            Fit This Range
           </button>
         </div>
         {proposal ? (
-          <div class="note" role="group" aria-label="Pending change">
+          <div class="m-pending" role="group" aria-label="Pending change">
             {proposal.changes.length ? (
               <>
                 <strong>{proposal.label}</strong>
@@ -374,10 +373,10 @@ export function LiveTab(props: MeasureTabProps) {
                     </li>
                   ) : null}
                 </ul>
-                <p class="muted">
+                <p class="m-caption">
                   Error to the target: {proposal.rmsBeforeDb.toFixed(1)} dB RMS now, {proposal.rmsAfterDb.toFixed(1)} dB RMS predicted (dotted).
                 </p>
-                <div style={row}>
+                <div class="m-actions">
                   <button type="button" class="primary" onClick={() => void apply()}>
                     Apply
                   </button>
@@ -392,11 +391,11 @@ export function LiveTab(props: MeasureTabProps) {
           </div>
         ) : null}
         {said ? (
-          <p class="note" role="status">
+          <p class="m-caption" role="status">
             {said}
           </p>
         ) : null}
-        {mark ? <span class="muted">{mark.f2 ? `Range ${hz(mark.f1)} to ${hz(mark.f2)}` : `At ${hz(mark.f1)}`}</span> : null}
+        {mark ? <span class="m-caption">{mark.f2 ? `Range ${hz(mark.f1)} to ${hz(mark.f2)}` : `At ${hz(mark.f1)}`}</span> : null}
       </div>
     </section>
   );
