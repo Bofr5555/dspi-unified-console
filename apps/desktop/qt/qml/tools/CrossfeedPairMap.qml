@@ -11,6 +11,8 @@ import UConsole
 // reports. After the K340 choice a question offers to crossfeed both pairs,
 // as the factory mask covers the woofers only: an explicit click, never
 // automatic.
+// -- WP DL1 -- Modern: the Outputs menu a secondary button, the editor on the
+// control tone without an outline, its refusal a warning notice.
 ColumnLayout {
     id: map
     objectName: "CrossfeedWindow.pairMap"
@@ -124,7 +126,7 @@ ColumnLayout {
         implicitHeight: editor.implicitHeight + 16
         radius: 6
         color: Theme.control
-        border.width: 1
+        border.width: Theme.lineWidth   // -- WP DL1 -- none in Modern
         border.color: Theme.separator
 
         ColumnLayout {
@@ -180,12 +182,20 @@ ColumnLayout {
             }
             Text {
                 objectName: "CrossfeedWindow.pairMap.editor.warning"
-                visible: !map.draftValid
+                visible: !map.draftValid && !LayoutController.modern
                 Layout.fillWidth: true
                 text: qsTr("Each pair needs two different outputs, and no output can be in two pairs.")
                 font: Theme.fontCaption
                 color: Theme.warning
                 wrapMode: Text.Wrap
+            }
+            // -- WP DL1 -- Modern: a notice, not an orange sentence
+            NoticeRow {
+                objectName: "CrossfeedWindow.pairMap.editor.warning"
+                visible: !map.draftValid && LayoutController.modern
+                Layout.fillWidth: true
+                kind: "warning"
+                text: qsTr("Each pair needs two different outputs, and no output can be in two pairs.")
             }
             RowLayout {
                 Layout.fillWidth: true
