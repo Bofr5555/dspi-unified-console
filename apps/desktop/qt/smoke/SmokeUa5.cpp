@@ -340,7 +340,7 @@ void keysSection(SmokeDriver &d) {
             save && save->property("text").toString() == QLatin1String("Ctrl+S"));
     QObject *presets = d.object(QStringLiteral("ShortcutsDialog.key.device.preset1"));
     d.check(QStringLiteral("ua5-keys: the presets are one line (%1)").arg(presets ? presets->property("text").toString() : QString()),
-            presets && presets->property("text").toString() == QLatin1String("Ctrl+1 … Ctrl+9"));
+            presets && presets->property("text").toString() == QStringLiteral("Ctrl+1 … Ctrl+9"));
     d.check("ua5-keys: and the keys for moving around", d.object(QStringLiteral("ShortcutsDialog.row.area")) != nullptr);
     grabBoth(d, w, QStringLiteral("keys-shortcuts"));
     QTest::keyClick(w, Qt::Key_Escape);
