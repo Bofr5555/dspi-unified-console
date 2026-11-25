@@ -61,11 +61,21 @@ test("WB6e: ten slots in the popover, the active one marked, and its unsaved sta
   await expect(pop).toHaveCount(0);
   await expect(presetsButton(session)).toBeFocused();
 
+  // -- WP REVEFIX -- (REVE T1) the button's exact name, its text (the slot's name, Qt's) and its one dirty marker
+  await expect(session.locator(".bar-preset-text")).toHaveText(st.presetNames[a]!);
+  await expect(session.locator(".bar-preset-dot")).not.toHaveClass(/\bon\b/);
   await setOutputGain(session, -6);
-  await expect(presetsButton(session)).toHaveAccessibleName(/, unsaved changes$/);
+  await expect(presetsButton(session)).toHaveAccessibleName(`Presets: ${a + 1}: ${st.presetNames[a]}, unsaved changes`);
+  await expect(session.locator(".bar-preset-text")).toHaveText(st.presetNames[a]!);
+  await expect(session.locator(".bar-preset-dot")).toHaveClass(/\bon\b/);
   pop = await openPresets(session);
   await expect(slotRow(pop, a + 1)).toHaveAccessibleName(/Active, with unsaved changes/);
   await expect(slotRow(pop, a + 1).getByRole("button", { name: "Save", exact: true })).toHaveClass(/primary/);
+  // Saved: the marker goes, the name stays
+  await slotRow(pop, a + 1).getByRole("button", { name: "Save", exact: true }).click();
+  await expect(presetsButton(session)).toHaveAccessibleName(`Presets: ${a + 1}: ${st.presetNames[a]}`);
+  await expect(session.locator(".bar-preset-dot")).not.toHaveClass(/\bon\b/);
+  await expect(session.locator(".bar-preset-text")).toHaveText(st.presetNames[a]!);
   expect(errors).toEqual([]);
 });
 
