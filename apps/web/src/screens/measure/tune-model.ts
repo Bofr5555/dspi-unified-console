@@ -208,6 +208,8 @@ export const KEEP_UNVERIFIED = "measure.tune.keep_unverified";
 export function refusalWords(e: unknown, row: (key: string) => NoticeRecord | null = noticeRow): { key: string; text: string } {
   const msg = e instanceof Error ? e.message : String(e);
   const m = KEYED.exec(msg);
+  // -- WP FIN015 -- (REVF R2) the core's words for the person first, as MeasureDesk.fail (its key kept)
+  if (e instanceof CoreCallError && e.text) return { key: m ? m[1]! : (e.noticeKey ?? ""), text: e.text };
   if (m) {
     const why = m[2]!.trim();
     const Why = why ? why[0]!.toUpperCase() + why.slice(1) : why;
