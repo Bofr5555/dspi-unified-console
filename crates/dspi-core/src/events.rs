@@ -355,7 +355,11 @@ impl Store {
             }
             _ => (None, None),
         };
-        let mut r = EventRecord::new(EventKind::Notification, t, crate::monitor::describe(note));
+        // -- WP SHOWFIX -- (finding 2) plain words, the raw line for details
+        let raw = crate::monitor::describe(note);
+        let plain = words::plain(note, self.inputs.load(Ordering::Relaxed));
+        let mut r = EventRecord::new(EventKind::Notification, t, plain.as_deref().unwrap_or(&raw));
+        r.raw = plain.is_some().then_some(raw);
         r.source = source.map(crate::monitor::source_label);
         r.session = note.origin.filter(|&o| o != 0).map(u32::from);
         r.own = own;
@@ -668,6 +672,10 @@ impl DspiCore {
         self.events.clear_result(ok);
     }
 }
+
+// -- WP SHOWFIX -- (finding 2) the log's plain words; its number words serve
+// `change_words` too (finding 4)
+pub(crate) mod words;
 
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]

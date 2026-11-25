@@ -238,8 +238,10 @@ Item {
     // never while the user is at a control or a dialog, rate-limited)
     Connections {
         target: AiController
-        function onFollowSection(section) {
-            if (!shell.wizard && !shell.senderPage && section.length > 0 && pages.section !== section) pages.go(section, "")
+        // -- WP SHOWFIX -- (finding 3) on the tab of the change (PEQ, Crossover, Delay & Gain), "" for the last one
+        function onFollowSection(section, tab) {
+            if (!shell.wizard && !shell.senderPage && section.length > 0 && (pages.section !== section || (tab.length > 0 && pages.tab !== tab)))
+                pages.go(section, tab)
         }
     }
     Connections {

@@ -18,7 +18,7 @@
     {
      "device": "demo:1",
      "outputs": [
-      0
+      1
      ]
     },
     "error",
@@ -102,7 +102,7 @@
     "dspi_set_crossover",
     {
      "device": "demo:1",
-     "output": 1,
+     "output": 2,
      "high_pass": {
       "family": "linkwitz_riley",
       "order": 4,
@@ -122,7 +122,7 @@
     "dspi_set_crossover",
     {
      "device": "demo:1",
-     "output": 2,
+     "output": 3,
      "high_pass": {
       "family": "linkwitz_riley",
       "order": 4,
@@ -142,7 +142,7 @@
     "dspi_set_crossover",
     {
      "device": "demo:1",
-     "output": 0,
+     "output": 1,
      "low_pass": {
       "family": "linkwitz_riley",
       "order": 4,
@@ -162,7 +162,7 @@
     "dspi_set_crossover",
     {
      "device": "demo:1",
-     "output": 3,
+     "output": 4,
      "low_pass": {
       "family": "linkwitz_riley",
       "order": 4,
@@ -182,7 +182,7 @@
     "dspi_set_crossover",
     {
      "device": "demo:2",
-     "output": 1,
+     "output": 2,
      "high_pass": {
       "family": "linkwitz_riley",
       "order": 4,
@@ -202,7 +202,7 @@
     "dspi_set_crossover",
     {
      "device": "demo:2",
-     "output": 2,
+     "output": 3,
      "high_pass": {
       "family": "linkwitz_riley",
       "order": 4,
@@ -222,7 +222,7 @@
     "dspi_set_crossover",
     {
      "device": "demo:2",
-     "output": 0,
+     "output": 1,
      "low_pass": {
       "family": "linkwitz_riley",
       "order": 4,
@@ -242,7 +242,7 @@
     "dspi_set_crossover",
     {
      "device": "demo:2",
-     "output": 4,
+     "output": 5,
      "low_pass": {
       "family": "linkwitz_riley",
       "order": 4,
@@ -262,7 +262,7 @@
     "dspi_set_crossover",
     {
      "device": "demo:3",
-     "output": 1,
+     "output": 2,
      "high_pass": {
       "family": "linkwitz_riley",
       "order": 4,
@@ -282,7 +282,7 @@
     "dspi_set_crossover",
     {
      "device": "demo:3",
-     "output": 3,
+     "output": 4,
      "high_pass": {
       "family": "linkwitz_riley",
       "order": 4,
@@ -302,7 +302,7 @@
     "dspi_set_crossover",
     {
      "device": "demo:3",
-     "output": 0,
+     "output": 1,
      "low_pass": {
       "family": "linkwitz_riley",
       "order": 4,
@@ -322,7 +322,7 @@
     "dspi_set_crossover",
     {
      "device": "demo:3",
-     "output": 2,
+     "output": 3,
      "low_pass": {
       "family": "linkwitz_riley",
       "order": 4,
@@ -342,7 +342,7 @@
     "dspi_set_crossover",
     {
      "device": "demo:1",
-     "output": 2,
+     "output": 3,
      "high_pass": {
       "family": "linkwitz_riley",
       "order": 4,
@@ -362,8 +362,8 @@
     "dspi_set_route",
     {
      "device": "demo:1",
-     "input": 0,
-     "output": 4,
+     "input": 1,
+     "output": 5,
      "on": true,
      "gain_db": 0
     },
@@ -382,7 +382,7 @@
     "dspi_set_mute",
     {
      "device": "demo:2",
-     "output": 3,
+     "output": 4,
      "muted": true
     },
     "ok",
@@ -398,7 +398,7 @@
     "dspi_set_mute",
     {
      "device": "demo:2",
-     "output": 3,
+     "output": 4,
      "muted": false
     },
     "error",
@@ -414,25 +414,7 @@
     "dspi_set_route",
     {
      "device": "demo:1",
-     "input": 0,
-     "output": 0,
-     "on": true,
-     "gain_db": 0
-    },
-    "ok",
-    ""
-   ],
-   [
-    "sleep",
-    {
-     "s": 0.6
-    }
-   ],
-   [
-    "dspi_set_route",
-    {
-     "device": "demo:1",
-     "input": 0,
+     "input": 1,
      "output": 1,
      "on": true,
      "gain_db": 0
@@ -468,7 +450,7 @@
     "dspi_set_route",
     {
      "device": "demo:1",
-     "input": 1,
+     "input": 2,
      "output": 3,
      "on": true,
      "gain_db": 0
@@ -485,9 +467,9 @@
    [
     "dspi_set_route",
     {
-     "device": "demo:2",
+     "device": "demo:1",
      "input": 2,
-     "output": 0,
+     "output": 4,
      "on": true,
      "gain_db": 0
     },
@@ -504,7 +486,7 @@
     "dspi_set_route",
     {
      "device": "demo:2",
-     "input": 2,
+     "input": 3,
      "output": 1,
      "on": true,
      "gain_db": 0
@@ -522,7 +504,7 @@
     "dspi_set_route",
     {
      "device": "demo:2",
-     "input": 2,
+     "input": 3,
      "output": 2,
      "on": true,
      "gain_db": 0
@@ -541,7 +523,25 @@
     {
      "device": "demo:2",
      "input": 3,
-     "output": 4,
+     "output": 3,
+     "on": true,
+     "gain_db": 0
+    },
+    "ok",
+    ""
+   ],
+   [
+    "sleep",
+    {
+     "s": 0.6
+    }
+   ],
+   [
+    "dspi_set_route",
+    {
+     "device": "demo:2",
+     "input": 4,
+     "output": 5,
      "on": true,
      "gain_db": 0
     },
@@ -558,25 +558,7 @@
     "dspi_set_route",
     {
      "device": "demo:3",
-     "input": 4,
-     "output": 0,
-     "on": true,
-     "gain_db": 0
-    },
-    "ok",
-    ""
-   ],
-   [
-    "sleep",
-    {
-     "s": 0.6
-    }
-   ],
-   [
-    "dspi_set_route",
-    {
-     "device": "demo:3",
-     "input": 4,
+     "input": 5,
      "output": 1,
      "on": true,
      "gain_db": 0
@@ -612,8 +594,26 @@
     "dspi_set_route",
     {
      "device": "demo:3",
-     "input": 5,
+     "input": 6,
      "output": 3,
+     "on": true,
+     "gain_db": 0
+    },
+    "ok",
+    ""
+   ],
+   [
+    "sleep",
+    {
+     "s": 0.6
+    }
+   ],
+   [
+    "dspi_set_route",
+    {
+     "device": "demo:3",
+     "input": 6,
+     "output": 4,
      "on": true,
      "gain_db": 0
     },
@@ -631,8 +631,8 @@
     {
      "device": "demo:1",
      "outputs": [
-      0,
-      1
+      1,
+      2
      ]
     },
     "ok",
@@ -666,7 +666,7 @@
     "dspi_set_crossover",
     {
      "device": "demo:2",
-     "output": 2,
+     "output": 3,
      "high_pass": {
       "family": "linkwitz_riley",
       "order": 4,
@@ -686,7 +686,7 @@
     "dspi_set_crossover",
     {
      "device": "demo:2",
-     "output": 2,
+     "output": 3,
      "low_pass": {
       "family": "linkwitz_riley",
       "order": 4,
@@ -706,7 +706,7 @@
     "dspi_set_crossover",
     {
      "device": "demo:2",
-     "output": 1,
+     "output": 2,
      "high_pass": {
       "family": "linkwitz_riley",
       "order": 4,
@@ -726,8 +726,8 @@
     "dspi_set_route",
     {
      "device": "demo:2",
-     "input": 0,
-     "output": 3,
+     "input": 1,
+     "output": 4,
      "on": true,
      "gain_db": 0
     },
@@ -756,7 +756,7 @@
     "dspi_set_crossover",
     {
      "device": "demo:1",
-     "output": 2,
+     "output": 3,
      "high_pass": {
       "family": "linkwitz_riley",
       "order": 4,
@@ -776,7 +776,7 @@
     "dspi_set_crossover",
     {
      "device": "demo:1",
-     "output": 2,
+     "output": 3,
      "low_pass": {
       "family": "linkwitz_riley",
       "order": 4,

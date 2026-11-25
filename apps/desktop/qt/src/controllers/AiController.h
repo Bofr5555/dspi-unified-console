@@ -284,6 +284,19 @@ public:
     // For the smoke driver: the follow-up of `device`/`section` as an agent's change
     // would ask for it
     void followChange(const QString &device, const QString &section);
+    // -- WP SHOWFIX -- (finding 3) Where on a device an agent's change is: Modern's
+    // section and its tab ("" for the last one shown), and the Equaliser's channel
+    // (a wire channel, or an output's number from 0 to be made one on the device)
+    // and PEQ band; -1 for none
+    struct FollowAt {
+        QString section, tab;
+        int channel = -1, output = -1, band = -1;
+    };
+    // The place of a change of journal `path` at `indices` (an activity row's touched)
+    static FollowAt followAtOf(const QString &path, const QVariantList &indices);
+    // The follow-up of a change at `at` on `device`: the device, the section and
+    // tab, and the channel and band of the change selected on it
+    void followTo(const QString &device, const FollowAt &at);
 
     // For the smoke driver: the clients' own folder; calls not answered yet
     void setStoreDir(const QString &dir) { m_storeDir = dir; }
@@ -339,7 +352,8 @@ signals:
     void grantsChanged();
     void followAgentChanged();
     // Modern shows `section` of the device shown, following an agent's change
-    void followSection(const QString &section);
+    // -- WP SHOWFIX -- on `tab` ("" for the one last shown)
+    void followSection(const QString &section, const QString &tab);
 
 private:
     static void eventThunk(const char *json, void *self);
@@ -483,8 +497,27 @@ private:
     QDateTime m_lastFollow;
     QString m_lastFollowKey;
     QDateTime m_lastFollowKeyAt;
-    QString m_followPendingDevice, m_followPendingSection;
+    QString m_followPendingDevice;
+    FollowAt m_followPendingAt;   // -- WP SHOWFIX -- the whole place, not only the section
     QTimer m_followTimer;       // a follow held off by the rate limit, tried after it
+    // -- WP SHOWFIX -- (finding 3) the channel and band followed to, selected once the
+    // device's channels and the PEQ graph are there (at most kShowMs)
+    static constexpr int kShowMs = 3000;
+    QString m_showDevice;
+    FollowAt m_showAt;
+    QTimer m_showTimer;
+    QElapsedTimer m_showFor;
+    void showFollowed(const QString &device, const FollowAt &at);
+    bool showFollowedStep();   // true: done or given up
+    // -- WP SHOWFIX -- (finding 10) A question about a device not shown brings its
+    // tab to the front as its sheet opens (with followAgent; not while the user is
+    // at a control, a text field or another dialog); each question once
+    quint64 m_questionFollowed = 0;
+    QTimer m_questionTimer;   // an input in flight: tried again once it rests
+    void followQuestion();
+    // userInteracting(), with the agents' own question sheets left out or not
+    bool userAt(bool questionSheets) const;
+    bool stillAt(const QString &device, const QString &section) const;
     // -- WP INTI -- (review RF7) the user's input, stamped by the application's event filter
     QElapsedTimer m_lastInput;  // the last key, click, wheel or touch
     QElapsedTimer m_pressedAt;  // the newest press

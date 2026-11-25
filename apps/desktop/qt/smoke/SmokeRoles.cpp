@@ -166,12 +166,13 @@ QString words(const QJsonObject &result) { return QString::fromUtf8(QJsonDocumen
 const char *const kOwner = "L and r front speakers, both on DSPi named main front, full range three way, tweeter,mid,woofer, "
                            "l then right, output 1-6";
 
+// `output` from 0, as the device counts; the tool counts from 1 (SHOWFIX 9)
 QJsonObject stated(int output, const char *role, const char *speaker) {
-    return { { QStringLiteral("output"), output }, { QStringLiteral("role"), QLatin1String(role) },
+    return { { QStringLiteral("output"), output + 1 }, { QStringLiteral("role"), QLatin1String(role) },
              { QStringLiteral("speaker"), QLatin1String(speaker) } };
 }
 
-// The owner's sentence as its table (outputs from 0)
+// The owner's sentence as its table (stated() takes outputs from 0)
 QJsonObject ownersTable() {
     return { { QStringLiteral("user_words"), QLatin1String(kOwner) },
              { QStringLiteral("rows"), QJsonArray{ stated(0, "tweeter", "L"), stated(1, "midrange", "L"), stated(2, "woofer", "L"),
@@ -289,7 +290,7 @@ void rolesSection(SmokeDriver &d) {
     d.check(QStringLiteral("roles: another table is asked again"), d.waitFor(5000, [&] { return !ai->confirmations().isEmpty(); }));
     ai->answer(ai->confirmations().value(0).toMap().value(QStringLiteral("id")).toDouble(), true);
     d.check(QStringLiteral("roles: and set"), !a.result(restate).value(QLatin1String("isError")).toBool(true));
-    auto search = a.call("dspi_measure_rolloff_start", QJsonObject{ { QStringLiteral("output"), 0 } });
+    auto search = a.call("dspi_measure_rolloff_start", QJsonObject{ { QStringLiteral("output"), 1 } });
     const bool asked = d.waitFor(5000, [&] { return !ai->confirmations().isEmpty() || search->done; });
     if (search->done) qInfo().noquote() << "smoke: roles: the search answered" << words(search->result());
     d.check(QStringLiteral("roles: the test signals are asked"), asked && !ai->confirmations().isEmpty());

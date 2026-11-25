@@ -175,6 +175,8 @@ pub(crate) fn json_reply<T: serde::Serialize>(result: Result<T>) -> String {
             "code": error_code(&e),
             "error": e.to_string(),
             "noticeKey": e.notice_key(),
+            // -- WP SHOWFIX -- (finding 1) the words to show, worded in the core
+            "text": e.user_text(),
         }),
     };
     reply.to_string()
@@ -2152,6 +2154,14 @@ pub extern "C" fn dspi_output_labels(core: *mut FfiCore, buf: *mut c_char, len: 
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_output_cards(core: *mut FfiCore, buf: *mut c_char, len: u32) -> u32 {
     text(core, buf, len, |c| json_reply(Ok(c.output_cards())))
+}
+
+// -- WP SHOWFIX --
+/// The names a person knows the channels by (`DspiCore::channel_words`), in
+/// JSON: `{ok, inputs, outputs, fromLayout}`; "Centre woofer", "LFE", "Out 3".
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_channel_words(core: *mut FfiCore, buf: *mut c_char, len: u32) -> u32 {
+    text(core, buf, len, |c| json_reply(Ok(c.channel_words())))
 }
 
 // -- WP P0W --

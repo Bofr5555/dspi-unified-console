@@ -70,7 +70,8 @@ fn apply_changes(call: &mut Call<'_>, args: &Map<String, Value>) -> ToolResult {
     }
     let mut plan = Plan::new(before.clone());
     for (n, c) in changes.iter().enumerate() {
-        let at = |e: String| ToolError::new(format!("change {n}: {e}"));
+        // -- WP SHOWFIX -- counted from 1, as the agent counts its list
+        let at = |e: String| ToolError::new(format!("change {}: {e}", n.saturating_add(1)));
         let obj = c
             .as_object()
             .ok_or_else(|| at("an object with `op`".into()))?;

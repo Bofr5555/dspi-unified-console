@@ -119,8 +119,16 @@ struct Scene {
     }
 };
 
+// -- WP SHOWFIX -- (finding 5) an output as the app's texts name it: the core's
+// channel word ("Centre woofer", a user's name, else "Out 3")
+QString outputWord(DeviceModel *device, int output) {
+    const QString w = device ? device->snapshot().channelWords.value(QLatin1String("outputs")).toArray().at(output).toString() : QString();
+    return w.isEmpty() ? QStringLiteral("Out %1").arg(output + 1) : w;
+}
+
+// `output` from 0, as the device counts; the tools count from 1 (SHOWFIX 9)
 QJsonObject gain(int output, double db, const QString &device = QString()) {
-    QJsonObject o{ { QStringLiteral("output"), output }, { QStringLiteral("gain_db"), db } };
+    QJsonObject o{ { QStringLiteral("output"), output + 1 }, { QStringLiteral("gain_db"), db } };
     if (!device.isEmpty()) o.insert(QStringLiteral("device"), device);
     return o;
 }
@@ -142,7 +150,7 @@ void changes(Scene &s, const QString &layout) {
     d.check(say("the agent sets a gain"), s.ok("dspi_set_gain", gain(one, modern ? -21 : -23)));
     d.check(say("the value on the screen follows"), d.waitFor(1000, [&] { return gainIs(modern ? -21 : -23); }));
     d.check(say("the strip is there, with the agent, what it does and to what"), d.waitFor(2000, [&] {
-        return s.strip().contains(QLatin1String("gain"), Qt::CaseInsensitive) && s.strip().contains(QStringLiteral("Out %1").arg(one + 1));
+        return s.strip().contains(QLatin1String("gain"), Qt::CaseInsensitive) && s.strip().contains(outputWord(device, one));
     }) && textOf(s.item(QStringLiteral("AiWorkBanner.agent"))) == QLatin1String("Smoke agent"));
     d.check(say("it counts as working a moment after the call"), s.ai->working());
     QQuickItem *mark = s.item(QStringLiteral("AiWorkBanner.mark"));
@@ -249,7 +257,7 @@ void aivisSection(SmokeDriver &d) {
         d.spin(200);
         const bool hidden = tray->windowHidden();
         s.ok("dspi_set_gain", gain(1, -25));
-        const bool said = d.waitFor(2000, [&] { return tray->icon() && tray->icon()->toolTip().contains(QLatin1String("Out 2")); });
+        const bool said = d.waitFor(2000, [&] { return tray->icon() && tray->icon()->toolTip().contains(outputWord(d.app().device, 1)); });
         tray->restore();
         d.spin(200);
         return hidden && said;
@@ -271,7 +279,7 @@ void aivisSection(SmokeDriver &d) {
     d.check("aivis: a route an agent changes lights up in the matrix", [&] {
         const QString cell = QStringLiteral("Matrix.cell.0.1.touched");
         const int was = s.lit(cell);
-        s.ok("dspi_set_route", { { QStringLiteral("input"), 0 }, { QStringLiteral("output"), 1 }, { QStringLiteral("on"), true },
+        s.ok("dspi_set_route", { { QStringLiteral("input"), 1 }, { QStringLiteral("output"), 2 }, { QStringLiteral("on"), true },
                                  { QStringLiteral("gain_db"), -31 } });
         return was >= 0 && d.waitFor(2000, [&] { return s.lit(cell) > was; });
     }());
@@ -322,7 +330,7 @@ void aivisSection(SmokeDriver &d) {
         d.check("aivis: a timed preview there is marked", [&] {
             QJsonObject args{ { QStringLiteral("device"), b->id() }, { QStringLiteral("guard_s"), 300 },
                               { QStringLiteral("changes"), QJsonArray{ QJsonObject{ { QStringLiteral("op"), QStringLiteral("set_gain") },
-                                                                                    { QStringLiteral("output"), 1 },
+                                                                                    { QStringLiteral("output"), 2 },
                                                                                     { QStringLiteral("gain_db"), -28 } } } } };
             return s.ok("dspi_apply_changes", args) && d.waitFor(3000, [&] { return snapshots->guardsElsewhere().contains(b->title()); });
         }());
@@ -392,7 +400,7 @@ void aivisSection(SmokeDriver &d) {
     d.waitFor(5000, [&] { return set; });
     for (int o = 0; o < 3; ++o) userGain(o, -10);
     // -- WP REVDFIX -- (REVD D3) 5.5 s: a decimal point in the run's words
-    QJsonObject args{ { QStringLiteral("outputs"), QJsonArray{ 0 } }, { QStringLiteral("sweep_ms"), 5500 }, { QStringLiteral("passes"), 8 } };
+    QJsonObject args{ { QStringLiteral("outputs"), QJsonArray{ 1 } }, { QStringLiteral("sweep_ms"), 5500 }, { QStringLiteral("passes"), 8 } };
     r = s.result(s.call("dspi_measure_start", args));
     d.check("aivis: an agent starts a measurement", !r.value(QLatin1String("isError")).toBool(true));
     d.check("aivis: it runs in the Measure view", d.waitFor(15000, [&] { return mc->measuring(); }));

@@ -1499,3 +1499,50 @@ fn wp_p5follow_a_volume_write_of_this_core_during_the_session_aborts() {
     assert_eq!(st.issue.unwrap().key, "measure.abort.volume");
     assert_eq!(stop_nows(&r, from), 1, "exactly one STOP_NOW");
 }
+
+// -- WP SHOWFIX -- (finding 1) The refusal at 0 dB is one plain sentence, worded
+// in the core for every client: no error chain, no "invalid argument".
+#[test]
+fn wp_showfix_the_volume_refusal_is_one_plain_sentence() {
+    let r = rig();
+    r.core.set_user_volume(0.0).unwrap();
+    let err = r
+        .core
+        .measure_start(walked(&[(0, MeasureRole::Full)]))
+        .unwrap_err();
+    assert_eq!(
+        err.user_text(),
+        "Lower the volume to \u{2212}12 dB or below to measure; it is 0.0 dB."
+    );
+    assert_eq!(err.notice_key(), "invalid");
+    // The preflight's line keeps its title before the same sentence.
+    let pre = r
+        .core
+        .measure_preflight(walked(&[(0, MeasureRole::Full)]))
+        .unwrap();
+    let volume = pre
+        .blockers
+        .iter()
+        .find(|b| b.key == "measure.volume_high")
+        .unwrap();
+    assert!(
+        volume.message.starts_with("Lower the volume to"),
+        "{}",
+        volume.message
+    );
+    // Two blockers: each a sentence, the second with its notice's action.
+    r.core.set_crossfeed(true).unwrap();
+    let both = r
+        .core
+        .measure_start(walked(&[(0, MeasureRole::Full), (1, MeasureRole::Full)]))
+        .unwrap_err()
+        .user_text();
+    assert!(
+        both.starts_with("Lower the volume to \u{2212}12 dB"),
+        "{both}"
+    );
+    assert!(
+        !both.contains("cannot measure") && !both.contains("invalid argument"),
+        "{both}"
+    );
+}

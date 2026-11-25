@@ -200,7 +200,8 @@ fn fitted(text: String, len: u32) -> String {
     let Ok(mut reply) = serde_json::from_str::<serde_json::Value>(&text) else {
         return text;
     };
-    for field in ["generatedAt", "error", "problem"] {
+    // -- WP SHOWFIX -- and the core's words for the person (`text`)
+    for field in ["generatedAt", "error", "problem", "text"] {
         if let Some(value) = reply.get_mut(field).filter(|v| v.is_string()) {
             *value = serde_json::Value::String(String::new());
         }

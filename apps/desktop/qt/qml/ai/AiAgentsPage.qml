@@ -528,7 +528,7 @@ SettingsPage {
         objectName: "AiAgents.detectQuestion"
         parent: page.Window.window ? page.Window.window.contentItem : null
         title: qsTr("Let agents detect the speakers without asking?")
-        text: [qsTr("An agent may then find out what is wired to a DSPi's outputs by playing quiet test sweeps on each output in turn, without asking you first. Each output is first played only above 1 kHz, at most −24 dBFS. Only an output whose response says it is not a tweeter is played lower, and then at most −50 dBFS. Whatever cannot be told apart is treated as a tweeter."),
+        text: [qsTr("An agent may then find out what is wired to a DSPi's outputs by playing quiet test sweeps on each output in turn, without asking you first. Each output is first played only above 1 kHz, at most −24 dBFS. Only an output whose response says it is not a tweeter is played lower, and then at most −50 dBFS; one still flat well below 1 kHz there, as no tweeter is, is then played down to 20 Hz at most −24 dBFS. Whatever cannot be told apart is treated as a tweeter."),
                "⚠ " + AiController.detectWarning].join("\n\n")
         acceptText: qsTr("I Understand")
         onAnswered: answer => { if (answer === "accept") AiController.agentDetect = true }

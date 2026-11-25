@@ -21,10 +21,17 @@ AbstractButton {
     readonly property bool isOutput: info.isOutput
     readonly property int output: isOutput ? info.number : -1
 
-    // ---- The speaker layout, when the person confirmed it ----
-    readonly property var layoutRow: SpeakersController.status !== "confirmed" || output < 0
+    // ---- The speaker layout, when it is someone's word ----
+    // -- WP SHOWFIX -- (finding 8) a detected layout's and one stated from the
+    // person's words too, with the Speakers page's pill ("from your words",
+    // "detected"); a suggestion is nobody's word and names nothing
+    readonly property string layoutStatus: SpeakersController.status
+    readonly property bool confirmedLayout: layoutStatus === "confirmed"
+    readonly property var layoutRow: output < 0 || ["confirmed", "stated", "autoDetected"].indexOf(layoutStatus) < 0
                                      ? ({}) : SpeakersController.rowOf(output)
-    readonly property bool trusted: layoutRow.included === true
+    readonly property bool trusted: layoutRow.included === true && (confirmedLayout || layoutRow.source !== "suggested")
+    readonly property var pill: trusted && !confirmedLayout ? SpeakersController.pillFor(output) : ({})
+    readonly property string pillText: pill.pill ?? ""
     readonly property string role: trusted ? layoutRow.role : ""
     readonly property string speaker: trusted ? (layoutRow.speaker || "").trim() : ""
     function roleText(r) {
@@ -43,8 +50,11 @@ AbstractButton {
         if (r === "sub") return s.toLowerCase().startsWith("sub") ? s : qsTr("%1 sub").arg(s)
         return s
     }
-    readonly property string name: speakerName(speaker, role) || info.label || (entry.heading ?? "")
+    // -- WP SHOWFIX -- the core's name where it has one, as the Equaliser shows it
+    readonly property string name: (trusted && info.displayName) || speakerName(speaker, role) || info.label || (entry.heading ?? "")
     readonly property string caption: !info.known ? ""
+        //: An Overview card's role line: %1 the role ("Tweeter"), %2 the output ("Out 2"), %3 whose word it is, as Settings › Speakers says it ("from your words", "detected")
+        : trusted && pillText.length ? qsTr("%1 · %2 · %3").arg(roleText(role)).arg(info.label).arg(pillText)
         : trusted ? qsTr("%1 · %2").arg(roleText(role)).arg(info.label)
         : isOutput ? qsTr("Output") : qsTr("Input")
 

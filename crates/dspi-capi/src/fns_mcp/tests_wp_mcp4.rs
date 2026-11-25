@@ -111,14 +111,14 @@ fn wp_mcp4_the_policy_and_the_confirmations_through_c() {
         port,
         &token,
         "dspi_set_gain",
-        json!({"output": 0, "gain_db": -20.0}),
+        json!({"output": 1, "gain_db": -20.0}),
     ));
     assert_eq!(quiet["isError"], json!(false), "{quiet}");
     let held = call(
         port,
         &token,
         "dspi_set_gain",
-        json!({"output": 0, "gain_db": -10.0}),
+        json!({"output": 1, "gain_db": -10.0}),
     );
     let s = sheet(mcp);
     assert_eq!(s["client_name"], "AI · Claude Code");
@@ -143,7 +143,7 @@ fn wp_mcp4_the_policy_and_the_confirmations_through_c() {
         port,
         &token,
         "dspi_set_gain",
-        json!({"output": 0, "gain_db": -5.0}),
+        json!({"output": 1, "gain_db": -5.0}),
     ));
     assert_eq!(r["isError"], json!(false), "{r}");
 
@@ -162,7 +162,7 @@ fn wp_mcp4_the_policy_and_the_confirmations_through_c() {
         port,
         &token,
         "dspi_set_gain",
-        json!({"output": 0, "gain_db": -3.0}),
+        json!({"output": 1, "gain_db": -3.0}),
     ));
     assert_eq!(r["isError"], json!(false), "{r}");
     let all = reply(|b, l| dspi_mcp_activity(mcp, 100, b, l))["value"].clone();

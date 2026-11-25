@@ -104,6 +104,7 @@ void DeviceModel::openDemo() { m_active->openDemo(); }
 void DeviceModel::selectDevice(const QString &serial) { m_active->selectDevice(serial); }
 void DeviceModel::reconnect() { m_active->reconnect(); }
 void DeviceModel::refresh() { m_active->refresh(); }
+void DeviceModel::reread() { m_active->reread(); }   // -- WP SHOWFIX --
 void DeviceModel::adoptDocument(const QString &serial) { m_active->adoptDocument(serial); }
 
 void DeviceModel::write(const QString &what, std::function<bool(FfiCore *)> setter, std::function<void(bool)> done) {

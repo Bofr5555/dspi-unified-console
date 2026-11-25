@@ -18,7 +18,7 @@
     {
      "device": "demo:2",
      "outputs": [
-      4
+      5
      ],
      "sweep_ms": 2000,
      "passes": 3
@@ -34,7 +34,7 @@
      "device": "demo:2",
      "outputs": [
       {
-       "output": 4,
+       "output": 5,
        "role": "high"
       }
      ]
@@ -49,22 +49,22 @@
      "user_words": "I rewired the centre: the woofer is still on output 1, output 4 is now the midrange and output 5 the tweeter; the sub moved to output 6.",
      "rows": [
       {
-       "output": 0,
+       "output": 1,
        "role": "woofer",
        "speaker": "Centre"
       },
       {
-       "output": 3,
+       "output": 4,
        "role": "midrange",
        "speaker": "Centre"
       },
       {
-       "output": 4,
+       "output": 5,
        "role": "tweeter",
        "speaker": "Centre"
       },
       {
-       "output": 5,
+       "output": 6,
        "role": "sub",
        "speaker": "Sub"
       }
@@ -89,7 +89,7 @@
     "dspi_set_crossover",
     {
      "device": "demo:2",
-     "output": 4,
+     "output": 5,
      "high_pass": {
       "family": "linkwitz_riley",
       "order": 4,
@@ -103,7 +103,7 @@
     "dspi_set_crossover",
     {
      "device": "demo:2",
-     "output": 3,
+     "output": 4,
      "high_pass": {
       "family": "linkwitz_riley",
       "order": 4,
@@ -118,10 +118,10 @@
     {
      "device": "demo:2",
      "outputs": [
-      0,
-      3,
+      1,
       4,
-      5
+      5,
+      6
      ],
      "one_run": true,
      "placement": "listening_position"
@@ -151,7 +151,7 @@
     "dspi_set_crossover",
     {
      "device": "demo:2",
-     "output": 3,
+     "output": 4,
      "low_pass": {
       "family": "linkwitz_riley",
       "order": 4,
@@ -169,7 +169,7 @@
     "dspi_set_crossover",
     {
      "device": "demo:2",
-     "output": 0,
+     "output": 1,
      "low_pass": {
       "family": "linkwitz_riley",
       "order": 4,
@@ -187,13 +187,8 @@
      "user_words": "Actually output 5 is a midrange, not a tweeter.",
      "rows": [
       {
-       "output": 0,
+       "output": 1,
        "role": "woofer",
-       "speaker": "Centre"
-      },
-      {
-       "output": 3,
-       "role": "midrange",
        "speaker": "Centre"
       },
       {
@@ -203,6 +198,11 @@
       },
       {
        "output": 5,
+       "role": "midrange",
+       "speaker": "Centre"
+      },
+      {
+       "output": 6,
        "role": "sub",
        "speaker": "Sub"
       }
@@ -215,7 +215,7 @@
     "dspi_measure_rolloff_start",
     {
      "device": "demo:2",
-     "output": 4
+     "output": 5
     },
     "ok",
     "a check before anything plays below 1 kHz on it",
@@ -252,7 +252,7 @@
     "dspi_set_crossover",
     {
      "device": "demo:2",
-     "output": 4,
+     "output": 5,
      "high_pass": {
       "family": "linkwitz_riley",
       "order": 4,

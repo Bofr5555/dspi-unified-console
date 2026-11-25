@@ -24,7 +24,7 @@ use dspi_core::{DspState, SpeakerLayout};
 use serde_json::{Value, json};
 
 use crate::policy;
-use crate::tools::read::type_word;
+use crate::tools::read::{shown_all, type_word};
 
 /// The chain a document's output was measured through, in words: its active
 /// high-passes ("24 dB/octave high-pass at 2000 Hz"), if any.
@@ -62,7 +62,8 @@ pub(crate) fn highpass_note(chain: &Value) -> Option<String> {
 fn output_summary(o: &Value) -> Value {
     let chain = o.get("chain").cloned().unwrap_or(Value::Null);
     json!({
-        "output": o.get("output"),
+        // -- WP SHOWFIX -- the document's output from 0; the agent's from 1
+        "output": o.get("output").and_then(Value::as_u64).map(|n| n.saturating_add(1)),
         "role": o.get("role"),
         "speaker": o.get("speaker").and_then(Value::as_str).map(crate::untrusted::name),
         "arrival_ms": o.get("arrivalMs"),
@@ -192,7 +193,7 @@ pub(crate) fn alignment(
     for (name, arrival, outputs) in &speakers {
         let add = latest - arrival;
         rows.push(json!({"speaker": crate::untrusted::name(name), "arrival_ms": (arrival * 1e4).round() / 1e4,
-                         "add_ms": (add * 1e4).round() / 1e4, "outputs": outputs}));
+                         "add_ms": (add * 1e4).round() / 1e4, "outputs": shown_all(outputs)}));
         for o in outputs {
             let to = f64::from(now_delay(*o)) + add;
             if add < 0.000_05 {
@@ -203,7 +204,8 @@ pub(crate) fn alignment(
                 continue;
             }
             changes.push(
-                json!({"op": "set_delay", "output": o, "delay_ms": (to * 1e4).round() / 1e4}),
+                json!({"op": "set_delay", "output": u16::from(*o).saturating_add(1),
+                       "delay_ms": (to * 1e4).round() / 1e4}),
             );
         }
     }
@@ -220,8 +222,13 @@ pub(crate) fn alignment(
         ));
     }
     if !over.is_empty() {
+        let outs: Vec<String> = over
+            .iter()
+            .map(|o| format!("Out {}", u16::from(*o).saturating_add(1)))
+            .collect();
         note.push_str(&format!(
-            " Outputs {over:?} would need more than the device's {max_delay_ms} ms: not offered."
+            " {} would need more than the device's {max_delay_ms} ms: not offered.",
+            outs.join(", ")
         ));
     }
     Some(json!({"speakers": rows, "changes": changes, "note": note}))

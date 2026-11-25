@@ -29,6 +29,10 @@ public:
         EnabledRole,                 // outputs: enabled in the matrix; inputs: true
         UserNamedRole,               // the user named it
         PdmRole,                     // the PDM subwoofer output
+        // -- WP SHOWFIX -- the names a person knows the channel by (dspi_channel_words)
+        DisplayNameRole,             // what a list of channels shows: the speaker layout's
+                                     // "Centre woofer", else the label (the Overview's name)
+        ShortNameRole,               // what a sentence names it by: "Centre woofer", "LFE", "Out 3"
     };
     Q_ENUM(Role)
 
@@ -65,9 +69,12 @@ private:
         bool enabled = true;
         bool userNamed = false;
         bool pdm = false;
+        QString displayName; // -- WP SHOWFIX --
+        QString shortName;   // -- WP SHOWFIX --
         bool operator==(const Row &o) const {
             return output == o.output && index == o.index && channel == o.channel && name == o.name &&
-                   label == o.label && enabled == o.enabled && userNamed == o.userNamed && pdm == o.pdm;
+                   label == o.label && enabled == o.enabled && userNamed == o.userNamed && pdm == o.pdm &&
+                   displayName == o.displayName && shortName == o.shortName;
         }
     };
     QVector<Row> m_rows;

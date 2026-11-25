@@ -1,0 +1,76 @@
+# WP SHOW2: the comparison film's "after" side. SHOWB filmed this task done by hand in v0.14.0 (13 clicks,
+# 7 keys); here a real agent does the same from the same state: the tuned Centre without the C -> tweeter route
+# and without the tweeter's high-pass (wp-SHOWB/centre-film.dspipreset), presets 1 "Movie night", 3 "Late night".
+# The tweeter must get its high-pass before C reaches it (the config oracle catches the other order).
+name = "show-compare"
+confirm = "ask_risky"
+seed = "tuned"
+show = "Centre"
+
+# The state of SHOWB's film: no C -> Out 2, the tweeter's high-pass off (route first: then nothing plays on it)
+[[user]]
+do = "route"
+device = "Centre"
+input = 3
+output = 2
+on = false
+
+[[user]]
+do = "crossover"
+device = "Centre"
+output = 2
+side = "hp"
+family = "off"
+hz = 3000
+
+[[user]]
+do = "preset_name"
+device = "Centre"
+slot = 1
+name = "Movie night"
+
+[[user]]
+do = "preset_save"
+device = "Centre"
+
+[[user]]
+do = "preset_copy"
+device = "Centre"
+slot = 3
+
+[[user]]
+do = "preset_name"
+device = "Centre"
+slot = 3
+name = "Late night"
+
+[[step]]
+label = "tweeter"
+prompt = """
+On the Centre, send the centre channel (C) to the tweeter on output 2, give the tweeter a Linkwitz-Riley 24 dB/oct
+high-pass at 3 kHz, and save it to the preset 'Movie night'.
+"""
+
+  [[step.expect]]
+  what = "C reaches the Centre tweeter"
+  kind = "routes"
+  routes = [["Centre", "C", [2]]]
+
+  [[step.expect]]
+  what = "the tweeter's high-pass near 3 kHz"
+  kind = "highpass"
+  outputs = { Centre = [2] }
+  min_hz = 2800
+  near_hz = 2500
+  slope_db = 24
+
+  [[step.expect]]
+  what = "saved as 'Movie night'"
+  kind = "preset"
+  device = "Centre"
+  name = "movie night"
+
+  [[step.expect]]
+  what = "only the Centre changed"
+  kind = "only_changed"
+  devices = ["Centre"]

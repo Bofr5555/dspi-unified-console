@@ -19,7 +19,7 @@
     "dspi_set_crossover",
     {
      "device": "demo:2",
-     "output": 4,
+     "output": 5,
      "low_pass": {
       "family": "linkwitz_riley",
       "order": 4,
@@ -34,7 +34,7 @@
     "dspi_set_channel_name",
     {
      "device": "demo:2",
-     "output": 4,
+     "output": 5,
      "name": "Sub (LFE)"
     },
     "ok"
@@ -45,7 +45,7 @@
     "dspi_get_channel",
     {
      "device": "demo:3",
-     "output": 0
+     "output": 1
     },
     "ok"
    ],
@@ -69,7 +69,7 @@
     "dspi_set_delay",
     {
      "device": "demo:2",
-     "output": 4,
+     "output": 5,
      "delay_ms": 100
     },
     "error",

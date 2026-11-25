@@ -222,14 +222,11 @@ fn wp_feat2_the_tweeter_refusal_counts_outputs_as_the_user_does() {
     .unwrap();
     let mut s = server_of(&set, ConfirmMode::NeverAsk, false);
     let c = s.connect();
-    let hp = |hz: u32| json!({"output": 2, "high_pass": {"family": "linkwitz_riley", "order": 4, "freq_hz": hz}});
+    let hp = |hz: u32| json!({"output": 3, "high_pass": {"family": "linkwitz_riley", "order": 4, "freq_hz": hz}});
     ok(&mut s, c, "dspi_set_crossover", hp(2_500));
     let e = err(&mut s, c, "dspi_set_crossover", hp(500));
-    // -- WP FFIX -- bug 12: the tools' number, with the app's beside it
-    assert!(
-        e.contains("output 2 (Out 3 in the app) drives a tweeter"),
-        "{e}"
-    );
+    // -- WP FFIX -- bug 12 (-- WP SHOWFIX --: one number, the app's)
+    assert!(e.contains("Out 3 drives a tweeter"), "{e}");
 }
 
 #[test]
@@ -274,7 +271,7 @@ fn wp_feat2_schema_bounds_are_the_cores() {
     // Past them: refused by the schema before anything runs.
     let c = s.connect();
     for (tool, args) in [
-        ("dspi_set_delay", json!({"output": 0, "delay_ms": 43})),
+        ("dspi_set_delay", json!({"output": 1, "delay_ms": 43})),
         ("dspi_measure_start", json!({"sweep_ms": 999})),
         ("dspi_measure_start", json!({"sweep_ms": 15001})),
         ("dspi_measure_start", json!({"count": 10})),
@@ -282,7 +279,7 @@ fn wp_feat2_schema_bounds_are_the_cores() {
         ("dspi_measure_start", json!({"max_spl_db": 95.1})),
         (
             "dspi_measure_rolloff_start",
-            json!({"output": 0, "start_hz": 19}),
+            json!({"output": 1, "start_hz": 19}),
         ),
         (
             "dspi_system_set_volume",
@@ -418,7 +415,7 @@ fn wp_feat2_an_agent_picks_the_users_documents_and_only_tightens_the_levels() {
     );
 
     // Nothing chosen: the app's own levels, no microphone document.
-    let (setup, _) = setup_made(&mut s, c, "dspi_measure_start", json!({"outputs": [0]}));
+    let (setup, _) = setup_made(&mut s, c, "dspi_measure_start", json!({"outputs": [1]}));
     assert_eq!(setup["micDocument"], json!(""));
     assert_eq!(
         (setup["ceilingDb"].clone(), setup["splCapDb"].clone()),
@@ -429,7 +426,7 @@ fn wp_feat2_an_agent_picks_the_users_documents_and_only_tightens_the_levels() {
         &mut s,
         c,
         "dspi_measure_start",
-        json!({"outputs": [0], "microphone": spl, "max_level_dbfs": -40, "max_spl_db": 75}),
+        json!({"outputs": [1], "microphone": spl, "max_level_dbfs": -40, "max_spl_db": 75}),
     );
     assert_eq!(
         setup["micDocument"].as_str().unwrap(),
@@ -448,7 +445,7 @@ fn wp_feat2_an_agent_picks_the_users_documents_and_only_tightens_the_levels() {
         &mut s,
         c,
         "dspi_measure_rolloff_start",
-        json!({"output": 0, "placement": "headphones", "coupler": "flat_plate",
+        json!({"output": 1, "placement": "headphones", "coupler": "flat_plate",
                "microphone": spl, "max_level_dbfs": -35, "max_spl_db": 80}),
     );
     assert_eq!(setup["placement"], json!("headphones"), "{setup}");
@@ -460,15 +457,15 @@ fn wp_feat2_an_agent_picks_the_users_documents_and_only_tightens_the_levels() {
     for (tool, args) in [
         (
             "dspi_measure_start",
-            json!({"outputs": [0], "placement": "headphones", "max_level_dbfs": -29}),
+            json!({"outputs": [1], "placement": "headphones", "max_level_dbfs": -29}),
         ),
         (
             "dspi_measure_start",
-            json!({"outputs": [0], "placement": "headphones", "microphone": spl, "max_spl_db": 91}),
+            json!({"outputs": [1], "placement": "headphones", "microphone": spl, "max_spl_db": 91}),
         ),
         (
             "dspi_measure_rolloff_start",
-            json!({"output": 0, "placement": "headphones", "max_level_dbfs": -20}),
+            json!({"output": 1, "placement": "headphones", "max_level_dbfs": -20}),
         ),
     ] {
         let e = err(&mut s, c, tool, args);
@@ -476,8 +473,8 @@ fn wp_feat2_an_agent_picks_the_users_documents_and_only_tightens_the_levels() {
     }
     // An SPL cap only holds with a calibration that reads dB SPL.
     for args in [
-        json!({"outputs": [0], "max_spl_db": 70}),
-        json!({"outputs": [0], "microphone": bare, "max_spl_db": 70}),
+        json!({"outputs": [1], "max_spl_db": 70}),
+        json!({"outputs": [1], "microphone": bare, "max_spl_db": 70}),
     ] {
         let e = err(&mut s, c, "dspi_measure_start", args);
         assert!(e.contains("reads dB SPL"), "{e}");
@@ -489,7 +486,7 @@ fn wp_feat2_an_agent_picks_the_users_documents_and_only_tightens_the_levels() {
             &mut s,
             c,
             "dspi_measure_start",
-            json!({"outputs": [0], "microphone": bad}),
+            json!({"outputs": [1], "microphone": bad}),
         );
         assert!(e.contains("none of the user's calibrations"), "{e}");
     }
@@ -508,7 +505,7 @@ fn wp_feat2_a_tune_takes_a_built_in_target_or_the_users_own() {
         &mut s,
         c,
         "dspi_measure_start",
-        json!({"outputs": [0], "sweep_ms": 1000, "passes": 2, "max_level_dbfs": -30}),
+        json!({"outputs": [1], "sweep_ms": 1000, "passes": 2, "max_level_dbfs": -30}),
     );
     let id = r["request_id"].as_u64().unwrap();
     let ticket = s.measure_take(id).unwrap();
@@ -1481,14 +1478,14 @@ fn wp_featui_the_apps_spl_cap_holds_for_agents_under_never_ask() {
         "{o}"
     );
     // None named: the app's cap is in the setup.
-    let (setup, _) = setup_made(&mut s, c, "dspi_measure_start", json!({"outputs": [0]}));
+    let (setup, _) = setup_made(&mut s, c, "dspi_measure_start", json!({"outputs": [1]}));
     assert_eq!(setup["splCapDb"], json!(82.0), "{setup}");
     // Lower: the agent's.
     let (setup, _) = setup_made(
         &mut s,
         c,
         "dspi_measure_start",
-        json!({"outputs": [0], "microphone": spl, "max_spl_db": 70}),
+        json!({"outputs": [1], "microphone": spl, "max_spl_db": 70}),
     );
     assert_eq!(setup["splCapDb"], json!(70.0));
     // Higher than the app's cap (but under the default 95): refused, never raised.
@@ -1496,7 +1493,7 @@ fn wp_featui_the_apps_spl_cap_holds_for_agents_under_never_ask() {
         &mut s,
         c,
         "dspi_measure_start",
-        json!({"outputs": [0], "microphone": spl, "max_spl_db": 90}),
+        json!({"outputs": [1], "microphone": spl, "max_spl_db": 90}),
     );
     assert!(e.contains("never raises it") && e.contains("82"), "{e}");
     // The low-end search too.
@@ -1504,12 +1501,12 @@ fn wp_featui_the_apps_spl_cap_holds_for_agents_under_never_ask() {
         &mut s,
         c,
         "dspi_measure_rolloff_start",
-        json!({"output": 0}),
+        json!({"output": 1}),
     );
     assert_eq!(setup["splCapDb"], json!(82.0), "{setup}");
     // Cleared: the placement's default again, nothing in the setup.
     policy.set_agent_spl_cap_db(None);
-    let (setup, _) = setup_made(&mut s, c, "dspi_measure_start", json!({"outputs": [0]}));
+    let (setup, _) = setup_made(&mut s, c, "dspi_measure_start", json!({"outputs": [1]}));
     assert_eq!(setup["splCapDb"], Value::Null);
     policy.set_agent_spl_cap_db(Some(f32::NAN));
     assert_eq!(crate::Policy::agent_spl_cap_db(policy.as_ref()), None);
@@ -1545,11 +1542,11 @@ fn wp_intg_the_apps_spl_cap_is_refused_when_no_microphone_reads_db_spl() {
     for (tool, args) in [
         (
             "dspi_measure_start",
-            json!({"outputs": [0], "microphone": bare}),
+            json!({"outputs": [1], "microphone": bare}),
         ),
         (
             "dspi_measure_rolloff_start",
-            json!({"output": 0, "microphone": bare}),
+            json!({"output": 1, "microphone": bare}),
         ),
     ] {
         let e = err(&mut s, c, tool, args);
@@ -1566,7 +1563,7 @@ fn wp_intg_the_apps_spl_cap_is_refused_when_no_microphone_reads_db_spl() {
     // None named: the request carries the cap; the app begins it with what
     // microphone it has.
     let begun = |s: &mut Server, mic: Option<String>| {
-        let r = ok(s, c, "dspi_measure_start", json!({"outputs": [0]}));
+        let r = ok(s, c, "dspi_measure_start", json!({"outputs": [1]}));
         assert!(
             r["what"].as_str().unwrap().contains("at most 82 dB SPL"),
             "{r}"
@@ -1605,7 +1602,7 @@ fn wp_intg_the_apps_spl_cap_is_refused_when_no_microphone_reads_db_spl() {
 }
 
 fn begun_off(s: &mut Server, c: ClientId, core: &DspiCore) -> Result<Value, String> {
-    let r = ok(s, c, "dspi_measure_start", json!({"outputs": [0]}));
+    let r = ok(s, c, "dspi_measure_start", json!({"outputs": [1]}));
     assert!(!r["what"].as_str().unwrap().contains("dB SPL"), "{r}");
     let id = r["request_id"].as_u64().unwrap();
     let ticket = s.measure_take(id).unwrap();

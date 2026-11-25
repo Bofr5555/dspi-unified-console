@@ -19,6 +19,8 @@ root=$(cd "$(dirname "$0")/../.." && pwd)
 . "$root/ci/container/images.conf"
 B=${DSPI_BUILD_CACHE:-$HOME/.cache/dspi-build}
 branch=$(git -C "$root" rev-parse --abbrev-ref HEAD 2>/dev/null || echo detached)
+# -- WP SHOWFIX -- a detached worktree is named by its short commit, not "HEAD"
+if [ "$branch" = HEAD ]; then branch=$(git -C "$root" rev-parse --short HEAD); fi
 smoke=$B/work/${branch//\//-}/smoke-out
 mkdir -p "$work"
 work=$(cd "$work" && pwd)

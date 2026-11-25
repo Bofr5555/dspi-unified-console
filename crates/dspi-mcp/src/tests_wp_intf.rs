@@ -143,7 +143,7 @@ fn wp_intf_the_overview_names_the_programme_sources_of_this_unit() {
         json!({"programme_id": id, "programme_name": name, "kind": kind, "feeds_id": feeds,
                "inputs": inputs, "unit_inputs": unit})
     };
-    // A takes channels 2 and 3 on its inputs 1 and 3, none of the TV's; its
+    // A takes channels 2 and 3 on its inputs 2 and 4 (In 2, In 4: from 1), none of the TV's; its
     // own S/PDIF box. The name is cleaned.
     let a = sources(&hub, "IF-A");
     let plex = a[0]["programme_name"].as_str().unwrap().to_owned();
@@ -154,8 +154,8 @@ fn wp_intf_the_overview_names_the_programme_sources_of_this_unit() {
     assert_eq!(
         a,
         json!([
-            row("plex", &plex, "alink_sender", "tx", &[2, 3], json!([1, 3])),
-            row("cd", "CD", "spdif", "A", &[0, 1], json!([0, 1])),
+            row("plex", &plex, "alink_sender", "tx", &[2, 3], json!([2, 4])),
+            row("cd", "CD", "spdif", "A", &[1, 2], json!([1, 2])),
         ])
     );
     // B's slots are its own (the installation does not say): both of the
@@ -175,8 +175,8 @@ fn wp_intf_the_overview_names_the_programme_sources_of_this_unit() {
             "Desk PC",
             "computer_usb",
             "C",
-            &[0, 1],
-            json!([0, 1])
+            &[1, 2],
+            json!([1, 2])
         )])
     );
     let tx = sources(&hub, "IF-TX");
@@ -325,7 +325,7 @@ fn wp_intf_the_user_activity_block_reaches_feat1_to_feat3s_tools() {
         if r["isError"] == json!(false) {
             assert_eq!(
                 r["structuredContent"]["user_activity"]["events"][0]["output"],
-                json!(0),
+                json!(1),
                 "{tool}: {r}"
             );
         }

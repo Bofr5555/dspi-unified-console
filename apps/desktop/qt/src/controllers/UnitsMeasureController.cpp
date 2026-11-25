@@ -1789,10 +1789,12 @@ void UnitsMeasureController::agentRequest(const QJsonObject &ticket) {
     }
     // -- WP LAY7 -- (INT5 follow-up 3) on its own tab
     // -- WP ODEC -- through the one gate of following an agent
-    auto *follow = Registrar::instance<AiController>();
-    if (auto *mc = Registrar::instance<MeasureController>();
-        mc && (!follow || follow->mayFollow(ticket.value(QLatin1String("device")).toString(), QStringLiteral("units"), true)))
-        mc->showPart(QStringLiteral("units"));
+    // -- WP SHOWFIX -- (finding 14) and after a click or key just before it, once the input rests
+    if (auto *mc = Registrar::instance<MeasureController>()) {
+        QPointer<UnitsMeasureController> self(this);
+        mc->followAgentRun(ticket.value(QLatin1String("device")).toString(), QStringLiteral("units"),
+                           [self] { return self && self->running(); });
+    }
     clearWords();
     const QString kind = ticket.value(QLatin1String("kind")).toString();
     const QByteArray setup = QJsonDocument(ticket.value(QLatin1String("setup")).toObject().value(QLatin1String("setup")).toObject())

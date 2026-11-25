@@ -134,7 +134,7 @@ fn wp_adet1_detected_roles_are_trusted_under_every_setting() {
             c,
             0,
             "dspi_set_crossover",
-            json!({"output": 2, "high_pass": null}),
+            json!({"output": 3, "high_pass": null}),
         );
         assert!(
             e.contains("drives a tweeter") && e.contains("detected by AI, not yet confirmed"),
@@ -146,7 +146,7 @@ fn wp_adet1_detected_roles_are_trusted_under_every_setting() {
             c,
             0,
             "dspi_measure_preflight",
-            json!({"outputs": [0, 1, 2]}),
+            json!({"outputs": [1, 2, 3]}),
         );
         let roles: Vec<&str> = p["roles"]
             .as_array()
@@ -166,7 +166,7 @@ fn wp_adet1_detected_roles_are_trusted_under_every_setting() {
         c,
         0,
         "dspi_set_crossover",
-        json!({"output": 2, "high_pass": null}),
+        json!({"output": 3, "high_pass": null}),
     );
     assert!(e.contains("speaker setup (confirmed)"), "{e}");
     // An unconfirmed one gives no roles: nothing to measure on.
@@ -189,17 +189,17 @@ fn wp_adet1_nothing_heard_is_never_routed_enabled_or_unmuted_by_an_agent() {
         for (tool, args, what) in [
             (
                 "dspi_set_output_enabled",
-                json!({"output": 3, "enabled": true}),
+                json!({"output": 4, "enabled": true}),
                 "switch it on",
             ),
             (
                 "dspi_set_mute",
-                json!({"output": 3, "muted": false}),
+                json!({"output": 4, "muted": false}),
                 "unmute it",
             ),
             (
                 "dspi_set_route",
-                json!({"input": 0, "output": 3, "on": true}),
+                json!({"input": 1, "output": 4, "on": true}),
                 "route an input to it",
             ),
         ] {
@@ -220,7 +220,7 @@ fn wp_adet1_nothing_heard_is_never_routed_enabled_or_unmuted_by_an_agent() {
             c,
             0,
             "dspi_set_mute",
-            json!({"output": 3, "muted": true}),
+            json!({"output": 4, "muted": true}),
         );
         assert_eq!(r["isError"], json!(false), "{r}");
         // The overview says so.
@@ -241,7 +241,7 @@ fn wp_adet1_nothing_heard_is_never_routed_enabled_or_unmuted_by_an_agent() {
         c,
         0,
         "dspi_set_output_enabled",
-        json!({"output": 3, "enabled": true}),
+        json!({"output": 4, "enabled": true}),
     );
     assert!(core.get_state().output_enabled[3]);
 }
@@ -302,12 +302,12 @@ fn wp_adet1_the_detection_is_refused_on_a_confirmed_layout_and_without_the_switc
     layout(&core, false);
     policy.set_mode(ConfirmMode::NeverAsk);
     assert_eq!(overview(&mut s, c)["agent_may"]["detect"], json!(false));
-    let e = err_at(&mut s, c, 0, DETECT, json!({"outputs": [2]}));
+    let e = err_at(&mut s, c, 0, DETECT, json!({"outputs": [3]}));
     assert!(e.contains("Agents may detect speakers"), "{e}");
     assert!(s.measure_requests().is_empty());
     policy.set_agent_detect(true);
     assert_eq!(overview(&mut s, c)["agent_may"]["detect"], json!(true));
-    let r = ok_at(&mut s, c, 0, DETECT, json!({"outputs": [2]}));
+    let r = ok_at(&mut s, c, 0, DETECT, json!({"outputs": [3]}));
     assert_eq!(r["status"], json!("waiting_for_app"), "{r}");
     assert!(s.grants().is_empty(), "never ask grants nothing");
 }
@@ -339,7 +339,7 @@ fn wp_adet1_one_grouped_question_with_the_warning_and_a_grant_for_detections() {
     let (mut s, _) = server(&set, ConfirmMode::AskRisky);
     let c = s.connect();
     let now = 1_000;
-    let cid = held_at(&mut s, c, now, DETECT, json!({"outputs": [0, 1, 2]}));
+    let cid = held_at(&mut s, c, now, DETECT, json!({"outputs": [1, 2, 3]}));
     let sheet = s.confirmation(cid).unwrap().to_json();
     let kinds: Vec<&str> = sheet["risks"]
         .as_array()
@@ -376,7 +376,7 @@ fn wp_adet1_one_grouped_question_with_the_warning_and_a_grant_for_detections() {
         c,
         now,
         DETECT,
-        json!({"outputs": [2], "floor_hz": 2500}),
+        json!({"outputs": [3], "floor_hz": 2500}),
     );
     assert!(r["what"].as_str().unwrap().contains("above 2.5 kHz"), "{r}");
     ok_at(&mut s, c, now, "dspi_measure_stop", json!({}));
@@ -398,13 +398,13 @@ fn wp_adet1_one_grouped_question_with_the_warning_and_a_grant_for_detections() {
         c,
         now,
         "dspi_measure_start",
-        json!({"outputs": [0], "sweep_ms": 1000, "passes": 2}),
+        json!({"outputs": [1], "sweep_ms": 1000, "passes": 2}),
     );
     s.answer_confirmation(cid, true, now).unwrap();
     assert_eq!(s.grants()[0]["detect"], json!(false));
     ok_at(&mut s, c, now, "dspi_measure_stop", json!({}));
     layout(&core2, false);
-    let cid = held_at(&mut s, c, now, DETECT, json!({"outputs": [2]}));
+    let cid = held_at(&mut s, c, now, DETECT, json!({"outputs": [3]}));
     // Allowed: the grant now covers detections too.
     s.answer_confirmation(cid, true, now).unwrap();
     assert_eq!(s.grants()[0]["detect"], json!(true));
@@ -417,7 +417,7 @@ fn wp_adet1_a_revoke_stops_a_running_detection_at_once() {
     let (mut s, _) = server(&set, ConfirmMode::AskRisky);
     let c = s.connect();
     let now = 1_000;
-    let cid = held_at(&mut s, c, now, DETECT, json!({"outputs": [2]}));
+    let cid = held_at(&mut s, c, now, DETECT, json!({"outputs": [3]}));
     s.answer_confirmation(cid, true, now).unwrap();
     let started = app_takes(&mut s, &core);
     assert_eq!(started.len(), 1, "{started:?}");
@@ -450,10 +450,10 @@ fn wp_adet1_the_demo_simulation_detects_a_tweeter_end_to_end() {
     let c = s.connect();
     let mut now = 1_000;
     assert_eq!(overview(&mut s, c)["roles_from"], json!("none"));
-    let cid = held_at(&mut s, c, now, DETECT, json!({"outputs": [2]}));
+    let cid = held_at(&mut s, c, now, DETECT, json!({"outputs": [3]}));
     s.answer_confirmation(cid, true, now).unwrap();
     // Busy while it waits.
-    let e = err_at(&mut s, c, now, DETECT, json!({"outputs": [2]}));
+    let e = err_at(&mut s, c, now, DETECT, json!({"outputs": [3]}));
     assert!(e.contains("waits for the app"), "{e}");
     let started = app_takes(&mut s, &core);
     assert_eq!(started[0]["ticket"]["loop"], json!("detect"), "{started:?}");
@@ -475,7 +475,7 @@ fn wp_adet1_the_demo_simulation_detects_a_tweeter_end_to_end() {
     assert_eq!(st["detect"]["stage"], json!("done"), "{st}");
     assert_eq!(res["layout_state"], json!("auto_detected"), "{st}");
     let out = &res["outputs"][0];
-    assert_eq!(out["output"], json!(2));
+    assert_eq!(out["output"], json!(3), "Out 3");
     assert_eq!(out["class"], json!("tweeter"), "{st}");
     assert_eq!(out["role"], json!("high"));
     assert!(out["evidence"]["heard_at"].is_string(), "{st}");
@@ -496,11 +496,11 @@ fn wp_adet1_the_demo_simulation_detects_a_tweeter_end_to_end() {
         c,
         now,
         "dspi_measure_preflight",
-        json!({"outputs": [2]}),
+        json!({"outputs": [3]}),
     );
     assert_eq!(p["roles"][0]["role"], json!("high"), "{p}");
     // Another detection on an auto-detected layout is allowed (the grant).
-    let r = ok_at(&mut s, c, now, DETECT, json!({"outputs": [2]}));
+    let r = ok_at(&mut s, c, now, DETECT, json!({"outputs": [3]}));
     assert_eq!(r["status"], json!("waiting_for_app"));
 }
 

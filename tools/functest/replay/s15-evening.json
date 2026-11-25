@@ -34,8 +34,8 @@
     "dspi_set_peq_band",
     {
      "device": "demo:2",
-     "input": 2,
-     "slot": 0,
+     "input": 3,
+     "slot": 1,
      "type": "peaking",
      "freq_hz": 2500,
      "gain_db": 2.5,
@@ -52,8 +52,8 @@
      "changes": [
       {
        "op": "set_peq_band",
-       "output": 4,
-       "slot": 0,
+       "output": 5,
+       "slot": 1,
        "type": "peaking",
        "freq_hz": 37,
        "gain_db": -6,
@@ -61,8 +61,8 @@
       },
       {
        "op": "set_peq_band",
-       "output": 4,
-       "slot": 1,
+       "output": 5,
+       "slot": 2,
        "type": "peaking",
        "freq_hz": 88,
        "gain_db": -4,
@@ -70,7 +70,7 @@
       },
       {
        "op": "set_gain",
-       "output": 4,
+       "output": 5,
        "gain_db": -3
       }
      ]
@@ -86,12 +86,12 @@
      "changes": [
       {
        "op": "set_gain",
-       "output": 2,
+       "output": 3,
        "gain_db": -2
       },
       {
        "op": "set_gain",
-       "output": 3,
+       "output": 4,
        "gain_db": -7
       }
      ]
@@ -146,7 +146,7 @@
     "dspi_set_limiter",
     {
      "device": "demo:2",
-     "output": 4,
+     "output": 5,
      "enabled": true,
      "threshold_db": -6,
      "release_ms": 200
@@ -215,7 +215,7 @@
     "dspi_preset_save",
     {
      "device": "demo:1",
-     "slot": 1,
+     "slot": 2,
      "name": "Film night",
      "devices": [
       "demo:1",
@@ -233,22 +233,22 @@
      "changes": [
       {
        "op": "set_peq_band",
-       "input": 2,
-       "slot": 0,
-       "type": "flat",
-       "freq_hz": 1000
-      },
-      {
-       "op": "set_peq_band",
-       "output": 4,
-       "slot": 0,
-       "type": "flat",
-       "freq_hz": 1000
-      },
-      {
-       "op": "set_peq_band",
-       "output": 4,
+       "input": 3,
        "slot": 1,
+       "type": "flat",
+       "freq_hz": 1000
+      },
+      {
+       "op": "set_peq_band",
+       "output": 5,
+       "slot": 1,
+       "type": "flat",
+       "freq_hz": 1000
+      },
+      {
+       "op": "set_peq_band",
+       "output": 5,
+       "slot": 2,
        "type": "flat",
        "freq_hz": 1000
       }
@@ -260,7 +260,7 @@
     "dspi_preset_save",
     {
      "device": "demo:1",
-     "slot": 2,
+     "slot": 3,
      "name": "Day",
      "devices": [
       "demo:1",
@@ -275,7 +275,7 @@
     "dspi_preset_load",
     {
      "device": "demo:2",
-     "slot": 1
+     "slot": 2
     },
     "ok"
    ]

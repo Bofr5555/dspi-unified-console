@@ -127,7 +127,13 @@ Panel {
                        //: An event and how many times it happened in a row
                        ? qsTr("%1 (×%2)").arg(modelData.text).arg(modelData.count)
                        : modelData.text
-                subtitle: modelData.detail
+                // -- WP SHOWFIX -- (finding 2) the device's own record on demand:
+                // under the chosen row, and in the tooltip
+                readonly property string raw: modelData.raw ?? ""
+                //: An event's details row: the device's own record, as the Interrupt Monitor shows it
+                readonly property string rawLine: raw.length ? qsTr("Device record: %1").arg(raw) : ""
+                subtitle: rows.currentIndex === index && rawLine.length
+                          ? [modelData.detail, rawLine].filter(s => s && s.length).join(" · ") : modelData.detail
                 //: Who caused an event: a console, an API key or a schedule, by name
                 value: modelData.by.length > 0 ? qsTr("by %1").arg(modelData.by) : ""
                 monoValue: false
@@ -141,7 +147,7 @@ Panel {
                 }
                 ToolTip.visible: hovered
                 ToolTip.delay: 700
-                ToolTip.text: [modelData.day + " " + modelData.time, title, subtitle].filter(s => s && s.length).join("\n")
+                ToolTip.text: [modelData.day + " " + modelData.time, title, modelData.detail, rawLine].filter(s => s && s.length).join("\n")
                 Accessible.name: [modelData.time, title, subtitle, value].filter(s => s && s.length).join(", ")
             }
 

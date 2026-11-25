@@ -17,8 +17,8 @@ use serde_json::{Map, Value, json};
 
 use crate::policy::{self, WriteKey};
 use crate::registry::{Call, Tool, ToolClass, ToolError, ToolResult};
-use crate::tools::edit::{bool_arg, schema, u8_arg};
-use crate::tools::read::{band_json, num, object_schema, state, xover_json};
+use crate::tools::edit::{bool_arg, schema};
+use crate::tools::read::{band_json, index_arg, num, object_schema, shown, state, xover_json};
 use crate::untrusted;
 
 /// The tools, in `tools/list` order.
@@ -123,12 +123,14 @@ fn pair_schema() -> Value {
     );
     m.insert(
         "left".into(),
-        json!({"type": "integer", "minimum": 0,
-               "description": "The left wire channel (two inputs or two outputs)"}),
+        json!({"type": "integer", "minimum": 1,
+               "description": "The left wire channel, from 1, inputs first (two inputs or two \
+                               outputs; with 2 inputs channel 3 is Out 1)"}),
     );
     m.insert(
         "right".into(),
-        json!({"type": "integer", "minimum": 0, "description": "The right wire channel"}),
+        json!({"type": "integer", "minimum": 1,
+               "description": "The right wire channel, from 1, inputs first"}),
     );
     m.insert(
         "apply_level".into(),
@@ -140,7 +142,13 @@ fn pair_schema() -> Value {
 
 /// The pair and the level choice.
 fn pair(args: &Map<String, Value>) -> Result<(u8, u8, Option<bool>), ToolError> {
-    let ch = |k: &str| u8_arg(args, k).ok_or_else(|| ToolError::new(format!("`{k}` is required")));
+    // -- WP SHOWFIX -- from 1, as the agent counts; 0 (or too large) is no
+    // channel, which the core refuses
+    let ch = |k: &str| {
+        index_arg(args, k)
+            .map(|c| u8::try_from(c).unwrap_or(u8::MAX))
+            .ok_or_else(|| ToolError::new(format!("`{k}` is required")))
+    };
     Ok((ch("left")?, ch("right")?, bool_arg(args, "apply_level")))
 }
 
@@ -150,8 +158,8 @@ fn preview_json(st: &DspState, p: &AutoEqPreview) -> Value {
         .iter()
         .map(|c| {
             json!({
-                "channel": c.channel,
-                "output": c.is_output.then(|| c.channel.saturating_sub(st.num_input_channels)),
+                "channel": shown(c.channel),
+                "output": c.is_output.then(|| shown(c.channel.saturating_sub(st.num_input_channels))),
                 "level_db": num(c.level_db),
                 "bands": c.bands.iter().enumerate().map(|(i, f)| band_json(i, f)).collect::<Vec<_>>(),
                 "crossover": c.crossover.iter().enumerate()

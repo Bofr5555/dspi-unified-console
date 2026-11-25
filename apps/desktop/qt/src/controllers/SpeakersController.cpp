@@ -332,6 +332,9 @@ void SpeakersController::setStored(const StatePtr &st, const QJsonObject &layout
     else if (shown(st)) emit rowsChanged();   // -- WP ADETQ -- the pills are judged against it
     if (shown(st)) emit storedChanged(origin);
     if (shown(st)) emit detectChanged();      // -- WP ADETQ -- a confirmed layout is not detected over
+    // -- WP SHOWFIX -- the channels' names follow the layout ("Left tweeter"):
+    // the snapshot carries the core's channel words, and no state changed
+    if (shown(st) && m_ctx.device) m_ctx.device->reread();
 }
 
 void SpeakersController::rebuild(const StatePtr &st) {
@@ -358,6 +361,12 @@ QVariantMap SpeakersController::rowOf(const State &st, int output) {
 }
 
 QVariantMap SpeakersController::rowOf(int output) const { return rowOf(*state(), output); }
+
+// -- WP SHOWFIX -- (finding 8)
+QVariantMap SpeakersController::pillFor(int output) const {
+    const StatePtr st = state();
+    return pillOf(*st, rowOf(*st, output));
+}
 
 QString SpeakersController::roleOf(int output) const {
     const StatePtr st = state();
@@ -804,8 +813,10 @@ QString SpeakersController::detectQuestion() const {
                                  : tr(" (%1 are off and are not probed)").arg(outsWords(off));
     //: %1 the outputs ("Out 1–2"), %2 those that are off, with a space before them, or ""; %3 and %4 levels ("−24 dBFS", "−50 dBFS")
     parts << QStringLiteral("• ") +
+                 // -- WP SHOWFIX -- and the free descent, as the core plays it (measure/detect.rs C2)
                  tr("Speaker detection: %1%2. Each output is first played only above 1 kHz, at most %3. Only an output whose "
-                    "response says it is not a tweeter is played lower, and then at most %4. Whatever cannot be told apart "
+                    "response says it is not a tweeter is played lower, and then at most %4; one still flat well below 1 kHz "
+                    "there, as no tweeter is, is then played down to 20 Hz at most %3. Whatever cannot be told apart "
                     "is treated as a tweeter.")
                      .arg(list, offWords, headphones ? QStringLiteral("−36 dBFS") : QStringLiteral("−24 dBFS"),
                           headphones ? QStringLiteral("−60 dBFS") : QStringLiteral("−50 dBFS"));

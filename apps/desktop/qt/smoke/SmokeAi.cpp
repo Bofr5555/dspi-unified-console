@@ -92,7 +92,8 @@ struct Agent {
             body);
     }
     std::unique_ptr<Exchange> gain(double db) const {
-        return call("dspi_set_gain", { { QStringLiteral("output"), out ? *out : 0 }, { QStringLiteral("gain_db"), db } });
+        // the tools count from 1 (SHOWFIX 9); `out` from 0, as the device does
+        return call("dspi_set_gain", { { QStringLiteral("output"), (out ? *out : 0) + 1 }, { QStringLiteral("gain_db"), db } });
     }
     // The result, once it has come
     QJsonObject result(Exchange &e) const {
@@ -250,7 +251,8 @@ void aiSection(SmokeDriver &d) {
     d.check("mcp4: a quieter change is made at once", !failed(agent.result(*e)) && d.waitFor(3000, [&] { return gainIs(-15); }));
     const auto row = [&](int n) { return ai->activity().value(n).toMap(); };
     d.check("mcp4: the activity says what, who and on which device", d.waitFor(3000, [&] { return row(0).value(QStringLiteral("undo")) == QLatin1String("can"); })
-            && row(0).value(QStringLiteral("detail")).toString().contains(QLatin1String("-15 dB"))
+            // -- WP SHOWFIX -- (finding 4) the core's words, with a typographic minus
+            && row(0).value(QStringLiteral("detail")).toString().contains(QStringLiteral("\u221215 dB"))
             && row(0).value(QStringLiteral("client")).toString().contains(QLatin1String("Fake agent"))
             && !row(0).value(QStringLiteral("device")).toString().isEmpty());
     d.check("mcp4: the state says an agent is active", ai->state() == QLatin1String("active"));
@@ -449,7 +451,7 @@ void aiSection(SmokeDriver &d) {
     setGain(-10);
     e = agent.call("dspi_apply_changes", { { QStringLiteral("guard_s"), 300 },
                                            { QStringLiteral("changes"), QJsonArray{ QJsonObject{ { QStringLiteral("op"), QStringLiteral("set_gain") },
-                                                                                                { QStringLiteral("output"), out },
+                                                                                                { QStringLiteral("output"), out + 1 },
                                                                                                 { QStringLiteral("gain_db"), -18 } } } } });
     d.check("mcp4: a timed preview is made", !failed(agent.result(*e)) && d.waitFor(3000, [&] { return gainIs(-18); }));
     d.check("mcp4: the safe apply's banner shows it, with Keep and Revert", d.waitFor(4000, [&] { return snapshots->guardWaiting(); })

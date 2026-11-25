@@ -264,7 +264,7 @@ fn wp_feat1_the_tools_are_listed_closed_read_only_and_bounded_as_the_core() {
             item["properties"]["value"]["maximum"].clone(),
             item["properties"]["arg"]["maximum"].clone()
         ),
-        (json!(-12800), json!(2047), json!(9))
+        (json!(-12800), json!(2047), json!(10)) // preset 10, as the app shows it
     );
     assert!(
         item["properties"]["op"]["enum"]
@@ -499,7 +499,7 @@ fn wp_feat1_a_draft_that_changed_since_it_was_read_is_not_saved() {
         &mut s,
         c,
         "dspi_installation_set_programme",
-        json!({"name": "Streamer", "kind": "spdif", "feeds_id": "B", "inputs": [0, 1]}),
+        json!({"name": "Streamer", "kind": "spdif", "feeds_id": "B", "inputs": [1, 2]}),
     );
     let w = answer(&mut s, c, id, true);
     assert_eq!(w["result"]["isError"], json!(true), "{w}");
@@ -620,7 +620,7 @@ fn wp_feat1_a_recalled_source_scene_routes_at_once_and_says_so() {
         c,
         "dspi_installation_set_programme",
         json!({"programme_id": "tidal", "name": "Tidal \u{202e}streamer", "kind": "computer_usb",
-               "feeds_id": "A", "inputs": [0, 1]}),
+               "feeds_id": "A", "inputs": [1, 2]}),
     );
     let d = ok(&mut s, c, "dspi_installation_diff", json!({}));
     let p = &d["site"]["programme_sources"][0];

@@ -6,7 +6,7 @@ import QtQuick
 // Modern (GraphPlot, Equaliser › Crossover; Measure and AutoEQ when they use
 // a GraphFrame), so they read the same:
 //   frequency(min, max, shown)     1-2-5 per decade, 20 Hz to 20 kHz, "1k"
-//   db(top, bottom, span, shown)   a whole step for the span, "+6", "-12"
+//   db(top, bottom, span, shown)   a whole step for the span, "+6", "0", "-12"
 //   phase(extent, shown)           ±extent, ±extent/2 and 0, in degrees
 //
 //     GraphFrame {
@@ -30,7 +30,7 @@ QtObject {
         const step = span <= 12 ? 1 : span <= 30 ? 3 : span <= 60 ? 5 : 10
         for (let k = Math.ceil(bottom / step); k * step <= top; ++k) {
             const v = k * step
-            out.push({ at: (top - v) / (top - bottom), text: (k >= 0 ? "+" : "") + v })
+            out.push({ at: (top - v) / (top - bottom), text: (k > 0 ? "+" : "") + v })
         }
         return out
     }

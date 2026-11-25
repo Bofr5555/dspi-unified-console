@@ -173,6 +173,9 @@ pub mod actor;
 pub mod speaker_layout;
 // -- WP WEB6 -- the effect pages' drawings (Qt's C++ curves, moved to the core)
 pub mod effect_curves;
+// -- WP SHOWFIX -- the names a person knows a channel by
+pub mod change_words;
+pub mod channel_words; // -- WP SHOWFIX -- (finding 4)
 // -- WP FUNC2a -- the function test's config-time oracle (test-only)
 #[cfg(feature = "sim-scenario")]
 mod functest_oracle;
@@ -280,10 +283,11 @@ pub use write_param::{ParamValue, write_refusal};
 pub use names::{FilterTypeName, filter_type_name, filter_type_names};
 // -- BUG1 --
 // -- WP ROLE0 --
+pub use channel_words::{ChannelWords, speaker_role_name};
 pub use output_labels::{
     OutputCard, OutputLabel, OutputLabelInput, output_cards_for, output_labels_for,
 };
-pub use speaker_layout::{SpeakerLayout, SpeakerLayoutOutput};
+pub use speaker_layout::{SpeakerLayout, SpeakerLayoutOutput}; // -- WP SHOWFIX --
 // -- WP ROLES --
 pub use speaker_layout::{RoleCheck, RoleCheckVerdict, Statement};
 // -- WP ADET0 -- the speaker detection

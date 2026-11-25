@@ -14,6 +14,8 @@
 
 #include <QCoreApplication>
 #include <QThread>
+#include <QTimer>   // -- WP SHOWFIX --
+#include <memory>   // -- WP SHOWFIX --
 #include <utility>
 
 static const Registrar::Controller<MeasureController> measureController;
@@ -259,6 +261,30 @@ QString MeasureController::runsOn() const {
     return titles.join(QStringLiteral(", "));
 }
 
+void MeasureController::followAgentRun(const QString &device, const QString &part, const std::function<bool()> &going, int tries) {
+    auto *ai = Registrar::instance<AiController>();
+    DeviceSession *on = m_ctx.registry->session(device);
+    if (m_shutDown || !on) return;
+    // -- WP ODEC -- the screens follow an agent through one gate: not while the
+    // user is at a control, a text field or a dialog (then only the work strip)
+    if (ai && !ai->mayFollow(device, part, true)) {
+        // -- WP SHOWFIX -- (finding 14) an input just before: once it rests, if the run goes on
+        if (ai->inputBusy() && tries > 0)
+            QTimer::singleShot(AiController::kInputIdleMs + 50, this, [this, device, part, going, tries] {
+                if (!going || going()) followAgentRun(device, part, going, tries - 1);
+            });
+        return;
+    }
+    // -- WP LAY7 -- (INT5 follow-up 3) on the device it runs on, and the tab it is
+    // run from. Not over something the person does on the device shown, which a
+    // switch may end (the live view, the generator, a drag), nor under a question.
+    const auto *siggen = Registrar::instance<SiggenController>();
+    const auto *unsaved = Registrar::instance<UnsavedGuard>();
+    if (on != m_ctx.activeSession() && !session()->underWay() && !m_ctx.device->dragging() && !(siggen && siggen->playing()) && !(unsaved && unsaved->asking()))
+        m_ctx.registry->activate(on);
+    showPart(part);
+}
+
 // -- WP MCP5 -- An AI agent's request: the Measure view comes up and the device's
 // session runs it as its own start, said as "Requested by AI · name"; the
 // outcome goes back to the agent (AiController::reportMeasure).
@@ -275,26 +301,20 @@ void MeasureController::agentRequest(const QJsonObject &ticket) {
     }
     MeasureSession *s = m_sessions.value(on);
     if (!s) s = make(on);
-    // -- WP LAY7 -- (INT5 follow-up 3) on the device it runs on, and the tab it is
-    // run from. Not over something the person does on the device shown, which a
-    // switch may end (the live view, the generator, a drag), nor under a question.
-    const auto *siggen = Registrar::instance<SiggenController>();
-    const auto *unsaved = Registrar::instance<UnsavedGuard>();
-    // -- WP ODEC -- the screens follow an agent through one gate: not while the
-    // user is at a control, a text field or a dialog (then only the work strip)
-    if (ai->mayFollow(device, QStringLiteral("measure"), true)) {
-        if (on != m_ctx.activeSession() && !session()->underWay() && !m_ctx.device->dragging() && !(siggen && siggen->playing()) && !(unsaved && unsaved->asking()))
-            m_ctx.registry->activate(on);
-        showPart(ticket.value(QLatin1String("loop")).toString() == QLatin1String("tune") ? QStringLiteral("tune") : QStringLiteral("measure"));
-    }
+    // -- WP SHOWFIX -- (finding 14) (a measurement, a tune, a speaker detection)
+    QPointer<MeasureSession> going(s);
+    const auto refused = std::make_shared<bool>(false);
+    followAgentRun(device, ticket.value(QLatin1String("loop")).toString() == QLatin1String("tune") ? QStringLiteral("tune") : QStringLiteral("measure"),
+                   [going, refused] { return going && !*refused; });
     QPointer<AiController> back(ai);
     // -- WP INT5 -- A device not looked at yet sleeps (LAY5b): which microphone
     // it has is known once the reads of its wake() are in
     s->onLoop(
         s, [](FfiCore *) { return QByteArray(); },
-        [s, ticket, back, id](const QByteArray &) {
+        [s, ticket, back, id, refused](const QByteArray &) {
             QPointer<MeasureSession> run(s);
-            s->startForAgent(ticket, [back, id, run](bool started, const QString &note) {
+            s->startForAgent(ticket, [back, id, run, refused](bool started, const QString &note) {
+                *refused = !started;   // -- WP SHOWFIX --
                 if (back) back->reportMeasure(id, started, note, [run] {   // -- WP RCFIX --
                     if (run) run->stop();
                 });

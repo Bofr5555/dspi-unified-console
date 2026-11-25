@@ -231,7 +231,8 @@ fn wp_p0m_connects_disconnects_and_notifications_are_recorded() {
                 .unwrap();
             assert_eq!(n.source, "UART");
             assert!(!n.own);
-            assert!(n.text.contains("delays"), "{}", n.text);
+            // -- WP SHOWFIX -- (finding 2) plain words, not the monitor's line
+            assert_eq!(n.text, "Delay of In 1 set to 1.5 ms");
             break;
         }
         assert!(

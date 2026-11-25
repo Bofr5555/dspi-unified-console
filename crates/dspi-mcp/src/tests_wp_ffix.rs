@@ -196,10 +196,10 @@ fn wp_ffix_a_tweeter_with_no_highpass_is_never_fed_under_any_setting() {
             &mut s,
             c,
             "dspi_set_route",
-            json!({"input": 0, "output": 1, "on": true, "gain_db": 0}),
+            json!({"input": 1, "output": 2, "on": true, "gain_db": 0}),
         );
         assert!(
-            e.contains("output 1 (Out 2 in the app) drives a tweeter")
+            e.contains("Out 2 drives a tweeter")
                 && e.contains("1000 Hz or above")
                 && e.contains("no such high-pass"),
             "{mode:?}: {e}"
@@ -212,13 +212,13 @@ fn wp_ffix_a_tweeter_with_no_highpass_is_never_fed_under_any_setting() {
                 &mut s,
                 c,
                 "dspi_set_crossover",
-                json!({"output": 1, "high_pass": crossover_hp(2_000, "linkwitz_riley", 4)}),
+                json!({"output": 2, "high_pass": crossover_hp(2_000, "linkwitz_riley", 4)}),
             );
             ok(
                 &mut s,
                 c,
                 "dspi_set_route",
-                json!({"input": 0, "output": 1, "on": true, "gain_db": 0}),
+                json!({"input": 1, "output": 2, "on": true, "gain_db": 0}),
             );
             assert!(routed(&core, 0, 1));
         }
@@ -236,14 +236,14 @@ fn wp_ffix_a_highpass_below_the_floor_or_too_shallow_is_refused_where_there_was_
         &mut s,
         c,
         "dspi_set_crossover",
-        json!({"output": 1, "high_pass": crossover_hp(500, "linkwitz_riley", 4)}),
+        json!({"output": 2, "high_pass": crossover_hp(500, "linkwitz_riley", 4)}),
     );
     assert!(e.contains("24 dB/octave high-pass at 500 Hz"), "{e}");
     let e = err(
         &mut s,
         c,
         "dspi_set_crossover",
-        json!({"output": 1, "high_pass": crossover_hp(2_000, "butterworth", 1)}),
+        json!({"output": 2, "high_pass": crossover_hp(2_000, "butterworth", 1)}),
     );
     assert!(e.contains("6 dB/octave high-pass at 2000 Hz"), "{e}");
     let x = core.get_state().xover[usize::from(n_in(&core) + 1)][0];
@@ -255,13 +255,13 @@ fn wp_ffix_a_highpass_below_the_floor_or_too_shallow_is_refused_where_there_was_
         &mut s,
         c,
         "dspi_set_crossover",
-        json!({"output": 2, "high_pass": crossover_hp(50, "linkwitz_riley", 4)}),
+        json!({"output": 3, "high_pass": crossover_hp(50, "linkwitz_riley", 4)}),
     );
     ok(
         &mut s,
         c,
         "dspi_set_crossover",
-        json!({"output": 2, "high_pass": crossover_hp(300, "linkwitz_riley", 4)}),
+        json!({"output": 3, "high_pass": crossover_hp(300, "linkwitz_riley", 4)}),
     );
 }
 
@@ -278,7 +278,7 @@ fn wp_ffix_switching_a_tweeter_on_or_unmuting_it_is_judged_on_the_result() {
         &mut s,
         c,
         "dspi_set_output_enabled",
-        json!({"output": 1, "enabled": true}),
+        json!({"output": 2, "enabled": true}),
     );
     assert!(e.contains("play programme"), "{e}");
     assert!(!core.get_state().output_enabled[1]);
@@ -288,7 +288,7 @@ fn wp_ffix_switching_a_tweeter_on_or_unmuting_it_is_judged_on_the_result() {
         &mut s,
         c,
         "dspi_set_mute",
-        json!({"output": 1, "muted": false}),
+        json!({"output": 2, "muted": false}),
     );
     assert!(core.get_state().output_muted[1]);
     // One batch that protects it first passes whole.
@@ -297,8 +297,8 @@ fn wp_ffix_switching_a_tweeter_on_or_unmuting_it_is_judged_on_the_result() {
         c,
         "dspi_apply_changes",
         json!({"changes": [
-            {"op": "set_mute", "output": 1, "muted": false},
-            {"op": "set_crossover", "output": 1, "high_pass": crossover_hp(2_500, "linkwitz_riley", 4)},
+            {"op": "set_mute", "output": 2, "muted": false},
+            {"op": "set_crossover", "output": 2, "high_pass": crossover_hp(2_500, "linkwitz_riley", 4)},
         ]}),
     );
     assert!(!core.get_state().output_muted[1]);
@@ -307,7 +307,7 @@ fn wp_ffix_switching_a_tweeter_on_or_unmuting_it_is_judged_on_the_result() {
         &mut s,
         c,
         "dspi_set_crossover",
-        json!({"output": 1, "high_pass": null}),
+        json!({"output": 2, "high_pass": null}),
     );
     assert!(
         e.contains("removes or weakens") || e.contains("lowers"),
@@ -330,7 +330,7 @@ fn wp_ffix_a_boost_below_the_floor_counts_by_what_reaches_the_tweeter() {
         &mut s,
         c,
         "dspi_set_peq_band",
-        json!({"output": 1, "slot": 0, "type": "low_shelf", "freq_hz": 800, "gain_db": 20}),
+        json!({"output": 2, "slot": 1, "type": "low_shelf", "freq_hz": 800, "gain_db": 20}),
     );
     assert!(e.contains("boosts it below 1000 Hz"), "{e}");
     // A treble cut, and a bass shelf on the input (behind the high-pass), pass.
@@ -338,13 +338,13 @@ fn wp_ffix_a_boost_below_the_floor_counts_by_what_reaches_the_tweeter() {
         &mut s,
         c,
         "dspi_set_peq_band",
-        json!({"output": 1, "slot": 0, "type": "peaking", "freq_hz": 5000, "gain_db": -3, "q": 1}),
+        json!({"output": 2, "slot": 1, "type": "peaking", "freq_hz": 5000, "gain_db": -3, "q": 1}),
     );
     ok(
         &mut s,
         c,
         "dspi_set_peq_band",
-        json!({"input": 0, "slot": 0, "type": "low_shelf", "freq_hz": 80, "gain_db": 6}),
+        json!({"input": 1, "slot": 1, "type": "low_shelf", "freq_hz": 80, "gain_db": 6}),
     );
     // With no high-pass at all, a +20 dB band at 300 Hz never passes.
     blank(&core, 3);
@@ -372,7 +372,7 @@ fn wp_ffix_a_boost_below_the_floor_counts_by_what_reaches_the_tweeter() {
         &mut s,
         c,
         "dspi_set_peq_band",
-        json!({"output": 3, "slot": 0, "type": "peaking", "freq_hz": 300, "gain_db": 20, "q": 1}),
+        json!({"output": 4, "slot": 1, "type": "peaking", "freq_hz": 300, "gain_db": 20, "q": 1}),
     );
 }
 
@@ -389,27 +389,27 @@ fn wp_ffix_an_output_the_user_left_unprotected_may_be_made_no_worse() {
         &mut s,
         c,
         "dspi_set_route",
-        json!({"input": 0, "output": 1, "on": true, "gain_db": -12}),
+        json!({"input": 1, "output": 2, "on": true, "gain_db": -12}),
     );
     // Another input, or a louder route, is refused.
     let e = err(
         &mut s,
         c,
         "dspi_set_route",
-        json!({"input": 1, "output": 1, "on": true, "gain_db": -12}),
+        json!({"input": 2, "output": 2, "on": true, "gain_db": -12}),
     );
     assert!(e.contains("feeds it more"), "{e}");
     err(
         &mut s,
         c,
         "dspi_set_route",
-        json!({"input": 0, "output": 1, "on": true, "gain_db": 0}),
+        json!({"input": 1, "output": 2, "on": true, "gain_db": 0}),
     );
     ok(
         &mut s,
         c,
         "dspi_set_mute",
-        json!({"output": 1, "muted": true}),
+        json!({"output": 2, "muted": true}),
     );
 }
 
@@ -482,7 +482,7 @@ fn wp_ffix_an_agents_preset_load_runs_silenced_and_comes_back() {
     confirm(&core);
     let mut s = server_of(&set, ConfirmMode::NeverAsk);
     let c = s.connect();
-    let e = err(&mut s, c, "dspi_preset_load", json!({"slot": 1}));
+    let e = err(&mut s, c, "dspi_preset_load", json!({"slot": 2}));
     assert!(
         e.contains("drives a tweeter") && e.contains("put back"),
         "{e}"
@@ -502,7 +502,7 @@ fn wp_ffix_an_agents_preset_load_runs_silenced_and_comes_back() {
     // A preset that keeps it protected loads, and the volume comes back.
     let token = core.confirm_token(dspi_core::ConfirmOp::SavePreset);
     core.save_preset_confirmed(2, Some(token)).unwrap();
-    ok(&mut s, c, "dspi_preset_load", json!({"slot": 2}));
+    ok(&mut s, c, "dspi_preset_load", json!({"slot": 3}));
     assert!((core.get_state().master_volume_db - -10.0).abs() < 0.01);
 }
 
@@ -527,7 +527,7 @@ fn wp_intg_a_silenced_load_whose_volume_cannot_come_back_is_an_error() {
     let c = s.connect();
     PUT_BACK_FAILS.with(|f| f.set(true));
     // A load that went well: not ok, the device silent, what to do.
-    let e = err(&mut s, c, "dspi_preset_load", json!({"slot": 2}));
+    let e = err(&mut s, c, "dspi_preset_load", json!({"slot": 3}));
     assert!(
         e.contains("done, but the device is silent")
             && e.contains("-127 dB")
@@ -552,13 +552,13 @@ fn wp_intg_a_silenced_load_whose_volume_cannot_come_back_is_an_error() {
     );
     // A refused load is put back, its master volume with it: not left silent.
     core.set_master_volume(-10.0).unwrap();
-    let e = err(&mut s, c, "dspi_preset_load", json!({"slot": 1}));
+    let e = err(&mut s, c, "dspi_preset_load", json!({"slot": 2}));
     assert!(e.contains("put back") && !e.contains("silent"), "{e}");
     assert!((core.get_state().master_volume_db - -10.0).abs() < 0.01);
     // Without the failure it comes back, as before.
     PUT_BACK_FAILS.with(|f| f.set(false));
     core.set_master_volume(-10.0).unwrap();
-    ok(&mut s, c, "dspi_preset_load", json!({"slot": 2}));
+    ok(&mut s, c, "dspi_preset_load", json!({"slot": 3}));
     assert!((core.get_state().master_volume_db - -10.0).abs() < 0.01);
 }
 
@@ -681,8 +681,8 @@ fn wp_ffix_a_filed_measurement_says_its_arrivals_and_the_highpass_it_includes() 
     let a = results::alignment(&doc, &core.get_state(), core.max_delay_ms(), None).unwrap();
     assert_eq!(
         a["changes"],
-        json!([{"op": "set_delay", "output": 0, "delay_ms": 0.75},
-               {"op": "set_delay", "output": 1, "delay_ms": 0.75}]),
+        json!([{"op": "set_delay", "output": 1, "delay_ms": 0.75},
+               {"op": "set_delay", "output": 2, "delay_ms": 0.75}]),
         "{a}"
     );
     // A speaker measured by its woofer alone: its tweeter, from the user's
@@ -714,7 +714,7 @@ fn wp_ffix_a_filed_measurement_says_its_arrivals_and_the_highpass_it_includes() 
         .iter()
         .map(|c| c["output"].as_u64().unwrap())
         .collect();
-    assert!(moved.contains(&0) && moved.contains(&1), "{a}");
+    assert!(moved.contains(&1) && moved.contains(&2), "{a}");
     assert!(a["note"].as_str().unwrap().contains("Sub"), "{a}");
 }
 
@@ -725,7 +725,7 @@ fn wp_ffix_a_preset_save_offers_no_undo_and_apply_changes_points_to_the_limiter(
     let (set, _core) = demo("save");
     let mut s = server_of(&set, ConfirmMode::NeverAsk);
     let c = s.connect();
-    ok(&mut s, c, "dspi_preset_save", json!({"slot": 1}));
+    ok(&mut s, c, "dspi_preset_save", json!({"slot": 2}));
     let e = s
         .activity(10)
         .into_iter()
@@ -738,7 +738,7 @@ fn wp_ffix_a_preset_save_offers_no_undo_and_apply_changes_points_to_the_limiter(
         &mut s,
         c,
         "dspi_set_gain",
-        json!({"output": 0, "gain_db": -3}),
+        json!({"output": 1, "gain_db": -3}),
     );
     let e = s
         .activity(10)
@@ -751,7 +751,7 @@ fn wp_ffix_a_preset_save_offers_no_undo_and_apply_changes_points_to_the_limiter(
         &mut s,
         c,
         "dspi_apply_changes",
-        json!({"changes": [{"op": "set_limiter", "output": 0}]}),
+        json!({"changes": [{"op": "set_limiter", "output": 1}]}),
     );
     assert!(err.contains("dspi_set_limiter"), "{err}");
 }

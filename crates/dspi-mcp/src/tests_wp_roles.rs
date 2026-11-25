@@ -45,15 +45,15 @@ fn server(set: &Arc<CoreSet>, mode: ConfirmMode) -> (Server, Arc<AgentPolicy>) {
 }
 
 /// The owner's table: Out 1 L tweeter, 2 L mid, 3 L woofer, 4 R tweeter, 5
-/// R mid, 6 R woofer (outputs from 0).
+/// R mid, 6 R woofer (-- WP SHOWFIX -- outputs from 1, as the app shows them).
 fn owners_table() -> Value {
     json!({"user_words": OWNER, "rows": [
-        {"output": 0, "role": "tweeter", "speaker": "L"},
-        {"output": 1, "role": "midrange", "speaker": "L"},
-        {"output": 2, "role": "woofer", "speaker": "L"},
-        {"output": 3, "role": "tweeter", "speaker": "R"},
-        {"output": 4, "role": "midrange", "speaker": "R"},
-        {"output": 5, "role": "woofer", "speaker": "R"},
+        {"output": 1, "role": "tweeter", "speaker": "L"},
+        {"output": 2, "role": "midrange", "speaker": "L"},
+        {"output": 3, "role": "woofer", "speaker": "L"},
+        {"output": 4, "role": "tweeter", "speaker": "R"},
+        {"output": 5, "role": "midrange", "speaker": "R"},
+        {"output": 6, "role": "woofer", "speaker": "R"},
     ]})
 }
 
@@ -108,6 +108,7 @@ fn wp_roles_the_owners_sentence_is_one_question_with_the_whole_table() {
         );
         let table = &sheet["roles"];
         assert_eq!(table["rows"].as_array().unwrap().len(), 6, "{sheet}");
+        // (the app's sheet reads the table from 0 and adds 1 itself)
         assert_eq!(
             table["rows"][4],
             json!({"output": 4, "speaker": "R", "role": "midrange", "role_text": "midrange"})
@@ -118,7 +119,8 @@ fn wp_roles_the_owners_sentence_is_one_question_with_the_whole_table() {
         assert_eq!(r["roles_from"], json!("speaker_setup_stated"), "{r}");
         assert_eq!(
             r["unknown_treated_as_tweeter"],
-            json!((6..n).collect::<Vec<u8>>())
+            json!((7..=n).collect::<Vec<u8>>()),
+            "Out 7 onwards, numbered as on the screen"
         );
         let l = core.speaker_layout().unwrap().unwrap();
         assert_eq!(l.state(), LayoutState::Stated);
@@ -165,7 +167,7 @@ fn wp_roles_the_owners_sentence_is_one_question_with_the_whole_table() {
             c,
             0,
             "dspi_measure_preflight",
-            json!({"outputs": [1]}),
+            json!({"outputs": [2]}),
         );
         assert_eq!(p["roles_from"], json!("speaker_setup_stated"), "{p}");
         assert_eq!(p["roles"][0]["source"], json!("stated"));
@@ -208,7 +210,7 @@ fn wp_roles_a_confirmed_setup_only_with_the_words_on_what_changed() {
     let (mut s, _) = server(&set, ConfirmMode::AskRisky);
     let c = s.connect();
     let words = json!({"user_words": "output 2 is now the tweeter",
-                       "rows": [{"output": 1, "role": "tweeter", "speaker": "L"}]});
+                       "rows": [{"output": 2, "role": "tweeter", "speaker": "L"}]});
     let e = err_at(&mut s, c, 0, ROLES, words.clone());
     assert_eq!(e, ROLES_CONFIRMED_TEXT);
     assert_eq!(
@@ -248,9 +250,9 @@ fn wp_roles_the_tweeter_rules_hold_on_stated_and_unnamed_outputs() {
         policy.set_agent_roles(true);
         let c = s.connect();
         let rows = json!({"user_words": "1 woofer, 2 mid, 3 tweeter", "rows": [
-            {"output": 0, "role": "woofer", "speaker": "L"},
-            {"output": 1, "role": "midrange", "speaker": "L"},
-            {"output": 2, "role": "tweeter", "speaker": "L"}]});
+            {"output": 1, "role": "woofer", "speaker": "L"},
+            {"output": 2, "role": "midrange", "speaker": "L"},
+            {"output": 3, "role": "tweeter", "speaker": "L"}]});
         match mode {
             ConfirmMode::NeverAsk => {
                 ok_at(&mut s, c, 0, ROLES, rows);
@@ -266,7 +268,7 @@ fn wp_roles_the_tweeter_rules_hold_on_stated_and_unnamed_outputs() {
             c,
             0,
             "dspi_set_crossover",
-            json!({"output": 2, "high_pass": null}),
+            json!({"output": 3, "high_pass": null}),
         );
         assert!(
             e.contains("drives a tweeter")
@@ -279,9 +281,9 @@ fn wp_roles_the_tweeter_rules_hold_on_stated_and_unnamed_outputs() {
         for i in 0..core.get_state().num_input_channels {
             core.set_matrix_route(i, 0, false, 0.0, false).unwrap();
         }
-        let woofer = json!({"output": 0, "high_pass": {"family": "linkwitz_riley", "order": 4, "freq_hz": 40}});
+        let woofer = json!({"output": 1, "high_pass": {"family": "linkwitz_riley", "order": 4, "freq_hz": 40}});
         ok_at(&mut s, c, 0, "dspi_set_crossover", woofer);
-        let route = json!({"input": 0, "output": 0, "on": true});
+        let route = json!({"input": 1, "output": 1, "on": true});
         match mode {
             ConfirmMode::NeverAsk => {
                 ok_at(&mut s, c, 0, "dspi_set_route", route);
@@ -306,7 +308,7 @@ fn wp_roles_the_tweeter_rules_hold_on_stated_and_unnamed_outputs() {
             "unchecked"
         );
         if mode == ConfirmMode::NeverAsk {
-            let r = ok_at(&mut s, c, 0, "dspi_measure_start", json!({"outputs": [0]}));
+            let r = ok_at(&mut s, c, 0, "dspi_measure_start", json!({"outputs": [1]}));
             assert!(
                 r["what"]
                     .as_str()
@@ -328,7 +330,7 @@ fn wp_roles_the_tweeter_rules_hold_on_stated_and_unnamed_outputs() {
             c,
             0,
             "dspi_set_crossover",
-            json!({"output": 3, "high_pass": {"family": "linkwitz_riley", "order": 4, "freq_hz": 500}}),
+            json!({"output": 4, "high_pass": {"family": "linkwitz_riley", "order": 4, "freq_hz": 500}}),
         );
         assert!(
             e.contains("is not among the roles the user stated")
@@ -350,9 +352,9 @@ fn wp_roles_trust_but_check_a_wrong_woofer_is_caught_before_anything_plays_low()
         0,
         ROLES,
         json!({"user_words": "1 woofer, 2 mid, 3 woofer", "rows": [
-            {"output": 0, "role": "woofer", "speaker": "L"},
-            {"output": 1, "role": "midrange", "speaker": "L"},
-            {"output": 2, "role": "woofer", "speaker": "L"}]}),
+            {"output": 1, "role": "woofer", "speaker": "L"},
+            {"output": 2, "role": "midrange", "speaker": "L"},
+            {"output": 3, "role": "woofer", "speaker": "L"}]}),
     );
     allow(&mut s, c, cid);
     // Its low end: the test signals are asked, then the check goes first.
@@ -361,7 +363,7 @@ fn wp_roles_trust_but_check_a_wrong_woofer_is_caught_before_anything_plays_low()
         c,
         0,
         "dspi_measure_rolloff_start",
-        json!({"output": 2}),
+        json!({"output": 3}),
     );
     let r = allow(&mut s, c, cid);
     assert!(
@@ -423,7 +425,7 @@ fn wp_roles_trust_but_check_a_wrong_woofer_is_caught_before_anything_plays_low()
         c,
         5_000,
         "dspi_set_crossover",
-        json!({"output": 2, "high_pass": {"family": "linkwitz_riley", "order": 4, "freq_hz": 600}}),
+        json!({"output": 3, "high_pass": {"family": "linkwitz_riley", "order": 4, "freq_hz": 600}}),
     );
     assert!(
         e.contains(
@@ -456,7 +458,7 @@ fn wp_roles_trust_but_check_a_wrong_woofer_is_caught_before_anything_plays_low()
         c,
         10_000,
         "dspi_measure_rolloff_start",
-        json!({"output": 2}),
+        json!({"output": 3}),
     );
     assert!(
         !r["what"].as_str().unwrap().starts_with("First a check"),
@@ -471,7 +473,7 @@ fn wp_roles_trust_but_check_a_wrong_woofer_is_caught_before_anything_plays_low()
         c,
         10_000,
         "dspi_measure_rolloff_start",
-        json!({"output": 0}),
+        json!({"output": 1}),
     );
     assert!(
         r["what"]
@@ -510,14 +512,14 @@ fn wp_roles_trust_but_check_a_wrong_woofer_is_caught_before_anything_plays_low()
         c,
         20_000,
         "dspi_set_crossover",
-        json!({"output": 0, "low_pass": null}),
+        json!({"output": 1, "low_pass": null}),
     );
     let r = ok_at(
         &mut s,
         c,
         20_000,
         "dspi_measure_rolloff_start",
-        json!({"output": 0}),
+        json!({"output": 1}),
     );
     assert!(
         r["what"]
@@ -577,7 +579,7 @@ fn wp_roles_the_tool_is_listed_closed_and_named_as_the_owner_asked() {
         c,
         0,
         ROLES,
-        json!({"user_words": "w", "rows": [{"output": 0, "role": "tweeter", "speaker": "L"}], "confirmed": true}),
+        json!({"user_words": "w", "rows": [{"output": 1, "role": "tweeter", "speaker": "L"}], "confirmed": true}),
     );
     assert!(e.contains("confirmed"), "{e}");
 }
@@ -594,15 +596,15 @@ fn wp_roles_a_measurement_across_units_waits_for_the_units_own_check() {
         0,
         ROLES,
         json!({"user_words": "1 woofer, 3 tweeter", "rows": [
-            {"output": 0, "role": "woofer", "speaker": "L"},
-            {"output": 2, "role": "tweeter", "speaker": "L"}]}),
+            {"output": 1, "role": "woofer", "speaker": "L"},
+            {"output": 3, "role": "tweeter", "speaker": "L"}]}),
     );
     let e = err_at(
         &mut s,
         c,
         0,
         "dspi_system_measure_preflight",
-        json!({"units": [{"device": id.as_str(), "outputs": [0, 2]}]}),
+        json!({"units": [{"device": id.as_str(), "outputs": [1, 3]}]}),
     );
     assert!(e.contains("not measured across units"), "{e}");
     // A stated tweeter alone needs no check
@@ -611,7 +613,7 @@ fn wp_roles_a_measurement_across_units_waits_for_the_units_own_check() {
         c,
         0,
         "dspi_system_measure_preflight",
-        json!({"units": [{"device": id.as_str(), "outputs": [2]}]}),
+        json!({"units": [{"device": id.as_str(), "outputs": [3]}]}),
     );
     assert!(!r.to_string().contains("not measured across units"), "{r}");
     let _ = core;
@@ -629,9 +631,9 @@ fn revdfix_plays(core: &dspi_core::DspiCore, o: u8) {
 
 /// Out 1 woofer, Out 2 midrange, Out 3 as `role`.
 fn revdfix_rows(role: &str) -> Value {
-    json!([{"output": 0, "role": "woofer", "speaker": "L"},
-           {"output": 1, "role": "midrange", "speaker": "L"},
-           {"output": 2, "role": role, "speaker": "L"}])
+    json!([{"output": 1, "role": "woofer", "speaker": "L"},
+           {"output": 2, "role": "midrange", "speaker": "L"},
+           {"output": 3, "role": role, "speaker": "L"}])
 }
 
 const REVDFIX_LOWER: &str = r#"{"family": "linkwitz_riley", "order": 4, "freq_hz": 100}"#;
@@ -670,7 +672,7 @@ fn wp_revdfix_never_ask_refuses_a_statement_that_demotes_the_users_tweeter() {
             c,
             0,
             "dspi_set_crossover",
-            json!({"output": 2, "high_pass": lower.clone()}),
+            json!({"output": 3, "high_pass": lower.clone()}),
         );
         assert_eq!(r["isError"], json!(true), "{role}: {r}");
         // Left out, or stated a tweeter, the table is kept.
@@ -680,8 +682,8 @@ fn wp_revdfix_never_ask_refuses_a_statement_that_demotes_the_users_tweeter() {
             0,
             ROLES,
             json!({"user_words": "1 woofer 2 mid", "what_changed": "the user rewired",
-                   "rows": [{"output": 0, "role": "woofer", "speaker": "L"},
-                            {"output": 1, "role": "midrange", "speaker": "L"}]}),
+                   "rows": [{"output": 1, "role": "woofer", "speaker": "L"},
+                            {"output": 2, "role": "midrange", "speaker": "L"}]}),
         );
         assert_eq!(r["roles_from"], json!("speaker_setup_stated"), "{r}");
         // Still a tweeter to the rules: the lowering is refused.
@@ -690,7 +692,7 @@ fn wp_revdfix_never_ask_refuses_a_statement_that_demotes_the_users_tweeter() {
             c,
             0,
             "dspi_set_crossover",
-            json!({"output": 2, "high_pass": lower.clone()}),
+            json!({"output": 3, "high_pass": lower.clone()}),
         );
         assert_eq!(r["isError"], json!(true), "{role}: {r}");
         // And a later statement that names it is refused as well: the
@@ -736,7 +738,7 @@ fn wp_revdfix_the_question_shows_the_users_rows_and_their_tweeter_stays_one() {
             "{what}"
         );
         let r = allow(&mut s, c, cid);
-        assert_eq!(r["user_tweeters_kept"], json!([2]), "{r}");
+        assert_eq!(r["user_tweeters_kept"], json!([3]), "Out 3: {r}");
         let l = core.speaker_layout().unwrap().unwrap();
         assert_eq!(l.state(), LayoutState::Stated);
         assert!(l.user_tweeter_held(2));
@@ -752,7 +754,7 @@ fn wp_revdfix_the_question_shows_the_users_rows_and_their_tweeter_stays_one() {
             c,
             0,
             "dspi_set_crossover",
-            json!({"output": 2, "high_pass": lower.clone()}),
+            json!({"output": 3, "high_pass": lower.clone()}),
         );
         assert_eq!(r["isError"], json!(true), "{role}: {r}");
         assert!(
@@ -794,14 +796,14 @@ fn wp_revdfix_never_ask_guards_a_stated_midranges_tweeter_high_pass() {
             c,
             0,
             "dspi_set_crossover",
-            json!({"output": 2, "high_pass": keep.clone()}),
+            json!({"output": 3, "high_pass": keep.clone()}),
         );
         let r = call_at(
             &mut s,
             c,
             0,
             "dspi_set_crossover",
-            json!({"output": 2, "high_pass": lower.clone()}),
+            json!({"output": 3, "high_pass": lower.clone()}),
         );
         assert_eq!(r["isError"], json!(true), "stated {role}: {r}");
     }
@@ -830,13 +832,13 @@ fn wp_revdfix_never_ask_guards_a_stated_midranges_tweeter_high_pass() {
         c,
         0,
         "dspi_set_crossover",
-        json!({"output": 2, "high_pass": keep}),
+        json!({"output": 3, "high_pass": keep}),
     );
     ok_at(
         &mut s,
         c,
         0,
         "dspi_set_crossover",
-        json!({"output": 2, "high_pass": lower}),
+        json!({"output": 3, "high_pass": lower}),
     );
 }

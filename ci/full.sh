@@ -69,6 +69,8 @@ case "${1:-}" in
 esac
 
 branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo detached)
+# -- WP SHOWFIX -- a detached worktree is named by its short commit, not "HEAD"
+if [ "$branch" = HEAD ]; then branch=$(git rev-parse --short HEAD); fi
 branch=${branch//\//-}
 commit=$(git rev-parse --short=12 HEAD)
 [ -z "$(git status --porcelain)" ] || echo "full.sh: the tree has uncommitted changes; qt-packages will refuse to build" >&2

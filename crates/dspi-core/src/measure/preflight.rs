@@ -234,9 +234,11 @@ pub(crate) fn judge(
         block(
             "measure.volume_high",
             None,
+            // -- WP SHOWFIX -- (finding 1) one plain sentence: what to do, then why
             format!(
-                "the volume is {:.1} dB; lower it to {VOL_USER_MAX_DB} dB or below",
-                s.user_volume_db
+                "Lower the volume to {} dB or below to measure; it is {} dB.",
+                minus(format!("{VOL_USER_MAX_DB}")),
+                minus(format!("{:.1}", s.user_volume_db))
             ),
         );
     }
@@ -489,10 +491,44 @@ pub(crate) fn refusal(pre: &MeasurePreflight) -> Option<DspiError> {
     if has("measure.viewer") {
         return Some(DspiError::Denied);
     }
-    let words: Vec<&str> = pre.blockers.iter().map(|b| b.message.as_str()).collect();
     Some(DspiError::InvalidArgument {
-        msg: format!("cannot measure: {}", words.join("; ")),
+        msg: refusal_words(
+            pre.blockers
+                .iter()
+                .map(|b| (b.key.as_str(), b.message.as_str())),
+        ),
     })
+}
+
+// -- WP SHOWFIX -- (finding 1) A refusal the person reads as it is: each
+// blocker as a sentence of its own, followed by its notice's action where the
+// table has one ("A safe apply is waiting for Keep or Revert. Keep or revert
+// it, then measure."). A blocker whose words are a sentence already (the
+// volume's) stands alone. `DspiError::user_text` shows it unchanged.
+pub(crate) fn refusal_words<'a>(blockers: impl IntoIterator<Item = (&'a str, &'a str)>) -> String {
+    let mut out: Vec<String> = Vec::new();
+    for (key, message) in blockers {
+        if crate::error::is_sentence(message) {
+            out.push(message.to_owned());
+            continue;
+        }
+        let mut line = crate::error::sentence(message);
+        if let Some(action) = crate::notice_text::has_row(key)
+            .then(|| crate::notice_text::notice_for_key(key.to_owned(), String::new()).action)
+            .filter(|a| !a.is_empty())
+        {
+            line.push(' ');
+            line.push_str(&action);
+        }
+        out.push(line);
+    }
+    out.dedup();
+    out.join(" ")
+}
+
+/// `text` with a typographic minus sign ("−12"), as the screens write it.
+fn minus(text: String) -> String {
+    text.replace('-', "\u{2212}")
 }
 
 impl DspiCore {

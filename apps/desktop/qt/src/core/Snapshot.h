@@ -3,6 +3,7 @@
 
 #include <QByteArray>
 #include <QJsonArray>
+#include <QJsonObject>
 #include <QString>
 #include <cstdint>
 #include <functional>
@@ -20,6 +21,7 @@ struct DeviceSnapshot {
     std::shared_ptr<const DspState> state; // a copy of the record; null when not connected
     QString deviceName;                    // dspi_cached_device_name, "" when unnamed
     QJsonArray outputLabels;               // dspi_output_labels' value array
+    QJsonObject channelWords;              // -- WP SHOWFIX -- dspi_channel_words: {inputs, outputs, fromLayout}
     uint32_t wireFeatures = 0;             // dspi_wire_features
 };
 

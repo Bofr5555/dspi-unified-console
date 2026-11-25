@@ -108,6 +108,7 @@ public:
 
     // Re-reads the device on the worker (dspi_fetch_all), then a snapshot.
     Q_INVOKABLE void refresh();
+    void reread();   // -- WP SHOWFIX -- SessionModel::reread
     Q_INVOKABLE void openDemo();
     Q_INVOKABLE void selectDevice(const QString &serial);
     // Closes and reopens the open device (the device button's right-click)

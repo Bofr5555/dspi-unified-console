@@ -2,6 +2,7 @@
 
 #include "Snapshot.h"
 
+#include <QJsonArray>
 #include <QJsonObject>
 
 int ChannelListModel::rowCount(const QModelIndex &parent) const { return parent.isValid() ? 0 : int(m_rows.size()); }
@@ -27,6 +28,8 @@ QVariant ChannelListModel::data(const QModelIndex &index, int role) const {
     case EnabledRole: return r.enabled;
     case UserNamedRole: return r.userNamed;
     case PdmRole: return r.pdm;
+    case DisplayNameRole: return r.displayName; // -- WP SHOWFIX --
+    case ShortNameRole: return r.shortName;
     default: return QVariant();
     }
 }
@@ -36,6 +39,7 @@ QHash<int, QByteArray> ChannelListModel::roleNames() const {
         { KindRole, "kind" },         { IndexRole, "number" },     { ChannelRole, "channel" },
         { NameRole, "name" },         { LabelRole, "label" },     { DescriptorRole, "descriptor" },
         { EnabledRole, "outputEnabled" },   { UserNamedRole, "userNamed" }, { PdmRole, "pdm" },
+        { DisplayNameRole, "displayName" }, { ShortNameRole, "shortName" }, // -- WP SHOWFIX --
     };
 }
 
@@ -75,6 +79,8 @@ int ChannelListModel::effectiveInputs(const DspState &s) {
 void ChannelListModel::update(const DeviceSnapshot &snap, const QString &platform) {
     QVector<Row> rows;
     if (const DspState *s = snap.state.get()) {
+        const QJsonObject &words = snap.channelWords;                                  // -- WP SHOWFIX --
+        const QJsonArray fromLayout = words.value(QLatin1String("fromLayout")).toArray(); // -- WP SHOWFIX --
         const int inputs = effectiveInputs(*s);
         for (int i = 0; i < inputs && i < MAX_CHANNELS; ++i) {
             Row r;
@@ -82,6 +88,9 @@ void ChannelListModel::update(const DeviceSnapshot &snap, const QString &platfor
             r.channel = i;
             r.name = fieldText(s->channel_names[i], CHANNEL_NAME_LEN);
             r.label = r.name.isEmpty() ? tr("USB %1").arg(i + 1) : r.name;
+            // -- WP SHOWFIX -- the core's word for it ("LFE", "In 7")
+            r.displayName = r.label;
+            r.shortName = words.value(QLatin1String("inputs")).toArray().at(i).toString(r.label);
             rows.append(r);
         }
         // The PDM subwoofer's output number, as the Mac app places it
@@ -99,6 +108,11 @@ void ChannelListModel::update(const DeviceSnapshot &snap, const QString &platfor
                                                                 : QString();
             r.enabled = r.index >= 0 && r.index < MAX_OUTPUTS ? s->output_enabled[r.index] : false;
             r.pdm = r.index == pdmOutput;
+            // -- WP SHOWFIX -- the speaker layout's name where the core has one
+            // ("Centre woofer"), as the Overview's card names it
+            const QString word = words.value(QLatin1String("outputs")).toArray().at(r.index).toString();
+            r.displayName = fromLayout.contains(QJsonValue(r.index)) && !word.isEmpty() ? word : r.label;
+            r.shortName = word.isEmpty() ? r.label : word;
             rows.append(r);
         }
     }
