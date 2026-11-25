@@ -280,11 +280,13 @@ void wordsSection(SmokeDriver &d) {
     };
     setLayout(layout);
     device->refresh();
+    // An earlier section may have left another layout: wait for this one's word, not any layout's
+    const QString word = QStringLiteral("Centre woofer");
     const auto fromLayout = [&] {
-        return device->snapshot().channelWords.value(QLatin1String("fromLayout")).toArray().contains(QJsonValue(0));
+        return device->snapshot().channelWords.value(QLatin1String("fromLayout")).toArray().contains(QJsonValue(0))
+            && rowValue(device, cc->outputChannel(0), "shortName").toString() == word;
     };
     d.check("inte: the core names output 1 from the layout", d.waitFor(8000, fromLayout));
-    const QString word = rowValue(device, cc->outputChannel(0), "shortName").toString();
     const QString label = rowValue(device, cc->outputChannel(0), "label").toString();
     d.check(QStringLiteral("inte: its channel word (%1) is not the core's label (%2)").arg(word, label),
             !word.isEmpty() && word != label && rowValue(device, cc->outputChannel(0), "displayName").toString() == word);
