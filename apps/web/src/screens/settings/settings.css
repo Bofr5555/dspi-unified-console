@@ -4,7 +4,7 @@
    with the control at the right edge, slider rows with the value in a mono field. Overrides the WB6i/WEB2
    rules in dspi-web.css by specificity. */
 .dspi-web .settings-screen.st-screen { display: grid; grid-template-columns: 215px minmax(0, 1fr); gap: 0 24px; align-items: start; min-width: 0; }
-.dspi-web .st-side { display: flex; flex-direction: column; gap: 8px; padding: 8px; border-radius: 8px; background: var(--chrome); position: sticky; top: 0; min-width: 0; }
+.dspi-web .st-side { display: flex; flex-direction: column; gap: 8px; padding: 8px; border-radius: 8px; background: var(--chrome); position: sticky; top: calc(var(--top-h, 0px) + var(--bar-h, 0px) + 0.5rem); min-width: 0; }
 .dspi-web .st-search { display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 8px; border-radius: 6px; background: var(--panel); color: var(--muted); }
 .dspi-web .st-search .shell-icon { width: 13px; height: 13px; }
 .dspi-web .st-search input { flex: 1 1 auto; min-width: 0; height: 24px; padding: 0; border: 0; outline: 0; background: transparent; color: var(--text); font: inherit; font-size: 13px; }
@@ -71,6 +71,8 @@
   .dspi-web .form-row.st-slider { grid-template-columns: minmax(0, 1fr) 72px; }
   .dspi-web .form-row.st-slider .form-row-text { grid-column: 1 / -1; }
   .dspi-web .st-page .form-row { flex-wrap: wrap; }
-  .dspi-web .st-page .form-row-control { flex-wrap: wrap; }
-  .dspi-web .st-page .st-field, .dspi-web .st-page .form-row-control select { min-width: 0; max-width: 100%; }
+  .dspi-web .st-page .form-row-control { flex: 1 1 auto; flex-wrap: wrap; justify-content: flex-end; min-width: 0; max-width: 100%; }
+  .dspi-web .st-page .st-field { flex: 1 1 8rem; width: auto; min-width: 0; }
+  .dspi-web .st-page .form-row-control select { min-width: 0; max-width: 100%; }
+  .dspi-web .st-page .settings-pins { display: block; overflow-x: auto; }
 }
