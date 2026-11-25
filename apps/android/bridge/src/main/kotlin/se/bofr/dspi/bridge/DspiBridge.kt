@@ -353,6 +353,14 @@ interface DspiBridge {
      */
     fun outputUnused(output: Int): Boolean = false
 
+    /**
+     * -- WP FIN015 -- (REVF R1) [outputUnused], and no test signal plays on it (`OutputLabel.hidden`: the
+     * generator, a measurement, Identify): what a view that only shows levels (the Home's meters, the Spectrum
+     * chips, Stats) leaves out. The generator writes after the matrix, so an unused output it plays on is loud
+     * and keeps its meter. False with no labels.
+     */
+    fun outputHidden(output: Int): Boolean = false
+
     /** Hex colour from the channel palette (ChannelPalette). */
     fun channelColor(ch: Int): String
 

@@ -43,13 +43,14 @@ QJsonObject json(const QByteArray &bytes) { return QJsonDocument::fromJson(bytes
 
 // -- WP INTE -- (owner 2026-11-24) nothing is routed to either output of the
 // pair `pair` (outputs 2·pair and 2·pair+1; dspi_output_labels' `unused`): the
-// stats only show, so its rows are left out
+// stats only show, so its rows are left out. -- WP FIN015 -- (REVF R1) `hidden`:
+// not while the generator plays on one of them
 bool pairUnused(const QJsonArray &labels, int pair) {
     int unused = 0;
     for (const QJsonValue &v : labels) {
         const QJsonObject o = v.toObject();
         const int output = o.value(QLatin1String("output")).toInt(-1);
-        if ((output == 2 * pair || output == 2 * pair + 1) && o.value(QLatin1String("unused")).toBool()) ++unused;
+        if ((output == 2 * pair || output == 2 * pair + 1) && o.value(QLatin1String("hidden")).toBool()) ++unused;
     }
     return unused == 2;
 }

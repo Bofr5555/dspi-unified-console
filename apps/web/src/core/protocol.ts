@@ -247,6 +247,12 @@ export interface OutputLabel {
    * leaves it out; a view that edits it shows `label`, "3 · None". `outputCards` leave it out already.
    */
   unused: boolean;
+  /**
+   * -- WP FIN015 -- (REVF R1) `unused`, and no test signal plays on it (the generator, a measurement, Identify):
+   * what a view that only shows levels (the meters, the Spectrum chooser, Stats) leaves out. The generator
+   * writes after the matrix, so an unused output it plays on is loud and keeps its meter.
+   */
+  hidden: boolean;
 }
 
 /** -- BUG1 -- A dashboard card: two outputs side by side ("Woofers L" | "Woofers R"), or one. */

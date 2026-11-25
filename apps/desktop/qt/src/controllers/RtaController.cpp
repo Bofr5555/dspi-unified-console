@@ -381,7 +381,8 @@ QList<int> RtaController::available(int tap, bool hideUnused, const QList<int> &
         if (!input && !rows->get(r, QStringLiteral("outputEnabled")).toBool()) continue;
         // -- WP INTE -- (owner 2026-11-24) the chooser only shows: an output
         // nothing is routed to is left out, unless it is being analysed
-        if (hideUnused && !input && rows->get(r, QStringLiteral("unused")).toBool() && !keep.contains(ch)) continue;
+        // -- WP FIN015 -- (REVF R1) or the generator plays on it
+        if (hideUnused && !input && rows->get(r, QStringLiteral("hidden")).toBool() && !keep.contains(ch)) continue;
         out.append(ch);
     }
     return out;

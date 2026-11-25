@@ -84,6 +84,10 @@ struct FollowUp {
     /// The pin map changed (`NOTIFY_EVT_PIN_MAP_CHANGED`): the pins outside
     /// the image are read again with it.
     pins: bool,
+    // -- WP FIN015 --
+    /// The generator started without this connection: which outputs it plays
+    /// on is read from the device (`DspiCore::learn_siggen_outputs`).
+    siggen: bool,
 }
 
 // -- WP PGCORE --
@@ -221,6 +225,9 @@ impl DspiCore {
         };
         // -- WP P0M -- the event log, never written with `Inner` held
         self.events.record_all(records);
+        if follow.siggen {
+            self.learn_siggen_outputs(); // -- WP FIN015 --
+        }
         if follow.refresh {
             self.refresh_after_notifications(follow.rebaseline, follow.pins, now, &mut result);
         }
@@ -587,7 +594,11 @@ fn apply_queued(
                 r.flags |= NOTIFY_STATE | NOTIFY_PRESET;
             }
             Event::InputFormat { .. } => r.flags |= NOTIFY_STATE | NOTIFY_INPUT_FORMAT,
-            Event::SiggenState { .. } => r.flags |= NOTIFY_SIGGEN,
+            // -- WP FIN015 -- and the outputs it plays on, for the labels' `hidden`
+            Event::SiggenState { state, .. } => {
+                follow.siggen = conn.siggen.event(*state);
+                r.flags |= NOTIFY_SIGGEN;
+            }
             // Our own aux writes are already in the control-surface state
             // (WP C14 re-reads what it writes).
             Event::CsAux {
