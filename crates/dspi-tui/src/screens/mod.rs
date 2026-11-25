@@ -433,13 +433,15 @@ pub fn channel_name(state: &DeviceState, channel: usize) -> String {
 }
 
 // -- BUG1 --
-/// How one output is shown: its label, its slot's name, and the label cut
-/// short for the sidebar.
+/// How one output is shown: its label, its slot's name, the label cut
+/// short for the sidebar, and whether nothing is routed to it.
 #[derive(Debug, Clone, Default)]
 struct Shown {
     label: String,
     slot: String,
     short: String,
+    // -- WP INTE -- (owner 2026-11-24) an unused output leaves the non-edit views
+    unused: bool,
 }
 
 /// The bulk image the labels were worked out from, and the labels.
@@ -478,6 +480,7 @@ fn with_shown<T>(state: &DeviceState, output: usize, f: impl FnOnce(&Shown) -> T
                         label: l.label,
                         slot: l.slot_name,
                         short,
+                        unused: l.unused,
                     }
                 })
                 .collect();
@@ -500,6 +503,21 @@ pub fn channel_label(state: &DeviceState, channel: usize) -> String {
                 .unwrap_or_else(|| channel_name(state, channel))
         }
         _ => channel_name(state, channel),
+    }
+}
+
+// -- WP INTE -- (owner 2026-11-24) the core's `OutputLabel.unused`, for the
+// views that hide such an output (the overview, the spectrum chooser, stats)
+/// Whether `channel` is an output nothing is routed to: the views that are
+/// not for editing leave it out, the edit views show it as "3 · None". An
+/// input, or a channel past the outputs, is never unused.
+pub fn channel_unused(state: &DeviceState, channel: usize) -> bool {
+    let ni = usize::from(state.caps.num_inputs);
+    match channel.checked_sub(ni) {
+        Some(o) if o < usize::from(state.caps.num_outputs) => {
+            with_shown(state, o, |s| s.unused).unwrap_or(false)
+        }
+        _ => false,
     }
 }
 
@@ -716,7 +734,10 @@ pub(crate) mod tests {
         );
         let f = frame(&mut s, 120, 40);
         assert!(f.contains("╭ FL FR "), "{f}");
-        assert!(f.contains("LP 80 Hz · -3.0 dB"), "{f}");
+        // -- WP INTE -- (owner 2026-11-24) the fixture routes nothing to the
+        // Sub, so it has no cell now: the OUT L / OUT R cell's summary instead
+        assert!(f.contains("HP 80 Hz"), "{f}");
+        assert!(!f.contains("╭ Sub "), "an unused output has no cell: {f}");
         assert!(
             !f.contains("Filter Response"),
             "the grid carries the curves: {f}"
@@ -965,6 +986,18 @@ pub(crate) mod tests {
         let s = DeviceState::new(s.caps.clone(), session.snapshot().unwrap());
         assert_eq!(channel_label(&s, ni), "Right woofer");
         assert_eq!(channel_label(&s, ni + 1), "Out 2 · R · High");
+    }
+
+    // -- WP INTE -- (owner 2026-11-24) the core's flag for an output nothing
+    // is routed to, which the non-edit views hide
+    #[test]
+    fn inte_an_output_nothing_is_routed_to_is_unused() {
+        let s = fixture::state();
+        let ni = usize::from(s.caps.num_inputs);
+        assert!(channel_unused(&s, ni + 8), "nothing feeds the Sub");
+        assert!(!channel_unused(&s, ni), "FL feeds OUT L");
+        assert!(!channel_unused(&s, 0), "an input is never unused");
+        assert!(!channel_unused(&s, ni + 9), "past the outputs");
     }
 
     #[test]

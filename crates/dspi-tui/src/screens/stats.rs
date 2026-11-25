@@ -229,6 +229,18 @@ fn whole_pct(pct: f64) -> u8 {
     pct.round() as u8
 }
 
+// -- WP INTE -- (owner 2026-11-24) an output nothing is routed to is hidden
+// outside the edit views; an S/PDIF instance plays a pair of them
+/// Whether both outputs of S/PDIF instance `i` ("Out 1/2" for the first) are
+/// outputs nothing is routed to. An output the device lacks is not unused, so
+/// an instance past the outputs keeps its row.
+fn pair_unused(state: &DeviceState, i: usize) -> bool {
+    let ni = usize::from(state.caps.num_inputs);
+    [i * 2, i * 2 + 1]
+        .iter()
+        .all(|o| super::channel_unused(state, ni + o))
+}
+
 /// The rings' state as the panel last read it. A failed read leaves it alone;
 /// firmware that says it has no such status hides the section.
 #[derive(Debug, Default)]
@@ -467,7 +479,9 @@ impl StatsPanel {
             .map(|b| (b.num_spdif as usize).max(2))
             .unwrap_or(2)
             .min(4);
-        for i in 0..instances {
+        // -- WP INTE -- (owner 2026-11-24) stats is not an edit view: an
+        // instance whose two outputs nothing is routed to has no row
+        for i in (0..instances).filter(|&i| !pair_unused(state, i)) {
             mid.push(Row::info(
                 &format!("Out {}/{}", i * 2 + 1, i * 2 + 2),
                 s.starvation_per_instance[i].to_string(),
@@ -489,7 +503,7 @@ impl StatsPanel {
                 ("Audio Streaming".into(), b.streaming()),
                 ("PDM Active".into(), b.pdm_active()),
             ]));
-            for i in 0..(b.num_spdif as usize).min(4) {
+            for i in (0..(b.num_spdif as usize).min(4)).filter(|&i| !pair_unused(state, i)) {
                 mid.push(self.output_row(i, b, s));
             }
             if b.pdm_active() {
@@ -1423,6 +1437,40 @@ mod tests {
         );
     }
 
+    // -- WP INTE -- (owner 2026-11-24) stats is not an edit view: an S/PDIF
+    // instance whose two outputs nothing is routed to has no rows
+    #[test]
+    fn inte_a_pair_of_unused_outputs_has_no_rows() {
+        let (p, mut state, shared) = panel();
+        let stats = shared.borrow().stats.clone();
+        let labelled = |rows: &[Row], want: &str| {
+            rows.iter()
+                .filter(|r| match r {
+                    Row::Info { label, .. } | Row::Fill { label, .. } => label == want,
+                    _ => false,
+                })
+                .count()
+        };
+        let rows = p.rows(&state, &stats);
+        assert_eq!(labelled(&rows, "Out 3/4"), 2, "starvation, fill: {rows:?}");
+        let (_, cross, _) = dspi_proto::generated::SECTIONS
+            .iter()
+            .find(|(n, _, _)| *n == "crosspoints")
+            .copied()
+            .unwrap();
+        // FC no longer feeds OUT 3; LFE still feeds OUT 4, so the rows stay
+        state.bulk.patch(cross + (2 * 9 + 2) * 8, &[0]);
+        let rows = p.rows(&state, &stats);
+        assert_eq!(labelled(&rows, "Out 3/4"), 2, "{rows:?}");
+        // Nothing feeds either: the pair's rows go, the others stay
+        state.bulk.patch(cross + (3 * 9 + 3) * 8, &[0]);
+        assert!(crate::screens::channel_unused(&state, 10));
+        assert!(crate::screens::channel_unused(&state, 11));
+        let rows = p.rows(&state, &stats);
+        assert_eq!(labelled(&rows, "Out 3/4"), 0, "{rows:?}");
+        assert_eq!(labelled(&rows, "Out 1/2"), 2, "{rows:?}");
+    }
+
     #[test]
     fn golden_frames_at_both_sizes() {
         let shared = shared();
@@ -1652,7 +1700,16 @@ mod tests {
         #[test]
         fn wp_tm16_the_demo_device_fills_are_ring_scaled_and_judged_by_the_target() {
             let knobs = Knobs::default();
-            let (mut session, state) = open(&knobs);
+            let (mut session, mut state) = open(&knobs);
+            // -- WP INTE -- the demo capture routes nothing to OUT 3/4, whose
+            // rows an unused pair no longer has (owner 2026-11-24): the left
+            // input feeds OUT 3 here, so the second instance's bands stay tested
+            let (_, cross, _) = dspi_proto::generated::SECTIONS
+                .iter()
+                .find(|(n, _, _)| *n == "crosspoints")
+                .copied()
+                .unwrap();
+            state.bulk.patch(cross + 2 * 8, &[1]);
             session
                 .transport_mut()
                 .control_out(op::REQ_OUTPUT_LATENCY, 0, &[3])

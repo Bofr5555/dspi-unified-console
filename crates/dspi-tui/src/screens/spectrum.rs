@@ -325,6 +325,22 @@ pub fn channels(state: &DeviceState, engine: &RtaEngine, tap: u8) -> Vec<u8> {
     }
 }
 
+// -- WP INTE -- (owner 2026-11-24) the chooser is not an edit view: an output
+// nothing is routed to leaves it, unless it is analysed, so it can still be
+// switched off
+/// The chips the chooser offers for `sel`: [`channels`] at its tap, less the
+/// outputs nothing is routed to that `sel` does not analyse.
+fn chooser_channels(state: &DeviceState, engine: &RtaEngine, sel: &Selection) -> Vec<u8> {
+    let mut available = channels(state, engine, sel.tap);
+    if sel.tap != TAP_INPUT {
+        available.retain(|c| {
+            sel.channels.contains(c)
+                || !super::channel_unused(state, global_channel(state, sel.tap, *c))
+        });
+    }
+    available
+}
+
 /// The selection on show: this console's, and while it follows another one
 /// the device's tap and channels, so every display draws what the analyser is
 /// doing (`effectiveSelection`, SpectrumAnalyser.swift:456), also with no
@@ -795,7 +811,7 @@ impl SpectrumPanel {
     fn rows(&self, state: &DeviceState, theme: &Theme) -> Vec<Row> {
         let app = self.shared.borrow();
         let sel = selection(state, &app.spectrum);
-        let available = channels(state, &app.spectrum.engine, sel.tap);
+        let available = chooser_channels(state, &app.spectrum.engine, &sel);
         let mut rows = Vec::new();
         if let Some(f) = app.spectrum.sharing.following() {
             rows.push(Row::Buttons {
@@ -860,7 +876,7 @@ impl SpectrumPanel {
     fn act(&mut self, row: &Row, action: Action, state: &DeviceState) -> ScreenEvent {
         let mut app = self.shared.borrow_mut();
         let sel = selection(state, &app.spectrum);
-        let available = channels(state, &app.spectrum.engine, sel.tap);
+        let available = chooser_channels(state, &app.spectrum.engine, &sel);
         let own = own_selection(state, &app.spectrum);
         let s = &mut app.spectrum;
         match (row, action) {
@@ -1744,6 +1760,47 @@ mod tests {
         let sel = selection(&state, &shared.borrow().spectrum);
         let first = channels(&state, &shared.borrow().spectrum.engine, TAP_OUTPUT)[0];
         assert_eq!(sel, Selection::new(TAP_OUTPUT, vec![first]));
+    }
+
+    // -- WP INTE -- (owner 2026-11-24) the chooser is not an edit view: an
+    // output nothing is routed to has no chip, unless it is analysed
+    #[test]
+    fn inte_an_unused_output_has_no_chip_unless_it_is_analysed() {
+        let state = testing::state();
+        let sub = 8u8;
+        let ni = usize::from(state.caps.num_inputs);
+        assert!(crate::screens::channel_unused(
+            &state,
+            ni + usize::from(sub)
+        ));
+        let offered = |shared: &Shared| {
+            let app = shared.borrow();
+            chooser_channels(
+                &state,
+                &app.spectrum.engine,
+                &selection(&state, &app.spectrum),
+            )
+        };
+        // Not analysed: no chip, though the analyser could show it
+        let shared = shared_with(TAP_OUTPUT, &[0]);
+        assert_eq!(offered(&shared), (0..8).collect::<Vec<u8>>());
+        assert!(channels(&state, &shared.borrow().spectrum.engine, TAP_OUTPUT).contains(&sub));
+        // Analysed: it keeps its chip, the last, so it can be switched off
+        let shared = shared_with(TAP_OUTPUT, &[0, sub]);
+        assert_eq!(offered(&shared), (0..9).collect::<Vec<u8>>());
+        let mut p = SpectrumPanel::new(shared.clone());
+        p.sync(&state);
+        p.body.focus = 2;
+        for _ in 0..8 {
+            p.handle(key(KeyCode::Right), &state);
+        }
+        assert_eq!(p.chip, 8);
+        p.handle(key(KeyCode::Char(' ')), &state);
+        assert_eq!(
+            selection(&state, &shared.borrow().spectrum).channels,
+            vec![0]
+        );
+        assert_eq!(offered(&shared), (0..8).collect::<Vec<u8>>());
     }
 
     #[test]
