@@ -447,7 +447,7 @@ function PinEntry(props: { session: Session; error: string }) {
 
 /**
  * The hub's DSPis (Link's choose_device step): open one in this session. -- WP UWN -- (UXP A15) rows you can tell
- * apart: the name, then the hub's location for it, its state and the distinguishing part of its serial whole; the
+ * apart: the name, then the hub's location for it, its state and its serial whole; the
  * DSPis the hub remembers but does not have now greyed, with when it last saw them (its inventory, when it has one).
  */
 function HubChooser(props: { session: Session }) {
@@ -486,13 +486,6 @@ function HubChooser(props: { session: Session }) {
   );
 }
 
-// -- WP UWN -- (UXP A15)
-/** The part of a serial that tells units apart, whole: its last two "-" parts ("ALINK-A"), else its last 8 characters. */
-export function serialPart(serial: string): string {
-  const parts = serial.split("-").filter(Boolean);
-  return parts.length > 1 ? parts.slice(-2).join("-") : shortSerial(serial);
-}
-
 /** One row of the hub chooser: the name, what tells it apart (`meta`), and the whole for a screen reader. */
 export interface ChooserRow {
   serial: string;
@@ -507,9 +500,10 @@ export function chooserRows(devices: readonly LinkDeviceRecord[], inventory: rea
   const row = (serial: string, name: string, state: string, location: string, lastSeen: string): ChooserRow => {
     const online = state === "online";
     const words = online ? "online" : state === "offline" || !state ? `offline${lastSeen ? `, last seen ${shortTime(lastSeen)}` : ""}` : state;
-    const meta = [location, words, serialPart(serial)].filter(Boolean).join(" · ");
+    // the serial whole (never cut mid-word, as "-ALINK-A" was): it is what tells two units of one name apart
+    const meta = [location, words, serial].filter(Boolean).join(" · ");
     const shown = name || "DSPi";
-    return { serial, name: shown, online, meta, spoken: [shown, location, serialPart(serial)].filter(Boolean).join(", ") };
+    return { serial, name: shown, online, meta, spoken: [shown, location, serial].filter(Boolean).join(", ") };
   };
   const inv = new Map(inventory.map((d) => [d.serial, d]));
   const out = devices.map((d) => row(d.serial, d.name, d.state, inv.get(d.serial)?.location ?? "", inv.get(d.serial)?.lastSeen ?? ""));

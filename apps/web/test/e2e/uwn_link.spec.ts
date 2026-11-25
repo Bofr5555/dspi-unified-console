@@ -38,15 +38,15 @@ async function openOnHub(page: Page, id: number): Promise<Locator> {
   return session;
 }
 
-test("UWN A15: the hub's list names each DSPi with its state and the part of its serial that tells it apart", async ({ page, request }) => {
+test("UWN A15: the hub's list names each DSPi with its state and its serial whole", async ({ page, request }) => {
   const id = await newHub(request, "--auth none");
   await page.goto(`${HUB}/?hub=${id}`);
   await page.getByRole("navigation", { name: "DSPi devices" }).getByRole("button", { name: /^Connect Hub 127\.0\.0\.1:/ }).click();
   const row = page.getByRole("article").getByRole("list", { name: /DSPis on/ }).getByRole("listitem");
   await expect(row).toHaveCount(1);
   await expect(row.locator(".source-name")).toHaveText("Bench");
-  await expect(row.locator(".source-meta")).toHaveText("online · 89ABCDEF");
-  await expect(row.getByRole("button")).toHaveAccessibleName("Open Bench, 89ABCDEF");
+  await expect(row.locator(".source-meta")).toHaveText(`online · ${SERIAL}`);
+  await expect(row.getByRole("button")).toHaveAccessibleName(`Open Bench, ${SERIAL}`);
 });
 
 test("UWN A15: one installation: the tab is the device's name over its hub and firmware; two sites: each tab says its site", async ({ page, request }) => {

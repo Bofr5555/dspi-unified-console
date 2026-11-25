@@ -82,15 +82,17 @@ test("UWN A15: Save to Device's name has its count in words; the rail is one Tab
   await expect(sections.nth(at + 1)).toHaveAttribute("tabindex", "0");
   await page.keyboard.press("End");
   await expect(sections.last()).toBeFocused();
-  // The skip links: the first Tab stops, to the page and to the volume
-  await page.locator("body").focus();
+  // The skip links: the first Tab stops of the console's own page, to the page and to the volume
+  await page.goto("/");
+  await page.getByRole("navigation", { name: "DSPi devices" }).getByRole("button", { name: "Connect Demo DSPi" }).click();
+  await expect(page.getByRole("article")).toHaveAttribute("data-status", "open");
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
   await page.keyboard.press("Tab");
   await expect(page.getByRole("link", { name: "Skip to the page" })).toBeFocused();
   await page.keyboard.press("Tab");
   await expect(page.getByRole("link", { name: "Skip to the volume" })).toBeFocused();
   await page.keyboard.press("Enter");
-  expect(await page.evaluate(() => !!document.activeElement?.closest(".dock"))).toBe(true);
+  await expect.poll(() => page.evaluate(() => !!document.activeElement?.closest(".dock"))).toBe(true);
 });
 
 test("UWN A15: the start page's Connect buttons say what they connect", async ({ page }) => {
