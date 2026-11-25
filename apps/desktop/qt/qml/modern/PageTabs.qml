@@ -6,6 +6,9 @@ import UConsole
 // -- WP LAY3 -- The row over a page: the section's title and its tabs, and the
 // page's "Open in window". The tabs are underlined beside the title with the
 // rail (variant B), pills with the sections across the top (variant A).
+// -- WP UA5 -- The tabs are one Tab stop (the tab on show); Left, Right, Home
+// and End go to another tab and show it, Ctrl+PageDown and Ctrl+PageUp do from
+// anywhere in the window; a click leaves no focus ring behind.
 Item {
     id: bar
     objectName: "PageTabs"
@@ -23,6 +26,33 @@ Item {
     signal chosen(string tab)
 
     implicitHeight: 38
+
+    // -- WP UA5 -- the tab `step` places from the one on show (or the first or
+    // last, `edge`), shown; `focus`: its button takes the focus with its ring
+    property var buttons: ({})
+    function move(step, edge, focus) {
+        const list = entries
+        if (list.length < 2) return
+        let at = list.findIndex(t => t.tab === tab)
+        at = edge ? (step < 0 ? list.length - 1 : 0) : (at + step + list.length) % list.length
+        const next = list[at]
+        if (!next || next.tab === tab) return
+        chosen(next.tab)
+        const button = buttons[next.tab]
+        if (focus && button) button.forceActiveFocus(Qt.TabFocusReason)
+    }
+    Shortcut {
+        sequences: ["Ctrl+PgDown"]
+        context: Qt.WindowShortcut
+        enabled: bar.visible && bar.entries.length > 1
+        onActivated: bar.move(1, false, false)
+    }
+    Shortcut {
+        sequences: ["Ctrl+PgUp"]
+        context: Qt.WindowShortcut
+        enabled: bar.visible && bar.entries.length > 1
+        onActivated: bar.move(-1, false, false)
+    }
 
     RowLayout {
         anchors.fill: parent
@@ -70,7 +100,16 @@ Item {
                         checked: modelData.tab === bar.tab
                         text: modelData.title
                         hoverEnabled: true
-                        focusPolicy: Qt.TabFocus
+                        // -- WP UA5 -- one Tab stop: the tab on show
+                        focusPolicy: checked ? Qt.TabFocus : Qt.NoFocus
+                        Component.onCompleted: bar.buttons[modelData.tab] = button
+                        Keys.onPressed: event => {
+                            if (event.modifiers !== Qt.NoModifier && event.modifiers !== Qt.KeypadModifier) return
+                            if (event.key === Qt.Key_Left || event.key === Qt.Key_Right) bar.move(event.key === Qt.Key_Left ? -1 : 1, false, true)
+                            else if (event.key === Qt.Key_Home || event.key === Qt.Key_End) bar.move(event.key === Qt.Key_Home ? 1 : -1, true, true)
+                            else return
+                            event.accepted = true
+                        }
                         leftPadding: 12
                         rightPadding: 12
                         height: bar.pills ? 26 : tabs.height
@@ -114,7 +153,13 @@ Item {
                                 color: Theme.accent
                             }
                         }
-                        onClicked: bar.chosen(modelData.tab)
+                        onClicked: {
+                            // -- WP UA5 -- the focus in the row goes with the click, without a ring
+                            let inRow = false
+                            for (let i = bar.Window.activeFocusItem; i; i = i.parent) if (i === tabs) { inRow = true; break }
+                            bar.chosen(modelData.tab)
+                            if (inRow && !button.activeFocus) button.forceActiveFocus(Qt.MouseFocusReason)
+                        }
                         Accessible.role: Accessible.PageTab
                         //: %1 is an effect's tab
                         Accessible.name: dot === null ? text : dot ? qsTr("%1, on").arg(text) : qsTr("%1, off").arg(text) // -- WP LAY5a --
