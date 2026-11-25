@@ -77,7 +77,7 @@ function DeviceInfo(props: { session: Session; protocol: DeviceProtocolRecord | 
   const p = props.protocol;
   const dev = st.snapshot?.device;
   const row = (label: string, value: string, cls: string) => (
-    <div class={`device-row ${cls}`}>
+    <div class={`device-fact ${cls}`}>
       <dt>{label}</dt>
       <dd>{value}</dd>
     </div>
@@ -138,21 +138,21 @@ function SenderLink(props: { session: Session }) {
       ) : null}
       {info && status ? (
         <dl class="device-facts">
-          <div class="device-row alink-role">
+          <div class="device-fact alink-role">
             <dt>Role</dt>
             <dd>{info.role}</dd>
           </div>
-          <div class="device-row alink-state">
+          <div class="device-fact alink-state">
             <dt>State</dt>
             <dd>{status.state}</dd>
           </div>
-          <div class="device-row alink-channels">
+          <div class="device-fact alink-channels">
             <dt>Channels</dt>
             <dd>
               {status.channels} of {info.maxChannels}
             </dd>
           </div>
-          <div class="device-row alink-errors">
+          <div class="device-fact alink-errors">
             <dt>Errors</dt>
             <dd>
               CRC {status.crc8Errors + status.crc16Errors}, slips {status.bitSlips}, losses {status.lossCount}
@@ -297,7 +297,7 @@ function UpdateCheck(props: { session: Session }) {
       {/* -- WP WEB7 -- Qt's Firmware page: the version on the device beside the image's */}
       {firmware ? (
         <dl class="device-facts">
-          <div class="device-row device-version">
+          <div class="device-fact device-version">
             <dt>Connected device</dt>
             <dd>{firmware}</dd>
           </div>

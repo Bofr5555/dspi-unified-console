@@ -76,6 +76,11 @@ for (const g of GENERATIONS) {
     await expect(fact(info, "device-generation")).toHaveText(g.protocol);
     await expect(fact(info, "device-pages")).toHaveText(g.pages);
     await expect(fact(info, "device-envelope")).toHaveText(g.ext);
+    // -- WP WEB7 -- the facts are Qt's settings rows on the group's panel: no fill of their own and one
+    // text line high (the shell's device-tab bar once lent them its class: 38 px chrome boxes)
+    const row = info.locator(".device-facts > div").first();
+    expect(await row.evaluate((e) => getComputedStyle(e).backgroundColor)).toBe("rgba(0, 0, 0, 0)");
+    expect((await row.boundingBox())!.height).toBeLessThan(30);
     const raw = session.getByRole("region", { name: "Raw request by id" });
     if (g.legacy) await expect(session.locator(".raw-none")).toBeVisible();
     else await expect(raw).toBeVisible();

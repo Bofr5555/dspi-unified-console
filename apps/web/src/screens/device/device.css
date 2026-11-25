@@ -2,9 +2,9 @@
    the name at the left in the text colour and the value at the right edge; the 760 px column. */
 .dspi-web .device-screen { display: flex; flex-direction: column; gap: 0; max-width: var(--content-max); }
 .dspi-web .device-screen .device-facts { display: flex; flex-direction: column; gap: 6px; }
-.dspi-web .device-screen .device-row { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; min-height: 20px; }
-.dspi-web .device-screen .device-row dt { color: var(--text); flex: none; }
-.dspi-web .device-screen .device-row dd { margin: 0; color: var(--muted); text-align: right; min-width: 0; overflow-wrap: anywhere; }
+.dspi-web .device-screen .device-fact { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; min-height: 20px; }
+.dspi-web .device-screen .device-fact dt { color: var(--text); flex: none; }
+.dspi-web .device-screen .device-fact dd { margin: 0; color: var(--muted); text-align: right; min-width: 0; overflow-wrap: anywhere; }
 .dspi-web .device-screen .group-panel .note { margin: 0; }
 .dspi-web .device-screen .update-check-pick { display: flex; justify-content: flex-end; }
 .dspi-web .device-screen .update-verdict { margin: 0; }
@@ -12,8 +12,8 @@
 .dspi-web .device-screen .sender-note { margin: 0 0 12px; }
 .dspi-web .device-screen .raw-form { gap: 8px 12px; }
 @media (max-width: 600px) {
-  .dspi-web .device-screen .device-row { flex-direction: column; align-items: flex-start; gap: 2px; }
-  .dspi-web .device-screen .device-row dd { text-align: left; }
+  .dspi-web .device-screen .device-fact { flex-direction: column; align-items: flex-start; gap: 2px; }
+  .dspi-web .device-screen .device-fact dd { text-align: left; }
 }
 
 /* -- WP WEB7 -- Devices › This Computer with a device open (Qt's DevicesSection): the console's sources and
