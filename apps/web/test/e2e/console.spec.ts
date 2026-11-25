@@ -52,7 +52,7 @@ test("standalone: the core's demo connects, a volume write reads back, meters ar
   await picker.getByRole("listitem").filter({ hasText: "Demo DSPi" }).getByRole("button", { name: "Connect" }).click();
 
   const session = page.getByRole("article", { name: "DSPi" });
-  await expect(session.locator(".device-meta")).toHaveText("RP2350 · firmware 1.1.6 · DEMO0000DSPI0001");
+  await expect(session).toHaveAttribute("data-serial", "DEMO0000DSPI0001");
   await expect(session.locator(".volume-value")).toHaveText("0.0 dB");
 
   // -- WP WB6a -- the main window's slider is the Console's taper: position 128 of 200 is -12 dB
@@ -66,8 +66,8 @@ test("standalone: the core's demo connects, a volume write reads back, meters ar
   await expect(session.getByRole("meter", { name: "USB 1" })).toHaveAttribute("aria-valuenow", "-90");
   await expect(session.getByRole("meter", { name: re(OUT(8)) })).toBeVisible();
 
-  await session.getByRole("button", { name: "Disconnect" }).click();
-  await expect(page.getByText("Choose a DSPi to connect to.")).toBeVisible();
+  await session.getByRole("tablist", { name: "Open DSPi" }).getByRole("button", { name: /^Close / }).click(); // -- WP REVEFIX -- the tab's ×
+  await expect(page.getByText("No DSPi is connected. Connect one over USB, or try the demo device.")).toBeVisible();
   expect(errors).toEqual([]);
 });
 
@@ -98,7 +98,6 @@ test("standalone ?readonly: the volume control is off and says why", async ({ pa
   await page.goto("/?readonly");
   await page.getByRole("listitem").filter({ hasText: "Demo DSPi" }).getByRole("button", { name: "Connect" }).click();
   const session = page.getByRole("article", { name: "DSPi" });
-  await expect(session.getByText("Read only", { exact: true })).toBeVisible();
   await expect(session.getByRole("slider", { name: "Volume" })).toBeDisabled();
   await expect(session.locator(".read-only-reason")).toHaveText("You can view this DSPi but not change it");
 });
@@ -205,7 +204,7 @@ test("core: a change made elsewhere arrives as a notification and the page shows
   // The core's demo: another host renames the device. The Worker's poll drains
   // the notification and pushes the new snapshot.
   await core(page, 0, "demo", { action: "renameElsewhere", name: "Stage left" });
-  await expect(one.getByRole("article", { name: "Stage left" }).locator(".device-name")).toHaveText("Stage left");
+  await expect(one.getByRole("tablist", { name: "Open DSPi" }).getByRole("tab", { selected: true })).toContainText("Stage left"); // -- WP REVEFIX -- the tab names it
   expect(errors).toEqual([]);
 });
 

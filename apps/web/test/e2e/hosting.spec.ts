@@ -117,7 +117,7 @@ async function openHubDemo(page: Page, host: string) {
   await expect(session.locator(".banner")).toContainText(words("choose_device").text);
   const entry = session.getByRole("list", { name: /DSPis on/ }).getByRole("listitem").filter({ hasText: DEMO.slice(-8) });
   await entry.getByRole("button", { name: "Open" }).click();
-  await expect(session.locator(".device-meta")).toContainText(DEMO);
+  await expect(session).toHaveAttribute("data-serial", new RegExp(DEMO));
   await expect(session.locator(".banner")).toHaveCount(0);
   return session;
 }
@@ -288,7 +288,7 @@ test.describe("served by uconsole hub --web", () => {
     await row.getByRole("button", { name: "Connect" }).click();
     const session = page.getByRole("article").last();
     await expect(session.getByRole("alert")).toContainText("a hub accepts only pages it serves itself");
-    await expect(session.locator(".device-meta")).toHaveCount(0);
+    await expect(session).not.toHaveAttribute("data-serial", /./);
   });
 });
 
@@ -320,7 +320,7 @@ test.describe("served by uconsole web on localhost", () => {
     const usb = picker(page).getByRole("listitem").filter({ hasText: "DSPi on USB · MOCKA001" });
     await usb.getByRole("button", { name: "Connect" }).click();
     const usbSession = page.getByRole("article").last();
-    await expect(usbSession.locator(".device-meta")).toHaveText("RP2350 · firmware 1.1.6 · MOCKA001");
+    await expect(usbSession).toHaveAttribute("data-serial", "MOCKA001");
 
     await openDevices(page); // -- WP WEBM1 --
     const hubSession = await openHubDemo(page, `localhost:${LOCAL_PORT}`);
@@ -329,7 +329,7 @@ test.describe("served by uconsole web on localhost", () => {
     // -- WP WB6b -- the sessions' tabs (a session's own screens have tabs too)
     await expect(page.getByRole("tablist", { name: "Open DSPi" }).getByRole("tab")).toHaveCount(2);
     await page.getByRole("tablist", { name: "Open DSPi" }).getByRole("tab").first().click();
-    await expect(page.getByRole("article").locator(".device-meta")).toHaveText("RP2350 · firmware 1.1.6 · MOCKA001");
+    await expect(page.getByRole("article")).toHaveAttribute("data-serial", "MOCKA001");
     expect(errors).toEqual([]);
   });
 });
@@ -339,7 +339,7 @@ test.describe("the static build", () => {
     const errors = await noPageErrors(page);
     await page.goto(`${PLAIN}/`);
     await picker(page).getByRole("listitem").filter({ hasText: "Demo DSPi" }).getByRole("button", { name: "Connect" }).click();
-    await expect(page.getByRole("article", { name: "DSPi" }).locator(".device-meta")).toContainText("DEMO0000DSPI0001");
+    await expect(page.getByRole("article", { name: "DSPi" })).toHaveAttribute("data-serial", /DEMO0000DSPI0001/);
     // No hub serves this page: no hub entry, no link to a hub's page.
     await expect(page.getByRole("link", { name: "Hub page" })).toHaveCount(0);
     // The build's source link (DSPI_WEB_SOURCE_URL), when the build was given one.

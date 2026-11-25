@@ -41,15 +41,15 @@ async function open(page: Page, two = false): Promise<{ one: Locator; session: L
   await one.getByRole("region", { name: "Venue A" }).getByRole("button", { name: "Connect" }).click();
   const session = one.getByRole("article").first();
   await expect(rail(session)).toBeVisible();
-  await expect(session.locator(".device-meta")).toBeVisible();
+  await expect(session).toHaveAttribute("data-status", "open");
   if (two) {
     await openDevices(one);
     await one.getByRole("region", { name: "Venue B" }).getByRole("button", { name: "Connect" }).click();
     const tabs = one.getByRole("tablist", { name: "Open DSPi" }).getByRole("tab");
     await expect(tabs).toHaveCount(2);
-    await expect(session.locator(".device-meta")).toBeVisible();
+    await expect(session).toHaveAttribute("data-status", "open");
     await tabs.first().click();
-    await expect(session.locator(".device-meta")).toBeVisible();
+    await expect(session).toHaveAttribute("data-status", "open");
   }
   return { one, session };
 }
@@ -263,7 +263,7 @@ test("WEBM4: Settings › Appearance arranges the shell at once and keeps it in 
   await one.getByRole("region", { name: "Venue A" }).getByRole("button", { name: "Connect" }).click();
   await expect(root).toHaveAttribute("data-nav", "tabs");
   await expect(root).toHaveAttribute("data-theme", "dark");
-  await expect(session.locator(".device-meta")).toBeVisible();
+  await expect(session).toHaveAttribute("data-status", "open");
   expect(errors).toEqual([]); // before a close (see the context menus' test)
   // With no device open, Settings… in the app menu has the same
   await one.getByRole("tablist", { name: "Open DSPi" }).getByRole("tab").first().click({ button: "right" });

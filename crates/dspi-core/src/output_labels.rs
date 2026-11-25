@@ -23,10 +23,12 @@ use crate::records::{DspState, FilterParams};
 pub struct OutputLabel {
     /// 0-based output index.
     pub output: u8,
-    /// What to show: the user's name, else "Out 1 · R · Low".
+    /// What to show: the user's name, else "Out 1 · R · Low"; an unused
+    /// output "3 · None" (owner 2026-11-24).
     pub label: String,
     /// The same for a phone row, beside the output's "OUTn" button: the
-    /// user's name, else "R · Low" (owner decision, review c86 F3).
+    /// user's name, else "R · Low" (owner decision, review c86 F3); an unused
+    /// output "None".
     pub short_label: String,
     /// The firmware's name for the slot ("I2S 1 L", "PDM"), for a tooltip or
     /// a detail line.
@@ -37,6 +39,12 @@ pub struct OutputLabel {
     pub channel: String,
     /// "Low", "High", "Band" or "Full".
     pub band: String,
+    // -- WP REVEFIX --
+    /// No input is routed to the output (owner 2026-11-24): a view that only
+    /// shows (the Overview's cards and tiles, a phone's Home, a summary) leaves
+    /// it out; a view that edits it shows `label`. [`DspiCore::output_cards`]
+    /// leaves it out already.
+    pub unused: bool,
 }
 
 /// One dashboard card: two outputs side by side, or one alone.
@@ -158,6 +166,7 @@ fn labels(src: &LabelSource) -> Vec<OutputLabel> {
             user_named: l.user_named,
             channel: l.channel,
             band: l.band.word().into(),
+            unused: l.unused, // -- WP REVEFIX --
         })
         .collect()
 }
@@ -341,11 +350,13 @@ mod tests_bug1 {
         assert_eq!(l.len(), usize::from(s.num_output_channels));
         // Every label is either the demo's own name or a derived one, and a
         // derived one is its output number, then the words it has (-- WP INTD
-        // -- W12: an unused full-range output is "Out 3" alone)
+        // -- W12; -- WP REVEFIX -- an unused output is "3 · None")
         for (o, x) in core.output_labels().iter().enumerate() {
             let name = &s.channel_names[usize::from(s.num_input_channels) + o];
             if x.user_named {
                 assert_eq!(&x.label, name);
+            } else if x.unused {
+                assert_eq!(x.label, format!("{} · None", o + 1));
             } else {
                 let number = format!("Out {}", o + 1);
                 assert!(

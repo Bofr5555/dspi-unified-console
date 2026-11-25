@@ -3,6 +3,9 @@
 // -- WP WEBM4 -- The app menu's rows are actions.json's (`appMenu`, made by the page as it opens);
 // the search that opens the command palette (Ctrl+K); the bell of the notification drawer, which
 // lies under this row. The device tabs are here unless the arrangement puts them in the rail.
+// -- WP REVEFIX -- (REVE §3.1, Qt's TopBar) one 40 px bar: the app menu, the device's tab, its
+// presets, then at the right the search, Undo and Redo, Save to Device and the bell. With several
+// devices open their tabs are a row of their own above it (Qt's device row), and the bar has none.
 
 import type { ComponentChildren } from "preact";
 import { ActionMenuButton } from "../menus/ActionMenu";
@@ -24,13 +27,16 @@ export function TopBar(props: {
   menu: () => MenuItem[];
   /** A device tab's menu. */
   tabMenu: (s: Session) => MenuItem[];
-  /** The device tabs are in the rail. */
+  /** The device tabs are elsewhere: in the rail, or (-- WP REVEFIX --) in the device row above, with several open. */
   tabsInRail: boolean;
   /** Opens the command palette; its key as this platform writes it. */
   onSearch: () => void;
   searchKey: string;
   /** The notification drawer's bell. */
   bell: ComponentChildren;
+  // -- WP REVEFIX --
+  /** The device's own parts: beside its tab (the presets) and before the bell (Undo, Redo, Save). */
+  session?: { left: ComponentChildren; right: ComponentChildren };
 }) {
   return (
     <header class="top">
@@ -39,9 +45,7 @@ export function TopBar(props: {
         {/* The app's own name in short, as on the desktop; a host page's name as it gave it */}
         <ActionMenuButton label={props.title === "uConsole for DSPi" ? "uConsole" : props.title} items={props.menu} />
       </div>
-      {props.tabsInRail ? (
-        <span class="top-fill" />
-      ) : (
+      {props.tabsInRail ? null : (
         <DeviceTabs
           sessions={props.sessions}
           current={props.current}
@@ -52,17 +56,20 @@ export function TopBar(props: {
           menu={props.tabMenu}
         />
       )}
+      {props.session?.left /* -- WP REVEFIX -- */}
+      <span class="top-fill" />
       {/* -- WP WEBM4 -- */}
       <button type="button" class="top-search" aria-label="Search settings, channels, commands" aria-keyshortcuts={props.searchKey.replace("⌘", "Meta+").replace("Ctrl+", "Control+")} title={`Search settings, channels, commands (${props.searchKey})`} onClick={props.onSearch}>
         <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
           <circle cx="11" cy="11" r="7" />
           <path d="m20 20-3.5-3.5" />
         </svg>
-        <span class="top-search-text">Search…</span>
+        <span class="top-search-text">Search settings, channels, commands…</span>
         <kbd class="top-search-key" aria-hidden="true">
           {props.searchKey}
         </kbd>
       </button>
+      {props.session?.right /* -- WP REVEFIX -- */}
       {props.bell}
       {props.user ? <span class="user">{props.user}</span> : null}
     </header>

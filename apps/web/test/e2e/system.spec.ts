@@ -83,7 +83,7 @@ async function openUnit(page: Page, hub: OwnHub, serial: string, pair = !!hub.pi
   }
   const entry = session.getByRole("list", { name: /DSPis on/ }).getByRole("listitem").filter({ hasText: serial.slice(-8) });
   await entry.getByRole("button", { name: "Open" }).click();
-  await expect(session.locator(".device-meta")).toContainText(serial);
+  await expect(session).toHaveAttribute("data-serial", new RegExp(serial));
   // -- WP FLAKE1 -- the page settles before a test clicks: Link's "bound" phase arrives after the
   // open (its banner above the screens goes then), and the installation's first status after it.
   // A click while either still moves the page lands where the button was (the rail's Mode and
@@ -540,7 +540,7 @@ test("SW3: one device on its own is a system of one unit; Simple has no System v
   await page.goto("/");
   await picker(page).getByRole("listitem").filter({ hasText: "Demo DSPi" }).getByRole("button", { name: "Connect" }).click();
   const session = page.getByRole("article").last();
-  await expect(session.locator(".device-meta")).toBeVisible();
+  await expect(session).toHaveAttribute("data-status", "open");
   // Today's main window stays first; the System view follows.
   await expectPage(session, "Main");
   await openPage(session, "System");

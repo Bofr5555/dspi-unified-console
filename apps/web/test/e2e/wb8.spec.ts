@@ -329,7 +329,7 @@ async function openUnit(page: Page, hub: OwnHub, serial: string): Promise<Locato
   const session = page.getByRole("article").last();
   const entry = session.getByRole("list", { name: /DSPis on/ }).getByRole("listitem").filter({ hasText: serial.slice(-8) });
   await entry.getByRole("button", { name: "Open" }).click();
-  await expect(session.locator(".device-meta")).toContainText(serial);
+  await expect(session).toHaveAttribute("data-serial", new RegExp(serial));
   return session;
 }
 

@@ -2,6 +2,7 @@
 // through `ConsoleOptions`, so the same component runs standalone and inside a
 // fleet server's page, any number of times on one page.
 
+import type { ComponentChildren } from "preact";
 import { useCallback, useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { CoreClient } from "../core/client";
 import type { DeviceTarget } from "../core/protocol";
@@ -11,11 +12,11 @@ import { hubTokensFor } from "../fleet/hub-tokens";
 import { safeLocalStorage } from "../fleet/local";
 import { sourceKey, type FleetBackend, type FleetUser, type Installation, type Source } from "../fleet/types";
 import { About, DevicePicker, SessionView, type ShellProps } from "./components";
+import { NoDeviceFrame, NoDeviceStrip } from "./shell/NoDevice"; // -- WP REVEFIX --
 import { Session } from "./session";
 // -- WP WEBM1 -- the Modern shell
 import { alreadyOpenText, holderOf, serialOf, transportName } from "./shell/open-rule"; // -- WP WEBM3 -- transportName
-import { Rail } from "./shell/Rail";
-import { sectionsFor, type Navigation } from "./shell/sections";
+import { CONNECT, type Navigation } from "./shell/sections";
 import { TopBar } from "./shell/TopBar";
 // -- WP WB6b --
 import { UnsavedWatch } from "./unsaved";
@@ -240,7 +241,6 @@ export function App(props: { options: ConsoleOptions }) {
 
   const connect = (
     <div class="devices-page">
-      {current ? null : <p class="empty">Choose a DSPi to connect to.</p>}
       {listError ? (
         <p class="error" role="alert">
           {listError}
@@ -274,7 +274,17 @@ export function App(props: { options: ConsoleOptions }) {
     setPicking(on);
     if (on) setSaid("");
   }, []);
-  const shell: ShellProps = { picking, onPicking, connect, shortcuts, onShortcuts: setShortcuts, board /* -- WP WEBM4 -- */ };
+  // -- WP REVEFIX -- (REVD D12) the no-device strip's Open Demo: the first installation's demo, where it has one
+  const demoAt = installations.find((i) => i.sources.some((x) => x.kind === "demo"));
+  const openDemo = demoAt ? () => void open(demoAt, demoAt.sources.find((x) => x.kind === "demo")!) : null;
+  const note = said ? (
+    <p class="shell-note" role="status">
+      <span>{said}</span>
+      <button type="button" class="dismiss" aria-label="Dismiss" onClick={() => setSaid("")}>
+        ×
+      </button>
+    </p>
+  ) : null;
   const status = useOpenStatus(current);
 
   // -- WP WEBM4 -- what the page itself can do (the device on show adds its own: ui/menus/board.ts)
@@ -370,6 +380,33 @@ export function App(props: { options: ConsoleOptions }) {
   const deviceTabs = (
     <DeviceTabs sessions={sessions} current={current} picking={picking} onChoose={(s) => show(s.id)} onClose={(s) => (show(s.id), setClosing(s))} onAdd={() => onPicking(true)} menu={tabMenu} />
   );
+  // -- WP REVEFIX -- (REVE §3.1, Qt's ModernShell) several devices: their tabs are a row of their own over the top bar
+  const deviceRow = !tabsInRail && sessions.length > 1;
+  /** The top bar, with the device's own parts when a device's view draws it. */
+  const top = (session?: { left: ComponentChildren; right: ComponentChildren }) => (
+    <TopBar
+      title={props.options.title}
+      user={user?.name ?? ""}
+      sessions={sessions}
+      current={current}
+      picking={picking}
+      onChoose={(s) => show(s.id)}
+      onClose={(s) => {
+        show(s.id);
+        setClosing(s);
+      }}
+      onAdd={() => onPicking(true)}
+      // -- WP WEBM4 --
+      menu={appMenu}
+      tabMenu={tabMenu}
+      tabsInRail={tabsInRail || deviceRow}
+      onSearch={openPalette}
+      searchKey={mac ? "⌘K" : "Ctrl+K"}
+      bell={<BellButton count={notices.waiting.length} open={drawerOpen} onClick={() => setDrawerOpen((o) => !o)} buttonRef={bell} />}
+      session={session}
+    />
+  );
+  const shell: ShellProps = { picking, onPicking, connect, shortcuts, onShortcuts: setShortcuts, board /* -- WP WEBM4 -- */, top, note, openDemo };
 
   return (
     // -- WP WEBM4 -- the arrangement as this viewer has it (its theme only when not the system's)
@@ -382,26 +419,10 @@ export function App(props: { options: ConsoleOptions }) {
       data-theme={arrangement.theme === "system" ? undefined : arrangement.theme}
       data-device-tabs={tabsInRail ? "rail" : undefined}
     >
-      <TopBar
-        title={props.options.title}
-        user={user?.name ?? ""}
-        sessions={sessions}
-        current={current}
-        picking={picking}
-        onChoose={(s) => show(s.id)}
-        onClose={(s) => {
-          show(s.id);
-          setClosing(s);
-        }}
-        onAdd={() => onPicking(true)}
-        // -- WP WEBM4 --
-        menu={appMenu}
-        tabMenu={tabMenu}
-        tabsInRail={tabsInRail}
-        onSearch={openPalette}
-        searchKey={mac ? "⌘K" : "Ctrl+K"}
-        bell={<BellButton count={notices.waiting.length} open={drawerOpen} onClick={() => setDrawerOpen((o) => !o)} buttonRef={bell} />}
-      />
+      {/* -- WP REVEFIX -- several devices: their tabs over the top bar (Qt's device row) */}
+      {deviceRow ? <div class="device-row">{deviceTabs}</div> : null}
+      {/* -- WP REVEFIX -- a device's view draws the top bar with its own parts; with none open, here */}
+      {current ? null : top()}
       {/* -- WP WEBM4 -- the notification drawer, under the top bar */}
       {drawerOpen ? (
         <Drawer
@@ -416,29 +437,12 @@ export function App(props: { options: ConsoleOptions }) {
           }}
         />
       ) : null}
-      {said ? (
-        <p class="shell-note" role="status">
-          <span>{said}</span>
-          <button type="button" class="dismiss" aria-label="Dismiss" onClick={() => setSaid("")}>
-            ×
-          </button>
-        </p>
-      ) : null}
       <main class="sessions">
         {current ? (
           <SessionView key={current.id} session={current} onClose={() => void close(current)} shell={shell} />
         ) : (
-          <div class="shell">
-            <div class="shell-body">
-              <Rail sections={sectionsFor([])} current="devices" onSection={() => undefined} />
-              <div class="shell-main">
-                <div class="page-head">
-                  <h2 class="page-title">Devices</h2>
-                </div>
-                <div class="page">{connect}</div>
-              </div>
-            </div>
-          </div>
+          // -- WP REVEFIX -- (REVD D12) no device: the whole rail, the strip, an empty state on every page (Qt's)
+          <NoDeviceFrame shell={shell} start={CONNECT} strip={<NoDeviceStrip openDemo={openDemo} />} />
         )}
       </main>
       {aboutOpen ? <About sourceUrl={props.options.sourceUrl} onClose={() => setAboutOpen(false)} /> : null}

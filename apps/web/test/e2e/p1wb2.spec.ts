@@ -112,8 +112,8 @@ test("P1WB2 Installer: a limit narrowed below the device is held and reported; a
     ),
   );
   expect(r).toBe("limit_exceeded");
-  // -- WP INTD -- OUT2's gain typed on Delay & gain (the Overview's level cards are gone)
-  await openPage(session, "Delay & gain");
+  // -- WP INTD -- OUT2's gain typed on Delay & Gain (the Overview's level cards are gone)
+  await openPage(session, "Delay & Gain");
   const field = session.getByRole("region", { name: "Delay and gain of every output" }).getByRole("row", { name: /^OUT2 / }).getByRole("textbox", { name: /gain$/ });
   await field.fill("6");
   await field.press("Enter");
@@ -311,7 +311,7 @@ async function openUnit(page: Page, hub: OwnHub, serial: string): Promise<Locato
   await session.getByRole("button", { name: "Pair" }).click();
   const entry = session.getByRole("list", { name: /DSPis on/ }).getByRole("listitem").filter({ hasText: serial.slice(-8) });
   await entry.getByRole("button", { name: "Open" }).click();
-  await expect(session.locator(".device-meta")).toContainText(serial);
+  await expect(session).toHaveAttribute("data-serial", new RegExp(serial));
   return session;
 }
 
@@ -346,7 +346,7 @@ test.describe("P1WB2 on a hub", () => {
     await volume.dispatchEvent("change");
     await expect(session.locator(".volume-value")).not.toHaveText(shown!);
     await expect(session.locator("p.error")).toHaveCount(0);
-    await session.getByRole("button", { name: "Bypass", exact: true }).click();
+    await session.getByRole("button", { name: "Bypass EQ", exact: true }).click();
     const refused = session.locator("p.error.notice");
     await expect(refused).toHaveAttribute("data-key", /^installer_lock/);
     await shot(page, "locked-refused", refused);
@@ -375,8 +375,8 @@ test.describe("P1WB2 on a hub", () => {
     await expect(page.getByRole("dialog", { name: "Mode" })).toContainText("This console is pinned to Simple for this DSPi.");
     await page.getByRole("dialog", { name: "Mode" }).getByRole("button", { name: "Cancel" }).click();
     // -- WP INTD -- unlocked, the Bypass the lock refused goes through
-    await session.getByRole("button", { name: "Bypass", exact: true }).click();
-    await expect(session.getByRole("button", { name: "Bypass", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await session.getByRole("button", { name: "Bypass EQ", exact: true }).click();
+    await expect(session.getByRole("button", { name: "Bypass EQ", exact: true })).toHaveAttribute("aria-pressed", "true");
     await expect(session.locator("p.error")).toHaveCount(0);
     await shot(page, "unlocked-pinned");
     expect(errors).toEqual([]);
@@ -405,7 +405,7 @@ test.describe("P1WB2 a fleet's pinned mode", () => {
     await page.goto(`${HUB}/test/fleet-hub.html?${q}`);
     await page.getByRole("region", { name: "Site A" }).getByRole("listitem").filter({ hasText: "Stage rack" }).getByRole("button", { name: "Connect" }).click();
     const session = page.getByRole("article");
-    await expect(session.locator(".device-meta")).toContainText(FAKE_SERIAL);
+    await expect(session).toHaveAttribute("data-serial", new RegExp(FAKE_SERIAL));
     const rail = session.getByRole("complementary", { name: "Status" });
     await expect(rail.getByRole("button", { name: "Mode: Simple (pinned)" })).toBeVisible();
     expect(await hasPage(session, "System")).toBe(false);

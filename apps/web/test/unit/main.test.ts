@@ -173,7 +173,7 @@ test("BUG1: outputs show the core's labels, keep their stored name for a rename 
     channelNames: ["USB 1", "USB 2", "I2S 1 L", "I2S 1 R", "I2S 2 L", "I2S 2 R"],
     outputEnabled: [true, true, true, true],
   } as unknown as DspState;
-  const label = (output: number, l: string, slotName: string): OutputLabel => ({ output, label: l, shortLabel: "", slotName, userNamed: false, channel: "", band: "" });
+  const label = (output: number, l: string, slotName: string): OutputLabel => ({ output, label: l, shortLabel: "", slotName, userNamed: false, channel: "", band: "", unused: false });
   const labels = [label(0, "Out 1 · R · Low", "I2S 1 L"), label(1, "Out 2 · R · High", "I2S 1 R"), label(2, "Out 3 · L · Low", "I2S 2 L"), label(3, "Out 4 · L · High", "I2S 2 R")];
   assert.deepEqual(
     outputRows(k340, labels).map((r) => [r.descriptor, r.name, r.stored, r.detail]),
