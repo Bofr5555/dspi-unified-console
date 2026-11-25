@@ -156,6 +156,21 @@ void qp8Maths(SmokeDriver &d) {
     d.check(QStringLiteral("qp8: damping 2 lifts 2.5 dB at resonance and 1.6 dB at the top"),
             qp8Near(lift.value(QStringLiteral("bell")).toDouble(), 2.50, 0.01) &&
                 qp8Near(lift.value(QStringLiteral("top")).toDouble(), 1.58, 0.01));
+    // -- WP WEB6 -- the vectors dspi_core::effect_curves' tests pin too (the web's copy of these curves)
+    d.check(QStringLiteral("web6: the LF bell and the sub match the core's vectors"),
+            qp8Near(Tools::subharmBellDb(3, 40), 1.412553, 1e-5) && qp8Near(Tools::subharmBellDb(6, 100), 4.157328, 1e-5) &&
+                qp8Near(Tools::subharmSubDb(0, 0, 30), -1.421846, 1e-5));
+    d.check(QStringLiteral("web6: the tube shaper matches the core's vectors"), [&]() {
+        double s2 = 0, s3 = 0, d2 = 0, d3 = 0;
+        Tools::tubeHarmonics(6, 30, 6, 40, 100, 0, s2, s3);
+        Tools::tubeHarmonics(-12, 10, 3, 40, 100, 0, d2, d3);
+        return qp8Near(Tools::tubeOutput(-12, 10, 3, 40, 100, 0, 0.5), 0.489851, 1e-5) &&
+               qp8Near(Tools::tubeOutput(24, 0, 6, 40, 100, 0, 0.5), 0.038240, 1e-5) &&
+               qp8Near(Tools::tubeOutput(24, 0, 6, 40, 100, 0, -0.25), -0.076299, 1e-5) && qp8Near(s2, -13.654910, 1e-4) &&
+               qp8Near(s3, -15.928919, 1e-4) && qp8Near(d2, -39.037918, 1e-4) && qp8Near(d3, -43.730812, 1e-4) &&
+               qp8Near(lift.value(QStringLiteral("bell")).toDouble(), 2.498775, 1e-5) &&
+               qp8Near(lift.value(QStringLiteral("top")).toDouble(), 1.583625, 1e-5);
+    }());
     d.check(QStringLiteral("qp8: the tube families follow the Mac's"),
             Tools::tubeFamily(0) == 0 && Tools::tubeFamily(6) == 3 && Tools::tubeFamily(10) == 4 && Tools::tubeFamily(16) == 9);
 
