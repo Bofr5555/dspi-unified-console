@@ -3,6 +3,7 @@
 # device and on `uconsole --demo hub --alink`: dark and light, 1366 px and 375 px.
 #
 #   tools/shots/web.sh <out dir>          PNGs into <out dir>
+#   SHOTS_ONLY=<regex> PW_ARGS=<spec…>     only the pictures whose name matches (the specs that read it)
 #
 # The builds are apps/web/tools/ci.sh's (`--no-e2e`: the core, the fake hub, `uconsole`, the
 # page); then the tour alone, in the same Playwright image and mounts. The steps that make a
@@ -45,5 +46,5 @@ podman run --rm --init --userns=keep-id --user "$(id -u):$(id -g)" --ipc=private
   -v "$work/hub":/hub:ro,z -e DSPI_TERM="/hub/$cmd" \
   -v "$out":/shots:z -e SHOTS_DIR=/shots "${link[@]}" \
   -v "$work/home":/home/web:z -v "$work/tmp":/wtmp:z -e HOME=/home/web -e TMPDIR=/wtmp \
-  -e CI=1 -w /src/apps/web "$PLAYWRIGHT" \
+  -e SHOTS_ONLY="${SHOTS_ONLY:-}" -e CI=1 -w /src/apps/web "$PLAYWRIGHT" \
   npx playwright test --config playwright.shots.config.ts ${PW_ARGS:-}
