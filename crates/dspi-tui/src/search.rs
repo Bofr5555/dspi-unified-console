@@ -239,6 +239,7 @@ fn places() -> Vec<Hit> {
             Tool::Monitor => "notifications events",
             Tool::Leveller => "agc compressor",
             Tool::Psybass => "bass",
+            Tool::Crossfeed => "xf xfeed headphone headphones",
             _ => "",
         };
         out.push(
@@ -372,6 +373,10 @@ mod tests {
         assert_eq!(first("help").action, Action::Help);
         assert_eq!(first("volume").action, Action::Volume);
         assert_eq!(first("lock").value, "Installer lock");
+        assert_eq!(
+            first("xf").action,
+            Action::Event(ShellEvent::OpenTool(Tool::Crossfeed))
+        );
     }
 
     /// A word inside a path finds the parameter: `vol.mute` by "mute".
