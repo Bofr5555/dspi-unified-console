@@ -321,6 +321,13 @@ void overviewPart(Pages &p) {
     for (const int ch : { 0, out }) {
         p.go(QStringLiteral("overview"));
         p.check(QStringLiteral("nothing is selected on the Overview (%1)").arg(ch), p.sc->selectedChannel() == -1);
+        // -- WP UA4 -- the setup list may stand over the cards: the card in view first
+        if (QQuickItem *c = p.shown(QStringLiteral("Dashboard.open.%1").arg(ch)), *f = p.shown(QStringLiteral("Dashboard")); c && f) {
+            const qreal y = c->mapToItem(f->property("contentItem").value<QQuickItem *>(), 0, 0).y();
+            const qreal most = std::max<qreal>(0, f->property("contentHeight").toReal() - f->height());
+            f->setProperty("contentY", std::clamp<qreal>(y - 12, 0, most));
+            p.settle();
+        }
         p.check(QStringLiteral("the card of channel %1 opens it on the Equaliser").arg(ch),
                 p.click(QStringLiteral("Dashboard.open.%1").arg(ch)) && p.at() == QLatin1String("equaliser/peq") && p.sc->selectedChannel() == ch);
     }
