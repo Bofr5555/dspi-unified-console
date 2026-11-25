@@ -223,7 +223,7 @@ open_enum! {
     CrossfeedPreset: u8 {
         Default = 0, "Default, 700 Hz / 4.5 dB";
         ChuMoy  = 1, "Chu Moy, 700 Hz / 6.0 dB";
-        Meier   = 2, "Meier, 650 Hz / 9.5 dB";
+        Meier   = 2, "Jan Meier, 650 Hz / 9.5 dB"; // -- INTE -- Qt's name
         Custom  = 3, "Custom";
     }
 }

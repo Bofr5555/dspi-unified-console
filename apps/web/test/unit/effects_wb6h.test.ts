@@ -211,7 +211,7 @@ test("WB6h core: every path described and writable; the demo has every effect's 
   const s = session.state.snapshot!.state;
   assert.equal(availableEffects(s, f).length, 7);
   const choices = await session.core.call("effectChoices", undefined);
-  assert.equal(choices["cf.preset"]![2]!.label, "Meier");
+  assert.equal(choices["cf.preset"]![2]!.label, "Jan Meier"); // -- INTE -- the core says Qt's name
   assert.equal(choices["tube.type"]![0]!.label, "Custom");
 });
 

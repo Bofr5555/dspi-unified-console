@@ -1406,7 +1406,8 @@ pub fn enum_value_label(cx: &dyn CsContext, cs: &CsData, n: u8, value: i32) -> S
             .get(value.max(0) as usize)
             .map(|s| (*s).to_string())
             .unwrap_or_else(|| format!("Speed {value}")),
-        noun::CROSSFEED_PRESET => ["Default", "Chu Moy", "Meier", "Custom"]
+        // -- INTE -- "Jan Meier" as Qt names it
+        noun::CROSSFEED_PRESET => ["Default", "Chu Moy", "Jan Meier", "Custom"]
             .get(value.max(0) as usize)
             .map(|s| (*s).to_string())
             .unwrap_or_else(|| format!("Preset {value}")),

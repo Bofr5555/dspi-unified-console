@@ -775,9 +775,12 @@ fn save_targets(call: &Call<'_>, args: &Map<String, Value>) -> Result<Vec<SaveTa
 static PRESET_COPY: Tool = Tool {
     name: "dspi_preset_copy",
     title: "Copy a preset",
-    description: "Copy the device's settings to preset `dest` and save them to `source` again, \
-                  so `source` stays active (flash writes). It may be held for the user's \
-                  confirmation.",
+    // -- INTE -- (REVE B1) the source is the active preset; the core refuses any other
+    description: "Copy the device's current settings to preset `dest` and save them to the \
+                  active preset again, so it stays active (flash writes). `source` must be the \
+                  active preset (dspi_list_presets' last_active): the core refuses any other \
+                  slot, as a copy from it would overwrite that slot. It may be held for the \
+                  user's confirmation.",
     class: ToolClass::Write,
     device: true,
     input_schema: || slot_schema(&["source", "dest"]),
