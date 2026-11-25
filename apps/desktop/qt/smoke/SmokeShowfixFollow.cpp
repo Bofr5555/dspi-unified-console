@@ -237,7 +237,9 @@ void showfixFollowSection(SmokeDriver &d) {
                                                       { QStringLiteral("sweep_ms"), 5000 }, { QStringLiteral("passes"), 8 } });
             d.check("showfix 14: the measurement starts", !s.result(run).value(QLatin1String("isError")).toBool(true));
             d.check("showfix 14: its device and Measure come up once the keyboard rests",
-                    d.waitFor(AiController::kInputIdleMs + 4000, [&] {
+                    // -- WP INTE -- 10 s past the rest, not 4: under the full CI's eight lanes the follow
+                    // came later (twice in ci/full.sh, never alone)
+                    d.waitFor(AiController::kInputIdleMs + 10000, [&] {
                         return registry->active() == b && section() == QLatin1String("measure");
                     }));
             s.ok("dspi_measure_stop", { { QStringLiteral("device"), b->id() } });
