@@ -21,7 +21,7 @@ import { Dialog } from "../screens/main/Dialog";
 import { MainScreen } from "../screens/main/MainScreen";
 // -- WP WB6c --
 import { MatrixScreen } from "../screens/matrix/MatrixScreen";
-import { PRESET_SLOTS, changeSummary } from "../screens/main/model";
+import { PRESET_SLOTS, changeSummary, occupied, presetLabel } from "../screens/main/model"; // -- WP UWN -- occupied, presetLabel
 import type { Session } from "./session";
 // -- WP SW3 -- the System view (WB6d), the scene bar (WB6e), the status rail (WB6f)
 import { safeLocalStorage } from "../fleet/local";
@@ -42,7 +42,7 @@ import { SnapshotsScreen } from "../screens/snapshots/SnapshotsScreen";
 import { FilesScreen } from "../screens/files/FilesScreen";
 import { useConsoleKeys, type ConsoleKey } from "./keys";
 // -- WP P1WB2 -- the Installer page, the lock, the mode from the core's manifest
-import type { ModeChoice, ModeManifest } from "../core/protocol";
+import type { DspState, ModeChoice, ModeManifest } from "../core/protocol"; // -- WP UWN -- DspState
 import { InstallerScreen } from "../screens/installer/InstallerScreen";
 import { LockedBanner, UnlockDialog } from "../screens/installer/Unlock";
 import { RecoveryCode } from "../screens/installer/HubAdmin"; // -- WP HUBADMIN --
@@ -61,7 +61,7 @@ import { AnalyserScreen, GeneratorScreen, MonitorScreen, StatsScreen } from "../
 
 // -- WP WB6L -- the control-surface editor, the quick strip, the app shortcuts
 // -- WP WEB7 -- the editor is Settings › Control (screens/settings), no screen of its own
-import { QuickStrip, ShortcutsDialog, useAppShortcuts } from "../screens/shortcuts/Shortcuts";
+import { ShortcutsDialog, useAppShortcuts } from "../screens/shortcuts/Shortcuts"; // -- WP UWN -- (UXP C7) no quick strip
 import type { OpenAction, ShortcutRow } from "../screens/shortcuts/table";
 // -- WP WBCLIP -- the channel clipboard's keys
 import { channelClipboard, clipKey } from "../screens/clipboard/model";
@@ -504,12 +504,7 @@ export function Screens(props: {
       page={page}
       last={place.last}
       onPage={setCurrent}
-      tools={
-        // -- WP WB6L -- the quick strip (M60); -- WP WEBM1 -- the Overview's: the sections reach the rest from every page
-        section === "overview" && !lockedUser ? (
-          <QuickStrip session={session} screens={shownIds} current={screen.id} open={openScreen} leave={() => setCurrent(shown[0]!.id)} onHelp={() => setShortcutsOpen(true)} />
-        ) : null
-      }
+      // -- WP UWN -- (UXP C7) no quick strip: its nine icons' pages are the rail's and the palette's, as on Qt's Overview
       foot={
         // -- WP SW3 -- the status rail, below the screen as a status bar
         <StatusRail
@@ -552,6 +547,14 @@ export function Screens(props: {
   );
 }
 
+// -- WP UWN -- (UXP A17)
+/** Save to Device's question: the preset it writes, by its name ("Save the current settings to preset 1: Demo?"). */
+export function saveQuestion(s: Pick<DspState, "activePresetSlot" | "presetNames" | "presetOccupied">): string {
+  const slot = s.activePresetSlot;
+  const which = occupied(s, slot) ? presetLabel(s, slot) : `${slot + 1}, empty until now`;
+  return `Save the current settings to preset ${which}?`;
+}
+
 // -- WP P1WB1 --
 /**
  * One key of Qt's table, as the menus do it: a preset load and Revert ask about unsaved
@@ -574,7 +577,8 @@ export async function runKey(k: ConsoleKey, session: Session, desk: SnapshotDesk
       return;
     }
     case "commit":
-      if (await confirm("Save Preset", `Save current parameters to preset slot ${st.activePresetSlot + 1}?`, "Save")) await session.savePreset(st.activePresetSlot);
+      // -- WP UWN -- (UXP A17, D1) the button's words for the title, and the preset by its name
+      if (await confirm("Save to Device", saveQuestion(st), "Save")) await session.savePreset(st.activePresetSlot);
       return;
     case "revert":
       if (await confirm("Revert to Saved", "Revert to last saved parameters? Current unsaved changes will be lost.", "Revert"))
