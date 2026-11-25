@@ -347,6 +347,8 @@ void overviewPart(Pages &p) {
     QTest::mouseMove(p.main, Pages::centre(p.shown(QStringLiteral("Dashboard.open.%1").arg(out))));
     p.d.spin(300);
     p.check("no layout gear on the cards", !gear || gear->opacity() == 0);
+    if (QQuickItem *f = p.shown(QStringLiteral("Dashboard"))) f->setProperty("contentY", 0);   // -- WP UA4 -- back to the top
+    p.settle();
     p.check("Manage Devices", p.click("OverviewSummary.devices") && p.at() == QLatin1String("devices/devices"));
 }
 
