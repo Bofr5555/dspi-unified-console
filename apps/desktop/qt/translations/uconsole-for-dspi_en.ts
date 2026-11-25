@@ -717,7 +717,9 @@ What an AI agent does, and to what: &quot;Changing the gain: OUT3 Centre&quot;</
     </message>
     <message>
         <source>Out %1</source>
-        <extracomment>An output in the speaker roles&apos; table: %1 its number from 1</extracomment>
+        <extracomment>An output in the speaker roles&apos; table: %1 its number from 1
+----------
+An output&apos;s short name: %1 is its number</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -928,15 +930,6 @@ What an AI agent does, and to what: &quot;Changing the gain: OUT3 Centre&quot;</
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>IN%1</source>
-        <extracomment>An input&apos;s or an output&apos;s short name: %1 is its number</extracomment>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>OUT%1</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>band %1</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1005,6 +998,11 @@ What an AI agent does, and to what: &quot;Changing the gain: OUT3 Centre&quot;</
     </message>
     <message>
         <source>Undo</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>In %1</source>
+        <extracomment>An input&apos;s short name: %1 is its number</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -4641,6 +4639,11 @@ Switching an output is instant and never writes to flash. The pin, name and powe
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Device record: %1</source>
+        <extracomment>An event&apos;s details row: the device&apos;s own record, as the Interrupt Monitor shows it</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>by %1</source>
         <extracomment>Who caused an event: a console, an API key or a schedule, by name</extracomment>
         <translation type="unfinished"></translation>
@@ -6900,11 +6903,11 @@ Groups are stored on the device alongside the controls and share their Save and 
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>OUT%1</source>
+        <source>Out %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>IN%1</source>
+        <source>In %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -6980,6 +6983,10 @@ Groups are stored on the device alongside the controls and share their Save and 
     </message>
     <message>
         <source>Signal generator stopped</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Measurement</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -13120,6 +13127,11 @@ Macros are stored on the device alongside the controls and share their Save and 
     <message>
         <source>%1 sub</source>
         <extracomment>%1 is a speaker&apos;s name from the speaker layout; the output drives its subwoofer</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 · %2 · %3</source>
+        <extracomment>An Overview card&apos;s role line: %1 the role (&quot;Tweeter&quot;), %2 the output (&quot;Out 2&quot;), %3 whose word it is, as Settings › Speakers says it (&quot;from your words&quot;, &quot;detected&quot;)</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -20097,7 +20109,12 @@ This wiring is a board-level setting: it is stored on the device, survives prese
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>from input %1 at %2 dB</source>
+        <source>from %1 at %2 dB</source>
+        <extracomment>An output&apos;s programme feed: %1 the input&apos;s name (&quot;C&quot;, &quot;In 3&quot;), %2 its gain</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>In %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
