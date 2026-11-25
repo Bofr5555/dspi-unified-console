@@ -63,6 +63,8 @@ export interface DeskState {
   abDiff: ConfigDiff | null;
   /** How long a guarded apply waits for Keep before it reverts, s. */
   timeoutS: number;
+  /** -- WP WEB7 -- Recall with rollback (Qt's switch): every recall from the list is guarded. */
+  rollback: boolean;
   // -- WP P1DCFIX --
   /** The core's countdown sentence (notice `guard.waiting`): `{s}` is the seconds left. */
   waitingText: string;
@@ -168,6 +170,7 @@ export class SnapshotDesk {
     outcome: null,
     abDiff: null,
     timeoutS: DEFAULT_TIMEOUT_S,
+    rollback: false, // -- WP WEB7 --
     waitingText: WAITING_FALLBACK,
     backstopText: BACKSTOP_FALLBACK, // -- WP P1WB2 --
   };
@@ -329,7 +332,7 @@ export class SnapshotDesk {
 
   /** A document from a file: the core reads it first (its words when it is not one). */
   addFile(text: string, fileName: string): Promise<HeldDoc | null> {
-    return this.run("Open Snapshot", async () => {
+    return this.run("Import", async () => { // -- WP WEB7 -- Qt's Import…
       await this.session.core.call("configDiff", { before: text, after: text });
       this.set({ outcome: null });
       return this.hold(text, fileName, "file");
@@ -600,6 +603,11 @@ export class SnapshotDesk {
   setTimeoutS(s: number): void {
     const v = Number.isFinite(s) ? Math.min(300, Math.max(5, Math.round(s))) : DEFAULT_TIMEOUT_S;
     if (v !== this.state.timeoutS) this.set({ timeoutS: v });
+  }
+
+  /** -- WP WEB7 -- Recall with rollback on or off (Qt's switch on Library › Snapshots). */
+  setRollback(on: boolean): void {
+    if (on !== this.state.rollback) this.set({ rollback: on });
   }
 
   dismiss(): void {

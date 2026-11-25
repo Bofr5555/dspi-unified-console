@@ -1,0 +1,30 @@
+/* -- WP WEB7 -- Qt's ListRow on the Library pages (DESIGN-LANGUAGE §9; Presets, Snapshots, AutoEQ): rows of
+   at least 28 px in the 760 px column, a stripe on every second, the selected/active row in the selection
+   tone; a leading number or icon, the title with a small muted line under it, a value at the right, and
+   the row's actions, which show on hover, on focus and on the selected row (they stay clickable). */
+.dspi-web .lib-page { display: flex; flex-direction: column; gap: 8px; max-width: var(--content-max); min-width: 0; }
+.dspi-web .lib-caption { margin: 0; padding: 0 8px 4px; font-size: 11px; color: var(--muted); }
+.dspi-web .lib-rows { display: flex; flex-direction: column; gap: 0; margin: 0; padding: 0; list-style: none; font-size: 13px; min-width: 0; }
+.dspi-web .lib-row { display: flex; align-items: center; gap: 8px; min-height: 28px; padding: 2px 8px; border-radius: 4px; min-width: 0; }
+.dspi-web .lib-row:nth-child(even) { background: var(--stripe); }
+.dspi-web .lib-row:hover { background: var(--control-hover); }
+.dspi-web .lib-row.selected, .dspi-web .lib-row[aria-selected="true"] { background: var(--selection); }
+.dspi-web .lib-num { flex: none; width: 22px; text-align: right; font: 11.5px var(--mono); color: var(--muted); }
+.dspi-web .lib-lead { flex: none; display: grid; place-items: center; width: 16px; color: var(--muted); }
+.dspi-web .lib-lead:empty { width: 0; margin-left: -8px; }
+.dspi-web .lib-lead .shell-icon { width: 16px; height: 16px; }
+.dspi-web .lib-text { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; padding: 3px 0; }
+.dspi-web .lib-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dspi-web .lib-title.muted { color: var(--muted); }
+.dspi-web .lib-sub { font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
+.dspi-web .lib-value { flex: none; font: 11.5px var(--mono); color: var(--muted); }
+.dspi-web .lib-actions { display: flex; flex: none; align-items: center; gap: 4px; opacity: 0; }
+.dspi-web .lib-row:hover .lib-actions, .dspi-web .lib-row:focus-within .lib-actions, .dspi-web .lib-row.selected .lib-actions,
+.dspi-web .lib-row[aria-selected="true"] .lib-actions, .dspi-web .lib-actions:has([aria-expanded="true"]) { opacity: 1; }
+.dspi-web .lib-actions > button, .dspi-web .lib-actions > .menu > button { min-height: 24px; padding: 0.1rem 0.6rem; font-size: 12.5px; }
+.dspi-web .lib-actions > .menu > button { padding: 0.1rem 0.4rem; background: none; }
+.dspi-web .lib-actions > .menu > button:hover:not(:disabled) { background: var(--control-hover); }
+@media (hover: none) { .dspi-web .lib-actions { opacity: 1; } }
+/* A page's tool with its icon (Save to Preset N, Import…, Capture…) */
+.dspi-web .tool-icon-button { display: inline-flex; align-items: center; gap: 6px; }
+.dspi-web .tool-icon-button .shell-icon { width: 14px; height: 14px; flex: none; }

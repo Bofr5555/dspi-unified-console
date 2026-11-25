@@ -43,8 +43,8 @@ test("WEBM3: History's values, names, sources and times in words", () => {
   assert.equal(sourceWords("undo"), "Undo");
   assert.equal(sourceWords("hub_scene"), "Hub scene");
   const at = new Date(2026, 10, 22, 9, 5, 7).getTime();
-  assert.equal(timeWords(at, at + 1000), "09:05:07");
-  assert.equal(timeWords(at, at + 2 * 86_400_000), "2026-11-22 09:05:07");
+  assert.equal(timeWords(at, at + 1000), "09:05"); // -- WP WEB7 -- Qt's HH:MM
+  assert.equal(timeWords(at, at + 2 * 86_400_000), "2026-11-22 09:05");
 });
 
 test("WEBM3: History's rows keep the core's order (newest first) and say before → after", () => {
@@ -72,8 +72,9 @@ test("WEBM3: History's rows keep the core's order (newest first) and say before 
 
 test("WEBM3: Library has History between Snapshots and Files, not in Simple; a page's part is kept per session", () => {
   const lib = (mode: "simple" | "advanced") => sectionsFor(screensFor(mode, false)).find((s) => s.id === "library")!.pages.map((p) => p.id);
-  assert.deepEqual(lib("advanced"), ["snapshots", "history", "files"]);
-  assert.deepEqual(lib("simple"), ["snapshots"]);
+  // -- WP WEB7 -- Qt's Library: Presets first, AutoEQ last, both in every mode
+  assert.deepEqual(lib("advanced"), ["presets", "snapshots", "history", "files", "autoeq"]);
+  assert.deepEqual(lib("simple"), ["presets", "snapshots", "autoeq"]);
   const a = {} as Session;
   const b = {} as Session;
   placeOf(a).parts.set("effects", "loudness");

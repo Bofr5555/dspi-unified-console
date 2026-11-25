@@ -20,9 +20,11 @@ const PLACES: Record<string, { section: string; id: string; tab?: string; part?:
   "Signal Generator": { section: "Analyse", id: "generator" },
   "Stats for nerbs": { section: "Analyse", id: "stats" },
   "Interrupt Monitor": { section: "Analyse", id: "monitor" },
+  Presets: { section: "Library", id: "presets" }, // -- WP WEB7 --
   Snapshots: { section: "Library", id: "snapshots" },
   History: { section: "Library", id: "history" }, // -- WP WEBM3 --
   Files: { section: "Library", id: "files" },
+  AutoEQ: { section: "Library", id: "autoeq" }, // -- WP WEB7 --
   System: { section: "System", id: "system", tab: "Units" }, // -- WP WEB7 -- Qt's System tabs
   "Clock and Links": { section: "System", id: "system-clock" }, // -- WP WEB7 --
   Installation: { section: "System", id: "system-installation" }, // -- WP WEB7 --

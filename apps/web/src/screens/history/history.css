@@ -2,7 +2,10 @@
    striped 28 px rows in the 760 px column, the time in mono, a quiet icon for what Undo can do, the values
    in small muted text under the change; no rules. */
 .dspi-web .history-screen { max-width: var(--content-max); gap: 8px; }
-.dspi-web .history-tools { display: flex; gap: 6px; }
+.dspi-web .history-tools { display: flex; gap: 8px; }
+/* -- WP WEB7 -- Qt's Undo and Redo: the icon before the word, 28 px */
+.dspi-web .history-tools > button { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 0.15rem 0.65rem; }
+.dspi-web .history-tools .shell-icon { width: 14px; height: 14px; }
 .dspi-web .history-list { font-size: 12.5px; }
 .dspi-web .history-list li { grid-template-columns: 4.5rem 18px minmax(0, 1fr); gap: 0 8px; align-items: center; min-height: 28px; padding: 4px 8px; border: 0; border-radius: 4px; }
 .dspi-web .history-list li:nth-child(even) { background: var(--stripe); }
