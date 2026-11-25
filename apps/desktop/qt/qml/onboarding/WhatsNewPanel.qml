@@ -12,6 +12,10 @@ import UConsole
 // -- WP DL7 -- In a Modern page it is a page, not a dialog: no Done, the
 // notes in a left-aligned column of Theme.contentMaxWidth, and an EmptyState
 // when the build has none. Its window (Classic, or after an update) keeps Done.
+// -- WP UFW -- (UXP A8, C8) The app's own notes first (under its name: the core
+// marks them `app`), with buttons to the places they name; the firmware's
+// notes follow under "DSPi firmware". It opens by itself only for the app's
+// news (OnboardingController.showReleaseNotesIfUnread).
 Panel {
     id: panel
     objectName: "WhatsNewPanel"
@@ -43,9 +47,25 @@ Panel {
             id: release
             required property var modelData
             required property int index
+            // -- WP UFW -- the first of the app's notes and of the firmware's start their part
+            readonly property bool app: modelData.app === true
+            readonly property bool starts: index === 0 || app !== (OnboardingController.releases[index - 1].app === true)
             objectName: "WhatsNew.release." + index
             width: ListView.view.width - ListView.view.leftMargin - ListView.view.rightMargin
             spacing: 10
+            Text {   // -- WP UFW --
+                objectName: "WhatsNew.part." + (release.app ? "app" : "firmware")
+                Layout.fillWidth: true
+                // Only when there are both parts
+                visible: release.starts && OnboardingController.releases.some(r => r.app === true)
+                text: release.app ? AppIdentity.displayName : qsTr("DSPi firmware")
+                color: Theme.textMuted
+                font.pixelSize: Theme.fontSmall.pixelSize
+                font.weight: Font.DemiBold
+                font.capitalization: Font.AllUppercase
+                Accessible.role: Accessible.Heading
+                Accessible.name: text
+            }
             RowLayout {
                 Layout.fillWidth: true
                 spacing: Theme.spacingSmall
@@ -84,6 +104,25 @@ Panel {
                         text: "•"
                         color: Theme.textMuted
                         font: Theme.fontBody
+                    }
+                }
+            }
+            // -- WP UFW -- the places the notes name, one click away
+            Flow {
+                Layout.fillWidth: true
+                Layout.leftMargin: 16
+                visible: (release.modelData.actions || []).length > 0
+                spacing: Theme.spacingSmall
+                Repeater {
+                    model: release.modelData.actions || []
+                    delegate: AppButton {
+                        required property var modelData
+                        objectName: "WhatsNew.action." + modelData.page
+                        text: modelData.text
+                        onClicked: {
+                            SettingsController.showPage(modelData.page)
+                            if (!panel.asPage) panel.close()
+                        }
                     }
                 }
             }
