@@ -110,7 +110,9 @@ test("WB6J M46: the signal generator plays only on Start, shows what it does, an
   await gen.getByRole("region", { name: "Outputs" }).getByRole("button", { name: "None", exact: true }).click(); // -- WP WEB4 -- All/None at the section's label
   await expect(gen.locator(".siggen-title")).toHaveText("Select at least one output");
   await expect(gen.getByRole("button", { name: "Start" })).toBeDisabled();
-  await gen.getByRole("group", { name: "Outputs" }).getByRole("button", { name: /^OUT1/ }).click();
+  // -- WP WEB6 -- (REVE D2) the chip names the output once, by the core's label
+  await expect(gen.getByRole("group", { name: "Outputs" }).getByRole("button", { name: /^OUT/ })).toHaveCount(0);
+  await gen.getByRole("group", { name: "Outputs" }).getByRole("button", { name: /^Out 1\b/ }).click();
   await gen.getByRole("button", { name: "Start" }).click();
   await expect(gen.locator(".siggen-title")).toHaveText(/^(Fading in|Running) · Pink noise$/);
   const cfg = await call<Config>(page, "siggenConfig");

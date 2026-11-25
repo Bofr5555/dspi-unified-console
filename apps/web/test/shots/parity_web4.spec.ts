@@ -117,8 +117,8 @@ test("Measure, Analyse and Library, empty and with content", async ({ page }) =>
   }
 
   // The analyser with its bars, the generator with a sweep chosen
-  if (await maybe("analyser", () => go(session, "Analyse", "Analyser"))) {
-    await maybe("show bars", () => session.getByRole("button", { name: "Show Bars" }).click({ timeout: 1500 }));
+  // -- WP WEB6 -- (REVE T9) the tab is "Spectrum" (INTD) and draws at once: no Show Bars
+  if (await maybe("analyser", () => go(session, "Analyse", "Spectrum"))) {
     await page.waitForTimeout(1500);
     await shot(page, "analyse-analyser-running");
   }

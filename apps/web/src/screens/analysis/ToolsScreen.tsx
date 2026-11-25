@@ -145,7 +145,8 @@ function SiggenPanel(props: { session: Session }) {
   const rows = useMemo(() => (s ? outputRows(s, st.snapshot?.outputLabels) : []), [s, st.snapshot?.outputLabels]);
   const nameOf = (o: number) => {
     const r = rows.find((x) => x.index === o);
-    return r ? `${r.descriptor} ${r.name}` : `Output ${o + 1}`;
+    // -- WP WEB6 -- (REVE D2) the core's label alone, as Qt's chips ("Out 1 · L"), not "OUT1 Out 1 · L"
+    return r?.name || `Out ${o + 1}`;
   };
   const playable = playableMask(caps, outputs);
   const type = typeOf(caps, draft.signalType);
