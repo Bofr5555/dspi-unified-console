@@ -34,6 +34,7 @@ extern "C" {
 #include <QRegularExpression>
 #include <QSignalSpy>
 #include <QTest>
+#include <cstdio>
 
 namespace {
 
@@ -248,15 +249,21 @@ void saveStateSection(SmokeDriver &d) {
     t.settle();
 
     // ---- A tab's tooltip only when something is cut off
-    QQuickItem *tabC = t.shown(t.tabs + QStringLiteral(".tab.") + c->id());
+    if (Ua3::opened(switcher)) t.close(switcher);
+    // The row's delegates are made again when the registry's rows change: the
+    // tab under the pointer is found after the pointer is there
+    const QString nameC = t.tabs + QStringLiteral(".tab.") + c->id();
+    if (QQuickItem *at = t.shown(nameC)) QTest::mouseMove(t.main, t.point(at, 0.3));
+    d.spin(200);
+    QPointer<QQuickItem> tabC = t.shown(nameC);
+    if (tabC) QTest::mouseMove(t.main, t.point(tabC, 0.35));
+    d.spin(900);
     QObject *tipC = nullptr;
     if (tabC)
         for (QObject *o : tabC->findChildren<QObject *>(Qt::FindDirectChildrenOnly))   // its own, not a button's
             if (o->inherits("QQuickToolTip")) tipC = o;
-    t.check("the tab's tooltip is there", tipC != nullptr);
-    if (Ua3::opened(switcher)) t.close(switcher);
-    if (tabC) QTest::mouseMove(t.main, t.point(tabC, 0.3));
-    d.spin(900);
+    std::printf("smoke: ua3: tab hovered %d, elided %d, tooltip shown %d\n", tabC ? int(tabC->property("hovered").toBool()) : -1,
+                tabC ? int(tabC->property("elided").toBool()) : -1, tipC ? int(tipC->property("visible").toBool()) : -1);
     t.check("a tab that shows all of it has no tooltip", tabC && tipC && tabC->property("hovered").toBool()
                                                              && !tabC->property("elided").toBool() && !tipC->property("visible").toBool());
     QTest::mouseMove(t.main, QPoint(t.main->width() / 2, t.main->height() / 2));
