@@ -245,9 +245,17 @@ test("WEB6: the Spectrum page draws curves, bars or both, says how the analyser 
   await expect.poll(async () => (await call<{ snapshot: { tap: number } }>(page, "analyserView")).snapshot.tap).toBe(1);
   await expect(legend.getByRole("button", { pressed: true })).toHaveCount(1);
   await expect(legend.getByRole("button", { pressed: true })).toContainText("Out 1");
-  // Unused outputs (no input routed) are not offered: the legend has only the routed ones
-  const labels = (await call<{ outputLabels: { unused: boolean }[] }>(page, "state")).outputLabels;
-  await expect(legend.getByRole("button")).toHaveCount(labels.filter((l) => !l.unused).length);
+  // Unused outputs (no input routed) are not offered (owner 2026-11-24): Out 2 (enabled, not analysed)
+  // routed from nothing leaves the legend; the core flags it, the page follows
+  const st = (await call<{ state: { numInputChannels: number; matrixRouting: boolean[][] } }>(page, "state")).state;
+  const out2 = legend.getByRole("button", { name: /^(Out )?2\b/ });
+  await expect(out2).toHaveCount(1);
+  expect(st.matrixRouting.some((row) => row[1])).toBe(true);
+  for (let i = 0; i < st.numInputChannels; i++)
+    if (st.matrixRouting[i]![1]) await call(page, "crosspoint", { input: i, output: 1, enabled: false, gain: 0, invert: false });
+  await expect.poll(async () => (await call<{ outputLabels: { unused: boolean }[] }>(page, "state")).outputLabels[1]?.unused).toBe(true);
+  await expect(out2).toHaveCount(0);
+  await expect(legend.getByRole("button", { name: /None/ })).toHaveCount(0);
   // The choice is kept: the page comes back as it was left
   await page.reload();
   const again = await connect(page);
