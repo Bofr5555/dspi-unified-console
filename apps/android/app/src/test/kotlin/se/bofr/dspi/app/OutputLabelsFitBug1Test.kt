@@ -51,7 +51,7 @@ class OutputLabelsFitBug1Test {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var session: DemoSession? = null
 
-    private fun label(o: Int, long: String, short: String, slot: String) = OutputLabel(o, long, short, slot, false, "", "", false)
+    private fun label(o: Int, long: String, short: String, slot: String) = OutputLabel(o, long, short, slot, false, "", "", false, false)
 
     private val k340 =
         listOf(

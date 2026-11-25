@@ -54796,6 +54796,14 @@ public struct OutputLabel {
      * leaves it out already.
      */
     public var unused: Bool
+    /**
+     * `unused`, and no test signal plays on it (the signal generator, which a
+     * measurement, a live run and Identify use too): what a view that only
+     * shows levels (meters, a Spectrum chooser, Stats) leaves out. The
+     * generator writes after the matrix, so an unused output it plays on is
+     * loud and keeps its meter; it still reads "3 · None".
+     */
+    public var hidden: Bool
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -54830,7 +54838,14 @@ public struct OutputLabel {
          * shows (the Overview's cards and tiles, a phone's Home, a summary) leaves
          * it out; a view that edits it shows `label`. [`DspiCore::output_cards`]
          * leaves it out already.
-         */unused: Bool) {
+         */unused: Bool, 
+        /**
+         * `unused`, and no test signal plays on it (the signal generator, which a
+         * measurement, a live run and Identify use too): what a view that only
+         * shows levels (meters, a Spectrum chooser, Stats) leaves out. The
+         * generator writes after the matrix, so an unused output it plays on is
+         * loud and keeps its meter; it still reads "3 · None".
+         */hidden: Bool) {
         self.output = output
         self.label = label
         self.shortLabel = shortLabel
@@ -54839,6 +54854,7 @@ public struct OutputLabel {
         self.channel = channel
         self.band = band
         self.unused = unused
+        self.hidden = hidden
     }
 }
 
@@ -54873,6 +54889,9 @@ extension OutputLabel: Equatable, Hashable {
         if lhs.unused != rhs.unused {
             return false
         }
+        if lhs.hidden != rhs.hidden {
+            return false
+        }
         return true
     }
 
@@ -54885,6 +54904,7 @@ extension OutputLabel: Equatable, Hashable {
         hasher.combine(channel)
         hasher.combine(band)
         hasher.combine(unused)
+        hasher.combine(hidden)
     }
 }
 
@@ -54904,7 +54924,8 @@ public struct FfiConverterTypeOutputLabel: FfiConverterRustBuffer {
                 userNamed: FfiConverterBool.read(from: &buf), 
                 channel: FfiConverterString.read(from: &buf), 
                 band: FfiConverterString.read(from: &buf), 
-                unused: FfiConverterBool.read(from: &buf)
+                unused: FfiConverterBool.read(from: &buf), 
+                hidden: FfiConverterBool.read(from: &buf)
         )
     }
 
@@ -54917,6 +54938,7 @@ public struct FfiConverterTypeOutputLabel: FfiConverterRustBuffer {
         FfiConverterString.write(value.channel, into: &buf)
         FfiConverterString.write(value.band, into: &buf)
         FfiConverterBool.write(value.unused, into: &buf)
+        FfiConverterBool.write(value.hidden, into: &buf)
     }
 }
 

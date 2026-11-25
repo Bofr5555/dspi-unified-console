@@ -306,9 +306,10 @@ export function SpectrumPage(props: { session: Session; s: DspState; labels?: Ou
       : inputRows(s, s.numInputChannels || 2).map((r) => ({ channel: r.index, name: r.name, colour: inputColour(r.index) }));
   const count = choice.tap === TAP_OUTPUT ? (v?.caps.outputChannels ?? s.numOutputChannels) : (v?.caps.inputChannels ?? (s.numInputChannels || 2));
   // An unused output (no input routed, owner 2026-11-24) is left out of this view, unless it is being analysed
+  // -- WP FIN015 -- (REVF R1) or the generator plays on it (`hidden`)
   const pickable = own(choice.tap)
     .slice(0, Math.min(16, count))
-    .filter((r) => choice.tap !== TAP_OUTPUT || !props.labels?.[r.channel]?.unused || (choice.mask & (1 << r.channel)) !== 0);
+    .filter((r) => choice.tap !== TAP_OUTPUT || !props.labels?.[r.channel]?.hidden || (choice.mask & (1 << r.channel)) !== 0);
   // What is drawn: the device's tap and channels while following, this page's otherwise
   const following = v?.ownership.following === true;
   const shownTap = following ? v!.ownership.tap : choice.tap;

@@ -388,13 +388,17 @@ may open**, with **Forget Devices**). A device an agent opens or closes is a not
 out what is wired to each output (`dspi_detect_speakers`). The app plays quiet test sweeps on each output in turn,
 from the microphone at the listening position (or close to each driver, moved when you are asked). Each output is first
 played only above 1 kHz (or a higher floor: your limits profile's for that output, or one the agent names), at most −24
-dBFS (−36 dBFS on headphones). Only an output whose response says it is not a tweeter is played lower, and then at most
-−50 dBFS (−60 dBFS on headphones); one that is still flat two and a half octaves under the floor there, as no tweeter is,
-is then played down to 20 Hz at the level its top end was heard at, never above −24 dBFS (−36 dBFS on headphones).
-Whatever cannot be told apart is treated as a tweeter. Outputs that are off or muted
-are not probed. The question says so, with a warning: nothing is known about these outputs yet, and a tweeter wired where
-the probe expects a woofer could receive a few seconds of sweep below 1 kHz at −50 dBFS, less than a hundredth of what a
-1 kHz crossover lets through from music, but not nothing. Keep the volume where it is and stay by **Stop**. **Allow** also
+dBFS (−36 dBFS on headphones). Only an output whose response says it is not a tweeter (or that is not heard above its
+floor) is played lower, and then at most −50 dBFS (−60 dBFS on headphones), no lower than 157 Hz. One that is still flat
+at 177 Hz there, as no tweeter is, is then played down to 20 Hz (never below your limits profile's high-pass minimum for
+that output) at the level its top end was heard at, never above −24 dBFS (−36 dBFS on headphones), or at −50 dBFS (−60
+dBFS) if its top end was not heard. A higher floor never lets that last step start sooner: the quiet sweep still has to
+find the driver flat at 177 Hz first. Whatever cannot be told apart is treated as a tweeter. Outputs that are off or
+muted are not probed. The question says so, with a warning: nothing is known about these outputs yet, and a tweeter
+wired where the probe expects a woofer could receive a few seconds of sweep below its floor at −50 dBFS (more with a
+raised floor): below 1 kHz less than a hundredth of what a 1 kHz crossover lets through from music, but not nothing.
+Only a driver still playing flat at 177 Hz under that quiet sweep, as no tweeter does, is then swept down to 20 Hz at up
+to −24 dBFS. Keep the volume where it is and stay by **Stop**. **Allow** also
 lets that agent play test signals and detect again on that device for 10 minutes (section 4); **Revoke** stops a running
 detection at once. <!-- WP INTK --> A higher floor in the limits profile belongs on tweeter outputs only: an output's
 high-pass minimum also holds its music's high-pass there, so on a woofer's output it would take away the bass (on the

@@ -151,9 +151,9 @@ export function meterNames(s: DspState, labels?: OutputLabel[]): string[] {
 }
 
 // -- WP INTE -- (owner 2026-11-24) the meters are a view: an output nothing is routed to has none
-/** Per wire channel, whether the meters leave it out (an unused output). */
+/** Per wire channel, whether the meters leave it out (an unused output no test signal plays on, -- WP FIN015 --). */
 export function meterHidden(s: DspState, labels?: OutputLabel[]): boolean[] {
-  return s.channelNames.slice(0, s.numChannels).map((_, w) => w >= s.numInputChannels && labels?.[w - s.numInputChannels]?.unused === true);
+  return s.channelNames.slice(0, s.numChannels).map((_, w) => w >= s.numInputChannels && labels?.[w - s.numInputChannels]?.hidden === true);
 }
 
 /** UTF-8 bytes of a name, which the device's limits count. */

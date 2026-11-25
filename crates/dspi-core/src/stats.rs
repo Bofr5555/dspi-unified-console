@@ -123,6 +123,72 @@ fn unreadable_type() -> SiggenTypeInfo {
     }
 }
 
+// -- WP FIN015 -- (REVF R1)
+/// `SIGGEN_STATE_IDLE` (siggen.h:102): the generator plays nothing.
+const SIGGEN_STATE_IDLE: u8 = 0;
+
+/// The outputs the generator plays on, as far as one connection knows. Its
+/// starts go through [`DspiCore::siggen_set_config`] and
+/// [`DspiCore::siggen_control`] (the Generator page, a measurement, a live
+/// run, Identify), and every start and stop arrives as
+/// `NOTIFY_EVT_SIGGEN_STATE`. The labels read it: an unused output a test
+/// signal plays on is not `hidden` (`output_labels.rs`).
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct SiggenOutputs {
+    /// The mask of the config this connection staged last.
+    staged: Option<u16>,
+    /// Bit i: output i plays a test signal.
+    playing: u16,
+}
+
+impl SiggenOutputs {
+    pub(crate) fn playing(&self) -> u16 {
+        self.playing
+    }
+
+    /// A config was staged: a running generator restarts with it.
+    fn staged(&mut self, mask: u16) {
+        self.staged = Some(mask);
+        if self.playing != 0 {
+            self.playing = mask;
+        }
+    }
+
+    /// A start or stop event (`state`): whether the outputs have to be read
+    /// from the device (a start this connection did not make).
+    pub(crate) fn event(&mut self, state: u8) -> bool {
+        if state == SIGGEN_STATE_IDLE {
+            self.playing = 0;
+            return false;
+        }
+        self.playing == 0
+    }
+}
+
+/// The channel mask of the config the device holds, `None` when unreadable.
+fn device_mask(conn: &mut crate::Connection) -> Option<u16> {
+    let b = conn
+        .get(op::REQ_SIGGEN_GET_CONFIG, 0, len16(WireSiggenConfig::SIZE))
+        .ok()?;
+    let c = WireSiggenConfig::decode(&b).ok()?;
+    (c.version == SIGGEN_VERSION).then_some(c.channel_mask)
+}
+
+impl DspiCore {
+    /// After a start event this connection did not cause: the outputs, from
+    /// the device's config; every output when it cannot be read, so nothing
+    /// that may be loud is hidden.
+    pub(crate) fn learn_siggen_outputs(&self) {
+        let mut guard = self.lock();
+        let Ok(conn) = guard.conn() else {
+            return;
+        };
+        if conn.siggen.playing == 0 {
+            conn.siggen.playing = device_mask(conn).unwrap_or(u16::MAX);
+        }
+    }
+}
+
 fn config_from_wire(c: WireSiggenConfig) -> SiggenConfig {
     SiggenConfig {
         signal_type: c.signal_type,
@@ -353,6 +419,9 @@ impl DspiCore {
         // -- WP P0W -- audible: history only
         let after = dspi_proto::value::Value::Bytes(bytes.to_vec());
         crate::journal::journal(&mut guard, "sig.config", &[], after);
+        if let Ok(conn) = guard.conn() {
+            conn.siggen.staged(config.channel_mask); // -- WP FIN015 --
+        }
         Ok(())
     }
 
@@ -382,6 +451,17 @@ impl DspiCore {
             .control_in(op::REQ_SIGGEN_CONTROL, action, 1)
             .map_err(refusal)?;
         acked(&reply)?;
+        // -- WP FIN015 -- what plays now; a fading STOP is cleared by its event
+        if let Ok(conn) = guard.conn() {
+            match action {
+                crate::consts::SIGGEN_CTL_START => {
+                    let mask = conn.siggen.staged.or_else(|| device_mask(conn));
+                    conn.siggen.playing = mask.unwrap_or(u16::MAX);
+                }
+                crate::consts::SIGGEN_CTL_STOP_NOW => conn.siggen.playing = 0,
+                _ => {}
+            }
+        }
         // -- WP P0W -- audible: history only, so undo never starts it again
         let after = dspi_proto::value::Value::Choice(u8::try_from(action).unwrap_or(u8::MAX));
         crate::journal::journal(&mut guard, "sig.control", &[], after);

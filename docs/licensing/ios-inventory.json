@@ -109,12 +109,12 @@
    "dspi-core": {
     "first_party": true,
     "license": "GPL-3.0-or-later",
-    "version": "0.14.0"
+    "version": "0.15.0"
    },
    "dspi-ffi": {
     "first_party": true,
     "license": "GPL-3.0-or-later",
-    "version": "0.14.0"
+    "version": "0.15.0"
    },
    "dspi-link": {
     "first_party": true,
@@ -124,22 +124,22 @@
    "dspi-measure": {
     "first_party": true,
     "license": "GPL-3.0-or-later",
-    "version": "0.14.0"
+    "version": "0.15.0"
    },
    "dspi-proto": {
     "first_party": true,
     "license": "GPL-3.0-or-later",
-    "version": "0.14.0"
+    "version": "0.15.0"
    },
    "dspi-session": {
     "first_party": true,
     "license": "GPL-3.0-or-later",
-    "version": "0.14.0"
+    "version": "0.15.0"
    },
    "dspi-transport": {
     "first_party": true,
     "license": "GPL-3.0-or-later",
-    "version": "0.14.0"
+    "version": "0.15.0"
    },
    "equivalent": {
     "first_party": false,
