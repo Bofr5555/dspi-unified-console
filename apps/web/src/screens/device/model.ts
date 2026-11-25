@@ -39,17 +39,17 @@ export function generationWords(p: DeviceProtocolRecord): string {
     case "legacy":
       return "Firmware 1.1.6 or older: the 1.1.6 protocol";
     default:
-      return "Not said by this connection";
+      return "Not known on this connection"; // -- WP WEB7 -- Qt's words (REVE: no "said by this connection")
   }
 }
 
-/** The extension channel's row. */
+/** The extension channel's row (-- WP WEB7 -- in words, not the request's number: REVE's developer wording). */
 export function envelopeWords(p: DeviceProtocolRecord): string {
   switch (p.extEnvelope) {
     case "tunnel":
-      return "This fork's extensions, through page 0xE0 (the tunnel 0xE010)";
+      return "This console's extensions, through the paged protocol";
     case "legacy":
-      return "This fork's extensions, on the 1.1.6 extension request (0x00)";
+      return "This console's extensions, through the 1.1.6 protocol";
     default:
       return "None (upstream firmware)";
   }
@@ -57,7 +57,7 @@ export function envelopeWords(p: DeviceProtocolRecord): string {
 
 /** The pages row: every page with its revision, or why there are none. */
 export function pagesWords(p: DeviceProtocolRecord): string {
-  if (p.generation !== "paged") return "None: the 1.1.6 protocol has no pages";
+  if (p.generation !== "paged") return "None (the 1.1.6 protocol has no pages)"; // -- WP WEB7 --
   if (!p.pages.length) return "Not listed on this connection";
   return p.pages.map((x) => `${pageName(x.page)} rev ${x.revision}`).join(", ");
 }

@@ -49,17 +49,17 @@ async function noSidewaysScroll(page: Page) {
 async function deviceScreen(session: Locator): Promise<Locator> {
   await expect(session.locator(".volume-value")).toBeVisible();
   await openPage(session, "Device");
-  return session.getByRole("region", { name: "Device information" });
+  return session.getByRole("region", { name: "Connected Device" }) /* -- WP WEB7 -- Qt's group title */;
 }
 
 const fact = (info: Locator, cls: string) => info.locator(`.${cls} dd`);
 
 const GENERATIONS: { kind: string; label: string; legacy: boolean; board: string; protocol: RegExp; pages: RegExp; ext: RegExp }[] = [
   { kind: "g1s", label: "G1s", legacy: true, board: "DSPi", protocol: /1\.1\.6 or older/, pages: /no pages/, ext: /None \(upstream firmware\)/ },
-  { kind: "g1b", label: "G1b (PAGEGUARD)", legacy: true, board: "DSPi", protocol: /1\.1\.6 or older/, pages: /no pages/, ext: /1\.1\.6 extension request/ },
-  { kind: "g1b-noguard", label: "G1b (no guard)", legacy: true, board: "DSPi", protocol: /1\.1\.6 or older/, pages: /no pages/, ext: /1\.1\.6 extension request/ },
+  { kind: "g1b", label: "G1b (PAGEGUARD)", legacy: true, board: "DSPi", protocol: /1\.1\.6 or older/, pages: /no pages/, ext: /through the 1\.1\.6 protocol/ /* -- WP WEB7 -- */ },
+  { kind: "g1b-noguard", label: "G1b (no guard)", legacy: true, board: "DSPi", protocol: /1\.1\.6 or older/, pages: /no pages/, ext: /through the 1\.1\.6 protocol/ /* -- WP WEB7 -- */ },
   { kind: "g2s", label: "G2s", legacy: false, board: "DSPi", protocol: /paged protocol 1\.\d+/, pages: /^0x01 SYS rev \d+, .*0x05 ROUTE/, ext: /None \(upstream firmware\)/ },
-  { kind: "g2b", label: "G2b", legacy: false, board: "DSPi", protocol: /paged protocol 1\.\d+/, pages: /0xE0 EXT rev \d+/, ext: /page 0xE0/ },
+  { kind: "g2b", label: "G2b", legacy: false, board: "DSPi", protocol: /paged protocol 1\.\d+/, pages: /0xE0 EXT rev \d+/, ext: /through the paged protocol/ /* -- WP WEB7 -- */ },
   { kind: "zero", label: "Zero (1.1.6)", legacy: true, board: "DSPi Zero", protocol: /1\.1\.6 or older/, pages: /no pages/, ext: /None/ },
   { kind: "zero-paged", label: "Zero (1.1.7)", legacy: false, board: "DSPi Zero", protocol: /paged protocol/, pages: /0x01 SYS/, ext: /None/ },
 ];
@@ -108,7 +108,7 @@ for (const kind of ["sender", "sender-dual"]) {
     const errors = errorsOf(page);
     const serial = "PGSENDER";
     const session = await connect(page, serial, kind);
-    const sender = session.getByRole("region", { name: "Device information" });
+    const sender = session.getByRole("region", { name: "Connected Device" }) /* -- WP WEB7 -- Qt's group title */;
     await expect(sender).toBeVisible();
     await expect(fact(sender, "device-kind")).toHaveText("Audio link sender");
     await expect(session.locator(".sender-note")).toContainText("no DSP");

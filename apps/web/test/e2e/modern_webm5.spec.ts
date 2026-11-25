@@ -86,7 +86,8 @@ async function setMode(page: Page, session: Locator, mode: "Simple" | "Advanced"
 /** Every page of the demo device, in the rail's order; the first of each section is its screenshot. */
 const PAGES = [
   "Main", "Overview", "EQ", "Crossover", "Delay & Gain", "Inputs", "Matrix", "Effects", "Measure", "Analyser", "Signal Generator",
-  "Stats for nerbs", "Interrupt Monitor", "Snapshots", "History", "Files", "System", "Events", "Connect", "Device", "Settings", "Control Surfaces",
+  "Stats for nerbs", "Interrupt Monitor", "Snapshots", "History", "Files", "System", "Clock and Links", "Installation", "Events", "Signal Chain", // -- WP WEB7 --
+  "Connect", "Device", "Settings", "Control Surfaces",
 ];
 const SHOTS = new Set(["Main", "EQ", "Crossover", "Matrix", "Effects", "Measure", "Analyser", "Snapshots", "History", "System", "Device", "Settings"]);
 

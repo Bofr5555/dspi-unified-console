@@ -39,7 +39,7 @@ test("WEBM1 sections: the pages of each mode; a mode's empty sections are not in
   const advanced = of("advanced");
   assert.deepEqual(ids(advanced), ids([...SECTIONS]));
   assert.deepEqual(ids(advanced.find((s) => s.id === "analyse")!.pages), ["analyser", "generator", "stats", "monitor"]);
-  assert.deepEqual(ids(advanced.find((s) => s.id === "system")!.pages), ["system", "events"]);
+  assert.deepEqual(ids(advanced.find((s) => s.id === "system")!.pages), ["system", "system-clock", "system-installation", "events", "chain"]); // -- WP WEB7 -- Qt's Units | Clock and Links | Installation | Events, then the web's Signal Chain
   // -- WP WEB7 -- Control Surfaces is Settings' Control part (Qt Modern), no page of its own
   assert.deepEqual(ids(advanced.find((s) => s.id === "settings")!.pages), ["settings"]);
   assert.deepEqual(ids(of("installer").find((s) => s.id === "settings")!.pages), ["settings", "installer"]);
