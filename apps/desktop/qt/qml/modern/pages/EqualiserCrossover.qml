@@ -35,14 +35,15 @@ EqualiserSection {
         return list
     }
     // -- WP UA1 -- the outputs the table shows: every one while the unused are
-    // open, else those with a route and the selected one
+    // open, else those with a route, those a test signal plays on (the core's
+    // `hidden` is unused and silent: a playing output never folds) and the selected one
     property bool unusedOpen: false
     readonly property var unusedOutputs: {
         const list = []
         if (DeviceModel.revision < 0 || ChannelController.revision < 0) return list
         for (let o = 0; o < ChannelController.numOutputs; ++o) {
             const r = DeviceModel.channels.rowOfChannel(ChannelController.outputChannel(o))
-            if (r >= 0 && DeviceModel.channels.get(r, "unused") === true) list.push(o)
+            if (r >= 0 && DeviceModel.channels.get(r, "hidden") === true) list.push(o)
         }
         return list
     }

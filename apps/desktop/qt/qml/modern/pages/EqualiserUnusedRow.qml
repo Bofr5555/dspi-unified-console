@@ -4,7 +4,7 @@ import QtQuick.Layouts
 import UConsole
 
 // -- WP UA1 -- (UXP A1, C5) The last row of an Equaliser table: the outputs
-// nothing is routed to, folded under one row ("5 unused" with a chevron); a
+// nothing is routed to and no test signal plays on, folded under one row ("5 unused" with a chevron); a
 // click (`clicked`) opens them in their places, as "3 · None", and folds them again.
 AbstractButton {
     id: fold

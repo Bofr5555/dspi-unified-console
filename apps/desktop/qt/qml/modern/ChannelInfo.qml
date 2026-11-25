@@ -16,11 +16,13 @@ QtObject {
     readonly property string descriptor: field("descriptor")
     // -- WP UA1 -- (UXP A1) one name per output in Modern: the name first, its
     // number second ("Left woofer · 1"); a name that says its number already
-    // ("Out 1 · L", "3 · None") stands alone. Nothing routed to it: `unused`.
+    // ("Out 1 · L", "3 · None") stands alone. Nothing routed to it: `unused`;
+    // and no test signal on it either: `hidden` (-- WP FIN015 --, a table may fold it).
     readonly property string name: displayName || label
     readonly property string numberText: isOutput ? numberOf(name, number) : ""
     readonly property string title: titleOf(channel)
     readonly property bool unused: DeviceModel.revision >= 0 && isOutput && DeviceModel.channels.get(row, "unused") === true
+    readonly property bool hidden: DeviceModel.revision >= 0 && isOutput && DeviceModel.channels.get(row, "hidden") === true
     // What the command palette finds it by: its names and their words, the
     // speaker's side and role, its number ("tweeter", "left", "Out 2", "2")
     readonly property var keywords: {

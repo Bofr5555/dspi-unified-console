@@ -7,6 +7,7 @@
 //   its "also feeds" chips (the connected outputs only, "+" for the rest) and
 //   Settings › Installer's headings name the outputs so; Classic's matrix head
 //   keeps the label; ChannelInfo's keywords find "tweeter", "Left" and "2".
+//   An unused output the generator plays on is never folded (FIN015's `hidden`).
 //   Screenshots of each, dark and light, go to <out>/ua1/.
 #include "SmokeDriver.h"
 
@@ -22,6 +23,7 @@
 #include "SettingsController.h"
 #include "Shell.h"
 #include "SidebarController.h"
+#include "SiggenController.h"
 #include "Snapshot.h"
 
 #include <QDir>
@@ -220,6 +222,28 @@ void namesSection(SmokeDriver &d) {
                 press(prefix + QStringLiteral(".unused"));
                 if (first)
                     d.check(QStringLiteral("ua1: %1 folds again").arg(key), !shownItem(w->contentItem(), prefix + QStringLiteral(".row.4")));
+            }
+            // A playing output is never folded: quiet noise on output 6 alone
+            auto *sg = Registrar::instance<SiggenController>();
+            if (first && sg && d.waitFor(5000, [&] { return sg->available(); })) {
+                sg->selectType(SiggenController::Pink);
+                sg->noOutputs();
+                sg->stepOutput(5);
+                sg->setLevel(-60);
+                sg->play();
+                d.check(QStringLiteral("ua1: %1 shows output 6 while the generator plays on it").arg(key), d.waitFor(5000, [&] {
+                    return sg->playing() && shownItem(w->contentItem(), prefix + QStringLiteral(".row.5"))
+                        && !shownItem(w->contentItem(), prefix + QStringLiteral(".row.4"));
+                }));
+                const QStringList foldTexts = textsUnder(shownItem(w->contentItem(), prefix + QStringLiteral(".unused")));
+                d.check(QStringLiteral("ua1: and folds the other %1 (%2)").arg(unusedCount - 1).arg(foldTexts.join(QLatin1Char('|'))),
+                        foldTexts.contains(QStringLiteral("%1 unused").arg(unusedCount - 1)));
+                sg->stopPlaying(true);
+                d.check(QStringLiteral("ua1: stopped, %1 folds it again").arg(key), d.waitFor(5000, [&] {
+                    return !sg->playing() && !shownItem(w->contentItem(), prefix + QStringLiteral(".row.5"));
+                }));
+            } else if (first) {
+                d.check("ua1: the generator", false);
             }
         }
 
