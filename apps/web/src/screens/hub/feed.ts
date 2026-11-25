@@ -55,6 +55,13 @@ export interface HubView {
   // -- WP P3WHB --
   /** The hub's alarm rules (`hubAlarmRulesGet`), the health board's thresholds; [] when not read. */
   rules: HubAlarmRuleRecord[];
+  // -- WP REVEFIX --
+  /**
+   * The hub did not answer while the link reconnects (REVE C4): the view is its last word, its actions are off and its
+   * alarms are not offered for acknowledging. Set by a read that fails then, not by the link's phase (a device-only
+   * reconnect, choosing a device or none at all leave a hub that answers).
+   */
+  stale: boolean;
 }
 
 /** What one action said: a line for the user, and the notice it came with. */
@@ -76,7 +83,7 @@ export function hubScreenShown(caps: HubCapsRecord | null): boolean {
 }
 
 export class HubFeed {
-  view: HubView = { caps: null, role: "", devices: [], health: [], alarms: [], stats: null, error: "", notices: {}, rules: [] /* -- WP P3WHB -- */ };
+  view: HubView = { caps: null, role: "", devices: [], health: [], alarms: [], stats: null, error: "", notices: {}, rules: [] /* -- WP P3WHB -- */, stale: false };
   private readonly listeners = new Set<() => void>();
   private readonly alarmListeners = new Set<(on: Condition[]) => void>();
   private timer: ReturnType<typeof setTimeout> | null = null;
@@ -225,7 +232,7 @@ export class HubFeed {
       },
       acknowledge: async (key) => {
         const id = alarmIdOf(key);
-        if (!id) return;
+        if (!id || this.view.stale) return;
         const a = this.view.alarms.find((x) => x.id === id);
         if (a && a.state !== "raised") return;
         await this.acknowledge(id);
@@ -246,13 +253,16 @@ export class HubFeed {
     if (!caps?.onHub) {
       // -- WP WEB5 -- the link reconnecting: the hub's last word stays (the page says it is not connected)
       // instead of the page going away under the person until the hub answers again
-      if (this.view.caps?.onHub && this.session.state.link?.phase === "reconnecting") return;
-      this.set({ caps, role: "", devices: [], health: [], alarms: [], stats: null, error: "", rules: [] /* -- WP P3WHB -- */ });
+      if (this.view.caps?.onHub && this.session.state.link?.phase === "reconnecting") {
+        if (!this.view.stale) this.set({ stale: true }); // -- WP REVEFIX --
+        return;
+      }
+      this.set({ caps, role: "", devices: [], health: [], alarms: [], stats: null, error: "", rules: [] /* -- WP P3WHB -- */, stale: false });
       this.rulesAt = 0; // -- WP P3WHB --
       return;
     }
     const role = await core.call("hubRole", undefined).then((r) => r?.role ?? "", () => this.view.role);
-    const patch: Partial<HubView> = { caps, role, error: "" };
+    const patch: Partial<HubView> = { caps, role, error: "", stale: false };
     const errors: string[] = [];
     const take = async <T>(on: boolean, run: () => Promise<T>, put: (v: T) => void, none: () => void) => {
       if (!on) return none();
@@ -324,6 +334,8 @@ export class HubFeed {
   }
 
   private conditions(): Condition[] {
+    // -- WP REVEFIX -- (REVE C4) a hub that does not answer has no alarms to offer: the strip says the link is lost
+    if (this.view.stale) return [];
     const notices = this.view.notices;
     return alarmConditions(this.view.alarms, this.openSerial(), (a) => notices[a.id] ?? null, (s) => this.deviceName(s));
   }

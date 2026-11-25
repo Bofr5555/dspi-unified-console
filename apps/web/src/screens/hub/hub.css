@@ -7,15 +7,15 @@
    the alarm banner a notice row; the page dimmed under a notice while the hub does not answer. */
 
 .dspi-web .hub-screen { display: flex; flex-direction: column; gap: 24px; }
-.dspi-web .hub-screen > .card { padding: 0; border: 0; border-radius: 0; background: none; }
-.dspi-web .hub-screen > .card > .card-head { flex-wrap: wrap; justify-content: flex-start; gap: 6px 12px; min-height: 28px; margin-bottom: 4px; }
-.dspi-web .hub-screen > .card > .card-head > h2 { margin-right: auto; }
-.dspi-web .hub-screen > .card > h2 { margin: 0 0 8px; }
-.dspi-web .hub-screen > .card > p { margin: 4px 0; }
-.dspi-web .hub-screen > .hub-alarms, .dspi-web .hub-screen > .hub-groups, .dspi-web .hub-screen > .hub-rollout,
-.dspi-web .hub-screen > .hub-name-card { max-width: var(--content-max); }
+.dspi-web .hub-fence > .card { padding: 0; border: 0; border-radius: 0; background: none; }
+.dspi-web .hub-fence > .card > .card-head { flex-wrap: wrap; justify-content: flex-start; gap: 6px 12px; min-height: 28px; margin-bottom: 4px; }
+.dspi-web .hub-fence > .card > .card-head > h2 { margin-right: auto; }
+.dspi-web .hub-fence > .card > h2 { margin: 0 0 8px; }
+.dspi-web .hub-fence > .card > p { margin: 4px 0; }
+.dspi-web .hub-fence > .hub-alarms, .dspi-web .hub-fence > .hub-groups, .dspi-web .hub-fence > .hub-rollout,
+.dspi-web .hub-fence > .hub-name-card { max-width: var(--content-max); }
 .dspi-web .hub-screen .note { font-size: 11px; color: var(--muted); }
-.dspi-web .hub-screen.away > section { opacity: 0.6; }
+.dspi-web .hub-screen.away .hub-fence > section { opacity: 0.6; }
 
 /* A part inside a section: a title in the text's tone, no rule above it */
 .dspi-web .hub-screen .card h3 { margin: 16px 0 4px; font-size: inherit; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--text); }
@@ -151,3 +151,5 @@
 .dspi-web .hub-screen :is(.hub-table, .hub-fleet-list) td { overflow-wrap: normal; }
 .dspi-web .hub-screen .hub-table td:first-child { min-width: 8rem; }
 .dspi-web .hub-screen .hub-table .hub-serial { white-space: nowrap; }
+/* -- WP REVEFIX -- (REVE C4) the page's controls, off together while the hub does not answer */
+.dspi-web .hub-fence { display: contents; }
