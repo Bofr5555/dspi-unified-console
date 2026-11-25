@@ -6911,6 +6911,7 @@ internal fun se.bofr.dspi.ffi.uniffi.OutputLabel.toDomain() =
         userNamed = userNamed,
         channel = channel,
         band = band,
+        unused = unused,
     )
 
 internal fun OutputLabel.toFfi() =
@@ -6922,6 +6923,7 @@ internal fun OutputLabel.toFfi() =
         userNamed = userNamed,
         channel = channel,
         band = band,
+        unused = unused,
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.OutputCard.toDomain() =

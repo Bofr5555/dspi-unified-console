@@ -122,16 +122,23 @@ export function moveCell(at: CellAt, key: string, inputs: number, outputs: numbe
 }
 
 /**
- * -- WP WEB2 -- (REVD G1) Which way a "+" or "−" key steps a crosspoint's gain: by the key's place
- * (`code`) as well as its character, since Alt turns "-" into a dead key or a dash on some layouts and
- * Shift is how "+" is typed on most. 0 for any other key. Stepping needs Alt or Ctrl; the plain keys
- * start a typed gain, so "-6" is −6 dB.
+ * -- WP WEB2 -- (REVD G1) Which way a "+" or "−" key steps a crosspoint's gain. Stepping needs Alt or Ctrl; the plain
+ * keys start a typed gain, so "-6" is −6 dB. 0 for any other key.
+ * -- WP REVEFIX -- (REVE C2) by the typed character first: on a Swedish Mac Option+"+" types "±" on the key a US layout
+ * has "-" on, and German "ß" sits there too. The key's place counts only when it types nothing ("Dead", "Unidentified");
+ * AltGr is no step, since it types other characters (Swedish Windows AltGr+"+" is "\").
  */
-export function stepSign(e: { key: string; code?: string }): 1 | -1 | 0 {
-  if (e.key === "+" || e.key === "=" || e.code === "Equal" || e.code === "NumpadAdd") return 1;
-  if (e.key === "-" || e.key === "_" || e.key === "\u2212" || e.code === "Minus" || e.code === "NumpadSubtract") return -1;
+export function stepSign(e: { key: string; code?: string; altGraph?: boolean }): 1 | -1 | 0 {
+  if (e.altGraph) return 0;
+  if (STEP_UP.has(e.key)) return 1;
+  if (STEP_DOWN.has(e.key)) return -1;
+  if (e.key !== "Dead" && e.key !== "Unidentified") return 0;
+  if (e.code === "Equal" || e.code === "NumpadAdd") return 1;
+  if (e.code === "Minus" || e.code === "NumpadSubtract") return -1;
   return 0;
 }
+const STEP_UP = new Set(["+", "=", "±", "≠"]);
+const STEP_DOWN = new Set(["-", "_", "\u2212", "\u2013"]);
 
 /** A crosspoint's gain one step on: 0.5 dB, or 3 dB (`big`: Ctrl on a key, Shift on the wheel; Alt on a key is 0.5). */
 export function stepGain(db: number, dir: 1 | -1, big: boolean, range: readonly [number, number]): number {

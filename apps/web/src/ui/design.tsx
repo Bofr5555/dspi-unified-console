@@ -88,6 +88,14 @@ const GLYPHS: Record<string, ComponentChildren> = {
     </>
   ),
   "chevron-down": <path d="m6 9 6 6 6-6" />,
+  // -- WP REVEFIX -- the top bar's and the dock's (Qt's TopBar and Dock)
+  "chevrons-up-down": <path d="m7 15 5 5 5-5M7 9l5-5 5 5" />,
+  "circle-x": (
+    <>
+      <circle cx="12" cy="12" r="10" />
+      <path d="m15 9-6 6M9 9l6 6" />
+    </>
+  ),
   // -- WP WEB2 -- the effects' intro rows (Qt's ToolHeader icons), the overview's tiles
   headphones: <path d="M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a9 9 0 0 1 18 0v7a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3" />,
   ear: (

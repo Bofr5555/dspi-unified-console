@@ -1,6 +1,7 @@
 // -- WP WEBM1 -- The dock along the bottom, on every page of a device: the source, the User or
 // Master volume with Mute and Bypass (the Main window's card, which lived on its page until now)
-// and a meter per channel.
+// and a meter per channel. -- WP REVEFIX -- (REVE §3.1, Qt's Dock) User | Master segments, icons,
+// "Bypass EQ", the source a combo in the control tone, the two cores' load at the right end.
 
 import type { ComponentChildren } from "preact";
 import { VolumeCard } from "../../screens/main/Volume";
@@ -15,6 +16,8 @@ export function Dock(props: {
   /** The locked-user state: volume, mute and presets only. */
   locked: boolean;
   meters: ComponentChildren;
+  /** -- WP REVEFIX -- the two cores' load, at the right end */
+  load?: ComponentChildren;
 }) {
   const { session, state } = props;
   const s = state.snapshot?.state;
@@ -25,6 +28,7 @@ export function Dock(props: {
       <SourcePicker session={session} s={s} disabled={off || props.locked} />
       <VolumeCard session={session} userDb={s.userVolumeDb} masterDb={s.masterVolumeDb} mute={s.userMute} bypass={s.bypass} disabled={off} />
       <div class="dock-meters">{props.meters}</div>
+      {props.load}
     </footer>
   );
 }

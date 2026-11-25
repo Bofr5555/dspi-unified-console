@@ -21,7 +21,7 @@ import { Dialog } from "../screens/main/Dialog";
 import { MainScreen } from "../screens/main/MainScreen";
 // -- WP WB6c --
 import { MatrixScreen } from "../screens/matrix/MatrixScreen";
-import { changeSummary } from "../screens/main/model";
+import { PRESET_SLOTS, changeSummary } from "../screens/main/model";
 import type { Session } from "./session";
 // -- WP SW3 -- the System view (WB6d), the scene bar (WB6e), the status rail (WB6f)
 import { safeLocalStorage } from "../fleet/local";
@@ -51,7 +51,7 @@ import type { ChainTarget } from "../screens/system/chain";
 
 // -- WP WB6F -- the status rail's health row and panel
 import { HealthFeed } from "./status-rail/feed";
-import { HealthRail } from "./status-rail/HealthRail";
+import { CoreLoad, HealthRail } from "./status-rail/HealthRail";
 
 // -- WP WB6G -- the input pages
 import { InputsScreen } from "../screens/inputs/InputsScreen";
@@ -86,7 +86,7 @@ import { AutoEqScreen } from "../screens/autoeq/AutoEqScreen";
 // -- WP WEBM1 -- the Modern shell
 import { Frame } from "./shell/Frame";
 import { Dock } from "./shell/Dock";
-import { SessionBar } from "./shell/SessionBar";
+import { useSessionBar } from "./shell/SessionBar";
 import { CONNECT, sectionOf, sectionsFor } from "./shell/sections";
 import { placeOf } from "./shell/places";
 import { watchFollow } from "./follow-agent"; // -- WP ODEC --
@@ -142,9 +142,9 @@ export const SCREENS: ScreenDef[] = [
   { id: "main", label: "Dashboard", View: MainScreen },
   // -- WP WB6b --
   { id: "eq", label: "PEQ", View: EqScreen }, // -- WP WEBM2 -- the Equaliser's PEQ tab (MODLAY 2)
-  // -- WP WEBM2 -- the Equaliser's Crossover and Delay & gain tabs (setting up: not in Simple)
+  // -- WP WEBM2 -- the Equaliser's Crossover and Delay & Gain tabs (setting up: not in Simple)
   { id: "xover", label: "Crossover", View: CrossoverScreen },
-  { id: "delays", label: "Delay & gain", View: DelaysScreen },
+  { id: "delays", label: "Delay & Gain", View: DelaysScreen },
   // -- WP WB6G -- (UI-MODES: "Channels and EQ", every mode)
   { id: "inputs", label: "Inputs", View: InputsScreen },
   // -- WP WB6c --
@@ -244,8 +244,7 @@ export function Screens(props: {
   session: Session;
   // -- WP WEBM1 --
   shell: ShellProps;
-  /** The session's own part of its bar (name, Disconnect), and of the status strip (the link, an error). */
-  head: ComponentChildren;
+  /** The session's own part of the status strip (the demo, the link, an error). */
   strip: ComponentChildren;
   meters: ComponentChildren;
 }) {
@@ -422,7 +421,9 @@ export function Screens(props: {
     session.leaveGuard = async () => {
       const a = await unsaved();
       if (a === "cancel") return false;
-      if (a === "save") return session.savePreset(session.state.snapshot?.state.activePresetSlot ?? 0);
+      // -- WP REVEFIX -- a slot the device has not said is no slot to save to (REVE B1)
+      const slot = session.state.snapshot?.state.activePresetSlot ?? PRESET_SLOTS;
+      if (a === "save") return slot < PRESET_SLOTS && session.savePreset(slot);
       return true;
     };
     return () => {
@@ -452,6 +453,8 @@ export function Screens(props: {
   const board = shell.board;
   useEffect(() => () => board?.clearSession(session.id), [board, session]);
 
+  // -- WP REVEFIX -- the device's parts of the top bar
+  const bar = useSessionBar({ session, state: st, desk, ask, unsaved, locked: lockedUser, onUnlock: () => setUnlocking(true) });
   // -- WP WEBM1 -- the scenes and the preset slots are the Overview's and their own pages' (the bar's picker recalls on every page)
   const section = sectionOf(page);
   const pro = mode !== "simple" && !lockedUser;
@@ -459,12 +462,7 @@ export function Screens(props: {
     <Frame
       root={root}
       screens
-      bar={
-        <>
-          {props.head}
-          <SessionBar session={session} state={st} desk={desk} ask={ask} unsaved={unsaved} locked={lockedUser} onUnlock={() => setUnlocking(true)} />
-        </>
-      }
+      bar={shell.top(bar) /* -- WP REVEFIX -- the one top bar (Qt's TopBar) with this device's parts */}
       strip={
         <>
           {/* -- WP FEATUI -- an AI agent working on this hub's devices, first as the desktop's strip */}
@@ -519,7 +517,7 @@ export function Screens(props: {
           <HealthRail session={session} feed={health} />
         </StatusRail>
       }
-      dock={<Dock session={session} state={st} locked={lockedUser} meters={props.meters} />}
+      dock={<Dock session={session} state={st} locked={lockedUser} meters={props.meters} load={<CoreLoad feed={health} /> /* -- WP REVEFIX -- */} />}
     >
       {/* -- WP SW3 -- on an installation, the scene bar */}
       {pro && (section === "overview" || section === "system") ? <SceneBar feed={system} session={session} ask={ask} /> : null}

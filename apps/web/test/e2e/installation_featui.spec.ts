@@ -57,11 +57,11 @@ async function openOn(page: Page, hub: OwnHub, serial: string): Promise<Locator>
     await session.getByRole("button", { name: "Pair" }).click();
   }
   const entry = session.getByRole("list", { name: /DSPis on/ }).getByRole("listitem").filter({ hasText: serial.slice(-8) });
-  const meta = session.locator(".device-meta");
+  const meta = page.locator(`article[data-serial="${serial}"]`); // -- WP REVEFIX -- the open DSPi
   // A hub with one DSPi opens it at once; one with several lists them.
-  await expect(entry.or(meta.filter({ hasText: serial }))).toBeVisible();
+  await expect(entry.or(meta)).toBeVisible();
   if (await entry.isVisible()) await entry.getByRole("button", { name: "Open" }).click();
-  await expect(meta).toContainText(serial);
+  await expect(meta).toBeVisible();
   const rail = session.getByRole("complementary", { name: "Status" });
   await expect(rail.getByLabel("Connection")).toHaveText(/^Connected/);
   await expect(session.locator(".banner")).toHaveCount(0);

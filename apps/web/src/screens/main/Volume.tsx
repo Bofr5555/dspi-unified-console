@@ -9,7 +9,7 @@ import { useState } from "preact/hooks";
 import { safeLocalStorage } from "../../fleet/local";
 import type { Session } from "../../ui/session";
 import { dragProps, useLiveWrite } from "./live";
-import { rangeFill } from "../../ui/design"; // -- WP WEB2 --
+import { Glyph, rangeFill } from "../../ui/design"; // -- WP WEB2 -- -- WP REVEFIX -- Glyph
 import {
   MASTER_STEPS,
   USER_STEPS,
@@ -60,22 +60,28 @@ export const VolumeCard = memo(function VolumeCard(props: {
     if (!disabled) live.release(0);
   };
 
+  // -- WP REVEFIX -- (REVE §3.1, Qt's Dock) User | Master as segments, the speaker icon before the slider, the value
+  // after it, then Mute and Bypass EQ with their icons
   return (
     <section class="card volume-card" aria-label="Volume">
       <div class="card-head">
-        <select
-          class="volume-mode"
-          aria-label="Volume shown"
-          value={mode}
-          onChange={(e) => {
-            const m = (e.target as HTMLSelectElement).value === "master" ? "master" : "user";
-            setMode(m);
-            saveMode(m);
-          }}
-        >
-          <option value="user">Volume</option>
-          <option value="master">Master volume</option>
-        </select>
+        <div class="segments volume-mode" role="group" aria-label="Volume shown">
+          {(["user", "master"] as const).map((m) => (
+            <button
+              type="button"
+              key={m}
+              aria-pressed={mode === m}
+              title={m === "user" ? "The user volume" : "The master volume"}
+              onClick={() => {
+                setMode(m);
+                saveMode(m);
+              }}
+            >
+              {m === "user" ? "User" : "Master"}
+            </button>
+          ))}
+        </div>
+        <Glyph name={props.mute ? "volume-x" : "volume"} class="volume-icon" />
         <output class="volume-value" aria-live="polite">
           {volumeText(db, master)}
         </output>
@@ -105,6 +111,7 @@ export const VolumeCard = memo(function VolumeCard(props: {
           disabled={disabled}
           onClick={() => void session.write("vol.mute", { bool: !props.mute })}
         >
+          <Glyph name="volume-x" />
           Mute
         </button>
         <button
@@ -114,7 +121,8 @@ export const VolumeCard = memo(function VolumeCard(props: {
           disabled={disabled}
           onClick={() => void session.write("bypass", { bool: !props.bypass })}
         >
-          Bypass
+          <Glyph name="circle-x" />
+          Bypass EQ
         </button>
       </div>
     </section>

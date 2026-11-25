@@ -112,7 +112,7 @@ async function openUnit(page: Page, hub: OwnHub, serial: string): Promise<Locato
   }
   const entry = session.getByRole("list", { name: /DSPis on/ }).getByRole("listitem").filter({ hasText: serial.slice(-8) });
   await entry.getByRole("button", { name: "Open" }).click();
-  await expect(session.locator(".device-meta")).toContainText(serial);
+  await expect(session).toHaveAttribute("data-serial", new RegExp(serial));
   const rail = session.getByRole("complementary", { name: "Status" });
   await expect(rail.getByLabel("Connection")).toHaveText(/^Connected/);
   await expect(session.locator(".banner")).toHaveCount(0);

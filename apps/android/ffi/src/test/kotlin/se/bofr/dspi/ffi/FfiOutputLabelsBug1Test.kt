@@ -55,7 +55,10 @@ class FfiOutputLabelsBug1Test {
             val s = core.getState()
             val labels = core.outputLabels()
             assertEquals(s.numOutputChannels, labels.size)
-            labels.forEachIndexed { o, l -> assertTrue(l.label, l.userNamed || l.label.startsWith("Out ${o + 1} · ")) }
+            // -- WP REVEFIX -- an unused output is "3 · None" (owner 2026-11-24)
+            labels.forEachIndexed { o, l ->
+                assertTrue(l.label, l.userNamed || l.label.startsWith("Out ${o + 1} · ") || (l.unused && l.label == "${o + 1} · None"))
+            }
             // No pair map on the demo: the cards pair by slot
             core.outputCards().forEach { c -> c.right?.let { assertEquals(c.left + 1, it) } }
             assertFalse(s.crossfeedPairMap.any { it != 0 })

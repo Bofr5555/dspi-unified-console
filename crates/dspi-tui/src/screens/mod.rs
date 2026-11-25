@@ -464,8 +464,11 @@ fn with_shown<T>(state: &DeviceState, output: usize, f: impl FnOnce(&Shown) -> T
             c.outputs = output_labels(&LabelSource::from_state(state))
                 .into_iter()
                 .map(|l| {
+                    // -- WP REVEFIX -- (REVE C5) an unused output is the core's "None"
+                    // beside its OUTn (owner 2026-11-24: "3 · None"), never "None·Lo"
                     let short = match (l.user_named, l.band) {
                         (true, _) => l.label.clone(),
+                        (false, _) if l.unused => l.short_label.clone(),
                         (false, Band::Full) => l.channel.clone(),
                         (false, Band::Low) => format!("{}·Lo", l.channel),
                         (false, Band::High) => format!("{}·Hi", l.channel),
@@ -971,10 +974,10 @@ pub(crate) mod tests {
         for o in 0..s.caps.num_outputs as usize {
             let l = channel_label(&s, ni + o);
             let stored = channel_name(&s, ni + o);
-            // -- WP INTD -- (W12) an unused full-range output is "Out N" alone
+            // -- WP INTD -- (W12); -- WP REVEFIX -- an unused output is "N · None"
             assert!(
                 l == stored
-                    || l == format!("Out {}", o + 1)
+                    || l == format!("{} · None", o + 1)
                     || l.starts_with(&format!("Out {} · ", o + 1)),
                 "{o}: {l} / {stored}"
             );
@@ -986,6 +989,24 @@ pub(crate) mod tests {
     #[test]
     fn bug1_k340_sidebar_frame() {
         let (s, mut session) = k340();
+        // -- WP REVEFIX -- (REVE C5) the first unused output low-passed: still "None"
+        let ni = usize::from(s.caps.num_inputs);
+        let spare = (0..usize::from(s.caps.num_outputs))
+            .find(|&o| channel_label(&s, ni + o) == format!("{} · None", o + 1))
+            .expect("an unused output");
+        session
+            .write_band(&dspi_proto::value::EqParamPacket {
+                channel: (ni + spare) as u8,
+                band: 0,
+                filter_type: dspi_proto::enums::FilterType::LowPass,
+                bypass: false,
+                freq: 300.0,
+                q: 0.707,
+                gain_db: 0.0,
+                qp: None,
+            })
+            .unwrap();
+        let s = DeviceState::new(s.caps.clone(), session.snapshot().unwrap());
         let theme = crate::Theme::console(
             crate::theme::ColorDepth::TrueColor,
             crate::theme::Glyphs::Braille,
@@ -1003,5 +1024,16 @@ pub(crate) mod tests {
             assert!(frame.contains(l), "{l} not in\n{frame}");
         }
         assert_eq!(channel_short_label(&live.state, 8), "R·Lo");
+        // -- WP REVEFIX -- (REVE C5) the unused outputs read the core's "None" in
+        // the sidebar and "N · None" elsewhere, never a band word after "None"
+        assert!(!frame.contains("None·"), "{frame}");
+        assert_eq!(channel_short_label(&live.state, ni + spare), "None");
+        let unused: Vec<usize> = (0..usize::from(live.state.caps.num_outputs))
+            .filter(|&o| channel_label(&live.state, ni + o) == format!("{} · None", o + 1))
+            .collect();
+        assert!(!unused.is_empty());
+        for o in unused {
+            assert_eq!(channel_short_label(&live.state, ni + o), "None");
+        }
     }
 }

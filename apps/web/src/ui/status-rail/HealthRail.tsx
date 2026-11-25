@@ -1,14 +1,13 @@
-// WP WB6f: the status rail's second row and its health panel, inside the rail
+// WP WB6f: the status rail's health summary and its panel, inside the rail
 // SW3 built (screens/system/StatusRail.tsx: connection, scene, mode, system
-// mute, the hub's installation alarms). This row: the device, the preset (and
-// whether it has unsaved changes), the two cores' load (M26) and the health
-// summary, which opens the panel. The panel lists every problem since it was
-// raised until it is acknowledged; it opens by itself when a new one comes.
+// mute, the hub's installation alarms). The summary opens the panel. The panel
+// lists every problem since it was raised until it is acknowledged; it opens by
+// itself when a new one comes.
+// -- WP REVEFIX -- (REVE §3.1, F8) on the rail's one line: the device and the
+// preset are the top bar's, the two cores' load (M26) is the dock's (Qt's).
 
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { Session } from "../session";
-import { useSessionState } from "../components";
-import { presetLabel } from "../../screens/main/model";
 import { LOAD_HIGH, healthSummary, type Problem } from "./health";
 import type { HealthFeed } from "./feed";
 
@@ -19,9 +18,7 @@ export function useHealth(feed: HealthFeed) {
 }
 
 export function HealthRail(props: { session: Session; feed: HealthFeed }) {
-  const ss = useSessionState(props.session);
   const view = useHealth(props.feed);
-  const snap = ss.snapshot;
   const summary = healthSummary(view.problems);
   const [open, setOpen] = useState(false);
   // A problem that is new, or on again, opens the panel.
@@ -33,35 +30,9 @@ export function HealthRail(props: { session: Session; feed: HealthFeed }) {
     if (fresh.length) setOpen(true);
   }, [raised.join(" ")]);
   const unack = view.problems.filter((p) => !p.acknowledged).length;
-  const slot = snap?.state.activePresetSlot ?? 0;
   return (
     <>
       <div class="sys-rail-row health-row">
-        <span class="sys-rail-item" aria-label="Device">
-          {snap?.device.name || "DSPi"}
-        </span>
-        {snap ? (
-          <span class="sys-rail-item" aria-label="Preset">
-            Preset {presetLabel(snap.state, slot)}
-            {/* -- WP WEB2 -- (REVD W5) a warning dot and muted words, never orange body text */}
-            {ss.unsaved.length ? (
-              <span class="health-unsaved">
-                {" · "}
-                <i class="status-dot warn" aria-hidden="true" />
-                unsaved changes
-              </span>
-            ) : null}
-          </span>
-        ) : null}
-        <span class="sys-rail-item health-load" aria-label="Core load">
-          {view.load
-            ? view.load.map((pct, c) => (
-                <span key={c} class={pct > LOAD_HIGH ? "health-load-high" : undefined}>
-                  {c ? " · " : ""}C{c} {pct}%
-                </span>
-              ))
-            : "C0 – · C1 –"}
-        </span>
         <button
           type="button"
           class={`sys-rail-item health-sum health-${summary.tone}`}
@@ -96,6 +67,21 @@ export function HealthRail(props: { session: Session; feed: HealthFeed }) {
         </section>
       ) : null}
     </>
+  );
+}
+
+// -- WP REVEFIX --
+/** The two cores' load (M26), at the dock's right end as Qt's: "C0 3%  C1 0%", a high one in the danger colour. */
+export function CoreLoad(props: { feed: HealthFeed }) {
+  const view = useHealth(props.feed);
+  return (
+    <span class="dock-load health-load" aria-label="Core load">
+      {(view.load ?? [null, null]).map((pct, c) => (
+        <span key={c} class={pct !== null && pct > LOAD_HIGH ? "health-load-high" : undefined}>
+          C{c} {pct === null ? "–" : `${pct}%`}
+        </span>
+      ))}
+    </span>
   );
 }
 

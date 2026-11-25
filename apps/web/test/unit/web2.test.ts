@@ -42,6 +42,26 @@ test("WEB2 G1: + and − are read by the key's character or place; other keys ar
   assert.equal(stepSign({ key: "Enter" }), 0);
 });
 
+// -- WP REVEFIX -- (REVE C2)
+test("REVEFIX C2: the typed character decides on non-US layouts; the key's place only for a dead key; AltGr is no step", () => {
+  // sv-SE Mac: Option+"+" types "±" on the key a US layout has "-" on; Option+"-" types "–"
+  assert.equal(stepSign({ key: "±", code: "Minus" }), 1);
+  assert.equal(stepSign({ key: "–", code: "Slash" }), -1);
+  // sv-SE Windows: AltGr+"+" types "\\"; AltGr is never a step
+  assert.equal(stepSign({ key: "\\", code: "Minus", altGraph: true }), 0);
+  assert.equal(stepSign({ key: "+", code: "Minus", altGraph: true }), 0);
+  // sv-SE plain: "+" on Minus, "-" on Slash
+  assert.equal(stepSign({ key: "+", code: "Minus" }), 1);
+  assert.equal(stepSign({ key: "-", code: "Slash" }), -1);
+  // de-DE: Ctrl+ß is no step ("ß" is where a US layout has "-"); "+" is on BracketRight
+  assert.equal(stepSign({ key: "ß", code: "Minus" }), 0);
+  assert.equal(stepSign({ key: "+", code: "BracketRight" }), 1);
+  // A dead key types nothing: then its place
+  assert.equal(stepSign({ key: "Dead", code: "Equal" }), 1);
+  assert.equal(stepSign({ key: "Unidentified", code: "Minus" }), -1);
+  assert.equal(stepSign({ key: "Dead", code: "BracketLeft" }), 0);
+});
+
 test("WEB2 §11: a slider's filled part, clamped to its range", () => {
   assert.deepEqual(rangeFill(0, -60, 0), { "--fill": "100.00%" });
   assert.deepEqual(rangeFill(-30, -60, 0), { "--fill": "50.00%" });

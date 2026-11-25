@@ -68,7 +68,7 @@ fun DashboardOverview(bridge: DspiBridge, prefs: AppSettingsStore, modifier: Mod
     val s = bridge.observeState()
     val ready = bridge.observeDeviceReady()
     val cardsPerRow = prefs.settings.collectAsStateWithLifecycle().value.dashboardCardsPerRow
-    val cards = DashboardCard.cards(bridge.outputCards(), s.numOutputChannels, s.outputEnabled)
+    val cards = DashboardCard.cards(bridge.outputCards(), s.numOutputChannels, s.outputEnabled, bridge::outputUnused)
     BoxWithConstraints(modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 4.dp).alpha(if (ready) 1f else 0f)) {
         val columns = DashboardCard.columnCount(cardsPerRow, maxWidth.value, cards.size)
         // -- BUG1, review c86 F2 -- a card's width, for its headers' narrow form
