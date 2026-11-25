@@ -139,7 +139,9 @@ Item {
                     objectName: "OverviewSection." + modelData.key
                     Layout.fillWidth: true
                     Layout.topMargin: Theme.spacingSection - Theme.spacing
+                    // -- WP UA4 -- OUTPUTS always: with nothing on, the notice says why
                     visible: modelData.list.length > 0 || (modelData.key === "inputs" && flick.unused.length > 0)
+                             || (modelData.key === "outputs" && flick.outputs.length === 0)
                     spacing: Theme.spacingSmall
                     RowLayout {
                         Layout.fillWidth: true
@@ -177,9 +179,10 @@ Item {
                         objectName: "OverviewSection.notRouted"
                         Layout.fillWidth: true
                         Layout.maximumWidth: Theme.contentMaxWidth
-                        visible: group.modelData.key === "outputs" && flick.outputs.length === 0 && flick.notRouted.length > 0
+                        visible: group.modelData.key === "outputs" && flick.outputs.length === 0
                         kind: "info"
-                        text: qsTr("Not routed yet: no input reaches these outputs, so they play nothing.")
+                        text: flick.notRouted.length > 0 ? qsTr("Not routed yet: no input reaches these outputs, so they play nothing.")
+                                                         : qsTr("No output is in use yet: route an input to an output to hear it.")
                         actionText: qsTr("Open Routing")
                         onAction: if (page.host) page.host.go("routing", "")
                     }

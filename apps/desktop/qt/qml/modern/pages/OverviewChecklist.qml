@@ -89,6 +89,7 @@ ColumnLayout {
 
     RowLayout {
         Layout.fillWidth: true
+        Layout.maximumWidth: Theme.contentMaxWidth
         spacing: Theme.spacingSmall
         Text {
             text: qsTr("SET UP THIS DSPI")
