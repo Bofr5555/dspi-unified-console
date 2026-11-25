@@ -123,7 +123,7 @@ async function openHubScreen(page: Page, hub: OwnHub, scheme: "https" | "http", 
   }
   const entry = session.getByRole("list", { name: /DSPis on/ }).getByRole("listitem").filter({ hasText: DEMO.slice(-8) });
   await entry.getByRole("button", { name: "Open" }).click();
-  await expect(session.locator(".device-meta")).toContainText(DEMO);
+  await expect(session).toHaveAttribute("data-serial", new RegExp(DEMO));
   await session.getByRole("complementary", { name: "Status" }).getByRole("button", { name: /^Mode:/ }).click();
   const dialog = page.getByRole("dialog", { name: "Mode" });
   await dialog.getByRole("radio", { name: "Advanced" }).check();

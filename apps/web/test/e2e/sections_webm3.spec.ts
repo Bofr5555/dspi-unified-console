@@ -38,7 +38,7 @@ async function openOne(page: Page): Promise<{ one: Locator; session: Locator }> 
   await one.getByRole("region", { name: "Venue A" }).getByRole("button", { name: "Connect" }).click();
   const session = one.getByRole("article").first();
   await expect(rail(session)).toBeVisible();
-  await expect(session.locator(".device-meta")).toBeVisible();
+  await expect(session).toHaveAttribute("data-status", "open");
   return { one, session };
 }
 

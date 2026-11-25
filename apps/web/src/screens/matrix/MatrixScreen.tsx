@@ -313,9 +313,9 @@ const MatrixView = memo(
         setSel({ kind: "none" });
         return;
       }
-      // -- WP WEB2 -- (REVD G1) + and − step only with a modifier: Alt 0.5 dB, Ctrl 3 dB (by the key's
-      // place, so Alt's dead keys and Shift for "+" do not matter); without one they start a typed gain
-      const sign = stepSign(e);
+      // -- WP WEB2 -- (REVD G1) + and − step only with a modifier: Alt 0.5 dB, Ctrl 3 dB (by the typed character,
+      // the key's place only for a dead key: stepSign); without one they start a typed gain
+      const sign = stepSign({ key: e.key, code: e.code, altGraph: e.getModifierState?.("AltGraph") }); // -- WP REVEFIX -- (REVE C2)
       if (sign && (e.ctrlKey || e.altKey) && !e.metaKey) {
         e.preventDefault();
         step(i, o, sign, e.ctrlKey);
