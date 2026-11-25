@@ -5,7 +5,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { AnalyserView } from "../../src/core/tools-protocol";
-import { bassText, dbTicks, hzText, lowBandText, rangeText, statusParts, tidyChoice } from "../../src/screens/analysis/analyser";
+import { DEFAULT_SPECTRUM, bassText, dbTicks, hzText, lowBandText, rangeText, statusParts, tidyChoice } from "../../src/screens/analysis/analyser";
+import { drawBars } from "../../src/screens/analysis/SpectrumPage";
 
 function view(snap: Partial<AnalyserView["snapshot"]> = {}, caps: Partial<AnalyserView["caps"]> = {}): AnalyserView {
   return {
@@ -48,4 +49,40 @@ test("WEB6: the marks", () => {
   assert.deepEqual(dbTicks(-90, 6), [0, -12, -24, -36, -48, -60, -72, -84]);
   assert.deepEqual(dbTicks(-60, 24), [24, 12, 0, -12, -24, -36, -48, -60]);
   assert.deepEqual([20, 500, 1000, 20000].map(hzText), ["20", "500", "1k", "20k"]);
+});
+
+// -- WP FIN015 -- (REVF D3) a bar plot draws on a 2D context that records what it draws: the bars
+// (opaque, in the channel's colour) end left of every dB mark at the plot's right, so −36…−84 stay
+// readable in Bars and Both
+test("FIN015: the bars never paint over the dB marks at the plot's right", () => {
+  const g = globalThis as unknown as Record<string, unknown>;
+  g.window = { devicePixelRatio: 1 };
+  g.getComputedStyle = () => ({ getPropertyValue: () => "" });
+  const rects: { x: number; w: number }[] = [];
+  const marks: { left: number; text: string }[] = [];
+  const ctx = {
+    textAlign: "left",
+    setTransform() {},
+    clearRect() {},
+    beginPath() {},
+    moveTo() {},
+    lineTo() {},
+    stroke() {},
+    measureText: (t: string) => ({ width: t.length * 6 }),
+    fillRect(x: number, _y: number, w: number) {
+      rects.push({ x, w });
+    },
+    fillText(t: string, x: number) {
+      if (this.textAlign === "right") marks.push({ left: x - t.length * 6, text: t });
+    },
+  };
+  const canvas = { width: 0, height: 0, getBoundingClientRect: () => ({ width: 610, height: 260 }), getContext: () => ctx } as unknown as HTMLCanvasElement;
+  const bands = 40;
+  const v = view({ frames: [{ channel: 0, nBands: bands, silent: false, avgDb: Array(bands).fill(-6), peakDb: Array(bands).fill(-3) }], populated: "18446744073709551615" });
+  const n = drawBars(canvas, v, { channel: 0, name: "USB 1", colour: "#4a90d9" }, { ...DEFAULT_SPECTRUM, floorDb: -90, ceilingDb: 0 });
+  assert.equal(n, bands, "every band drawn");
+  assert.ok(marks.some((m) => m.text === "−84"), `the dB marks: ${marks.map((m) => m.text).join(" ")}`);
+  const gutter = Math.min(...marks.map((m) => m.left));
+  const right = Math.max(...rects.map((r) => r.x + r.w));
+  assert.ok(right <= gutter, `the bars end at ${right.toFixed(1)} px, the dB marks start at ${gutter.toFixed(1)} px`);
 });

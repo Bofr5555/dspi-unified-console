@@ -40,7 +40,7 @@ const MAX_HZ = 20000;
 const AXIS = 16;
 
 /** One channel as drawn: its number on the tap, its name and colour. */
-interface Drawn {
+export interface Drawn {
   channel: number;
   name: string;
   colour: string;
@@ -72,8 +72,22 @@ function fit(c: HTMLCanvasElement): { ctx: CanvasRenderingContext2D; w: number; 
   return { ctx, w, h };
 }
 
-/** The grid and the marks of a plot `w` × `plotH` (the Hz marks under it, the dB marks at its right). */
-function grid(ctx: CanvasRenderingContext2D, el: Element, w: number, plotH: number, p: SpectrumPrefs, marks: { hz: boolean; db: boolean }) {
+/** The dB marks' text ("−84", "+12"). */
+function dbText(db: number): string {
+  return db > 0 ? `+${db}` : String(db).replace("-", "−");
+}
+
+/** -- WP FIN015 -- (REVF D3) The room the dB marks take at the plot's right, px (their widest, and a margin). */
+function dbGutter(ctx: CanvasRenderingContext2D, el: Element, p: SpectrumPrefs): number {
+  ctx.font = `10px ${tone(el, "--mono", "monospace")}`;
+  return Math.ceil(Math.max(0, ...dbTicks(p.floorDb, p.ceilingDb).map((db) => ctx.measureText(dbText(db)).width))) + 8;
+}
+
+/**
+ * The grid and the marks of a plot `w` × `plotH` (the Hz marks under it, the dB marks at its right).
+ * -- WP FIN015 -- (REVF D3) the frequencies span `pw` (≤ `w`): the bars stop short of the dB marks.
+ */
+function grid(ctx: CanvasRenderingContext2D, el: Element, w: number, plotH: number, p: SpectrumPrefs, marks: { hz: boolean; db: boolean }, pw = w) {
   const gridTone = tone(el, "--sp-grid", "#3a3a3a");
   const zeroTone = tone(el, "--sp-zero", "rgba(255,255,255,0.3)");
   const textTone = tone(el, "--sp-text", "#a7a7a7");
@@ -81,7 +95,7 @@ function grid(ctx: CanvasRenderingContext2D, el: Element, w: number, plotH: numb
   ctx.strokeStyle = gridTone;
   ctx.beginPath();
   for (const hz of FREQ_TICKS) {
-    const x = Math.round(xOf(hz, w)) + 0.5;
+    const x = Math.round(xOf(hz, pw)) + 0.5;
     ctx.moveTo(x, 0);
     ctx.lineTo(x, plotH);
   }
@@ -109,7 +123,7 @@ function grid(ctx: CanvasRenderingContext2D, el: Element, w: number, plotH: numb
       const t = hzText(hz);
       const tw = ctx.measureText(t).width;
       // Kept whole inside the plot (§12): "20" from the left edge, "20k" to the right one
-      const x = Math.min(Math.max(xOf(hz, w) - tw / 2, 4), w - tw - 4);
+      const x = Math.min(Math.max(xOf(hz, pw) - tw / 2, 4), pw - tw - 4);
       ctx.fillText(t, x, plotH + AXIS - 4);
     }
   }
@@ -122,7 +136,7 @@ function grid(ctx: CanvasRenderingContext2D, el: Element, w: number, plotH: numb
       if (i % every) continue;
       const y = plotH - levelFrac(db, p.floorDb, p.ceilingDb) * plotH;
       if (y < 6 || y > plotH - 6) continue;
-      ctx.fillText(db > 0 ? `+${db}` : String(db).replace("-", "−"), w - 4, y - 6);
+      ctx.fillText(dbText(db), w - 4, y - 6);
     }
     ctx.textAlign = "left";
   }
@@ -178,22 +192,26 @@ function drawCurves(c: HTMLCanvasElement, v: AnalyserView, drawn: Drawn[], p: Sp
   return n;
 }
 
-/** One channel's bands as bars in its colour, the peak holds as ticks over them. Answers how many bars were drawn. */
-function drawBars(c: HTMLCanvasElement, v: AnalyserView, d: Drawn, p: SpectrumPrefs): number {
+/**
+ * One channel's bands as bars in its colour, the peak holds as ticks over them. Answers how many bars were drawn.
+ * -- WP FIN015 -- (REVF D3) the bars are opaque: they stop at the dB marks' gutter, never over them.
+ */
+export function drawBars(c: HTMLCanvasElement, v: AnalyserView, d: Drawn, p: SpectrumPrefs): number {
   const f = fit(c);
   if (!f) return 0;
   const { ctx, w, h } = f;
   const plotH = Math.max(1, h - AXIS);
-  grid(ctx, c, w, plotH, p, { hz: true, db: true });
+  const pw = Math.max(1, w - dbGutter(ctx, c, p));
+  grid(ctx, c, w, plotH, p, { hz: true, db: true }, pw);
   const bars = barsOf(v, d.channel);
   if (!bars?.length) return 0;
-  const xs = bars.map((b) => xOf(b.hz, w));
+  const xs = bars.map((b) => xOf(b.hz, pw));
   ctx.globalAlpha = 0.85 * p.graphOpacity;
   ctx.fillStyle = d.colour;
   const edges = (i: number): [number, number] => {
     const left = i === 0 ? xs[0]! - (xs.length > 1 ? (xs[1]! - xs[0]!) / 2 : 2) : (xs[i - 1]! + xs[i]!) / 2;
     const right = i === xs.length - 1 ? xs[i]! + (i > 0 ? (xs[i]! - xs[i - 1]!) / 2 : 2) : (xs[i]! + xs[i + 1]!) / 2;
-    return [left, right];
+    return [Math.max(0, left), Math.min(pw, right)];
   };
   for (let i = 0; i < bars.length; i++) {
     const [left, right] = edges(i);
