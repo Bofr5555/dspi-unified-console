@@ -151,7 +151,7 @@ Item {
                         NameText {
                             id: hNameText
                             Layout.fillWidth: true
-                            Layout.maximumWidth: implicitWidth   // -- WP UA3 -- the dot right after it
+                            Layout.maximumWidth: Math.ceil(implicitWidth)   // -- WP UA3 -- the dot right after it (whole pixels: never elided for a fraction)
                             text: tab.name
                             active: tab.active
                         }

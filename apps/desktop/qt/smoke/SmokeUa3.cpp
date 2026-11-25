@@ -262,8 +262,10 @@ void saveStateSection(SmokeDriver &d) {
     if (tabC)
         for (QObject *o : tabC->findChildren<QObject *>(Qt::FindDirectChildrenOnly))   // its own, not a button's
             if (o->inherits("QQuickToolTip")) tipC = o;
-    std::printf("smoke: ua3: tab hovered %d, elided %d, tooltip shown %d\n", tabC ? int(tabC->property("hovered").toBool()) : -1,
-                tabC ? int(tabC->property("elided").toBool()) : -1, tipC ? int(tipC->property("visible").toBool()) : -1);
+    std::printf("smoke: ua3: tab hovered %d, elided %d, tooltip shown %d, width %.0f, \"%s\" / \"%s\"\n",
+                tabC ? int(tabC->property("hovered").toBool()) : -1, tabC ? int(tabC->property("elided").toBool()) : -1,
+                tipC ? int(tipC->property("visible").toBool()) : -1, tabC ? tabC->width() : 0.0,
+                tabC ? qPrintable(tabC->property("shownName").toString()) : "", tabC ? qPrintable(tabC->property("detail").toString()) : "");
     t.check("a tab that shows all of it has no tooltip", tabC && tipC && tabC->property("hovered").toBool()
                                                              && !tabC->property("elided").toBool() && !tipC->property("visible").toBool());
     QTest::mouseMove(t.main, QPoint(t.main->width() / 2, t.main->height() / 2));
