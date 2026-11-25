@@ -29,7 +29,7 @@ Rectangle {
     readonly property string job: tc.applied ? "trial" : mc.running ? "run" : onTune && proposalOpen ? "proposal" : ""
     // A run's progress: the tune's runs, else a measurement's; -1 none (the live view, the passive RTA)
     readonly property int progress: tc.running ? tc.progress : mc.measuring ? mc.progress : -1
-    readonly property string on: mc.runningOn
+    readonly property string deviceName: mc.runningOn
 
     function clock(s) {
         const n = Math.max(0, s)
@@ -74,14 +74,14 @@ Rectangle {
                 text: bar.job === "trial"
                       ? (tc.guardRemainingS > 0
                          //: The action bar while an applied auto-tune waits: %1 the device's name, %2 the time left ("3:02")
-                         ? (bar.on.length ? qsTr("Trying the auto-tune on %1 · goes back by itself in %2").arg(bar.on).arg(bar.clock(tc.guardRemainingS))
+                         ? (bar.deviceName.length ? qsTr("Trying the auto-tune on %1 · goes back by itself in %2").arg(bar.deviceName).arg(bar.clock(tc.guardRemainingS))
                                           //: The action bar while an applied auto-tune waits: %1 the time left ("3:02")
                                           : qsTr("Trying the auto-tune · goes back by itself in %1").arg(bar.clock(tc.guardRemainingS)))
                          : tc.guardText)
                       : bar.job === "proposal"
                       ? (tc.writes.length ? qsTr("Proposed: %n change(s), nothing written yet.", "", tc.writes.length)
                                           : qsTr("Proposed: no change."))
-                      : bar.on.length ? qsTr("Running on %1. %2").arg(bar.on).arg(mc.runningText) : mc.runningText
+                      : bar.deviceName.length ? qsTr("Running on %1. %2").arg(bar.deviceName).arg(mc.runningText) : mc.runningText
                 font: Theme.fontBody
                 color: Theme.text
                 wrapMode: Text.WordWrap
