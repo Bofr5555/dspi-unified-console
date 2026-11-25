@@ -1,6 +1,6 @@
 {"story": "bus.toml", "steps": {
  "stream-to-woofer": [
-  ["dspi_set_route", {"device": "demo:1", "input": 0, "output": 0, "on": true, "gain_db": 0}, "ok"],
+  ["dspi_set_route", {"device": "demo:1", "input": 1, "output": 1, "on": true, "gain_db": 0}, "ok"],
   ["bus", {"do": "play", "id": "tidal-1", "app": "Tidal", "title": "Easy Jazz: Blue in Green", "output": "DSPi Fronts (USB)", "channels": 2, "lufs": -14, "truePeakDbtp": -1, "content": "jazz"}, "ok"],
   ["bus_expect", {"stream": "tidal-1", "reaches": ["Fronts in 1", "Fronts in 2"]}, "ok", "the stream arrives at the Fronts' inputs 1 and 2"],
   ["bus_expect", {"device": "Fronts", "input": 1, "rms_dbfs": [-16.8, -15.8], "peak_dbfs": [-1.5, -0.5]}, "ok", "-14 LUFS stereo is -16.3 dBFS RMS a channel"],
@@ -14,9 +14,9 @@
   ["bus_expect", {"device": "Fronts", "output": 1, "rms_dbfs": [-46.8, -45.8]}, "ok", "10 dB down with the user volume"],
   ["bus", {"do": "output_volume", "output": "DSPi Fronts (USB)", "pct": 50}, "ok"],
   ["bus_expect", {"device": "Fronts", "output": 1, "rms_dbfs": [-35.8, -34.8]}, "ok", "UAC: the OS at 50 % sets the user volume to -18.1 dB, which plays as -19"],
-  ["dspi_set_mute", {"device": "demo:1", "output": 0, "muted": true}, "ok"],
+  ["dspi_set_mute", {"device": "demo:1", "output": 1, "muted": true}, "ok"],
   ["bus_expect", {"device": "Fronts", "output": 1, "silent": true}, "ok", "a muted output plays nothing"],
-  ["dspi_set_mute", {"device": "demo:1", "output": 0, "muted": false}, "ok"],
+  ["dspi_set_mute", {"device": "demo:1", "output": 1, "muted": false}, "ok"],
   ["bus_expect", {"device": "Fronts", "output": 1, "rms_dbfs": [-35.8, -34.8]}, "ok"]
  ],
  "wrong-output": [

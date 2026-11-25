@@ -46,7 +46,7 @@ fn wp_inti_a_refused_load_and_a_held_load_under_a_limits_profile() {
     assert!((level(&core) - -12.0).abs() < 0.01);
 
     // Refused: back on Dinner, its settings, the master as it was, no hold told.
-    let e = err(&mut s, c, "dspi_preset_load", json!({"slot": 8}));
+    let e = err(&mut s, c, "dspi_preset_load", json!({"slot": 9}));
     assert!(
         e.contains("drives a tweeter") && e.contains("put back"),
         "{e}"
@@ -63,7 +63,7 @@ fn wp_inti_a_refused_load_and_a_held_load_under_a_limits_profile() {
     assert!((level(&core) - -12.0).abs() < 0.01, "{}", level(&core));
 
     // Held: Lunch is loaded, its +6 dB held to 0 dB, and the agent is told.
-    let r = ok(&mut s, c, "dspi_preset_load", json!({"slot": 2}));
+    let r = ok(&mut s, c, "dspi_preset_load", json!({"slot": 3}));
     let held = r["limits_held"].as_array().cloned().unwrap_or_default();
     assert!(
         held.iter()
@@ -76,14 +76,14 @@ fn wp_inti_a_refused_load_and_a_held_load_under_a_limits_profile() {
     assert!((level(&core) - -12.0).abs() < 0.5, "{}", level(&core));
 
     // Refused again from Lunch: back on Lunch, still held.
-    let e = err(&mut s, c, "dspi_preset_load", json!({"slot": 8}));
+    let e = err(&mut s, c, "dspi_preset_load", json!({"slot": 9}));
     assert!(e.contains("put back") && !e.contains("limits_held"), "{e}");
     let st = core.get_state();
     assert_eq!(st.active_preset_slot, 2, "left on the refused slot");
     assert!(st.output_gain_db[0] <= 0.01, "{}", st.output_gain_db[0]);
 
     // Dinner holds nothing: no older rows.
-    let r = ok(&mut s, c, "dspi_preset_load", json!({"slot": 1}));
+    let r = ok(&mut s, c, "dspi_preset_load", json!({"slot": 2}));
     assert!(r.get("limits_held").is_none(), "{r}");
     assert_eq!(core.get_state().active_preset_slot, 1);
     assert!((level(&core) - -12.0).abs() < 0.5, "{}", level(&core));
@@ -147,11 +147,11 @@ fn wp_inti_a_preset_that_raises_an_unprotected_tweeters_gain_is_refused() {
         let mut s = server_of(&set, mode);
         let c = s.connect();
         let e = match mode {
-            ConfirmMode::NeverAsk => err(&mut s, c, "dspi_preset_load", json!({"slot": 3})),
+            ConfirmMode::NeverAsk => err(&mut s, c, "dspi_preset_load", json!({"slot": 4})),
             _ => {
                 // Asked as a recall; the user's Allow does not lift the rule.
                 let r =
-                    crate::tests_wp_ffix::call(&mut s, c, "dspi_preset_load", json!({"slot": 3}));
+                    crate::tests_wp_ffix::call(&mut s, c, "dspi_preset_load", json!({"slot": 4}));
                 let id = r["structuredContent"]["confirmation_id"].as_u64().unwrap();
                 s.answer_confirmation(id, true, 1_000).unwrap();
                 ok(
@@ -205,12 +205,12 @@ fn wp_inti_an_eq_boost_on_an_unprotected_tweeter_is_refused() {
         let c = s.connect();
         let tweeter = n_in(&core) + 1;
         for (on, gain) in [("output", 3.0), ("output", 6.0), ("input", 2.0)] {
-            let n = if on == "output" { 1 } else { 0 };
+            let n = if on == "output" { 2 } else { 1 }; // Out 2, In 1
             let e = err(
                 &mut s,
                 c,
                 "dspi_set_peq_band",
-                json!({on: n, "slot": 2, "type": "peaking", "freq_hz": 5000, "q": 1, "gain_db": gain}),
+                json!({on: n, "slot": 3, "type": "peaking", "freq_hz": 5000, "q": 1, "gain_db": gain}),
             );
             assert!(
                 e.contains("drives a tweeter")
@@ -227,7 +227,7 @@ fn wp_inti_an_eq_boost_on_an_unprotected_tweeter_is_refused() {
                 &mut s,
                 c,
                 "dspi_set_peq_band",
-                json!({"output": 1, "slot": 2, "type": "peaking", "freq_hz": 5000, "q": 1, "gain_db": -3}),
+                json!({"output": 2, "slot": 3, "type": "peaking", "freq_hz": 5000, "q": 1, "gain_db": -3}),
             );
         }
     }
@@ -254,7 +254,7 @@ fn wp_inti_a_named_save_on_several_devices_is_one_question() {
         &mut s,
         c,
         "dspi_preset_save",
-        json!({"device": here.as_str(), "slot": 3, "name": "Film night",
+        json!({"device": here.as_str(), "slot": 4, "name": "Film night",
                "devices": [here.as_str(), other_id.as_str()]}),
     );
     let id = r["structuredContent"]["confirmation_id"].as_u64().unwrap();
@@ -287,7 +287,7 @@ fn wp_inti_a_named_save_on_several_devices_is_one_question() {
         &mut s,
         c,
         "dspi_preset_save",
-        json!({"device": here.as_str(), "slot": 4, "name": "Day"}),
+        json!({"device": here.as_str(), "slot": 5, "name": "Day"}),
     );
     let id = r["structuredContent"]["confirmation_id"].as_u64().unwrap();
     assert_eq!(s.confirmation(id).unwrap().risks.len(), 1);
@@ -304,7 +304,7 @@ fn wp_inti_a_named_save_on_several_devices_is_one_question() {
         &mut s,
         c,
         "dspi_preset_save",
-        json!({"device": here.as_str(), "slot": 5, "devices": ["demo:99"]}),
+        json!({"device": here.as_str(), "slot": 6, "devices": ["demo:99"]}),
     );
     assert!(e.contains("no open device"), "{e}");
 }

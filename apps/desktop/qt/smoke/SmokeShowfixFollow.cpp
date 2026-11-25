@@ -161,10 +161,11 @@ void showfixFollowSection(SmokeDriver &d) {
         // Finding 14: the agent's first call is this change; in a run of this section
         // alone it is the app's first read of the activity, followed too
 
+        // The agent counts from 1, as the screen does (SHOWFIX 9): input 3 is C, slot 4 the page's band 3
         // ---- Finding 3: a PEQ band on input C of the other device: that device, the
         // Equaliser's PEQ tab, input C, the band selected
-        const bool peqSet = s.ok("dspi_set_peq_band", { { QStringLiteral("device"), b->id() }, { QStringLiteral("input"), 2 },
-                                                        { QStringLiteral("slot"), 3 }, { QStringLiteral("type"), QStringLiteral("peaking") },
+        const bool peqSet = s.ok("dspi_set_peq_band", { { QStringLiteral("device"), b->id() }, { QStringLiteral("input"), 3 },
+                                                        { QStringLiteral("slot"), 4 }, { QStringLiteral("type"), QStringLiteral("peaking") },
                                                         { QStringLiteral("freq_hz"), 2000 }, { QStringLiteral("q"), 1 },
                                                         { QStringLiteral("gain_db"), -3 } });
         d.check("showfix 3: the agent's PEQ band is set", peqSet);
@@ -181,7 +182,7 @@ void showfixFollowSection(SmokeDriver &d) {
         d.check("showfix 3: the page's band is the agent's", page && d.waitFor(2000, [&] { return page->property("band").toInt() == 3; }));
 
         // A crossover on an output of the device shown: the Crossover tab, that output
-        const bool xoSet = s.ok("dspi_set_crossover", { { QStringLiteral("device"), b->id() }, { QStringLiteral("output"), 0 },
+        const bool xoSet = s.ok("dspi_set_crossover", { { QStringLiteral("device"), b->id() }, { QStringLiteral("output"), 1 },
                                                         { QStringLiteral("low_pass"), lr4(2000) } });
         d.check("showfix 3: the agent's crossover is set", xoSet);
         d.check("showfix 3: the Crossover tab shows that output (after the rate limit)",
@@ -190,7 +191,7 @@ void showfixFollowSection(SmokeDriver &d) {
                 }));
 
         // A delay: Delay & Gain, that output
-        const bool delaySet = s.ok("dspi_set_delay", { { QStringLiteral("device"), b->id() }, { QStringLiteral("output"), 1 },
+        const bool delaySet = s.ok("dspi_set_delay", { { QStringLiteral("device"), b->id() }, { QStringLiteral("output"), 2 },
                                                        { QStringLiteral("delay_ms"), 2.0 } });
         d.check("showfix 3: the agent's delay is set", delaySet);
         d.check("showfix 3: Delay & Gain shows that output",
@@ -202,8 +203,8 @@ void showfixFollowSection(SmokeDriver &d) {
         registry->activate(a);
         d.goTo(QStringLiteral("overview/overview"));
         d.spin(AiController::kFollowMs + 300);
-        s.ok("dspi_set_peq_band", { { QStringLiteral("device"), b->id() }, { QStringLiteral("input"), 2 },
-                                    { QStringLiteral("slot"), 4 }, { QStringLiteral("type"), QStringLiteral("peaking") },
+        s.ok("dspi_set_peq_band", { { QStringLiteral("device"), b->id() }, { QStringLiteral("input"), 3 },
+                                    { QStringLiteral("slot"), 5 }, { QStringLiteral("type"), QStringLiteral("peaking") },
                                     { QStringLiteral("freq_hz"), 3000 }, { QStringLiteral("q"), 1 }, { QStringLiteral("gain_db"), -2 } });
         d.spin(800);
         d.check("showfix 3: the user who left is left where they went", registry->active() == a && section() == QLatin1String("overview"));
@@ -232,7 +233,7 @@ void showfixFollowSection(SmokeDriver &d) {
             QObject sink;
             QKeyEvent key(QEvent::KeyPress, Qt::Key_Right, Qt::NoModifier);
             QCoreApplication::sendEvent(&sink, &key);
-            auto run = s.call("dspi_measure_start", { { QStringLiteral("device"), b->id() }, { QStringLiteral("outputs"), QJsonArray{ 0 } },
+            auto run = s.call("dspi_measure_start", { { QStringLiteral("device"), b->id() }, { QStringLiteral("outputs"), QJsonArray{ 1 } },
                                                       { QStringLiteral("sweep_ms"), 5000 }, { QStringLiteral("passes"), 8 } });
             d.check("showfix 14: the measurement starts", !s.result(run).value(QLatin1String("isError")).toBool(true));
             d.check("showfix 14: its device and Measure come up once the keyboard rests",
@@ -246,7 +247,7 @@ void showfixFollowSection(SmokeDriver &d) {
         // ---- Finding 10: a question about the other device brings its tab to the
         // front as the sheet opens; with following off, the sheet still names it
         const auto louder = [&](double db) {
-            return s.call("dspi_set_gain", { { QStringLiteral("device"), b->id() }, { QStringLiteral("output"), 0 },
+            return s.call("dspi_set_gain", { { QStringLiteral("device"), b->id() }, { QStringLiteral("output"), 1 },
                                              { QStringLiteral("gain_db"), db } });
         };
         s.result(louder(-24));

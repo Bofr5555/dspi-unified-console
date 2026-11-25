@@ -16,7 +16,7 @@
     "dspi_set_gain",
     {
      "device": "demo:1",
-     "output": 4,
+     "output": 5,
      "gain_db": -3
     },
     "ok",
@@ -28,7 +28,7 @@
     "dspi_set_mute",
     {
      "device": "demo:1",
-     "output": 4,
+     "output": 5,
      "muted": true
     },
     "ok"
@@ -48,7 +48,7 @@
     "dspi_set_gain",
     {
      "device": "demo:1",
-     "output": 4,
+     "output": 5,
      "gain_db": 3
     },
     "error",
@@ -60,7 +60,7 @@
     "dspi_preset_load",
     {
      "device": "demo:1",
-     "slot": 1
+     "slot": 2
     },
     "ok",
     "asked, allowed"

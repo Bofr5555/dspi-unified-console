@@ -312,7 +312,7 @@ void aiPart(SmokeDriver &d) {
     d.waitFor(5000, [&] { return set; });
 
     // A test signal asked and allowed: a grant of ten minutes
-    auto held = call("dspi_measure_start", { { QStringLiteral("outputs"), QJsonArray{ 0 } }, { QStringLiteral("sweep_ms"), 5000 },
+    auto held = call("dspi_measure_start", { { QStringLiteral("outputs"), QJsonArray{ 1 } }, { QStringLiteral("sweep_ms"), 5000 },
                                              { QStringLiteral("passes"), 8 } });
     d.check(QStringLiteral("dl5: the agent's measurement is asked"), d.waitFor(5000, [&] { return !ai->confirmations().isEmpty(); }));
     if (ai->confirmations().isEmpty()) return;

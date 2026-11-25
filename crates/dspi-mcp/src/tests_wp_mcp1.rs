@@ -407,7 +407,11 @@ fn wp_mcp1_read_tools_address_the_device_they_are_given() {
     );
     assert_eq!(oa["outputs"][1]["gain_db"], json!(0.0));
     let n_in = oa["inputs"].as_array().unwrap().len();
-    assert_eq!(oa["outputs"][0]["channel"], json!(n_in));
+    assert_eq!(
+        oa["outputs"][0]["channel"],
+        json!(n_in.saturating_add(1)),
+        "Out 1 is the wire channel after the inputs, from 1"
+    );
     assert_eq!(oa["agent_may"]["write"], json!(false));
 
     // With the app's device set, it is the default.
@@ -476,11 +480,12 @@ fn wp_mcp1_channel_and_response_read_the_filters() {
     )
     .unwrap();
 
-    let ch = ok(&mut s, c, "dspi_get_channel", json!({"output": 0}));
-    assert_eq!(ch["channel"], json!(n_in));
+    let ch = ok(&mut s, c, "dspi_get_channel", json!({"output": 1}));
+    assert_eq!(ch["channel"], json!(n_in.saturating_add(1)));
     let peq = ch["peq"].as_array().unwrap();
     assert_eq!(peq.len(), 10);
     assert_eq!(peq[2]["type"], json!("peaking"));
+    assert_eq!(peq[2]["slot"], json!(3), "band 3, as the app shows it");
     assert_eq!(peq[2]["q"], json!(0.707));
     assert_eq!(peq[2]["free"], json!(false));
     assert_eq!(peq[0]["free"], json!(true));
@@ -489,10 +494,15 @@ fn wp_mcp1_channel_and_response_read_the_filters() {
     assert_eq!(ch["high_pass"]["freq_hz"], json!(2000.0));
     assert_eq!(ch["low_pass"], Value::Null);
     // The wire channel names the same output.
-    let by_wire = ok(&mut s, c, "dspi_get_channel", json!({"channel": n_in}));
+    let by_wire = ok(
+        &mut s,
+        c,
+        "dspi_get_channel",
+        json!({"channel": n_in.saturating_add(1)}),
+    );
     assert_eq!(by_wire["kind"], json!("output"));
     assert_eq!(by_wire["peq"], ch["peq"]);
-    let input = ok(&mut s, c, "dspi_get_channel", json!({"input": 0}));
+    let input = ok(&mut s, c, "dspi_get_channel", json!({"input": 1}));
     assert_eq!(input["kind"], json!("input"));
     assert!(input.get("high_pass").is_none());
     // Bad names.
@@ -502,11 +512,11 @@ fn wp_mcp1_channel_and_response_read_the_filters() {
             &mut s,
             c,
             "dspi_get_channel",
-            json!({"output": 0, "input": 0})
+            json!({"output": 1, "input": 1})
         )
         .contains("one of")
     );
-    assert!(err(&mut s, c, "dspi_get_channel", json!({"output": 99})).contains("no output 99"));
+    assert!(err(&mut s, c, "dspi_get_channel", json!({"output": 100})).contains("no output 100"));
     assert!(err(&mut s, c, "dspi_get_channel", json!({"output": -1})).contains("at least"));
     assert!(err(&mut s, c, "dspi_get_channel", json!({"output": "0"})).contains("integer"));
     assert!(err(&mut s, c, "dspi_get_channel", json!({"role": "high"})).contains("no argument"));
@@ -515,7 +525,7 @@ fn wp_mcp1_channel_and_response_read_the_filters() {
         &mut s,
         c,
         "dspi_get_response",
-        json!({"output": 0, "points_per_octave": 6, "phase": true}),
+        json!({"output": 1, "points_per_octave": 6, "phase": true}),
     );
     let f = r["freqs_hz"].as_array().unwrap();
     let m = r["mag_db"].as_array().unwrap();
@@ -535,7 +545,7 @@ fn wp_mcp1_channel_and_response_read_the_filters() {
     // high-pass cuts.
     assert!(near(20.0) < -40.0, "{}", near(20.0));
     assert!(near(10_000.0).abs() < 1.0, "{}", near(10_000.0));
-    let flat = ok(&mut s, c, "dspi_get_response", json!({"input": 0}));
+    let flat = ok(&mut s, c, "dspi_get_response", json!({"input": 1}));
     assert!(
         flat["mag_db"]
             .as_array()
@@ -611,7 +621,7 @@ fn wp_mcp1_lists_show_filed_snapshots_and_measurements() {
         &mut s,
         c,
         "dspi_get_response",
-        json!({"output": 2, "source": "measurement", "measurement_id": filed.id,
+        json!({"output": 3, "source": "measurement", "measurement_id": filed.id,
                "points_per_octave": 3}),
     );
     assert_eq!(r["source"], json!("measurement"));
@@ -622,14 +632,14 @@ fn wp_mcp1_lists_show_filed_snapshots_and_measurements() {
         &mut s,
         c,
         "dspi_get_response",
-        json!({"output": 1, "source": "measurement", "measurement_id": filed.id}),
+        json!({"output": 2, "source": "measurement", "measurement_id": filed.id}),
     );
-    assert!(e.contains("no output 1"), "{e}");
+    assert!(e.contains("no output 2"), "{e}");
     let e = err(
         &mut s,
         c,
         "dspi_get_response",
-        json!({"output": 0, "source": "measurement"}),
+        json!({"output": 1, "source": "measurement"}),
     );
     assert!(e.contains("measurement_id"), "{e}");
 
@@ -825,10 +835,10 @@ fn wp_mcp1_names_reach_the_agent_only_cleaned_and_only_in_name_fields() {
         "{name:?}"
     );
     assert!(name.len() <= 32);
-    let ch = ok(&mut s, c, "dspi_get_channel", json!({"output": 0}));
+    let ch = ok(&mut s, c, "dspi_get_channel", json!({"output": 1}));
     assert_eq!(ch["channel_name"], json!(name));
     // An error names the output by number, never by name.
-    let e = err(&mut s, c, "dspi_get_channel", json!({"output": 50}));
+    let e = err(&mut s, c, "dspi_get_channel", json!({"output": 51}));
     assert!(!e.contains("Ignore"), "{e}");
     // Untrusted text sits only in *_name and note fields.
     fn walk(v: &Value, key: &str) {

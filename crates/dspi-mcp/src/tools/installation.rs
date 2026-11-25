@@ -145,7 +145,7 @@ mod tools {
     use crate::registry::{Call, Tool, ToolClass, ToolError, ToolResult};
     use crate::tools::edit::schema;
     use crate::tools::hub::{hub_error, on_hub, record};
-    use crate::tools::read::{empty_schema, object_schema};
+    use crate::tools::read::{empty_schema, object_schema, shown, shown_all};
     use crate::untrusted;
 
     /// What the installation's records name, and where it goes.
@@ -195,9 +195,122 @@ mod tools {
         })
     }
 
-    /// The draft's model as JSON, with its names labelled.
+    /// The draft's model as JSON, with its names labelled (-- WP SHOWFIX --
+    /// and its numbers as the agent counts them, [`numbered_out`]).
     fn site(d: &InstallationDraft) -> Value {
-        record(serde_json::from_str::<Value>(&d.model), SITE_NAMES)
+        let mut model = serde_json::from_str::<Value>(&d.model);
+        if let Ok(m) = model.as_mut() {
+            numbered_out(m);
+        }
+        record(model, SITE_NAMES)
+    }
+
+    // -- WP SHOWFIX -- (SHOW2 finding 9) the installation's numbers an agent
+    // reads and gives count from 1, as the app shows them: a scene action's
+    // preset (preset_load) and output (out_delay), and a programme source's
+    // unit inputs (In 1 is 1). Audio link channels and slots stay the link's
+    // channel numbers, 0..63 (255 silent): channels, not counts.
+
+    /// The scene ops whose `arg` is a preset or an output.
+    const NUMBERED_OPS: &[&str] = &["preset_load", "out_delay"];
+
+    /// Whether a programme source's `inputs` are a unit's (else a sender's
+    /// audio link channels).
+    fn unit_inputs(p: &Value) -> bool {
+        p.get("kind").and_then(Value::as_str) != Some("alink_sender")
+    }
+
+    /// `v[key]`, a number, moved by `f`.
+    fn renumber(v: &mut Value, key: &str, f: impl Fn(u64) -> Option<u64>) -> Result<(), ()> {
+        let Some(n) = v.get(key).and_then(Value::as_u64) else {
+            return Ok(());
+        };
+        let m = f(n).ok_or(())?;
+        if let Some(o) = v.as_object_mut() {
+            o.insert(key.to_owned(), json!(m));
+        }
+        Ok(())
+    }
+
+    /// The model's numbers as the agent reads them, from 1.
+    fn numbered_out(model: &mut Value) {
+        let up = |n: u64| Some(n.saturating_add(1));
+        for s in model
+            .get_mut("scenes")
+            .and_then(Value::as_array_mut)
+            .into_iter()
+            .flatten()
+        {
+            for a in s
+                .get_mut("actions")
+                .and_then(Value::as_array_mut)
+                .into_iter()
+                .flatten()
+            {
+                if a.get("op")
+                    .and_then(Value::as_str)
+                    .is_some_and(|op| NUMBERED_OPS.contains(&op))
+                {
+                    let _ = renumber(a, "arg", up);
+                }
+            }
+        }
+        for p in model
+            .get_mut("programmeSources")
+            .and_then(Value::as_array_mut)
+            .into_iter()
+            .flatten()
+        {
+            if unit_inputs(p)
+                && let Some(list) = p.get_mut("inputs").and_then(Value::as_array_mut)
+            {
+                for x in list.iter_mut() {
+                    if let Some(n) = x.as_u64() {
+                        *x = json!(n.saturating_add(1));
+                    }
+                }
+            }
+        }
+    }
+
+    /// A draft edit an agent gave, its numbers (from 1) as the model's (from
+    /// 0): a scene's actions, a programme source's unit inputs.
+    fn numbered_in(edit: &mut Value) -> Result<(), ToolError> {
+        let bad = |what: &str| {
+            ToolError::new(format!(
+                "{what} counts from 1, as the app shows it (preset 1, Out 1, In 1)"
+            ))
+        };
+        let down = |n: u64| n.checked_sub(1);
+        match edit.get("op").and_then(Value::as_str) {
+            Some("setScene" | "addScene") => {
+                for a in edit
+                    .get_mut("actions")
+                    .and_then(Value::as_array_mut)
+                    .into_iter()
+                    .flatten()
+                {
+                    if a.get("op")
+                        .and_then(Value::as_str)
+                        .is_some_and(|op| NUMBERED_OPS.contains(&op))
+                    {
+                        renumber(a, "arg", down)
+                            .map_err(|()| bad("a preset_load's or out_delay's `arg`"))?;
+                    }
+                }
+            }
+            Some("setProgrammeSource" | "addProgrammeSource") if unit_inputs(edit) => {
+                if let Some(list) = edit.get_mut("inputs").and_then(Value::as_array_mut) {
+                    for x in list.iter_mut() {
+                        if let Some(n) = x.as_u64() {
+                            *x = json!(down(n).ok_or_else(|| bad("a unit's input"))?);
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+        Ok(())
     }
 
     fn changes(core: &DspiCore, d: &InstallationDraft) -> Vec<String> {
@@ -289,16 +402,24 @@ mod tools {
         let out = model.programme_sources.iter().filter_map(|p| {
             let kind = serde_json::to_value(p.kind).unwrap_or(Value::Null);
             let alink = kind == "alink_sender";
+            // -- WP SHOWFIX -- a unit's inputs from 1, as the app shows them
+            // (In 1 is 1); a sender's audio link channels stay 0..63
+            let own = if alink {
+                json!(p.inputs)
+            } else {
+                json!(shown_all(&p.inputs))
+            };
             let inputs = if sender.is_some_and(|s| alink && s.id == p.feeds) {
                 Value::Null
             } else if unit.is_some_and(|u| !alink && u.id == p.feeds) {
-                json!(p.inputs)
+                own.clone()
             } else if alink && heard.as_ref() == Some(&p.feeds) {
                 match unit.and_then(|u| u.slots.as_ref()) {
                     None => Value::Null,
                     Some(slots) => {
                         let on: Vec<usize> = (0..slots.len())
                             .filter(|i| slots.get(*i).is_some_and(|c| p.inputs.contains(c)))
+                            .map(shown)
                             .collect();
                         if on.is_empty() {
                             return None;
@@ -314,7 +435,7 @@ mod tools {
                 "programme_name": untrusted::name(&p.name),
                 "kind": kind,
                 "feeds_id": untrusted::name(&p.feeds),
-                "inputs": p.inputs,
+                "inputs": own,
                 "unit_inputs": inputs,
             }))
         });
@@ -407,7 +528,14 @@ mod tools {
             }
             match args.get("edits") {
                 None => {}
-                Some(Value::Array(a)) => edits.extend(a.iter().cloned()),
+                Some(Value::Array(a)) => {
+                    // -- WP SHOWFIX -- the agent's numbers from 1
+                    for e in a {
+                        let mut e = e.clone();
+                        numbered_in(&mut e)?;
+                        edits.push(e);
+                    }
+                }
                 Some(_) => return Err(ToolError::new("`edits` must be an array")),
             }
             let kept = make(call, core, &key, kept, edits)?;
@@ -876,8 +1004,9 @@ mod tools {
                       one). An action is {target: all | room:<id> | zone:<id> | group:<id> | \
                       unit:<id>, op, arg, value}; op `source` switches a zone's source \
                       (target zone:<id>, `source_id`), the others are mute, unmute, \
-                      preset_load (arg: slot 0..9), master_volume (value: dB x 100, -12800..0), \
-                      out_delay (arg: output, value: samples), click, sync_pulse. Checked as \
+                      preset_load (arg: the preset, 1..10 as the app shows them), master_volume \
+                      (value: dB x 100, -12800..0), out_delay (arg: the output, from 1: Out 1 \
+                      is 1; value: samples), click, sync_pulse. Checked as \
                       the hub checks it. Sends nothing: dspi_installation_save stores it, \
                       dspi_system_scene_apply recalls it (a recall may be held for the user).",
         class: ToolClass::Read,
@@ -896,7 +1025,9 @@ mod tools {
                                      "target": {"type": "string", "maxLength": 70},
                                      "op": {"type": "string", "enum": SCENE_OPS},
                                      "arg": {"type": "integer", "minimum": 0,
-                                             "maximum": PRESET_SLOT_MAX.max(APPLY_OUTPUTS.saturating_sub(1))},
+                                             "maximum": PRESET_SLOT_MAX.saturating_add(1).max(APPLY_OUTPUTS),
+                                             "description": "preset_load: the preset, from 1; \
+                                                             out_delay: the output, from 1"},
                                      "value": {"type": "integer", "minimum": VOLUME_MIN,
                                                "maximum": APPLY_DELAY_MAX},
                                      "source_id": {"type": "string", "maxLength": 64}}}}),
@@ -945,8 +1076,26 @@ mod tools {
                         SCENE_OPS.join(", ")
                     )));
                 }
+                // -- WP SHOWFIX -- a preset or an output from 1, as the app shows it
+                let numbered = NUMBERED_OPS.contains(&op.as_str());
                 let arg = match o.get("arg") {
+                    None if numbered => {
+                        return Err(ToolError::new(format!(
+                            "action {n}: `arg` is required: the preset (preset_load) or the \
+                             output (out_delay), from 1"
+                        )));
+                    }
                     None => 0,
+                    Some(v) if numbered => v
+                        .as_u64()
+                        .and_then(|x| x.checked_sub(1))
+                        .and_then(|x| u8::try_from(x).ok())
+                        .ok_or_else(|| {
+                            ToolError::new(format!(
+                                "action {n}: `arg` is the preset (preset_load) or the output \
+                                 (out_delay), counted from 1 as the app shows them"
+                            ))
+                        })?,
                     Some(v) => v
                         .as_u64()
                         .and_then(|x| u8::try_from(x).ok())
@@ -999,8 +1148,9 @@ mod tools {
                       `kind`: computer_usb (a computer playing to a unit over USB), spdif (a box \
                       into a unit's S/PDIF input), analogue (into a unit's ADC input) or \
                       alink_sender (into the audio link sender's channels); `feeds_id`: that \
-                      unit, or the sender; `inputs`: the unit's inputs 0..7 or the sender's \
-                      channels 0..63 it takes. `programme_id` of an existing one replaces it. A \
+                      unit, or the sender; `inputs`: the unit's inputs, from 1 as the app shows \
+                      them (In 1..In 8 are 1..8), or the sender's audio link channels 0..63 it \
+                      takes. `programme_id` of an existing one replaces it. A \
                       description only: it routes nothing and nothing plays differently. Sends \
                       nothing: dspi_installation_save stores it.",
         class: ToolClass::Read,
@@ -1024,7 +1174,8 @@ mod tools {
                 channel_list(
                     ALINK_MAX_CHANNELS,
                     ALINK_MAX_CHANNELS,
-                    "The unit's inputs 0..7, or the sender's channels 0..63, in its channel order",
+                    "The unit's inputs from 1 (In 1 is 1), or the sender's audio link channels \
+                     0..63, in its channel order",
                 ),
             );
             schema(m, &["kind", "feeds_id", "inputs"])
@@ -1035,7 +1186,20 @@ mod tools {
             let name = text_arg(args, "name")?;
             let kind = need_text(args, "kind")?;
             let feeds = need_text(args, "feeds_id")?;
-            let inputs = numbers(args, "inputs", ALINK_MAX_CHANNELS.saturating_sub(1))?;
+            let mut inputs = numbers(args, "inputs", ALINK_MAX_CHANNELS.saturating_sub(1))?;
+            // -- WP SHOWFIX -- a unit's inputs from 1, as the app shows them
+            if kind != "alink_sender" {
+                inputs = inputs
+                    .iter()
+                    .map(|i| i.checked_sub(1))
+                    .collect::<Option<Vec<u8>>>()
+                    .ok_or_else(|| {
+                        ToolError::new(
+                            "`inputs`: a unit's inputs count from 1, as the app shows them \
+                             (In 1 is 1)",
+                        )
+                    })?;
+            }
             typed(call, move |model| {
                 let existing = id.as_deref().filter(|i| has(model, "programmeSources", i));
                 Ok(match existing {

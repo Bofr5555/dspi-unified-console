@@ -101,8 +101,9 @@ struct Scene {
     }
 };
 
+// `output` from 0, as the device counts; the tools count from 1 (SHOWFIX 9)
 QJsonObject gain(int output, double db, const QString &device = QString()) {
-    QJsonObject o{ { QStringLiteral("output"), output }, { QStringLiteral("gain_db"), db } };
+    QJsonObject o{ { QStringLiteral("output"), output + 1 }, { QStringLiteral("gain_db"), db } };
     if (!device.isEmpty()) o.insert(QStringLiteral("device"), device);
     return o;
 }
@@ -162,7 +163,7 @@ void odecSection(SmokeDriver &d) {
     d.waitFor(5000, [&] { return set; });
 
     // ---- One question for test signals: the sheet says what Allow grants
-    const QJsonObject args{ { QStringLiteral("outputs"), QJsonArray{ 0 } }, { QStringLiteral("sweep_ms"), 5000 }, { QStringLiteral("passes"), 8 } };
+    const QJsonObject args{ { QStringLiteral("outputs"), QJsonArray{ 1 } }, { QStringLiteral("sweep_ms"), 5000 }, { QStringLiteral("passes"), 8 } };
     auto held = s.call("dspi_measure_start", args);
     d.check("odec: a measurement start is asked", d.waitFor(5000, [&] { return !ai->confirmations().isEmpty(); }));
     const QVariantMap q = ai->confirmations().value(0).toMap();
@@ -225,8 +226,8 @@ void odecSection(SmokeDriver &d) {
         go("overview");
         d.spin(AiController::kFollowMs + 300);
         a->model()->beginDrag();
-        const bool changed = s.ok("dspi_set_route", { { QStringLiteral("device"), b->id() }, { QStringLiteral("input"), 0 },
-                                                       { QStringLiteral("output"), 1 }, { QStringLiteral("on"), true },
+        const bool changed = s.ok("dspi_set_route", { { QStringLiteral("device"), b->id() }, { QStringLiteral("input"), 1 },
+                                                       { QStringLiteral("output"), 2 }, { QStringLiteral("on"), true },
                                                        { QStringLiteral("gain_db"), -20 } });
         d.spin(800);
         d.check("odec: not while the user drags", changed && ai->userInteracting() && registry->active() == a
@@ -289,7 +290,7 @@ void odecSection(SmokeDriver &d) {
 
         // At most one switch in a few seconds: the next change waits for the limit
         d.spin(AiController::kFollowMs + 300);
-        s.ok("dspi_set_route", { { QStringLiteral("device"), b->id() }, { QStringLiteral("input"), 1 }, { QStringLiteral("output"), 1 },
+        s.ok("dspi_set_route", { { QStringLiteral("device"), b->id() }, { QStringLiteral("input"), 2 }, { QStringLiteral("output"), 2 },
                                  { QStringLiteral("on"), true }, { QStringLiteral("gain_db"), -20 } });
         d.check("odec: a change is followed", d.waitFor(3000, [&] { return registry->active() == b; })
                 && d.waitFor(1000, [&] { return section() == QLatin1String("routing"); }));

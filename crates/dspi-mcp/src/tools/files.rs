@@ -24,7 +24,7 @@ use crate::policy::{self, RiskKind};
 use crate::registry::{Call, Tool, ToolClass, ToolError, ToolResult};
 use crate::tools::edit::{newest, own_ids_since, schema};
 use crate::tools::library::{MAX_TEXT, merge, wholesale};
-use crate::tools::read::{object_schema, state};
+use crate::tools::read::{from_shown, object_schema, put, state};
 use crate::untrusted;
 
 /// The tools, in `tools/list` order.
@@ -211,7 +211,8 @@ static FILTERS_INSPECT: Tool = Tool {
     name: "dspi_filters_inspect",
     title: "Inspect a filter file",
     description: "What a filter file's `text` holds (a console's filter file, or a REW or \
-                  AutoEQ list): its kind and, per channel it applies to, the wire channel and \
+                  AutoEQ list): its kind and, per channel it applies to, the wire channel (from \
+                  1, inputs first: the numbers dspi_filters_import takes) and \
                   the number of bands. Nothing is written.",
     class: ToolClass::Read,
     device: true,
@@ -225,9 +226,20 @@ static FILTERS_INSPECT: Tool = Tool {
         let text = text_arg(args, "text")?;
         let core = call.core()?;
         let st = state(core)?;
-        let v: Value =
+        let mut v: Value =
             serde_json::from_str(&core.filters_inspect(text.to_owned(), st.num_input_channels))
                 .unwrap_or(Value::Null);
+        // -- WP SHOWFIX -- each channel's wire number from 1, as the agent counts
+        for c in v
+            .get_mut("channels")
+            .and_then(Value::as_array_mut)
+            .into_iter()
+            .flatten()
+        {
+            if let Some(w) = c.get("wire").and_then(Value::as_u64) {
+                put(c, "wire", json!(w.saturating_add(1)));
+            }
+        }
         Ok(json!({"device": call.device_text(), "file": untrusted::scrub_json(v)}))
     },
 };
@@ -246,8 +258,10 @@ static FILTERS_IMPORT: Tool = Tool {
         m.insert("text".into(), json!({"type": "string"}));
         m.insert(
             "channels".into(),
-            json!({"type": "array", "items": {"type": "integer", "minimum": 0},
-                   "description": "Wire channels (inputs first)"}),
+            json!({"type": "array", "items": {"type": "integer", "minimum": 1},
+                   "description": "Wire channels, from 1, inputs first (with 2 inputs channel 1 \
+                                   is In 1 and channel 3 is Out 1), as dspi_filters_inspect \
+                                   gives them"}),
         );
         schema(m, &["text", "channels"])
     },
@@ -267,14 +281,15 @@ fn filters_import(call: &mut Call<'_>, args: &Map<String, Value>) -> ToolResult 
         .into_iter()
         .flatten()
     {
+        // -- WP SHOWFIX -- from 1, as the agent counts
         let w = w
             .as_u64()
+            .and_then(from_shown)
             .and_then(|w| u8::try_from(w).ok())
             .filter(|w| *w < n)
             .ok_or_else(|| {
                 ToolError::new(format!(
-                    "`channels` are wire channels 0..{}",
-                    n.saturating_sub(1)
+                    "`channels` are wire channels 1..{n}, inputs first (counted from 1)"
                 ))
             })?;
         if !wires.contains(&w) {

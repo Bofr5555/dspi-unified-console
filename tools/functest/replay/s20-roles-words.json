@@ -20,32 +20,32 @@
      "user_words": "L and r front speakers, both on DSPi named main front, full range three way, tweeter,mid,woofer, l then right, output 1-6",
      "rows": [
       {
-       "output": 0,
-       "role": "tweeter",
-       "speaker": "L"
-      },
-      {
        "output": 1,
-       "role": "midrange",
+       "role": "tweeter",
        "speaker": "L"
       },
       {
        "output": 2,
-       "role": "woofer",
+       "role": "midrange",
        "speaker": "L"
       },
       {
        "output": 3,
+       "role": "woofer",
+       "speaker": "L"
+      },
+      {
+       "output": 4,
        "role": "tweeter",
        "speaker": "R"
       },
       {
-       "output": 4,
+       "output": 5,
        "role": "midrange",
        "speaker": "R"
       },
       {
-       "output": 5,
+       "output": 6,
        "role": "woofer",
        "speaker": "R"
       }
@@ -70,7 +70,7 @@
     "dspi_set_crossover",
     {
      "device": "demo:1",
-     "output": 3,
+     "output": 4,
      "high_pass": {
       "family": "linkwitz_riley",
       "order": 4,

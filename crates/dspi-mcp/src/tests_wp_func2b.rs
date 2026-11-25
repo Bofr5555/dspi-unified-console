@@ -27,7 +27,7 @@ fn wp_func2b_a_refused_preset_load_leaves_the_device_on_its_own_slot() {
     confirm(&core);
     let mut s = server_of(&set, ConfirmMode::NeverAsk);
     let c = s.connect();
-    let e = err(&mut s, c, "dspi_preset_load", json!({"slot": 8}));
+    let e = err(&mut s, c, "dspi_preset_load", json!({"slot": 9}));
     assert!(
         e.contains("drives a tweeter") && e.contains("put back") && !e.contains(".."),
         "{e}"
@@ -39,7 +39,7 @@ fn wp_func2b_a_refused_preset_load_leaves_the_device_on_its_own_slot() {
 
     // With unsaved changes before the load: its own slot again, and those changes kept.
     core.set_output_gain(0, -3.0).unwrap();
-    let e = err(&mut s, c, "dspi_preset_load", json!({"slot": 8}));
+    let e = err(&mut s, c, "dspi_preset_load", json!({"slot": 9}));
     assert!(e.contains("put back"), "{e}");
     let st = core.get_state();
     assert_eq!(st.active_preset_slot, 1);
@@ -118,7 +118,7 @@ fn wp_func2b_undo_says_what_of_the_call_it_left() {
         &mut s,
         c,
         "dspi_set_limiter",
-        json!({"output": 0, "enabled": true, "threshold_db": -6, "release_ms": 300}),
+        json!({"output": 1, "enabled": true, "threshold_db": -6, "release_ms": 300}),
     );
     let u = ok(&mut s, c, "dspi_undo", json!({}));
     let st = core.get_state();

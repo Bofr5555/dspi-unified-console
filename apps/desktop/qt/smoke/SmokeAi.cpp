@@ -92,7 +92,8 @@ struct Agent {
             body);
     }
     std::unique_ptr<Exchange> gain(double db) const {
-        return call("dspi_set_gain", { { QStringLiteral("output"), out ? *out : 0 }, { QStringLiteral("gain_db"), db } });
+        // the tools count from 1 (SHOWFIX 9); `out` from 0, as the device does
+        return call("dspi_set_gain", { { QStringLiteral("output"), (out ? *out : 0) + 1 }, { QStringLiteral("gain_db"), db } });
     }
     // The result, once it has come
     QJsonObject result(Exchange &e) const {
@@ -450,7 +451,7 @@ void aiSection(SmokeDriver &d) {
     setGain(-10);
     e = agent.call("dspi_apply_changes", { { QStringLiteral("guard_s"), 300 },
                                            { QStringLiteral("changes"), QJsonArray{ QJsonObject{ { QStringLiteral("op"), QStringLiteral("set_gain") },
-                                                                                                { QStringLiteral("output"), out },
+                                                                                                { QStringLiteral("output"), out + 1 },
                                                                                                 { QStringLiteral("gain_db"), -18 } } } } });
     d.check("mcp4: a timed preview is made", !failed(agent.result(*e)) && d.waitFor(3000, [&] { return gainIs(-18); }));
     d.check("mcp4: the safe apply's banner shows it, with Keep and Revert", d.waitFor(4000, [&] { return snapshots->guardWaiting(); })

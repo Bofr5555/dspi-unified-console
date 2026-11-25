@@ -431,8 +431,13 @@ impl Shared {
             "device".into(),
             json!(device.as_ref().map(dspi_core::DeviceId::as_str)),
         );
+        // -- WP SHOWFIX -- the agent counts from 1; the app's row from 0
         for key in ["output", "input", "channel", "band", "slot"] {
-            if let Some(n) = args.and_then(|a| a.get(key)).and_then(Value::as_u64) {
+            if let Some(n) = args
+                .and_then(|a| a.get(key))
+                .and_then(Value::as_u64)
+                .and_then(|n| n.checked_sub(1))
+            {
                 row.insert(key.into(), json!(n));
             }
         }

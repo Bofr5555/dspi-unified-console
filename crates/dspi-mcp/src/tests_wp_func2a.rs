@@ -90,7 +90,7 @@ fn wp_func2a_a_confirmed_tweeters_highpass_may_go_lower_down_to_the_floor() {
             &mut s,
             c,
             "dspi_set_crossover",
-            json!({"output": 1, "high_pass": hp(900)}),
+            json!({"output": 2, "high_pass": hp(900)}),
         );
         assert!(e.contains("1000 Hz"), "{mode:?}: {e}");
         if mode == ConfirmMode::AskEverything {
@@ -101,7 +101,7 @@ fn wp_func2a_a_confirmed_tweeters_highpass_may_go_lower_down_to_the_floor() {
             &mut s,
             c,
             "dspi_set_crossover",
-            json!({"output": 1, "high_pass": hp(1800)}),
+            json!({"output": 2, "high_pass": hp(1800)}),
         );
         let ch = usize::from(core.get_state().num_input_channels) + 1;
         let x = core.get_state().xover[ch][0];
@@ -151,7 +151,7 @@ fn wp_func2a_nothing_is_asked_while_the_user_holds_a_control() {
         &mut s,
         c,
         "dspi_set_gain",
-        json!({"output": 0, "gain_db": -1}),
+        json!({"output": 1, "gain_db": -1}),
     );
     core.set_dragging(true);
     let e = err(&mut s, c, "dspi_undo", json!({}));
@@ -160,7 +160,7 @@ fn wp_func2a_nothing_is_asked_while_the_user_holds_a_control() {
         &mut s,
         c,
         "dspi_set_gain",
-        json!({"output": 0, "gain_db": 0}),
+        json!({"output": 1, "gain_db": 0}),
     );
     assert!(e.contains("the user is editing"), "{e}");
     assert_eq!(core.get_state().output_gain_db[0], -1.0);
@@ -170,7 +170,7 @@ fn wp_func2a_nothing_is_asked_while_the_user_holds_a_control() {
         &mut s,
         c,
         "dspi_set_gain",
-        json!({"output": 0, "gain_db": 0}),
+        json!({"output": 1, "gain_db": 0}),
     );
     assert_eq!(r["isError"], json!(false), "{r}");
     assert_eq!(
@@ -210,13 +210,13 @@ fn wp_func2a_an_inferred_tweeter_moves_within_the_floor_unasked() {
         &mut s,
         c,
         "dspi_set_crossover",
-        json!({"output": 1, "high_pass": lr4(2000)}),
+        json!({"output": 2, "high_pass": lr4(2000)}),
     );
     let r = call(
         &mut s,
         c,
         "dspi_set_crossover",
-        json!({"output": 1, "high_pass": lr4(800)}),
+        json!({"output": 2, "high_pass": lr4(800)}),
     );
     assert_eq!(
         r["structuredContent"]["status"],

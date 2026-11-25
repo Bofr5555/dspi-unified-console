@@ -157,7 +157,7 @@ fn wp_mcp2a_a_louder_change_is_held_and_allow_applies_it_deny_refuses_it() {
         &mut s,
         c,
         "dspi_set_gain",
-        json!({"output": 0, "gain_db": -6.0}),
+        json!({"output": 1, "gain_db": -6.0}),
     );
     assert_eq!(gain(&core, 0), -6.0);
     assert_eq!(r["changes"][0]["before"], json!(0.0));
@@ -173,7 +173,7 @@ fn wp_mcp2a_a_louder_change_is_held_and_allow_applies_it_deny_refuses_it() {
         &mut s,
         c,
         "dspi_set_gain",
-        json!({"output": 0, "gain_db": -1.0}),
+        json!({"output": 1, "gain_db": -1.0}),
     );
     assert_eq!(gain(&core, 0), -6.0);
     assert_eq!(s.take_confirm_events(), vec![ConfirmEvent::Asked(id)]);
@@ -181,7 +181,11 @@ fn wp_mcp2a_a_louder_change_is_held_and_allow_applies_it_deny_refuses_it() {
     assert_eq!(sheet.len(), 1);
     assert_eq!(sheet[0]["tool"], json!("dspi_set_gain"));
     assert_eq!(sheet[0]["risks"][0]["kind"], json!("louder"));
-    assert_eq!(sheet[0]["risks"][0]["output"], json!(0));
+    assert_eq!(
+        sheet[0]["risks"][0]["output"],
+        json!(1),
+        "Out 1, as the app counts"
+    );
     assert!(
         sheet[0]["risks"][0]["what"]
             .as_str()
@@ -233,7 +237,7 @@ fn wp_mcp2a_a_louder_change_is_held_and_allow_applies_it_deny_refuses_it() {
         &mut s,
         c,
         "dspi_set_gain",
-        json!({"output": 0, "gain_db": 3.0}),
+        json!({"output": 1, "gain_db": 3.0}),
     );
     s.answer_confirmation(id, false, 2_000).unwrap();
     assert_eq!(gain(&core, 0), -1.0);
@@ -275,7 +279,7 @@ fn wp_rbfix_allow_re_runs_on_the_device_asked_about_or_not_at_all() {
 
     // Held with no `device` while the app shows the first; the app shows the
     // second when the user presses Allow.
-    let louder = json!({"output": 2, "gain_db": -1.0});
+    let louder = json!({"output": 3, "gain_db": -1.0});
     s.set_active_device(Some(ids[0].clone()));
     let id = held(&mut s, c, "dspi_set_gain", louder.clone());
     assert_eq!(
@@ -316,7 +320,7 @@ fn wp_mcp2a_a_held_request_is_answered_when_the_user_answers_or_after_120_s() {
     core.set_output_mute(1, true).unwrap();
 
     // A transport that holds: the unmute waits, then the reply comes.
-    let text = request("dspi_set_mute", json!({"output": 1, "muted": false})).to_string();
+    let text = request("dspi_set_mute", json!({"output": 2, "muted": false})).to_string();
     let Handled::Held(id) = s.handle_held(c, 0, &text) else {
         panic!("not held")
     };
@@ -331,7 +335,7 @@ fn wp_mcp2a_a_held_request_is_answered_when_the_user_answers_or_after_120_s() {
     assert_eq!(s.resume(id, 40), None);
 
     // Nobody answers: after 120 s the agent hears so, nothing changed.
-    let text = request("dspi_set_gain", json!({"output": 1, "gain_db": 6.0})).to_string();
+    let text = request("dspi_set_gain", json!({"output": 2, "gain_db": 6.0})).to_string();
     let Handled::Held(id) = s.handle_held(c, 1_000, &text) else {
         panic!("not held")
     };
@@ -358,7 +362,7 @@ fn wp_mcp2a_a_held_request_is_answered_when_the_user_answers_or_after_120_s() {
         c,
         150_000,
         "dspi_set_gain",
-        json!({"output": 1, "gain_db": 9.0}),
+        json!({"output": 2, "gain_db": 9.0}),
     );
     let list = json!({"jsonrpc": "2.0", "id": 2, "method": "tools/list",
                       "params": {"_meta": meta()}})
@@ -368,7 +372,7 @@ fn wp_mcp2a_a_held_request_is_answered_when_the_user_answers_or_after_120_s() {
         Handled::Reply(Some(_))
     ));
     // A call that needs nobody is answered at once.
-    let text = request("dspi_set_gain", json!({"output": 1, "gain_db": -3.0})).to_string();
+    let text = request("dspi_set_gain", json!({"output": 2, "gain_db": -3.0})).to_string();
     assert!(matches!(
         s.handle_held(c, 200_000, &text),
         Handled::Reply(Some(_))
@@ -380,7 +384,7 @@ fn wp_mcp2a_a_held_request_is_answered_when_the_user_answers_or_after_120_s() {
         c,
         300_000,
         "dspi_set_gain",
-        json!({"output": 1, "gain_db": 2.0}),
+        json!({"output": 2, "gain_db": 2.0}),
     );
     s.disconnect(c);
     assert_eq!(s.confirmation(id).unwrap().state, ConfirmState::Gone);
@@ -404,7 +408,7 @@ fn wp_mcp2a_the_three_settings_ask_everything_risky_or_nothing() {
         &mut s,
         c,
         "dspi_set_gain",
-        json!({"output": 0, "gain_db": -3.0}),
+        json!({"output": 1, "gain_db": -3.0}),
     );
     assert_eq!(s.confirmation(id).unwrap().risks[0].kind, RiskKind::Change);
     assert_eq!(gain(&core, 0), 0.0);
@@ -417,14 +421,14 @@ fn wp_mcp2a_the_three_settings_ask_everything_risky_or_nothing() {
         &mut s,
         c,
         "dspi_set_gain",
-        json!({"output": 0, "gain_db": 6.0}),
+        json!({"output": 1, "gain_db": 6.0}),
     );
     assert_eq!(gain(&core, 0), 6.0);
     ok(
         &mut s,
         c,
         "dspi_set_peq_band",
-        json!({"output": 0, "slot": "free", "type": "peaking", "freq_hz": 100, "gain_db": 12}),
+        json!({"output": 1, "slot": "free", "type": "peaking", "freq_hz": 100, "gain_db": 12}),
     );
     assert!(s.waiting_confirmations().is_empty());
 
@@ -434,13 +438,13 @@ fn wp_mcp2a_the_three_settings_ask_everything_risky_or_nothing() {
         &mut s,
         c,
         "dspi_set_gain",
-        json!({"output": 0, "gain_db": 2.0}),
+        json!({"output": 1, "gain_db": 2.0}),
     );
     held(
         &mut s,
         c,
         "dspi_set_gain",
-        json!({"output": 0, "gain_db": 4.0}),
+        json!({"output": 1, "gain_db": 4.0}),
     );
     assert_eq!(ConfirmMode::parse("never_ask"), Some(ConfirmMode::NeverAsk));
     assert_eq!(ConfirmMode::default(), ConfirmMode::AskRisky);
@@ -519,7 +523,7 @@ fn wp_mcp2a_an_hp_removed_on_an_output_with_hp_above_1khz_is_asked_then_applied(
         &mut s,
         c,
         "dspi_set_crossover",
-        json!({"output": 1, "high_pass": {"family": "linkwitz_riley", "order": 4, "freq_hz": 2500}}),
+        json!({"output": 2, "high_pass": {"family": "linkwitz_riley", "order": 4, "freq_hz": 2500}}),
     );
     assert_eq!(xover(&core, 1, 0).freq, 2_500.0);
     // A bandpass: the low-pass joins the free slot.
@@ -527,7 +531,7 @@ fn wp_mcp2a_an_hp_removed_on_an_output_with_hp_above_1khz_is_asked_then_applied(
         &mut s,
         c,
         "dspi_set_crossover",
-        json!({"output": 1, "low_pass": {"family": "butterworth", "order": 2, "freq_hz": 12000}}),
+        json!({"output": 2, "low_pass": {"family": "butterworth", "order": 2, "freq_hz": 12000}}),
     );
     assert_eq!(xover(&core, 1, 1).filter_type, 42);
 
@@ -541,7 +545,7 @@ fn wp_mcp2a_an_hp_removed_on_an_output_with_hp_above_1khz_is_asked_then_applied(
             &mut s,
             c,
             "dspi_set_crossover",
-            json!({"output": 1, "high_pass": hp}),
+            json!({"output": 2, "high_pass": hp}),
         );
         let w = s.confirmation(id).unwrap();
         assert_eq!(w.risks[0].kind, RiskKind::TweeterCrossing);
@@ -555,7 +559,7 @@ fn wp_mcp2a_an_hp_removed_on_an_output_with_hp_above_1khz_is_asked_then_applied(
         &mut s,
         c,
         "dspi_apply_changes",
-        json!({"changes": [{"op": "set_crossover", "output": 1, "high_pass": null}]}),
+        json!({"changes": [{"op": "set_crossover", "output": 2, "high_pass": null}]}),
     );
     s.answer_confirmation(id, false, 0).unwrap();
 
@@ -564,7 +568,7 @@ fn wp_mcp2a_an_hp_removed_on_an_output_with_hp_above_1khz_is_asked_then_applied(
         &mut s,
         c,
         "dspi_set_crossover",
-        json!({"output": 1, "high_pass": null}),
+        json!({"output": 2, "high_pass": null}),
     );
     s.answer_confirmation(id, true, 0).unwrap();
     assert_eq!(xover(&core, 1, 0).filter_type, 0);
@@ -586,7 +590,7 @@ fn wp_mcp2a_never_ask_refuses_a_tweeter_crossing_and_the_users_tweeter_is_refuse
         &mut s,
         c,
         "dspi_set_crossover",
-        json!({"output": 1, "high_pass": null}),
+        json!({"output": 2, "high_pass": null}),
     );
     assert!(e.contains("never ask"), "{e}");
     assert!(s.waiting_confirmations().is_empty());
@@ -605,7 +609,7 @@ fn wp_mcp2a_never_ask_refuses_a_tweeter_crossing_and_the_users_tweeter_is_refuse
             &mut s,
             c,
             "dspi_set_crossover",
-            json!({"output": 1, "high_pass": null}),
+            json!({"output": 2, "high_pass": null}),
         );
         assert!(
             e.contains("tweeter in the user's speaker setup"),
@@ -617,8 +621,8 @@ fn wp_mcp2a_never_ask_refuses_a_tweeter_crossing_and_the_users_tweeter_is_refuse
             &mut s,
             c,
             "dspi_apply_changes",
-            json!({"changes": [{"op": "clear_peq_band", "output": 1, "slot": 0},
-                               {"op": "set_crossover", "output": 1,
+            json!({"changes": [{"op": "clear_peq_band", "output": 2, "slot": 1},
+                               {"op": "set_crossover", "output": 2,
                                 "high_pass": {"family": "bessel", "order": 2, "freq_hz": 500}}]}),
         );
         assert!(e.contains("speaker setup"), "{e}");
@@ -630,7 +634,7 @@ fn wp_mcp2a_never_ask_refuses_a_tweeter_crossing_and_the_users_tweeter_is_refuse
         &mut s,
         c,
         "dspi_set_crossover",
-        json!({"output": 1, "high_pass": {"family": "linkwitz_riley", "order": 4, "freq_hz": 3000}}),
+        json!({"output": 2, "high_pass": {"family": "linkwitz_riley", "order": 4, "freq_hz": 3000}}),
     );
     // A midrange in the setup keeps 80 Hz.
     confirm_layout(&core, 2, MeasureRole::Mid);
@@ -639,13 +643,13 @@ fn wp_mcp2a_never_ask_refuses_a_tweeter_crossing_and_the_users_tweeter_is_refuse
         &mut s,
         c,
         "dspi_set_crossover",
-        json!({"output": 2, "high_pass": {"family": "linkwitz_riley", "order": 4, "freq_hz": 100}}),
+        json!({"output": 3, "high_pass": {"family": "linkwitz_riley", "order": 4, "freq_hz": 100}}),
     );
     let e = err(
         &mut s,
         c,
         "dspi_set_crossover",
-        json!({"output": 2, "high_pass": null}),
+        json!({"output": 3, "high_pass": null}),
     );
     assert!(e.contains("a midrange"), "{e}");
     // An unconfirmed setup is not the user's word: asked, not refused.
@@ -656,7 +660,7 @@ fn wp_mcp2a_never_ask_refuses_a_tweeter_crossing_and_the_users_tweeter_is_refuse
         &mut s,
         c,
         "dspi_set_crossover",
-        json!({"output": 1, "high_pass": null}),
+        json!({"output": 2, "high_pass": null}),
     );
 }
 
@@ -666,7 +670,7 @@ fn wp_mcp2a_boosts_delay_steps_and_routes_are_judged() {
     let core = set.core(&ids[0]).unwrap();
     let (mut s, _) = agent_server(&set, ConfirmMode::AskRisky);
     let c = s.connect();
-    let band = json!({"input": 0, "slot": 3, "type": "peaking", "freq_hz": 200, "q": 2});
+    let band = json!({"input": 1, "slot": 4, "type": "peaking", "freq_hz": 200, "q": 2});
     let with = |g: f64| {
         let mut b = band.clone();
         b["gain_db"] = json!(g);
@@ -683,22 +687,22 @@ fn wp_mcp2a_boosts_delay_steps_and_routes_are_judged() {
         &mut s,
         c,
         "dspi_set_peq_band",
-        json!({"input": 0, "slot": "free", "type": "notch", "freq_hz": 50}),
+        json!({"input": 1, "slot": "free", "type": "notch", "freq_hz": 50}),
     );
-    assert_eq!(r["changes"][0]["slot"], json!(0));
+    assert_eq!(r["changes"][0]["slot"], json!(1));
 
     // Delay: small steps pass, a jump is asked.
     ok(
         &mut s,
         c,
         "dspi_set_delay",
-        json!({"output": 0, "delay_ms": 5.0}),
+        json!({"output": 1, "delay_ms": 5.0}),
     );
     let id = held(
         &mut s,
         c,
         "dspi_set_delay",
-        json!({"output": 0, "delay_ms": 40.0}),
+        json!({"output": 1, "delay_ms": 40.0}),
     );
     assert_eq!(
         s.confirmation(id).unwrap().risks[0].kind,
@@ -715,14 +719,14 @@ fn wp_mcp2a_boosts_delay_steps_and_routes_are_judged() {
             &mut s,
             c,
             "dspi_set_route",
-            json!({"input": i, "output": o, "on": false}),
+            json!({"input": i + 1, "output": o + 1, "on": false}),
         );
     }
     let id = held(
         &mut s,
         c,
         "dspi_set_route",
-        json!({"input": i, "output": o, "on": true}),
+        json!({"input": i + 1, "output": o + 1, "on": true}),
     );
     assert_eq!(
         s.confirmation(id).unwrap().risks[0].kind,
@@ -746,13 +750,13 @@ fn wp_mcp2a_boosts_delay_steps_and_routes_are_judged() {
         &mut s,
         c,
         "dspi_set_output_enabled",
-        json!({"output": 0, "enabled": false}),
+        json!({"output": 1, "enabled": false}),
     );
     let id = held(
         &mut s,
         c,
         "dspi_set_output_enabled",
-        json!({"output": 0, "enabled": true}),
+        json!({"output": 1, "enabled": true}),
     );
     assert_eq!(s.confirmation(id).unwrap().risks[0].kind, RiskKind::Enable);
     s.answer_confirmation(id, false, 0).unwrap();
@@ -792,9 +796,9 @@ fn wp_mcp2a_a_batch_is_one_undo_step_all_or_none_and_may_be_guarded() {
         c,
         "dspi_apply_changes",
         json!({"changes": [
-            {"op": "set_gain", "output": 0, "gain_db": -4},
-            {"op": "set_gain", "output": 1, "gain_db": -5},
-            {"op": "set_peq_band", "output": 0, "slot": "free", "type": "peaking",
+            {"op": "set_gain", "output": 1, "gain_db": -4},
+            {"op": "set_gain", "output": 2, "gain_db": -5},
+            {"op": "set_peq_band", "output": 1, "slot": "free", "type": "peaking",
              "freq_hz": 3000, "gain_db": -3}]}),
     );
     assert_eq!(r["changes"].as_array().unwrap().len(), 3);
@@ -809,8 +813,8 @@ fn wp_mcp2a_a_batch_is_one_undo_step_all_or_none_and_may_be_guarded() {
         &mut s,
         c,
         "dspi_apply_changes",
-        json!({"changes": [{"op": "set_gain", "output": 0, "gain_db": -8},
-                           {"op": "set_gain", "output": 1, "gain_db": 3}]}),
+        json!({"changes": [{"op": "set_gain", "output": 1, "gain_db": -8},
+                           {"op": "set_gain", "output": 2, "gain_db": 3}]}),
     );
     assert_eq!(gain(&core, 0), -4.0);
     s.answer_confirmation(id, true, 0).unwrap();
@@ -830,8 +834,8 @@ fn wp_mcp2a_a_batch_is_one_undo_step_all_or_none_and_may_be_guarded() {
         &mut s,
         c,
         "dspi_apply_changes",
-        json!({"changes": [{"op": "set_gain", "output": 0, "gain_db": -9},
-                           {"op": "set_gain", "output": 1, "gain_db": 5}]}),
+        json!({"changes": [{"op": "set_gain", "output": 1, "gain_db": -9},
+                           {"op": "set_gain", "output": 2, "gain_db": 5}]}),
     );
     assert!(e.contains("put back"), "{e}");
     assert_eq!(gain(&core, 0), -8.0);
@@ -842,15 +846,15 @@ fn wp_mcp2a_a_batch_is_one_undo_step_all_or_none_and_may_be_guarded() {
         &mut s,
         c,
         "dspi_apply_changes",
-        json!({"changes": [{"op": "set_gain", "output": 0, "gain_db": -1},
+        json!({"changes": [{"op": "set_gain", "output": 1, "gain_db": -1},
                            {"op": "flash_firmware"}]}),
     );
-    assert!(e.starts_with("change 1:"), "{e}");
+    assert!(e.starts_with("change 2:"), "{e}");
     let e = err(
         &mut s,
         c,
         "dspi_apply_changes",
-        json!({"changes": [{"op": "set_gain", "output": 0, "gain_db": -1, "device": "x"}]}),
+        json!({"changes": [{"op": "set_gain", "output": 1, "gain_db": -1, "device": "x"}]}),
     );
     assert!(e.contains("one device"), "{e}");
 
@@ -859,7 +863,7 @@ fn wp_mcp2a_a_batch_is_one_undo_step_all_or_none_and_may_be_guarded() {
         &mut s,
         c,
         "dspi_apply_changes",
-        json!({"changes": [{"op": "set_gain", "output": 0, "gain_db": -20}], "guard_s": 30}),
+        json!({"changes": [{"op": "set_gain", "output": 1, "gain_db": -20}], "guard_s": 30}),
     );
     let guard = r["guard"]["guard_id"].as_u64().unwrap();
     assert_eq!(r["guard"]["phase"], json!("waiting"));
@@ -877,7 +881,7 @@ fn wp_mcp2a_a_batch_is_one_undo_step_all_or_none_and_may_be_guarded() {
         &mut s,
         c,
         "dspi_apply_changes",
-        json!({"changes": [{"op": "set_gain", "output": 0, "gain_db": -12}], "guard_s": 30}),
+        json!({"changes": [{"op": "set_gain", "output": 1, "gain_db": -12}], "guard_s": 30}),
     );
     let r = ok(&mut s, c, "dspi_keep_changes", json!({}));
     assert_eq!(r["guard"]["phase"], json!("kept"));
@@ -904,13 +908,13 @@ fn wp_mcp2a_undo_touches_only_its_own_entries() {
         &mut s,
         a,
         "dspi_set_delay",
-        json!({"output": 0, "delay_ms": 3.0}),
+        json!({"output": 1, "delay_ms": 3.0}),
     );
     let rb = ok(
         &mut s,
         b,
         "dspi_set_delay",
-        json!({"output": 1, "delay_ms": 4.0}),
+        json!({"output": 2, "delay_ms": 4.0}),
     );
 
     // Neither may undo the user's, nor the other agent's.
@@ -937,7 +941,7 @@ fn wp_mcp2a_undo_touches_only_its_own_entries() {
         &mut s,
         b,
         "dspi_set_gain",
-        json!({"output": 3, "gain_db": -10}),
+        json!({"output": 4, "gain_db": -10}),
     );
     let id = held(&mut s, b, "dspi_undo", json!({}));
     assert_eq!(s.confirmation(id).unwrap().risks[0].kind, RiskKind::Louder);
@@ -961,7 +965,7 @@ fn wp_mcp2a_a_drag_refuses_agents_until_released_or_stale() {
         c,
         0,
         "dspi_set_gain",
-        json!({"output": 0, "gain_db": -1}),
+        json!({"output": 1, "gain_db": -1}),
     );
     assert!(e.contains("editing"), "{e}");
     // The user keeps moving the control: never stale.
@@ -971,7 +975,7 @@ fn wp_mcp2a_a_drag_refuses_agents_until_released_or_stale() {
         c,
         6_000,
         "dspi_set_gain",
-        json!({"output": 0, "gain_db": -1}),
+        json!({"output": 1, "gain_db": -1}),
     );
     core.set_output_gain(5, -1.5).unwrap();
     err_at(
@@ -979,7 +983,7 @@ fn wp_mcp2a_a_drag_refuses_agents_until_released_or_stale() {
         c,
         12_000,
         "dspi_set_gain",
-        json!({"output": 0, "gain_db": -1}),
+        json!({"output": 1, "gain_db": -1}),
     );
     assert_eq!(gain(&core, 0), 0.0);
     assert!(
@@ -993,7 +997,7 @@ fn wp_mcp2a_a_drag_refuses_agents_until_released_or_stale() {
         c,
         13_000,
         "dspi_set_gain",
-        json!({"output": 0, "gain_db": -1}),
+        json!({"output": 1, "gain_db": -1}),
     );
 
     // A drag nobody releases (a control destroyed while pressed): after
@@ -1005,21 +1009,21 @@ fn wp_mcp2a_a_drag_refuses_agents_until_released_or_stale() {
         c,
         20_000,
         "dspi_set_gain",
-        json!({"output": 0, "gain_db": -2}),
+        json!({"output": 1, "gain_db": -2}),
     );
     err_at(
         &mut s,
         c,
         20_000 + STALE_DRAG_MS - 1,
         "dspi_set_gain",
-        json!({"output": 0, "gain_db": -2}),
+        json!({"output": 1, "gain_db": -2}),
     );
     ok_at(
         &mut s,
         c,
         20_000 + STALE_DRAG_MS,
         "dspi_set_gain",
-        json!({"output": 0, "gain_db": -2}),
+        json!({"output": 1, "gain_db": -2}),
     );
     assert_eq!(gain(&core, 0), -2.0);
 }
@@ -1032,8 +1036,8 @@ fn wp_mcp2a_a_batch_waits_while_the_users_undo_group_is_open() {
     let c = s.connect();
     core.begin_group("the user's".into());
     assert_eq!(core.undo_group_owner(), Some(EMBEDDER));
-    let batch = json!({"changes": [{"op": "set_gain", "output": 0, "gain_db": -1},
-                                   {"op": "set_gain", "output": 1, "gain_db": -1}]});
+    let batch = json!({"changes": [{"op": "set_gain", "output": 1, "gain_db": -1},
+                                   {"op": "set_gain", "output": 2, "gain_db": -1}]});
     let e = err(&mut s, c, "dspi_apply_changes", batch.clone());
     assert!(e.contains("middle of a change"), "{e}");
     assert_eq!(gain(&core, 0), 0.0);
@@ -1090,7 +1094,7 @@ fn wp_mcp2a_user_only_and_read_only_are_hard_refusals_never_asked() {
         &mut s,
         c,
         "dspi_set_gain",
-        json!({"output": 0, "gain_db": 3}),
+        json!({"output": 1, "gain_db": 3}),
     );
     assert!(e.contains("only read"), "{e}");
     assert!(s.waiting_confirmations().is_empty());
@@ -1112,14 +1116,14 @@ fn wp_mcp2a_writes_are_rate_limited_on_the_test_clock_and_allows_are_not() {
     };
     let mut s = Server::new(Arc::clone(&set), config);
     let c = s.connect();
-    let quiet = json!({"output": 0, "gain_db": -1});
+    let quiet = json!({"output": 1, "gain_db": -1});
     ok_at(&mut s, c, 0, "dspi_set_gain", quiet.clone());
     let id = held_at(
         &mut s,
         c,
         0,
         "dspi_set_gain",
-        json!({"output": 0, "gain_db": 1}),
+        json!({"output": 1, "gain_db": 1}),
     );
     let e = err_at(&mut s, c, 0, "dspi_set_gain", quiet.clone());
     assert!(e.contains("wait 1000 ms"), "{e}");
@@ -1218,13 +1222,13 @@ fn wp_mcp2a_two_devices_each_judged_on_its_own() {
         &mut s,
         c,
         "dspi_set_crossover",
-        json!({"device": ids[0].as_str(), "output": 1, "high_pass": null}),
+        json!({"device": ids[0].as_str(), "output": 2, "high_pass": null}),
     );
     let id = held(
         &mut s,
         c,
         "dspi_set_crossover",
-        json!({"device": ids[1].as_str(), "output": 1, "high_pass": null}),
+        json!({"device": ids[1].as_str(), "output": 2, "high_pass": null}),
     );
     assert_eq!(
         s.confirmation(id).unwrap().device.as_deref(),

@@ -35,7 +35,7 @@ use serde_json::{Map, Value, json};
 use crate::policy;
 use crate::registry::{Call, Tool, ToolClass, ToolError, ToolResult};
 use crate::tools::edit::schema;
-use crate::tools::read::{object_schema, state};
+use crate::tools::read::{object_schema, shown, shown_all, state};
 use crate::untrusted;
 
 /// The tools.
@@ -112,18 +112,23 @@ fn rows_of(args: &Map<String, Value>, n_out: u8) -> Result<Vec<Row>, String> {
         {
             return Err(format!("a row has no field `{k}` (output, role, speaker)"));
         }
-        let output = o
+        // -- WP SHOWFIX -- from 1, as the app shows them (Out 1 is 1); kept from 0
+        let given = o
             .get("output")
             .and_then(Value::as_u64)
+            .filter(|n| *n >= 1)
+            .ok_or("each row's `output` is a number from 1 (Out 1 is 1)")?;
+        let output = crate::tools::read::from_shown(given)
             .and_then(|n| u8::try_from(n).ok())
-            .ok_or("each row's `output` is a number from 0")?;
-        if output >= n_out {
-            return Err(format!(
-                "the device has no output {output} (outputs are numbered from 0: Out 1 is 0)"
-            ));
-        }
+            .filter(|n| *n < n_out)
+            .ok_or_else(|| {
+                format!(
+                    "the device has no output {given} (it has outputs 1..{n_out}, counted from \
+                     1 as on the screen: Out 1 is 1)"
+                )
+            })?;
         if rows.iter().any(|r| r.output == output) {
-            return Err(format!("output {output} is in the table twice"));
+            return Err(format!("Out {given} is in the table twice"));
         }
         let word = o.get("role").and_then(Value::as_str).unwrap_or("");
         let role = ROLE_WORDS
@@ -170,7 +175,7 @@ fn layout_rows(rows: &[Row]) -> Vec<SpeakerLayoutOutput> {
 }
 
 /// The table as the confirmation sheet shows it (`roles` beside the
-/// risks): output (from 0), side, role; plus the quoted words. `None` when
+/// risks): output (from 0: the app adds 1), side, role; plus the quoted words. `None` when
 /// `args` hold no table.
 pub fn table_json(args: &Map<String, Value>) -> Option<Value> {
     let rows = rows_of(args, 16).ok()?;
@@ -356,7 +361,7 @@ static SET_ROLES: Tool = Tool {
                   from what the USER told you, e.g. \"L and R front, three way, tweeter, mid, \
                   woofer, left then right, outputs 1-6\" = rows Out 1 L tweeter, Out 2 L \
                   midrange, Out 3 L woofer, Out 4 R tweeter, Out 5 R midrange, Out 6 R woofer. \
-                  Outputs are numbered from 0 here (Out 1 is 0). Never guess roles the user did \
+                  Outputs are numbered from 1, as on the screen (Out 1 is 1). Never guess roles the user did \
                   not state: if they did not say, run dspi_detect_speakers or ask them. Quote \
                   their words verbatim in `user_words`. One question shows the user the whole \
                   table (under \"never ask\" only with the user's switch, agent_may.set_roles). \
@@ -380,8 +385,8 @@ static SET_ROLES: Tool = Tool {
                    "items": {"type": "object", "additionalProperties": false,
                              "required": ["output", "role", "speaker"],
                              "properties": {
-                                 "output": {"type": "integer", "minimum": 0,
-                                            "description": "The output, from 0 (Out 1 is 0)"},
+                                 "output": {"type": "integer", "minimum": 1,
+                                            "description": "The output, from 1 (Out 1 is 1)"},
                                  "role": {"type": "string",
                                           "enum": ["tweeter", "midrange", "woofer", "sub", "full_range"],
                                           "description": "What it drives, as the user said"},
@@ -469,14 +474,14 @@ fn set_roles(call: &Call<'_>, args: &Map<String, Value>) -> ToolResult {
         "device": call.device_text(),
         "roles_from": "speaker_setup_stated",
         "rows": kept.outputs.iter().map(|r| json!({
-            "output": r.output,
+            "output": shown(r.output),
             "role": role_tool_word(r.role),
             "speaker": untrusted::name(&r.speaker),
             "group": r.group,
         })).collect::<Vec<_>>(),
-        "unknown_treated_as_tweeter": unnamed,
+        "unknown_treated_as_tweeter": shown_all(&unnamed),
         // -- WP REVDFIX -- B1
-        "user_tweeters_kept": demoted(&changes),
+        "user_tweeters_kept": shown_all(&demoted(&changes)),
         "next": NEXT_TEXT,
     }))
 }
@@ -487,13 +492,14 @@ mod tests {
 
     #[test]
     fn wp_roles_the_owners_sentence_reads_as_its_table() {
+        // -- WP SHOWFIX -- the agent's outputs from 1 (Out 1 is 1), kept from 0
         let args = json!({"rows": [
-            {"output": 3, "role": "tweeter", "speaker": "R"},
-            {"output": 0, "role": "tweeter", "speaker": "L"},
-            {"output": 1, "role": "midrange", "speaker": "L"},
-            {"output": 2, "role": "woofer", "speaker": "L"},
-            {"output": 4, "role": "midrange", "speaker": "R"},
-            {"output": 5, "role": "woofer", "speaker": "R"},
+            {"output": 4, "role": "tweeter", "speaker": "R"},
+            {"output": 1, "role": "tweeter", "speaker": "L"},
+            {"output": 2, "role": "midrange", "speaker": "L"},
+            {"output": 3, "role": "woofer", "speaker": "L"},
+            {"output": 5, "role": "midrange", "speaker": "R"},
+            {"output": 6, "role": "woofer", "speaker": "R"},
         ], "user_words": "L and r front speakers"});
         let rows = rows_of(args.as_object().unwrap(), 8).unwrap();
         assert_eq!(
@@ -511,12 +517,13 @@ mod tests {
             q.contains("Out 7, 8 not named: unknown, treated as tweeters"),
             "{q}"
         );
-        // Refused: twice, out of range, an unknown role, an extra field
+        // Refused: twice, out of range (0 and 9 on 8 outputs), an unknown role, an extra field
         for bad in [
-            json!({"rows": [{"output": 0, "role": "tweeter", "speaker": "L"}, {"output": 0, "role": "woofer", "speaker": "L"}]}),
-            json!({"rows": [{"output": 8, "role": "tweeter", "speaker": "L"}]}),
-            json!({"rows": [{"output": 0, "role": "high", "speaker": "L"}]}),
-            json!({"rows": [{"output": 0, "role": "tweeter", "speaker": "L", "group": 2}]}),
+            json!({"rows": [{"output": 1, "role": "tweeter", "speaker": "L"}, {"output": 1, "role": "woofer", "speaker": "L"}]}),
+            json!({"rows": [{"output": 9, "role": "tweeter", "speaker": "L"}]}),
+            json!({"rows": [{"output": 0, "role": "tweeter", "speaker": "L"}]}),
+            json!({"rows": [{"output": 1, "role": "high", "speaker": "L"}]}),
+            json!({"rows": [{"output": 1, "role": "tweeter", "speaker": "L", "group": 2}]}),
             json!({"rows": []}),
         ] {
             assert!(rows_of(bad.as_object().unwrap(), 8).is_err(), "{bad}");

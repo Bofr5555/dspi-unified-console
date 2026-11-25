@@ -127,7 +127,7 @@ fn call(r: &Rig, tool: &str, args: Value) -> TcpStream {
 }
 
 fn louder(r: &Rig, db: f64) -> TcpStream {
-    call(r, "dspi_set_gain", json!({"output": 1, "gain_db": db}))
+    call(r, "dspi_set_gain", json!({"output": 2, "gain_db": db}))
 }
 
 fn gain(r: &Rig) -> f32 {
@@ -319,11 +319,11 @@ fn wp_mcp4_an_agent_that_goes_away_or_cancels_leaves_no_question() {
 #[test]
 fn wp_mcp4_the_three_settings_over_http() {
     let r = rig();
-    let quieter = |r: &Rig| call(r, "dspi_set_gain", json!({"output": 1, "gain_db": -20.0}));
+    let quieter = |r: &Rig| call(r, "dspi_set_gain", json!({"output": 2, "gain_db": -20.0}));
     let (_, body) = reply(quieter(&r));
     assert_eq!(body["result"]["isError"], json!(false), "{body}");
     r.policy.set_mode(ConfirmMode::AskEverything);
-    let s = call(&r, "dspi_set_gain", json!({"output": 1, "gain_db": -30.0}));
+    let s = call(&r, "dspi_set_gain", json!({"output": 2, "gain_db": -30.0}));
     let id = waiting(&r, 1)[0];
     r.http.answer_confirmation(id, true).unwrap();
     assert_eq!(reply(s).1["result"]["isError"], json!(false));
@@ -341,7 +341,7 @@ fn wp_mcp4_the_server_keeps_the_clocks_with_no_request_coming() {
     let (_, body) = reply(call(
         &r,
         "dspi_apply_changes",
-        json!({"changes": [{"op": "set_gain", "output": 1, "gain_db": -30.0}], "guard_s": 10}),
+        json!({"changes": [{"op": "set_gain", "output": 2, "gain_db": -30.0}], "guard_s": 10}),
     ));
     assert_eq!(body["result"]["isError"], json!(false), "{body}");
     assert_eq!(gain(&r), -30.0);
@@ -358,7 +358,7 @@ fn wp_mcp4_stop_reverts_the_previews_and_ends_the_questions() {
     let (_, body) = reply(call(
         &r,
         "dspi_apply_changes",
-        json!({"changes": [{"op": "set_gain", "output": 1, "gain_db": -30.0}], "guard_s": 300}),
+        json!({"changes": [{"op": "set_gain", "output": 2, "gain_db": -30.0}], "guard_s": 300}),
     ));
     assert_eq!(body["result"]["isError"], json!(false), "{body}");
     let s = louder(&r, 0.0);
@@ -412,7 +412,7 @@ fn wp_mcp4_the_relay_carries_a_held_call() {
     let mut keeper = MemoryTokenKeeper::default();
     // -- WP FFIX -- a call with no clientInfo is the fallback name's program
     relay::TokenKeeper::save(&mut keeper, &RelayConfig::default().fallback_name, &r.token);
-    let mut params = json!({"name": "dspi_set_gain", "arguments": {"output": 1, "gain_db": -2.0}});
+    let mut params = json!({"name": "dspi_set_gain", "arguments": {"output": 2, "gain_db": -2.0}});
     params["_meta"] = json!({
         "io.modelcontextprotocol/protocolVersion": MODERN,
         "io.modelcontextprotocol/clientCapabilities": {},
@@ -502,7 +502,7 @@ fn wp_mcp4_a_listener_may_answer_and_stop_from_an_event() {
         &token,
         &json!(1),
         "tools/call",
-        json!({"name": "dspi_set_gain", "arguments": {"output": 1, "gain_db": -1.0}}),
+        json!({"name": "dspi_set_gain", "arguments": {"output": 2, "gain_db": -1.0}}),
     ))
     .unwrap();
     let (_, body) = reply(s);
@@ -516,28 +516,29 @@ fn wp_mcp4_a_listener_may_answer_and_stop_from_an_event() {
 
 #[test]
 fn wp_mcp4_the_changes_in_words() {
+    // -- WP SHOWFIX -- a result's numbers count from 1, as the words do
     let w = |changes: Value| words(&json!({"ok": true, "changes": changes}));
     assert_eq!(
-        w(json!([{"what": "output_muted", "output": 0, "before": true, "after": false}])),
+        w(json!([{"what": "output_muted", "output": 1, "before": true, "after": false}])),
         "Out 1 output muted on to off"
     );
     assert_eq!(
-        w(json!([{"what": "peq_band", "channel": 8, "slot": 1,
+        w(json!([{"what": "peq_band", "channel": 9, "slot": 2,
             "before": {"free": true, "type_label": "Flat"},
             "after": {"free": false, "type_label": "Peaking", "freq_hz": 2500.0, "gain_db": -3.5, "q": 2.0}}])),
         "channel 9 band 2 peq band flat to Peaking 2500 Hz -3.5 dB Q 2"
     );
     assert_eq!(
-        w(json!([{"what": "crossover", "output": 3, "before": [],
+        w(json!([{"what": "crossover", "output": 4, "before": [],
             "after": [{"type_label": "LR4 HP", "freq_hz": 80.0}]}])),
         "Out 4 crossover none to LR4 HP 80 Hz"
     );
     // A name is never put into the log.
     assert_eq!(
-        w(json!([{"what": "channel_name", "channel": 0, "before": "a", "after": "b"}])),
+        w(json!([{"what": "channel_name", "channel": 1, "before": "a", "after": "b"}])),
         "channel 1 channel name"
     );
-    let many: Vec<Value> = (0..6)
+    let many: Vec<Value> = (1..7)
         .map(|o| json!({"what": "output_gain_db", "output": o, "before": 0.0, "after": -1.0}))
         .collect();
     assert!(w(json!(many)).ends_with("; 2 more"));

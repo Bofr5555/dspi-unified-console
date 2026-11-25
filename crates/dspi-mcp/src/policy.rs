@@ -251,9 +251,9 @@ pub struct Risk {
 }
 
 impl Risk {
-    /// As JSON, for the app and the agent.
+    /// As JSON, for the app and the agent: `output` from 1, as the app shows it.
     pub fn to_json(&self) -> Value {
-        json!({"kind": self.kind.as_str(), "what": self.what, "output": self.output})
+        json!({"kind": self.kind.as_str(), "what": self.what, "output": self.output.map(|o| u16::from(o).saturating_add(1))})
     }
 }
 
@@ -1755,12 +1755,10 @@ pub(crate) fn band_bytes(f: &FilterParams) -> Vec<u8> {
     b
 }
 
-/// Output `o` for the agent: the tools' number and the app's.
+/// Output `o` (from 0) for the agent: "Out 3", as the tools and the app
+/// count it (-- WP SHOWFIX --: one number, from 1).
 pub fn agent_out(o: u8) -> String {
-    format!(
-        "output {o} (Out {} in the app)",
-        u16::from(o).saturating_add(1)
-    )
+    format!("Out {}", u16::from(o).saturating_add(1))
 }
 
 /// A lowered high-pass protection on output `o` (wire channel `ch`) that

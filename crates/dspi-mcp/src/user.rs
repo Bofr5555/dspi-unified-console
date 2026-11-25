@@ -45,7 +45,8 @@ pub struct UserEvent {
     pub kind: &'static str,
     /// In words, as a verb phrase ("changed Out 3 output gain -3 dB to -9 dB").
     pub what: String,
-    /// What was changed: `path`, `output`, `input`, `band`.
+    /// What was changed: `path`, `output`, `input`, `band`, `crossover_slot`
+    /// (numbers from 1, as the app shows them).
     pub target: Map<String, Value>,
     /// Told to this client only (the answer to its own question).
     only: Option<ClientId>,
@@ -347,17 +348,20 @@ fn slot(c: &UserChange) -> String {
         .unwrap_or_default()
 }
 
-/// Where a path's indices are, in words, and into `target`.
-fn place(path: &str, ix: &[u8], n_in: u8, target: &mut Map<String, Value>) -> String {
+/// Where a path's indices are, in words, and into `target`: `output`,
+/// `input`, `band` (a PEQ band) or `crossover_slot`, each counted from 1 as
+/// the app shows them (-- WP SHOWFIX --); a path of another shape gives its
+/// `indices`, each from 1 too.
+pub(crate) fn place(path: &str, ix: &[u8], n_in: u8, target: &mut Map<String, Value>) -> String {
     let nth = |n: u8| u16::from(n).saturating_add(1);
     let mut channel = |ch: u8| -> String {
         match ch.checked_sub(n_in) {
             Some(o) => {
-                target.insert("output".into(), json!(o));
+                target.insert("output".into(), json!(nth(o)));
                 format!("Out {}", nth(o))
             }
             None => {
-                target.insert("input".into(), json!(ch));
+                target.insert("input".into(), json!(nth(ch)));
                 format!("In {}", nth(ch))
             }
         }
@@ -365,28 +369,38 @@ fn place(path: &str, ix: &[u8], n_in: u8, target: &mut Map<String, Value>) -> St
     match (path, ix) {
         (p, [ch, band]) if p.starts_with("eq.") => {
             let at = channel(*ch);
-            target.insert("band".into(), json!(band));
             match band.checked_sub(20) {
-                Some(x) => format!("{at} crossover slot {}", nth(x)),
-                None => format!("{at} band {}", nth(*band)),
+                Some(x) => {
+                    target.insert("crossover_slot".into(), json!(nth(x)));
+                    format!("{at} crossover slot {}", nth(x))
+                }
+                None => {
+                    target.insert("band".into(), json!(nth(*band)));
+                    format!("{at} band {}", nth(*band))
+                }
             }
         }
         ("ch.delay", [ch]) => channel(*ch),
         ("mix", [i, o]) => {
-            target.insert("input".into(), json!(i));
-            target.insert("output".into(), json!(o));
+            target.insert("input".into(), json!(nth(*i)));
+            target.insert("output".into(), json!(nth(*o)));
             format!("In {} to Out {}", nth(*i), nth(*o))
         }
         ("pre", [i]) => {
-            target.insert("input".into(), json!(i));
+            target.insert("input".into(), json!(nth(*i)));
             format!("In {}", nth(*i))
         }
-        (p, [o]) if p.starts_with("out.") => {
-            target.insert("output".into(), json!(o));
+        (p, [0xFF]) if p.starts_with("limit.") => {
+            target.insert("output".into(), json!("all"));
+            "every output".to_owned()
+        }
+        (p, [o]) if p.starts_with("out.") || p.starts_with("limit.") => {
+            target.insert("output".into(), json!(nth(*o)));
             format!("Out {}", nth(*o))
         }
         (_, []) => String::new(),
         (_, more) => {
+            let more: Vec<u16> = more.iter().map(|n| nth(*n)).collect();
             target.insert("indices".into(), json!(more));
             String::new()
         }

@@ -16,7 +16,7 @@ use serde_json::{Map, Value, json};
 use crate::policy::{self, RiskKind};
 use crate::registry::{Call, Tool, ToolClass, ToolError, ToolResult};
 use crate::tools::edit::{channel, schema, u8_arg, with_target};
-use crate::tools::read::{object_schema, state};
+use crate::tools::read::{object_schema, shown, state};
 use crate::untrusted;
 
 /// The tools, in `tools/list` order.
@@ -37,7 +37,9 @@ fn name_arg(args: &Map<String, Value>) -> String {
 fn source_arg(args: &Map<String, Value>) -> Result<u8, ToolError> {
     u8_arg(args, "source")
         .filter(|s| *s < SOURCES)
-        .ok_or_else(|| ToolError::new("`source` is an input source 0..7"))
+        .ok_or_else(|| {
+            ToolError::new("`source` is an input source code 0..7 (a code, not a count: 0 is USB)")
+        })
 }
 
 fn name_prop() -> Value {
@@ -46,7 +48,8 @@ fn name_prop() -> Value {
 
 fn source_prop() -> Value {
     json!({"type": "integer", "minimum": 0, "maximum": SOURCES - 1,
-           "description": "An input source: 0 USB, 1..6 the device's digital inputs, 7 the audio link"})
+           "description": "An input source by its code (a code, not a count: 0 is USB, 1..6 \
+                           the device's digital inputs, 7 the audio link)"})
 }
 
 static SET_CHANNEL_NAME: Tool = Tool {
@@ -75,7 +78,9 @@ fn set_channel_name(call: &mut Call<'_>, args: &Map<String, Value>) -> ToolResul
         .channel_names
         .get(usize::from(ch))
         .map(|n| untrusted::name(n));
-    Ok(json!({"ok": true, "device": call.device_text(), "channel": ch, "channel_name": kept}))
+    Ok(
+        json!({"ok": true, "device": call.device_text(), "channel": shown(ch), "channel_name": kept}),
+    )
 }
 
 static SET_DEVICE_NAME: Tool = Tool {

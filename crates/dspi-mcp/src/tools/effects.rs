@@ -31,7 +31,7 @@ use serde_json::{Map, Value, json};
 use crate::policy::{self, WriteKey};
 use crate::registry::{Call, Tool, ToolClass, ToolError, ToolResult};
 use crate::tools::edit::{newest, own_ids_since, schema, write_result_schema};
-use crate::tools::read::{empty_schema, num, object_schema, state};
+use crate::tools::read::{empty_schema, from_shown, no_such, num, object_schema, shown, state};
 
 /// The effects tools, in `tools/list` order.
 pub static TOOLS: &[&Tool] = &[
@@ -164,7 +164,7 @@ enum Kind {
     Number,
     /// A whole number (a choice or a mode).
     Int,
-    /// A list of outputs (from 0), sent as a bit mask.
+    /// A list of outputs (from 1, as the app shows them), sent as a bit mask.
     Outputs,
 }
 
@@ -708,8 +708,8 @@ fn effect_schema(e: &Effect) -> Value {
     if e.per_output {
         m.insert(
             "output".into(),
-            json!({"description": "An output from 0, or \"all\"",
-                   "oneOf": [{"type": "integer", "minimum": 0}, {"const": "all"}]}),
+            json!({"description": "An output from 1 (1 is Out 1), or \"all\"",
+                   "oneOf": [{"type": "integer", "minimum": 1}, {"const": "all"}]}),
         );
     }
     for q in e.params {
@@ -718,8 +718,8 @@ fn effect_schema(e: &Effect) -> Value {
             Kind::Bool => json!({"type": "boolean", "description": desc}),
             Kind::Number => json!({"type": "number", "description": desc}),
             Kind::Int => json!({"type": "integer", "minimum": 0, "description": desc}),
-            Kind::Outputs => json!({"type": "array", "items": {"type": "integer", "minimum": 0},
-                                    "description": q.desc}),
+            Kind::Outputs => json!({"type": "array", "items": {"type": "integer", "minimum": 1},
+                                    "description": format!("{}, from 1 (1 is Out 1)", q.desc)}),
         };
         m.insert(q.arg.into(), spec);
     }
@@ -774,14 +774,15 @@ fn param_value(st: &DspState, q: &Param, v: &Value) -> Result<f32, ToolError> {
             .ok_or_else(bad),
         Kind::Outputs => {
             let mut mask: u32 = 0;
-            for o in v.as_array().ok_or_else(bad)? {
-                let o = o.as_u64().ok_or_else(bad)?;
-                if o >= u64::from(st.num_output_channels) {
-                    return Err(ToolError::new(format!(
-                        "`{}`: no output {o}; this device has outputs 0..{}",
-                        q.arg,
-                        st.num_output_channels.saturating_sub(1)
-                    )));
+            for given in v.as_array().ok_or_else(bad)? {
+                // -- WP SHOWFIX -- from 1, as the app shows them
+                let o = given
+                    .as_u64()
+                    .ok_or_else(bad)
+                    .map(|n| from_shown(n).unwrap_or(usize::MAX))?;
+                if o >= usize::from(st.num_output_channels) {
+                    let e = no_such("output", given, usize::from(st.num_output_channels));
+                    return Err(ToolError::new(format!("`{}`: {}", q.arg, e.0)));
                 }
                 mask |= 1u32
                     .checked_shl(u32::try_from(o).unwrap_or(31))
@@ -807,14 +808,16 @@ fn set_effect(call: &mut Call<'_>, args: &Map<String, Value>, e: &'static Effect
     let output = if e.per_output {
         match args.get("output") {
             Some(Value::String(s)) if s == "all" => ALL_OUTPUTS,
+            // -- WP SHOWFIX -- from 1, as the app shows them
             Some(v) => v
                 .as_u64()
+                .and_then(from_shown)
                 .and_then(|o| u8::try_from(o).ok())
                 .filter(|o| *o < before.num_output_channels)
                 .ok_or_else(|| {
                     ToolError::new(format!(
-                        "`output` is an output 0..{} or \"all\"",
-                        before.num_output_channels.saturating_sub(1)
+                        "`output` is an output 1..{} (1 is Out 1) or \"all\"",
+                        before.num_output_channels
                     ))
                 })?,
             None => return Err(ToolError::new("`output` is required")),
@@ -969,6 +972,7 @@ fn current(st: &DspState, path: &str, o: u8) -> Value {
         json!(
             (0..st.num_output_channels)
                 .filter(|k| mask & 1u32.checked_shl(u32::from(*k)).unwrap_or(0) != 0)
+                .map(shown) // -- WP SHOWFIX --
                 .collect::<Vec<_>>()
         )
     };
@@ -1073,7 +1077,7 @@ static GET_EFFECTS: Tool = Tool {
             .map(|o| {
                 let mut v = effect_json(&st, &LIMITER, o);
                 if let Some(m) = v.as_object_mut() {
-                    m.insert("output".into(), json!(o));
+                    m.insert("output".into(), json!(shown(o)));
                 }
                 v
             })
@@ -1095,7 +1099,8 @@ static GET_EFFECTS: Tool = Tool {
 static GET_LIMITER_METER: Tool = Tool {
     name: "dspi_get_limiter_meter",
     title: "Read the limiters' gain reduction",
-    description: "Each output's limiter gain reduction now, in dB (0 when not limiting).",
+    description: "Each output's limiter gain reduction now, in dB (0 when not limiting): \
+                  one value per output, Out 1 first.",
     class: ToolClass::Read,
     device: true,
     input_schema: empty_schema,

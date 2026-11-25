@@ -45,9 +45,10 @@ device the app shows is used. A device that is not open may be a known one
   (`how_to_set_default`). `dspi_get_meters` shows whether signal arrives.
 
 ## Channels
-- Inputs and outputs are numbered from 0. Name them `{\"input\": n}` or `{\"output\": n}`.
-- Wire channels count the inputs first: with 2 inputs, output 0 is wire channel 2. Prefer
-  output and input numbers; `{\"channel\": n}` takes a wire channel.
+- Inputs and outputs are numbered from 1, as the app shows them: output 1 is Out 1, input 1
+  is In 1. Name them `{\"input\": n}` or `{\"output\": n}`.
+- Wire channels count the inputs first, from 1: with 2 inputs, output 1 (Out 1) is wire
+  channel 3. Prefer output and input numbers; `{\"channel\": n}` takes a wire channel.
 - `dspi_get_overview` lists both, with each output's role from the user's speaker setup.
 
 ## Filters
@@ -69,7 +70,7 @@ device the app shows is used. A device that is not open may be a known one
   route, an effect or an EQ boost on it or on an input that feeds it).
 - If the user tells you which output drives what (\"tweeter, mid, woofer, left then right,
   outputs 1-6\"), set it with `dspi_set_speaker_roles`: one row per output they named (outputs
-  from 0), their words quoted verbatim in `user_words`. The user is asked once, with the whole
+  from 1: Out 1 is 1), their words quoted verbatim in `user_words`. The user is asked once, with the whole
   table (under \"never ask\" only with their switch: `agent_may.set_roles`). The roles then
   guard the outputs (`roles_from: speaker_setup_stated`, every tweeter rule applies); an output
   you leave out is unknown and treated as a tweeter (`treated_as_tweeter`). They are not
@@ -91,9 +92,13 @@ device the app shows is used. A device that is not open may be a known one
   the user what it found; only the user can confirm or correct it, in Settings › Speakers, and
   the detection cannot be overruled by what you believe. An output on which nothing was heard
   (`reaches: nothing`) may not be routed, switched on or unmuted.
-- Numbers: every field (`output`, `input`, `slot`, `channel`) counts from 0. In texts,
-  \"output N\" is that same number; \"Out N\" and \"In N\" are the app's labels, from 1
-  (output 0 is Out 1).
+- Numbers: every number you read or give counts from 1, as the app shows it: output 1 is
+  Out 1, input 1 is In 1, preset 1 is the app's preset 1, PEQ band 1..10 and crossover slot 1
+  are the app's, wire channel 1 is the first input, and `change 1` in a
+  `dspi_apply_changes` error is the first change. Texts say \"Out N\", \"In N\" and
+  \"preset N\" with the same numbers. Codes are not counts and stay as they are: an input
+  source (`source`: 0 is USB), audio link channels and slots (0..63, 255 silent), ids,
+  cursors and masks (`output_pairs`, `pair_map`).
 - What an agent may change, and what the user must confirm in the app, is in
   `dspi_get_overview`'s `agent_may`. A change that is louder, a big boost, a long delay step
   or a lowered tweeter high-pass may be held for the user: the result then says

@@ -101,7 +101,7 @@ use crate::ClientId;
 use crate::policy::{self, RiskKind};
 use crate::registry::{Call, Tool, ToolClass, ToolError, ToolResult};
 use crate::tools::edit::schema;
-use crate::tools::read::{empty_schema, num, object_schema, put, state};
+use crate::tools::read::{empty_schema, from_shown, num, object_schema, put, shown, state};
 use crate::tools::results; // -- WP FFIX --
 use crate::untrusted;
 
@@ -1164,15 +1164,18 @@ fn outputs_arg(args: &Map<String, Value>, n_out: u8) -> Result<Vec<u8>, ToolErro
         .ok_or_else(|| ToolError::new("`outputs` must be a list of output numbers"))?;
     let mut out = Vec::with_capacity(list.len());
     for x in list {
+        // -- WP SHOWFIX -- from 1, as the app shows them
         let o = x
             .as_u64()
+            .and_then(from_shown)
             .and_then(|o| u8::try_from(o).ok())
             .filter(|o| *o < n_out)
             .ok_or_else(|| {
-                ToolError::new(
-                    "`outputs` must be output numbers from 0 (the roles come from the user's \
-                     speaker layout, never from an agent)",
-                )
+                ToolError::new(format!(
+                    "`outputs` must be output numbers 1..{n_out}, counted from 1 as on the \
+                     screen (Out 1 is 1; the roles come from the user's speaker layout, never \
+                     from an agent)"
+                ))
             })?;
         if out.contains(&o) {
             return Err(ToolError::new("an output twice in `outputs`"));
@@ -1227,8 +1230,8 @@ fn setup_props() -> Map<String, Value> {
     );
     m.insert(
         "outputs".into(),
-        json!({"type": "array", "items": {"type": "integer", "minimum": 0},
-               "description": "The outputs to measure, from 0; default: every output of the \
+        json!({"type": "array", "items": {"type": "integer", "minimum": 1},
+               "description": "The outputs to measure, from 1 (1 is Out 1); default: every output of the \
                                user's speaker layout. Their roles come from that layout."}),
     );
     // -- WP FFIX -- FUNC1 bug 3
@@ -1464,8 +1467,9 @@ fn setup_of(
             .map(|o| {
                 let row = layout.output(o).ok_or_else(|| {
                     ToolError::new(format!(
-                        "output {o} is not in the user's speaker layout: ask the user to add it \
-                         in Settings › Speakers"
+                        "Out {} is not in the user's speaker layout: ask the user to add it \
+                         in Settings › Speakers",
+                        shown(o)
                     ))
                 })?;
                 Ok(dspi_core::measure::MeasureOutput {
@@ -1568,16 +1572,16 @@ fn roles_json(layout: &SpeakerLayout, outputs: &[u8]) -> Vec<Value> {
         .map(|o| match layout.output(*o) {
             // -- WP ROLES -- a stated role says whether its top end was checked
             Some(r) if r.source == dspi_core::RoleSource::Stated => json!({
-                "output": o, "role": role_word(r.role),
+                "output": shown(*o), "role": role_word(r.role),
                 "speaker_name": untrusted::clean(&r.speaker, 32), "group": r.group,
                 "source": "stated",
                 "role_check": layout.check_of(*o).map(|c| check_verdict_word(c.verdict)),
                 "below_1khz_waits_for_check": layout.agent_floor_held(*o)
                     && r.role != dspi_core::measure::MeasureRole::High,
             }),
-            Some(r) => json!({"output": o, "role": role_word(r.role),
+            Some(r) => json!({"output": shown(*o), "role": role_word(r.role),
                               "speaker_name": untrusted::clean(&r.speaker, 32), "group": r.group}),
-            None => json!({"output": o, "role": null,
+            None => json!({"output": shown(*o), "role": null,
                            "note": "not in the user's speaker layout"}),
         })
         .collect()
@@ -1586,7 +1590,7 @@ fn roles_json(layout: &SpeakerLayout, outputs: &[u8]) -> Vec<Value> {
 fn issues_json(issues: &[MeasureIssue]) -> Vec<Value> {
     issues
         .iter()
-        .map(|i| json!({"key": i.key, "output": i.output, "note": untrusted::note(&i.message)}))
+        .map(|i| json!({"key": i.key, "output": i.output.map(shown), "note": untrusted::note(&i.message)}))
         .collect()
 }
 
@@ -1967,7 +1971,7 @@ static ROLLOFF_START: Tool = Tool {
         let mut m = Map::new();
         m.insert(
             "output".into(),
-            json!({"type": "integer", "minimum": 0, "description": "The output, from 0"}),
+            json!({"type": "integer", "minimum": 1, "description": "The output, from 1 (1 is Out 1)"}),
         );
         m.insert(
             "placement".into(),
@@ -1996,10 +2000,20 @@ static ROLLOFF_START: Tool = Tool {
         host(call)?;
         let layout = trusted_layout(core)?;
         busy(call, core)?;
-        let output = u8_arg(args, "output");
-        if output >= st.num_output_channels {
-            return Err(ToolError::new("the device has no such output"));
-        }
+        // -- WP SHOWFIX -- from 1, as the app shows it
+        let output = args
+            .get("output")
+            .and_then(Value::as_u64)
+            .and_then(from_shown)
+            .and_then(|o| u8::try_from(o).ok())
+            .filter(|o| *o < st.num_output_channels)
+            .ok_or_else(|| {
+                ToolError::new(format!(
+                    "the device has no such output: it has outputs 1..{}, counted from 1 as on \
+                     the screen (Out 1 is 1)",
+                    st.num_output_channels
+                ))
+            })?;
         if layout.output(output).is_none() {
             return Err(ToolError::new(
                 "that output is not in the user's speaker layout: ask the user to add it in \
@@ -2204,17 +2218,17 @@ static STATUS: Tool = Tool {
                 "waiting_for_position": m.phase == MeasurePhase::WaitPosition,
                 "run": m.run,
                 "runs": m.runs,
-                "output": m.output,
+                "output": m.output.map(shown),
                 "progress": m.progress,
                 "level_db": m.level_db,
                 "result_ready": m.result_ready,
                 "timing_reliable": m.timing_reliable,
-                "issue": m.issue.as_ref().map(|i| json!({"key": i.key, "output": i.output, "text": untrusted::note(&i.message)})),
+                "issue": m.issue.as_ref().map(|i| json!({"key": i.key, "output": i.output.map(shown), "text": untrusted::note(&i.message)})),
             },
             "rolloff": {
                 "stage": r.stage,
                 "running": r.running,
-                "output": r.output,
+                "output": r.output.map(shown),
                 "role": role_word(r.role),
                 "floor_hz": r.floor_hz,
                 "segment": r.segment,
@@ -2507,7 +2521,7 @@ pub(crate) fn detection_json(d: &Detection, state: LayoutState) -> Value {
         .iter()
         .map(|o| {
             json!({
-                "output": o.output,
+                "output": shown(o.output),
                 "class": class_word(o.class),
                 "confidence": confidence_word(o.confidence),
                 "role": o.role.map(role_word),
@@ -2553,7 +2567,7 @@ fn detect_json(core: &DspiCore, call: &Call<'_>) -> Value {
         "stage": stage_word(d.stage),
         "running": d.running,
         "by_this_agent": d.actor == call.actor,
-        "output": d.output,
+        "output": d.output.map(shown),
         "outputs_done": d.outputs_done,
         "outputs_total": d.outputs_total,
         "floor_hz": num(d.floor_hz),
@@ -2564,7 +2578,7 @@ fn detect_json(core: &DspiCore, call: &Call<'_>) -> Value {
         // -- WP ROLES -- a check of stated roles, and what it found so far
         "check": d.check,
         "checks": d.check.then(|| d.checks.iter().map(|c| json!({
-            "output": c.output,
+            "output": shown(c.output),
             "stated_role": role_word(c.role),
             "verdict": check_verdict_word(c.verdict),
             "top_fall_db": tenth(c.top_fall_db),
@@ -2644,8 +2658,9 @@ static DETECT: Tool = Tool {
         let mut m = Map::new();
         m.insert(
             "outputs".into(),
-            json!({"type": "array", "items": {"type": "integer", "minimum": 0},
-                   "description": "The outputs to probe, from 0; default: every output"}),
+            json!({"type": "array", "items": {"type": "integer", "minimum": 1},
+                   "description": "The outputs to probe, from 1 (1 is Out 1); default: every \
+                                   output"}),
         );
         m.insert(
             "placement".into(),
@@ -2951,7 +2966,7 @@ static TUNE_PROPOSE: Tool = Tool {
             .writes
             .iter()
             .map(|w| {
-                json!({"output": w.output, "kind": w.kind, "timing": w.timing,
+                json!({"output": shown(w.output), "kind": w.kind, "timing": w.timing,
                             "what": untrusted::note(&w.words)})
             })
             .collect();
@@ -3218,7 +3233,8 @@ fn units_props() -> Map<String, Value> {
                "items": {"type": "object", "additionalProperties": false, "required": ["device"],
                          "properties": {
                              "device": {"type": "string", "description": "A unit open in the app (dspi_list_devices)"},
-                             "outputs": {"type": "array", "items": {"type": "integer", "minimum": 0}}}},
+                             "outputs": {"type": "array", "items": {"type": "integer", "minimum": 1},
+                                         "description": "From 1: 1 is Out 1"}}},
                "description": "The units, each open in the app, and their outputs (default: \
                                every output of that unit's speaker layout). Roles come from \
                                each unit's own confirmed speaker layout."}),
@@ -3390,7 +3406,7 @@ static SYSTEM_PREFLIGHT: Tool = Tool {
             l.iter()
                 .map(|i| {
                     json!({"unit_serial": untrusted::clean(&i.serial, 64), "key": i.key,
-                                "output": i.output, "note": untrusted::note(&i.message)})
+                                "output": i.output.map(shown), "note": untrusted::note(&i.message)})
                 })
                 .collect()
         };
@@ -3464,7 +3480,7 @@ static SYSTEM_PROPOSAL: Tool = Tool {
         let arrivals = |l: &[dspi_core::measure::MeasureSystemArrival]| -> Vec<Value> {
             l.iter()
                 .map(|a| {
-                    json!({"unit_serial": untrusted::clean(&a.serial, 64), "output": a.output,
+                    json!({"unit_serial": untrusted::clean(&a.serial, 64), "output": shown(a.output),
                                 "arrival_us": a.arrival_us, "offered": a.offered,
                                 "reason": untrusted::note(&a.reason)})
                 })

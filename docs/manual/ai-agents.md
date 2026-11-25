@@ -517,8 +517,11 @@ a headphone **coupler**, the headphones' lower limits apply, in the low-end sear
   you said midrange, woofer or sub before anything low plays on it; it does not catch a midrange or woofer where you said
   tweeter (that one is only over-protected: it is measured from 1 kHz up). Confirm the roles in Settings › Speakers once
   the measurements look right.
-- **Output numbers.** Agents count outputs and inputs from 0, as the tools do; the console's labels count from 1. In what
-  an agent is told, "output 1" is the tools' number and "Out 2" the console's label of the same output.
+- **Numbers count from 1, as the console shows them.** <!-- WP SHOWFIX --> An agent reads and gives every number as
+  the console counts it: output 1 is Out 1, input 1 is In 1, preset 1 is the console's preset 1, PEQ bands 1 to 10 and
+  crossover slot 1 are the console's, and "change 1" in a refused batch is its first change. So "output 3" and "Out 3"
+  are the same output, and "saved to preset 1" is the preset 1 of the console's list. Codes are not counts and stay as they
+  are: an input source (0 is USB), the audio link's channels and slots (0 to 63), ids and masks.
 - **What Undo can undo.** The activity offers **Undo** only for changes Undo can reverse: a preset save, a flash write or a
   preset load have none.
 - **The relay handles one message at a time.** An agent that starts the console with `--mcp` waits for each answer: while a

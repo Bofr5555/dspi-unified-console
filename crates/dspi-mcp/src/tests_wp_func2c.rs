@@ -27,7 +27,7 @@ fn wp_func2c_the_lock_says_what_passes_and_never_gives_the_pin() {
         &mut s,
         c,
         "dspi_set_gain",
-        json!({"output": 4, "gain_db": -3.0}),
+        json!({"output": 5, "gain_db": -3.0}),
     );
     assert!(refused.starts_with("the installer lock is on"), "{refused}");
     for passes in [
@@ -58,7 +58,7 @@ fn wp_func2c_the_lock_says_what_passes_and_never_gives_the_pin() {
         &mut s,
         c,
         "dspi_set_mute",
-        json!({"output": 4, "muted": true}),
+        json!({"output": 5, "muted": true}),
     );
     assert!(core.get_state().output_muted[4]);
     assert!((core.get_state().output_gain_db[4]).abs() < 0.01);

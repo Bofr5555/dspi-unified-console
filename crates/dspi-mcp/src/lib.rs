@@ -157,3 +157,7 @@ mod tests_wp_adet1;
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
 mod tests_wp_roles;
+// -- WP SHOWFIX --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
+mod tests_wp_showfix;

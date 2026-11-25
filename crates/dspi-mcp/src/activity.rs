@@ -171,10 +171,11 @@ fn change_words(c: &Value) -> String {
         (_, Some(w)) => (w, " ms"),
         _ => (what, ""),
     };
+    // -- WP SHOWFIX -- a result's numbers count from 1 already
     let at = |key: &str, word: &str| {
         c.get(key)
             .and_then(Value::as_u64)
-            .map(|n| format!("{word} {}", n.saturating_add(1)))
+            .map(|n| format!("{word} {n}"))
     };
     let mut line: Vec<String> = [
         at("input", "In"),
