@@ -6,7 +6,9 @@
 //! - An output: its speaker and role from the speaker layout when that row
 //!   is someone's word, confirmed, detected or stated from the user's words
 //!   ("Centre woofer", "Left tweeter", "Sub"), not a suggestion; else the name
-//!   the user gave it; else "Out N".
+//!   the user gave it; else, when nothing is routed to it, the core's label
+//!   "3 · None" (-- WP INTE -- owner 2026-11-24, as every edit view names it);
+//!   else "Out N".
 //!
 //! Numbers count from 1, as the screens do.
 
@@ -75,12 +77,13 @@ pub fn speaker_role_name(speaker: &str, role: MeasureRole) -> Option<String> {
 }
 
 /// The names from the parts: the device's channel names (wire order), its
-/// input count, the outputs the user named and the layout.
+/// input count, the outputs the user named, the unused ones and the layout.
 pub(crate) fn words_of(
     names: &[String],
     inputs: u8,
     outputs: u8,
     user_named: &[bool],
+    unused: &[bool],
     layout: Option<&SpeakerLayout>,
 ) -> ChannelWords {
     let stored = |ch: usize| {
@@ -112,6 +115,10 @@ pub(crate) fn words_of(
             {
                 return name;
             }
+            // -- WP INTE -- an unused output by the core's label (output_label.rs)
+            if unused.get(usize::from(o)).copied().unwrap_or(false) {
+                return format!("{} · None", u16::from(o).saturating_add(1));
+            }
             format!("Out {}", u16::from(o).saturating_add(1))
         })
         .collect();
@@ -132,12 +139,16 @@ impl DspiCore {
         let named: Vec<bool> = (0..state.num_output_channels)
             .map(|o| labels.iter().any(|l| l.output == o && l.user_named))
             .collect();
+        let unused: Vec<bool> = (0..state.num_output_channels)
+            .map(|o| labels.iter().any(|l| l.output == o && l.unused))
+            .collect();
         let layout = self.speaker_layout().ok().flatten();
         words_of(
             &state.channel_names,
             state.num_input_channels,
             state.num_output_channels,
             &named,
+            &unused,
             layout.as_ref(),
         )
     }
@@ -177,7 +188,14 @@ mod tests_wp_showfix {
             ],
             ..SpeakerLayout::default()
         };
-        let w = words_of(&names, 8, 4, &[false, true, false, true], Some(&layout));
+        let w = words_of(
+            &names,
+            8,
+            4,
+            &[false, true, false, true],
+            &[],
+            Some(&layout),
+        );
         assert_eq!(w.input(2), "C");
         assert_eq!(w.input(4), "In 5");
         assert_eq!(w.output(0), "Centre woofer");
@@ -191,7 +209,7 @@ mod tests_wp_showfix {
             outputs: vec![row(0, MeasureRole::Low, "L", RoleSource::Suggested)],
             ..SpeakerLayout::default()
         };
-        let w = words_of(&names, 8, 2, &[false, true], Some(&suggested));
+        let w = words_of(&names, 8, 2, &[false, true], &[], Some(&suggested));
         assert_eq!(w.output(0), "Out 1");
         assert_eq!(w.output(1), "Bass");
         assert_eq!(
@@ -199,5 +217,32 @@ mod tests_wp_showfix {
             "Left woofer"
         );
         assert_eq!(w.wire(3), "LFE");
+    }
+
+    // -- WP INTE -- (owner 2026-11-24) an output nothing is routed to reads as the
+    // core's label, "3 · None"; a layout row or the user's name still wins.
+    #[test]
+    fn wp_inte_an_unused_output_is_named_as_its_label() {
+        let names: Vec<String> = ["L", "R", "", "", "Bass", ""]
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect();
+        let layout = SpeakerLayout {
+            outputs: vec![row(0, MeasureRole::Low, "L", RoleSource::Stated)],
+            ..SpeakerLayout::default()
+        };
+        let unused = [true, false, true, true];
+        let w = words_of(
+            &names,
+            2,
+            4,
+            &[false, false, true, false],
+            &unused,
+            Some(&layout),
+        );
+        assert_eq!(w.output(0), "Left woofer");
+        assert_eq!(w.output(1), "Out 2");
+        assert_eq!(w.output(2), "Bass");
+        assert_eq!(w.output(3), "4 · None");
     }
 }
