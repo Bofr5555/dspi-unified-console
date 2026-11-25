@@ -32,6 +32,7 @@ QVariant ChannelListModel::data(const QModelIndex &index, int role) const {
     case DisplayNameRole: return r.displayName; // -- WP SHOWFIX --
     case ShortNameRole: return r.shortName;
     case UnusedRole: return r.unused; // -- WP INTE --
+    case HiddenRole: return r.hidden; // -- WP FIN015 --
     default: return QVariant();
     }
 }
@@ -43,6 +44,7 @@ QHash<int, QByteArray> ChannelListModel::roleNames() const {
         { EnabledRole, "outputEnabled" },   { UserNamedRole, "userNamed" }, { PdmRole, "pdm" },
         { DisplayNameRole, "displayName" }, { ShortNameRole, "shortName" }, // -- WP SHOWFIX --
         { UnusedRole, "unused" },                                           // -- WP INTE --
+        { HiddenRole, "hidden" },                                           // -- WP FIN015 --
     };
 }
 
@@ -143,6 +145,9 @@ void ChannelListModel::update(const DeviceSnapshot &snap, const QString &platfor
             // -- WP INTE -- (owner 2026-11-24) nothing routed to it: the dock's
             // meters leave it out, the sidebar (an edit view) keeps it
             r.unused = o.value(QLatin1String("unused")).toBool();
+            // -- WP FIN015 -- (REVF R1) unless the generator plays on it: the
+            // generator writes after the matrix, so it is loud
+            r.hidden = o.value(QLatin1String("hidden")).toBool();
             // -- WP SHOWFIX -- the speaker layout's name where the core has one
             // ("Centre woofer"), as the Overview's card names it
             const QString word = words.value(QLatin1String("outputs")).toArray().at(r.index).toString();

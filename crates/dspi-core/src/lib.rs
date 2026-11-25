@@ -747,6 +747,11 @@ pub(crate) struct Connection {
     /// bind's own platform read: `device_protocol` reads it once, not on
     /// every call (the board does not change within a connection).
     pub(crate) board_seen: Option<dspi_proto::packets::Board>,
+    // -- WP FIN015 --
+    /// The outputs the signal generator plays on, as far as this connection
+    /// knows (`stats::SiggenOutputs`): an unused output it plays on is not
+    /// hidden (`OutputLabel::hidden`, REVF R1).
+    pub(crate) siggen: stats::SiggenOutputs,
 }
 
 /// A remote device reached without the [`Inner`] lock (WP C15).
@@ -876,6 +881,8 @@ impl Connection {
             // -- WP PGFIX --
             kind: DeviceKind::Dsp,
             board_seen: None, // -- WP LKFAST --
+            // -- WP FIN015 --
+            siggen: stats::SiggenOutputs::default(),
         }
     }
 

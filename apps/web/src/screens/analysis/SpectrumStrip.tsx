@@ -13,7 +13,7 @@ import { analyserFor, barsOf, channelName, channelsOf, columnsFor, followingText
 export interface TapNames {
   inputs: string[];
   outputs: string[];
-  /** -- WP INTE -- the outputs nothing is routed to (owner 2026-11-24), by channel */
+  /** -- WP INTE -- the outputs nothing is routed to (owner 2026-11-24), by channel; -- WP FIN015 -- and no test signal plays on */
   unused?: boolean[];
 }
 
@@ -244,6 +244,6 @@ export function tapNames(s: DspState, labels?: OutputLabel[]): TapNames {
   for (const r of inputRows(s, s.numInputChannels || 2)) inputs[r.index] = `${r.descriptor} ${r.name}`;
   const outputs: string[] = [];
   for (const r of outputRows(s, labels)) outputs[r.index] = `${r.descriptor} ${r.name}`;
-  const unused = (labels ?? []).map((l) => l.unused === true); // -- WP INTE --
+  const unused = (labels ?? []).map((l) => l.hidden === true); // -- WP INTE -- -- WP FIN015 -- `hidden` (REVF R1)
   return { inputs, outputs, unused };
 }
