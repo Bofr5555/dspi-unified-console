@@ -12,6 +12,8 @@ import { CLASS_WORDS, ROLE_WORDS, TWEETER_RULE, bannerOf, baseOf, evidenceWords,
 import { useSpeakerLayout } from "./use-layout";
 import { Group } from "../../../ui/Group"; // -- WP WEB7 --
 import { Icon } from "../../../ui/icons"; // -- WP WEB7 --
+import { Pill } from "../../../ui/Pill"; // -- WP FIN015 --
+import { outputColour } from "../../eq/model"; // -- WP FIN015 --
 
 const ROLE_IDS = Object.keys(ROLE_WORDS) as SpeakerLayoutOutputRecord["role"][];
 
@@ -80,15 +82,22 @@ export function SpeakersPage(props: { session: Session }) {
       {ro ? <p class="note">{ro}: the speaker layout is shown, not changed.</p> : null}
       <ul class="speakers-rows" aria-label="Speaker layout" style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "10px" }}>
         {rows.map((o) => {
-          const name = `OUT${o + 1} ${outputLabel(s, snap.outputLabels, o)}`;
+          // -- WP FIN015 -- (REVF D4) the channel pill and the label once, as Delay & Gain; the
+          // controls' names say both, as there
+          const label = outputLabel(s, snap.outputLabels, o);
+          const name = `OUT${o + 1} ${label}`;
           const r = draft?.outputs.find((x) => x.output === o);
           const off = s.outputEnabled?.[o] === false;
           const pill = pillOf(draft, view.stored, o); // -- WP ADETW --
           return (
             <li key={o} aria-label={name} style={{ display: "flex", flexWrap: "wrap", gap: "4px 8px", alignItems: "center" }}>
-              <label style={{ flex: "1 1 12em", minWidth: 0 }}>
-                <input type="checkbox" aria-label={`${name} is in the layout`} disabled={!!ro} checked={!!r} onChange={(e) => use(o, (e.currentTarget as HTMLInputElement).checked)} /> {name}
-                {off ? <span class="note"> (off)</span> : null}
+              <label class="speakers-who" style={{ flex: "1 1 12em", minWidth: 0, display: "inline-flex", alignItems: "center", gap: "8px" }}>
+                <input type="checkbox" aria-label={`${name} is in the layout`} disabled={!!ro} checked={!!r} onChange={(e) => use(o, (e.currentTarget as HTMLInputElement).checked)} />
+                <Pill text={`OUT${o + 1}`} colour={outputColour(s, o)} />
+                <span class="speakers-name" style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {label}
+                </span>
+                {off ? <span class="note">(off)</span> : null}
               </label>
               {pill ? (
                 <span class="speaker-pill" data-kind={pill.kind} aria-label={`${name}: ${pill.word}`} title={(pill.note && noticeRow(pill.note)?.reason) || pill.reason}>

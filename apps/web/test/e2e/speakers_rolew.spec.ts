@@ -52,6 +52,22 @@ async function noSidewaysScroll(page: Page) {
   expect(over).toBeLessThanOrEqual(0);
 }
 
+// -- WP FIN015 -- (REVF D4) a row names its output once: the channel pill, then the label ("OUT1" and
+// "Out 1 · L"), never "OUT1 Out 1 · L" as plain text
+test("FIN015: a Speakers row shows the channel pill and the output's label once", async ({ page }) => {
+  const errors = errorsOf(page);
+  const session = await openDemo(page);
+  const sp = await speakersPage(session);
+  const first = sp.getByRole("list", { name: "Speaker layout" }).getByRole("listitem").first();
+  await expect(first.locator(".ch-pill")).toHaveText("OUT1");
+  await expect(first.locator(".speakers-name")).toHaveText("Out 1 · L");
+  const who = (await first.locator(".speakers-who").innerText()).replace(/\s+/g, " ").trim();
+  expect(who.match(/Out 1/g)?.length).toBe(1);
+  await expect(sp.getByRole("combobox", { name: "Role of OUT1 Out 1 · L" })).toBeVisible();
+  await noSidewaysScroll(page);
+  expect(errors).toEqual([]);
+});
+
 test("ROLEW: the suggestion confirmed in Settings › Speakers; Measure pre-filled, an edit written back; kept across a reload", async ({ page }) => {
   const errors = errorsOf(page);
   let session = await openDemo(page);
