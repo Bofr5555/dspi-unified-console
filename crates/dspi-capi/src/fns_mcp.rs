@@ -749,7 +749,7 @@ pub extern "C" fn dspi_mcp_relay_stdio(
                 // -- WP MCP4 --
                 let _ = writeln!(
                     std::io::stderr(),
-                    "dspi-mcp relay: the port must be 1 to 65535; set it in DSPi Console under \
+                    "dspi-mcp relay: the port must be 1 to 65535; set it in uConsole for DSPi under \
                      Settings, AI agents"
                 );
                 return 2;

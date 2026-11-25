@@ -475,7 +475,7 @@ impl Server {
     }
 
     fn server_info(&self) -> Value {
-        json!({"name": self.config.name, "title": "DSPi Console", "version": self.config.version})
+        json!({"name": self.config.name, "title": "uConsole for DSPi", "version": self.config.version})
     }
 
     fn initialize(

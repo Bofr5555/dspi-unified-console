@@ -2,12 +2,12 @@
 //!
 //! An agent host that starts local MCP servers as programs (Claude Desktop,
 //! most IDE agents) runs `uconsole mcp`. It relays the agent's messages to
-//! DSPi Console's loopback endpoint and the answers back (`dspi_mcp::relay`):
+//! uConsole for DSPi's loopback endpoint and the answers back (`dspi_mcp::relay`):
 //! the agent works on what the app has open, and the user sees every change
 //! live. Nothing here opens a device.
 //!
 //! - **Pairing.** The first run, or one after the app forgot this agent,
-//!   asks DSPi Console: it shows the agent's name and a code, which this
+//!   asks uConsole for DSPi: it shows the agent's name and a code, which this
 //!   prints on standard error; the user clicks Allow. The token is kept in
 //!   `<config dir>/uconsole/mcp-token`, a file only this user can read (as
 //!   the DSPi Link tokens are).
@@ -70,15 +70,16 @@ pub fn run(flags: &[&str]) -> u8 {
 fn usage() {
     println!(
         "\
-{COMMAND} mcp - let an AI agent use DSPi Console
+{COMMAND} mcp - let an AI agent use uConsole for DSPi
 
 USAGE:
     {COMMAND} mcp [--port <n>]
 
-An agent host starts this as a local MCP server (stdio). It relays to DSPi
-Console, which must be running with Settings, AI agents turned on. The first
-time, DSPi Console asks you to allow the agent: check that it shows the code
-printed here. --port: the port set in DSPi Console (default {DEFAULT_PORT}).
+An agent host starts this as a local MCP server (stdio). It relays to
+uConsole for DSPi, which must be running with Settings, AI agents turned on.
+The first time, uConsole for DSPi asks you to allow the agent: check that it
+shows the code printed here. --port: the port set in uConsole for DSPi
+(default {DEFAULT_PORT}).
 
 Claude Desktop, in claude_desktop_config.json:
     {{\"mcpServers\": {{\"dspi\": {{\"command\": \"{COMMAND}\", \"args\": [\"mcp\"]}}}}}}"

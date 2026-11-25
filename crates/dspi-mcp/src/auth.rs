@@ -115,7 +115,7 @@ impl std::fmt::Display for AuthError {
             ),
             Self::NoRandom => write!(f, "the system gave no random numbers for a token"),
             Self::Store(why) => write!(f, "the AI clients' file: {why}"),
-            Self::Busy => write!(f, "another pairing request is waiting in DSPi Console"),
+            Self::Busy => write!(f, "another pairing request is waiting in uConsole for DSPi"),
             Self::TooMany => write!(f, "too many pairing requests: wait a minute"),
         }
     }

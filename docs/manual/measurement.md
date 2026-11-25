@@ -1,8 +1,7 @@
 # Measuring and auto-tune
 
-*User manual, WP P5FIN, 2026-11-19. For the owner and for users of the web console and the Qt console. The technical
-contract is [docs/integrator/measurement.md](../integrator/measurement.md). This page describes the consoles as they are
-on `main` with the P5-E batch (reviewed 2026-11-19: `work/review-p5e/REPORT.md`).*
+*User manual of uConsole for DSPi 0.15.0: measuring in the web console and in the desktop app (both layouts). The
+technical contract is [docs/integrator/measurement.md](../integrator/measurement.md).*
 
 With a measurement microphone you can see what each output of your DSPi really does in the room or on a headphone
 coupler. You can then correct it from the measured curve, or let auto-tune line up a multi-way speaker for you. Every
@@ -13,7 +12,8 @@ change is shown before it is written, and every change can be undone.
 | Console | Where | What it offers |
 |---|---|---|
 | Web console | the **Measure** screen, with the tools (Advanced and Installer modes) | tabs Measure, Results, Live, Auto-tune, Documents; Passive RTA when you may not play |
-| Qt console | **Tools > Measure…** | the same tabs |
+| Desktop app, Modern layout | **Measure** in the rail on the left (Ctrl+K, "Measure", also finds it) | tabs Measure, Results, Live, Auto-tune, Documents, Several units; Passive RTA when you may not play |
+| Desktop app, Classic layout | **Tools > Measure…** | the same tabs, in a window |
 | Terminal (`uconsole measure`) | the command line | importing calibration and target files, listing, showing and exporting documents, and a tune from a saved measurement. It opens no microphone |
 
 On the demo device a **Simulated microphone** stands in for a real one, so you can try every step without hardware. It
@@ -92,7 +92,7 @@ On a coupler the levels are lower than for speakers (section 4), and the pause b
 ### 3.1 The microphone's calibration
 
 Import the file that came with your microphone (the calibration file field of the setup in the web console,
-**Import Calibration…** in the Qt console, or `uconsole measure mic import FILE`). It becomes a `mic` document that you can use again. These formats are read:
+**Import Calibration…** in the desktop app, or `uconsole measure mic import FILE`). It becomes a `mic` document that you can use again. These formats are read:
 
 | File | What it gives |
 |---|---|
@@ -126,7 +126,7 @@ sound level cap**: only the generator's level ceiling limits the level. The cons
 
 A target is the curve the EQ aims for, drawn dashed on every graph. Built in, all by our own parameters: **flat**, a
 **tilt**, a **house curve** (bass shelf plus tilt), and one default per coupler type. You can import any target or
-coupler compensation as REW or CSV text (the target file field in the web console, **Import Target…** in the Qt console, or `uconsole measure target import
+coupler compensation as REW or CSV text (the target file field in the web console, **Import Target…** in the desktop app, or `uconsole measure target import
 FILE`). A target is
 lined up with your curve over a reference band (500 Hz to 2 kHz by default).
 
@@ -195,7 +195,7 @@ EQ toward the target. Each step shows its result before the next, and you can st
 3. **Measure.** One walked run of each speaker's ways at the listening position, three passes. Choose where it is
    measured first: in the web console's Auto-tune tab **Measured: Speakers, at the listening position** or
    **Headphones on a coupler** (it takes the setup's choice when that is one of the two; nothing is assumed). For
-   headphones the run then uses the lower headphone levels of section 4. In the Qt console the tune uses the
+   headphones the run then uses the lower headphone levels of section 4. In the desktop app the tune uses the
    measurement you made on the Measure tab, with the placement you chose there.
 4. **Options.** You can keep the crossover (align only), keep the delays, keep the levels, or leave the EQ out (**No EQ
    fit**).
@@ -241,9 +241,9 @@ It will not:
 2. **Verify.** The tuned speaker is measured again: a walked run and a summed run for each crossover. It passes when
    everything is within 1.5 dB of the prediction.
    - Web console: the verify starts by itself right after the apply.
-   - Qt console: press **Verify**.
+   - Desktop app: press **Verify**.
    - Terminal: only on the demo device. Elsewhere it has no microphone, so it applies only EQ-only tunes, says they are
-     unverified, and leaves timing changes to the web or Qt console.
+     unverified, and leaves timing changes to the web console or the desktop app.
 3. **Keep.** The rules for Keep:
    - **While the verify runs**, Keep waits for its verdict. The web console does not offer it then, and the other
      consoles say "The verify is still running".
@@ -252,7 +252,7 @@ It will not:
      confirm the tune". You are asked again, and only your second press, at least a second later, keeps it. The second
      question is withdrawn if you revert, apply again, verify again, or the countdown ends. Nothing ever presses Keep
      for you.
-   - **Before any verify has given a verdict:** in the Qt console and the Terminal one press of Keep keeps the tune,
+   - **Before any verify has given a verdict:** in the desktop app and the Terminal one press of Keep keeps the tune,
      unverified (the Terminal says "Not verified"). The web console asks you once more ("The tune is not verified")
      before it keeps.
 
@@ -298,8 +298,8 @@ if it were your music.
 ([`../FEATURES.md`](../FEATURES.md#firmware-stock-vs-fork)). Sections 1 to 9, one unit at a time, work on stock
 firmware 1.1.5 and later.*
 
-*This is in the web console (Measure, the "Several units" tab) and in the Qt console (Tools > Measure…, the
-"Several units" tab). It has not been tried on real units yet. The technical page is [docs/integrator/multi-unit-measurement.md](../integrator/multi-unit-measurement.md).*
+*This is in the web console (Measure, the "Several units" tab) and in the desktop app (Modern: Measure in the rail,
+the "Several units" tab; Classic: Tools > Measure…, the "Several units" tab). It has not been tried on real units yet. The technical page is [docs/integrator/multi-unit-measurement.md](../integrator/multi-unit-measurement.md).*
 
 When one room is played by several DSPi units (a subwoofer unit and a mains unit, or one unit per speaker), one
 microphone can measure them all and line them up in time. Each unit plays its own test signal, and every start is set
