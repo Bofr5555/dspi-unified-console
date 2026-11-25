@@ -61,10 +61,12 @@ test("standalone: the core's demo connects, a volume write reads back, meters ar
   await slider.dispatchEvent("change");
   await expect(session.locator(".volume-value")).toHaveText("-12.0 dB");
 
-  // The demo's meter capture is silent: every channel the core named, at the floor.
-  await expect(session.getByRole("meter")).toHaveCount(17);
+  // The demo's meter capture is silent: every channel the core named, at the floor. -- WP INTE -- (owner
+  // 2026-11-24) the meters are a view: the demo routes to Out 1 and 2 only, so 8 inputs and 2 outputs
+  await expect(session.getByRole("meter")).toHaveCount(10);
   await expect(session.getByRole("meter", { name: "USB 1" })).toHaveAttribute("aria-valuenow", "-90");
-  await expect(session.getByRole("meter", { name: re(OUT(8)) })).toBeVisible();
+  await expect(session.getByRole("meter", { name: re(OUT(0)) })).toBeVisible();
+  await expect(session.getByRole("meter", { name: re(OUT(8)) })).toHaveCount(0);
 
   await session.getByRole("tablist", { name: "Open DSPi" }).getByRole("button", { name: /^Close / }).click(); // -- WP REVEFIX -- the tab's ×
   await expect(page.getByText("No DSPi is connected. Connect one over USB, or try the demo device.")).toBeVisible();

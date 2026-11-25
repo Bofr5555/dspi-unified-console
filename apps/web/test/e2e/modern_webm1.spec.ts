@@ -137,7 +137,7 @@ test("WEBM1: the sections, their pages and the page last open in each; the dock 
   for (const name of ["Main", "Overview", "EQ", "Inputs", "Matrix", "Effects", "Measure", "Analyser", "Signal Generator", "Snapshots", "Files", "System", "Events", "Connect", "Device", "Settings", "Control Surfaces"]) {
     await openPage(session, name);
     await expect(session.getByRole("slider", { name: "Volume", exact: true })).toBeVisible();
-    await expect(session.getByRole("list", { name: "Levels" }).getByRole("meter")).toHaveCount(17);
+    await expect(session.getByRole("list", { name: "Levels" }).getByRole("meter")).toHaveCount(10); // -- WP INTE -- no meter for the 7 unused outputs
     await noSidewaysScroll(page);
     if (["EQ", "Analyser", "System", "Settings", "Connect"].includes(name)) await shot(page, name.toLowerCase());
   }

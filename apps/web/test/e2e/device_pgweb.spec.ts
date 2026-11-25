@@ -80,7 +80,8 @@ for (const g of GENERATIONS) {
     // text line high (the shell's device-tab bar once lent them its class: 38 px chrome boxes)
     const row = info.locator(".device-facts > div").first();
     expect(await row.evaluate((e) => getComputedStyle(e).backgroundColor)).toBe("rgba(0, 0, 0, 0)");
-    expect((await row.boundingBox())!.height).toBeLessThan(30);
+    // -- WP INTE -- at 600 px and under a fact stacks its name over its value (device.css): two lines; the fill above tells
+    if (test.info().project.name !== "narrow") expect((await row.boundingBox())!.height).toBeLessThan(30);
     const raw = session.getByRole("region", { name: "Raw request by id" });
     if (g.legacy) await expect(session.locator(".raw-none")).toBeVisible();
     else await expect(raw).toBeVisible();
