@@ -6,6 +6,8 @@ import UConsole
 // -- WP LAY3 -- The dock along the bottom, on every page: the source, the
 // User or Master volume, Mute, Bypass EQ, a meter per channel and the cores'
 // loads. The same controllers as Classic's sidebar (GlobalControls).
+// -- WP UA5 -- User and Master say what they are on hover; the two cores'
+// loads are one "DSP 3 %" readout (the busier core), both cores in its tooltip.
 Rectangle {
     id: dock
     objectName: "Dock"
@@ -56,12 +58,23 @@ Rectangle {
             }
         }
         ToolSegments {
+            id: mode
             objectName: "Dock.mode"
             track: Theme.barControl   // -- WP REVDFIX -- D1
             label: qsTr("Volume mode")
             model: [qsTr("User"), qsTr("Master")]
             current: volume.master ? 1 : 0
             onChosen: index => SidebarController.volumeMode = index === 1 ? "master" : "user"
+            // -- WP UA5 -- what the two volumes are
+            readonly property string help: qsTr("User: the everyday volume, −60…0 dB") + "\n"
+                                           + qsTr("Master: the installer's ceiling, −128…0 dB")
+            Accessible.description: help
+            HoverHandler { id: modeHover }
+            HelpTip {
+                objectName: "Dock.mode.tip"
+                text: mode.help
+                visible: modeHover.hovered
+            }
         }
         Icon {
             name: ShortcutController.muted ? "volume-x" : "volume-2"
@@ -158,8 +171,8 @@ Rectangle {
                 }
             }
         }
-        CpuLoad { core: 0; load: Poller.cpu0 }
-        CpuLoad { core: 1; load: Poller.cpu1 }
+        // -- WP UA5 -- one readout (was "C0 0 %  C1 0 %")
+        DspLoad {}
     }
 
     component DockToggle: AbstractButton {
@@ -210,22 +223,32 @@ Rectangle {
         Accessible.checked: on
     }
 
-    component CpuLoad: Text {
+    // -- WP UA5 -- The DSP's load: the busier of its two cores, both on hover
+    component DspLoad: Text {
+        id: load
+        objectName: "Dock.dsp"
         textFormat: Text.PlainText
-        required property int core
-        required property int load
         readonly property bool live: Poller.running
-        objectName: "Dock.cpu" + core
-        readonly property string shownName: live ? load + "%" : "–"
+        readonly property int busiest: Math.max(Poller.cpu0, Poller.cpu1)
+        readonly property string shownName: live ? busiest + " %" : "–"
         visible: !dock.narrow
-        Layout.preferredWidth: 52
+        Layout.preferredWidth: 60
         horizontalAlignment: Text.AlignRight
-        text: "C" + core + " " + shownName
+        //: The dock's DSP load readout; %1 is "3 %" or "–" while it is not read
+        text: qsTr("DSP %1").arg(shownName)
         font: Qt.font({ family: Theme.fontMono.family, pixelSize: Theme.fontCaption.pixelSize })
-        color: live && load > 90 ? Theme.dangerText : Theme.textMuted
+        color: live && busiest > 90 ? Theme.dangerText : Theme.textMuted
+        //: %1 and %2 are the two cores' loads in per cent
+        readonly property string help: live ? qsTr("The DSP's load: the busier of its two cores (%1 % and %2 %)").arg(Poller.cpu0).arg(Poller.cpu1)
+                                            : qsTr("The DSP's load (not read now)")
+        HoverHandler { id: loadHover }
+        HelpTip {
+            objectName: "Dock.dsp.tip"
+            text: load.help
+            visible: loadHover.hovered
+        }
         Accessible.role: Accessible.ProgressBar
-        //: %1 is the core's number, 0 or 1
-        Accessible.name: qsTr("Core %1 load").arg(core)
-        Accessible.description: shownName
+        Accessible.name: qsTr("DSP load")
+        Accessible.description: load.help
     }
 }
