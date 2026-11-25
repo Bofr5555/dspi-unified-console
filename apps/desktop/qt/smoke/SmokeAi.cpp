@@ -472,6 +472,33 @@ void aiSection(SmokeDriver &d) {
         return x->status() == 401;
     }());
 
+    // ---- -- WP UAG -- (UXP A7) A refusal the person can see, for a few seconds; one meaning per Stop
+    {
+        out = 5;
+        ai->setConfirmMode(QStringLiteral("never_ask"));
+        const QJsonObject hp{ { QStringLiteral("family"), QStringLiteral("linkwitz_riley") }, { QStringLiteral("order"), 4 },
+                              { QStringLiteral("freq_hz"), 2000 } };
+        e = agent.call("dspi_set_crossover", { { QStringLiteral("output"), out + 1 }, { QStringLiteral("high_pass"), hp } });
+        const bool set = !failed(agent.result(*e));
+        e = agent.call("dspi_set_crossover", { { QStringLiteral("output"), out + 1 }, { QStringLiteral("high_pass"), QJsonValue(QJsonValue::Null) } });
+        d.check("uag: the console refuses taking a tweeter's high-pass away", set && failed(agent.result(*e)));
+        QObject *line = d.object(QStringLiteral("AiWorkBanner.text"));
+        d.check("uag: the strip says why, in the person's words", d.waitFor(3000, [&] {
+            const QString t = line ? line->property("text").toString() : QString();
+            return t.startsWith(QLatin1String("Refused: Kept ")) && t.contains(QLatin1String("high-pass at 1 kHz"));
+        }));
+        d.grab(main, QStringLiteral("uag-refusal-strip.png"));
+        d.check("uag: the activity says it under Not done", d.waitFor(3000, [&] {
+            return row(0).value(QStringLiteral("refused")).toBool() && row(0).value(QStringLiteral("outcomeText")) == QLatin1String("Not done")
+                   && row(0).value(QStringLiteral("detail")).toString().startsWith(QLatin1String("Kept "));
+        }));
+        d.check("uag: and the strip lets it go after a few seconds",
+                d.waitFor(AiController::kRefusalMs + 2000, [&] { return ai->refusal().isEmpty(); }));
+        QQuickItem *stop = inPanel("AiAgents.stop");
+        d.check("uag: the panel's Stop says what it stops", stop && stop->property("text").toString() == QLatin1String("Stop Agents"));
+        ai->setConfirmMode(QStringLiteral("ask_risky"));
+    }
+
     // ---- The timed preview, and Stop ----------------------------------------------------------------
     out = 4;
     setGain(-10);

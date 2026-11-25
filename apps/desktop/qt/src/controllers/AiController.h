@@ -98,6 +98,9 @@ class AiController : public QObject {
     // Centre · Demo"), device (the title), deviceId, elsewhere (that device is open
     // but not the one shown), job (a measurement of an agent's plays) }
     Q_PROPERTY(QVariantMap work READ work NOTIFY workChanged)
+    // -- WP UAG -- (UXP A7) the console's newest refusal of an agent's call, for a few
+    // seconds: { agent, text ("Kept Right tweeter's high-pass at 1 kHz"), device }; {} for none
+    Q_PROPERTY(QVariantMap refusal READ refusal NOTIFY refusalChanged)
     // What agents changed in the last moments: [{ device, path, indices }]
     Q_PROPERTY(QVariantList recentTouches READ recentTouches NOTIFY recentTouchesChanged)
     Q_PROPERTY(QString url READ url NOTIFY settingsChanged)
@@ -256,6 +259,8 @@ public:
     // -- WP AIVIS --
     bool working() const { return m_working; }
     QVariantMap work() const { return m_workShown; }
+    QVariantMap refusal() const { return m_refusal; }   // -- WP UAG --
+    static constexpr int kRefusalMs = 4000;               // -- WP UAG -- how long the strip says it
     QVariantList recentTouches() const;
     // The device the strip is about becomes the one shown; its agent's measurement
     // stops (as the Measure view's Stop does)
@@ -340,6 +345,7 @@ signals:
     void deviceRequested(const QJsonObject &ticket);
     // -- WP AIVIS --
     void workChanged();
+    void refusalChanged();   // -- WP UAG --
     void recentTouchesChanged();
     // An agent changed `path` at `indices` on `device` (a DeviceRegistry id)
     void touched(const QString &device, const QString &path, const QVariantList &indices);
@@ -474,6 +480,9 @@ private:
     QJsonObject m_work;         // dspi_mcp_work's last
     bool m_working = false;
     QVariantMap m_workShown;
+    QVariantMap m_refusal;    // -- WP UAG --
+    QTimer m_refusalTimer;    // -- WP UAG -- ends m_refusal
+    void clearRefusal();      // -- WP UAG --
     QTimer m_workTimer;         // lets `work` fade
     qint64 m_activityRun = 0;   // the newest activity row seen: its run and id
     qint64 m_activityId = 0;

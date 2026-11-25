@@ -128,9 +128,7 @@ fn wp_uag_said_never_reaches_an_agent() {
         );
         let text = r.to_string();
         assert!(
-            !text.contains("said")
-                && !text.contains("batch")
-                && !text.contains("Right woofer"),
+            !text.contains("said") && !text.contains("batch") && !text.contains("Right woofer"),
             "{text}"
         );
         assert!(
@@ -278,4 +276,153 @@ fn wp_uag_said_of_reads_as_the_screen() {
         said_of(RiskKind::FlashWrite, "Rename preset 2 (flash)", None),
         "Rename preset 2"
     );
+}
+
+// ---------------------------------------------------------------- UXP A7
+
+/// The newest activity entry of `tool`.
+fn last_of(s: &crate::Server, tool: &str) -> crate::activity::ActivityEntry {
+    s.activity(20)
+        .into_iter()
+        .rev()
+        .find(|e| e.tool == tool)
+        .unwrap()
+}
+
+#[test]
+fn wp_uag_a_refusal_says_why_to_the_person_and_nothing_new_to_the_agent() {
+    let (set, core) = demo("uag-refused");
+    layout(&core);
+    let n_in = core.get_state().num_input_channels;
+    // The user's 2 kHz high-pass on Out 3: a tweeter's, whatever its row says
+    core.set_crossover(
+        n_in + 2,
+        0,
+        crate::tests_wp_ffix::hp(crate::tests_wp_ffix::LR4_HP, 2_000.0),
+    )
+    .unwrap();
+    let mut s = server_of(&set, ConfirmMode::NeverAsk);
+    let c = s.connect();
+    let e = crate::tests_wp_ffix::err(
+        &mut s,
+        c,
+        "dspi_set_crossover",
+        json!({"output": 3, "high_pass": null}),
+    );
+    let entry = last_of(&s, "dspi_set_crossover");
+    assert_eq!(entry.outcome, crate::activity::Outcome::Error);
+    assert!(entry.journal_ids.is_empty());
+    assert_eq!(entry.said, "Kept Spk2's high-pass at 1 kHz", "{entry:?}");
+    // The agent's words are the rule's, as before; the person's never reach it
+    assert_eq!(entry.detail, e);
+    assert!(e.starts_with("Out 3 has a high-pass"), "{e}");
+    let act = ok(&mut s, c, "dspi_get_activity", json!({}));
+    assert!(!act.to_string().contains("Kept Spk2"), "{act}");
+
+    // The installer lock
+    core.installer_pin_set("4711".into()).unwrap();
+    core.installer_lock_cover(vec!["channels".into()]).unwrap();
+    core.installer_lock().unwrap();
+    crate::tests_wp_ffix::err(
+        &mut s,
+        c,
+        "dspi_set_gain",
+        json!({"output": 5, "gain_db": -3.0}),
+    );
+    assert_eq!(
+        last_of(&s, "dspi_set_gain").said,
+        "The installer lock is on"
+    );
+    // A change that runs keeps the core's words for what it did
+    ok(
+        &mut s,
+        c,
+        "dspi_set_mute",
+        json!({"output": 5, "muted": true}),
+    );
+    assert!(last_of(&s, "dspi_set_mute").said.contains("muted"));
+}
+
+#[test]
+fn wp_uag_refusal_words_name_what_the_rule_kept() {
+    use crate::policy::refusal_words;
+    let words = ScreenWords {
+        channels: dspi_core::ChannelWords {
+            inputs: vec!["L".into()],
+            outputs: vec!["Sub".into(), "Right tweeter".into(), "Left mid".into()],
+            from_layout: vec![0, 1, 2],
+        },
+        presets: Vec::new(),
+    };
+    let w = Some(&words);
+    for (why, said) in [
+        (
+            "Out 2 drives a tweeter in the user's speaker setup (confirmed), so it must keep a \
+             high-pass at 1000 Hz or above, 12 dB/octave or steeper, whenever it can play: this \
+             removes or weakens its high-pass.",
+            "Kept Right tweeter's high-pass at 1 kHz",
+        ),
+        (
+            "Out 3 drives a midrange in the user's speaker setup (confirmed), so it must keep a \
+             high-pass at 80 Hz or above",
+            "Kept Left mid's high-pass at 80 Hz",
+        ),
+        (
+            "Out 2: a wholesale change (a recall, a preset load, an import) may not remove or \
+             lower a tweeter's high-pass; the user can do it in the app.",
+            "Kept Right tweeter's high-pass",
+        ),
+        (
+            "Out 1: the speaker detection heard nothing from it, so an agent may not route to it.",
+            "Nothing was heard from Sub: only you can include it, in Settings › Speakers",
+        ),
+    ] {
+        assert_eq!(refusal_words(why, w), said, "{why}");
+    }
+}
+
+#[test]
+fn wp_uag_a_quiet_load_is_one_sentence_naming_what_the_limits_held() {
+    let words = ScreenWords {
+        channels: dspi_core::ChannelWords {
+            inputs: vec!["L".into()],
+            outputs: vec![
+                "Sub".into(),
+                "Left tweeter".into(),
+                "Sub 2".into(),
+                "Right tweeter".into(),
+            ],
+            from_layout: vec![0, 1, 2, 3],
+        },
+        presets: Vec::new(),
+    };
+    let held = [
+        "Out 2 crossover 1 frequency: 600 \u{2192} 1000 Hz".to_owned(),
+        "Out 4 crossover 1 frequency: 600 \u{2192} 1000 Hz".to_owned(),
+    ];
+    assert_eq!(
+        crate::tools::library::held_said(&held, Some(&words)),
+        "your limits kept Left tweeter and Right tweeter at 1 kHz"
+    );
+    let mixed = [
+        held[0].clone(),
+        "Out 1 limiter threshold: -3 \u{2192} -6 dB".to_owned(),
+    ];
+    assert_eq!(
+        crate::tools::library::held_said(&mixed, Some(&words)),
+        "your limits held Left tweeter crossover 1 frequency: 600 \u{2192} 1000 Hz; Sub limiter \
+         threshold: -3 \u{2192} -6 dB"
+    );
+}
+
+#[test]
+fn wp_uag_a_preset_load_says_its_name_once() {
+    let (set, core) = demo("uag-load");
+    core.set_preset_name(1, "Lunch".into()).unwrap();
+    let mut s = server_of(&set, ConfirmMode::NeverAsk);
+    let c = s.connect();
+    ok(&mut s, c, "dspi_preset_save", json!({"slot": 2}));
+    ok(&mut s, c, "dspi_preset_load", json!({"slot": 2}));
+    let e = last_of(&s, "dspi_preset_load");
+    assert!(e.said.starts_with("Loaded preset 2"), "{e:?}");
 }

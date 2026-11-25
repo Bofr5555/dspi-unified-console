@@ -364,6 +364,15 @@ pub struct Judging {
     /// Allow also does that is not asked about on its own ("Sub: gain 0 →
     /// −6 dB"). The app's alone, as [`Risk::said`].
     pub rest: Vec<String>,
+    // -- WP UAG -- (UXP A7)
+    /// Why the console refused the call, in the app's words ("Kept Right
+    /// tweeter's high-pass at 1 kHz", "The installer lock is on"): the
+    /// activity entry's `said`, which agents never read.
+    pub refusal: Option<String>,
+    /// The call's own words for the app in place of the history's, when its
+    /// steps would mislead (a quiet preset load: "Master volume −127 dB;
+    /// Preset 2 loaded"). The app's alone.
+    pub said: Option<String>,
 }
 
 // -- WP AIVIS --
@@ -452,6 +461,7 @@ pub fn prejudge(
             Err(ToolError::new(HELD_TEXT))
         }
         Verdict::Refuse(why) => {
+            j.refusal = Some(refusal_words(&why, j.words.as_ref())); // -- WP UAG --
             j.refused = Some(why.clone());
             Err(ToolError::new(why))
         }
@@ -575,6 +585,7 @@ pub fn require_detect(
         return if j.detect_allowed {
             Ok(())
         } else {
+            j.refusal = Some(SWITCHED_OFF_DETECT.to_owned()); // -- WP UAG --
             Err(ToolError::new(DETECT_NEVER_ASK_TEXT))
         };
     }
@@ -648,6 +659,7 @@ pub fn require_roles(
         return if j.roles_allowed {
             Ok(())
         } else {
+            j.refusal = Some(SWITCHED_OFF_ROLES.to_owned()); // -- WP UAG --
             Err(ToolError::new(ROLES_NEVER_ASK_TEXT))
         };
     }
@@ -761,6 +773,10 @@ pub fn hard_code(code: &str) -> bool {
 /// A core error as the agent reads it, noting in `cell` what the server
 /// acts on: a drag (retry, with the server's staleness bound) and a hold.
 pub fn core_error(cell: &JudgingCell, e: DspiError) -> ToolError {
+    // -- WP UAG -- (UXP A7) why, for the person, where the console refuses it
+    if let Some(said) = refused_by_core(&e) {
+        lock(cell).refusal.get_or_insert_with(|| said.to_owned());
+    }
     match &e {
         DspiError::ConfirmationRequired { code, .. } if code == USER_EDITING => {
             lock(cell).editing = true;
@@ -1171,7 +1187,7 @@ fn channel_first(s: &str) -> String {
 }
 
 /// `s` with "Out N", "In N" and "preset N" named as the screens name them.
-fn name_words(s: &str, w: &ScreenWords) -> String {
+pub(crate) fn name_words(s: &str, w: &ScreenWords) -> String {
     let toks: Vec<&str> = s.split(' ').collect();
     let mut out: Vec<String> = Vec::with_capacity(toks.len());
     let mut i = 0usize;
@@ -1207,6 +1223,87 @@ fn name_words(s: &str, w: &ScreenWords) -> String {
         i = i.saturating_add(2);
     }
     out.join(" ")
+}
+
+// -- WP UAG -- (UXP A7) ------------------------------------- the refusals
+
+/// The refusal of a speaker detection under "never ask" with the switch off,
+/// for the person.
+const SWITCHED_OFF_DETECT: &str =
+    "Agents may not detect speakers: switched off in Settings › AI Agents";
+/// The same for speaker roles from the person's words.
+const SWITCHED_OFF_ROLES: &str =
+    "Agents may not set speaker roles from your words: switched off in Settings › AI Agents";
+
+/// Why the core refused an agent's write, for the person: the rules that are
+/// the person's or the installer's, not a question.
+fn refused_by_core(e: &DspiError) -> Option<&'static str> {
+    match e {
+        DspiError::ConfirmationRequired { code, .. } if code == USER_CHANGED => {
+            Some("You changed this after the agent did, so it was left as you set it")
+        }
+        DspiError::ConfirmationRequired { code, .. } if code == USER_ONLY => {
+            Some("Only you can do this, in the app")
+        }
+        DspiError::ConfirmationRequired { code, .. } if code == NOT_OWN_ENTRY => {
+            Some("That change is yours: only you can undo it")
+        }
+        DspiError::ConfirmationRequired { code, .. } if code == AGENT_READ_ONLY => {
+            Some("Agents may only read on this computer")
+        }
+        DspiError::LimitExceeded { .. } => Some("Your limits held it"),
+        DspiError::InstallerLock { .. } => Some("The installer lock is on"),
+        _ => None,
+    }
+}
+
+/// A frequency as the screens write it: "1 kHz", "1.2 kHz", "80 Hz".
+pub(crate) fn hz_words(hz: f32) -> String {
+    if hz >= 1_000.0 {
+        let k = format!("{:.1}", hz / 1_000.0);
+        format!("{} kHz", k.trim_end_matches(".0"))
+    } else {
+        format!("{hz:.0} Hz")
+    }
+}
+
+/// The policy's refusal `why` (this module's words for the agent) as the
+/// person reads it in the strip and the activity: what the rule kept, the
+/// output named as the screens name it ("Kept Right tweeter's high-pass at
+/// 1 kHz"). Never sent to an agent.
+pub(crate) fn refusal_words(why: &str, words: Option<&ScreenWords>) -> String {
+    // The output the rule is about leads the text ("Out 2: …", "Out 2 drives …")
+    let mut t = why.split(' ');
+    let out = match (t.next(), t.next()) {
+        (Some("Out"), Some(n)) => {
+            let n = n.trim_end_matches(':');
+            n.chars()
+                .all(|c| c.is_ascii_digit())
+                .then(|| format!("Out {n}"))
+        }
+        _ => None,
+    };
+    let said = match out {
+        Some(o) if why.contains("speaker detection heard nothing") => {
+            format!("Nothing was heard from {o}: only you can include it, in Settings › Speakers")
+        }
+        Some(o) if why.contains("high-pass") => {
+            let floor = why
+                .split_once("high-pass at ")
+                .and_then(|(_, r)| r.split_once(" Hz"))
+                .and_then(|(n, _)| n.trim().parse::<f32>().ok());
+            match floor {
+                Some(hz) => format!("Kept {o}'s high-pass at {}", hz_words(hz)),
+                None => format!("Kept {o}'s high-pass"),
+            }
+        }
+        Some(o) => format!("Kept {o} safe: the speaker rules refused it"),
+        None => "The speaker rules refused it".to_owned(),
+    };
+    match words {
+        Some(w) => name_words(&said, w),
+        None => said,
+    }
 }
 
 /// The wire channel a delay write is about.
@@ -2586,6 +2683,7 @@ impl AgentPolicy {
                     })
                 }
                 Verdict::Refuse(why) => {
+                    j.refusal = Some(refusal_words(&why, j.words.as_ref())); // -- WP UAG --
                     j.refused = Some(why.clone());
                     Err(DspiError::ConfirmationRequired {
                         code: AGENT_REFUSED.into(),
