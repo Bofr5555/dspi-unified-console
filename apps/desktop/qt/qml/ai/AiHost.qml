@@ -32,6 +32,10 @@ Item {
         : front.batch && front.batch.length ? front.batch
         : front.riskLines.map(line => ({ said: line, risky: true }))
     readonly property int rowsShown: 8
+    // -- WP UAG -- (UXP A6) the speaker detection's mechanism waits under Details
+    property bool detailsOpen: false
+    onFrontChanged: detailsOpen = false
+    readonly property bool detailsShown: !front || !front.detect || detailsOpen
 
     AiSheet {
         id: pairingSheet
@@ -97,10 +101,27 @@ Item {
                 //: %1 is the AI agent's name
                 : qsTr("Asked by %1.").arg(host.front.agent)
         }
+        // -- WP UAG -- (UXP A6) the speaker detection: what the person does, first; how it works under Details
+        SheetText {
+            objectName: "AiConfirmSheet.todo"
+            visible: host.front !== null && host.front.detect
+            leftPadding: Theme.spacing
+            text: ["• " + qsTr("Set up the microphone as for a measurement (usually at your seat)."),
+                   "• " + qsTr("Keep the volume where it is."),
+                   "• " + qsTr("Stay by Stop Measuring in the agent strip: it ends the sound at once."),
+                   "• " + qsTr("Afterwards check the result in Settings › Speakers and confirm or correct it.")].join("\n")
+        }
+        AppButton {
+            objectName: "AiConfirmSheet.details"
+            visible: host.front !== null && host.front.detect
+            text: host.detailsOpen ? qsTr("Hide Details") : qsTr("Details")
+            onClicked: host.detailsOpen = !host.detailsOpen
+        }
         // -- WP UAG -- (UXP A6) the whole call in the screen's words, the asked rows marked
         Column {
             width: parent.width
             spacing: 4
+            visible: host.detailsShown
             Repeater {
                 // -- WP ROLES -- (the speaker roles' question shows its table below instead)
                 model: host.front && !host.front.roleCells.length ? host.rows.slice(0, host.rowsShown) : []
@@ -170,7 +191,7 @@ Item {
         // -- WP ADETQ -- the warning on the speaker detection's mechanism (the server's words)
         SheetText {
             objectName: "AiConfirmSheet.warning"
-            visible: text.length > 0
+            visible: text.length > 0 && host.detailsShown   // -- WP UAG --
             color: Theme.warning
             text: host.front && host.front.warning ? "⚠ " + host.front.warning : ""
         }
