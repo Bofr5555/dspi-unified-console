@@ -3,6 +3,10 @@
 // it has focus; then what is typed stays until Enter or leaving it writes it
 // (Escape puts the value back). Frequencies take "2k" and note names ("A4").
 // Optional − and + buttons step it, for touch.
+//
+// -- WP WEB6 -- (REVE C1) Leaving a field writes only what was typed: Tab through it, or text typed
+// back to what it shows, writes nothing (Qt's BorderedField; the rounded text written back once
+// moved a 4.1234 ms delay to 4.1108 ms). `unit` is drawn after the field, as Qt's.
 
 import { useEffect, useRef, useState } from "preact/hooks";
 
@@ -32,15 +36,21 @@ export function ValueField(props: {
   class?: string;
   /** Focus requests from the graph (a double click on a dot). */
   inputRef?: (el: HTMLInputElement | null) => void;
+  /** -- WP WEB6 -- the unit after the field ("Hz", "dB", "Q"). */
+  unit?: string;
 }) {
   const [draft, setDraft] = useState<string | null>(null);
   const [bad, setBad] = useState(false);
   const skip = useRef(false);
-  // -- WP REVEFIX -- (REVE C1, USR1's class) only typed text is written: leaving or pressing Enter in a field nothing
-  // was typed in writes nothing back (its shown text is rounded: "1.41 m" would move a delay of 4.1234 ms)
+  // -- WP WEB6 -- (REVE C1; REVEFIX's fix on int/B is the same) whether anything was typed since the field took the focus
   const typed = useRef(false);
   const commit = () => {
-    if (draft === null || !typed.current || draft === props.text) return;
+    if (draft === null) return;
+    if (!typed.current || draft === props.text) {
+      setBad(false);
+      setDraft(null);
+      return;
+    }
     const v = props.parse(draft);
     if (v === null) {
       setBad(true);
@@ -100,6 +110,11 @@ export function ValueField(props: {
           setBad(false);
         }}
       />
+      {props.unit ? (
+        <span class="field-unit" aria-hidden="true">
+          {props.unit}
+        </span>
+      ) : null}
       {props.step ? (
         <button type="button" class="step" aria-label={`${props.label} up`} disabled={props.disabled} onClick={props.step.up}>
           +

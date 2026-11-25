@@ -50,7 +50,7 @@ export const PARAM_TEXTS: Record<string, ParamText> = {
   "bass.cutoff": { title: "Cutoff Frequency", section: "Harmonics", caption: "The speaker's low-frequency limit. Content below this feeds the harmonic generator; generated harmonics span roughly this to 4x." },
   "bass.harmonics": { title: "Harmonics", section: "Harmonics", caption: "Level of the synthesized harmonics. The primary amount-of-effect control. Higher = more perceived bass." },
   "bass.drive": { title: "Drive", section: "Shaping", caption: "Pre-gain into the odd-harmonic soft clipper. Higher makes the effect audible on quieter passages. Mostly affects aggressive character." },
-  "bass.character": { title: "Character", section: "Shaping" },
+  "bass.character": { title: "Character", section: "Shaping", caption: "" },
   "bass.original": {
     title: "Original Bass",
     section: "Shaping",
@@ -64,8 +64,8 @@ export const PARAM_TEXTS: Record<string, ParamText> = {
   "sub.select": { title: "Selectivity", section: "Selectivity" },
   "sub.depth": { title: "Depth", section: "Selectivity" },
   "sub.hold": { title: "Hold", section: "Selectivity" },
-  "sub.ceiling": { title: "Threshold", section: "Sub ceiling" },
-  "sub.boost": { title: "70 Hz bell", section: "LF boost" },
+  "sub.ceiling": { title: "Threshold", section: "Sub ceiling", caption: "" },
+  "sub.boost": { title: "70 Hz bell", section: "LF boost", caption: "" },
   "sub.link": { title: "Link output pairs", section: "Outputs", caption: "One sub per pair, from its mono sum." },
   "sub.mask": {
     caption:
@@ -74,21 +74,21 @@ export const PARAM_TEXTS: Record<string, ParamText> = {
   "sub.solo": { title: "Solo" },
 
   "tube.type": { title: "Tube", section: "Stage" },
-  "tube.drive": { title: "Drive", section: "Stage" },
-  "tube.mix": { title: "Mix", section: "Stage" },
-  "tube.trim": { title: "Output Trim", section: "Stage" },
-  "tube.bias": { title: "Bias", section: "Character" },
-  "tube.asym": { title: "Asymmetry", section: "Character" },
-  "tube.hardness": { title: "Knee Hardness", section: "Character" },
-  "tube.sag": { title: "Sag", section: "Character" },
+  "tube.drive": { title: "Drive", section: "Stage", caption: "" },
+  "tube.mix": { title: "Mix", section: "Stage", caption: "" },
+  "tube.trim": { title: "Output Trim", section: "Stage", caption: "" },
+  "tube.bias": { title: "Bias", section: "Character", caption: "" },
+  "tube.asym": { title: "Asymmetry", section: "Character", caption: "" },
+  "tube.hardness": { title: "Knee Hardness", section: "Character", caption: "" },
+  "tube.sag": { title: "Sag", section: "Character", caption: "" },
   "tube.rectifier": {
     title: "Rectifier",
     section: "Character",
     caption: "The power-supply rectifier sets how deep and how slow the sag is. Solid state switches sag off entirely; the valve rectifiers get progressively softer and slower from GZ34 to 5Y3.",
   },
   "tube.xfmr": { title: "Output stage", section: "Output stage", caption: "A valve amplifier's loose grip on the speaker." },
-  "tube.damping": { title: "Damping Factor", section: "Output stage" },
-  "tube.resonance": { title: "Speaker Resonance", section: "Output stage" },
+  "tube.damping": { title: "Damping Factor", section: "Output stage", caption: "" },
+  "tube.resonance": { title: "Speaker Resonance", section: "Output stage", caption: "" },
   "tube.mask": {
     caption: "Tube runs before the crossover and the per-output EQ, where a real preamp sits: a sub output saturates the full-band program and then low-passes the result.",
   },
@@ -132,6 +132,66 @@ export const PARAM_TEXTS: Record<string, ParamText> = {
   "up.sur_lpf": { title: "Band-limit LPF", section: "Surround", caption: "Surround low-pass. 7 kHz is the classic surround voicing; raise for full-band rears." },
   "up.decorr": { title: "Decorrelation", section: "Surround", caption: "Schroeder allpass decorrelator amount. 0 disables decorrelation." },
 };
+
+// -- WP WEB6 -- the rest of Qt's words on the effect pages
+
+/** The crossfeed voicings as Qt lists them (EffectsController's kCrossfeedPresets), by value. */
+export const CROSSFEED_PRESET_TEXTS: Record<number, { name: string; detail: string }> = {
+  0: { name: "Default", detail: "700 Hz / 4.5 dB - Balanced, most popular" },
+  1: { name: "Chu Moy", detail: "700 Hz / 6.0 dB - Stronger spatial effect" },
+  2: { name: "Jan Meier", detail: "650 Hz / 9.5 dB - Natural speaker-like" },
+  3: { name: "Custom", detail: "User-defined parameters" },
+};
+
+/** The leveller's speeds, what each is for (LevellerPanel's speedTexts), by value. */
+export const LEVELLER_SPEED_TEXTS = [
+  "Slow — Gentle response for music and wide dynamic range content.",
+  "Medium — Balanced response for general purpose use.",
+  "Fast — Tight response for speech, dialogue, and podcasts.",
+];
+
+/** The leveller's two channel rows' hints (LevellerPanel). */
+export const LEVELLER_MASK_HINTS = { detector: "sets the shared gain", apply: "receives the gain" } as const;
+
+/** The subharmonic selectivity's line under its segments, by mode (SubharmonicPanel). */
+export const SELECTIVITY_TEXTS = [
+  "Every band signal is treated alike.",
+  "A short sub burst after each attack - extends kicks, not the bass line.",
+  "The sub opens once a band has been ringing - extends bass notes, not kicks.",
+];
+
+/** Depth and hold, shown while a selectivity mode is chosen (SubharmonicPanel). */
+export const SELECTIVITY_PARAM_TEXTS = {
+  depth: "How far the material this mode does not favour is gated down. At 0% the selectivity is inaudible whatever the mode is set to; 100% is full gating.",
+  holdPercussive: "The length of the sub burst after each attack.",
+  holdSustained: "How long a band must ring before its sub opens. Every note's first hold period has no sub, so staccato bass lines get little.",
+};
+
+/** The headroom cost's tooltip (SubharmonicPanel). */
+export function headroomTip(db: number | null): string {
+  return db !== null && db > 0
+    ? `This setting can add up to ${db.toFixed(1)} dB. Lower the preamp on the inputs feeding the selected outputs by that much, or a loud passage will clip.`
+    : "This setting cannot push the signal past full scale.";
+}
+
+/** The harmonics at full scale: their tooltip (TubePanel). */
+export const HARMONICS_TIP =
+  "Level of the second and third harmonic relative to the fundamental, for a full-scale sine through the static curve after mix and trim. Sag lowers the drive on sustained loud passages and the output stage adds its own low-frequency lift, so the running figures sit somewhat lower.";
+
+/** The tube types' shelf tooltip (TubePanel). */
+export const TUBE_SHELF_TIP = "Loads the character of a real tube: its bias, asymmetry, knee hardness and sag. Drive, mix and everything in Advanced keep their values.";
+
+/** The picture tile's caption under the tube's name (Basic) and the type's caption in Advanced (TubePanel). */
+export function tubeCaption(style: string | null, pushPull: boolean, xfmr: boolean, advanced: boolean): string {
+  if (style === null) return advanced ? "Character controls as set, no tube row applied." : "Character set by hand. Pick a tube to load one, or fine-tune it in Advanced.";
+  if (pushPull && !xfmr) return advanced ? `${style}. Meant for use with the output stage on.` : `${style}. Meant for use with the output stage, in Advanced.`;
+  return `${style}.`;
+}
+
+/** The output stage's lift at its damping (TubePanel). */
+export function liftText(lift: { bell: number; top: number }): string {
+  return `+${lift.bell.toFixed(1)} dB at resonance, +${lift.top.toFixed(1)} dB at the top.`;
+}
 
 /** The upmixer's note under its engines (Qt's Routing section). */
 export const UPMIX_ROUTING =

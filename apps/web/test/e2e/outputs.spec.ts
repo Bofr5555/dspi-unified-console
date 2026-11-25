@@ -290,7 +290,7 @@ test("WB6c limiter: toggle, threshold, release, link group and Copy to all outpu
 test("WB6c crossover: family, type, slope and frequency, bypass with the Console's warning, Clear All, read back", async ({ page }) => {
   const { session } = await openOut1(page);
   const w = (await core(page)).numInputChannels;
-  await session.getByRole("tab", { name: "XO" }).click();
+  await openPage(session, "Crossover"); // -- WP WEB6 -- an output's XO bands are on the Crossover tab (Qt's), OUT1 still chosen
   const list = session.getByRole("region", { name: /^Crossover of OUT1/ });
   await expect(list).toBeVisible();
   const x0 = async () => (await core(page)).xover[w]![0]!;
@@ -329,8 +329,8 @@ test("WB6c crossover: family, type, slope and frequency, bypass with the Console
   await list.getByRole("button", { name: "Clear All" }).click();
   await page.getByRole("dialog", { name: "Clear All Bands?" }).getByRole("button", { name: "Clear All" }).click();
   await expect.poll(async () => (await core(page)).xover[w]!.map((b) => [b.filterType, b.freq, b.bypass])).toEqual(Array(4).fill([0, 1000, false]));
-  // The PEQ tab again: the band list.
-  await session.getByRole("tablist", { name: "Bands" }).getByRole("tab", { name: "PEQ" }).click(); // -- WP WEBM2 -- the page's own tab is PEQ too
+  // The PEQ tab again: OUT1's band list (-- WP WEB6 -- the Equaliser's PEQ tab; OUT1 kept chosen).
+  await openPage(session, "EQ");
   await expect(session.getByRole("region", { name: /^Bands of OUT1/ })).toBeVisible();
 });
 
@@ -382,9 +382,9 @@ test("WB6c WB6b-4 and WB6b-2: the shape card asks a shape's slope; a host's data
   await expect(card.getByRole("menuitem", { name: "6 dB" })).toBeFocused();
   await card.getByRole("menuitem", { name: "6 dB" }).click();
   await expect.poll(async () => (await core(page)).filters[w]!.filter((t, i) => t.filterType === 9 && before[i] === 0).length).toBe(1);
-  // A shape with one slope adds at once.
+  // A shape with one slope adds at once (-- WP WEB6 -- below the graph's toggle chips in its top right corner).
   await page.keyboard.down("Control");
-  await page.mouse.click(box.x + box.width * 0.6, box.y + box.height * 0.08);
+  await page.mouse.click(box.x + box.width * 0.6, box.y + box.height * 0.2);
   await page.keyboard.up("Control");
   await graph.getByRole("menu", { name: "Add Band" }).getByRole("menuitem", { name: "Bell" }).click();
   await expect.poll(async () => (await core(page)).filters[w]!.filter((t, i) => t.filterType === 1 && before[i] === 0).length).toBe(1);
@@ -519,7 +519,7 @@ test("WB6c read only: a view-only session shows the output page and the matrix w
   await expect(card.getByRole("textbox", { name: "Delay" })).toBeDisabled();
   await expect(card.getByRole("slider", { name: "Delay" })).toBeDisabled();
   await expect(card.getByRole("button", { name: "Mute" })).toBeDisabled();
-  await session.getByRole("tab", { name: "XO" }).click();
+  await openPage(session, "Crossover"); // -- WP WEB6 -- an output's XO bands are on the Crossover tab (Qt's), OUT1 still chosen
   await expect(session.getByRole("combobox", { name: "Crossover 1 family" })).toBeDisabled();
   await openPage(session, "Matrix");
   const matrix = session.getByRole("region", { name: "Matrix Mixer" });

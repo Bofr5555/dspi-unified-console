@@ -341,8 +341,9 @@ test("WB6a channels: an input renamed (EQ's Channel menu) and trimmed (Inputs), 
   await openPage(session, "EQ");
   const first = st0.channelNames[0]!;
   await session.getByRole("group", { name: "Channels" }).getByRole("button", { name: new RegExp(`^${first} IN1$`) }).click();
-  await session.locator(".eq-tools").getByRole("button", { name: "Channel" }).click();
-  await session.getByRole("menuitem", { name: "Rename", exact: true }).click();
+  // -- WP WEB6 -- the channel's menu is its right click, as Qt's (no Channel ▾ among the page tools)
+  await session.getByRole("group", { name: "Channels" }).getByRole("button", { name: new RegExp(`^${first} IN1$`) }).click({ button: "right" });
+  await page.getByRole("menu", { name: /^IN1/ }).getByRole("menuitem", { name: /^Rename/ }).click();
   const dlg = page.getByRole("dialog", { name: `Rename ${first}` });
   await dlg.getByRole("textbox", { name: "Name" }).fill("Left in");
   await page.keyboard.press("Enter");

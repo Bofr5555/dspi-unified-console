@@ -140,6 +140,11 @@ void maths(SmokeDriver &d) {
     d.check(QStringLiteral("qp7: crossfeed's opposite path falls above the cutoff"),
             Fx::crossfeedOppositeDb(700, 4.5, 10000) < Fx::crossfeedOppositeDb(700, 4.5, 100) - 10);
     d.check(QStringLiteral("qp7: crossfeed's direct path rises to 0 dB"), near(Fx::crossfeedDirectDb(700, 4.5, 20000), 0, 0.5));
+    // -- WP WEB6 -- the vectors dspi_core::effect_curves' tests pin too (the web's copy of these curves)
+    d.check(QStringLiteral("web6: the crossfeed paths match the core's vectors"),
+            near(Fx::crossfeedOppositeDb(700, 4.5, 100), -8.646496, 1e-5) && near(Fx::crossfeedOppositeDb(700, 4.5, 5000), -25.565034, 1e-5) &&
+                near(Fx::crossfeedDirectDb(700, 4.5, 100), -3.933661, 1e-5) && near(Fx::crossfeedDirectDb(700, 4.5, 5000), -0.196024, 1e-5) &&
+                near(Fx::crossfeedDirectDb(650, 9.5, 1000), -0.679913, 1e-5) && near(Fx::crossfeedOppositeDb(650, 9.5, 1000), -17.275456, 1e-5));
 
     int k1 = -1, k20 = -1;
     for (int i = 0; i < Fx::isoRows(); ++i) {
@@ -151,6 +156,10 @@ void maths(SmokeDriver &d) {
     d.check(QStringLiteral("qp7: loudness leaves 1 kHz alone"), std::fabs(Fx::loudnessCompensationDb(83, 100, k1)) < 0.5);
     const double bass = Fx::loudnessCompensationDb(83, 100, k20);
     d.check(QStringLiteral("qp7: loudness lifts 20 Hz at -40 dB"), bass > 10 && bass < 40);
+    // -- WP WEB6 -- the core's vectors (row 7 is 100 Hz)
+    d.check(QStringLiteral("web6: the loudness compensation matches the core's vectors"),
+            near(bass, 20.918851, 1e-3) && near(Fx::loudnessCompensationDb(83, 100, 7), 12.033087, 1e-3) &&
+                near(Fx::loudnessCompensationDb(70, 50, 7), 5.582571, 1e-3));
     d.check(QStringLiteral("qp7: loudness scales with intensity"),
             near(Fx::loudnessCompensationDb(83, 200, k20), 2 * bass, 1e-6) && near(Fx::loudnessCompensationDb(83, 0, k20), 0));
 

@@ -133,6 +133,8 @@ fn analyser_view(core: &DspiCore) -> CallResult {
             "maxBands": c.max_bands,
             "dynamicRangeDb": c.dynamic_range_db,
             "centres": c.centres.iter().take(bands).collect::<Vec<_>>(),
+            // -- WP WEB6 -- the bass bands' range, for the Spectrum page's status line
+            "bassDynamicRangeDb": c.bass_dynamic_range_db,
         },
         "snapshot": {
             "version": s.version,
@@ -153,6 +155,12 @@ fn analyser_view(core: &DspiCore) -> CallResult {
             "fftOrder": s.fft_order,
             "firstBand": s.first_band,
             "configRejected": s.config_rejected,
+            // -- WP WEB6 -- the telemetry Qt's status line shows
+            "liveCount": s.live_count,
+            "refreshIntervalS": tidy(&s.refresh_interval_s),
+            "lastFrameUs": s.last_frame_us,
+            "busyUsPerS": s.busy_us_per_s,
+            "bassBusyUsPerS": s.bass_busy_us_per_s,
         },
         "ownership": {
             "following": o.following,
@@ -807,6 +815,17 @@ mod tests_wp_wb6j {
         let v = ok(h, "analyserView", Value::Null);
         assert!(v["ownership"]["following"].is_boolean(), "{v}");
         assert!(v["caps"]["centres"].is_array(), "{v}");
+        // -- WP WEB6 -- the telemetry of the Spectrum page's status line
+        for k in [
+            "liveCount",
+            "refreshIntervalS",
+            "lastFrameUs",
+            "busyUsPerS",
+            "bassBusyUsPerS",
+        ] {
+            assert!(v["snapshot"][k].is_number(), "{k}: {v}");
+        }
+        assert!(v["caps"]["bassDynamicRangeDb"].is_number(), "{v}");
         ok(h, "rtaTakeControl", Value::Null);
         ok(h, "rtaStop", Value::Null);
     }

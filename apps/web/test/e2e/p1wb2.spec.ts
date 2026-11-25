@@ -220,7 +220,7 @@ test("P1WB2 tokens and groups: tokens on, Save asks and saves; an EQ Clear All i
   for (const b of [0, 1, 2]) await call(page, "filter", { channel: 0, band: b, filterType: 1, freq: 300 + 200 * b, q: 1, gain: 4, bypass: false, qp: 1 });
   await call(page, "endGroup");
   const list = session.getByRole("region", { name: /^Bands of IN1/ });
-  await list.getByRole("button", { name: "Clear All" }).click();
+  await list.getByRole("button", { name: /^Clear (\d+\/\d+ )?PEQ$/ }).click(); // -- WP WEB6 -- Qt's "Clear PEQ" ("Clear 1/2 PEQ" on a linked pair)
   const ask = page.getByRole("dialog", { name: "Clear All Bands?" });
   await expect(ask).toContainText("One Undo puts them all back.");
   await ask.getByRole("button", { name: "Clear All" }).click();
@@ -234,7 +234,7 @@ test("P1WB2 AutoEQ: a profile previewed on the graph writes nothing; Apply write
   const errors = errorsOf(page);
   const session = await openDemo(page);
   await openPage(session, "EQ");
-  await session.getByRole("button", { name: "AutoEQ…" }).click();
+  await session.getByRole("button", { name: "Headphone Profile…" }).click(); // -- WP WEB6 -- Qt's tool on an input's page (was AutoEQ…)
   const panel = session.getByRole("region", { name: "AutoEQ" });
   const profile = { id: "o/Sony A", manufacturer: "Sony", model: "A", preamp: -4, filters: [{ type: "PK", freq: 105, q: 0.7, gain: 3 }] };
   await panel.getByLabel("AutoEQ profile").setInputFiles({ name: "sony-a.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(profile)) });

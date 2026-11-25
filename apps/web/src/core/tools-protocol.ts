@@ -15,6 +15,8 @@ export interface AnalyserView {
     dynamicRangeDb: number;
     /** Each band's centre, Hz. */
     centres: number[];
+    /** -- WP WEB6 -- the bass bands' usable range, dB (0: not said). */
+    bassDynamicRangeDb?: number;
   };
   snapshot: {
     version: number;
@@ -30,6 +32,12 @@ export interface AnalyserView {
     fftOrder: number;
     firstBand: number;
     configRejected: boolean;
+    // -- WP WEB6 -- the telemetry of Qt's status line (absent from an older core)
+    liveCount?: number;
+    refreshIntervalS?: number;
+    lastFrameUs?: number;
+    busyUsPerS?: number;
+    bassBusyUsPerS?: number;
   };
   /** The device's one analyser: the last choice made wins; `following` while another console's runs it. */
   ownership: { following: boolean; tap: number; mask: number; fftOrder: number };

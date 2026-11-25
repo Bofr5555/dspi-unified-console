@@ -72,7 +72,10 @@ test("WB6J M23 M22: a channel's page draws its spectrum over the EQ graph and in
   const session = await connect(page);
   await openPage(session, "EQ");
   await session.locator(".eq-pick", { hasText: "OUT1" }).click();
-  await session.getByRole("button", { name: "Spectrum on Graph" }).click();
+  // -- WP WEB6 -- Qt's RTA chip in the graph's corner (was the page tool "Spectrum on Graph")
+  const rta = session.getByRole("group", { name: "Graph options" }).getByRole("button", { name: "RTA" });
+  await rta.click();
+  await expect(rta).toHaveAttribute("aria-pressed", "true");
   const overlay = session.locator("canvas.rta-overlay");
   await expect(overlay).toHaveCount(1);
   await expect(overlay).not.toHaveAttribute("data-bars", "0");
@@ -86,7 +89,7 @@ test("WB6J M23 M22: a channel's page draws its spectrum over the EQ graph and in
   await strip.getByRole("button", { name: "Show Bars" }).click();
   await expect(strip.locator(".rta-cell")).toHaveCount(1);
   await expect(strip.locator(".rta-cell figcaption")).toContainText("OUT1");
-  await session.getByRole("button", { name: "Spectrum on Graph" }).click();
+  await rta.click();
   await expect(overlay).toHaveCount(0);
   expect(errors).toEqual([]);
 });
@@ -107,7 +110,9 @@ test("WB6J M46: the signal generator plays only on Start, shows what it does, an
   await gen.getByRole("region", { name: "Outputs" }).getByRole("button", { name: "None", exact: true }).click(); // -- WP WEB4 -- All/None at the section's label
   await expect(gen.locator(".siggen-title")).toHaveText("Select at least one output");
   await expect(gen.getByRole("button", { name: "Start" })).toBeDisabled();
-  await gen.getByRole("group", { name: "Outputs" }).getByRole("button", { name: /^OUT1/ }).click();
+  // -- WP WEB6 -- (REVE D2) the chip names the output once, by the core's label
+  await expect(gen.getByRole("group", { name: "Outputs" }).getByRole("button", { name: /^OUT/ })).toHaveCount(0);
+  await gen.getByRole("group", { name: "Outputs" }).getByRole("button", { name: /^Out 1\b/ }).click();
   await gen.getByRole("button", { name: "Start" }).click();
   await expect(gen.locator(".siggen-title")).toHaveText(/^(Fading in|Running) · Pink noise$/);
   const cfg = await call<Config>(page, "siggenConfig");
@@ -123,7 +128,9 @@ test("WB6J M46: Identify from an output's page and from the matrix plays channel
   const session = await connect(page);
   await openPage(session, "EQ");
   await session.locator(".eq-pick", { hasText: "OUT2" }).click();
-  await session.getByRole("button", { name: "Identify" }).click();
+  // -- WP WEB6 -- the channel's menu (its right click), as Qt's: no Identify among the page tools
+  await session.locator(".eq-pick", { hasText: "OUT2" }).click({ button: "right" });
+  await page.getByRole("menu", { name: /^OUT2/ }).getByRole("menuitem", { name: "Identify" }).click();
   await expect.poll(async () => (await call<Config>(page, "siggenConfig")).channelMask).toBe(2);
   const cfg = await call<Config>(page, "siggenConfig");
   expect([cfg.signalType, cfg.levelDb, cfg.repeat]).toEqual([14, -12, 2]);
@@ -150,7 +157,8 @@ test("WB6J M46: read only, the generator and Identify are off and nothing plays"
   await expect(gen.locator(".siggen-title")).toHaveText("You can view this DSPi but not change it");
   await openPage(session, "EQ");
   await session.locator(".eq-pick", { hasText: "OUT1" }).click();
-  await expect(session.getByRole("button", { name: "Identify" })).toBeDisabled();
+  await session.locator(".eq-pick", { hasText: "OUT1" }).click({ button: "right" }); // -- WP WEB6 -- the channel's menu
+  await expect(page.getByRole("menu", { name: /^OUT1/ }).getByRole("menuitem", { name: "Identify" })).toBeDisabled();
   expect((await call<Status>(page, "siggenStatus")).state).toBe(0);
 });
 
@@ -191,13 +199,76 @@ test("WB6J M22: the Analyser screen shows the strip with its chooser", async ({ 
   const errors = errorsOf(page);
   const session = await connect(page);
   await openPage(session, "Analyser");
+  // -- WP WEB6 -- Qt's Spectrum page: the chosen channels' curves over one plot at once, no Show Bars,
+  // no second heading; the tap and the channels in the head row
   const strip = session.getByRole("region", { name: "Spectrum" });
-  // -- WP WEB2 -- (REVD W4) the bars at once: no Show Bars and no second heading on the Analyser page
   await expect(strip.getByRole("button", { name: "Show Bars" })).toHaveCount(0);
   await expect(strip.getByRole("heading", { name: "Spectrum Analyser" })).toHaveCount(0);
   await expect(strip.getByRole("group", { name: "Analyse", exact: true })).toBeVisible();
-  await expect(strip.locator(".rta-cell")).toHaveCount(2);
-  await expect(strip.locator(".rta-cell").first()).not.toHaveAttribute("data-bars", "0");
+  await expect(strip.getByRole("group", { name: "Channels analysed" }).getByRole("button", { pressed: true })).toHaveCount(2);
+  await expect(strip.locator(".sp-curves")).toHaveAttribute("data-curves", "2");
+  expect(errors).toEqual([]);
+});
+
+// -- WP WEB6 -- the Spectrum page as Qt's: Curves / Bars / Both, the legend choosing the channels,
+// the status line, "On the Equaliser's Graph"
+test("WEB6: the Spectrum page draws curves, bars or both, says how the analyser runs, and puts the spectrum on the EQ graph", async ({ page }) => {
+  const errors = errorsOf(page);
+  const session = await connect(page);
+  await openPage(session, "Analyser");
+  const sp = session.getByRole("region", { name: "Spectrum" });
+  const view = sp.getByRole("group", { name: "View" });
+  await expect(view.getByRole("button", { name: "Curves" })).toHaveAttribute("aria-pressed", "true");
+  await expect(sp.locator(".sp-curves")).toHaveAttribute("data-curves", "2");
+  await expect(sp.locator(".sp-cell")).toHaveCount(0);
+  // Bars: one cell per channel, each with its bands; no curves
+  await view.getByRole("button", { name: "Bars" }).click();
+  await expect(sp.locator(".sp-cell")).toHaveCount(2);
+  await expect(sp.locator(".sp-cell").first()).not.toHaveAttribute("data-bars", "0");
+  await expect(sp.locator(".sp-curves")).toHaveCount(0);
+  // Both: the curves and the bars
+  await view.getByRole("button", { name: "Both" }).click();
+  await expect(sp.locator(".sp-curves")).toHaveAttribute("data-curves", "2");
+  await expect(sp.locator(".sp-cell")).toHaveCount(2);
+  // The status line: running, the frame rate as the core reports it
+  const status = sp.getByRole("status", { name: "Analyser status" });
+  await expect(status).toContainText("Running");
+  await expect(status).toContainText(/\d+ frames\/s/);
+  // The legend: the second input off, the analyser runs on the first alone
+  const legend = sp.getByRole("group", { name: "Channels analysed" });
+  await legend.getByRole("button").nth(1).click();
+  await expect(legend.getByRole("button").nth(1)).toHaveAttribute("aria-pressed", "false");
+  await expect(sp.locator(".sp-curves")).toHaveAttribute("data-curves", "1");
+  await expect.poll(async () => (await call<{ snapshot: { frames: { channel: number }[] } }>(page, "analyserView")).snapshot.frames.map((f) => f.channel)).toEqual([0]);
+  // The outputs: the first output alone, named as the page names it
+  await sp.getByRole("group", { name: "Analyse", exact: true }).getByRole("button", { name: "Outputs" }).click();
+  await expect.poll(async () => (await call<{ snapshot: { tap: number } }>(page, "analyserView")).snapshot.tap).toBe(1);
+  await expect(legend.getByRole("button", { pressed: true })).toHaveCount(1);
+  await expect(legend.getByRole("button", { pressed: true })).toContainText("Out 1");
+  // Unused outputs (no input routed) are not offered (owner 2026-11-24): Out 2 (enabled, not analysed)
+  // routed from nothing leaves the legend; the core flags it, the page follows
+  const st = (await call<{ state: { numInputChannels: number; matrixRouting: boolean[][] } }>(page, "state")).state;
+  const out2 = legend.getByRole("button", { name: /^(Out )?2\b/ });
+  await expect(out2).toHaveCount(1);
+  expect(st.matrixRouting.some((row) => row[1])).toBe(true);
+  for (let i = 0; i < st.numInputChannels; i++)
+    if (st.matrixRouting[i]![1]) await call(page, "crosspoint", { input: i, output: 1, enabled: false, gain: 0, invert: false });
+  await expect.poll(async () => (await call<{ outputLabels: { unused: boolean }[] }>(page, "state")).outputLabels[1]?.unused).toBe(true);
+  await expect(out2).toHaveCount(0);
+  await expect(legend.getByRole("button", { name: /None/ })).toHaveCount(0);
+  // The choice is kept: the page comes back as it was left
+  await page.reload();
+  const again = await connect(page);
+  await openPage(again, "Analyser");
+  const sp2 = again.getByRole("region", { name: "Spectrum" });
+  await expect(sp2.getByRole("group", { name: "View" }).getByRole("button", { name: "Both" })).toHaveAttribute("aria-pressed", "true");
+  // On the Equaliser's Graph: the EQ graph shows the spectrum
+  const tool = again.getByRole("toolbar", { name: "Spectrum tools" }).getByRole("checkbox", { name: "On the Equaliser's Graph" });
+  await expect(tool).toHaveAttribute("aria-checked", "false");
+  await tool.click();
+  await expect(tool).toHaveAttribute("aria-checked", "true");
+  await openPage(again, "EQ");
+  await expect(again.locator("canvas.rta-overlay")).toHaveCount(1);
   expect(errors).toEqual([]);
 });
 

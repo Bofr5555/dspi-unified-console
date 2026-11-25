@@ -3,6 +3,11 @@
 // number in the band's graph colour (a click chooses the band on the graph);
 // Enable All, Bypass All and Clear All below, Clear asked first as on the
 // Console. Rows keep one height whatever their type.
+//
+// -- WP WEB6 -- (REVE §3.1) Qt's table: the bypass disc first (filled in the band's colour while the
+// band plays, a ring when bypassed or off; a click switches it), the number, the type as Qt's picker
+// (a select drawn as its combo), FREQ, GAIN and WIDTH with their units after the fields, an off
+// band's values left out; Enable All and Bypass All at the left of the foot, Clear PEQ at the right.
 
 import { memo } from "preact/compat";
 import { useState } from "preact/hooks";
@@ -15,9 +20,9 @@ import {
   OFF_BAND,
   T,
   bandColour,
+  bareFreq,
+  bareGain,
   clamp,
-  freqText,
-  gainText,
   isGraphBand,
   parseFreq,
   parseNumber,
@@ -47,12 +52,15 @@ export const BandList = memo(function BandList(props: {
   commit: (changes: Map<number, FilterParams>) => void;
   // -- WP P1WB2 -- Clear All as one undo step (P1UG); without it, the bands through `commit`
   clearAll?: () => Promise<void>;
+  /** -- WP WEB6 -- the foot's Clear ("Clear PEQ", a linked pair's "Clear 1/2 PEQ"). */
+  clearText?: string;
 }) {
   const { bands, limits, disabled } = props;
-  // On a phone the values are short and their units in the headings.
+  // On a phone the values are short and their units in the headings; wide, the units after the fields.
   const compact = useCompact();
-  const fText = compact ? shortFreq : freqText;
-  const gText = compact ? shortGain : gainText;
+  const fText = compact ? shortFreq : bareFreq;
+  const gText = compact ? shortGain : bareGain;
+  const unit = (u: string) => (compact ? undefined : u);
   const set = (b: number, p: FilterParams) => props.commit(new Map([[b, p]]));
   // -- WP WB6c -- the Linkwitz Transform panel of a band
   const [lt, setLt] = useState<number | null>(null);
@@ -79,6 +87,11 @@ export const BandList = memo(function BandList(props: {
       <table>
         <thead>
           <tr>
+            {props.bypassOk ? (
+              <th scope="col" class="c-on">
+                <span class="visually-hidden">Plays</span>
+              </th>
+            ) : null}
             <th scope="col" class="c-n">
               #
             </th>
@@ -92,14 +105,8 @@ export const BandList = memo(function BandList(props: {
               {compact ? "dB" : "Gain"}
             </th>
             <th scope="col" class="c-q">
-              Q
+              {compact ? "Q" : "Width"}
             </th>
-            {props.bypassOk ? (
-              <th scope="col" class="c-byp">
-                <span class="visually-hidden">Bypass</span>
-                <span aria-hidden="true">Byp</span>
-              </th>
-            ) : null}
           </tr>
         </thead>
         <tbody>
@@ -109,7 +116,23 @@ export const BandList = memo(function BandList(props: {
             const n = `Band ${b + 1}`;
             const types = props.available.includes(p.filterType) ? props.available : [...props.available, p.filterType];
             return (
-              <tr key={b} class={props.selection.has(b) ? "chosen" : undefined}>
+              <tr key={b} class={`${props.selection.has(b) ? "chosen" : ""}${on ? "" : " band-off"}${p.bypass ? " band-bypassed" : ""}`.trim() || undefined}>
+                {props.bypassOk ? (
+                  <td class="c-on">
+                    {/* -- WP WEB6 -- Qt's bypass disc: "Band N plays" */}
+                    <button
+                      type="button"
+                      role="checkbox"
+                      class="band-disc"
+                      aria-label={`${n} plays`}
+                      aria-checked={on && !p.bypass}
+                      title={!on ? undefined : p.bypass ? "Re-enable this band" : "Bypass this band"}
+                      disabled={disabled || !on}
+                      style={{ "--band": bandColour(b) }}
+                      onClick={() => set(b, { ...p, bypass: !p.bypass })}
+                    />
+                  </td>
+                ) : null}
                 <td class="c-n">
                   <button
                     type="button"
@@ -119,12 +142,13 @@ export const BandList = memo(function BandList(props: {
                     disabled={!on}
                     onClick={(e) => props.choose(b, e.shiftKey || e.ctrlKey || e.metaKey)}
                   >
-                    <span class="swatch" style={on ? { background: bandColour(b) } : undefined} aria-hidden="true" />
+                    {props.bypassOk ? null : <span class="swatch" style={on ? { background: bandColour(b) } : undefined} aria-hidden="true" />}
                     {b + 1}
                   </button>
                 </td>
                 <td class="c-type">
                   <select
+                    class="combo"
                     aria-label={`${n} type`}
                     disabled={disabled}
                     value={String(p.filterType)}
@@ -141,13 +165,16 @@ export const BandList = memo(function BandList(props: {
                   </select>
                 </td>
                 <td class="c-freq">
-                  <ValueField
-                    label={`${n} frequency`}
-                    text={on ? fText(p.freq) : "–"}
-                    parse={parseFreq}
-                    disabled={disabled || !on || p.filterType === T.linkwitz}
-                    onCommit={(v) => set(b, { ...p, freq: roundFreq(clamp(v, limits.freq)) })}
-                  />
+                  {on ? (
+                    <ValueField
+                      label={`${n} frequency`}
+                      text={fText(p.freq)}
+                      unit={unit("Hz")}
+                      parse={parseFreq}
+                      disabled={disabled || p.filterType === T.linkwitz}
+                      onCommit={(v) => set(b, { ...p, freq: roundFreq(clamp(v, limits.freq)) })}
+                    />
+                  ) : null}
                 </td>
                 <td class="c-gain">
                   {p.filterType === T.linkwitz ? (
@@ -160,36 +187,29 @@ export const BandList = memo(function BandList(props: {
                     >
                       f0, Q0, fp, Qp…
                     </button>
-                  ) : (
-                  <ValueField
-                    label={`${n} gain`}
-                    text={on && usesGain(p.filterType) ? gText(p.gain) : "–"}
-                    parse={(t) => parseNumber(t, "db")}
-                    disabled={disabled || !usesGain(p.filterType)}
-                    onCommit={(v) => set(b, { ...p, gain: round2(clamp(v, limits.gain)) })}
-                  />
-                  )}
+                  ) : on && usesGain(p.filterType) ? (
+                    <ValueField
+                      label={`${n} gain`}
+                      text={gText(p.gain)}
+                      unit={unit("dB")}
+                      parse={(t) => parseNumber(t, "db")}
+                      disabled={disabled}
+                      onCommit={(v) => set(b, { ...p, gain: round2(clamp(v, limits.gain)) })}
+                    />
+                  ) : null}
                 </td>
                 <td class="c-q">
-                  <ValueField
-                    label={`${n} Q`}
-                    text={on && usesQ(p.filterType) ? qText(p.q) : "–"}
-                    parse={(t) => parseNumber(t, "")}
-                    disabled={disabled || !usesQ(p.filterType) || locked}
-                    onCommit={(v) => set(b, { ...p, q: round3(clamp(v, limits.q)) })}
-                  />
-                </td>
-                {props.bypassOk ? (
-                  <td class="c-byp">
-                    <input
-                      type="checkbox"
-                      aria-label={`${n} bypass`}
-                      checked={p.bypass}
-                      disabled={disabled || !on}
-                      onChange={(e) => set(b, { ...p, bypass: (e.target as HTMLInputElement).checked })}
+                  {on && usesQ(p.filterType) ? (
+                    <ValueField
+                      label={`${n} Q`}
+                      text={qText(p.q)}
+                      unit={unit("Q")}
+                      parse={(t) => parseNumber(t, "")}
+                      disabled={disabled || locked}
+                      onCommit={(v) => set(b, { ...p, q: round3(clamp(v, limits.q)) })}
                     />
-                  </td>
-                ) : null}
+                  ) : null}
+                </td>
               </tr>
             );
           })}
@@ -206,8 +226,8 @@ export const BandList = memo(function BandList(props: {
             </button>
           </span>
         ) : null}
-        <button type="button" disabled={disabled || !actionable.length} onClick={() => void clearAll()}>
-          Clear All
+        <button type="button" class="band-clear" disabled={disabled || !actionable.length} onClick={() => void clearAll()}>
+          {props.clearText ?? "Clear All"}
         </button>
       </div>
       {lt !== null && bands[lt]?.filterType === T.linkwitz ? (

@@ -132,17 +132,17 @@ test("WB6d: a block opens its screen: EQ at the channel and tab, the Matrix, the
   await block(chain.getByRole("group", { name: /^Chain IN2 / }), "EQ").getByRole("button").click();
   await expectPage(session, "EQ");
   await expect(session.locator(".eq-pick", { hasText: "IN2" })).toHaveAttribute("aria-pressed", "true");
-  // OUT1's crossover: OUT1 chosen, the XO tab.
+  // OUT1's crossover: OUT1 chosen, -- WP WEB6 -- on the Crossover tab (Qt's: the PEQ page has no XO bands now).
   await openPage(session, "System");
   const o1 = s.outputEnabled.findIndex((e) => e !== false);
   await block(outRow(chain, o1), "Crossover").getByRole("button").click();
+  await expectPage(session, "Crossover");
   await expect(session.locator(".eq-pick", { hasText: `OUT${o1 + 1}` })).toHaveAttribute("aria-pressed", "true");
-  const tabs = session.getByRole("tablist", { name: "Bands" });
-  if (await tabs.count()) await expect(tabs.getByRole("tab", { name: "XO", exact: true })).toHaveAttribute("aria-selected", "true");
-  // A tab chosen by hand opens its screen as it was: PEQ on the first channel.
+  await expect(session.getByRole("region", { name: new RegExp(`^Crossover bands of OUT${o1 + 1} `) })).toBeVisible();
+  // -- WP WEB6 -- A tab chosen by hand opens its screen with the channel the Equaliser's tabs share (Qt's one selection).
   await openPage(session, "Main");
   await openPage(session, "EQ");
-  await expect(session.locator(".eq-pick").first()).toHaveAttribute("aria-pressed", "true");
+  await expect(session.locator(".eq-pick", { hasText: `OUT${o1 + 1}` })).toHaveAttribute("aria-pressed", "true");
   // The routing summary: the Matrix.
   await openPage(session, "System");
   await outRow(chain, o1).getByRole("button", { name: /^Routing of / }).click();

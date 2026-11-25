@@ -112,7 +112,7 @@ test("WB6j: the Spectrum preferences are WB6i's dspi-web.prefs, checked; the cho
   assert.equal(p.fftOrder, 9);
   assert.equal(p.showPeakHold, false);
   assert.equal(p.graphOpacity, 1, "held to its range");
-  assert.deepEqual(tidyChoice({ bars: true, tap: 7, mask: -1 }), { bars: true, graph: false, tap: 0, mask: 3 });
+  assert.deepEqual(tidyChoice({ bars: true, tap: 7, mask: -1 }), { bars: true, graph: false, tap: 0, mask: 3, view: "curves" });
 });
 
 // ------------------------------------------------------------ signal generator

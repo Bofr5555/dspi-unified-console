@@ -10,7 +10,7 @@ import { useSessionState } from "../../ui/components";
 import type { ScreenProps } from "../../ui/screens";
 import type { Session } from "../../ui/session";
 import { outputRows } from "../main/model";
-import { SpectrumStrip, tapNames } from "./SpectrumStrip";
+import { SpectrumPage } from "./SpectrumPage"; // -- WP WEB6 --
 import {
   FLAG_DECORR,
   FLAG_RAW,
@@ -44,12 +44,12 @@ export function GeneratorScreen(props: ScreenProps) {
   return <SiggenPanel session={props.session} />;
 }
 
-/** The Spectrum Analyser: the bar strip with its chooser, on a screen of its own (M22). */
+/** The Spectrum Analyser on a screen of its own (M22): -- WP WEB6 -- Qt's Spectrum page. */
 export function AnalyserScreen(props: ScreenProps) {
   const st = useSessionState(props.session);
   const snap = st.snapshot;
   if (!snap) return null;
-  return <SpectrumStrip session={props.session} names={tapNames(snap.state, snap.outputLabels)} title="Spectrum Analyser" always />;
+  return <SpectrumPage session={props.session} s={snap.state} labels={snap.outputLabels} />;
 }
 
 /** Stats for nerbs (M53). */
@@ -145,7 +145,8 @@ function SiggenPanel(props: { session: Session }) {
   const rows = useMemo(() => (s ? outputRows(s, st.snapshot?.outputLabels) : []), [s, st.snapshot?.outputLabels]);
   const nameOf = (o: number) => {
     const r = rows.find((x) => x.index === o);
-    return r ? `${r.descriptor} ${r.name}` : `Output ${o + 1}`;
+    // -- WP WEB6 -- (REVE D2) the core's label alone, as Qt's chips ("Out 1 · L"), not "OUT1 Out 1 · L"
+    return r?.name || `Out ${o + 1}`;
   };
   const playable = playableMask(caps, outputs);
   const type = typeOf(caps, draft.signalType);

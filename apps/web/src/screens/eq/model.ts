@@ -426,6 +426,20 @@ export function qText(q: number): string {
   return q.toFixed(3);
 }
 
+// -- WP WEB6 -- the band table's values without their units, which stand after the fields (Qt's):
+// "63.0", "2500.0" (Hz); "-4.0", "+2.5" (dB). Typed text still takes "2k" or "A4".
+export function bareFreq(hz: number): string {
+  return hz.toFixed(hz >= 100 ? 1 : 2);
+}
+export function bareGain(db: number): string {
+  const v = Math.abs(db) < 0.005 ? 0 : db;
+  return `${v > 0 ? "+" : ""}${v.toFixed(2)}`;
+}
+/** -- WP WEB6 -- A Q as the bandwidth it spans, in octaves (Qt's inspector caption). */
+export function bandwidthOct(q: number): number {
+  return (2 / Math.LN2) * Math.asinh(1 / (2 * q));
+}
+
 /** A typed frequency: "2k", "2 kHz", "440", or a note, "A4", "C#2+13" (cents). */
 export function parseFreq(text: string): number | null {
   const note = parseNote(text.trim().toLowerCase());

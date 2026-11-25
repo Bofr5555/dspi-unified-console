@@ -182,11 +182,10 @@ test("WEBM4: context menus of a channel, a device tab and a preset slot, by the 
   await page.keyboard.press("Shift+F10");
   await one.getByRole("menu", { name: /^OUT1/ }).getByRole("menuitem", { name: "Edit Routing…" }).click();
   await expectPage(session, "Matrix");
-  // The Channel button has the same rows
+  // -- WP WEB6 -- Qt's page tools: Files ▾ and the inspector's toggle, no Channel button (the menu is the right click's)
   await openPage(session, "EQ");
-  await session.locator(".eq-tools").getByRole("button", { name: "Channel" }).click();
-  await expect(session.getByRole("menu", { name: "Channel" }).getByRole("menuitem", { name: "Copy Parameters" })).toBeVisible();
-  await page.keyboard.press("Escape");
+  await expect(session.locator(".eq-tools").getByRole("button", { name: "Channel" })).toHaveCount(0);
+  await expect(session.locator(".eq-tools").getByRole("button", { name: "Files" })).toBeVisible();
 
   // A preset slot (-- WP INTD -- its row in the session bar's preset popover): actions.json's `slot` menu
   await session.getByRole("button", { name: /^Presets: / }).click();

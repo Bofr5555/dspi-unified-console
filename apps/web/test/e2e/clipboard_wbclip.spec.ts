@@ -54,8 +54,9 @@ async function pick(session: Locator, desc: string) {
   await b.click();
   await expect(b).toHaveAttribute("aria-pressed", "true");
 }
-const channelMenu = (session: Locator) => session.locator(".eq-tools").getByRole("button", { name: "Channel" });
-const item = (session: Locator, name: string) => session.getByRole("menuitem", { name });
+// -- WP WEB6 -- the chosen channel's menu is its right click (Qt's page tools have no Channel button)
+const channelMenu = (session: Locator) => ({ click: () => session.locator(".eq-pick[aria-pressed='true']").click({ button: "right" }) });
+const item = (session: Locator, name: string) => session.page().getByRole("menuitem", { name });
 const undo = (s: Locator) => s.getByRole("group", { name: "Undo and Redo" }).getByRole("button", { name: "Undo" });
 
 test("WBCLIP M45: the EQ screen's Channel menu copies OUT1 and pastes onto OUT2, one undo step", async ({ page }) => {
@@ -71,7 +72,7 @@ test("WBCLIP M45: the EQ screen's Channel menu copies OUT1 and pastes onto OUT2,
   await expect(item(session, "Paste Parameters")).toBeDisabled(); // nothing copied yet
   await expect(item(session, "Copy Parameters")).toBeEnabled();
   // The menu stays on the page at every width.
-  const box = (await session.getByRole("menu", { name: "Channel" }).boundingBox())!;
+  const box = (await session.page().getByRole("menu", { name: /^OUT2/ }).boundingBox())!;
   const width = await page.evaluate(() => document.documentElement.clientWidth);
   expect(box.x).toBeGreaterThanOrEqual(0);
   expect(box.x + box.width).toBeLessThanOrEqual(width);
