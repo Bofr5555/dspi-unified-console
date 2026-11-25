@@ -8,6 +8,9 @@ import UConsole
 // its connection (OverviewSummary); without a device, the way to one.
 // -- WP DL6 -- Modern's own cards (OverviewChannelCard), one per channel;
 // Classic's Dashboard is not used here.
+// -- WP UA4 -- (UXP A4) Under the summary the setup list (OverviewChecklist)
+// while the device is not set up; with nothing routed, the speaker layout's
+// outputs as cards that say so, in place of no OUTPUTS at all.
 Item {
     id: page
     objectName: "OverviewSection"
@@ -94,6 +97,14 @@ Item {
             for (const c of DashboardController.cards) for (const col of c.columns || []) if (col.output) list.push(col)
             return list
         }
+        // -- WP UA4 -- no output on: the layout's outputs, which nothing feeds yet
+        readonly property var notRouted: {
+            const list = []
+            if (outputs.length > 0 || ChannelController.revision < 0) return list
+            for (const r of SpeakersController.rows || [])
+                if (r.included) list.push({ channel: ChannelController.outputChannel(r.output), output: true, number: r.output })
+            return list
+        }
         readonly property int columns: Math.max(1, Math.floor((content.width + Theme.spacing) / (260 + Theme.spacing)))
 
         ColumnLayout {
@@ -107,6 +118,12 @@ Item {
                 Layout.fillWidth: true
                 host: page.host
             }
+            // -- WP UA4 --
+            OverviewChecklist {
+                Layout.fillWidth: true
+                Layout.topMargin: visible ? Theme.spacingSection - Theme.spacing : 0
+                host: page.host
+            }
             // -- WP QP9 -- The spectrum as bars, when it is shown here
             SpectrumStrip {
                 place: "dashboard"
@@ -114,7 +131,7 @@ Item {
             }
             Repeater {
                 model: [{ key: "inputs", title: qsTr("INPUTS"), list: flick.inputs },
-                        { key: "outputs", title: qsTr("OUTPUTS"), list: flick.outputs }]
+                        { key: "outputs", title: qsTr("OUTPUTS"), list: flick.outputs.length ? flick.outputs : flick.notRouted }]   // -- WP UA4 --
                 ColumnLayout {
                     id: group
                     required property var modelData
@@ -154,6 +171,17 @@ Item {
                         font: Theme.fontSmall
                         color: Theme.textMuted
                         wrapMode: Text.Wrap
+                    }
+                    // -- WP UA4 -- the layout's outputs, while no input reaches any
+                    NoticeRow {
+                        objectName: "OverviewSection.notRouted"
+                        Layout.fillWidth: true
+                        Layout.maximumWidth: Theme.contentMaxWidth
+                        visible: group.modelData.key === "outputs" && flick.outputs.length === 0 && flick.notRouted.length > 0
+                        kind: "info"
+                        text: qsTr("Not routed yet: no input reaches these outputs, so they play nothing.")
+                        actionText: qsTr("Open Routing")
+                        onAction: if (page.host) page.host.go("routing", "")
                     }
                     GridLayout {
                         Layout.fillWidth: true

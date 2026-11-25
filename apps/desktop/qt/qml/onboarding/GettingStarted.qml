@@ -10,6 +10,11 @@ import UConsole
 // install happens on the board step itself. Every word comes from the core's
 // getting_started.json (OnboardingController.gettingStarted), resolved for
 // this platform; `{name}` holes are filled here.
+// -- WP UA4 -- (UXP A4) No dead end: the board step has a way on without a
+// board ("My DSPi already runs the firmware…"); the Speakers step's one
+// primary is Later until the table is edited, then Confirm and Continue
+// (owner D15); rows may carry an action (the demo, Settings › This Computer)
+// and a layout (OnboardingController.h).
 Rectangle {
     id: wizard
     objectName: "GettingStarted"
@@ -65,7 +70,50 @@ Rectangle {
     function wording(item) { return typeof item === "string" ? item : item.text || "" }
     function iconFor(name) {
         return ({ connect: "plug-zap", verified: "badge-check", sliders: "sliders-horizontal", outputs: "cable",
-                  speaker: "volume-2", help: "circle-question-mark" })[name] || "info"
+                  speaker: "volume-2", help: "circle-question-mark",
+                  // -- WP UA4 --
+                  measure: "mic", agent: "bot", demo: "play", checklist: "circle-check" })[name] || "info"
+    }
+    // -- WP UA4 -- the rows of this layout: one that names a layout shows in it only
+    readonly property string layoutName: LayoutController.modern ? "modern" : "classic"
+    function shownRows(list) {
+        return (list || []).filter(r => typeof r === "string" || !r.layout || r.layout === layoutName)
+    }
+    // -- WP UA4 -- a row's button: what it does, and whether it is offered now
+    function rowOffered(row) {
+        if (typeof row === "string" || !row.action) return false
+        if (row.id === "welcome.demo") return !DeviceModel.connected
+        return true
+    }
+    function rowAction(row) {
+        if (row.id === "welcome.demo") {
+            DemoController.openDemo()
+        } else if (row.id === "done.sound_pc") {
+            // The last step: the console comes back, on Settings › This Computer
+            OnboardingController.finishSetup()
+            SettingsController.showPage("hostaudio")
+        }
+    }
+
+    // -- WP UA4 -- The Speakers step (owner D15: Later by default): Later
+    // leaves the layout as it is; once the person edited the table the
+    // primary confirms it and goes on, after the core kept it
+    readonly property bool onSpeakers: stage.id === "speakers"
+    readonly property var speakersStep: onSpeakers && speakersLoader.item ? speakersLoader.item : null
+    readonly property string speakersAction: !speakersStep || !DeviceModel.connected || speakersStep.confirmed ? "continue"
+                                           : speakersStep.touched ? "confirm_continue" : "later"
+    property bool confirmThenGo: false
+    Connections {
+        target: SpeakersController
+        enabled: wizard.confirmThenGo
+        function onStoredChanged() { wizard.goOnIfConfirmed() }
+        function onRowsChanged() { wizard.goOnIfConfirmed() }
+        function onSaidChanged() { if (SpeakersController.saidError) wizard.confirmThenGo = false }
+    }
+    function goOnIfConfirmed() {
+        if (!confirmThenGo || SpeakersController.status !== "confirmed" || SpeakersController.edited) return
+        confirmThenGo = false
+        current = current + 1
     }
 
     readonly property string headerId: {
@@ -145,9 +193,17 @@ Rectangle {
         if (installer) installer.reset()
     }
     function advance() {
-        if (onLast) OnboardingController.finishSetup()
-        else current = current + 1
+        if (onLast) {
+            OnboardingController.finishSetup()
+        } else if (onSpeakers && speakersAction === "confirm_continue") {
+            // -- WP UA4 -- kept first; a refusal stays on the step, in its words
+            confirmThenGo = true
+            SpeakersController.confirm()
+        } else {
+            current = current + 1
+        }
     }
+    onCurrentChanged: confirmThenGo = false   // -- WP UA4 --
 
     // -- WP QPI3 -- the installer this page began watching is the one it stops,
     // also when another is handed over meanwhile
@@ -265,18 +321,32 @@ Rectangle {
                     Layout.fillWidth: true
                     spacing: Theme.spacing
                     Repeater {
-                        model: wizard.onBoard ? [] : wizard.stage.rows || []
-                        delegate: InfoRow {
+                        model: wizard.onBoard ? [] : wizard.shownRows(wizard.stage.rows)   // -- WP UA4 --
+                        // -- WP UA4 -- a row with an action has its button at the right
+                        delegate: RowLayout {
+                            id: infoLine
                             required property var modelData
-                            objectName: "GettingStarted.row"
-                            iconName: wizard.iconFor(modelData.icon)
-                            text: wizard.wording(modelData)
+                            Layout.fillWidth: true
+                            spacing: Theme.spacing
+                            InfoRow {
+                                objectName: "GettingStarted.row"
+                                iconName: wizard.iconFor(infoLine.modelData.icon)
+                                text: wizard.wording(infoLine.modelData)
+                            }
+                            AppButton {
+                                objectName: "GettingStarted.rowAction." + (infoLine.modelData.id || "")
+                                visible: wizard.rowOffered(infoLine.modelData)
+                                Layout.alignment: Qt.AlignVCenter
+                                text: infoLine.modelData.action || ""
+                                onClicked: wizard.rowAction(infoLine.modelData)
+                            }
                         }
                     }
                 }
                 // -- WP ROLEQ -- the Speakers step's table and its Confirm
                 // (assets/onboarding/speakers.json, OnboardingController)
                 Loader {
+                    id: speakersLoader
                     objectName: "GettingStarted.speakers"
                     active: wizard.stage.id === "speakers"
                     visible: active
@@ -312,6 +382,15 @@ Rectangle {
                         Layout.alignment: Qt.AlignHCenter
                         text: (wizard.words.buttons || {}).try_again || ""
                         onClicked: wizard.tryAgain()
+                    }
+                    // -- WP UA4 -- the way on without a board in front of it: a
+                    // DSPi that runs the firmware, or none here yet
+                    LinkButton {
+                        objectName: "GettingStarted.later"
+                        visible: !wizard.showsContinue && !wizard.installInFlight && text.length > 0
+                        Layout.alignment: Qt.AlignHCenter
+                        text: wizard.stage.later || ""
+                        onClicked: wizard.current = wizard.current + 1
                     }
                 }
             }
@@ -351,7 +430,11 @@ Rectangle {
                 objectName: "GettingStarted.continue"
                 visible: wizard.showsContinue
                 primary: wizard.continueIsDefault
-                text: wizard.onLast ? (wizard.words.buttons || {}).finish || "" : (wizard.words.buttons || {}).continue || ""
+                // -- WP UA4 -- the Speakers step's own words: Later, Confirm and Continue
+                text: wizard.onLast ? (wizard.words.buttons || {}).finish || ""
+                    : wizard.onSpeakers && wizard.speakersAction !== "continue" ? (wizard.stage.buttons || {})[wizard.speakersAction] || ""
+                    : (wizard.words.buttons || {}).continue || ""
+                enabled: !wizard.confirmThenGo
                 onClicked: wizard.advance()
             }
         }
@@ -369,6 +452,31 @@ Rectangle {
         enabled: wizard.visible && wizard.onBoard && wizard.cardSpec[4].length > 0
                  && !(wizard.showsContinue && wizard.continueIsDefault)
         onActivated: wizard.cardAction()
+    }
+
+    // -- WP UA4 -- a quiet way on: accent text, underlined on hover, the focus ring
+    component LinkButton: AbstractButton {
+        id: link
+        hoverEnabled: true
+        focusPolicy: Qt.StrongFocus
+        padding: 4
+        contentItem: Text {
+            textFormat: Text.PlainText
+            text: link.text
+            font.pixelSize: Theme.fontBody.pixelSize
+            font.underline: link.hovered
+            color: Theme.accentText
+            wrapMode: Text.Wrap
+            horizontalAlignment: Text.AlignHCenter
+        }
+        background: Rectangle {
+            radius: Theme.radiusControl
+            color: "transparent"
+            border.width: link.visualFocus ? Theme.focusRingWidth : 0
+            border.color: Theme.focusRing
+        }
+        Accessible.role: Accessible.Button
+        Accessible.name: text
     }
 
     Accessible.role: Accessible.Pane

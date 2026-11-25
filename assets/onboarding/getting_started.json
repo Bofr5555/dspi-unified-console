@@ -53,7 +53,48 @@
           "icon": "sliders",
           "text": "Outputs, wiring and audio are then yours to shape in the console."
         }
-      ]
+      ],
+      "pc": {
+        "when": "windows_or_linux",
+        "paragraphs": [
+          {
+            "id": "welcome.intro",
+            "text": "DSPi turns a Raspberry Pi Pico into a remarkably capable audio processor: equalisation, crossovers, upmixing, loudness compensation and more, applied live to whatever you play."
+          },
+          {
+            "id": "welcome.job_pc",
+            "text": "Setup takes a minute: the DSPi firmware on your Pico, then which output drives what. Both can wait, and the Overview reminds you of what is left."
+          }
+        ],
+        "rows": [
+          {
+            "id": "welcome.shape_pc",
+            "icon": "sliders",
+            "text": "Equalise, cross over, delay and route every output, live as you play."
+          },
+          {
+            "id": "welcome.measure",
+            "icon": "measure",
+            "text": "Measure with a microphone and let auto-tune align crossovers, delays and phase."
+          },
+          {
+            "id": "welcome.agents",
+            "icon": "agent",
+            "text": "Ask an AI agent to make changes for you; by default the app asks you before anything risky."
+          },
+          {
+            "id": "welcome.plug_in",
+            "icon": "connect",
+            "text": "Already running DSPi firmware? Just plug it in: the next step sees it."
+          },
+          {
+            "id": "welcome.demo",
+            "icon": "demo",
+            "text": "No DSPi yet? Try the demo, a simulated DSPi with every page to explore.",
+            "action": "Open the Demo"
+          }
+        ]
+      }
     },
     {
       "id": "board",
@@ -208,7 +249,11 @@
           "title": "The update did not complete",
           "text": "{failure}"
         }
-      ]
+      ],
+      "pc": {
+        "when": "windows_or_linux",
+        "later": "My DSPi already runs the firmware, or I will connect it later"
+      }
     },
     {
       "id": "done",
@@ -254,7 +299,59 @@
           "icon": "help",
           "text": "Help holds release notes and links, and this wizard can be run again."
         }
-      ]
+      ],
+      "pc": {
+        "when": "windows_or_linux",
+        "paragraphs": [
+          {
+            "id": "done.ready_pc",
+            "text": "The console is ready whenever your DSPi is plugged in. A few places worth knowing about:"
+          }
+        ],
+        "rows": [
+          {
+            "id": "done.outputs",
+            "icon": "outputs",
+            "text": "Choose which outputs your build uses, and the pins that carry them, in Settings under [[hardware_page]]."
+          },
+          {
+            "id": "done.sound_pc",
+            "icon": "speaker",
+            "text": "Pick the DSPi as the output device in [[sound_settings]] to hear audio through it. Settings › This Computer says whether it already is.",
+            "action": "Open This Computer"
+          },
+          {
+            "id": "done.checklist",
+            "layout": "modern",
+            "icon": "checklist",
+            "text": "The Overview keeps a short list of what is left to set up: speakers, routing, crossovers, a measurement and a save."
+          },
+          {
+            "id": "done.filters_modern",
+            "layout": "modern",
+            "icon": "sliders",
+            "text": "Choose a card on the Overview, or Equaliser in the rail, to edit a channel's filters."
+          },
+          {
+            "id": "done.filters",
+            "layout": "classic",
+            "icon": "sliders",
+            "text": "Click an input or output in the sidebar to edit its filters."
+          },
+          {
+            "id": "done.help_modern",
+            "layout": "modern",
+            "icon": "help",
+            "text": "The uConsole menu at the top left holds What's New, the help links and this wizard; the command palette[[shortcut:K]] finds any page or command."
+          },
+          {
+            "id": "done.help",
+            "layout": "classic",
+            "icon": "help",
+            "text": "Help holds release notes and links, and this wizard can be run again."
+          }
+        ]
+      }
     }
   ]
 }
