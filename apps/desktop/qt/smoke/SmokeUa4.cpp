@@ -323,14 +323,17 @@ void ua4Section(SmokeDriver &d) {
               && shown(QStringLiteral("Dashboard.open.%1").arg(cc->outputChannel(first))));
     d.grab(d.mainWindow(), QStringLiteral("ua4-overview-not-routed.png"));
     // No output in the layout either: OUTPUTS stays, its notice says what to do
-    for (const QVariant &v : sc->rows()) sc->setIncluded(v.toMap().value(QStringLiteral("output")).toInt(), false);
+    QList<int> included;
+    for (const QVariant &v : sc->rows())
+        if (v.toMap().value(QStringLiteral("included")).toBool()) included << v.toMap().value(QStringLiteral("output")).toInt();
+    for (int o : included) sc->setIncluded(o, false);
     settle();
     QQuickItem *notice = shown(QStringLiteral("OverviewSection.notRouted"));
     check("no layout and nothing routed: OUTPUTS says to route an input",
           shown(QStringLiteral("OverviewSection.outputs")) && notice
               && notice->property("text").toString().startsWith(QLatin1String("No output is in use")));
-    sc->reload();
-    d.waitFor(5000, [&] { return sc->loaded() && !ua4Row(sc, first).isEmpty() && ua4Row(sc, first).value(QStringLiteral("included")).toBool(); });
+    for (int o : included) sc->setIncluded(o, true);
+    settle();
     for (const Route &r : routes)
         if (r.on) cc->setRoute(r.i, r.o, true, r.gain, r.invert);
     settle();
