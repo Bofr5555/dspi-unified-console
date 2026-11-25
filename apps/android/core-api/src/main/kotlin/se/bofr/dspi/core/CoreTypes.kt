@@ -9103,6 +9103,14 @@ data class OutputLabel(
      * leaves it out already.
      */
     val unused: Boolean,
+    /**
+     * `unused`, and no test signal plays on it (the signal generator, which a
+     * measurement, a live run and Identify use too): what a view that only
+     * shows levels (meters, a Spectrum chooser, Stats) leaves out. The
+     * generator writes after the matrix, so an unused output it plays on is
+     * loud and keeps its meter; it still reads "3 · None".
+     */
+    val hidden: Boolean,
 )
 
 /**

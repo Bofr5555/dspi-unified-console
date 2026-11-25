@@ -442,6 +442,8 @@ struct Shown {
     short: String,
     // -- WP INTE -- (owner 2026-11-24) an unused output leaves the non-edit views
     unused: bool,
+    // -- WP FIN015 -- (REVF R1) unless a test signal plays on it
+    hidden: bool,
 }
 
 /// The bulk image the labels were worked out from, and the labels.
@@ -453,7 +455,7 @@ struct LabelCache {
 
 thread_local! {
     /// [`channel_label`] is called while drawing; the labels change only
-    /// with the image.
+    /// with the image (and the outputs the generator plays on, -- WP FIN015 --).
     static LABELS: std::cell::RefCell<LabelCache> = std::cell::RefCell::new(LabelCache::default());
 }
 
@@ -462,7 +464,15 @@ thread_local! {
 fn with_shown<T>(state: &DeviceState, output: usize, f: impl FnOnce(&Shown) -> T) -> Option<T> {
     use dspi_session::output_label::{Band, LabelSource, output_labels};
     LABELS.with_borrow_mut(|c| {
-        if c.key.as_slice() != state.bulk.as_bytes() {
+        // -- WP FIN015 -- the generator's outputs are part of the key
+        let key: Vec<u8> = state
+            .bulk
+            .as_bytes()
+            .iter()
+            .copied()
+            .chain(state.siggen_outputs.to_le_bytes())
+            .collect();
+        if c.key != key {
             c.outputs = output_labels(&LabelSource::from_state(state))
                 .into_iter()
                 .map(|l| {
@@ -481,10 +491,11 @@ fn with_shown<T>(state: &DeviceState, output: usize, f: impl FnOnce(&Shown) -> T
                         slot: l.slot_name,
                         short,
                         unused: l.unused,
+                        hidden: l.hidden, // -- WP FIN015 --
                     }
                 })
                 .collect();
-            c.key = state.bulk.as_bytes().to_vec();
+            c.key = key;
         }
         c.outputs.get(output).map(f)
     })
@@ -516,6 +527,21 @@ pub fn channel_unused(state: &DeviceState, channel: usize) -> bool {
     match channel.checked_sub(ni) {
         Some(o) if o < usize::from(state.caps.num_outputs) => {
             with_shown(state, o, |s| s.unused).unwrap_or(false)
+        }
+        _ => false,
+    }
+}
+
+// -- WP FIN015 -- (REVF R1)
+/// Whether a view that only shows levels (the overview's grid, the spectrum
+/// chooser, stats) leaves `channel` out: an unused output ([`channel_unused`])
+/// that no test signal plays on. The generator writes after the matrix, so an
+/// unused output it plays on keeps its place.
+pub fn channel_hidden(state: &DeviceState, channel: usize) -> bool {
+    let ni = usize::from(state.caps.num_inputs);
+    match channel.checked_sub(ni) {
+        Some(o) if o < usize::from(state.caps.num_outputs) => {
+            with_shown(state, o, |s| s.hidden).unwrap_or(false)
         }
         _ => false,
     }

@@ -230,7 +230,7 @@ fun StatsView(bridge: DspiBridge, modifier: Modifier = Modifier) {
             ringHealth = ringHealth,
             slotColors = List(4) { i -> channelColorOf(bridge, 2 + i * 2) },
             pdmColor = channelColorOf(bridge, 1 + outputs),
-            unusedPairs = remember(revision, bridgeState) { statsUnusedPairs(bridge::outputUnused) } // -- WP INTE --
+            unusedPairs = remember(revision, bridgeState) { statsUnusedPairs(bridge::outputHidden) } // -- WP INTE -- -- WP FIN015 --
         )
     StatsContent(
         state,

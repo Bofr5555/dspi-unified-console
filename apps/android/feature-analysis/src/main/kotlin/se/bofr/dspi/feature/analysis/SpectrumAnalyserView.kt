@@ -160,7 +160,7 @@ fun SpectrumAnalyserView(bridge: DspiBridge, modifier: Modifier = Modifier, stor
             prefs = prefs,
             drawn = drawn,
             following = followed != null,
-            chips = spectrumChipChannels(drawn.tap, available, drawn.channels, bridge::outputUnused) // -- WP INTE --
+            chips = spectrumChipChannels(drawn.tap, available, drawn.channels, bridge::outputHidden) // -- WP INTE -- -- WP FIN015 --
         )
 
     // Watch while on screen (Swift RtaWatch): the newest request picks the tap
