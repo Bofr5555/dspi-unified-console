@@ -183,12 +183,16 @@ test("P5WAT: a tune reverted puts the settings back; a timing-unreliable measure
   await partsOf(screen, "Measurement").getByRole("tab", { name: "Documents" }).click();
   const docs = screen.getByRole("region", { name: "Measurement documents" });
   const row = docs.getByRole("list", { name: "Measurements" }).getByRole("listitem").first();
-  await expect(row).toHaveAttribute("data-where", "local");
+  // -- WP INTE -- the list is read after the tab opens: up to 15 s under the full CI's load (5 s missed it once)
+  await expect(row).toHaveAttribute("data-where", "local", { timeout: 15_000 });
   // -- WP WEB7 -- (DESIGN-LANGUAGE §9) a row's actions show on hover only; the tools are in the page head
   await page.mouse.move(0, 0);
   await expect(row.locator(".m-rowactions").first()).toHaveCSS("opacity", "0");
-  await row.hover();
-  await expect(row.locator(".m-rowactions").first()).toHaveCSS("opacity", "1");
+  // -- WP INTE -- hovered again until shown: a re-read of the list may replace the row under the pointer
+  await expect(async () => {
+    await row.hover();
+    await expect(row.locator(".m-rowactions").first()).toHaveCSS("opacity", "1", { timeout: 1000 });
+  }).toPass({ timeout: 10_000 });
   await expect(page.locator("#one").getByRole("toolbar", { name: "Documents tools" }).getByRole("button")).toHaveText(["Open…", "Import Calibration…", "Import Target…", "Reload"]);
   const dl = page.waitForEvent("download");
   await row.getByRole("button", { name: "Download" }).click();
