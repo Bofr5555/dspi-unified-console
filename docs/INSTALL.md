@@ -1,6 +1,6 @@
 # Installing uConsole for DSPi
 
-Every client of release **0.14.0** shares one version number. The files are on the
+Every client of release **0.15.0** shares one version number. The files are on the
 [Releases page](https://github.com/Bofr5555/dspi-unified-console/releases) (tag `v<version>`); the
 Android app is also on Google Play. The app is called **uConsole for DSPi**: every release file starts with
 `uConsole-for-DSPi-<version>`, and packages, commands and installed files use `uconsole-for-dspi` (the
@@ -12,7 +12,7 @@ Android and in the web console), so you can try every screen first.
 - [Windows](#windows) · [Linux](#linux) (Debian/Ubuntu, Fedora, AppImage and tar.gz, Arch) ·
   [USB access on Linux](#usb-access-on-linux) · [Android](#android) · [Terminal](#terminal-uconsole) ·
   [Web console](#web-console) · [macOS](#macos) · [iPhone and iPad](#iphone-and-ipad) ·
-  [Fork firmware](#fork-firmware) · [Check a download](#check-a-download) · [Source code](#source-code)
+  [After installing](#after-installing-the-layout-and-ai-agents) · [Fork firmware](#fork-firmware) · [Check a download](#check-a-download) · [Source code](#source-code)
 
 The desktop installers, the macOS app and the Terminal binaries are **not code-signed** yet, so each system warns
 the first time; every file is listed in a signed `SHA256SUMS` instead ([Check a download](#check-a-download)).
@@ -181,13 +181,24 @@ an update is a new `.dmg` to drag over the old app. What differs from Windows an
 ## iPhone and iPad
 
 The Swift apps for macOS and iOS ([`apps/apple/`](../apps/apple/)) exist and run on the same core, but they are
-**not part of release 0.14.0**: the owner has deferred the Apple apps. On a Mac, use the Qt app above.
+**not part of release 0.15.0**: the owner has deferred the Apple apps. On a Mac, use the Qt app above.
+
+## After installing: the layout and AI agents
+
+The desktop app (Windows, Linux, macOS) has two layouts. A **new install opens in Modern** (a rail of sections, the
+open devices as tabs); an install that finished its Getting Started before 0.15.0 keeps **Classic** (the menu bar and
+tool windows of earlier versions). Settings › Appearance switches between them at any time; in Modern, the uConsole
+menu also has "Switch to the Classic Layout". The web console has the Modern layout only.
+
+AI agents (Claude Desktop, Claude Code, Cursor and other MCP clients) can work with the desktop app once you turn
+them on in Settings › AI Agents; they are off until then. How to connect one, and what they may and may not do:
+[`manual/ai-agents.md`](manual/ai-agents.md).
 
 ## Fork firmware
 
 The apps work with stock Weeb Labs firmware. The features marked † in [`FEATURES.md`](FEATURES.md#firmware-stock-vs-fork)
 need the DSPi fork firmware, release [**v1.1.6-bofr1**](https://github.com/Bofr5555/DSPi/releases/tag/v1.1.6-bofr1), the
-firmware 0.14.0 was tested against. Not an official Weeb Labs release. Pick the image for your board:
+firmware 0.15.0 was tested against (the same as for 0.14.0). Not an official Weeb Labs release. Pick the image for your board:
 
 | Board | Image |
 |---|---|

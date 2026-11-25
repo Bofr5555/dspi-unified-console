@@ -1,5 +1,5 @@
 REQUIRES A DSPi DEVICE. This app is a controller for the DSPi USB audio DSP (a Raspberry Pi Pico or Pico 2 running the DSPi firmware by Weeb Labs). It does not process or play audio on its own; without DSPi hardware you can explore it in Demo mode.
 
-It is an Android port of the official DSPi Console for macOS (and parts of the Linux version), made by Bofr5555 and published with Weeb Labs' permission. It needs DSPi firmware v1.1.6 for full features; with other versions it connects read-only.
+It is the Android client of uConsole for DSPi, made by Bofr5555 and published with Weeb Labs' permission. It needs DSPi firmware v1.1.6 for full features; with other versions it connects read-only.
 
-Optional DSPi Link (off by default): control a DSPi that is connected to DSPi Console, or wired to a DSPi bridge, over your local network. DSPi Link connections to a uConsole for DSPi hub are encrypted, and pairing pins the hub's key. DSPi Link connections to Weeb Labs' DSPi Console or to a DSPi bridge are not encrypted; use those only on networks you trust.
+Optional DSPi Link (off by default): control DSPi units over your local network through a hub. Links to a uConsole for DSPi hub are encrypted, and pairing pins the hub's key. Links to Weeb Labs' DSPi Console bridge are not encrypted; use those only on networks you trust.

@@ -1,14 +1,14 @@
 # Features, and where each one works
 
-Release **0.14.0**. Every feature lives once in the Rust core (`crates/`); each client shows it. This page is the
+Release **0.15.0**. Every feature lives once in the Rust core (`crates/`); each client shows it. This page is the
 short view; the full, cell-by-cell comparison with the macOS reference console, with every caveat, is
 [`PARITY.md`](PARITY.md) (sections 2, 5 and H to K), and the user's pages are under [`manual/`](manual/).
 
 ✓ works · ◐ partly (the note says what) · – not offered · *later* planned for a later batch.
-**Qt desktop** is one app on Windows, Linux and (new in 0.14.0) macOS; its column holds for all three, with the
+**Qt desktop** is one app on Windows, Linux and macOS; its column holds for all three, with the
 few macOS differences [below](#the-desktop-app-on-macos).
 **Apple** is the Swift app for macOS and iOS in [`apps/apple/`](../apps/apple/): it exists and runs on the core,
-but it is **not part of release 0.14.0** (the owner has deferred it), so its column says what the code on `main` has.
+but it is **not part of release 0.15.0** (the owner has deferred it), so its column says what the code on `main` has.
 
 **Firmware** says what the DSPi itself must run: **stock** is Weeb Labs' firmware, 1.1.6 or upstream's paged 1.1.7 beta as of 2026-11-18 (later 1.1.7 betas may need an update);
 **fork †** needs the DSPi fork firmware ([below](#firmware-stock-vs-fork)).
@@ -50,7 +50,7 @@ alink sender already speaks both ([`STATUS.md`](STATUS.md)). On our hub the fork
 
 ## The console: one DSPi
 
-| Feature | Firmware | Qt desktop | Android | Web | Terminal | Apple (not in 0.14.0) |
+| Feature | Firmware | Qt desktop | Android | Web | Terminal | Apple (not in 0.15.0) |
 |---|---|---|---|---|---|---|
 | USB | stock | ✓ | ✓ (USB-C/OTG) | ✓ WebUSB, Chrome and Edge | ✓ | ✓ macOS |
 | USB MIDI (SysEx) | fork † | – | – | – (*later*: Web MIDI) | – | ✓ iPhone, iPad, Mac |
@@ -69,11 +69,56 @@ alink sender already speaks both ([`STATUS.md`](STATUS.md)). On our hub the fork
 | Device volume buttons set the DSPi's User Volume while the app is in front | stock | – | ✓ (Settings > Advanced, on by default) | – | – | – |
 | Diagnostics bundle | stock | ✓ Help > Save Diagnostics | – | ✓ Events screen (Advanced and up) | ✓ `uconsole diag` | – |
 
+## Layouts, several devices and the look (new in 0.15.0)
+
+| Feature | Firmware | Qt desktop | Android | Web | Terminal | Apple (not in 0.15.0) |
+|---|---|---|---|---|---|---|
+| Modern layout: a rail of sections, tools on pages with tabs, a dock with volume and meters, Ctrl+K command palette | – | ✓ (new installs; Settings › Appearance) | – | ✓ (the web's only layout) | – | – |
+| Classic layout: menu bar and tool windows, as before | – | ✓ (installs from before 0.15.0) | – | – | – | – |
+| Several devices open at once, one tab each, each with its own edits, history and measurement | – | ✓ Modern (Classic shows one and lists the others) | – | ✓ device tabs | – (one per command) | – |
+| Light, dark or the system's theme | – | ✓ | ✓ (the system's) | ✓ | – | – |
+| The redrawn matrix mixer (tiles with gain and polarity, keyboard, Link L/R pairs, Direct 1:1, Clear, Dense) | stock | ✓ | – (its own matrix) | ✓ | – | – |
+| Presets in one popover (Recall, Save, Copy Here, the slot's menu) | stock | ✓ Modern | – | ✓ | – | – |
+| Outputs nothing is routed to left out of the views that only show (meters, Overview, Spectrum, Stats) and named "3 · None" where they must show | stock | ✓ | ✓ | ✓ | ✓ | – |
+
+## Speaker setup (new in 0.15.0)
+
+Which output drives what (full range, sub, woofer, midrange, tweeter), kept per device. Measurement and AI agents
+take the roles from it, and a tweeter in it keeps its protective high-pass whenever an agent works.
+
+| Feature | Firmware | Qt desktop | Android | Web | Terminal | Apple (not in 0.15.0) |
+|---|---|---|---|---|---|---|
+| Settings › Speakers: suggested from the filters and routing, confirmed by you | stock | ✓ (also a Getting Started step) | – | ✓ (kept in the browser) | – | – |
+| Detect…: quiet test sweeps with the measurement microphone find which output drives what | stock | ✓ | – | ✓ | – | – |
+| Roles an AI agent set from your words or detected, marked until you confirm them | stock | ✓ | – | ✓ (shown) | – | – |
+
+## AI agents (MCP, new in 0.15.0)
+
+The user's page is [`manual/ai-agents.md`](manual/ai-agents.md); from another computer, through SSH:
+[`mcp-ssh-forwarding.md`](mcp-ssh-forwarding.md). Agents are off until you turn them on, and the console listens on
+this computer only.
+
+| Feature | Firmware | Qt desktop | Android | Web | Terminal | Apple (not in 0.15.0) |
+|---|---|---|---|---|---|---|
+| An agent reads and changes the open devices, with questions before risky changes, Undo per change, Pause and Stop | stock | ✓ Settings › AI Agents | – | – | ◐ `uconsole mcp` relays to the desktop app | – |
+| An agent measures, finds an output's low end, proposes, applies and verifies an auto-tune (in the app's Measure, with your microphone) | stock | ✓ | – | – | – | – |
+| An agent detects the speakers, or sets their roles from your words (one question each) | stock | ✓ | – | – | – | – |
+| An agent sets up a hub's installation (sources, zones, slots, scenes) and a room's or zone's volume | fork † for the audio link | ✓ | – | – | – | – |
+| An agent's work on a hub's device is shown to the other consoles | stock | ✓ | – | ✓ a strip and a mark on the device's tab | – | – |
+
+## Installation setup on a hub (new in 0.15.0)
+
+| Feature | Firmware | Qt desktop | Android | Web | Terminal | Apple (not in 0.15.0) |
+|---|---|---|---|---|---|---|
+| Join units the hub sees; edit units, rooms, zones, groups, senders and fan-outs; the hub's checks as you edit; Save needs the hub's Admin | stock | ✓ System › Installation | – | ✓ System › Installation | – | – |
+| Sources, what each zone plays, a unit's slots, scenes that switch a zone's source, programme sources | fork † (the audio link) | ✓ | – | ✓ | – | – |
+| A room's or zone's volume, unit by unit, asking first when one gets louder | stock | ✓ | – | ✓ | – | – |
+
 ## Modes, installers and safety (PRO phase 1)
 
 All of these are the core's and work on stock firmware.
 
-| Feature | Firmware | Qt desktop | Android | Web | Terminal | Apple (not in 0.14.0) |
+| Feature | Firmware | Qt desktop | Android | Web | Terminal | Apple (not in 0.15.0) |
 |---|---|---|---|---|---|---|
 | Simple, Advanced and Installer modes ([`UI-MODES.md`](UI-MODES.md)) | stock | ◐ Settings > Installer; no mode switch shown yet | ✓ | ✓ | – (commands) | ✓ |
 | Installer lock and PIN, with a recovery code | stock | ✓ | ✓ | ◐ unlocks a hub's lock; no PIN of its own | ✓ `lock` | ✓ |
@@ -91,7 +136,7 @@ The hub is `uconsole hub` (the Terminal), or the Qt app's sharing (Settings > Ne
 1.3, with the hub's key pinned at pairing, and roles (Viewer, Control, Admin). It serves stock and fork devices alike.
 Its API: [`integrator/hub-api.md`](integrator/hub-api.md); security: [`integrator/security.md`](integrator/security.md).
 
-| Feature | Firmware | Qt desktop | Android | Web | Terminal | Apple (not in 0.14.0) |
+| Feature | Firmware | Qt desktop | Android | Web | Terminal | Apple (not in 0.15.0) |
 |---|---|---|---|---|---|---|
 | Open a DSPi through a hub (DSPi Link client, PIN pairing bound to the hub's key) | stock | ✓ | ✓ | ✓ | ✓ `--link` | ✓ |
 | Run a hub | stock | ✓ Settings > Networking | – | – (served by one) | ✓ `uconsole hub` | ✓ the Mac's hub |
@@ -107,9 +152,9 @@ Its API: [`integrator/hub-api.md`](integrator/hub-api.md); security: [`integrato
 
 Every row here needs the fork firmware †: the alink, its sender and its time base are the fork's.
 
-| Feature | Firmware | Qt desktop | Android | Web | Terminal | Apple (not in 0.14.0) |
+| Feature | Firmware | Qt desktop | Android | Web | Terminal | Apple (not in 0.15.0) |
 |---|---|---|---|---|---|---|
-| The System view: every unit, its role and lock state, audio link delay | fork † | ◐ Window > System…: a units table | ◐ the System screen: unit rows | ✓ rooms, zones, topology, slots | – | – |
+| The System view: every unit, its role and lock state, audio link delay | fork † | ◐ System (Window > System… in Classic): a units table | ◐ the System screen: unit rows | ✓ rooms, zones, topology, slots | – | – |
 | Clock and audio links: system delay, lip sync, alignment | fork † | ◐ no slot matrix, link stats or trim scan | ◐ as Qt | ✓ Installer mode, with the slot matrix and link stats | – | – |
 | Scenes at a frame, refusals in words | fork † | ✓ | ✓ | ✓ | – | – |
 | Compact status ("Audio link: 4 of 4 locked") | fork † | ◐ a status line | ◐ Home's chip | ✓ the status rail | – | – |
@@ -123,9 +168,9 @@ The user's page is [`manual/measurement.md`](manual/measurement.md). The DSPi pl
 generator; the console only listens through the microphone. Every client's demo device has a simulated microphone
 in a simulated room.
 
-| Feature | Firmware | Qt desktop | Android | Web | Terminal | Apple (not in 0.14.0) |
+| Feature | Firmware | Qt desktop | Android | Web | Terminal | Apple (not in 0.15.0) |
 |---|---|---|---|---|---|---|
-| Measure with a calibrated microphone (UMIK-1/2, REW, CSV, Dayton Audio files) | stock (1.1.5 and later) | ✓ Tools > Measure… | *later* | ✓ Measure screen | ◐ imports and documents; no microphone | *later* |
+| Measure with a calibrated microphone (UMIK-1/2, REW, CSV, Dayton Audio files) | stock (1.1.5 and later) | ✓ Measure (Tools > Measure… in Classic) | *later* | ✓ Measure screen | ◐ imports and documents; no microphone | *later* |
 | Live response, microphone RTA, "cut this peak" / "fit this range" | stock | ✓ | *later* | ✓ | – | *later* |
 | Auto-tune: delay and polarity, crossover corner and levels, target EQ; summed check, guarded apply, verify, Keep or Revert | stock | ✓ | *later* | ✓ | ◐ `measure tune` from a saved measurement | *later* |
 | Passive RTA for a Viewer or a read-only connection | stock | ✓ | *later* | ✓ | – | *later* |
@@ -141,7 +186,7 @@ image on a DSP) is refused, by the **kind stamp** † every fork image carries; 
 again at the moment of writing. The user's page is [`manual/notices.md`](manual/notices.md), the details
 [`integrator/protocol-generations.md`](integrator/protocol-generations.md).
 
-| | Firmware | Qt desktop | Android | Web | Terminal | Apple (not in 0.14.0) |
+| | Firmware | Qt desktop | Android | Web | Terminal | Apple (not in 0.15.0) |
 |---|---|---|---|---|---|---|
 | The checks before the bootloader entry | stock (the stamps: fork †) | ✓ | ✓ | ✓ Check an Image…, the rollout dialog | ✓ | – |
 
@@ -160,8 +205,8 @@ so every **Qt desktop** cell above holds on a Mac too, except:
 | Signing | ad hoc, not notarised: open it once by hand ([INSTALL](INSTALL.md#macos)) | not code-signed |
 
 The `.dmg` is universal (Intel and Apple silicon) and needs macOS 12 or newer. It has run on an Intel Mac (the
-project's macOS VM) on the demo device; Apple silicon, a real DSPi on USB, a firmware update and a real microphone
-have not been tried on a Mac yet.
+project's macOS VM) on the demo device and, for 0.14.0, with a real DSPi on USB (reading, a setting change, live
+statistics); Apple silicon, a firmware update, DSPi Link and a real microphone have not been tried on a Mac yet.
 
 ## Not on real hardware yet
 
