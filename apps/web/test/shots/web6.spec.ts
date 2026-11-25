@@ -94,11 +94,16 @@ test("Spectrum, Effects, Equaliser PEQ and Crossover", async ({ page }) => {
   await go(session, "Equaliser", "PEQ");
   await page.waitForTimeout(600);
   await shot(page, "equaliser-peq");
-  // Out 1 has the demo's bands; its first band chosen
+  // Out 1, then a band: the demo's Out 1 has none, so a double click on the graph adds one (it is chosen)
   await maybe("out 1", () => session.getByRole("group", { name: "Channels" }).getByRole("button", { name: /^Out 1/ }).first().click(T));
   await page.waitForTimeout(400);
   await shot(page, "equaliser-peq-out1");
-  if (await maybe("band 1", () => session.getByRole("button", { name: "Band 1", exact: true }).first().click(T))) {
+  const graph = session.getByRole("application", { name: /^EQ graph/ });
+  const added = await maybe("add a band", async () => {
+    const box = (await graph.boundingBox({ timeout: 3000 }))!;
+    await page.mouse.dblclick(box.x + box.width * 0.45, box.y + box.height * 0.35);
+  });
+  if (added || (await maybe("band 1", () => session.getByRole("button", { name: "Band 1", exact: true }).first().click(T)))) {
     await page.waitForTimeout(500);
     await shot(page, "equaliser-peq-band");
     await page.keyboard.press("Escape");
