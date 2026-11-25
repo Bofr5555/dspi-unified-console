@@ -21,7 +21,7 @@ It is one of the clients in the `dspi-unified-console` repository; the root
 > Status: the app is on Google Play as "uConsole for DSPi" (app ID `se.bofr.dspi_console_android`; called "DSPi
 > Console for Android" up to 0.13.0). It was granted production access on 2026-11-20 and is being rolled out to
 > production, after closed testing up to version **0.13.0** (versionCode 13); 0.12.0 (tag `android-v0.12.0`) was the
-> first release on the core. *(2026-11-20: `main` builds 0.14.0, versionCode 14, for the next release; what it adds is in
+> first release on the core. *(2026-11-26: `main` builds 0.15.0, versionCode 15, for the next release; what it adds is in
 > [`docs/STATUS.md`](../../docs/STATUS.md) and the changelog. Installing: [`docs/INSTALL.md`](../../docs/INSTALL.md#android);
 > what works where, and which features need the DSPi fork firmware (†):
 > [`docs/FEATURES.md`](../../docs/FEATURES.md).)*

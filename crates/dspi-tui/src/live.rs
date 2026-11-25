@@ -742,6 +742,27 @@ struct NoteEffects {
     /// The last section someone else changed, and how they did, for the echo
     /// line.
     changed_elsewhere: Option<(&'static str, &'static str)>,
+    // -- WP FIN015 --
+    /// The last `SIGGEN_STATE` was a start: which outputs the generator plays
+    /// on is read from the device (the event does not say).
+    siggen_started: Option<bool>,
+}
+
+// -- WP FIN015 -- (REVF R1)
+/// The outputs of the generator's config on the device (bit i: output i),
+/// `None` when it cannot be read.
+fn read_siggen_outputs(session: &mut Session) -> Option<u16> {
+    use dspi_proto::packets::SiggenConfig;
+    let b = session
+        .with_transport(|t| {
+            t.control_in(
+                dspi_proto::generated::opcodes::REQ_SIGGEN_GET_CONFIG,
+                0,
+                SiggenConfig::SIZE as u16,
+            )
+        })
+        .ok()?;
+    SiggenConfig::decode(&b).ok().map(|c| c.channel_mask)
 }
 
 /// The device's active preset slot (`REQ_PRESET_GET_ACTIVE`,
@@ -3654,6 +3675,10 @@ impl Live {
                 dspi_session::notify::Event::AdatState { .. }
                 | dspi_session::notify::Event::AdatInputState { .. },
             ) => self.last_stats_poll = now - Duration::from_secs(3),
+            // -- WP FIN015 -- (a stop has cleared `siggen_outputs` already)
+            Applied::Status(dspi_session::notify::Event::SiggenState { state, .. }) => {
+                fx.siggen_started = Some(state != 0);
+            }
             Applied::Status(_) | Applied::Nothing => {}
         }
     }
@@ -3708,6 +3733,12 @@ impl Live {
         }
         if let Some((name, words)) = fx.changed_elsewhere {
             self.echo(format!("{} {words}", name.replace('_', " ")));
+        }
+        // -- WP FIN015 -- an unused output the generator plays on keeps its
+        // meter (REVF R1); every output when the config cannot be read, so
+        // nothing that may be loud is hidden
+        if fx.siggen_started == Some(true) {
+            self.state.siggen_outputs = read_siggen_outputs(session).unwrap_or(u16::MAX);
         }
     }
 
@@ -6542,6 +6573,64 @@ mod tests {
         assert!(confirmed >= 2, "the first save is seen taken: {sent:02X?}");
         assert!(!l.state.has_unsaved_changes());
         assert_eq!(l.state.caps.active_preset, Some(2));
+    }
+
+    // -- WP FIN015 --
+    /// A start of the generator, by this console or another, reads the
+    /// outputs it plays on from the device (the event does not say), so an
+    /// unused one keeps its meter; the stop clears them (REVF R1).
+    #[test]
+    fn fin015_a_generator_start_reads_the_outputs_it_plays_on() {
+        use dspi_proto::packets::SiggenConfig;
+        const SIGGEN_STATE: u8 = 0x07;
+        let config = SiggenConfig {
+            channel_mask: 1 << 8,
+            ..SiggenConfig::default()
+        };
+        let mock = MockTransport::new()
+            .window(op::REQ_GET_ALL_PARAMS_CHUNK, packet())
+            .data(op::REQ_SIGGEN_GET_CONFIG, config.encode().to_vec())
+            .answering_everything(vec![0; 64]);
+        let mut s = Session::new(Box::new(mock), caps()).unwrap();
+        let state = DeviceState::new(
+            caps(),
+            dspi_proto::wire::BulkPacket::decode(packet()).unwrap(),
+        );
+        let theme = Theme::console(ColorDepth::TrueColor, Glyphs::Braille);
+        let mut l = Live::new(state, theme, Performance::lite(), Box::new(StandInScreens));
+        let reader = MockTransport::new();
+        let queue = reader.notify_queue();
+        l.notes = Some(Notifications::start(reader.notifications().unwrap()).unwrap());
+        let ni = usize::from(l.state.caps.num_inputs);
+        assert!(
+            crate::screens::channel_hidden(&l.state, ni + 8),
+            "the fixture's Sub is unused"
+        );
+        let until = |l: &mut Live, s: &mut Session, want: u8| {
+            let t = Instant::now();
+            while l.state.siggen_state.map(|x| x.0) != Some(want) {
+                assert!(t.elapsed() < Duration::from_secs(5), "no siggen event");
+                l.absorb_pending_notes(s);
+                std::thread::sleep(Duration::from_millis(5));
+            }
+        };
+        // Started (fade in), on the Sub alone
+        queue
+            .lock()
+            .unwrap()
+            .push_back(vec![2, SIGGEN_STATE, 0, 1, 1, 0, 3, 0xFF]);
+        until(&mut l, &mut s, 1);
+        assert_eq!(l.state.siggen_outputs, 1 << 8);
+        assert!(crate::screens::channel_unused(&l.state, ni + 8));
+        assert!(!crate::screens::channel_hidden(&l.state, ni + 8));
+        // Stopped: hidden again
+        queue
+            .lock()
+            .unwrap()
+            .push_back(vec![2, SIGGEN_STATE, 0, 2, 0, 1, 3, 0xFF]);
+        until(&mut l, &mut s, 0);
+        assert_eq!(l.state.siggen_outputs, 0);
+        assert!(crate::screens::channel_hidden(&l.state, ni + 8));
     }
 
     // -- WP FIN015 --
