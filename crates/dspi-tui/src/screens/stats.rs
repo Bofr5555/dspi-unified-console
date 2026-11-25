@@ -238,7 +238,7 @@ fn pair_unused(state: &DeviceState, i: usize) -> bool {
     let ni = usize::from(state.caps.num_inputs);
     [i * 2, i * 2 + 1]
         .iter()
-        .all(|o| super::channel_unused(state, ni + o))
+        .all(|o| super::channel_hidden(state, ni + o)) // -- WP FIN015 -- (REVF R1)
 }
 
 /// The rings' state as the panel last read it. A failed read leaves it alone;
@@ -1469,6 +1469,15 @@ mod tests {
         let rows = p.rows(&state, &stats);
         assert_eq!(labelled(&rows, "Out 3/4"), 0, "{rows:?}");
         assert_eq!(labelled(&rows, "Out 1/2"), 2, "{rows:?}");
+        // -- WP FIN015 -- (REVF R1) the generator plays on OUT 4: the pair's
+        // rows are back, though nothing is routed to it
+        state.siggen_outputs = 1 << 3;
+        assert!(crate::screens::channel_unused(&state, 11));
+        assert!(!crate::screens::channel_hidden(&state, 11));
+        let rows = p.rows(&state, &stats);
+        assert_eq!(labelled(&rows, "Out 3/4"), 2, "{rows:?}");
+        state.siggen_outputs = 0;
+        assert_eq!(labelled(&p.rows(&state, &stats), "Out 3/4"), 0);
     }
 
     #[test]

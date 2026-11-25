@@ -335,7 +335,8 @@ fn chooser_channels(state: &DeviceState, engine: &RtaEngine, sel: &Selection) ->
     if sel.tap != TAP_INPUT {
         available.retain(|c| {
             sel.channels.contains(c)
-                || !super::channel_unused(state, global_channel(state, sel.tap, *c))
+                // -- WP FIN015 -- one the generator plays on stays (REVF R1)
+                || !super::channel_hidden(state, global_channel(state, sel.tap, *c))
         });
     }
     available
@@ -1801,6 +1802,24 @@ mod tests {
             vec![0]
         );
         assert_eq!(offered(&shared), (0..8).collect::<Vec<u8>>());
+    }
+
+    // -- WP FIN015 -- (REVF R1) an unused output the generator plays on keeps
+    // its chip: it is loud, whatever the matrix says
+    #[test]
+    fn fin015_an_unused_output_the_generator_plays_on_has_its_chip() {
+        let mut state = testing::state();
+        state.siggen_outputs = 1 << 8;
+        let ni = usize::from(state.caps.num_inputs);
+        assert!(crate::screens::channel_unused(&state, ni + 8));
+        let shared = shared_with(TAP_OUTPUT, &[0]);
+        let app = shared.borrow();
+        let offered = chooser_channels(
+            &state,
+            &app.spectrum.engine,
+            &selection(&state, &app.spectrum),
+        );
+        assert_eq!(offered, (0..9).collect::<Vec<u8>>());
     }
 
     #[test]

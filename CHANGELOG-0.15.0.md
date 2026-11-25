@@ -1,6 +1,6 @@
 # uConsole for DSPi 0.15.0
 
-Release date: YYYY-MM-DD. One version for every client but the Swift app.
+Release date: 2026-11-26. One version for every client but the Swift app.
 
 0.15.0 changes how the desktop app looks and how far it reaches. It has a second layout, **Modern**, which you can
 switch with the Classic one at any time and which opens several DSPi units side by side. The desktop app and the
@@ -88,7 +88,9 @@ and its separate button.
   woofer, midrange or tweeter. It is suggested from the device's filters and routing, and you **Confirm** it. The
   web console has the same page; the browser keeps it per DSPi.
 - **Detect…** finds it for you with the measurement microphone: quiet test sweeps on each output, at most −24 dBFS
-  above 1 kHz, and below 1 kHz only on an output that is clearly no tweeter, at most −50 dBFS. **Stop** keeps what
+  above 1 kHz, and below 1 kHz only on an output that is clearly no tweeter, at most −50 dBFS and no lower than
+  157 Hz; only a driver still playing flat at 177 Hz, as no tweeter does, is then swept down to 20 Hz, at most
+  −24 dBFS. A raised floor (your limits profile's) never starts that last step sooner. **Stop** keeps what
   was found. A detected setup is marked "Detected, not confirmed" until you confirm or correct it, each row with
   its evidence. A full-range driver or a small dome midrange is detected as a tweeter: correct those rows.
 - Measurement starts from this setup, and holds every output to the strictest of the role asked for, your setup's
@@ -264,6 +266,26 @@ Measurement, AI agents, the speaker setup and the Modern layout are not on Andro
 - On a Linux desktop Qt has no theme for, the file dialogs are the system's.
 - Measurement refusals, device events and History rows are in plain words; a measurement is one History row.
 - Graph axes read "0 dB", not "+0", and thin their labels evenly.
+- **From the last review before this release:**
+  - Terminal: Preset › Copy to… could overwrite preset 1 when the device did not say which preset was active. Copy
+    to…, Save, Rename, Set as Default and Clear now wait until the active preset is known, and Copy to… asks the
+    device again right before it writes anything; the rule and its words are the core's.
+  - An output with nothing routed to it keeps its meter, its Spectrum entry and its Stats rows while the signal
+    generator, a measurement or Identify plays on it, in every client.
+  - Speaker detection: a raised floor (an agent's or the limits profile's) no longer lets the sweep below the floor
+    start sooner: the quiet sweep (−50 dBFS) goes on down to 177 Hz first, whatever the floor; it never goes below the
+    profile's high-pass minimum; an output whose top end was never heard is swept at the quiet level. The question,
+    the warning and Settings › AI Agents say exactly what plays.
+  - Agents read every number from 1 in the few places left: a preset copy's result and refusal, the limits profile,
+    an installation's speaker and upstream outputs. An unknown preset slot reads as none.
+  - Web: Auto-tune and Several units show the plain refusal ("Lower the volume to −12 dB or below to measure…")
+    instead of "Not a valid value: …"; Settings › Speakers names each output once; the Spectrum's bars no longer
+    cover their dB scale.
+  - Desktop: a channel has one name on a page ("Centre woofer" in Delay & Gain, the Crossover table and the Spectrum
+    chooser as in the Equaliser's list; "Out 1 (Centre woofer)" in Settings › Speakers, Events and an agent's
+    question).
+  - Events: a connection says how it came ("Connected to the demo", "over USB", "through a hub"), not "over fake".
+  - The AI agents' texts, the relay and `uconsole mcp` name the app "uConsole for DSPi".
 
 ## What was tested, and where
 

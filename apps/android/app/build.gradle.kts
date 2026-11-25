@@ -38,8 +38,8 @@ android {
         resValue("string", "app_name", if (sideload) "uConsole for DSPi (APK)" else "uConsole for DSPi")
         // The ONE place for the app version (runtime reads PackageInfo).
         // Every upload to Play needs a higher versionCode than any before it.
-        versionCode = 14
-        versionName = "0.14.0"
+        versionCode = 15
+        versionName = "0.15.0"
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
     }
     // The container's home (and with it ~/.android/debug.keystore) is thrown
