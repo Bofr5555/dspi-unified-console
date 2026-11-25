@@ -17,3 +17,7 @@
 # only docs/release/minisign.pub is committed.
 /docs/release/minisign.key
 /docs/release/*.key
+
+# -- WP INTE -- Python bytecode (the functest tools, firmware_manifest.py): never part of a commit
+__pycache__/
+*.pyc
