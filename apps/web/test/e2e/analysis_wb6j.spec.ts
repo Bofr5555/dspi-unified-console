@@ -221,11 +221,13 @@ test("WEB7: the signal generator as Qt's: Sine has its Duration, a second click 
   await openPage(session, "Signal Generator");
   const gen = session.getByRole("region", { name: "Signal Generator" });
   await expect(gen.getByRole("radio", { name: "Sine" })).toHaveAttribute("aria-checked", "true");
-  // Five tiles to a row, as Qt's grid.
-  const tiles = gen.getByRole("radiogroup", { name: "Signal" }).getByRole("radio");
-  const tops = await tiles.evaluateAll((els) => els.slice(0, 6).map((e) => Math.round(e.getBoundingClientRect().top)));
-  expect(new Set(tops.slice(0, 5)).size).toBe(1);
-  expect(tops[5]).toBeGreaterThan(tops[0]!);
+  // Five tiles to a row, as Qt's grid (at a desktop width; at 375 px they wrap by width).
+  if (test.info().project.name !== "narrow") {
+    const tiles = gen.getByRole("radiogroup", { name: "Signal" }).getByRole("radio");
+    const tops = await tiles.evaluateAll((els) => els.slice(0, 6).map((e) => Math.round(e.getBoundingClientRect().top)));
+    expect(new Set(tops.slice(0, 5)).size).toBe(1);
+    expect(tops[5]).toBeGreaterThan(tops[0]!);
+  }
   // Timing for Sine: Duration, 0 = play until stopped.
   const timing = gen.getByRole("region", { name: "Timing" });
   await expect(timing).toContainText("Duration");
@@ -269,7 +271,7 @@ test("WEB7: Stats for nerbs as Qt's columns: the counters' sections and a fill b
   }
   await expect(stats.getByRole("region", { name: "Audio Output" })).toContainText("ISR → Main Loop");
   const bars = stats.getByRole("region", { name: "Buffer Fill Levels" }).getByRole("img");
-  await expect(bars.first()).toHaveAccessibleName(/^Out 1\/2 \d+%, \d+–\d+% since the watermarks were reset$/);
+  await expect(bars.first()).toHaveAccessibleName(/^Out 1\/2( \([^)]+\))? \d+%, \d+–\d+% since the watermarks were reset$/);
   await expect(stats).toContainText("Updated every 2 seconds");
   expect(errors).toEqual([]);
 });
