@@ -70,14 +70,15 @@ export function OverviewScreen(props: ScreenProps) {
       <InputMeters channels={inputs} meters={live.meters} />
       <div class="eq-table ov-table-wrap">
       <table class="ov-table" role="table" aria-label="Outputs">
+        {/* -- WP REVEFIX -- (REVE D3) a unit stays as written beside its caps label ("GAIN (dB)", not "(DB)") */}
         <thead>
           <tr role="row">
             <th scope="col" role="columnheader">Output</th>
             <th scope="col" role="columnheader">Routing</th>
-            <th scope="col" role="columnheader">Gain ({units.gain.unit})</th>
-            <th scope="col" role="columnheader">Delay ({units.delay.unit})</th>
+            <th scope="col" role="columnheader">Gain <span class="th-unit">({units.gain.unit})</span></th>
+            <th scope="col" role="columnheader">Delay <span class="th-unit">({units.delay.unit})</span></th>
             <th scope="col" role="columnheader">Mute</th>
-            <th scope="col" role="columnheader">Limiter ({units.threshold.unit})</th>
+            <th scope="col" role="columnheader">Limiter <span class="th-unit">({units.threshold.unit})</span></th>
             <th scope="col" role="columnheader">Reduction</th>
             <th scope="col" role="columnheader">Clip</th>
             <th scope="col" role="columnheader">Level</th>
