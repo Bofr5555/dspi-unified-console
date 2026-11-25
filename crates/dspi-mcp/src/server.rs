@@ -847,6 +847,7 @@ impl Server {
                     args.clone(),
                     now_ms,
                 );
+                self.confirms.set_rest(id, out.judging.rest); // -- WP UAG --
                 self.held = Some(id);
                 entry.outcome = Outcome::Held;
                 entry.detail = format!("waiting for the user's confirmation {id}");

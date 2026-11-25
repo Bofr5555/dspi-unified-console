@@ -248,13 +248,32 @@ pub struct Risk {
     pub output: Option<u8>,
     /// The writes that make it so; an Allow covers exactly these.
     pub keys: Vec<WriteKey>,
+    // -- WP UAG -- (UXP A6)
+    /// The app's words for it ([`said_of`]): `what` with the channels and
+    /// presets as the screen names them ("Right tweeter: gain −5.0 dB →
+    /// −2.0 dB", "preset 2 “Lunch”"), without "(flash)"; `what` when the
+    /// call had no device. It may hold names the user or a device wrote, so
+    /// it is never in [`Risk::to_json`], which agents read.
+    pub said: String,
 }
 
 impl Risk {
     /// As JSON, for the app and the agent: `output` from 1, as the app shows it.
+    /// Never [`Risk::said`] (-- WP UAG --).
     pub fn to_json(&self) -> Value {
         json!({"kind": self.kind.as_str(), "what": self.what, "output": self.output.map(|o| u16::from(o).saturating_add(1))})
     }
+}
+
+// -- WP UAG -- (UXP A6)
+/// The names the app's screens give a device's channels and presets, for
+/// the question's words ([`Risk::said`], [`Judging::rest`]): the app's alone.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct ScreenWords {
+    /// The channels ([`DspiCore::channel_words`]).
+    pub channels: dspi_core::ChannelWords,
+    /// Each preset's name, "" for none (slot 1 first).
+    pub presets: Vec<String>,
 }
 
 /// [`judge`]'s answer.
@@ -333,6 +352,14 @@ pub struct Judging {
     // -- WP AIVIS --
     /// The device and the actor, for the rule on what the user took back.
     pub taken_back: TakenBack,
+    // -- WP UAG -- (UXP A6)
+    /// The device's names as the app shows them, for [`Risk::said`]; `None`
+    /// under a policy that does not judge on a device.
+    pub words: Option<ScreenWords>,
+    /// The held call's other changes, in the app's words: what the same
+    /// Allow also does that is not asked about on its own ("Sub: gain 0 →
+    /// −6 dB"). The app's alone, as [`Risk::said`].
+    pub rest: Vec<String>,
 }
 
 // -- WP AIVIS --
@@ -417,7 +444,7 @@ pub fn prejudge(
             Ok(())
         }
         Verdict::Ask(risks) => {
-            j.asked.extend(risks);
+            ask_all(&mut j, state, writes, risks); // -- WP UAG --
             Err(ToolError::new(HELD_TEXT))
         }
         Verdict::Refuse(why) => {
@@ -498,12 +525,16 @@ fn require_keyed(
     {
         return Ok(());
     }
-    j.asked.push(Risk {
-        kind,
-        what: what.to_owned(),
-        output: None,
-        keys: vec![key],
-    });
+    push_asked(
+        &mut j,
+        Risk {
+            said: String::new(), // -- WP UAG --
+            kind,
+            what: what.to_owned(),
+            output: None,
+            keys: vec![key],
+        },
+    );
     Err(ToolError::new(HELD_TEXT))
 }
 
@@ -553,18 +584,26 @@ pub fn require_detect(
     if j.grant.contains(&detect_key) || j.grant.contains(&crate::grant::standing_detect_key()) {
         return Ok(());
     }
-    j.asked.push(Risk {
-        kind: RiskKind::TestSignal,
-        what: signal.to_owned(),
-        output: None,
-        keys: vec![signal_key],
-    });
-    j.asked.push(Risk {
-        kind: RiskKind::Detect,
-        what: detect.to_owned(),
-        output: None,
-        keys: vec![detect_key],
-    });
+    push_asked(
+        &mut j,
+        Risk {
+            said: String::new(), // -- WP UAG --
+            kind: RiskKind::TestSignal,
+            what: signal.to_owned(),
+            output: None,
+            keys: vec![signal_key],
+        },
+    );
+    push_asked(
+        &mut j,
+        Risk {
+            said: String::new(), // -- WP UAG --
+            kind: RiskKind::Detect,
+            what: detect.to_owned(),
+            output: None,
+            keys: vec![detect_key],
+        },
+    );
     Err(ToolError::new(HELD_TEXT))
 }
 
@@ -613,12 +652,16 @@ pub fn require_roles(
     if j.grant.contains(&key) {
         return Ok(());
     }
-    j.asked.push(Risk {
-        kind: RiskKind::SpeakerRoles,
-        what: what.to_owned(),
-        output: None,
-        keys: vec![key],
-    });
+    push_asked(
+        &mut j,
+        Risk {
+            said: String::new(), // -- WP UAG --
+            kind: RiskKind::SpeakerRoles,
+            what: what.to_owned(),
+            output: None,
+            keys: vec![key],
+        },
+    );
     Err(ToolError::new(HELD_TEXT))
 }
 
@@ -638,12 +681,16 @@ pub fn require_change(cell: &JudgingCell, what: &str, indices: &[u8]) -> Result<
     if mode != ConfirmMode::AskEverything || j.grant.contains(&key) {
         return Ok(());
     }
-    j.asked.push(Risk {
-        kind: RiskKind::Change,
-        what: what.to_owned(),
-        output: None,
-        keys: vec![key],
-    });
+    push_asked(
+        &mut j,
+        Risk {
+            said: String::new(), // -- WP UAG --
+            kind: RiskKind::Change,
+            what: what.to_owned(),
+            output: None,
+            keys: vec![key],
+        },
+    );
     Err(ToolError::new(HELD_TEXT))
 }
 
@@ -779,6 +826,7 @@ pub fn judge(state: &DspState, writes: &[WriteKey], j: &Judging) -> Verdict {
     }
     if mode == ConfirmMode::AskEverything && risks.is_empty() {
         risks.push(Risk {
+            said: String::new(), // -- WP UAG --
             kind: RiskKind::Change,
             what: summary(state, writes),
             output: None,
@@ -869,6 +917,283 @@ fn summary(st: &DspState, writes: &[WriteKey]) -> String {
         }
     }
     format!("change {}", items.join(", "))
+}
+
+// -- WP UAG -- (UXP A6) ------------------------------------ the app's words
+
+/// The device's names as its screens show them.
+fn screen_words(core: &DspiCore) -> ScreenWords {
+    ScreenWords {
+        channels: core.channel_words(),
+        presets: core
+            .get_state()
+            .preset_names
+            .iter()
+            .map(|n| crate::untrusted::name(n))
+            .collect(),
+    }
+}
+
+/// Ask the user about `r`, with its words for the app.
+fn push_asked(j: &mut Judging, mut r: Risk) {
+    r.said = said_of(r.kind, &r.what, j.words.as_ref());
+    j.asked.push(r);
+}
+
+/// Ask the user about `risks` of a plan of `writes` on `state`, and keep the
+/// plan's other changes in the app's words ([`Judging::rest`]).
+fn ask_all(j: &mut Judging, state: &DspState, writes: &[WriteKey], risks: Vec<Risk>) {
+    let asked: Vec<(String, Vec<u8>)> = risks
+        .iter()
+        .flat_map(|r| {
+            r.keys
+                .iter()
+                .map(|k| (k.item().0.to_owned(), k.item().1.to_vec()))
+        })
+        .collect();
+    for r in risks {
+        push_asked(j, r);
+    }
+    let Some(words) = j.words.as_ref() else {
+        return;
+    };
+    let mut after = state.clone();
+    for w in writes {
+        apply(&mut after, w);
+    }
+    let mut seen: Vec<(String, Vec<u8>)> = Vec::new();
+    let mut rows = Vec::new();
+    for w in writes {
+        let item = (w.item().0.to_owned(), w.item().1.to_vec());
+        if asked.contains(&item) || seen.contains(&item) {
+            continue;
+        }
+        seen.push(item);
+        // The item's last write is what it becomes
+        let last = writes
+            .iter()
+            .rev()
+            .find(|x| x.item() == w.item())
+            .unwrap_or(w);
+        if let Some(row) = rest_row(state, &after, last, &words.channels)
+            && !rows.contains(&row)
+        {
+            rows.push(row);
+        }
+    }
+    for row in rows {
+        if !j.rest.contains(&row) {
+            j.rest.push(row);
+        }
+    }
+}
+
+/// One change of a held plan in the app's words, from its value before to
+/// after where both are numbers ("Sub: gain 0 → −6 dB"); `None` for a
+/// write that changes nothing.
+fn rest_row(
+    before: &DspState,
+    after: &DspState,
+    w: &WriteKey,
+    words: &dspi_core::ChannelWords,
+) -> Option<String> {
+    let (item, ix) = w.item();
+    let path = if item == "eq" {
+        "eq.band"
+    } else {
+        w.path.as_str()
+    };
+    let now = value_of(after, path, ix);
+    let was = value_of(before, path, ix);
+    if now.is_some() && now == was {
+        return None;
+    }
+    let entry = |v: ParamValue| dspi_core::HistoryEntry {
+        path: path.to_owned(),
+        indices: ix.to_vec(),
+        before: None,
+        after: v,
+        source: dspi_core::HistorySource::Local,
+        at_ms: 0,
+        undoable: true,
+        label: None,
+        id: 0,
+        actor: 0,
+        actor_label: None,
+    };
+    let text = |v| dspi_core::change_words::change_text(&entry(v), words);
+    let said = text(now.unwrap_or_else(|| w.after.clone()));
+    Some(match was {
+        Some(v) => from_to(&text(v), &said),
+        None => said,
+    })
+}
+
+/// The value at `path` and `ix` on `st`, as a write of it would carry it,
+/// for the paths [`apply`] models outside the effects.
+fn value_of(st: &DspState, path: &str, ix: &[u8]) -> Option<ParamValue> {
+    let i0 = ix.first().copied().unwrap_or(0);
+    let i1 = ix.get(1).copied().unwrap_or(0);
+    let band = || band_of(st, i0, i1).copied();
+    Some(match path {
+        "vol.user" => ParamValue::Float(st.user_volume_db),
+        "vol.master" => ParamValue::Float(st.master_volume_db),
+        "vol.mute" => ParamValue::Bool(st.user_mute),
+        "pre" => ParamValue::Float(get(&st.input_preamp_db, i0)),
+        "pre.all" => ParamValue::Float(st.preamp_db),
+        "bypass" => ParamValue::Bool(st.bypass),
+        "out.gain" => ParamValue::Float(get(&st.output_gain_db, i0)),
+        "out.delay" => ParamValue::Float(get(&st.output_delay_ms, i0)),
+        "out.mute" => ParamValue::Bool(get(&st.output_muted, i0)),
+        "out.enable" => ParamValue::Bool(get(&st.output_enabled, i0)),
+        "ch.delay" => ParamValue::Float(get(&st.channel_delays, i0)),
+        "mix" => ParamValue::Bytes(
+            MatrixRoutePacket {
+                input: i0,
+                output: i1,
+                enabled: cell_of(&st.matrix_routing, i0, i1),
+                phase_invert: cell_of(&st.matrix_invert, i0, i1),
+                gain_db: cell_of(&st.matrix_gain, i0, i1),
+            }
+            .encode()
+            .to_vec(),
+        ),
+        "eq.band" => ParamValue::Bytes(band_bytes(&band().unwrap_or(FLAT))),
+        _ => return None,
+    })
+}
+
+/// "Sub: gain 0 dB" then "Sub: gain −6 dB" as "Sub: gain 0 → −6 dB": the
+/// words both share once, the values from → to; `after` alone unless both
+/// differ in a number.
+fn from_to(before: &str, after: &str) -> String {
+    let b: Vec<&str> = before.split(' ').collect();
+    let a: Vec<&str> = after.split(' ').collect();
+    let head = b.iter().zip(&a).take_while(|(x, y)| x == y).count();
+    let (bt, at) = (
+        b.get(head..).unwrap_or_default(),
+        a.get(head..).unwrap_or_default(),
+    );
+    let digit = |w: &[&str]| w.iter().any(|t| t.chars().any(|c| c.is_ascii_digit()));
+    if head == 0 || !digit(bt) || !digit(at) {
+        return after.to_owned();
+    }
+    // A unit both end with is said once
+    let unit = bt.len() > 1 && at.len() > 1 && bt.last() == at.last();
+    let bt = if unit {
+        bt.get(..bt.len().saturating_sub(1)).unwrap_or_default()
+    } else {
+        bt
+    };
+    format!(
+        "{} {} \u{2192} {}",
+        a.get(..head).unwrap_or_default().join(" "),
+        bt.join(" "),
+        at.join(" ")
+    )
+}
+
+/// [`Risk::said`]: the server's words `what` for a risk of `kind` as the
+/// app's screens say them. "(flash)" goes (the sheet says what a flash write
+/// means); a raised value reads from → to and its channel comes first ("Out 4
+/// gain up from −5.0 dB to −2.0 dB": "Out 4: gain −5.0 dB → −2.0 dB"); with
+/// `words`, the channels and presets are named as the screens name them
+/// ("Right tweeter: …", "preset 2 “Lunch”").
+pub(crate) fn said_of(kind: RiskKind, what: &str, words: Option<&ScreenWords>) -> String {
+    let mut s = what.replace(" (flash)", "");
+    if matches!(kind, RiskKind::Louder | RiskKind::DelayStep) {
+        if let Some((head, tail)) = s.rsplit_once(" from ")
+            && let Some((a, b)) = tail.split_once(" to ")
+        {
+            let head = head.strip_suffix(" up").unwrap_or(head);
+            s = format!("{head} {a} \u{2192} {b}");
+        }
+        if let Some(ch) = s
+            .strip_prefix("Turn off ")
+            .and_then(|r| r.strip_suffix("'s limiter"))
+        {
+            s = format!("{ch} limiter off");
+        }
+    }
+    s = channel_first(&s);
+    s = minus_signs(&s);
+    match words {
+        Some(w) if kind != RiskKind::SpeakerRoles => name_words(&s, w),
+        _ => s,
+    }
+}
+
+/// A number's "-" as the screens write it, "−".
+fn minus_signs(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut prev = ' ';
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        let number = chars.peek().is_some_and(char::is_ascii_digit);
+        out.push(if c == '-' && number && matches!(prev, ' ' | '(') {
+            '\u{2212}'
+        } else {
+            c
+        });
+        prev = c;
+    }
+    out
+}
+
+/// "Out 4 gain …" as "Out 4: gain …": a channel's own value, its channel
+/// first, so identical rows of several channels fold.
+fn channel_first(s: &str) -> String {
+    let mut t = s.splitn(4, ' ');
+    let (Some(ch), Some(n), Some(field)) = (t.next(), t.next(), t.next()) else {
+        return s.to_owned();
+    };
+    let numbered = matches!(ch, "Out" | "In") && n.chars().all(|c| c.is_ascii_digit());
+    if !numbered || !matches!(field, "gain" | "trim" | "limiter" | "delay") {
+        return s.to_owned();
+    }
+    let rest = s
+        .get(ch.len().saturating_add(n.len()).saturating_add(1)..)
+        .unwrap_or_default();
+    format!("{ch} {n}:{rest}")
+}
+
+/// `s` with "Out N", "In N" and "preset N" named as the screens name them.
+fn name_words(s: &str, w: &ScreenWords) -> String {
+    let toks: Vec<&str> = s.split(' ').collect();
+    let mut out: Vec<String> = Vec::with_capacity(toks.len());
+    let mut i = 0usize;
+    while let Some(t) = toks.get(i).copied() {
+        let next = toks.get(i.saturating_add(1)).copied().unwrap_or("");
+        let digits = next.chars().take_while(char::is_ascii_digit).count();
+        let n = next
+            .get(..digits)
+            .and_then(|d| d.parse::<usize>().ok())
+            .filter(|n| *n >= 1);
+        let tail = next.get(digits..).unwrap_or_default();
+        match (t, n) {
+            ("Out", Some(n)) => {
+                out.push(format!("{}{tail}", w.channels.output(n.saturating_sub(1))))
+            }
+            ("In", Some(n)) => out.push(format!("{}{tail}", w.channels.input(n.saturating_sub(1)))),
+            ("preset", Some(n)) => {
+                out.push(t.to_owned());
+                let named_here = toks.get(i.saturating_add(2)) == Some(&"as");
+                match w.presets.get(n.saturating_sub(1)) {
+                    Some(p) if !p.trim().is_empty() && !named_here && tail.is_empty() => {
+                        out.push(format!("{n} \u{201c}{p}\u{201d}"));
+                    }
+                    _ => out.push(next.to_owned()),
+                }
+            }
+            _ => {
+                out.push(t.to_owned());
+                i = i.saturating_add(1);
+                continue;
+            }
+        }
+        i = i.saturating_add(2);
+    }
+    out.join(" ")
 }
 
 /// The wire channel a delay write is about.
@@ -1042,6 +1367,7 @@ fn judge_values(before: &DspState, after: &DspState, writes: &[WriteKey], risks:
         let keys = || keys_of(writes, path, ix);
         let mut push = |kind, what: String, output| {
             risks.push(Risk {
+                said: String::new(), // -- WP UAG --
                 kind,
                 what,
                 output,
@@ -1766,6 +2092,7 @@ pub fn agent_out(o: u8) -> String {
 /// [`hard_verdict`]'s.)
 fn highpass_verdict(o: u8, ch: u8, writes: &[WriteKey], risks: &mut Vec<Risk>) {
     risks.push(Risk {
+        said: String::new(), // -- WP UAG --
         kind: RiskKind::TweeterCrossing,
         what: format!(
             "{} has a high-pass at {TWEETER_FLOOR_HZ} Hz or above (a tweeter): this \
@@ -2007,6 +2334,7 @@ fn judge_effects(before: &DspState, after: &DspState, writes: &[WriteKey], risks
             format!("Turn on {word} (it adds level)")
         };
         risks.push(Risk {
+            said: String::new(), // -- WP UAG --
             kind: RiskKind::Louder,
             what,
             output: None,
@@ -2038,6 +2366,7 @@ fn judge_effects(before: &DspState, after: &DspState, writes: &[WriteKey], risks
             continue;
         };
         risks.push(Risk {
+            said: String::new(), // -- WP UAG --
             kind: RiskKind::Louder,
             what,
             output: Some(o),
@@ -2102,6 +2431,7 @@ fn judge_masks(before: &DspState, after: &DspState, writes: &[WriteKey], risks: 
                 continue;
             }
             risks.push(Risk {
+                said: String::new(), // -- WP UAG --
                 kind: RiskKind::Louder,
                 what: format!("{word} now also on {} (it adds level)", out_word(o)),
                 output: Some(o),
@@ -2114,6 +2444,7 @@ fn judge_masks(before: &DspState, after: &DspState, writes: &[WriteKey], risks: 
         && get(&after.upmix, 0) != 0.0
     {
         risks.push(Risk {
+            said: String::new(), // -- WP UAG --
             kind: RiskKind::Enable,
             what: "Turn on the upmixer (it plays on the centre and surround outputs)".to_owned(),
             output: None,
@@ -2229,7 +2560,7 @@ impl AgentPolicy {
             match verdict {
                 Verdict::Pass => Ok(()),
                 Verdict::Ask(risks) => {
-                    j.asked.extend(risks);
+                    ask_all(&mut j, p.state, &writes, risks); // -- WP UAG --
                     Err(DspiError::ConfirmationRequired {
                         code: AGENT_CONFIRM.into(),
                         msg: HELD_TEXT.into(),
@@ -2412,6 +2743,7 @@ impl Policy for AgentPolicy {
             j.roles_allowed = self.agent_roles();
             j.held = held_outputs(core);
             j.own = own_outputs(core); // -- WP REVDFIX --
+            j.words = Some(screen_words(core)); // -- WP UAG --
         }
         (!UNJUDGED_TOOLS.contains(&call.tool)).then(|| Self::hook(Arc::clone(judging)))
     }
