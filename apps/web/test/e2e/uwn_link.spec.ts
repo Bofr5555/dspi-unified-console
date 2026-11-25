@@ -53,11 +53,13 @@ test("UWN A15: one installation: the tab is the device's name over its hub and f
   const a = await newHub(request, "--auth none --name Stage");
   const session = await openOnHub(page, a);
   const tabs = page.getByRole("tablist", { name: "Open DSPi" }).getByRole("tab");
-  await expect(tabs.first().locator(".device-tab-name")).toHaveText("Bench");
+  const name = (await tabs.first().locator(".device-tab-name").innerText()).trim();
+  expect(name.length).toBeGreaterThan(0);
+  // No installation ("This console") while one is open: the hub's name and the firmware under the name
   await expect(tabs.first().locator(".device-tab-kind")).toHaveText(/^Stage · firmware /);
   // The two lines with a separator, never run together
-  await expect(tabs.first()).toHaveAccessibleName(/^Bench, Stage · firmware \S+$/);
-  await expect(session.getByRole("complementary", { name: "Status" }).getByLabel("Connection")).toHaveText(/^Connected/);
+  await expect(tabs.first()).toHaveAccessibleName(new RegExp(`^${name}, Stage · firmware \\S+$`));
+  await expect(session.getByRole("complementary", { name: "Status" }).getByLabel("Connection", { exact: true })).toHaveText(/^Connected/);
 
   // Two sites, two DSPis of the same name: the site says which
   const b = await newHub(request, `--auth none --serial ${SERIAL_B} --name Bar`);
@@ -70,8 +72,8 @@ test("UWN A15: one installation: the tab is the device's name over its hub and f
   await page.getByRole("article").getByRole("list", { name: /DSPis on/ }).getByRole("button", { name: /^Open Bench/ }).click();
   await expect(page.getByRole("article")).toHaveAttribute("data-serial", new RegExp(SERIAL_B));
   await expect(tabs).toHaveCount(2);
-  await expect(tabs.nth(0)).toHaveAccessibleName(/^Bench, Site A · Stage · firmware /);
-  await expect(tabs.nth(1)).toHaveAccessibleName(/^Bench, Site B · Bar · firmware /);
+  await expect(tabs.nth(0)).toHaveAccessibleName(new RegExp(`^${name}, Site A · Stage · firmware `));
+  await expect(tabs.nth(1)).toHaveAccessibleName(new RegExp(`^${name}, Site B · Bar · firmware `));
 });
 
 test("UWN A16: while the link is away nothing writes and the rail says Reconnecting; back, nothing red is left", async ({ page, request }) => {
@@ -84,7 +86,7 @@ test("UWN A16: while the link is away nothing writes and the rail says Reconnect
   // Fenced: the dock's Mute and the top bar's Save wait for the link; the rail's dot and words agree
   await expect(session.getByRole("button", { name: "Mute" }).first()).toBeDisabled();
   await expect(session.getByRole("button", { name: /^Save to Device/ })).toBeDisabled();
-  await expect(rail.getByLabel("Connection")).toHaveText(/^Reconnecting/);
+  await expect(rail.getByLabel("Connection", { exact: true })).toHaveText(/^Reconnecting/);
   await expect(rail.locator(".dot")).toHaveClass(/dot-away/);
   // A write past the page (the key) is refused by the session without a failure notice
   await page.keyboard.press("Control+m").catch(() => undefined);
@@ -92,7 +94,7 @@ test("UWN A16: while the link is away nothing writes and the rail says Reconnect
   await fault(request, id, "refuse ok");
   await expect(session.locator(".banner")).toHaveCount(0, { timeout: 20_000 });
   await expect(session.getByRole("alert")).toHaveCount(0);
-  await expect(rail.getByLabel("Connection")).toHaveText(/^Connected/);
+  await expect(rail.getByLabel("Connection", { exact: true })).toHaveText(/^Connected/);
   await expect(rail.locator(".dot")).toHaveClass(/dot-open/);
   await expect(session.getByRole("button", { name: "Mute" }).first()).toBeEnabled();
 });

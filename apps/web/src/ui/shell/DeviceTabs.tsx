@@ -73,6 +73,9 @@ function factsOf(s: Session, st: SessionState, several: boolean): TabFacts {
   };
 }
 
+// -- WP UWN -- the state in the tab's accessible name (never "PIN": that is the PIN field's own name on the page)
+const STATE_SPOKEN: Record<ReturnType<typeof tabState>, string> = { ...STATE_WORDS, pairing: "pairing with the hub" };
+
 export function DeviceTabs(props: {
   sessions: Session[];
   current: Session | null;
@@ -142,7 +145,7 @@ function DeviceTab(props: { session: Session; several: boolean; collides: boolea
   const agent = usePresence(s).some((p) => p.serial && p.serial === st.snapshot?.device.serial);
   const where = [meta, serial, STATE_WORDS[state], unsaved ? "unsaved changes" : "", agent ? "an AI agent is working on it" : ""].filter(Boolean).join(" · ");
   // -- WP UWN -- (UXP A15) the name, a separator, the second line; then a state that is not "connected"
-  const spoken = [title, meta, state === "open" ? "" : STATE_WORDS[state], agent ? "AI agent working" : ""].filter(Boolean).join(", ");
+  const spoken = [title, meta, state === "open" ? "" : STATE_SPOKEN[state], agent ? "AI agent working" : ""].filter(Boolean).join(", ");
   return (
     <div class="device-tab" role="presentation">
       <button

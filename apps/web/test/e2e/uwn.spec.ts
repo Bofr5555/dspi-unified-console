@@ -52,7 +52,7 @@ test("UWN A17: the band table and the inspector say one vocabulary: Bell, Low Cu
   await openPage(session, "EQ");
   await session.locator(".eq-pick", { hasText: "OUT1" }).click();
   const bands = session.getByRole("region", { name: /^Bands of / });
-  await expect(bands.getByRole("columnheader", { name: "Q" })).toBeVisible();
+  await expect(bands.getByRole("columnheader", { name: "Q", exact: true })).toBeVisible();
   await expect(bands.getByRole("columnheader", { name: "Width" })).toHaveCount(0);
   const type = bands.getByRole("combobox", { name: "Band 1 type" });
   await expect(type.locator("option")).toContainText(["Off", "Bell"]);
@@ -73,11 +73,13 @@ test("UWN A15: Save to Device's name has its count in words; the rail is one Tab
   const sections = rail(session).locator(".rail-list > button");
   await expect(rail(session).locator('.rail-list > button[tabindex="0"]')).toHaveCount(1);
   await expect(rail(session).locator('.rail-list > button[tabindex="0"]')).toHaveAttribute("aria-current", "page");
-  await rail(session).locator('.rail-list > button[tabindex="0"]').focus();
+  const at = await sections.evaluateAll((l) => l.findIndex((b) => b.getAttribute("tabindex") === "0"));
+  await sections.nth(at).focus();
   await page.keyboard.press("ArrowDown");
-  await expect(sections.nth(1)).toBeFocused();
+  await expect(sections.nth(at + 1)).toBeFocused();
   await page.keyboard.press("Enter");
-  await expect(sections.nth(1)).toHaveAttribute("aria-current", "page");
+  await expect(sections.nth(at + 1)).toHaveAttribute("aria-current", "page");
+  await expect(sections.nth(at + 1)).toHaveAttribute("tabindex", "0");
   await page.keyboard.press("End");
   await expect(sections.last()).toBeFocused();
   // The skip links: the first Tab stops, to the page and to the volume
