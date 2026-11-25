@@ -110,7 +110,7 @@ test("WB6J M46: the signal generator plays only on Start, shows what it does, an
   await gen.getByRole("region", { name: "Outputs" }).getByRole("button", { name: "None", exact: true }).click(); // -- WP WEB4 -- All/None at the section's label
   await expect(gen.locator(".siggen-title")).toHaveText("Select at least one output");
   await expect(gen.getByRole("button", { name: "Start" })).toBeDisabled();
-  // -- WP WEB6 -- (REVE D2) the chip names the output once, by the core's label
+  // -- WP WEB6 -- (REVE D2) the chip names the output once, by the core's label -- WP WEB7 -- (GeneratorPage)
   await expect(gen.getByRole("group", { name: "Outputs" }).getByRole("button", { name: /^OUT/ })).toHaveCount(0);
   await gen.getByRole("group", { name: "Outputs" }).getByRole("button", { name: /^Out 1\b/ }).click();
   await gen.getByRole("button", { name: "Start" }).click();
@@ -283,4 +283,66 @@ test("WB6J M59 (INTD): the dashboard has no layout picker; its cards wrap by wid
   await expect(session.getByRole("combobox", { name: "Dashboard layout" })).toHaveCount(0);
   const wide = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(wide).toBeLessThanOrEqual(0);
+});
+
+// -- WP WEB7 --
+test("WEB7: the signal generator as Qt's: Sine has its Duration, a second click inverts an output (ø), a third leaves it out", async ({ page }) => {
+  const errors = errorsOf(page);
+  const session = await connect(page);
+  await openPage(session, "Signal Generator");
+  const gen = session.getByRole("region", { name: "Signal Generator" });
+  await expect(gen.getByRole("radio", { name: "Sine" })).toHaveAttribute("aria-checked", "true");
+  // Five tiles to a row, as Qt's grid (at a desktop width; at 375 px they wrap by width).
+  if (test.info().project.name !== "narrow") {
+    const tiles = gen.getByRole("radiogroup", { name: "Signal" }).getByRole("radio");
+    const tops = await tiles.evaluateAll((els) => els.slice(0, 6).map((e) => Math.round(e.getBoundingClientRect().top)));
+    expect(new Set(tops.slice(0, 5)).size).toBe(1);
+    expect(tops[5]).toBeGreaterThan(tops[0]!);
+  }
+  // Timing for Sine: Duration, 0 = play until stopped.
+  const timing = gen.getByRole("region", { name: "Timing" });
+  await expect(timing).toContainText("Duration");
+  await expect(timing).toContainText("0 = play until stopped");
+  await timing.getByRole("textbox", { name: "Duration in seconds" }).fill("2");
+  await timing.getByRole("textbox", { name: "Duration in seconds" }).press("Enter");
+  // Out 2: on, then inverted, then off; Out 1 inverted for the run.
+  const outs = gen.getByRole("group", { name: "Outputs" });
+  const out1 = outs.getByRole("button", { name: /^Out 1\b/ });
+  const out2 = outs.getByRole("button", { name: /^Out 2\b/ });
+  await expect(out1).toHaveAttribute("aria-pressed", "true");
+  await out1.click();
+  await expect(out1).toHaveAttribute("data-inverted", "true");
+  await expect(out1).toContainText("ø");
+  await out2.click();
+  await expect(out2).toHaveAttribute("data-inverted", "true");
+  await out2.click();
+  await expect(out2).toHaveAttribute("aria-pressed", "false");
+  await expect(gen.locator(".siggen-detail")).toHaveText("1 output (1 inverted) · peak -20.0 dBFS");
+  await gen.getByRole("textbox", { name: "Level in dBFS" }).fill("-40");
+  await gen.getByRole("textbox", { name: "Level in dBFS" }).press("Enter");
+  await gen.getByRole("button", { name: "Start" }).click();
+  await expect(gen.locator(".siggen-title")).toHaveText(/^(Fading in|Running) · Sine$/);
+  const cfg = await call<Config & { invertMask: number; durationMs: number }>(page, "siggenConfig");
+  expect([cfg.channelMask, cfg.invertMask, cfg.durationMs, cfg.levelDb]).toEqual([1, 1, 2000, -40]);
+  await gen.getByRole("button", { name: "Stop Now" }).click();
+  // None clears the inversions too.
+  await gen.getByRole("region", { name: "Outputs" }).getByRole("button", { name: "None", exact: true }).click();
+  await out1.click();
+  await expect(out1).toHaveAttribute("data-inverted", "false");
+  expect(errors).toEqual([]);
+});
+
+test("WEB7: Stats for nerbs as Qt's columns: the counters' sections and a fill bar per output pair", async ({ page }) => {
+  const errors = errorsOf(page);
+  const session = await connect(page);
+  await openPage(session, "Stats for nerbs");
+  const stats = session.getByRole("region", { name: "Stats for nerbs" });
+  for (const name of ["Device Information", "System Information", "Audio Output", "PDM (Subwoofer)", "SPDIF DMA Starvation", "Buffer Fill Levels"]) {
+    await expect(stats.getByRole("region", { name, exact: true })).toBeVisible();
+  }
+  await expect(stats.getByRole("region", { name: "Audio Output" })).toContainText("ISR → Main Loop");
+  const bars = stats.getByRole("region", { name: "Buffer Fill Levels" }).getByRole("img");
+  await expect(bars.first()).toHaveAccessibleName(/^Out 1\/2( \([^)]+\))? \d+%, \d+–\d+% since the watermarks were reset$/);
+  await expect(stats).toContainText("Updated every 2 seconds");
+  expect(errors).toEqual([]);
 });

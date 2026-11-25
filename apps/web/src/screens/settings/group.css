@@ -1,0 +1,13 @@
+/* -- WP WEB7 -- Qt's SettingsGroup (screens/settings/group.tsx): icon 14 muted + 13 DemiBold title above
+   the panel (6 px apart), the panel radius 8 with 12 px inset and 12 px between rows, the footnote 11 muted. */
+.dspi-web .group { display: flex; flex-direction: column; gap: 6px; min-width: 0; margin: 0; }
+.dspi-web .group + .group { margin-top: 18px; }
+.dspi-web .group-head { display: flex; align-items: center; gap: 6px; min-height: 20px; min-width: 0; }
+.dspi-web .group-head .group-icon, .dspi-web .group-head .group-icon .shell-icon { width: 14px; height: 14px; color: var(--muted); flex: none; }
+.dspi-web .group-title { flex: 1 1 auto; margin: 0; font-size: 13px; font-weight: 600; color: var(--text); text-transform: none; letter-spacing: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dspi-web .group-trailing { display: flex; align-items: center; gap: 6px; flex: none; }
+.dspi-web .group-panel { display: flex; flex-direction: column; gap: 12px; padding: 12px; border-radius: 8px; background: var(--panel); min-width: 0; }
+.dspi-web .group-flat > .group-panel { padding: 0; background: transparent; }
+.dspi-web .group-footer { margin: 0; font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
+/* Form rows inside a group: no own height padding beyond the 12 px rhythm; controls at the right edge */
+.dspi-web .group-panel > .form-row { min-height: 24px; }

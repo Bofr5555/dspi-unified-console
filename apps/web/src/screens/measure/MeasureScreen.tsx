@@ -32,7 +32,7 @@ import { useSessionState } from "../../ui/components";
 import type { Ask, ScreenProps } from "../../ui/screens";
 import type { Session } from "../../ui/session";
 import { noticeOf, noticeRow } from "../../ui/texts";
-import { outputRows } from "../main/model";
+import { outputLabel, outputRows } from "../main/model";
 import { LiveTab } from "./live";
 import { PassiveTab } from "./passive";
 import { playBlocker, type MeasureDraft } from "./model";
@@ -539,21 +539,21 @@ export function MeasureScreen(props: ScreenProps) {
   }, [desk]);
   const snap = st.snapshot;
   const rows = useMemo(() => (snap ? outputRows(snap.state, snap.outputLabels) : []), [snap]);
-  const outputName = (o: number) => {
-    const r = rows.find((x) => x.index === o);
-    return r ? `${r.descriptor} ${r.name}` : `Output ${o + 1}`;
-  };
+  // -- WP WEB7 -- (REVE D2) the core's label alone ("Out 1 · L"), for every output, as Qt's rows
+  const outputName = (o: number) => (snap ? outputLabel(snap.state, snap.outputLabels, o) : `Output ${o + 1}`);
   const blocked = playBlocker(session.readOnlyReason, desk.hubRole);
   const tabs = blocked ? [PASSIVE_TAB, ...MEASURE_TABS.filter((t) => t.passive)] : MEASURE_TABS;
   // -- WP WEBM3 -- the tabs are the page's parts, in its head; the one on show kept per session
   const [chosen, setChosen] = usePart(session, "measure", tabs.map((t) => t.id));
   const tab = tabs.find((t) => t.id === chosen) ?? tabs[0]!;
   if (!snap) return null;
+  // -- WP WEB7 -- (REVE D4) one Stop: on the Live tab the live view's own Stop Live is the stop
+  const liveHere = tab.id === "live" && !!desk.live?.active && !desk.state?.active && !desk.passive;
   const p: MeasureTabProps = { session, desk, ask: props.ask, blocked, outputName, outputs: rows.map((r) => r.index), show: setChosen, go: props.go };
   return (
     <div class="measure-screen" role="region" aria-label="Measure">
       {/* -- WP WEB4 -- DL2's stop bar: an info notice with a secondary Stop; the error as an error notice */}
-      {desk.running ? (
+      {desk.running && !liveHere ? (
         <div class="notice-row notice-row-info measure-stopbar" role="status" aria-label="Measuring">
           <Glyph name="volume" class="notice-icon" />
           <span class="notice-text">

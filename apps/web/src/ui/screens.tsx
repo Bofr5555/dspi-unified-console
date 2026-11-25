@@ -30,6 +30,7 @@ import { loadMode, saveMode, type Mode } from "../screens/system/model";
 import { SceneBar } from "../screens/system/SceneBar";
 import { StatusRail } from "../screens/system/StatusRail";
 import { SystemScreen, useFeed } from "../screens/system/SystemScreen";
+import { ChainScreen, ClockScreen, InstallationScreen, isSystemPage } from "../screens/system/pages"; // -- WP WEB7 -- Qt's System tabs
 // -- WP WB8 -- the event log (with Save Diagnostics…), undo and redo
 import { EventsScreen } from "../screens/events/EventsScreen";
 import { useSessionState, type ShellProps } from "./components";
@@ -59,7 +60,7 @@ import { InputsScreen } from "../screens/inputs/InputsScreen";
 import { AnalyserScreen, GeneratorScreen, MonitorScreen, StatsScreen } from "../screens/analysis/ToolsScreen";
 
 // -- WP WB6L -- the control-surface editor, the quick strip, the app shortcuts
-import { SurfacesScreen } from "../screens/surfaces/SurfacesScreen";
+// -- WP WEB7 -- the editor is Settings › Control (screens/settings), no screen of its own
 import { QuickStrip, ShortcutsDialog, useAppShortcuts } from "../screens/shortcuts/Shortcuts";
 import type { OpenAction, ShortcutRow } from "../screens/shortcuts/table";
 // -- WP WBCLIP -- the channel clipboard's keys
@@ -79,6 +80,9 @@ import { OverviewScreen } from "../screens/overview/OverviewScreen";
 import { MeasureScreen } from "../screens/measure/MeasureScreen"; // -- WP P5WMS --
 import { DeviceScreen } from "../screens/device/DeviceScreen"; // -- WP PGWEB --
 import { HistoryScreen } from "../screens/history/HistoryScreen"; // -- WP WEBM3 --
+// -- WP WEB7 -- Library's Presets and AutoEQ tabs (Qt's LibraryPresets, AutoEqPanel)
+import { PresetsScreen } from "../screens/presets/PresetsScreen";
+import { AutoEqScreen } from "../screens/autoeq/AutoEqScreen";
 
 // -- WP WEBM1 -- the Modern shell
 import { Frame } from "./shell/Frame";
@@ -89,7 +93,7 @@ import { placeOf } from "./shell/places";
 import { watchFollow } from "./follow-agent"; // -- WP ODEC --
 // -- WP WEBM4 -- what this device can do, for the app menu and the command palette
 import { sessionEntries, sessionHandlers, type SessionContext } from "./menus/session-actions";
-import { SETTINGS_PAGES } from "../screens/settings/SettingsScreen";
+import { settingsPagesFor } from "../screens/settings/SettingsScreen"; // -- WP WEB7 -- Control's pages where the mode has them
 
 /** A question in a modal dialog; the answer is the chosen button's value, or "cancel". */
 export interface Question {
@@ -150,14 +154,19 @@ export const SCREENS: ScreenDef[] = [
   { id: "effects", label: "Effects", View: EffectsScreen },
   { id: "overview", label: "All Channels", View: OverviewScreen }, // -- WP P3OV -- (PLAN-P3 U1, OD-P3j: every mode)
   // -- WP SW3 -- (UI-MODES: the Pro layer, not in Simple)
-  { id: "system", label: "System", View: SystemScreen },
+  { id: "system", label: "Units", View: SystemScreen }, // -- WP WEB7 -- Qt's first System tab
+  { id: "system-clock", label: "Clock and Links", View: ClockScreen }, // -- WP WEB7 --
+  { id: "system-installation", label: "Installation", View: InstallationScreen }, // -- WP WEB7 --
+  { id: "chain", label: "Signal Chain", View: ChainScreen }, // -- WP WEB7 -- the web's own, last
   // -- WP P1WB1 -- (Advanced and Installer: setting up and handing over;
   // -- WP P1DCFIX -- Simple has Snapshots as recall and A/B only)
+  { id: "presets", label: "Presets", View: PresetsScreen }, // -- WP WEB7 -- Library › Presets (every mode)
   { id: "snapshots", label: "Snapshots", View: SnapshotsScreen },
   { id: "history", label: "History", View: HistoryScreen }, // -- WP WEBM3 -- Library › History (setting up: not in Simple)
   { id: "files", label: "Files", View: FilesScreen },
+  { id: "autoeq", label: "AutoEQ", View: AutoEqScreen }, // -- WP WEB7 -- Library › AutoEQ (every mode)
   // -- WP WB6L -- (setting up the hardware: Advanced and Installer, as files)
-  { id: "surfaces", label: "Control Surfaces", View: SurfacesScreen },
+  // -- WP WEB7 -- Control Surfaces is Settings › Control now, as Qt Modern's (its id opens it there: `setChosen`)
   // -- WP WB8 -- (UI-MODES: monitoring of the Advanced and Installer modes)
   { id: "events", label: "Events", View: EventsScreen },
   // -- WP P1WB2 -- (the manifest's "Limits and power-on": the Installer mode only)
@@ -188,15 +197,16 @@ const TOOLS = new Set(["generator", "analyser", "stats", "monitor", "measure" /*
  */
 export function screensFor(mode: Mode, installation: boolean): ScreenDef[] {
   // -- WP WB8 -- the event log last, in Advanced and Installer
-  const today = SCREENS.filter((x) => x.id !== "system" && x.id !== "events" && x.id !== "installer" && !TOOLS.has(x.id) && x.id !== "settings"); // -- WP WB6J -- tools -- WP WB6I -- settings
+  const today = SCREENS.filter((x) => x.id !== "system" && !isSystemPage(x.id) /* -- WP WEB7 -- */ && x.id !== "events" && x.id !== "installer" && !TOOLS.has(x.id) && x.id !== "settings"); // -- WP WB6J -- tools -- WP WB6I -- settings
   const settings = SCREENS.filter((x) => x.id === "settings"); // -- WP WB6I -- last, in every mode
   if (mode === "simple") return [...today.filter((x) => !SETUP.has(x.id)), ...settings]; // -- WP P1WB1 -- -- WP WB6I -- settings
   const tools = SCREENS.filter((x) => TOOLS.has(x.id)); // -- WP WB6J --
   const system = SCREENS.find((x) => x.id === "system")!;
+  const systemTabs = SCREENS.filter((x) => isSystemPage(x.id)); // -- WP WEB7 --
   const events = SCREENS.find((x) => x.id === "events")!;
   // -- WP P1WB2 -- the Installer page last, in the Installer mode
   const tail = mode === "installer" ? SCREENS.filter((x) => x.id === "installer") : [];
-  return installation ? [system, ...today, ...tools, events, ...tail, ...settings] : [...today, system, ...tools, events, ...tail, ...settings]; // -- WP WB6J -- tools -- WP WB6I -- settings
+  return installation ? [system, ...systemTabs, ...today, ...tools, events, ...tail, ...settings] : [...today, system, ...systemTabs, ...tools, events, ...tail, ...settings]; // -- WP WEB7 -- systemTabs // -- WP WB6J -- tools -- WP WB6I -- settings
 }
 
 // -- WP P1WB2 --
@@ -295,6 +305,11 @@ export function Screens(props: {
   const [chosen, setChosenState] = useState<string | null>(place.screen);
   const setChosen = useCallback(
     (id: string) => {
+      // -- WP WEB7 -- Control Surfaces' old id opens Settings at its Control part
+      if (id === "surfaces") {
+        place.parts.set("settings", "control");
+        id = "settings";
+      }
       place.screen = id;
       setChosenState(id);
       shell.onPicking(false);
@@ -444,7 +459,7 @@ export function Screens(props: {
       setJump((n) => n + 1);
     },
   };
-  shell.board?.setSession(session.id, { handlers: sessionHandlers(actionsCtx), entries: sessionEntries(actionsCtx, SETTINGS_PAGES) });
+  shell.board?.setSession(session.id, { handlers: sessionHandlers(actionsCtx), entries: sessionEntries(actionsCtx, settingsPagesFor(mode)) }); // -- WP WEB7 --
   const board = shell.board;
   useEffect(() => () => board?.clearSession(session.id), [board, session]);
 
@@ -498,6 +513,7 @@ export function Screens(props: {
       foot={
         // -- WP SW3 -- the status rail, below the screen as a status bar
         <StatusRail
+          hub={hub} /* -- WP WEB7 -- (REVE D5) the rail counts the banner's hub alarms */
           feed={system}
           session={session}
           mode={mode}

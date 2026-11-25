@@ -124,8 +124,10 @@ export function MeasureGraph(props: {
     }
     return top.length ? `M${top.join("L")}L${bottom.reverse().join("L")}Z` : "";
   };
-  const gridDb: number[] = [];
-  for (let v = lo; v <= hi; v += (hi - lo) / 6) gridDb.push(Math.round(v));
+  // -- WP WEB7 -- (REVE D4) 5 or 10 dB steps, never a label over the frequencies' row; an empty frame
+  // draws no grid and no labels, only "No curve yet"
+  const gridDb = series.length ? dbTicks(lo, hi) : [];
+  const ticksHz = series.length ? TICKS_HZ : [];
 
   return (
     <figure class="measure-graph">
@@ -147,7 +149,7 @@ export function MeasureGraph(props: {
           setBand(null);
         }}
       >
-        {TICKS_HZ.map((f) => (
+        {ticksHz.map((f) => (
           <line key={f} class="mg-grid" x1={x(f)} x2={x(f)} y1={PAD_T} y2={PAD_T + PLOT_H - 20} />
         ))}
         {gridDb.map((v) => (
@@ -180,14 +182,14 @@ export function MeasureGraph(props: {
           )),
         )}
         {/* -- WP WEB4 -- the axis labels inside the plot, over the curves; the unit on the top label */}
-        {TICKS_HZ.map((f, i) => (
+        {ticksHz.map((f, i) => (
           <text key={`f${f}`} class="mg-label" x={Math.min(W - INSET, Math.max(INSET, x(f)))} y={H - INSET} text-anchor={i === 0 ? "start" : i === TICKS_HZ.length - 1 ? "end" : "middle"}>
             {f >= 1000 ? `${f / 1000}k` : f}
           </text>
         ))}
-        {gridDb.map((v, i) => (
-          <text key={`d${v}`} class="mg-label" x={INSET} y={Math.min(H - 24, Math.max(INSET + 9, y(v) + 4))}>
-            {i === gridDb.length - 1 ? `${v} dB` : v}
+        {dbLabels(gridDb, y, INSET + 9, H - 24).map(([v, ly], i, all) => (
+          <text key={`d${v}`} class="mg-label" x={INSET} y={ly}>
+            {i === all.length - 1 ? `${v} dB` : v}
           </text>
         ))}
         {series.length ? null : (
@@ -197,6 +199,7 @@ export function MeasureGraph(props: {
         )}
       </svg>
       </div>
+      {series.length ? (
       <figcaption class="mg-legend">
         {series.map((s, k) => (
           <span key={k}>
@@ -209,6 +212,29 @@ export function MeasureGraph(props: {
         <span>{props.unit ?? "dB"}; faint: not trusted (too little signal, or the repeats disagree)</span>
         {props.mark ? <span>{props.mark.f2 ? `${hz(props.mark.f1)} to ${hz(props.mark.f2)}` : hz(props.mark.f1)}</span> : null}
       </figcaption>
+      ) : null}
     </figure>
   );
+}
+
+// -- WP WEB7 -- (REVE D4) the dB grid: 5 dB steps up to a 40 dB span, 10 up to 100, 20 beyond
+export function dbTicks(lo: number, hi: number): number[] {
+  if (!Number.isFinite(lo) || !Number.isFinite(hi) || hi <= lo) return [];
+  const span = hi - lo;
+  const step = span <= 40 ? 5 : span <= 100 ? 10 : 20;
+  const out: number[] = [];
+  for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) out.push(v);
+  return out;
+}
+
+/** The labels of `ticks` that fit between `top` and `bottom`, at least 12 px apart (from the top label down). */
+export function dbLabels(ticks: readonly number[], y: (v: number) => number, top: number, bottom: number): [number, number][] {
+  const out: [number, number][] = [];
+  for (const v of [...ticks].sort((a, b) => b - a)) {
+    const ly = y(v) + 4;
+    if (ly < top || ly > bottom) continue;
+    if (out.length && ly - out[out.length - 1]![1] < 12) continue;
+    out.push([v, ly]);
+  }
+  return out.reverse();
 }

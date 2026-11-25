@@ -1,0 +1,30 @@
+/* -- WP WEB7 -- The Device page as Qt's groups (screens/settings/group.tsx): the facts as Qt's settings rows,
+   the name at the left in the text colour and the value at the right edge; the 760 px column. */
+.dspi-web .device-screen { display: flex; flex-direction: column; gap: 0; max-width: var(--content-max); }
+.dspi-web .device-screen .device-facts { display: flex; flex-direction: column; gap: 6px; }
+.dspi-web .device-screen .device-fact { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; min-height: 20px; }
+.dspi-web .device-screen .device-fact dt { color: var(--text); flex: none; }
+.dspi-web .device-screen .device-fact dd { margin: 0; color: var(--muted); text-align: right; min-width: 0; overflow-wrap: anywhere; }
+.dspi-web .device-screen .group-panel .note { margin: 0; }
+.dspi-web .device-screen .update-check-pick { display: flex; justify-content: flex-end; }
+.dspi-web .device-screen .update-verdict { margin: 0; }
+.dspi-web .device-screen .update-verdict p { margin: 0 0 4px; }
+.dspi-web .device-screen .sender-note { margin: 0 0 12px; }
+.dspi-web .device-screen .raw-form { gap: 8px 12px; }
+@media (max-width: 600px) {
+  .dspi-web .device-screen .device-fact { flex-direction: column; align-items: flex-start; gap: 2px; }
+  .dspi-web .device-screen .device-fact dd { text-align: left; }
+}
+
+/* -- WP WEB7 -- Devices › This Computer with a device open (Qt's DevicesSection): the console's sources and
+   its files as sections (a caps label, no card), each source a 40 px list row with its action at the right,
+   the hover tone on the row; one 760 px column. The page without a device is the shell's (REVEFIX). */
+.dspi-web .session-screens .devices-columns { display: flex; flex-direction: column; gap: 24px; max-width: var(--content-max); }
+.dspi-web .session-screens .devices-page .installation { background: transparent; border: 0; padding: 0; margin: 0; }
+.dspi-web .session-screens .devices-page .installation > h2 { margin: 0 0 6px; }
+.dspi-web .session-screens .devices-page .source { min-height: 40px; padding: 0 8px; border-radius: 6px; }
+.dspi-web .session-screens .devices-page .source:nth-child(even) { background: var(--stripe); }
+.dspi-web .session-screens .devices-page .source:hover { background: var(--control-hover); }
+.dspi-web .session-screens .devices-page .add-hub { margin: 12px 0 0; padding: 0 8px; }
+.dspi-web .session-screens .devices-columns { align-items: stretch; }
+.dspi-web .session-screens .devices-columns > * { width: 100%; min-width: 0; }

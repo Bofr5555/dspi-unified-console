@@ -1,0 +1,32 @@
+/* -- WP WEB7 -- The System pages as Qt's (screens/system/pages.tsx): the empty state centred in the page when
+   not on a hub; on a hub the parts as Qt's groups, the units as list rows on the panel, states as a dot and
+   the word (§13), the tables as §9 (caps header, one separator under it, stripes, no row rules). */
+.dspi-web .sys-page { display: flex; flex-direction: column; gap: 0; min-width: 0; }
+.dspi-web .sys-empty { min-height: 60vh; justify-content: center; }
+.dspi-web .sys-page > .notice-row { margin-bottom: 12px; max-width: var(--content-max); }
+.dspi-web .sys-page .sys-rooms { gap: 12px; }
+.dspi-web .sys-page .sys-room { background: var(--panel); border: 0; border-radius: 8px; padding: 8px 12px; }
+.dspi-web .sys-page .group-panel > .sys-room { padding: 0; background: transparent; }
+.dspi-web .sys-page .sys-unit { border-top: 0; min-height: 28px; padding: 2px 0; font-size: 13px; }
+.dspi-web .sys-page .sys-unit-name { font-weight: 400; }
+.dspi-web .sys-page .sys-state { font-size: 11px; }
+.dspi-web .sys-page .sys-lock { display: inline-flex; align-items: center; gap: 6px; border: 0; padding: 0; font-size: 11px; color: var(--muted); }
+.dspi-web .sys-page .sys-lock::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--muted); flex: none; }
+.dspi-web .sys-page .sys-lock-locked::before, .dspi-web .sys-page .sys-lock-clock::before,
+.dspi-web .sys-page .sys-lock-phase-locked::before, .dspi-web .sys-page .sys-lock-rate-locked::before { background: var(--ok); }
+.dspi-web .sys-page .sys-lock-searching::before, .dspi-web .sys-page .sys-lock-holdover::before,
+.dspi-web .sys-page .sys-lock-pulling-in::before, .dspi-web .sys-page .sys-lock-anchoring::before { background: var(--warn); }
+.dspi-web .sys-page .sys-lock-off::before, .dspi-web .sys-page .sys-lock-no-usb-time-base::before,
+.dspi-web .sys-page .sys-lock-host-out-of-range::before { background: var(--bad); }
+.dspi-web .sys-page .sys-alarm-count { font-weight: 400; }
+.dspi-web .sys-page .sys-alarm-count::before { content: "● "; color: var(--bad); }
+.dspi-web .sys-page .sys-alarm-count { color: var(--text); }
+.dspi-web .sys-page .sys-chip { border: 0; background: var(--control); border-radius: 12px; padding: 1px 8px; font-size: 11px; }
+.dspi-web .sys-page .sys-kind { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; }
+/* Clock and Links (AlinkClock): the panel's own heading is the tab now; §9 tables */
+.dspi-web .sys-page .sys-clock { margin: 0; padding: 0; border: 0; max-width: 100%; }
+.dspi-web .sys-page .sys-table { font-size: 12.5px; }
+.dspi-web .sys-page .sys-table th, .dspi-web .sys-page .sys-table td { border-bottom: 0; padding: 4px 8px; height: 20px; vertical-align: middle; }
+.dspi-web .sys-page .sys-table thead th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; border-bottom: 1px solid var(--separator); }
+.dspi-web .sys-page .sys-table tbody tr:nth-child(even) > * { background: var(--stripe); }
+.dspi-web .sys-page .sys-clock h4 { margin: 24px 0 8px; font-size: 13px; font-weight: 600; }

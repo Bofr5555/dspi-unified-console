@@ -98,8 +98,7 @@ async function advancedTab(session: Locator, page: Page): Promise<Locator> {
   await dialog.getByRole("radio", { name: "Advanced" }).check();
   await dialog.getByRole("button", { name: "Use" }).click();
   await expect(session.getByRole("button", { name: "Mode: Advanced" })).toBeVisible();
-  await openPage(session, "System");
-  await session.getByRole("tablist", { name: "System" }).getByRole("tab", { name: "Installation" }).click();
+  await openPage(session, "Installation"); // -- WP WEB7 -- Qt's System tab
   const inst = session.getByRole("region", { name: "Installation", exact: true });
   await expect(inst.getByRole("heading", { name: "Units" })).toBeVisible();
   return inst;

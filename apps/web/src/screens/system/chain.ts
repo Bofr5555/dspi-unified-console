@@ -59,6 +59,8 @@ export interface ChainOutput {
   delayMs: number;
   /** Its own screen: the EQ screen's output card when enabled, else the Matrix (where it is enabled). */
   open: ChainTarget;
+  /** -- WP WEB7 -- Nothing routed to it (the core's `unused`, REVEFIX): the chain only shows, so it leaves it out (owner 2026-11-24). */
+  unused: boolean;
 }
 
 export interface Chain {
@@ -185,6 +187,7 @@ export function chainView(s: DspState, labels: OutputLabel[] | undefined, liveIn
       muted: s.outputMuted?.[o] === true,
       delayMs: s.outputDelayMs?.[o] ?? 0,
       open: at(),
+      unused: labels?.[o]?.unused === true, // -- WP WEB7 --
     });
   }
   return {

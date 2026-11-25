@@ -10,7 +10,7 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import { measureCall, type MeasureDocCurvesRecord } from "../../core/measure-protocol";
 import type { MeasureTabProps } from "./MeasureScreen";
 import { MeasureGraph, type Series } from "./graph";
-import { SMOOTHING, fileNameOf, resultView, smoothingLabel } from "./model";
+import { SMOOTHING, fileNameOf, resultView, smoothingLabel, displayName } from "./model";
 import { download, readTextFile } from "./setup";
 import { EmptyState, Glyph } from "../../ui/design"; // -- WP WEB -- (Glyph: WEB4, INTD)
 import { PageTools } from "../../ui/shell/Parts"; // -- WP WEB4 --
@@ -119,7 +119,7 @@ export function ResultsTab(props: MeasureTabProps) {
         </button>
       </PageTools>
       <div class="m-head">
-        <strong class="m-title">{view.name || "Measurement"}</strong>
+        <strong class="m-title">{view.name ? displayName(view.name) : "Measurement"}</strong>
         <span class="m-caption">
           {view.placement}
           {view.positions > 1 ? ` · ${view.positions} positions averaged (the band is their spread)` : ""} · {view.mic}

@@ -358,8 +358,9 @@ export function LiveTab(props: MeasureTabProps) {
             Fit This Range
           </button>
         </div>
+        {/* -- WP WEB7 -- (REVE D7) the pending change in the shared notice row, not a page-local copy */}
         {proposal ? (
-          <div class="m-pending" role="group" aria-label="Pending change">
+          <div class="notice-row notice-row-info m-question" role="group" aria-label="Pending change">
             {proposal.changes.length ? (
               <>
                 <strong>{proposal.label}</strong>

@@ -7,7 +7,7 @@
 // from its Worker.
 
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { expectPage, openDevices, openPage, rail } from "../nav";
+import { expectPage, openDevices, openPage, rail, openSetting } from "../nav";
 
 /**
  * Firefox's report of a core Worker it ended itself (a reload, a page left) while a core call was
@@ -86,7 +86,9 @@ async function setMode(page: Page, session: Locator, mode: "Simple" | "Advanced"
 /** Every page of the demo device, in the rail's order; the first of each section is its screenshot. */
 const PAGES = [
   "Main", "Overview", "EQ", "Crossover", "Delay & Gain", "Inputs", "Matrix", "Effects", "Measure", "Analyser", "Signal Generator",
-  "Stats for nerbs", "Interrupt Monitor", "Snapshots", "History", "Files", "System", "Events", "Connect", "Device", "Settings", "Control Surfaces",
+  "Stats for nerbs", "Interrupt Monitor", "Presets", "Snapshots", "History", "Files", "AutoEQ", // -- WP WEB7 --
+  "System", "Clock and Links", "Installation", "Events", "Signal Chain", // -- WP WEB7 --
+  "Connect", "Device", "Settings", "Control Surfaces",
 ];
 const SHOTS = new Set(["Main", "EQ", "Crossover", "Matrix", "Effects", "Measure", "Analyser", "Snapshots", "History", "System", "Device", "Settings"]);
 
@@ -128,7 +130,7 @@ test("WEBM5: two devices, the menus, the palette and the drawer at ~1000 px and 
     await shot(page, "palette");
     await page.keyboard.press("Escape");
     await openPage(session, "Settings");
-    await session.getByRole("navigation", { name: "Settings pages" }).getByRole("button", { name: "Appearance" }).click();
+    await openSetting(session, "Appearance"); // -- WP WEB7 -- its part, then its row
     await noSidewaysScroll(page);
     await shot(page, "appearance");
   }
@@ -176,7 +178,7 @@ test("WEBM5 (review RC13): at 375 px the shell's controls are 44 px tap targets,
   await page.keyboard.press("Escape");
   // Appearance's choices, and the device tabs at the rail's top
   await openPage(session, "Settings");
-  await session.getByRole("navigation", { name: "Settings pages" }).getByRole("button", { name: "Appearance" }).click();
+  await openSetting(session, "Appearance"); // -- WP WEB7 -- its part, then its row
   const card = session.getByRole("region", { name: "Appearance" });
   await tall(card.locator("label"), "Appearance's choices");
   await card.getByRole("radio", { name: "At the top of the rail" }).check();
@@ -199,7 +201,7 @@ test("WEBM5 (review RC6): Appearance's Inspector choice applies at once, and the
   await expect(toggle).toHaveAttribute("aria-expanded", "true");
   // Hidden in Settings › Appearance: the EQ page has it hidden at once, with no reload or tab switch
   await openPage(session, "Settings");
-  await session.getByRole("navigation", { name: "Settings pages" }).getByRole("button", { name: "Appearance" }).click();
+  await openSetting(session, "Appearance"); // -- WP WEB7 -- its part, then its row
   const card = session.getByRole("region", { name: "Appearance" });
   await card.getByRole("radio", { name: "Hidden" }).check();
   await openPage(session, "EQ");
@@ -209,7 +211,7 @@ test("WEBM5 (review RC6): Appearance's Inspector choice applies at once, and the
   await toggle.click();
   await expect(toggle).toHaveAttribute("aria-expanded", "true");
   await openPage(session, "Settings");
-  await session.getByRole("navigation", { name: "Settings pages" }).getByRole("button", { name: "Appearance" }).click();
+  await openSetting(session, "Appearance"); // -- WP WEB7 -- its part, then its row
   await expect(card.getByRole("radio", { name: "Beside the page" })).toBeChecked();
   // And kept: a new page load has the choice
   await card.getByRole("radio", { name: "Hidden" }).check();

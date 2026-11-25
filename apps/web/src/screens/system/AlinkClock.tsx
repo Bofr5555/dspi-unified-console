@@ -8,6 +8,7 @@
 // panel read only (docs/UI-MODES.md section 4).
 
 import { useState } from "preact/hooks";
+import { NoticeRow } from "../../ui/design"; // -- WP WEB7 --
 import type { Ask } from "../../ui/screens";
 import type { SystemFeed } from "./feed";
 import { useFeed } from "./SystemScreen";
@@ -80,8 +81,8 @@ export function AlinkClock(props: { feed: SystemFeed; ask: Ask }) {
 
   return (
     <section class="sys-clock" aria-label="Clock and audio links">
-      <h3>Clock and audio links</h3>
-      {admin ? null : <p class="sys-note">{writeNote(st.role, "model")}: this panel is read only.</p>}
+      {/* -- WP WEB7 -- the tab ("Clock and Links") names it; read only said as a notice row (Qt's DL3b) */}
+      {admin ? null : <NoticeRow>{writeNote(st.role, "model")}: this panel is read only.</NoticeRow>}
       {/* -- WP HWLK1F -- the model was kept; the hub warns about units without the audio link */}
       {st.warnings.length ? (
         <ul class="sys-warnings" role="status" aria-label="Installation warnings">

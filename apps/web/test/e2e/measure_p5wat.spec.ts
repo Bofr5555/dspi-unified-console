@@ -57,6 +57,27 @@ const chainOf = async (page: Page) => {
   return JSON.stringify(CHAIN.map((k) => st[k]));
 };
 
+// -- WP WEB7 -- the left speaker measured on the Measure tab (1 s sweeps), as Qt's flow: Propose from
+// the Device, the other speaker's outputs left out, the placement chosen, the run to its end.
+async function measureLeftOnMeasureTab(page: Page): Promise<void> {
+  const screen = page.locator("#one").getByRole("region", { name: "Measure" });
+  await partsOf(screen, "Measurement").getByRole("tab", { name: "Measure", exact: true }).click();
+  const setup = screen.getByRole("region", { name: "Measurement setup" });
+  await setup.getByRole("button", { name: "Propose from the Device" }).click();
+  const rows = setup.getByRole("list", { name: "Outputs to measure" }).getByRole("listitem");
+  await expect(rows.first()).toBeVisible();
+  for (const item of await rows.all()) {
+    const box = item.getByRole("checkbox");
+    if (!(await box.isChecked())) continue;
+    if ((await item.getByLabel(/^Speaker of/).inputValue()) !== "L") await box.uncheck();
+  }
+  await setup.getByLabel("Placement", { exact: true }).selectOption("listeningPosition");
+  await setup.getByLabel("Sweep length").fill("1");
+  await setup.getByRole("button", { name: "Measure", exact: true }).click();
+  const run = screen.getByRole("region", { name: "Measurement run" });
+  await expect(run.locator("[data-phase]")).toHaveAttribute("data-phase", "done", { timeout: 240_000 });
+}
+
 /** The left speaker's layout measured (1 s sweeps), then a proposal; the summed check when it asks for one. */
 async function measureAndPropose(page: Page, tune: (name: string) => Locator): Promise<void> {
   const layout = tune("Tune layout");
@@ -67,17 +88,15 @@ async function measureAndPropose(page: Page, tune: (name: string) => Locator): P
     const speaker = await item.getByLabel(/^Speaker of/).inputValue();
     if (speaker !== "L") await item.getByRole("checkbox").uncheck();
   }
-  const m = tune("Tune measurement");
-  await m.getByLabel("Tune sweep length").fill("1");
-  // -- WP P5FOLLOW -- no placement assumed: the person chooses first, the reason in words
-  await expect(m.getByRole("button", { name: "Measure this layout" })).toBeDisabled();
-  await expect(m.getByLabel("Tune placement levels")).toContainText("Choose where it is measured first");
-  await m.getByLabel("Tune placement", { exact: true }).selectOption("listeningPosition");
-  await expect(m.getByLabel("Tune placement levels")).toContainText("Speakers: the levels are those for speakers.");
-  await m.getByRole("button", { name: "Measure this layout" }).click();
-  await expect(m.getByLabel("Measurement to tune from")).toHaveAttribute("data-source", "yes", { timeout: 240_000 });
-  await expect(m.getByRole("region", { name: "Measurement run" }).locator("[data-phase]")).toHaveAttribute("data-phase", "done");
-  await tune("Tune options").getByRole("button", { name: "Propose a Tune" }).click();
+  // -- WP WEB7 -- as Qt: the auto-tune measures nothing itself; with no measurement it says where to take one
+  await expect(tune("Tune layout").getByLabel("Measurement to tune from")).toHaveAttribute("data-source", "none");
+  await expect(page.locator("#one").getByRole("status").filter({ hasText: "No measurement yet: measure on the Measure tab, or open one on Results." })).toBeVisible();
+  await expect(tune("Tune layout").getByRole("button", { name: "Propose a Tune" })).toBeDisabled();
+  await measureLeftOnMeasureTab(page);
+  await partsOf(page.locator("#one").getByRole("region", { name: "Measure" }), "Measurement").getByRole("tab", { name: "Auto-tune" }).click();
+  await expect(tune("Tune layout").getByLabel("Measurement to tune from")).toHaveAttribute("data-source", "yes");
+  await expect(tune("Tune layout").getByLabel("Measurement to tune from")).toContainText("From this session's measurement.");
+  await tune("Tune layout").getByRole("button", { name: "Propose a Tune" }).click();
   const p = tune("Tune proposal");
   await expect(p.getByRole("list", { name: "Changes" })).toBeVisible();
   await expect(p.getByRole("img", { name: "Tune curves" })).toHaveAttribute("data-series", /measured:L now\|predicted:L predicted\|target:L target/);
@@ -165,6 +184,12 @@ test("P5WAT: a tune reverted puts the settings back; a timing-unreliable measure
   const docs = screen.getByRole("region", { name: "Measurement documents" });
   const row = docs.getByRole("list", { name: "Measurements" }).getByRole("listitem").first();
   await expect(row).toHaveAttribute("data-where", "local");
+  // -- WP WEB7 -- (DESIGN-LANGUAGE §9) a row's actions show on hover only; the tools are in the page head
+  await page.mouse.move(0, 0);
+  await expect(row.locator(".m-rowactions").first()).toHaveCSS("opacity", "0");
+  await row.hover();
+  await expect(row.locator(".m-rowactions").first()).toHaveCSS("opacity", "1");
+  await expect(page.locator("#one").getByRole("toolbar", { name: "Documents tools" }).getByRole("button")).toHaveText(["Open…", "Import Calibration…", "Import Target…", "Reload"]);
   const dl = page.waitForEvent("download");
   await row.getByRole("button", { name: "Download" }).click();
   const text = readFileSync((await (await dl).path())!, "utf8");
@@ -175,8 +200,8 @@ test("P5WAT: a tune reverted puts the settings back; a timing-unreliable measure
   const copy = docs.getByRole("listitem", { name: "Unreliable copy" });
   await expect(copy).toBeVisible();
   await copy.getByRole("button", { name: "Tune from this" }).click();
-  await expect(tune("Tune measurement").getByLabel("Measurement to tune from")).toContainText("Unreliable copy");
-  await tune("Tune options").getByRole("button", { name: "Propose a Tune" }).click();
+  await expect(tune("Tune layout").getByLabel("Measurement to tune from")).toContainText("Unreliable copy");
+  await tune("Tune layout").getByRole("button", { name: "Propose a Tune" }).click();
   const p = tune("Tune proposal");
   await expect(p.getByLabel("Proposal timing")).toHaveAttribute("data-reliable", "false");
   const withdrawn = p.getByRole("list", { name: "Withdrawn" });
@@ -253,7 +278,7 @@ test("P5WAT: through the hub as Control: a document filed and renamed on the hub
     // Control's delete too: P5HUB's tests). After a refresh it is still on the hub.
     await expect(onHub.getByRole("button", { name: "Delete" })).toHaveCount(0);
     await expect(onHub.getByLabel("Delete")).toContainText("Only the hub's Admin deletes it.");
-    await docs.getByRole("button", { name: "Refresh" }).click();
+    await session.getByRole("toolbar", { name: "Documents tools" }).getByRole("button", { name: "Reload" }).click(); // -- WP WEB7 -- the page tools, in the page head
     await expect(onHub).toHaveCount(1);
     await expect(onHub).toContainText("Stand microphone");
     expect(errors).toEqual([]);

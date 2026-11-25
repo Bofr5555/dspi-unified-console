@@ -122,13 +122,16 @@ test("WEBM3: Library › History lists this connection's changes, newest first, 
   expect(errors).toEqual([]);
 });
 
+// -- WP WEB7 -- by Qt's parts: the part's tab, then its pages in the list beside the page
 test("WEBM3: Settings' pages are listed by group beside the page", async ({ page }) => {
   const errors = errorsOf(page);
   const { session } = await openOne(page);
   await openPage(session, "Settings");
   const nav = session.getByRole("navigation", { name: "Settings pages" });
-  for (const g of ["Device", "Display", "Application"]) await expect(nav.getByRole("group", { name: g })).toBeVisible();
-  await nav.getByRole("group", { name: "Display" }).getByRole("button", { name: "Graphing" }).click();
+  const parts = partsOf(session, "Settings");
+  for (const g of ["Device", "Display", "Application"]) await expect(parts.getByRole("tab", { name: g, exact: true })).toBeVisible();
+  await parts.getByRole("tab", { name: "Display", exact: true }).click();
+  await nav.getByRole("button", { name: "Graphing" }).click();
   await expect(nav.getByRole("button", { name: "Graphing" })).toHaveAttribute("aria-current", "page");
   await noSidewaysScroll(page);
   if (test.info().project.name !== "narrow") {

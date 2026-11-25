@@ -10,6 +10,8 @@ import { outputLabel } from "../../main/model";
 import { noticeRow } from "../../../ui/texts";
 import { CLASS_WORDS, ROLE_WORDS, TWEETER_RULE, bannerOf, baseOf, evidenceWords, pillOf, stampWords, withRow, withoutRow, type SpeakerLayoutOutputRecord, type SpeakerLayoutRecord } from "./model";
 import { useSpeakerLayout } from "./use-layout";
+import { Group } from "../group"; // -- WP WEB7 --
+import { Icon } from "../icons"; // -- WP WEB7 --
 
 const ROLE_IDS = Object.keys(ROLE_WORDS) as SpeakerLayoutOutputRecord["role"][];
 
@@ -61,9 +63,10 @@ export function SpeakersPage(props: { session: Session }) {
   const hidden = all.length - rows.length;
 
   return (
-    <section class="card settings-card speakers-page" aria-label="Speakers">
-      <h3>Speakers</h3>
-      <p>Which output drives what? The measurement and its safety checks take each output's role from here.</p>
+    // -- WP WEB7 -- Qt's SpeakersPage: one group, "Speaker layout", its icon and title above the panel
+    <section class="speakers-page" aria-label="Speakers">
+      <Group title="Speaker layout" icon={<Icon name="volume-2" />}>
+      <p class="st-note">Which output drives what? The measurement and its safety checks take each output's role from here.</p>
       {banner ? (
         <div class="banner" role="status" aria-label="Speaker layout" data-kind={banner.kind} style={{ flexWrap: "wrap", margin: 0 }}>
           <span style={{ flex: "1 1 14em", minWidth: 0 }}>{banner.here}</span>
@@ -176,6 +179,7 @@ export function SpeakersPage(props: { session: Session }) {
           {status.text}
         </p>
       ) : null}
+      </Group>
     </section>
   );
 }

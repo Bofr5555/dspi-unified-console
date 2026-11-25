@@ -102,8 +102,7 @@ async function advancedTab(session: Locator, page: Page): Promise<Locator> {
   await dialog.getByRole("radio", { name: "Advanced" }).check();
   await dialog.getByRole("button", { name: "Use" }).click();
   await expect(session.getByRole("button", { name: "Mode: Advanced" })).toBeVisible();
-  await openPage(session, "System");
-  await session.getByRole("tablist", { name: "System" }).getByRole("tab", { name: "Installation" }).click();
+  await openPage(session, "Installation"); // -- WP WEB7 -- Qt's System tab
   const inst = session.getByRole("region", { name: "Installation", exact: true });
   await expect(inst.getByRole("heading", { name: "Units" })).toBeVisible();
   return inst;
@@ -217,7 +216,7 @@ test.describe("FEATUI: sources, slots, programme sources and scenes; a zone's vo
 
     // The scene recalled says the zone's source; a zone's volume.
     const session2 = page.getByRole("article").last();
-    await session2.getByRole("tablist", { name: "System" }).getByRole("tab", { name: "Status" }).click();
+    await openPage(session2, "System"); // -- WP WEB7 -- Qt\'s Units tab
     const scenes = session2.getByLabel("Scenes", { exact: true });
     await scenes.getByRole("button", { name: "Recall DJ" }).click();
     await expect(session2.getByLabel("Scene result")).toContainText("Zone Inside plays Music");

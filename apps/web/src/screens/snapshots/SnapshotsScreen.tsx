@@ -15,7 +15,14 @@ import { download, fileNameFor, type HeldDoc, type SnapshotDesk } from "./model"
 import { DiffTable } from "./DiffTable";
 import { abKeyHint } from "../../ui/keys";
 import { HubSnapshots } from "./HubSnapshots"; // -- WP P2WB2 --
-import { EmptyState } from "../../ui/design"; // -- WP WEB --
+import { EmptyState, FormRow, Glyph, Segments, Switch } from "../../ui/design"; // -- WP WEB -- (-- WP WEB7 -- FormRow, Glyph, Segments, Switch)
+// -- WP WEB7 -- Qt's Modern page: Import… and Capture… in the page's tools, the rows as ListRows with
+// Recall on hover and the rest in the row's menu, Recall with rollback as a switch
+import { PageTools } from "../../ui/shell/Parts";
+import { ActionMenuButton } from "../../ui/menus/ActionMenu";
+import { ownRow, type MenuItem } from "../../ui/menus/actions";
+import { timeWords } from "../history/model";
+import "./rows.css";
 import "./snapshots.css"; // -- WP WEB4 --
 
 export function SnapshotsScreen(props: ScreenProps) {
@@ -24,26 +31,51 @@ export function SnapshotsScreen(props: ScreenProps) {
   return <SnapshotsView desk={desk} ask={props.ask} simple={props.mode === "simple"} />;
 }
 
+/** -- WP INTD -- Capture's popover (Qt's): Name, Note, Capture. */
+function CaptureForm(props: { busy: boolean; onCapture: (name: string, note: string) => void; close: () => void }) {
+  const [name, setName] = useState("");
+  const [note, setNote] = useState("");
+  return (
+    <form
+      class="snap-capture"
+      onSubmit={(e) => {
+        e.preventDefault();
+        props.close();
+        props.onCapture(name, note);
+      }}
+    >
+      <label>
+        Name
+        <input name="snapshot-name" value={name} placeholder="Snapshot" onInput={(e) => setName((e.target as HTMLInputElement).value)} />
+      </label>
+      <label>
+        Note
+        <input name="snapshot-note" value={note} placeholder="Note (optional)" onInput={(e) => setNote((e.target as HTMLInputElement).value)} />
+      </label>
+      {/* -- WP WEB7 -- (REVE) the opener is the accent; the popover's own button is not a second one */}
+      <button type="submit" disabled={props.busy}>
+        Capture
+      </button>
+    </form>
+  );
+}
+
 function SnapshotsView(props: { desk: SnapshotDesk; ask: ScreenProps["ask"]; simple: boolean }) {
   const { desk, ask, simple } = props;
   const st = useDesk(desk);
   const session = desk.session;
   const ro = desk.readOnly;
-  const [name, setName] = useState("");
-  const [note, setNote] = useState("");
   const file = useRef<HTMLInputElement>(null);
   const busy = !!st.busy;
   const waiting = st.guard?.phase === "waiting";
   const timeoutId = useId(); // -- WP WEB4 --
+  const [selected, setSelected] = useState<number | null>(null);
 
-  const capture = async () => {
+  const capture = async (name: string, note: string) => {
     const preset = session.state.snapshot?.state.presetNames[session.state.snapshot.state.activePresetSlot] ?? "";
     const label = name.trim() || preset.trim() || "Snapshot";
     const doc = await desk.capture(label, note.trim());
-    if (!doc) return;
-    download(doc.text, fileNameFor(doc.name));
-    setName("");
-    setNote("");
+    if (doc) download(doc.text, fileNameFor(doc.name));
   };
 
   const open = async (input: HTMLInputElement) => {
@@ -52,7 +84,7 @@ function SnapshotsView(props: { desk: SnapshotDesk; ask: ScreenProps["ask"]; sim
     for (const f of files) await desk.addFile(await f.text(), f.name);
   };
 
-  const recall = async (d: HeldDoc, guarded: boolean) => {
+  const recall = async (d: HeldDoc) => {
     if (session.dirty) {
       const a = await ask({
         title: "Recall Snapshot",
@@ -64,134 +96,160 @@ function SnapshotsView(props: { desk: SnapshotDesk; ask: ScreenProps["ask"]; sim
       });
       if (a !== "recall") return;
     }
-    await desk.recall(d.id, guarded);
+    // -- WP WEB7 -- the switch (Qt's) says whether a recall is guarded; over DSPi Link it always is
+    await desk.recall(d.id, st.rollback && !simple);
   };
 
-  // -- WP WEB4 -- DL3a's Snapshots: the A/B compare first, then the snapshots as a section (Capture the one
-  // primary, Open Snapshot… beside it), striped rows with their actions, the empty state; the recall's
-  // rollback time as a form row; the hub's snapshots last. Sections, not cards, in the 760 px column.
+  const remove = async (d: HeldDoc) => {
+    const a = await ask({
+      title: "Delete Snapshot",
+      body: <p>Delete the snapshot “{d.name}”? It cannot be brought back.</p>,
+      buttons: [
+        { label: "Delete", value: "delete", danger: true },
+        { label: "Cancel", value: "cancel" },
+      ],
+    });
+    if (a === "delete") desk.remove(d.id);
+  };
+
+  /** The row's menu: what Qt's sheet offers for the selected snapshot (Simple: compare only). */
+  const rowMenu = (d: HeldDoc): MenuItem[] => {
+    const items: MenuItem[] = [
+      ownRow("snap.compare", "Compare with Current", () => void desk.abStart(d.id, null), {
+        disabled: !!ro || busy || waiting || st.ab.active,
+        reason: ro || (st.ab.active ? "A compare runs" : ""),
+      }),
+    ];
+    if (simple) return items;
+    return [
+      ...items,
+      ownRow("snap.export", "Export…", () => download(d.text, d.fileName.endsWith(".dspipreset") ? d.fileName : fileNameFor(d.name))),
+      "separator",
+      ownRow("snap.delete", "Delete…", () => void remove(d), { danger: true }),
+    ];
+  };
+
+  const capturePopover = (primary: boolean) => (
+    <Popover
+      label="Capture Snapshot"
+      button={
+        <>
+          <PlusIcon />
+          Capture…
+        </>
+      }
+      buttonLabel="Capture…"
+      buttonClass={`tool-icon-button${primary ? " primary" : ""}`}
+      disabled={busy}
+      align="right"
+      title="Keep the device's settings as they are now"
+    >
+      {(close) => <CaptureForm busy={busy} close={close} onCapture={(n, no) => void capture(n, no)} />}
+    </Popover>
+  );
+
+  // -- WP WEB4 -- DL3a's Snapshots; -- WP WEB7 -- as Qt Modern's page: the A/B compare first (its row
+  // always there), the snapshots as ListRows (an empty state with Capture… when there are none), the
+  // recall's rollback switch and time, the hub's snapshots last.
   return (
     <section class="snapshots" aria-label="Snapshots">
+      {simple ? null : (
+        <PageTools label="Snapshots tools">
+          <button type="button" class="tool-icon-button" disabled={busy} title="Keep a configuration file as a snapshot of this device" onClick={() => file.current?.click()}>
+            <Glyph name="file-up" />
+            Import…
+          </button>
+          <input
+            ref={file}
+            type="file"
+            hidden
+            multiple
+            accept=".dspipreset,.json,application/json"
+            aria-label="Snapshot file"
+            onChange={(e) => void open(e.target as HTMLInputElement)}
+          />
+          {st.docs.length ? capturePopover(true) : null}
+        </PageTools>
+      )}
       <OutcomeLine desk={desk} outcome={st.outcome} />
       <Compare desk={desk} st={st} />
       <div class="snap-sec" role="group" aria-label="Snapshots list">
         <div class="ds-section-head">
           <h4 class="section-label">Snapshots</h4>
-          {simple ? null : (
-            <div class="ds-section-tools">
-              <button type="button" disabled={busy} onClick={() => file.current?.click()}>
-                Open Snapshot…
-              </button>
-              <input
-                ref={file}
-                type="file"
-                hidden
-                multiple
-                accept=".dspipreset,.json,application/json"
-                aria-label="Snapshot file"
-                onChange={(e) => void open(e.target as HTMLInputElement)}
-              />
-              {/* -- WP INTD -- Capture as Qt's popover: Capture… opens Name, Note and Capture under it */}
-              <Popover label="Capture Snapshot" button="Capture…" buttonClass="primary" disabled={busy} align="right" title="Keep the device's settings as they are now">
-                {(close) => (
-                  <form
-                    class="snap-capture"
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      close();
-                      void capture();
-                    }}
-                  >
-                    <label>
-                      Name
-                      <input name="snapshot-name" value={name} placeholder="Snapshot" onInput={(e) => setName((e.target as HTMLInputElement).value)} />
-                    </label>
-                    <label>
-                      Note
-                      <input name="snapshot-note" value={note} onInput={(e) => setNote((e.target as HTMLInputElement).value)} />
-                    </label>
-                    <button type="submit" class="primary" disabled={busy}>
-                      Capture
-                    </button>
-                  </form>
-                )}
-              </Popover>
-            </div>
-          )}
         </div>
-        {simple ? null : <p class="snap-caption">A snapshot is the whole device: every setting, saved as a file. Capture downloads one; Open Snapshot… brings one back. The list holds this visit's snapshots.</p>}
         {st.guardDefault ? <p class="snap-caption">Every recall here can be taken back: it is kept only when you press Keep within {st.timeoutS} s.</p> : null}
-        {/* -- WP WEB -- DL3a's empty state */}
+        {/* -- WP WEB -- DL3a's empty state (-- WP WEB7 -- with Capture… as Qt's, the page's one accent) */}
         {st.docs.length === 0 ? (
           <EmptyState
-            icon="camera"
+            icon="save"
             title="No snapshots yet"
             text={simple ? "Snapshots are captured in Advanced mode." : "A snapshot keeps every setting of the device as it is now, to recall or compare later."}
-          />
+          >
+            {simple ? null : capturePopover(true)}
+          </EmptyState>
         ) : null}
-        <ul class="snap-list" aria-label="Held snapshots" hidden={st.docs.length === 0}>
+        <ul class="lib-rows snap-rows" aria-label="Held snapshots" hidden={st.docs.length === 0}>
           {st.docs.map((d) => (
-            <li key={d.id} class="snap-row" aria-label={d.name}>
-              <div class="snap-what">
-                <strong>{d.name}</strong>
-                {d.kind !== "snapshot" ? <span class="badge">{d.kind}</span> : null}
-                <span class="snap-meta">
-                  {d.savedUtc ? when(d.savedUtc) : d.fileName}
-                  {d.note ? ` · ${d.note}` : ""}
+            <li
+              key={d.id}
+              class={`lib-row${selected === d.id ? " selected" : ""}`}
+              aria-label={d.name}
+              onClick={(e) => (e.target as HTMLElement).closest("button, .menu") || setSelected(d.id)}
+              onDblClick={(e) => (e.target as HTMLElement).closest("button, .menu") || ro || busy || waiting || void recall(d)}
+            >
+              <span class="lib-text">
+                <span class="lib-title">
+                  {d.name}
+                  {d.kind !== "snapshot" ? <span class="badge">{d.kind}</span> : null}
                 </span>
-              </div>
-              <div class="snap-actions">
-                <button type="button" disabled={!!ro || busy || waiting} onClick={() => void recall(d, false)}>
+                {d.note ? <span class="lib-sub">{d.note}</span> : null}
+              </span>
+              <span class="lib-value">{d.savedUtc ? when(d.savedUtc) : d.fileName}</span>
+              <span class="lib-actions">
+                <button type="button" disabled={!!ro || busy || waiting} title="Put the device back to this snapshot" onClick={() => void recall(d)}>
                   Recall
                 </button>
-                {st.guardDefault || simple ? null : (
-                  <button type="button" disabled={!!ro || busy || waiting} onClick={() => void recall(d, true)}>
-                    Recall with Rollback
-                  </button>
-                )}
-                <button type="button" disabled={!!ro || busy || waiting || st.ab.active} onClick={() => void desk.abStart(d.id, null)}>
-                  Compare
-                </button>
-                {simple ? null : (
-                  <>
-                    <button type="button" onClick={() => download(d.text, d.fileName.endsWith(".dspipreset") ? d.fileName : fileNameFor(d.name))}>
-                      Download
-                    </button>
-                    <button type="button" class="danger-text" aria-label={`Remove ${d.name} from the list`} onClick={() => desk.remove(d.id)}>
-                      Remove
-                    </button>
-                  </>
-                )}
-              </div>
+                <ActionMenuButton label={`More, ${d.name}`} items={() => rowMenu(d)}>
+                  <span class="visually-hidden">More, {d.name}</span>
+                </ActionMenuButton>
+              </span>
             </li>
           ))}
         </ul>
       </div>
       {/* -- WP P1DCFIX -- the rollback time in Advanced and Installer, over DSPi Link too (5..300 s, 30 by default) */}
+      {/* -- WP WEB7 -- with Qt's switch "Recall with rollback" over it, and Qt's stepper */}
       {simple ? null : (
         <div class="snap-sec" role="group" aria-label="Recall">
           <h4 class="section-label">Recall</h4>
-          <div class="form-row">
-            <div class="form-row-text">
-              <label class="form-row-title" for={timeoutId}>
-                Rollback time (s)
-              </label>
-              <span class="form-row-caption">How long Keep or Revert waits after a recall with rollback</span>
-            </div>
-            <div class="form-row-control">
+          <FormRow title="Recall with rollback" caption={st.guardDefault ? "Always over DSPi Link: Keep or Revert after each recall" : "Keep or Revert after each recall"}>
+            <Switch label="Recall with rollback" on={st.guardDefault || st.rollback} disabled={st.guardDefault} toggle={() => desk.setRollback(!st.rollback)} />
+          </FormRow>
+          <FormRow title={<label for={timeoutId}>Rollback after</label>}>
+            <span class="snap-stepper">
+              <button type="button" aria-label="Rollback after: less" disabled={st.timeoutS <= 5} onClick={() => desk.setTimeoutS(st.timeoutS - 5)}>
+                −
+              </button>
               <input
                 id={timeoutId}
                 class="snap-seconds"
-                type="number"
-                min={5}
-                max={300}
-                step={5}
-                value={st.timeoutS}
-                onChange={(e) => desk.setTimeoutS(Number((e.target as HTMLInputElement).value))}
+                type="text"
+                inputMode="numeric"
+                aria-label="Rollback after, seconds"
+                value={String(st.timeoutS)}
+                onChange={(e) => {
+                  const el = e.target as HTMLInputElement;
+                  const v = Number(el.value.trim());
+                  if (Number.isFinite(v) && el.value.trim() !== "") desk.setTimeoutS(v);
+                  el.value = String(desk.state.timeoutS);
+                }}
               />
               <span class="snap-unit">s</span>
-            </div>
-          </div>
+              <button type="button" aria-label="Rollback after: more" disabled={st.timeoutS >= 300} onClick={() => desk.setTimeoutS(st.timeoutS + 5)}>
+                +
+              </button>
+            </span>
+          </FormRow>
         </div>
       )}
       {/* -- WP P2WB2 -- the hub's shared snapshots, when the hub keeps them */}
@@ -200,47 +258,72 @@ function SnapshotsView(props: { desk: SnapshotDesk; ask: ScreenProps["ask"]; sim
   );
 }
 
-/** A/B: start a compare of two held snapshots (or the device and one), its differences. */
+function PlusIcon() {
+  return (
+    <svg class="shell-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M5 12h14M12 5v14" />
+    </svg>
+  );
+}
+
+/**
+ * A/B: Qt's row always there (A: Current settings or a snapshot, B: a snapshot or "No snapshot yet",
+ * Start); while a compare runs, which side is on, Toggle A/B, Keep A and Keep B, the differences.
+ */
 function Compare(props: { desk: SnapshotDesk; st: ReturnType<typeof useDesk> }) {
   const { desk, st } = props;
   const [a, setA] = useState("now");
   const [b, setB] = useState("");
   const ro = !!desk.readOnly;
   const waiting = st.guard?.phase === "waiting";
-  const bId = b ? Number(b) : (st.docs[0]?.id ?? 0);
+  const none = st.docs.length === 0;
+  const bId = b && st.docs.some((d) => String(d.id) === b) ? Number(b) : (st.docs[0]?.id ?? 0);
+  const same = a !== "now" && Number(a) === bId;
+  const off = st.busy !== "" || waiting || ro;
   return (
     <div class="snap-sec" role="region" aria-label="A/B compare">
-      <h4 class="section-label">A/B compare</h4>
+      <h4 class="section-label">A/B Compare</h4>
       {st.ab.active ? (
         <>
-          <p class="snap-caption">
-            On the device now: <strong>{st.ab.side === "b" ? `B (${st.ab.bName})` : `A (${st.ab.aName})`}</strong>. Switch with the
-            A/B button above the screens or {abKeyHint().text}; edits on a side are kept until you switch back.
-          </p>
-          <div class="snap-actions">
-            <button type="button" disabled={st.busy !== "" || waiting || ro} onClick={() => void desk.abToggle()}>
-              Switch to {st.ab.side === "b" ? "A" : "B"}
+          <div class="snap-ab-run">
+            <Segments
+              label="On the device now"
+              options={[
+                { value: "a", text: sideName("A", st.ab.aName) },
+                { value: "b", text: sideName("B", st.ab.bName) },
+              ]}
+              value={st.ab.side === "b" ? "b" : "a"}
+              choose={(v) => v !== st.ab.side && void desk.abToggle()}
+              disabled={off}
+            />
+            <button type="button" disabled={off} aria-keyshortcuts={abKeyHint().aria} title={waiting ? "Finish the safe apply first: Keep or Revert." : `Recall the other side (${abKeyHint().text})`} onClick={() => void desk.abToggle()}>
+              Toggle A/B
+            </button>
+            <button type="button" disabled={off} onClick={() => void desk.abKeep("a")}>
+              Keep A
+            </button>
+            <button type="button" disabled={off} onClick={() => void desk.abKeep("b")}>
+              Keep B
             </button>
             <button type="button" disabled={st.busy !== ""} onClick={() => void desk.abDiff()}>
               Show Differences
             </button>
           </div>
+          {waiting ? <p class="snap-caption">Finish the safe apply first: Keep or Revert.</p> : null}
           {st.abDiff ? <DiffTable diff={st.abDiff} label={`From A to B`} /> : null}
         </>
-      ) : st.docs.length === 0 ? (
-        <p class="snap-caption">Capture or open a snapshot to compare it with the device. Recall two states in turn and hear the difference; Keep ends the compare on one of them.</p>
       ) : (
         <form
           class="snap-compare"
           onSubmit={(e) => {
             e.preventDefault();
-            void desk.abStart(bId, a === "now" ? null : Number(a));
+            if (!none && !same) void desk.abStart(bId, a === "now" ? null : Number(a));
           }}
         >
           <label>
-            A
-            <select name="ab-a" value={a} onChange={(e) => setA((e.target as HTMLSelectElement).value)}>
-              <option value="now">The device now</option>
+            <span class="snap-side">A</span>
+            <select name="ab-a" aria-label="A side" value={a} onChange={(e) => setA((e.target as HTMLSelectElement).value)}>
+              <option value="now">Current settings</option>
               {st.docs.map((d) => (
                 <option key={d.id} value={String(d.id)}>
                   {d.name}
@@ -249,8 +332,9 @@ function Compare(props: { desk: SnapshotDesk; st: ReturnType<typeof useDesk> }) 
             </select>
           </label>
           <label>
-            B
-            <select name="ab-b" value={String(bId)} onChange={(e) => setB((e.target as HTMLSelectElement).value)}>
+            <span class="snap-side">B</span>
+            <select name="ab-b" aria-label="B side" value={none ? "" : String(bId)} disabled={none} onChange={(e) => setB((e.target as HTMLSelectElement).value)}>
+              {none ? <option value="">No snapshot yet</option> : null}
               {st.docs.map((d) => (
                 <option key={d.id} value={String(d.id)}>
                   {d.name}
@@ -258,8 +342,8 @@ function Compare(props: { desk: SnapshotDesk; st: ReturnType<typeof useDesk> }) 
               ))}
             </select>
           </label>
-          <button type="submit" disabled={ro || st.busy !== "" || waiting}>
-            Start Compare
+          <button type="submit" disabled={ro || st.busy !== "" || waiting || none || same}>
+            Start
           </button>
           <p class="snap-caption">Recall two states in turn and hear the difference; Keep ends the compare on one of them.</p>
         </form>
@@ -268,7 +352,13 @@ function Compare(props: { desk: SnapshotDesk; st: ReturnType<typeof useDesk> }) 
   );
 }
 
+/** -- WP WEB7 -- a compare's side as Qt names it: "B: Evening", or just "A" when that is its name. */
+function sideName(side: string, name: string): string {
+  return name && name !== side ? `${side}: ${name}` : side;
+}
+
+/** -- WP WEB7 -- when a snapshot was saved: the time today, the date and time before (Qt's value column). */
 function when(utc: string): string {
   const t = Date.parse(utc);
-  return Number.isNaN(t) ? utc : new Date(t).toLocaleString();
+  return Number.isNaN(t) ? utc : timeWords(t, Date.now());
 }
