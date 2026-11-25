@@ -60,7 +60,6 @@
 .dspi-web .m-note .m-line-icon { color: var(--accent-text); }
 .dspi-web .m-verify { display: flex; flex-direction: column; gap: 4px; }
 .dspi-web .m-question { flex-direction: column; align-items: stretch; padding: 10px 12px; }
-.dspi-web .m-pending { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-left: 3px solid var(--accent-fill); border-radius: var(--radius-control); background: color-mix(in srgb, var(--accent-fill) 10%, var(--panel)); }
 
 /* The run's progress: a 4 px track in the control tone, the done part in the accent */
 .dspi-web .m-progress { height: 4px; border-radius: 2px; background: var(--control-pressed); overflow: hidden; }
@@ -93,3 +92,37 @@
   .dspi-web .m-num { width: 56px; }
   .dspi-web .m-choices select { max-width: 100%; }
 }
+
+/* -- WP WEB7 -- Qt's MeasureSetupTab: combos at Qt's widths, the output rows as Qt's columns
+   (label 200, Way 150, Speaker 60, Group stepper 90), the AppSpinBox stepper on the control tone */
+.dspi-web .m-combo { width: 240px; max-width: 100%; }
+.dspi-web .m-combo-wide { width: 300px; }
+.dspi-web .m-combo-coupler { width: 260px; }
+.dspi-web .m-outrows > li { flex-wrap: nowrap; gap: 8px; padding: 2px 8px; min-height: 32px; }
+.dspi-web .m-outrows .m-outname { width: 200px; flex: none; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dspi-web .m-outrows .m-way { width: 150px; flex: none; }
+.dspi-web .m-outrows .m-speaker { width: 60px; flex: none; }
+.dspi-web .m-outrows > li.off .m-outname { color: var(--muted); }
+.dspi-web .m-stepper { display: inline-flex; align-items: center; height: 24px; width: 90px; flex: none; border-radius: var(--radius-control, 6px); background: var(--control); overflow: hidden; }
+.dspi-web .m-stepper-wide { width: 120px; }
+.dspi-web .m-stepper > input { flex: 1 1 auto; min-width: 0; width: 100%; height: 24px; padding: 0 2px; border: 0; background: transparent; box-shadow: none; font: 12px var(--mono); text-align: center; color: var(--text); }
+.dspi-web .m-stepper > input:focus-visible { outline: 2px solid var(--focus, var(--accent)); outline-offset: -2px; }
+.dspi-web .m-stepper .m-step { flex: none; width: 24px; height: 24px; min-height: 0; padding: 0; border: 0; border-radius: 0; background: transparent; color: var(--text); font-size: 14px; line-height: 1; }
+.dspi-web .m-stepper .m-step:hover:not(:disabled) { background: var(--control-hover); }
+.dspi-web .m-stepper .m-step:disabled { color: var(--muted); opacity: 0.5; }
+.dspi-web .m-step-unit { flex: none; padding-right: 4px; font: 11px var(--mono); color: var(--muted); }
+.dspi-web .m-stepper.disabled { opacity: 0.6; }
+@media (max-width: 520px) {
+  .dspi-web .m-outrows > li { flex-wrap: wrap; }
+  .dspi-web .m-outrows .m-outname { width: 100%; }
+  .dspi-web .m-combo, .dspi-web .m-combo-wide, .dspi-web .m-combo-coupler { width: 100%; }
+}
+
+/* -- WP WEB7 -- Documents (§9): a row's actions show on hover and while it has the focus (keyboard),
+   always where nothing hovers (touch); opacity, so they keep their place and stay reachable */
+.dspi-web .m-docs > li .m-rowactions { opacity: 0; transition: opacity 0.12s; }
+.dspi-web .m-docs > li:hover .m-rowactions, .dspi-web .m-docs > li:focus-within .m-rowactions { opacity: 1; }
+@media (hover: none) {
+  .dspi-web .m-docs > li .m-rowactions { opacity: 1; }
+}
+.dspi-web .m-feed { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

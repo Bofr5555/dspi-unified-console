@@ -384,7 +384,7 @@ test("ATWEB: the placement first; then each unit's own core judges it right befo
   assert.deepEqual(rig.desk.units.map((u) => [u.serial, u.online, u.own]), [["A", true, true], ["B", true, false], ["Z", false, false]]);
   rig.desk.setDraft(withUnit(withUnit(rig.desk.draft, "A", true), "B", true));
   await until(() => rig.desk.units[1]!.outputs.length === 2);
-  assert.deepEqual(rig.desk.units[1]!.outputs.map((o) => o.name), ["OUT1 Out 1", "OUT2 Out 2"]);
+  assert.deepEqual(rig.desk.units[1]!.outputs.map((o) => o.name), ["Out 1", "Out 2"]);
   // No placement chosen: nothing is sent, nothing plays.
   assert.equal(await rig.desk.start(), false);
   assert.match(rig.desk.error, /Choose where the microphone is/);
