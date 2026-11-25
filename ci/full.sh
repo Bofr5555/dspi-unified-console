@@ -51,7 +51,7 @@ lanes=(
   "qt|qt|qt qt-ts terminal qt-offscreen"
   "cross|x|windows-msvc android wasm wasm-core web"
   "rust|-|fetch fmt clippy test windows-gnu drift kotlin swift"
-  "misc|misc|ios-check licences deny android-contract firmware-digests conformance-ts mcp-conformance"
+  "misc|misc|ios-check licences deny android-contract firmware-digests tools conformance-ts mcp-conformance"
   "qtwin|qtwin|qt-windows"
 )
 

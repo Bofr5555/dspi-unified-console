@@ -41,6 +41,15 @@ with its caches under `~/.cache/dspi-build`. `ci/check.sh` runs named checks
 through it. The images are listed in `ci/container/images.conf`, and
 `ci/container/build-images.sh` builds any that are missing.
 
+Each worktree has its own caches: `~/.cache/dspi-build/target/<key>` (and its CI lanes'
+`<key>-cross`, `-qt`, …), `~/.cache/dspi-build/work/<key>`, where `<key>` is the branch with `/` as
+`-` (the short commit when detached), and the Android build's podman volume
+`dspi-android-target-<hash of the worktree's apps/android path>`. Before or after removing a
+worktree, `tools/prune-worktree.sh <worktree>` lists them and `--yes` removes them (`--work` the
+work directories too; `--key KEY` for a worktree that is gone already);
+`tools/prune-worktree.sh --orphans [--yes]` finds the Android volumes no `git worktree list` entry
+has. It is a dry run without `--yes`.
+
 ```
 ci/check.sh                               # the gate: fmt, clippy, tests, Windows GNU, wasm-core, Android contract, licences, deny, firmware digests
 ci/check.sh --all                         # every container step, the web console included
@@ -63,7 +72,7 @@ Per client:
 | Swift, macOS `.dmg` | not in a container: `ci/macvm.sh swift-dmg` builds the release `.dmg` and starts it on the demo device | `apps/apple/package-macos.sh`, then `apps/apple/test-dmg.sh` |
 | Bindings | `--step kotlin`, `--step swift`, `--step drift` | `ci/compile-bindings.sh` |
 
-Other checks: `--step test`, `proptest`, `deny`, `licences`, `firmware-digests`, `wasm`, `wasm-core`,
+Other checks: `--step test`, `proptest`, `deny`, `licences`, `firmware-digests`, `tools`, `wasm`, `wasm-core`,
 `ios-check`, `conformance-ts` (upstream's TypeScript Link client against the hub), and the opt-in
 `esp-rig`. On Linux the workspace needs ALSA development files for MIDI; the
 Linux Qt app needs the udev rule in `apps/desktop/packaging/linux/` for USB access.

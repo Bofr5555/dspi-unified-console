@@ -72,6 +72,10 @@
 #                                     firmware/manifest.json current
 #                                     (tools/firmware_manifest.py --check, with its
 #                                     own tests). python3 stdlib on the host
+#       tools                         -- WP INTE -- tools/prune-worktree.sh against a
+#                                     scratch repository and a fake podman
+#                                     (tools/test-prune-worktree.sh; git and bash
+#                                     on the host)
 #       ios-check                     dspi-ffi without `usb`: nusb is out of the iOS
 #                                     graph, clippy and tests pass with the feature
 #                                     off. Fails if the image has no iOS std.
@@ -153,7 +157,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --crate) crates+=("$2"); shift 2 ;;
     --step) steps+=("$2"); shift 2 ;;
-    --all) steps=(fetch fmt clippy test windows-gnu android-contract licences deny firmware-digests windows-msvc android android-tests android-aab wasm wasm-core qt qt-offscreen qt-windows terminal proptest kotlin swift ios-check drift conformance-ts mcp-conformance web); shift ;;
+    --all) steps=(fetch fmt clippy test windows-gnu android-contract licences deny firmware-digests tools windows-msvc android android-tests android-aab wasm wasm-core qt qt-offscreen qt-windows terminal proptest kotlin swift ios-check drift conformance-ts mcp-conformance web); shift ;;
     --all-clients) exec ci/matrix.sh ;;
     -h|--help) sed -n "2,/^set -euo/p" "$0" | sed '$d'; exit 0 ;;
     *) echo "unknown argument $1" >&2; exit 2 ;;
@@ -378,6 +382,9 @@ for s in "${steps[@]}"; do
         elif ls -d "$CARGO_HOME"/advisory-dbs/*/ >/dev/null 2>&1; then echo "deny: no network, using the cached advisory database" >&2
         else echo "deny: no advisory database: run once with network" >&2; exit 1; fi
         cargo deny --workspace --all-features --frozen check advisories' ;;
+    tools)
+      # -- WP INTE --
+      bash tools/test-prune-worktree.sh ;;
     firmware-digests)
       # -- WP SECFWV --
       python3 tools/test_firmware_manifest.py
