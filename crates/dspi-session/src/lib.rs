@@ -34,6 +34,8 @@ pub mod notify;
 pub mod output_label;
 pub mod pins;
 pub mod preset_file;
+// -- WP FIN015 --
+pub mod preset_copy;
 pub mod probe;
 pub mod readout;
 // -- WP CG12 --

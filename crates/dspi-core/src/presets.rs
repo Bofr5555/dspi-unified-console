@@ -935,20 +935,17 @@ fn slot_in_range(slot: u8) -> Result<()> {
 /// copy saves the live settings to `dest` and then to `source`, so another
 /// `source` would lose its stored contents and become active. Checked before
 /// the token is spent; a disconnected or read-only core is left to the gate's
-/// own refusal.
+/// own refusal. The rule and its words are dspi-session's, which the Terminal
+/// keeps too (WP FIN015, REVF S1).
 fn source_is_active(inner: &mut Inner, source: u8) -> Result<()> {
-    if inner.conn().is_err()
-        || inner.client_read_only.on
-        || inner.state.active_preset_slot == source
-    {
+    if inner.conn().is_err() || inner.client_read_only.on {
         return Ok(());
     }
-    Err(DspiError::InvalidArgument {
-        msg: format!(
-            "preset {source} is not the active preset: a copy saves the current settings, \
-             so it can only copy from the active preset"
-        ),
-    })
+    let active = Some(inner.state.active_preset_slot);
+    match dspi_session::preset_copy::copy_refusal(source, active) {
+        None => Ok(()),
+        Some(msg) => Err(DspiError::InvalidArgument { msg }),
+    }
 }
 
 /// The directory's bit for `slot`.
