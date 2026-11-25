@@ -67,7 +67,8 @@ Panel {
     }
 
     onShownChanged: {
-        if (shown) SettingsController.ensureShown()
+        // -- WP UA5 -- the landing page: the last one chosen, else Device › Speakers
+        if (shown) SettingsController.land()
         Qt.callLater(panel.takePart)   // -- WP LAY5b --
     }
 
