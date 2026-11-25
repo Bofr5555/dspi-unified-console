@@ -2,12 +2,12 @@
 
 Release notes of each version: `CHANGELOG-0.15.0.md`, `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
 
-## 0.15.0 (not released yet)
+## 0.15.0 (2026-11-26)
 
 One version for every client but the Swift app: the Qt desktop app (Windows, Linux and macOS), Android (versionCode
 15), the Terminal (`uconsole`), the web console and the hub. The Swift app for macOS, iPhone and iPad is still
 deferred. The firmware is unchanged: the fork's v1.1.6-bofr1, as for 0.14.0. Everything below was merged after the
-0.14.0 release (tag `v0.14.0`, `7d681a73`, 2026-11-20) up to 2026-11-25. The release notes are
+0.14.0 release (tag `v0.14.0`, `7d681a73`, 2026-11-20) up to 2026-11-26. The release notes are
 `CHANGELOG-0.15.0.md`; they also say what was tested where, and the known limits.
 
 ### Layouts (desktop)
@@ -78,7 +78,8 @@ deferred. The firmware is unchanged: the fork's v1.1.6-bofr1, as for 0.14.0. Eve
   has the same page, kept in the browser per DSPi. Measure starts from it and shows a banner while it is not confirmed
   or came with an imported configuration ("set outside this app").
 - **Detect…** plays quiet sweeps on each output with the Measure microphone (above 1 kHz at most −24 dBFS; below 1
-  kHz only on an output that is no tweeter, at most −50 dBFS; a sub found further down), with a warning first and
+  kHz only on an output that is no tweeter, at most −50 dBFS and down to 157 Hz; only a driver still flat at 177 Hz,
+  whatever the floor, is swept on down to 20 Hz at most −24 dBFS, never under the limits profile's high-pass minimum), with a warning first and
   **Stop**. A detected setup says "Detected, not confirmed"; each row has a marker (detected, uncertain, nothing heard,
   off, you, suggested) with its reason, and **Show Details** lists the evidence. A role you correct is yours.
 - A measurement holds every output to the strictest of the role asked for, your confirmed setup's and what its filters
@@ -161,6 +162,8 @@ deferred. The firmware is unchanged: the fork's v1.1.6-bofr1, as for 0.14.0. Eve
   Overview, Spectrum and Stats; the web's signal chain), and the views that edit it name it "3 · None" unless you
   named it. The Equaliser's channel list, the History, Measure and an agent's notices name outputs as the Overview does (by
   their speaker, where the setup names one).
+- An unused output that the signal generator, a measurement or Identify plays on keeps its meter, its spectrum entry
+  and its Stats rows while it plays, in every client.
 
 ### Desktop (Qt), other changes
 - Tool windows take the height their content needs (never less than their usual size, no more than the screen's) and
@@ -236,12 +239,29 @@ Changes since 0.14.0 (versionCode 14 on Google Play):
   is from the active preset only, and the core refuses any other source.
 - Tool windows no longer show a scroll bar for content that fits (Headphone Crossfeed).
 - The core names the crossfeed preset "Jan Meier", as the desktop app does.
+- Terminal: Preset › Copy to… could overwrite preset 1 when the device did not say which preset was active. Copy to…,
+  Save, Rename, Set as Default and Clear wait until the active preset is known; Copy to… reads it again right before
+  its first write and refuses a mismatch by the core's rule. An active slot of 10 or more counts as unknown.
+- Speaker detection: a raised floor (an agent's `floor_hz`, the limits profile's high-pass minimum) moved the gate of
+  the sweep down to 20 Hz up with it. Now the quiet sweep goes on to 177 Hz first whatever the floor, the sweep to
+  20 Hz never goes below the profile's minimum, and an output whose top end was never heard is swept at the quiet
+  level. The question, the warning and Settings › AI Agents say exactly that.
+- Agents read from 1 the numbers still from 0: `dspi_preset_copy`'s result, the copy refusal and "did not confirm",
+  `dspi_get_limits`' outputs, an installation's speaker, upstream and fan-out outputs (taken from 1 too); an unknown
+  preset slot reads null, not 256; the guide names the documents that keep their file's 0-based fields.
+- Web: Auto-tune and Several units show the core's refusal words; Settings › Speakers names each output once; the
+  Spectrum's bars no longer cover their dB scale.
+- Desktop: a channel has one name on a page (Delay & Gain, the Crossover table and the Spectrum chooser say "Centre
+  woofer" as the Equaliser does; Settings › Speakers, Events and an agent's question "Out 1 (Centre woofer)").
+- Events: a connection says how it came ("Connected to the demo", "over USB", "through a hub"), not "over fake".
+- The relay, the endpoint's texts, `uconsole mcp` and the AI agents manual name the app "uConsole for DSPi".
 
 ### Integrators
 - Additive C ABI: `dspi_core_set_*` (one core per open device with one shared hotplug scan), `dspi_mcp_*` (the agents'
   server), `dspi_speaker_layout_*`, `dspi_installation_*`, `dspi_revert_entry`, `dspi_preset_load_notice`,
   `dspi_system_volume_plan`/`_set`, `dspi_measure_rolloff_*`; nothing removed (`crates/dspi-capi/include`).
-- The output label carries `unused` (UniFFI record, the C ABI's and the web's JSON), an unused output with its default
+- The output label carries `unused` and `hidden` (unused and no test signal playing on it; UniFFI record, the C ABI's
+  and the web's JSON), an unused output with its default
   name is labelled "N · None", and `output_cards` leave unused outputs out.
 - A preset copy whose source is not the active slot is refused as an invalid argument before its token is spent.
 - Every history entry has an actor (`id`, `actor`, `actorLabel`); undo by entry id.

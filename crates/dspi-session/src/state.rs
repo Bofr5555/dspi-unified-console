@@ -1137,6 +1137,12 @@ pub struct DeviceState {
     pub saved: Option<PresetSnapshot>,
     /// The last discrete events, for the status views.
     pub siggen_state: Option<(u8, u8, u8, u8)>,
+    // -- WP FIN015 -- (REVF R1)
+    /// Bit i: the signal generator plays on output i, as far as this host
+    /// knows. A stop event clears it; a host sets it on a start event from
+    /// the device's config (the event does not carry the outputs). An unused
+    /// output it plays on is not hidden (`output_label::OutputLabel::hidden`).
+    pub siggen_outputs: u16,
     pub adat_state: Option<(bool, bool, u8)>,
     pub i2s_slave_state: Option<(u8, u32)>,
     pub adat_input_state: Option<(u8, u32, u8)>,
@@ -1215,6 +1221,7 @@ impl DeviceState {
             clip_latched: 0,
             saved: None,
             siggen_state: None,
+            siggen_outputs: 0, // -- WP FIN015 --
             adat_state: None,
             i2s_slave_state: None,
             adat_input_state: None,
@@ -1347,6 +1354,10 @@ impl DeviceState {
                 channel,
             } => {
                 self.siggen_state = Some((*state, *reason, *signal_type, *channel));
+                // -- WP FIN015 -- SIGGEN_STATE_IDLE: nothing plays
+                if *state == 0 {
+                    self.siggen_outputs = 0;
+                }
                 Applied::Status(n.event.clone())
             }
             Event::AdatState {

@@ -825,6 +825,15 @@ class DspiBridgeImpl(
         notificationHooks.forEach { it() }
         val flags = r.flags
         if (flags and DspiConstants.NOTIFY_SIGGEN.toLong() != 0L) {
+            // -- WP FIN015 -- (REVF R1) the generator started or stopped: the labels' `hidden` follows it, so an
+            // unused output it plays on gets its meter (a state change publishes them below anyway)
+            if (!stateChanged) {
+                val now = onFfi { runCatching { core.outputLabels() }.getOrDefault(labels) }
+                if (now != labels) {
+                    labels = now
+                    _stateRevision.value += 1
+                }
+            }
             emit(BridgeEvent.SiggenNotified)
             siggenHooks.forEach { it() }
         }
@@ -1249,6 +1258,8 @@ class DspiBridgeImpl(
     override fun outputCards(): List<OutputCard> = cards
 
     override fun outputUnused(output: Int): Boolean = labels.getOrNull(output)?.unused == true // -- WP REVEFIX --
+
+    override fun outputHidden(output: Int): Boolean = labels.getOrNull(output)?.hidden == true // -- WP FIN015 --
 
     override fun channelName(ch: Int): String {
         val w = map.wire(ch)

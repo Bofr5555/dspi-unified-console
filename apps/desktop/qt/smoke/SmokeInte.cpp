@@ -3,6 +3,8 @@
 //   out of the views that only show: the dock's meters, the spectrum's channel
 //   chooser (one being analysed stays, so it can be turned off) and the Measure
 //   Live tab's outputs; the full list (the Setup tab, an edit view) keeps it.
+//   -- WP FIN015 -- (REVF R1) while the generator plays on it, it keeps its
+//   meter and its chip: the generator writes after the matrix.
 // - "inte-typed": (REVE C1) Enter in a number field with nothing typed writes
 //   nothing and shows the value again; typed, it writes.
 // - "inte-words": (SHOWFIX leftovers) the Equaliser's header and inspector and
@@ -20,6 +22,7 @@
 #include "Registrar.h"
 #include "RtaController.h"
 #include "SidebarController.h"
+#include "SiggenController.h"
 #include "Snapshot.h"
 
 #include <QGuiApplication>
@@ -170,6 +173,34 @@ void unusedSection(SmokeDriver &d) {
             d.waitFor(3000, [&] { return !listsChannel(mc->liveOutputs(), "output", hidden); })
                 && listsChannel(mc->outputs(), "output", hidden) && listsChannel(mc->setupOutputs(), "output", hidden));
     d.check("inte: the channel list (an edit view) keeps its row", device->channels()->rowOfChannel(inputs + hidden) >= 0);
+
+    // -- WP FIN015 -- (REVF R1) pink noise on it alone: unused, but loud, so
+    // its meter and its chip are back until the generator stops
+    if (auto *sg = Registrar::instance<SiggenController>(); sg && d.waitFor(5000, [&] { return sg->available(); })) {
+        sg->selectType(SiggenController::Pink);
+        sg->noOutputs();
+        sg->stepOutput(hidden);
+        sg->setLevel(-60);
+        sg->play();
+        d.check("fin015: the generator plays on the unused output",
+                d.waitFor(5000, [&] { return sg->playing() && sg->channelMask() == (1 << hidden); }));
+        d.check("fin015: still unused, but not hidden", d.waitFor(5000, [&] {
+            return rowValue(device, cc->outputChannel(hidden), "unused").toBool()
+                && !rowValue(device, cc->outputChannel(hidden), "hidden").toBool();
+        }));
+        d.check("fin015: the dock shows its meter while the generator plays on it", d.waitFor(3000, [&] {
+            QQuickItem *m = d.item(meter);
+            return m && m->isVisible();
+        }));
+        d.check("fin015: the spectrum offers it while the generator plays on it", d.waitFor(2000, [&] { return offered(hidden); }));
+        sg->stopPlaying(true);
+        d.check("fin015: stopped, its meter goes again", d.waitFor(5000, [&] {
+            QQuickItem *m = d.item(meter);
+            return !sg->playing() && rowValue(device, cc->outputChannel(hidden), "hidden").toBool() && m && !m->isVisible();
+        }));
+    } else {
+        d.check("fin015: the generator", false);
+    }
 
     // Back as it was
     for (int o : changed)
