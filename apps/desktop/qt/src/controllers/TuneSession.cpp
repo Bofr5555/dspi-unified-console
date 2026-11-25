@@ -102,9 +102,10 @@ QString TuneSession::stageText() const {
     const QString s = stage();
     if (s == QLatin1String("proposed")) return tr("Proposed: nothing is written yet.");
     if (s == QLatin1String("sumCheck")) return tr("The summed check plays: both ways of each transition at once.");
-    if (s == QLatin1String("applied")) return tr("Applied inside the guard: verify it, then Keep or Revert.");
-    if (s == QLatin1String("verifying")) return tr("Verifying inside the guard: the tuned outputs, then the sums.");
-    if (s == QLatin1String("verified")) return tr("Verified inside the guard: Keep or Revert.");
+    // -- WP UA2 -- (A2, owner D10) a "trial", never a "guard", in the person's words
+    if (s == QLatin1String("applied")) return tr("Trying the auto-tune: verify it, then Keep or Revert.");
+    if (s == QLatin1String("verifying")) return tr("Verifying the auto-tune: the tuned outputs, then the sums.");
+    if (s == QLatin1String("verified")) return tr("Verified: Keep or Revert.");
     if (s == QLatin1String("kept")) return tr("Kept.");
     if (s == QLatin1String("reverted")) {
         // -- WP P5FOLLOW -- (review P5-E W2, as the web) the core's stage is
@@ -115,7 +116,7 @@ QString TuneSession::stageText() const {
         const QString message = str(g, "message");
         const QString tail = message.isEmpty() ? QString() : QLatin1Char(' ') + message;
         if (phase == QLatin1String("lost"))
-            return tr("The connection was lost while the tune waited in its guard: the device may still hold the tune.") + tail;
+            return tr("The connection was lost while the auto-tune was on trial: the device may still hold the tune.") + tail;   // -- WP UA2 --
         if (phase == QLatin1String("revert_failed"))
             return tr("The revert failed: the device may still hold part of the tune.") + tail;
         return tr("Reverted: the device is as it was before the tune.");
