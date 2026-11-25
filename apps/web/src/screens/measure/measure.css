@@ -22,7 +22,6 @@
 .dspi-web .m-inline { display: inline-flex; align-items: center; gap: 6px; }
 .dspi-web .m-grow { flex: 1 1 12rem; }
 .dspi-web .m-grow > input { flex: 1; min-width: 0; }
-.dspi-web .m-field { display: flex; flex-direction: column; gap: 2px; }
 .dspi-web .m-unit { font-size: 11px; color: var(--muted); }
 .dspi-web .m-num { width: 72px; font-family: var(--mono); font-size: 12px; text-align: right; }
 .dspi-web .m-freq { width: 88px; }

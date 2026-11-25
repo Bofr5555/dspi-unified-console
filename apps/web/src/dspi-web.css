@@ -113,7 +113,7 @@
 .dspi-web .pin-entry label { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.85rem; color: var(--muted); }
 .dspi-web .pin-entry input { width: 8rem; }
 .dspi-web .pin-entry .error { flex-basis: 100%; }
-.dspi-web .hub-devices { list-style: none; margin: 0.75rem 0; padding: 0; }
+.dspi-web ul.hub-devices { list-style: none; margin: 0.75rem 0; padding: 0; } /* -- WP INTE -- the picker's list, not the hub page's card */
 
 .dspi-web .device-meta { color: var(--muted); font-size: 0.85rem; }
 .dspi-web .dot { width: 0.6rem; height: 0.6rem; border-radius: 50%; background: var(--muted); }
