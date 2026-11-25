@@ -49,7 +49,7 @@ const PAGE_ROWS: Record<string, { screen: string; at?: Record<string, unknown> }
 export async function factoryReset(session: Session, ask: Ask): Promise<void> {
   const a = await ask({
     title: "Factory Reset",
-    body: <p>Do you wish to clear all active parameters? This will not overwrite your saved parameters unless you use Save to Device.</p>{/* -- WP UWN -- (UXP D1) one word for Save */},
+    body: <p>Do you wish to clear all active parameters? This will not overwrite your saved parameters unless you use Save to Device.</p>, // -- WP UWN -- (UXP D1) one word for Save
     buttons: [
       { label: "Reset", value: "yes", danger: true },
       { label: "Cancel", value: "cancel" },
